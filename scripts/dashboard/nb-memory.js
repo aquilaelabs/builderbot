@@ -9,7 +9,7 @@ function nbMemoryView({$, nb}){
   async function loadMemory(gen){
     let j;
     try{
-      const r = await fetch("/api/memory?project=" + encodeURIComponent(nb.memProj));
+      const r = await bootFetch("/api/memory?project=" + encodeURIComponent(nb.memProj));
       j = await r.json();
     }catch(e){ j = {error: String(e)}; }
     if (gen !== nb.memGen) return;              // closed, or reopened elsewhere

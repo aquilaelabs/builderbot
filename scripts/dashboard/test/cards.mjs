@@ -2383,4 +2383,22 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
   await page.evaluate(() => closeRename());
   await page.setViewportSize({ width: 1280, height: 900 });
 }
+// A reload reads the page the address names beside the status read (the
+// operator, 18 Oct: it showed the boot's placeholder, then the page's own
+// while only then asking for its data): its reads start before the status
+// read has answered, and each is asked once.
+for (const [addr, reads] of [['#/people/users', ['/api/users', '/api/roles']],
+                             ['#/projects/alpha', ['/api/roadmap?project=alpha', '/api/memory?project=alpha', '/api/brief?project=alpha']]]){
+  await page.goto(URL.replace(/\/$/, '') + '/' + addr); await ready(page);
+  const seen = []; let statusAt = Infinity;
+  const onReq = r => { const u = new globalThis.URL(r.url()); seen.push({ path: u.pathname + u.search, at: Date.now() }); };
+  const onRes = r => { if (new globalThis.URL(r.url()).pathname === '/api/status' && statusAt === Infinity) statusAt = Date.now(); };
+  page.on('request', onReq); page.on('response', onRes);
+  await page.reload(); await ready(page);
+  await page.waitForTimeout(1500);
+  page.off('request', onReq); page.off('response', onRes);
+  const got = reads.map(u => ({ u, n: seen.filter(x => x.path === u).length, early: seen.some(x => x.path === u && x.at <= statusAt) }));
+  ok(got.every(g => g.n === 1 && g.early),
+     `a reload at ${addr} asks for the page's own data beside the status read, once each (${got.map(g => `${g.u.replace(/\?.*/, '')} ${g.n}x${g.early ? ' early' : ' late'}`).join(', ')})`);
+}
 await done(browser);

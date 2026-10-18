@@ -16,7 +16,7 @@ function nbRoadmapView({$, nb}){
     const staged = nb.roadmapStaged;
     let j;
     try{
-      const r = await fetch("/api/roadmap?project=" + encodeURIComponent(nb.memProj));
+      const r = await bootFetch("/api/roadmap?project=" + encodeURIComponent(nb.memProj));
       j = await r.json();
     }catch(e){ j = {error: String(e)}; }
     if (gen !== nb.memGen) return;

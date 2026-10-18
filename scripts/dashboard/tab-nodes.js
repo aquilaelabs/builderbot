@@ -58,7 +58,7 @@ function openNodesTab(nid, what){
 
 async function loadNodes(){
   try{
-    const j = await (await fetch("/api/v1/nodes")).json();
+    const j = await (await bootFetch("/api/v1/nodes")).json();
     nodesErr = j.error || "";
     nodesList = j.nodes || [];
     nodesAgent = j.agent || null;

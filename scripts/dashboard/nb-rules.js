@@ -18,7 +18,7 @@ function nbRulesView({$, nb, project}){
   async function loadRulesNow(again){
     nb.loadCodebase().then(() => drawRules());
     try{
-      const r = await fetch("/api/rules?project=" + encodeURIComponent(project));
+      const r = await bootFetch("/api/rules?project=" + encodeURIComponent(project));
       nb.ruleData = await r.json();
     }catch(e){ nb.ruleData = {error: String(e), rules: []}; }
     // The answer's own revision, not the page's token as of now (B201); an

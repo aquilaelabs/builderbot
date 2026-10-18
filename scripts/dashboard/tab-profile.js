@@ -40,7 +40,7 @@ function openProfileTab(){
 
 async function loadProfile(){
   try{
-    const r = await fetch("/api/profile");
+    const r = await bootFetch("/api/profile");
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
     profile = j;

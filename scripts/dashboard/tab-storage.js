@@ -27,7 +27,7 @@ function openStorageTab(node){
 
 async function loadStorage(){
   try{
-    const j = await (await fetch("/api/storage")).json();
+    const j = await (await bootFetch("/api/storage")).json();
     storageErr = j.error || "";
     storageList = j.nodes || [];
     storageMay = !!j.may_measure;

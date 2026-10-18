@@ -31,7 +31,7 @@ function openUsersTab(){
 
 async function loadUsers(){
   try{
-    const j = await (await fetch("/api/users")).json();
+    const j = await (await bootFetch("/api/users")).json();
     usersErr = j.error || "";
     usersList = j.users || [];
     usersMeta = {owner: j.owner || "", me: j.me || "",

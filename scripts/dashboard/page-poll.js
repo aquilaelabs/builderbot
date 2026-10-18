@@ -15,6 +15,20 @@
 let bootSeen = null;                      // which run of the container this page saw
 let preStatusUsed = false;                // the head's early fetch: once only
 
+// A read the head began for the page the address names (preGets), shared
+// by whoever asks for it until a moment after the first status read is
+// drawn, each with a copy of its answer: the page's loader at load and its
+// open on that first draw are one read, taken beside the status read. Then
+// they are dropped (bootReadsDone), so nothing read at load is handed out
+// after the page could have moved on.
+function bootFetch(url){
+  const p = preGets[url];
+  return p ? p.then(r => r.clone()) : fetch(url);
+}
+function bootReadsDone(){
+  setTimeout(() => { for (const k of Object.keys(preGets)) delete preGets[k]; }, 1000);
+}
+
 // Terminal tabs whose session we have actually watched running.
 //
 // The transition is what closes a tab, not the absence: "no session" is also
@@ -175,6 +189,8 @@ async function refresh(){
     if (findings && !findings.loading && findings.agesKey === undefined)
       findings.agesKey = agesKey;
     render();
+    // The page the address named has opened on the reads begun at load.
+    if (Object.keys(preGets).length) bootReadsDone();
     // Cleared at the END, not where the fetch landed: a poll that arrives
     // and then fails on this page is still a failed poll, and resetting the
     // count on arrival read every one of those as the first.

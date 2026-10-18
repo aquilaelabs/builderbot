@@ -37,7 +37,7 @@ function openNginxTab(node){
 
 async function loadNginx(){
   try{
-    const j = await (await fetch("/api/nginx")).json();
+    const j = await (await bootFetch("/api/nginx")).json();
     nginxErr = j.error || "";
     nginxList = j.nodes || [];
     nginxLatest = j.latest || {};

@@ -30,7 +30,7 @@ function openRolesTab(){
 
 async function loadRoles(){
   try{
-    const r = await fetch("/api/roles");
+    const r = await bootFetch("/api/roles");
     const j = await r.json();
     rolesErr = j.error || "";
     rolesData = j.error ? {roles: {}, areas: [], people: [], projects: [], admin: false} : j;

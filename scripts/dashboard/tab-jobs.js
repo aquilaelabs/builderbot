@@ -39,7 +39,7 @@ function openJob(id){
 
 async function loadJobs(){
   try{
-    const j = await (await fetch(`/api/v1/jobs?n=100${jobsActive ? "&active=1" : ""}`)).json();
+    const j = await (await bootFetch(`/api/v1/jobs?n=100${jobsActive ? "&active=1" : ""}`)).json();
     jobsErr = j.error || "";
     jobsList = j.jobs || [];
     jobsNodes = j.nodes || {};

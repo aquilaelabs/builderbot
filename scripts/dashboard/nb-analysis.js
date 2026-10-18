@@ -67,7 +67,7 @@ function nbAnalysisView({$, nb, project}){
     if (codeInFlight) return codeInFlight;
     codeInFlight = (async () => {
       try{
-        const r = await fetch("/api/codebase?project=" + encodeURIComponent(project));
+        const r = await bootFetch("/api/codebase?project=" + encodeURIComponent(project));
         codeData = await r.json();
       }catch(e){ codeData = {error: String(e)}; }
     })().finally(() => { codeInFlight = null; });
@@ -122,7 +122,7 @@ function nbAnalysisView({$, nb, project}){
   nb.preData = null;
   async function loadPreamble(){
     try{
-      const r = await fetch(`/api/preamble?project=${encodeURIComponent(project)}`);
+      const r = await bootFetch(`/api/preamble?project=${encodeURIComponent(project)}`);
       const j = await r.json();
       nb.preData = j.error ? {error: j.error} : j;
     }catch(e){ nb.preData = {error: String(e)}; }
@@ -179,7 +179,7 @@ function nbAnalysisView({$, nb, project}){
   nb.briefData = null;
   async function loadBrief(){
     try{
-      const j = await (await fetch(`/api/brief?project=${encodeURIComponent(project)}`)).json();
+      const j = await (await bootFetch(`/api/brief?project=${encodeURIComponent(project)}`)).json();
       nb.briefData = j.error ? null : j;
     }catch(e){ nb.briefData = null; }
     nb.drawRules();

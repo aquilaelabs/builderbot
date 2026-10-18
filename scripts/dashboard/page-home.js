@@ -40,7 +40,7 @@ async function loadHome(light = false){
   if (homeFetching){ homeAgain = homeAgain === "whole" || !light ? "whole" : "light"; return; }
   homeFetching = true;
   try{
-    const j = await (await fetch("/api/home" + (light ? "?light=1" : ""))).json();
+    const j = await (await bootFetch("/api/home" + (light ? "?light=1" : ""))).json();
     homeData = j.error ? {error: j.error}
       : light && homeData && !j.containers ? {...j, containers: homeData.containers} : j;
   }catch(e){

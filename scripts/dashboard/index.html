@@ -20,6 +20,29 @@
   // eventually inherited the page-load-era snapshot of the shared layout and
   // saved it over the real one. Found by the suite, kept as a warning.
   const preStatus = fetch("/api/status");
+  // ...and the page the address names asks for its own data beside it (the
+  // operator, 18 Oct: a reload showed the boot's placeholder, then the
+  // page's own while it only then asked for what it draws). Shared by its
+  // loader while in flight (bootFetch), never kept once it has landed. A
+  // page whose read names a node, or nothing in the address, waits as before.
+  const preGets = {};
+  {
+    // #/group/tool, a group alone naming its first tool (RAIL's order).
+    const [g, t] = location.hash.replace(/^#\/?/, "").split("/");
+    const FIRST = {home: "home", machines: "nodes", jobs: "jobs", people: "users"};
+    const BOOT_READS = {"home/home": ["/api/home?light=1"], "people/users": ["/api/users", "/api/roles"], "people/roles": ["/api/roles"],
+                        "settings/profile": ["/api/profile"], "machines/nodes": ["/api/v1/nodes"],
+                        "machines/storage": ["/api/storage"], "machines/nginx": ["/api/nginx"], "jobs/jobs": ["/api/v1/jobs?n=100"]};
+    // A project's page (#/projects/NAME): what its notebook reads as it opens.
+    // Its Overview, the view it opens on, reads its rules, code base,
+    // preamble and brief as well.
+    const [, , view] = location.hash.replace(/^#\/?/, "").split("/");
+    const proj = g === "projects" && t && t !== "findings" && t !== "analysis" ? decodeURIComponent(t) : "";
+    const reads = proj ? ["roadmap", "memory", ...(!view || view === "overview" ? ["rules", "codebase", "preamble", "brief"] : [])]
+        .map(k => `/api/${k}?project=${encodeURIComponent(proj)}`)
+      : BOOT_READS[`${g}/${t || FIRST[g] || ""}`] || [];
+    for (const u of reads) preGets[u] = fetch(u);
+  }
 
   // The color scheme, before anything is painted. It has to be here rather
   // than with the rest of the theme code 150KB below: by the time that parses
@@ -6261,6 +6284,15 @@ untitleWatch();
 // address bar's back and forward open what they name, the search is wired,
 // and the phone's More sheet closes on a tap elsewhere.
 addEventListener("hashchange", () => { if (!openRoute(location.hash)) shellSync(); });
+// The page the address names reads its own data now, on the read the head
+// began (preGets), so it is usually in hand when the first status read
+// draws the page, which then opens as itself rather than as a second
+// placeholder (the operator, 18 Oct).
+{
+  const BOOT_LOADS = {"/api/home?light=1": homeOpen, "/api/users": loadUsers, "/api/roles": loadRoles, "/api/profile": loadProfile,
+                      "/api/v1/nodes": loadNodes, "/api/storage": loadStorage, "/api/nginx": loadNginx, "/api/v1/jobs?n=100": loadJobs};
+  for (const u of Object.keys(preGets)) BOOT_LOADS[u]?.();
+}
 wireJump();
 document.addEventListener("click", e => {
   if (railMoreOpen && !e.target.closest("#railmore, [data-railmore]")) railMoreShow(false);
