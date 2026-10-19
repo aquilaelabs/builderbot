@@ -144,7 +144,7 @@ function bootPage(hash){
       <button type="button" disabled>Open Claude</button><button type="button" disabled>Shell</button></span>`;
     body = `<div class="doc on nbhost"><div class="nb"><div class="nbtabs"><div class="nbgroups">${GROUPS.map(([k, w]) => btn(k === grp[0], w)).join("")}</div>
       <div class="nbsub">${grp[2].map(([v, w]) => btn(v === view, w)).join("")}</div></div>
-      <div class="nbview"><div class="field">${skRows(5)}</div></div></div></div>`;
+      ${bootView(view) || `<div class="nbview"><div class="field">${skRows(5)}</div></div>`}</div></div>`;
     return {rail: key, bar: `<div class="bar proj">${bar}</div>`, body: `<div class="skstack">${body}</div>`};
   }
   bar = `<div class="bar page">${seg(g.tools, key === "projects" && parts[1] === "analysis" ? "findings" : tool)}</div>`;
@@ -165,6 +165,24 @@ function bootPage(hash){
   // desk (their exact first paints are R218's templates step).
   else body = doc("", `<div class="field"><div class="sk-card skrows">${skRows(6)}</div></div>`);
   return {rail: key, bar, body: `<div class="skstack">${body}</div>`, tool: key === "projects" && parts[1] === "analysis" ? "findings" : tool};
+}
+
+// A notebook view at the first paint is its own markup from the notebook's
+// template, its shapes in it as a press shows them (B865: a reload on the
+// Roadmap drew five plain rows, then the view's head and list): inert, and
+// without its ids, which belong to the notebook the page builds. A view
+// whose markup is drawn by its loader (Settings) keeps the rows.
+function bootView(view){
+  const v = view === "overview" ? "briefing" : view;
+  const src = [...document.querySelectorAll("template")]
+    .map(t => t.content.querySelector(`.nbview[data-view="${CSS.escape(v)}"]`)).find(Boolean);
+  if (!src?.querySelector(".skel")) return "";
+  const c = src.cloneNode(true);
+  c.removeAttribute("hidden");
+  [c, ...c.querySelectorAll("[id]")].forEach(e => e.removeAttribute("id"));
+  c.querySelectorAll("label[for]").forEach(e => e.removeAttribute("for"));
+  c.querySelectorAll("input, select, textarea, button").forEach(e => { e.disabled = true; });
+  return c.outerHTML;
 }
 
 // ...and in it, the page's own placeholder where it has one: the page drawn

@@ -6590,7 +6590,9 @@ quietFields(document.documentElement);
 // The notebook's markup is a template, so its views' heads are found there.
 // The first pane is the page the address names in its frame (bootPage): the
 // rail, its bar and its shape, a reload included (the operator, 17 Oct).
-[document, ...[...document.querySelectorAll("template")].map(t => t.content)].flatMap(r => [...r.querySelectorAll("[data-skel]")]).forEach(el => {
+// The templates' first, so the first pane can be drawn from a notebook
+// view's own template with its shapes in it (B865).
+[...[...document.querySelectorAll("template")].map(t => t.content), document].flatMap(r => [...r.querySelectorAll("[data-skel]")]).forEach(el => {
   const shape = el.dataset.skel;
   if (shape === "page"){
     const pg = bootPage(location.hash), rl = bootRail(pg.rail);
