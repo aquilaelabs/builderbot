@@ -33,12 +33,29 @@ def configure(*, run, wait_for_boot):
 
 def refresh():
     """Run bb doctor and cache the parsed result. False if one is mid-run:
-    two at once would double every network probe for the same answer."""
+    two at once would double every network probe for the same answer, so
+    the ask is kept and that run goes again when it ends. Dropped, a node
+    that dialed in while the first run after a restart was out left that
+    run's "not dialing in" on the card for the half hour (19 Oct)."""
     with _lock:
         if _verdict.get("busy"):
+            _verdict["again"] = True
             return False
         _verdict["busy"] = True
         _verdict["running"] = True
+    again = True
+    try:
+        while again:
+            _run_once()
+            with _lock:
+                again = _verdict.pop("again", False)
+    finally:
+        with _lock:
+            _verdict.update(running=False, busy=False)
+    return True
+
+
+def _run_once():
     r = run(["bb", "doctor"], timeout=180)
     checks = []
     for line in r["out"].splitlines():
@@ -48,9 +65,7 @@ def refresh():
         elif checks and line.strip() and not line.startswith("=="):
             checks[-1]["detail"] = (checks[-1]["detail"] + "\n" + line.strip()).strip()
     with _lock:
-        _verdict.update(when=int(time.time()), checks=checks,
-                        failed=r["code"] != 0, running=False, busy=False)
-    return True
+        _verdict.update(when=int(time.time()), checks=checks, failed=r["code"] != 0)
 
 
 def payload():

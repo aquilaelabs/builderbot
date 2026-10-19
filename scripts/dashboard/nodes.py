@@ -2847,7 +2847,7 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
     if not n:
         return {"error": "no such node"}
     was_live = bool(n.get("live"))
-    if not was_live or str((n.get("agent") or {}).get("digest") or "") != str(digest or "")[:80]:
+    if str((n.get("agent") or {}).get("digest") or "") != str(digest or "")[:80]:
         checks_wanted.add(nid)
     ag = n.get("agent") or {}
     if isinstance(running, list):
@@ -2887,11 +2887,8 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
           "WHERE id = ?", (json.dumps(ag), json.dumps(rep), rep["system"],
                            rep["arch"], nid))
     _bump()
-    if not was_live and came_back:
-        try:
-            came_back(nid)
-        except Exception as e:                                       # noqa: BLE001
-            print(f"[nodes] came_back hook: {type(e).__name__}: {e}", flush=True)
+    if not was_live:
+        _revived(nid)
     ours = agent_file()
     return {"ok": True, "transports": ["longpoll"],
             "poll": POLL_S, "node": {"id": nid, "name": n["name"],
@@ -2956,8 +2953,26 @@ def beat(nid):
     after a job changed the machine, a minute and more on bb-sandbox) is
     not read as not answering (the operator, 7 Oct). One statement, so it
     cannot lose a hello's census written beside it."""
+    n = node(nid)
     _exec("UPDATE nodes SET agent = json_set(agent, '$.last_seen', ?) WHERE id = ? AND kind = 'agent'",
           (int(time.time()), nid))
+    if n and n.get("live") is False:
+        _revived(nid)
+
+
+def _revived(nid):
+    """A quiet node is heard again, by whichever of its messages lands first.
+    A starting agent beats while its first census is taken, so its hello
+    then found the node live already and the doctor was never asked again:
+    after a reboot it said "not dialing in" for its half hour (19 Oct). The
+    token moves too: every page that says whether a node is online is told."""
+    _bump()
+    checks_wanted.add(nid)
+    if came_back:
+        try:
+            came_back(nid)
+        except Exception as e:                                       # noqa: BLE001
+            print(f"[nodes] came_back hook: {type(e).__name__}: {e}", flush=True)
 
 
 def sync_rows(sent):
@@ -3113,6 +3128,8 @@ def heartbeat(nid, sample, addr, running=0):
     _sample_rev[0] += 1
     if json.dumps([ag.get("addr"), *[rep.get(k) for k in HEARTBEAT_NEWS]], sort_keys=True) != was:
         _bump()
+    if n.get("live") is False:
+        _revived(nid)
     with contextlib.suppress(Exception):
         auto_update(nid)
     if moved:

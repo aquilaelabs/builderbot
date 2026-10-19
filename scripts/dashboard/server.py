@@ -3504,12 +3504,30 @@ STARTED = time.time()
 NODE_WAIT = 300
 
 
+_DOWN = []
+
+
+def _went_down():
+    """When the controller last heard any node before this start: when it
+    stopped, near enough. A crash an hour long put every node outside a
+    quarter hour of the start, so none was waited for and the doctor's
+    first run said each one was not dialing in (19 Oct). Read once: a node
+    dialing in again takes its stamp out of the reckoning."""
+    if not _DOWN:
+        seen = [float((n.get("agent") or {}).get("last_seen") or 0)
+                for n in nodes.node_list() if n.get("kind") == "agent"]
+        _DOWN.append(max([s for s in seen if s < STARTED] or [STARTED]))
+    return _DOWN[0]
+
+
 def _reconnecting(n):
-    """Whether a node not dialing in is one this controller saw shortly
-    before it started, and is still inside the start's wait for it: the
+    """Whether a node not dialing in is one this controller heard shortly
+    before it went down, and is still inside the start's wait for it: the
     agent reconnects on its own clock, so it is coming back, not down."""
     seen = float((n.get("agent") or {}).get("last_seen") or 0)
-    return time.time() - STARTED < NODE_WAIT and STARTED - 900 < seen < STARTED
+    if not time.time() - STARTED < NODE_WAIT or seen >= STARTED:
+        return False
+    return _went_down() - 900 < seen
 
 
 def wait_for_nodes(limit=NODE_WAIT):
@@ -3521,20 +3539,23 @@ def wait_for_nodes(limit=NODE_WAIT):
     (bb-sandbox-redhat took over two minutes on 18 Sep), so a doctor run in
     that window says "not dialing in" and "no node can run a session" about
     nodes that are fine, and keeps saying it for doctor.EVERY. Only nodes
-    seen in the quarter hour before this start are waited for: one that has
-    been off for a day is not coming back because the controller did.
+    heard in the quarter hour before the controller went down are waited
+    for: one that had been off for a day is not coming back because the
+    controller did.
     """
     if NODES_OK:
         return
     end = time.time() + limit
     while time.time() < end:
         try:
-            owed = [n for n in nodes.node_list()
+            rows = nodes.node_list()
+            down = _went_down()
+            owed = [n for n in rows
                     if n.get("kind") == "agent"
                     # Whole seconds: last_seen is stamped as an int, so a node
                     # that dialed in the same second this started (48 against
                     # 48.6) is back, not owed until its next heartbeat.
-                    and STARTED - 900 < float((n.get("agent") or {}).get("last_seen") or 0) < int(STARTED)]
+                    and down - 900 < float((n.get("agent") or {}).get("last_seen") or 0) < int(STARTED)]
         except Exception as e:                                   # noqa: BLE001
             # A wait at startup, not a step of it: the store unreadable or a
             # row malformed means nobody is waited for, said once here.
