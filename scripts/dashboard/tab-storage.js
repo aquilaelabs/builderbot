@@ -154,14 +154,14 @@ function storageProjects(n, where){
 // the page follows, so it has no Refresh.
 // Given GHOST, the placeholder's: there and dead until the node is known.
 function storageMeasureBtn(n){
-  if (n === GHOST) return storageMay ? `<span class="actbar"><button type="button" disabled>Measure now</button></span>` : "";
+  if (n === GHOST) return storageMay ? `<button type="button" disabled>Measure now</button>` : "";
   if (!n || !storageMay || n.may_measure === false) return "";
-  return `<span class="actbar"><button type="button" data-stmeasure="${esc(n.node)}" ${n.live ? "" : "disabled"} title="${
-    n.live ? "walk the disks now; the next report brings the numbers" : "the node is not dialing in"}">Measure now</button></span>`;
+  return `<button type="button" data-stmeasure="${esc(n.node)}" ${n.live ? "" : "disabled"} title="${
+    n.live ? "walk the disks now; the next report brings the numbers" : "the node is not dialing in"}">Measure now</button>`;
 }
 // The bar: the node and Measure now; given nothing, the placeholder's.
 function storageBar(pnodes, n){
-  return `${nodePick("stNodeSel", pnodes, storageNode)}<span class="sp"></span>${storageMeasureBtn(pnodes ? n : GHOST)}`;
+  return nodeBar(nodePick("stNodeSel", pnodes, storageNode), storageMeasureBtn(pnodes ? n : GHOST));
 }
 
 // What the tab says about one node: the state row, then its disks. Given

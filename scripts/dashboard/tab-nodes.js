@@ -1331,12 +1331,9 @@ function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
 // The bar: the node switcher, Create sandbox VM, and Enroll node.
 function ndBar(live){
   const g = !live, dead = g ? " disabled" : "";
-  return `${nodePick("ndPick", g ? null : live.map(x => ({id: x.id, name: x.name, live: x.live})), nodesPick)}
-    <span class="sp"></span>
-    <span class="actbar">
-      <button type="button"${g ? "" : ` id="ndVm"`}${dead}>${barSaid("Create sandbox VM", "New VM")}</button>
-      <button type="button" class="primary"${g ? "" : ` id="ndEnroll"`}${dead}>${barSaid("Enroll node", "Enroll")}</button>
-    </span>`;
+  return nodeBar(nodePick("ndPick", g ? null : live.map(x => ({id: x.id, name: x.name, live: x.live})), nodesPick),
+    `<button type="button"${g ? "" : ` id="ndVm"`}${dead}>${barSaid("Create sandbox VM", "New VM")}</button>
+      <button type="button" class="primary"${g ? "" : ` id="ndEnroll"`}${dead}>${barSaid("Enroll node", "Enroll")}</button>`);
 }
 // Its facts in the facts voice, its id among them (R218 step 26): the id is
 // the one in its enroll script's name.
@@ -1605,7 +1602,7 @@ function renderRunnerInto(i){
   const has = n => (n.reported?.services?.runners || []).length || Object.keys(n.services?.runners || {}).length;
   if (!ns.some(n => n.id === runnerNode)) runnerNode = (ns.find(has) || ns[0])?.id || "";
   const n = ns.find(x => x.id === runnerNode);
-  d.setBar(`${nodePick("rnrPick", ns, runnerNode)}<span class="sp"></span>${runnerAddBtn(n, n ? nodeDraft(n) : {})}`);
+  d.setBar(nodeBar(nodePick("rnrPick", ns, runnerNode), runnerAddBtn(n, n ? nodeDraft(n) : {})));
   const show = d.el.querySelector("[data-nrunnershow]");
   if (show) show.onclick = () => { nodeDraft(n).addRunner = true; nodesRev++; drawPanes(); };
   d.list.innerHTML = n
@@ -1625,8 +1622,8 @@ function renderRunnerInto(i){
 // while the add band is open it is the band's to finish or cancel.
 function runnerAddBtn(n, c){
   if (!n || c.addRunner) return "";
-  return `<span class="actbar"><button type="button" class="primary" data-nrunnershow ${n.applying || nodeStale(n) || n.runner_new === false || nodeMay(n) !== "write" ? "disabled" : ""}
-    title="a runner for another git host, or this one's under another address">Add runner</button></span>`;
+  return `<button type="button" class="primary" data-nrunnershow ${n.applying || nodeStale(n) || n.runner_new === false || nodeMay(n) !== "write" ? "disabled" : ""}
+    title="a runner for another git host, or this one's under another address">Add runner</button>`;
 }
 
 // An account that does not administer sees a node's settings and changes

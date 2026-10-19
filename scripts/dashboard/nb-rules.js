@@ -4,6 +4,16 @@
 // (R60). A factory makeNotebook calls per notebook.
 
 "use strict";
+
+// Whether a rule waits for its files or words, and what that costs, in one
+// sentence: the Briefing's rules and the design's both say it (consistency
+// pass J7: two copies said it in different words, and four the test).
+const ruleCond = r => (r.paths || []).length || (r.words || []).length;
+function ruleWhen(r){
+  return ruleCond(r)
+    ? `Sent to a session only when its work touches these files or words.`
+    : `Sent to every session. Add files or words to send it only when it applies.`;
+}
 // The Overview's sections in the box drawRules fills, in their order, by
 // the titles they are drawn under, and whether each opens: read by their
 // builders here and in nb-analysis.js and by the view's placeholder
@@ -58,7 +68,7 @@ function nbRulesView({$, nb, project}){
     const may = !!nb.ruleData?.may_global;
     if (!gs.length && !may) return "";
     const off = offHere();
-    const cond = r => (r.paths || []).length || (r.words || []).length;
+    const cond = ruleCond;
     const ed = nb.globalEditing;
     const row = (g, i) => {
       const editing = ed && ed.i === i;
@@ -136,14 +146,6 @@ function nbRulesView({$, nb, project}){
     nb.syncSave();
   }
 
-  // What this rule costs and when it arrives, in a sentence. Both the draw and
-  // the keystroke that turns one kind into the other read it from here.
-  function ruleWhen(r){
-    const on = (r.paths || []).length || (r.words || []).length;
-    return on
-      ? `Sent to a session only when its work touches these files or words.`
-      : `Sent to every session. Add files or words to send it only when it applies.`;
-  }
 
   function drawRules(){
     nb.briefingHead();
@@ -155,7 +157,7 @@ function nbRulesView({$, nb, project}){
       return;
     }
     const rows = ruleRows();
-    const cond = r => (r.paths || []).length || (r.words || []).length;
+    const cond = ruleCond;
     const standing = rows.filter(r => !cond(r)).length;
     // The cost, said out loud. "Is this rule worth keeping" is not a question
     // anybody can answer without knowing what it is charged for, and the

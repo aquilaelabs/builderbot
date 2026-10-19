@@ -39,7 +39,7 @@ function fxBarHtml(rows, st, extra, dead = false){
     <select class="fxLevel" aria-label="level"${dead ? " disabled" : ""}>
       ${optionList([["", "every level"], ...lvls.map(l => [l, `${l} · ${per[l]}`])], st.level)}
     </select>
-    <input class="fxFind" maxlength="80" autocomplete="off"
+    <input class="fxFind" type="search" maxlength="80" autocomplete="off" aria-label="search the findings"
       placeholder="search rules, paths, messages" value="${esc(st.find || "")}"${dead ? " disabled" : ""}>`;
 }
 

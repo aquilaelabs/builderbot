@@ -40,8 +40,8 @@ function openPhoneTab(){
 // the node switcher and Check now in the button group every page's bar has.
 function phoneBar(nodes, n){
   const g = !nodes;
-  return `${nodePick("phPick", g ? null : nodes, n?.id)}<span class="sp"></span>
-    <span class="actbar"><button type="button"${g ? " disabled" : ` id="phRefresh"`} title="ask the node's adb about the phone now">Check now</button></span>`;
+  return nodeBar(nodePick("phPick", g ? null : nodes, n?.id),
+                 `<button type="button"${g ? " disabled" : ` id="phRefresh"`} title="ask the node's adb about the phone now">Check now</button>`);
 }
 
 function renderPhoneInto(i){

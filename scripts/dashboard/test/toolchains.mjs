@@ -574,10 +574,10 @@ ok(await page.$eval('.doc [data-tc="install"]',
 // ...said in the bar's state slot, by the name on the toolchain's row rather
 // than its recipe id (the operator, 6 Oct: "Installing ndk...").
 const label = await page.$eval('.doc .tc input[value="go"]', i => i.closest('.tc').querySelector('.nm').firstChild.textContent.trim());
-ok(await page.$eval('.doc .macros .state.tcworking', (e, l) => e.textContent.startsWith(`Installing ${l}`), label)
-   && await page.$('.doc .macros .tcworking .dots') !== null,
+ok(await page.$eval('.doc .tcact .state.tcworking', (e, l) => e.textContent.startsWith(`Installing ${l}`), label)
+   && await page.$('.doc .tcact .tcworking .dots') !== null,
    `...with what it is doing as the bar's state, by the row's name, and an ellipsis (${
-     await page.$eval('.doc .macros .tcworking', e => e.textContent).catch(() => 'none')})`);
+     await page.$eval('.doc .tcact .tcworking', e => e.textContent).catch(() => 'none')})`);
 await page.waitForFunction(() => toolchains?.job && !toolchains.job.running,
                            { timeout: 60000 });
 

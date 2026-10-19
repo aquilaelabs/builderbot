@@ -232,8 +232,7 @@ function nbDesignView({$, nb, project, root}){
   // Edit turning the row into its form. The same list serves the language's
   // rules, a theme's own and a page's own (the operator, 29 Sep): a rules
   // section inside the page and the theme, following the pulldown.
-  const cond = r => (r.paths || []).length || (r.words || []).length;
-  const ruleWhen = r => cond(r) ? "named in the briefing; its text arrives when it applies" : "standing: in every briefing whole";
+  const cond = ruleCond;
   function rulesList(key, rules){
     nb.dsRuleLists[key] = rules;
     const ui = ruleUI(key);

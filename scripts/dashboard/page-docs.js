@@ -100,9 +100,14 @@ function skTpl(html, {said = "loading…", live = false} = {}){
 // there and dead until the page they act on has drawn. An action given as
 // [label, "primary"] is the page's main action and wears its fill.
 function skNodeBar(actions = []){
-  return `${nodePick("", null)}<span class="sp"></span>${actions.length ? `<span class="actbar">${
-    actions.map(a => [].concat(a)).map(([a, cls, short]) => `<button type="button"${cls ? ` class="${esc(cls)}"` : ""} disabled>${
-      short ? barSaid(a, short) : esc(a)}</button>`).join("")}</span>` : ""}`;
+  return nodeBar(nodePick("", null), actions.map(a => [].concat(a)).map(([a, cls, short]) =>
+    `<button type="button"${cls ? ` class="${esc(cls)}"` : ""} disabled>${short ? barSaid(a, short) : esc(a)}</button>`).join(""));
+}
+// A node's page's bar, its order the same on every page that has one
+// (consistency pass J17): the node picker at the left, then the page's
+// buttons at the right in an action bar, or none.
+function nodeBar(pick, actions = ""){
+  return `${pick}<span class="sp"></span>${String(actions).trim() ? `<span class="actbar">${actions}</span>` : ""}`;
 }
 // A bar button's words at both widths (the operator, 18 Oct: the node
 // picker and a page's buttons on one line on a phone). On a phone the short
@@ -863,9 +868,12 @@ function unbusy(btn, word){
 // they are in at the left, its upkeep actions (Check for updates, Measure
 // now, Install selected) at the right, on one line. `said` is markup; `cls`
 // names the page's own line for its wiring and its suites.
-function headLine(said, actions = "", cls = ""){
+// `under` is a note under the line (what the bar's Remove would take), and
+// `state` a class for the words (a job running).
+function headLine(said, actions = "", cls = "", {under = "", state = ""} = {}){
   if (!said && !actions) return "";
-  return `<div class="field headline${cls ? " " + esc(cls) : ""}"><div class="actbar"><span class="state">${said}</span>${actions}</div></div>`;
+  return `<div class="field headline${cls ? " " + esc(cls) : ""}"><div class="actbar"><span class="state${state ? " " + esc(state) : ""}">${
+    said}</span>${actions}</div>${under}</div>`;
 }
 
 // A row of tiles under a tab's bar: each a number the tab is about, with

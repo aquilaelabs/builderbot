@@ -195,9 +195,7 @@ function renderEmulatorInto(i){
     : stale ? staleWhy(pnode)
     : d.sdkmanager === false ? `${d.name} needs the Android command-line tools first` : "";
   // The one node switcher (page-docs.js nodePick, R121).
-  surf.setBar(`${nodePick("emuNodeSel", pnodes, emuNode)}
-    <span class="sp"></span>
-`);
+  surf.setBar(nodeBar(nodePick("emuNodeSel", pnodes, emuNode)));
   surf.list.innerHTML = `
     <div class="tchead">${d.wrong_platform
       ? `System images are what an emulator boots, and they live on the node that runs it.`

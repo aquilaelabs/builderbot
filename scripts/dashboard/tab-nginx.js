@@ -242,11 +242,9 @@ function nginxUndeployed(n){
   // page's top): not deployed and what Deploy brings; Deploy is in the bar
   // with every header button.
   return `<div data-ngnode="${esc(n.node)}">
-    <div class="field headline toolstate"><div class="actbar ngbar" data-ngbar="${esc(n.node)}">
-      <span class="state"><span class="pill">not deployed</span> ${count || certs
+    ${headLine(`<span class="pill">not deployed</span> ${count || certs
           ? `Deploy puts nginx on ${esc(n.name)} with the ${count} route${count === 1 ? "" : "s"} and ${certs} certificate${certs === 1 ? "" : "s"} kept for it`
-          : `Deploy puts nginx on ${esc(n.name)}; its routes and certificates are set here once it is there`}</span>
-    </div></div>
+          : `Deploy puts nginx on ${esc(n.name)}; its routes and certificates are set here once it is there`}`, "", "toolstate")}
     ${clash}
   </div>`;
 }
@@ -324,7 +322,7 @@ function nginxBody(n){
   // The page's status line, deployed as undeployed (the page tops' one
   // order): its state and what it runs, under the tiles.
   return `<div data-ngnode="${esc(n.node)}">
-    <div class="field headline toolstate"><div class="actbar ngstate"><span class="state">${pill} <span class="sub">${sub}</span></span></div></div>
+    ${headLine(`${pill} <span class="sub">${sub}</span>`, "", "toolstate")}
     ${clash}
     ${hosts}
     ${routes}
@@ -339,8 +337,8 @@ function nginxBody(n){
 // the node switcher, and Deploy, an undeployed node's one action, at its
 // right; waiting, which node and whether it is deployed are not known yet.
 function nginxBar(pnodes, n){
-  return `${nodePick("ngNodeSel", pnodes, nginxNode)}${n && !n.deployed
-    ? `<span class="sp"></span><span class="actbar"><button type="button" class="primary" data-ngdeploy>Deploy</button></span>` : ""}`;
+  return nodeBar(nodePick("ngNodeSel", pnodes, nginxNode),
+                 n && !n.deployed ? `<button type="button" class="primary" data-ngdeploy>Deploy</button>` : "");
 }
 
 function renderNginxInto(i){

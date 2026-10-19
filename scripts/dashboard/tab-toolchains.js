@@ -121,7 +121,7 @@ const tcWorking = (job, items) => {
   const done = (job.done || []).length + (job.failed || []).length + (job.passed || []).length,
         left = (job.queue || []).length;
   const of = job.action !== "check" && done + left > 0 ? `, ${done + 1} of ${done + left + 1}` : "";
-  return `<span class="state tcworking">${esc(verb)} ${esc(what)}${of}<span class="dots"></span></span>`;
+  return `${esc(verb)} ${esc(what)}${of}<span class="dots"></span>`;
 };
 
 function tcTickDots(){
@@ -468,7 +468,7 @@ function renderToolchainsInto(i){
     // status line, then the catalog's table.
     const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
     surf.list.innerHTML = skTpl(`<div class="field"><div class="tiles">${tile("installed", `of ${skv(2)} offered`)}${tile("updates due")}${tile("free", "on the store")}</div></div>
-      <div class="field headline tcact"><div class="actbar macros"><span class="state">${skv(22)}</span></div></div>
+      ${headLine(skv(22), "", "tcact")}
       ${tcSections("", skTable(TC_COLS, 6, "tcs"), "")}`);
     return;
   }
@@ -513,7 +513,7 @@ function renderToolchainsInto(i){
   // for what no node uses any more (R196), last as a destructive verb is.
   const may = mayToolchains(tcNode);
   const clean = onNode && (d.cleanable || []).length && may ? d.cleanable : [];
-  surf.setBar(`${nodePick("tcNodeSel", pnodes, tcNode)}<span class="sp"></span><span class="actbar">
+  surf.setBar(nodeBar(nodePick("tcNodeSel", pnodes, tcNode), `
       ${busy && may ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${
         job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
       <button data-tc="check"${busy ? ` class="tcidle"` : ""}${busy || pstale || !may ? " disabled" : ""}
@@ -524,7 +524,7 @@ function renderToolchainsInto(i){
       ${!may ? "" : `<button class="primary${busy ? " tcidle" : ""}" data-tc="install"${busy || pstale || !tcTicked.size ? " disabled" : ""}
         ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === tcNode)))}"` : ""}
         >${barSaid("Install selected", "Install")}</button>`}
-      ${clean.length ? `<button type="button" class="danger${busy ? " tcidle" : ""}" data-tcclean${busy ? " disabled" : ""}>Remove</button>` : ""}</span>`);
+      ${clean.length ? `<button type="button" class="danger${busy ? " tcidle" : ""}" data-tcclean${busy ? " disabled" : ""}>Remove</button>` : ""}`));
   // What the store is and where, said on the page's status line under the
   // tiles (the operator, 17 Oct: one order for every page's top).
   const storeSaid = onNode
@@ -568,10 +568,9 @@ function renderToolchainsInto(i){
     // The page's status line under its tiles (the operator, 16 and 17 Oct):
     // the store and when its versions were checked, or what is running; and
     // what the bar's Remove would take, when it is there.
-    `<div class="field headline tcact"><div class="actbar macros">
-      ${busy ? tcWorking(job, d.items) : `<span class="state">${storeSaid}${d.checked ? ` Versions checked ${ago(d.checked)}.` : ""}</span>`}
-    </div>${clean.length ? `<div class="sub tcclean">Remove takes off the store what no node uses: ${
-      clean.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</div>` : ""}</div>`}
+    headLine(busy ? tcWorking(job, d.items) : `${storeSaid}${d.checked ? ` Versions checked ${ago(d.checked)}.` : ""}`, "", "tcact",
+             {state: busy ? "tcworking" : "", under: clean.length ? `<div class="sub tcclean">Remove takes off the store what no node uses: ${
+               clean.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</div>` : ""})}
     ${(() => {
       // Held recipes whose system libraries this machine lacks (roadmap
       // R51): the libraries are the machine's own, outside the store, and
