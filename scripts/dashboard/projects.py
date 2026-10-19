@@ -726,11 +726,10 @@ def set_auth(project, dest, mode):
             return "", ("this project has no deploy-key remote to go back to: "
                         "it has only ever used https")
     else:
-        # As written, NOT folded: a lowercased path once built the URL here,
-        # and that turned Stencil-Projects/BuilderBot into
-        # stencil-projects/builderbot in the operator's own remote. The
-        # hosts here accept either, so nothing broke; it just no longer said
-        # the name of the repository it points at.
+        # As written, NOT folded: a lowercased path would turn
+        # Some-Org/Some-Repo into some-org/some-repo in the operator's own
+        # remote. The hosts accept either, so nothing breaks; it just no
+        # longer says the name of the repository it points at.
         repo = repo_path_of(origin_url(dest))
         # The host the ssh alias stands for, not the alias: `bb-key-github-com`
         # is not a hostname anything can fetch from over https.
