@@ -349,7 +349,7 @@ ok(/download/.test((await pill('swift', 'Size')).text)
 // The answers cost a network round trip each, so they are kept on the state
 // volume (a dashboard restart used to wipe every version the tab had been
 // told) and dated, because a number with no date on it goes quietly stale.
-ok(/versions checked/i.test(await page.$eval('.doc.on .macros', el => el.textContent)),
+ok(/versions checked/i.test(await page.$eval('.doc.on .tcact', el => el.textContent)),
    '...and the tab says how old the answers are');
 // Its actions in the page's bar with every header button (the operator, 16
 // and 17 Oct): Check, then Install selected at its right.
