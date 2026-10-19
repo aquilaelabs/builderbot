@@ -187,6 +187,19 @@ ok(has('tmpfs', data, 'mode=0755') && bound(join(data, 'emu', 'alpha')) && !boun
    'the agent\'s stores keep its own emulator folder, its own CI logs and artifacts; another project\'s emulator, jobs, compose files, the runner and dev data are gone');
 ok(has('bindro', pkg, pkg) && !bound(join(pkg, 'jdk')) && !steps.some(x => x[0] === 'bindrw' && x[1] === join(pkg, 'jdk')),
    'the whole toolchain store is read-only in the view, the bundle and every toolchain, so a session cannot plant a command a job or another session runs (B157, B163)');
+// A toolchain the project's settings switch off (R77): its directory hidden
+// after the store and its writable parts are bound, so nothing covers the
+// hide; a name that is not a toolchain's is refused by name.
+{
+  const offd = plan({ off: 'flutter' });
+  const os2 = offd.code === 0 ? JSON.parse(offd.out) : [];
+  const ix = (...s) => os2.findIndex(x => JSON.stringify(x) === JSON.stringify(s));
+  ok(ix('hide', join(pkg, 'flutter')) > ix('bindro', pkg, pkg) && ix('hide', join(pkg, 'flutter')) > ix('bindrw', join(pkg, 'flutter'), join(pkg, 'flutter'))
+     && !os2.some(x => x[0] === 'hide' && x[1] === join(pkg, 'jdk')),
+     `--off hides that toolchain's directory in the store, after it is bound, and no other (${offd.code}: ${offd.out.slice(0, 60)})`);
+  const bad = plan({ off: '../etc' });
+  ok(bad.code !== 0 && /--off takes a toolchain's name/.test(bad.out), `...and --off refuses what is not a toolchain's name (${bad.out.trim().slice(0, 80)})`);
+}
 const at = (...s) => steps.findIndex(x => JSON.stringify(x) === JSON.stringify(s));
 const fl = join(pkg, 'flutter');
 ok(at('bindro', pkg, pkg) < at('bindrw', fl, fl) && at('bindrw', fl, fl) < at('bindro', join(fl, 'bin'), join(fl, 'bin'))
@@ -381,6 +394,16 @@ ok(has('tmpfs', '/tmp', 'mode=1777') && steps[0][0] === 'private' && steps[1][0]
           env: { ...process.env, BB_SESSION_CONF: mconf, BB_SESSION_ROOT: M, BB_SESSION_MOUNTS: mounts } }) };
     } catch (e) { return { code: e.status, out: `${e.stdout || ''}${e.stderr || ''}` }; }
   };
+  // On a machine like a node the store sits under a cover and is bound back:
+  // a toolchain switched off (R77) is hidden all the same, after that bind.
+  {
+    mkdirSync(join(mstore, 'hexkit'), { recursive: true });
+    const o = on('--off', 'hexkit');
+    const os3 = o.code === 0 ? JSON.parse(o.out) : [];
+    const at3 = (...s) => os3.findIndex(x => JSON.stringify(x) === JSON.stringify(s));
+    ok(at3('hide', join(mstore, 'hexkit')) > at3('bindro', `${STAGE}/store`, mstore) && at3('bindro', `${STAGE}/store`, mstore) >= 0,
+       `with the store under a cover, a toolchain switched off is hidden after the store is bound back (${o.code}: ${o.out.slice(0, 60)})`);
+  }
   const r = on();
   const st = r.code === 0 ? JSON.parse(r.out) : [];
   const ix = (...s) => st.findIndex(x => JSON.stringify(x) === JSON.stringify(s));

@@ -271,6 +271,14 @@ def args(argv):
             out.setdefault("sees", []).append(argv[i + 1])
             i += 2
             continue
+        # A toolchain this project's sessions may not use (R77), once per
+        # toolchain: its directory in the store is hidden from the view.
+        if a == "--off" and i + 1 < len(argv):
+            if not re.fullmatch(r"[a-z][a-z0-9._-]{1,60}", argv[i + 1]):
+                raise Refused(f"bb-session: --off takes a toolchain's name, not {argv[i + 1]!r}")
+            out.setdefault("off", []).append(argv[i + 1])
+            i += 2
+            continue
         # The card is not this session's to compute on (R102): the node's
         # switch is off, or the project's. A word and its value, like every
         # option here, so the launcher line stays one a respawn reads back.
@@ -291,6 +299,7 @@ def plan(c, a, uid):
     ws, home_root = c["WORKSPACE"].rstrip("/"), c["HOME_ROOT"].rstrip("/")
     project, account = a.get("project", ""), a.get("account", "")
     home, cwd = a.get("home", "").rstrip("/"), a.get("cwd", "").rstrip("/")
+    off = a.get("off", [])
     if not PROJECT.fullmatch(project) or project.startswith("."):
         raise Refused(f"bb-session: '{project}' is not a project name")
     if not _real_dir(f"{ws}/{project}"):
@@ -604,6 +613,14 @@ def plan(c, a, uid):
     for hidden in [c["RUNNER_DIR"]] + [x for x in c["HIDE"].split(":") if x]:
         if _real_dir(hidden.rstrip("/")) and not _inside(hidden.rstrip("/"), out_of_sight):
             steps.append(("hide", hidden.rstrip("/")))
+    # ...and the toolchains this project's settings switch off (R77): a
+    # session neither runs nor reads what is not there. Whether or not the
+    # store sits under a cover: on a node it does, and is bound back into
+    # the view above, so "out of sight already" would skip every one.
+    for name in off:
+        d = os.path.join(store, name) if store else ""
+        if d and _real_dir(d):
+            steps.append(("hide", d))
     for t in ("/tmp", "/var/tmp", "/dev/shm"):
         if _real_dir(t):
             steps.append(("tmpfs", t, "mode=1777"))

@@ -2587,7 +2587,8 @@ TUNNEL_SETTINGS = ("tunnel_host", "tunnel_token", "cf_api_token")
 # in its view (reads, sees) and the model and effort Claude was started
 # with. Changed mid-session they are on the record and not in the session,
 # which spent a dozen commands finding that out (report #81, 7 Oct).
-START_ONLY = (("reads", "Reads"), ("sees", "Also sees"), ("model", "Model"), ("effort", "Effort"))
+START_ONLY = (("reads", "Reads"), ("sees", "Also sees"), ("model", "Model"), ("effort", "Effort"),
+              ("tc_off", "Toolchains"), ("packs_on", "Tool packs"))
 
 
 def _start_only(project):
@@ -2698,6 +2699,13 @@ import toolchains                                                  # noqa: E402
 toolchains.configure(run=run, write_json=write_json, state=STATE,
                      project_nodes=lambda: {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()},
                      workspace=WORKSPACE)
+# The tool packs a person added (R77): rows of the same catalog, kept under
+# /config, and carried to the nodes in the bundle beside the shipped one.
+import toolpacks                                                   # noqa: E402
+
+toolpacks.configure(state=STATE, write_json=write_json)
+toolchains.packs_rows = toolpacks.recipes
+toolchains.refresh_packs()
 # The Android system images on each node's store, behind the Emulator tab:
 # kept on the toolchain store without being toolchains (emulator.py).
 import emulator                                                  # noqa: E402
@@ -2922,6 +2930,7 @@ gitview.configure(workspace=WORKSPACE,
 import paths                                                     # noqa: E402
 paths.configure(state=STATE, workspace=WORKSPACE)
 workspace.configure(workspace=WORKSPACE, state=STATE)
+workspace.packs_json = toolpacks.catalog_json
 
 
 def no_node_advice(name):
@@ -3078,6 +3087,8 @@ if not settings.debug_available():
 # after preamble is configured, so it is handed over here.
 preamble.prefs_mod = prefs
 preamble.label_of = registry.label
+preamble.packs_of = lambda: {n: {"label": (r.get("manifest") or {}).get("label") or n, "guidance": r.get("guidance") or ""}
+                             for n, r in toolpacks.packs().items()}
 
 
 def _project_node_gpu(project):
@@ -4313,6 +4324,7 @@ POST_ROUTES = (
     ("prefix", "/api/roles", "_roles"),
     ("prefix", "/api/users", "_users"),
     ("prefix", "/api/toolchains", "_toolchains"),
+    ("exact", "/api/toolpacks", "_toolpacks"),
     ("prefix", "/api/emulator", "_emulator"),
     ("prefix", "/api/logs", "_logs"),
     ("prefix", "/api/idle", "_idle"),
@@ -7902,6 +7914,28 @@ class Handler(BaseHTTPRequestHandler):
         if (why := users.may_node(self._who(), "toolchains-write", field(req, "node"))):
             return self._json({"error": why}, 403)
         return self._json(*toolchains.verb(req.get("action"), req, self._principal()))
+
+    def _toolpacks(self, req):
+        """POST /api/toolpacks: look at a tool pack by its repository's
+        address, add it at the commit that was shown, or remove it (R77).
+        An administrator's, since a pack joins every node's catalog."""
+        if self._refused("admin"):
+            return None
+        action = req.get("action")
+        shipped = {r["name"] for r in toolchains.load_toolchains()}
+        if action == "preview":
+            r = toolpacks.fetch(field(req, "url"), shipped=shipped)
+        elif action == "add":
+            r = toolpacks.add(field(req, "url"), field(req, "commit"), (self._who() or {}).get("name") or "", shipped)
+        elif action == "remove":
+            r = toolpacks.remove(field(req, "name"))
+        else:
+            return self._json({"error": "a tool pack is previewed, added or removed"}, 400)
+        if r.get("error"):
+            return self._json(r, 400)
+        if action != "preview":
+            toolchains.refresh_packs()
+        return self._json(r)
 
     def _emulator(self, req):
         """Add system images to a node, or remove one: a job there, against

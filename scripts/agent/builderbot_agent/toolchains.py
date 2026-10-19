@@ -228,12 +228,24 @@ def extract_sandbox_tool(text):
 
 
 def read_catalog(into):
-    """The catalog the bundle carries, or {} when it cannot be read."""
+    """The catalog the bundle carries, or {} when it cannot be read, with the
+    tool packs a person added (R77, config/toolpacks.json beside it) among
+    its toolchains."""
     try:
         with open(os.path.join(into, "config", "toolchains.json")) as f:
-            return json.load(f)
+            cat = json.load(f)
     except (OSError, ValueError):
         return {}
+    try:
+        with open(os.path.join(into, "config", "toolpacks.json")) as f:
+            packs = json.load(f).get("toolchains") or []
+    except (OSError, ValueError, AttributeError):
+        packs = []
+    if isinstance(cat, dict) and isinstance(cat.get("toolchains"), list) and packs:
+        names = {p.get("name") for p in cat["toolchains"] if isinstance(p, dict)}
+        cat["toolchains"] = cat["toolchains"] + [p for p in packs if isinstance(p, dict)
+                                                 and p.get("name") and p["name"] not in names]
+    return cat
 
 
 def pkg_available(fam, name):

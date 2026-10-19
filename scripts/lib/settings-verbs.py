@@ -80,6 +80,15 @@ def show():
         locks = []
     rec["locked"] = proj in (locks if isinstance(locks, list) else [])
     rec["project"] = proj
+    # The toolchains this project's sessions may not use (R77), whole: the
+    # shipped ones switched off here, and every tool pack not switched on.
+    # bb-tty takes them out of a session's PATH and its view of the store.
+    try:
+        packs = list((json.load(open(os.path.join(state, "toolpacks.json"))).get("packs") or {}))
+    except (OSError, ValueError, AttributeError):
+        packs = []
+    on = set(rec.get("packs_on") or [])
+    rec["toolchains_off"] = sorted(set(rec.get("tc_off") or []) | {p for p in packs if p not in on})
     # Whether a push can happen at all (B734): the rights the controller
     # granted (push-rights.json, the clone dialog's or Link to a git host),
     # and what the remote authenticates with: an ssh address carries its
@@ -124,7 +133,8 @@ def show():
         print(json.dumps(rec))
         raise SystemExit(0)
     print(f"{proj}:")
-    for k in ("node", "nodes", "reads", "sees", "model", "effort", "build", "test", "outputs", "policy", "locked"):
+    for k in ("node", "nodes", "reads", "sees", "model", "effort", "build", "test", "outputs", "policy", "locked",
+              "toolchains_off"):
         v = rec.get(k)
         if v in (None, "", [], False):
             continue

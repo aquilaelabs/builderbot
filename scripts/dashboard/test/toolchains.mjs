@@ -3,7 +3,7 @@
 // strip rather than in a dialog to dismiss. The harness's bb stub makes and
 // removes directories rather than downloading gigabytes, so the whole round
 // trip runs in a second.
-import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sectSave, URL, DIR } from './lib.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 
 const browser = await launch();
@@ -927,6 +927,84 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   rmSync(`${DIR}/ws/alpha/app`, { recursive: true, force: true });
   rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
   await api('/api/prefs', { project: 'alpha', node: '' });
+}
+
+// ---- tool packs (R77) ------------------------------------------------------
+// An administrator looks at a pack by its repository, reads what it would
+// download and run, adds it at that commit, finds it among the catalog's
+// rows marked as added, and removes it. The repository is on disk, which
+// the harness lets the server fetch (BB_TOOLPACKS_FILE_URLS).
+{
+  const { execFileSync } = await import('node:child_process');
+  const { mkdirSync, writeFileSync } = await import('node:fs');
+  const api = (path, body) => page.evaluate(async ([p, b]) => (await (await fetch(p, b ? { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) } : {})).json()), [path, body]);
+  const repo = `${DIR}/packrepo`;
+  mkdirSync(`${repo}/bin`, { recursive: true });
+  writeFileSync(`${repo}/bin/hexkit`, '#!/bin/sh\necho hexkit\n', { mode: 0o755 });
+  writeFileSync(`${repo}/GUIDE.md`, 'Dump before you patch.');
+  writeFileSync(`${repo}/bbtool.json`, JSON.stringify({ name: 'hexkit', label: 'Hex kit', about: 'Looks inside binaries.',
+    platforms: ['linux/amd64', 'linux/arm64'], layout: { bin: ['bin'], tool: 'bin/hexkit' }, guidance: 'GUIDE.md',
+    verbs: { dump: { about: 'A file as hex.', usage: 'FILE', run: ['{dir}/bin/hexkit', 'dump', '{args}'] } } }));
+  const g = (...a) => execFileSync('git', a, { cwd: repo, encoding: 'utf8',
+    env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).trim();
+  g('init', '-q'); g('add', '-A'); g('commit', '-qm', 'pack');
+  const commit = g('rev-parse', 'HEAD');
+  await page.evaluate(() => { tcRev++; drawPanes(); });
+  await page.waitForSelector('.doc.on [data-tpnew]', { timeout: 15000 });
+  await page.click('.doc.on [data-tpnew]');
+  await page.fill('.doc.on #tpUrl', `file://${repo}`);
+  await page.click('.doc.on [data-tplook]');
+  await page.waitForSelector('.doc.on .tpseen', { timeout: 20000 });
+  const seen = await page.$eval('.doc.on .tpseen', e => e.textContent.replace(/\s+/g, ' '));
+  ok(/Hex kit hexkit at [0-9a-f]{12}/.test(seen) && /bb tool hexkit dump FILE runs \{dir\}\/bin\/hexkit dump \{args\}/.test(seen)
+     && /bb help tool-hexkit/.test(seen),
+     `Look shows the pack at its commit, each verb's words and its guidance before Add (${seen.slice(0, 160)})`);
+  await page.click('.doc.on [data-tpadd]');
+  await page.waitForFunction(() => (toolchains?.items || []).some(i => i.name === 'hexkit' && i.pack), null, { timeout: 20000 });
+  const row = await page.evaluate(() => (toolchains.items || []).find(i => i.name === 'hexkit'));
+  ok(row.pack.commit === commit && row.pack.verbs.join() === 'dump' && row.pack.by,
+     `Add keeps the pack at the commit looked at, as a catalog row marked added (${row.pack.commit.slice(0, 12)} by ${row.pack.by})`);
+  await page.waitForSelector('.doc.on .tprecords [data-tpedit="hexkit"]', { timeout: 15000 });
+  const said = await page.$$eval('.doc.on .tcabout', es => es.map(e => e.textContent).find(t => /tool pack/.test(t)) || '');
+  ok(/A tool pack .* added, not shipped with BuilderBot: bb tool hexkit/.test(said),
+     `its catalog row says it was added, not shipped (${said.trim().slice(0, 120)})`);
+  // A project's Toolchains group (R77 step 5): the pack is offered unticked,
+  // since adding a pack hands it to no project, and ticking it and saving
+  // keeps it among the packs the project's sessions use.
+  await page.evaluate(() => renameProject('alpha', 'all'));
+  await page.waitForSelector('#rnTools input[data-pack][value="hexkit"]', { timeout: 20000 });
+  ok(!await page.$eval('#rnTools input[data-pack][value="hexkit"]', i => i.checked),
+     'a project\'s Toolchains group offers the new pack switched off');
+  await page.$eval('#rnTools input[data-pack][value="hexkit"]', i => { i.checked = true; i.dispatchEvent(new Event('change')); });
+  const saveErr = await sectSave(page, 'tools');
+  const packsOn = ((await api('/api/status')).projects || []).find(p => p.name === 'alpha')?.prefs?.packs_on || [];
+  ok(!saveErr && packsOn.join() === 'hexkit', `...and ticked and saved, the project's sessions may use it (${saveErr || packsOn.join() || 'none kept'})`);
+  await page.evaluate(() => closeRename());
+  await api('/api/prefs', { project: 'alpha', packs_on: '' });
+  // An update (R77 step 6): the repository moves on, and Look for a newer
+  // commit shows what it changes, verb by verb, before Update keeps it.
+  writeFileSync(`${repo}/bbtool.json`, JSON.stringify({ name: 'hexkit', label: 'Hex kit', about: 'Looks inside binaries.',
+    platforms: ['linux/amd64', 'linux/arm64'], layout: { bin: ['bin'], tool: 'bin/hexkit' }, guidance: 'GUIDE.md',
+    verbs: { dump: { about: 'A file as hex.', usage: 'FILE', run: ['{dir}/bin/hexkit', 'dump', '--wide', '{args}'] },
+             strings: { about: 'Its strings.', usage: 'FILE', run: ['{dir}/bin/hexkit', 'strings', '{args}'] } } }));
+  g('commit', '-qam', 'later');
+  const newer = g('rev-parse', 'HEAD');
+  await page.click('.doc.on [data-tpedit="hexkit"]');
+  await page.click('.doc.on [data-tplook]');
+  await page.waitForSelector('.doc.on .tpseen', { timeout: 20000 });
+  const diff = await page.$eval('.doc.on .tpseen', e => e.textContent.replace(/\s+/g, ' '));
+  ok(/dump --wide \{args\} changed was \{dir\}\/bin\/hexkit dump \{args\}/.test(diff) && /strings FILE runs .* new/.test(diff),
+     `Look for a newer commit says what the commit changes: a changed verb with what it was, a new one marked (${diff.slice(0, 200)})`);
+  await page.click('.doc.on [data-tpadd]');
+  await page.waitForFunction(c => (toolchains?.items || []).find(i => i.name === 'hexkit')?.pack?.commit === c, newer, { timeout: 20000 });
+  ok(true, '...and Update keeps the pack at the newer commit');
+  const bad = await api('/api/toolpacks', { action: 'preview', url: `file://${DIR}/nowhere` });
+  ok(/could not fetch/.test(bad.error || ''), `a repository that is not there is said so (${bad.error})`);
+  await page.click('.doc.on [data-tpedit="hexkit"]');
+  await page.click('.doc.on [data-tprm="hexkit"]');
+  await page.waitForFunction(() => !(toolchains?.items || []).some(i => i.name === 'hexkit'), null, { timeout: 20000 });
+  ok(true, '...and Remove takes it out of the catalog');
 }
 
 await done(browser);

@@ -49,6 +49,10 @@ KEEP_PER_PROJECT = 5
 ARTIFACT_MAX = 1024 * 1024 * 1024        # a gigabyte: an APK is 30MB, an installer 300
 _lock = threading.Lock()
 _bundle = {}
+# The tool packs' catalog rows (toolpacks.catalog_json, R77), handed over by
+# the server: the bundle carries them as config/toolpacks.json beside the
+# shipped catalog, which is how a node installs a pack by name.
+packs_json = None
 
 
 def configure(*, workspace, state):
@@ -325,7 +329,8 @@ def bundle():
             stamp.extend(int(x.stat().st_mtime_ns) for x in sorted(p.rglob("*")) if x.is_file())
         elif p.is_file():
             stamp.append(int(p.stat().st_mtime_ns))
-    key = hash(tuple(stamp))
+    packs = packs_json() if packs_json else ""
+    key = hash((tuple(stamp), packs))
     if _bundle.get("key") != key:
         import io
         buf = io.BytesIO()
@@ -340,6 +345,11 @@ def bundle():
                     ti.uname = ti.gname = ""
                     with open(f, "rb") as fh:
                         tar.addfile(ti, fh)
+            if packs:
+                data = packs.encode("utf-8")
+                ti = tarfile.TarInfo("config/toolpacks.json")
+                ti.size, ti.mode, ti.mtime = len(data), 0o644, int(time.time())
+                tar.addfile(ti, io.BytesIO(data))
         body = buf.getvalue()
         _bundle.update(key=key, body=body,
                        digest="sha256:" + hashlib.sha256(body).hexdigest())
