@@ -1253,12 +1253,16 @@ sdk_install_git() {
     if [ -n "$commit" ]; then
         # Pinned (a tool pack, R77): exactly the commit somebody approved,
         # whatever the branch has moved on to since, and checked to be it.
+        # safe.directory for this command alone: a store on a share that
+        # maps every owner to one account (a node's NFS mount) is another
+        # user's to git, which then refuses the directory it just made.
         log "fetching ${what} at ${commit:0:12} into ${d}"
+        local -a g=(git -c "safe.directory=$d" -C "$d")
         git init -q "$d"
-        git -C "$d" fetch --progress --depth 1 "$url" "$commit"
-        git -C "$d" checkout -q --detach FETCH_HEAD
-        [ "$(git -C "$d" rev-parse HEAD)" = "$commit" ] \
-            || die "${what}: ${url} answered $(git -C "$d" rev-parse --short HEAD) where ${commit:0:12} was approved"
+        "${g[@]}" fetch --progress --depth 1 "$url" "$commit"
+        "${g[@]}" checkout -q --detach FETCH_HEAD
+        [ "$("${g[@]}" rev-parse HEAD)" = "$commit" ] \
+            || die "${what}: ${url} answered $("${g[@]}" rev-parse --short HEAD) where ${commit:0:12} was approved"
     else
         log "cloning ${what} (${branch:-default}) into ${d}"
         # --progress: git prints none unless stderr is a terminal, and this runs
