@@ -4284,6 +4284,9 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
   margin-right:6px;vertical-align:baseline}
 .st.working{background:var(--warn);animation:pulse 1.6s ease-in-out infinite}
 .st.waiting{background:var(--accent)}
+/* On Claude Code's own permission prompt (B52): the warn color, steady, so it
+   reads apart from working's pulse and from waiting's accent. */
+.st.asking{background:var(--warn)}
 /* What is live glows, softly, in its own color (R218 step 7): a session
    working or waiting, a running job, a running container. One glow, small
    and under half its color, so it reads as lit rather than as a highlight. */

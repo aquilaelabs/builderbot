@@ -1428,6 +1428,38 @@ def gpu_container_why(project, node_id):
     return toolchains.container_why(n)
 
 
+# Sessions sitting on Claude Code's own permission prompt (B52), set by the
+# session's Notification hook (hooks.py "asking") under its account and its
+# tmux name. The pane title cannot say it: a prompt reads as waiting, like a
+# session with nothing to do. Gone once it works again, its turn ends or it
+# is sent a prompt; "working" counts only a few seconds after the mark,
+# since the title can still carry the spinner as the prompt appears.
+ASKING = {}
+ASKING_SETTLE = 4
+
+
+def asking_set(project, uid, text=""):
+    ASKING[(uid, tmux_name(claude_session(project)))] = {"at": time.time(), "text": str(text or "")[:300]}
+
+
+def asking_clear(project, uid):
+    ASKING.pop((uid, tmux_name(claude_session(project))), None)
+
+
+def session_state(uid, name, title):
+    """(state, task) for a Claude session: claude_state's, or "asking" while
+    it waits on its permission prompt, the prompt's words as the task."""
+    state, task = claude_state(title)
+    k = (uid, tmux_base(name))
+    a = ASKING.get(k)
+    if a:
+        if state == "working" and time.time() - a["at"] > ASKING_SETTLE:
+            ASKING.pop(k, None)
+        else:
+            return "asking", a["text"] or "waiting for you to answer it in its terminal"
+    return state, task
+
+
 def claude_state(title):
     """(state, task) for a Claude pane title: "working" or "waiting"."""
     working = title.startswith(SPINNER_GLYPHS)
@@ -1832,7 +1864,8 @@ def tmux_sessions():
             # By the unprefixed name, the way node rows are read, so another
             # account's session here says whether it is working too.
             if tmux_base(name).startswith("claude-"):
-                state, task = claude_state(info.get("title", ""))
+                uid = tmux_owner(name) or (users.uid_of(users.get(users.owner_name() or "")) if users.owner_name() else "")
+                state, task = session_state(uid, name, info.get("title", ""))
                 row["claude"] = {"state": state, "task": task}
             rows.append(row)
     return rows
@@ -1917,7 +1950,7 @@ def node_tmux_sessions():
                    "attached": bool(s.get("attached")), "cwd": s.get("cwd", ""),
                    "created": int(s.get("created") or 0)}
             if tmux_base(real).startswith("claude-"):
-                state, task = claude_state(s.get("title", ""))
+                state, task = session_state(who, real, s.get("title", ""))
                 row["claude"] = {"state": state, "task": task}
             rows.append(row)
     return rows
@@ -3529,7 +3562,8 @@ gitview.OKAY = pushscan.okay
 import hooks                                                     # noqa: E402
 
 hooks.configure(users=users, rules=rules, preamble=preamble, overlap=overlap, chat=chat, roadmap=roadmap, pending=pending,
-                turns=turns, nodes=nodes, seen_note=session_seen_note, turn_scope=turn_scope)
+                turns=turns, nodes=nodes, seen_note=session_seen_note, turn_scope=turn_scope,
+                asking_set=asking_set, asking_clear=asking_clear)
 
 
 # Written by entrypoint.sh once every startup hook has finished. Named here as

@@ -379,6 +379,9 @@ function drawBell(){
   // What sessions have waiting for approval, per project (roadmap #27):
   // the server's fact like an ask, so it leaves the moment it is answered.
   const waiting = (state?.projects || []).filter(p => p.pending > 0);
+  // Claude sessions sitting on Claude Code's own permission prompt (B52),
+  // which only their terminal can answer: the row opens it.
+  const asking = (state?.sessions || []).filter(s => s.claude?.state === "asking");
   // What the nodes need: an agent behind, or from another window. From the
   // poll, never stored here, so a row leaves the moment it stops being true.
   const att = state?.attention || [];
@@ -397,7 +400,7 @@ function drawBell(){
               : fresh.some(n => n.lv === "warn") ? "warn"
               : fresh.length ? "info" : "";
   const dot = bell.querySelector(".dot");
-  const pendingOn = asks.length + waiting.length + invites.length;
+  const pendingOn = asks.length + waiting.length + invites.length + asking.length;
   const attOn = att.some(a => a.window || a.kind === "relocate") || ciRed.length ? "bad" : att.length + syncC.length ? "warn" : "";
   // Something new gone wrong: the bell flashes red twice and settles to the
   // red dot, unlike an ask's amber, which keeps on until it is answered.
@@ -479,6 +482,11 @@ function drawBell(){
     // ...and beside them, what a session has waiting in each project's
     // notebook. One row per project, not per change: the notebook is where
     // the changes are read, so the row's only job is to take you there.
+    ...asking.map(s => `<div class="bnote ask">
+        <div class="btag">asking you in its terminal</div>
+        <div class="bwhy">Claude on ${esc(projLabel(s.name.replace(/^claude-/, "")))}: ${esc(s.claude.task || "waiting for you to answer it")}</div>
+        <div class="bfoot"><span>on ${esc(s.node || "this machine")}</span>
+          <span class="acts"><a href="#" data-bask="${esc(s.name)}">Open it</a></span></div></div>`),
     ...waiting.map(p => `<div class="bnote ask">
         <div class="btag">waiting for your approval</div>
         <div class="bwhy">${p.pending} change${p.pending === 1 ? "" : "s"} from a session in ${esc(projLabel(p.name))}</div>
@@ -535,6 +543,11 @@ function drawBell(){
     notify(j.error || (yes ? (j.owner ? `you own ${projLabel(j.project)} now` : `you are on ${projLabel(j.project)} now`)
                            : `declined ${projLabel(j.project)}`), !!j.error);
     refresh();
+  });
+  panel.querySelectorAll("[data-bask]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    toggleBell(false);
+    openTab({kind: "term", arg: argForSession(a.dataset.bask), label: a.dataset.bask});
   });
   panel.querySelectorAll("[data-bpend]").forEach(a => a.onclick = e => {
     e.preventDefault();

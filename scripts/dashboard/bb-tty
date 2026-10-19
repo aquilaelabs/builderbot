@@ -471,7 +471,7 @@ claude_scope() {
     # it denies a file that session was never going to touch and leaves its
     # own editable.
     here="${here:-$WORKSPACE/$proj}"
-    # Six hooks ride in the same file. bb-gate refuses EVERY tool call
+    # Seven hooks ride in the same file. bb-gate refuses EVERY tool call
     # while the controller is not answering, which is what a restart after an
     # update looks like: there is nothing to do but wait, and working blind
     # against a machine that is changing is worse than waiting.
@@ -488,7 +488,9 @@ claude_scope() {
     # after Claude Code summarizes the conversation, the named rules it had
     # been told (R200). bb-gate --turn holds a prompt until the
     # node's limit on sessions working at once has a turn free (turns.py),
-    # and --turn-done on Stop hands it back. Its timeout is its own: a
+    # and --turn-done on Stop hands it back. bb-gate --asking, on Claude
+    # Code's own permission prompt, marks the session as waiting on a person,
+    # which the dock and the bell show (B52). Its timeout is its own: a
     # UserPromptSubmit hook gets thirty seconds otherwise, and one that runs
     # out lets the prompt through uncounted. All of them swallow every failure
     # of their own: a note is never worth an edit and a line is never worth a
@@ -546,6 +548,12 @@ claude_scope() {
               {matcher: "Grep",
                hooks: [{type: "command",
                         command: "\($rule) map \($proj) \($who)", timeout: 30}]}],
+              # Claude Code waiting on its own permission prompt (B52):
+              # said to the controller, so the dock and the bell show it.
+              Notification: [
+              {matcher: "permission_prompt",
+               hooks: [{type: "command",
+                        command: "\($gate) --asking \($proj) \($who)", timeout: 15}]}],
               SessionStart: [
               {matcher: "compact",
                hooks: [{type: "command",

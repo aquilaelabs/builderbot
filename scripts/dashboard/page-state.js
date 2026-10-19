@@ -158,8 +158,8 @@ const claudeOf = name =>
   (state?.sessions || []).find(s => s.name === name)?.claude || null;
 
 const stateDot = c => c
-  ? `<span class="st ${c.state}" title="${c.state === "working"
-      ? "working" : "waiting for you"}"></span>` : "";
+  ? `<span class="st ${c.state}" title="${c.state === "working" ? "working"
+      : c.state === "asking" ? "asking you to approve something in its terminal" : "waiting for you"}"></span>` : "";
 
 // ---- times and sizes ----------------------------------------------------
 
