@@ -1077,7 +1077,7 @@ body.firstrun #panes{display:none}
   header button,.docbar button{min-height:var(--tap);min-width:var(--tap)}
   .pane .bar button{min-height:30px}
 }
-.row{display:flex;align-items:center;gap:8px;padding:7px 10px;
+.row{display:flex;align-items:center;gap:8px;padding:var(--row-y) var(--row-x);
   border-bottom:var(--hair) solid var(--line);flex-wrap:wrap}
 .row:last-child{border-bottom:0}
 /* The CI runner page's list of every node's runner, each row a press that
@@ -1370,10 +1370,9 @@ input[type="number"]{-moz-appearance:textfield}
 }
 button.primary{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
-.macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}
+.macros{display:flex;flex-wrap:wrap;gap:6px;padding:var(--row-y) var(--row-x)}
 /* A ghosted tool's reason, under the card's buttons and on their inset. */
 .toolwhy{padding:0 10px 9px;margin:0;font:12px/1.4 var(--mono);color:var(--bad);overflow-wrap:anywhere}
-.doctab .macros{padding:var(--row-y) var(--row-x)}
 /* The Toolchains page's band of actions (tab-toolchains.js): the bar is the
    band, and what Remove would take sits under it on the band's own inset. */
 .tcact .tcclean{padding:4px 0 0;font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
@@ -3008,14 +3007,11 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* The notebook's Docker view draws the manager's rows under its own class:
    the suites address the manager as .dmtab, and a second element wearing
    that name, parked and hidden, was the first one they found. */
-/* ...and the same gutter. .row is shared with the sidebar card, where 7px/10px
-   is right (340px of column wants tight rows), but in a pane it left these
-   tabs visibly narrower than the notebook next to them, which is the sort of
-   difference you only see once and then cannot stop seeing. The notebook's
-   bands are 11px/14px; so are these. */
-.projtab .row,.dmtab .row,.dkrows .row,.doctab .row,
-.projtab .macros,.dmtab .macros,
-.dmtab .dmsrc{padding:var(--row-y) var(--row-x)}
+/* A row takes the spacing tokens everywhere (consistency batch 4): the
+   sidebar card that wanted 7px/10px went with 2.0, and the list of pages
+   that put the tokens back had left the notebook's rows narrower than the
+   pages' beside them. */
+.dmsrc{padding:var(--row-y) var(--row-x)}
 /* The last answer while a new one is on its way, or one the server kept
    from before the node's job: dimmed as a whole, still readable, with no
    motion. The word at the foot says which, and only when it has been slow. */
