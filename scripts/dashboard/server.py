@@ -170,9 +170,9 @@ SETUP_FIELDS = """  <p class="note">Nobody owns this container yet. The first ac
   <button type="submit">Create the owner</button>"""
 
 LOGIN_FIELDS = """  <!--ERR-->
-  <input type="hidden" name="next" value="/">
+  <input type="hidden" name="next" value="<!--NEXT-->">
   <label for="u">Username</label>
-  <input id="u" name="username" autocomplete="username" autocapitalize="none" required>
+  <input id="u" name="username" value="<!--NAME-->" autocomplete="username" autocapitalize="none" required>
   <label for="p">Password</label>
   <input id="p" name="password" type="password" autocomplete="current-password" required>
   <button type="submit">Sign in</button>"""
@@ -301,6 +301,7 @@ LOGIN_HTML = """<!doctype html>
   const n = new URLSearchParams(location.search).get("next");
   const f = document.querySelector('[name=next]');
   if (f && n && n.startsWith("/") && !n.startsWith("//")) f.value = n;
+  if (document.getElementById("u")?.value) document.getElementById("p")?.focus();
 </script>
 </body></html>
 """
@@ -4549,7 +4550,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-    def _login_page(self, error="", setup=False):
+    def _login_page(self, error="", setup=False, name="", nxt="/"):
         """The sign-in card, or the first-run card when nobody owns this box.
 
         One template: the difference between them is three fields and the
@@ -4562,7 +4563,11 @@ class Handler(BaseHTTPRequestHandler):
                 .replace("<!--SAID-->", "Make the first account" if setup else "Sign in to continue")
                 .replace("<!--ACTION-->", "/setup" if setup else "/login")
                 .replace("<!--FIELDS-->", SETUP_FIELDS if setup else LOGIN_FIELDS)
-                .replace("<!--ERR-->", err)).encode()
+                .replace("<!--ERR-->", err)
+                # What was typed comes back with a refusal: a wrong password
+                # keeps the username and where it was going (B38).
+                .replace("<!--NAME-->", html_escape(name, quote=True))
+                .replace("<!--NEXT-->", html_escape(nxt or "/", quote=True))).encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
@@ -4623,7 +4628,9 @@ class Handler(BaseHTTPRequestHandler):
             # not say which half was wrong for the same reason the store
             # checks name and password together.
             time.sleep(0.5)
-            return self._login_page("Wrong username or password.")
+            return self._login_page("Wrong username or password.",
+                                    name=form.get("username", [""])[0][:200],
+                                    nxt=form.get("next", ["/"])[0][:2000])
         users.touch(u["name"])
         nxt = form.get("next", ["/"])[0]
         if not nxt.startswith("/") or nxt.startswith("//"):
@@ -4731,7 +4738,7 @@ class Handler(BaseHTTPRequestHandler):
             return ""
         label = next((a[1] for a in roles.AREAS if a[0] == area), area)
         return (f"your roles give no {label} Read" + (f" on {project}" if project else "")
-                + ": a role that holds it is picked in their settings on the Users page")
+                + ": an administrator gives a role that holds it")
 
     def _term_refused(self, rest, me=None):
         """A sentence when this account may not have the terminal it is asking
@@ -5581,10 +5588,14 @@ class Handler(BaseHTTPRequestHandler):
         to give those (users.assignable)."""
         me = self._who() or {}
         can = users.assignable(me)
-        if not can["admin"] and not can["projects"]:
-            return self._json({"error": "the Roles page is an administrator's, or a project owner's "
-                                        "for their own projects"}, 403)
-        scope = None if can["admin"] else set(can["projects"])
+        # Accounts and roles Read with nothing to give sees the whole of it,
+        # to read: the page draws it without a control (B34).
+        readonly = not can["admin"] and not can["projects"] and not me.get("session") \
+            and not self._area_read_why("accounts", me=me)
+        if not can["admin"] and not can["projects"] and not readonly:
+            return self._json({"error": "the Roles page is an administrator's, a project owner's "
+                                        "for their own projects, or for reading, Accounts and roles Read's"}, 403)
+        scope = None if can["admin"] or readonly else set(can["projects"])
         people = []
         for u in users.all_users():
             full = users.get(u["name"]) or {}
@@ -5594,7 +5605,8 @@ class Handler(BaseHTTPRequestHandler):
                 pr = {p: r for p, r in pr.items() if p in scope}
                 on = [p for p in on if p in scope]
             people.append({"name": u["name"], "uid": u["uid"], "role": u["role"],
-                           "roles": [r for r in roles.roles_of(full) if r not in ("user",)] if can["admin"] else [],
+                           "roles": [r for r in roles.roles_of(full) if r not in ("user",)]
+                           if can["admin"] or readonly else [],
                            "project_roles": pr, "projects": on})
         all_projects = project_names(me) if scope is None else sorted(scope)
         rs = roles.all_roles()
@@ -5608,7 +5620,8 @@ class Handler(BaseHTTPRequestHandler):
         rs = {n: (dict(r, label=f"owner of {registry.label(owners_of[n])}", project=owners_of[n]) if n in owners_of else r)
               for n, r in rs.items()}
         return self._json({"roles": rs, "areas": [list(a) for a in roles.AREAS], "people": people,
-                           "projects": all_projects, "admin": can["admin"], "me": me.get("name") or "",
+                           "projects": all_projects, "admin": can["admin"], "readonly": readonly,
+                           "me": me.get("name") or "",
                            "owner": users.owner_name() or "", "node_areas": sorted(roles.NODE_AREAS),
                            # What an area's row opens on (R260): the nodes for
                            # a node area, each runner (NODE_ID/SLOT) for the

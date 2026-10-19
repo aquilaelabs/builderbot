@@ -119,6 +119,12 @@ const offDialog = () => page.evaluate(() => {
   await page.unroute('**/api/notices');
   await page.evaluate(() => loadNotices());
   ok(whens, `a notice said two hours ago reads "2 h ago" (${(whens || []).slice(0, 1).join('')})`);
+  // All counts what is kept, once each: a failure is a kind as well (B30).
+  {
+    const kept = await page.$eval('.noticestab', t => (/(\d+) kept/.exec(t.closest('.doc')?.textContent || t.textContent) || [])[1]);
+    const allChip = await page.$eval('.noticestab [data-ntchip=""]', b => (/\d+/.exec(b.textContent) || [])[0]);
+    ok(kept && kept === allChip, `the All chip counts what is kept (${allChip} of ${kept} kept)`);
+  }
   await page.click('.noticestab [data-ntchip="bad"]');
   await page.waitForFunction(() => [...document.querySelectorAll('.noticestab .ntrow')].every(r => r.classList.contains('bad')), null, { timeout: 5000 });
   ok(await page.$$eval('.noticestab .ntrow', rs => rs.length === 1 && /stack 6/.test(rs[0].textContent)),

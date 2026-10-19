@@ -310,8 +310,8 @@ function wireShellBar(bar){
 // ---- search: jump to a page, a project, a container or a node ---------------
 
 // Rows: [label, where, go]. Pages by name, projects by the name they are
-// shown under, nodes from the list once it has landed, containers from the
-// Docker tab's last answer.
+// shown under, nodes from the list once it has landed, containers from what
+// every node last answered (dmJumpRows).
 function jumpItems(q){
   const needle = (q || "").trim().toLowerCase();
   if (!needle) return [];
@@ -324,8 +324,8 @@ function jumpItems(q){
     rows.push([projLabel(p.name), "project", () => { railWant = "projects"; openNotebook(p.name); }]);
   for (const n of nodesList || [])
     rows.push([n.name || n.id, "node", () => { railGo("machines", "nodes"); openNodesTab(n.id); }]);
-  for (const d of dockerList?.instances || [])
-    rows.push([d.name || d.instance, `container on ${dockerList?.node_name || "its node"}`, () => { railGo("containers"); }]);
+  for (const c of dmJumpRows())
+    rows.push([c.name, `container on ${c.where}`, () => dmJumpTo(c.node, c.name)]);
   const hit = rows.filter(([label]) => label.toLowerCase().includes(needle));
   hit.sort((a, b) => a[0].toLowerCase().indexOf(needle) - b[0].toLowerCase().indexOf(needle));
   return hit.slice(0, 8);
@@ -359,7 +359,7 @@ function wireJump(){
   said();
   matchMedia("(max-width: 900px)").addEventListener("change", said);
   inp.oninput = drawJump;
-  inp.onfocus = () => { if (nodesList === null) loadNodes().then(drawJump); drawJump(); };
+  inp.onfocus = () => { (nodesList === null ? loadNodes() : Promise.resolve()).then(dmJumpLoad).then(drawJump); drawJump(); };
   inp.onkeydown = e => {
     if (e.key === "Enter"){ e.preventDefault(); jumpGo(0); }
     else if (e.key === "Escape"){ inp.value = ""; list.hidden = true; inp.blur(); }

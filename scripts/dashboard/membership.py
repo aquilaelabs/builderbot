@@ -134,8 +134,10 @@ def member_refusal(me, project, joining=False):
     if joining and (me or {}).get("role") == "owner":
         return ""
     who = _name_of(owner_of(project)) or "its owner"
-    return (f"{project} is invite only: {who} invites people to it, "
-            "and an administrator joins by accepting one")
+    if invite_only(project):
+        return (f"{project} is invite only: {who} invites people to it, "
+                "and an administrator joins by accepting one")
+    return f"only {who} or an administrator changes who is on {project}"
 
 
 def on_create(project, account):

@@ -247,5 +247,29 @@ print(json.dumps({k: containers.relative_builds(v) for k, v in cases.items()}))
   }
 }
 
+// ---- the jump bar finds a container on any node (B26) -----------------------
+// Each named by its node, and picking one opens Containers on that node with
+// its search narrowed to it.
+{
+  const rows = await page.evaluate(() => {
+    const wasNodes = nodesList;
+    nodesList = [...(nodesList || []), { id: 'n_jumpa', name: 'jumpa', kind: 'agent' }, { id: 'n_jumpb', name: 'jumpb', kind: 'agent' }];
+    dockerSeen.n_jumpa = { node: 'n_jumpa', instances: [], containers: [{ name: 'zz-on-a' }] };
+    dockerSeen.n_jumpb = { node: 'n_jumpb', instances: [{ name: 'zz-on-b' }], containers: [] };
+    const got = jumpItems('zz-on').map(r => `${r[0]} | ${r[1]}`);
+    delete dockerSeen.n_jumpa; delete dockerSeen.n_jumpb; nodesList = wasNodes;
+    return got;
+  });
+  ok(rows.includes('zz-on-a | container on jumpa') && rows.includes('zz-on-b | container on jumpb'),
+     `the jump bar lists the containers of every node it has read, each with its node's name (${rows.join('; ')})`);
+  await page.evaluate(id => dmJumpTo(id, 'zz-picked'), sandbox.id);
+  await page.waitForFunction(() => tabOf(panes[0])?.kind === 'docker' && document.querySelector('#dmSearch')?.value === 'zz-picked',
+                             null, { timeout: 15000 }).catch(() => {});
+  const at = await page.evaluate(() => ({ node: dockerNode, search: document.querySelector('#dmSearch')?.value, kind: tabOf(panes[0])?.kind }));
+  ok(at.node === sandbox.id && at.search === 'zz-picked' && at.kind === 'docker',
+     `...and a pick opens Containers on its node, narrowed to it (${JSON.stringify(at)})`);
+  await page.evaluate(() => { dmSearch = ''; dockerRev++; drawPanes(); });
+}
+
 ok(page.errors.length === 0, 'zero console errors');
 await done(browser);

@@ -87,10 +87,12 @@ function rolesAccessFields(name){
     return `<div class="sub">BuilderBot's owner: every area, everywhere, and not changed here.</div>`;
   if (!rolesPeopleDraft) rolesPeopleDraft = rolesPeopleFrom(p);
   const dr = rolesPeopleDraft;
+  // Accounts and roles Read alone: the same fields, to read (B34).
+  const ro = !d.admin && !!d.readonly, dead = ro ? " disabled" : "";
   const everywhere = Object.values(d.roles || {}).filter(r => r.scope === "global" && r.name !== "owner");
-  const global = d.admin ? `<div class="setrow col ctlrow">${lbl("", "Everywhere roles", "hold on every project and on BuilderBot itself, as far as each one's areas say")}
+  const global = d.admin || ro ? `<div class="setrow col ctlrow">${lbl("", "Everywhere roles", "hold on every project and on BuilderBot itself, as far as each one's areas say")}
       <div class="upick" id="rolesGlobal">${everywhere.map(r => `<label class="pick"><input type="checkbox" data-rglobal="${esc(r.name)}"${
-        dr.roles.includes(r.name) ? " checked" : ""}> ${esc(r.label || r.name)}</label>`).join("")}</div></div>` : "";
+        dr.roles.includes(r.name) ? " checked" : ""}${dead}> ${esc(r.label || r.name)}</label>`).join("")}</div></div>` : "";
   // The projects it is on, and only those: holding a role on a project is
   // being on it (R155), and a row of every project it is not on said
   // nothing a picker does not.
@@ -101,22 +103,25 @@ function rolesAccessFields(name){
     return `<div class="rproj" data-rproject="${esc(pn)}">
       <b class="rprojname">${esc(projLabel(pn))}</b>
       <span class="upick">${rolesOnProject(pn).map(r => `<label class="pick"><input type="checkbox" data-rprole="${esc(r.name)}"${
-        have.includes(r.name) ? " checked" : ""}> ${esc(r.label || r.name)}</label>`).join("")}</span>
-      <button type="button" class="ic" data-rprojoff="${esc(pn)}" aria-label="take ${esc(p.name)} off ${esc(projLabel(pn))}" title="take off this project">×</button>
+        have.includes(r.name) ? " checked" : ""}${dead}> ${esc(r.label || r.name)}</label>`).join("")}</span>
+      ${ro ? "" : `<button type="button" class="ic" data-rprojoff="${esc(pn)}" aria-label="take ${esc(p.name)} off ${esc(projLabel(pn))}" title="take off this project">×</button>`}
     </div>`;
   }).join("");
-  const off = all.filter(pn => !on.includes(pn));
+  // The projects it is not on that offer a role (another project's owner
+  // role is not one this project offers, B35).
+  const notOn = all.filter(pn => !on.includes(pn));
+  const off = notOn.filter(pn => rolesOnProject(pn).length);
   const addPn = off.includes(rolesAddProj) ? rolesAddProj : off[0] || "";
-  // No role on a project at all: there is nothing to put it on a project
-  // with, and the place that makes one is named instead of an empty picker.
-  const anyProjRole = Object.values(d.roles || {}).some(r => r.scope === "projects");
-  const add = off.length && !anyProjRole ? `<div class="sub dim raddon">No role on a project yet: one made on the ${pageLink("roles", "Roles page")} puts ${esc(p.name)} on a project.</div>`
+  // No role on a project it could join: there is nothing to put it on a
+  // project with, and the place that makes one is named instead of an
+  // empty picker.
+  const add = ro ? "" : notOn.length && !off.length ? `<div class="sub dim raddon">No role on a project yet: one made on the ${pageLink("roles", "Roles page")} puts ${esc(p.name)} on a project.</div>`
     : off.length ? `<div class="raddon">
       <select id="rolesAddProj" aria-label="the project">${optionList(off.map(pn => [pn, projLabel(pn)]), addPn)}</select>
       <select id="rolesAddRole" aria-label="the role there">${optionList(rolesOnProject(addPn).map(r => [r.name, r.label || r.name]))}</select>
       <button type="button" id="rolesAddOn"${rolesOnProject(addPn).length ? "" : " disabled"}>Add to project</button></div>` : "";
   return `${global}
-    <div class="setrow col ctlrow">${lbl("", d.admin ? "Projects" : "Your projects", "a role on a project puts the account on it; taken off, it is not on it")}
+    <div class="setrow col ctlrow">${lbl("", d.admin || ro ? "Projects" : "Your projects", "a role on a project puts the account on it; taken off, it is not on it")}
       <div class="rprojects">${rows || `<div class="empty">on no project yet</div>`}</div>${add}</div>
     ${rolesCanDo(p.name, dr)}`;
 }
@@ -350,7 +355,8 @@ function rolesRoleBody(){
       </select></div>
     ${ro ? "" : `<div class="setrow col ctlrow">${lbl("rolesNote", "What this role is for")}<input id="rolesNote" value="${esc(r.note)}" autocomplete="off"></div>`}
     ${areas}
-    ${r.builtin ? `<div class="sub">${esc(r.note)}. Built in, every area to write, and not changed here.</div>` : ""}
+    ${r.builtin ? `<div class="sub">${esc(r.note)}. Built in, every area to write, and not changed here.</div>`
+      : !d.admin ? `<div class="sub bad" id="rolesWhyRo">Only an administrator changes a role: this one is here to read.</div>` : ""}
     ${ro ? "" : `${saveBar({save: 'id="rolesSave"', revert: 'id="rolesRevert"', state: rolesRoleDirty() ? "unsaved" : ""})}
       ${r.fresh ? "" : `<div class="rfoot"><button type="button" class="danger" id="rolesRemove">Remove ${esc(d.roles[r.name]?.label || r.name)}</button></div>`}`}`);
 }
@@ -402,7 +408,9 @@ function renderRolesInto(i){
   if (!d) return;
   // A count, as Users and Jobs keep (the operator, 18 Oct), not a sentence.
   const nRoles = Object.keys(rolesData?.roles || {}).length;
-  d.setBar(`<span class="dim">${rolesData === null ? skv(4) : `${nRoles} role${nRoles === 1 ? "" : "s"}`}</span><span class="sp"></span>${
+  // Refused outright (a plain account by link): the refusal is the page (B38).
+  const refused = rolesErr && !nRoles;
+  d.setBar(`<span class="dim">${rolesData === null ? skv(4) : refused ? "" : `${nRoles} role${nRoles === 1 ? "" : "s"}`}</span><span class="sp"></span>${
     // Waiting, who may add a role is the status read's to say, and the
     // button is there and dead, as it will land.
     (rolesData ? rolesData.admin : state?.can?.admin) ? `<span class="actbar"><button type="button" class="primary"${
@@ -414,6 +422,10 @@ function renderRolesInto(i){
     const field = skField;
     d.list.innerHTML = skTpl(split(field("Kind", 12) + skTable(ROLE_AREA_COLS, 4, "rareas")));
     loadRoles();
+    return;
+  }
+  if (refused){
+    d.list.innerHTML = `<div class="row bad"><div class="grow">${esc(rolesErr)}</div></div>`;
     return;
   }
   const ro = rolesRoleBody();

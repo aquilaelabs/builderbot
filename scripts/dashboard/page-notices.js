@@ -115,7 +115,8 @@ function renderNoticesInto(i){
     + (waiting.length ? docSection("notices", "waiting", "Waiting on you", String(waiting.length), waiting.join(""),
                                    {loud: true, prime: true}) : "")
     + docSection("notices", "history", "History", String(rows.length),
-                 chipBar(groups, noticesChip, "data-ntchip")
+                 // Failures overlap the kinds, so All is what is kept.
+                 chipBar(groups, noticesChip, "data-ntchip", all.length)
                  + (rows.length ? `<div class="ntlist">${rows.map(n => `<div class="row ntrow ${esc(n.level)}" data-nt="${esc(n.id)}">
                        <span class="tic">${TOAST_ICONS[n.level] || TOAST_ICONS.info}</span>
                        <span class="grow"><span class="nttext">${esc(n.text)}</span>
