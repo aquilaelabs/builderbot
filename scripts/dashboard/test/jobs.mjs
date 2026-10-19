@@ -148,6 +148,11 @@ await ready(page);
   const jtiles = await page.$$eval('.jobstab .tiles .tile .tl', ls => ls.map(l => l.textContent.trim()));
   ok(jtiles.includes('running') && jtiles.includes('succeeded'),
      `the Jobs page opens on tiles of what runs and what finished (${jtiles.join(', ')})`);
+  // By names an account without its prefix, and a job BuilderBot asked for in words (B31).
+  const by = await page.evaluate(() => [jobBy({ requested_by: 'user:alice' }),
+    jobBy({ requested_by: 'system:auto-update' })]);
+  ok(by[0] === 'alice' && by[1] === 'automatic update',
+     `By says who asked in words, never system:auto-update (${by.join(' | ')})`);
   const rows = (await page.$$eval('.jobstab .jbrow', rs => rs.map(r => ({
     id: r.dataset.job, state: r.dataset.state, text: r.textContent.replace(/\s+/g, ' '),
     node: r.querySelector('.td[data-th="Node"]')?.textContent.trim() }))))
