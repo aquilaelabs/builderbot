@@ -1,7 +1,7 @@
-"""The signed-in account's own settings: the Profile tab.
+"""The signed-in account's own settings: the Profile page.
 
 Anybody signed in, because this is about themselves, which is why it is not
-behind the admin gate the Users tab wears. Out of server.py (R77): the
+behind the admin gate the Users page wears. Out of server.py (R77): the
 server holds the door and writes the reply, with a fresh sign-in cookie when
 the account's name changes, since that is what the cookie is signed over.
 """

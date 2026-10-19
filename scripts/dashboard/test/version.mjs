@@ -1449,7 +1449,7 @@ const askSent = await page.evaluate(async () => {
 ok(askSent.ok && askSent.sent,
    'the question reaches a running session for real, not just in principle');
 const askPane = tmuxCapture('claude-alpha');
-ok(askPane.includes("Artifacts tab"),
+ok(askPane.includes("Artifacts view"),
    '...and the prompt is what actually lands in that pane');
 ok(!/\/model/.test(askPane) && !/\/effort/.test(askPane),
    '...with no slash command ahead of it, whatever the project is set to');
@@ -1730,7 +1730,7 @@ execFileSync('git', ['-C', A, 'remote', 'add', 'origin',
     const j = await (await fetch('/api/status')).json();
     return (j.projects || []).find(p => p.name === 'alpha')?.version_policy === 'minor';
   }, null, { timeout: 20000, polling: 500 });
-  ok(true, '...and saving the dialog sets the policy the Artifacts tab shows');
+  ok(true, '...and saving the dialog sets the policy the Artifacts view shows');
   await page.evaluate(() => postJSON('/api/version', { project: 'alpha', action: 'policy', policy: 'locked' }));
 }
 

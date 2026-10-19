@@ -48,7 +48,7 @@ ok(await page.evaluate(() => railGroups().some(g => g.key === 'build' && g.tools
    && await page.$eval('.doc.on #phPick', s => [...s.options].some(o => o.textContent.startsWith('sandbox'))),
    'the rail opens a Phone page, its Node picker listing the node that carries adb');
 ok(!(await page.$('details.sect[data-sect="nodes:phone"]')),
-   '...and the Nodes tab carries no Phone section of its own');
+   '...and the Nodes page carries no Phone section of its own');
 
 // ---- what the server refuses ----------------------------------------------
 for (const [what, body] of [
@@ -102,7 +102,7 @@ ok(await page.$('.phonetab #phDisconnect') !== null, '...and offers Disconnect t
      'a forced listing runs adb on the node and still finds the phone');
   const jobs = (await api('/api/v1/jobs')).body.jobs;
   ok(!jobs.some(j => /adb devices/.test(JSON.stringify(j))),
-     `...as a probe: no "exec adb devices" row on the Jobs tab (${jobs.length} rows)`);
+     `...as a probe: no "exec adb devices" row on the Jobs page (${jobs.length} rows)`);
   ok((await api('/api/revs')).body.devapp === revBefore,
      '...and the Docker manager\'s revision did not move for it');
 }

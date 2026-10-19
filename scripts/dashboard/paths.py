@@ -1,4 +1,4 @@
-"""Where the controller keeps what grows, as the Settings tab sets it.
+"""Where the controller keeps what grows, as the Settings page sets it.
 
 Everything BuilderBot keeps lives in its state directory (/config) by
 default. The directories here are the ones that grow with use, and each can
@@ -78,7 +78,7 @@ def pinned(name):
 
 
 def view():
-    """For the Settings tab: each kind, where it is, whether it is the default,
+    """For the Settings page: each kind, where it is, whether it is the default,
     and a move in progress or the last one's error."""
     set_ = _load()
     with _lock:

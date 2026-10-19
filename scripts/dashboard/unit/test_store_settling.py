@@ -1,5 +1,5 @@
 """A finished install whose names the node's listing does not show yet keeps
-the Toolchains tab asking (the operator, 12 Oct: the census landed thirteen
+the Toolchains page asking (the operator, 12 Oct: the census landed thirteen
 seconds after the job's end, and the rows stayed unticked until a reload)."""
 import os
 import sys

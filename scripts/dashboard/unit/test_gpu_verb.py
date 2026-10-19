@@ -52,7 +52,7 @@ class GpuVerb(unittest.TestCase):
         self.assertIn("no driver", self.go("line").stdout)
         r = self.go("run", "--", "true")
         self.assertNotEqual(r.returncode, 0)
-        self.assertIn("Toolchains tab", r.stderr)
+        self.assertIn("Toolchains page", r.stderr)
 
     def test_the_line_names_the_card_and_its_free_memory(self):
         self.card()

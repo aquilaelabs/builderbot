@@ -28,7 +28,7 @@ def status():
         print("{:<16} {}".format(n.get("name", "?") + ":",
               "{} ({}){}".format(p.get("model") or "phone", p.get("serial"), f", connected by {who}" if who else "")
               if p else ("not dialing in" if not n.get("live") else
-                         "no phone connected: somebody connects theirs in the Phone tab, on this node")))
+                         "no phone connected: somebody connects theirs in the Phone page, on this node")))
         # What is missing for a session to use it, said rather than left to
         # the next refusal (report #51).
         lease = n.get("lease") or {}
@@ -38,9 +38,9 @@ def status():
             elif lease.get("project"):
                 print(f"{'':<16} lent to {lease['project']}, not {proj}")
             else:
-                print(f"{'':<16} not lent to {proj}: {who} lends it from the project's row or the Phone tab; bb phone run --why asks them for one command meanwhile")
+                print(f"{'':<16} not lent to {proj}: {who} lends it from the project's row or the Phone page; bb phone run --why asks them for one command meanwhile")
         elif p and not who:
-            print(f"{'':<16} seen by adb but connected outside the Phone tab, so nobody answers for it: connect it there")
+            print(f"{'':<16} seen by adb but connected outside the Phone page, so nobody answers for it: connect it there")
     for a in d.get("asks") or []:
         print("waiting: #{} {} ({} on {})".format(a.get("id"), a.get("why"), a.get("project") or "a session", a.get("node_name")))
 
@@ -61,7 +61,7 @@ def run():
               file=sys.stderr)
     else:
         print(f"[builderbot] asked {r.get('to') or 'the operator'} (#{rid}), waiting up to 15 minutes "
-              "for Allow in the bell, or the Phone tab", file=sys.stderr)
+              "for Allow in the bell, or the Phone page", file=sys.stderr)
     # Polled rather than pushed: this is a shell command waiting on a person, and
     # a person is slow in a way no callback improves.
     o = waits.outcome(os.environ["BB_PHONE_AUTH"], rid, "the operator said no")

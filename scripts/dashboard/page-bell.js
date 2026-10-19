@@ -214,9 +214,9 @@ function attRow(a){
       <details class="bdetail"${sectAttr("bell:tc:" + a.id)}><summary>versions${cc ? " and projects" : ""}</summary><pre>${
         a.tools.map(t => `${esc(t.label)}: ${esc(t.from || "?")} → ${t.to === "newer" ? "a newer version" : esc(t.to)}`).join("\n")}${
         cc ? `\n\nsessions there: ${a.projects.map(esc).join(", ")}` : ""}</pre></details>
-      <div class="bfoot"><span>on its Toolchains tab</span>
+      <div class="bfoot"><span>on its Toolchains page</span>
         <span class="acts">${keys ? `<a href="#" data-bdismiss="${esc(keys)}">Dismiss</a>` : ""}
-          <a href="#" data-btc="${esc(a.id)}">Toolchains tab</a></span></div></div>`;
+          <a href="#" data-btc="${esc(a.id)}">Toolchains page</a></span></div></div>`;
   }
   // A session the controller's outage held (R251): it was told to write
   // where it was and stop; Resume tells it to pick up from that note.
@@ -234,9 +234,9 @@ function attRow(a){
     return `<div class="bnote att bad">
       <div class="bt">Copying or moving ${esc(a.name)} did not happen</div>
       <div class="bsum">${esc(a.why)}</div>
-      <div class="bfoot"><span>${a.at ? esc(ago(a.at)) : "on the Docker tab"}</span>
+      <div class="bfoot"><span>${a.at ? esc(ago(a.at)) : "on the Containers page"}</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
-          <a href="#" data-bdocker="${esc(a.node_id)}">Docker tab</a></span></div></div>`;
+          <a href="#" data-bdocker="${esc(a.node_id)}">Containers page</a></span></div></div>`;
   }
   // A container whose registry image moved (R195): one note per node, to
   // the Docker tab on that node, where Update is on each row.
@@ -245,9 +245,9 @@ function attRow(a){
     return `<div class="bnote att">
       <div class="bt">${n} container update${n === 1 ? "" : "s"} on ${esc(a.node)}</div>
       <div class="bsum">${a.containers.map(c => `${esc(c.name)} (${c.images.map(esc).join(", ")})`).join(", ")}</div>
-      <div class="bfoot"><span>on its Docker tab</span>
+      <div class="bfoot"><span>on its Containers page</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
-          <a href="#" data-bdocker="${esc(a.id)}">Docker tab</a></span></div></div>`;
+          <a href="#" data-bdocker="${esc(a.id)}">Containers page</a></span></div></div>`;
   }
   // A node's nginx behind the newest line (R192): its own note, to the
   // nginx tab on that node, where Update is.
@@ -255,9 +255,9 @@ function attRow(a){
     return `<div class="bnote att">
       <div class="bt">nginx update on ${esc(a.node)}</div>
       <div class="bsum">runs ${esc(a.from)} and ${esc(a.to)} is out</div>
-      <div class="bfoot"><span>on its nginx tab</span>
+      <div class="bfoot"><span>on its nginx page</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
-          <a href="#" data-bnginx="${esc(a.id)}">nginx tab</a></span></div></div>`;
+          <a href="#" data-bnginx="${esc(a.id)}">nginx page</a></span></div></div>`;
   }
   return `<div class="bnote att${a.window ? " bad" : ""}">
     <div class="bt">${a.window ? `${esc(a.node)}'s agent is out of window` : `Agent update on ${esc(a.node)}`}</div>
@@ -269,9 +269,9 @@ function attRow(a){
     ${a.failed ? `<div class="bsum bad">its last update failed: ${esc(a.failed)}</div>` : ""}
     <div class="bfoot"><span>${a.window ? "work on it is stopped"
       : a.auto ? (a.failed ? "tried again once the node is idle, or press Update agent there" : "updates itself once the node is idle")
-      : "on the Nodes tab"}</span>
+      : "on the Nodes page"}</span>
       <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
-        <a href="#" data-bnode="${esc(a.id)}" data-bwhat="agent">Nodes tab</a></span></div></div>`;
+        <a href="#" data-bnode="${esc(a.id)}" data-bwhat="agent">Nodes page</a></span></div></div>`;
 }
 
 // What needs doing that is not a question, as rows: the bell's "Needs

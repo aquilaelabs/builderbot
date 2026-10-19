@@ -1,6 +1,6 @@
 """The agent's root command runner (_sh) posts as the command runs: the
 step first and its output as it comes. It ran the command to the end with
-nothing posted, so the NVIDIA rows on the Toolchains tab never said
+nothing posted, so the NVIDIA rows on the Toolchains page never said
 installing and the job sat at assigned for as long as apt took (30 Sep)."""
 import os
 import threading

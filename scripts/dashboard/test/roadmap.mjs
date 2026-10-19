@@ -1544,7 +1544,7 @@ await ultra.waitForSelector('.doc .tc', { timeout: 20000 });
 ok(await ultra.evaluate(() => {
      const p = document.querySelector('.doc.on .tc');
      return p && p.getBoundingClientRect().width <= 1100; }),
-   '...and so does the Toolchains tab, where the bin was furthest from its row');
+   '...and so does the Toolchains page, where the bin was furthest from its row');
 await closePage(ultra);
 // The two pages are one account, and an account's tabs are one layout: the
 // Toolchains tab the wide page opened could become the active tab here too,

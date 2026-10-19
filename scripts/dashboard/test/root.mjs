@@ -81,8 +81,8 @@ await page.waitForSelector('.ndask', { timeout: 15000 });
 const askText = await page.$eval('.ndask', e => e.textContent);
 ok(/load the binder module/.test(askText) && /alpha asks to run this as root on sandbox/.test(askText)
    && /echo root-ran-here/.test(askText) && /left to answer/.test(askText),
-   'the Nodes tab shows the request above the node: the reason, the exact command, whose it is, and how long is left');
-ok(await page.$('.phask') === null, '...and the Phone tab is not where it goes');
+   'the Nodes page shows the request above the node: the reason, the exact command, whose it is, and how long is left');
+ok(await page.$('.phask') === null, '...and the Phone page is not where it goes');
 await page.waitForFunction(
   () => { const d = document.querySelector('#bBell .dot');
           return d && !d.hidden && d.classList.contains('ask'); }, null, { timeout: 15000 });
@@ -116,7 +116,7 @@ for (let i = 0; i < 80; i++){
 ok(out.body.state === 'done' && /root-ran-here/.test(out.body.out || ''),
    `Allow runs it on the node as a system job and the output comes back (${out.body.state}: ${(out.body.out || '').trim().split('\n').slice(-2).join(' / ')})`);
 ok(/^# root on this node, allowed by test: load the binder module/.test(out.body.out || ''),
-   `...and the job's log opens with who allowed it and why, so the Jobs tab is the record (${(out.body.out || '').split('\n')[0].slice(0, 80)})`);
+   `...and the job's log opens with who allowed it and why, so the Jobs page is the record (${(out.body.out || '').split('\n')[0].slice(0, 80)})`);
 const jobs = (await api('/api/v1/jobs?n=10')).body.jobs || [];
 const sysjob = jobs.find(j => j.type === 'system' && j.node === sandbox.id);
 ok(sysjob && sysjob.state === 'succeeded',
@@ -268,7 +268,7 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
   // nginx tab put one; on a node without it the refusal names the tab, and
   // never runs a thing.
   r = await readLog('nginx');
-  ok(/nginx is not deployed on sandbox: the nginx tab puts it there/.test(r.body.error || ''),
+  ok(/nginx is not deployed on sandbox: the nginx page puts it there/.test(r.body.error || ''),
      `the nginx stream on a node without nginx says where it comes from (${(r.body.error || 'ran').slice(0, 60)})`);
   // The box itself (R183): the journal of this boot, the kernel ring, and
   // the previous boot's last lines, each one journalctl call.

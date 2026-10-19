@@ -1,4 +1,4 @@
-"""An uninstall from the Nodes tab retires the node when its job ends done,
+"""An uninstall from the Nodes page retires the node when its job ends done,
 which the agent reports from its own stop handler, since the uninstall
 removes the agent's unit inside the seconds the agent watches it (B703).
 A cancel does not retire: the machine may still be whole."""

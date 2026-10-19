@@ -125,7 +125,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         and that census is taken beside the loop too: it used to be taken
         on the loop, a minute on a busy node with no work poll meanwhile,
         and a controller nudging once a minute kept the node in census all
-        day while every docker ps the Docker tab sent waited its 25s out and
+        day while every docker ps the Containers page sent waited its 25s out and
         was taken back (B644, 11 Oct)."""
         if not self.hello_at and not getattr(self, "hello_said", False):
             self.census_thread = None

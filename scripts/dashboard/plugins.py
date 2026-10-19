@@ -6,7 +6,7 @@ about it is BuilderBot's to install or refuse (docs: only machine-wide managed
 settings can restrict one). What is BuilderBot's is being able to see them: a
 tester whose session behaves oddly may have ten plugins adding their own hooks
 and instructions beside BuilderBot's, and "which plugins do you have" should
-have an answer on the Profile tab and in bb diag rather than a trip to the
+have an answer on the Profile page and in bb diag rather than a trip to the
 node.
 
 The facts arrive the way a node's logins do: the agent runs `bb login --list`

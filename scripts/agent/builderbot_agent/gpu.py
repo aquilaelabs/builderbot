@@ -11,7 +11,7 @@ from .base import GPU_DISPLAY_STATE, SYS_ROOT, TOOLKIT, _run
 
 def _gpu_card():
     """The NVIDIA card by its PCI id, before any driver is on it: what the
-    Nodes tab offers Set up GPU display on (R20). A VM's virtual adapter is
+    Nodes page offers Set up GPU display on (R20). A VM's virtual adapter is
     not one, and neither is a card of another make, which the verb would
     refuse."""
     for line in (_run(["lspci", "-nn"], timeout=10) if SYS_ROOT == "/sys" else "").splitlines():
@@ -335,7 +335,7 @@ def _gpu_driver_apt():
 
 def _gpu_container(card=None):
     """Where the NVIDIA container toolkit stands on this machine, for its
-    row on the Toolchains tab (R102): the version installed, the version apt
+    row on the Toolchains page (R102): the version installed, the version apt
     would move it to (known only while NVIDIA's package source is on the
     machine, which the row's install adds), and whether Docker lists the
     nvidia runtime, which is what a container reserving the card needs. {}

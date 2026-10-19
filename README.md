@@ -43,7 +43,7 @@ your projects mounted straight in, and to grow from one machine to several.
   static analysis, shared between you and every session that works there.
 - **Nodes that do the work.** Enroll a Linux machine or VM with one script.
   Each node carries its own toolchains (JDK, Android SDK, Flutter, Node,
-  Python, Playwright and more), installed and updated from the Toolchains tab
+  Python, Playwright and more), installed and updated from the Toolchains page
   and kept on a store that survives the machine being rebuilt.
 - **Builds, tests and CI.** `bb build` and `bb test` run on the project's
   node, a test run is timed and recorded, and a node can be a self-hosted

@@ -87,7 +87,7 @@ def _by_whom():
 
     "you" and "claude" say a person or a session and stop there; with two
     people on a project that answers nothing about which of them it was.
-    The Nodes tab's audit has recorded the account since accounts existed
+    The Nodes page's audit has recorded the account since accounts existed
     (server._principal), and this is the same thing for the notebook.
     """
     name = str((actor() if actor else "") or "")[:60]

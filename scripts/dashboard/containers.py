@@ -3,7 +3,7 @@
 Three things a machine whose job is running containers has on it that are
 not a project's dev instance: whatever is on the daemon already (the
 operator asked for a manager, not a list of what BuilderBot happens to have
-made), the containers written from a compose file on the Docker tab with no
+made), the containers written from a compose file on the Containers page with no
 project behind them (a stack is a name, a compose file and an environment,
 the shape every other Docker front end uses), and the record of which
 project a container BuilderBot did not start belongs to, kept by name on
@@ -52,7 +52,7 @@ ctr_spark = None
 def _targets(name):
     """The containers `name` means, as the daemon reports them now: the one
     it lists under that name or id, else every container of the instance or
-    written container the Docker tab lists as `name`.
+    written container the Containers page lists as `name`.
 
     The rule every executing surface here follows: what reaches a command
     line is a string this server handed out. A name typed by somebody, or
@@ -182,7 +182,7 @@ def name_free(name):
     slug = devapp._slug(name) or ""
     if slug in devapp._load():
         return (f"{slug} already exists here. To change it, the operator removes it from "
-                "the Docker tab first, or a session changes a variable with bb devapp "
+                "the Containers page first, or a session changes a variable with bb devapp "
                 f"--container {slug} env set FILE and then bb devapp --container {slug} rebuild")
     return devapp.name_clash(slug, devapp.MAIN)
 
@@ -266,7 +266,7 @@ def build_refusal(name, compose_text, env_text=""):
             "container written here has no project tree behind it: compose resolves that path "
             "against the container's own data directory, which is empty, so there is nothing to "
             "build. A project's own code goes into Docker from a compose file at the project's "
-            "root (docker-compose.yml or compose.yml), with Send to Docker on its Artifacts tab "
+            "root (docker-compose.yml or compose.yml), with Send to Docker on its Artifacts view "
             "or bb devapp new from a session, and builds from the tree. A container written "
             "here builds from an absolute path or a git URL.")
 
@@ -432,7 +432,7 @@ def rename_container(name, new, instance=None):
     if slug in devapp._load() and slug != project:
         why = name_free(slug)
     else:
-        why = next((f"{slug} is already {p}'s container on the Docker tab: pick another name"
+        why = next((f"{slug} is already {p}'s container on the Containers page: pick another name"
                     for p, insts in devapp._load().items() for i in insts
                     if (p, i) != (project, inst) and devapp._pname(p, i) == slug), "")
     if why:
@@ -531,9 +531,9 @@ def not_ours(what, sess=""):
     project's name, which is the thing it may not read."""
     return (f"{what} does not belong to {sess}: a session reaches its own project's "
             "containers, and an administrator sets which project each belongs to on "
-            "the Docker tab" if sess else
+            "the Containers page" if sess else
             f"{what} does not belong to one of your projects: an administrator sets "
-            "which project each container belongs to on the Docker tab")
+            "which project each container belongs to on the Containers page")
 
 
 def _answer(r):
@@ -646,7 +646,7 @@ def images_view(nid):
 
 
 def tab_verb(act, name, req, seen):
-    """A container from a compose file written on the Docker tab, with no
+    """A container from a compose file written on the Containers page, with no
     project behind it: read or save one, or create one. `seen()` is the
     projects this account sees. (payload, status)."""
     if act == "read":
@@ -662,7 +662,7 @@ def tab_verb(act, name, req, seen):
         # write the redaction over the key (B656). The tab's own Save goes
         # through update_container directly.
         if devapp.owner_of(name, devapp.MAIN) == devapp.SYSTEM:
-            return {"error": f"{name} is BuilderBot's own, written from the nginx tab: change it there"}, 403
+            return {"error": f"{name} is BuilderBot's own, written from the nginx page: change it there"}, 403
         r = update_container(name, req.get("compose") or "", req.get("env") or "")
         # ...and a new name with it, while it is down (rename_container):
         # the file is saved first, so what was typed is kept either way.

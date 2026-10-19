@@ -529,7 +529,7 @@ def _job_tail(out, keep=16):
 def job_rev():
     """A token for "anything this tab draws has moved", for the revisions poll.
 
-    Everything the Toolchains tab used to keep its own timer for. It polled at
+    Everything the Toolchains page used to keep its own timer for. It polled at
     half a second while a job ran and at eight seconds otherwise, and the
     eight-second half was there for the one fact this used to leave out: the
     version check. It is in memory here and costs nothing to report, so the
@@ -915,7 +915,7 @@ def attention(project_nodes):
     """Bell rows, one per live agent node with a toolchain behind what is
     out: every toolchain its last check found an update for, and Claude
     Code beside them (claudecode.behind), each as {name, label, from, to}.
-    One shape for all of them, with Open on that node's Toolchains tab,
+    One shape for all of them, with Open on that node's Toolchains page,
     which is where each is updated (the operator, 9 Oct). Computed on every
     poll, so a row leaves the moment its update lands. `project_nodes` is
     {project: node id}."""
@@ -1043,8 +1043,8 @@ def gradle_needs(tree):
 
 def levels_needed(nid):
     """{API level: [(project, file), ...]} for the levels the projects on
-    `nid` compile against (compileSdk), for the Emulator tab to say which
-    level has no image here (R215). An image is the Emulator tab's to pick,
+    `nid` compile against (compileSdk), for the Emulator page to say which
+    level has no image here (R215). An image is the Emulator page's to pick,
     not a row on Toolchains: it exists at every level in several flavors,
     under names only Google's index knows (API 37 is android-37.0), and a
     guessed id failed as a job on bb-sandbox beside the build-tools it had
@@ -1369,7 +1369,7 @@ DRIVER = "nvidia-driver"
 
 
 def driver_row(n):
-    """The NVIDIA driver as a row of the node's Toolchains tab (R102), or
+    """The NVIDIA driver as a row of the node's Toolchains page (R102), or
     None where the node reports no NVIDIA card. A row like the store's, with
     a tick box, in the same batch and the same check, but the machine's own:
     built for its kernel, installed as root, taking the card at the next
@@ -1500,7 +1500,7 @@ def _landed_at(nid):
 
 def names_in(dirs):
     """The recipes a store listing ({top, android}, store_dirs' shape) holds,
-    by the same reading the Toolchains tab's rows make of a node's own."""
+    by the same reading the Toolchains page's rows make of a node's own."""
     top = set((dirs or {}).get("top") or [])
     andr = set((dirs or {}).get("android") or [])
     out = []
@@ -1787,7 +1787,7 @@ TOOLKIT = "nvidia-container-toolkit"
 
 
 def container_row(n):
-    """The NVIDIA container toolkit as a row of the node's Toolchains tab
+    """The NVIDIA container toolkit as a row of the node's Toolchains page
     (R102), or None where the node reports no NVIDIA card or no Docker: what
     lets a container there reserve the card. The machine's own like the
     driver it needs, and from NVIDIA's package source, which its install
@@ -1816,7 +1816,7 @@ def container_row(n):
 
 
 def claude_row(n):
-    """Claude Code as a row of the node's Toolchains tab (R145), or None on
+    """Claude Code as a row of the node's Toolchains page (R145), or None on
     a node that runs no session account: what a Claude session there runs,
     installed on purpose rather than by the provisioner, checked and updated
     like the rest. The version is the census's (claude --version as the
@@ -1854,15 +1854,15 @@ def container_why(n):
     if not row:
         return f"{name} reports no Docker"
     if row["state"] == "unknown":
-        return f"{name}'s agent does not report the NVIDIA container toolkit yet: update it on the Nodes tab"
+        return f"{name}'s agent does not report the NVIDIA container toolkit yet: update it on the Nodes page"
     if row["state"] == "absent":
         return (f"{name} has no NVIDIA container toolkit, which is what hands the card to a container: "
-                "an administrator installs it from that node's Toolchains tab")
+                "an administrator installs it from that node's Toolchains page")
     if row["state"] == "unconfigured":
         return (f"Docker on {name} does not list the nvidia runtime, though the toolkit is installed: "
-                "install the toolkit again from that node's Toolchains tab, which configures it")
+                "install the toolkit again from that node's Toolchains page, which configures it")
     if not row["driver_loaded"]:
-        return f"NVIDIA's driver is not running the card on {name}: its Toolchains tab says where it stands"
+        return f"NVIDIA's driver is not running the card on {name}: its Toolchains page says where it stands"
     return ""
 
 
@@ -1878,7 +1878,7 @@ def _machine_name(n, action, name, also):
         return "", (f"{n['name']} is its owner's machine, not a BuilderBot sandbox: the container toolkit "
                     "is installed or removed there, the way NVIDIA's guide does it")
     if row["state"] == "unknown":
-        return "", f"{n['name']}'s agent does not report the container toolkit yet: update it on the Nodes tab first"
+        return "", f"{n['name']}'s agent does not report the container toolkit yet: update it on the Nodes page first"
     if (n.get("config") or {}).get("lock"):
         return "", f"{n['name']} is locked to its console: nothing on it is installed from here"
     if action == "install" and not row["driver"] and DRIVER not in also:
@@ -1900,7 +1900,7 @@ def _driver_name(n, action, pkg):
         return "", (f"{n['name']} is its owner's machine, not a BuilderBot sandbox: its driver is "
                     "installed or removed there, the way its distribution does it")
     if row["state"] == "unknown":
-        return "", f"{n['name']}'s agent does not report the driver yet: update it on the Nodes tab first"
+        return "", f"{n['name']}'s agent does not report the driver yet: update it on the Nodes page first"
     if (n.get("config") or {}).get("lock"):
         return "", f"{n['name']} is locked to its console: nothing on it is installed from here"
     if action != "install" or not pkg:

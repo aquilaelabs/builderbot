@@ -548,11 +548,11 @@ def may(project, part, by="claude"):
         return None
     if pol == "locked":
         return (f"{project}'s version is locked to the operator. They can "
-                f"change that on the project's Artifacts tab.")
+                f"change that on the project's Artifacts view.")
     if pol == "start":
         return (f"{project}'s policy is 'start': a session may give it its first "
                 f"version and no more. Moving it is the operator's, on the "
-                f"project's Artifacts tab.")
+                f"project's Artifacts view.")
     return (f"{project}'s policy is '{pol}', so a session may move "
             f"{' or '.join(_ALLOWS[pol]) or 'nothing'} but not {part}.")
 
@@ -959,7 +959,7 @@ def init(project, value, by="claude", comp="", env=None):
     """
     if by != "operator" and policy(project) not in _MAY_INIT:
         return {"error": f"{project}'s version is locked to the operator. They can "
-                         f"give it one on the project's Artifacts tab, or set Claude "
+                         f"give it one on the project's Artifacts view, or set Claude "
                          f"access there to 'may start one'."}
     value = str(value or "").strip()
     if not TARGET_RE.match(value):
@@ -1071,7 +1071,7 @@ def bump(project, part, by="claude", comp="", env=None, to=None, fold=False):
         forflag = f" --for {comp}" if comp else ""
         return {"error": f"{thing} has no {VERSION_FILE} yet; give it one "
                          f"with `bb version init 0.1.0{forflag}`, or from "
-                         "the Artifacts tab"}
+                         "the Artifacts view"}
     where = _sub(project, comp)
     if where is None:
         return {"error": f"no such component here: {comp}"}
@@ -1196,7 +1196,7 @@ def evidence(project, comp=""):
 
 
 def payload(project):
-    """Everything the Artifacts tab head needs, in one read.
+    """Everything the Artifacts view head needs, in one read.
 
     The project's own block is the top level; `versions` holds ONLY the
     components' blocks, almost always none, because a component exists only if
@@ -1417,7 +1417,7 @@ def ask(project, sessions=(), comp=""):
     # unsent. It used to point at the version section of the project's
     # CLAUDE.md; that block went with R63 step 3, so it points at the verb
     # that answers the same question wherever it is run.
-    line = (f"From the operator, on the Artifacts tab: what version should "
+    line = (f"From the operator, on the Artifacts view: what version should "
             f"{what} start at? Read the code and `bb version policy`, then "
             f"propose a number you derived here and ask; do not apply one.")
     if tgt:
@@ -1425,7 +1425,7 @@ def ask(project, sessions=(), comp=""):
         # start at" but "is {tgt} still where this is", the judgment the
         # operator says is hard precisely because most of the work here
         # happened through prompts. The session can read what actually landed.
-        line = (f"From the operator, on the Artifacts tab: {what} is at "
+        line = (f"From the operator, on the Artifacts view: {what} is at "
                 f"{tgt}: is that still right? Read what has landed since, "
                 f"then propose and ask; do not apply.")
     # No switch ahead of it: a project's model and effort are launch flags now,

@@ -1,6 +1,6 @@
 """Behind `bb transcripts` (cmd_transcripts in bb): the account's own
 conversations with Claude on a project, through the controller's API as
-the caller (transcripts.py on the dashboard's side, the Profile tab's
+the caller (transcripts.py on the dashboard's side, the Profile page's
 list and download). `list` prints them newest first with the first thing
 typed; `show ID [--tz ZONE]` prints one as the Profile's download reads,
 stamped in ZONE (the controller's own when none); `fetch ID` copies the

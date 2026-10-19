@@ -35,7 +35,7 @@ def cmd_enroll(args):
         raise SystemExit("enroll needs --controller URL and --token bbe_…")
     if not opts["--token"].startswith("bbe_"):
         raise SystemExit("that is not an enrollment token (they start bbe_); "
-                         "mint one on the controller's Nodes tab")
+                         "mint one on the controller's Nodes page")
     marks = {}
     for role, path in stores.items():
         # A store that cannot be made is reported, not fatal: its free space

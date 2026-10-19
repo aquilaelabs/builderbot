@@ -27,7 +27,7 @@ if tree:
     if not syncwait.up(project) and argv[0] == "git":
         sys.exit("[builderbot] ERROR: not sent: the controller's copy of this project is behind this one, "
                  "and git there would act on the older tree. Try again once the node is in step "
-                 "(the Nodes tab's Sessions section says each project's state)")
+                 "(the Nodes page's Sessions section says each project's state)")
 r = bbapi.call("/api/v1/bb", {"argv": argv, "project": project,
                               "cwd": os.getcwd(),
                               "from": "session" if os.environ.get("CLAUDECODE") else "operator"},

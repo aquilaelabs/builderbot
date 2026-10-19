@@ -10,14 +10,14 @@ The design decisions behind what is described here, with their dates and reasons
 | **Node** | 22.x (NodeSource) + npm, corepack (yarn/pnpm shims) |
 | **Python** | 3.12, `uv`, `pipx`, venv |
 | **Playwright** | CLI + the system deps; the browsers themselves install to the [toolchain store](#the-toolchain-store-lives-outside-the-image) and appear at `/opt/pw-browsers` |
-| **Android, Java, Flutter, .NET…** | Not in the image. A node's, from its toolchain store: the JDK, the SDK and the emulator are recipes on the Toolchains tab, installed with the node picked, and the system images the emulator boots are on the Emulator tab |
+| **Android, Java, Flutter, .NET…** | Not in the image. A node's, from its toolchain store: the JDK, the SDK and the emulator are recipes on the Toolchains page, installed with the node picked, and the system images the emulator boots are on the Emulator page |
 | **Git** | git, git-lfs, `gh` CLI |
 | **Docker** | CLI + compose/buildx plugins; no daemon and no host socket here, so containers run on a node |
 | **Search** | ripgrep, fd, fzf, jq, yq |
 | **Build** | build-essential, cmake, pkg-config |
 | **Lint** | shellcheck, hadolint, actionlint, ruff, node --check: `bb lint` runs the right ones over a repo |
 | **Media** | ffmpeg, imagemagick |
-| **Runner** | Not in the image: CI runners are a node's, added on the Nodes tab |
+| **Runner** | Not in the image: CI runners are a node's, added on the Nodes page |
 | **Versioning** | `mise` for per-project tool pinning (gradle, go, rust, on demand) |
 
 Slimmer builds: `--build-arg INSTALL_PLAYWRIGHT=false`, `INSTALL_ANDROID=false`.
@@ -163,7 +163,7 @@ of its newest few builds, whatever follows the version (the project's
 settings say how many, Dev builds kept: 3 unless changed, and 0 keeps
 everything), and a build that has been signed keeps its signed copy alone,
 since the unsigned file was only the signing's input. The rest go every few
-minutes, when a node's build lands, and when the Artifacts tab draws, not
+minutes, when a node's build lands, and when the Artifacts view draws, not
 only on the last. A release (no `-dev.N`) and an artifact somebody
 **pinned** (the pin on its row, kept by the controller with who pinned it)
 are never removed by count, and a pinned build is not one of those kept
@@ -256,7 +256,7 @@ root; use `bb shell` for the normal user.
 The image carries no toolchain beyond node, python and the Playwright
 module. Everything a build needs: the JDK, the Android SDK, the emulator,
 Flutter, .NET: is a recipe installed into a **node's toolchain store**, from
-the Toolchains tab with that node picked; the tab lists nodes and nothing else,
+the Toolchains page with that node picked; the tab lists nodes and nothing else,
 and with none enrolled it says so. The controller's own store: the SDK
 share, mapped at `/sdk` (Unraid default `/mnt/user/sdk`): holds
 only what its boot keeps for `bb capture shot`, the Playwright browsers; nothing is
@@ -304,7 +304,7 @@ what a build needs with no line pinning it: the build-tools its Android
 Gradle plugin version defaults to when no `buildToolsVersion` says
 otherwise (read from the version catalog, a plugins block or the old
 classpath, against the table in the plugin's release notes). The level a
-project compiles against is the Emulator tab's question instead: it says
+project compiles against is the Emulator page's question instead: it says
 which of its node's projects compile against a level no image here is of,
 and names the index's plain Google APIs image of that level to pick, since
 an image exists at every level in several flavors under names only
@@ -313,7 +313,7 @@ build-tools pinned had failed at the plugin's default with nothing on the
 tab naming it (diag #105 to #107).
 
 **The NVIDIA driver is the machine's, not the store's.** On a node whose
-census names an NVIDIA card, the Toolchains tab shows the driver as a row of
+census names an NVIDIA card, the Toolchains page shows the driver as a row of
 its own above the store's. It behaves as the other rows do: a tick box, so
 it goes into Install selected with whatever else is ticked (last, since it
 ends at a restart), a bin to remove it, and **Check for updates** reads
@@ -358,7 +358,7 @@ compose file asks for the card the way compose always has
 `runtime: nvidia`, or `gpus:`), and one that asks is checked before it
 starts: where the node has no card, no running driver or no toolkit, or the
 node's switch or the project's *The node's GPU* setting says the card is
-not for it, the Docker tab's row says the compose cannot start as written
+not for it, the Containers page's row says the compose cannot start as written
 and why, and an Up or a Rebuild asked anyway (a session's `bb devapp
 rebuild` included) is refused in the same words, rather than failing after
 the build with Docker's "could not select device driver".
@@ -366,7 +366,7 @@ the build with Docker's "could not select device driver".
 **What the card is used for** is three settings and a queue, none of which
 moves work onto it: a program uses a GPU only if it was written to, through
 CUDA or the video encoder. A node with a card has a **GPU** section on the
-Nodes tab with two switches and one Apply: *render the Android emulator on
+Nodes page with two switches and one Apply: *render the Android emulator on
 the card*, which starts or stops the headless X server the emulator needs,
 and *let sessions and jobs compute on it*, on by default. A project has its
 own setting in its dialog, *The node's GPU*, for running as if the machine
@@ -589,7 +589,7 @@ one if something has to talk to Play; take the plain one if you want
 against. Rarely both, and the image list says which AVDs are built on each,
 so the one that is actually spare is visible rather than guessed at.
 
-The Emulator tab offers a level and a flavor and adds it to the picked node;
+The Emulator page offers a level and a flavor and adds it to the picked node;
 `bb emu images --available` is the same list on the command line, sizes and all. Real Samsung
 or Oppo hardware is an `adb connect` away over the network, and Samsung's
 Remote Test Lab rents you real devices, but neither is something to install
@@ -615,7 +615,7 @@ once per share; from then on updates cost nothing.
 
 Nothing Android is in the image: the SDK, the emulator and the system images
 are a node's, in its toolchain store. An API level exists where that store
-holds a system image for it: add one on the Emulator tab with the node picked,
+holds a system image for it: add one on the Emulator page with the node picked,
 or let `bb emu create <api>` fetch it on demand. Each is given an AVD named
 `builderbot-<api>`:
 
@@ -667,9 +667,9 @@ SwiftShader.
 
 So the card needs a real `Xorg` on the NVIDIA driver, started by the
 machine, because a session runs unprivileged with no capabilities and cannot
-become DRM master. **Set up GPU display** on the node's row (Nodes tab,
+become DRM master. **Set up GPU display** on the node's row (Nodes page,
 Health) is that: `bb-sandbox gpu` starts a headless Xorg on the card as a
-unit of the machine's own, on the driver the Toolchains tab's row installed
+unit of the machine's own, on the driver the Toolchains page's row installed
 (it installs none itself, and the row's line opens that tab until the driver
 is there), which writes
 what it found to `/run/builderbot-gpu-display` and restarts a dead server
@@ -1161,7 +1161,7 @@ What the pages and each project carry:
   you keep in `/workspace` to deploy and run rather than to develop
 **Containers** on the rail is the **Docker manager**, which is where a project's
 containers are built, started, stopped and given their env. A project can have
-several: the Artifacts tab's dev row is one button now, **Send to Docker
+several: the Artifacts view's dev row is one button now, **Send to Docker
 manager…**, which names a container and takes you there; every container of a
 project is built from that project's codebase, and rebuilding takes whatever
 that codebase says at the time. It opens on the project's own name while the
@@ -1302,7 +1302,7 @@ history, and an id is never reused), and on any other removes the node here
 only, saying BuilderBot's pieces stay on the machine. Neither Disable nor
 Un-enroll goes through while a Claude session or a container is running on
 the node: the refusal counts them and says where to end them (the Sessions
-card, Down on the Docker tab). Un-enroll opens a dialog, since what goes is
+card, Down on the Containers page). Un-enroll opens a dialog, since what goes is
 in rings (the operator, 11 Oct), with a box saying what un-enrolling takes
 off a machine and what it leaves, the same one Reset BuilderBot shows. Always: the runners deregistered on their
 forges, then the agent and its unit, the sessions' firewall rules and their
@@ -1365,7 +1365,7 @@ what moved to a node is Claude and not the terminal. A node's sessions ride its
 heartbeat onto the Sessions list with an "on <node>" pill, and ending one
 there reaches the node's agent within a poll. What a project can actually do on its node is
 what is **installed** there: the row lists the toolchains its census found,
-and the Toolchains tab's node picker is where more are added. (Underneath, the
+and the Toolchains page's node picker is where more are added. (Underneath, the
 node still refuses a job asking for something it did not enroll with: the
 enforcement of docs/nodes.md §15 door 7, but every node now enrolls with the
 full set, so it is a mechanism rather than a setting.)
@@ -1531,13 +1531,13 @@ those three fields have a verb; the node, the git policy and the gates
 themselves stay the dialog's. `bb build`, `bb test` and `bb run -- CMD` snapshot the working
 tree here, dirty edits included, run on that node in a workspace of the job's
 own, and stream the log back; what the outputs match comes back into `dist/`
-by name with a provenance record beside it, which the Artifacts tab shows on
+by name with a provenance record beside it, which the Artifacts view shows on
 the row (which job, which node, which snapshot). The tab's **Download
 source** hands over the code base itself as a zip through the browser: what
 git tracks and would track, under one directory named for the project, never
 `.git`, `dist/` or what `.gitignore` hides. A failed build keeps its
 workspace on the node for a look, and says where. The census reports each
-node's cache size beside **Clear cache**, and the Toolchains tab gains a node
+node's cache size beside **Clear cache**, and the Toolchains page gains a node
 picker: installing a toolchain there is a job that carries `bb` and the
 catalog to the node's own toolchain store.
 
@@ -1622,7 +1622,7 @@ pinning is one word:
 runs-on: [self-hosted, alpha-vm]
 ```
 
-The CI runner tab prints that line for each node, and `bb lint` says when
+The CI runner page prints that line for each node, and `bb lint` says when
 a project has a node and its workflows do not carry it: a note, not a
 failure, because the workflow file is the repo's and this is advice. A
 `runs-on` built from an expression is left alone: choosing the runner at
@@ -1757,7 +1757,7 @@ are in the session's view read-only as well; nobody else's are anywhere. The com
 reaches every session and shell that account opens as git's environment,
 which outranks whatever a repository has configured, so two people on one
 project are two authors. **Settings > Controller** on the rail, drawn only
-for an account that may read the controller, opens the Settings tab, and
+for an account that may read the controller, opens the Settings page, and
 **People > Users** holds the accounts. The Settings tab is what the
 **controller** owns and can apply live. The session-log policy lives there,
 and the idle rule for Claude sessions: end one after N minutes with nothing
@@ -1792,11 +1792,11 @@ controller over at the setup page: accounts, node enrollments, project
 settings, git tokens, the notebook, memories and logs are moved into a dated
 `.reset-…` directory under `/config`, never deleted, and project files are
 not touched. Its dialog first offers to un-enroll every node, so each machine
-can be enrolled again afterwards, with the same box the Nodes tab's
+can be enrolled again afterwards, with the same box the Nodes page's
 Un-enroll shows saying what un-enrolling takes off a machine and what it
 leaves; a node with a session or a container running cannot be ticked until
 they are ended. It asks for the word `reset` typed, waits for each node it
-un-enrolls to report, and the dashboard re-executes itself. Projects are trashed from the Projects tab, one at a
+un-enrolls to report, and the dashboard re-executes itself. Projects are trashed from the Projects page, one at a
 time, the way they always were. Its **Debugging** group is
 one switch, *Debug mode*, and a *Debug settings* button beside it that is
 live only while the switch is saved on: behind the button are the settings
@@ -1815,7 +1815,7 @@ exits, so a `compose build` spending four minutes pulling layers is not four
 minutes of a spinner. The phase word above it still says *building* or
 *starting*; the tail below says what the phase is spending its time on. It is
 raw and deliberately not parsed into a bar: docker rewrites a line per layer
-per tick, and turning that into a percentage is the thing the Toolchains tab
+per tick, and turning that into a percentage is the thing the Toolchains page
 already gave up on.
 
 **Abort** sits beside it while a job runs, and asks nothing first. Stopping a
@@ -1841,7 +1841,7 @@ It lists what has been sent to it, not every project that could be sent: a
 project with a compose file does not appear there until you send one, and
 **Remove** takes a container down and drops it from the list again. Removing
 keeps its env file and its data directory, so sending it again under the same
-name finds them, and the project's Artifacts tab is untouched either way,
+name finds them, and the project's Artifacts view is untouched either way,
 which is where it comes back from.
 
 The same tab lists every container on the picked node's daemon, not only the ones this
@@ -2039,7 +2039,7 @@ read), **Wiki** (the project's wiki, described below), the
 **Git**, **Artifacts**, **Docker** (every container that belongs to this
 project, with the manager's rows and controls, so a dev radarr for a media
 project is found beside that project rather than among every project's on
-the Docker tab),
+the Containers page),
 **Tests**, and **Analysis** (the scanner's findings for this project alone).
 
 The **Wiki** is the project's wiki, for whoever uses or works on it: pages
@@ -2559,7 +2559,7 @@ set `container_name` to anything it likes and may declare several, and this is
 the one name that is always true of all of them.
 
 Under it, and not behind a fold, are **what it publishes and what it mounts,
-written the way Unraid's own Docker tab writes them**: container side
+written the way Unraid's own Containers page writes them**: container side
 on the left, host side on the right, and the arrow saying which way it goes:
 `/library ← /mnt/user/plex-media` for a read-only mount, `↔` for a writable
 one, `7474:TCP ← 192.168.1.10:7475` for a published port. That is deliberately
@@ -2771,7 +2771,7 @@ bb tests ingest /tmp/run.log
 ```
 
 How many workers a test run may use on a node is the node's to say: **Test
-workers** in the Sessions section of its row on the Nodes tab, 0 for the
+workers** in the Sessions section of its row on the Nodes page, 0 for the
 machine's cores, handed to every test job there as `BB_TEST_WORKERS` for
 the project's own test command to read (`pytest -n`, `--test-concurrency`,
 `--max-workers`) and read by this harness to run its suites across that
@@ -3006,7 +3006,7 @@ pane commands.
 **Which tabs are open is shared, not per-browser.** It lives on the container, so
 opening the dashboard on a phone shows the terminals the desktop has open, and a change
 on either reaches the other within a poll; the pages a rail item opens ride
-in the same saved layout, so the page you were on comes back too. The tab cap on the Settings tab
+in the same saved layout, so the page you were on comes back too. The tab cap on the Settings page
 (default 12) limits how many can be open at once: each terminal tab is an iframe running a
 full terminal emulator over its own websocket, so the limit is about browser
 memory, not tidiness.
@@ -3124,7 +3124,7 @@ says so, and says the thing worth saying first: try Connect, you are probably
 already paired.
 
 **A phone it has met is remembered.** Every pairing and every connection
-puts the handset on the node's remembered list on the Phone tab: its
+puts the handset on the node's remembered list on the Phone page: its
 model, its address, when it was last seen, and Connect on that row is the
 whole reconnect: the address goes back in the field and the node finds the
 port. Forget drops the row and nothing else; the pairing key stays on the
@@ -3138,7 +3138,7 @@ anyway. The node scans for it, on its own network.
 **A connection has one owner.** The account that connects a phone is the
 only one that can disconnect it; everybody else sees the connection with
 its controls grayed and the owner named. Every command a session asks for
-goes to that account (on the Phone tab and in their bell, nobody else's),
+goes to that account (on the Phone page and in their bell, nobody else's),
 because the phone is on their desk and they are the one who said yes to it.
 
 **A session never touches the phone itself.** It is kept on an adb server of
@@ -3179,7 +3179,7 @@ still wants the phone on Wi-Fi for wireless debugging.
 
 **Root on a node has the same shape.** A session has no sudo there and gets
 none; what it can do is `bb root run --why "..." -- CMD`, which puts the
-reason and the exact command in front of a person, on the Nodes tab and the
+reason and the exact command in front of a person, on the Nodes page and the
 bell, and waits. Which person is decided by the session that asks: the
 account it belongs to, when that account is an administrator, and every
 administrator when it is a user's, because a sandbox is a shared machine and
@@ -3188,7 +3188,7 @@ goes to whoever connected the handset, which is the asker when it is theirs.
 Letting a particular user allow root on a particular sandbox is a
 permissions design of its own, not written yet.) Allow runs that one command as root on the
 project's node, as a system job whose log opens with the reason and who
-allowed it, so the Jobs tab is the record; Deny says no. Only a node
+allowed it, so the Jobs page is the record; Deny says no. Only a node
 provisioned as a sandbox takes it: somebody's own machine is not the
 controller's to run root on, and there is no fake sudo either: a refusal
 that says why beats a success that did not happen.
@@ -3203,8 +3203,8 @@ on that node, which the button says when it is missing.
 ### How a view knows to re-read
 
 Every view shows facts it does not own. The roadmap's arrows depend on a Claude
-session existing; the Artifacts tab's Install depends on a phone being
-connected on a node; the Phone tab's questions arrive from a terminal. In
+session existing; the Artifacts view's Install depends on a phone being
+connected on a node; the Phone page's questions arrive from a terminal. In
 one week, four of them went stale in exactly the same way: each had invented
 its own rule for when to re-read, out of knowledge it did not have. The worst
 was self-defeating: the phone view polled only while it already knew of a
@@ -3374,7 +3374,7 @@ address from `10.231.0.0/16`, and a resolver file naming the node's upstream
 DNS servers. The agent keeps an nftables table (`builderbot_sessnet`) that
 judges everything leaving a session's link: the internet, the controller and
 the DNS servers pass, and so do the containers the session's project owns on
-that node (the project a container belongs to on the Docker tab, the same
+that node (the project a container belongs to on the Containers page, the same
 setting that says whose sessions may work on it); everything else that is not
 the internet (every other container, the node's own services, the LAN) is
 refused, and nothing, on the network or on the node itself, can open a
@@ -3421,7 +3421,7 @@ by the map (`all`), since a proxy or a monitor that is nobody's has to see
 everybody's. nginx needs none of it yet, being on the host network; the
 owner is for the day a deployment of BuilderBot's sits on a bridge.
 
-The nginx tab keeps one list of public **Hostnames**, shared by every node's
+The nginx page keeps one list of public **Hostnames**, shared by every node's
 nginx (the operator, 12 Oct): a name is added once and shows where it is
 routed, and is deleted only when nothing routes it, the refusal saying
 where it is. A route's hostname is picked from that list, so several routes,
@@ -3429,12 +3429,12 @@ nodes and projects' containers use one name without typing it again.
 
 nginx keeps up to date like the toolchains and the agent (R192, the
 operator, 11 Oct). The controller reads the registry's tag list once a week
-(Check now on the nginx tab reads it at once) and keeps the newest release
+(Check now on the nginx page reads it at once) and keeps the newest release
 line's alpine tag with its digest; a node's nginx is pinned to a digest when
 it is deployed or updated, written into its compose file as
 `nginx:TAG@sha256:...`, so a Save rebuilds with exactly what it had and
 nothing moves under it. A deployed nginx behind the newest line says so on
-the nginx tab's node and on its Docker tab row, each with Update, which pins
+the nginx page's node and on its Containers page row, each with Update, which pins
 the new digest and rebuilds; the bell carries a note of its own kind, to the
 digest, so Dismiss holds until the registry moves the line again. One
 deployed before any check had read the registry is unpinned, and behind
@@ -3443,7 +3443,7 @@ whatever is newest until its first Update.
 Every other container's registry images keep up to date the same way (R195,
 the operator, 11 Oct). A service that runs an image by tag, with no `build:`
 (mariadb, a linuxserver image, ghcr.io/aquilaelabs/builderbot:latest), is
-compared once a week, and on Check for updates on the Docker tab: the digest
+compared once a week, and on Check for updates on the Containers page: the digest
 its node pulled (`docker inspect`'s RepoDigests) against what the
 registry serves for that tag now, over the registry's v2 API with an
 anonymous token (imagecheck.py). One that differs says so on its row with
@@ -3751,7 +3751,7 @@ follows it to the signed file's name. A signing that could not happen (no
 such key, no such build, no node) is refused before anybody is asked.
 
 **A release from a session.** `bb version release --why "..."` tags the
-commit and publishes the release the way **Release** on the Artifacts tab
+commit and publishes the release the way **Release** on the Artifacts view
 does, on the controller and with the project's own credentials, which the
 session never holds (R138). It is its own dial, **Claude may: Tag and
 publish a release**, named apart from signing, which makes a build rather
@@ -3913,7 +3913,7 @@ machine: nothing carries it to another node, and the controller holds no
 credential, only what each node reported. A refresh rotates the refresh
 token, so one login on two machines signs each of them out in turn; a login
 per machine is the shape Claude supports. The sign-in is at the top of the
-node's Claude Code section on the Nodes tab, for whoever is looking: *You
+node's Claude Code section on the Nodes page, for whoever is looking: *You
 are signed in here as* the Anthropic account that node reported, with **Sign
 out**, or *You are not signed in to Claude on* that node, with **Sign in**.
 **There is no terminal in it.** `claude auth login` is interactive, printing
@@ -3944,7 +3944,7 @@ second node can be started from the same place. Where this account is
 signed in on the project's node, the press starts the session or opens the
 chooser with Resume and New conversation, as it always has. Where
 it is not, the chooser offers **Sign in on** that node in their place, which
-opens the Nodes tab on that node with its Claude Code section unfolded. A
+opens the Nodes page on that node with its Claude Code section unfolded. A
 project on several nodes lists each under its name: Resume and New
 conversation for a node this account is signed in on, the sign-in for one it
 is not, and the reason alone for one where a session cannot start.
@@ -3958,7 +3958,7 @@ the server as well.
 
 **Claude Code is a toolchain of each node, installed on purpose, and by
 nothing a session can do.** The provisioner does not install it: a node's
-Toolchains tab has a Claude Code row, with the version its session account
+Toolchains page has a Claude Code row, with the version its session account
 runs against the latest the controller knows, asked on the toolchains' own
 clock (weekly, when a node starts, and on **Check for updates**). Until it
 is installed no Claude session starts there: the project's Claude button
@@ -3972,8 +3972,8 @@ removes it. Nothing starts again on its own: the project rows do, when you
 press them, and until the job ends those rows are held with the reason. A
 node behind is a row in the bell, and stays on what it has until you
 install the update: nothing updates it before a session starts (a switch
-that did went on 7 Oct). The node's Claude Code section on the Nodes tab
-keeps each account's sign-in, and a button to the Toolchains tab.
+that did went on 7 Oct). The node's Claude Code section on the Nodes page
+keeps each account's sign-in, and a button to the Toolchains page.
 
 **A token lasts twelve hours, and a conversation can last longer.** One is
 minted per connection, so opening the session's tab refreshes it, but the
@@ -4079,7 +4079,7 @@ owner offers it: the offer waits in the other person's bell like an
 invitation, and the project changes hands when they accept (and only if the
 one who offered still owns it then). Either can make it
 **invite only**: then nobody else changes who is on it, so an administrator
-can still see it but cannot add themselves, or anybody, on the Users tab or
+can still see it but cannot add themselves, or anybody, on the Users page or
 anywhere, and people join by invitation. BuilderBot's owner is never kept
 out. **Invite** there picks an existing account, user or admin; the
 invitation waits in that person's bell with **Accept** and **Decline**, and
@@ -4117,7 +4117,7 @@ tree could not have been: `/workspace/<project>` is a single working tree, so
 two sessions in it commit each other's half-finished work and delete it with a
 `checkout`. Separate trees make that impossible and put the conflicts at the
 merge, where git is good at them. A worktree session builds into its own
-`dist/`, which the Artifacts tab lists apart from the project's, under whose
+`dist/`, which the Artifacts view lists apart from the project's, under whose
 worktree and branch it is, with Download and View; Install and Push stay with
 the project's `dist/`. The dev instance belongs to the project rather than to
 the session.
@@ -4151,7 +4151,7 @@ than corrupting one tree, and that is what a merge is for.
 
 Each account signs in to Claude for itself, on each node it works on, from
 that node's row. Which Anthropic account that is is the person's own choice:
-the Users tab says when two BuilderBot accounts are on one, since Anthropic's
+the Users page says when two BuilderBot accounts are on one, since Anthropic's
 terms allow one person per Claude account, and nothing is refused for it.
 
 The notebook (roadmap, bugs, analysis) stays shared, because it is about the
@@ -4178,7 +4178,7 @@ gets no terminal tab, and their Claude session opens as a **console** instead:
 the real interface, rendered by a `ttyd` started without `--writable`, with
 a box to type a message and a button to end the conversation. The proxy
 refuses anything else they ask a terminal for, so a read-only window cannot be
-pointed at somebody else's session. They see Docker and the Toolchains tab
+pointed at somebody else's session. They see Docker and the Toolchains page
 for their own projects' nodes: the scoping is on the answer, not just the
 picker, so a node none of their projects builds on is refused rather than
 listed, and change neither, with one exception: **Rebuild**, and Abort with
@@ -4303,7 +4303,7 @@ Resume that types into it (the roadmap's send, which presses Enter only if
 the line echoed) that BuilderBot is back and to pick up from its note.
 
 The compatibility window still holds a project whose *node* runs an agent
-from another window, and the Nodes tab's Update is what clears it. Inside a
+from another window, and the Nodes page's Update is what clears it. Inside a
 window an agent behind the controller is updated by the controller itself
 once its node is idle (R253): until then it takes no job but its own update,
 so a session's job refused for that alone has `bb` wait for the update (up
@@ -4316,7 +4316,7 @@ agent row says the update is automatic, and why when its last try failed.
   tab's playwright), so `npx playwright test` runs headless in a session on any
   node that has it installed.
 - **Android**: `./gradlew assembleRelease` runs on the project's node once
-  the Toolchains tab has installed the JDK and the Android tools there; the
+  the Toolchains page has installed the JDK and the Android tools there; the
   emulator is that node's too, `bb emu start`. See
   [Multiple Android versions](#multiple-android-versions) to emulate more
   than one API level.
@@ -4327,7 +4327,7 @@ agent row says the update is automatic, and why when its last try failed.
   `bb diag plugins`, since a plugin adds its own hooks and instructions beside
   BuilderBot's and a session that behaves oddly may be carrying one. The
   language-server plugins run a server a session cannot `npm install -g`
-  into the store, so the Toolchains tab carries them: **language-servers** (pyright
+  into the store, so the Toolchains page carries them: **language-servers** (pyright
   and typescript-language-server, for pyright-lsp and typescript-lsp) and
   **kotlin-lsp** (JetBrains' server, for kotlin-lsp). rust-analyzer and clangd
   already come with the rust and swift toolchains.
@@ -4367,7 +4367,7 @@ All of them persist across updates, are secret-redacted, and move together to
 the `/logs` mount if you map one.
 
 **Kept for a number of days, not a number of boots.** Thirty by default, set
-as **Days of logs kept** in the Logs section of the Settings tab, and one
+as **Days of logs kept** in the Logs section of the Settings page, and one
 policy for everything the controller keeps: these generations, the archived
 CI runs and the jobs' logs. It runs every hour as well as on Apply, and a
 live file past 64 MB is moved to its next generation then. A
@@ -4421,12 +4421,12 @@ What a Mac node is for is what only a Mac builds: iOS, macOS, the Apple
 half of a Flutter app. `--toolchains /Volumes/SDK` points its toolchain store at
 the same share the Linux nodes use, mounted over SMB; its toolchains land under
 its own directory in it, named by its node id, and nobody else's are touched. The
-Toolchains tab shows the node as a Mac and offers what the catalog packages for
+Toolchains page shows the node as a Mac and offers what the catalog packages for
 `darwin`: the JDK, Node, Go and Flutter resolve their macOS downloads
 through the same recipes, and `xcodes` installs and switches Xcode versions
 from Apple's own downloads (Xcode itself is Apple's to serve and needs an
 Apple ID once). The agent's package manager there is Homebrew, its service
-launchd; the Nodes tab offers no Storage or Network, because a Mac's mounts
+launchd; the Nodes page offers no Storage or Network, because a Mac's mounts
 and address are its owner's, and asks for no root. Sessions on the Mac
 itself need a `/workspace` the agent can keep a synced copy in, which on
 macOS is one line in `/etc/synthetic.conf`, and are not set up by the
@@ -4510,7 +4510,7 @@ suite's `appapi.mjs` holds the running server to that file, so a change that
 renames a field or a path the app reads fails the suite until the app is
 updated with it; and the app compares the dashboard's number to its own on
 the More screen and says when it is behind, naming the newer APK in
-BuilderBot's own Artifacts tab. Moving the surface means moving all three
+BuilderBot's own Artifacts view. Moving the surface means moving all three
 together: the file, the constant, the app.
 
 **Building it.** `.github/workflows/android-app.yml` builds the debug APK on

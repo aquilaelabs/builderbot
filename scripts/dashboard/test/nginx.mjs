@@ -118,7 +118,7 @@ await page.waitForSelector(`${sect} [data-ngremove]`, { timeout: 15000 });
 ok(await page.$eval(sect, s => /deployed/.test(s.querySelector('.toolstate .pill').textContent) && /1 route/.test(s.querySelector('.toolstate .sub').textContent)
      && s.querySelector('[data-ngremove]') && !document.querySelector('.nginxtab [data-ngdeploy]')),
    '...and the state row now says so, with Remove in place of Deploy');
-ok(/already on the Docker tab/.test((await api('/api/nginx', { action: 'deploy', node: sandbox.node })).error || ''),
+ok(/already on the Containers page/.test((await api('/api/nginx', { action: 'deploy', node: sandbox.node })).error || ''),
    'a second Deploy is refused');
 // The deployed page in sections (R218 step 29): Hostnames, Routes,
 // Certificates and Image, each its state in its head; the routes a table
@@ -287,7 +287,7 @@ ok(['down', 'remove', 'nginx-update'].every(b => sysBtns.has.includes(b)) && !sy
    `BuilderBot's nginx row keeps Down, Remove and the update and loses Edit, Rebuild and Copy or move (${sysBtns.has.join(', ')}; ${sysBtns.rel ? 'copy or move' : 'no copy or move'})`);
 ok(await page.$eval('.dmtab .row[data-inst="nginx-sandbox|main"]', r => /1\.29-alpine is out/.test(r.querySelector('.dmnginx').textContent)
      && r.querySelector('[data-dm="nginx-update"]').textContent.trim() === 'Update'),
-   'the Docker tab\'s row of a node\'s nginx says the line is out, with Update as on every row');
+   'the Containers page\'s row of a node\'s nginx says the line is out, with Update as on every row');
 await page.evaluate(() => openNginxTab());
 await page.waitForSelector(`${sect} [data-ngupdate]`, { timeout: 10000 });
 await page.click(`${sect} [data-ngupdate]`);   // its confirm is accepted by lib.mjs's dialog handler
@@ -320,9 +320,9 @@ ok(two.ok && two.deployed && /location \/relay\/ \{ proxy_pass http:\/\/127\.0\.
   const shown = await api('/api/container', { action: 'read', name: 'nginx-sandbox' });
   ok(!/PRIVATE KEY/.test(shown.compose || '') && /tls_key_www_example_com:\n    content: \|\n      \(the private key: kept on the controller, never shown\)/.test(shown.compose || '')
      && /BEGIN CERTIFICATE/.test(shown.compose || ''),
-     `the Docker tab's copy of nginx's compose carries the certificate and a line in place of the key`);
+     `the Containers page's copy of nginx's compose carries the certificate and a line in place of the key`);
   const back = await api('/api/container', { action: 'save', name: 'nginx-sandbox', compose: shown.compose, env: '' });
-  ok(/written from the nginx tab/.test(back.error || ''), `...and saving that copy back is refused (${(back.error || 'saved').slice(0, 60)})`);
+  ok(/written from the nginx page/.test(back.error || ''), `...and saving that copy back is refused (${(back.error || 'saved').slice(0, 60)})`);
   // It is managed (the operator, 11 Oct): its env and its name are refused
   // as its compose is, and the Edit dialog is for reading whatever its state.
   const envSet = await api('/api/devapp', { project: 'nginx-sandbox', instance: 'main', action: 'env-set', text: 'X=1\n' });
@@ -361,7 +361,7 @@ for (let i = 0; i < 60; i++){
   await new Promise(r => setTimeout(r, 1000));
 }
 ok(!after.deployed && after.routes.length === 2 && (gone || queued),
-   `Remove takes the container off the Docker tab, or queues its down on a quiet node, and keeps the routes here (${JSON.stringify([after.deployed, after.routes.length, gone, queued])})`);
+   `Remove takes the container off the Containers page, or queues its down on a quiet node, and keeps the routes here (${JSON.stringify([after.deployed, after.routes.length, gone, queued])})`);
 // The Save's rebuild (two.job) may land after the Remove forgot the row:
 // its result must not stamp a record back into being (B633).
 await until(async () => ['succeeded', 'failed', 'canceled'].includes((await api(`/api/v1/jobs?id=${two.job}`)).state) ? true : null, 60000, 500);

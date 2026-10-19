@@ -343,7 +343,7 @@ def save(samples, name, as_wav):
     for p in pics:
         print(f"  {p}")
     if not ff:
-        print("  (no ffmpeg on this node: WAV only and no pictures; the Toolchains tab installs ffmpeg)")
+        print("  (no ffmpeg on this node: WAV only and no pictures; the Toolchains page installs ffmpeg)")
 
 
 def audio_tc():
@@ -352,7 +352,7 @@ def audio_tc():
     d = os.path.join(root, "audio") if root else ""
     if not (d and os.access(os.path.join(d, "bin", "python-audio"), os.X_OK)):
         fail("say and hear need the audio toolchain on this node (piper and whisper); "
-             "installing it is the operator's, from the Toolchains tab")
+             "installing it is the operator's, from the Toolchains page")
     return d
 
 
@@ -405,7 +405,7 @@ def hear(path):
     d = audio_tc()
     ff = ffmpeg()
     if not ff:
-        fail("hear needs ffmpeg to read the recording: the Toolchains tab installs it")
+        fail("hear needs ffmpeg to read the recording: the Toolchains page installs it")
     pcm = subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-i", path, "-ac", "1", "-ar", "16000",
                           "-f", "f32le", "-"], capture_output=True)
     if pcm.returncode != 0:
@@ -482,7 +482,7 @@ def main(argv):
             fail("bb tool sound look FILE: a sound file that is there")
         made = look(args[0])
         if not made:
-            fail("no ffmpeg here to draw it: the Toolchains tab installs ffmpeg")
+            fail("no ffmpeg here to draw it: the Toolchains page installs ffmpeg")
         print("\n".join(made))
     else:
         fail(f"no verb {verb}: make, tone, say, hear, look or presets")

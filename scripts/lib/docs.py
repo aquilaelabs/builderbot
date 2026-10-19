@@ -12,7 +12,7 @@ slide deck, a spreadsheet, and HTML, EPUB and plain text beside them.
 `pages` draws a PDF's pages with PyMuPDF; anything else is made a PDF first
 by LibreOffice (BB_DOCS_SOFFICE, the office toolchain's), with a profile of
 its own for the run so two runs do not trip over one. Pages land in
-dist/docs/NAME/ by default, where the Artifacts tab lists them.
+dist/docs/NAME/ by default, where the Artifacts view lists them.
 """
 import os
 import re
@@ -74,7 +74,7 @@ def as_pdf(f, work):
     so = os.environ.get("BB_DOCS_SOFFICE") or ""
     if not (so and os.access(so, os.X_OK)):
         die(f"{f} is not a PDF, and its pages are drawn from one: LibreOffice makes it, which is the office "
-            "toolchain; install it on the Toolchains tab with this node picked (bb tool docs read gives its text now)")
+            "toolchain; install it on the Toolchains page with this node picked (bb tool docs read gives its text now)")
     prof = os.path.join(work, "profile")
     r = subprocess.run([so, f"-env:UserInstallation=file://{prof}", "--headless", "--norestore",
                         "--convert-to", "pdf", "--outdir", work, f],

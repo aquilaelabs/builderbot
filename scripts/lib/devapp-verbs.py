@@ -62,7 +62,7 @@ def status():
         # Kept by BuilderBot for this container, never a file in the project.
         print(f"  {'env':<12} missing " + ", ".join(miss[:6])
               + (" …" if len(miss) > 6 else "") + "; bb devapp env prints it and bb devapp env set "
-              "replaces it where the project's settings allow, else the operator's Env on the Docker tab")
+              "replaces it where the project's settings allow, else the operator's Env on the Containers page")
     job = st.get("job") or {}
     if job.get("running"):
         print(f"  {'job':<12} {job.get('step') or 'working'}")
@@ -158,7 +158,7 @@ def rebuild():
         # build, and from there this is the same poll as any other rebuild.
         rid = r["id"]
         print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}), waiting up "
-              "to 15 minutes for Allow on the dashboard's Docker tab or bell", file=sys.stderr)
+              "to 15 minutes for Allow on the dashboard's Containers page or bell", file=sys.stderr)
         o = waits.outcome(auth, rid, "the rebuild was not allowed")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'the rebuild would not start'}")
@@ -241,17 +241,17 @@ def _watch(look, was, auth, job_id=""):
                      else "not running"))
             if st.get("await_env"):
                 print("[builderbot] its env is not filled in: bb devapp env set FILE writes it where "
-                      "the project's settings allow, else the operator's Env on the Docker tab",
+                      "the project's settings allow, else the operator's Env on the Containers page",
                       file=sys.stderr)
             raise SystemExit(0)
         if waited >= 21:
             sys.exit("[builderbot] ERROR: no build appeared within twenty seconds; "
-                     "this project's row on the Docker tab has what happened")
-    sys.exit(f"[builderbot] ERROR: the {what} is still going after an hour; its row on the Docker tab has it")
+                     "this project's row on the Containers page has what happened")
+    sys.exit(f"[builderbot] ERROR: the {what} is still going after an hour; its row on the Containers page has it")
 
 
 def new():
-    """This project sent to Docker, the way the Artifacts tab's Send does: a
+    """This project sent to Docker, the way the Artifacts view's Send does: a
     container made from its own compose file on its own node, then built and
     started, with this waiting for the verdict. BB_DEV_INSTANCE names it;
     unnamed, the controller gives it the project's own name while it has
@@ -282,7 +282,7 @@ def new():
     name = r.get("name") or inst
     if r.get("id"):
         print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}) to send it to "
-              f"Docker as {name}, waiting up to 15 minutes for Allow on the dashboard's Docker tab "
+              f"Docker as {name}, waiting up to 15 minutes for Allow on the dashboard's Containers page "
               "or bell", file=sys.stderr)
         o = waits.outcome(auth, r["id"], "it was not allowed")
         if o.get("code"):
@@ -336,7 +336,7 @@ def test():
                 sys.exit(0)
             print(f"[builderbot] {j.get('error') or 'the tests failed'} (exit {code})", file=sys.stderr)
             sys.exit(code if isinstance(code, int) and code else 1)
-    sys.exit("[builderbot] ERROR: the tests are still going after an hour; the job is on the Jobs tab")
+    sys.exit("[builderbot] ERROR: the tests are still going after an hour; the job is on the Jobs page")
 
 
 def edit():
@@ -368,7 +368,7 @@ def edit():
         # On ask: Allow removes it, or writes the env and builds nothing,
         # since the card said env set and the rebuild is the next ask.
         print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}), waiting up "
-              "to 15 minutes for Allow on the dashboard's Docker tab or bell", file=sys.stderr)
+              "to 15 minutes for Allow on the dashboard's Containers page or bell", file=sys.stderr)
         o = waits.outcome(auth, r["id"], "it was not allowed")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it would not start'}")
@@ -393,7 +393,7 @@ def edit():
             time.sleep(1)
         else:
             if jid:
-                sys.exit(f"[builderbot] ERROR: the remove is still going after five minutes ({jid} on the Jobs tab)")
+                sys.exit(f"[builderbot] ERROR: the remove is still going after five minutes ({jid} on the Jobs page)")
         print("[builderbot] removed" + (": its daemon did not answer, so the row is gone and whatever "
                                         "ran there still runs" if r.get("forgot") else "; its env and data stay for a remake"))
     else:
@@ -440,7 +440,7 @@ def ls():
         else:
             print(f"nothing belongs to {proj} on its node: a compose file at its root "
                   "(docker-compose.yml or compose.yml) and bb devapp new make its dev instance, "
-                  "and a container made elsewhere is put under it on the Docker tab by an administrator")
+                  "and a container made elsewhere is put under it on the Containers page by an administrator")
         raise SystemExit(0)
     w = max(len(r[0]) for r in rows)
     for name, kind, state, ports in sorted(rows):
@@ -464,7 +464,7 @@ def ctl():
         raise SystemExit(0)
     if r.get("id"):
         print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}), waiting up "
-              "to 15 minutes for Allow on the dashboard's Docker tab or bell", file=sys.stderr)
+              "to 15 minutes for Allow on the dashboard's Containers page or bell", file=sys.stderr)
         o = waits.outcome(auth, r["id"], "it was not allowed")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it did not happen'}")

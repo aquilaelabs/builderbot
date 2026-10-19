@@ -83,7 +83,7 @@ class Mentioned(unittest.TestCase):
             items = staticmethod(lambda p: [
                 {"id": 4, "text": "The emulator boots headless on the dev node", "steps": [{"text": "a"}, {"text": "b", "done": True}]},
                 {"id": 9, "text": "A parked one about the emulator", "shelved": 1},
-                {"id": 12, "text": "Unrelated: the nginx tab's certificate block"}])
+                {"id": 12, "text": "Unrelated: the nginx page's certificate block"}])
 
         class Bugs:
             open_bugs = staticmethod(lambda p: [

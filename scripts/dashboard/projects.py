@@ -1994,7 +1994,7 @@ def pin_new_project(name):
 def pin(uid, name, on, fresh=False):
     """Pin or unpin a project for one account, once the server has let a
     signed-in person: the pins are theirs. Unpinning something running a
-    build leaves it running, and the Projects tab still has every button.
+    build leaves it running, and the Projects page still has every button.
 
     The first unpin has to write the whole current set, not just remove
     one: until then there is no entry, which means "all of them", and

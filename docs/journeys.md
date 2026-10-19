@@ -10,7 +10,7 @@ walking it; the snag is fixed or filed, then the walk continues.
 ## New deploy to first project to first build and test (15 September 2026)
 
 The starting state was made by the two verbs built for it that day: **Reset
-BuilderBot** on the controller (Settings tab, the word `reset` typed), which
+BuilderBot** on the controller (Settings page, the word `reset` typed), which
 moved every account, node, setting, token and notebook into a dated
 directory and brought the dashboard back at *Create the owner*; and
 **Uninstall** on the node, which took the agent, its accounts, its mounts,
@@ -25,7 +25,7 @@ What was pressed, in order:
    share from before the reset. Trashed from its row and purged from the
    Trash, both asking for the name. No snag; a fresh install on a share that
    held projects before will see the same, which is right.
-3. **Enroll node.** The Nodes tab minted a token and showed the command:
+3. **Enroll node.** The Nodes page minted a token and showed the command:
    `sudo bash provision-linux.sh --controller URL --token bbe_…`. *Snag:* the
    dialog does not say where `provision-linux.sh` comes from, and the
    controller does not serve it although its image now carries it; a person
@@ -53,9 +53,9 @@ What was pressed, in order:
    minted against the dev controller's own state and `bb` was run on the VM
    as the session account with the environment `bb-tty` gives a session.
    `bb status` named the node; `bb build` ran there and wrote the artifact
-   onto the share, listed on the Artifacts tab; `bb test` ran there.
+   onto the share, listed on the Artifacts view; `bb test` ran there.
    *Snag, already filed (B128):* `bb git policy`, a read, refused until the
-   owner had a commit identity on the Profile tab. With one set, the policy
+   owner had a commit identity on the Profile page. With one set, the policy
    read, `ls-remote` answered, and a branch pushed through the controller's
    stored credential.
 8. **A runner.** Its token stored on the node's row against the lab forge
@@ -94,12 +94,12 @@ brought it up, and the site answered on the node's address. *Snag, fixed
 closed by ... port 22" and "state unknown" throughout, because the one read
 the rows are drawn from, `docker ps`, still went over ssh from the
 controller while every action ran through the agent. A bare docker read
-addressed at an agent node now runs there as a probe job the Jobs tab never
+addressed at an agent node now runs there as a probe job the Jobs page never
 keeps, and a node that is on a job is not probed (a probe queued behind a
 build would wait the build out): the last answer stands until the job ends.
 
 **An Android app, built on the node.** JDK, the Android command-line tools
-and the platform tools were installed from the Toolchains tab with the node
+and the platform tools were installed from the Toolchains page with the node
 picked (a job each; the tab shows the running one). A new empty project
 (`droid`) took a one-screen Java app with Gradle 8.14 and AGP 8.10, its
 settings took the node, `./gradlew assembleDebug` and the APK glob, and
@@ -113,7 +113,7 @@ that view wrote `VERSION` and the block read `0.1.0-dev.2+…` at once. No
 snag in the product. *Two snags beside it:* a console login shell on the
 node had no `bb` on PATH because the provisioner's profile line named the
 store the node was born with, not the one Storage had moved it to (B135,
-fixed: the agent rewrites the line after every apply); and the Toolchains tab
+fixed: the agent rewrites the line after every apply); and the Toolchains page
 asked to install the emulator's libraries on a node that had never
 installed the emulator, because every android recipe shares one directory
 (B139, fixed: a recipe is held when its own tool exists).
@@ -131,7 +131,7 @@ both accounts carrying one Claude login, pressing Claude again to get back
 to your own running session was refused with the one-account sentence
 naming the other person, and the refusal arrived as the browser's JSON
 viewer inside the tab. *Snag, fixed (B142):* dev3, an admin, was told to
-take the project on from the Users tab, whose editor hid the project list
+take the project on from the Users page, whose editor hid the project list
 for anyone but a user. *Filed:* the sign-out button of a user whose login
 is shared names a session that is not theirs (see the notes in B137's
 area), and a plain user's Doctor card carried the controller's whole pill
@@ -141,14 +141,14 @@ list, now cut to the lines that are theirs.
 moved to nodes and are gone or reworded: a red "git identity configured" on
 a box where nobody commits, "no Claude login here" beside the card naming
 the login, "gh is not authenticated" for a thing nothing signs in, "no ssh
-key (agent empty)" and "no node with a daemon" while the Docker tab was
+key (agent empty)" and "no node with a daemon" while the Containers page was
 building on one. The probe behind the last one now opens the node store and
 answers for the node the manager would open on.
 
 What this walk moved or confirmed:
 
 - Alpha, new evidence: the Docker manager against an agent node end to end
-  (Send, build, Up, the route); the Android toolchain from the Toolchains tab and
+  (Send, build, Up, the route); the Android toolchain from the Toolchains page and
   a Gradle build on a node with the store's JDK and SDK; several accounts
   with sessions on one project at once, each in its own tree; the users
   editor and the API's per-account refusals.
@@ -175,7 +175,7 @@ What was pressed, in order:
 1. **New project, from nothing.** `journey-scratch`, no git host, a sentence
    of notes. It came back as a repository on `main` with CLAUDE.md written
    from those notes, and its row said `no node: pick one in the project's
-   settings, or enroll one on the Nodes tab`. No snag: the row names the one
+   settings, or enroll one on the Nodes page`. No snag: the row names the one
    thing standing between it and a session, which is what the 16 September
    walk asked for.
 2. **The same box as dev2.** The Projects card listed `hello` and nothing
@@ -323,7 +323,7 @@ whoever reads it, and the two things behind it were not the same thing.
    project's settings dialog under Access token, or point the remote at ssh.*
    A token that is present and rejected says the other thing instead. Both
    are sentences that name the control; git's line named only what happened.
-5. **The Emulator tab** drew for the picked node, and its button on the Tools
+5. **The Emulator page** drew for the picked node, and its button on the Tools
    card was ghosted with its reason, since no node there has the Android
    tools. The tab also surfaced, unprompted, that the dev VM's agent is 0.5.80
    against a 0.6 controller: a different compatibility window, said on the tab
@@ -367,11 +367,11 @@ controller's own request trace was read beside it.
    check compares the agent file's digest, the words compared version
    numbers, and the file had moved without its constant. The row and the
    refusal name the two files by digest now when the numbers match, and
-   the Docker tab no longer joins its clause as *...does not know.: the
+   the Containers page no longer joins its clause as *...does not know.: the
    rows cannot say*.
 4. **Update agent**, pressed as a tester would. The self-update job named
    the shipped digest, ran in seconds, and the node came back online on
-   the controller's own file. The Docker tab's banner left, the Toolchains
+   the controller's own file. The Containers page's banner left, the Toolchains
    tab's ticks came alive.
 5. **Tools, for real on a RedHat node.** Graphics ticked, Install selected
    pressed: the recipe fixed on 22 Sep fetched ImageMagick by tag and
@@ -384,13 +384,13 @@ controller's own request trace was read beside it.
    says why, and a press on the arrow itself now says *no Claude session
    is running here* in the band (B213 on an instance). The project row's
    Claude button is unlit, and the two agree (B214).
-7. **The Phone tab** says in one sentence that no node carries adb and how
-   to change that. **The Emulator tab** draws for the picked node and says
+7. **The Phone page** says in one sentence that no node carries adb and how
+   to change that. **The Emulator page** draws for the picked node and says
    where its images would live. **Settings** opens with its three groups
    and the Debugging dialog.
 
 - Alpha, new evidence: every tab asks once on open, on an instance with a
-  real node heartbeating; the Toolchains tab installs a script recipe onto a
+  real node heartbeating; the Toolchains page installs a script recipe onto a
   RedHat node and the row follows the job; Update agent is a one-press
   recovery and the tabs it unblocks say so; a dead arrow explains itself.
 - Still dev: a real Claude session on the dev pair (no Claude login there),
@@ -406,12 +406,12 @@ On `builderbot-dev` built from `3c794fe`, as the owner, with the project
 `web` (an nginx compose whose `.env.example` sets `WEB_PORT=8088`) already
 holding one container, `web-dev`, on `bb-dev-sandbox`.
 
-1. **Send, with a container already there.** The Artifacts tab's **Send to
+1. **Send, with a container already there.** The Artifacts view's **Send to
    Docker manager** opened on the name `web`, the project's own, since
    `web-dev` is not it, and the hint under the name said the new one goes
    beside the one it already has and needs ports of its own. The env came
    seeded with `WEB_PORT=8088`; it was changed to `8089` and Create pressed.
-2. **The build it hands over.** The Docker tab opened on the new row and
+2. **The build it hands over.** The Containers page opened on the new row and
    asked the same question Build asks (*Build web/main? Builds the first
    image and brings it up.*); answered yes, it built on the node and the
    controller reported it running with `8089->80` published, beside
@@ -419,7 +419,7 @@ holding one container, `web-dev`, on `bb-dev-sandbox`.
    session the walk ran in reaches only its own project's containers, and
    the VM's address is not one of them.
 3. **Send again.** The dialog opened on `web-2`, saying it goes beside the
-   two it already has. With the Docker tab's branches loaded, Build from
+   two it already has. With the Containers page's branches loaded, Build from
    showed too, carrying the same ports sentence a second time; that one
    went (`5391ae1`). Canceled there.
 4. **What a session is handed.** `web`'s briefing (the Briefing tab's
@@ -481,7 +481,7 @@ project and read off the dev share. On `builderbot-dev` at e559a4a, then
 
 The three scanners the operator runs on the host (semgrep, trivy,
 mobsfscan, one-shot services under a `scan` profile) were made as a
-container of no project on the dev VM from the Docker tab's own path, with
+container of no project on the dev VM from the Containers page's own path, with
 the paths moved to what the pair shares: `/workspace` scanned read-only,
 reports and caches under `/workspace/.scanners` on the same share, which
 this box mounts at `/workspace-dev`, and `COMPOSE_PROFILES=scan` in its

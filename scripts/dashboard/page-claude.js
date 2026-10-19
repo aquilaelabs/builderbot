@@ -395,7 +395,7 @@ function placeResumeMenu(){
         + `<button data-end="${esc(n.id)}" class="danger">End session</button>`);
     if (n.where !== "node") return `<div class="rmstate bad">${esc(n.why)}</div>`;
     if (!claudeSigned(n))
-      return bar(`<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Nodes tab, at its Claude sign-in">Sign in on ${esc(n.name)}</button>`);
+      return bar(`<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Nodes page, at its Claude sign-in">Sign in on ${esc(n.name)}</button>`);
     return bar((p.last_claude ? `<button data-r="1" data-node="${esc(node)}">Resume: ${esc(ago(p.last_claude.when))}</button>` : "")
       + `<button data-n="1" data-node="${esc(node)}"${p.last_claude ? "" : ' class="primary"'}>New conversation</button>`);
   };

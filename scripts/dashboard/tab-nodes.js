@@ -163,7 +163,7 @@ function nodeGpu(n){
   return `<div class="actbar ndgpu">
     <span class="state ${cls}">gpu: ${esc(card)} · ${esc(word)}</span>
     ${nodriver ? `<button type="button" data-ndtc="${esc(n.id)}"
-      title="the driver is installed from this node's Toolchains tab">Install the driver</button>` : ""}
+      title="the driver is installed from this node's Toolchains page">Install the driver</button>` : ""}
   </div>`;
 }
 // The sound this node has (R107), in a line: the card ALSA sees, or a
@@ -345,9 +345,9 @@ function nodeRunnerSection(n, c, between = ""){
     // states: a runner registered with no listener reads as healthy right
     // up until a workflow sits in "Waiting for a runner".
     const [word, pcls, say, scls] = job
-      ? [`${job} now`, "warn", "its job is on the Jobs tab, and the buttons come back when it ends", "note"]
+      ? [`${job} now`, "warn", "its job is on the Jobs page, and the buttons come back when it ends", "note"]
       : !rep.installed
-      ? (failed ? ["install failed", "off", `install failed ${when(failed.ended)}: ${failed.why || "its job on the Jobs tab says why"}`, "bad"]
+      ? (failed ? ["install failed", "off", `install failed ${when(failed.ended)}: ${failed.why || "its job on the Jobs page says why"}`, "bad"]
         : want.want ? ["asked for", "warn", "install asked for; the node has not reported it yet", "note"] : ["not installed", "", "", ""])
       : rep.busy ? ["running a job", "ok", "", ""]
       : rep.active ? ["listening", "ok", "", ""]
@@ -364,7 +364,7 @@ function nodeRunnerSection(n, c, between = ""){
       rep.installed && !rep.name && !rep.active ? ["its registered name did not come back, so the registration may not have finished", "warn"] : null,
       // A reinstall that failed left the runner standing: its state stays,
       // and what went wrong follows it.
-      failed && rep.installed ? [`reinstall failed ${when(failed.ended)}: ${failed.why || "its job on the Jobs tab says why"}`, "bad"] : null,
+      failed && rep.installed ? [`reinstall failed ${when(failed.ended)}: ${failed.why || "its job on the Jobs page says why"}`, "bad"] : null,
       !stored ? [`no token stored: Add runner with this address stores one, to ${rep.installed ? "reinstall or remove it" : "install it"}`, "warn"] : null,
     ].filter(Boolean);
     const ro = mayOn(slot) !== "write";
@@ -1127,7 +1127,7 @@ function nodeConfSections(n){
     la && la.state !== "succeeded" && la.what === kind && stillPending[kind]
     && !busyNow && !stale && !c.dirty
       ? [`The last ${kind} apply ${la.state === "canceled" ? "was canceled" : "failed"}${
-          la.error ? ": " + la.error : ""}. Its log is on the Jobs tab; fix it and Apply again.`, "bad"]
+          la.error ? ": " + la.error : ""}. Its log is on the Jobs page; fix it and Apply again.`, "bad"]
       : null;
   // The state line answers one question: is there anything to press Apply
   // for, and names the changes when there is, so the button is not a leap.
@@ -1582,7 +1582,7 @@ function runnerRows(){
       : n.busy ? ["running a job", "ok"]
       : n.listening ? ["listening, idle", "ok"]
       : n.installed ? ["installed, not listening", "bad"]
-      : n.failed ? [`install failed ${when(n.failed.ended)}: ${n.failed.why || "its job on the Jobs tab says why"}`, "bad"]
+      : n.failed ? [`install failed ${when(n.failed.ended)}: ${n.failed.why || "its job on the Jobs page says why"}`, "bad"]
       : ["install asked for; not reported yet", "warn"];
     return `<button type="button" class="row${n.id === runnerNode ? " on" : ""}" data-runnode="${esc(n.id || "")}"><span class="grow"><b>${esc(n.node)}</b>${
       n.url ? ` <span class="dim">${esc(n.url.replace(/^https?:\/\//, ""))}</span>` : ""}
@@ -1736,7 +1736,7 @@ function ndDialogs(){
         <label class="ndcap" id="ndEnDoorCloseRow" hidden><input type="checkbox" id="ndEnDoorClose"> Close port 22 to the internet once the door is up</label>
         <div class="hint" id="ndEnDoorHint" hidden>Who gets to the door is the tunnel's own say (Cloudflare Access, or the tailnet's ACLs); the machine's keys decide after that. Leave port 22 open until you have come in through the door once.</div>
         <label class="ndcap"><input type="checkbox" id="ndEnNginx"> Put nginx on it once it is enrolled</label>
-        <div class="hint" id="ndEnNginxHint" hidden>BuilderBot's own reverse proxy, deployed the moment the node enrolls, with the routes and certificate the nginx tab holds for it (set them there first or after).</div>
+        <div class="hint" id="ndEnNginxHint" hidden>BuilderBot's own reverse proxy, deployed the moment the node enrolls, with the routes and certificate the nginx page holds for it (set them there first or after).</div>
       </div>
       <div class="field">
         <div class="setrow col ctlrow">${lbl("ndEnReach", "Reaches the controller",

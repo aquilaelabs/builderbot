@@ -70,7 +70,7 @@ def missing_why(node):
     n = _node(node)
     if n.get("has_ftp") is False:
         return (f"{n.get('name') or 'its node'} does not have the ftp toolchain: "
-                "install it on the Toolchains tab")
+                "install it on the Toolchains page")
     return ""
 
 
@@ -112,7 +112,7 @@ def _too_old(version):
         return ""
     if len(have) == 3 and have < FTP_AGENT:
         return (f"its node's agent is {version}, and file access needs "
-                f"{'.'.join(map(str, FTP_AGENT))} or newer: Update agent on the Nodes tab")
+                f"{'.'.join(map(str, FTP_AGENT))} or newer: Update agent on the Nodes page")
     return ""
 
 

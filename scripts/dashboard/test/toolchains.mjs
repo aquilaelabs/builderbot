@@ -76,7 +76,7 @@ ok(list.every(r => !r.installed) && list.every(r => r.where === 'not installed')
 ok(await page.$$eval('.doc .tcs .tc .pill', ps => ps.length === 0),
    '...so no row carries a size or a version: nothing has been weighed yet');
 ok((await page.$$eval('.doc .tiles .tile .tl', ls => ls.map(l => l.textContent.trim()))).includes('installed'),
-   'the Toolchains tab opens on tiles: what is installed of what is offered');
+   'the Toolchains page opens on tiles: what is installed of what is offered');
 // ...on the page's status line under the tiles (the operator, 17 Oct: one
 // order for every page's top).
 ok((await page.$eval('.doc .headline.tcact .state', el => el.textContent)).includes(`${DIR}/sdk`),
@@ -531,7 +531,7 @@ ok(!existsSync(`${DIR}/androidsdk/emulator`), '...and it is gone from disk');
 // a 12px gutter applied to a wrapper instead of 14px on the rows, and a hover
 // highlight no other list here has, in a hardcoded color no scheme reached.
 ok(await page.$eval('.doc:has(.tc)', e => e.classList.contains('flush')),
-   'the Toolchains tab fills its pane, like every other document tab');
+   'the Toolchains page fills its pane, like every other document tab');
 // The row on show, and the two read in one frame and waited for until they
 // agree (B792, B444). This failed twice under a whole run's load and passed
 // alone, and no rule, token or script found here moves either side, so the
@@ -801,7 +801,7 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   const builds = execFileSync('bash', ['-c', `. ${JSON.stringify(LIB)}; . ${JSON.stringify(SDK)}; sdk_builds_with ${JSON.stringify(sdk)}`],
                               { encoding: 'utf8', env: { ...process.env, GRADLE_USER_HOME: gh } });
   ok(/== builds with ==/.test(builds) && /platforms\s+35 36\n/.test(builds)
-     && /compileSdk\s+up to 36: a library that wants a newer platform fails checkDebugAarMetadata; the operator adds one on the Toolchains tab/.test(builds)
+     && /compileSdk\s+up to 36: a library that wants a newer platform fails checkDebugAarMetadata; the operator adds one on the Toolchains page/.test(builds)
      && /build-tools\s+36\.0\.0/.test(builds),
      `bb toolchains says the platforms, the compileSdk ceiling and the build-tools as a build reads them (${builds.split('\n')[2]?.trim()})`);
   ok(/gradle\s+9\.7\.1 \(wrapper distributions, no download\)/.test(builds) && /AGP\s+9\.4\.1\n/.test(builds)
@@ -809,7 +809,7 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
      '...and what the Gradle cache holds, naming only what is there');
   const bare = execFileSync('bash', ['-c', `. ${JSON.stringify(LIB)}; . ${JSON.stringify(SDK)}; sdk_builds_with ${JSON.stringify(`${odd}/none`)}`],
                             { encoding: 'utf8', env: { ...process.env, GRADLE_USER_HOME: `${odd}/nogradle` } });
-  ok(/platforms\s+none: nothing compiles here until the operator adds one on the Toolchains tab/.test(bare)
+  ok(/platforms\s+none: nothing compiles here until the operator adds one on the Toolchains page/.test(bare)
      && /modules\s+none cached yet: the first build fetches them/.test(bare),
      '...and an empty store and an empty cache are said as such rather than as a blank');
   // The NVIDIA driver's line (R102), read from this machine's sysfs and
@@ -912,7 +912,7 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   ok(plat && plat.installed && plat.label === 'Android SDK Platform 37' && /holds it/.test(plat.about),
      `...while a compileSdk the store holds (android-37.0) reads installed (${plat?.about?.slice(-30)})`);
   ok(!Object.keys(by).some(k => /system-images/.test(k)),
-     'no image row: the level a project compiles against is the Emulator tab\'s question (B720)');
+     'no image row: the level a project compiles against is the Emulator page\'s question (B720)');
   const drawn = await page.evaluate(async id => { tcNode = id; toolchains = null; tcRev++; drawPanes(); await loadToolchains();
     return [...document.querySelectorAll('.doc .tc')].map(e => e.querySelector('input')?.value).filter(v => /;/.test(v || '')); }, sb.id);
   ok(drawn.includes('android:ndk;29.0.14206865') && drawn.includes('android:build-tools;36.0.0'),

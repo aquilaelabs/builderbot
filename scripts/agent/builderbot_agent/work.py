@@ -222,7 +222,7 @@ class WorkMixin:
         return "succeeded", 0
 
     def storage_measure(self, job, spec):
-        """The Storage tab's Measure now: a walk of the disks at once
+        """The Storage page's Measure now: a walk of the disks at once
         rather than at the next hour, then a hello so the tab has it."""
         job.say("measuring the disks\n")
         got = storage.measure(self.state)
@@ -428,13 +428,13 @@ class WorkMixin:
                 hit = next((os.path.join(d, name) for d in reversed(bt)
                             if os.access(os.path.join(d, name), os.X_OK)), "")
                 if not hit:
-                    job.say(f"no {name} on this node: install android-tools from the Toolchains tab\n")
+                    job.say(f"no {name} on this node: install android-tools from the Toolchains page\n")
                     return "failed", 69
                 tools[name] = hit
         else:
             tools["jarsigner"] = os.path.join(store, "jdk", "bin", "jarsigner")
             if not os.access(tools["jarsigner"], os.X_OK):
-                job.say("no jarsigner on this node: install the jdk from the Toolchains tab\n")
+                job.say("no jarsigner on this node: install the jdk from the Toolchains page\n")
                 return "failed", 69
         env = dict(sdk_env(self.state))
         who = self.drop_privileges(env)
@@ -571,7 +571,7 @@ class WorkMixin:
         node's toolchain store, or off it. Not a toolchain (it exists at
         every API level at once), but it lives on the same store and goes
         through the same bundle, account and one-at-a-time rule, so this is
-        toolchain() for one id, or for several in turn: the Emulator tab's
+        toolchain() for one id, or for several in turn: the Emulator page's
         Install selected sends the ticked ones as `images` (R121), and the
         first that fails ends the job, as a toolchain install does. Nothing
         on PATH moves, so no session renew."""

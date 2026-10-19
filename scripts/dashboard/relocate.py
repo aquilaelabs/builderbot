@@ -1,5 +1,5 @@
 """Copying or moving a dev instance to another node, its data with it (the
-operator, 10 Oct): the Docker tab's Copy or move. A fresh container is Send
+operator, 10 Oct): the Containers page's Copy or move. A fresh container is Send
 to Docker's; this one carries what the old one had.
 
 Three jobs, one after another, each started when the one before succeeds

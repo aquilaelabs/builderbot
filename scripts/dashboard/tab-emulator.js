@@ -230,7 +230,7 @@ function renderEmulatorInto(i){
       nd.pick ? `: ${esc(nd.pick)} below is the plain one` : ""}.</div></div>`).join("")}
     ${job.state === "failed" && job.error ? `<div class="tchead bad">${
       job.action === "remove" ? "Removing" : "Adding"} ${esc(job.image)} failed: ${esc(job.error)}.
-      The Jobs tab has its log.</div>` : ""}
+      The Jobs page has its log.</div>` : ""}
     ${d.wrong_platform ? "" : emuSections((d.images || []).length
       ? `<div class="tcs">${d.images.map(im => emuRow(im, held)).join("")}</div>`
       : `<div class="tchead">${d.known === false

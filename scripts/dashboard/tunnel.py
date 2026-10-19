@@ -7,7 +7,7 @@ from two settings: the tunnel's token, pasted once from Zero Trust, and the
 hostname. The process is this module's child, started when the settings
 say so, restarted when it dies, stopped when the token is taken away; its
 last lines and whether it has registered a connection are what the
-Settings tab shows. With an API token as well (optional), the hostname's
+Settings page shows. With an API token as well (optional), the hostname's
 DNS record and the tunnel's two rules (the agent's API to the controller,
 everything else 404) are written through Cloudflare's API rather than
 clicked, so the whole of the home side is one paste.
@@ -218,7 +218,7 @@ def _redact(line):
 
 
 def status():
-    """What the Settings tab says: whether cloudflared is here, running,
+    """What the Settings page says: whether cloudflared is here, running,
     registered, at which hostname, since when, its last lines."""
     token, host = _wanted()
     running = _proc is not None and _proc.poll() is None

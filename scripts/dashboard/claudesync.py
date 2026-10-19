@@ -6,7 +6,7 @@ every machine links to /workspace/.claude/<uid>/projects (common.sh's
 claude_projects_link). On the projects share that was one directory for
 all of them. A node holding its projects as a synced copy (R162, R163) has
 no share, so it keeps its own directory at the same path and its agent
-mirrors it here: the controller's copy stays the one the Profile tab, the
+mirrors it here: the controller's copy stays the one the Profile page, the
 Memory tab, bb transcripts and the resume offer read.
 
 Not wssync.py's machinery, on purpose: a transcript only ever grows, and

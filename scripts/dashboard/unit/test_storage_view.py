@@ -1,4 +1,4 @@
-"""The Storage tab's answer for one account (storage.py, R169): the nodes
+"""The Storage page's answer for one account (storage.py, R169): the nodes
 the account holds the area on, each project's folders where it may see the
 project, and every other project's folded into one line."""
 import os

@@ -119,11 +119,11 @@ scripts/
     roles.py                     roles and permissions (R137): a grant is a capability on a scope, a role a named set of them, in roles.json; the gate (users.may) reads them
     prefs.py                     which model and effort a project's Claude session runs on
     settings.py                  controller settings, the things that used to be environment variables; switches, a text and two secrets never shown back
-    storage.py                   the Storage tab's answer (R169): the nodes an account holds the area on, each project's folders where it may see the project, the rest as one line
+    storage.py                   the Storage page's answer (R169): the nodes an account holds the area on, each project's folders where it may see the project, the rest as one line
     tunnel.py                    the home tunnel the controller runs itself (R176): cloudflared as its child from the settings, and the hostname's record and rules through Cloudflare's API
     statefile.py                 writing a state file, and holding it while you read-modify-write one
-    toolchains.py                everything behind the Toolchains tab: catalog, sizes, the job worker
-    emulator.py                  everything behind the Emulator tab: a node's Android system images
+    toolchains.py                everything behind the Toolchains page: catalog, sizes, the job worker
+    emulator.py                  everything behind the Emulator page: a node's Android system images
     enrollscript.py              Enroll node as one script: the answers, the token and a WireGuard tunnel inside the provisioner
     memory.py                    everything behind the memory book: what Claude remembers per project
     rules.py                     house rules: what has been decided about working on a project
@@ -142,7 +142,7 @@ scripts/
     ftp.py                       a project's file access over FTP and in an editor: the switches, the port, each account's access, and access_for, the one answer both doors give (R151, R159)
     wssync.py                    a node's projects as a synced copy: the index, state, since, get and put for its agent, and conflicts (R162)
     snapshots.py                 each project's tree as it was each day, stored once by content, pruned to the project's days, and restored whole or a file at a time (R165)
-    paths.py                     where the controller keeps what grows (snapshots, the git relay, logs), as the Settings tab's Storage section sets it, and the move between two
+    paths.py                     where the controller keeps what grows (snapshots, the git relay, logs), as the Settings page's Storage section sets it, and the move between two
     claudesync.py                a synced node's Claude conversations: the listing, get and put (whole, a tail, gone) for its agent's mirror (B613)
     files.py                     a project's files for a person's editor (R159): stat, list, read, write, rename, delete, search and changes, inside the project and never .git
     git.py                       the notebook's Git view: the repository read out, and its writes
@@ -167,12 +167,12 @@ scripts/
     devactions.py                the layer that runs and reports an instance: up, down, rebuild, test, remove, state and act, the compose plan and job runners, on the base devapp.py keeps
     relocate.py                  copying or moving a dev instance to another node, its volumes and data directory with it: three jobs, packed on the old node, unpacked on the new, then its rebuild
     containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is; the Docker manager's view and verbs
-    imagecheck.py                every container's registry images against what their registries serve (R195): a weekly check, Check for updates on the Docker tab, Update on a row
+    imagecheck.py                every container's registry images against what their registries serve (R195): a weekly check, Check for updates on the Containers page, Update on a row
     nginxproxy.py                one nginx per node, BuilderBot's own (R171): the routes and certificate kept here, the compose file generated from them, deployed and rebuilt through containers.py
     phone.py                     a paired handset on a node: install, push, and the asking
     phonelease.py                a phone lent to a project (R113): the lease, and what its sessions may do on the phone without asking
     db.py                        the controller's store: the SQLite connection, the migrations, ids and the audit trail
-    nodes.py                     the node registry, the job queue and the agent's channel (docs/nodes.md); the Nodes tab's verbs; a build job from the controller
+    nodes.py                     the node registry, the job queue and the agent's channel (docs/nodes.md); the Nodes page's verbs; a build job from the controller
     channel.py                   the node agent's verbs behind /api/v1/agent/: enroll, hello, work, a job's files, log and result
     claudecode.py                Claude Code on each node: which version, checking for and installing an update
     claudegrant.py               which nodes each account is signed in to Claude on, as each node reported it
@@ -197,8 +197,8 @@ scripts/
     bbrelay.py                   a bb verb from a node's session, run here: which verbs travel, and what a session may push
     hooks.py                     what a node session's hooks post: overlap notes, the chat feed, the catch-up, the turn queue
     macros.py                    what the page may type into a terminal: the command and key tables, the pins, custom lists
-    profiletab.py                an account's own settings, the Profile tab
-    transcripts.py               an account's conversations with Claude as a text to download, from the Profile tab
+    profiletab.py                an account's own settings, the Profile page
+    transcripts.py               an account's conversations with Claude as a text to download, from the Profile page
     fields.py                    one field out of a request body, read one way by the server and the modules it calls
     timing.py                    where a request's time went: named parts and its own CPU, for bb dashboard trace
     share.py                     a part's share of what a session is sent: the rules, the roadmap and the bugs say less per row before they leave one out
@@ -218,7 +218,7 @@ scripts/
     bundle.py                    the zip a node runs, built the same on the controller and the node, so the digests agree
     controller.py                the connection to the controller, verified by pin
     stores.py                    the node's stores, a store's path rules, and node.json
-    storage.py                   what the disks hold, by filesystem, store and project: an hourly walk on its own thread, for the Storage tab (R169)
+    storage.py                   what the disks hold, by filesystem, store and project: an hourly walk on its own thread, for the Storage page (R169)
     backends.py                  the machine's package manager and network configuration backends
     toolchains.py                the toolchain store (R19): what is installed, who uses it, a session's environment
     gpu.py                       the NVIDIA card: its sample, its memory's holders, the driver and container toolkit
@@ -254,7 +254,7 @@ nodes/vm/                        the same machine for the other six hypervisors:
 nodes/cloud-init/                the seed a cloud image boots from: meta-data and the user-data that runs the provisioner
 config/skel/                     home directory skeleton
 config/icon.png                  the icon the Unraid template shows
-config/toolchains.json           the toolchains the Toolchains tab offers, and how to install each
+config/toolchains.json           the toolchains the Toolchains page offers, and how to install each
 config/templates/                briefing.md, assembled per session by preamble.py; nothing is copied into a project
 tools/readme-shots.mjs           the README's pictures (dashboard, notebook, nodes, toolchains, the phone's dashboard and terminal) from a running dashboard, normally the dev instance: default scheme, addresses scrubbed, nothing saved
 tools/bb-ref.sh                  writes the bb block of docs/reference.md from bb help; bb lint holds the two equal

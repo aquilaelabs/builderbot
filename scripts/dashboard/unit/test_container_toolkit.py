@@ -1,5 +1,5 @@
 """The NVIDIA container toolkit (R102): the agent's census of it, the row
-the Toolchains tab draws from that census, what a job is refused for first,
+the Toolchains page draws from that census, what a job is refused for first,
 and the gate a compose file that reserves the GPU meets before it starts.
 test_sandbox_gpu.py runs the helper's own install and removal."""
 import os
@@ -183,7 +183,7 @@ class Why(unittest.TestCase):
         self.assertIn("no NVIDIA card", toolchains.container_why(node(self.ON, card="")))
         self.assertIn("no Docker", toolchains.container_why(node(self.ON, docker="")))
         self.assertIn("update it", toolchains.container_why(node()))
-        self.assertIn("Toolchains tab", toolchains.container_why(node({"installed": "", "runtime": False})))
+        self.assertIn("Toolchains page", toolchains.container_why(node({"installed": "", "runtime": False})))
         self.assertIn("runtime", toolchains.container_why(node({"installed": "1.17.8-1", "runtime": False})))
         self.assertIn("driver", toolchains.container_why(node(self.ON, driver={**ABSENT, "installed": "610.57.04"})))
 

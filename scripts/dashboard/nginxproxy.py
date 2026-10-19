@@ -1,7 +1,7 @@
 """One reverse proxy per node, BuilderBot's own (R171, the operator, 10 Oct).
 
-The nginx tab lists every node's nginx instance: one nginx container per
-node, written here like a container from the Docker tab (containers.py), its
+The nginx page lists every node's nginx instance: one nginx container per
+node, written here like a container from the Containers page (containers.py), its
 compose file generated from what this module keeps rather than typed. What
 it keeps, per node: the routes (a hostname or path, to a port on that node,
 with or without TLS) and the certificate (a Cloudflare origin certificate
@@ -186,7 +186,7 @@ def nginx_conf(routes, rec=None):
     by_host = {}
     for r in routes:
         by_host.setdefault(r["host"], []).append(r)
-    lines = ["# Written by BuilderBot from the nginx tab: edit it there, not here.",
+    lines = ["# Written by BuilderBot from the nginx page: edit it there, not here.",
              "worker_processes auto;",
              "events { worker_connections 1024; }",
              "http {",
@@ -253,7 +253,7 @@ def compose_text(nid, rec):
     own = sorted(h for h, c in (rec.get("certs") or {}).items()
                  if (c or {}).get("set") and any(cert_for(rec, r["host"], r.get("cert", "")) == h for r in routes))
     conf = nginx_conf(routes, rec)
-    out = ["# Written by BuilderBot from the nginx tab (nginxproxy.py); Save there rewrites it.",
+    out = ["# Written by BuilderBot from the nginx page (nginxproxy.py); Save there rewrites it.",
            "services:",
            "  nginx:",
            f"    image: {image_ref(rec)}",
@@ -491,7 +491,7 @@ def behind(rec):
 
 
 def behind_named(name):
-    """behind() for the Docker tab's row of that name, or "" for a container
+    """behind() for the Containers page's row of that name, or "" for a container
     that is not a node's nginx."""
     for n in node_list():
         if container_name(n["id"]) == name:
@@ -516,7 +516,7 @@ def attention(deployed):
     """The bell's rows (R192): each node whose deployed nginx is behind the
     newest line, kind nginx, keyed by bellseen on the digest it would move
     to, so a dismissal holds until the registry moves again. `deployed`
-    says whether a node's nginx is on the Docker tab."""
+    says whether a node's nginx is on the Containers page."""
     lt = latest_image()
     if not lt.get("digest"):
         return []
@@ -551,7 +551,7 @@ def check_loop():
 
 
 def deployed(devapp, nid):
-    """Whether the nginx tab's container is on this node: written from here
+    """Whether the nginx page's container is on this node: written from here
     (a file source under its name) and bound to this node."""
     name = container_name(nid)
     return bool(devapp.is_file_source(name) and devapp._read_rec(name, devapp.MAIN).get("node") == nid)
@@ -703,7 +703,7 @@ def save_routes(nid, routes):
 
 
 def add_route(nid, port, cert, containers, devactions, devapp, host=""):
-    """A route written from a container's row on the Docker tab (R209): to
+    """A route written from a container's row on the Containers page (R209): to
     `port` on the node, at `host` (a subdomain, the operator, 13 Oct) or
     else at the hostname the certificate is filed under (its domain), with
     that pair, or at any hostname on 80 alone with no certificate; applied
@@ -711,7 +711,7 @@ def add_route(nid, port, cert, containers, devactions, devapp, host=""):
     (cert_for's rule: a pair covers its domain and the names under it). The
     same hostname and port again is refused by name; a port already routed
     at one hostname takes another (the operator, 14 Oct: a site at its
-    domain and at www), and the rest is the nginx tab's."""
+    domain and at www), and the rest is the nginx page's."""
     try:
         port = int(str(port).strip())
     except (TypeError, ValueError):
@@ -722,13 +722,13 @@ def add_route(nid, port, cert, containers, devactions, devapp, host=""):
     certs = rec.get("certs") or {}
     cert = str(cert or "").strip().lower()
     if cert and not (certs.get(cert) or {}).get("set"):
-        return {"error": f"this node holds no certificate filed under {cert}: paste it on the nginx tab first"}
+        return {"error": f"this node holds no certificate filed under {cert}: paste it on the nginx page first"}
     host = str(host or "").strip().lower()
     if host and host != "*" and not HOST_RE.match(host):
         return {"error": f"a hostname is a name like app.example.com: not {host}"}
     if host and cert and cert_for(rec, host) != cert:
         return {"error": f"the pair filed under {cert} does not cover {host}: pick a pair filed under its domain, "
-                         "or paste one on the nginx tab"}
+                         "or paste one on the nginx page"}
     host = host or cert or "*"
     if host != "*" and host not in _hosts_saved():
         add_hostname(host)
@@ -736,7 +736,7 @@ def add_route(nid, port, cert, containers, devactions, devapp, host=""):
     for r in routes:
         if int(r.get("port") or 0) == port and (r.get("host") or "*") == host:
             where = f"{r.get('host') or '*'}{r.get('path') or '/'}"
-            return {"error": f"port {port} already has a route: {where} on this node's nginx; change it on the nginx tab"}
+            return {"error": f"port {port} already has a route: {where} on this node's nginx; change it on the nginx page"}
     routes.append({"host": host, "path": "/", "port": port, "tls": bool(cert), "cert": cert})
     saved = save_routes(nid, routes)
     if saved.get("error"):
@@ -753,7 +753,7 @@ def deploy(nid, containers, devactions, devapp):
     the node has enrolled."""
     name = container_name(nid)
     if devapp.is_file_source(name):
-        return {"error": f"{name} is already on the Docker tab"}
+        return {"error": f"{name} is already on the Containers page"}
     # A new one is the newest line the registry listed, pinned (R192).
     pin_latest(nid)
     rec = record(nid)
@@ -795,7 +795,7 @@ def apply(nid, containers, devactions, devapp):
 
 
 def update(nid, containers, devactions, devapp):
-    """Update on the nginx tab's node or its Docker row (R192): the newest
+    """Update on the nginx page's node or its Docker row (R192): the newest
     line's digest pinned on the record and the container rebuilt with it,
     so the pull is the whole of what changes. The registry is read now
     when no check has, so the first press needs no Check first."""
@@ -817,5 +817,5 @@ def update(nid, containers, devactions, devapp):
 def remove(nid, devactions, devapp):
     name = container_name(nid)
     if not devapp.is_file_source(name):
-        return {"error": f"{name} is not on the Docker tab"}
+        return {"error": f"{name} is not on the Containers page"}
     return devactions.remove_instance(name, devapp.MAIN)

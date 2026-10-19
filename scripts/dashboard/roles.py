@@ -5,7 +5,7 @@ A grant is a CAPABILITY on a SCOPE. The capabilities are the actions the
 server's gate already asks about (users.may), grouped for the tab: what is
 done to a project, what reaches a node, and what is the controller's. A
 scope says where: every project, the projects the account is on
-(membership, the Users tab's list), or named projects. A role is a named
+(membership, the Users page's list), or named projects. A role is a named
 set of grants; an account carries one or more roles and their grants add
 up, never subtract: adding a role never takes something away.
 
@@ -43,7 +43,7 @@ CAPS = {
     "jobs": ("nodes", "run a command on a node as a job"),
     "terminal": ("nodes", "a shell on a node"),
     "create": ("controller", "make a project"),
-    "runner": ("controller", "the CI runner tab and its settings"),
+    "runner": ("controller", "the CI runner page and its settings"),
     "admin": ("controller", "everything else an administrator does: nodes, toolchains, settings, accounts"),
     "debug": ("controller", "debug mode, the controller's diagnostics and nodes' logs, and granting them to a project's sessions"),
 }
@@ -74,16 +74,16 @@ AREAS = (
     ("files", "File access", "project", "read the files over FTP or in an editor", "save, upload, rename and delete them"),
     ("containers", "Containers", "project", "its containers and their logs", "start, stop and rebuild them"),
     ("terminal", "Terminal", "project", "the shielded Claude console", "the full tmux shell"),
-    ("nodes", "Nodes", "global", "the Nodes tab", "configure nodes, and what a project's sessions reach"),
-    ("toolchains", "Toolchains", "global", "the Toolchains tab", "install and remove"),
-    ("jobs", "Jobs", "global", "the Jobs tab", "run a command on a node"),
+    ("nodes", "Nodes", "global", "the Nodes page", "configure nodes, and what a project's sessions reach"),
+    ("toolchains", "Toolchains", "global", "the Toolchains page", "install and remove"),
+    ("jobs", "Jobs", "global", "the Jobs page", "run a command on a node"),
     ("runner", "CI runner", "global", "the runner tab", "install and configure runners"),
     ("accounts", "Accounts and roles", "global", "the Users and Roles pages", "add accounts, give roles"),
     ("newprojects", "New projects", "global", "the nodes a project may be made on", "make a project, and own it"),
     ("controller", "Controller", "global", "settings and diagnostics", "settings, debug, pinned commands"),
     # The Storage tab (R169): what every node's disks hold, by project.
     # Read sees it; Write measures a node again now.
-    ("storage", "Storage", "global", "the Storage tab", "measure a node's disks now"),
+    ("storage", "Storage", "global", "the Storage page", "measure a node's disks now"),
 )
 # The areas a Global role may hold on named nodes alone (its `nodes`, none
 # named being every node): what reaches a machine (the operator, 7 Oct).
@@ -402,7 +402,7 @@ def nodes_for(u, area, need="read"):
 
 
 def summary(u):
-    """What an account's roles add up to, for the Users tab: {area: level},
+    """What an account's roles add up to, for the Users page: {area: level},
     the best it holds anywhere."""
     out = {}
     for a in AREA_KEYS:

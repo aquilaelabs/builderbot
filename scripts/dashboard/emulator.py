@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Everything behind the dashboard's Emulator tab: the Android system images
+"""Everything behind the dashboard's Emulator page: the Android system images
 on each node's toolchain store, which ones could be added, and the job that
 adds or removes one.
 
@@ -175,7 +175,7 @@ def ready():
     if fit:
         return {"ready": True, "why": "", "node": fit[0]["id"]}
     if not agents:
-        return {"ready": False, "why": "no node is enrolled: the Nodes tab enrolls one"}
+        return {"ready": False, "why": "no node is enrolled: the Nodes page enrolls one"}
     can = [n for n in agents if not wrong_platform(n)]
     if not can:
         return {"ready": False,

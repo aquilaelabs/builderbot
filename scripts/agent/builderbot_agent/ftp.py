@@ -58,7 +58,7 @@ class FtpServers:
             return rec
         exe = shutil.which("bb-ftpd", path=env.get("PATH"))
         if not exe:
-            rec["why"] = "the ftp toolchain is not installed on this node: install it on the Toolchains tab"
+            rec["why"] = "the ftp toolchain is not installed on this node: install it on the Toolchains page"
             return rec
         if not os.path.isdir(root):
             rec["why"] = f"{root} is not on this node"

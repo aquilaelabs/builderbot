@@ -862,9 +862,9 @@ await saveEdit();
 {
   const was = readFileSync(`${D}/docker-compose.yml`, 'utf8');
   await openEdit();
-  await page.fill('#cYml', was + '# edited on the Docker tab\n');
+  await page.fill('#cYml', was + '# edited on the Containers page\n');
   await saveEdit();
-  ok(readFileSync(`${D}/docker-compose.yml`, 'utf8') === was + '# edited on the Docker tab\n',
+  ok(readFileSync(`${D}/docker-compose.yml`, 'utf8') === was + '# edited on the Containers page\n',
      'a compose file saved from Edit is the project\'s own file, changed in its tree');
   writeFileSync(`${DIR}/dockerstate/config.fail`, '');
   await openEdit();
@@ -873,7 +873,7 @@ await saveEdit();
   await page.waitForSelector('#cErrWrap:not([hidden])', { timeout: 15000 });
   const said = await page.$eval('#cErr', e => e.textContent);
   ok(/compose will not read that, so the file is as it was/.test(said) && /mapping values/.test(said)
-     && readFileSync(`${D}/docker-compose.yml`, 'utf8') === was + '# edited on the Docker tab\n'
+     && readFileSync(`${D}/docker-compose.yml`, 'utf8') === was + '# edited on the Containers page\n'
      && await page.$eval('#cYmlField', e => !e.hidden),
      `...and one compose refuses is put back, its words on the compose tab (${said.slice(0, 80)})`);
   rmSync(`${DIR}/dockerstate/config.fail`, { force: true });
@@ -969,7 +969,7 @@ const failed = await listingUntil(() => /up failed/.test(dockerList?.job?.error 
 ok(/up failed/.test(failed.error || ''),
    'an Up that fails leaves the reason on the row, not only in the reply');
 ok(!failed.running && !('log' in failed),
-   '...and the payload carries no log: the reason is the row\'s, the output is the Jobs tab\'s');
+   '...and the payload carries no log: the reason is the row\'s, the output is the Jobs page\'s');
 await idle();
 await openManager();
 // The row's one-line summary is the REASON, not the label. A compose failure
@@ -2345,7 +2345,7 @@ ok(/PORT=8080/.test(await page.$eval('#dnEnv', e => e.value)),
   const own = await (await fetch(URL.replace(/\/$/, '') + '/api/devapp', { method: 'POST',
       headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
       body: JSON.stringify({ project: 'ep.silon', action: 'new', instance: 'Ep Silon' }) })).json();
-  ok(/already has its own container, ep-silon, on the Docker tab/.test(own.error || ''),
+  ok(/already has its own container, ep-silon, on the Containers page/.test(own.error || ''),
      `...and that name asked for again names the container it already is (${String(own.error).slice(0, 70)})`);
 }
 await page.fill('#dnName', 'Staging Two');
@@ -3117,7 +3117,7 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
   });
   ok(/8380 is reachable only through this node's nginx, and no route points at it yet/.test(said.bare)
      && /data-dmnginx="n1"/.test(said.bare) && !/9000/.test(said.bare) && said.routed === '' && said.elsewhere === '',
-     `a loopback port nothing routes to says so with the way to the nginx tab, and says nothing once routed or off a hosting node (${said.bare.replace(/<[^>]+>/g, '').slice(0, 70)})`);
+     `a loopback port nothing routes to says so with the way to the nginx page, and says nothing once routed or off a hosting node (${said.bare.replace(/<[^>]+>/g, '').slice(0, 70)})`);
 }
 
 // ---- a registry image that moved (R195) ---------------------------------
@@ -3134,7 +3134,7 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
   writeFileSync(`${DIR}/image-digests.json`, JSON.stringify({ [img]: `sha256:${'b'.repeat(64)}` }));
   await page.waitForSelector('#bDockerCheck', { timeout: 15000 });
   ok(await page.$eval('.dmimgbar .state', e => /not checked yet|checked/.test(e.textContent)),
-     'the Docker tab says when its registry images were last checked, beside Check for updates');
+     'the Containers page says when its registry images were last checked, beside Check for updates');
   await page.click('#bDockerCheck');
   await page.waitForSelector('.dmtab .row[data-inst="radarr|main"] .dmimages', { timeout: 20000 });
   ok(await page.$eval('.dmtab .row[data-inst="radarr|main"]', r => /a newer lscr\.io\/linuxserver\/radarr:latest is out/.test(r.querySelector('.dmimages').textContent)
@@ -3911,7 +3911,7 @@ ok(await page.$('#devSend'),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project: 'ep.silon', instance: 'riskynew', action: 'rebuild', ack: '' }) })).json()));
     const mj = await jobEnd(mine.job);
-    ok(mj.state === 'failed' && /Build or Rebuild on its row on the Docker tab/.test(mj.error || ''),
+    ok(mj.state === 'failed' && /Build or Rebuild on its row on the Containers page/.test(mj.error || ''),
        `...while a person's own rebuild without the confirmation is still refused, on its job (${mj.state}: ${
           String(mj.error || '').slice(0, 60)})`);
     await dial('ask');
@@ -4088,8 +4088,8 @@ ok(await page.$('#devSend'),
       openDocker();
       return { docker, nodes };
     });
-    ok(counts.docker === 1, `opening the Docker tab asks for its listing once (${counts.docker})`);
-    ok(counts.nodes === 1, `...and opening the Nodes tab asks for the node list once (${counts.nodes})`);
+    ok(counts.docker === 1, `opening the Containers page asks for its listing once (${counts.docker})`);
+    ok(counts.nodes === 1, `...and opening the Nodes page asks for the node list once (${counts.nodes})`);
     await page.waitForSelector('.dmtab', { timeout: 15000 });
     // ...and a heartbeat is not a repaint: the node list moves with every
     // one, and the tab is keyed on the rows its picker draws, not on that.
@@ -4106,7 +4106,7 @@ ok(await page.$('#devSend'),
       n.state = st; n.reported = was;
       return { numbers, state };
     });
-    ok(!keyed.none && keyed.numbers, "a heartbeat's numbers moving does not repaint the Docker tab");
+    ok(!keyed.none && keyed.numbers, "a heartbeat's numbers moving does not repaint the Containers page");
     ok(keyed.state, '...while a node changing state does');
   }
   const where = v => page.evaluate(async (w) => {
@@ -4252,7 +4252,7 @@ ok(await page.$('#devSend'),
   await api({ project: 'ep.silon', instance: 'main', action: 'down' });
   await refreshUntil(page, () => true, { timeout: 5000 });
   const down = await asSession({ project: 'ep.silon', action: 'test' });
-  ok(down.status === 400 && /is not running: Up on the Docker tab/.test(down.error || ''),
+  ok(down.status === 400 && /is not running: Up on the Containers page/.test(down.error || ''),
      `a container that is down is said so and never started behind the operator's back (${down.error})`);
   // The refusal that makes the container the only way (step 3): from a
   // session on a node, with the row set to `only` and the instance down,
@@ -4273,7 +4273,7 @@ ok(await page.$('#devSend'),
       out = execFileSync('bash', [`${REPO}/scripts/bb`, 'test'],
         { encoding: 'utf8', cwd: `${DIR}/ws/ep.silon`, env: nodeEnv, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (e) { code = e.status; out = String(e.stderr || '') + String(e.stdout || ''); }
-    ok(code !== 0 && /tests run only inside its dev instance \(ep-silon\), which is not running: Up on the Docker tab/.test(out)
+    ok(code !== 0 && /tests run only inside its dev instance \(ep-silon\), which is not running: Up on the Containers page/.test(out)
        && /Nothing runs on the node/.test(out),
        `with the row on only and the instance down, bb test from a session refuses, naming the instance (${
          code}: ${out.replace(/\s+/g, ' ').slice(0, 120)})`);
@@ -4398,7 +4398,7 @@ print(json.dumps(out))
      `a deleted project's container is still its, marked gone (${JSON.stringify(zrow(whileGone)).slice(0, 120)} ${zc.error || gone1.error || ''})`);
   await openManager();
   await page.waitForFunction(() => [...document.querySelectorAll('.dmgroup b')].some(b => b.textContent === 'gamma (deleted)'));
-  ok(true, '...drawn under "gamma (deleted)" on the Docker tab');
+  ok(true, '...drawn under "gamma (deleted)" on the Containers page');
   const back2 = await api('/api/trash-restore', { name: (gone1.to || '').split('/').pop() });
   ok(back2.ok && zrow(await api('/api/docker')).owner_gone === false, `...and a restore gives it back (${back2.error || 'ok'})`);
   await api('/api/devapp', { project: 'helper-for-gamma', action: 'remove' });
@@ -4785,7 +4785,7 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
              sandbox: nodesList.find(n => n.name === 'sandbox')?.id || '', dflt: nodesDefault };
   });
   ok(ids.spare && ids.dflt === ids.sandbox,
-     `the node listing names the node the Docker tab opens on, derived from the projects (${ids.dflt})`);
+     `the node listing names the node the Containers page opens on, derived from the projects (${ids.dflt})`);
   const setNodes = async (proj, list) => {
     await post('/api/prefs', { project: proj, nodes: list, node: list[0] || '' });
     await page.waitForFunction(([p, want]) =>
@@ -4914,7 +4914,7 @@ try:
 except SystemExit:
     pass`], { encoding: 'utf8' }).stdout || '';
   const withFile = said(true), without = said(false);
-  ok(/bb devapp new builds its dev instance/.test(withFile) && !/Docker tab/.test(withFile)
+  ok(/bb devapp new builds its dev instance/.test(withFile) && !/Containers page/.test(withFile)
      && /compose file at its root/.test(without),
      `bb devapp ls with nothing yet points at bb devapp new, and says a compose file is what it needs where there is none (${withFile.trim().slice(0, 70)})`);
 }
@@ -5076,7 +5076,7 @@ print(json.dumps(out))`], { encoding: 'utf8' });
   const nodeId = await page.evaluate(() => dockerList?.node || dockerNode || '');
   const dep = await page.evaluate(async n => (await (await fetch('/api/nginx', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'deploy', node: n }) })).json()), nodeId);
-  ok(dep.ok === true || /already on the Docker tab/.test(dep.error || ''), `nginx is deployed on the node for the row to route through (${JSON.stringify(dep).slice(0, 80)})`);
+  ok(dep.ok === true || /already on the Containers page/.test(dep.error || ''), `nginx is deployed on the node for the row to route through (${JSON.stringify(dep).slice(0, 80)})`);
   await openManager();
   await dmEditAll();
   for (let i = 0; i < 40 && !(await page.$(`${DM} .dmnginxroute [data-dmngadd]`)); i++){ await dmRefresh(); await dmEditAll(); await sleep(1000); }
@@ -5119,7 +5119,7 @@ print(json.dumps(out))`], { encoding: 'utf8' });
   await page.waitForFunction(p => (dockerList?.nginx?.routed || []).includes(p), port, { timeout: 30000 });
   const got = await page.evaluate(async n => (await (await fetch('/api/nginx')).json()).nodes.find(x => x.node === n).routes, nodeId);
   ok(got.some(r => r.port === port && r.host === '*' && r.cert === '' && r.tls === false),
-     `Add route wrote the route on the nginx tab: any hostname, 80 alone, to port ${port} (${JSON.stringify(got)})`);
+     `Add route wrote the route on the nginx page: any hostname, 80 alone, to port ${port} (${JSON.stringify(got)})`);
   const again = await page.evaluate(async ([n, p]) => (await (await fetch('/api/nginx', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'route-add', node: n, cert: '', port: p }) })).json()), [nodeId, port]);
   ok(/already has a route: \*\//.test(again.error || ''), `the same port again is refused by name (${again.error})`);

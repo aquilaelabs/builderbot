@@ -1,4 +1,4 @@
-"""The Storage tab (R169): what every node's disks hold, and whose.
+"""The Storage page (R169): what every node's disks hold, and whose.
 
 The agent walks its disks once an hour (its storage.py) and the census
 carries the walk; this module turns those into the tab's answer for one
@@ -45,7 +45,7 @@ def view(nodes, who, *, is_admin, nodes_for, may_see, level_of):
     whether it may measure one again."""
     allowed = None if is_admin(who) else nodes_for(who, "storage")
     if allowed is not None and not allowed and not level_of(who, "storage"):
-        return {"error": "the Storage tab is its own area: ask for Read on Storage"}, 403
+        return {"error": "the Storage page is its own area: ask for Read on Storage"}, 403
     out = []
     for n in nodes:
         if n.get("kind") != "agent" or n.get("state") in ("retired", "pending"):

@@ -203,7 +203,7 @@ def cannot(n):
     Claude Code is installed for the session account and the login lands in
     a home a session reads, and a node with no session half has neither."""
     if not n or n.get("kind") != "agent":
-        return "which node? A Claude sign-in is made on one node, from its row on the Nodes tab"
+        return "which node? A Claude sign-in is made on one node, from its row on the Nodes page"
     if n.get("state") != "online":
         return f"{n['name']} is {n.get('state') or 'not online'} and takes no new work: sign in or out there when it is back online"
     if n.get("live") is False:

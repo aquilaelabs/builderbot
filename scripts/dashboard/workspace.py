@@ -6,7 +6,7 @@ node (§6 says why, four times over); instead a job carries a snapshot of the
 working tree, dirty edits included, and the node materializes it into a
 job-scoped directory that is deleted after. What a build produces comes
 back the same way and lands in the project's dist/, which is already the one
-place the Artifacts tab reads, with a provenance record beside it saying
+place the Artifacts view reads, with a provenance record beside it saying
 what built it, from what, and where.
 
 What this module owns:
@@ -57,7 +57,7 @@ def configure(*, workspace, state):
 
 
 def _snaps():
-    """Where jobs' trees are kept: the Settings tab's choice when the server
+    """Where jobs' trees are kept: the Settings page's choice when the server
     has handed this module paths.py, read at use so a move applies to the
     next one; the state directory's own otherwise (a module test)."""
     return paths.of("job-snapshots") if paths else SNAPS

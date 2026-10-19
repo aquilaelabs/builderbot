@@ -1,6 +1,6 @@
 """Behind `bb nodes` and `bb ci-labels` (cmd_nodes and cmd_ci_labels in bb):
 the enrolled machines, and the runner labels the registry knows, read from
-the node store the way the Nodes tab reads it (dashboard/nodes.py), and
+the node store the way the Nodes page reads it (dashboard/nodes.py), and
 read-only.
 
 The first argument is the verb, `list` or `labels`, then nodes.py's path.
@@ -28,7 +28,7 @@ def list_():
     # machine anybody lists: it runs no work and takes no toolchains.
     rows = [n for n in rows if n["kind"] != "local"]
     if not rows:
-        print("no node is enrolled; the dashboard's Nodes tab mints a token for one")
+        print("no node is enrolled; the dashboard's Nodes page mints a token for one")
         print("a project with no node can be read and edited here, and cannot be built")
         raise SystemExit(0)
     for n in rows:

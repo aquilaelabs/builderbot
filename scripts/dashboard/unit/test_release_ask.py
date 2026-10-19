@@ -1,6 +1,6 @@
 """bb version release's ask (R138): a project on `ask` puts the tag and the
 commit it would mark in front of its owner, and only its owner; Approve
-runs the release as the Artifacts tab's Release does, never the session
+runs the release as the Artifacts view's Release does, never the session
 itself; the dial is ask unless a project says otherwise."""
 import os
 import sys

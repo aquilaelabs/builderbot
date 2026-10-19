@@ -1,6 +1,6 @@
 """Behind `bb container` (cmd_container in bb): a container asked for with its
 compose file and a reason (roadmap R71), which an administrator reads on the
-bell and allows or denies; Allow hands the file to the Docker tab's own New
+bell and allows or denies; Allow hands the file to the Containers page's own New
 container path and starts the build.
 
 The first argument is the verb (status or new). For new, BB_PHONE_AUTH is the
@@ -37,7 +37,7 @@ def new():
         print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
     if not r.get("id"):
         # Done at once: the setting is auto and it is this project's own.
-        print(f"[builderbot] created {r.get('name') or 'it'}; the build is a job on the Jobs tab")
+        print(f"[builderbot] created {r.get('name') or 'it'}; the build is a job on the Jobs page")
         sys.exit(0)
     rid = r["id"]
     print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}): the compose file is on their "
@@ -45,7 +45,7 @@ def new():
     o = waits.outcome(os.environ["BB_PHONE_AUTH"], rid, "the administrator said no")
     if o.get("code"):
         print(f"[builderbot] ERROR: {o.get('out') or 'refused'}", file=sys.stderr); sys.exit(1)
-    print(f"[builderbot] allowed: {o.get('out')} (the build is a job on the Jobs tab)")
+    print(f"[builderbot] allowed: {o.get('out')} (the build is a job on the Jobs page)")
     sys.exit(0)
 
 

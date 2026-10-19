@@ -171,7 +171,7 @@ function renderProjectsInto(i){
   // somebody is about to make their first project.
   if (!ps.length){
     paint(grid, `<div class="empty">${state.admin ? "nothing under /workspace yet: New project starts one"
-                                       : "no projects are yours yet: an administrator grants them on the Users tab"}</div>`);
+                                       : "no projects are yours yet: an administrator grants them on the Users page"}</div>`);
     return;
   }
   // The pinned first, each part by name (the operator, 18 Oct, where on 7

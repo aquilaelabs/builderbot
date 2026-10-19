@@ -1,6 +1,6 @@
 """Enroll node, as one file to download (R161).
 
-The Nodes tab's Enroll dialog asks its questions (the name, the account jobs
+The Nodes page's Enroll dialog asks its questions (the name, the account jobs
 run as, whether sessions run there, how the machine reaches the controller
 and at what address), and the answer is a script: the provisioner this
 controller ships, with those answers and the enroll token inside, and for a
@@ -216,7 +216,7 @@ DOOR_AFTER = ": # the door's secret left this file once the node enrolled; the n
 # What stands where the config was, once it has run: the tunnel's config as
 # this node installed it.
 WG_AFTER = ('[ -r /etc/wireguard/bb.conf ] || { echo "the WireGuard config left this file once the node '
-            'enrolled, and /etc/wireguard/bb.conf is not here either: make a new script on the Nodes tab" >&2; '
+            'enrolled, and /etc/wireguard/bb.conf is not here either: make a new script on the Nodes page" >&2; '
             'exit 1; }; install -m 600 /etc/wireguard/bb.conf "$dir/bb.conf"')
 
 
@@ -261,7 +261,7 @@ def build(ans, *, name, user, token, expires, provisioner, family=b"", again=Fal
            "# so does the controller. The node keeps its own secrets; none is in here.",
            "# Running it is the repair: every step checks before it acts, puts back what",
            "# is missing or has drifted, and leaves what is right alone."] if again else []),
-        "# Made on the Nodes tab's Enroll node. Run it as root on the machine:",
+        "# Made on the Nodes page's Enroll node. Run it as root on the machine:",
         "# sudo bash THIS_FILE",
         "#",
         f"# It holds an enrollment token, good once, until {when}.",

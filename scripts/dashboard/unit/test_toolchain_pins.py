@@ -1,5 +1,5 @@
 """The versions a node's projects pin (B712): read off their Gradle files,
-each a row of its own on the node's Toolchains tab, installed by the store's
+each a row of its own on the node's Toolchains page, installed by the store's
 own listing, and nothing from an agent that does not list versions."""
 import os
 import sys
@@ -141,7 +141,7 @@ class Implied(unittest.TestCase):
                "images": [{"id": "system-images;android-36;google_apis_playstore;x86_64", "api": "36"}]}
         rows = {r["name"]: r for r in toolchains.pin_rows("n_1", rep)}
         self.assertEqual(sorted(rows), ["android:build-tools;36.0.0", "android:platforms;android-37"],
-                         "no image row: an image is the Emulator tab's to pick (B720)")
+                         "no image row: an image is the Emulator page's to pick (B720)")
         bt = rows["android:build-tools;36.0.0"]
         self.assertFalse(bt["installed"])
         self.assertEqual(bt["label"], "Android SDK Build-Tools 36.0.0")
@@ -150,7 +150,7 @@ class Implied(unittest.TestCase):
 
 
 class EmulatorNeeds(unittest.TestCase):
-    """The Emulator tab says which level a node's projects compile against
+    """The Emulator page says which level a node's projects compile against
     with no image of it here, naming the index's plain image to pick."""
     def setUp(self):
         import emulator

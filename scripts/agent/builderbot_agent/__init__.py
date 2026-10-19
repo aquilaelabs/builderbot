@@ -1,7 +1,7 @@
 """BuilderBot's node agent: one file, standard library only, dialing OUT.
 
 A node runs this under systemd. It enrolls once with a token the operator
-minted on the Nodes tab, then loops for the life of the machine: say hello,
+minted on the Nodes page, then loops for the life of the machine: say hello,
 ask for work, run what it is given, report what happened. The controller
 never connects to a node (a node needs no open port, no inbound rule and no
 key the controller could lose), and the credential it holds opens nothing
@@ -71,4 +71,4 @@ Runs anywhere Python 3.8+ is, with nothing installed:
 # that "which of these two is newer" always has an answer. A reset would put
 # the same number on two different agents, and a number that cannot say which
 # is newer is the reason the flat protocol number this replaced was useless.
-AGENT_VERSION = "0.7.201"
+AGENT_VERSION = "0.7.202"

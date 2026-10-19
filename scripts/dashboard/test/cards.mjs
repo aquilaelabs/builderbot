@@ -550,14 +550,14 @@ print(json.dumps(out))
   ok(await page.$eval(`${C} [data-c]`, b => /nowhere else/.test(saidOf(b))),
      '...and a screen reader hears the same words on the ghosted button');
   await plant({ session_at: '', locked: false, node_name: '',
-                session_why: "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes tab" });
-  ok(await line() === "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes tab",
+                session_why: "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes page" });
+  ok(await line() === "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes page",
      `a project with no node says so on the card, with what to do (${await line()})`);
   ok(await page.$eval(`${C} [data-c]`, b => /^no node to run a Claude session on: pick one/.test(saidOf(b))),
      '...while the button carries the fix');
   await plant({ session_at: 'shed', node_name: 'shed', session_why: '',
-                held: 'shed runs agent 0.5.0 and this controller ships 0.6.93: a different compatibility window, so nothing sent to it is promised to work. Update it from the Nodes tab' });
-  ok(/^shed runs agent 0\.5\.0 and this controller ships 0\.6\.93: .*Update it from the Nodes tab$/.test(await line()),
+                held: 'shed runs agent 0.5.0 and this controller ships 0.6.93: a different compatibility window, so nothing sent to it is promised to work. Update it from the Nodes page' });
+  ok(/^shed runs agent 0\.5\.0 and this controller ships 0\.6\.93: .*Update it from the Nodes page$/.test(await line()),
      `a node out of window says so on the card too (${await line()})`);
   await plant({ held: '' });
   await plant({ node_name: 'shed' });
@@ -1263,7 +1263,7 @@ ok(await page.$eval('.doc .projtab .pcard[data-row="alpha"]',
 // notebook in the pane beside it filled the pane. One language.
 ok(await page.$eval('.doc .projtab', e => !e.classList.contains('card'))
    && await page.$eval('.doc:has(.projtab)', e => e.classList.contains('flush')),
-   'the Projects tab fills its pane the way the notebook does');
+   'the Projects page fills its pane the way the notebook does');
 await page.evaluate(() => setProjectPinned('alpha', true));
 await page.waitForFunction(
   () => document.querySelector('.doc .projtab [data-p="alpha"]')?.textContent.trim() === 'Unpin', { timeout: 15000 });
@@ -1397,7 +1397,7 @@ ok(await page.$$eval('.dmtab .row', rs =>
 ok(await page.evaluate(() => [...document.querySelectorAll('#rail [data-rail]')].every(b => b.querySelector('svg'))
      && (() => { const d = document.createElement('div'); d.innerHTML = TOOL_ICONS.docker;
                  return document.querySelector('#rail [data-rail="containers"] svg')?.outerHTML === d.firstElementChild.outerHTML; })()),
-   'every group on the rail carries an icon, Containers the Docker tab\'s');
+   'every group on the rail carries an icon, Containers the Containers page\'s');
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
 
@@ -1951,13 +1951,13 @@ ok(await page.$eval('#rnmodal', el => el.hidden), 'Cancel closes it');
 ok(!await page.$('.pgrid .pcacts > [data-del]'),
    'the sidebar card has no delete: that one is brushed past on a phone');
 ok(await page.$('.doc .projtab [data-del]'),
-   '...and the Projects tab does');
+   '...and the Projects page does');
 // The thumbtack is on both since 30 Sep (the operator's ask): unpinning
 // from the card it is shown in, pinning back from the tab. It went the
 // delete's way once, on the crowded side of a phone's row; the phone folds
 // it behind the row's more button now.
 ok(await page.$('.doc .projtab [data-p]'),
-   'the pin is on the card\'s rows as on the Projects tab\'s');
+   'the pin is on the card\'s rows as on the Projects page\'s');
 
 // Locking, which is now the only gate there is. The eye that excluded a
 // project is gone: two buttons that looked alike, sat side by side and both
@@ -2149,7 +2149,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   // rail; the gear's door is the account's own Profile tab.
   await page.click('#uiProfile');
   await page.waitForSelector('.profiletab .setrow', { timeout: 15000 });
-  ok(true, "the gear's door opens the account's Profile tab");
+  ok(true, "the gear's door opens the account's Profile page");
   await page.evaluate(() => railGo('settings', 'settings'));
   await page.waitForSelector('.settingstab #logApply');
   await page.fill('.settingstab #logDays', '3');

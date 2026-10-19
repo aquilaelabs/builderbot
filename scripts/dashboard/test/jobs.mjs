@@ -147,7 +147,7 @@ await ready(page);
   // finished of the jobs listed.
   const jtiles = await page.$$eval('.jobstab .tiles .tile .tl', ls => ls.map(l => l.textContent.trim()));
   ok(jtiles.includes('running') && jtiles.includes('succeeded'),
-     `the Jobs tab opens on tiles of what runs and what finished (${jtiles.join(', ')})`);
+     `the Jobs page opens on tiles of what runs and what finished (${jtiles.join(', ')})`);
   const rows = (await page.$$eval('.jobstab .jbrow', rs => rs.map(r => ({
     id: r.dataset.job, state: r.dataset.state, text: r.textContent.replace(/\s+/g, ' '),
     node: r.querySelector('.td[data-th="Node"]')?.textContent.trim() }))))
@@ -155,7 +155,7 @@ await ready(page);
   ok(rows.length >= 5 && rows.some(r => r.state === 'canceled' && /before it started/.test(r.text))
      && rows.some(r => r.state === 'failed' && /exit 7/.test(r.text))
      && rows.every(r => r.node === 'controller'),
-     `the Jobs tab lists them with their state, node and reason (${rows.length} rows)`);
+     `the Jobs page lists them with their state, node and reason (${rows.length} rows)`);
   ok(rows.every(r => !/Cancel/.test(r.text)), 'an ended job offers no Cancel');
 
   // unfold a log: ONE THIS FILE QUEUED, by id, not the newest succeeded row.

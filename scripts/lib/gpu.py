@@ -81,7 +81,7 @@ def may():
     if who == "project":
         return "this project's settings say the node's GPU is not for it (The node's GPU)"
     if who == "node":
-        return "this node's GPU is switched off for sessions and jobs (Nodes tab, GPU)"
+        return "this node's GPU is switched off for sessions and jobs (Nodes page, GPU)"
     return ""
 
 
@@ -130,7 +130,7 @@ def line():
     if not s["card"]:
         return ""
     if not s["name"]:
-        return "an NVIDIA card with no driver on it: nothing computes on it until the operator installs one (Toolchains tab)"
+        return "an NVIDIA card with no driver on it: nothing computes on it until the operator installs one (Toolchains page)"
     if s["why"]:
         return f"{s['name']}, not this session's to compute on: {s['why']}"
     h = holder()
@@ -145,7 +145,7 @@ def status():
         return 0
     if not s["name"]:
         print("an NVIDIA card, and NVIDIA's driver does not have it: nothing can compute on it.")
-        print("The operator installs the driver from this node's Toolchains tab; bb toolchains says where it stands.")
+        print("The operator installs the driver from this node's Toolchains page; bb toolchains says where it stands.")
         return 0
     print(f"card      {s['name']}")
     print(f"memory    {gb(s['free'])} free of {gb(s['total'])} ({s['used']} MB in use)")
@@ -183,7 +183,7 @@ def run(argv):
         die(f"{s['why']}: run the command without bb gpu run, and it takes its CPU path")
     if not s["name"]:
         die("the card has no driver on it, so nothing can compute on it: say so in your reply; "
-            "the operator installs it from this node's Toolchains tab")
+            "the operator installs it from this node's Toolchains page")
     if mem and mem > s["total"]:
         die(f"{mem} MB is more than the card has ({s['total']} MB)")
     try:

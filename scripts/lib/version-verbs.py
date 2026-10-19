@@ -53,7 +53,7 @@ USAGE = ("bb version [--for DIR] "
          "bb version [--for DIR] init X.Y.Z    give one its first VERSION\n"
          "bb version policy                    what a session may move here\n"
          "bb version [--for DIR] release --why \"...\"   tag this commit and publish the release, as\n"
-         "                                     Release on the Artifacts tab does (Claude may: Tag and\n"
+         "                                     Release on the Artifacts view does (Claude may: Tag and\n"
          "                                     publish a release)\n"
          "A section dated under the wrong number: unbump, then set the number you meant.")
 
@@ -65,7 +65,7 @@ def fail(msg):
 
 def lands_line(prefix=""):
     """Where the number here lives against the branch builds come from,
-    when they differ: version.lands, the same words the Artifacts tab's
+    when they differ: version.lands, the same words the Artifacts view's
     version row shows. A bump on a branch already merged, unpushed, looked
     like the project's version while main still had the old one (B338)."""
     now = version.lands(proj, comp).get("now")
@@ -148,7 +148,7 @@ if argv and argv[0] == "release":
     # already existed. Anything but --why and its sentence is refused by name.
     if "-h" in rest or "--help" in rest:
         print('bb version [--for DIR] release --why "..."   tag this commit, push the tag and publish the\n'
-              "    forge's release (GitHub, Gitea or GitLab), as Release on the Artifacts tab does. Under\n"
+              "    forge's release (GitHub, Gitea or GitLab), as Release on the Artifacts view does. Under\n"
               "    Claude may: Tag and publish a release: auto releases at once, ask waits for the\n"
               "    project's owner, deny refuses.\n"
               'bb version [--for DIR] release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...\n'
@@ -197,7 +197,7 @@ if argv and argv[0] == "policy":
     # held to and never to move it.
     print(f"{proj}: {policy_line()}")
     print("a person changes this with Claude may: Move the version in the project's settings,"
-          " or on its Artifacts tab; bb version set X.Y.Z moves to a later version in one step")
+          " or on its Artifacts view; bb version set X.Y.Z moves to a later version in one step")
     raise SystemExit(0)
 
 if argv and argv[0] == "--list":
@@ -261,7 +261,7 @@ print(("  released as       " if v["released"] else "  building towards  ") + (
 if v["released"]:
     print(f"  tag               {v['tag']}  (on this commit)")
 elif v["target"]:
-    print("  not released yet  the operator cuts it on the Artifacts tab: "
+    print("  not released yet  the operator cuts it on the Artifacts view: "
           "Release tags this commit and pushes it")
 if v["ordinal"] is not None:
     print(f"  ordinal           {v['ordinal']}")

@@ -181,7 +181,7 @@ print(json.dumps(out))
   ok(got.overdue.failed && got.overdue.next,
      `a job running far past its own timeout with no end from the node is failed as lost, and the slot goes to the next (${JSON.stringify(got.overdue)})`);
   ok(got.revs.job && got.revs.queued && got.revs.taken && got.revs.ended && got.revs.chunk,
-     `a job being queued, taken and finished moves the nodes rev, and a log chunk does not, so an open Nodes tab follows a job without a reload (${JSON.stringify(got.revs)})`);
+     `a job being queued, taken and finished moves the nodes rev, and a log chunk does not, so an open Nodes page follows a job without a reload (${JSON.stringify(got.revs)})`);
 }
 
 // ---- the seam: work says which node it belongs to --------------------------
@@ -262,7 +262,7 @@ print(json.dumps(out))
   await page.evaluate(() => openNodesTab());
   await page.waitForSelector('.nodestab .ndrow', { timeout: 15000 });
   ok((await nodeOptions(page)).length === 1,
-     'the Nodes tab lists the enrolled machines, and not this container');
+     'the Nodes page lists the enrolled machines, and not this container');
   // ...and with nothing enrolled it says so where the rows would be, rather
   // than an empty picker over an empty page. Driven by handing the page a
   // registry holding only the controller's own record, which is what a fresh
@@ -563,7 +563,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   // of one minute ends an untouched session within a few seconds. Claude
   // sessions only: the shell beside it stays.
   ok(await page.$eval('.settingstab #idleMin', e => e.value === '0'),
-     'the Settings tab carries the idle rule, off by default');
+     'the Settings page carries the idle rule, off by default');
   tmuxNew('claude-idletest'); tmuxNew('shell-idletest');
   const set = m => page.evaluate(async m => (await (await fetch('/api/idle', { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ minutes: m }) })).json()), m);
@@ -846,7 +846,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
     return out;
   }, { id: minted.id, sel: RROW });
   ok(/^install failed \| install failed (?!: )\S/.test(failedVerdict.text) && /Libicu/.test(failedVerdict.text) && failedVerdict.bad,
-     `the Nodes tab says a runner install failed, when, and why, in red (${failedVerdict.text.slice(0, 80)})`);
+     `the Nodes page says a runner install failed, when, and why, in red (${failedVerdict.text.slice(0, 80)})`);
   const removingVerdict = await page.evaluate(({ id, sel }) => {
     const n = nodesList.find(x => x.id === id);
     const keep = { a: n.applying, s: n.services };
@@ -903,7 +903,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(await page.$eval(`${ROW} .ndconfbody`, e => ![...e.querySelectorAll(':scope > details.sect > summary .t')]
        .some(t => t.textContent.trim() === 'CI runners'))
      && await page.$(`${ROW} [data-ndrunner]`) !== null,
-     '...and the Nodes tab has no runner section, only a line that opens the CI runner tab on this node');
+     '...and the Nodes page has no runner section, only a line that opens the CI runner page on this node');
   ok(await page.$eval(`${ROW} .ndconfbody`, e =>
        [...e.querySelectorAll(':scope > details.sect > summary .sst')].every(s => s.textContent.trim())),
      '...every section says its state on its summary, so a phone reads the headings and picks one');
@@ -913,7 +913,7 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   {
     const sects = `${ROW} .ndconfbody > details.sect`;
     const before = await page.$$eval(sects, ds => ds.map(d => d.open));
-    ok(before.length > 1 && before.every(Boolean), `the Nodes tab has every section open (${before})`);
+    ok(before.length > 1 && before.every(Boolean), `the Nodes page has every section open (${before})`);
     await page.$$eval(sects, ds => ds[1].querySelector(':scope > summary').click());
     await sleep(400);
     const open = await page.$$eval(sects, ds => ds.filter(d => d.open).length);
@@ -1294,7 +1294,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     await page.waitForFunction(sel => !document.querySelector(sel + ' details[data-sect="nodes:claude"]'), ROW, { timeout: 10000 }).catch(() => {});
     const tcHost = await napi('/api/toolchains?node=' + minted.id);
     ok(!(await page.$(`${ROW} details[data-sect="nodes:claude"]`)) && !(tcHost.machine || []).some(m => m.name === 'claude-code'),
-       `a hosting-only node's row has no Claude Code section, and its Toolchains tab no Claude Code row (${JSON.stringify((tcHost.machine || []).map(m => m.name))})`);
+       `a hosting-only node's row has no Claude Code section, and its Toolchains page no Claude Code row (${JSON.stringify((tcHost.machine || []).map(m => m.name))})`);
     // A root command on it, by name, for a project that hosts containers
     // there (the operator, 11 Oct): refused for a project that does not,
     // asked for one that does, and refused where the row's switch is off.
@@ -1382,7 +1382,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const dis = await napi('/api/prefs', { project: 'gamma', nodes: [minted.id] });
     ok(page.dialogs.length === 1 && /Disable shed/.test(page.dialogs[0])
        && /disabled/.test(await page.$eval(`${ROW} .name .pill`, e => e.textContent))
-       && /disabled on the Nodes tab/.test(dis.error || ''),
+       && /disabled on the Nodes page/.test(dis.error || ''),
        `Disable asks, marks the row disabled, and a project may not add it until Enable (${dis.error})`);
     await page.evaluate(n => renameProject(n), 'gamma');
     await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
@@ -1881,7 +1881,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
        `...and Install selected sleeps until something is ticked, waking on a tick and sleeping on its untick (${JSON.stringify({ asleep, awake })})`);
     ok(await page.evaluate(async id => !('images' in await (await fetch('/api/toolchains?node=' + id)).json()),
                            minted.id),
-       'the Toolchains tab no longer carries images: they are the Emulator tab\'s');
+       'the Toolchains page no longer carries images: they are the Emulator page\'s');
 
     // An add is an `image` job, and it holds the store the way a toolchain
     // job does: the two write into one directory tree.
@@ -1965,7 +1965,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     await page.evaluate(() => { emu = null; loadEmulator(); });
     await page.waitForSelector('.emutab .tiles .tile', { timeout: 15000 });
     ok((await page.$$eval('.emutab .tiles .tile .tl', ls => ls.map(l => l.textContent.trim()))).includes('images'),
-       'the Emulator tab opens on tiles: images held and the AVDs built on them');
+       'the Emulator page opens on tiles: images held and the AVDs built on them');
 
     // An agent too old to report the field at all is not a node with no
     // images: the tab would otherwise say "no image" for a node never asked.
@@ -2085,7 +2085,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     await page.waitForFunction(sel => /last storage apply/.test(
       document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
     ok(await page.$eval(`${ROW} .ndconfstate`, e =>
-         /Jobs tab/.test(e.textContent) && e.classList.contains('bad')),
+         /Jobs page/.test(e.textContent) && e.classList.contains('bad')),
        'an apply that did not work is reported where the button is, and points at its log');
     ok(await page.$eval(`${ROW} .ndconfbody`, e =>
          [...e.querySelectorAll(':scope > details.sect > summary')]
@@ -2128,7 +2128,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   const bellText = await page.$eval('#bellPanel', e => e.textContent.replace(/\s+/g, ' '));
   ok(/Needs attention/i.test(bellText) && /agent update on/i.test(bellText) && /runs agent 3 and this controller ships/.test(bellText)
      && await page.$('#bellPanel [data-bnode]') !== null,
-     `the bell lists "Agent update on" the node under Needs attention, with a way to the Nodes tab (${bellText.slice(0, 160)})`);
+     `the bell lists "Agent update on" the node under Needs attention, with a way to the Nodes page (${bellText.slice(0, 160)})`);
   ok(await page.$eval('#bBell .dot', d => d.classList.contains('warn')),
      '...in amber: an update waiting is not work stopped');
   // Its link goes to THIS node, whichever the tab was on, with Update agent
@@ -2141,7 +2141,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await sleep(700);
   ok(await page.$eval('.nodestab [data-nd="update-agent"]', b => {
        const r = b.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }),
-     `...and its link opens the Nodes tab on that node${other ? ' (from another)' : ''}, Update agent in view`);
+     `...and its link opens the Nodes page on that node${other ? ' (from another)' : ''}, Update agent in view`);
   // The runner is on its own tab now (R121), held by the same rule there.
   const runnerOff = await page.evaluate(async id => { openRunnerTab(id); await new Promise(r => setTimeout(r, 400));
     const b = document.querySelector(`.runnertab .ndrow[data-node="${id}"] [data-nrunner="install"]`);
@@ -3103,7 +3103,7 @@ ok(page.errors.length === 0,
     let r = await rowOf(shed.id);
     ok(r?.state === 'unknown' && r.managed === true, `an agent that does not report the driver reads as unknown (${r?.state})`);
     const early = await napi('/api/toolchains', { action: 'install', names: ['nvidia-driver'], node: shed.id });
-    ok(/update it on the Nodes tab/.test(early.error || ''), `...and an install waits for the agent's update (${early.error})`);
+    ok(/update it on the Nodes page/.test(early.error || ''), `...and an install waits for the agent's update (${early.error})`);
     const seen = [];
     for (const [gd, want] of [
       [{ installed: '', loaded: '', bound: 'nouveau' }, 'absent'],
@@ -3121,7 +3121,7 @@ ok(page.errors.length === 0,
     // until the driver is on the machine, and the Nodes tab's line sends its
     // reader to this row instead of offering the set-up.
     const disp = await napi('/api/v1/nodes', { action: 'gpu-display', id: shed.id });
-    ok(/install it on that node's Toolchains tab first/.test(disp.error || ''), `the display is not set up before the driver is installed, and says where that is (${disp.error})`);
+    ok(/install it on that node's Toolchains page first/.test(disp.error || ''), `the display is not set up before the driver is installed, and says where that is (${disp.error})`);
     // In a batch with a store toolchain, the driver goes last.
     const mixed = await napi('/api/toolchains', { action: 'install', names: ['nvidia-driver', 'zig'], node: shed.id });
     const mj = mixed.job ? await napi(`/api/v1/jobs?id=${mixed.job}`) : {};
@@ -3206,7 +3206,7 @@ ok(page.errors.length === 0,
       await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: on });
       const old = await kitOf(shed.id);
       const kearly = await napi('/api/toolchains', { action: 'install', names: [KIT], node: shed.id });
-      ok(old?.state === 'unknown' && /update it on the Nodes tab/.test(kearly.error || ''),
+      ok(old?.state === 'unknown' && /update it on the Nodes page/.test(kearly.error || ''),
          `an agent that does not report the container toolkit reads as unknown, and an install waits for its update (${old?.state}; ${kearly.error})`);
       await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: absent, gpu_container: none });
       const lone = await napi('/api/toolchains', { action: 'install', names: [KIT], node: shed.id });
@@ -3401,7 +3401,7 @@ ok(page.errors.length === 0,
   }
   ok(!went, `the bell's link names the node and shuts the bell${went ? ` (${went})` : ''}`);
   await page.waitForSelector('#tcClaudeTick', { timeout: 30000 });
-  ok(true, '...and its link opens the Toolchains tab on that node, Claude Code\'s row there');
+  ok(true, '...and its link opens the Toolchains page on that node, Claude Code\'s row there');
   ok(st.claude_code?.nodes?.[en.id]?.behind === true && st.claude_code.latest === '1.2.0',
      '...and the status payload says which node is behind');
   await page.evaluate(() => openNodesTab());
@@ -3410,13 +3410,13 @@ ok(page.errors.length === 0,
   const ROWC = `.nodestab .ndrow[data-node="${en.id}"]`;
   await page.waitForFunction(sel => /1\.0\.0, 1\.2\.0 is out/.test(document.querySelector(sel)?.textContent || ''), ROWC, { timeout: 15000 });
   ok(!await page.$(`${ROWC} [data-nd="claude-update"]`) && !!await page.$(`${ROWC} [data-ndtc="${en.id}"]`),
-     'the Nodes tab says the version against the latest and points at the Toolchains tab, with no update of its own');
+     'the Nodes page says the version against the latest and points at the Toolchains page, with no update of its own');
   await page.evaluate(id => openToolchainsOn(id), en.id);
   await page.waitForSelector('#tcClaudeTick', { timeout: 15000 });
   const tcRowText = await page.$eval('#tcClaudeTick', i => i.closest('.tc').textContent.replace(/\s+/g, ' '));
   ok(/Claude Code/.test(tcRowText) && /1\.0\.0/.test(tcRowText) && /update available: 1\.2\.0/.test(tcRowText)
      && await page.$eval('#tcClaudeTick', i => !i.disabled),
-     `the node's Toolchains tab has a Claude Code row: its version, the update out, and a tick to install it (${tcRowText.slice(0, 120)})`);
+     `the node's Toolchains page has a Claude Code row: its version, the update out, and a tick to install it (${tcRowText.slice(0, 120)})`);
   await page.evaluate(() => openNodesTab());
   // A session's token gets nowhere near it.
   const tok = execFileSync('python3', ['-c', `
@@ -3519,7 +3519,7 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
   census.session.claude = '';
   await hello();
   const none = (await napi('/api/status')).projects.find(p => p.name === 'beta')?.held || '';
-  ok(/Claude Code is not installed on clbox: its Toolchains tab installs it/.test(none),
+  ok(/Claude Code is not installed on clbox: its Toolchains page installs it/.test(none),
      `a node with no Claude Code holds its projects' Claude button, saying where to install it (${none.slice(0, 80)})`);
   await napi('/api/prefs', { project: 'beta', node: '' });
   await napi('/api/v1/nodes', { action: 'retire', id: en.id });
@@ -3582,7 +3582,7 @@ print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}
     return { why: p.session_why, line: r?.querySelector('.pnote')?.textContent || '', name: p.node_name,
              off: !!r?.querySelector('[data-c]')?.disabled };
   });
-  ok(row.name === 'oldbox' && /oldbox was removed from the Nodes tab/.test(row.why || '') && row.off
+  ok(row.name === 'oldbox' && /oldbox was removed from the Nodes page/.test(row.why || '') && row.off
      && !/coming back/.test(row.why || ''),
      `a project on an un-enrolled node keeps its name and says why Claude is off (${(row.why || '').slice(0, 70)}; row: ${row.line})`);
   const pick = async name => page.evaluate(async n => {

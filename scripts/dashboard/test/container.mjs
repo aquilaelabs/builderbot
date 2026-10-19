@@ -121,7 +121,7 @@ ok(allowed.body.ok && out.state === 'done' && out.code === 0,
    `Allow registers the container and starts its build, and the session's outcome says so (${
      out.state}: ${out.out})`);
 ok((await api('/api/docker')).body.instances.some(i => i.project === 'sonarr-for-alpha'),
-   '...and the Docker tab lists it, written from the file the administrator read');
+   '...and the Containers page lists it, written from the file the administrator read');
 
 // ---- a session's ask belongs to its own project -------------------------------
 // So the session that asked can see what it asked for once it exists, and
@@ -150,7 +150,7 @@ ok((await api('/api/docker')).body.instances.some(i => i.project === 'sonarr-for
   const made = await ask({ name: 'sonarr-auto', project: '' }, S);
   ok(made.status === 200 && !made.body.id && made.body.name === 'sonarr-auto'
      && (await api('/api/docker')).body.instances.some(i => i.project === 'sonarr-auto' && i.owner === 'alpha'),
-     `at auto it is made at once, nobody asked, and the Docker tab lists it as the project's (${JSON.stringify(made.body).slice(0, 80)})`);
+     `at auto it is made at once, nobody asked, and the Containers page lists it as the project's (${JSON.stringify(made.body).slice(0, 80)})`);
   const forOther = await ask({ name: 'sonarr-for-beta', project: '', for: 'beta' }, S);
   const onNode = await ask({ name: 'sonarr-on-node', project: '', node: 'sandbox' }, S);
   ok(!forOther.body.id && forOther.body.error && onNode.body.id > 0,
@@ -177,7 +177,7 @@ ok(no.state === 'denied' && !(await api('/api/docker')).body.instances.some(i =>
 const dup = await ask({});
 const asks = (await api('/api/phone')).body.asks || [];
 ok(dup.status === 400 && /sonarr-for-alpha already exists here/.test(dup.body.error || '')
-   && /removes it from the Docker tab first|env set/.test(dup.body.error || '')
+   && /removes it from the Containers page first|env set/.test(dup.body.error || '')
    && !asks.some(a => a.kind === 'container' && a.name === 'sonarr-for-alpha' && a.state === 'pending'),
    `a name the store already has is refused before the bell, naming the ways forward (${dup.status}: ${
       (dup.body.error || '').slice(0, 70)})`);
@@ -202,7 +202,7 @@ ok(dup.status === 400 && /sonarr-for-alpha already exists here/.test(dup.body.er
   const made = await api('/api/container', { action: 'create', name: 'd2-armor-web', compose: BUILT, env: '' });
   ok(/builds app from a relative path/.test(made.body.error || '')
      && !(await api('/api/docker')).body.instances.some(i => i.project === 'd2-armor-web'),
-     `...and so is the Docker tab's New container, leaving nothing registered (${(made.body.error || '').slice(0, 60)})`);
+     `...and so is the Containers page's New container, leaving nothing registered (${(made.body.error || '').slice(0, 60)})`);
   // An absolute path is a tree the daemon has: made, as before. The stub
   // stands in for compose's answer, since it does not read the file.
   writeFileSync(`${DIR}/dockerstate/bb-buildcheck.config`,

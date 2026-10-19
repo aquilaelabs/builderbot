@@ -173,7 +173,7 @@ if a[0] == "gpu-container":
             if os.path.exists(x): os.remove(x)
     print(f"gpu-container {a[1]}: done"); sys.exit(0)
 if a[0] == "gpu-off":
-    open(os.environ["BB_GPU_STATE"], "w").write("off: switched off on the Nodes tab; an emulator here renders in software\\n")
+    open(os.environ["BB_GPU_STATE"], "w").write("off: switched off on the Nodes page; an emulator here renders in software\\n")
     print("the GPU display is off"); sys.exit(0)
 if a[0] == "gpu":
     open(os.environ["BB_GPU_STATE"], "w").write("reboot: the NVIDIA driver is installed and takes the card at the next boot\\n")
@@ -1300,8 +1300,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          '...and with no account named it signs nobody out');
       rmSync(`${base}/.local/bin/claude`);
       const none = run('u_0badf00d');
-      ok(none.code !== 0 && /Update in the Nodes tab/.test(none.out),
-         '...and with none anywhere the refusal names the Nodes tab as the way out');
+      ok(none.code !== 0 && /Update in the Nodes page/.test(none.out),
+         '...and with none anywhere the refusal names the Nodes page as the way out');
     }
 
     // A token for the project alone (a relayed verb's) is nobody's account,
@@ -1858,7 +1858,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       ok(first?.options.map(o => o.pkg).join(',') === 'nvidia-driver-610,nvidia-driver-595' && first.recommended === 'nvidia-driver-595',
          `...with the branches apt offers, newest first, the transitional one left out, and the recommended one (${first?.options.map(o => o.pkg + ' ' + o.version).join(', ')}; ${first?.recommended})`);
       const nodisp = await api('/api/v1/nodes', { action: 'gpu-display', id: minted.id });
-      ok(/install it on that node's Toolchains tab first/.test(nodisp.error || ''),
+      ok(/install it on that node's Toolchains page first/.test(nodisp.error || ''),
          `the display is not set up on a machine with no driver: it installs none itself (${nodisp.error})`);
       const q = await api('/api/toolchains', { action: 'install', names: ['nvidia-driver'], driver: 'nvidia-driver-610', node: minted.id });
       ok(q.ok && /^j_/.test(q.job || ''), `a branch picked on the row queues a toolchain job (${q.job || q.error})`);
@@ -2186,7 +2186,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       // conversation that could not build anything.
       const nonode = await term('claude:beta');
       ok(nonode.status === 503 && /no node to run a Claude session on: pick one/.test(nonode.body)
-         && /enroll one on the Nodes tab/.test(nonode.body),
+         && /enroll one on the Nodes page/.test(nonode.body),
          `a project with no node is refused a session, and told why (${
            (nonode.body || '').slice(0, 60)})`);
       // Bound to a node that cannot take one yet: the sandbox's session
@@ -2466,7 +2466,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         argv: ['sh', '-c', 'flutter build apk'] });
       // alpha can push in the fixtures, so the refusal names CI as the way
       // out; the no-push-rights branch says so instead.
-      ok(/has no flutter/.test(gap.error || '') && /Toolchains tab/.test(gap.error || '')
+      ok(/has no flutter/.test(gap.error || '') && /Toolchains page/.test(gap.error || '')
          && /let CI build it/.test(gap.error || ''),
          `a build needing a toolchain the node lacks is refused up front (${gap.error})`);
       const have = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
@@ -2711,7 +2711,7 @@ print(json.dumps(tc._node_errors("j_x", ["graphics"], "install")))`], { input: l
         return v.sdkmanager && (v.images || []).some(i => i.id === IMG34) ? v : null;
       }, 30000);
       ok(em && em.images.find(i => i.id === IMG34)?.avds.includes('fbnode'),
-         `the Emulator tab reads the node's images and the AVD built on each (${JSON.stringify(em?.images)})`);
+         `the Emulator page reads the node's images and the AVD built on each (${JSON.stringify(em?.images)})`);
       const rj = await api('/api/emulator', { action: 'remove', node: minted.id, image: IMG34 });
       ok(rj.ok && /^j_/.test(rj.job), `removing one queues an image job on the node (${rj.job || rj.error})`);
       const rf = rj.job ? await until(async () => {
@@ -3194,7 +3194,7 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     await until(async () => (await nodeById(minted.id))?.reported?.session?.up ? true : null, 30000);
     // From the node's Toolchains tab, where Claude Code is a row (R145).
     const cu = await api('/api/toolchains', { action: 'install', node: minted.id, names: ['claude-code'] });
-    ok(cu.ok && /^j_/.test(cu.job), `Install on the Toolchains tab queues the claude-update job on this node (${cu.job || cu.error})`);
+    ok(cu.ok && /^j_/.test(cu.job), `Install on the Toolchains page queues the claude-update job on this node (${cu.job || cu.error})`);
     const cfin = await until(async () => {
       const r = await api(`/api/v1/jobs?id=${cu.job}`);
       return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;

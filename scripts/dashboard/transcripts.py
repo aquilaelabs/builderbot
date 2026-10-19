@@ -10,7 +10,7 @@ sessions here. This lists an account's own, newest first, and renders one
 as plain text: a turn a line, the tool calls with their command and the
 whole of what the tool answered, so `bb roadmap` and its reply are in it
 as they were. Claude's private reasoning is not conversation and is left
-out. The Profile tab offers each as a download; only the account's own.
+out. The Profile page offers each as a download; only the account's own.
 """
 import json
 import time

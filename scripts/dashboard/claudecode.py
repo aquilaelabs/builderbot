@@ -7,13 +7,13 @@ there on every heartbeat, so the controller always knows what each node
 runs; what it did not know was what is out. This asks the installer's own
 answer, the `latest` file the install script reads first, once after the
 controller starts, then on the toolchains' clock (weekly, and when a node
-starts) and on a press of Check for updates on a node's Toolchains tab,
+starts) and on a press of Check for updates on a node's Toolchains page,
 where Claude Code is a row like any toolchain (R145): installed there on
 purpose, never by the provisioner, and required for a session. A node
 behind says so on that row, and in the bell's toolchain update row for the
 node (toolchains.attention), which opens that tab.
 
-UPDATING IS A PERSON'S, NEVER A SESSION'S. Install on the Toolchains tab is an
+UPDATING IS A PERSON'S, NEVER A SESSION'S. Install on the Toolchains page is an
 administrator's action (the node handler refuses anybody else, a session's
 token included); it ends every Claude session on that node first, since a
 conversation mid-turn is the wrong place to swap the binary under, and
@@ -151,7 +151,7 @@ def rows():
 
 
 def payload():
-    """What the Nodes tab reads: the latest known, when it was asked, and
+    """What the Nodes page reads: the latest known, when it was asked, and
     each agent node's own version against it."""
     cur = latest()
     return {"latest": cur["version"], "checked": cur["at"], "error": cur["error"],
@@ -161,7 +161,7 @@ def payload():
 def holds(reap=False):
     """{node id: why} while no session can start on a node's Claude Code:
     while it is being updated (the project rows start them again after),
-    and where it is not installed at all, which the node's Toolchains tab
+    and where it is not installed at all, which the node's Toolchains page
     does on purpose (R145: the provisioner no longer installs it).
 
     reap: only the holds that end a session already running, for the
@@ -176,7 +176,7 @@ def holds(reap=False):
             out[n["id"]] = (f"Claude Code is updating on {n['name']}: its Claude sessions were ended for "
                             "it, and start again from the project rows when it is done")
         elif missing(n) and not reap:
-            out[n["id"]] = (f"Claude Code is not installed on {n['name']}: its Toolchains tab installs it")
+            out[n["id"]] = (f"Claude Code is not installed on {n['name']}: its Toolchains page installs it")
     return out
 
 

@@ -770,7 +770,7 @@ case "$kind" in
     store)  cat > "$f"; echo stored; exit 0 ;;
     forget) rm -f "$f"; echo forgotten; exit 0 ;;
 esac
-[ -f "$f" ] || { echo "[builderbot] ERROR: no runner token stored for this runner on $node: add it in the runner section of the node's row on the Nodes tab" >&2; exit 1; }
+[ -f "$f" ] || { echo "[builderbot] ERROR: no runner token stored for this runner on $node: add it in the runner section of the node's row on the Nodes page" >&2; exit 1; }
 case "$kind" in
     --check)      grep -E '^RUNNER_(URL|FORGE)=' "$f"; exit 0 ;;
     --validate)   echo "token accepted"; exit 0 ;;

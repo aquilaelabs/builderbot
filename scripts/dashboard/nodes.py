@@ -471,7 +471,7 @@ def first_up(nids):
 
 
 def node_for():
-    """The node the Docker tab opens on when nobody has picked one, and
+    """The node the Containers page opens on when nobody has picked one, and
     nothing more: not a default that work falls to. A project's containers
     go to the project's node, and a project with no node has nowhere to
     send, since there is no primary docker manager (the operator, 25 Sep,
@@ -658,7 +658,7 @@ def node_update(principal, node_id, fields):
 
 
 def node_storage_measure(principal, node_id):
-    """The Storage tab's Measure now (R169): a job the agent answers by
+    """The Storage page's Measure now (R169): a job the agent answers by
     walking its disks at once rather than at the next hour, then a hello
     with the result."""
     n = node(node_id)
@@ -751,7 +751,7 @@ def node_locked(n):
     if n and (n.get("config") or {}).get("lock"):
         return (f"system changes on {n['name']} are locked to its own console: "
                 "its mounts, address and root are managed at the OS level; Unlock "
-                "under Advanced on the Nodes tab to change that")
+                "under Advanced on the Nodes page to change that")
     return ""
 
 
@@ -1026,7 +1026,7 @@ def enroll(auth, census, addr, version="", digest="", user=""):
     got = str((census or {}).get("machine") or "") if isinstance(census, dict) else ""
     if n["state"] != "pending" and had and got and had != got:
         return {"error": f"this script was made for {n['name']}, which is another machine: "
-                         "make a script for this one on the Nodes tab (Enroll node)"}
+                         "make a script for this one on the Nodes page (Enroll node)"}
     # Burned in one statement, so two enrolments racing on one token (a
     # provisioner's retry) cannot both pass and mint two node tokens.
     cur = _exec("UPDATE tokens SET revoked = 1, uses = uses + 1 WHERE id = ? AND revoked = 0",
@@ -1704,7 +1704,7 @@ def root_refused(n):
     or "" when they may."""
     if n and (n.get("config") or {}).get("no_root"):
         return (f"root commands from sessions are off on {n['name']}: the Sessions "
-                "section on its row on the Nodes tab turns them back on")
+                "section on its row on the Nodes page turns them back on")
     return ""
 
 
@@ -1833,7 +1833,7 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
     The gate, in order, each refusal saying what would change it: the
     controller's debug switch, then the project's grant for that node
     (`grants`, its settings' Debug, per project since 6 Oct). Past
-    both it is root_wait: the same job, the same log in the Jobs tab, the
+    both it is root_wait: the same job, the same log in the Jobs page, the
     same refusal on a machine that did not enroll as a sandbox. What stands
     in for the approval is the grant, and the job's log says so.
     """
@@ -1870,7 +1870,7 @@ def node_log_read(principal, asking_id, target_id, stream="agent", lines=200,
     if spec.get("nginx"):
         name = nginx_for(target_id) or ""
         if not name:
-            return {"error": f"nginx is not deployed on {tgt['name']}: the nginx tab puts it there"}
+            return {"error": f"nginx is not deployed on {tgt['name']}: the nginx page puts it there"}
         fills["nginx"] = name
     if spec.get("store"):
         path = ((tgt.get("reported") or {}).get("stores") or {}).get(
@@ -1963,11 +1963,11 @@ def node_runner(principal, node_id, slot, want, labels=None, token=False):
         return {"error": "a system job is already in flight on this node; one at a time"}
     ar = dict(runners_of(n).get(slot) or {})
     if not ar:
-        return {"error": "no such runner on this node: add one on the CI runner tab first"}
+        return {"error": "no such runner on this node: add one on the CI runner page first"}
     url = ar.get("url") or ""
     forge = ar.get("forge") or "github"
     if want and not token:
-        return {"error": "no token stored for this runner: add it on the CI runner tab "
+        return {"error": "no token stored for this runner: add it on the CI runner page "
                          "first, with the address it registers with"}
     if want and forge not in ("github", "gitea"):
         return {"error": "runners register with GitHub, Gitea or Forgejo: pick one of those "
@@ -2123,7 +2123,7 @@ def agent_stale(n):
         return (f"{n['name']} runs agent {mine} and this controller ships {ours['version']}: "
                 f"a different compatibility window ({agent_window(mine)} against "
                 f"{agent_window(ours['version'])}), so nothing sent to it is promised to work. "
-                "Update it from the Nodes tab before relying on this node.")
+                "Update it from the Nodes page before relying on this node.")
     if mine == ours["version"]:
         # The same number and a different file: the agent moved without its
         # version constant. Said as such, since "runs 0.6.92 and ships 0.6.92"
@@ -2364,7 +2364,7 @@ def node_in_use(n):
         bits.append(f"{len(sessions)} session{'s' if len(sessions) != 1 else ''} running there (end them on the Sessions card)")
     if containers:
         bits.append(f"{len(containers)} container{'s' if len(containers) != 1 else ''} running there "
-                    f"({', '.join(str(c) for c in containers[:4])}{', …' if len(containers) > 4 else ''}; Down on the Docker tab)")
+                    f"({', '.join(str(c) for c in containers[:4])}{', …' if len(containers) > 4 else ''}; Down on the Containers page)")
     return " and ".join(bits)
 
 
@@ -2445,7 +2445,7 @@ def node_door(principal, node_id, on):
 def node_gpu_display(principal, node_id):
     """Set the GPU display up on a node from its row (R20): a system job
     the agent answers with bb-sandbox gpu, which starts a headless X server
-    on the card, on the driver the Toolchains tab installed, and says
+    on the card, on the driver the Toolchains page installed, and says
     whether a reboot has to follow. The machine's own answer decides: a node with no card gets that
     said, not refused here."""
     n = node(node_id)
@@ -2461,7 +2461,7 @@ def node_gpu_display(principal, node_id):
     gd = (n.get("reported") or {}).get("gpu_driver")
     if isinstance(gd, dict) and not gd.get("installed"):
         return {"error": f"the NVIDIA driver is not installed on {n['name']}: install it on "
-                         "that node's Toolchains tab first; the display runs on it"}
+                         "that node's Toolchains page first; the display runs on it"}
     why = node_locked(n)
     if why:
         return {"error": why}
@@ -3268,7 +3268,7 @@ def on_done(job_type, fn):
 
 def jobs_rev():
     """Bumped on every job mutation and every log chunk; /api/revs carries
-    it so the Jobs tab and the rows that watch a job refetch on change."""
+    it so the Jobs page and the rows that watch a job refetch on change."""
     return _jrev[0]
 
 
@@ -3293,7 +3293,7 @@ def _jstate_bump():
     """A job was queued, taken, finished or canceled: the jobs rev, and the
     nodes rev with it, because a node's row carries what is applying on it,
     its last apply and its last runner failure, all read off the jobs. An
-    open Nodes tab refetches on the nodes rev, so this is what lets it say
+    open Nodes page refetches on the nodes rev, so this is what lets it say
     "installing now" and then the result without anybody reloading. A log
     chunk moves only the jobs rev: a row does not change for one."""
     _jbump()
@@ -3436,13 +3436,13 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
              sizes=None, project="", forget=False, outputs=None, title="", cwd=""):
     """One command on a node, waited for: queued as an exec job, picked up
     by the agent's next poll (which is held open, so at once), and its log
-    and exit code handed back: the Nodes tab's Test, generalised. For the
+    and exit code handed back: the Nodes page's Test, generalised. For the
     phone: adb on the node that holds the handset, where the controller has
     no adb and no phone. {"code", "out"} or {"error"}.
 
     `forget` is for a READ nobody asked to see: the Docker manager's
     `docker ps` on an agent node runs this way each time a listing is
-    drawn, and a row per draw on the Jobs tab would bury the jobs somebody
+    drawn, and a row per draw on the Jobs page would bury the jobs somebody
     queued on purpose. The record is dropped once its answer is in hand;
     the audit line from job_add stays.
 
@@ -3451,7 +3451,7 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
     otherwise ride the log as text (a phone's screenshot, report #53)."""
     spec = {"argv": [str(a) for a in argv], "timeout": int(timeout)}
     if title:
-        spec["title"] = str(title)[:120]      # what the Jobs tab calls it
+        spec["title"] = str(title)[:120]      # what the Jobs page calls it
     if cwd:
         spec["cwd"] = str(cwd)                 # where it runs on the node, else the data store
     if outputs:
@@ -3563,7 +3563,7 @@ def root_wait(principal, node_id, argv, why="", timeout=600, light=False):
     (an online agent node that enrolled as a sandbox, one system job at a
     time), because root on somebody's own machine is theirs, and the agent
     refuses it there too whatever this says. The reason and the approver
-    ride in the spec so the job's log, which the Jobs tab keeps, says who
+    ride in the spec so the job's log, which the Jobs page keeps, says who
     allowed what and why."""
     n = node(node_id)
     if not n:
@@ -3602,7 +3602,7 @@ def root_wait(principal, node_id, argv, why="", timeout=600, light=False):
 
 def phone_nodes():
     """The nodes a phone can be driven from: agent nodes whose census
-    reports adb, with whether they are dialing in. The Phone tab's picker."""
+    reports adb, with whether they are dialing in. The Phone page's picker."""
     out = []
     for n in node_list():
         if n["kind"] != "agent" or n["state"] in ("retired", "pending"):
@@ -3734,7 +3734,7 @@ PROBE = (
 def probe_ports(principal, node_id, ports, path="/", timeout=30):
     """[{port, open, http, ms, error}] for each port on node_id's loopback,
     or {"error"}: PROBE run there and waited for, its record dropped once
-    read (a read nobody needs on the Jobs tab)."""
+    read (a read nobody needs on the Jobs page)."""
     ports = [int(p) for p in ports][:16]
     if not ports:
         return {"error": "no port to probe"}
@@ -4423,7 +4423,7 @@ def job_release(job_id, spec):
 
 def job_refuse(job_id, why):
     """A queued job its preparation refused: failed with the reason, where
-    the row and the Jobs tab show the words (B260). Nothing ran, so no
+    the row and the Jobs page show the words (B260). Nothing ran, so no
     completion hook is owed."""
     _exec("UPDATE jobs SET state = 'failed', ended = ?, error = ? WHERE id = ? "
           "AND state = 'queued'", (int(time.time()), str(why)[:500], job_id))
@@ -4720,7 +4720,7 @@ def agent_test(principal, n):
 
 
 def verb(principal, req):
-    """One of the Nodes tab's verbs, asked by an administrator: server.py
+    """One of the Nodes page's verbs, asked by an administrator: server.py
     holds that gate and this says what the verb means. The answer is
     (payload, status), a {ok} or {error} with 400 on the error unless the
     verb names its own status."""
@@ -5032,7 +5032,7 @@ def run_job(name, req, principal):
         when = (f", as of what it reported {age // 60}m ago; it has been "
                 "asked for a fresh answer, so a retry shortly may differ"
                 if age and age > 90 else "")
-        return {"error": f"{n['name']} has no {gap}{when}. Install it from the Toolchains tab "
+        return {"error": f"{n['name']} has no {gap}{when}. Install it from the Toolchains page "
                          f"with {n['name']} picked, "
                          + ("or push and let CI build it."
                             if may_push(name)
@@ -5095,7 +5095,7 @@ def _job_mine(j, mine):
 
 
 def jobs_view(jid, q, mine, system=None):
-    """The Jobs tab's whole read surface, and a test's: one job with its log
+    """The Jobs page's whole read surface, and a test's: one job with its log
     so far, or the recent ones narrowed by the query's node, project, type,
     active and n. `mine` is None for an administrator, or the projects this
     account may see: a job and its log are the project's, or its project's
@@ -5156,12 +5156,12 @@ def jobs_view(jid, q, mine, system=None):
 
 
 def tab_view(rows, admin):
-    """The Nodes tab's read: the rows the server has scoped to this account
+    """The Nodes page's read: the rows the server has scoped to this account
     (an account that may not change a node sees the ones its own projects
     build on), each agent's with its sessions' turns, and for an
     administrator the agent this controller ships, which rides beside the
     rows once so a row can say when its node's agent is behind, and the
-    node the Docker tab opens on and New project offers (node_for). Not a
+    node the Containers page opens on and New project offers (node_for). Not a
     default that work falls to: a project with no node has nowhere to send,
     and the dialogs make the person pick."""
     for n in rows:

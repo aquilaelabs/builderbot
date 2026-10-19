@@ -123,7 +123,7 @@ def reap_once():
                            capture_output=True, text=True, timeout=10, check=False)
         if r.returncode == 0:
             ended.append(name)
-            _log(f"idle: ended {name} after no activity for {limit} minute(s), the Settings tab's rule")
+            _log(f"idle: ended {name} after no activity for {limit} minute(s), the Settings page's rule")
     return ended
 
 

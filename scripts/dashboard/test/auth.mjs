@@ -1215,7 +1215,7 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
   await page.waitForSelector('.profiletab #pfSave', { timeout: 15000 });
   ok(await page.$eval('.profiletab', el => /test/.test(el.textContent) && !!el.querySelector('#pfSave')
                                           && !!el.querySelector('#pfPasswd')),
-     'the Profile tab names the account and carries Save and Change password');
+     'the Profile page names the account and carries Save and Change password');
   // ...and says what the account may do, once (R255 step 5): its roles by
   // name in the bar and every area it holds, with its level.
   const wm = await page.$eval('.profiletab', el => ({ bar: el.closest('.doc')?.querySelector('.docbarrow')?.textContent || '',

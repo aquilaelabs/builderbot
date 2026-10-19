@@ -7,7 +7,7 @@ and invite people.
 
 INVITE ONLY is the owner's restriction on administrators. An administrator
 sees every project and could always put any of them on any account's list,
-their own included (by a role on it, on the Roles tab); on an invite-only project only its
+their own included (by a role on it, on the Roles page); on an invite-only project only its
 owner and BuilderBot's owner change who is on it, and everybody else comes
 in by accepting an invitation. BuilderBot's owner is never kept out: it can
 add itself to any project (the operator, 1 Oct).

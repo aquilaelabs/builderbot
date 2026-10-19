@@ -13,7 +13,7 @@ page needs, BB_CAPTURE_AUTH the credential a dashboard page takes, and
 BB_CAPTURE_SCRATCH where the working files go.
 
 What stays and what goes (R96): dist/ is what a project ships and the
-Artifacts tab lists it, so a capture leaves there only what a person reads
+Artifacts view lists it, so a capture leaves there only what a person reads
 (a reel's sheet.png and frames.json, a shot's png), each with a record of who
 asked and when, and the working files (the recording, the full-size frames)
 go to this machine's own disk under BB_CAPTURE_SCRATCH. Nothing knows when
@@ -288,7 +288,7 @@ def drive(script, env):
 
 def shot(a):
     """One picture at rest into a.out; with --mark, a record beside it
-    (.NAME.json: who, when, from what) for the Artifacts tab and the sweep."""
+    (.NAME.json: who, when, from what) for the Artifacts view and the sweep."""
     if a.emu is not None:
         adb = _adb()
         emu_ready(adb)

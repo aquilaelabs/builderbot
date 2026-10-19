@@ -43,7 +43,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     if (src) src.onclick = () => { location.href = "/api/source?project=" + encodeURIComponent(project); };
     // Why Push and Install are ghosted, when they are: the phone is on the
     // project's node and belongs to whoever connected it there.
-    const phoneWhy = !dev ? "no phone is connected on this project's node: connect one in the Phone tab, on its node"
+    const phoneWhy = !dev ? "no phone is connected on this project's node: connect one in the Phone page, on its node"
       : !art.mine ? `connected by ${art.owner?.name || "somebody else"}: only they can push to it or install on it`
       : "";
     const inst = art.install || {};
@@ -113,7 +113,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
         </div>
         <span class="acts">
           <button type="button" data-devsend="${i}"${i ? "" : ' id="devSend"'} class="primary"
-            title="make a new container from ${esc(c.path)} and manage it on the Docker tab"
+            title="make a new container from ${esc(c.path)} and manage it on the Containers page"
             >Send to Docker manager</button>
         </span>
       </div>`;
@@ -518,7 +518,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       if (moves && !confirm(
             `Bump the ${moves[1]}? This moves the compatibility window.\n\n`
             + `Sessions on ${cost.projects.length} project${cost.projects.length === 1 ? "" : "s"} `
-            + `(${cost.projects.join(", ")}) end until each node's agent is updated on the Nodes tab.`)) return null;
+            + `(${cost.projects.join(", ")}) end until each node's agent is updated on the Nodes page.`)) return null;
       for (const [comp] of parts) delete verPending[comp];
       if (policy != null) verPolicyPending = null;
       const done = [];

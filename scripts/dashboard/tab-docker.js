@@ -738,15 +738,15 @@ function dmNginxLine(d){
   // means any name on 80. What is typed and picked is drawn from the draft,
   // so a redraw in between leaves it.
   return `<div class="setcell dmnginxroute">${lbl("dmng-" + key, "Route through nginx",
-      "A route on this node's nginx tab to one of this container's published ports, at the hostname typed (a subdomain of the "
-      + "certificate's domain), or at any hostname on 80 alone with no certificate. A port routed already takes another hostname; the rest of a route is changed on the nginx tab.")}
+      "A route on this node's nginx page to one of this container's published ports, at the hostname typed (a subdomain of the "
+      + "certificate's domain), or at any hostname on 80 alone with no certificate. A port routed already takes another hostname; the rest of a route is changed on the nginx page.")}
     <div class="ctl"><select id="${esc("dmng-" + key)}" data-dmngcert="${esc(key)}" aria-label="which certificate the route serves under">
       <option value="">no certificate: any hostname, 80 alone</option>${
       (ng.certs || []).map(c => `<option value="${esc(c)}"${c === dr.cert ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>
     <input data-dmnghost="${esc(key)}" value="${esc(dr.host || "")}" data-was="${esc(dr.was || "")}" placeholder="app.example.com" aria-label="the hostname the route serves" autocomplete="off" spellcheck="false">
     <select data-dmngport="${esc(key)}" aria-label="which port the route goes to">${
       ports.map(p => `<option value="${p}"${String(p) === String(dr.port) ? " selected" : ""}>${p}${routed.includes(p) ? " (routed)" : ""}</option>`).join("")}</select>
-    <button type="button" data-dmngadd="${esc(key)}" title="write the route on the nginx tab and apply it">Add route</button></div></div>`;
+    <button type="button" data-dmngadd="${esc(key)}" title="write the route on the nginx page and apply it">Add route</button></div></div>`;
 }
 
 function dmRefLine(d){
@@ -1191,7 +1191,7 @@ async function openEditContainer(name){
   const managed = row?.owner === "System";
   $("cName").disabled = !down || managed;
   $("cNameHint").textContent = managed
-    ? "BuilderBot manages this one: its name, compose file and env are written where it was deployed from (the nginx tab)."
+    ? "BuilderBot manages this one: its name, compose file and env are written where it was deployed from (the nginx page)."
     : down
     ? "Change the name while it is down: its volumes and data directory follow it on the node, then Build it again."
     : "It is running, so this is for reading: Down it to change its name, compose file or env.";
@@ -1585,7 +1585,7 @@ function dmUnrouted(d){
     .filter(p => !routed.has(p));
   if (!loop.length) return "";
   return `<div class="sub dmunrouted">${loop.join(", ")} ${loop.length === 1 ? "is" : "are"} reachable only through this node's nginx, and no route points ${
-    loop.length === 1 ? "at it" : "at them"} yet: <a href="#" data-dmnginx="${esc(dockerList.node || "")}">add a route on the nginx tab</a></div>`;
+    loop.length === 1 ? "at it" : "at them"} yet: <a href="#" data-dmnginx="${esc(dockerList.node || "")}">add a route on the nginx page</a></div>`;
 }
 
 // A shell inside one of the instance's running containers, in the dock
@@ -1682,7 +1682,7 @@ function dmRowsHtml(ins, job, blind){
         ${(d.images_behind || []).length && !busy ? `<button type="button" data-dm="update"
           title="pull the newer images and start it again: docker compose pull, then up -d">Update</button>` : ""}
         ${d.nginx_to && !busy ? `<button type="button" data-dm="nginx-update"
-          title="pin nginx-${esc(d.nginx_to)}'s digest on the nginx tab's record and rebuild with it">Update</button>` : ""}
+          title="pin nginx-${esc(d.nginx_to)}'s digest on the nginx page's record and rebuild with it">Update</button>` : ""}
         `}
         ${busy ? `<button type="button" data-dm="abort" ${
             job.aborting ? "disabled" : ""}

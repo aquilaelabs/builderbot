@@ -1,11 +1,11 @@
-"""What this node's disks hold (the Storage tab; R146 step 3, disk by
+"""What this node's disks hold (the Storage page; R146 step 3, disk by
 project): each real filesystem with its size and use, each store with what
 it holds, Docker's own share, and each project's folders on the node, in
 the stores and in the accounts' build caches.
 
 A walk of a big store is minutes, not seconds, so it is never the census's
 to wait on: the census carries the last measurement (`last()`), a thread of
-its own takes a new one once an hour, and the Storage tab's Measure now is
+its own takes a new one once an hour, and the Storage page's Measure now is
 a job that takes one at once (`measure()`). Each walk runs at the lowest
 CPU and IO priority, so a full disk being looked at never slows a build.
 """
@@ -244,7 +244,7 @@ def measure(state):
 def start(state_of):
     """The hourly walk, on a thread of its own, started once. `state_of`
     hands it the agent's state as it is at each walk, since a store moved
-    from the Nodes tab changes where to look."""
+    from the Nodes page changes where to look."""
     if _started[0]:
         return
     _started[0] = True

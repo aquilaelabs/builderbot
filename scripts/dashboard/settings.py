@@ -1,9 +1,9 @@
-"""Controller settings the operator changes on the Settings tab (roadmap R29).
+"""Controller settings the operator changes on the Settings page (roadmap R29).
 
 The rule (env-only-what-must, on the Briefing tab): a setting is an
 environment variable only when the container cannot start without it or the
 host has to know it. Everything else lives here, in /config/settings.json,
-edited on the Settings tab and read by the boot hooks through bb_setting in
+edited on the Settings page and read by the boot hooks through bb_setting in
 lib/common.sh: this file, else the default. Nothing reads an environment
 variable for one of these any more (the rule `unreleased`).
 

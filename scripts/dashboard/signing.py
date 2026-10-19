@@ -20,7 +20,7 @@ commit holds no key and no password.
 An upload is checked before it is kept, with the store's own keytool: a
 wrong password or an alias the store does not hold is refused here rather
 than at the first signing, and the certificate's SHA-256 fingerprint is
-read so the Artifacts tab can say which key signed a build. The password
+read so the Artifacts view can say which key signed a build. The password
 reaches keytool through its environment (-storepass:env), never argv.
 """
 import base64
@@ -194,7 +194,7 @@ def inspect(blob, store_pass, alias=""):
     kt = keytool_path() if keytool_path else None
     if not kt:
         return "", "", "", ("there is no keytool to check it with: install the jdk toolchain "
-                            "(Toolchains tab), which this controller reads from the shared store")
+                            "(Toolchains page), which this controller reads from the shared store")
     d = tempfile.mkdtemp(prefix="bb-sign-")
     try:
         os.chmod(d, 0o700)
@@ -299,7 +299,7 @@ def generate(project, route, key=DEFAULT, by="", name=""):
     kt = keytool_path() if keytool_path else None
     if not kt:
         return {"error": "there is no keytool to make one with: install the jdk toolchain "
-                         "(Toolchains tab), which this controller reads from the shared store"}, 400
+                         "(Toolchains page), which this controller reads from the shared store"}, 400
     pw = secrets.token_urlsafe(24)
     who = re.sub(r"[^A-Za-z0-9 ._-]", "", name or project)[:60] or project
     d = tempfile.mkdtemp(prefix="bb-sign-")
@@ -386,7 +386,7 @@ def rotate(project, old, new, by=""):
     tool, env = apksigner_path() if apksigner_path else (None, {})
     if not tool:
         return {"error": "there is no apksigner here to make the proof with: install android-tools "
-                         "(Toolchains tab), which this controller reads from the shared store"}, 400
+                         "(Toolchains page), which this controller reads from the shared store"}, 400
     d = tempfile.mkdtemp(prefix="bb-sign-")
     try:
         os.chmod(d, 0o700)

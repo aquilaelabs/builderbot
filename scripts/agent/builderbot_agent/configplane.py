@@ -388,7 +388,7 @@ class ConfigPlaneMixin:
             log(f"the session's view: {', '.join(wrote)} written from the bundle")
 
     def _apply_uninstall(self, job, cfg=None):
-        """Take BuilderBot off this machine, from the Nodes tab. The runners
+        """Take BuilderBot off this machine, from the Nodes page. The runners
         first, deregistered on their forges with the tokens the controller
         mints while this agent can still ask; then `bb-sandbox uninstall`,
         started detached from this process because it removes this process
@@ -475,7 +475,7 @@ class ConfigPlaneMixin:
         Streamed, the way Job.exec and _apply_root are: its output pumped
         as it comes and the log posted on a clock. It used to run the command
         to the end and post nothing meanwhile, so the NVIDIA rows on the
-        Toolchains tab never said installing (the step rides a log post) and
+        Toolchains page never said installing (the step rides a log post) and
         the job sat at assigned for as long as apt took (30 Sep).
         """
         # A job that cannot post or be canceled (a check's own stand-in, a
@@ -519,7 +519,7 @@ class ConfigPlaneMixin:
         """One command as root, that a person allowed (roadmap R38). The
         controller queues this only after an administrator read the reason
         and the exact command and pressed Allow; the job's log opens with
-        both and who it was, so the Jobs tab is the record. Nothing about
+        both and who it was, so the Jobs page is the record. Nothing about
         the command is interpreted here: it is run as given, as root, once,
         and its output and exit code go back. Not sudo: there is no second
         command without a second question."""

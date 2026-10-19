@@ -350,7 +350,7 @@ esac''')
     def test_the_display_does_not_install_the_driver(self):
         rc, said, ran = self.run_helper("gpu")
         self.assertNotEqual(rc, 0)
-        self.assertIn("Toolchains tab", said)
+        self.assertIn("Toolchains page", said)
         self.assertEqual(ran, "")
 
 

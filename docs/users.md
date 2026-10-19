@@ -12,7 +12,7 @@ dashboard has no idea who you are once you are in: every button is available to
 whoever opened the page. Three things follow.
 
 - There is no way to let somebody work on one project without handing them
-  every project, the Nodes tab, the toolchain installer and the phone.
+  every project, the Nodes page, the toolchain installer and the phone.
 - A Claude session is given that same credential, so "the operator only" is a
   convention rather than a mechanism (bug #16).
 - It is the last big thing hardwired into the template. Everything else the

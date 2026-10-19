@@ -21,7 +21,7 @@ account:
 
 It is a report, not a rule: a person may sign one node in to one Anthropic
 account and another node in to another, and the row of each says which.
-The Users tab says when two BuilderBot accounts are on one Anthropic
+The Users page says when two BuilderBot accounts are on one Anthropic
 account, since Anthropic's terms allow one person per Claude account.
 
 Path-pure, like changelog.py: handed the account's home, never resolving one.
@@ -113,7 +113,7 @@ def report(home, node_id, email, plan="", signed_in=True):
 
 def logins_of(rows):
     """Which Anthropic accounts each BuilderBot account is signed in as, on
-    any node, and whether two of them share one, for the Users tab.
+    any node, and whether two of them share one, for the Users page.
 
     From the record, not from a credential: no login lives on this container
     (R47), and what it keeps instead is what each node reported.

@@ -3,7 +3,7 @@
 A container's services that run an image from a registry (`image:` and no
 `build:`) have no other way to move: Rebuild builds what the project's code
 makes, and pulls nothing that is already there. So once a week, and on Check
-for updates on the Docker tab, each instance's registry images are compared
+for updates on the Containers page, each instance's registry images are compared
 on its node: the digest the node pulled (`docker inspect`'s
 RepoDigests) against the one the registry serves for that tag now. One that
 differs is behind: its row says so with Update (pull, then up), and the bell

@@ -25,7 +25,7 @@ before creating anything.
 Find the rows that describe what you want; you need every credential marked in
 those rows. Nothing else.
 
-| I want to… | Host GHCR token | Runner token (Nodes tab) | SSH key | Per-project token |
+| I want to… | Host GHCR token | Runner token (Nodes page) | SSH key | Per-project token |
 |---|:--:|:--:|:--:|:--:|
 | Pull the image at all: *everyone needs this* | ● | | | |
 | Run Claude against the mounted projects, no remote git | ● | | | |
@@ -38,7 +38,7 @@ those rows. Nothing else.
 | Credential | Type | Permissions | Lives where |
 |---|---|---|---|
 | **Host GHCR token** | PAT **(classic)** | `read:packages`; nothing else | Unraid host, via `docker login` (step 2). Fine-grained tokens cannot pull from GHCR |
-| **Runner token** | PAT (fine-grained), resource owner = **the org** | *One* permission; see the runner-scope table below | Typed into the runner section of the node's row on the Nodes tab; kept root-only on the controller. Never visible to sessions |
+| **Runner token** | PAT (fine-grained), resource owner = **the org** | *One* permission; see the runner-scope table below | Typed into the runner section of the node's row on the Nodes page; kept root-only on the controller. Never visible to sessions |
 | **SSH key** | ed25519, **no passphrase** | n/a, since access is whatever the git host grants the key | Made or pasted under **Deploy key** in a project's settings (kept at `/config/deploy-keys`, root-only), or dropped into `/secrets/ssh/` by hand. Either way loaded into a root-owned agent: usable by git, unreadable by sessions |
 | **Per-project token** | PAT (fine-grained) | *Contents*: R/W on the one repository | Typed into the dashboard's clone dialog or the project's settings, stored at `/config/gitcreds/<project>` and named by that repo's `.git/config`. There is no container-wide git token |
 
@@ -151,11 +151,11 @@ dropdown pick **builderbot**. You get a form with everything already wired:
   adding one never means editing the container again
 * the appdata paths for home and config
 * TZ under the advanced view, which only sets the container's own clock: each
-  person picks the zone the dashboard shows times in on their Profile tab
+  person picks the zone the dashboard shows times in on their Profile page
 
 Claude Code is not configured here: it runs on the nodes, and each person
-signs in on each node's row (Nodes tab, Claude Code) with their own Claude account.
-Each account's commit identity is set on its Profile tab. Hit **Apply**. Unraid pulls the image and starts it.
+signs in on each node's row (Nodes page, Claude Code) with their own Claude account.
+Each account's commit identity is set on its Profile page. Hit **Apply**. Unraid pulls the image and starts it.
 
 **Unraid never applies new template values to a container that already
 exists**, so changing a default here (a path, the dashboard port) does
@@ -240,9 +240,9 @@ docker cp BuilderBot:/opt/builderbot/icon.png \
 
 The controller runs no emulator, carries no SDK and claims no GPU: `bb emu`
 on a project runs on that project's node, whose toolchain store holds the
-emulator (Toolchains tab) and its images (Emulator tab) and whose own
+emulator (Toolchains page) and its images (Emulator page) and whose own
 `/dev/kvm` and card do the work. A node is a machine you enroll from the
-Nodes tab (**Enroll node**, or **Create sandbox VM**) on a VM or a spare
+Nodes page (**Enroll node**, or **Create sandbox VM**) on a VM or a spare
 Linux box; a Mac is offered only with **Offer dev features** on in Settings.
 Nothing here needs a device or a runtime flag for it.
 
@@ -262,7 +262,7 @@ notebook context.
    password in the template; it would sit there readable forever, and it is
    the one credential that opens a shell on this box. Do it straight away:
    until somebody claims the container, whoever can reach the port can. After
-   that, `bb users passwd <name>` changes a password and the Users tab adds
+   that, `bb users passwd <name>` changes a password and the Users page adds
    everyone else
 4. **Finish the setup page.** Its first step is the first node (**Enroll
    node** or **Create sandbox VM**, in its card); then your name and email,
@@ -491,7 +491,7 @@ SSH private keys.
 
 ## Dev instances: building a project's app
 
-The dashboard's Docker tab can build a project's compose app and bring it up
+The dashboard's Containers page can build a project's compose app and bring it up
 and down: no GitHub minutes, no registry round trip. It builds on a **sandbox
 VM**: a small machine whose only job is running Docker, reached over ssh, with
 no real containers on it and no route to this server's daemon. Setting it up is
@@ -535,7 +535,7 @@ Headless works out of the box; there is no display server in the container.
 
 Nothing Android is in the image. A project builds on its node: the JDK, the
 SDK (`android-tools`, platforms, build-tools) and the emulator are recipes in
-the node's toolchain store, installed from the dashboard's Toolchains tab
+the node's toolchain store, installed from the dashboard's Toolchains page
 with that node picked. From a session:
 
 ```bash
@@ -546,7 +546,7 @@ bb emu stop
 
 AVDs live in the node's home; the images and platforms in its store, so an
 update never re-downloads them. Need another level? `bb emu create 34` on the
-node, or add the image on the Emulator tab.
+node, or add the image on the Emulator page.
 
 ### Publishing packages
 

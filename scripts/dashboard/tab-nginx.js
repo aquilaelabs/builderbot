@@ -75,7 +75,7 @@ async function nginxAct(body){
   if (j.error) notify(j.error, true);
   else if (j.note) notify(j.note, true);
   else if (j.job) notify(`${body.action === "deploy" ? "deploying" : body.action === "update" ? `updating nginx to ${j.to}` : "rebuilding nginx"}${
-    body.action === "deploy" ? " nginx" : ""}: its row on the Docker tab has the build`);
+    body.action === "deploy" ? " nginx" : ""}: its row on the Containers page has the build`);
   else if (body.action === "check") notify(`the registry lists nginx:${j.latest?.tag || "?"}`);
   // A hostname added or deleted comes back with the list as it now is, so
   // the pull-downs hold it the moment the answer lands rather than after
@@ -544,7 +544,7 @@ function wireNginxTab(root){
   };
   const rm = sect.querySelector("[data-ngremove]");
   if (rm) rm.onclick = async e => {
-    if (!confirm(`Remove nginx from ${n.name}?\n\nThe container comes down and leaves the Docker tab; the routes and certificate stay here for a redeploy.`)) return;
+    if (!confirm(`Remove nginx from ${n.name}?\n\nThe container comes down and leaves the Containers page; the routes and certificate stay here for a redeploy.`)) return;
     busy(e.target, "Removing");
     await nginxAct({action: "remove", node: nid});
     nginxRedraw();

@@ -28,7 +28,7 @@ so a session's plain `adb devices` there shows the emulator and nothing else.
 
 **A connection has one owner.** The account that connects a phone is the only
 one that can disconnect it, and the only one asked when a session wants to
-touch it: a request from a session goes to the owner's bell and Phone tab and
+touch it: a request from a session goes to the owner's bell and Phone page and
 nobody else's. Everybody else sees the connection and cannot drive it.
 """
 import hashlib
@@ -240,7 +240,7 @@ def _adb(nid, *args, timeout=30, files=None, sizes=None, project="", by="phone",
 
     `probe` is for a READ nobody asked to see, the device listing: a probe
     job moves no revision and is dropped once its answer is read. Listed,
-    it was a row on the Jobs tab per node per minute, all reading "exec adb
+    it was a row on the Jobs page per node per minute, all reading "exec adb
     devices -l", and each one moved the revision the Docker manager
     refetches its whole listing on. A push or an install is a record and
     stays one."""
@@ -809,7 +809,7 @@ def ask(why, argv, nid, node_name, project, by="claude", asker="", asker_uid="")
     rec = _rec(nid)
     if not rec or not phone_on(nid):
         return {"error": f"no phone is connected on {node_name or nid}: somebody "
-                         "connects one in the Phone tab, on that node"}
+                         "connects one in the Phone page, on that node"}
     return _allow_if_trusted(_queue("phone", why, argv, nid, node_name, project, by, rec["owner"],
                                      rec.get("owner_name") or "the owner", asker,
                                      extra={"asker_uid": asker_uid}))
@@ -964,7 +964,7 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
     phone's shape applied to root: the reason and the exact command go to
     a person, they allow or deny, and the node runs that command and
     nothing else. Which person is the session's own account when it is an
-    administrator's (their ask, on their Nodes tab and bell), and every
+    administrator's (their ask, on their Nodes page and bell), and every
     administrator when a user's session asks, because a sandbox is shared
     and root on it is not a user's to allow. Only a node provisioned as a
     sandbox (a MANAGED node) takes it: somebody's own machine is not the
@@ -993,7 +993,7 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
         return {"error": locked}
     if asker_admin and asker_uid:
         return _queue("root", why, argv, nid, node_name, project, by, asker_uid,
-                      f"{asker_name or 'you'} (your own account: it is on your Nodes tab and bell)",
+                      f"{asker_name or 'you'} (your own account: it is on your Nodes page and bell)",
                       asker_name)
     return _queue("root", why, argv, nid, node_name, project, by, "admins",
                   "the administrators", asker_name)
@@ -1019,7 +1019,7 @@ def ask_release(why, project, comp, plan, to_uid, to_name, asker_name="", princi
     """A session asking to tag and publish a release, on a project whose
     dial is `ask` (Claude may: Tag and publish a release, R138). It goes to
     the project's owner, who reads the tag and the commit it would mark;
-    Allow runs Release as the Artifacts tab does, with the project's own
+    Allow runs Release as the Artifacts view does, with the project's own
     credentials, which the session never holds."""
     why = " ".join(str(why or "").split())[:300]
     if not why:
@@ -1125,7 +1125,7 @@ def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
         return {"error": "that env file is over 64KB, and this holds settings, not data"}
     to, to_name = (("admins", "the administrators") if not (asker_admin and asker_uid)
                    else (asker_uid, f"{asker_name or 'you'} (your own account: it is "
-                                    "on the Docker tab and your bell)"))
+                                    "on the Containers page and your bell)"))
     ref = str(ref or "") if create else ""
     compose = str(compose or "") if create else ""
     override = str(override or "") if create else ""
@@ -1151,7 +1151,7 @@ def ask_container(why, name, compose, env, nid, node_name, project, for_project=
 
     The root shape applied to docker. The session names nothing docker runs:
     it hands over the file, and Allow gives that file to the same function
-    the Docker tab's New container uses, which asks compose to parse it before
+    the Containers page's New container uses, which asks compose to parse it before
     anything is registered. To the administrators always, whoever asks: a
     container is root-shaped power on the node, and starting one is
     docker-write, which no user account holds.
@@ -1360,7 +1360,7 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
             built = rebuilder(res.get("project") or "", res.get("instance") or "", gate=False) or {}
             if built.get("error"):
                 res = {"error": f"{res.get('name') or r.get('name')} is registered on the "
-                                f"Docker tab, and its build did not start: {built['error']}"}
+                                f"Containers page, and its build did not start: {built['error']}"}
             else:
                 res = {"job": built.get("job"), "name": res.get("name")}
         with _lock:
@@ -1410,7 +1410,7 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
 def _root(nid, argv, why, by):
     """The one approved command, as root on the node: a system job the
     agent runs only on a sandbox node, with the reason and who allowed it
-    written into its log so the Jobs tab is the record."""
+    written into its log so the Jobs page is the record."""
     if nodes is None:
         return {"code": 1, "out": "the node registry is not available on this controller"}
     r = nodes.root_wait(by, nid, argv, why=why, timeout=600)
@@ -1774,7 +1774,7 @@ def verb(action, req, who, fresh):
 
 
 def artifact_verb(project, act, req, *, uid, me, by):
-    """The Artifacts tab's phone buttons: push an .xpi from the project's
+    """The Artifacts view's phone buttons: push an .xpi from the project's
     dist/ to the phone on its node, install an .apk there, or stop a push,
     once server.py has let this person (never a session) work on the
     project. The path is resolved against dist/ and unpacked before
@@ -1792,7 +1792,7 @@ def artifact_verb(project, act, req, *, uid, me, by):
                              "driven from the project's node"}, 400
         if not phone_on(nid):
             return {"error": f"no phone is connected on {node['name']}: "
-                             "connect one in the Phone tab, on that node"
+                             "connect one in the Phone page, on that node"
                              ""}, 400
         held = owner_of(nid)
         if held and held["uid"] != uid:
@@ -1801,7 +1801,7 @@ def artifact_verb(project, act, req, *, uid, me, by):
                              "it or install on it"}, 400
         if not held:
             return {"error": f"the phone on {node['name']} has no owner: "
-                             "connect it in the Phone tab, on its node first"}, 400
+                             "connect it in the Phone page, on its node first"}, 400
     if act == "push":
         # A temporary add-on, through web-ext on the phone's node. A push
         # is a decision, made each time; nothing auto-pushes on a change.

@@ -57,7 +57,7 @@ What this buys you: SSH keys are served by a root-owned `ssh-agent`
 (sessions can push with them, never read them), a token in a `*.env` file
 here never enters a session's environment, and all logs are redacted of
 token patterns *and* the literal secret values. A node's runner token is
-not a file here: it is typed on the Nodes tab and kept root-only by the
+not a file here: it is typed on the Nodes page and kept root-only by the
 controller. Details and threat model: [docs/unraid.md, Shielding
 secrets](unraid.md#shielding-secrets-pat--ssh-keys-from-claude-sessions).
 
@@ -96,12 +96,12 @@ Everything else has sane defaults: full reference in [reference.md](reference.md
 
 | Want | Do |
 |---|---|
-| Android emulator, builds, CI | Enroll a node from the dashboard's Nodes tab. This container compiles nothing and renders nothing: the toolchains, the card and `/dev/kvm` are that machine's |
+| Android emulator, builds, CI | Enroll a node from the dashboard's Nodes page. This container compiles nothing and renders nothing: the toolchains, the card and `/dev/kvm` are that machine's |
 | Web dashboard | Always on (it is the controller). Map port 7680 and open it: the first page is the setup, see step 7 and [Web dashboard](how-it-works.md#web-dashboard) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir: read-only; see [Static analysis reports](how-it-works.md#static-analysis-reports) |
 | Docker builds (CI jobs, a project's containers) | On a node, never in this container: a node's own Docker, or the Docker sandbox VM ([sandbox-vm.md](sandbox-vm.md)). The template has no Docker socket field |
-| Extra tools | the Toolchains tab, per node; the controller carries what it needs in the image |
+| Extra tools | the Toolchains page, per node; the controller carries what it needs in the image |
 
 ### 7. First boot
 
@@ -130,15 +130,15 @@ only CUDA), each stored **runner token** is still accepted by its host, and
 the Anthropic API are checked on a node, where sessions run.
 
 Each person signs in to Claude on each node they work on, from that node's
-row on the Nodes tab: **Sign in** under Claude Code, which a project's
+row on the Nodes page: **Sign in** under Claude Code, which a project's
 Claude button offers the first time. The flow runs on that node, the
 machine Claude Code is installed on, and the code is pasted back on the
 row. Each node keeps the login it alone refreshes; the controller holds no
 credential, only which Anthropic account each node reported for you.
 
 **CI runs on a node, not in this container.** Take the node the setup
-enrolled, or enroll another (**Enroll node** on the Nodes tab gives the
-command to run on the machine; [nodes.md](nodes.md) walks it), open its row on the Nodes tab, add a runner for your git host
+enrolled, or enroll another (**Enroll node** on the Nodes page gives the
+command to run on the machine; [nodes.md](nodes.md) walks it), open its row on the Nodes page, add a runner for your git host
 and press **Install runner** on it. It registers under the node's own name,
 which is the label a workflow uses:
 

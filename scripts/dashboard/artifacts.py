@@ -246,7 +246,7 @@ def resolve(project, rel, tree=""):
 
 
 def source_zip(project):
-    """The code base as a zip, for the Artifacts tab's Download source:
+    """The code base as a zip, for the Artifacts view's Download source:
     what git tracks plus what it would track (untracked files that are not
     ignored) under one top-level directory named for the project, and
     never .git itself, dist/ (the artifacts have their own downloads) or
@@ -483,7 +483,7 @@ SWEEP_EVERY = 300
 
 def sweep_all():
     """Every project's dist/ swept: the builds a session copies straight
-    into dist/ go by whether anybody opened the Artifacts tab, which is all
+    into dist/ go by whether anybody opened the Artifacts view, which is all
     the sweep used to wait for."""
     if WORKSPACE is None or not WORKSPACE.is_dir():
         return
@@ -509,7 +509,7 @@ def start():
 
 
 def tab_view(name, uid):
-    """The Artifacts tab's whole read for one project, as account `uid`
+    """The Artifacts view's whole read for one project, as account `uid`
     sees it: what it built, each account's own builds from its worktree
     (B237) apart from dist/, which is what ships, what the project can and
     cannot do off this box, its dev instances, and the phone."""

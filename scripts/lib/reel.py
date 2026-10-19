@@ -22,7 +22,7 @@ Only the sheet and frames.json land in dist/reel/NAME (R96): the recording
 and the full-size frames are working files, under the capture's scratch
 directory (capture.scratch), which frames.json names in `work` and in each
 frame's `file`. frames.json also says who asked and when (capture.maker),
-which is what the Artifacts tab shows and what the sweep goes by.
+which is what the Artifacts view shows and what the sweep goes by.
 """
 import argparse
 import json

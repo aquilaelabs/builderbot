@@ -70,7 +70,7 @@ def identity():
         print(f"  [ok]   commit identity on {n} of {m} accounts")
         print("         an account without one is told on its own Claude buttons and Profile, not here")
     else:
-        print("  [warn] no account has a commit identity yet: set one on the Profile tab"
+        print("  [warn] no account has a commit identity yet: set one on the Profile page"
               " (the gear in the header) before opening a session")
 
 
@@ -93,7 +93,7 @@ def node():
               f"({', '.join(live[:4])})")
     else:
         print("  [warn] no node can run a session, and this container carries no Claude Code")
-        print("         enroll one on the Nodes tab, or wait for one to come back: a node")
+        print("         enroll one on the Nodes page, or wait for one to come back: a node")
         print("         that has just restarted or updated its agent is back in a minute")
 
 

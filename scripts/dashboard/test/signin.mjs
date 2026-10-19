@@ -74,7 +74,7 @@ await page.waitForFunction(id => {
 }, box.id, { timeout: 20000 });
 ok(await page.$eval('#ndPick', s => s.selectedOptions[0].textContent).then(t => /^signbox/.test(t)) && await terms() === before
    && await page.$('#resumemenu') === null,
-   '...which opens the Nodes tab on that node with its Claude Code section unfolded, and starts no session');
+   '...which opens the Nodes page on that node with its Claude Code section unfolded, and starts no session');
 await page.evaluate(() => startClaude('beta', null, ''));
 ok(/sign in to Claude on signbox first/.test(await page.$eval('#toast', e => e.textContent)) && await terms() === before,
    'anything else that would start a session there is sent to the same sign-in, with a line saying why');
@@ -215,7 +215,7 @@ await call('/api/users', { action: 'edit', name: 's.user', profile: { full_name:
   ok(seen.open && seen.live.includes('in') && seen.live.includes('ndPick'),
      `its chooser's sign-in lands on the same section, where its own Sign in is live (${seen.live.join()})`);
   ok(seen.others > 5 && seen.ghosted === seen.others && !seen.toolchains && seen.enroll === true,
-     `every other control on the tab is ghosted for it, enrolling included, and no way to the Toolchains tab (${seen.ghosted} of ${seen.others})`);
+     `every other control on the tab is ghosted for it, enrolling included, and no way to the Toolchains page (${seen.ghosted} of ${seen.others})`);
   ok(/no Nodes Write on signbox/.test(seen.why) && /Your Claude sign-in here/.test(seen.why),
      '...and the row says why, and what is still theirs');
   // Its sign-in works: the job is for that account, on its project's node.

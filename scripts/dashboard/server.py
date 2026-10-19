@@ -425,7 +425,7 @@ def run(cmd, cwd=None, timeout=120, env=None, split_err=False, register=None):
 
 
 def version_payload(name):
-    """The Artifacts tab's version block, plus what a window move would cost
+    """The Artifacts view's version block, plus what a window move would cost
     here. One function so every answer the tab gets carries the same warning:
     the staged line is drawn from whichever of them came back last."""
     cost = window_cost(name)
@@ -477,7 +477,7 @@ def node_holds(reap=False):
     controller ships, or its Claude Code is being updated (claudecode.py),
     which ends the sessions there first. The half of a project's hold that
     is its node's. Being merely behind is not here: inside a window an
-    older agent takes a job and a session, and the Nodes tab's Update is a
+    older agent takes a job and a session, and the Nodes page's Update is a
     courtesy rather than a gate. reap: only what ends a running session
     (claudecode.holds)."""
     out = {}
@@ -1396,7 +1396,7 @@ def _attention(who):
 
 
 def _claude_code_for(who, ps):
-    """Claude Code per node against the latest known, for the Nodes tab's
+    """Claude Code per node against the latest known, for the Nodes page's
     section: the registry's for whoever may manage nodes, and for anybody
     else the nodes their own projects are on, which are the ones that tab
     shows them."""
@@ -1414,14 +1414,14 @@ def gpu_container_why(project, node_id):
     """Why a container of `project` on that node cannot be given its NVIDIA
     card, or "" (R102): the project's setting and the node's switch, which
     speak for containers as they do for sessions, then what the node's
-    Toolchains tab holds (the driver running the card, the container
+    Toolchains page holds (the driver running the card, the container
     toolkit, Docker's runtime)."""
     who = gpu_for(project, node_id)
     if who == "project":
         return "this project's settings say the node's GPU is not for it (The node's GPU)"
     n = nodes.node(node_id) if node_id and not NODES_OK else None
     if who == "node":
-        return f"{n['name'] if n else 'its node'}'s GPU is switched off for sessions and jobs (Nodes tab, GPU)"
+        return f"{n['name'] if n else 'its node'}'s GPU is switched off for sessions and jobs (Nodes page, GPU)"
     return toolchains.container_why(n)
 
 
@@ -1546,7 +1546,7 @@ def session_target(project, claude=False, node="", uid=""):
                # The row says it whole, the fact and then what to do about
                # it (no tooltip carries a second half any more).
                "why": "no node to run a Claude session on: pick one in the project's settings, or enroll "
-                      "one on the Nodes tab"} if claude \
+                      "one on the Nodes page"} if claude \
         else {"where": "local"}
     if not nid or NODES_OK:
         return no_node
@@ -1566,11 +1566,11 @@ def session_target(project, claude=False, node="", uid=""):
     elif n.get("state") == "retired":
         # Un-enrolled (the operator, 5 Oct): the fact first, then what to do
         # about it, both on the row.
-        why = (f"{name} was removed from the Nodes tab. Pick another node in {project}'s settings, "
+        why = (f"{name} was removed from the Nodes page. Pick another node in {project}'s settings, "
                "or enroll it again")
         passing = True          # its own sentence says the way on
     elif n.get("state") == "disabled":
-        why = f"{name} is disabled on the Nodes tab: Enable it there, or pick another node in {project}'s settings"
+        why = f"{name} is disabled on the Nodes page: Enable it there, or pick another node in {project}'s settings"
     elif n.get("state") != "online":
         why = f"{project}'s sessions run on {name}, which is {n.get('state') or 'not online'}"
     elif n.get("live") is False and _reconnecting(n):
@@ -1605,7 +1605,7 @@ def session_target(project, claude=False, node="", uid=""):
         why = (f"{project}'s sessions run on {name}, which "
                + ("is leaving its synced copy: what is left there is going up to the controller"
                   if (n.get("config") or {}).get("leaving") else "holds no projects now")
-               + ". Its row on the Nodes tab moves it to a synced copy again,"
+               + ". Its row on the Nodes page moves it to a synced copy again,"
                " or bind the project to another node")
     elif not ((rep.get("sync") or {}).get(project) or {}).get("ready"):
         # A synced copy (R162) that is not there yet: a session started now
@@ -1629,7 +1629,7 @@ def session_target(project, claude=False, node="", uid=""):
         # the tab, and bb-tty there would refuse every reconnect as a stale
         # tab (bug #56): a loop, not a session. Dead button, plain reason.
         why = (f"{project}'s sessions run on {name}, whose agent is too old to report "
-               "its boot; use Update agent on its row on the Nodes tab, then open this again")
+               "its boot; use Update agent on its row on the Nodes page, then open this again")
     else:
         return {"where": "node", "id": nid, "name": name, "host": nodes.route_host(nid),
                 "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0),
@@ -1678,7 +1678,7 @@ def ctr_target(name, instance):
         # The container terminal is the agent's third ttyd, as the docker
         # account; the session ones run as an account kept off docker.
         why = (f"{nm} cannot open a container's shell: {se['ctr_why']}" if se.get("ctr_why")
-               else f"{nm}'s agent is from before a container's shell: Update agent on its row on the Nodes tab")
+               else f"{nm}'s agent is from before a container's shell: Update agent on its row on the Nodes page")
     else:
         # Both ports the container terminal's: it has no read-only twin,
         # and an account without a shell was refused before this.
@@ -1984,7 +1984,7 @@ def project_busy(name, verb):
               f"{type(e).__name__}: {e}", flush=True)
         holds = False
     if holds:
-        return "its dev instance still has containers; press Down on the Artifacts tab first"
+        return "its dev instance still has containers; press Down on the Artifacts view first"
     return ""
 
 
@@ -2185,7 +2185,7 @@ PHONE_WAIT_S = 45
 def app_apk():
     """The newest companion APK in BuilderBot's own dist/, if this
     controller has the repository as a project: what the app points at when
-    it finds itself behind. Its filename only; the Artifacts tab serves it."""
+    it finds itself behind. Its filename only; the Artifacts view serves it."""
     d = WORKSPACE / "BuilderBot" / "dist"
     try:
         apks = sorted((p for p in d.iterdir() if p.suffix == ".apk" and p.is_file()),
@@ -2912,7 +2912,7 @@ def no_node_advice(name):
 
 
 def build_state(name):
-    """Where this project's compiling happens, for the Artifacts tab: its
+    """Where this project's compiling happens, for the Artifacts view: its
     node and what that node carries, or the plain fact that it has none and
     what is left when it does not."""
     if NODES_OK:
@@ -3323,7 +3323,7 @@ phone.signer = signing.start
 
 
 def _releaser(project, comp, asker_name, principal):
-    """A session's release, run as the Artifacts tab's Release runs it
+    """A session's release, run as the Artifacts view's Release runs it
     (version.verb's release), under the asking account's commit identity
     and with the project's own credentials (R138)."""
     # The asker's commit identity, else the project's owner's: a relayed bb
@@ -4523,7 +4523,7 @@ class Handler(BaseHTTPRequestHandler):
         """Node ids this account may look at, or None for "no restriction".
 
         An account that may change a node is shown the registry, which is what
-        the Nodes tab is. One that may not is shown only the machines its own
+        the Nodes page is. One that may not is shown only the machines its own
         projects build on, so every node-shaped surface is a window on its own
         work rather than an inventory of the box.
 
@@ -4645,7 +4645,7 @@ class Handler(BaseHTTPRequestHandler):
         a ctr: argument names, and "" when it may (R218 step 4, the operator,
         14 Oct): a person with a shell who may run that container, which is
         its project's account or an administrator, as for Start and Stop on
-        the Docker tab; an administrator alone when the project's Claude may:
+        the Containers page; an administrator alone when the project's Claude may:
         Run its container is Deny; and the container one of the instance's
         running ones, asked of its daemon now, never taken from the URL."""
         m = _ARG_CTR.match(arg)
@@ -5270,7 +5270,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(changelog.welcome(str(users.prefs(self._who()).get("image_seen") or "")))
 
     def _get_source(self):
-        """GET /api/source: the code base as a zip, from the Artifacts tab
+        """GET /api/source: the code base as a zip, from the Artifacts view
         (artifacts.source_download). A person's download, so a session's
         token is refused: a session has the tree already."""
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
@@ -5390,7 +5390,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(got)
 
     def _get_roles(self):
-        """GET /api/roles: the Roles tab (R152): the areas, every role, and
+        """GET /api/roles: the Roles page (R152): the areas, every role, and
         each account with its Global roles, the roles it holds on each
         project and the projects it is on. An administrator's whole; a
         project's owner sees the people and roles of the projects they own,
@@ -5398,7 +5398,7 @@ class Handler(BaseHTTPRequestHandler):
         me = self._who() or {}
         can = users.assignable(me)
         if not can["admin"] and not can["projects"]:
-            return self._json({"error": "the Roles tab is an administrator's, or a project owner's "
+            return self._json({"error": "the Roles page is an administrator's, or a project owner's "
                                         "for their own projects"}, 403)
         scope = None if can["admin"] else set(can["projects"])
         people = []
@@ -5441,7 +5441,7 @@ class Handler(BaseHTTPRequestHandler):
                             for r in runners.listing()]})
 
     def _get_nodes(self):
-        """GET /api/v1/nodes: the Nodes tab's read (nodes.tab_view), scoped to
+        """GET /api/v1/nodes: the Nodes page's read (nodes.tab_view), scoped to
         this account."""
         # The versioned surface starts here (docs/nodes.md §3): new
         # endpoints land under /api/v1 with their shapes written down;
@@ -6033,12 +6033,12 @@ class Handler(BaseHTTPRequestHandler):
             if host:
                 return self._json({"error": f"{', '.join(host)} hosts containers only: no project's code "
                                             "or sessions go there. Send a container to it from the "
-                                            "Docker tab instead"}, 400)
+                                            "Containers page instead"}, 400)
             # A disabled node is kept but not offered (the operator, 11 Oct).
             off = [(nodes.node(n) or {}).get("name") or n for n in want
                    if n and (nodes.node(n) or {}).get("state") == "disabled"]
             if off:
-                return self._json({"error": f"{', '.join(off)} is disabled on the Nodes tab: Enable it there first"}, 400)
+                return self._json({"error": f"{', '.join(off)} is disabled on the Nodes page: Enable it there first"}, 400)
         # The hosting nodes its containers may also go to (prefs.hosts): a
         # node is shared, so naming one is for whoever may set the project's
         # node, and only a hosting-only node is one: a node that holds the
@@ -6119,7 +6119,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*got)
 
     def _nodes(self, req):
-        """The Nodes tab's verbs. Thin on purpose: an administrator's, and
+        """The Nodes page's verbs. Thin on purpose: an administrator's, and
         nodes.verb says what each one means and writes its audit row.
 
         Each held to the instance it touches (R260): a node's verbs to Nodes
@@ -6151,7 +6151,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*got)
 
     def _jobs(self, req):
-        """The Jobs tab's one verb, and where `bb run`, `bb build`, `bb test`
+        """The Jobs page's one verb, and where `bb run`, `bb build`, `bb test`
         and `bb emu` land from the controller (nodes.run_job). A queued job
         is ended; a running one is flagged and its runner told, and the row
         moves when the runner reports that it stopped, which is when it
@@ -6473,7 +6473,7 @@ class Handler(BaseHTTPRequestHandler):
         nid = field(req, "node")
         if not nid:
             return "", ({"error": "which node? A Claude sign-in is made on one node, "
-                                  "from its row on the Nodes tab"}, 400)
+                                  "from its row on the Nodes page"}, 400)
         nid, why = self._node_asked(nid)
         if why:
             return "", ({"error": why}, 403)
@@ -6570,7 +6570,7 @@ class Handler(BaseHTTPRequestHandler):
                                         prefix=users.tmux_prefix(self._who())))
 
     def _phone_payload(self, node="", probe=False):
-        """The Phone tab's data as this request reads it: who is asking, the
+        """The Phone page's data as this request reads it: who is asking, the
         nodes they may see (_node_scope) and this browser's own address and
         kind, which phone.tab_view decides whether to offer."""
         return phone.tab_view(users.uid_of(self._who()), admin=users.is_admin(self._who()),
@@ -6675,7 +6675,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._result(r)
 
     def _devapp(self, req):
-        """The dev-instance controls: the Docker tab's buttons, and `bb devapp`
+        """The dev-instance controls: the Containers page's buttons, and `bb devapp`
         from a session. Who may press which is decided below, by the verb, by
         whose the container is and by its project's Run its container."""
         me = self._who() or {}
@@ -6759,7 +6759,7 @@ class Handler(BaseHTTPRequestHandler):
                 # nobody's list to be on.
                 if target and registry.is_project(target) and not users.may_work(me, target):
                     return self._json({"error": f"{registry.label(target)} is not on your list of projects: "
-                                                "add it to your own list on the Users tab first"}, 403)
+                                                "add it to your own list on the Users page first"}, 403)
         if act == "relocate" and session:
             return self._json({"error": "copying or moving a container to another node is a person's: "
                                         "it puts the project's data on another machine"}, 403)
@@ -6870,7 +6870,7 @@ class Handler(BaseHTTPRequestHandler):
         if act == "move":
             if me.get("session"):
                 return self._json({"error": "moving a container to another project is a person's, "
-                                            "on the Docker tab"}, 403)
+                                            "on the Containers page"}, 403)
             if field(req, "to") not in set(project_names(me)):
                 return self._json({"error": f"no project called {field(req, 'to')}"}, 400)
         if act == "owner" and field(req, "owner") \
@@ -6924,7 +6924,7 @@ class Handler(BaseHTTPRequestHandler):
             if mode == "deny":
                 return self._json({"error": f"{name}'s settings say Claude does not release it (Claude may: "
                                             "Tag and publish a release); a person cuts it with Release on "
-                                            "the Artifacts tab"}, 403)
+                                            "the Artifacts view"}, 403)
             comp = field(req, "component") or ""
             plan = version.release_plan(name, comp)
             if plan.get("error"):
@@ -7063,7 +7063,7 @@ class Handler(BaseHTTPRequestHandler):
             if mode == "deny":
                 return self._json({"error": f"{name}'s settings say Claude does not sign its builds "
                                             "(Claude may: Sign a build); a person signs from the "
-                                            "Artifacts tab"}, 403)
+                                            "Artifacts view"}, 403)
             file, route, key = field(req, "file"), field(req, "route"), field(req, "key")
             no = signing.refusal(name, file, route, key)
             if no:
@@ -7398,7 +7398,7 @@ class Handler(BaseHTTPRequestHandler):
             or not users.may(self._who(), "node", name)))
 
     def _profile(self, req=None):
-        """The signed-in account's own settings (the Profile tab): read on
+        """The signed-in account's own settings (the Profile page): read on
         GET, saved on POST, by profiletab.py. Anybody signed in, because this
         is about themselves."""
         me = self._who()
@@ -7600,7 +7600,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*projects.job_verb(req.get("action", "")))
 
     def _users(self, req):
-        """The Users tab's verbs. Thin, like _nodes: users.py owns the rules
+        """The Users page's verbs. Thin, like _nodes: users.py owns the rules
         (that the owner cannot be deleted or demoted, that there is only ever
         one, what a password has to be), and this is the door.
 
@@ -7899,7 +7899,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*macros.pin(req.get("name", ""), bool(req.get("pinned"))))
 
     def _get_storage(self):
-        """The Storage tab (storage.view, R169): every node this account
+        """The Storage page (storage.view, R169): every node this account
         holds the Storage area on, what its disks hold, by project where
         the account sees the project and as one line otherwise. Never a
         session's: a session reads its node with bb node busy."""
@@ -7913,7 +7913,7 @@ class Handler(BaseHTTPRequestHandler):
                                         level_of=roles.level_of))
 
     def _storage(self, req):
-        """Measure now on the Storage tab: a node's disks walked at once
+        """Measure now on the Storage page: a node's disks walked at once
         (nodes.node_storage_measure). Write on Storage for that node."""
         who = self._who() or {}
         if who.get("session"):
@@ -7926,13 +7926,13 @@ class Handler(BaseHTTPRequestHandler):
         return self._result(nodes.node_storage_measure(self._principal(), nid))
 
     def _get_nginx(self):
-        """The nginx tab (nginxproxy.view): every node's nginx, for an
-        account that may read the Nodes tab; never a session's."""
+        """The nginx page (nginxproxy.view): every node's nginx, for an
+        account that may read the Nodes page; never a session's."""
         who = self._who() or {}
         if who.get("session"):
             return self._json({"error": "a node's proxy is a person's"}, 403)
         if not users.is_admin(who) and not roles.level_of(who, "nodes"):
-            return self._json({"error": "the nginx tab is the Nodes tab's area: ask for Read on Nodes"}, 403)
+            return self._json({"error": "the nginx page is the Nodes page's area: ask for Read on Nodes"}, 403)
         return self._json(nginxproxy.view(devapp, devactions.state))
 
     def _nginx(self, req):
@@ -7988,7 +7988,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._result(r)
 
     def _images(self, req):
-        """Check for updates on the Docker tab (imagecheck.py, R195): every
+        """Check for updates on the Containers page (imagecheck.py, R195): every
         container's registry images on one node, or all, asked now. A
         person's, under docker-write, since what it leads to is an Update."""
         if (self._who() or {}).get("session"):

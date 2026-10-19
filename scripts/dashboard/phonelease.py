@@ -107,7 +107,7 @@ def lend(nid, who, project, hours):
 
 
 def view(nid):
-    """The lease as the Phone tab shows it: who has it, for how long, its
+    """The lease as the Phone page shows it: who has it, for how long, its
     apps, the newest screenshot a session took of it, and the newest
     recording's reel."""
     got = lease(nid)
@@ -127,7 +127,7 @@ def view(nid):
 
 
 def rev():
-    """What the Phone tab watches to show a lent phone live: the lease record
+    """What the Phone page watches to show a lent phone live: the lease record
     and the newest screenshot of each project a phone is lent to, by mtime,
     so a session's shot reaches the owner's tab on the next poll. Stats only."""
     try:
@@ -309,7 +309,7 @@ def use(project, op, args):
     args = args if isinstance(args, dict) else {}
     nid, got = leased_to(project)
     if not got:
-        return {"error": f"no phone is lent to {project}: its owner lends one from the Phone tab, on its node, "
+        return {"error": f"no phone is lent to {project}: its owner lends one from the Phone page, on its node, "
                          "and bb phone run --why asks for one command meanwhile"}, 403
     dev = phone.phone_on(nid)
     if not dev:
@@ -587,6 +587,6 @@ def _install(project, nid, serial, rel):
     pkg = m.group(1) if m and PKG.match(m.group(1)) else ""
     if not pkg:
         return {"error": "installed, but its package could not be read: the node needs android-tools "
-                         "from the Toolchains tab for the lease to know it"}, 502
+                         "from the Toolchains page for the lease to know it"}, 502
     _add_pkg(nid, pkg)
     return {"ok": True, "pkg": pkg}, 200

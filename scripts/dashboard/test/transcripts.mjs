@@ -58,7 +58,7 @@ ok(i1 >= 0 && i2 > i1, 'newest first');
 ok(await page.$eval('.profiletab .cvlogs .artrow a.btn', a => a.hasAttribute('download') && a.getBoundingClientRect().height >= 30),
   'the download is a link dressed as a button, a tap tall');
 ok(await page.$$eval('.profiletab .cvlogs .artrow', els => els.length > 1 && els.slice(0, -1).every(e => getComputedStyle(e).borderBottomWidth === '1px')),
-  "the rows are the Artifacts tab's: a hairline between each");
+  "the rows are the Artifacts view's: a hairline between each");
 
 const got = await page.evaluate(async href => {
   const r = await fetch(href);

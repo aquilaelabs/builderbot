@@ -97,7 +97,7 @@ function wireProjectRows(root){
 function phoneWhy(p){
   const ph = p.phone;
   if (!p.node_name) return "no node: a phone is connected on a project's node, and this one has none";
-  if (!ph) return `no phone is connected on ${p.node_name}: connect yours in the Phone tab, on that node`;
+  if (!ph) return `no phone is connected on ${p.node_name}: connect yours in the Phone page, on that node`;
   if (!ph.mine) return `the phone on ${p.node_name} is ${ph.owner}'s: only they lend it`;
   if (ph.lease && ph.lease.project !== p.name) return `your phone is lent to ${projLabel(ph.lease.project)}: take it back there first`;
   return "";
@@ -382,7 +382,7 @@ function applyNow(fn){
   adoptSeq++;                      // a poll already out is older than this
   (state?.projects || []).forEach(fn);
   drawProjects(state?.projects || []);
-  drawPanes();                     // the Projects tab shows the same rows
+  drawPanes();                     // the Projects page shows the same rows
 }
 
 // The sidebar row for one project. By the row's own name rather than through

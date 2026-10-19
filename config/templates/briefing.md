@@ -122,7 +122,7 @@ and carry on with grep.
 
 Build and test through these rather than typing the command yourself. `bb
 build` puts what the project's outputs name into dist/ under its version,
-where the Artifacts tab offers it; by hand, that copy and its name are yours
+where the Artifacts view offers it; by hand, that copy and its name are yours
 to get right. `bb test` tells the dashboard a run is going. Arguments follow
 the command (`bb test --tests 'FooTest'`); a task the command does not run
 (installing on the emulator, a single module) is `bb run -- ./gradlew ...`.
@@ -133,7 +133,7 @@ point it at another home and its builds land in the tree again.
 A project whose build or test command is not set refuses and says so: `bb
 settings set build|test|outputs "..."` fills the field in for the operator,
 under the project's gate. When the toolchain lacks what a build needs, say
-so; installing is the operator's, from the Toolchains tab. `bb toolchains`
+so; installing is the operator's, from the Toolchains page. `bb toolchains`
 says what is installed and where:
 this node carries git, tmux, jq, python3 and curl by itself, and nothing
 else is a given. That python3 has no pip and no venv: a project's own
@@ -263,7 +263,7 @@ Two ways to look, by the question you are asking:
   `--patch N` (12; lower keeps fainter change) and `--max N` (40) tune the rest.
 
 What either leaves in `dist/` is a capture, not something the project ships:
-the Artifacts tab lists them under Captures, and the project's settings say
+the Artifacts view lists them under Captures, and the project's settings say
 how many days they are kept (7 unless changed; 0 keeps them), by age and
 never by need. `bb capture ls` names them, and `bb capture prune NAME` lets
 one of yours go sooner; leave anybody else's.
@@ -360,7 +360,7 @@ committed file attached, `(asset:NAME)` in the notes naming an attached
 file: `![The keyboard](asset:shot.png)`), and a file comes off one only with
 `bb version release --remove NAME --why "..."`; each is its own ask.
 Shippable build output goes in this project's dist/, named with `bb version
---file` and gitignored (`bb build` names it so), and the Artifacts tab lists
+--file` and gitignored (`bb build` names it so), and the Artifacts view lists
 it; nothing else goes there. dist/ keeps each product's newest few builds (3
 unless the project's settings say otherwise), a signed build by its signed
 copy alone, and a release or anything a person pinned; a build named with no
@@ -419,7 +419,7 @@ reports a hardware keyboard, so an IME shows only after `settings put secure
 show_ime_with_hard_keyboard 1`; and a force-stop of an IME's package
 deselects it, so `ime set` again after one.
 
-A real phone is the person's who connected it (the Phone tab, or the
+A real phone is the person's who connected it (the Phone page, or the
 companion app's This phone), and only they lend it to a project, from the
 project's row. Lent, it reaches this project's own app only, and every
 command but `bb phone lease` asks its owner and runs on their Allow: give
@@ -451,10 +451,10 @@ see.
 
 `bb emu images` lists the API levels here and `bb emu create <api>` fetches
 one; adding or removing one deliberately is the operator's, from the
-Emulator tab. The platform a build compiles against is separate: `bb
+Emulator page. The platform a build compiles against is separate: `bb
 toolchains` lists the store's `platforms/` and `build-tools/`, Gradle cannot
 fetch a missing one (the store is read-only to you), and the newest level is
-the Toolchains tab's "Android SDK Platform" row, ticked by the operator. Say
+the Toolchains page's "Android SDK Platform" row, ticked by the operator. Say
 which level the build needs rather than pinning dependencies down to fit. On
 a debuggable image `bb emu start` leaves adb root, so `am start` of an
 unexported activity and `bb emu touch` work without your own `adb root`.
@@ -475,7 +475,7 @@ gradle.properties or in the environment, and a build's own signingConfig is
 for debug only. `--for play` is the upload key Play re-signs from (the
 default for an .aab), sideload the key the app ships with (the default for
 an .apk); the signed one arrives as NAME-signed, with its certificate's
-fingerprint, on the Artifacts tab. `bb sign keys` lists the keys and the
+fingerprint, on the Artifacts view. `bb sign keys` lists the keys and the
 package each signs; a build takes its package's key unless `--key` names
 one; `bb sign key new NAME --for ...`, `bb sign map PACKAGE KEY` and `bb
 sign rotate OLD NEW` (an app moving to another sideload key, signed with
@@ -516,10 +516,10 @@ driver, the toolkit and the node's switches are the operator's.
 <!-- BUILDERBOT:END -->
 
 ## Containers
-<!-- BUILDERBOT:TOPIC containers: this project's containers, its dev instance (bb devapp), bb container new, hosting-only nodes, the nginx tab -->
+<!-- BUILDERBOT:TOPIC containers: this project's containers, its dev instance (bb devapp), bb container new, hosting-only nodes, the nginx page -->
 
 A container belongs to one project or to none (the operator sets it on its
-Docker tab row), and a session sees and works on its own project's only. `bb
+Containers page row), and a session sees and works on its own project's only. `bb
 devapp ls` lists them on this project's node and `bb devapp log NAME` reads
 one; `bb devapp probe [--container NAME] [--port N] [--path /x]` says
 whether one answers on its node's loopback, each published port open or
@@ -538,7 +538,7 @@ the root's compose (`docker-compose.yml` or `compose.yml`) unless `--compose
 FILE` names another (`site/compose.yml`,
 `deploy/containers/admin.compose.yml`), each its own Send on the Artifacts
 tab. What stands in front of a container (a hostname, TLS, a reverse proxy)
-is the nginx tab, a person's, one per node: say in your reply which hostname
+is the nginx page, a person's, one per node: say in your reply which hostname
 should reach which port rather than writing a proxy container of your own.
 
 The project's own container is the one built from its tree: its Rebuild and
@@ -562,7 +562,7 @@ This project has a compose file, so it can have a container built from it:
 its dev instance, the place to prove a change. Up and Down are the
 operator's; under the same dial you may send the project to Docker and
 rebuild, change the env of and remove its containers. `bb devapp new [NAME]
-[--branch REF] [--compose FILE] [--env FILE]` is the Artifacts tab's Send to
+[--branch REF] [--compose FILE] [--env FILE]` is the Artifacts view's Send to
 Docker done from here: a container built and started from this project's
 compose file (a second one needs ports of its own from `--env FILE`). `bb
 devapp` says what one was built from and whether it is running; then `bb
@@ -577,7 +577,7 @@ stops at the gate asking for it. A project may also tick hosting-only nodes
 (marked Hosting only under Also works on, in its settings), which hold no
 code and no session: `bb devapp new --node NODE` builds one here and ships it there, and
 rebuild and remove reach it; sending a container to any other node, and
-copying or moving one with its data, is a person's on the Docker tab. A
+copying or moving one with its data, is a person's on the Containers page. A
 build sees `BB_BUILD_REV`, `BB_BUILD_AT` and `BB_BUILD_VERSION` (the commit,
 when, and the project's version), so `build.args` can interpolate them
 (`GIT_SHA: ${BB_BUILD_REV}`) without reading `.git`. The project's Tests run

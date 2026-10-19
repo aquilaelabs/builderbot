@@ -1,5 +1,5 @@
 """The layer that runs and reports an instance: up, down, rebuild, test,
-remove, the row, and the verb dispatcher `bb devapp` and the Docker tab's
+remove, the row, and the verb dispatcher `bb devapp` and the Containers page's
 buttons reach through act().
 
 An action is a JOB on the queue with a plan for the node the instance is
@@ -129,7 +129,7 @@ COMPOSE_MAX = 200_000            # a compose file is a page, not a payload
 
 
 def set_compose(project, instance, text):
-    """Write a project's own compose file from the Docker tab's Edit: the
+    """Write a project's own compose file from the Containers page's Edit: the
     file in its tree, so the change is an uncommitted one the Git view shows
     like any other edit, and only once compose has read it: a file compose
     refuses is put back as it was, with compose's own words."""
@@ -1180,7 +1180,7 @@ def test(project, instance=devapp.MAIN, cmd="", args=()):
     if not a["on"]:
         return {"error": a["why"] or "the instance's daemon is not reachable"}
     if not _running(project, instance):
-        return {"error": f"{devapp._pname(project, instance)} is not running: Up on the Docker tab "
+        return {"error": f"{devapp._pname(project, instance)} is not running: Up on the Containers page "
                          "(or a rebuild) starts it, and the tests run inside it"}
     cfg = devapp._config(project, instance)
     services = devapp._services(cfg)
@@ -1341,7 +1341,7 @@ def _job_rebuild(project, instance, run):
         if not _record_build(project, instance):
             # Removed from the Docker tab while it was building (B633): the
             # remove took it down, and nothing of it is started again.
-            return {"state": "failed", "error": "removed from the Docker tab while it was building: the image is built, nothing started"}
+            return {"state": "failed", "error": "removed from the Containers page while it was building: the image is built, nothing started"}
         run.step("stopping")
         devapp._run(devapp._compose(project, instance, "down", "--remove-orphans"), timeout=180,
                     sink=run.line, hold=run.hold)
@@ -1615,7 +1615,7 @@ def probe(project, instance, req, principal):
 
 
 def request(project, instance, action, req, *, me, principal, dial="", test_cmd=""):
-    """One dev-instance verb as the Docker tab and `bb devapp` send it, once
+    """One dev-instance verb as the Containers page and `bb devapp` send it, once
     server.py has decided this caller may: a session whose project's Run
     its container dial is at `ask` puts a change in front of a person
     instead (a rebuild, the env, making or removing the container); any
@@ -1629,7 +1629,7 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
     # session names one for a new container (new's override), which the
     # request carries to Allow.
     if sess and dial == "ask" and action == "override":
-        return {"error": "under ask, a container's override is set by a person in its settings on the Docker tab; "
+        return {"error": "under ask, a container's override is set by a person in its settings on the Containers page; "
                          "bb devapp new --override names one for a new container, which Allow makes"}, 400
     if sess and dial == "ask" and action in ("rebuild", "env-set", "new", "remove"):
         # Aborting is not asked about: it stops a build this session
@@ -1693,11 +1693,11 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
 
 
 def file_rows(project):
-    """The Artifacts tab's docker rows, one per compose file (the operator,
+    """The Artifacts view's docker rows, one per compose file (the operator,
     10 Oct): what Send would make of each, judged before it is sent: what
     cannot work as written, what reaches beyond its own folder, a port
     already taken. Never which containers were made from it or how they are
-    doing; that is the Docker tab's, and a row here that said "down" read as
+    doing; that is the Containers page's, and a row here that said "down" read as
     a second place to run them."""
     # Asked of the node a new container of the project would be made on, the
     # one state() asks for the project's own (_on_instance).
@@ -1743,10 +1743,10 @@ def _file_rows(project):
 
 
 def row_states(name):
-    """What the Artifacts tab says about sending a project to Docker: a row
+    """What the Artifacts view says about sending a project to Docker: a row
     a compose file (file_rows), the name Send opens on, and how many
     containers the project already has, which its dialog says. Not how any
-    of them is doing: that is the Docker tab's (the operator, 10 Oct). One
+    of them is doing: that is the Containers page's (the operator, 10 Oct). One
     read scope, since on an agent node each check is a probe job."""
     with devapp.read_scope():
         return {"compose_files": file_rows(name),

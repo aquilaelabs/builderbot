@@ -1,4 +1,4 @@
-"""What a node's disks hold, for the Storage tab (storage.py): each
+"""What a node's disks hold, for the Storage page (storage.py): each
 project's folders in the stores, its synced copy and the accounts' build
 caches, added up by project; the filesystems once each; Docker's sizes read
 from the words it prints."""

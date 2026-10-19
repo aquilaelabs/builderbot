@@ -1,6 +1,6 @@
 """A docker read on an agent node (devapp._agent_read): asked every time,
 busy or not, and answered from what was kept, marked stale, only when the
-node does not answer (the operator, 11 Oct: the Docker tab read "down, as
+node does not answer (the operator, 11 Oct: the Containers page read "down, as
 last seen" whenever anything ran on the node, including the change just
 made from it)."""
 import os

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""A project's dev instance: built here, run here, controlled from the Docker tab.
+"""A project's dev instance: built here, run here, controlled from the Containers page.
 
 The question this answers used to be a GitHub Actions bill: a private
 project's image was built on hosted minutes and pulled back to the same box
 that could have built it. Now the box builds it, running `docker compose
-build` against the project's own compose file, and the Docker tab carries the
+build` against the project's own compose file, and the Containers page carries the
 controls, one row per instance: Up, Down, Env, Rebuild, Remove. The project's
-Artifacts tab keeps the row that sends it there in the first place.
+Artifacts view keeps the row that sends it there in the first place.
 
 **Where docker actually is.** Not in this container, and not on this box: the
 daemon belongs to a sandbox VM, a node the operator enrolled with a token,
@@ -754,7 +754,7 @@ def _forget_reads(node_id):
 
 def _agent_exec(n, argv, timeout):
     """One docker verb on one container, run on the agent node as a probe
-    job the Jobs tab never keeps, in _run's own {"code", "out"} shape. Not
+    job the Jobs page never keeps, in _run's own {"code", "out"} shape. Not
     _agent_read: a start is not a read, so nothing is memoised and a busy
     node is not answered from what it said before."""
     _docker_log("$ " + " ".join(argv) + f"   (on {n['name']})")
@@ -847,7 +847,7 @@ def _available_agent(n):
         return {"on": False,
                 "why": f"{n['name']}'s agent is not dialing in, and everything "
                        "here runs as a job on it, so nothing can until it "
-                       "does. The Nodes tab says when it was last seen"} | source()
+                       "does. The Nodes page says when it was last seen"} | source()
     rep = n.get("reported") or {}
     if not rep:
         return {"on": False,
@@ -899,7 +899,7 @@ def available():
                            "notebook's Settings (" + ", ".join(n["name"] for n in have[:3]) + ")"} | source()
         return {"on": False,
                 "why": "no node with a daemon; enroll the sandbox VM on the "
-                       "Nodes tab (Enroll node mints a token, then provision-linux.sh "
+                       "Nodes page (Enroll node mints a token, then provision-linux.sh "
                        "on the machine); see docs/sandbox-vm.md"} | source()
     if not addr.startswith("ssh://"):
         return {"on": False,
@@ -1775,7 +1775,7 @@ def composing(rel):
 
 def compose_files(project):
     """The project's compose files, relative to its root, the root's own
-    first: what the Artifacts tab offers to send, one row each. A symlink is
+    first: what the Artifacts view offers to send, one row each. A symlink is
     never one, file or directory (the audit of 26 Sep)."""
     return _compose_walk(project, overrides=False)
 
@@ -2015,7 +2015,7 @@ def name_clash(project, instance=MAIN):
             whose = f"{proj}'s " + ("own container" if inst == MAIN else f"'{inst}'")
             return (f"{want} is already {whose}, and two of them would drive one "
                     f"set of containers"
-                    + (": Build or Rebuild builds it on the Docker tab" if inst == MAIN
+                    + (": Build or Rebuild builds it on the Containers page" if inst == MAIN
                        else ", so this one needs another name"))
     return ""
 
@@ -3060,7 +3060,7 @@ def _taken(project, slug, d):
     spelling prevented by being long, and this prevents by asking."""
     if slug in (d.get(project) or {}):
         return (f"{project} already has its own container, {_pname(project, MAIN)}, "
-                "on the Docker tab: Build or Rebuild builds it there"
+                "on the Containers page: Build or Rebuild builds it there"
                 if slug == MAIN else f"{project} already has an instance called {slug}")
     return name_clash(project, slug)
 
@@ -3184,7 +3184,7 @@ def owner_of(project, instance=MAIN, rec=None):
     """The project an instance or a written container belongs to, or "".
 
     Which project's sessions may see it and work on it, which group the
-    Docker tab draws it in and which notebook lists it: one setting for the
+    Containers page draws it in and which notebook lists it: one setting for the
     three (the operator, 24 Sep). Stored as `for` and read by presence. No
     `for` is the default: the project it was built from, or none for a
     container written here, which has no project behind it. An empty `for`
@@ -3300,7 +3300,7 @@ def session_net_own(node_id):
     to its own project's network (R79): the compose projects of the instances
     bound there, under the project each belongs to, and the containers the
     operator gave a project there, by name. {project: {"compose", "names"}}.
-    The project a container belongs to is the Docker tab's: the same answer
+    The project a container belongs to is the Containers page's: the same answer
     decides whose sessions may work on it and whose may reach it."""
     out = {}
     blank = lambda: {"compose": set(), "names": set(), "peers": set(), "hosts": set()}  # noqa: E731
@@ -3969,7 +3969,7 @@ def problems(project, cfg):
                 f"{name} mounts {src}, which is this container's path. "
                 + (f"The daemon calls that {there}" if there else
                    f"The node's path mapping does not say what the daemon calls "
-                   f"it. Add a pair for it on the node's row (Nodes tab, Advanced, "
+                   f"it. Add a pair for it on the node's row (Nodes page, Advanced, "
                    f"Path mapping): {_root_of(src)}:{_root_of(src)} if the daemon "
                    f"mounts the same share at the same path"))
     return out
@@ -4038,7 +4038,7 @@ def taken_ports(project, instance, ports):
 def wiring(cfg):
     """What this compose publishes and what it mounts.
 
-    Shaped the way Unraid's own Docker tab shows it, because that is where the
+    Shaped the way Unraid's own Containers page shows it, because that is where the
     operator reads the same facts about every other container on the box: the
     container's side on the left, the host's on the right, and an arrow that
     says which way it goes: one way into the container for a read-only mount,
@@ -4162,7 +4162,7 @@ def _risk_gate(project, instance=MAIN, ack=""):
     return ("this compose asks for more than its own directory: "
             + "; ".join(rs[:3]) + (" …" if len(rs) > 3 else "")
             + ". A person acknowledges that once by pressing Build or Rebuild on its row "
-              "on the Docker tab, where the list is shown")
+              "on the Containers page, where the list is shown")
 
 
 # ---- what a build ships beside the app (the operator, 17 Oct) -------------
@@ -4205,7 +4205,7 @@ def _set_beside(project, instance, names):
 def _beside_gate(project, instance=MAIN, yes=""):
     """The reason to stop before a build ships a service beside the app that
     its last one did not, or "" to go ahead. `yes` is a person's answer, the
-    digest of the services the Docker tab showed them; a session never
+    digest of the services the Containers page showed them; a session never
     carries one (rebuild passes "" for a session's build)."""
     if is_file_source(project, instance):
         return ""                       # a container written here is all its own stack
@@ -4221,7 +4221,7 @@ def _beside_gate(project, instance=MAIN, yes=""):
         return ""
     return (f"the project's compose now runs {', '.join(new)} beside the app, which its last build did not "
             "ship: a person says whether that is part of the app by pressing Rebuild on its row on the "
-            "Docker tab, where it is named; if it is not, it is a container of its own (bb container new), "
+            "Containers page, where it is named; if it is not, it is a container of its own (bb container new), "
             "not a service in the project's compose file")
 
 

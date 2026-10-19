@@ -9,7 +9,7 @@ readers each deriving it had already disagreed in public, and a sentence that
 contradicts itself is worse than no sentence. The way to not have two is to
 not have two.
 
-The probe is devapp.available(), the same call the Artifacts tab makes on its
+The probe is devapp.available(), the same call the Artifacts view makes on its
 own poll, so nothing here can drift into disagreeing with the tab about
 whether the thing is up.
 """
@@ -30,7 +30,7 @@ def load(path):
 def _wire_nodes(m, path):
     """Give the module the node store, read-only, the way the dashboard
     does at boot. Without it there is no default node and every deploy
-    read "no node with a daemon" on the Doctor while the Docker tab was
+    read "no node with a daemon" on the Doctor while the Containers page was
     building on one: the daemon is a node's, and the probe has to know
     which node the manager would open on."""
     state = os.environ.get("DASHBOARD_STATE") or "/config"
@@ -72,7 +72,7 @@ def verdicts(m):
     q = getattr(m, "queue", None)
     have = [n for n in (q.docker_nodes() if q else []) if n.get("kind") != "local"]
     if not have:
-        return [("skip", "no node with a daemon: dev instances run on a node's docker (Nodes tab)")]
+        return [("skip", "no node with a daemon: dev instances run on a node's docker (Nodes page)")]
     out = []
     for n in sorted(have, key=lambda n: n.get("name") or ""):
         with m.on_node(n["id"]):

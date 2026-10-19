@@ -236,7 +236,7 @@ def account_of(u):
 
 
 def profile(u):
-    """The account's own settings, for its Profile tab: never a credential."""
+    """The account's own settings, for its Profile page: never a credential."""
     p = prefs(account_of(u))
     return {k: str(p.get(k) or "")[:n] for k, n in PROFILE_FIELDS.items()}
 
@@ -302,7 +302,7 @@ def git_env(u, project=""):
 
 
 def profile_set(name, patch):
-    """Merge the Profile tab's fields: PROFILE_FIELDS only, each capped."""
+    """Merge the Profile page's fields: PROFILE_FIELDS only, each capped."""
     keep = {}
     for k, n in PROFILE_FIELDS.items():
         if k in patch:
@@ -1080,7 +1080,7 @@ def migrate_r155():
 
 
 def take_on(name, project):
-    """Put one project on this account's own list, the way the Users tab
+    """Put one project on this account's own list, the way the Users page
     does; nothing to do for an account that has it or has every project.
     What the create paths call for whoever made the project (the operator,
     24 Sep): an administrator's new project was otherwise one they had not
@@ -1177,7 +1177,7 @@ def _members_refused(name, want, may_change):
 
 
 def verb(act, req, seen, may_change=None):
-    """One of the Users tab's verbs on an account, an administrator's (the
+    """One of the Users page's verbs on an account, an administrator's (the
     server holds that gate): add, a password, a role, the projects, a
     rename, the modal's one Save, remove. The store's own functions above
     hold the owner's protections. `seen()` is the projects this
@@ -1243,7 +1243,7 @@ def verb(act, req, seen, may_change=None):
 def what_may(name):
     """What an account may do, said once (R255 step 5): its roles by the
     names a person reads (and where each holds), and the areas they add up
-    to with the best level held anywhere, in the Roles tab's order."""
+    to with the best level held anywhere, in the Roles page's order."""
     rec = get(name) or {}
     held = [roles.label(r) for r in roles.roles_of(rec) if r != "user"]
     for proj, names in sorted((rec.get("project_roles") or {}).items()):
@@ -1256,7 +1256,7 @@ def what_may(name):
 
 
 def tab_view(me, projects, logins_of):
-    """The Users tab's read, an administrator's: every account with the
+    """The Users page's read, an administrator's: every account with the
     Claude login each is bound to (logins_of, claudegrant's), the owner, who
     is asking, the roles, and the projects this administrator can hand
     out."""
@@ -1275,7 +1275,7 @@ def tab_view(me, projects, logins_of):
 # ---- R152: an account's roles and projects, from the Roles tab -------------
 
 def assignable(me):
-    """What `me` may change on the Roles tab's top section: every project
+    """What `me` may change on the Roles page's top section: every project
     and Global roles for an administrator; for a project's owner who is
     not one, the projects they own, with roles on the user's projects only
     (R152 (c)). {"admin": bool, "projects": [names]}."""
@@ -1297,7 +1297,7 @@ def assign(me, name, global_roles=None, project_roles=None):
     roles (R155). (payload, status)."""
     can = assignable(me)
     if not can["admin"] and not can["projects"]:
-        return {"error": "the Roles tab's people are an administrator's, or a project owner's for "
+        return {"error": "the Roles page's people are an administrator's, or a project owner's for "
                          "their own projects"}, 403
     known = roles.all_roles()
     with _lock:

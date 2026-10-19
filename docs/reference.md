@@ -45,7 +45,7 @@ bb version bump major|minor|patch    move the target, if the policy allows it.
                    it; it does not release anything. It commits on the branch
                    the checkout is on and pushes nothing, and says so when
                    that is not the branch builds come from. **Release** on the
-                   Artifacts tab is the second gesture: an annotated tag
+                   Artifacts view is the second gesture: an annotated tag
                    (vX.Y.Z, or DIR-vX.Y.Z for a component) on the commit you
                    are on, pushed to the remote. Until that tag exists every
                    build reads X.Y.Z-dev.N+sha, which sorts BEFORE X.Y.Z,
@@ -73,7 +73,7 @@ bb version unbump      take the last unreleased bump or set back; its
                    unbump, then set to the number meant
 bb version release --why "..."
                    tag this commit and publish the release, as Release on the
-                   Artifacts tab does, on the controller with the project's own
+                   Artifacts view does, on the controller with the project's own
                    credentials. The project's settings say whether Claude may
                    (Tag and publish a release): auto releases, ask waits for
                    the project's owner, with --why as the reason
@@ -91,7 +91,7 @@ bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component: a directory with its own VERSION
 bb version policy  what a session may move here, and who decides. A
                    person picks it in the project's settings (Claude may:
-                   Move the version) or on the Artifacts tab, before or after
+                   Move the version) or on the Artifacts view, before or after
                    there is a version: locked (theirs entirely), may start
                    one (a session writes the FIRST version and moves nothing
                    after), patch, patch and minor, or anything
@@ -129,7 +129,7 @@ bb projects        the project dirs here and their branches
 bb shell           login shell as the builder user
 bb login           Claude Code subscription auth flow, on the machine it is
                    run on. Nothing is copied anywhere: each node is signed in
-                   for itself, from its row on the Nodes tab or with this
+                   for itself, from its row on the Nodes page or with this
 bb login --check   what THIS machine is signed in as, told to the controller.
                    The login itself never travels
 bb git push|fetch|pull|ls-remote [ARGS]
@@ -191,7 +191,7 @@ bb node wait-quiet [--level quiet|busy] [--timeout SECONDS]
                    wait until it is (quiet twice, ten seconds apart), before a
                    measurement; exits 1, saying how busy, if it never was
 bb nodes           the machines enrolled as nodes, read-only in a terminal;
-                   the Nodes tab is where they are edited
+                   the Nodes page is where they are edited
 bb settings        this project's settings as the dashboard has them: node,
                    model, effort, build and test commands, lock. On a node
                    it is relayed from the controller, and it is what bb-tty
@@ -203,7 +203,7 @@ bb users           the dashboard's accounts. `passwd NAME` resets one from a
 bb work            who else is working this project, and which files two of
                    you have uncommitted at once: read-only
 bb jobs [-n N | ID]    the recent jobs: state, node, what ran, how it ended,
-                   read-only; the Jobs tab is where one is stopped. An id
+                   read-only; the Jobs page is where one is stopped. An id
                    prints that job's log, which is where a failed job says
                    what happened rather than only that it failed
 bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and
@@ -233,7 +233,7 @@ bb devapp rebuild [--why "..."]
                    BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
                    interpolate them; its other options are the compose file's own
 bb devapp new [NAME] [--branch REF] [--compose FILE] [--override FILE] [--node NODE] [--env FILE] [--why "..."]
-                   send the project to Docker, as the Artifacts tab's Send to Docker
+                   send the project to Docker, as the Artifacts view's Send to Docker
                    manager does, under the same setting: a container made from its
                    own compose file on its node, then built and started, and this
                    waits for the verdict. Unnamed, it is the project's own container
@@ -353,7 +353,7 @@ bb tests lab       the lab suites (test/lab-*.mjs) against real services rather 
                    Each names what it needs and skips in one line without it, so a missing service
                    is never a failure, and nothing records them: a lab run is a proof, not a timing.
                    Two services are known. A Gitea: the `gitea` service of BuilderBot's own dev
-                   stack, under its compose file's `lab` profile, brought up from the Docker tab
+                   stack, under its compose file's `lab` profile, brought up from the Containers page
                    like any project's stack (`BB_LAB_GITEA`, the local one by default), and
                    a Forgejo beside it (`BB_LAB_FORGEJO`, port 3001), which the forge suite
                    runs against a second time under its own catalog entry. A real node,
@@ -401,7 +401,7 @@ bb wiki save NAME FILE|- [--why "..."]   write a page whole, new or rewritten,
 bb wiki rm NAME [--why "..."]   take a page out, under the same setting
 bb wiki mv OLD NEW   rename one; bb wiki history: the last changes
 bb transcripts     your own conversations with Claude on this project, newest
-                   first, as the Profile tab lists them (bb -p NAME for one it reads)
+                   first, as the Profile page lists them (bb -p NAME for one it reads)
 bb transcripts show ID [--tz ZONE]   one of them as text: what was said, every
                    command Claude ran and what it answered
 bb transcripts fetch ID [--into DIR]   the file itself into this machine's folder
@@ -449,7 +449,7 @@ bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NOD
                    a container built from a compose file the session wrote,
                    under the project's *Claude may: Run its container*: refused
                    at deny, asked at ask (an administrator reads the file on
-                   the bell, and Allow registers it through the Docker tab's own
+                   the bell, and Allow registers it through the Containers page's own
                    New container path and starts its build), and at auto made
                    at once when it is this project's own on its own node; one
                    for another project or another node is always asked. A
@@ -461,7 +461,7 @@ bb root run --why "..." [--node NAME] -- CMD...
                    ask for ONE command as root on this project's node (or, with --node
                    NAME, on a node it hosts containers on; the row's root-asks switch
                    decides): an
-                   administrator allows or denies it on the Nodes tab or the
+                   administrator allows or denies it on the Nodes page or the
                    bell, and the node runs that command and nothing else. Not
                    sudo: a second command is a second question. A node's
                    Sessions section can turn root asks off altogether, and
@@ -479,7 +479,7 @@ bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
 bb logs --node NAME [--agent|--runner|--terminal|--nginx|--system|--kernel|--crash] [N]
                    a machine's own log: the agent's journal, the CI runner's,
-                   the terminal server's, its nginx's where the nginx tab put
+                   the terminal server's, its nginx's where the nginx page put
                    one, this boot's system journal, its kernel ring, and the
                    previous boot's last lines (--crash: what the box said
                    before it went). Root's on that box: the enrolled
@@ -554,13 +554,13 @@ bb capture reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [-
                    and the full-size frames are on this machine's disk, where
                    frames.json says
 bb capture ls      the captures in this project's dist/ (reels and emulator
-                   shots), each with who asked and when: the Artifacts tab's
+                   shots), each with who asked and when: the Artifacts view's
                    Captures fold, in the terminal
 bb capture prune [--days N] [NAME...]
                    remove those named now, or every capture older than N days.
                    A capture is somebody's until the project's "captures kept"
                    days are up (7 unless its settings say otherwise), and the
-                   controller sweeps them when the Artifacts tab draws: name
+                   controller sweeps them when the Artifacts view draws: name
                    yours here to let them go sooner
 bb tool            the tools toolchains add to a session, each under its own name
 bb tool graphics CMD  pictures a session can make and then read back, with the
