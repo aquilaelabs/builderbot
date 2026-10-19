@@ -3206,13 +3206,15 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   border-color:color-mix(in srgb, var(--pc) 45%, var(--line))}
 /* A colored card's buttons wear its color too (the operator, 18 Oct): a
    lighter tint for the plain ones, a deeper one for Open Claude, so the card
-   reads as one color and the running session still stands out on it. */
-.pcard.pc .pcacts>button,.pcard.pc .pcacts>.more>button{background:color-mix(in srgb, var(--pc) 22%, var(--btn));
+   reads as one color and the running session still stands out on it. Every
+   row of buttons the card holds: its actions and a box it asks in (Group),
+   so a form opened on it is the card's too (B863). */
+.pcard.pc :is(.pcacts,.askrow)>button,.pcard.pc .pcacts>.more>button{background:color-mix(in srgb, var(--pc) 22%, var(--btn));
   border-color:color-mix(in srgb, var(--pc) 50%, var(--line));color:var(--ink)}
-.pcard.pc .pcacts>button.primary{background:color-mix(in srgb, var(--pc) 50%, var(--btn));border-color:var(--pc)}
+.pcard.pc :is(.pcacts,.askrow)>button.primary{background:color-mix(in srgb, var(--pc) 50%, var(--btn));border-color:var(--pc)}
 @media(hover:hover){
-  .pcard.pc .pcacts>button:hover,.pcard.pc .pcacts>.more>button:hover{background:color-mix(in srgb, var(--pc) 34%, var(--btn))}
-  .pcard.pc .pcacts>button.primary:hover{background:color-mix(in srgb, var(--pc) 62%, var(--btn))}
+  .pcard.pc :is(.pcacts,.askrow)>button:hover,.pcard.pc .pcacts>.more>button:hover{background:color-mix(in srgb, var(--pc) 34%, var(--btn))}
+  .pcard.pc :is(.pcacts,.askrow)>button.primary:hover{background:color-mix(in srgb, var(--pc) 62%, var(--btn))}
 }
 /* The whole card opens the project's page (the operator, 18 Oct), so the
    whole card answers the pointer, as a tile that is a link does. */
