@@ -863,6 +863,18 @@ function unbusy(btn, word){
 // Three shapes every document tab draws the same way, held by the design's
 // rules tiles, facts and chips and measured by uniform.mjs.
 
+// One button of a segmented control pressed and the rest not, said to a
+// screen reader as well as drawn (consistency pass J18: four of the six
+// toggled the class alone). `on` is the id of the one pressed.
+function segPick(ids, on){
+  for (const id of ids){
+    const b = $(id);
+    if (!b) continue;
+    b.classList.toggle("on", id === on);
+    b.setAttribute("aria-pressed", String(id === on));
+  }
+}
+
 // A page's status line (the operator, 17 Oct: one order for every page's
 // top): under the tiles, when its things were last checked or what state
 // they are in at the left, its upkeep actions (Check for updates, Measure

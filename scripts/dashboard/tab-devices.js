@@ -55,7 +55,7 @@ function devAppRow(a){
   const behind = a.version && v && !v.startsWith(a.version);
   return `<div class="row stack2 devapp" data-devapp="${esc(a.name)}"><div class="grow">
       <div class="name">${esc(a.title)}${a.version ? ` <span class="pill${behind ? " warn" : ""}">${esc(a.version)}</span>` : ""}</div>
-      <div class="sub">${esc(a.does)}</div>
+      <div class="hint">${esc(a.does)}</div>
       ${first ? `<div class="sub">${devHow(a.name)}</div>`
         : `<div class="sub warn">Not fetched yet${devApps?.problem ? `: ${esc(devApps.problem)}` : ": the controller looks at its release a while after it starts, then daily"}.</div>`}
       ${rest.length ? `<div class="sub dim">Also: ${rest.map(f => `<a href="${esc(f.url)}" download>${esc(f.file)}</a>`).join(", ")}</div>` : ""}

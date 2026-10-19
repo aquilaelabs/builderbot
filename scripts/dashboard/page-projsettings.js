@@ -1272,12 +1272,7 @@ function rnDrawAuth(){
   $("rnAuthNone").disabled = false;
   $("rnAuthKey").disabled = !canKey;
   $("rnAuthToken").disabled = !canToken;
-  for (const [id, mode] of [["rnAuthNone", "none"], ["rnAuthKey", "ssh"],
-                            ["rnAuthToken", "https"]]){
-    const on = rnAuthPick === mode;
-    $(id).classList.toggle("on", on);
-    $(id).setAttribute("aria-checked", on ? "true" : "false");
-  }
+  segPick(["rnAuthNone", "rnAuthKey", "rnAuthToken"], {none: "rnAuthNone", ssh: "rnAuthKey", https: "rnAuthToken"}[rnAuthPick]);
   // The pick is NOT moved out from under the operator when clearing a token
   // takes its ground away. It stays where they put it and Save refuses, which
   // is the difference between being told and being corrected: silently sliding

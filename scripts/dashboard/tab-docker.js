@@ -1356,9 +1356,7 @@ let cTab = "yml";                 // which pane the segment is showing
 
 function cSeg(which){
   cTab = which;
-  $("cTabForm").classList.toggle("on", which === "form");
-  $("cTabYml").classList.toggle("on", which === "yml");
-  $("cTabEnv").classList.toggle("on", which === "env");
+  segPick(["cTabForm", "cTabYml", "cTabEnv"], {form: "cTabForm", yml: "cTabYml", env: "cTabEnv"}[which]);
   $("cFormField").hidden = which !== "form";
   $("cYmlField").hidden = which !== "yml";
   $("cEnvField").hidden = which !== "env";

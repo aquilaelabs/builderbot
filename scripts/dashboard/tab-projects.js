@@ -60,10 +60,14 @@ function askPurge(name){
   if (!row || row.querySelector(".dropbox")) return;
   const box = document.createElement("div");
   box.className = "dropbox ctlown";
+  // The type-to-confirm shape Reset BuilderBot has: what goes, then the
+  // word to type labeled over its field, then the drop box's Keep it and
+  // the red verb.
   box.innerHTML = `<div class="hint bad">This deletes every file in
       <b>${esc(name)}</b>. It is not moved anywhere and there is nothing to
-      undo it with. Type its directory's name, ${esc(name)}, to confirm.</div>
-    <input autocomplete="off" placeholder="${esc(name)}">
+      undo it with.</div>
+    <label class="lbl" for="purgeWord">Type ${esc(name)} to confirm</label>
+    <input id="purgeWord" autocomplete="off" placeholder="${esc(name)}">
     <div class="foot"><span class="sp"></span>
       <button type="button" class="stop">Keep it</button>
       <button type="button" class="danger" disabled>Delete for good</button></div>`;
@@ -300,8 +304,7 @@ function pDraw(){
   const m = PMODES[pMode];
   $("pTitle").textContent = m.title();
   if (!$("pCreate").disabled) $("pCreate").textContent = m.btn;
-  $("pLocal").classList.toggle("on", pMode === "init");
-  $("pClone").classList.toggle("on", pMode === "clone");
+  segPick(["pLocal", "pClone"], pMode === "init" ? "pLocal" : pMode === "clone" ? "pClone" : "");
   for (const f of ["pSrcField", "pNameField", "pVersionField", "pArchiveField", "pForgeField",
                    "pUrlField", "pLinkAuthField", "pPushField",
                    "pTokenField", "pKeyField", "pAboutField", "pGateField"])
@@ -315,8 +318,7 @@ function pDraw(){
   if (!pKeys.length) $("pKeyField").hidden = true;
   // Linking: the switch decides which of the two fields is asked.
   if (pMode === "link"){
-    $("pLinkKey").classList.toggle("on", pLinkAuth === "key");
-    $("pLinkToken").classList.toggle("on", pLinkAuth === "token");
+    segPick(["pLinkKey", "pLinkToken"], pLinkAuth === "key" ? "pLinkKey" : pLinkAuth === "token" ? "pLinkToken" : "");
     $("pKeyField").hidden = pLinkAuth !== "key" || !pKeys.length;
     $("pTokenField").hidden = pLinkAuth !== "token";
   }
