@@ -105,7 +105,7 @@ ok((await api('what=status').then(() => fetch(URL.replace(/\/$/, '') + '/api/git
 
 // ---- the view ---------------------------------------------------------------
 await page.evaluate(() => openNotebook('beta', 'git'));
-await page.waitForFunction(() => /on \S+/.test(document.querySelector('.nb .nbview[data-view="git"] #gitHint')?.textContent || ''),
+await page.waitForFunction(() => !!document.querySelector('.nb .nbview[data-view="git"] #gitPicker:not([hidden]) .gbpickname')?.textContent,
                            null, { timeout: 20000 });
 const NB = '.nb .nbview[data-view="git"]';
 ok(new RegExp(`${st.files.length} changes not committed`).test(await page.$eval(`${NB} #gitHint`, e => e.textContent)),
@@ -669,7 +669,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     commitBar: !!v.querySelector('.gcommitbar[data-add] #gitMsg'),
     discard: !!v.querySelector('[data-gitdiscard="a.txt"]'),
     sw: v.querySelectorAll('[data-gitswitch]').length, del: v.querySelectorAll('[data-gitdelete]').length,
-    newBranch: !!v.querySelector('.gbranchbar[data-add] #gitNewBranch') }));
+    newBranch: !!v.querySelector('#gitPicker [data-gitpicknew]') && !v.querySelector('#gitNewBranch') }));
   ok(view.net && view.push && view.commitBar && view.discard && view.sw >= 1 && view.del >= 1 && view.newBranch,
      `the view offers the network bar, the commit form, Discard, Switch, Delete and New branch (${JSON.stringify(view)})`);
   const grouped = await page.$eval('.nb .nbview[data-view="git"]', v => ({
@@ -747,6 +747,41 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   await page.click('.nb .nbview[data-view="git"] .grow[data-sha]');
   await page.waitForSelector('.nb .nbview[data-view="git"] #gitDetail [data-gitrevert]', { timeout: 10000 });
   ok(true, "a picked commit's detail carries Revert and Branch here");
+  // The branch picker in the head row (R269 step 3), on a clean tree: the branch the tree is
+  // on, opening the local branches under a box; a name nobody has offers
+  // Create, which makes it and switches to it, and a press on another
+  // switches back.
+  {
+    const V = '.nb .nbview[data-view="git"]', was = git('rev-parse', '--abbrev-ref', 'HEAD');
+    await page.click(`${V} #gitPicker .gbpickb`);
+    await page.waitForSelector(`${V} #gitPicker .gbpickmenu:not([hidden])`, { timeout: 5000 });
+    const listed = await page.$eval(`${V} #gitPicker`, p => ({ name: p.querySelector('.gbpickname').textContent,
+      on: p.querySelector('[data-gitpick].on')?.dataset.gitpick, list: [...p.querySelectorAll('[data-gitpick]')].map(b => b.dataset.gitpick),
+      focused: document.activeElement?.id === 'gitPickFind' }));
+    ok(listed.name === was && listed.on === was && listed.list.includes('old-work') && listed.focused,
+       `the head row names the branch the tree is on, and its picker lists the branches with that one marked and the box focused (${JSON.stringify(listed)})`);
+    await page.fill(`${V} #gitPickFind`, 'picked-new');
+    const offer = await page.$eval(`${V} #gitPicker`, p => ({ make: p.querySelector('[data-gitpicknew]').hidden ? '' : p.querySelector('[data-gitpicknew]').textContent,
+      shown: [...p.querySelectorAll('[data-gitpick]')].filter(b => !b.hidden).length, open: !p.querySelector('.gbpickmenu').hidden }));
+    ok(/Create branch picked-new from/.test(offer.make) && offer.shown === 0 && offer.open,
+       `...a name nobody has narrows the list to nothing and offers to create it, the menu staying open while it is typed (${JSON.stringify(offer)})`);
+    await page.press(`${V} #gitPickFind`, 'Enter');
+    let made = false;
+    for (let i = 0; i < 40 && !made; i++) { made = git('rev-parse', '--abbrev-ref', 'HEAD') === 'picked-new'; if (!made) await new Promise(r => setTimeout(r, 250)); }
+    const said = await refreshUntil(page, () => document.querySelector('.nb .nbview[data-view="git"] #gitPicker .gbpickname')?.textContent === 'picked-new', { timeout: 15000 })
+      .then(() => true, () => false);
+    ok(made && said, `...Enter makes it from the commit the tree is on and switches to it, and the head row says so (${JSON.stringify({ made, said,
+      head: git('rev-parse', '--abbrev-ref', 'HEAD'), label: await page.$eval('.nb .nbview[data-view="git"] #gitPicker', p => p.textContent.trim()),
+      toasts: await page.$$eval('.toast, #toasts *', t => t.map(x => x.textContent.trim()).filter(Boolean).slice(-3)) })})`);
+    await page.click(`${V} #gitPicker .gbpickb`);
+    await page.waitForSelector(`${V} #gitPicker .gbpickmenu:not([hidden])`, { timeout: 5000 });
+    await page.click(`${V} #gitPicker [data-gitpick="${was}"]`);
+    let back = false;
+    for (let i = 0; i < 40 && !back; i++) { back = git('rev-parse', '--abbrev-ref', 'HEAD') === was; if (!back) await new Promise(r => setTimeout(r, 250)); }
+    ok(back, `...and a press on another branch in it switches the tree back (${git('rev-parse', '--abbrev-ref', 'HEAD')})`);
+    git('branch', '-D', 'picked-new');
+    await refreshUntil(page, () => document.querySelector('.nb .nbview[data-view="git"] #gitPicker .gbpickname')?.textContent !== 'picked-new', { timeout: 15000 });
+  }
 }
 
 // ---- step 3: the policy, and Send to Claude --------------------------------
@@ -1207,7 +1242,7 @@ ok(strip.groups.n === 5 && strip.groups.rows === 1 && strip.groups.inside && str
   const peerTreeView = await peerPage.evaluate(() => {
     const v = document.querySelector('.nb .nbview[data-view="git"]');
     return { hint: document.querySelector('.nb #gitHint')?.textContent || '',
-             writes: v.querySelectorAll('#gitCommit, [data-gitdiscard], [data-gitswitch], #gitNewBranch, [data-gitaskfile]').length,
+             writes: v.querySelectorAll('#gitCommit, [data-gitdiscard], [data-gitswitch], #gitPicker .gbpickmenu, [data-gitaskfile]').length,
              note: /only test commits or discards them/.test(v.textContent) };
   });
   ok(/test's working tree/.test(peerTreeView.hint) && peerTreeView.writes === 0 && peerTreeView.note,
@@ -1273,7 +1308,7 @@ ok(strip.groups.n === 5 && strip.groups.rows === 1 && strip.groups.inside && str
   ok(/no repository yet/.test(await page.$eval('.nb[data-project="gamma"] #gitHint', e => e.textContent)),
      'a project with no repository says so on the Git view, with an Init button under it');
   await page.click('.nb[data-project="gamma"] .nbview[data-view="git"] [data-gitinit]');
-  await page.waitForFunction(() => /on main/.test(document.querySelector('.nb[data-project="gamma"] #gitHint')?.textContent || ''),
+  await page.waitForFunction(() => document.querySelector('.nb[data-project="gamma"] #gitPicker .gbpickname')?.textContent === 'main',
                              null, { timeout: 20000 });
   ok(existsSync(`${DIR}/ws/gamma/.git`) && !existsSync(`${DIR}/ws/gamma/.git/refs/heads/main`),
      '...and Init makes the repository on main with nothing committed, and the view redraws on it');

@@ -66,7 +66,7 @@ function nbGitView({$, nb, project}){
   // to: the detail sits under the whole history, so a long one leaves the
   // change below the fold. A redraw from a poll leaves the page where it is.
   let gitReveal = "";
-  let gitMsgDraft = "", gitBranchDraft = "";      // typed and not sent, across redraws
+  let gitMsgDraft = "";                            // typed and not sent, across redraws
   let gitPolDraft = {};                            // the policy picked and not applied
   const GITPOL_DEFAULT = {push: "allow", main: "deny", scan: "hold"};   // prefs.GITPOL_DEFAULT
 
@@ -120,7 +120,9 @@ function nbGitView({$, nb, project}){
     const st = git.status || {}, files = st.files || [], commits = git.commits || [];
     const local = (git.branches || []).filter(b => !b.remote);
     const tree = treeOf();
-    gitHintText = hint.textContent = `${tree.notMine ? `${tree.owner}'s working tree, ` : ""}on ${st.branch || "no branch"} · ${files.length
+    // The branch is the picker's to say beside it (R269 step 3); the words
+    // name one only when there is none to pick.
+    gitHintText = hint.textContent = `${tree.notMine ? `${tree.owner}'s working tree, ` : ""}${st.branch ? "" : "on no branch · "}${files.length
       ? `${files.length} change${files.length === 1 ? "" : "s"} not committed` : "nothing uncommitted"} · ${
       // A branch with no commit is not listed by git, so "0 branches" sat
       // beside "on master" (B456): the honest word is that nothing is
@@ -235,6 +237,7 @@ function nbGitView({$, nb, project}){
     if (gitCmp){ body.innerHTML = ""; drawCompare(); return; }
     const cmpBox = $("gitCmp"); if (cmpBox) cmpBox.innerHTML = "";
     if (gitHintText) $("gitHint").textContent = gitHintText;
+    drawPicker();
     const st = git.status || {}, files = st.files || [], commits = git.commits || [];
     const local = (git.branches || []).filter(b => !b.remote), remote = (git.branches || []).filter(b => b.remote);
     const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
@@ -263,11 +266,6 @@ function nbGitView({$, nb, project}){
         <button type="button" class="primary" id="gitCommit"
           title="commit every changed file under your author">Commit all</button>
       </div>` : "";
-    const branchBar = locked || tree.barred ? "" : `<div class="addbar gbranchbar" data-add="branch">
-        <input id="gitNewBranch" maxlength="120" autocomplete="off" spellcheck="false"
-          placeholder="new branch, from the commit the tree is on" aria-label="new branch name" value="${esc(gitBranchDraft)}">
-        <button type="button" id="gitBranchGo">New branch</button>
-      </div>`;
     const lanes = gitLanes(commits);
     const H = 34, W = 14, lanesN = Math.max(1, ...commits.map(c => c.lane + 1));
     // ago() takes seconds, which is what the server sends. Times a thousand
@@ -411,7 +409,7 @@ function nbGitView({$, nb, project}){
         conflictBar + (files.length ? treeNote : "") + commitBar + (files.length ? fileRows : `<div class="empty">nothing changed since the last commit</div>`))
       + docSection("git", "history", gitTitle("history"), commits.length ? `${commits.length}${commits.length >= 100 ? "+" : ""}` : "none",
         graph + `<div id="gitDetail"${gitPick ? "" : " hidden"}></div>`)
-      + docSection("git", "branches", gitTitle("branches"), String(local.length), branchBar + (branchRows || `<div class="empty">no branches</div>`))
+      + docSection("git", "branches", gitTitle("branches"), String(local.length), (branchRows || `<div class="empty">no branches</div>`))
       + ciSection()
       + (policy ? docSection("git", "policy", gitTitle("policy"), `${pol.push || "allow"} · ${pol.main || "deny"}${pol.scan === "off" ? " · unheld" : ""}`, policy) : "");
     wireSections(body);
@@ -468,17 +466,6 @@ function nbGitView({$, nb, project}){
       const j = await gitAct("commit", {message: gitMsgDraft}, gitBusy(cm), "Committing");
       if (j && j.ok) gitMsgDraft = "";
     };
-    const nb = $("gitNewBranch");
-    if (nb){
-      nb.oninput = () => { gitBranchDraft = nb.value; };
-      nb.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("gitBranchGo")?.click(); } };
-    }
-    const bg = $("gitBranchGo");
-    if (bg) bg.onclick = async () => {
-      if (!gitBranchDraft.trim()) return notify("a branch needs a name", true);
-      const j = await gitAct("branch", {name: gitBranchDraft.trim(), switch: true}, gitBusy(bg), "Creating");
-      if (j && j.ok) gitBranchDraft = "";
-    };
     body.querySelectorAll("[data-gitdiscard]").forEach(b => b.onclick = () => {
       const path = b.dataset.gitdiscard;
       if (confirm(`Discard the changes to ${path}?\n\nIt goes back to the last commit; the change is lost.`))
@@ -525,6 +512,77 @@ function nbGitView({$, nb, project}){
     const path = d.dataset.path;
     return keptLoad("file", d, ".gdiff", path,
       "/api/git?project=" + encodeURIComponent(project) + "&what=diff&path=" + encodeURIComponent(path), j => renderDiff(j.diff));
+  }
+
+  // The branch the tree is on, in the view's head row as a picker, as
+  // GitHub's (R269 step 3): a press opens the local branches with a box to
+  // find one, a press on one switches the tree to it, and a name nobody has
+  // yet offers to create it from the commit the tree is on and switch to it.
+  // Where the tree is not the reader's to move (another account's, a
+  // locked project) the branch is said and nothing opens.
+  function drawPicker(){
+    const box = $("gitPicker");
+    if (!box || !git || git.error) return;
+    const st = git.status || {}, cur = st.branch || "";
+    const local = (git.branches || []).filter(b => !b.remote);
+    const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+    const still = locked || treeOf().barred || !cur;
+    box.hidden = !cur;
+    const label = `<span class="gbpickic" aria-hidden="true">${BRANCH_ICON}</span><span class="gbpickname">${esc(cur)}</span>`;
+    if (still){ box.innerHTML = `<span class="gbpickb still">${label}</span>`; return; }
+    // A redraw while the picker is open (a commit landing from elsewhere)
+    // keeps it open with what was typed and the caret where it was.
+    const old = box.querySelector("#gitPickFind"), was = old?.value || "";
+    const typing = !!old && document.activeElement === old, caret = typing ? old.selectionStart : null;
+    const open = !!box.querySelector(".gbpickmenu:not([hidden])");
+    box.innerHTML = `<button type="button" class="gbpickb" data-menuopen aria-haspopup="menu" aria-expanded="${open}"
+        aria-label="the branch the tree is on: ${esc(cur)}; press to switch or create one">${label}<span class="gbpickcaret" aria-hidden="true">▾</span></button>
+      <div class="actmenu gbpickmenu" role="menu"${open ? "" : " hidden"}>
+        <input id="gitPickFind" type="search" maxlength="120" autocomplete="off" spellcheck="false" value="${esc(was)}"
+          placeholder="find or create a branch" aria-label="find or create a branch">
+        <div class="gbpicklist">${local.map(b => `<button type="button" role="menuitem" data-gitpick="${esc(b.name)}"${
+          b.head ? ` class="on" aria-current="true"` : ""}>${esc(b.name)}</button>`).join("")}</div>
+        <button type="button" role="menuitem" class="gbpicknew" data-gitpicknew hidden></button>
+      </div>`;
+    const btn = box.querySelector(".gbpickb"), menu = box.querySelector(".gbpickmenu"), find = box.querySelector("#gitPickFind");
+    const sift = () => {
+      const q = find.value.trim(), ql = q.toLowerCase();
+      box.querySelectorAll("[data-gitpick]").forEach(b => { b.hidden = !!ql && !b.dataset.gitpick.toLowerCase().includes(ql); });
+      const make = box.querySelector("[data-gitpicknew]"), have = local.some(b => b.name === q);
+      make.hidden = !q || have;
+      make.innerHTML = q ? `Create branch <b>${esc(q)}</b> from <b>${esc(cur)}</b>` : "";
+    };
+    sift();
+    if (open) floatAt(menu, btn);
+    if (typing){ find.focus(); try{ find.setSelectionRange(caret, caret); }catch(e){ /* not a text box */ } }
+    btn.onclick = () => {
+      const opening = menu.hidden;
+      closeMore();
+      if (!opening) return;
+      // Each opening starts on the whole list, the box empty.
+      find.value = ""; sift();
+      menu.hidden = false; btn.setAttribute("aria-expanded", "true");
+      floatAt(menu, btn);
+      find.focus();
+    };
+    find.oninput = sift;
+    find.onkeydown = e => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const q = find.value.trim();
+      const hit = local.find(b => b.name === q) || [...box.querySelectorAll("[data-gitpick]")].find(b => !b.hidden && q);
+      if (hit) (hit.dataset ? hit : box.querySelector(`[data-gitpick="${CSS.escape(hit.name)}"]`))?.click();
+      else if (q) box.querySelector("[data-gitpicknew]").click();
+    };
+    box.querySelectorAll("[data-gitpick]").forEach(b => b.onclick = () => {
+      closeMore();
+      if (b.dataset.gitpick !== cur) gitAct("switch", {name: b.dataset.gitpick}, gitBusy(btn), "Switching");
+    });
+    box.querySelector("[data-gitpicknew]").onclick = async () => {
+      const name = find.value.trim();
+      closeMore();
+      if (name) await gitAct("branch", {name, switch: true}, gitBusy(btn), "Creating");
+    };
   }
 
   // A branch's Merge and its asks of Claude, on the branches table and on a
