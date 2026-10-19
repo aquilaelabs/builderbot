@@ -1000,6 +1000,13 @@ def act(repo, action, args, env=None, may_push=True):
         at = str(args.get("at") or "HEAD")
         if at != "HEAD" and not SHA_RE.match(at):
             return {"error": "not a commit"}
+        # A new branch where the tree is, switched to, takes the uncommitted
+        # changes along as git does: it starts at the commit they were made
+        # on, so nothing is carried onto a wrong branch. Through switch's own
+        # dirty check it was made and then refused, a branch left behind and
+        # the tree where it was (B858).
+        if args.get("switch") and at == "HEAD":
+            return _done(_run(repo, "switch", "-c", name, env=env), f"on {name}, new")
         r = _run(repo, "branch", "--", name, at, env=env)
         if r["code"]:
             return {"error": r["out"] or "could not create the branch"}

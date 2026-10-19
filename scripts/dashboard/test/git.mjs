@@ -726,6 +726,18 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   await page.goBack();
   await page.waitForFunction(() => getComputedStyle(document.querySelector('.nb .nbview[data-view="git"] #gitBody')).display !== 'none', null, { timeout: 5000 });
   ok(true, '...an address naming the comparison lands on it, and the browser\'s Back leaves it');
+  // A new branch where the tree is, with changes not committed, is made and
+  // switched to with the changes along (B858): it was made, then the switch
+  // refused for the changes, a branch left behind.
+  {
+    const was = git('rev-parse', '--abbrev-ref', 'HEAD'), dirty = git('status', '--porcelain');
+    const j = await page.evaluate(async () => (await (await fetch('/api/git', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'beta', action: 'branch', args: { name: 'carry-along', switch: true } }) })).json()));
+    const on = git('rev-parse', '--abbrev-ref', 'HEAD'), still = git('status', '--porcelain');
+    git('switch', was); git('branch', '-D', 'carry-along');
+    ok(!j.error && on === 'carry-along' && dirty && still === dirty,
+       `a new branch made and switched to with changes not committed takes them along (${JSON.stringify({ error: j.error, on, dirty, still })})`);
+  }
   await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:changes"]');   // one section open at a time
   await page.fill('.nb .nbview[data-view="git"] #gitMsg', 'From the view');
   await page.click('.nb .nbview[data-view="git"] #gitCommit');
