@@ -113,6 +113,18 @@ await page.waitForSelector(`${sect} [data-ngremove]`, { timeout: 15000 });
 ok(await page.$eval(sect, s => /deployed/.test(s.querySelector('.toolstate .pill').textContent) && /1 route/.test(s.querySelector('.toolstate .sub').textContent)
      && s.querySelector('[data-ngremove]') && !document.querySelector('.nginxtab [data-ngdeploy]')),
    '...and the state row now says so, with Remove in place of Deploy');
+// A Save rebuilds it, and a read between its down and its up said "deployed,
+// down" over a container on its way back (B65): while its job runs the
+// line says rebuilding, and down only when nothing is bringing it back.
+{
+  const pills = await page.evaluate(id => {
+    const n = (nginxList || []).find(x => x.node === id);
+    const pill = st => (nginxBody({ ...n, state: st }).match(/<span class="pill[^"]*">([^<]*)<\/span>/) || [])[1];
+    return [pill({ running: false, job: { running: true } }), pill({ running: false, job: null }), pill({ running: true })];
+  }, sandbox.node);
+  ok(pills.join(' | ') === 'deployed, rebuilding | deployed, down | deployed',
+     `the state line says rebuilding while its job runs, and down only when nothing is bringing it back (${pills.join(' | ')})`);
+}
 ok(/already on the Containers page/.test((await api('/api/nginx', { action: 'deploy', node: sandbox.node })).error || ''),
    'a second Deploy is refused');
 // The deployed page in sections (R218 step 29): Hostnames, Routes,

@@ -7154,7 +7154,11 @@ document.addEventListener("keydown", e => {
 // stale from the first Up, with a Refresh button as the only way back, which
 // is a page that tells you what used to be running.
 onRev("devapp", () => {
-  if (shown("docker")){ dockerList = null; dockerRev++; loadDocker(); }
+  if (shown("docker")){ dmJobSettle(); dockerList = null; dockerRev++; loadDocker(); }
+  // ...and the nginx page, whose state line is its container's: a Save's
+  // rebuild ending moves this and nothing of nginx's own, and the line
+  // said "deployed, down" over a container long since up again (B65).
+  if (shown("nginx")) loadNginx();
 });
 // ...and a node's containers changing outside BuilderBot (one crashed, a
 // shell or a session ran docker): read again in place, the rows kept on

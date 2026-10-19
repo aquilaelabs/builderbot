@@ -978,6 +978,23 @@ function dockerJob(){
   return j && (j.running || j.error) ? j : null;
 }
 
+// A job that has just ended, said on its row the moment the queue says so
+// (B65): the row kept "stopping..." and Abort for the seconds the whole
+// listing took to read again after its build had failed. Asked of the one
+// job when the devapp revision moves, and written into the answer on
+// screen, which the fresh listing then replaces. Read synchronously up to
+// its fetch, so the caller may drop dockerList right after calling it.
+async function dmJobSettle(){
+  const j = dockerList?.job;
+  if (!j?.running || !j.id) return;
+  let got;
+  try{ got = await (await fetch(`/api/v1/jobs?id=${encodeURIComponent(j.id)}`)).json(); }catch(e){ return; }
+  if (!got || got.id !== j.id || !j.running || !["succeeded", "failed", "canceled"].includes(got.state)) return;
+  Object.assign(j, {running: false, state: got.state, step: "", aborting: false,
+                    error: got.state === "succeeded" ? "" : (got.error || got.state)});
+  dockerRev++; drawPanes();
+}
+
 // What a confirm or a notice calls a container: the name its row shows,
 // else its project's shown name and the instance, never the project's
 // directory, which a name reused after a delete has numbered (B64).
@@ -1630,6 +1647,9 @@ function dmShell(project, instance, ctr){
   openTab({kind: "term", arg: `ctr:${project}:${instance}:${ctr}`, label: `in ${ctr}`});
 }
 
+// What a row's pill says while its job runs, by the job's action.
+const DM_JOB_WORD = {rebuild: "rebuilding", up: "starting", down: "stopping", update: "updating", remove: "removing"};
+
 function dmRowsHtml(ins, job, blind){
   return ins.map(d => {
     // Explicitly running: dockerJob() keeps a finished job around now so the
@@ -1655,7 +1675,11 @@ function dmRowsHtml(ins, job, blind){
     // container unhealthy and the row says so; all of them healthy and it
     // says that rather than running; one still starting is said too.
     const hl = live.map(dmHealth).filter(Boolean);
-    const st = blind ? ["state unknown", ""]
+    // A row whose job is running knows what it is doing whatever the
+    // daemon said: a Rebuild read "state unknown" over its own "stopping"
+    // while its node was busy with it (B65).
+    const st = blind && busy ? [DM_JOB_WORD[job.action] || "working", "warn"]
+      : blind ? ["state unknown", ""]
       : partly ? [`partly up: ${live.filter(c => c.state === "running").length} of ${live.length}`, "warn"]
       : d.running && hl.includes("unhealthy") ? ["unhealthy", "bad"]
       : d.running && hl.includes("starting") ? ["starting", "warn"]

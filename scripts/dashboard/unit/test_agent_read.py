@@ -53,6 +53,19 @@ class AgentRead(unittest.TestCase):
         self.assertEqual((r["code"], r["out"], r.get("stale")), (1, "the node did not answer in 25s", None))
 
 
+class ExecOut(unittest.TestCase):
+    """A waited-on command's output is the command's: the agent's opening
+    line of every job's log ("exec") was the first line of every container
+    log read on an agent node (B65)."""
+
+    def test_the_jobs_opening_line_is_not_the_commands(self):
+        import nodes
+        self.assertEqual(nodes.exec_out("exec\n2026-10-19T10:00:00Z up\n"), "2026-10-19T10:00:00Z up\n")
+        self.assertEqual(nodes.exec_out("exec"), "exec", "a command that printed only 'exec' keeps it")
+        self.assertEqual(nodes.exec_out("execute\n"), "execute\n")
+        self.assertEqual(nodes.exec_out(""), "")
+
+
 class NoTree(unittest.TestCase):
     """A record under a written container's name that lost its source mark
     asks git nothing: there is no tree (B634)."""

@@ -2429,6 +2429,27 @@ ok(dead.off.every(Boolean),
    '...grayed, every one of them, so an inert row looks inert before you press');
 ok(dead.pills.length > 0 && dead.pills.every(t => /state unknown/.test(t)),
    '...saying the state is unknown rather than reporting one nobody asked for');
+// ...except on a row whose own job is running, which knows what it is doing
+// (B65: a Rebuild read "state unknown" over its own "stopping"); and a job
+// the queue says has ended is said on its row at once, not when the whole
+// listing has been read again (it kept "stopping..." and Abort for seconds).
+{
+  const got = await page.evaluate(async () => {
+    const d = (dockerList?.instances || [])[0], was = dockerList.job, realFetch = window.fetch;
+    const job = { id: 'j_settle', running: true, project: d.project, instance: d.instance, action: 'rebuild', step: 'stopping' };
+    dockerList.job = job;
+    const pill = (dmRowsHtml([d], dockerJob(), true).match(/class="pill stat dmpill[^"]*">([^<]*)/) || [])[1];
+    window.fetch = async (u, o) => /\/api\/v1\/jobs\?id=j_settle/.test(String(u))
+      ? new Response(JSON.stringify({ id: 'j_settle', state: 'failed', error: 'up failed:\nport taken' }), { headers: { 'Content-Type': 'application/json' } })
+      : realFetch(u, o);
+    try{ await dmJobSettle(); }finally{ window.fetch = realFetch; }
+    const after = { running: job.running, error: job.error, shown: dockerJob() === job };
+    dockerList.job = was;
+    return { pill, after };
+  });
+  ok(got.pill === 'rebuilding' && got.after.running === false && /port taken/.test(got.after.error) && got.after.shown,
+     `a blind row with its own job running says what the job does, and an ended job is said at once (${got.pill}; ${JSON.stringify(got.after)})`);
+}
 ok(await page.$$eval('.dmtab .row[data-inst] .dmpill,.dmtab .row[data-inst] .actbar .state',
                      es => es.every(e => !e.classList.contains('ok'))),
    '...and nothing shows as running: green is a claim about a daemon that is not answering');

@@ -3444,6 +3444,15 @@ def job_add(principal, placement, type, spec, project="", source=None):
     return {"ok": True, "job": jid}
 
 
+def exec_out(log):
+    """A waited-on command's output: its job's log without the line the
+    agent opens every job's log with, which says what the job is ("exec")
+    and is the Jobs page's, not the command's. Handed back as it was, it
+    was the first line of every container log read on an agent node
+    (B65)."""
+    return log[len("exec\n"):] if log.startswith("exec\n") else log
+
+
 def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
              sizes=None, project="", forget=False, outputs=None, title="", cwd=""):
     """One command on a node, waited for: queued as an exec job, picked up
@@ -3487,7 +3496,7 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
             if forget:
                 job_forget(r["job"])
             return {"code": j.get("exit_code") if j["state"] == "succeeded" or j.get("exit_code") is not None else 1,
-                    "out": j.get("log") or "", "job": r["job"], "state": j["state"]}
+                    "out": exec_out(j.get("log") or ""), "job": r["job"], "state": j["state"]}
         time.sleep(0.25)
     # Taken back, not left in the queue: a probe nobody is waiting for any
     # more would otherwise run whenever the node's slot freed: an `adb

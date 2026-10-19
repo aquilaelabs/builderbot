@@ -505,14 +505,16 @@ ok(await page.$$eval('.doc [data-rm]', bs => bs.every(b => !b.disabled))
 // waited for, and the click is made again while no confirmation has come.
 await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
   && !toolchains.sizing && !tcSizeTimer, { timeout: 30000 });
+const emuLabel = await page.$eval('.doc .tc:has([data-rm="android:emulator"]) .nm', e => e.textContent.trim()).catch(() => '');
 const nd = page.dialogs.length;
 let presses = 0;
 while (page.dialogs.length === nd && presses < 3){
   presses++;
   await page.click('.doc [data-rm="android:emulator"]');
 }
-ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Uninstall android:emulator'),
-   `uninstalling asks first (${presses} press(es): ${page.dialogs.slice(nd).join(' | ') || 'nothing asked'})`);
+// ...by the name its row shows, not its id (B65: a pack's read as its id).
+ok(page.dialogs.length === nd + 1 && !!emuLabel && page.dialogs[nd].includes(`Uninstall ${emuLabel}?`),
+   `uninstalling asks first, naming it as its row does (${presses} press(es): ${page.dialogs.slice(nd).join(' | ') || 'nothing asked'}; ${emuLabel})`);
 // The job, not just the count: a row being removed has no path line at all,
 // so "one installed path" is briefly true mid-removal, and everything after
 // this reads paths. On this runner that race is the difference between green
