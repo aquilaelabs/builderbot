@@ -3952,7 +3952,8 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    controls in it stop short together and are not capped a second time
    inside it; a lone control takes the cap itself. The union of a row's
    controls is what uniform.mjs measures, against the surface holding it.
-   Terminals and logs are not controls and are not here. */
+   Terminals and logs are not controls and are not here, and neither is a
+   menu, a surface of its own whose fields run its width (.actmenu below). */
 :is(.doctab,.nb) :is(.histbar,.logdays,.setrow,.prefrow,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.ndpaths,.ndname){
   max-width:min(var(--ctl-w),88%)}
 /* The grid itself is capped as a whole, so its cells share the surface's
@@ -4033,7 +4034,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 @media(max-width:440px){
   .doctab .field.docbarrow.dmpick>input,.dmtab .dmpick #dmSearch{order:9;flex:0 1 100%;max-width:88%}
 }
-:is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.setgrid,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.dropbox,.sendbox,.ngroute) *){
+:is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.setgrid,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.dropbox,.sendbox,.ngroute,.actmenu) *){
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.
    A row mixes fields that carry a label above them (`.setrow.col`) with
@@ -4080,6 +4081,10 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   display:flex;flex-direction:column;gap:4px;
   animation:menuIn .22s cubic-bezier(.33,1,.68,1)}
 .actmenu>button{width:100%;min-height:var(--tap);justify-content:flex-start;text-align:left;flex:0 0 auto}
+/* A menu is a surface of its own, not a row on the page: a field in it runs
+   its width as its buttons do (the Git view's branch picker's box), so the
+   page's control cap leaves every menu's contents to the menu. */
+.actmenu>:is(input,select,textarea){width:100%;flex:0 0 auto}
 /* A menu floated over the page (floatAt in page-docs.js, the operator, 18
    Oct): the ⋯ menus and the Claude chooser, fixed to the screen so no fold
    or card it sits in can cut it off, scrolling inside itself when it is
@@ -6698,8 +6703,10 @@ setInterval(() => { if (!document.hidden) scrollHints(); }, 700);
 // ---- an action bar's More menu ----------------------------------------
 // An action bar's More menu: a press anywhere but on its button shuts it,
 // its own items included, since each has done its work by then; Escape too.
+// A menu with a box to type in (the Git view's branch picker) keeps a press
+// in its box, and its opener ([data-menuopen]) opens and shuts it itself.
 document.addEventListener("click", e => {
-  if (!e.target.closest(".actbar .more > button")) closeMore();
+  if (!e.target.closest(".actbar .more > button, [data-menuopen], .actmenu input")) closeMore();
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeMore(); });
 // A floating menu (floatAt) follows its button as the page scrolls or the
