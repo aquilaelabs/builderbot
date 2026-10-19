@@ -1724,6 +1724,38 @@ def account_names():
     return {u.get("uid"): n for n, u in users.load()["users"].items() if u.get("uid")}
 
 
+# What ttyd's page lacks on a phone (B53): it carries no viewport meta and
+# says nothing about text size, so a phone's browser may boost the font of a
+# page it takes for a desktop one, and the terminal drew at about twice its
+# size with each line's right half cut off. Said once at the top of <head>.
+_TTYD_HEAD = (b'<meta name="viewport" content="width=device-width, initial-scale=1">'
+              b'<style>html{-webkit-text-size-adjust:100%;text-size-adjust:100%}</style>')
+
+
+def _ttyd_page(raw):
+    """ttyd's answer for its page, as (status line, headers, body) with the
+    phone's lines added to the body's <head>; None for anything else (an
+    error, a compressed or chunked body, a page with no <head>), which is
+    relayed as it came."""
+    head, sep, body = raw.partition(b"\r\n\r\n")
+    if not sep:
+        return None
+    status, *lines = head.decode("latin-1").split("\r\n")
+    hdrs = [tuple(x.strip() for x in ln.split(":", 1)) for ln in lines if ":" in ln]
+    keys = {k.lower(): v for k, v in hdrs}
+    if (" 200 " not in status + " " or "content-encoding" in keys
+            or "transfer-encoding" in keys
+            or not keys.get("content-type", "").startswith("text/html")):
+        return None
+    at = body.find(b"<head>")
+    if at < 0 or _TTYD_HEAD in body:
+        return None
+    at += len(b"<head>")
+    body = body[:at] + _TTYD_HEAD + body[at:]
+    keep = [(k, v) for k, v in hdrs if k.lower() not in ("content-length", "connection")]
+    return status, keep, body
+
+
 def _term_arg(rest):
     """The `arg` a /term request carries, with any owner stamp a browser sent
     taken off. "" when there is none."""
@@ -4976,9 +5008,15 @@ class Handler(BaseHTTPRequestHandler):
         # writes are not. Blocking with no deadline is what a splice wants.
         up.settimeout(None)
         ws = "upgrade" in self.headers.get("Connection", "").lower()
+        # The terminal's page itself is asked for plain and read whole, so the
+        # phone's lines can go into it (B53); everything else is spliced.
+        page = (not ws and self.command == "GET"
+                and urllib.parse.urlsplit(rest).path == "/")
         lines = [f"{self.command} {rest} HTTP/1.1"]
         for k, v in self.headers.items():
             if k.lower() in ("authorization", "cookie", "connection", "keep-alive"):
+                continue
+            if page and k.lower() == "accept-encoding":
                 continue
             lines.append(f"{k}: {v}")
         lines.append("Connection: " + (self.headers.get("Connection", "Upgrade")
@@ -4994,6 +5032,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             up.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
             self.wfile.flush()
+            if page:
+                return self._term_page(up, down)
             sel.register(up, selectors.EVENT_READ, down)
             sel.register(down, selectors.EVENT_READ, up)
             while True:
@@ -5007,6 +5047,28 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             sel.close()
             up.close()
+
+    def _term_page(self, up, down):
+        """ttyd's page, read whole (it closes after one answer) and sent on
+        with the phone's lines in its head, compressed here when the browser
+        takes it since ttyd was asked for it plain."""
+        up.settimeout(30)
+        raw = b""
+        while True:
+            data = up.recv(65536)
+            if not data:
+                break
+            raw += data
+        fixed = _ttyd_page(raw)
+        if fixed is None:
+            return down.sendall(raw)
+        status, hdrs, body = fixed
+        body, zipped = self._gzip(body)
+        out = [status] + [f"{k}: {v}" for k, v in hdrs]
+        if zipped:
+            out.append("Content-Encoding: gzip")
+        out += [f"Content-Length: {len(body)}", "Connection: close"]
+        return down.sendall(("\r\n".join(out) + "\r\n\r\n").encode("latin-1") + body)
 
     def _static(self, rel, ctype):
         """A file that IS the app (index.html and the tab scripts), served so
