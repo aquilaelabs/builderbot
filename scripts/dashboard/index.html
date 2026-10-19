@@ -762,11 +762,6 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   background:none;border:0;border-bottom:var(--hair) solid var(--line);border-radius:0;padding:var(--row-y) var(--row-x);
   min-height:var(--tap);color:var(--ink)}
 .rrow .name{font-weight:600}
-/* A list's placeholder rows wear a row's own inset while it is read (the
-   operator, 17 Oct: Users' and Roles' templates sat on the card's edge), and
-   the last one no rule under it, as the last row has none. */
-.rlist>.sk-row{padding:var(--row-y) var(--row-x)}
-.rlist>.sk-row:last-child{border-bottom:0}
 .rrow .rtags{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font:var(--f-note)}
 /* A person's or a role's row (the operator, 18 Oct): the name with its
    pills on one line, and what is known of it one fact line under it. */
@@ -3038,8 +3033,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   /* (the room under a page's last card is the list's own: see .doclist::after) */
   /* A list inside a band that is inset already (the roadmap's, memory's)
      takes no side margin of its own: its edge is the band's content edge,
-     in line with the buttons and chips over it (the operator, 17 Oct). */
-  .nbview .field>:is(#roadmapList, #memList){margin-left:0;margin-right:0}
+     in line with the buttons and chips over it (the operator, 17 Oct); so
+     does a section in one, the Roadmap's Finished under its list (B866: it
+     stood a second inset in, narrower than the list over it). */
+  .nbview .field>:is(#roadmapList, #memList, details.sect){margin-left:0;margin-right:0}
   .doctab>.doclist>.tbl>.row:last-child,.dmtab .dmcard>.row:last-child,.dmtab .dmcard>.tbl>.row:last-child,
   .nbview :is(#bugList, #roadmapList, #memList, #tstList, #roadmapHist)>:last-child{border-bottom:0}
   /* A band's line under it is the card's edge now: a notebook view's head
@@ -3531,11 +3528,6 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 /* A container's log: monospace, its own scroller, and tall enough to be
    worth opening. The dialog's box is the one that scrolls nothing. */
 .dllog{max-height:60vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
-/* Every document pane, rather than a list of tab classes: .empty and .loading
-   default to the sidebar's tighter inset, and a tab added to the page after
-   this rule was written would otherwise draw them 3px in from everything
-   around them until somebody noticed. */
-.loading{padding:var(--row-y) var(--row-x)}
 /* The findings card's footer: when the reports were written, and which were
    left out of the counts. */
 .fnote{padding:7px var(--row-x);color:var(--dim);font:var(--f-note);
@@ -3938,8 +3930,8 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    in a body (a hint, a bar, a graph, a grid of cards, a placeholder's
    lines) takes the same inset here, and the room above it from whatever
    came before. */
-.sect>.body>:not(.field,.row,.tbl,.tcs,.tchead,.macros,details,.fnote,.empty,.loading,:has(> .field)){margin-inline:var(--row-x)}
-.sect>.body>:not(.field,.row,.tbl,.tcs,.tchead,.macros,details,.fnote,.empty,.loading,:has(> .field)):not(:first-child){margin-top:var(--field-gap)}
+.sect>.body>:not(.field,.row,.sk-row,.tbl,.tcs,.tchead,.macros,details.sect,.fnote,.empty,.loading,:has(> .field)){margin-inline:var(--row-x)}
+.sect>.body>:not(.field,.row,.sk-row,.tbl,.tcs,.tchead,.macros,details.sect,.fnote,.empty,.loading,:has(> .field)):not(:first-child){margin-top:var(--field-gap)}
 /* Containers' images box is a slot its read fills, not a box: its tiles,
    tables and notes are the section's own. */
 .dmimgbox{display:contents}
@@ -4215,7 +4207,6 @@ button[aria-busy="true"]{opacity:.75}
    a blank line apart; a finger keeps the tap height. */
 @media(pointer:fine){ .ndsettings>.field>.ndcap>input[type=checkbox]{min-height:0;margin-block:0} }
 .ndactions{display:flex;flex-direction:column;gap:6px;margin-top:8px;border-top:var(--hair) solid var(--line);padding-top:6px}
-.ndrow .ndsections .sub{margin:0}
 .ndmount,.ndnet{display:grid;grid-template-columns:minmax(0,7em) minmax(0,2fr) minmax(0,1.6fr) auto auto;
   gap:6px;align-items:center}
 .ndnet{grid-template-columns:minmax(0,7em) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr)}
@@ -4415,7 +4406,9 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
    breathing. Not a bar and not a percentage: nothing here knows one, and
    inventing one would be a lie about progress. */
 @keyframes waiting{0%,100%{opacity:.35} 50%{opacity:.75}}
-.loading{color:var(--dim);padding:9px 11px;font-style:italic;
+/* A row's inset, as .empty's: one rule, where a second one with the
+   sidebar's 9px 11px came later and won on every page. */
+.loading{color:var(--dim);padding:var(--row-y) var(--row-x);font-style:italic;
   animation:waiting 1.4s ease-in-out infinite}
 /* ...and, where what is coming has a known shape, the shape itself (R218
    step 15, page-docs.js skel()): bars where the words will be, rows where the
@@ -4434,7 +4427,6 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
    itself out, its real headings and labels, and a value on its way (skv) a
    bar inline where the value will stand. */
 .skel.skt{display:block;padding:0}
-.skt>.sk-row{padding-left:var(--row-x);padding-right:var(--row-x)}
 .skv{--sk:color-mix(in srgb,var(--ink) 9%,transparent);--sk-hi:color-mix(in srgb,var(--ink) 17%,transparent);
   display:inline-block;vertical-align:middle;max-width:100%}
 .tile .tv .skv{height:.9em}
@@ -4443,14 +4435,18 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .docbarrow>.skv.ctl{display:inline-block;flex:none}
 @keyframes shimmer{from{background-position:100% 0} to{background-position:0 0}}
 .skel .sk-b.sub{height:.62em;margin-top:9px}
-.sk-row{padding:var(--row-y) 0;border-bottom:var(--hair) solid var(--line);min-height:var(--tap)}
+/* A placeholder row is inset as the row that replaces it (.row), wherever
+   it stands: a card, a section's body, a list (B864: Home's Last jobs had
+   its bars on the card's edge, one of six places that each set it). Only
+   where its box is the inset already (a .field, the plain loading line's
+   own) does it start at the edge. */
+.sk-row{padding:var(--row-y) var(--row-x);border-bottom:var(--hair) solid var(--line);min-height:var(--tap)}
 .sk-row:last-child{border-bottom:0}
-/* A project group's placeholder rows in the card's own inset, as its rows land. */
-.dmtab .dmcard>.sk-row{padding-left:var(--row-x);padding-right:var(--row-x)}
+.field>.sk-row,.skel:not(.skt)>.sk-row{padding-left:0;padding-right:0}
 /* The shapes start where a loading line's words would (the .loading's own
-   inset, which each surface sets), and in a .field, which is inset already,
-   at its edge rather than a second one in; so in a fold's body. */
-.field>.skel:not(.warn),.sect>.body .skel:not(.warn){padding-left:0;padding-right:0}
+   inset), and in a .field, which is inset already, at its edge rather than
+   a second one in. A section's body is not: its bands carry their own. */
+.field>.skel:not(.warn){padding-left:0;padding-right:0}
 .skel .sk-row:nth-child(3n+3) .sk-b{animation-delay:.12s} .skel .sk-row:nth-child(3n+4) .sk-b{animation-delay:.24s}
 /* The first paint (bootPage): the pane's bar and a document's frame, laid
    out as the pane lays them, the doc filling what is left under the bar. */
@@ -4474,7 +4470,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   .tcs .tc>.sub{padding-inline-start:28px}
   .tctab .tc:not(.open) .tcabout{white-space:normal}
 }
-.skboot .sk-card.skrows{padding:0 var(--row-x)}
+.skboot .sk-card.skrows{padding:0}
 .skboot>.skstack{position:relative;flex:1;min-height:0;background:var(--panel)}
 .skboot>.skstack>.doc{position:absolute;inset:0}
 .sk-cards,.sk-tiles{display:grid;gap:12px;padding:var(--row-y) 0}

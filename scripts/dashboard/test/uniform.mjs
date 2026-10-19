@@ -622,6 +622,49 @@ function headRoom(){
     return out;
   });
 }
+// Nothing in a section sits on its side wall (B864: the Nodes page's
+// Network lines and Home's placeholder bars ran to the edge, each kept
+// there by a rule of its own page): every line of text and every control
+// in an open section's body starts at least 6px in from the section's box,
+// and every placeholder bar 6px in from the card or section it waits in.
+function sideRoom(){
+  return page.evaluate(() => {
+    const out = [], seen = new Set();
+    const vis = r => r.width > 0 && r.height > 0;
+    const say = (where, what, gap) => { const k = `${where} ${what}`; if (!seen.has(k)){ seen.add(k); out.push(`${k} ${Math.round(gap)}px`); } };
+    for (const d of document.querySelectorAll('.doc.on details.sect[open]')){
+      if (d.parentElement.closest('details.sect, .row, .modal, .skel')) continue;
+      const body = d.querySelector(':scope > .body');
+      if (!body || !body.offsetHeight) continue;
+      const B = d.getBoundingClientRect();
+      const walk = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+      for (let t; (t = walk.nextNode());){
+        if (!t.textContent.trim() || t.parentElement.closest('button, select, option, textarea, pre, .tbl, table, [hidden]')) continue;
+        const rg = document.createRange(); rg.selectNodeContents(t);
+        const r = rg.getBoundingClientRect();
+        if (vis(r) && r.left - B.left < 6) say(d.dataset.sect || '?', JSON.stringify(t.textContent.trim().slice(0, 24)), r.left - B.left);
+      }
+      for (const c of body.querySelectorAll('button, input:not([type=checkbox]):not([type=radio]), select, textarea')){
+        if (c.closest('.tbl, table, [hidden]')) continue;
+        const r = c.getBoundingClientRect();
+        if (vis(r) && r.left - B.left < 6) say(d.dataset.sect || '?', c.tagName.toLowerCase() + (c.textContent.trim() ? ' ' + JSON.stringify(c.textContent.trim().slice(0, 16)) : ''), r.left - B.left);
+      }
+    }
+    for (const bar of document.querySelectorAll('.doc.on .skel .sk-b')){
+      const r = bar.getBoundingClientRect();
+      if (!vis(r)) continue;
+      let box = bar.parentElement;
+      for (; box && !box.matches('.doc'); box = box.parentElement){
+        const c = getComputedStyle(box);
+        if (parseFloat(c.borderLeftWidth) > 0 && c.borderLeftStyle !== 'none') break;
+      }
+      if (!box || box.matches('.doc')) continue;
+      const gap = r.left - box.getBoundingClientRect().left;
+      if (gap < 6) say('placeholder', box.className.split(' ').slice(0, 2).join('.'), gap);
+    }
+    return out;
+  });
+}
 async function glance(){
   return page.evaluate(() => {
     const box = document.querySelector('.pane .doc.on .doctab, .pane .doc.on .nb');
@@ -735,6 +778,8 @@ for (const kind of kinds){
   const room = await headRoom();
   ok(room.length === 0,
      `[${kind}] every section's first line keeps room under its head${room.length ? `; touching: ${room.join(', ')}` : ''}`);
+  const side = await sideRoom();
+  ok(side.length === 0, `[${kind}] nothing in a section or a placeholder sits on its side wall${side.length ? `; on it: ${side.slice(0, 8).join(', ')}` : ''}`);
   const bare = await rowsWearTheClass();
   ok(bare.length === 0, `[${kind}] every row of controls wears .ctlrow${bare.length ? `; not: ${[...new Set(bare)].join(', ')}` : ''}`);
   const G = await glance();
@@ -1495,6 +1540,8 @@ for (const kind of kinds){
   const room = await headRoom();
   ok(room.length === 0,
      `[${kind}] every section's first line keeps room under its head at phone width${room.length ? `; touching: ${room.join(', ')}` : ''}`);
+  const sidePh = await sideRoom();
+  ok(sidePh.length === 0, `[${kind}] nothing in a section or a placeholder sits on its side wall at phone width${sidePh.length ? `; on it: ${sidePh.slice(0, 8).join(', ')}` : ''}`);
   const W = await unwrapped();
   ok(!W.err && W.tall.length === 0,
      `[${kind}] every select is one line high at phone width${

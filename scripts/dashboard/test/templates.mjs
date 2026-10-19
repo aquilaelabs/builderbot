@@ -130,6 +130,29 @@ const differ = (got, tpl, skip = []) => {
   return out.join('; ');
 };
 
+// A placeholder bar keeps the inset of what it stands for (B864: Home's
+// Last jobs had its bars on its card's edge): none within 6px of the edged
+// box it waits in.
+const onTheWall = sel => {
+  const shown = e => !!e && e.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+  const root = [...document.querySelectorAll(sel)].find(shown);
+  if (!root) return '';
+  const out = new Set();
+  for (const bar of root.querySelectorAll('.skel .sk-b, .skel .skv')){
+    const r = bar.getBoundingClientRect();
+    if (!r.width || !shown(bar)) continue;
+    let box = bar.parentElement;
+    for (; box && box !== root; box = box.parentElement){
+      const c = getComputedStyle(box);
+      if (parseFloat(c.borderLeftWidth) > 0 && c.borderLeftStyle !== 'none') break;
+    }
+    if (!box || box === root) continue;
+    const gap = r.left - box.getBoundingClientRect().left;
+    if (gap < 6) out.add(`${box.className.split(' ').slice(0, 2).join('.')} ${Math.round(gap)}px`);
+  }
+  return [...out].join(', ');
+};
+
 // The page as it lands: a page reads more than once (the Emulator's list of
 // images to add comes after its node's, its dots running meanwhile), so its
 // outline is taken when nothing says it is on its way and two reads 400ms
@@ -161,7 +184,9 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
     const err = await page.evaluate(js => { try { (0, eval)(js); return ''; } catch (e){ return String(e); } }, reset);
     await sleep(300);
     const tpl = await page.evaluate(outline, '.pane .doc.on');
+    const wall = await page.evaluate(onTheWall, '.pane .doc.on');
     await page.unroute(HELD);
+    ok(!wall, `${name}'s placeholder bars keep their card's inset ${where}${wall ? `: ${wall}` : ''}`);
     // A `phone:KEY` skips KEY at phone width alone.
     const skips = (skip || []).flatMap(k => k.startsWith('phone:') ? (W < 900 ? [k.slice(6)] : []) : [k]);
     const why = err || differ(got, tpl, skips);
@@ -177,9 +202,32 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
     await page.evaluate(([p, v]) => openNotebook(p, v), [waiting, v]);
     await sleep(600);
     const tpl = await page.evaluate(outline, '.nb .nbview:not([hidden])');
+    const wall = await page.evaluate(onTheWall, '.nb .nbview:not([hidden])');
     await page.unroute(HELD);
+    ok(!wall, `the notebook's ${v} view's placeholder bars keep their card's inset ${where}${wall ? `: ${wall}` : ''}`);
     const why = differ(got, tpl, (VIEW_SKIP[v] || []).flatMap(k => k.startsWith('phone:') ? (W < 900 ? [k.slice(6)] : []) : [k]));
     ok(!why, `the notebook's ${v} view waits as itself ${where}${why ? `: ${why}` : ''}`);
+  }
+  // A reload on a view draws that view's own template before anything is
+  // read, as a press does (B865: five plain rows, then the view's head).
+  for (const v of ['roadmap', 'bugs', 'tests', 'wiki']){
+    await page.route(HELD, () => {});
+    await page.route(/\/api\/status/, () => {});
+    // Read as the page's own script finishes, before the first read could
+    // replace it; a hash alone is the same document, so it is reloaded.
+    await page.addInitScript(() => document.addEventListener('DOMContentLoaded', () => {
+      const b = document.querySelector('.skboot .nbview');
+      window.__boot = b ? { view: b.dataset.view || '', head: !!b.querySelector('.nbhead'), ids: b.querySelectorAll('[id]').length } : null;
+    }));
+    await page.goto(`${URL}#/projects/beta/${v}`);
+    await page.reload();
+    await sleep(300);
+    const boot = await page.evaluate(() => window.__boot);
+    await page.unroute(HELD); await page.unroute(/\/api\/status/);
+    ok(boot?.view === v && boot.head && boot.ids === 0,
+       `a reload on the ${v} view draws its own template first, without the notebook's ids ${where} (${JSON.stringify(boot)})`);
+    await page.goto(URL);
+    await ready(page);
   }
   await page.close();
 }
