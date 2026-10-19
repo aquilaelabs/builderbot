@@ -279,6 +279,23 @@ await page.evaluate(() => notebooks.get('alpha').reloadBugs());
 await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').length === 3,
                            { timeout: 10000 });
 
+// An open report's bar on a phone (B43): four on it share the width, and
+// none is cut short ('Send to Clau' at 360 and 393).
+{
+  const was = page.viewportSize();
+  await openFold(page, '#bugList .bug[data-id="3"]');
+  const cut = [];
+  for (const width of [360, 393]){
+    await page.setViewportSize({ width, height: 800 });
+    await page.waitForTimeout(150);
+    cut.push(...await page.$$eval('#bugList .bug[data-id="3"] .macts > :is(button,.more) ', bs =>
+      bs.map(b => b.matches('.more') ? b.querySelector('button') : b)
+        .filter(b => b && b.scrollWidth > b.clientWidth + 1).map(b => b.textContent.trim())).then(t => t.map(x => `${width}: ${x}`)));
+  }
+  await page.setViewportSize(was);
+  ok(cut.length === 0, `an open report's buttons each fit their text at 360 and 393 (${cut.join(', ') || 'none cut'})`);
+}
+
 // ---- deleting a report that should not exist -------------------------------
 // Not the same act as closing one: fixed and wontfix keep the bug, because a
 // closed bug stops the same report being chased twice. This is for the report

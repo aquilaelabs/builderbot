@@ -4095,12 +4095,13 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
      own size and sit at the right, as on a desktop. */
   .actbar button,.actbar select{flex:0 0 auto}
   /* ...except a FULL bar, four buttons SHOWING or more (a hidden one does
-     not count, and More counts as one): those share the width rather than each taking its text's, so
-     the last is never pushed to a line of its own (the phone rule
+     not count, and More counts as one): those share the width, each from
+     its own text's so a long name is not cut to an equal share (B43:
+     'Send to Clau' at 360), and the last is never pushed to a line of its own (the phone rule
      both-sizes: at 344px four did not fit; R210: More sat alone under Up,
      Down, Update and Rebuild). */
   .actbar:is(:has(> :nth-child(4 of button:not([hidden]))),:has(> :nth-child(3 of button:not([hidden])) ~ .more)){gap:6px}
-  .actbar:is(:has(> :nth-child(4 of button:not([hidden]))),:has(> :nth-child(3 of button:not([hidden])) ~ .more)) > :is(button,.more){flex:1 1 0;min-width:0;padding-left:5px;padding-right:5px}
+  .actbar:is(:has(> :nth-child(4 of button:not([hidden]))),:has(> :nth-child(3 of button:not([hidden])) ~ .more)) > :is(button,.more){flex:1 1 auto;min-width:0;padding-left:5px;padding-right:5px}
   .actbar:is(:has(> :nth-child(4 of button:not([hidden]))),:has(> :nth-child(3 of button:not([hidden])) ~ .more)) > .more > button{width:100%;padding-left:5px;padding-right:5px}
 }
 /* The row whose More menu is open stacks above the rows after it: a dimmed
