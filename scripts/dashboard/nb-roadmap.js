@@ -723,28 +723,9 @@ function nbRoadmapView({$, nb}){
     const also = step >= 0
       ? "the one behind it takes its place"
       : (r?.steps || []).length ? `its ${r.steps.length} steps go too` : "";
-    const box = document.createElement("div");
-    box.className = "dropbox ctlown";
-    box.innerHTML = `<div class="q">Drop this?${also ? ` <span>· ${esc(also)}</span>` : ""}</div>
-    <textarea class="proseline" rows="1" maxlength="4000"
-      placeholder="why it is going (optional, kept in the history)"></textarea>
-    <div class="actbar">
-      <button type="button" class="stop">Cancel</button>
-      <button type="button" class="danger">Drop it</button></div>`;
-    row.after(box);
-    arriveBox(box);
-    const shut = () => box.remove();
-    box.querySelector(".stop").onclick = shut;
-    box.querySelector(".danger").onclick = () => {
-      const why = box.querySelector("textarea").value;
-      shut();
-      stageRemove(id, step, why);
-    };
-    box.querySelector("textarea").onkeydown = e => {
-      if (e.key === "Enter"){ e.preventDefault(); box.querySelector(".danger").click(); }
-      if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); shut(); }
-    };
-    // Not focused, like everything else that opens in this window.
+    dropBox(row, {q: "Drop this?", sub: also ? ` · ${also}` : "", max: 4000, place: "after",
+                  placeholder: "why it is going (optional, kept in the history)", verb: "Drop it", tone: "danger",
+                  go: why => stageRemove(id, step, why)});
   }
 
   // Rewording, in a box under the row rather than a prompt(). A prompt is one

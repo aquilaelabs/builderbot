@@ -83,6 +83,34 @@ function skel(shape = "rows", n = 0, said = "loading…"){
 // ("ctl" for a field's control, the height of one);
 // skRows() rows inside a real section or card.
 function skv(em = 5, cls = ""){ return `<i class="skv${cls ? " " + esc(cls) : ""}" style="width:${Number(em) || 5}em"></i>`; }
+// A question asked in a box under a row (consistency pass J3: a bug's
+// close or delete, a roadmap item's drop): the question and what follows
+// from it, a line for why, Cancel and the verb; Enter is the verb and
+// Escape Cancel. Not focused: a phone's keyboard would rise over the row.
+// `go(why)` runs on the verb, `cancel()` on Cancel; `place` "after" puts the
+// box after `at` rather than in it. `sub` is said after the question as is.
+function dropBox(at, {q, sub = "", placeholder = "", max = 1000, verb, tone = "primary", place = "append", go, cancel}){
+  const box = document.createElement("div");
+  box.className = "dropbox ctlown";
+  box.innerHTML = `<div class="q">${esc(q)}${sub ? `<span>${esc(sub)}</span>` : ""}</div>
+    <textarea class="proseline" rows="1" maxlength="${Number(max) || 1000}" placeholder="${esc(placeholder)}"></textarea>
+    <div class="actbar">
+      <button type="button" class="stop">Cancel</button>
+      <button type="button" class="${esc(tone)}" data-dropgo>${esc(verb)}</button></div>`;
+  if (place === "after") at.after(box); else at.appendChild(box);
+  arriveBox(box);
+  const ta = box.querySelector("textarea");
+  const shut = () => { box.remove(); cancel?.(); };
+  const ok = () => { const why = ta.value; box.remove(); go?.(why); };
+  box.querySelector(".stop").onclick = shut;
+  box.querySelector("[data-dropgo]").onclick = ok;
+  ta.onkeydown = e => {
+    if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); ok(); }
+    if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); shut(); }
+  };
+  return box;
+}
+
 // A running job's Abort, the same on every page that has one (consistency
 // pass J11): while its stop is on the way it reads Stopping, busy and dead.
 // `attrs` is the page's own data key, `title` what stopping keeps.

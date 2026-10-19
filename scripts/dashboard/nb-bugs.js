@@ -294,22 +294,8 @@ function nbBugsView({$, nb, project}){
         closeMore();
         const body = d.querySelector(".body");
         if (body.querySelector(".dropbox")) return;
-        const box = document.createElement("div");
-        box.className = "dropbox ctlown";
-        box.innerHTML = `<div class="q">${esc(q)}<span>: kept on the bug</span></div>
-          <textarea class="proseline" rows="1" maxlength="1000" placeholder="a commit, a word"></textarea>
-          <div class="actbar">
-            <button type="button" class="stop">Cancel</button>
-            <button type="button" class="primary">${esc(verb)}</button></div>`;
-        body.appendChild(box);
-        arriveBox(box);
-        box.querySelector("textarea").focus();
-        box.querySelector(".stop").onclick = () => { box.remove(); drawBugs(true); };
-        box.querySelector(".primary").onclick = () => {
-          const note = box.querySelector("textarea").value;
-          box.remove();
-          postBug({action: "status", id, status, note});
-        };
+        dropBox(body, {q, sub: ": kept on the bug", placeholder: "a commit, a word", verb,
+                       go: note => postBug({action: "status", id, status, note}), cancel: () => drawBugs(true)});
       };
       d.querySelector(".bFix")?.addEventListener("click",
         () => ask("fixed", "What fixed it?", "Close as fixed"));
@@ -370,25 +356,12 @@ function nbBugsView({$, nb, project}){
         closeMore();
         const body = d.querySelector(".body");
         if (body.querySelector(".dropbox")) return;
-        const box = document.createElement("div");
-        box.className = "dropbox ctlown";
-        box.innerHTML = `<div class="q">Delete this report?<span>: it is gone for good;
-            to keep a record, close it instead</span></div>
-          <textarea class="proseline" rows="1" maxlength="1000"
-            placeholder="why it should not have been filed (optional, kept in the log)"></textarea>
-          <div class="actbar">
-            <button type="button" class="stop">Cancel</button>
-            <button type="button" class="danger">Remove it</button></div>`;
-        body.appendChild(box);
-        arriveBox(box);
         // Removed first, then redrawn: the box is what defers the redraw,
         // so anything that arrived while it was open lands now.
-        box.querySelector(".stop").onclick = () => { box.remove(); drawBugs(true); };
-        box.querySelector(".danger").onclick = () => {
-          const why = box.querySelector("textarea").value;
-          box.remove();
-          postBug({action: "remove", id, why});
-        };
+        dropBox(body, {q: "Delete this report?", sub: ": it is gone for good; to keep a record, close it instead",
+                       placeholder: "why it should not have been filed (optional, kept in the log)",
+                       verb: "Remove it", tone: "danger", cancel: () => drawBugs(true),
+                       go: why => postBug({action: "remove", id, why})});
       });
       d.querySelector(".bEdit")?.addEventListener("click", () => {
         const body = d.querySelector(".body");
