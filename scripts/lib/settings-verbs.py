@@ -154,7 +154,9 @@ def show():
                              ("Sign a build", "sign", "ask"),
                              ("Manage signing keys", "keys", "ask"),
                              # R138: the tag and the forge's release.
-                             ("Tag and publish a release", "release", "ask")):
+                             ("Tag and publish a release", "release", "ask"),
+                             # R270 step 6: a person's PC lent by the companion.
+                             ("Use a lent PC", "pc", "deny")):
         print(f"    Claude may: {label:<28} {rec.get(key) or dflt}")
     # Who may move the version is version.py's policy rather than a prefs
     # dial, and an owner who set every dial above to auto still found it

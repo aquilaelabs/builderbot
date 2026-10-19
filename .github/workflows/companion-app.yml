@@ -1,7 +1,11 @@
-# The Windows companion app (R270): the .exe, built with PyInstaller on a
-# hosted Windows runner from windows/bbcompanion and the four node-agent
-# modules its sync is, and attached to the release as an asset beside the
-# Android app's APK, for every controller to fetch and offer (R272).
+# The apps a person installs, for each release (R272 step 2): the Windows
+# companion (R270) as an .exe, built with PyInstaller on a hosted Windows
+# runner from windows/bbcompanion and the four node-agent modules its sync
+# is, and as a .pyz for any machine with Python; and the VS Code extension
+# as a .vsix. Each attached to the release with its sha256 beside it, as
+# the Android app's APK is (android-app.yml), named for the release's
+# version, for every controller on that version to fetch, check and offer
+# on its Devices page (apps.py).
 #
 # Only when a release is published, or by hand for a release that exists: a
 # hosted Windows runner bills twice a Linux one's minutes, and a build on
@@ -28,6 +32,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The two that need no Windows: plain Python packaging on a hosted Linux.
+  portable:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1, pinned by commit (B274)
+
+      - name: Build the .pyz and the .vsix
+        run: |
+          set -eo pipefail
+          v="${TAG#v}"
+          python3 tools/companion-build.py --version "$v" --out "dist/builderbot-companion-$v.pyz"
+          python3 tools/vscode-vsix.py --version "$v" --out "dist/builderbot-vscode-$v.vsix"
+
+      - name: Attach them to the release with their sha256
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eo pipefail
+          cd dist
+          for f in builderbot-companion-*.pyz builderbot-vscode-*.vsix; do
+            sha256sum "$f" > "$f.sha256"
+            gh release upload "$TAG" "$f" "$f.sha256" --clobber --repo "$GITHUB_REPOSITORY"
+          done
+
   build:
     runs-on: windows-2025
     timeout-minutes: 30

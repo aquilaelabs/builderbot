@@ -3715,6 +3715,22 @@ devices.configure(users=users.load, access=lambda acct, p: ftp.access_for(acct, 
                   projects=lambda acct: project_names(acct))
 profiletab.configure(devices=devices)
 
+# The apps a person installs, fetched from this controller's release and
+# served from /apps (R272 step 3); which of them are offered is the
+# Settings page's, set first by the seed file (step 4).
+import apps                                                      # noqa: E402
+apps.configure(state=STATE, version=lambda: image_stamp().get("version") or "",
+               setting=settings.get, write_json=write_json, audit=db.audit)
+devices.configure_apps(apps)
+
+# A person's PC lent to a project (R270 step 6): the companion lends a
+# table of verbs, a session asks with bb pc under Claude may: Use a lent PC.
+import pcwork                                                    # noqa: E402
+pcwork.configure(workspace=WORKSPACE, mode_fn=lambda p: (prefs.get(p) or {}).get("pc") or "deny",
+                 notify_fn=lambda uid, text, level: notices.act(uid, {"action": "add", "text": text,
+                                                                      "level": level, "kind": "said"}))
+devices.configure_pc(pcwork)
+
 
 # ---- revisions -------------------------------------------------------------
 # One token per thing a view can depend on. A view says what it watches and is
@@ -4166,6 +4182,7 @@ GET_ROUTES = (
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
     ("prefix", "/api/home", "_get_home"),
+    ("prefix", "/api/apps", "_get_apps"),
     ("prefix", "/api/notices", "_get_notices"),
     ("prefix", "/api/help", "_get_help"),
     ("prefix", "/api/docker", "_get_docker"),
@@ -4210,6 +4227,8 @@ POST_ROUTES = (
     # definition quietly replaced the earlier one in the class body too.
     ("prefix", "/api/project-pin", "_project_pin"),
     ("prefix", "/api/project-group", "_project_group"),
+    ("prefix", "/api/apps", "_apps"),
+    ("prefix", "/api/pc", "_pc"),
     ("prefix", "/api/project-color", "_project_color"),
     ("prefix", "/api/project-auth", "_project_auth"),
     ("exact", "/api/project-ftp", "_project_ftp"),
@@ -5127,6 +5146,8 @@ class Handler(BaseHTTPRequestHandler):
             return None
         if path == "/term" or path.startswith("/term/"):
             return self._term_proxy()
+        if path.startswith("/apps/"):
+            return self._app_file(path)
         # The page's companion scripts: a new surface is a new classic-script
         # file beside index.html (docs/nodes.md §13), served by name from the
         # list the page's own script tags make (page_scripts), so it never
@@ -5264,14 +5285,63 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(got, status)
         return self._attachment(*got, "application/octet-stream")
 
+    def _get_apps(self):
+        """GET /api/apps: the apps this controller offers and holds
+        (apps.view), for the Devices page and the Settings section."""
+        return self._json(apps.view())
+
+    def _apps(self, req):
+        """POST /api/apps: look at the release again now (apps.check_now).
+        An administrator's, as the switches beside it are."""
+        if self._refused("controller"):
+            return None
+        if field(req, "action") != "check":
+            return self._json({"error": "the one action is check"}, 400)
+        return self._json({"ok": True, "started": apps.check_now(), **apps.view()})
+
+    def _pc(self, req):
+        """POST /api/pc: a session's word with a PC lent to its project
+        (pcwork.py, bb pc): lent (which PCs lend which verbs), run (ask
+        one, under the project's Claude may: Use a lent PC) and result (an
+        ask's answer, held a while). A session's alone: its project is the
+        one its token was minted for."""
+        me = self._who() or {}
+        project = me.get("session") or ""
+        if not project:
+            return self._json({"error": "bb pc is a session's: a person uses their PC themselves"}, 403)
+        act = field(req, "action")
+        if act == "lent":
+            return self._json({"pcs": pcwork.lent(project), "mode": (prefs.get(project) or {}).get("pc") or "deny",
+                               "verbs": list(pcwork.VERBS)})
+        if act == "run":
+            by = f"{me.get('name') or 'a session'}'s session on {project}"
+            return self._json(*pcwork.ask(project, field(req, "verb"), req.get("args"), field(req, "why"), by))
+        if act == "result":
+            return self._json(*pcwork.wait_result(project, field(req, "id"), req.get("wait") or 0))
+        return self._json({"error": "lent, run or result"}, 400)
+
+    def _app_file(self, path):
+        """GET /apps/NAME/FILE: an app this controller holds, as a download,
+        for anybody signed in (apps.path names only what the index holds)."""
+        name, _, fname = path[len("/apps/"):].partition("/")
+        p = apps.path(name, fname)
+        if not p:
+            return self._json({"error": f"this controller holds no {fname or name}"}, 404)
+        return self._send_file({"path": p, "ctype": "application/octet-stream",
+                                "headers": {"Content-Disposition": f'attachment; filename="{p.name}"'}})
+
     def _get_meta(self):
         """GET /api/meta."""
         # What the companion app asks first: the surface number this
-        # dashboard serves, the image it is, and where a newer app is.
+        # dashboard serves, the image it is, and where a newer app is: the
+        # one this controller fetched from its release (R272 step 5), else
+        # the newest in BuilderBot's own dist/ as before.
+        held = next((a["files"][0] for a in apps.view()["apps"] if a["name"] == "android" and a["files"]), None)
+        apk = {"apk": held["file"], "apk_sha256": held["sha256"], "apk_url": held["url"]} if held else \
+            {"apk": app_apk(), "apk_sha256": app_apk_sha(), "apk_url": ""}
         return self._json({"api": APP_API, "version": image_stamp().get("version") or "",
                            "image": image_stamp().get("rev") or "",
-                           "built": image_stamp().get("built") or "", "apk": app_apk(),
-                           "apk_sha256": app_apk_sha()})
+                           "built": image_stamp().get("built") or "", **apk})
 
     def _get_welcome(self):
         """GET /api/welcome: BuilderBot's own changelog for the welcome panel
@@ -5396,6 +5466,12 @@ class Handler(BaseHTTPRequestHandler):
         with timing.timed("users:tab_view"):
             got = users.tab_view(self._who(), project_names(self._who()),
                                  claudegrant.logins_of)
+        # Each account's devices, for an administrator to see and cut off
+        # (R272 step 8); seeing and revoking only, never driving one.
+        if users.is_admin(self._who() or {}):
+            accts = users.load().get("users") or {}
+            for u in got.get("users") or []:
+                u["devices"] = devices.listed({"name": u.get("name"), **(accts.get(u.get("name")) or {})})
         return self._json(got)
 
     def _get_roles(self):
@@ -6011,6 +6087,10 @@ class Handler(BaseHTTPRequestHandler):
         # The home tunnel follows its settings at once (R176): the process
         # started, restarted or stopped, and with an API token the hostname's
         # record and the tunnel's rules written; what happened rides back.
+        # An app switched on is fetched, and one switched off dropped, now
+        # rather than at the next daily look (R272 step 3).
+        if any(k.startswith("apps_") for k in want):
+            apps.check_now()
         if any(k in TUNNEL_SETTINGS for k in want):
             r["tunnel"] = tunnel.apply()
             if settings.secret("cf_api_token") and settings.secret("tunnel_token") and settings.get("tunnel_host"):
@@ -6452,6 +6532,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "the store did not open: " + NODES_OK}, 500)
         verb = self.path.split("?")[0][len("/api/v1/device/"):]
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        # An app from before a break in the door is told so, whatever it
+        # asked; except where it asks what to update to.
+        if (why := devices.door_refused(self.headers.get("X-BB-Door"))) and verb not in ("apps", "app-file"):
+            return self._json({"error": why, "update": True}, 426)
         if verb == "signin":
             if self.command != "POST":
                 return self._json({"error": "POST"}, 405)
@@ -6470,7 +6554,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({**got, "device": row, "account": u["name"]})
         hdr = self.headers.get("Authorization", "")
         auth = devices.authenticate(hdr[7:]) if hdr.startswith("Bearer ") else {"error": "no token"}
-        if verb in ("sync-file", "sync-tar"):
+        if verb in ("sync-file", "sync-tar", "app-file"):
             got, status = devices.file_verb(verb, auth, q)
             return self._send_file(got) if status == 200 else self._json(got, status)
         if verb == "sync-put":
@@ -7703,6 +7787,13 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("admin"):
             return None
         me = self._who() or {}
+        # An account's device signed out by an administrator (R272 step 8).
+        if act == "device-signout":
+            target = (users.load().get("users") or {}).get(field(req, "name"))
+            if not target:
+                return self._json({"error": f"no account called {field(req, 'name')}"}, 400)
+            return self._result(devices.revoke({"name": field(req, "name"), **target}, field(req, "device"),
+                                               by=me.get("name", "")))
         return self._result(users.verb(act, req, lambda: set(project_names(me)),
                                        may_change=lambda p: membership.member_refusal(
                                            me, p, joining=field(req, "name") == me.get("name"))))
@@ -8544,6 +8635,13 @@ def main():
     idle.start()
     if not NODES_OK:
         claudecode.start()        # the first check soon after the start, then every six hours
+    # The seed file once, before the first look at the release (R272 step 4).
+    try:
+        if seeded := apps.seed(settings.set_many):
+            print(f"dashboard: seed.json applied: {seeded}", flush=True)
+    except Exception as e:  # noqa: BLE001 (a seed never keeps the dashboard from starting)
+        print(f"dashboard: seed.json not applied: {e}", flush=True)
+    apps.start()              # the apps from this controller's release, a while after the start, then daily
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
     threading.Thread(target=log_sweep_loop, name="log-sweep", daemon=True).start()
     artifacts.start()         # every project's dist/ to its newest builds, every few minutes

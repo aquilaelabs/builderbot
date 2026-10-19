@@ -5,8 +5,10 @@ the conflict copies. Plain tkinter, so the app needs nothing but Python.
 """
 import os
 import platform
+import queue
 import subprocess
 import sys
+import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -22,7 +24,17 @@ class App(tk.Tk):
         self.minsize(560, 360)
         self.comp = None
         self.body = None
+        # A lent verb asked under Ask (R270 step 6): the worker waits while
+        # the window, on its own thread, puts the question to its person.
+        self.asks = queue.Queue()
         self.show()
+
+    def ask(self, req):
+        """From a worker thread: whether the person at this PC says yes."""
+        done, said = threading.Event(), []
+        self.asks.put((req, done, said))
+        done.wait(300)
+        return bool(said and said[0])
 
     def clear(self):
         if self.body:
@@ -95,12 +107,19 @@ class App(tk.Tk):
         if self.comp:
             self.comp.stop()
         c = creds.load()
-        self.comp = core.Companion(c["url"], c["token"], s["picked"], settings.data_dir(), pin=s.get("pin", "")) \
+        self.comp = core.Companion(c["url"], c["token"], s["picked"], settings.data_dir(), pin=s.get("pin", ""),
+                                   lend=s.get("lend"), asker=self.ask) \
             if s["picked"] else None
         if self.comp:
             self.comp.start()
 
     def tick(self):
+        while not self.asks.empty():
+            req, done, said = self.asks.get()
+            said.append(messagebox.askyesno(
+                "BuilderBot", f"{req.get('by') or 'A session'} asks this PC to {req['verb']} for {req['project']}"
+                + (f":\n\n{req['why']}" if req.get("why") else ".") + "\n\nLet it?"))
+            done.set()
         s = settings.load()
         st = self.comp.status() if self.comp else {"error": "", "projects": {}}
         self.tree.delete(*self.tree.get_children())
@@ -115,6 +134,9 @@ class App(tk.Tk):
             self.tree.insert("", "end", iid=name, text=name, values=(folder, word))
             left += len(p.get("left_out") or {})
         said = st.get("error") or ""
+        up = st.get("update") or {}
+        if up.get("pending"):
+            said += (" " if said else "") + f"BuilderBot companion {up['pending']} is fetched: it starts the next time this app does."
         if left:
             said += (" " if said else "") + f"{left} file{'s' if left != 1 else ''} with names Windows cannot hold left out of the copy."
         self.note.config(text=said)

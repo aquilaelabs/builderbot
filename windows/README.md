@@ -41,11 +41,25 @@ arrived first is kept and the other is saved beside it as
     python -m bbcompanion signin https://builderbot.example YOU
     python -m bbcompanion add MyGame C:\Games\MyGame
     python -m bbcompanion run
+    python -m bbcompanion update
+
+## Kept current
+
+The app is downloaded from the controller's **Devices** page, and keeps
+itself current from there: at start and once a day it asks the controller
+what it holds of the companion, and when that is newer it fetches it,
+checks it against the controller's sha256 (and, once the app is signed,
+that the new copy is signed too) and swaps it in the next time it starts.
+A controller newer than the app by a break in the device door answers
+"update the app", and the app looks at once. Run from a checkout, it is
+never replaced.
 
 ## Building it
 
     tools/companion-build.py --version X.Y.Z        # one .pyz, for any machine with Python 3.9+
 
-The `.exe` is built by the `companion app` workflow on a published release
-(or by hand for one), and attached to the release. It uses the node agent's
+The `.exe`, the `.pyz` and the VS Code extension's `.vsix` are built by the
+`companion app` workflow on a published release (or by hand for one), and
+attached to the release with their sha256, for each controller on that
+version to fetch and offer. It uses the node agent's
 own sync (`scripts/agent/builderbot_agent/wssync.py`), not a copy of it.

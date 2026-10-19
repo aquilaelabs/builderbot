@@ -520,6 +520,15 @@ bb report "..." [--area A] [--repro "..."]
                    project, whose tracker those bugs belong in, has it off
 bb report conversation N   the conversation a person sent with a report (the
                    end of it, redacted), behind the same gate
+bb pc [VERB] [--why "..."]
+                   a person's Windows PC lent to this project by the Windows
+                   companion: bare, which PCs lend which verbs; a verb
+                   (editor-start, editor-stop, game-start, game-stop, build,
+                   shot, log, editor-call METHOD PATH) runs on the PC as its
+                   person set it up there and waits for what it did, a
+                   picture landing in dist/pc/. Under *Claude may: Use a lent
+                   PC* (Deny by default; Ask puts each use in front of the
+                   person at the PC); never a command string
 bb doctor          check everything that usually goes wrong
 
 # developing BuilderBot itself, from inside it
@@ -2012,6 +2021,19 @@ cmd_diag() {
 # instead (bb diag reports), a log a person reads and clears; nothing comes
 # back to the session that made it, since only this one install has
 # BuilderBot's own tracker beside the sessions reporting to it.
+# A person's Windows PC lent to this project by the Windows companion
+# (R270 step 6): lib/pc.py says the verbs.
+cmd_pc() {
+    case "${1:-}" in
+        -h|--help)
+            printf '%s\n' 'usage: bb pc                        the PCs lending this project and their verbs' \
+                '       bb pc VERB [--why "..."]     run one (editor-start, editor-stop, game-start, game-stop, build, shot, log)' \
+                '       bb pc editor-call METHOD PATH [--body JSON] [--why "..."]'
+            return 0 ;;
+    esac
+    BB_PC_AUTH="$(bb_auth_or_die)" python3 "$BB_LIB/pc.py" "$@"
+}
+
 cmd_report() {
     local auth proj sub="${1:-}"
     auth="$(bb_auth_or_die)"
@@ -5645,6 +5667,7 @@ case "${1:-help}" in
     logs)     shift; cmd_logs "$@" ;;
     diag)     shift; cmd_diag "$@" ;;
     report)   shift; cmd_report "$@" ;;
+    pc)       shift; cmd_pc "$@" ;;
     catchup)  shift; cmd_catchup "$@" ;;
     ci-log)   shift; cmd_ci_log "$@" ;;
     phone)    shift; dist_ignored; cmd_phone "$@" ;;

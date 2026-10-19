@@ -269,7 +269,7 @@ never by need. `bb capture ls` names them, and `bb capture prune NAME` lets
 one of yours go sooner; leave anybody else's.
 
 ## Asking a person
-<!-- BUILDERBOT:TOPIC asks: asking a person: bb root run, bb phone run, bb container new, the project's dials and what ask, auto and deny mean -->
+<!-- BUILDERBOT:TOPIC asks: asking a person: bb root run, bb phone run, bb container new, bb pc, the project's dials and what ask, auto and deny mean -->
 
 A question for the person is asked in your reply: they read it in this
 session's pane and answer on their next prompt, and nothing else carries it.
@@ -282,10 +282,21 @@ run` for a phone connected here; `bb container new --why "..." --name NAME
 --compose FILE` for a container that does not exist yet. Every one of the
 project's dials (Claude may: add to the roadmap, file bugs, add rules, fill
 in build and test, add to the design, write the wiki, run its container,
-report BuilderBot bugs, sign a release, manage signing keys) reads the same
-way: auto lands it, ask holds it for a person (the project's owner for the
-two signing dials), deny refuses it and names the setting; `bb settings`
-shows each dial as it stands. Never route around a refusal.
+report BuilderBot bugs, sign a release, manage signing keys, use a lent PC)
+reads the same way: auto lands it, ask holds it for a person (the project's
+owner for the two signing dials, the person at the PC for a lent one), deny
+refuses it and names the setting; `bb settings` shows each dial as it
+stands. Never route around a refusal.
+
+A person's Windows PC can be lent to the project by its Windows companion,
+for what only runs there (a game engine's editor, a Windows build): `bb pc`
+lists the PCs lending it and their verbs, and `bb pc VERB --why "..."` runs
+one there as its person set it up (editor-start and -stop, game-start and
+-stop, build, log, shot, `editor-call METHOD PATH` to the editor's local
+interface) and waits for what it did, its paths written as the project's
+(/workspace/NAME) and a picture landing in dist/pc/. The files themselves
+are in step already: the companion keeps its folder synced both ways, so a
+change you commit reaches the editor there in seconds.
 
 ## The notebook
 <!-- BUILDERBOT:TOPIC notebook: the record's verbs in full, bb design, the wiki, bb transcripts, bb rules, bb report -->

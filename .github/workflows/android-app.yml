@@ -23,7 +23,15 @@ on:
     paths:
       - "android/**"
       - ".github/workflows/android-app.yml"
+  # ...and for each release, attached to it under the release's version with
+  # its sha256, for every controller on that version to fetch and offer
+  # (R272 step 2, apps.py).
+  release:
+    types: [published]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 concurrency:
   group: android-app
@@ -146,6 +154,20 @@ jobs:
           else
             echo "::warning::the projects share is not mounted on this runner, so the APK went nowhere: it is not kept as a workflow artifact (B669)"
           fi
+
+      - name: Attach it to the release with its sha256
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -o pipefail
+          exec > >(tee -a "$CI_LOG") 2>&1
+          echo "== Attach it to the release"
+          f="builderbot-app-${TAG#v}.apk"
+          cp "${{ steps.name.outputs.file }}" "$f"
+          sha256sum "$f" > "$f.sha256"
+          gh release upload "$TAG" "$f" "$f.sha256" --clobber --repo "$GITHUB_REPOSITORY"
 
       - name: Close the log
         if: always()

@@ -132,6 +132,11 @@ const DRIVERS = {
     open: () => page.evaluate(() => openProfileTab()),
     readyWhen: '.profiletab .snav .rrow',
   },
+  devices: {
+    // Its two sections are always there, the apps and the devices signed in.
+    open: () => page.evaluate(() => openDevicesTab()),
+    readyWhen: '.devicestab .snav .rrow',
+  },
 };
 
 // Every kind that renders a document, from the page's own registry, never a

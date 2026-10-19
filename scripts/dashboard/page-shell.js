@@ -39,7 +39,7 @@ const RAIL = [
   {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"]]},
   {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
   {key: "people", label: "People", icon: "people", tools: [["users", "Users"], ["roles", "Roles"]], admin: true},
-  {key: "settings", label: "Settings", icon: "settings", tools: [["settings", "Controller"], ["profile", "Profile"]]},
+  {key: "settings", label: "Settings", icon: "settings", tools: [["settings", "Controller"], ["profile", "Profile"], ["devices", "Devices"]]},
   {key: "help", label: "Help", icon: "help", tools: [["help", "Help"]]},
 ];
 // The five on a phone's bar, in the rail's own order (the operator, 19 Oct:
@@ -109,6 +109,7 @@ const OPENERS = {
   toolchains: () => openToolchains(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
   runner: () => openRunnerTab(), jobs: () => openJobsTab(), users: () => openUsersTab(),
   roles: () => openRolesTab(), settings: () => openSettingsTab(), profile: () => openProfileTab(),
+  devices: () => openDevicesTab(),
   sessions: () => openSessionsTab(), help: () => openHelp(),
 };
 function railGo(key, tool){

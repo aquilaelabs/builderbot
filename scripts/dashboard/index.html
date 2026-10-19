@@ -810,6 +810,9 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .rdetail{min-width:0;padding:0 0 0 var(--row-x)}
 .rdetail>.rhead{padding:var(--row-y) 0 4px;font:var(--f-sect)}
 .rdetail>.rhead .dim{font:var(--f-ui)}
+/* An account's devices on the Users page (R272 step 8): a label over the
+   Devices page's own table, under the account's settings. */
+.rdetail>.uedevices{display:flex;flex-direction:column;gap:6px;margin-top:var(--field-gap)}
 .rback{display:none}
 /* Remove at the foot of a picked account's or role's settings, under Save
    and apart from it (the operator, 17 Oct). */
@@ -5538,6 +5541,12 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
              app's identity for good. -->
         <label class="pick">Manage signing keys <select id="rnGateKeys"
           aria-label="making a signing key or mapping an app to one, from a session"></select></label>
+        <!-- bb pc (R270 step 6): the verbs a person's Windows companion
+             lends this project (its editor, its game, its build, a picture,
+             a log). Deny by default: it is somebody's own machine; Ask puts
+             each use in front of the person at that PC. -->
+        <label class="pick">Use a lent PC <select id="rnGatePc"
+          aria-label="asking a person's Windows PC to run its lent verbs, from a session"></select></label>
         <!-- Who may move the version: version.py's policy, the same setting
              the Artifacts tab's version row writes. Here too, because an
              owner who set every dial on this panel to auto still found the
@@ -6504,6 +6513,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="tab-users.js"></script>
 <script src="tab-roles.js"></script>
 <script src="tab-profile.js"></script>
+<script src="tab-devices.js"></script>
 <script src="tab-toolchains.js"></script>
 <script src="tab-emulator.js"></script>
 <script src="tab-docker.js"></script>

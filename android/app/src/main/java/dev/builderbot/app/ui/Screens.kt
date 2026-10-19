@@ -652,7 +652,7 @@ private fun EditAccount(api: Api, u: JSONObject, roles: List<String>, everyProje
 // "install unknown apps" the first time. This cannot and should not install
 // anything quietly. What it removes is the desktop, not the decision.
 @Composable
-private fun InstallNewer(api: Api, apk: String, sha: String = "") {
+private fun InstallNewer(api: Api, apk: String, sha: String = "", url: String = "") {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var said by remember { mutableStateOf("") }
@@ -669,7 +669,9 @@ private fun InstallNewer(api: Api, apk: String, sha: String = "") {
                     val dir = java.io.File(context.cacheDir, "apk")
                     dir.mkdirs()
                     dir.listFiles()?.forEach { it.delete() }
-                    val file = api.download(api.apkPath(apk), java.io.File(dir, apk))
+                    // The controller's own copy from its release when it holds
+                    // one (R272), else the one in BuilderBot's dist/.
+                    val file = api.download(url.ifBlank { api.apkPath(apk) }, java.io.File(dir, apk))
                     // What arrived is what the dashboard named, or it is not
                     // installed (B273): the download crosses the same network
                     // as the sign-in, and the installer checks nothing.
@@ -806,7 +808,7 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
                     // reinstalled it); then a newer one has to be built and signed.
                     val same = m.str("apk").isNotBlank() && m.str("apk").contains("-" + BuildConfig.VERSION_NAME.replace('+', '-') + "-")
                     if (same) Text("That is the build this phone already runs: a newer one has to be built and signed on BuilderBot's Artifacts tab first.", color = Bad)
-                    else if (m.str("apk").isNotBlank()) InstallNewer(api, m.str("apk"), m.str("apk_sha256"))
+                    else if (m.str("apk").isNotBlank()) InstallNewer(api, m.str("apk"), m.str("apk_sha256"), m.str("apk_url"))
                 }
             } else if (serverApi < BuildConfig.TARGET_API) Card(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                 Column(Modifier.padding(12.dp)) {

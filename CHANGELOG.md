@@ -165,6 +165,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A branch's comparison with main is its own page with a link of its own, like a pull request: its commits, each file's changes and diff, and Merge into main at the foot; Back and Forward move between it and the branches (fb03da1)
 - The Git view's head row has a branch picker like GitHub's: the branch the tree is on, a list to switch to another, and a box that finds one or creates a new one from where you are (fb03da1)
 - A Windows companion app keeps a folder on your PC in step with a BuilderBot project both ways, so a Windows-only tool can work on the same files Claude does; sign it in once and it shows under your devices on the Profile page, where Disconnect ends it (cca4b51)
+- A Devices page under Settings: the Android app, the VS Code extension and the Windows companion to download, each with its version and how to connect it, fetched by the controller from its own release and checked; the devices signed in as you below them. The Controller page's Apps section picks which are offered, a seed file chooses before the first start, and an administrator sees and disconnects each account's devices on the Users page (0ef4ae0)
+- The Windows companion keeps itself current from its controller: a newer copy is fetched, checked and started the next time the app does (0ef4ae0)
+- A pencil beside a project group's name renames it, and Home's Projects at a glance is in groups as the Projects page is (0ef4ae0)
 
 ### Changed
 
@@ -410,6 +413,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Sections lay out the same on every page: a section's rows, tables and notes start where its title does, with separators running edge to edge, and a hint reads the same quiet way everywhere (f9e3446)
 - Folds, empty lists, badges and page searches look the same on every page: one fold arrow, one empty-state line, one badge style and one size of search box in a page's bar (b13d72f)
 - On a phone, fields you type into never make iOS zoom the page, two fields side by side stack the same way everywhere, and buttons in a bar are the finger's height on any phone-sized screen (b13d72f)
+- In the Containers manager an administrator's own projects come first; another project's containers are dimmed with the way onto that project, and changing them is refused as it is for anybody not on the project (0ef4ae0)
 
 ### Removed
 
@@ -658,6 +662,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The notebook's Wiki at a desk shows its pages beside the article again, not the article squeezed under the list (B856), and on a phone every section's first line has room under its head (B857) (b46ecb2)
 - A new branch made with uncommitted changes takes them along instead of being made and then refused (B858), and it waits for an open Claude session the way Switch does (B859) (fb03da1)
 - The wiki's page list and notes use the dashboard's own type again (B860), and a page bar never wraps to a second line on a narrow phone (B861) (f9e3446)
+- A failed agent update frees its button at once and says what the node was busy with, rather than staying on Updating (0ef4ae0)
+- A reload on a notebook view shows that view's own placeholder, and placeholder bars and section lines keep their inset on every page (0ef4ae0)
 
 ### Security
 

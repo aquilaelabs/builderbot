@@ -31,6 +31,7 @@ const PAGES = [
   ['users', '#/people/users', 'usersList = null; renderUsersInto(0)'],
   ['roles', '#/people/roles', 'rolesData = null; renderRolesInto(0)'],
   ['profile', '#/settings/profile', 'profile = null; renderProfileInto(0)'],
+  ['devices', '#/settings/devices', 'devApps = null; renderDevicesInto(0)'],
   ['notices', '#/notifications', 'noticesData = null; noticesFetching = true; renderNoticesInto(0)'],
   ['containers', '#/containers', 'dockerList = null; for (const k in dockerSeen) delete dockerSeen[k]; renderDockerInto(0)'],
   ['analysis', '#/projects/findings', 'findings = {loading: true}; renderFindingsInto(0)'],

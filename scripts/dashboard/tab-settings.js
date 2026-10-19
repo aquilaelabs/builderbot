@@ -17,7 +17,7 @@
 // them dropped and the tab repainted, which the live key has to notice.
 let settingsRev = 0;
 function settingsLive(){
-  return JSON.stringify([state?.settings?.settings, state?.settings?.tunnel, state?.idle, state?.logs, state?.paths, settingsRev]);
+  return JSON.stringify([state?.settings?.settings, state?.settings?.tunnel, state?.idle, state?.logs, state?.paths, settingsRev, devAppsRev]);
 }
 
 // Typed and not yet applied, by control id, across the tab's redraws: one
@@ -70,6 +70,7 @@ const SETTINGS_SAYS = {
   logs: "days kept, downloads, diagnostics", reports: "what sessions reported about BuilderBot",
   idle: "when an idle session is ended", paths: "the shares and disks this controller uses",
   tunnel: "a hostname that reaches it from outside", debug: "debug mode and dev features",
+  apps: "the apps your people install, kept current",
   reset: "start over at the setup page",
 };
 
@@ -124,6 +125,17 @@ function renderSettingsInto(i){
   wireSettingsSections(d.el);
   settingsKeep(d.el);
   if (reportsCount === null && reportsSection()) countReports();
+  const ac = d.el.querySelector("#setAppsCheck");
+  if (ac) ac.onclick = async () => {
+    busy(ac, "Looking");
+    try{
+      const j = await (await postJSON("/api/apps", {action: "check"})).json();
+      if (j.error) notify(j.error, true);
+    }catch(e){ notify("could not reach the controller: " + e, true); }
+    // The look runs in the background; read again once it has had a moment.
+    setTimeout(loadApps, 4000);
+    await loadApps();
+  };
   const rs = d.el.querySelector("#setReset");
   if (rs) rs.onclick = () => askReset();
   const rc = d.el.querySelector("#setReportsClear");
@@ -190,6 +202,19 @@ async function clearReports(btn){
 // says so beside it, and the bar says whether a change applies at once or at the
 // next start. Drawn from the poll's copy, so a save shows on the next poll.
 const SETTING_GROUPS = [
+  // The apps this controller offers its people (R272 step 3, apps.py): each
+  // one on is fetched from the release matching this controller, checked
+  // against its sha256 and offered on the Devices page; Look now asks the
+  // release again rather than waiting for the daily look.
+  {key: "apps", title: "Apps", intro: appsIntro, status: appsStatus,
+   heading: s => `${["apps_android", "apps_vscode", "apps_companion"].filter(k => s?.settings?.[k]?.value).length} offered`,
+   fields: [
+    {key: "apps_android", label: "Android app", type: "bool",
+     hint: "The notebook, the bell and your sessions on a phone, and the phone lent to a project."},
+    {key: "apps_vscode", label: "VS Code extension", type: "bool",
+     hint: "A project's files and terminal in VS Code."},
+    {key: "apps_companion", label: "Windows companion", type: "bool",
+     hint: "A folder on a Windows PC kept in step with a project, for a tool that only runs there."}]},
   // The home tunnel the controller runs itself (R176): the public hostname
   // a node off the LAN dials, the tunnel's token, and an API token that
   // writes the hostname's record and the tunnel's rules rather than having
@@ -224,6 +249,21 @@ const SETTING_GROUPS = [
     {key: "offer_unvetted", label: "Offer dev features", type: "bool",
      hint: "Also offer untested git hosts, hypervisors and node systems, tagged dev in the pickers."}]},
 ];
+
+// What the Apps section holds, over its switches, and Look now.
+function appsIntro(){
+  return `<div class="sub">Each one on is fetched from the release that matches this controller, checked, and offered on the ${
+    pageLink("devices", "Devices page")} for your people to download and keep current.</div>
+    <div class="addbar ctlrow"><button type="button" id="setAppsCheck"${devApps?.checking ? " disabled" : ""}>${devApps?.checking ? "Looking…" : "Look now"}</button></div>`;
+}
+// ...and its line: what it holds, from which release, when it looked.
+function appsStatus(){
+  if (!devApps) return "applies at once";
+  const held = (devApps.apps || []).filter(a => a.files.length);
+  const when = devApps.checked ? `looked ${ago(devApps.checked)}` : "not looked yet";
+  if (devApps.error) return `${devApps.error} · ${when}`;
+  return held.length ? `holds ${held.map(a => a.title).join(", ")} from ${devApps.release}${devApps.matched ? "" : " (no release matches this controller: the newest)"} · ${when}` : when;
+}
 
 // How the public hostname is set up, in the section itself (the operator,
 // 11 Oct): the steps in order, with the controller's own port in them.

@@ -1,7 +1,7 @@
 # Reference
 
-The settings the container is given, every `bb` command a session has, and
-how Android releases are signed. What each part is for is
+The settings the container is given, every `bb` command a session has, the
+apps a controller offers, and how Android releases are signed. What each part is for is
 [how-it-works.md](how-it-works.md); setting one up is [install.md](install.md).
 
 ## Configuration reference
@@ -518,6 +518,15 @@ bb report "..." [--area A] [--repro "..."]
                    project, whose tracker those bugs belong in, has it off
 bb report conversation N   the conversation a person sent with a report (the
                    end of it, redacted), behind the same gate
+bb pc [VERB] [--why "..."]
+                   a person's Windows PC lent to this project by the Windows
+                   companion: bare, which PCs lend which verbs; a verb
+                   (editor-start, editor-stop, game-start, game-stop, build,
+                   shot, log, editor-call METHOD PATH) runs on the PC as its
+                   person set it up there and waits for what it did, a
+                   picture landing in dist/pc/. Under *Claude may: Use a lent
+                   PC* (Deny by default; Ask puts each use in front of the
+                   person at the PC); never a command string
 bb doctor          check everything that usually goes wrong
 
 # developing BuilderBot itself, from inside it
@@ -589,6 +598,41 @@ bb toolchains             SDKs kept outside the image: status, check, install X,
 ```
 
 The dashboard's Commands flyout carries this same list in this same order.
+
+## The apps a person installs
+
+The Android app, the VS Code extension and the Windows companion are built
+for every release and attached to it, each with a `.sha256` file beside it.
+A controller offers the ones ticked under **Apps** on its Controller
+settings page: a while after it starts and once a day it fetches each from
+the release matching its own version (the newest release when none does,
+and the section says so), keeps it only if it matches its sha256, and
+serves it from `/config/apps`. A switch moved, or **Look now**, looks at
+once.
+
+| Where | What |
+|---|---|
+| Settings, Devices | each offered app with its version, **Download**, and how to connect it; the devices signed in as you, with **Disconnect** |
+| `GET /apps/NAME/FILE` | one file the controller holds (`android`, `vscode`, `companion`), for anybody signed in |
+| `GET /api/apps` | what is offered and held: each app's files, their sha256 and size, the release, when it last looked |
+| `POST /api/v1/device/apps` | the same for a device's app (its own token), to update itself from; `GET /api/v1/device/app-file?app=NAME&file=FILE` fetches one |
+
+A device's app sends the door it speaks as `X-BB-Door` (none means 1); one
+from before the controller's window is answered 426 with the way to update.
+
+### The seed file
+
+A compose generator (the website's) writes `/config/seed.json` beside the
+compose file to choose what a new controller offers before anybody signs in:
+
+```json
+{"version": 1, "apps": ["android", "companion"]}
+```
+
+Read once, on the first start that finds it: each app named is offered and
+each one left out is not. It is then renamed `seed.json.applied`, and the
+Settings page owns the choice from there. Nothing about it is in the
+environment.
 
 ## Signing Android releases
 

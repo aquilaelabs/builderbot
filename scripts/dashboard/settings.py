@@ -77,6 +77,14 @@ KEYS = {
     "tunnel_host": {"default": "", "kind": "text", "applied": "now"},
     "tunnel_token": {"default": "", "kind": "secret", "applied": "now"},
     "cf_api_token": {"default": "", "kind": "secret", "applied": "now"},
+    # The apps this controller offers its people (R272 step 3, apps.py):
+    # each one on fetches that app from the release matching this
+    # controller's version, checks it and serves it from /apps; off, it is
+    # neither fetched nor offered. Set first by the seed file a compose
+    # generator writes (apps.seed), then here.
+    "apps_android": {"default": True, "kind": "bool", "applied": "now"},
+    "apps_vscode": {"default": True, "kind": "bool", "applied": "now"},
+    "apps_companion": {"default": True, "kind": "bool", "applied": "now"},
 }
 
 

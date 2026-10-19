@@ -144,6 +144,11 @@ ok(woke.status === 200 && (woke.changes || []).some(c => c[0] === 'from-laptop.t
   ok(si.code === 0 && ad.code === 0 && once.code === 0 && existsSync(`${folder}/device-probe.txt`)
      && readFileSync(`${folder}/device-probe.txt`, 'utf8') === 'from the controller\n' && !existsSync(`${folder}/.git`),
      `the app signs in, keeps alpha in a folder, and makes the first copy there without .git (${[si.out, ad.out, once.out].join(' | ').replace(/\s+/g, ' ').slice(0, 200)})`);
+  // This PC lent to alpha (R270 step 6): a build and the editor's log, set
+  // up here by its person; {folder} is the project's folder on this PC.
+  writeFileSync(`${folder}/editor.log`, `opened ${folder}/Main.tscn\n`);
+  const lent = app('lend', 'alpha', 'build', '--', 'python3', '-c', 'import os; print("built in", os.getcwd())');
+  app('lend', 'alpha', 'log', '{folder}/editor.log');
   const daemon = spawn('python3', ['-m', 'bbcompanion', 'run'], { env: appEnv, stdio: 'ignore' });
   try {
     writeFileSync(`${folder}/made-on-pc.txt`, 'from the folder\n');
@@ -156,15 +161,47 @@ ok(woke.status === 200 && (woke.changes || []).some(c => c[0] === 'from-laptop.t
     for (let i = 0; i < 60 && !down; i++) { down = existsSync(`${folder}/made-elsewhere.txt`); if (!down) await new Promise(r => setTimeout(r, 500)); }
     ok(down && readFileSync(`${folder}/made-elsewhere.txt`, 'utf8') === 'from another device\n',
        '...and one made elsewhere comes down into the folder within seconds, woken by its long poll');
+    // A session on alpha asks for them with bb pc, under the project's
+    // Claude may: Use a lent PC: refused on Deny, run on Auto with the PC's
+    // folder written as the project's path, and on Ask refused by an app
+    // with no window to ask in.
+    const stok = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'dv.rw'], { encoding: 'utf8', env }).trim();
+    const pcApi = async body => {
+      const r = await fetch(`${base}/api/pc`, { method: 'POST', headers: { Authorization: `Bearer ${stok}`, 'Content-Type': 'application/json' },
+                                                body: JSON.stringify(body) });
+      return { status: r.status, ...(await r.json()) };
+    };
+    let pcs = { pcs: [] };
+    for (let i = 0; i < 40 && !pcs.pcs?.length; i++) { pcs = await pcApi({ action: 'lent' }); if (!pcs.pcs?.length) await new Promise(r => setTimeout(r, 500)); }
+    const denied = await pcApi({ action: 'run', verb: 'build' });
+    ok(/build/.test(lent.out) && pcs.pcs?.[0]?.verbs.includes('build') && pcs.pcs[0].verbs.includes('log')
+       && denied.status === 403 && /Use a lent PC/.test(denied.error || ''),
+       `a PC lends what its person set up, and a session is refused while the project says Deny (${JSON.stringify(pcs.pcs?.[0]?.verbs)}; ${denied.status})`);
+    await admin('/api/prefs', { project: 'alpha', pc: 'auto' });
+    const runPc = async verb => {
+      const asked = await pcApi({ action: 'run', verb, why: 'checking the build' });
+      let got = { state: 'waiting' };
+      for (let i = 0; i < 10 && asked.id && !['done', 'refused'].includes(got.state); i++) got = await pcApi({ action: 'result', id: asked.id, wait: 20 });
+      return { asked, got };
+    };
+    const build = await runPc('build'), log = await runPc('log');
+    ok(build.got.state === 'done' && build.got.result?.ok && /built in \/workspace\/alpha/.test(build.got.result.text || '')
+       && /opened \/workspace\/alpha\/Main\.tscn/.test(log.got.result?.text || ''),
+       `on Auto the PC runs them, its folder written as the project's path (${JSON.stringify([build.got.result?.text, log.got.result?.text]).slice(0, 160)})`);
+    await admin('/api/prefs', { project: 'alpha', pc: 'ask' });
+    const asked = await runPc('build');
+    ok(asked.got.state === 'refused' && /without a window/.test(asked.got.result?.text || ''),
+       `on Ask the person at the PC is asked, and an app with no window says no (${asked.got.state}: ${asked.got.result?.text})`);
+    await admin('/api/prefs', { project: 'alpha', pc: 'deny' });
   } finally { daemon.kill(); }
 }
 
-// ---- the Profile page lists them, and Disconnect signs one out -------------------------------
+// ---- the Devices page lists them, and Disconnect signs one out -------------------------------
 const PERSON = { Authorization: 'Basic ' + Buffer.from(`dv.rw:${people['dv.rw']}`).toString('base64'), 'Content-Type': 'application/json' };
 const prof = await (await fetch(`${base}/api/profile`, { headers: PERSON })).json();
 const listed = (prof.devices || []).map(d => d.name);
 ok(['TEST-PC', 'LAPTOP', 'ELSEWHERE'].every(n => listed.includes(n)) && (prof.devices || []).every(d => !('secret_hash' in d) && d.kind === 'pc'),
-   `the Profile page lists the person's devices, never their secrets (${JSON.stringify((prof.devices || []).map(d => d.name))})`);
+   `the Devices page lists the person's devices, never their secrets (${JSON.stringify((prof.devices || []).map(d => d.name))})`);
 const out = await (await fetch(`${base}/api/profile`, { method: 'POST', headers: PERSON,
   body: JSON.stringify({ action: 'device-signout', device: a.device.id }) })).json();
 const after = await dev(a.token, 'whoami', {}), still = await dev(b.token, 'whoami', {});
@@ -174,5 +211,75 @@ const otherOut = await (await fetch(`${base}/api/profile`, { method: 'POST', hea
   body: JSON.stringify({ action: 'device-signout', device: b.device.id }) })).json();
 ok(otherOut.error && (await dev(b.token, 'whoami', {})).status === 200,
    `another account cannot sign a person's device out (${otherOut.error})`);
+// ...but an administrator sees each account's devices on the Users page
+// and cuts one off for them (R272 step 8): seeing and revoking, never driving.
+{
+  const ul = await (await fetch(`${base}/api/users`, { headers: ADMIN })).json();
+  const theirs = (ul.users || []).find(u => u.name === 'dv.rw')?.devices || [];
+  const cut = await admin('/api/users', { action: 'device-signout', name: 'dv.rw', device: b.device.id });
+  const asPerson = await (await fetch(`${base}/api/users`, { headers: PERSON })).json();
+  ok(theirs.some(d => d.id === b.device.id) && theirs.every(d => !('secret_hash' in d)) && cut.ok
+     && (await dev(b.token, 'whoami', {})).status === 401 && !(asPerson.users || []).some(u => u.devices),
+     `an administrator sees an account's devices and disconnects one for them; nobody else sees them (${JSON.stringify(cut)})`);
+}
+
+// ---- the apps this controller offers, from its release (R272 step 3) --------------------------
+// A release with the three apps and their sha256 files, as the release
+// workflows attach them; the controller is 0.4.0-dev, so v0.4.0 matches.
+{
+  const { createHash } = await import('node:crypto');
+  const rel = `${DIR}/release`;
+  mkdirSync(rel, { recursive: true });
+  const asset = (name, body, sum = createHash('sha256').update(body).digest('hex')) => {
+    writeFileSync(`${rel}/${name}`, body);
+    writeFileSync(`${rel}/${name}.sha256`, `${sum}  ${name}\n`);
+    return [{ name, browser_download_url: `file://${rel}/${name}` },
+            { name: `${name}.sha256`, browser_download_url: `file://${rel}/${name}.sha256` }];
+  };
+  const assets = [...asset('builderbot-app-0.4.0.apk', 'an apk'), ...asset('builderbot-vscode-0.4.0.vsix', 'a vsix'),
+                  ...asset('builderbot-companion-0.4.0.exe', 'an exe'), ...asset('builderbot-companion-0.4.0.pyz', 'a pyz', '0'.repeat(64))];
+  writeFileSync(`${DIR}/releases.json`, JSON.stringify([{ tag_name: 'v0.5.0', assets: [] }, { tag_name: 'v0.4.0', assets }]));
+  const started = await admin('/api/apps', { action: 'check' });
+  let v = null;
+  for (let i = 0; i < 40; i++) {
+    v = await (await fetch(`${base}/api/apps`, { headers: ADMIN })).json();
+    if (!v.checking && v.checked) break;
+    await new Promise(r => setTimeout(r, 250));
+  }
+  const by = Object.fromEntries((v.apps || []).map(x => [x.name, x]));
+  ok(started.ok && v.release === 'v0.4.0' && v.matched && by.android?.files.length === 1 && by.vscode?.files.length === 1,
+     `Look now fetches each offered app from the release matching this controller (${v.release}, ${JSON.stringify((v.apps || []).map(x => [x.name, x.files.length]))})`);
+  ok(by.companion?.files.map(f => f.file).join() === 'builderbot-companion-0.4.0.exe' && /does not match its sha256/.test(v.error || ''),
+     `...and keeps none that does not match its sha256, saying so (${v.error})`);
+  const dl = await fetch(`${base}/apps/android/builderbot-app-0.4.0.apk`, { headers: PERSON });
+  const nope = await fetch(`${base}/apps/android/..%2Fsettings.json`, { headers: PERSON });
+  const anon = await fetch(`${base}/apps/android/builderbot-app-0.4.0.apk`, { redirect: 'manual' });
+  ok(dl.status === 200 && await dl.text() === 'an apk' && nope.status === 404 && anon.status !== 200,
+     `anybody signed in downloads it from /apps, nothing else is named there, and nobody else does (${dl.status} ${nope.status} ${anon.status})`);
+  const c3 = await signin('dv.rw', people['dv.rw'], 'UPDATER');
+  const offered = await dev(c3.token, 'apps', {});
+  const file = await fetch(`${base}/api/v1/device/app-file?app=companion&file=builderbot-companion-0.4.0.exe`,
+                           { headers: { Authorization: `Bearer ${c3.token}` } });
+  ok(offered.status === 200 && offered.door === 1 && offered.apps.some(x => x.name === 'companion' && x.files[0].sha256)
+     && file.status === 200 && await file.text() === 'an exe',
+     `a device's app reads what to update to and fetches it through its own door (${offered.status} ${file.status})`);
+  const old = await fetch(`${base}/api/v1/device/whoami`, { method: 'POST',
+    headers: { Authorization: `Bearer ${c3.token}`, 'X-BB-Door': '0', 'Content-Type': 'application/json' }, body: '{}' });
+  const oldJ = await old.json();
+  ok(old.status === 426 && oldJ.update && /update the app/.test(oldJ.error || ''),
+     `an app from before the door's window is told to update, not half served (${old.status}: ${oldJ.error})`);
+  // A switch moved is looked at at once: what is off goes.
+  const off = await admin('/api/settings', { set: { apps_vscode: false } });
+  for (let i = 0; i < 40; i++) {
+    v = await (await fetch(`${base}/api/apps`, { headers: ADMIN })).json();
+    if (!v.checking) break;
+    await new Promise(r => setTimeout(r, 250));
+  }
+  const vs = (v.apps || []).find(x => x.name === 'vscode');
+  const gone = await fetch(`${base}/apps/vscode/builderbot-vscode-0.4.0.vsix`, { headers: PERSON });
+  ok(!vs?.offered && !vs?.files.length && gone.status === 404,
+     `an app switched off is no longer held or served (${JSON.stringify(off).slice(0, 60)}; ${gone.status})`);
+  await admin('/api/settings', { set: { apps_vscode: true } });
+}
 
 done();

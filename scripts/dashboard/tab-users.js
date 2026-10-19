@@ -126,6 +126,8 @@ function usersDetail(u){
     <div class="setrow col ueaccess ctlrow">${lbl("", "Roles and projects", "what this account may do; what each role holds is on the Roles page")}<div id="ueAccess">${access}</div></div>
     <div class="sub bad" id="ueErr" hidden></div>
     ${saveBar({save: 'id="ueSave"', revert: 'id="ueRevert"', state: usersDirty() ? "unsaved" : ""})}
+    ${u.devices ? `<div class="uedevices"><span class="lbl">Devices${helpIcon("the apps signed in as this account on its machines; Disconnect cuts one off for them, as a lost laptop needs")}</span>${
+      profileDevices(u.devices, u.name)}</div>` : ""}
     <div class="rfoot">${isOwner ? `<span class="sub dim">The owner cannot be deleted: rename it instead.</span>`
       : `<button type="button" class="danger" id="ueRemove">Remove ${esc(u.name)}</button>`}</div>`;
 }
@@ -167,6 +169,7 @@ function wireUsersBar(el){
 }
 
 function wireUsers(el){
+  wireDeviceOut(el);
   el.querySelectorAll("[data-upick]").forEach(b => b.onclick = () => {
     if (b.dataset.upick !== usersPick && usersDirty() && !confirm(`Leave ${usersPick}'s changes unsaved?`)) return;
     splitAway(() => document.querySelectorAll(".pane .doc.on .rsplit > .rdetail"), () => {

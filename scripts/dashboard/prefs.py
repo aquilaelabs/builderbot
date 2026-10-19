@@ -329,6 +329,10 @@ def _clean(rec):
             # controller with the project's own credentials, which no session
             # holds. Ask by default: the operator, 5 Oct.
             "release": rec.get("release") if rec.get("release") in SIGN_MODES else "ask",
+            # Claude may: Use a lent PC, one of SIGN_MODES (bb pc, R270
+            # step 6): the verbs a person's Windows companion lends this
+            # project. Deny by default: it is somebody's own machine.
+            "pc": rec.get("pc") if rec.get("pc") in SIGN_MODES else "deny",
             # How long a capture (a reel's sheet, an emulator shot) stays in
             # dist/ before the Artifacts tab's sweep removes it (R96). By
             # age and never by need: two sessions on one project may each
@@ -613,7 +617,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None, sign=None, keys=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
               snapshot_days=None,
-              release=None, log_from=None, diag=None, build_local=None, reaches=None, hosts=None):
+              release=None, log_from=None, diag=None, build_local=None, reaches=None, hosts=None,
+              pc=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -700,6 +705,10 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             if release not in SIGN_MODES:
                 return {"error": f"release is one of {', '.join(SIGN_MODES)}, not {release}"}
             cur["release"] = release
+        if pc is not None:
+            if pc not in SIGN_MODES:
+                return {"error": f"pc is one of {', '.join(SIGN_MODES)}, not {pc}"}
+            cur["pc"] = pc
         if report is not None:
             if report not in REPORT_MODES:
                 return {"error": f"report is one of {', '.join(REPORT_MODES)}, not {report}"}
@@ -761,6 +770,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 or cur["report"] != "auto" or cur["capture_days"] != CAPTURE_DAYS
                 or cur["snapshot_days"] != SNAPSHOT_DAYS
                 or cur["sign"] != "ask" or cur["keys"] != "ask" or cur["release"] != "ask"
+                or cur["pc"] != "deny"
                 or cur["dev_keep"] != DEV_KEEP
                 or cur["gitpol"] != GITPOL_DEFAULT):
             # Stored without the all-auto gate or the default policy, so the
@@ -783,6 +793,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("keys", None)
             if cur["release"] == "ask":
                 rec.pop("release", None)
+            if cur["pc"] == "deny":
+                rec.pop("pc", None)
             if cur["gpu"] == "on":
                 rec.pop("gpu", None)
             if cur["capture_days"] == CAPTURE_DAYS:
@@ -905,7 +917,7 @@ def dialog_save(name, req, uid):
                   report=req.get("report"), capture_days=req.get("capture_days"),
                   snapshot_days=req.get("snapshot_days"),
                   dev_keep=req.get("dev_keep"), sign=req.get("sign"), keys=req.get("keys"),
-                  release=req.get("release"),
+                  release=req.get("release"), pc=req.get("pc"),
                   color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
                   reaches=req.get("reaches"), hosts=req.get("hosts"),
                   log_from=req.get("log_from"), diag=req.get("diag") if isinstance(req.get("diag"), bool) else None,

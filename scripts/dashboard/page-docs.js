@@ -245,6 +245,15 @@ const SKTPLS = {
   // ...and the Version box above it, which the view fills on its own.
   version: () => skTpl(docSection("artifacts", "version", artTitle("version"), "", skRows(1))),
 };
+// A select's options from strings or [value, label] pairs, the current one
+// selected, every value and label escaped (consistency pass J20: fifty-odd
+// written by hand, a few of them unescaped).
+function optionList(items, cur){
+  return (items || []).map(it => {
+    const [v, l] = Array.isArray(it) ? it : [it, it];
+    return `<option value="${esc(v)}"${String(v) === String(cur ?? "") ? " selected" : ""}>${esc(l)}</option>`;
+  }).join("");
+}
 // A word the page needs, asked in a box in the row (R256 step 4) where
 // window.prompt was: its label, the field, Cancel and OK, under the control
 // that asked; Enter is OK and Escape is Cancel. Resolves with what was typed,
@@ -280,7 +289,7 @@ function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpt
 // A pointer to another page is a link to it (R256 step 2): the address that
 // page answers at, so a press goes there as the rail does and Back returns.
 const PAGE_AT = {nodes: "#/machines/nodes", docker: "#/containers", jobs: "#/jobs", toolchains: "#/build/toolchains",
-  users: "#/people/users", roles: "#/people/roles"};
+  users: "#/people/users", roles: "#/people/roles", devices: "#/settings/devices"};
 function pageLink(page, words, hash = PAGE_AT[page]){
   return `<a href="${esc(hash || "#")}" class="pagelink">${esc(words)}</a>`;
 }

@@ -173,6 +173,13 @@ project is not hidden but reported: no git repository or the wrong ownership in
 red, no `CLAUDE.md` in amber, both behind **Show projects with errors**. Only
 empty directories and hidden ones are left out.
 
+**The apps for your machines**: the Android app, the VS Code extension and
+the Windows companion are on the **Devices** page, under Settings, each with
+Download and how to connect it, fetched by the controller from its own
+release and kept current there. Which are offered is the **Apps** section of
+the Controller settings page, or `/config/seed.json` before the first start
+([reference.md](reference.md#the-seed-file)).
+
 **Updating**: CI publishes `:latest` for any push to `main` that touches the
 image's inputs (Dockerfile, `scripts/`, `config/`) + a weekly freshness
 rebuild. Unraid's *Check for Updates* flips the container to **update ready**,

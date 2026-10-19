@@ -59,6 +59,7 @@ scripts/
   lib/phone-verbs.py             `bb phone`: status and run
   lib/root-verbs.py              `bb root`: status and run
   lib/report.py                  `bb report`, and file/close from BuilderBot's side
+  lib/pc.py                      `bb pc`: a person's Windows PC lent to the project, its verbs asked and their results read
   lib/diag.py                    `bb diag`
   lib/node-log.py                `bb logs --node`
   lib/login-check.py             `bb login --check`: who this account is signed in to Claude as on this machine, told to the controller
@@ -104,7 +105,7 @@ scripts/
                                  all pure declarations, served by name from the page's own script tags (R77)
     server.py                    the routes, the transport and the gates; each handler one call into a module beside it
     index.html                   the markup, the stylesheet and the wiring that runs at load
-    tab-*.js                     one per document tab (Docker, Nodes, Jobs, nginx, Storage, Toolchains, Emulator, Phone, Settings, Users, Profile, Findings, Projects)
+    tab-*.js                     one per document tab (Docker, Nodes, Jobs, nginx, Storage, Toolchains, Emulator, Phone, Settings, Users, Profile, Devices, Findings, Projects)
     nb-*.js                      one per notebook view; nb-core.js is the notebook itself
     page-*.js                    one per part of the page that is neither: the state, the tabs, the panes and the dock, a project's rows, the polls, the bell, the doctor and the rest
     static/                      the favicon set and the SVG marks the page draws
@@ -142,6 +143,8 @@ scripts/
     ftp.py                       a project's file access over FTP and in an editor: the switches, the port, each account's access, and access_for, the one answer both doors give (R151, R159)
     wssync.py                    a node's projects as a synced copy: the index, state, since, get and put for its agent, and conflicts (R162)
     devices.py                   a person's devices: the token an app signs in for, the Devices list and Disconnect, and the device door an app syncs a project through as a node does (R270, R272)
+    pcwork.py                    a person's PC lent to a project (R270): what the companion lends, a session's asks under Use a lent PC, the PC's long poll and its results
+    apps.py                      the apps a person installs (R272): fetched from the release matching this controller, checked against their sha256, kept under /config/apps and served at /apps; the seed file read once
     snapshots.py                 each project's tree as it was each day, stored once by content, pruned to the project's days, and restored whole or a file at a time (R165)
     paths.py                     where the controller keeps what grows (snapshots, the git relay, logs), as the Settings page's Storage section sets it, and the move between two
     claudesync.py                a synced node's Claude conversations: the listing, get and put (whole, a tail, gone) for its agent's mirror (B613)
@@ -254,6 +257,8 @@ windows/                         the Windows companion app (R270): a person's ma
   bbcompanion/names.py           Windows' rules for a file's name: device names, a trailing dot or space, the refused characters, two names one by case
   bbcompanion/creds.py           the device token in Windows' credential store, or a file only its owner reads elsewhere
   bbcompanion/settings.py        the projects kept and their folders, the controller's address
+  bbcompanion/pc.py              this PC lent to a project: the verbs its person set up, run on a session's ask, the folder written as the project's path
+  bbcompanion/update.py          kept current by its controller: what it holds asked at start and daily, a newer copy checked and swapped in at the next start
   bbcompanion/app.py             the window: sign in, the projects and each one's state, Add, Remove, Open folder, Conflicts
 nodes/bb-session                    the root helper that runs a session in a view of its own project; the agent installs it
 nodes/provision-macos.sh            enrolls a Mac as a guest node (a dev feature, behind Offer dev features): one directory, one launchd agent, no root; --remove takes it away

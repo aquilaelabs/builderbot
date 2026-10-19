@@ -22,9 +22,10 @@ except ImportError:                                   # a checkout: the agent be
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "agent"))
     from builderbot_agent import controller as _controller, wssync as _wssync
 
-from . import names
+from . import names, pc, update
 
 POLL_WAIT = 25          # seconds the device door holds a long poll
+UPDATE_EVERY = 24 * 3600
 
 
 class DeviceDoor:
@@ -34,7 +35,9 @@ class DeviceDoor:
 
     def __init__(self, url, token, pin="", picked=None):
         self.ctl = _controller.Controller(url, token, pin, door="device")
+        self.ctl.headers["X-BB-Door"] = str(update.DOOR)
         self.picked = dict(picked or {})
+        self.too_old = False      # the controller's door is past this app's (426)
         self.access = {}          # project -> "rw" | "r", from the door
         self.left_out = {}        # project -> {path: why}: what Windows cannot hold
         self.error = ""
@@ -43,6 +46,9 @@ class DeviceDoor:
         if verb == "sync" and (body or {}).get("action") == "projects":
             return self._projects()
         st, r = self.ctl.call(verb, body, timeout=timeout, method=method, raw=raw)
+        if st == 426:
+            self.too_old = True
+            self.error = str((r or {}).get("error") or "update the app")
         if verb == "sync" and st == 200 and isinstance(r, dict):
             project = (body or {}).get("project", "")
             key = "files" if "files" in r else "changes" if "changes" in r else ""
@@ -60,6 +66,8 @@ class DeviceDoor:
         ones picked here that the person may still read, each at its
         revision; one read-only for them is held read-only."""
         st, r = self.ctl.call("projects", {})
+        if st == 426:
+            self.too_old = True
         if st != 200:
             self.error = str((r or {}).get("error") or f"the controller answered {st}")
             return st, r
@@ -120,16 +128,27 @@ class Companion:
     """One person's machine kept in step: the sync's loop, and a long poll
     per project that wakes it the moment the project moves."""
 
-    def __init__(self, url, token, picked, data_dir, pin=""):
+    def __init__(self, url, token, picked, data_dir, pin="", lend=None, asker=None):
         os.makedirs(data_dir, exist_ok=True)
+        # What this PC lends each project (pc.py), and who answers an ask:
+        # the window, or nobody from a command line, which refuses.
+        self.lend = {p: c for p, c in (lend or {}).items() if p in picked}
+        self.asker = asker
+        self.lender = pc.Lender()
+        self.lent_log = []        # the last uses, for the window
         self.door = DeviceDoor(url, token, pin, picked)
         self.sync = FolderSync(DeviceAgent(self.door, data_dir), picked)
         self.picked = dict(picked)
         self.stopped = threading.Event()
         self.polls = []
+        self.update = {}          # the last look for a newer app (update.check)
+        self.look = threading.Event()
 
     def start(self):
         self.sync.start()
+        threading.Thread(target=self._updates, name="updates", daemon=True).start()
+        if self.lend:
+            threading.Thread(target=self._lending, name="lending", daemon=True).start()
         for name in self.picked:
             t = threading.Thread(target=self._poll, args=(name,), name=f"poll-{name}", daemon=True)
             t.start()
@@ -149,11 +168,52 @@ class Companion:
             elif st != 200:
                 self.stopped.wait(10)      # down or refused: try again, not in a spin
 
+    def _lending(self):
+        """Lend this PC's verbs to its projects while the app runs: a long
+        poll on the door for what sessions ask, each run on its own thread
+        (a build is long), its result posted back (R270 step 6)."""
+        lent = {p: pc.lent_verbs(c) for p, c in self.lend.items()}
+        lent = {p: v for p, v in lent.items() if v}
+        while lent and not self.stopped.is_set():
+            st, r = self.door.ctl.call("pc-work", {"projects": lent, "wait": POLL_WAIT}, timeout=POLL_WAIT + 15)
+            if st != 200:
+                self.stopped.wait(10)
+                continue
+            for req in r.get("work") or []:
+                threading.Thread(target=self._lend_one, args=(req,), daemon=True).start()
+
+    def _lend_one(self, req):
+        if req.get("mode") == "ask" and not (self.asker and self.asker(req)):
+            out = {"ok": False, "refused": True,
+                   "text": "" if self.asker else "this PC runs the companion without a window, so nobody was there to say yes"}
+        else:
+            try:
+                out = self.lender.run(req, self.lend.get(req["project"]) or {}, self.picked.get(req["project"], ""))
+            except Exception as e:          # noqa: BLE001 (said to the session)
+                out = {"ok": False, "text": f"{type(e).__name__}: {e}"}
+        self.lent_log = ([f"{req['verb']} for {req['project']}: {'refused' if out.get('refused') else 'done' if out.get('ok') else 'failed'}"]
+                         + self.lent_log)[:20]
+        self.door.ctl.call("pc-result", {"id": req["id"], **out}, timeout=120)
+
+    def _updates(self):
+        """A look for a newer app at start and once a day, and at once when
+        the door says this one is too old (R270 step 9)."""
+        while not self.stopped.is_set():
+            try:
+                self.update = update.check(self.door.ctl)
+            except Exception as e:          # noqa: BLE001 (said in the window)
+                self.update = {"said": f"the update check failed: {type(e).__name__}: {e}"}
+            self.look.wait(UPDATE_EVERY)
+            self.look.clear()
+
     def status(self):
         """For the tray: each project's state, what Windows could not hold,
-        and the door's own trouble."""
+        the door's own trouble, and an update waiting for a restart."""
         st = self.sync.status() or {}
-        return {"error": self.door.error,
+        if self.door.too_old and not self.update.get("pending"):
+            self.door.too_old = False
+            self.look.set()
+        return {"error": self.door.error, "update": self.update, "lent": self.lent_log,
                 "projects": {n: {**st.get(n, {"ready": False}), "access": self.door.access.get(n, ""),
                                  "left_out": self.door.left_out.get(n, {})} for n in self.picked}}
 

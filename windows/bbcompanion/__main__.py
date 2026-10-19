@@ -6,6 +6,10 @@ with a BuilderBot project, as a node's synced copy is.
     python -m bbcompanion add PROJECT FOLDER   keep a project in a folder here
     python -m bbcompanion remove PROJECT       stop keeping it (its folder stays)
     python -m bbcompanion run [--once]         keep them in step; --once stops when each is copied
+    python -m bbcompanion update               fetch a newer app from the controller, for the next start
+    python -m bbcompanion lend PROJECT VERB [-- COMMAND LINE | FILE | PORT]
+                                               lend a verb to a project's sessions ({folder} is its folder);
+                                               no value takes it back
     python -m bbcompanion signout              forget this machine's token here
 """
 import getpass
@@ -14,7 +18,7 @@ import platform
 import sys
 import time
 
-from . import core, creds, settings
+from . import core, creds, settings, update
 
 
 def _say(msg):
@@ -44,7 +48,8 @@ def companion():
     if not s["picked"]:
         _say("no project picked: python -m bbcompanion add PROJECT FOLDER")
         return None
-    return core.Companion(c["url"], c["token"], s["picked"], settings.data_dir(), pin=s.get("pin", ""))
+    return core.Companion(c["url"], c["token"], s["picked"], settings.data_dir(), pin=s.get("pin", ""),
+                          lend=s.get("lend"))
 
 
 def run(once=False, timeout=600):
@@ -86,6 +91,33 @@ def main(argv):
         return 0
     if cmd == "run":
         return run(once="--once" in rest)
+    if cmd == "lend" and len(rest) >= 2:
+        from . import pc
+        project, verb, value = rest[0], rest[1], [a for a in rest[2:] if a != "--"]
+        if verb not in pc.VERBS or not pc.VERBS[verb]:
+            _say(f"lend one of {', '.join(v for v, k in pc.VERBS.items() if k)} (the stops and a picture come with them)")
+            return 2
+        s = settings.load()
+        conf = s["lend"].setdefault(project, {})
+        kind = pc.VERBS[verb]
+        if not value:
+            conf.pop(verb, None)
+        else:
+            conf[verb] = value if kind == "argv" else int(value[0]) if kind == "port" else value[0]
+        if not conf:
+            s["lend"].pop(project, None)
+        settings.save(s)
+        _say(f"{project} is lent: {', '.join(pc.lent_verbs(conf)) or 'nothing'}")
+        return 0
+    if cmd == "update":
+        c = creds.load()
+        if not c.get("token"):
+            _say("not signed in: python -m bbcompanion signin URL USER")
+            return 1
+        got = update.check(core.DeviceDoor(c["url"], c["token"], settings.load().get("pin", "")).ctl)
+        _say(f"{got['pending']} is fetched and starts next time" if got.get("pending")
+             else f"{got['current']} is the newest this controller holds" if got.get("current") else got.get("said", ""))
+        return 0
     if cmd == "signout":
         creds.forget()
         _say("this machine's token is forgotten here; Disconnect it on the Devices list to end it at the controller too")
@@ -95,7 +127,9 @@ def main(argv):
 
 
 def entry():
-    """The packaged app's start (a .pyz or an .exe)."""
+    """The packaged app's start (a .pyz or an .exe): an update fetched last
+    time swapped in first, then the app."""
+    update.apply_pending()
     sys.exit(main(sys.argv[1:]))
 
 

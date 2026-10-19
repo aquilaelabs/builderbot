@@ -116,6 +116,7 @@ function rnPrefsOf(p){
                sign: p?.prefs?.sign || "ask",
                release: p?.prefs?.release || "ask",
                keys: p?.prefs?.keys || "ask",
+               pc: p?.prefs?.pc || "deny",
                version: p?.version_policy || "locked"};
 }
 
@@ -377,66 +378,29 @@ function rnFillPrefsRest(p){
   $("rnCaptureDays").value = String(p?.prefs?.capture_days ?? 7);
   $("rnSnapDays").value = String(p?.prefs?.snapshot_days ?? 14);
   $("rnDevKeep").value = String(p?.prefs?.dev_keep ?? 3);
-  for (const [k, id] of Object.entries(GATE_IDS)){
+  // Every dial here is a select filled once with its words and set to the
+  // project's value: one helper for all of them (consistency pass), where
+  // each was a copy of the same eight lines.
+  const pick = (id, choices, value) => {
     const el = $(id);
     if (el.dataset.built !== "1"){
-      el.innerHTML = gateChoices(k).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.innerHTML = optionList(choices);
       el.dataset.built = "1";
     }
-    el.value = p?.prefs?.gate?.[k] || "auto";
-  }
-  {
-    // Auto and deny only: a report has nothing to hold for approval.
-    const el = $("rnGateReport");
-    if (el.dataset.built !== "1"){
-      el.innerHTML = GATE_MODES.filter(([v]) => v !== "ask")
-        .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
-      el.dataset.built = "1";
-    }
-    el.value = p?.prefs?.report || "auto";
-  }
-  {
-    const el = $("rnGateSign");
-    if (el.dataset.built !== "1"){
-      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
-      el.dataset.built = "1";
-    }
-    el.value = p?.prefs?.sign || "ask";
-  }
-  {
-    const el = $("rnGateRelease");
-    if (el.dataset.built !== "1"){
-      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
-      el.dataset.built = "1";
-    }
-    el.value = p?.prefs?.release || "ask";
-  }
-  {
-    const el = $("rnGateKeys");
-    if (el.dataset.built !== "1"){
-      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
-      el.dataset.built = "1";
-    }
-    el.value = p?.prefs?.keys || "ask";
-  }
-  {
-    const el = $("rnGateVersion");
-    if (el.dataset.built !== "1"){
-      el.innerHTML = Object.entries(POLICY_LABEL).map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
-      el.dataset.built = "1";
-    }
-    el.value = p?.version_policy || "locked";
-  }
-  {
-    const el = $("rnGateDocker");
-    if (el.dataset.built !== "1"){
-      el.innerHTML = GATE_MODES.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
-      el.dataset.built = "1";
-    }
-    el.value = devClaudeMode(rnFor);
-    // docker-write's to change (the grant, R137 step 4), so not offered otherwise.
-    el.closest("label").hidden = state?.can?.["docker-write"] === false;
-  }
+    el.value = value;
+    return el;
+  };
+  for (const [k, id] of Object.entries(GATE_IDS)) pick(id, gateChoices(k), p?.prefs?.gate?.[k] || "auto");
+  // Auto and deny only: a report has nothing to hold for approval.
+  pick("rnGateReport", GATE_MODES.filter(([v]) => v !== "ask"), p?.prefs?.report || "auto");
+  pick("rnGateSign", GATE_MODES, p?.prefs?.sign || "ask");
+  pick("rnGateRelease", GATE_MODES, p?.prefs?.release || "ask");
+  pick("rnGateKeys", GATE_MODES, p?.prefs?.keys || "ask");
+  // A lent PC (R270 step 6): deny by default, it is somebody's own machine.
+  pick("rnGatePc", GATE_MODES, p?.prefs?.pc || "deny");
+  pick("rnGateVersion", Object.entries(POLICY_LABEL), p?.version_policy || "locked");
+  // docker-write's to change (the grant, R137 step 4), so not offered otherwise.
+  pick("rnGateDocker", GATE_MODES, devClaudeMode(rnFor)).closest("label").hidden = state?.can?.["docker-write"] === false;
   rnDrawPrefs();
 }
 
@@ -1448,7 +1412,7 @@ const RN_WAS = {
   capture_days: ["build", "Captures kept"], snapshot_days: ["build", "Snapshots kept"], dev_keep: ["build", "Dev builds kept"],
   gate: ["claude", "Claude may"], test_change: ["claude", "During a test run, a change asked for"],
   devbuild: ["claude", "Claude may"], report: ["claude", "Claude may"], sign: ["claude", "Claude may"],
-  keys: ["claude", "Claude may"], release: ["claude", "Claude may"], version: ["claude", "Move the version"],
+  keys: ["claude", "Claude may"], release: ["claude", "Claude may"], pc: ["claude", "Claude may"], version: ["claude", "Move the version"],
   reply: ["yours", "Replies"], asks: ["yours", "Questions"],
   git_name: ["yours", "Commit name and email"], git_email: ["yours", "Commit name and email"],
 };
@@ -1484,7 +1448,7 @@ function rnEnc(){
           gpu: $("rnGpu").value || "on", reply: $("rnReply").value || "", asks: $("rnAsks").value || "",
           devbuild: $("rnGateDocker").value || "deny", report: $("rnGateReport").value || "auto",
           sign: $("rnGateSign").value || "ask", release: $("rnGateRelease").value || "ask",
-          keys: $("rnGateKeys").value || "ask", version: $("rnGateVersion").value || "locked"};
+          keys: $("rnGateKeys").value || "ask", pc: $("rnGatePc").value || "deny", version: $("rnGateVersion").value || "locked"};
 }
 
 // What one section holds unsaved, as the names its fields go by, and which
@@ -1594,7 +1558,7 @@ function rnRevertSect(sect){
     $("rnTestChange").value = w.test_change; $("rnGateDocker").value = w.devbuild;
     $("rnGateReport").value = w.report; $("rnGateSign").value = w.sign;
     $("rnGateRelease").value = w.release; $("rnGateKeys").value = w.keys;
-    $("rnGateVersion").value = w.version;
+    $("rnGatePc").value = w.pc; $("rnGateVersion").value = w.version;
   } else if (sect === "yours"){
     $("rnReply").value = w.reply; $("rnAsks").value = w.asks;
     $("rnGitName").value = w.git_name; $("rnGitEmail").value = w.git_email;
@@ -1704,7 +1668,7 @@ async function rnSubmit(sect, end = false){
                               node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
                               build: v.build, test: v.test, gate: v.gate, ...(v.dbg || {}),
                               tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks,
-                              devbuild: v.devbuild, report: v.report, sign: v.sign, keys: v.keys, release: v.release,
+                              devbuild: v.devbuild, report: v.report, sign: v.sign, keys: v.keys, release: v.release, pc: v.pc,
                               outputs: v.outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(v.capture_days !== "" ? {capture_days: +v.capture_days} : {}),
                               ...(v.snapshot_days !== "" ? {snapshot_days: +v.snapshot_days} : {}),

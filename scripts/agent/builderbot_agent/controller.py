@@ -41,6 +41,9 @@ class Controller:
         # Which door it speaks to: the agent's, or a person's device's
         # (/api/v1/device/, R270), whose app reuses this connection whole.
         self.door = door
+        # Sent with every request beside the token: the companion's
+        # X-BB-Door, the door's compatibility window (R270 step 9).
+        self.headers = {}
 
     def _conn(self, timeout):
         if self.scheme == "http":
@@ -77,7 +80,7 @@ class Controller:
         try:
             c = self._conn(timeout)
             hdrs = {"Authorization": "Bearer " + self.token,
-                    "User-Agent": f"builderbot-agent/{AGENT_VERSION}"}
+                    "User-Agent": f"builderbot-agent/{AGENT_VERSION}", **self.headers}
             data = None
             if body is not None:
                 data = json.dumps(body).encode()
@@ -105,7 +108,7 @@ class Controller:
             c = self._conn(timeout)
             c.request("GET", f"{self.base}/api/v1/{self.door}/{path}", None,
                       {"Authorization": "Bearer " + self.token,
-                       "User-Agent": f"builderbot-agent/{AGENT_VERSION}"})
+                       "User-Agent": f"builderbot-agent/{AGENT_VERSION}", **self.headers})
             r = c.getresponse()
             if r.status != 200:
                 r.read()
@@ -151,6 +154,8 @@ class Controller:
             c.putrequest("POST", f"{self.base}/api/v1/{self.door}/{path}")
             c.putheader("Authorization", "Bearer " + self.token)
             c.putheader("User-Agent", f"builderbot-agent/{AGENT_VERSION}")
+            for k, v in self.headers.items():
+                c.putheader(k, v)
             c.putheader("Content-Type", "application/octet-stream")
             c.putheader("Content-Length", str(size))
             c.endheaders()
