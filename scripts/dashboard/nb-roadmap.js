@@ -333,7 +333,7 @@ function nbRoadmapView({$, nb}){
         // How a plain item becomes a plan: give it a step. Hidden while
         // reordering, where the question is only where things sit.
         nb.roadmapOrdering ? "" : `<div class="addstep" data-id="${r.id}"><button
-        type="button" class="link">+ step</button></div>`}</details>`).join("");
+        type="button" class="link">Add a step</button></div>`}</details>`).join("");
     // The row's ground and its words open and shut the fold, on the same
     // tween a bug's row uses; a control on the row acts and does not fold.
     // Bound on the summary rather than the toggle event, because toggle
@@ -829,7 +829,7 @@ function nbRoadmapView({$, nb}){
   }
 
   function closeStepInput(box){
-    box.innerHTML = `<button type="button" class="link">+ step</button>`;
+    box.innerHTML = `<button type="button" class="link">Add a step</button>`;
     box.querySelector("button").onclick = () => openStepInput(box);
   }
 

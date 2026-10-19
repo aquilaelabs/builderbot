@@ -1150,7 +1150,7 @@ function nodeConfSections(n){
       <div class="sub">Mounts at boot.${
         d.fromNode ? ` <span class="dim">As the node reports them; save to manage them from here.</span>` : ""}</div>
       ${mounts}
-      <div><button type="button" data-madd>+ mount</button></div>
+      <div class="addbar ctlrow"><button type="button" data-madd>Add a mount</button></div>
       <div class="sub">Where job data, toolchains, caches and artifacts live.</div>
       ${stores}
       <div class="actbar">
