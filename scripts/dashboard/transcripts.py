@@ -179,9 +179,12 @@ def _result_text(b):
     return "\n".join(parts)
 
 
-def render(uid, project, sid, tz=None):
+def render(uid, project, sid, tz=None, tail=0):
     """(text, filename) for one of the account's sessions, or (None, why).
-    `tz` is the zone the stamps are written in (zone()), or the controller's."""
+    `tz` is the zone the stamps are written in (zone()), or the controller's.
+    `tail`, when not 0, is how many bytes of a longer file are read, from its
+    end: read from the start, a day-long conversation (900 MB on 19 Oct)
+    outran `bb transcripts show`'s wait and printed nothing."""
     f = _find(uid, project, sid)
     if f is None:
         return None, "no such conversation of yours on this project"
@@ -198,6 +201,12 @@ def render(uid, project, sid, tz=None):
     total = 0
     try:
         with open(f, encoding="utf-8", errors="replace") as fh:
+            size = f.stat().st_size
+            if tail and size > tail:
+                fh.seek(size - tail)
+                fh.readline()                          # to the next whole record
+                out.append(f"[the newest {tail // (1024 * 1024)} MB of {size // (1024 * 1024)} MB]")
+                out.append("")
             for line in fh:
                 if total > MAX_OUT:
                     out.append("[cut here: the conversation is longer than this download carries]")

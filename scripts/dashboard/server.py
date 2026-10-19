@@ -7662,7 +7662,8 @@ class Handler(BaseHTTPRequestHandler):
         """GET /api/transcript?project=NAME&id=SESSION: one of the signed-in
         account's own conversations with Claude on that project as a text
         file, every command and answer in it (transcripts.render); as JSON
-        with as=json, which is what `bb transcripts show` reads. Anybody
+        with as=json, which is what `bb transcripts show` reads, and only its
+        newest MB with tail=MB. Anybody
         signed in, their own only, a session included on its own project
         and on one its project reads: the file is looked for under the
         account's own transcripts directory and nowhere else, so another
@@ -7691,8 +7692,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"size": st.st_size}, 200)
             return self._send_file({"path": f, "ctype": "application/octet-stream",
                                     "headers": {"X-Mtime-Ms": str(st.st_mtime_ns // 1_000_000)}})
+        try:
+            tail = max(0, int(q.get("tail", ["0"])[0])) * 1024 * 1024
+        except ValueError:
+            tail = 0
         text, fname = transcripts.render(uid, name, q.get("id", [""])[0],
-                                         transcripts.zone(q.get("tz", [""])[0]))
+                                         transcripts.zone(q.get("tz", [""])[0]), tail=tail)
         if text is None:
             return self._json({"error": fname}, 404)
         if q.get("as", [""])[0] == "json":

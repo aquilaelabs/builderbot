@@ -402,8 +402,9 @@ bb wiki rm NAME [--why "..."]   take a page out, under the same setting
 bb wiki mv OLD NEW   rename one; bb wiki history: the last changes
 bb transcripts     your own conversations with Claude on this project, newest
                    first, as the Profile page lists them (bb -p NAME for one it reads)
-bb transcripts show ID [--tz ZONE]   one of them as text: what was said, every
-                   command Claude ran and what it answered
+bb transcripts show ID [--tz ZONE] [--all]   one of them as text: what was said,
+                   every command Claude ran and what it answered; the newest
+                   16 MB of a longer one, the whole of it with --all
 bb transcripts fetch ID [--into DIR]   the file itself into this machine's folder
                    for it: how a node holding its projects as a synced copy
                    resumes a conversation it does not have (bb-tty runs it)

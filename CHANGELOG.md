@@ -667,6 +667,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - After a restart the Doctor says a node is back as soon as it dials in again, instead of reporting it as not dialing in for half an hour (07d7868)
 - Home's Getting started ticks off your node and Claude Code as soon as a node dials back in after a restart, without a reload (40e389a)
 - Pressing Open Claude on a tab that was refused because its node had restarted now opens the session, instead of showing the same refusal again (2dc63c4)
+- bb transcripts show prints the newest 16 MB of a long conversation, where it used to time out and print nothing; --all prints the whole of it (4c947ad)
 
 ### Security
 

@@ -3,7 +3,8 @@ conversations with Claude on a project, through the controller's API as
 the caller (transcripts.py on the dashboard's side, the Profile page's
 list and download). `list` prints them newest first with the first thing
 typed; `show ID [--tz ZONE]` prints one as the Profile's download reads,
-stamped in ZONE (the controller's own when none); `fetch ID` copies the
+stamped in ZONE (the controller's own when none), the newest 16 MB of a
+longer one unless --all; `fetch ID` copies the
 file itself into this machine's folder for it, which is how a synced node
 resumes a conversation it does not have (B613). A session reads its
 account's conversations on its own project and on one its project reads
@@ -28,6 +29,10 @@ proj = os.environ["BB_TRANSCRIPTS_PROJECT"]
 
 def fail(msg):
     sys.exit(f"[builderbot] ERROR: {msg}")
+
+
+# How much of a long conversation `show` prints, from its end, without --all.
+SHOW_TAIL_MB = 16
 
 
 def size(n):
@@ -77,13 +82,16 @@ if verb == "audit":
 if verb == "show":
     sid = argv[1] if len(argv) > 1 and not argv[1].startswith("--") else ""
     if not sid:
-        fail("bb transcripts show ID [--tz ZONE]: the id from bb transcripts")
+        fail("bb transcripts show ID [--tz ZONE] [--all]: the id from bb transcripts")
     tz = ""
     if "--tz" in argv:
         k = argv.index("--tz")
         tz = argv[k + 1] if k + 1 < len(argv) else ""
-    q = urllib.parse.urlencode({"project": proj, "id": sid, "tz": tz, "as": "json"})
-    r = bbapi.call(f"/api/transcript?{q}", auth=auth)
+    # The newest part of a long one unless --all: a resumed session wants
+    # where it stopped, and a whole day's conversation outran the wait.
+    q = urllib.parse.urlencode({"project": proj, "id": sid, "tz": tz, "as": "json",
+                                "tail": 0 if "--all" in argv else SHOW_TAIL_MB})
+    r = bbapi.call(f"/api/transcript?{q}", auth=auth, timeout=600 if "--all" in argv else 120)
     if not isinstance(r, dict) or r.get("error"):
         fail(r.get("error") if isinstance(r, dict) else "the controller answered something that is not a transcript")
     sys.stdout.write(r.get("text") or "")
