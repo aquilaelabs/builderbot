@@ -399,6 +399,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Page sections stand open at a desk and fold one at a time on a phone, opening on the top one; every section and card head is one height on a shade of its own, Jobs, Toolchains and Emulator have heads like Home's, a node's Sessions settings share one Save and Revert above its actions, its Advanced actions are a row each, a colored project card's buttons wear its color, and Color and Group sit in the card's menu (695f2c9)
 - A press anywhere on a project's card opens its page, on Projects and on Home; a card's menu and the Claude chooser open over the page, so a card in Archived no longer has its menu cut off, and on a phone both open as a sheet above the bottom bar (3930c2a)
 - Menus open beside their button on a phone as at a desk and slide the way they open; Containers' bar is one line on a phone; nginx's loading view shows its sections (acb4047)
+- On a phone the bottom bar has Build where Jobs was (Jobs is under More), and a pinned project's card shows a pin beside its name instead of every other card saying unpinned (201262c)
 
 ### Removed
 
