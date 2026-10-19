@@ -5,7 +5,8 @@ at rest (frames a quarter second apart until a second of them match); a
 reel is its recording, which reel.py turns into the frames that changed.
 
 As a program: `capture.py shot --emu [PKG] | --display :N [--settle|--now]
-[--drive FILE] [--mark] OUT` takes the picture; `capture.py ls DIST` lists the
+[--drive FILE] [--mark] OUT` takes the picture, `capture.py mark FILE URL...`
+records a page's shot as a capture, `capture.py ls DIST` lists the
 captures under a project's dist/ and `capture.py prune DIST [--days N]
 [NAME...]` removes them (R96). BB_CAPTURE_FFMPEG is the ffmpeg binary,
 BB_CAPTURE_ADB the emulator's adb, BB_CAPTURE_NODE_PATH and BB_CAPTURE_CHROME what a
@@ -84,7 +85,7 @@ def scratch(name):
 
 # ---- what is under dist/: the captures, and their sweep -------------------------
 
-CAPTURE_DIRS = ("reel", "emu")
+CAPTURE_DIRS = ("reel", "emu", "shot")
 
 
 def record_of(path):
@@ -100,7 +101,7 @@ def record_of(path):
 
 def captures(dist):
     """Every capture under a project's dist/, newest first: a reel is a
-    directory under reel/ with sheet.png, a shot a png under emu/. Each is
+    directory under reel/ with sheet.png, a shot a png under emu/ or shot/. Each is
     {name, kind, path (relative to dist), file, at, by, node, size}, with
     at and by from its record when it has one, else the file's own time and
     nobody. The same rule on both sides: artifacts.py reads this for the
@@ -119,15 +120,17 @@ def captures(dist):
                         "at": int(rec.get("at") or st.st_mtime), "by": str(rec.get("by") or ""),
                         "node": str(rec.get("node") or ""), "size": st.st_size,
                         "frames": len(rec.get("frames") or [])})
-    emu = os.path.join(dist, "emu")
-    if os.path.isdir(emu):
-        for fn in sorted(os.listdir(emu)):
-            p = os.path.join(emu, fn)
+    for sub in ("emu", "shot"):
+        here = os.path.join(dist, sub)
+        if not os.path.isdir(here):
+            continue
+        for fn in sorted(os.listdir(here)):
+            p = os.path.join(here, fn)
             if fn.startswith(".") or not os.path.isfile(p):
                 continue
-            rec = record_of(os.path.join(emu, f".{fn}.json"))
+            rec = record_of(os.path.join(here, f".{fn}.json"))
             st = os.stat(p)
-            out.append({"name": fn, "kind": "shot", "path": f"emu/{fn}", "file": p,
+            out.append({"name": fn, "kind": "shot", "path": f"{sub}/{fn}", "file": p,
                         "at": int(rec.get("at") or st.st_mtime), "by": str(rec.get("by") or ""),
                         "node": str(rec.get("node") or ""), "size": st.st_size})
     return sorted(out, key=lambda c: -c["at"])
@@ -304,11 +307,16 @@ def shot(a):
     with open(a.out, "wb") as f:
         f.write(png)
     if a.mark:
-        rec = maker() | {"source": f"emu {a.emu}".strip() if a.emu is not None else f"display {a.display}"}
-        with open(os.path.join(os.path.dirname(os.path.abspath(a.out)), f".{os.path.basename(a.out)}.json"),
-                  "w", encoding="utf-8") as f:
-            json.dump(rec, f)
+        mark(a.out, f"emu {a.emu}".strip() if a.emu is not None else f"display {a.display}")
     print(a.out)
+
+
+def mark(path, source):
+    """The record beside a shot (.NAME.json: who, when, from what), which
+    makes it a capture the Artifacts view lists and the sweep removes."""
+    with open(os.path.join(os.path.dirname(os.path.abspath(path)), f".{os.path.basename(path)}.json"),
+              "w", encoding="utf-8") as f:
+        json.dump(maker() | {"source": source}, f)
 
 
 # ---- the sources: each ends with a video file ---------------------------------------
@@ -429,7 +437,7 @@ def ago(t):
 
 def main():
     ap = argparse.ArgumentParser(add_help=False)
-    ap.add_argument("what", choices=["shot", "ls", "prune"])
+    ap.add_argument("what", choices=["shot", "ls", "prune", "mark"])
     ap.add_argument("--emu", nargs="?", const="")
     ap.add_argument("--display")
     ap.add_argument("--drive")
@@ -440,6 +448,11 @@ def main():
     ap.add_argument("out")
     ap.add_argument("names", nargs="*")
     a = ap.parse_args()
+    if a.what == "mark":
+        # A page's shot, taken by bb capture shot's browser: `out` is the
+        # file and the names are the URLs it was taken from.
+        mark(a.out, " ".join(a.names))
+        return
     if a.what in ("ls", "prune"):
         # `out` is the project's dist/ here, and the names are captures to
         # remove now whatever their age.
@@ -455,7 +468,7 @@ def main():
         if a.what == "prune":
             print(f"[builderbot] {len(rows)} capture{'s' if len(rows) != 1 else ''} removed", file=sys.stderr)
         elif not rows:
-            print("[builderbot] no captures in dist/reel or dist/emu", file=sys.stderr)
+            print("[builderbot] no captures in dist/reel, dist/emu or dist/shot", file=sys.stderr)
         return
     if (a.emu is None) == (a.display is None):
         die("one source: --emu [PKG] or --display :N")

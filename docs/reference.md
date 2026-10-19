@@ -190,8 +190,10 @@ bb node busy [--json]
 bb node wait-quiet [--level quiet|busy] [--timeout SECONDS]
                    wait until it is (quiet twice, ten seconds apart), before a
                    measurement; exits 1, saying how busy, if it never was
-bb nodes           the machines enrolled as nodes, read-only in a terminal;
-                   the Nodes page is where they are edited
+bb nodes           the machines enrolled as nodes, each with the agent it runs,
+                   read-only in a terminal; the Nodes page is where they are edited
+bb nodes show NAME one of them in full, by name or id: its agent against the one
+                   this controller ships, and what Update agent would fix
 bb settings        this project's settings as the dashboard has them: node,
                    model, effort, build and test commands, lock. On a node
                    it is relayed from the controller, and it is what bb-tty
@@ -549,7 +551,8 @@ bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]
                    match, so a modal still arriving or a list still loading is
                    not the picture: the dashboard's own pages and the two other
                    sources settle by default, --settle asks it of any page, --now
-                   takes the one shot at once. Into dist/emu/ for the emulator.
+                   takes the one shot at once. Into dist/shot/ for a page and
+                   dist/emu/ for the emulator when no FILE is named.
                    A page that does not answer is no picture and exit 3; one
                    that answers 4xx or 5xx is shot, and the status said
 bb capture reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F]

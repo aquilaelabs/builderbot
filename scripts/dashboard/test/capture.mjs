@@ -120,9 +120,19 @@ if (ff.status !== 0){
   mkdirSync(`${S}/dist/emu`, { recursive: true });
   writeFileSync(`${S}/dist/emu/shot-old.png`, Buffer.from([1, 2, 3]));
   writeFileSync(`${S}/dist/emu/.shot-old.png.json`, JSON.stringify({ by: 'claude', at: Math.floor(Date.now() / 1000) - 10 * 86400 }));
+  // A page's shot is a capture too (B6): bb capture shot URL with no file
+  // writes it under dist/shot and marks it with the URL it was taken from.
+  mkdirSync(`${S}/dist/shot`, { recursive: true });
+  writeFileSync(`${S}/dist/shot/shot-page.png`, Buffer.from([1, 2, 3]));
+  const marked = cap('mark', `${S}/dist/shot/shot-page.png`, 'http://example.test/');
+  const pageRec = JSON.parse(readFileSync(`${S}/dist/shot/.shot-page.png.json`, 'utf8'));
+  ok(marked.status === 0 && pageRec.by === 'tester' && pageRec.source === 'http://example.test/',
+     `mark records a page's shot with whose it is and its URL (${JSON.stringify(pageRec)})`);
   const ls = cap('ls', `${S}/dist`);
-  ok(ls.status === 0 && /reel\s+cut\s+.*ago\s+tester\s+3 frames/.test(ls.stdout) && /shot\s+shot-old\.png\s+10d ago\s+claude/.test(ls.stdout),
-     `ls names each capture with whose it is and how old (${ls.stdout.trim().replace(/\s+/g, ' ')})`);
+  ok(ls.status === 0 && /reel\s+cut\s+.*ago\s+tester\s+3 frames/.test(ls.stdout) && /shot\s+shot-old\.png\s+10d ago\s+claude/.test(ls.stdout)
+     && /shot\s+shot-page\.png\s+.*ago\s+tester/.test(ls.stdout),
+     `ls names each capture with whose it is and how old, a page's shot under dist/shot among them (${ls.stdout.trim().replace(/\s+/g, ' ')})`);
+  cap('prune', `${S}/dist`, 'shot-page.png');
   const byAge = cap('prune', `${S}/dist`, '--days', '7');
   ok(byAge.status === 0 && /1 capture removed/.test(byAge.stderr) && !existsSync(`${S}/dist/emu/shot-old.png`)
      && !existsSync(`${S}/dist/emu/.shot-old.png.json`) && existsSync(`${S}/dist/reel/cut/sheet.png`),

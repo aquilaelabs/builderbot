@@ -192,8 +192,10 @@ bb node busy [--json]
 bb node wait-quiet [--level quiet|busy] [--timeout SECONDS]
                    wait until it is (quiet twice, ten seconds apart), before a
                    measurement; exits 1, saying how busy, if it never was
-bb nodes           the machines enrolled as nodes, read-only in a terminal;
-                   the Nodes page is where they are edited
+bb nodes           the machines enrolled as nodes, each with the agent it runs,
+                   read-only in a terminal; the Nodes page is where they are edited
+bb nodes show NAME one of them in full, by name or id: its agent against the one
+                   this controller ships, and what Update agent would fix
 bb settings        this project's settings as the dashboard has them: node,
                    model, effort, build and test commands, lock. On a node
                    it is relayed from the controller, and it is what bb-tty
@@ -551,7 +553,8 @@ bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]
                    match, so a modal still arriving or a list still loading is
                    not the picture: the dashboard's own pages and the two other
                    sources settle by default, --settle asks it of any page, --now
-                   takes the one shot at once. Into dist/emu/ for the emulator.
+                   takes the one shot at once. Into dist/shot/ for a page and
+                   dist/emu/ for the emulator when no FILE is named.
                    A page that does not answer is no picture and exit 3; one
                    that answers 4xx or 5xx is shot, and the status said
 bb capture reel --video FILE|--url URL|--emu [PKG]|--display :N [--seconds N] [--drive F]
@@ -3589,7 +3592,14 @@ cmd_nodes() {
     local py
     py="$(dirname "$(readlink -f "$0")")/dashboard/nodes.py"
     [ -f "$py" ] || die "nodes.py is missing from this image"
-    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/nodes-verbs.py" list "$py"
+    case "${1:-}" in
+        "") DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/nodes-verbs.py" list "$py" ;;
+        show) [ -n "${2:-}" ] || die "bb nodes show NAME: which node?"
+              DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/nodes-verbs.py" show "$py" "$2" ;;
+        -h|--help) echo "bb nodes            the enrolled machines, each with the agent it runs"
+                   echo "bb nodes show NAME  one of them in full, by name or id" ;;
+        *) die "bb nodes [show NAME]: '$1' is not one of its forms" ;;
+    esac
 }
 
 # The queue, read-only: the recent jobs and what became of them, and one
@@ -4570,11 +4580,26 @@ EOT
     BB_CAPTURE_OUT="$out" capture_env python3 "$BB_LIB/reel.py" "$@"
 }
 
+capture_shot_usage() {
+    cat <<'EOT'
+usage: bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]   [--drive F] [--settle|--now]
+        [--auth user:pass] [--size WxH] [--full] [--scale N] [--wait MS] [--resize W]
+URLs need their scheme (http:// or https://); with no FILE a page's shot goes
+to dist/shot/ and the emulator's to dist/emu/
+EOT
+}
+
 capture_shot() {
     # The operator's password, or a session's token, whichever this shell
     # has. --auth overrides both.
     local auth="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" width=1280 height=800 scale=1 wait=0 settle="" src="" pkg="" disp="" drive=""
-    local full=0 resize="" out="" mode=file urls=()
+    local full=0 resize="" out="" mode=file urls=() mark=0
+    # A shot nobody named goes to the project's dist/ whatever directory the
+    # command is run in (B6), under emu/ or shot/ with a record beside it
+    # (--mark): the Artifacts tab lists those as captures and the project's
+    # sweep removes them by age (R96).
+    local proj dist; proj="$(project_here 2>/dev/null || true)"
+    dist="${proj:+${WORKSPACE}/${proj}/dist}"; [ -n "$dist" ] || dist="$PWD/dist"
     # Used by the test harness, which needs the same answer this does and
     # should not re-implement the search to get it.
     if [ "${1:-}" = --print-chromium ]; then find_chromium; printf '\n'; return 0; fi
@@ -4601,6 +4626,7 @@ capture_shot() {
             --display) [ -n "${2:-}" ] || die "--display needs the display after it (:9)"; src=display; disp="$2"; shift 2 ;;
             --drive)  [ -n "${2:-}" ] || die "--drive needs the script after it"; drive="$2"; shift 2 ;;
             --url)    shift ;;
+            -h|--help) capture_shot_usage; return 0 ;;
             -*) die "unknown option: $1" ;;
             *) case "$1" in
                    # Scheme-tagged, because page.goto needs one anyway: a bare
@@ -4614,12 +4640,9 @@ capture_shot() {
     done
     if [ -n "$src" ]; then
         [ "${#urls[@]}" -eq 0 ] || die "one source: --emu or --display, not a URL as well"
-        # Into dist/emu/ when no file is named, with a record beside it
-        # saying whose it is (--mark): the Artifacts tab lists those under
-        # Captures and the project's sweep removes them by age (R96).
         local -a args=()
         if [ -z "$out" ] || [ -d "$out" ]; then
-            mkdir -p "${out:-dist/emu}"; out="${out:-dist/emu}/shot-$(date +%Y%m%d-%H%M%S).png"
+            mkdir -p "${out:-$dist/emu}"; out="${out:-$dist/emu}/shot-$(date +%Y%m%d-%H%M%S).png"
             args+=(--mark)
         fi
         [ "$src" = emu ] && args+=(--emu "$pkg") || args+=(--display "$disp")
@@ -4628,10 +4651,7 @@ capture_shot() {
         capture_env python3 "$BB_LIB/capture.py" shot "${args[@]}" "$out"
         return
     fi
-    [ "${#urls[@]}" -gt 0 ] || die \
-        "usage: bb capture shot URL... [FILE|DIR] | --emu [PKG] [FILE] | --display :N [FILE]   [--drive F] [--settle|--now]
-        [--auth user:pass] [--size WxH] [--full] [--scale N] [--wait MS] [--resize W]
-URLs need their scheme (http:// or https://)"
+    [ "${#urls[@]}" -gt 0 ] || die "$(capture_shot_usage)"
     case "${width}${height}${scale}${wait}${resize}" in
         *[!0-9]*) die "--size WxH, --scale N, --wait MS and --resize W take whole numbers" ;;
     esac
@@ -4639,12 +4659,12 @@ URLs need their scheme (http:// or https://)"
     # One output name only fits one shot; with several URLs (or a trailing
     # slash, or an existing directory) the output is a directory and the
     # names come from the URLs.
-    if [ "${#urls[@]}" -gt 1 ]; then
-        mode=dir; out="${out:-.}"; mkdir -p "$out"
-    elif [ -n "$out" ] && { [ -d "$out" ] || [ "${out%/}" != "$out" ]; }; then
+    if [ -z "$out" ]; then
+        mark=1; mkdir -p "$dist/shot"
+        if [ "${#urls[@]}" -gt 1 ]; then mode=dir; out="$dist/shot"
+        else out="$dist/shot/shot-$(date +%Y%m%d-%H%M%S).png"; fi
+    elif [ "${#urls[@]}" -gt 1 ] || [ -d "$out" ] || [ "${out%/}" != "$out" ]; then
         mode=dir; mkdir -p "$out"
-    else
-        out="${out:-shot-$(date +%H%M%S).png}"
     fi
 
     local chrome; chrome="$(find_chromium)"
@@ -4811,6 +4831,12 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, settle, dri
 })().catch(e => { console.error(String(e)); process.exit(1); });
 EOF
 )" || st=$?
+    if [ "$mark" = 1 ] && [ -n "$files" ]; then
+        local f
+        while IFS= read -r f; do
+            [ -f "$f" ] && python3 "$BB_LIB/capture.py" mark "$f" "${urls[*]}"
+        done <<< "$files"
+    fi
     [ -z "$files" ] || printf '%s\n' "$files"
     return "$st"
 }
