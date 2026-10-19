@@ -299,6 +299,28 @@ ok(again.language.themes[1].light?.[0]?.hex === '#123456' && again.language.them
   if (!(await page.$eval(`${NB} [data-sect="design:pages"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:pages"]`);
   await page.click(`${NB} #dsAdd`);
   await page.waitForFunction(() => document.querySelector('.nb #dsPagePick')?.options.length === 2, null, { timeout: 5000 });
+  // Every picker shows its whole choice, on a desk and at 360 (B44: 'Theme
+  // (dark), the defa' on a desk, 'Web a' and 'Blanl' at 360).
+  {
+    const cut = async () => page.$$eval('.nb #dsBody select', ss => ss.filter(s => s.checkVisibility()).map(s => {
+      const t = s.options[s.selectedIndex]?.text || '', cs = getComputedStyle(s);
+      const c = document.createElement('canvas').getContext('2d');
+      c.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      const need = c.measureText(t).width + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + 14;
+      return need > s.getBoundingClientRect().width + 1 ? `${s.id || s.className}: ${t}` : '';
+    }).filter(Boolean));
+    const was = page.viewportSize(), seen = [];
+    for (const width of [1280, 360]){
+      await page.setViewportSize({ width, height: 800 });
+      await page.waitForTimeout(200);
+      // Opened in place, not pressed: at 360 a toast can sit over a head.
+      await page.$$eval('.nb #dsBody > details.sect', ds => ds.forEach(d => { d.open = true; }));
+      await page.waitForTimeout(200);
+      seen.push(...(await cut()).map(x => `${width} ${x}`));
+    }
+    await page.setViewportSize(was);
+    ok(seen.length === 0, `the Design view's pickers each show their whole choice at a desk and at 360 (${seen.join('; ') || 'none cut'})`);
+  }
   await openSect('themes');   // one section open at a time (the operator, 5 Oct)
   await page.selectOption(`${NB} #dsThemePick`, '0');
   await page.waitForSelector(`${NB} [data-dstheme="0"]`, { timeout: 5000 });

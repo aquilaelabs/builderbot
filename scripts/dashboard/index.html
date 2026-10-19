@@ -2332,6 +2332,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    place: never at the foot, where a phone scrolls past the list to find it. */
 .addbar,.roadmapadd{display:flex;gap:var(--field-gap);align-items:center}
 .addbar button{flex:0 0 auto;min-height:var(--tap)}
+/* Several pickers before the button (the Design view's platform, template
+   and copy) wrap on a phone rather than each shrinking past its words. */
+.addbar{flex-wrap:wrap}
 /* The Docker manager's top band: New container at the left, when the images
    were checked and Check for updates at the right, one line. An action
    bar's state takes a line of its own, which broke this band into three. */
@@ -2652,7 +2655,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    from the language, which is the one place a hex is data and not chrome. */
 .dsrow{display:flex;flex-wrap:wrap;gap:var(--field-gap);align-items:flex-end}
 .dsctl{display:flex;flex-direction:column;gap:var(--label-gap);flex:0 1 auto;min-width:0}
-.dsctl select{width:auto;min-width:9em}
+.dsctl select{width:auto;min-width:9em;max-width:100%}
 .dsctl input[type=number]{width:5.5em}
 /* The row's prose field grows, but only to the width the other tabs give a
    field (the Profile's, the settings'), so what follows it stays beside it
@@ -3943,7 +3946,9 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    apart): a new surface's row is capped by wearing the class. Beside it,
    the shared parts that size their own contents: an action bar, the
    settings grid, a menu (a surface of its own whose fields run its width),
-   and .ctlown for a box that sizes its own (a reason box). The union of a
+   .ctlown for a box that sizes its own (a reason box), and the Design
+   view's .dsrow, whose pickers stop at their own labeled column (capped at
+   88% of it, a theme's name was cut on a desk). The union of a
    row's controls is what uniform.mjs measures, against the surface holding
    it. Terminals and logs are not controls and are not here. */
 :is(.doctab,.nb) .ctlrow{
@@ -4025,7 +4030,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 @media(max-width:440px){
   .doctab .field.docbarrow.dmpick>input{order:9;flex:0 1 100%;max-width:88%}
 }
-:is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.ctlrow,.ctlown,.actbar,.setgrid,.actmenu) *){
+:is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.ctlrow,.ctlown,.actbar,.setgrid,.actmenu,.dsrow) *){
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.
    A row mixes fields that carry a label above them (`.setrow.col`) with
