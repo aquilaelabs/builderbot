@@ -405,6 +405,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - nginx's routes are a list like Cloudflare's DNS records: each route a read-only row with Edit, which opens it in place with Delete, Cancel and Save, and Add route opens the same form at the top (b46ecb2)
 - The Git view's branches are a table, one line a branch with when it last moved, how far behind and ahead of main, whose it is, and its actions behind a ⋯; chips (Active, Yours, In main, Only on the remote) and a search narrow it (b46ecb2)
 - The Design view's Pages and Themes and the Overview's What a session is sent open like every other section instead of folding (b46ecb2)
+- At a desk every page's column is centered in the window instead of pinned to the left, and the page's header, its view strip and its cards line up on the same edges (f9e3446)
+- Sections lay out the same on every page: a section's rows, tables and notes start where its title does, with separators running edge to edge, and a hint reads the same quiet way everywhere (f9e3446)
 
 ### Removed
 
@@ -652,6 +654,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Pull to refresh on a phone no longer fails when the list redraws under your finger, and the gear and the bell open when pressed again straight after closing (dfd2ccf)
 - The notebook's Wiki at a desk shows its pages beside the article again, not the article squeezed under the list (B856), and on a phone every section's first line has room under its head (B857) (b46ecb2)
 - A new branch made with uncommitted changes takes them along instead of being made and then refused (B858), and it waits for an open Claude session the way Switch does (B859) (fb03da1)
+- The wiki's page list and notes use the dashboard's own type again (B860), and a page bar never wraps to a second line on a narrow phone (B861) (f9e3446)
 
 ### Security
 
