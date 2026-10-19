@@ -30,7 +30,7 @@ class Controller:
     # edge's certificate, which changes under it and is not the controller's.
     CA = "ca"
 
-    def __init__(self, url, token, pin=""):
+    def __init__(self, url, token, pin="", door="agent"):
         u = urllib.parse.urlsplit(url)
         if u.scheme not in ("http", "https") or not u.hostname:
             raise SystemExit(f"controller URL is not http(s)://host[:port]: {url}")
@@ -38,6 +38,9 @@ class Controller:
         self.scheme, self.host = u.scheme, u.hostname
         self.port = u.port or (443 if u.scheme == "https" else 80)
         self.base = u.path.rstrip("/")
+        # Which door it speaks to: the agent's, or a person's device's
+        # (/api/v1/device/, R270), whose app reuses this connection whole.
+        self.door = door
 
     def _conn(self, timeout):
         if self.scheme == "http":
@@ -79,7 +82,7 @@ class Controller:
             if body is not None:
                 data = json.dumps(body).encode()
                 hdrs["Content-Type"] = "application/json"
-            c.request(method, f"{self.base}/api/v1/agent/{verb}", data, hdrs)
+            c.request(method, f"{self.base}/api/v1/{self.door}/{verb}", data, hdrs)
             r = c.getresponse()
             payload = r.read()
             c.close()
@@ -100,7 +103,7 @@ class Controller:
         belongs in memory twice."""
         try:
             c = self._conn(timeout)
-            c.request("GET", f"{self.base}/api/v1/agent/{path}", None,
+            c.request("GET", f"{self.base}/api/v1/{self.door}/{path}", None,
                       {"Authorization": "Bearer " + self.token,
                        "User-Agent": f"builderbot-agent/{AGENT_VERSION}"})
             r = c.getresponse()
@@ -145,7 +148,7 @@ class Controller:
         try:
             size = os.path.getsize(src) - offset if length is None else length
             c = self._conn(timeout)
-            c.putrequest("POST", f"{self.base}/api/v1/agent/{path}")
+            c.putrequest("POST", f"{self.base}/api/v1/{self.door}/{path}")
             c.putheader("Authorization", "Bearer " + self.token)
             c.putheader("User-Agent", f"builderbot-agent/{AGENT_VERSION}")
             c.putheader("Content-Type", "application/octet-stream")

@@ -68,6 +68,14 @@ def skipped(rel):
     return ".git" in parts and parts[-1].endswith(".lock")
 
 
+# Whether this system keeps POSIX modes. Windows does not (the companion app,
+# R270, runs this module there): a mode read back after a chmod is not the
+# one written, so every file fetched would read as changed and go up with
+# its execute bit gone. There a mode is unknown (0), recorded as such and
+# never sent, and the controller keeps the file's own.
+MODES = os.name != "nt"
+
+
 def entry(p):
     """(size, mtime_ns, mode, link), or None for what is not synced."""
     try:
@@ -79,7 +87,7 @@ def entry(p):
         return None if os.path.isabs(t) else (0, s.st_mtime_ns, 0o777, t)
     if not st.S_ISREG(s.st_mode) or s.st_size > MAX_FILE:
         return None
-    return (s.st_size, s.st_mtime_ns, st.S_IMODE(s.st_mode), "")
+    return (s.st_size, s.st_mtime_ns, st.S_IMODE(s.st_mode) if MODES else 0, "")
 
 
 def sha_file(p):
@@ -462,8 +470,14 @@ class WorkspaceSync:
             else f"sync: /workspace not cleaned up whole ({freed // (1024 * 1024)} MB freed): {err}")
         hello_again(self.agent, "/workspace was cleaned up")
 
+    def top(self, name):
+        """Where a project's copy lives: under the root by its name on a
+        node; the companion app (R270) puts each in the folder its person
+        picked."""
+        return os.path.join(self.root, name)
+
     def one(self, p):
-        top = os.path.join(self.root, p.name)
+        top = self.top(p.name)
         started = time.time()
         if not p.ready:
             self.first_copy(p, top)
@@ -496,7 +510,7 @@ class WorkspaceSync:
     # -- the session account owns what is written ----------------------------------------
     def owner(self):
         user = self.agent.session_account() if hasattr(self.agent, "session_account") else ""
-        if os.geteuid() != 0 or not user:
+        if not hasattr(os, "geteuid") or os.geteuid() != 0 or not user:
             return None
         import pwd
         try:
@@ -802,7 +816,7 @@ class WorkspaceSync:
             q["gone"] = "1"
         elif e[3]:
             q["link"] = e[3]
-        else:
+        elif e[2]:
             q["mode"] = str(e[2])
         url = "sync-put?" + urllib.parse.urlencode(q)
         if e is None or e[3]:
