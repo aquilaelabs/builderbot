@@ -48,6 +48,10 @@ const LOCK = `<svg viewBox="0 0 16 16" aria-hidden="true">${LOCK_BODY}
   <path d="M5 7.2V4.9a3 3 0 0 1 6 0v2.3"/></svg>`;
 const LOCK_OPEN = `<svg viewBox="0 0 16 16" aria-hidden="true">${LOCK_BODY}
   <path d="M5 7.2V4.9a3 3 0 0 1 6 0"/></svg>`;
+// A pushpin: its head, the body widening to its rim, and the needle, beside
+// a pinned project's name on its card (the operator, 19 Oct: a pin where it
+// is pinned, rather than the word on every card that is not).
+const PIN = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 2h5M6.5 2v4L4.5 9h7l-2-3V2M8 9v5"/></svg>`;
 
 // A chain link: the remote, on every repository: the link form for one that
 // has none, and the credential and Unlink for one that has.

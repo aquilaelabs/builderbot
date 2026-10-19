@@ -112,7 +112,7 @@ function projectCard(p){
   return `<div class="pcard${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
     <div class="pcname"><button type="button" class="name link" data-open="${esc(p.name)}" title="open ${esc(projLabel(p.name))}'s page">${esc(p.label || p.name)}</button>${
       p.locked || notMine(p) ? ` <span class="lockmark">${LOCK}${p.locked ? "archived" : "read-only"}</span>` : ""}${
-      p.pinned || p.locked ? "" : ` <span class="dim pcunpinned" title="not on Home's glance">unpinned</span>`}</div>
+      p.pinned && !p.locked ? ` <span class="pinmark" title="pinned: on Home's glance" aria-label="pinned">${PIN}</span>` : ""}</div>
     <div class="pcfacts">${p.git ? `git: <span class="pbr">${esc(p.git)}</span>${p.push ? ` · <span class="ok">push</span>` : ""}` : ""}${p.git && node ? " · " : ""}${esc(node)}</div>
     ${projectState(p)}
     ${p.issues.map(i => `<div class="pnote ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}

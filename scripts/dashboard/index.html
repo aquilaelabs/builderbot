@@ -3197,7 +3197,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pcard .pcname .name{font-weight:600;font-size:1.05rem;line-height:1.3;color:var(--ink);background:none;border:0;padding:0;min-height:0;text-align:left;cursor:pointer}
 .pcard .pcname .name:hover{text-decoration:underline}
 .pcard .pcname .lockmark svg{width:14px;height:14px}
-.pcard .pcunpinned{font:var(--f-ui)}
+/* The pin beside a pinned project's name, in the lock's size and the text's
+   quieter color. */
+.pcard .pcname .pinmark{display:inline-flex;align-items:center;color:var(--dim)}
+.pcard .pcname .pinmark svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 .pcard .pcfacts{font:var(--f-data);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pcard .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);font:var(--f-ui)}
 /* Yours first, then each other person's with a session here, one dot each. */
