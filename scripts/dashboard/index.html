@@ -1515,7 +1515,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
    that session is working and dim while it waits. */
 .row.stack2 .sesslist{width:100%;flex-basis:100%;min-width:0;color:var(--pass)}
 .sessone{display:flex;align-items:center;gap:6px;line-height:1.6}
-.sessbehind{font-size:12px;margin:0 0 2px 14px;line-height:1.4;color:var(--warn)}
+.sessbehind{font:var(--f-ui);margin:0 0 2px 14px;color:var(--warn)}
 /* Its dot is the session dot (.st, below): one rule for every place a
    session's state is shown. */
 /* A reason line can carry a token nothing breaks (a node's name, a digest
@@ -3560,7 +3560,7 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 /* The review modal: one row per held change, its checkbox first, the full
    text under a fold, and the two verbs at the foot with Approve first. */
 #pendList{max-height:60vh;overflow:auto;border:var(--hair) solid var(--line);border-radius:var(--r-surface)}
-#pendList .pkind{padding:6px 10px;color:var(--dim);font:var(--f-ui);font-size:12px;
+#pendList .pkind{padding:6px 10px;color:var(--dim);font:var(--f-ui);
   text-transform:uppercase;letter-spacing:.04em;border-bottom:var(--hair) solid var(--line);
   background:transparent}
 #pendList .prow{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;padding:8px 10px;
@@ -3569,9 +3569,9 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 #pendList .prow.dep{padding-left:28px}
 #pendList .prow input{margin-top:3px}
 #pendList .prow .psum{overflow-wrap:anywhere}
-#pendList .prow .pwhen{color:var(--dim);font:var(--f-ui);font-size:12px;margin-top:2px}
+#pendList .prow .pwhen{color:var(--dim);font:var(--f-ui);margin-top:2px}
 #pendList .prow details{margin-top:4px}
-#pendList .prow pre{white-space:pre-wrap;font-family:var(--mono);font-size:12px;margin:4px 0 0;
+#pendList .prow pre{white-space:pre-wrap;font:var(--f-code);margin:4px 0 0;
   color:var(--dim)}
 #pendAll{display:flex;align-items:center;justify-content:flex-start;gap:8px;font:var(--f-ui)}
 #pendAll input{margin:0;flex:0 0 auto}
