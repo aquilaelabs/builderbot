@@ -45,19 +45,26 @@ async function loadUsers(){
   drawPanes();
 }
 
-async function usersAct(body){
+// `say`, when given, is where a refusal is written (a dialog's own line);
+// without it a refusal is a toast. True when it landed.
+async function usersAct(body, say = null){
+  const refuse = t => { if (say) say(t); else notify(t, true); return false; };
   try{
     const r = await fetch("/api/users", {method: "POST",
       headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || j.error) return notify(j.error || `failed (HTTP ${r.status})`, true);
+    if (!r.ok || j.error) return refuse(j.error || `failed (HTTP ${r.status})`);
     if (body.action === "add"){ usersAddDraft = {name: "", pw: "", role: "user"}; usersPick = body.name; usersPhoneOpen = true; }
     if (body.action === "remove"){ usersPick = ""; usersPhoneOpen = false; }
     notify(body.action === "remove" ? `${body.name} removed`
          : body.action === "add" ? `${body.name} added`
          : `${body.name} updated`);
-  }catch(e){ return notify(String(e), true); }
+  }catch(e){ return refuse(String(e)); }
+  // The roles data names the accounts whose roles this one may give, so an
+  // account added or removed is read there too (B32).
+  if (body.action === "add" || body.action === "remove") await loadRoles();
   await loadUsers();
+  return true;
 }
 
 // ---- a list beside the one picked ----------------------------------------
@@ -83,6 +90,9 @@ function usersDirty(){
   return USER_KEYS.some(k => was[k] !== usersEdit[k]) || (typeof rolesPeopleDirty === "function" && rolesPeopleDirty());
 }
 function usersRedraw(){ usersRev++; drawPanes(); }
+// Accounts and roles Read without its Write: the page is there to read, its
+// fields dead and the reason said over them (B34).
+function usersReadOnly(){ return state?.can?.admin === false; }
 
 // An account's row: its name with what it holds as pills on one line, and
 // when it was last seen a fact under it (the operator, 18 Oct: the pills
@@ -94,7 +104,8 @@ function userRow(u){
   return `<button type="button" class="rrow${on ? " on" : ""}" data-upick="${esc(u.name)}"${on ? ' aria-current="true"' : ""}>
     <span class="rline"><span class="name">${esc(u.name)}</span>${u.name === usersMeta.me ? `<span class="pill">you</span>` : ""}${
       roles.map(r => `<span class="pill${r === "owner" ? " ok" : ""}">${esc(usersMeta.role_labels?.[r] || r)}</span>`).join("")}</span>
-    <span class="rfacts">${[roles.length ? "" : "no role", u.seen ? `seen ${ago(u.seen)}` : "never seen"].filter(Boolean).map(esc).join(" · ")}</span></button>`;
+    <span class="rfacts">${[roles.length ? "" : (u.projects || []).length
+      ? `a role on ${u.projects.length} project${u.projects.length === 1 ? "" : "s"}` : "no role", u.seen ? `seen ${ago(u.seen)}` : "never seen"].filter(Boolean).map(esc).join(" · ")}</span></button>`;
 }
 
 // The picked account's settings, saved together: its name, its roles and
@@ -104,16 +115,17 @@ function userRow(u){
 // out. Remove at the foot, away from Save.
 function usersDetail(u){
   if (!usersEdit || usersEdit.for !== u.name) usersEdit = usersEditFrom(u);
-  const e = usersEdit, isMe = u.name === usersMeta.me, isOwner = u.role === "owner";
+  const e = usersEdit, isMe = u.name === usersMeta.me, isOwner = u.role === "owner", ro = usersReadOnly();
   const f = (id, key, label, type = "text", extra = "", help = "") =>
     `<div class="setcell">${lbl(id, label, help)}<input id="${id}" data-ufield="${key}" type="${type}" value="${esc(e[key] || "")}"
-       autocomplete="off" spellcheck="false" ${extra}></div>`;
+       autocomplete="off" spellcheck="false" ${extra}${ro ? " disabled" : ""}></div>`;
   const facts = [u.claude ? `Claude: ${esc(u.claude)}` : "no Claude login yet", u.seen ? `seen ${esc(ago(u.seen))}` : "never seen",
                  u.projects?.length ? `on ${u.projects.length} project${u.projects.length === 1 ? "" : "s"}` : "on no project yet"];
   const access = rolesData === null ? `<div class="sub dim">reading its roles…</div>` : rolesAccessFields(u.name);
   return `<div class="rhead" data-uback><span class="shback" role="img" aria-label="Back to People">\u2039</span><b>${esc(u.name)}</b> <span class="dim">${facts.join(" · ")}</span></div>
     ${u.claude_shared_with?.length ? `<div class="sub warn">the same Claude account as ${u.claude_shared_with.map(esc).join(", ")
       }, allowed only while one person is behind both</div>` : ""}
+    ${ro ? `<div class="sub bad" id="ueWhyRo">Your roles give Accounts and roles Read, not Write: these are here to read.</div>` : ""}
     <div class="setgrid">
       ${isMe ? f("ueName", "name", "Account name", "text", "disabled", "your own account name changes on your Profile, which keeps this browser signed in")
              : f("ueName", "name", "Account name", "text", "", "what they sign in with. Changing it signs their browsers out")}
@@ -125,11 +137,11 @@ function usersDetail(u){
     </div>
     <div class="setrow col ueaccess ctlrow">${lbl("", "Roles and projects", "what this account may do; what each role holds is on the Roles page")}<div id="ueAccess">${access}</div></div>
     <div class="sub bad" id="ueErr" hidden></div>
-    ${saveBar({save: 'id="ueSave"', revert: 'id="ueRevert"', state: usersDirty() ? "unsaved" : ""})}
+    ${ro ? "" : saveBar({save: 'id="ueSave"', revert: 'id="ueRevert"', state: usersDirty() ? "unsaved" : ""})}
     ${u.devices ? `<div class="uedevices"><span class="lbl">Devices${helpIcon("the apps signed in as this account on its machines; Disconnect cuts one off for them, as a lost laptop needs")}</span>${
       profileDevices(u.devices, u.name)}</div>` : ""}
-    <div class="rfoot">${isOwner ? `<span class="sub dim">The owner cannot be deleted: rename it instead.</span>`
-      : `<button type="button" class="danger" id="ueRemove">Remove ${esc(u.name)}</button>`}</div>`;
+    ${ro ? "" : `<div class="rfoot">${isOwner ? `<span class="sub dim">The owner cannot be deleted: rename it instead.</span>`
+      : `<button type="button" class="danger" id="ueRemove">Remove ${esc(u.name)}</button>`}</div>`}`;
 }
 
 function renderUsersInto(i){
@@ -137,8 +149,11 @@ function renderUsersInto(i){
   if (!d) return;
   // A count where Jobs and Sessions keep theirs, not a sentence about the
   // page (the operator, 18 Oct: a bar holds what the page acts on).
-  d.setBar(`<span class="dim">${usersList === null ? skv(4) : `${usersList.length} ${usersList.length === 1 ? "person" : "people"}`}</span><span class="sp"></span>
-    <span class="actbar"><button type="button" class="primary" id="uAddOpen">Add user</button></span>`);
+  // Refused outright (a plain account by link), there is nothing to count
+  // or add, and the refusal is the page (B38).
+  const refused = usersErr && !(usersList || []).length;
+  d.setBar(`<span class="dim">${usersList === null ? skv(4) : refused ? "" : `${usersList.length} ${usersList.length === 1 ? "person" : "people"}`}</span><span class="sp"></span>
+    ${refused || usersReadOnly() ? "" : `<span class="actbar"><button type="button" class="primary" id="uAddOpen">Add user</button></span>`}`);
   if (usersList === null){
     // Its template (R218 step 16): the list beside the settings, whose
     // labels are the page's own; the accounts are on their way.
@@ -147,6 +162,10 @@ function renderUsersInto(i){
       field("Account name") + field("Their name") + field("Roles and projects")}</div></div>`);
     loadUsers();
     wireUsersBar(d.el);
+    return;
+  }
+  if (refused){
+    d.list.innerHTML = `<div class="row bad"><div class="grow">${esc(usersErr)}</div></div>`;
     return;
   }
   if (rolesData === null && !usersRolesAsked){ usersRolesAsked = true; loadRoles().then(usersRedraw); }
@@ -212,7 +231,9 @@ async function usersSave(el, btn){
     // Its roles first, under the name they are held by, before a rename.
     if (!(await rolesAccessSave())) return;
     const was = usersEditFrom(u);
-    if (!USER_KEYS.some(k => was[k] !== e[k])) return;
+    // Only its roles changed: the list and the header are read again all
+    // the same, since they show what it holds (B33).
+    if (!USER_KEYS.some(k => was[k] !== e[k])){ usersEdit = null; await loadUsers(); return; }
     const body = {action: "edit", name: u.name, to: u.name === usersMeta.me ? "" : e.name.trim(),
                   profile: {full_name: e.full, email: e.email, git_name: e.git_name, git_email: e.git_email},
                   password: e.pw};
@@ -248,11 +269,25 @@ function usersAddOpen(){
       <input id="uNewFull" autocomplete="off"></div>
     <div class="field">${lbl("uNewEmail", "Email", "optional")}<input id="uNewEmail" type="email" autocomplete="off"></div>
     <div class="field"><div class="hint">A new account holds no role: give it one beside its account once it is added.</div></div>
+    <div class="field" id="uAddWhyF" hidden><div class="hint bad" id="uAddWhy"></div></div>
     ${dlgFoot(`<button type="button" id="uAddCancel">Cancel</button>`, `<button type="button" id="uAdd" class="primary" disabled>Add</button>`)}</div>`;
-  // Add wakes once there is a name and the password is typed the same twice
-  // (the operator, 18 Oct).
-  const ready = () => { m.querySelector("#uAdd").disabled = !(m.querySelector("#uNewName").value.trim()
-    && m.querySelector("#uNewPw").value && m.querySelector("#uNewPw").value === m.querySelector("#uNewPw2").value); };
+  // Add wakes once there is a name and a password of 8 or more typed the
+  // same twice (the operator, 18 Oct); why it sleeps is said in the dialog
+  // once something is typed, and a refusal from the server lands there too.
+  const say = t => { m.querySelector("#uAddWhy").textContent = t; m.querySelector("#uAddWhyF").hidden = !t; };
+  const why = () => {
+    const pw = m.querySelector("#uNewPw").value, pw2 = m.querySelector("#uNewPw2").value;
+    if (pw && pw.length < 8) return "The password is shorter than 8 characters.";
+    if (pw && pw2 && pw !== pw2) return "The two passwords differ.";
+    if (pw && !m.querySelector("#uNewName").value.trim()) return "It needs an account name.";
+    return "";
+  };
+  const ready = () => {
+    const pw = m.querySelector("#uNewPw").value;
+    say(why());
+    m.querySelector("#uAdd").disabled = !(m.querySelector("#uNewName").value.trim()
+      && pw.length >= 8 && pw === m.querySelector("#uNewPw2").value);
+  };
   for (const [id, key] of [["#uNewName", "name"], ["#uNewPw", "pw"], ["#uNewPw2", "pw2"],
                            ["#uNewFull", "full"], ["#uNewEmail", "email"]]){
     const f = m.querySelector(id);
@@ -266,15 +301,12 @@ function usersAddOpen(){
   m.querySelector("#uAdd").onclick = async () => {
     const name = m.querySelector("#uNewName").value.trim();
     const pw = m.querySelector("#uNewPw").value;
-    if (!name || !pw) return notify("a name and a password", true);
     // Typed twice (R134): a password nobody can read back is one a slip
     // locks somebody out with.
-    if (pw !== m.querySelector("#uNewPw2").value) return notify("the two passwords differ", true);
+    if (!name || pw.length < 8 || pw !== m.querySelector("#uNewPw2").value) return ready();
     const full = m.querySelector("#uNewFull").value.trim(), email = m.querySelector("#uNewEmail").value.trim();
-    const before = (usersList || []).length;
-    await usersAct({action: "add", name, password: pw, role: "user",
-                    profile: {...(full ? {full_name: full} : {}), ...(email ? {email} : {})}});
-    if ((usersList || []).length > before) m.hidden = true;
+    if (await usersAct({action: "add", name, password: pw, role: "user",
+                        profile: {...(full ? {full_name: full} : {}), ...(email ? {email} : {})}}, say)) m.hidden = true;
   };
   m.querySelector("#uNewName").focus();
 }

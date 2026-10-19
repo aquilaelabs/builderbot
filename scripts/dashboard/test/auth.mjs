@@ -66,8 +66,11 @@ r = await bare('/login');
 r = await bare('/login', { method: 'POST',
   headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   body: 'username=test&password=nope&next=/' });
-ok(r.status === 200 && (await r.text()).includes('Wrong username or password'),
-   'a bad password re-renders the form, saying so');
+{
+  const said = r.status === 200 ? await r.text() : '';
+  ok(said.includes('Wrong username or password'), 'a bad password re-renders the form, saying so');
+  ok(/name="username" value="test"/.test(said), '...with the username still typed in it (B38)');
+}
 r = await bare('/login', { method: 'POST',
   headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   body: 'username=test&password=test&next=/' });
@@ -942,6 +945,26 @@ ${code}`], { encoding: 'utf8' }).trim();
   // do (the operator, 18 Oct: a press is awake only when it can act).
   ok(await page.$eval('#uAdd', b => b.disabled) && !(await page.$('.userstab [data-upick="tabmade"]')) && !await page.$eval('#uaddmodal', m => m.hidden),
      'two passwords that differ add nobody: Add sleeps, and the dialog stays');
+  const addWhy = () => page.$eval('#uAddWhyF', f => f.hidden ? '' : f.textContent.trim());
+  ok(/differ/.test(await addWhy()), `...and the dialog says why Add sleeps (B37: ${await addWhy()})`);
+  // Shorter than the 8 the hint asks for: Add sleeps and says so (B37).
+  await page.fill('#uNewPw', 'short12');
+  await page.fill('#uNewPw2', 'short12');
+  ok(await page.$eval('#uAdd', b => b.disabled) && /shorter than 8/.test(await addWhy()),
+     `a 7-character password leaves Add asleep, the dialog saying why (B37: ${await addWhy()})`);
+  // A refusal from the server is written in the dialog, which stays open
+  // (B37): answered here, since a 4xx the page asks for is a console error.
+  await page.fill('#uNewPw', 'tabmadepw1');
+  await page.fill('#uNewPw2', 'tabmadepw2');
+  await page.route('**/api/users', r => r.request().method() === 'POST'
+    ? r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ error: 'tabmade already has an account' }) })
+    : r.continue());
+  await page.fill('#uNewPw2', 'tabmadepw1');
+  await page.click('#uAdd');
+  await page.waitForFunction(() => !document.getElementById('uAddWhyF').hidden, null, { timeout: 10000 });
+  await page.unroute('**/api/users');
+  ok(/already has an account/.test(await addWhy()) && !await page.$eval('#uaddmodal', m => m.hidden),
+     'a refused Add says why in the dialog, and the dialog stays open (B37)');
   await page.fill('#uNewPw2', 'tabmadepw1');
   // A reload landing between typing and Add repaints the tab; what was
   // typed survives it (B422: it emptied the form, and Add sent nothing).
@@ -952,6 +975,12 @@ ${code}`], { encoding: 'utf8' }).trim();
   await page.waitForFunction(() => document.querySelector('.userstab [data-upick="tabmade"].on')
     && document.getElementById('uaddmodal').hidden, null, { timeout: 15000 });
   ok(true, 'Add makes an account from the tab, shuts the dialog and shows the account it made');
+  // Its roles are the owner's to give at once, without a reload (B32).
+  await page.waitForFunction(() => /no project|Projects/.test(document.querySelector('.userstab #ueAccess')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
+  {
+    const acc = await page.$eval('.userstab #ueAccess', e => e.textContent.replace(/\s+/g, ' ').trim());
+    ok(!/not yours to give/.test(acc), `...whose roles are given at once, the roles read again after the add (B32: ${acc.slice(0, 80)})`);
+  }
   {
     const made = await page.evaluate(async () => (await (await fetch('/api/users')).json()).users.find(u => u.name === 'tabmade'));
     ok(made?.profile?.full_name === 'Tab Made' && made?.profile?.email === 'tab@example.invalid' && !made?.profile?.git_name,
@@ -1013,6 +1042,17 @@ ${code}`], { encoding: 'utf8' }).trim();
   await page.waitForFunction(async () => (await (await fetch('/api/roles')).json()).people
     .find(p => p.name === 'tabmade')?.project_roles?.alpha?.includes('reader'), null, { timeout: 15000 });
   ok(true, 'its one Save puts it on alpha with a role there');
+  // Only its roles changed, and the account is read again all the same: not
+  // left unsaved, its header and row saying what it holds (B33).
+  await page.waitForFunction(() => /on 1 project/.test(document.querySelector('.userstab .rdetail .rhead')?.textContent || ''),
+                             null, { timeout: 15000 }).catch(() => {});
+  {
+    const head = await page.$eval('.userstab .rdetail .rhead', e => e.textContent);
+    const st = await page.$eval('.userstab .rdetail .actbar .state', e => e.textContent.trim()).catch(() => '');
+    const row = await page.$eval('.userstab [data-upick="tabmade"]', e => e.textContent.replace(/\s+/g, ' '));
+    ok(/on 1 project/.test(head) && st !== 'unsaved' && !/no role/.test(row),
+       `a roles-only Save reads the account again: "${st || 'saved'}", its header on 1 project, its row not "no role" (B33, B38: ${row.trim()})`);
+  }
   await page.waitForSelector('.userstab [data-upick="tabmade"]', { state: 'visible', timeout: 15000 });
 
   // The account it made is real, and scoped.
