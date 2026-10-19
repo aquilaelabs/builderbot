@@ -1245,7 +1245,8 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   // The groups as chips over the grid, as the Containers page's are (the
   // operator, 19 Oct): All, No group and Clients, each counted; a chip
   // narrows the grid to its group, and All brings the rest back.
-  const chips = await page.$$eval('.doc .projtab #pjChips [data-pjchip]', cs => cs.map(c => c.textContent.replace(/\s+/g, ' ').trim()));
+  const chips = await page.$$eval('.doc .projtab #pjChips [data-pjchip]', cs => cs.map(c =>
+    `${c.firstChild.textContent.trim()} ${c.querySelector('.pill')?.textContent.trim()}`));
   await page.click('.doc .projtab #pjChips [data-pjchip="Clients"]');
   await page.waitForFunction(() => !document.querySelector('.doc .projtab .pcard[data-row="gamma"]')
     && document.querySelector('.doc .projtab .pcard[data-row="beta"]'), null, { timeout: 5000 });
