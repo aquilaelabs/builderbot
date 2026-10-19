@@ -64,6 +64,38 @@ _locks_lock = threading.Lock()
 _index = {}               # project -> {path: row}, loaded once, written through
 _scanned = {}             # project -> monotonic time of the last scan
 _conflicts = []           # [{project, path, kept_as, node, at}], newest last
+_moved = threading.Condition()   # notified on every change: a device's long poll waits on it
+
+# A person's device (R270, R272): its id is "dev:" and the device's id, in
+# the place a node's id goes. The device route has already checked that its
+# person may edit the project (the editor's door, ftp.access_for), so the
+# node scope does not apply; .git is never served to one or taken from one,
+# as the editor serves none, and a conflict copy is named for the device.
+DEV = "dev:"
+device_name = lambda did: did   # noqa: E731 (set by configure_devices: (device id) -> its name)
+
+
+def configure_devices(*, name_of):
+    global device_name
+    device_name = name_of
+
+
+def _is_dev(nid):
+    return str(nid or "").startswith(DEV)
+
+
+def _hidden(nid, rel, link=""):
+    """What a device is never sent and never takes: .git, since the working
+    copy is a person's and the history the controller's, and a symbolic
+    link, which Windows makes only with a privilege it seldom grants (one
+    the app could not make would read to it as deleted and go up as such)."""
+    return _is_dev(nid) and (".git" in str(rel).split("/") or bool(link))
+
+
+def _who(nid):
+    if _is_dev(nid):
+        return device_name(nid[len(DEV):]) or nid
+    return (nodes.node(nid) or {}).get("name") or nid
 
 
 def configure(*, workspace, nodes_module, bound_nodes, changed=None, audit_fn=None):
@@ -299,6 +331,21 @@ def _wake(project, but=""):
     for nid in _watchers(project):
         if nid != but:
             nodes.sync_hint(nid, project, rev)
+    with _moved:
+        _moved.notify_all()
+
+
+def wait_moved(project, rev, timeout):
+    """Hold until the project's revision passes `rev` or `timeout` seconds
+    go by: a device's long poll, as a node's held work request is its."""
+    end = time.monotonic() + timeout
+    with _moved:
+        while rev_of(project) <= rev:
+            left = end - time.monotonic()
+            if left <= 0:
+                return False
+            _moved.wait(min(left, 5.0))
+    return True
 
 
 def held_changed():
@@ -330,6 +377,8 @@ def may(nid, project, write=False):
     never written. A worktree is its project's: read and written by the
     nodes the project is bound to, and no other."""
     wt = worktree_of(project)
+    if _is_dev(nid):
+        return f"{project} is a worktree: a device syncs a project" if wt else ""
     if wt:
         return "" if wt[0] in (bound_projects(nid) if nodes else []) \
             else f"{wt[0]} is not a project this node holds as a synced copy"
@@ -462,7 +511,7 @@ def state(nid, project):
     except ValueError as e:
         return {"error": str(e)}, 404
     with _lock(project):
-        rows = [_row_out(r) for r in _load(project).values() if not r["gone"]]
+        rows = [_row_out(r) for r in _load(project).values() if not r["gone"] and not _hidden(nid, r["path"], r["link"])]
         return {"rev": rev_of(project), "files": rows}, 200
 
 
@@ -483,7 +532,7 @@ def since(nid, project, rev):
             # The node knows a revision this index never reached: the index
             # was rebuilt. Start over from the whole state.
             return {"rev": cur, "reset": True, "changes": []}, 200
-        rows = [_row_out(r) for r in _load(project).values() if r["rev"] > rev]
+        rows = [_row_out(r) for r in _load(project).values() if r["rev"] > rev and not _hidden(nid, r["path"], r["link"])]
         rows.sort(key=lambda x: x[0])
         return {"rev": cur, "changes": rows}, 200
 
@@ -492,7 +541,7 @@ def file_path(nid, project, rel):
     """The file a node asked for, or a refusal."""
     if (why := may(nid, project)):
         return None, ({"error": why}, 403)
-    if not _rel_ok(rel) or skipped(rel):
+    if not _rel_ok(rel) or skipped(rel) or _hidden(nid, rel):
         return None, ({"error": "not a synced path"}, 400)
     try:
         p = _root(project) / rel
@@ -521,6 +570,8 @@ def tar_writer(nid, project):
         with tarfile.open(fileobj=out, mode="w|", format=tarfile.PAX_FORMAT) as tar:
             for rel in sorted(_walk(root)):
                 p = root / rel
+                if _hidden(nid, rel, p.is_symlink()):
+                    continue
                 if _entry(p) is None:
                     continue
                 with contextlib.suppress(OSError):
@@ -608,7 +659,7 @@ def git_config_runs(path):
 def _refused(nid, project, rel, why):
     """A refused write is audited: it is either a mistake or an attack."""
     if audit:
-        audit(f"node:{nid}", "sync-refused", f"{project}:{rel}"[:200], {"why": why[:200]})
+        audit(f"device:{nid[len(DEV):]}" if _is_dev(nid) else f"node:{nid}", "sync-refused", f"{project}:{rel}"[:200], {"why": why[:200]})
 
 
 def git_guard(rel, link):
@@ -643,7 +694,7 @@ def put(nid, project, q, stream, length):
     if (why := may(nid, project, write=True)):
         return {"error": why}, 403
     rel = q.get("path", [""])[0]
-    if not _rel_ok(rel) or skipped(rel):
+    if not _rel_ok(rel) or skipped(rel) or _hidden(nid, rel, q.get("link", [""])[0]):
         return {"error": "not a synced path"}, 400
     try:
         root = _root(project, make=True)
@@ -656,6 +707,11 @@ def put(nid, project, q, stream, length):
         mode = int(q.get("mode", ["420"])[0]) & 0o7777
     except ValueError:
         mode = 0o644
+    if _is_dev(nid) and "mode" not in q:
+        # A device on a system without POSIX modes sends none: the file
+        # keeps its own (a script stays executable), a new one is 644.
+        with contextlib.suppress(OSError):
+            mode = (root / rel).stat().st_mode & 0o7777
     if link and os.path.isabs(link):
         return {"error": "a link out of the project is not synced"}, 400
     if (why := git_guard(rel, link)):
@@ -664,7 +720,7 @@ def put(nid, project, q, stream, length):
     if not gone and not link and (length < 0 or length > MAX_FILE):
         return {"error": f"over {MAX_FILE >> 20} MB: not synced"}, 413
     target = root / rel
-    who = (nodes.node(nid) or {}).get("name") or nid
+    who = _who(nid)
     tmp = None
     try:
         sha = ""
@@ -741,7 +797,7 @@ def put(nid, project, q, stream, length):
                                    "at": int(time.time())})
                 del _conflicts[:-CONFLICTS_KEPT]
                 if audit:
-                    audit(f"node:{nid}", "sync-conflict", f"{project}:{rel}"[:200], {"kept_as": kept})
+                    audit(f"device:{nid[len(DEV):]}" if _is_dev(nid) else f"node:{nid}", "sync-conflict", f"{project}:{rel}"[:200], {"kept_as": kept})
                 out = {"conflict": True, "kept_as": kept, "rev": rev_of(project), "sha": cur,
                        "link": row["link"] if row and not row["gone"] else ""}
                 nid_told = ""             # the conflict copy goes to this node too

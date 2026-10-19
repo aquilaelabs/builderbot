@@ -60,7 +60,19 @@ const PROFILE_SAYS = {
   you: "your name, email and commit author", may: "what your roles let you do",
   password: "change it, signing out everywhere",
   plugins: "what you added with /plugin", logs: "your conversations with Claude, to download",
+  devices: "the apps signed in as you on your machines",
 };
+// The apps signed in as this account on its own machines (R272 step 1): a
+// table, a line a device (its name, what it is, when it last called) with
+// Disconnect at its end, which signs that one out.
+const PF_DEVICE_COLS = [{label: "Device"}, {label: "Kind", w: "6rem"}, {label: "Last call", w: "minmax(0,.6fr)"}, {act: true, w: "8rem"}];
+const PF_DEVICE_KIND = {pc: "a PC", phone: "a phone", editor: "an editor"};
+function profileDevices(rows){
+  if (!rows.length) return `<div class="empty">No device yet. The Windows companion signs in here with your name and password, and is listed for you to disconnect.</div>`;
+  return tblWrap(PF_DEVICE_COLS, rows.map(d => `<div class="row" data-device="${esc(d.id)}">${tblLine(PF_DEVICE_COLS, [
+    esc(d.name), esc(PF_DEVICE_KIND[d.kind] || d.kind), esc(d.seen ? ago(d.seen) : "never"),
+    `<button type="button" class="danger" data-pfdevout="${esc(d.id)}">Disconnect</button>`])}</div>`).join(""), "pfdevices");
+}
 
 function renderProfileInto(i){
   const d = docSurface(i, "profile");
@@ -75,7 +87,7 @@ function renderProfileInto(i){
     splitOff(d.list);                   // drawn before: its grid is the template's to bring
     d.list.innerHTML = skTpl(skSplit([["Who you are", PROFILE_SAYS.you], ["What you may do", PROFILE_SAYS.may],
       ["Password", PROFILE_SAYS.password], ["Claude plugins", PROFILE_SAYS.plugins],
-      ["Conversation logs", PROFILE_SAYS.logs]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join("")));
+      ["Conversation logs", PROFILE_SAYS.logs], ["Devices", PROFILE_SAYS.devices]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join("")));
     return;
   }
   const p = {...(profile.profile || {}), account: profile.name}, g = profile.git || {};
@@ -132,7 +144,8 @@ function renderProfileInto(i){
     ${sec("plugins", "Claude plugins", `
         <div class="logset">${profilePlugins(profile.plugins || [])}</div>`)}
     ${sec("logs", "Conversation logs", `
-        <div class="logset">${profileLogs(profile.logs || [])}</div>`)}`;
+        <div class="logset">${profileLogs(profile.logs || [])}</div>`)}
+    ${docSection("profile", "devices", "Devices", String((profile.devices || []).length || ""), profileDevices(profile.devices || []))}`;
   wireSections(d.list);
   splitSects(d.list, "profile", {says: PROFILE_SAYS, back: "Profile"});
   // Paged like every long list here (R218 step 31): one log per
@@ -176,6 +189,18 @@ function profileLogs(rows){
 }
 
 function wireProfile(root){
+  // Disconnect: asked, then that device signed out; the app finds its
+  // token refused on its next call and says to sign in again.
+  root.querySelectorAll("[data-pfdevout]").forEach(b => b.onclick = async () => {
+    const d = (profile?.devices || []).find(x => x.id === b.dataset.pfdevout);
+    if (!confirm(`Disconnect ${d ? d.name : "this device"}? It stops syncing at once and signs in again to come back.`)) return;
+    busy(b, "Disconnecting");
+    try{
+      const j = await (await postJSON("/api/profile", {action: "device-signout", device: b.dataset.pfdevout})).json();
+      if (j.error) notify(j.error, true);
+    }catch(e){ notify("could not reach the controller: " + e, true); }
+    await loadProfile();
+  });
   const p = {...(profile?.profile || {}), account: profile?.name};
   root.querySelectorAll("[data-pf]").forEach(inp => inp.oninput = () => {
     const k = inp.dataset.pf;

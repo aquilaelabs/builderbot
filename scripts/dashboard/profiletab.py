@@ -16,6 +16,7 @@ claude_email = None      # uid -> the Claude account signed in for it, or ""
 plugins_of = None        # (uid, {node id: name}) -> its plugins, as the nodes last said
 node_names = None        # () -> {node id: name}
 logs_of = None           # me -> the account's conversations with Claude (transcripts.mine)
+devices = None           # devices.py: the account's signed-in devices (R272), listed and signed out
 
 
 def configure(**deps):
@@ -35,6 +36,7 @@ def view(me):
         plugs = plugins_of(uid, node_names())
     with timed("profile:logs"):
         logs = logs_of(me)
+    acct = users.get(me["name"]) or {}
     return {"name": me["name"], "uid": uid,
             "role": rec.get("role", "user"),
             # What this account may do, said once (R255 step 5).
@@ -48,7 +50,10 @@ def view(me):
             "plugins": plugs,
             # The account's own conversations with Claude, newest first,
             # each a download of the whole exchange (transcripts.py).
-            "logs": logs}, 200
+            "logs": logs,
+            # The apps signed in as this account on its own machines
+            # (R272), newest call first: what Disconnect acts on.
+            "devices": devices.listed(acct) if devices else []}, 200
 
 
 def verb(me, act, req):
@@ -76,4 +81,7 @@ def verb(me, act, req):
             me = renamed = users.get(to)
         return {"ok": True, "name": me["name"], "profile": users.profile(me),
                 "git": users.git_identity(me), "git_ready": users.git_ready(me)}, 200, renamed
+    if act == "device-signout":
+        r = devices.revoke(users.get(me["name"]) or {}, field(req, "device")) if devices else {"error": "no devices here"}
+        return r, (400 if r.get("error") else 200), None
     return {"error": "unknown action"}, 400, None

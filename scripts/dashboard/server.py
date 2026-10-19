@@ -3707,6 +3707,13 @@ reports.audit = db.audit
 diag.configure(image_stamp=image_stamp, uptime=uptime, doctor_payload=doctor.payload,
                settings=settings, nodes=nodes, db=db, log_dir=logs.log_dir,
                plugins=plugins, users=users, reports=reports)
+# A person's devices (R272): their tokens, and the door their apps sync a
+# project through as a node does (wssync), as far as the editor's door lets
+# that person (ftp.access_for).
+import devices                                                   # noqa: E402
+devices.configure(users=users.load, access=lambda acct, p: ftp.access_for(acct, p, "editor"),
+                  projects=lambda acct: project_names(acct))
+profiletab.configure(devices=devices)
 
 
 # ---- revisions -------------------------------------------------------------
@@ -5097,6 +5104,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._logout()
         if path.startswith("/api/v1/agent/"):
             return self._agent()
+        if path.startswith("/api/v1/device/"):
+            return self._device()
         if path == "/api/v1/healthz":
             # Open, like the agent door: a monitor asks this without the
             # operator's credential, and it says alive-and-the-store-answers
@@ -5885,6 +5894,11 @@ class Handler(BaseHTTPRequestHandler):
             # controller holds nothing that logs in anywhere, and a node
             # holds nothing that opens this page).
             return self._agent()
+        if self.path.split("?")[0].startswith("/api/v1/device/"):
+            # A person's device has a door of its own as an agent does: its
+            # token never opens the dashboard, and the dashboard's credential
+            # is not what an app carries (R272).
+            return self._device()
         if not self._authed():
             return self._deny()
         # The one body that is not JSON: an archive to start a project from,
@@ -6428,6 +6442,49 @@ class Handler(BaseHTTPRequestHandler):
                 return None
             return self._json(*got)
         return self._json(*channel.verb(verb, auth, req, addr))
+
+    def _device(self):
+        """A person's device's door (R272, devices.py says what each verb
+        means): its token from the Authorization header, or for sign-in the
+        person's name and password once, which mints that token. What stays
+        here is the HTTP, as for the agent's door."""
+        if NODES_OK:
+            return self._json({"error": "the store did not open: " + NODES_OK}, 500)
+        verb = self.path.split("?")[0][len("/api/v1/device/"):]
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        if verb == "signin":
+            if self.command != "POST":
+                return self._json({"error": "POST"}, 405)
+            req = self._read_json()
+            if req is None:
+                return None
+            u = users.authenticate(str(req.get("username") or ""), str(req.get("password") or ""))
+            if not u:
+                # As the sign-in page: a beat of delay, and not saying which half.
+                time.sleep(0.5)
+                return self._json({"error": "wrong username or password"}, 401)
+            row, got = devices.mint_for(u, req.get("name"), str(req.get("kind") or "pc"))
+            if not row:
+                return self._json(got, 400)
+            users.touch(u["name"])
+            return self._json({**got, "device": row, "account": u["name"]})
+        hdr = self.headers.get("Authorization", "")
+        auth = devices.authenticate(hdr[7:]) if hdr.startswith("Bearer ") else {"error": "no token"}
+        if verb in ("sync-file", "sync-tar"):
+            got, status = devices.file_verb(verb, auth, q)
+            return self._send_file(got) if status == 200 else self._json(got, status)
+        if verb == "sync-put":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = 0
+            return self._json(*devices.put(auth, q, self.rfile, length))
+        if self.command != "POST":
+            return self._json({"error": "POST"}, 405)
+        req = self._read_json()
+        if req is None:
+            return None
+        return self._json(*devices.verb(verb, auth, req))
 
     def _send_file(self, got):
         """A file the agent fetches, from a path or from bytes, never cached:
