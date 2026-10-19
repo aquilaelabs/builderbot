@@ -121,6 +121,24 @@ function openDocker(){
   if (!dockerFetching) loadDocker();
 }
 
+// ...on one node: the one a container was just made on, or the one a bell
+// line names (B62). Without this the page opened on whichever node it last
+// showed, and the build that had just started was nowhere on it. Moving
+// the node swaps in that node's last answer at once, as the picker does,
+// and asks for it even with another node's answer still on its way, since
+// that answer is dropped on landing (asked !== dockerNode).
+function openDockerOn(node){
+  const moved = !!node && node !== dockerNode;
+  if (moved){
+    dockerNode = node;
+    dockerList = dockerSeen[node] || null;
+    dockerRev++;
+  }
+  openDocker();
+  dockerNodeKeep();
+  if (moved && dockerFetching) loadDocker();
+}
+
 // ...and remembered when it changes, which is the only moment it can be
 // written: the picker is the only thing that moves it deliberately.
 function dockerNodeKeep(){
@@ -604,12 +622,18 @@ async function dnSubmit(){
     const j = await r.json();
     if (j.error){ unbusy($("dnGo"), "Create");
                   return fail(j.error); }
+    // Where it went: the node picked, else its project's primary, which is
+    // what an instance with no node of its own follows (create_instance).
+    const whose = $("dnUnder").value || project;
+    const goes = ($("dnNodeField").hidden ? "" : $("dnNode").value)
+      || (state?.projects?.find(p => p.name === whose)?.prefs?.nodes || []).filter(Boolean)[0] || "";
     closeSendToDocker();
     // ...and build it. The manager lists what exists, so a container that was
     // only registered would not appear there: "send to" has to produce
     // something, or it sends you to a page that does not mention it. The
     // build carries the same confirmations pressing Build there would.
-    openDocker();
+    // On the node it goes to, not the one the page last showed (B62).
+    openDockerOn(goes);
     await dmAction(project, j.instance, "rebuild");
   }catch(e){ unbusy($("dnGo"), "Create");
              return fail("could not create it: " + e); }
@@ -1439,6 +1463,10 @@ async function cSubmit(){
     $("cmodal").hidden = true;
     if (!editing){
       notify(`${j.name} is in the manager: press Build to bring it up`);
+      // Shown on the node it was made on, which the picker may have moved
+      // off the one on screen (B62).
+      const made = $("cNodeField").hidden ? "" : $("cNode").value;
+      if (made && made !== dockerNode){ openDockerOn(made); return; }
       dockerList = null; dockerRev++; loadDocker();
       return;
     }

@@ -4845,6 +4845,30 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
   ok(!two.go && two.node === ids.spare && !two.disabled && two.options.slice().sort().join() === [ids.spare, ids.sandbox].sort().join()
      && /One of ep\.silon's nodes/.test(two.hint),
      `...and Send offers exactly its nodes, primary picked (${two.options.length} offered, ${two.node} picked)`);
+  // Create opens the Containers page on the node the container goes to, not
+  // the one it last showed (B62). The new and the build are stubbed: what is
+  // asked is where the page lands, and spare has no daemon to build on.
+  {
+    const landed = await page.evaluate(async ([spare, sandbox]) => {
+      dockerNode = sandbox;
+      const realFetch = window.fetch, realAct = dmAction;
+      window.fetch = async (u, o) => /\/api\/devapp/.test(String(u)) && /"action":"new"/.test(o?.body || '')
+        ? new Response(JSON.stringify({ ok: true, instance: 'landed' }), { headers: { 'Content-Type': 'application/json' } })
+        : realFetch(u, o);
+      let built = null;
+      dmAction = async (p, i, act) => { built = `${p}|${i}|${act}`; };
+      try{
+        openSendToDocker('ep.silon');
+        $('dnNode').value = spare;
+        await dnSubmit();
+      }finally{ window.fetch = realFetch; dmAction = realAct; }
+      const out = { node: dockerNode, arg: dockerTab()?.arg, built };
+      openDockerOn(sandbox);
+      return out;
+    }, [ids.spare, ids.sandbox]);
+    ok(landed.node === ids.spare && landed.arg === ids.spare && landed.built === 'ep.silon|landed|rebuild',
+       `Create opens the Containers page on the node the container went to (${landed.node}, tab ${landed.arg}, ${landed.built})`);
+  }
   const off = await post('/api/devapp', { project: 'ep.silon', action: 'new', instance: 'elsewhere', node: 'n_notanode' });
   ok(/ep\.silon works on spare, sandbox, and a container for it anywhere else/.test(off.error || ''),
      `a node outside the set is refused, naming the set (${String(off.error).slice(0, 70)})`);

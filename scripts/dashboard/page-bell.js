@@ -634,8 +634,7 @@ function wireNeeds(root, after = () => {}){
   root.querySelectorAll("[data-bdocker]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();
-    if (a.dataset.bdocker) dockerNode = a.dataset.bdocker;
-    openDocker();
+    openDockerOn(a.dataset.bdocker || "");
   });
   // ...and an nginx update to the nginx tab on that node.
   root.querySelectorAll("[data-bnginx]").forEach(a => a.onclick = e => {

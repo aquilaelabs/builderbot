@@ -60,7 +60,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'ado
   'sessionRows', 'liveRefresh', 'bootFetch', 'bootReadsDone',
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',
   'nudgeTerminals', 'onRev', 'openClaude',
-  'openDevEnv', 'openDocker', 'openEditContainer', 'openEditInstance', 'cSaveInstance', 'openLinkProject',
+  'openDevEnv', 'openDocker', 'openDockerOn', 'openEditContainer', 'openEditInstance', 'cSaveInstance', 'openLinkProject',
   'openNewContainer', 'cFormYaml', 'cFormWrote', 'openNewProject', 'openNotebook', 'openToolchains', 'openPending', 'drawPendingModal', 'pendAct',
   'openProjectsTab', 'openSendToDocker', 'openTab', 'openTrash', 'pDraw',
   'nbAnalysisView', 'nbArtifactsView', 'nbBugsView', 'nbDesignView', 'nbGitView', 'nbHistoryView', 'nbMemoryView', 'nbPendingView', 'nbRoadmapView', 'nbRulesView', 'nbTestsView', 'nbWikiView', 'wikiMarkdown', 'wikiSlug', 'wikiToc', 'wikiNav', 'wikiUntitled', 'wikiContents', 'wikiScroll', 'wikiArticle', 'pullScroller', 'pullRefresh', 'wirePull', 'openReport', 'sendReport', 'pDrawForge', 'pUrlHost', 'postJSON', 'unlinkProject',
