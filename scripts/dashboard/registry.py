@@ -194,13 +194,23 @@ def unique_name(name, but=None):
     return cand
 
 
+def taken_dirs():
+    """Every directory a new project may not have, lowercased: each record,
+    purged ones too (their notebook, settings, containers and transcripts
+    are kept under it, and a new project would inherit them), and anything
+    on disk. The New project dialog reads it to say before Create when the
+    folder will be numbered (B63)."""
+    with _lock:
+        ps = _load()["projects"]
+        live, gone = _on_disk()
+        return sorted({k.lower() for k in ps} | {k.lower() for k in live | gone})
+
+
 def new_dir(base):
     """A directory nothing has ever had: `base`, else base-2, base-3. Every
     record counts, purged ones too, and so does anything on disk."""
     with _lock:
-        ps = _load()["projects"]
-        live, gone = _on_disk()
-        taken = {k.lower() for k in ps} | {k.lower() for k in live | gone}
+        taken = set(taken_dirs())
         cand, n = base, 2
         while cand.lower() in taken:
             cand = f"{base}-{n}"

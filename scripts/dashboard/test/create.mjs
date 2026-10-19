@@ -127,6 +127,22 @@ ok(await page.$eval('#pNamePreview', el => !el.hidden && /shown as beta-2\b/.tes
 await page.fill('#pName', 'plain');
 ok(await page.$eval('#pNamePreview', el => el.hidden),
    '...and stays quiet when there is nothing to say');
+// A folder a deleted project had is never handed out again, purged or not
+// (R154): the shown name is free, the folder is numbered, and the preview
+// says so before Create rather than leaving the -2 to be found (B63). The
+// list is the dialog's own fetch's; a deleted one is planted in it, since
+// purging a fixture here would take a project other blocks use.
+{
+  const dirs = await page.evaluate(async () => (await (await fetch('/api/pubkeys')).json()).dirs || []);
+  ok(dirs.includes('alpha') && dirs.includes('beta'),
+     `the dialog's fetch lists the folders a new project may not have (${dirs.length})`);
+  await page.evaluate(() => pTakenDirs.add('relic'));
+  await page.fill('#pName', 'relic');
+  ok(await page.$eval('#pNamePreview', el => !el.hidden
+       && /Shown as relic, in the folder relic-2: a deleted project had relic/.test(el.textContent)),
+     '...and a name whose folder a deleted project had says it is shown as itself in the folder Name-2');
+  await page.fill('#pName', 'plain');
+}
 // Put the field back as it was found: a mode switch does not clear it, only
 // reopening does, and the refusal below needs the name genuinely empty or it
 // submits a valid one and closes the dialog out from under everything after.
