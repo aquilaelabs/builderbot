@@ -279,7 +279,8 @@ class Job(threading.Thread):
         if self.canceled:
             state, error = "canceled", "stopped by the operator"
         elif state == "failed" and not error:
-            error = f"exit {code}"
+            # A handler that knows why says so (self_update: what held it).
+            error = getattr(self, "why", "") or f"exit {code}"
         # A container came, went or moved: the session network's sets are
         # rebuilt from `docker ps` every ten seconds, and a session told by
         # its rebuild that the instance was up curled its port inside that

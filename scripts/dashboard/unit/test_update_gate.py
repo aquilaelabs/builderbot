@@ -135,6 +135,17 @@ class HeldJobs(unittest.TestCase):
         self.assertIn("j_gone", err)
         self.assertIn("press Update agent again", err)
 
+    def test_an_update_refused_as_busy_says_what_the_node_was_doing(self):
+        # B862: the row and the bell said "exit 75"; they say what held it,
+        # and that nothing retries it.
+        self.job("u1", "self-update", state="assigned")
+        self.job("j_tc", "toolchain", state="running")
+        nodes._exec("UPDATE jobs SET project = 'web' WHERE id = 'j_tc'")
+        nodes.job_result(self.n, "u1", "failed", 75, "exit 75")
+        err = nodes._rows("SELECT error FROM jobs WHERE id = 'u1'")[0]["error"]
+        self.assertIn("busy with toolchain job for web", err)
+        self.assertIn("not retried", err)
+
 
 agent = agentpkg.load("builderbot_agent_held")
 agent.log = lambda *a, **k: None

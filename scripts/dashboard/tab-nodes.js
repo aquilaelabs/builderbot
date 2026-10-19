@@ -2190,7 +2190,11 @@ function wireNodesTab(root){
         nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});
         if (j.current){ delete nodesUpdating[id]; notify(`already on ${j.version}`); }
-        else if (j.ok) notifyJob(j.job, `agent update on ${(nodesList || []).find(n => n.id === id)?.name || "the node"}`);
+        // A failed update frees the button at once, never retried: the
+        // person reads why on the toast and presses again (B862). A good one
+        // keeps it busy until the agent's hello brings the new digest.
+        else if (j.ok) notifyJob(j.job, `agent update on ${(nodesList || []).find(n => n.id === id)?.name || "the node"}`,
+          r => { if (r.state !== "succeeded"){ delete nodesUpdating[id]; nodesRev++; drawPanes(); } });
         else delete nodesUpdating[id];
         return;
       }

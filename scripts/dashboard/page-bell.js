@@ -119,11 +119,13 @@ function toastGone(el){
 // job's (kind "job", with the job's id, which the Notifications page opens).
 // Dismissed before then, it is still followed, so the end is still kept.
 const jobToasts = new Map();     // job id -> {el, label}
-function notifyJob(id, label){
+// onEnd(job), when given, is called once the job is over: what pressed it
+// frees itself then, rather than waiting out a window of its own (B862).
+function notifyJob(id, label, onEnd){
   if (!id) return notify(label);
   const el = toastAdd(`${label}: queued`, "info");
   if (el){ el.classList.add("job"); el.left = Infinity; clearTimeout(el.timer); }
-  jobToasts.set(id, {el, label});
+  jobToasts.set(id, {el, label, onEnd});
   logNote(`${label}: queued`, false);
   jobToastsCheck();
 }
@@ -140,6 +142,7 @@ async function jobToastsCheck(){
     if (t.el?.isConnected) t.el.querySelector(".tmsg").textContent = line;
     if (!over) continue;
     jobToasts.delete(id);
+    try{ t.onEnd?.(j); }catch(e){ console.error(e); }
     const lv = j.state === "failed" ? "bad" : j.state === "canceled" ? "warn" : "info";
     if (t.el?.isConnected){
       t.el.className = "tst " + lv;

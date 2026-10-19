@@ -4337,11 +4337,21 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     # An update refused as busy on a node this side saw go quiet: what the
     # agent holds is jobs this side has finished or dropped, named from its
     # last hello, so the row says which rather than "exit 75" (B519).
+    # Otherwise the row says what the node was busy with, in this side's
+    # words (a toolchain job for web), and that nothing retries it (B862).
     if got[0]["type"] == "self-update" and code == 75:
         held = ((node(node_id) or {}).get("agent") or {}).get("held") or []
-        err = ("the agent says other jobs are running" + (
-            f" ({', '.join(held)}), which this controller has as finished; "
-            "they leave when the agent next posts their end" if held else "") + "; press Update agent again")[:500]
+        doing = [f"{r['type']} job" + (f" for {r['project']}" if r["project"] and r["project"] != "-" else "")
+                 for r in _rows("SELECT type, project FROM jobs WHERE node = ? AND id != ? "
+                                "AND state = 'running' ORDER BY started", (node_id, job_id))]
+        if held:
+            err = (f"the agent says other jobs are running ({', '.join(held)}), which this controller "
+                   "has as finished; they leave when the agent next posts their end; press Update agent again")
+        elif doing:
+            err = f"busy with {', '.join(doing[:4])}{' and more' if len(doing) > 4 else ''}: not retried; press Update agent again when they finish"
+        elif not err.startswith("busy"):
+            err = "the agent says other jobs are running: not retried; press Update agent again when they finish"
+        err = err[:500]
     if late:
         err = ("reported late, after this side called the node lost" + (": " + err if err else ""))[:500]
     cur = _exec("UPDATE jobs SET state = ?, exit_code = ?, ended = ?, step = '', "

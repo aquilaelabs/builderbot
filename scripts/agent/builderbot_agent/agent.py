@@ -617,7 +617,16 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         others = sorted(i for i, j in held.items() if i != job.job["id"]
                         and not (i in settled and getattr(j, "reporting", False)))
         if others:
-            job.say(f"busy: other jobs are running ({', '.join(others)}); try again when they finish\n")
+            # What each one is doing, said in the job's error as well as its
+            # log, so the failure the bell shows names what held it (B862).
+            def what(i):
+                j = getattr(held[i], "job", None) or {}
+                sp = j.get("spec") or {}
+                doing = sp.get("apply") or sp.get("action") or sp.get("name") \
+                    or os.path.basename(str((sp.get("argv") or [""])[0] or ""))
+                return f"{i} ({j.get('type') or 'exec'}{': ' + str(doing)[:40] if doing else ''})"
+            job.why = f"busy with {', '.join(what(i) for i in others)}: not retried; press Update agent again when they finish"
+            job.say(job.why + "\n")
             return "failed", 75
         st, body = self.ctl.call("download", None, timeout=60, method="GET", raw=True)
         if st != 200:
