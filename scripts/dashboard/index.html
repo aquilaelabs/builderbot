@@ -2234,6 +2234,14 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .gab i{display:block;height:4px;border-radius:2px;background:var(--line)}
 .gab>.r i{background:var(--lit, var(--accent))}
 .gbstate{font:var(--f-note);color:var(--dim)}
+/* A comparison's page (R269 step 2) in place of the view's sections and
+   its network bar; its files as a list with their counts over their diffs,
+   as a pull request's Files changed. */
+.nbview[data-view="git"]:not(.gcmpmode) #gitCmp,.gcmpmode #gitBody,.gcmpmode #gitNet{display:none}
+.gcmpfiles{display:flex;flex-direction:column;gap:2px;margin-bottom:var(--field-gap)}
+.gcmpfile{display:flex;gap:8px;align-items:baseline;font:var(--f-data);min-width:0}
+.gcmpfile code{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:auto}
+.gcmpcommit .name{font:var(--f-row);overflow-wrap:anywhere}
 /* ...and on a phone, where the cell wears its column's name, the counts
    sit on that line, the bars left to a desk. */
 @media(max-width:900px){
@@ -5267,6 +5275,9 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" data-gitact="push" class="primary" title="send this branch up, with the project's credentials">Push</button>
       </div>
       <div id="gitBody" data-skel="git"></div>
+      <!-- A branch against main, its own page (R269 step 2): drawn in
+           place of the sections above while the address names it. -->
+      <div id="gitCmp"></div>
     </div>
     <div class="nbview" data-view="design" hidden>
       <!-- What the project looks like (design.py, nb-design.js): one design

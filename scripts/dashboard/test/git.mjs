@@ -704,14 +704,28 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   // Work not yet in main is a row you open: its commits and diff against
   // main, read here rather than on a pull request page.
   await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:branches"]');   // one section open at a time
+  // ...on a page of its own (R269 step 2), as a pull request's: its address
+  // names the branch, Back to branches returns, and the address alone
+  // lands on it.
   await page.click('.nb .nbview[data-view="git"] .gbranch[data-branch="old-work"] > .tline .td.lead');   // the line opens it
-  await page.waitForSelector('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"] pre.diff', { timeout: 10000 });
-  const opened = await page.$eval('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"]', d => ({
-    commit: /Old work/.test(d.querySelector('.gcmpc')?.textContent || ''),
-    files: /old\.txt/.test(d.textContent), add: !!d.querySelector('pre.diff .d-add'),
-    merge: !!d.querySelector('[data-gitmerge="old-work"][data-gitinto]') }));
-  ok(opened.commit && opened.files && opened.add && opened.merge,
-     `a branch with work not yet in main opens to its commits and the diff main would take, with Merge into main at its foot (${JSON.stringify(opened)})`);
+  await page.waitForSelector('.nb .nbview[data-view="git"] #gitCmp pre.diff', { timeout: 10000 });
+  const opened = await page.$eval('.nb .nbview[data-view="git"]', v => { const d = v.querySelector('#gitCmp');
+    return { commit: /Old work/.test(d.querySelector('.gcmpcommit')?.textContent || ''),
+    files: /old\.txt/.test(d.querySelector('.gcmpfiles')?.textContent || ''), add: !!d.querySelector('pre.diff .d-add'),
+    merge: !!d.querySelector('.gcmpfoot [data-gitmerge="old-work"][data-gitinto]'),
+    alone: getComputedStyle(v.querySelector('#gitBody')).display === 'none' && getComputedStyle(v.querySelector('#gitNet')).display === 'none',
+    hash: location.hash }; });
+  ok(opened.commit && opened.files && opened.add && opened.merge && opened.alone && /\/git\/compare\/old-work$/.test(opened.hash),
+     `a branch with work not yet in main opens its comparison on a page of its own, its address naming it: its commits, its files and their diffs, Merge into main at its foot (${JSON.stringify(opened)})`);
+  await page.click('.nb .nbview[data-view="git"] #gitHint [data-gitcmpback]');
+  const backed = await page.waitForFunction(() => /\/git$/.test(location.hash) && getComputedStyle(document.querySelector('.nb .nbview[data-view="git"] #gitCmp')).display === 'none', null, { timeout: 5000 })
+    .then(() => true, () => false);
+  ok(backed, `Back to branches returns to the view's address and its sections (${await page.evaluate(() => `${location.hash} ${getComputedStyle(document.querySelector('.nb .nbview[data-view="git"] #gitCmp')).display}`)})`);
+  await page.evaluate(() => { location.hash = location.hash + '/compare/old-work'; });
+  await page.waitForSelector('.nb .nbview[data-view="git"] #gitCmp .gcmpcommit', { timeout: 10000 });
+  await page.goBack();
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('.nb .nbview[data-view="git"] #gitBody')).display !== 'none', null, { timeout: 5000 });
+  ok(true, '...an address naming the comparison lands on it, and the browser\'s Back leaves it');
   await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:changes"]');   // one section open at a time
   await page.fill('.nb .nbview[data-view="git"] #gitMsg', 'From the view');
   await page.click('.nb .nbview[data-view="git"] #gitCommit');

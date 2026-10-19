@@ -154,9 +154,10 @@ function routeOf(t){
     // ...and the view it is on (R218 step 3): Overview is the Briefing
     // view's name on the page, so the address says overview.
     const n = notebooks.get(t.arg), v = n?.where?.() || "";
-    const page = v === "wiki" ? n?.wikiPage?.() || "" : "";
+    // ...and a branch's comparison, its own page (R269 step 2).
+    const page = v === "wiki" ? n?.wikiPage?.() || "" : v === "git" && n?.gitPage?.() ? "compare/" + encodeURIComponent(n.gitPage()) : "";
     return "#/projects/" + encodeURIComponent(t.arg) + (v ? "/" + (v === "briefing" ? "overview" : v) : "")
-      + (page ? "/" + encodeURIComponent(page) : "");
+      + (page ? "/" + (v === "git" ? page : encodeURIComponent(page)) : "");
   }
   if (!isToolKind(t.kind)) return "";
   // The Notifications page is on no group: the bell's See all opens it.
@@ -171,16 +172,22 @@ function routeOf(t){
 
 // Open what an address names; nothing happens for one that names nothing.
 function openRoute(hash){
-  const m = /^#\/([a-z]+)(?:\/([^/]+))?(?:\/([^/]+))?(?:\/([^/]+))?/.exec(hash || "");
+  const m = /^#\/([a-z]+)(?:\/([^/]+))?(?:\/([^/]+))?(?:\/([^/]+))?(?:\/([^/]+))?/.exec(hash || "");
   if (!m) return false;
-  const [, key, a, b, c] = m;
+  const [, key, a, b, c, d] = m;
   if (key === "projects" && a && !RAIL[1].tools.some(([k]) => k === a)){
     const name = decodeURIComponent(a);
     if (!(state?.projects || []).some(p => p.name === name)) return false;
     railWant = "projects";
     const v = b ? decodeURIComponent(b) : "";
+    // A comparison is set before the open as well as after it: the open
+    // writes the address, and written without the comparison the entry for
+    // it read /git, so Back from it went nowhere.
+    const cmp = v === "git" ? (c === "compare" && d ? decodeURIComponent(d) : "") : null;
+    if (cmp !== null) notebooks.get(name)?.gitAt?.(cmp);
     openNotebook(name, v ? (v === "overview" ? "briefing" : v) : undefined);
     if (v === "wiki" && c) notebooks.get(name)?.wikiAt?.(decodeURIComponent(c));
+    if (cmp !== null) notebooks.get(name)?.gitAt?.(cmp);
     return true;
   }
   if (key === "notifications"){ openNotices(); return true; }

@@ -799,6 +799,9 @@ function makeNotebook(project){
     // The wiki page on show, for the address, and set from one (R256 step 3).
     wikiPage: () => nb.wkCur,
     wikiAt: name => nb.wikiAt(name),
+    // The branch whose comparison is on show, and set from an address (R269 step 2).
+    gitPage: () => nb.gitPage?.() || "",
+    gitAt: name => nb.gitAt?.(name),
     poll(p){
       noteBatch(p.todo_batch); drawBatchNote(); syncSave();
       // ...and who else is in here (roadmap #26), while this is the page on
