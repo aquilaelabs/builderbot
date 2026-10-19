@@ -668,6 +668,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Home's Getting started ticks off your node and Claude Code as soon as a node dials back in after a restart, without a reload (40e389a)
 - Pressing Open Claude on a tab that was refused because its node had restarted now opens the session, instead of showing the same refusal again (2dc63c4)
 - bb transcripts show prints the newest 16 MB of a long conversation, where it used to time out and print nothing; --all prints the whole of it (4c947ad)
+- A node whose agent update succeeded no longer asks for Update agent again: the controller counts it current at once instead of sending a second update that failed as busy (0b8fb49)
 
 ### Security
 

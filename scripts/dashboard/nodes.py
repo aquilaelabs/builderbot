@@ -4405,6 +4405,17 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
         spec = (job(job_id, with_log=False) or {}).get("spec") or {}
         if spec.get("apply") == "uninstall":
             node_state(f"node:{node_id}", node_id, "retired")
+    # An update that installed its file is the agent this node runs from now:
+    # recorded here, since the hello that says so waits on the new agent's
+    # census (a minute on bb-sandbox), and meanwhile the node still read as
+    # behind, so a second update went out, was refused as busy behind the
+    # first, and the bell asked for a press nothing needed (19 Oct).
+    if got[0]["type"] == "self-update" and state == "succeeded":
+        spec = (job(job_id, with_log=False) or {}).get("spec") or {}
+        if spec.get("digest"):
+            _exec("UPDATE nodes SET agent = json_set(agent, '$.digest', ?, '$.version', ?) WHERE id = ?",
+                  (str(spec["digest"])[:80], str(spec.get("version") or "")[:40], node_id))
+            _bump()
     # The module that queued this kind of job gets to finish it. A compose
     # action run by the agent still has records to write here (what was
     # built, from which commit, on which daemon), and this is where they
