@@ -614,10 +614,12 @@ def plan(c, a, uid):
         if _real_dir(hidden.rstrip("/")) and not _inside(hidden.rstrip("/"), out_of_sight):
             steps.append(("hide", hidden.rstrip("/")))
     # ...and the toolchains this project's settings switch off (R77): a
-    # session neither runs nor reads what is not there.
+    # session neither runs nor reads what is not there. Whether or not the
+    # store sits under a cover: on a node it does, and is bound back into
+    # the view above, so "out of sight already" would skip every one.
     for name in off:
         d = os.path.join(store, name) if store else ""
-        if d and _real_dir(d) and not _inside(d, out_of_sight):
+        if d and _real_dir(d):
             steps.append(("hide", d))
     for t in ("/tmp", "/var/tmp", "/dev/shm"):
         if _real_dir(t):

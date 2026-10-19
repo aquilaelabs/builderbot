@@ -394,6 +394,16 @@ ok(has('tmpfs', '/tmp', 'mode=1777') && steps[0][0] === 'private' && steps[1][0]
           env: { ...process.env, BB_SESSION_CONF: mconf, BB_SESSION_ROOT: M, BB_SESSION_MOUNTS: mounts } }) };
     } catch (e) { return { code: e.status, out: `${e.stdout || ''}${e.stderr || ''}` }; }
   };
+  // On a machine like a node the store sits under a cover and is bound back:
+  // a toolchain switched off (R77) is hidden all the same, after that bind.
+  {
+    mkdirSync(join(mstore, 'hexkit'), { recursive: true });
+    const o = on('--off', 'hexkit');
+    const os3 = o.code === 0 ? JSON.parse(o.out) : [];
+    const at3 = (...s) => os3.findIndex(x => JSON.stringify(x) === JSON.stringify(s));
+    ok(at3('hide', join(mstore, 'hexkit')) > at3('bindro', `${STAGE}/store`, mstore) && at3('bindro', `${STAGE}/store`, mstore) >= 0,
+       `with the store under a cover, a toolchain switched off is hidden after the store is bound back (${o.code}: ${o.out.slice(0, 60)})`);
+  }
   const r = on();
   const st = r.code === 0 ? JSON.parse(r.out) : [];
   const ix = (...s) => st.findIndex(x => JSON.stringify(x) === JSON.stringify(s));
