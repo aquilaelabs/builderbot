@@ -872,8 +872,11 @@ ${code}`], { encoding: 'utf8' }).trim();
   const renoded = await post('/api/prefs', { project: 'alpha', node: 'local' });
   ok(renoded.status === 403 && /node is shared/.test((await renoded.json()).error || ''),
      '...and moving it to another node, because a node is shared');
+  // The project's settings, its build command among them, are Project
+  // settings Write's (B19, the operator, 19 Oct), which a plain member's
+  // role only reads.
   const built = await post('/api/prefs', { project: 'alpha', build: './gradlew' });
-  ok(built.status === 200, '...while the project\'s own build command is theirs to set');
+  ok(built.status === 403, '...and so is the project\'s build command, which needs Project settings Write');
 
   // The machinery is not a project and is not theirs at all.
   for (const [path, body] of [['/api/v1/nodes', { action: 'enroll', name: 'zzprobe' }],

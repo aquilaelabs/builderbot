@@ -6177,11 +6177,6 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self._readonly(name):
             return None
-        # The project's own settings are the Project settings area's to
-        # write (B19); what is the asker's own here (prefs.YOURS) is anybody's
-        # on the project. Projects Write alone is not enough.
-        if set(req) - set(prefs.YOURS) - {"project", "restart"} and self._refused("settings", name):
-            return None
         # Everything else in this dialog is the project's own; the node is
         # not, because a node is shared and moving a project onto one
         # reaches every other project there. Only a CHANGE is asked about
@@ -6273,6 +6268,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         held = (("node" in req or "nodes" in req) and prefs.node_changed(name, req)) \
             or (req.get("reads") is not None and prefs.reads_changed(name, req.get("reads")))
+        # Then the rest: the project's own settings are the Project settings area's to
+        # write (B19, the operator: Settings Write only); what is the asker's
+        # own here (prefs.YOURS) is anybody's on the project, and a field
+        # sent with the value it has is no change.
+        if prefs.project_changes(name, req) and self._refused("settings", name):
+            return None
         got = prefs.dialog_save(name, req, users.uid_of(self._who()))
         if reach and not got[0].get("error"):
             net_nudge()
