@@ -414,6 +414,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Folds, empty lists, badges and page searches look the same on every page: one fold arrow, one empty-state line, one badge style and one size of search box in a page's bar (b13d72f)
 - On a phone, fields you type into never make iOS zoom the page, two fields side by side stack the same way everywhere, and buttons in a bar are the finger's height on any phone-sized screen (b13d72f)
 - In the Containers manager an administrator's own projects come first; another project's containers are dimmed with the way onto that project, and changing them is refused as it is for anybody not on the project (0ef4ae0)
+- A project's Docker view looks like the Containers page for that project alone: how many run and how many have an update due, when the images were checked, and its containers in one card, as cards or a list, with Check for updates (4bef55f)
 - A project's page header wears its color as its card on Projects does: the ground, the edge and its buttons tinted (4bef55f)
 
 ### Removed

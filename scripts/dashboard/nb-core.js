@@ -738,31 +738,44 @@ function makeNotebook(project){
           () => { if (showing("briefing")) loadPreamble(); });
 
   // ---- the handle the rest of the page holds ------------------------------
-  let dkSeen = "";
+  // This project's containers as the Containers page draws them, scoped to
+  // it (the operator, 19 Oct): its tiles, when the images were checked, and
+  // its card in the page's cards or list, whichever this browser keeps.
+  let dkSeen = "", dkGot = null;
   async function loadNbDocker(){
     const p = (state?.projects || []).find(x => x.name === project);
     const node = p?.prefs?.node || dockerNode || "";
-    let got;
     try{
-      got = await (await fetch("/api/docker" + (node ? "?node=" + encodeURIComponent(node) : ""))).json();
+      dkGot = await (await fetch("/api/docker" + (node ? "?node=" + encodeURIComponent(node) : ""))).json();
     }catch(e){ $("dkHint").textContent = "docker: " + e; return; }
-    dockerSeen[got.node || node || ""] = got;
-    // What belongs to the project, which is the Docker tab's group for it.
+    dockerSeen[dkGot.node || node || ""] = dkGot;
+    drawNbDocker();
+  }
+  function drawNbDocker(){
+    const got = dkGot, node = got.node || "";
+    // What belongs to the project, which is the Containers page's group for it.
     const mine = (got.instances || []).filter(d => d.owner === project);
     const others = (got.containers || []).filter(c => c.owner === project);
     const job = got.job && (got.job.running || got.job.error) ? got.job : null;
     const blind = !!(got.blind || got.error || got.on === false);
-    const where = (nodesList || []).find(n => n.id === (got.node || node))?.name || "its node";
+    const where = (nodesList || []).find(n => n.id === node)?.name || "its node";
     const n = mine.length + others.length;
-    $("dkHint").textContent = n
-      ? `${n} container${n === 1 ? "" : "s"} of ${projLabel(project)}'s on ${where}${
-          blind ? ": the daemon did not answer, so the rows cannot say what is running" : ""}`
-      : `0 containers on ${where}`;
-    const key = JSON.stringify([mine, others, job && job.step, job && job.running, job && (job.log || "").length]);
+    $("dkHint").textContent = `${n} container${n === 1 ? "" : "s"} on ${where}${
+      blind && n ? ": the daemon did not answer, so the rows cannot say what is running" : ""}`;
+    const key = JSON.stringify([mine, others, job && job.step, job && job.running, job && (job.log || "").length,
+                                dmView, got.images_at, blind]);
     if (key === dkSeen) return;
     dkSeen = key;
+    $("dkSeg").innerHTML = n ? dmViewSeg() : "";
+    dmViewWire($("dkSeg"), () => { dkSeen = ""; drawNbDocker(); });
+    const ck = $("dkCheck");
+    ck.hidden = blind || !mayDocker() || !mine.length;
+    ck.onclick = () => dmCheck(ck, node, () => { unbusy(ck, "Check"); ck.insertAdjacentHTML("beforeend", `<span class="lng"> for updates</span>`); loadNbDocker(); });
+    $("dkTop").innerHTML = blind || !n ? "" : dmTiles({running: mine.filter(d => d.running).length, all: mine.length,
+      behind: mine.filter(d => (d.images_behind || []).length || d.nginx_to).length, checked: !!got.images_at})
+      + (mine.length ? dmStatus(got) : "");
     // What the view is for, as its empty state (R119 step 4).
-    $("dkList").innerHTML = (dmRowsHtml(mine, job, blind) + dmOtherRowsHtml(others))
+    $("dkList").innerHTML = dmGroupsHtml(mine, others, job, blind, project)
       || `<div class="field"><div class="hint nbempty">Send ${esc(projLabel(project))} from ${pageLink("", "Artifacts", `#/projects/${encodeURIComponent(project)}/artifacts`)}, or pick it on a container's row on the ${pageLink("docker", "Containers page")}.</div></div>`;
     dmWireRows($("dkList"), got);
   }

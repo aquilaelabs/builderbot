@@ -4484,13 +4484,20 @@ print(json.dumps(out))
   const view = await page.$eval('.pane .nb [data-view="docker"]', v => ({
     hint: v.querySelector('#dkHint').textContent,
     rows: [...v.querySelectorAll('#dkList .row[data-inst], #dkList .row[data-ctr]')].map(r => r.dataset.inst || r.dataset.ctr),
-    buttons: [...v.querySelectorAll('#dkList .row[data-inst="helper-for-eps|main"] [data-dm]')].map(b => b.dataset.dm) }));
+    buttons: [...v.querySelectorAll('#dkList .row[data-inst="helper-for-eps|main"] [data-dm]')].map(b => b.dataset.dm),
+    cards: [...v.querySelectorAll('#dkList > .dmcard')].map(c => c.querySelector('.dmgroup b')?.textContent),
+    loose: v.querySelectorAll('#dkList > .row').length,
+    tiles: [...v.querySelectorAll('#dkTop .tile')].map(t => t.textContent.replace(/\s+/g, ' ').trim()) }));
   ok(view.rows.includes('helper-for-eps|main') && view.rows.includes('ep.silon|main')
      && view.rows.includes('someone-elses') && !view.rows.includes('ep.silon|loose'),
      `the project's Docker view lists what belongs to it, and not its own container sent to no project (${view.rows.join(' ')})`);
   ok(view.buttons.includes('up') && view.buttons.includes('rebuild'),
      `...with the manager's own rows and controls (${view.buttons.join(' ')})`);
-  ok(/3 containers of ep\.silon's on/.test(view.hint), `...and a line counting them (${view.hint.slice(0, 80)})`);
+  ok(/3 containers on/.test(view.hint), `...and a line counting them (${view.hint.slice(0, 80)})`);
+  // As the Containers page draws them, scoped to the project (the operator,
+  // 19 Oct): its own card under its tiles, no row loose on the page.
+  ok(view.cards.length === 1 && view.loose === 0 && view.tiles.some(t => /running/.test(t)) && !view.tiles.some(t => /projects/.test(t)),
+     `...in the project's own card under its tiles, as the Containers page draws a group (${JSON.stringify({cards: view.cards, loose: view.loose, tiles: view.tiles})})`);
   // Idle, the view re-reads nothing (B727): it followed the status poll, and
   // on an agent node each docker read moved the nodes token, which ran the
   // status poll, which read docker again, 134 requests in 30 s.

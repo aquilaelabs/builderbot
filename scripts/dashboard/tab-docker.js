@@ -1139,7 +1139,7 @@ async function loadWire(d){
     // snap the wiring shut every half second.
     const inst = d.closest("[data-inst]")?.dataset.inst || `${project}|${instance}`;
     const nd = document.querySelector(
-      `.dmtab .row[data-inst="${CSS.escape(inst)}"] details.sect`);
+      `:is(.dmtab, .dkview) .row[data-inst="${CSS.escape(inst)}"] details.sect`);
     if (!nd || nd.dataset.done) return;
     nd.dataset.done = "1";
     nd.querySelector(".wire").innerHTML = html;
@@ -1852,7 +1852,7 @@ const dmLoading = new Set();
 const DM_IMG_COLS = [{label: "Image"}, {label: "State", w: "6.5rem"}, {label: "ID", w: "8rem"},
                      {label: "Size", w: "6rem", num: true}, {label: "Created", w: "minmax(0,.6fr)"}];
 const DM_VOL_COLS = [{label: "Volume"}, {label: "Driver", w: "8rem"}];
-const dmFoldNow = key => document.querySelector(`.dmtab details[data-sect="${CSS.escape(key)}"], .dkrows details[data-sect="${CSS.escape(key)}"]`);
+const dmFoldNow = key => document.querySelector(`:is(.dmtab, .dkview) details[data-sect="${CSS.escape(key)}"]`);
 async function loadDockerImages(det){
   const key = det.dataset.sect;
   if (!key || dmLoading.has(key)) return;
@@ -2416,22 +2416,47 @@ function dmBar(b){
   return `<div class="field docbarrow dmpick">${
       nodePick("dmNode", ghost ? null : b.nodes, dockerNode || b?.nodes[0]?.id)}<input${ghost ? "" : ` id="dmSearch"`} type="search"
         placeholder="${isPhone() ? "search" : "name, image, port or project"}" autocomplete="off" aria-label="narrow the containers: name, image, port or project" value="${esc(dmSearch)}"${dead}><span class="sp"></span>
-      <div class="pseg dmviewseg" role="group" aria-label="cards or a list">
-        <button type="button" data-dmview="cards" class="${dmView === "cards" ? "on" : ""}" aria-pressed="${dmView === "cards"}" title="each container as a card" aria-label="Cards"${dead}><span class="lng">Cards</span><span class="shrt">${DM_ICON_CARDS}</span></button>
-        <button type="button" data-dmview="list" class="${dmView === "list" ? "on" : ""}" aria-pressed="${dmView === "list"}" title="one line per container, opening into its card" aria-label="List"${dead}><span class="lng">List</span><span class="shrt">${DM_ICON_LIST}</span></button></div>
+      ${dmViewSeg(dead)}
       ${mayDocker() ? `<span class="actbar">${
       b?.blind ? "" : `<button type="button"${ghost ? "" : ` id="bDockerCheck"`}${dead}>${barSaid("Check for updates", "Check")}</button>`}${
       `<button type="button"${ghost ? "" : ` id="bDockerNew"`} class="primary"${dead}>${barSaid("New container", "New")}</button>`}</span>` : ""}</div>`;
 }
+// Cards or a list, this browser's choice: the page's and a notebook's
+// Docker view's, which keep the one choice between them.
+function dmViewSeg(dead = ""){
+  return `<div class="pseg dmviewseg" role="group" aria-label="cards or a list">
+        <button type="button" data-dmview="cards" class="${dmView === "cards" ? "on" : ""}" aria-pressed="${dmView === "cards"}" title="each container as a card" aria-label="Cards"${dead}><span class="lng">Cards</span><span class="shrt">${DM_ICON_CARDS}</span></button>
+        <button type="button" data-dmview="list" class="${dmView === "list" ? "on" : ""}" aria-pressed="${dmView === "list"}" title="one line per container, opening into its card" aria-label="List"${dead}><span class="lng">List</span><span class="shrt">${DM_ICON_LIST}</span></button></div>`;
+}
+// The press on it, then `redraw`; kept for the next open.
+function dmViewWire(el, redraw){
+  el.querySelectorAll("[data-dmview]").forEach(b => b.onclick = () => {
+    dmView = b.dataset.dmview === "list" ? "list" : "cards";
+    try{ localStorage.setItem("bb.dmview", dmView); }catch(e){ /* private mode */ }
+    redraw();
+  });
+}
+// Check for updates on `node`'s images, said as a notice, then `after`.
+async function dmCheck(btn, node, after){
+  busy(btn, "Checking");
+  try{
+    const j = await (await postJSON("/api/images", {action: "check", node})).json();
+    if (j.error) notify(j.error, true);
+    else notify(j.behind ? `${j.behind} container${j.behind === 1 ? " has" : "s have"} a newer image: Update on ${j.behind === 1 ? "its row" : "their rows"}`
+                         : `checked ${j.checked}: every registry image is current`);
+  }catch(e){ notify("could not check: " + e, true); }
+  after();
+}
 // The tiles: what runs of how many, the updates due once images were
-// checked, the projects, and what on this daemon nobody here started.
+// checked, the projects, and what on this daemon nobody here started; a
+// project's own Docker view counts its containers alone, with no projects.
 function dmTiles(t){
   const g = !t;
   return statTiles([
     {label: "running", value: g ? GHOST : t.running, sub: g ? GHOST : `of ${t.all} container${t.all === 1 ? "" : "s"}`,
      tone: !g && t.all && !t.running ? "warn" : ""},
     {label: "updates due", value: g ? GHOST : t.behind, tone: !g && t.behind ? "warn" : "", omit: !g && !t.checked && !t.behind},
-    {label: "projects", value: g ? GHOST : t.projects},
+    {label: "projects", value: g ? GHOST : t.projects, omit: !g && t.projects === undefined},
     {label: "not ours", value: g ? 0 : t.notOurs, omit: g || !t.notOurs, title: "on this daemon, started by nobody here"},
   ]);
 }
@@ -2616,16 +2641,7 @@ function renderDockerInto(i){
   el.querySelectorAll("[data-rdeny]").forEach(b => b.onclick = () =>
     phFetch({action: "deny", id: Number(b.dataset.rdeny)}));
   const ck = el.querySelector("#bDockerCheck");
-  if (ck) ck.onclick = async () => {
-    busy(ck, "Checking");
-    try{
-      const j = await (await postJSON("/api/images", {action: "check", node: dockerList?.node || dockerNode || ""})).json();
-      if (j.error) notify(j.error, true);
-      else notify(j.behind ? `${j.behind} container${j.behind === 1 ? " has" : "s have"} a newer image: Update on ${j.behind === 1 ? "its row" : "their rows"}`
-                           : `checked ${j.checked}: every registry image is current`);
-    }catch(e){ notify("could not check: " + e, true); }
-    dockerRev++; loadDocker();
-  };
+  if (ck) ck.onclick = () => dmCheck(ck, dockerList?.node || dockerNode || "", () => { dockerRev++; loadDocker(); });
   const pk = el.querySelector("#dmNode");
   if (pk) pk.onchange = () => {
     dockerNode = pk.value;
@@ -2642,12 +2658,7 @@ function renderDockerInto(i){
   el.querySelectorAll("[data-dmchip]").forEach(c => c.onclick = () =>
     // ...the groups it leaves fading through, as a page does (fadeThrough).
     fadeThrough(DM_PARTS, () => { dmChip = c.dataset.dmchip; dockerRev++; drawPanes(); }));
-  // Cards or a list: this browser's choice, kept for the next open.
-  el.querySelectorAll("[data-dmview]").forEach(b => b.onclick = () => {
-    dmView = b.dataset.dmview === "list" ? "list" : "cards";
-    try{ localStorage.setItem("bb.dmview", dmView); }catch(e){ /* private mode */ }
-    fadeThrough(DM_PARTS, () => { dockerRev++; drawPanes(); });
-  });
+  dmViewWire(el, () => fadeThrough(DM_PARTS, () => { dockerRev++; drawPanes(); }));
   // The search redraws as it is typed, and keeps its focus and its caret
   // across the redraw, which replaces the box.
   const sb = el.querySelector("#dmSearch");
