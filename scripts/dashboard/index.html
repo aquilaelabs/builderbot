@@ -3007,6 +3007,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   box-shadow:inset 4px 0 0 0 var(--gc);
   border-bottom:1px solid color-mix(in srgb, var(--gc) 50%, var(--line))}
 .dmtab .dmgroup.none{--gc:var(--line)}
+/* Another project's containers, for an administrator not on it (R274): its
+   heading in its color, the reason under it, its rows dimmed. */
+.dmtab .dmcard.notmine>:not(.dmgroup,.dmwhy){opacity:.55}
+.dmtab .dmwhy{padding:6px var(--row-x)}
 /* ---- floating cards at a desk (R262, the operator, 17 Oct) ---------------
    Every page's content floats as cards on the page's margin, the way Home
    and Projects do: no line runs to the page's edge. A page-level section is

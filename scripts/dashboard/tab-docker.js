@@ -1978,6 +1978,9 @@ function dmFollowTick(det, key){
 // them. `list` is the answer the rows were drawn from, for the saved values
 // a pick is compared against.
 function dmWireRows(el, list = dockerList){
+  // Another project's containers, for an administrator not on it (R274):
+  // read, never acted on; the server refuses the same.
+  el.querySelectorAll(".dmcard.notmine :is(button, input, select, textarea)").forEach(c => { c.disabled = true; });
   // The unrouted port's way to the nginx tab (dmUnrouted).
   el.querySelectorAll("[data-dmnginx]").forEach(a => a.onclick = e => { e.preventDefault(); openNginxTab(a.dataset.dmnginx); });
   wireSections(el);
@@ -2289,27 +2292,38 @@ function dmGroupsHtml(ins, cs, job, blind, only = ""){
     tone ? ` style="--gc:${tone}"` : ""}><b>${esc(t)}</b>${
     sub ? `<span class="dim">${esc(sub)}</span>` : ""}</div>`;
   const byName = (a, b) => a.localeCompare(b, undefined, {sensitivity: "base"});
+  // A deleted project's containers keep its name until it is restored from
+  // the trash, or they are moved or given to another project (8 Oct).
+  const gone = o => [...ins, ...cs].some(r => r.owner === o && r.owner_gone);
+  const gonesName = o => [...ins, ...cs].find(r => r.owner === o)?.owner_label || o;
+  // An administrator sees every project's containers and works on the ones
+  // on their own list, as anybody does (R274, the operator 19 Oct): those
+  // first, by name; another project's after them, dimmed, its controls dead
+  // and the way onto it said under its heading.
+  const notMine = o => !!state?.admin && o !== "System" && !gone(o)
+    && (state?.projects || []).some(p => p.name === o && !p.mine);
   const owners = [...new Set([...ins, ...cs].map(r => r.owner || ""))]
-    .filter(Boolean).filter(o => !only || only === o).sort((a, b) => byName(projLabel(a), projLabel(b)));
+    .filter(Boolean).filter(o => !only || only === o)
+    .sort((a, b) => notMine(a) - notMine(b) || byName(projLabel(a), projLabel(b)));
   const rowsOf = o =>
     dmRowsHtml(ins.filter(d => (d.owner || "") === o).sort((a, b) => byName(a.name, b.name)), job, blind)
     + dmOtherRowsHtml(cs.filter(c => (c.owner || "") === o)
         .sort((a, b) => byName(a.name || a.id, b.name || b.id)));
   const group = o => dmView === "list" ? tblWrap(DM_COLS, rowsOf(o), "dmtbl") : rowsOf(o);
   const loose = [...ins, ...cs].some(r => !r.owner) && (!only || only === "none");
-  // A deleted project's containers keep its name until it is restored from
-  // the trash, or they are moved or given to another project (8 Oct).
-  const gone = o => [...ins, ...cs].some(r => r.owner === o && r.owner_gone);
-  const gonesName = o => [...ins, ...cs].find(r => r.owner === o)?.owner_label || o;
   // System is BuilderBot's own (R180): what it deploys itself, the nginx
   // container today, set by that deployment and by no picker.
   // Each group a card at a desk (R262): its heading and its rows together.
-  const card = html => `<section class="dmcard">${html}</section>`;
-  return owners.map(o => card(gone(o)
-      ? head(`${gonesName(o)} (deleted)`, "restore it from the trash, or Move these to another project", null) + group(o)
+  const card = (html, cls = "") => `<section class="dmcard${cls}">${html}</section>`;
+  return owners.map(o => gone(o)
+      ? card(head(`${gonesName(o)} (deleted)`, "restore it from the trash, or Move these to another project", null) + group(o))
       : o === "System"
-        ? head("System", "BuilderBot's own · no session sees these", null) + group(o)
-        : head(projLabel(o), "", colorTone(projectColor(o))) + group(o))).join("")
+        ? card(head("System", "BuilderBot's own · no session sees these", null) + group(o))
+        : notMine(o)
+          ? card(head(projLabel(o), "", colorTone(projectColor(o)))
+              + `<div class="sub bad dmwhy">${esc(projLabel(o))} is not on your list of projects: add it to your own list on ${
+                  pageLink("users", "the Users page")} to work on these</div>` + group(o), " notmine")
+          : card(head(projLabel(o), "", colorTone(projectColor(o))) + group(o))).join("")
     + (loose ? card(head("No project", "no session sees these", null) + group("")) : "");
 }
 

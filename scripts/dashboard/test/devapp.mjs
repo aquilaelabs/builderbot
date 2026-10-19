@@ -4603,6 +4603,31 @@ print(json.dumps(out))
       stdio: ['ignore', 'pipe', 'pipe'] });
   ok(/helper-for-eps\s+written here/.test(ls) && /someone-elses\s+not ours/.test(ls) && !/loose/.test(ls),
      `bb devapp ls lists what belongs to the project and nothing else (${ls.trim().replace(/\s+/g, ' ').slice(0, 120)})`);
+  // An administrator not on a project acts on none of its containers, as
+  // anybody (R274): the server refuses, and the page draws its group after
+  // the administrator's own, dimmed, its controls dead and the way onto it
+  // said under its heading.
+  {
+    const mine = await page.evaluate(async () => (await (await fetch('/api/users')).json()).users.find(u => u.name === 'test').projects);
+    await api('/api/users', { action: 'projects', name: 'test', projects: mine.filter(p => p !== 'ep.silon') });
+    const refused = await api('/api/dockerctl', { action: 'restart', container: 'someone-elses' });
+    const read = await api('/api/devapp', { project: 'ep.silon', instance: 'loose', action: 'state' });
+    await page.evaluate(async () => { await refresh(); location.hash = '#/containers'; dockerList = null; dockerRev++; loadDocker(); });
+    await page.waitForSelector('.doc.on .dmcard.notmine', { timeout: 15000 }).catch(() => {});
+    const drawn = await page.evaluate(() => {
+      const cards = [...document.querySelectorAll('.doc.on .dmcard')];
+      const off = cards.find(c => c.classList.contains('notmine'));
+      return off ? { why: off.querySelector('.dmwhy')?.textContent || '',
+                     live: [...off.querySelectorAll('button')].filter(b => !b.disabled).length,
+                     after: cards.slice(cards.indexOf(off)).every(c => c.classList.contains('notmine') || !c.querySelector('.dmgroup:not(.none)')) } : null;
+    });
+    await api('/api/users', { action: 'projects', name: 'test', projects: mine });
+    await page.evaluate(() => refresh());
+    ok(refused.status === 403 && /not on your list of projects/.test(refused.error || '') && read.status === 200,
+       `an administrator not on a project may read its containers and not act on them (${refused.status}: ${refused.error}; read ${read.status})`);
+    ok(drawn && /not on your list/.test(drawn.why) && drawn.live === 0 && drawn.after,
+       `...and the Containers page draws them after their own, dimmed, dead, and says why (${JSON.stringify(drawn)})`);
+  }
   // Put back under nobody, and the session loses it at once.
   await api('/api/dockerctl', { action: 'owner', container: 'someone-elses', owner: '' });
   await api('/api/devapp', { project: 'helper-for-eps', instance: 'main', action: 'owner', owner: '' });

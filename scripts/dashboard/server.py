@@ -6680,7 +6680,25 @@ class Handler(BaseHTTPRequestHandler):
         under = field(req, "owner")
         if act == "owner" and under and under not in set(project_names(me)):
             return self._json({"error": f"no project called {under}"}, 400)
+        # A project's container is worked on by the people on that project,
+        # an administrator as much as anyone (R274): one not on it adds it to
+        # their own list first. System's and nobody's stay an administrator's.
+        if act != "prune":
+            with devapp.on_node(nid or None):
+                owner = containers.owner_named(name)
+            if why := self._not_on_list(me, owner):
+                return self._json({"error": why}, 403)
         return self._json(*containers.admin_verb(act, name, nid, under))
+
+    def _not_on_list(self, me, owner):
+        """Why `me` may not act on a container of project `owner`, or "":
+        the project list's seatbelt (users.may_work), which an administrator
+        wears too (R274). A container of no project, of System, or of a
+        project gone to the trash asks nothing of it."""
+        if not owner or owner == devapp.SYSTEM or not registry.is_project(owner) or users.may_work(me, owner):
+            return ""
+        return (f"{registry.label(owner)} is not on your list of projects: "
+                "add it to your own list on the Users page to work on its containers")
 
     def _container(self, req):
         """A container from a compose file written here, with no project:
@@ -6772,6 +6790,13 @@ class Handler(BaseHTTPRequestHandler):
             reads = {owner} if sess and act in ("state", "starter", "probe") and owner and self._reads(owner) else set()
             if owner not in ({sess} | reads if sess else set(project_names(me))):
                 return self._json({"error": containers.not_ours(devapp.pname(name, want), sess)}, 403)
+        # ...and an administrator sees every project's and changes those on
+        # their own list (R274); reading one is everybody's.
+        elif act not in ("starter", "state", "probe"):
+            want = field(req, "instance") or (devapp.send_name(name, field(req, "compose")) if act == "new"
+                                              else devapp.only_instance(name))
+            if why := self._not_on_list(me, devapp.owner_of(name, want)):
+                return self._json({"error": why}, 403)
         # Reading is everybody's; changing what is running is not (roadmap
         # #27). Named, not derived from the verb: an action that should be
         # restricted and is not on this list is a decision somebody has to

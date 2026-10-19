@@ -474,6 +474,13 @@ def listed_owner(c):
     return (devapp._owners().get(devapp._node_here()) or {}).get(c.get("name") or "", "")
 
 
+def owner_named(name):
+    """Which project a container on the node the current block addresses
+    belongs to, by its name now: "" for none or for no such container."""
+    c = _known_container(name)
+    return listed_owner(c) if c else ""
+
+
 def set_container_owner(name, owner):
     """Which project a container BuilderBot did not start belongs to, on the
     node the current block addresses; "" for none. Only a container the
