@@ -339,13 +339,19 @@ def wait_moved(project, rev, timeout):
     """Hold until the project's revision passes `rev` or `timeout` seconds
     go by: a device's long poll, as a node's held work request is its."""
     end = time.monotonic() + timeout
-    with _moved:
-        while rev_of(project) <= rev:
-            left = end - time.monotonic()
+    while True:
+        # A change made here some other way (a write through the editor's
+        # door, a session on the controller) is only seen by a scan: one
+        # every few seconds while it waits, held to SCAN_EVERY by scan().
+        with contextlib.suppress(ValueError):
+            scan(project)
+        left = end - time.monotonic()
+        with _moved:
+            if rev_of(project) > rev:
+                return True
             if left <= 0:
                 return False
-            _moved.wait(min(left, 5.0))
-    return True
+            _moved.wait(min(left, 3.0))
 
 
 def held_changed():

@@ -116,6 +116,20 @@ const woke = await waiting;
 ok(woke.status === 200 && (woke.changes || []).some(c => c[0] === 'from-laptop.txt') && Date.now() - t0 < 10000,
    `a device's long poll returns with another device's change within seconds (${Date.now() - t0} ms, ${(woke.changes || []).map(c => c[0]).join(', ')})`);
 
+// ...and one written on the controller some other way (a merge, a commit, a
+// file written straight onto its disk) is found by the waiting poll's own
+// scan within seconds, not at the app's next look of its own.
+{
+  const at2 = (await dev(b.token, 'sync', { action: 'state', project: 'alpha' })).rev;
+  const t1 = Date.now();
+  const waiting2 = dev(b.token, 'sync', { action: 'since', project: 'alpha', rev: at2, wait: 20 });
+  await new Promise(r => setTimeout(r, 400));
+  writeFileSync(`${tree}/on-the-disk.txt`, 'written on the controller\n');
+  const woke2 = await waiting2;
+  ok(woke2.status === 200 && (woke2.changes || []).some(c => c[0] === 'on-the-disk.txt') && Date.now() - t1 < 12000,
+     `...and a file written on the controller's disk reaches a waiting device by its poll's scan (${Date.now() - t1} ms)`);
+}
+
 // ---- the app itself (windows/bbcompanion), its own command line against this server -----------
 // The agent's sync, shared, on the device door: signed in, a project picked
 // into a folder, the first copy made; then a change made in the folder goes
