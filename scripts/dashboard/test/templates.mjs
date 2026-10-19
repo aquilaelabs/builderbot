@@ -77,7 +77,7 @@ const outline = sel => {
     waiting: !!first('.loading'),
     // the page empty here: a line saying so and nothing laid out under it
     // (a notebook view's empty hint, a page's one line of hint alone)
-    empty: !!first('.empty, .hnone, .nbempty, .doclist > .hint:only-child') && !first('.tbl') && !first('.rrow, .row, .tc, .card'),
+    empty: !!first('.empty, .nbempty, .doclist > .hint:only-child') && !first('.tbl') && !first('.rrow, .row, .tc, .card'),
     // where the first card starts under the bar, the tiles and the status line
     top: card ? Math.round(card.getBoundingClientRect().top - root.getBoundingClientRect().top) : null,
     bar: !!bar && shown(bar),

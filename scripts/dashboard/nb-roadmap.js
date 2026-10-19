@@ -159,7 +159,7 @@ function nbRoadmapView({$, nb}){
     // whole item, and on a phone a pill sharing the first line pushed the words
     // into a column two thirds as wide as the ones under it.
     const tags = idx >= 0 || r.by !== "claude" ? ""
-      : `<span class="who" title="Claude put this here">claude</span>`;
+      : `<span class="tag who" title="Claude put this here">claude</span>`;
     // In reorder mode the row's three controls are replaced rather than joined:
     // five buttons and a number do not fit a phone, and moving things about is
     // not something anybody does at the same time as sending them.

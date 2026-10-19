@@ -377,7 +377,7 @@ function renderDiff(text){
   // A diff with no file header (a single file's, asked by path) is the
   // text alone; a fold with nothing to name would wear the browser's word.
   return files.map(f => f.name
-    ? `<details class="dfile"${sectAttr("diff:" + f.name, true)}><summary><code>${esc(f.name)}</code></summary>${pre(f)}</details>`
+    ? `<details class="dfile chev"${sectAttr("diff:" + f.name, true)}><summary><code>${esc(f.name)}</code></summary>${pre(f)}</details>`
     : pre(f)).join("");
 }
 

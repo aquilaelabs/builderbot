@@ -74,7 +74,7 @@ function nbHistoryView({$, nb, project}){
       const where = e.step != null ? `step ${e.step + 1} of ${idLink("R" + e.id)}` : idLink("R" + e.id);
       return `<div class="hist">${dayHead(e, all[k - 1], nb.roadmapReleases)}
       <span class="when">${esc(stamp(e.at || 0))}</span>
-      <span class="act ${tone}">${esc(word)}</span>
+      <span class="tag act ${tone}">${esc(word)}</span>
       <span class="what">${where} · ${esc(e.text || "")}${
           e.was ? ` <span class="was">${esc(e.was)}</span>` : ""}${
           e.act === "moved" ? ` <span class="was" style="text-decoration:none">(place ${esc(String(e.from))} to ${esc(String(e.to))})</span>` : ""}${
@@ -182,7 +182,7 @@ function nbHistoryView({$, nb, project}){
              : emptyText || "Nothing has happened here through the notebook yet."}</div>`
         : rows.map((e, k) => `<div class="hist">${dayHead(e, rows[k - 1], releases())}
             <span class="when">${esc(stamp(e.at || 0))}</span>
-            <span class="act ${LOG_ACTS[e.act] || ""}">${esc(LOG_WORDS[e.act] || e.act || "changed")}</span>
+            <span class="tag act ${LOG_ACTS[e.act] || ""}">${esc(LOG_WORDS[e.act] || e.act || "changed")}</span>
             <span class="what">${e.id != null ? `${letter ? idLink(letter + e.id) : esc(String(e.id))} · ` : ""}${esc(e.text || "")}
               <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}${
               e.who ? ` · ${esc(e.who)}` : ""}${

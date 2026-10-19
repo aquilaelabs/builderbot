@@ -79,7 +79,7 @@ ok(await page.evaluate(() => tabOf(panes[0])?.kind === 'home' && location.hash =
   const same = await page.evaluate(() => {
     const card = document.querySelector('.doc.on .homegrid .hcard');
     return { home: card.querySelectorAll('.bnote').length, bell: needsRows().length,
-             empty: !!card.querySelector('.hnone') };
+             empty: !!card.querySelector('.empty') };
   });
   ok(same.home === same.bell && (same.bell > 0 || same.empty),
      `Attention carries the bell's own rows (${same.home} of ${same.bell})`);

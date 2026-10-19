@@ -105,9 +105,9 @@ function nbMemoryView({$, nb}){
       if (ta || t) typed.set(d.dataset.file, {text: ta?.value, title: t?.value, hook: h?.value});
     });
     $("memList").innerHTML = j.memories.map(m => `
-    <details class="mem" data-file="${esc(m.file)}"${open.has(m.file) ? " open" : ""}>
+    <details class="mem chev" data-file="${esc(m.file)}"${open.has(m.file) ? " open" : ""}>
       <summary>
-        ${m.type ? `<span class="mtype ${esc(m.type)}">${esc(m.type)}</span>` : ""}
+        ${m.type ? `<span class="tag mtype ${esc(m.type)}">${esc(m.type)}</span>` : ""}
         <span class="mname">${esc(m.name)}</span>
         <span class="mwhen">${ago(m.when)}</span>
       </summary>

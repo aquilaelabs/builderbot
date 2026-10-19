@@ -1096,7 +1096,6 @@ body.firstrun #panes{display:none}
    too (the operator, 17 Oct: the headings sat 4px left of the tiles'). */
 .hcard h3,.hsect h3{margin:0;padding:12px 16px;min-height:46px;box-sizing:border-box;display:flex;align-items:center;
   font:var(--f-sect);border-bottom:var(--hair) solid var(--line);background:var(--head-bg)}
-.hnone{padding:10px 16px;color:var(--dim);font:var(--f-ui)}
 /* Getting started (R267): a line per step, its tick in first run's circle,
    its way there at the right; a step done is dim. */
 .hstart h3{display:flex;align-items:center;gap:8px}
@@ -1954,22 +1953,17 @@ select:focus{outline-offset:-2px}
    and plain text because it is not a control; it cannot be toggled here. */
 .row .sub .ok{color:var(--pass)}
 
-/* The disclosure marker, once, for every <details> on the page: a memory, a
-   bug report, a findings group, the component fold. All four set display:flex
-   on their summary, which REMOVES the native marker in Chromium, so each had
-   grown its own hand-copied ::before; the component fold was added without
-   one and silently had no triangle at all. Grouped here so a fold cannot be
-   built without the arrow that says it opens. */
-.mem>summary,.bug>summary,details.grp>summary,.veradd>summary{
-  cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
-.mem>summary::-webkit-details-marker,.bug>summary::-webkit-details-marker,
-details.grp>summary::-webkit-details-marker,
-.veradd>summary::-webkit-details-marker{display:none}
-.mem>summary::before,.bug>summary::before,
-.veradd>summary::before{content:"\25B8";color:var(--dim);font-size:11px;
-  width:9px;flex:0 0 auto}
-.mem[open]>summary::before,.bug[open]>summary::before,
-.veradd[open]>summary::before{content:"\25BE"}
+/* The disclosure marker, once, for every fold on the page (consistency
+   batch 5): a section (.sect, below) and any other fold, which wears .chev:
+   a memory, a bug report, a rule, a diff's file, a findings rule, the
+   version form. Each had grown its own hand-copied ::before, a findings
+   group and a diff's file their own sizes, and Containers' list a CSS
+   triangle; a fold built with .chev cannot lack the arrow that says it
+   opens. A roadmap group draws its caret as its row's first control. */
+.chev>summary,details.grp>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+.chev>summary::-webkit-details-marker,details.grp>summary::-webkit-details-marker{display:none}
+.chev>summary::before{content:"\25B8";color:var(--dim);font-size:11px;width:9px;flex:0 0 auto}
+.chev[open]>summary::before{content:"\25BE"}
 /* A roadmap group's summary is its item row, which fills the line, and its
    caret is the row's own first control, in the place the send arrow had,
    level with the first line of the words (the operator, 29 Sep). */
@@ -2271,10 +2265,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 /* A diff: one fold per file, the lines colored, and it scrolls inside its
    own box on a phone rather than the pane. */
 .dfile{border-top:var(--hair) solid var(--line);margin-top:6px}
-.dfile>summary{cursor:pointer;list-style:none;padding:6px 0;font:var(--f-ui);color:var(--dim)}
-.dfile>summary::-webkit-details-marker{display:none}
-.dfile>summary::before{content:"\25B8";font-size:11px;margin-right:6px}
-.dfile[open]>summary::before{content:"\25BE"}
+.dfile>summary{padding:6px 0;font:var(--f-ui);color:var(--dim)}
 pre.diff{margin:0;overflow-x:auto;font:12px/1.5 var(--mono);white-space:pre;
   background:var(--sunk);border:var(--hair) solid var(--line);border-radius:var(--r-control);padding:6px 8px}
 pre.diff span{display:block;min-width:max-content;padding:0 4px}
@@ -2354,7 +2345,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* Adding goes at the top: the control that adds to a view is the first band
    under its head row, one shape on every view, and its form unrolls in its
    place: never at the foot, where a phone scrolls past the list to find it. */
-.addbar,.roadmapadd{display:flex;gap:8px;align-items:center}
+.addbar,.roadmapadd{display:flex;gap:var(--field-gap);align-items:center}
 .addbar button{flex:0 0 auto;min-height:var(--tap)}
 /* The Docker manager's top band: New container at the left, when the images
    were checked and Check for updates at the right, one line. An action
@@ -2396,12 +2387,12 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* Every control row in the notebook (the log's filters, the tracker's sort)
    is this shape: what narrows it stretches, what picks an order does not. One
    class so the two rows cannot drift into looking like different features. */
-.histbar{display:flex;gap:7px;align-items:center}
+.histbar{display:flex;gap:var(--field-gap);align-items:center}
 .histbar[hidden]{display:none}
 .histbar input{flex:1;min-width:0}
 .histbar select{flex:0 0 auto;width:auto}
 .histbar label{flex:0 0 auto;margin:0;color:var(--dim);font:var(--f-note);align-self:center;line-height:1}
-@media(max-width:560px){ .histbar{flex-wrap:wrap} .histbar input{flex:1 1 100%} }
+@media(max-width:600px){ .histbar{flex-wrap:wrap} .histbar input{flex:1 1 100%} }
 /* The reason a line went, under the line it went with: indented, because it
    is a note about the event above it and not an event of its own. */
 .hist .note{display:block;color:var(--gold);font:var(--f-note);margin-top:2px}
@@ -2412,9 +2403,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   min-width:8.5em}
 /* The badge: one voice for every small uppercase chip in the notebook:
    the log's verb, the who-mark, a memory's type, a bug's severity and
-   status. They were four hand-copied rules before, which is how "the same
-   design language" quietly stops being the same. */
-.hist .act,.roadmap .who,.mem .mtype,.bug .sev,.bug .bstat{flex:0 0 auto;
+   status, each wearing .tag. They were four hand-copied rules before, then
+   one rule naming five component classes, which is how "the same design
+   language" quietly stops being the same. */
+.tag{flex:0 0 auto;
   font:var(--f-tag);text-transform:uppercase;letter-spacing:.4px;
   padding:3px 5px;border-radius:var(--r-small);border:var(--hair) solid var(--line);
   color:var(--dim);white-space:nowrap}
@@ -2602,7 +2594,6 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    the list, the bar's search as wide as a control, and a search's lines as
    rows that open their doc at their section, the words marked. */
 .helptab .wknav a.on{color:var(--ink);font-weight:600;text-decoration:none}
-.helptab .docbarrow #helpQ{flex:1 1 auto;max-width:min(var(--ctl-w),85%)}
 .helphit{display:flex;width:100%;text-align:left;background:none;border:0;border-bottom:var(--hair) solid var(--line);
   border-radius:0;justify-content:flex-start;white-space:normal;min-height:var(--tap);padding:var(--row-y) 0;color:inherit}
 .helphit .sub{display:block;margin-top:2px}
@@ -3193,7 +3184,6 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pane .bar.proj .pnote.dim{color:var(--dim)}
 @media(max-width:600px){ .pane .bar.proj .pfacts{flex:1 1 100%;max-width:none} }
 /* The Projects page (R218 step 3): a searchable grid of cards with status. */
-.projtab .docbarrow #pjSearch{flex:1 1 220px}
 .projtab .docbarrow #bTrashTab{min-width:var(--tap);padding:4px 8px}
 /* The Claude chooser drawn in a project page's pane (R218 step 3): as wide
    as its words, never the pane. */
@@ -3420,15 +3410,12 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .dmtab details.dmline{display:block;padding:0}
 .dmtab details.dmline > summary.dmsum{cursor:pointer;list-style:none;padding:var(--row-y) var(--row-x);min-height:var(--tap)}
 .dmtab details.dmline > summary.dmsum::-webkit-details-marker{display:none}
-/* The fold's mark sits in the lead cell: on the summary it would be a grid
-   item and take the first column. */
-.dmtab details.dmline > summary.dmsum .td.lead::before{content:"";display:inline-block;width:0;height:0;
-  border:5px solid transparent;border-left:6px solid var(--dim);margin-right:4px;
-  transition:transform .15s ease}
-.dmtab details.dmline[open] > summary.dmsum .td.lead::before{transform:rotate(90deg)}
+/* The fold's mark, the page's one chevron (.chev), sits in the lead cell:
+   on the summary it would be a grid item and take the first column. */
+.dmtab details.dmline > summary.dmsum .td.lead::before{content:"\25B8";color:var(--dim);font-size:11px;display:inline-block;width:9px;margin-right:8px}
+.dmtab details.dmline[open] > summary.dmsum .td.lead::before{content:"\25BE"}
 .dmtab .dmsum .td a{color:var(--note)}
 .dmtab details.dmline > .dmbody{padding:0 var(--row-x) var(--row-y);border-top:var(--hair) solid var(--line)}
-.dmtab .dmpick #dmSearch{flex:1 1 12rem;min-width:8rem;max-width:var(--ctl-w)}
 .dmtab .dmviewseg button{min-height:var(--ctl)}
 .facts dd a,.dmports a{color:var(--note)}
 /* The row's Log fold: each container's tail under its name, the whole no
@@ -3509,7 +3496,7 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 /* A list's narrowing band (R254 step 1): its chips at the left and a search
    at the right, the search taking the whole width under them on a phone.
    A row the band leaves out wears .off, so paging counts only what is shown. */
-.lfilter{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.lfilter{display:flex;align-items:center;gap:var(--field-gap);flex-wrap:wrap}
 .lfilter .chips{flex:1 1 auto;min-width:0}
 .lfilter input[type=search]{flex:0 1 16rem;min-width:10rem}
 /* A band's order (Sort on Bugs) keeps its label beside its menu. */
@@ -3537,7 +3524,7 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    default to the sidebar's tighter inset, and a tab added to the page after
    this rule was written would otherwise draw them 3px in from everything
    around them until somebody noticed. */
-.doc .empty,.doc .loading{padding:var(--row-y) var(--row-x)}
+.loading{padding:var(--row-y) var(--row-x)}
 /* The findings card's footer: when the reports were written, and which were
    left out of the counts. */
 .fnote{padding:7px var(--row-x);color:var(--dim);font:var(--f-note);
@@ -3809,7 +3796,6 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .lbox label.lrow input{width:15px;height:15px;flex:0 0 auto;margin:0}
 .lbox .lsub{color:var(--dim);font:var(--f-note);margin-left:auto;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;max-width:50%}
-.lbox .empty{padding:8px 10px}
 .ndcap input{width:15px;height:15px;flex:0 0 auto}
 .docbarrow .sp{flex:1}
 /* The page bar is one row at every width (the design's page head): a band
@@ -3818,7 +3804,11 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    bottom edge as every row's do (a picker's label above its select).
    Containers' bar alone gives its search a line of its own under 440px
    (.dmpick, below). */
-.docbarrow{display:flex;gap:7px;align-items:flex-end;flex-wrap:nowrap}
+.docbarrow{display:flex;gap:var(--field-gap);align-items:flex-end;flex-wrap:nowrap}
+/* A page bar's search, one size on every page (Projects, Containers, Help
+   each sized their own: 220px, 12rem with a cap of their own, 85%), capped
+   with every bar control below. */
+.docbarrow>input[type=search]{flex:1 1 12rem;min-width:8rem}
 .docbarrow[hidden]{display:none}
 .ndtest.warn,.ndcheck.warn,#logDaysSaid.warn{color:var(--warn)}
 /* The one-time enrollment command: a pre, because a wrapped shell line lies
@@ -4025,10 +4015,9 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
      own; its hint is a word there. */
   .doctab .field.docbarrow.dmpick>label.pick{flex:0 1 auto;min-width:5em;max-width:11em;margin-inline-end:0}
   /* (the id's rule too, a desk's 12rem base and 8rem floor) */
-  .doctab .field.docbarrow.dmpick>input,.dmtab .dmpick #dmSearch{flex:1 1 0;min-width:4em}
+  .doctab .field.docbarrow.dmpick>input{flex:1 1 0;min-width:4em}
   .doctab .field.docbarrow.dmpick>.pseg>button{min-width:var(--tap);padding:4px 8px}
   .doctab .field.docbarrow.dmpick>.pseg svg{display:block}
-  .projtab .docbarrow #pjSearch{flex:1 1 0;min-width:7em}
   /* A runner's three actions, in their short words, on the row's one line. */
   .ndrun .actbar{flex-wrap:nowrap}
   .ndrun .actbar>button{flex:0 1 auto;min-width:0;white-space:nowrap}
@@ -4040,7 +4029,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    picker, the views and the buttons, rather than a sliver, stopping short
    of the edge as every control does. */
 @media(max-width:440px){
-  .doctab .field.docbarrow.dmpick>input,.dmtab .dmpick #dmSearch{order:9;flex:0 1 100%;max-width:88%}
+  .doctab .field.docbarrow.dmpick>input{order:9;flex:0 1 100%;max-width:88%}
 }
 :is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.ctlrow,.ctlown,.actbar,.setgrid,.actmenu) *){
   max-width:min(var(--ctl-w),88%)}
@@ -4402,7 +4391,9 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
 
 pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   word-break:break-word;max-height:300px;overflow:auto;color:color-mix(in srgb, var(--ink) 80%, var(--dim))}
-.empty{color:var(--dim);padding:9px 11px;font-style:italic}
+/* An empty state, one style everywhere (consistency batch 5): the page's
+   own was 9px 11px, a document's the tokens and a list box's 8px 10px. */
+.empty{color:var(--dim);padding:var(--row-y) var(--row-x);font-style:italic}
 /* ...and a placeholder that has become a failure notice: the poll's words
    for a card that could not draw, in the warning color and no longer
    pulsing, because nothing is coming. */
@@ -4423,8 +4414,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
    notice written over one (the poll's) is a line of words again. */
 .skel{--sk:color-mix(in srgb,var(--ink) 9%,transparent);--sk-hi:color-mix(in srgb,var(--ink) 17%,transparent);
   font-style:normal;animation:none;display:flex;flex-direction:column;padding-top:0;padding-bottom:0}
-.skel.warn{display:block;padding:9px 11px;font-style:italic}
-.doc .skel.warn{padding:var(--row-y) var(--row-x)}
+.skel.warn{display:block;padding:var(--row-y) var(--row-x);font-style:italic}
 .sk-said{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .skel .sk-b,.skv{display:block;height:.8em;width:60%;border-radius:var(--r-small);
   background:linear-gradient(100deg,var(--sk) 40%,var(--sk-hi) 50%,var(--sk) 60%) var(--sk);
@@ -4935,10 +4925,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 /* A rule is a row that opens (R234): the summary is the closed row, its
    body the places, the description and the message. */
 .fx .rule{border-top:var(--hair) solid var(--line);padding:0 var(--row-x)}
-.fx .rule>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:var(--row-y) 0}
-.fx .rule>summary::-webkit-details-marker{display:none}
-.fx .rule>summary::before{content:"\25B8";color:var(--dim);font-size:11px;width:9px;flex:0 0 auto}
-.fx .rule[open]>summary::before{content:"\25BE"}
+.fx .rule>summary{flex-wrap:wrap;padding:var(--row-y) 0}
 .fx .rule .rbody{padding:0 0 var(--row-y) 17px}
 .fx .rule .rid{font:12px/1.5 var(--mono);color:var(--dim);word-break:break-all}
 .fx .rule .rid .rname{color:var(--ink)}

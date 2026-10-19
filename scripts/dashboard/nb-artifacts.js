@@ -825,7 +825,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
   function verAddFold(v){
     if (v.component || !(v.candidates || []).length) return "";
     return `
-      <details class="veradd"${sectAttr("artifacts:veradd:" + project)}><summary>ships something else from here?</summary>
+      <details class="veradd chev"${sectAttr("artifacts:veradd:" + project)}><summary>ships something else from here?</summary>
         <p class="verwhy">A directory with its own <code>VERSION</code> file is
           versioned on its own, like an extension beside an app.</p>
         <div class="verinit">

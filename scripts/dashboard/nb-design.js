@@ -241,7 +241,7 @@ function nbDesignView({$, nb, project, root}){
     const ui = ruleUI(key);
     return `<div class="addbar ctlrow" data-add="rule"><button type="button" data-dsruleadd ${rules.length >= (presets().rules_max || 60) ? "disabled" : ""}>Add a rule</button></div>
       <div class="field" data-dsrules="${key}">${rules.map((r, i) => `
-        <details class="bug rulerow${ui.editing.has(i) ? " editing" : ""}" data-i="${i}"${ui.editing.has(i) || ui.open.has(i) ? " open" : ""}>
+        <details class="bug chev rulerow${ui.editing.has(i) ? " editing" : ""}" data-i="${i}"${ui.editing.has(i) || ui.open.has(i) ? " open" : ""}>
           <summary>
             <span class="btitle rlNameRO">${esc(r.name || "(unnamed)")}</span>
             <span class="rlkind ${cond(r) ? "cond" : ""}">${cond(r) ? "on its triggers" : "every session"}</span>

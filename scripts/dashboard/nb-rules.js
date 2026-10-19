@@ -64,7 +64,7 @@ function nbRulesView({$, nb, project}){
       const editing = ed && ed.i === i;
       const here = !off.has(g.name);
       return `
-        <details class="bug grule${editing ? " editing" : ""}" data-gi="${i}"${editing ? " open" : sectAttr(`rules:global:${project}|${g.name || i}`)}>
+        <details class="bug chev grule${editing ? " editing" : ""}" data-gi="${i}"${editing ? " open" : sectAttr(`rules:global:${project}|${g.name || i}`)}>
           <summary><span class="btitle">${esc(g.name || "(new)")}</span>
             <span class="rlkind ${cond(g) ? "cond" : ""}">${cond(g) ? "on its triggers" : "every session"}</span>
             <span class="pill">global</span>${
@@ -165,7 +165,7 @@ function nbRulesView({$, nb, project}){
       <div class="hint">How you want this project worked on. A session reads these at the start and cannot change yours.</div>
       <div class="addbar ctlrow" data-add="rule"><button type="button" id="rlAdd">Add a rule</button></div>
       <div class="field" id="rlList">${rows.map((r, i) => `
-        <details class="bug rulerow${nb.ruleEditing.has(i) ? " editing" : ""}" data-i="${i}"${
+        <details class="bug chev rulerow${nb.ruleEditing.has(i) ? " editing" : ""}" data-i="${i}"${
             nb.ruleEditing.has(i) || nb.ruleOpen.has(i) ? " open" : ""}>
           <summary>
             <span class="btitle rlNameRO">${esc(r.name || "(unnamed)")}</span>

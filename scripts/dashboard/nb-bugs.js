@@ -241,12 +241,12 @@ function nbBugsView({$, nb, project}){
     const vis = rows.filter(shown);
     const lim = pageLimit(list, "bugList", vis.length);
     list.innerHTML = vis.slice(0, lim).map(b => `
-      <details class="bug" data-id="${b.id}"${held.has(String(b.id)) ? " open" : ""}>
+      <details class="bug chev" data-id="${b.id}"${held.has(String(b.id)) ? " open" : ""}>
         <summary>
-          <span class="sev ${esc(b.severity)}">${esc(b.severity)}</span>
+          <span class="tag sev ${esc(b.severity)}">${esc(b.severity)}</span>
           <span class="n id" title="bug B${b.id}: a session knows it by that number">B${b.id}</span>
           <span class="btitle${b.status !== "open" ? " done" : ""}">${esc(b.title)}</span>
-          <span class="bstat ${esc(b.status)}">${esc(
+          <span class="tag bstat ${esc(b.status)}">${esc(
             b.status === "na" ? "n/a" : b.status === "wontfix" ? "won't fix" : b.status)}</span>
         </summary>
         <div class="body">

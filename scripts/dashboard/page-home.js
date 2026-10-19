@@ -107,7 +107,7 @@ function homeTilesHtml(tiles){
 
 function homeJobsHtml(){
   const last = homeData?.jobs?.last || [];
-  if (!last.length) return `<div class="hnone">no jobs yet</div>`;
+  if (!last.length) return `<div class="empty">no jobs yet</div>`;
   const names = homeData.jobs.nodes || {};
   return last.map(j => `<button type="button" class="row hjob" data-hjob="${esc(j.id)}">
       <span class="grow"><span class="name">${jobTitle(j)} ${jobStatePill(j)}</span>
@@ -118,7 +118,7 @@ function homeJobsHtml(){
 function homeGlanceHtml(){
   // Not an archived one (the operator, 18 Oct), pinned or not.
   const pinned = (state?.projects || []).filter(p => p.pinned && !p.locked);
-  if (!pinned.length) return `<div class="hnone">no project is pinned: a project's menu on the Projects page pins it here</div>`;
+  if (!pinned.length) return `<div class="empty">no project is pinned: a project's menu on the Projects page pins it here</div>`;
   return `<div class="hglance">${pinned.map(p => {
     const pc = colorAttrs(p.color);
     return `<div class="hproj${pc.cls}"${pc.style}>
@@ -162,7 +162,7 @@ function homeCards(jobs){
   const needs = needsRows(), hidden = state?.bell_hidden || 0;
   return `${homeStartHtml()}<div class="field"><div class="homegrid">
         <section class="hcard"><h3>Attention</h3>${needs.length ? needs.join("")
-          : `<div class="hnone">nothing needs attention</div>`}${hidden
+          : `<div class="empty">nothing needs attention</div>`}${hidden
           ? `<div class="bfootbar"><span>${hidden} update${hidden === 1 ? "" : "s"} dismissed</span>
               <button type="button" data-brestore>Show again</button></div>` : ""}</section>
         <section class="hcard"><h3>Last jobs</h3>${jobs}</section>

@@ -155,7 +155,7 @@ function findingsRulesHtml(rows){
     const hits = rules[rid];
     const f = hits[0];
     const cves = [...new Set(hits.flatMap(h => h.cves))];
-    html += `<details class="rule" data-key="${esc(rid)}"${fxOpen.has(rid) ? " open" : ""}>
+    html += `<details class="rule chev" data-key="${esc(rid)}"${fxOpen.has(rid) ? " open" : ""}>
       <summary class="rid">
         <span class="pill ${levelClass(f.level)}">${esc(f.level)}</span>
         <span class="rname">${f.uri ? `<a href="${esc(f.uri)}" target="_blank" rel="noopener">${esc(rid)}</a>`
