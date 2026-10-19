@@ -93,9 +93,12 @@ function renderSettingsInto(i){
   const sect = (key, title, status, html, opts = {}) =>
     docSection("settings", key, title, status, html.replace(/<h4>[^<]*<\/h4>\s*/, ""), opts);
   const groups = settingsSections();
+  // The logs are an administrator's: a poll that has landed without them
+  // means this account has no Logs section, not one still on its way (B38).
+  const logs = logSection();
   d.list.innerHTML = `<div class="sectjump" data-sects></div>
-    ${sect("logs", "Logs", "", `<div class="row stack2" data-group="Logs"><div class="grow">${withRevert(logSection(), "logs")
-        || `<div class="sub">log settings arrive with the first poll…</div>`}</div></div>`)}
+    ${logs || !state ? sect("logs", "Logs", "", `<div class="row stack2" data-group="Logs"><div class="grow">${withRevert(logs, "logs")
+        || `<div class="sub">log settings arrive with the first poll…</div>`}</div></div>`) : ""}
     ${reportsSection() ? sect("reports", "BuilderBot bug reports", reportsCount === null ? "" : reportsCount ? `${reportsCount} report${reportsCount === 1 ? "" : "s"}` : "none", reportsSection()) : ""}
     ${sect("idle", "Claude sessions", idle === undefined ? "" : idle ? `${idle} min` : "never",
            `<div class="row stack2" data-group="Claude sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
