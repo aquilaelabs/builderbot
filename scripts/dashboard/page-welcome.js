@@ -18,7 +18,7 @@ const GUIDE_USER = `
   <ul>
     <li><b>The rail</b>, down the left edge: Home, Projects, Containers,
       Machines, Build, Jobs, Sessions and the rest, each a page. On a phone it
-      is the bar at the foot: Home, Projects, Containers, Jobs, and More for
+      is the bar at the foot: Home, Projects, Containers, Build, and More for
       the others.</li>
     <li><b>The search</b> at the top jumps to a page, a project, a container or
       a node by name.</li>

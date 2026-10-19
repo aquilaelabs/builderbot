@@ -42,8 +42,10 @@ const RAIL = [
   {key: "settings", label: "Settings", icon: "settings", tools: [["settings", "Controller"], ["profile", "Profile"]]},
   {key: "help", label: "Help", icon: "help", tools: [["help", "Help"]]},
 ];
-// The five on a phone's bar; the rest are under More.
-const RAIL_PHONE = ["home", "projects", "containers", "jobs"];
+// The five on a phone's bar, in the rail's own order (the operator, 19 Oct:
+// Build where Jobs was, as a desk has it above Jobs); the rest are under
+// More, Jobs among them.
+const RAIL_PHONE = ["home", "projects", "containers", "build"];
 
 // A tool kind is a page: it leaves the strip and lives on the rail.
 function isToolKind(kind){ return kind !== "term" && kind !== "notebook"; }

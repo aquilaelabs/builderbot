@@ -774,7 +774,7 @@ only for one that may read the controller. A page has an address
 (`#/containers`, `#/machines/nodes`, `#/projects/NAME`), so a reload, a
 shared link and the back button land on it. Terminals and the chat are the
 dock's, at the foot of every page (step 4). On a phone the rail is a bar of
-five across the foot (Home, Projects, Containers, Jobs, and More for the
+five across the foot (Home, Projects, Containers, Build, and More for the
 rest), and every page, Home and Projects included, is the one page area
 with the dock at its foot: there is no second view to switch to. The
 search in the top bar jumps to a page, a project, a container or a node as
