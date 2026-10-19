@@ -1477,8 +1477,6 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
    four possible). Together they either fit beside the name or drop below it
    whole, which reads as a layout, not an accident. */
 .row .acts{display:flex;gap:6px;align-items:center;margin-left:auto}
-/* A branch row carries five controls: on a phone they wrap rather than run off the notebook. */
-.row.gbranch .acts{flex-wrap:wrap;margin-left:0}
 /* A project row stacks: name and its notes first, the buttons on their own
    line under them. Side by side, "Notebook" as a word did not fit beside a
    long project name on a phone, and the count it used to carry is the
@@ -2218,7 +2216,33 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .gcommit .name{font:600 13px/1.4 system-ui,sans-serif;overflow-wrap:anywhere}
 .gmsg{font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;color:var(--dim)}
 .gadd{color:var(--accent)} .gdel{color:var(--bad)}
-.gbranch .name code{font:var(--mono);font-size:13px}
+/* The branches table (R269 step 1): a line a branch, its verbs behind the
+   ⋯ in the last column, drawn as every table is (tables), on a phone too;
+   a line that opens to its comparison wears a pointer, and the comparison
+   sits under it a step sunk. Behind and ahead of main are GitHub's: two
+   counts either side of a line, each over a bar. */
+.tbl.gbranches>.row.gbranch{align-items:stretch}
+.gbranches .td.lead code{font:inherit;background:none;padding:0;color:inherit}
+.gbranches .td .pill{margin-left:4px}
+.gbranches .gopens>.tline{cursor:pointer;border-radius:var(--r-small)}
+@media(hover:hover){.gbranches .gopens>.tline:hover{background:var(--btn)}}
+.gbranches .gbwhy{color:var(--bad);padding-bottom:var(--label-gap)}
+.gbranches .gcmp{background:var(--sunk);margin-top:var(--label-gap);padding:var(--row-y) var(--row-x);border-radius:var(--r-surface)}
+.gab{display:inline-grid;grid-template-columns:1fr 1fr;width:100%;max-width:7rem;vertical-align:middle;font:var(--f-note);color:var(--dim)}
+.gab>span{display:flex;flex-direction:column;gap:2px;padding:0 4px}
+.gab>.l{align-items:flex-end;border-right:var(--hair) solid var(--line)}
+.gab i{display:block;height:4px;border-radius:2px;background:var(--line)}
+.gab>.r i{background:var(--lit, var(--accent))}
+.gbstate{font:var(--f-note);color:var(--dim)}
+/* ...and on a phone, where the cell wears its column's name, the counts
+   sit on that line, the bars left to a desk. */
+@media(max-width:900px){
+  .gab{display:inline-flex;width:auto;max-width:none;vertical-align:baseline;font:inherit}
+  .gab>span{display:inline;padding:0 6px}
+  .gab>.l{padding-left:0}
+  .gab i{display:none}
+}
+.gbfilter{padding-bottom:var(--label-gap)}
 .gcommitbar,.gbranchbar{padding:0 0 8px}
 .gcommitbar input,.gbranchbar input{flex:1 1 auto;min-width:0}
 .gitnet{border-bottom:var(--hair) solid var(--line)}

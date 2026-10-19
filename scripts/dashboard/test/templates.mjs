@@ -40,7 +40,9 @@ const PAGES = [
 const VIEWS = ['briefing', 'roadmap', 'bugs', 'git', 'tests', 'analysis', 'design', 'artifacts', 'settings'];
 // Sections a view draws only from what the project holds: a red CI, a
 // README, a Brief to keep.
-const VIEW_SKIP = { git: ['title:CI', 'title:README.md'], briefing: ['title:Brief'] };
+// A phone opens one section of a view at a time, so the Git view's
+// Branches table is folded under Changes on the page and not in its wait.
+const VIEW_SKIP = { git: ['title:CI', 'title:README.md', 'phone:table'], briefing: ['title:Brief'] };
 const HELD = /\/api\/(?!status|layout|revs|presence)/;
 
 // The outline of what is on show in `sel`: a template's wrapper (.skt) is
@@ -176,7 +178,7 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
     await sleep(600);
     const tpl = await page.evaluate(outline, '.nb .nbview:not([hidden])');
     await page.unroute(HELD);
-    const why = differ(got, tpl, VIEW_SKIP[v] || []);
+    const why = differ(got, tpl, (VIEW_SKIP[v] || []).flatMap(k => k.startsWith('phone:') ? (W < 900 ? [k.slice(6)] : []) : [k]));
     ok(!why, `the notebook's ${v} view waits as itself ${where}${why ? `: ${why}` : ''}`);
   }
   await page.close();

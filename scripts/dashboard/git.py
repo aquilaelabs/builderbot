@@ -540,14 +540,15 @@ def branches(repo):
     first, with how far each stands from main and from its upstream, which
     one the tree is on, and whose worktree sits on it:
 
-        [{"name", "remote": bool, "head": bool, "short", "when", "upstream",
-          "ahead", "behind", "main_ahead", "main_behind", "worktree", "who"}]
+        [{"name", "remote": bool, "head": bool, "short", "when", "author",
+          "upstream", "ahead", "behind", "main_ahead", "main_behind",
+          "worktree", "who"}]
 
     `who` is the account the branch belongs to (branch_owner), by name.
     """
     fmt = US.join(["%(refname:short)", "%(refname)", "%(objectname:short)",
                    "%(committerdate:unix)", "%(upstream:short)", "%(upstream:track)",
-                   "%(HEAD)"])
+                   "%(HEAD)", "%(authorname)"])
     out = _git(repo, "for-each-ref", "--sort=-committerdate", f"--format={fmt}",
                "refs/heads", "refs/remotes")
     if out is None:
@@ -568,6 +569,7 @@ def branches(repo):
         if len(f) < 7:
             continue
         name, ref, short, when, up, track, head = f[:7]
+        author = f[7] if len(f) > 7 else ""
         remote = ref.startswith("refs/remotes/")
         # The full ref: origin/HEAD's SHORT name is "origin", so the check on
         # the short name let it through as a branch called origin.
@@ -607,7 +609,7 @@ def branches(repo):
                 same = _git(repo, "diff", "--quiet", f"{main}...{name}") is not None
         wt = trees.get(ref, "")
         rows.append({"name": name, "remote": remote, "head": head.strip() == "*",
-                     "short": short, "when": int(when or 0), "upstream": up,
+                     "short": short, "when": int(when or 0), "author": author, "upstream": up,
                      "ahead": ahead, "behind": behind,
                      "main_ahead": ma, "main_behind": mb,
                      # Nothing on it that main lacks: the row's one question

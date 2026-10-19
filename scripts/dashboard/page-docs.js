@@ -210,7 +210,7 @@ const SKTPLS = {
   // sections' chips, then each steady section; CI and a README come with
   // what the repository holds, so the placeholder promises neither.
   git: () => skTpl(`<nav class="sectjump">${GIT_SECTS.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav>`
-    + GIT_SECTS.map(([k, t]) => docSection("git", k, t, "", skRows(2))).join("")),
+    + GIT_SECTS.map(([k, t]) => docSection("git", k, t, "", k === "branches" ? skTable(gitBranchCols("main"), 3, "gbranches", "row gbranch") : skRows(2))).join("")),
   design: () => skTpl(docSection("design", "pages", "Pages", "", skRows(2))
     + docSection("design", "themes", "Themes", "", skRows(2))),
   // Its list, by the view's own titles (nb-artifacts.js ART_TITLES)...
@@ -678,11 +678,13 @@ function oneOpen(g){
 // rest go behind one button, whose menu opens under it. `items` are the
 // bar's own button strings in their order, destructive last; an empty one is
 // skipped, a single leftover is drawn inline (a menu of one is a detour),
-// and two or more make the menu. wireMore() wires the button; the page's
-// one click listener (index.html) shuts every open menu.
-function actMore(items){
+// and two or more make the menu; `always` makes the menu of one too, for a
+// table's buttons column, whose width is the ⋯'s whatever the row offers.
+// wireMore() wires the button; the page's one click listener (index.html)
+// shuts every open menu.
+function actMore(items, always = false){
   const have = items.filter(Boolean);
-  if (have.length < 2) return have.join("");
+  if (have.length < (always ? 1 : 2)) return have.join("");
   // ⋯, as a project's header has it (the operator, 17 Oct): the rest of a
   // row's verbs behind one small press, named for a screen reader.
   return `<span class="more"><button type="button" class="moreb" aria-haspopup="menu" aria-expanded="false" aria-label="More"
@@ -1033,10 +1035,12 @@ function chipBar(groups, on, attr){
 }
 // The chips alone, for a band that holds more than them (a list's search
 // beside them, R254 step 1): "" when fewer than two groups have anything.
-function chipButtons(groups, on, attr){
+// `all` is All's count where the groups overlap (a branch both Active and
+// Yours), the groups' sum otherwise.
+function chipButtons(groups, on, attr, all){
   const gs = (groups || []).filter(g => g && g.count);
   if (gs.length < 2) return "";
-  const total = gs.reduce((n, g) => n + g.count, 0);
+  const total = all ?? gs.reduce((n, g) => n + g.count, 0);
   const chip = (key, label, count) => `<button type="button" class="chip${(on || "") === key ? " on" : ""}"
     ${attr}="${esc(key)}" aria-pressed="${(on || "") === key}">${esc(label)}<span class="pill">${count}</span></button>`;
   return chip("", "All", total) + gs.map(g => chip(g.key, g.label, g.count)).join("");

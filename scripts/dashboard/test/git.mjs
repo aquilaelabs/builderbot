@@ -674,15 +674,27 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
      `the view offers the network bar, the commit form, Discard, Switch, Delete and New branch (${JSON.stringify(view)})`);
   const grouped = await page.$eval('.nb .nbview[data-view="git"]', v => ({
     into: !!v.querySelector('[data-gitmerge="old-work"][data-gitinto]'),
-    groups: [...v.querySelectorAll('.ggroup')].map(g => g.textContent),
+    chips: [...v.querySelectorAll('[data-gbchip].chip')].map(g => `${g.dataset.gbchip}${g.classList.contains('on') ? '*' : ''}`),
     originRows: [...v.querySelectorAll('.gbranch code')].map(c => c.textContent).filter(n => /^origin\//.test(n)),
     merged: !!v.querySelector('[data-gitdeletemerged]'),
     remoteDel: [...v.querySelectorAll('[data-gitdeleteremote]')].map(b => b.dataset.gitdeleteremote),
-    words: [...v.querySelectorAll('.gbranch .sub, .gbranch .sst')].map(e => e.textContent).join(' | ') }));
-  ok(grouped.into && grouped.groups.some(g => /not yet in/.test(g)) && grouped.merged
+    words: [...v.querySelectorAll('.gbranch .gab')].map(e => e.getAttribute('aria-label')).join(' | '),
+    oneLine: [...v.querySelectorAll('.gbranch:not([hidden]) > .tline')].every(l => l.getBoundingClientRect().height < 60),
+    shown: [...v.querySelectorAll('.gbranch:not([hidden])')].map(r => r.dataset.kind) }));
+  ok(grouped.into && grouped.chips.includes('active*') && grouped.chips.includes('merged') && grouped.merged
      && !grouped.originRows.some(n => ['origin/' + main, 'origin/old-work'].includes(n))
-     && /not yet in/.test(grouped.words) && !/level with/.test(grouped.words),
-     `branches are grouped by what to do with them: work not yet in main offers Merge into main, branches already in main offer one Delete, and a remote row mirroring a local branch is not repeated (${JSON.stringify(grouped).slice(0, 200)})`);
+     && /not yet in/.test(grouped.words) && !/level with/.test(grouped.words)
+     && grouped.oneLine && grouped.shown.every(k => k === 'active'),
+     `branches are a table a line a branch, Active chosen until another chip is pressed: work not yet in main offers Merge into main, branches already in main are one Delete, and a remote row mirroring a local branch is not repeated (${JSON.stringify(grouped).slice(0, 240)})`);
+  // The chips narrow the table in place, and the search beside them by name.
+  await page.click('.nb .nbview[data-view="git"] [data-gbchip="remote"]');
+  await page.waitForFunction(() => [...document.querySelectorAll('.nb .nbview[data-view="git"] .gbranch:not([hidden])')].every(r => r.dataset.kind === 'remote'), null, { timeout: 5000 });
+  await page.click('.nb .nbview[data-view="git"] [data-gbchip=""]');
+  await page.fill('.nb .nbview[data-view="git"] #gitBranchFind', 'old-w');
+  ok(await page.$$eval('.nb .nbview[data-view="git"] .gbranch:not([hidden])', rs => rs.map(r => r.dataset.branch).join()) === 'old-work',
+     'a chip narrows the table to its kind, and the search to the names holding what is typed');
+  await page.fill('.nb .nbview[data-view="git"] #gitBranchFind', '');
+  await page.click('.nb .nbview[data-view="git"] [data-gbchip="active"]');
   // R69 step 1 in the view: the fold lists what is only on the host, and
   // offers the delete on exactly the rows where it cannot lose work.
   ok(grouped.originRows.includes('origin/stale') && grouped.originRows.includes('origin/live')
@@ -692,7 +704,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   // Work not yet in main is a row you open: its commits and diff against
   // main, read here rather than on a pull request page.
   await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:branches"]');   // one section open at a time
-  await openFold(page, '.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"]');   // as a.txt's (B566)
+  await page.click('.nb .nbview[data-view="git"] .gbranch[data-branch="old-work"] > .tline .td.lead');   // the line opens it
   await page.waitForSelector('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"] pre.diff', { timeout: 10000 });
   const opened = await page.$eval('.nb .nbview[data-view="git"] .gcmp[data-branch="old-work"]', d => ({
     commit: /Old work/.test(d.querySelector('.gcmpc')?.textContent || ''),
@@ -1137,7 +1149,7 @@ ok(strip.groups.n === 5 && strip.groups.rows === 1 && strip.groups.inside && str
       .find(x => x.querySelector('code')?.textContent === 'claude/w.dev');
     return { merge: !!r.querySelector('[data-gitmerge][data-gitwho="w.dev"]'),
              acts: r.querySelectorAll('[data-gitmerge], [data-gitswitch], [data-gitdelete]').length,
-             asks: [...r.querySelectorAll('[data-gitaskkind] option')].map(o => o.value),
+             asks: [...r.querySelectorAll('[data-gitaskkind]')].map(o => o.dataset.gitaskkind),
              text: r.textContent.replace(/\s+/g, ' ') };
   });
   const adminRow = await rowOf(page);
