@@ -190,7 +190,7 @@ function renderProjectsInto(i){
         // The pencil renames the group for this account alone: a group is a
         // person's own label, so it is never anybody else's to move (R273).
         return `<section class="pjgroup" data-group="${esc(g)}"><h3 class="pjgname">${esc(g)} <span class="dim">${list.length}</span>${
-          state.session ? "" : `<button type="button" class="eye" data-pjgrename="${esc(g)}" aria-label="Rename the group ${esc(g)}" title="Rename">${PENCIL}</button>`
+          state.session ? "" : `<button type="button" class="eye bare" data-pjgrename="${esc(g)}" aria-label="Rename the group ${esc(g)}" title="Rename">${PENCIL}</button>`
         }</h3>${grid_(list)}</section>`;
       }).join("")
     + (gone.length ? docSection("projects", "archived", "Archived", `${gone.length} project${gone.length === 1 ? "" : "s"}`,

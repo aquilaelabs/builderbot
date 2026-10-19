@@ -246,8 +246,8 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
   await dp.click('#rail [data-rail="settings"]');
   await dp.waitForFunction(() => tabOf(panes[0])?.kind === 'profile', null, { timeout: 10000 });
   ok(await dp.evaluate(() => location.hash === '#/settings/profile'
-       && [...document.querySelectorAll('#pane0 > .bar .subnav button')].map(b => b.textContent).join() === 'Profile'),
-     'Settings opens on Profile for an account that may not read the controller, its sub-nav Profile alone');
+       && [...document.querySelectorAll('#pane0 > .bar .subnav button')].map(b => b.textContent).join() === 'Profile,Devices'),
+     'Settings opens on Profile for an account that may not read the controller, its sub-nav its own pages alone (Profile, Devices)');
   await dp.close();
   await api('/api/roles', { action: 'assign', name: 'dep', roles: [] });
   await api('/api/roles', { action: 'remove', name: 'tc-viewer' });

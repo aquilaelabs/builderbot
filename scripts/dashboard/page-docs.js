@@ -266,7 +266,7 @@ function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpt
     const box = document.createElement("div");
     box.className = "field askline";
     const list = options.length ? `askopts${++seq}` : "";
-    box.innerHTML = `<label class="lbl">${esc(label)}</label><div class="askrow actbar"><input type="text" autocomplete="off" spellcheck="false" aria-label="${esc(label)}"${
+    box.innerHTML = `<label class="lbl">${esc(label)}</label><div class="askrow actbar ctlrow"><input type="text" autocomplete="off" spellcheck="false" aria-label="${esc(label)}"${
         list ? ` list="${list}"` : ""}>
       <button type="button" data-askno>Cancel</button><button type="button" class="primary" data-askok>${esc(ok)}</button></div>${
       list ? `<datalist id="${list}">${options.map(o => `<option value="${esc(o)}"></option>`).join("")}</datalist>` : ""}`;

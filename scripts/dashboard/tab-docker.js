@@ -2292,9 +2292,11 @@ function dmGroupsHtml(ins, cs, job, blind, only = ""){
   // and the way onto it said under its heading.
   const notMine = o => !!state?.admin && o !== "System" && !gone(o)
     && (state?.projects || []).some(p => p.name === o && !p.mine);
+  // ...BuilderBot's own (System) after them and before another project's.
+  const rank = o => notMine(o) ? 2 : o === "System" ? 1 : 0;
   const owners = [...new Set([...ins, ...cs].map(r => r.owner || ""))]
     .filter(Boolean).filter(o => !only || only === o)
-    .sort((a, b) => notMine(a) - notMine(b) || byName(projLabel(a), projLabel(b)));
+    .sort((a, b) => rank(a) - rank(b) || byName(projLabel(a), projLabel(b)));
   const rowsOf = o =>
     dmRowsHtml(ins.filter(d => (d.owner || "") === o).sort((a, b) => byName(a.name, b.name)), job, blind)
     + dmOtherRowsHtml(cs.filter(c => (c.owner || "") === o)

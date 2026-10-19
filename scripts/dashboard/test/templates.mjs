@@ -220,8 +220,8 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
       const b = document.querySelector('.skboot .nbview');
       window.__boot = b ? { view: b.dataset.view || '', head: !!b.querySelector('.nbhead'), ids: b.querySelectorAll('[id]').length } : null;
     }));
+    await page.goto('about:blank');
     await page.goto(`${URL}#/projects/beta/${v}`);
-    await page.reload();
     await sleep(300);
     const boot = await page.evaluate(() => window.__boot);
     await page.unroute(HELD); await page.unroute(/\/api\/status/);
