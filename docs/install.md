@@ -174,9 +174,10 @@ red, no `CLAUDE.md` in amber, both behind **Show projects with errors**. Only
 empty directories and hidden ones are left out.
 
 **The apps for your machines**: the Android app, the VS Code extension and
-the Windows companion are on the **Devices** page, under Settings, each with
+the Windows companion are on the **Apps** page, under Build, each with
 Download and how to connect it, fetched by the controller from its own
-release and kept current there. Which are offered is the **Apps** section of
+release and kept current there. The devices signed in as you are the last
+section of your **Profile**, under Settings, each with Disconnect. Which are offered is the **Apps** section of
 the Controller settings page, or `/config/seed.json` before the first start
 ([reference.md](reference.md#the-seed-file)).
 

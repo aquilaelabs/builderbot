@@ -40,7 +40,7 @@ async function loadProfile(){
     profile = j;
   }catch(e){ notify("profile: " + e, true); return; }
   profileRev++;
-  if (tabs.some(t => t.kind === "profile" || t.kind === "devices")) drawPanes();
+  if (tabs.some(t => t.kind === "profile")) drawPanes();
 }
 
 // Key, label, what the ? beside it says, input type. The label sits above
@@ -59,13 +59,14 @@ const PROFILE_SAYS = {
   you: "your name, email and commit author", may: "what your roles let you do",
   password: "change it, signing out everywhere",
   plugins: "what you added with /plugin", logs: "your conversations with Claude, to download",
+  devices: "your apps, to disconnect",
 };
-// The apps signed in as this account on its own machines (R272 step 1), on
-// the Devices page (tab-devices.js): a table, a line a device (its name,
+// The apps signed in as this account on its own machines (R272 step 1), the
+// last of Profile's sections (the operator, 19 Oct): a table, a line a device (its name,
 // what it is, when it last called) with Disconnect at its end, which signs
 // that one out.
 const PF_DEVICE_COLS = [{label: "Device"}, {label: "Kind", w: "6rem"}, {label: "Last call", w: "minmax(0,.6fr)"}, {act: true, w: "8rem"}];
-const PF_DEVICE_KIND = {pc: "a PC", phone: "a phone", editor: "an editor"};
+const PF_DEVICE_KIND = {pc: "PC", phone: "Phone", editor: "Editor"};
 // `of` names the account when an administrator reads it on the Users page
 // (R272 step 8), whose Disconnect asks for that account.
 function profileDevices(rows, of = ""){
@@ -146,13 +147,15 @@ function renderProfileInto(i){
     ${sec("plugins", "Claude plugins", `
         <div class="logset">${profilePlugins(profile.plugins || [])}</div>`)}
     ${sec("logs", "Conversation logs", `
-        <div class="logset">${profileLogs(profile.logs || [])}</div>`)}`;
+        <div class="logset">${profileLogs(profile.logs || [])}</div>`)}
+    ${docSection("profile", "devices", "Signed in as you", "", profileDevices(profile.devices || []))}`;
   wireSections(d.list);
   splitSects(d.list, "profile", {says: PROFILE_SAYS, back: "Profile"});
   // Paged like every long list here (R218 step 31): one log per
   // conversation, so the list only grows.
   paginate(d.list.querySelector(".cvlogs"), ":scope > .artrow", {key: "pfLogs", noun: "conversations"});
   wireProfile(d.el);
+  wireDeviceOut(d.el);
 }
 
 // What you installed with /plugin in your own sessions, per node, as each

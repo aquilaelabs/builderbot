@@ -2159,7 +2159,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   await page.click('#uiProfile');
   await page.waitForSelector('.profiletab .setrow', { timeout: 15000 });
   ok(true, "the gear's door opens the account's Profile page");
-  await page.evaluate(() => railGo('settings', 'settings'));
+  await page.evaluate(() => railGo('machines', 'settings'));
   await page.waitForSelector('.settingstab #logApply');
   await page.fill('.settingstab #logDays', '3');
   await page.click('.settingstab #logApply');

@@ -306,7 +306,7 @@ function rolesRoleBody(){
        + (ownersOpen ? owners.map(n => row(n, projLabel(d.roles[n].project), "", " rsub")).join("") : "") : "");
   if (!r) return rolesSplit("roles", list, `<div class="empty">no role picked</div>`);
   const who = r.fresh ? [] : holders(r.name);
-  const pick = `<div class="rhead"><b>${esc(r.fresh ? r.name : (d.roles[r.name]?.label || r.name))}</b>${
+  const pick = `<div class="rhead" data-rback><span class="shback" role="img" aria-label="Back to Roles">\u2039</span><b>${esc(r.fresh ? r.name : (d.roles[r.name]?.label || r.name))}</b>${
     r.fresh ? "" : ` <span class="dim">${who.length ? `held by ${esc(who.join(", "))}` : "held by nobody yet"}</span>`}</div>`;
   const ro = r.builtin || !d.admin;
   // A table (R218 step 8): the area, with what Read and Write let one do
@@ -421,7 +421,7 @@ function renderRolesInto(i){
     ${rolesErr ? `<div class="row bad"><div class="grow">${esc(rolesErr)}</div></div>` : ""}
     <div class="rsplit${rolesPhoneOpen ? " open" : ""}">
       <div class="rlist">${ro.list}</div>
-      <div class="rdetail"><button type="button" class="rback" data-rback>‹ Roles</button>${ro.detail}</div>
+      <div class="rdetail">${ro.detail}</div>
     </div>`;
   wireRoles(d.el);
   if (rolesMoveNext){ splitMove(d.list.querySelector(".rsplit"), rolesMoveNext); rolesMoveNext = ""; }
@@ -442,7 +442,9 @@ function wireRoles(el){
     rolesOwnersOpen = b.getAttribute("aria-expanded") !== "true";
     rolesRedraw();
   });
-  el.querySelectorAll("[data-rback]").forEach(b => b.onclick = () => { rolesPhoneOpen = false; rolesMoveNext = "back"; rolesRedraw(); });
+  // The picked role's head is the way back on a phone, as a page of
+  // settings' section head is (splitSects).
+  el.querySelectorAll("[data-rback]").forEach(b => b.onclick = () => { if (!matchMedia("(max-width: 900px)").matches) return; rolesPhoneOpen = false; rolesMoveNext = "back"; rolesRedraw(); });
 
   const nw = el.querySelector("#rolesNewOpen");
   if (nw) nw.onclick = () => rolesNewOpen();

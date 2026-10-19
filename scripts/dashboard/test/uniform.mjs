@@ -132,10 +132,10 @@ const DRIVERS = {
     open: () => page.evaluate(() => openProfileTab()),
     readyWhen: '.profiletab .snav .rrow',
   },
-  devices: {
-    // Its two sections are always there, the apps and the devices signed in.
-    open: () => page.evaluate(() => openDevicesTab()),
-    readyWhen: '.devicestab .snav [data-spick]',
+  apps: {
+    // Its section is always there, an app's rows or the line saying none is offered.
+    open: () => page.evaluate(() => openAppsTab()),
+    readyWhen: '.appstab details.sect[data-sect="apps:list"]',
   },
 };
 
@@ -1721,6 +1721,34 @@ const sideways = () => page.evaluate(() => {
       .map(e => e.id || e.className || e.tagName),
   };
 });
+// A page of sections on a phone opens one at a time, its head the way back
+// (the operator, 19 Oct: a Back button of its own was a row spent, and sat
+// on the head): the head wears the chevron, and a press on it shows the
+// list again.
+for (const [kind, root, pick, head, open] of [
+  ['settings', '.ssplit', ':scope > .snav [data-spick]', ':scope > .scur > summary', 'sopen'],
+  ['profile', '.ssplit', ':scope > .snav [data-spick]', ':scope > .scur > summary', 'sopen'],
+  ['users', '.rsplit', ':scope > .rlist [data-upick]', ':scope > .rdetail > .rhead', 'open'],
+  ['roles', '.rsplit', ':scope > .rlist [data-rpick]', ':scope > .rdetail > .rhead', 'open'],
+]){
+  await bring(kind);
+  await page.waitForSelector(`.pane .doc.on ${root} ${pick.replace(':scope > ', '> ')}`, { timeout: 15000 });
+  await page.waitForFunction(() => !document.querySelector('.pane .doc.on')?.getAnimations().length, null, { timeout: 10000 });
+  const r = await page.evaluate(async ([root, pick, head, open]) => {
+    const box = document.querySelector(`.pane .doc.on ${root}`);
+    box.querySelector(pick).click();
+    await new Promise(r => setTimeout(r, 400));
+    const box2 = document.querySelector(`.pane .doc.on ${root}`);
+    const s = box2.querySelector(head), c = s?.querySelector(':scope > .shback'), t = c?.nextElementSibling;
+    const chevron = !!c && c.offsetWidth > 0 && !!t && c.getBoundingClientRect().right <= t.getBoundingClientRect().left;
+    const opened = box2.classList.contains(open);
+    s?.click();
+    await new Promise(r => setTimeout(r, 400));
+    const box3 = document.querySelector(`.pane .doc.on ${root}`);
+    return { opened, chevron, back: !box3.classList.contains(open) };
+  }, [root, pick, head, open]);
+  ok(r.opened && r.chevron && r.back, `[${kind}] what is opened from a list on a phone is headed by the way back, a chevron before its name, and a press on its head shows the list (${JSON.stringify(r)})`);
+}
 for (const kind of kinds){
   if (!DRIVERS[kind]) continue;
   await bring(kind);

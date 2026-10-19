@@ -111,7 +111,7 @@ function usersDetail(u){
   const facts = [u.claude ? `Claude: ${esc(u.claude)}` : "no Claude login yet", u.seen ? `seen ${esc(ago(u.seen))}` : "never seen",
                  u.projects?.length ? `on ${u.projects.length} project${u.projects.length === 1 ? "" : "s"}` : "on no project yet"];
   const access = rolesData === null ? `<div class="sub dim">reading its roles…</div>` : rolesAccessFields(u.name);
-  return `<div class="rhead"><b>${esc(u.name)}</b> <span class="dim">${facts.join(" · ")}</span></div>
+  return `<div class="rhead" data-uback><span class="shback" role="img" aria-label="Back to People">\u2039</span><b>${esc(u.name)}</b> <span class="dim">${facts.join(" · ")}</span></div>
     ${u.claude_shared_with?.length ? `<div class="sub warn">the same Claude account as ${u.claude_shared_with.map(esc).join(", ")
       }, allowed only while one person is behind both</div>` : ""}
     <div class="setgrid">
@@ -156,7 +156,7 @@ function renderUsersInto(i){
     ${usersErr ? `<div class="row bad"><div class="grow">${esc(usersErr)}</div></div>` : ""}
     <div class="rsplit${usersPhoneOpen ? " open" : ""}">
       <div class="rlist">${usersList.map(userRow).join("") || `<div class="empty">nobody yet</div>`}</div>
-      <div class="rdetail"><button type="button" class="rback" data-uback>‹ People</button>${u ? usersDetail(u) : `<div class="empty">nobody to show</div>`}</div>
+      <div class="rdetail">${u ? usersDetail(u) : `<div class="empty">nobody to show</div>`}</div>
     </div>`;
   wireUsersBar(d.el);
   wireUsers(d.el);
@@ -175,7 +175,8 @@ function wireUsers(el){
     splitAway(() => document.querySelectorAll(".pane .doc.on .rsplit > .rdetail"), () => {
       usersPick = b.dataset.upick; usersEdit = null; usersPhoneOpen = true; usersMoveNext = "in"; usersRedraw(); });
   });
-  el.querySelectorAll("[data-uback]").forEach(b => b.onclick = () => { usersPhoneOpen = false; usersMoveNext = "back"; usersRedraw(); });
+  // The picked account's head is the way back on a phone (splitSects).
+  el.querySelectorAll("[data-uback]").forEach(b => b.onclick = () => { if (!matchMedia("(max-width: 900px)").matches) return; usersPhoneOpen = false; usersMoveNext = "back"; usersRedraw(); });
   // What is typed is kept across the repaints a poll brings (B422's lesson).
   el.querySelectorAll("[data-ufield]").forEach(f => f.oninput = f.onchange = () => {
     usersEdit[f.dataset.ufield] = f.value;

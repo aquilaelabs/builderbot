@@ -43,7 +43,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/v1/nodes` | prefix | `_get_nodes` | GET /api/v1/nodes: the Nodes page's read (nodes.tab_view), scoped to this account. |  |
 | GET | `/api/v1/jobs` | prefix | `_get_jobs` | GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this account may see unless it administers. |  |
 | GET | `/api/home` | prefix | `_get_home` | GET /api/home: home.read, the overview's numbers (R218 step 5). |  |
-| GET | `/api/apps` | prefix | `_get_apps` | GET /api/apps: the apps this controller offers and holds (apps.view), for the Devices page and the Settings section. |  |
+| GET | `/api/apps` | prefix | `_get_apps` | GET /api/apps: the apps this controller offers and holds (apps.view), for the Apps page and the Settings section. |  |
 | GET | `/api/notices` | prefix | `_get_notices` | GET /api/notices: notices.listing, this account's own (R218 step 6). |  |
 | GET | `/api/help` | prefix | `_get_help` | GET /api/help: the docs on the Help page (helpdocs.py, R258): the listing, ?doc=NAME one of them, ?q=WORDS a search across them. |  |
 | GET | `/api/docker` | prefix | `_get_docker` | GET /api/docker: the manager's whole page, containers.manager_view, for the node this account may read. |  |

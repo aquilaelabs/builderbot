@@ -5309,7 +5309,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _get_apps(self):
         """GET /api/apps: the apps this controller offers and holds
-        (apps.view), for the Devices page and the Settings section."""
+        (apps.view), for the Apps page and the Settings section."""
         return self._json(apps.view())
 
     def _apps(self, req):

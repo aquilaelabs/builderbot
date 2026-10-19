@@ -16,10 +16,10 @@ const GUIDE_USER = `
   is where you and Claude keep the plan.</p>
   <h4>Finding your way</h4>
   <ul>
-    <li><b>The rail</b>, down the left edge: Home, Projects, Containers,
-      Machines, Build, Jobs, Sessions and the rest, each a page. On a phone it
-      is the bar at the foot: Home, Projects, Containers, Build, and More for
-      the others.</li>
+    <li><b>The rail</b>, down the left edge: Home, Projects, Build,
+      Containers, Machines, Sessions, Jobs and the rest, each a page. On a
+      phone it is the bar at the foot, in the same order: Home, Projects,
+      Build, Containers, and More for the others.</li>
     <li><b>The search</b> at the top jumps to a page, a project, a container or
       a node by name.</li>
     <li><b>The dock</b> at the foot of every page holds the chat and your

@@ -105,7 +105,7 @@ scripts/
                                  all pure declarations, served by name from the page's own script tags (R77)
     server.py                    the routes, the transport and the gates; each handler one call into a module beside it
     index.html                   the markup, the stylesheet and the wiring that runs at load
-    tab-*.js                     one per document tab (Docker, Nodes, Jobs, nginx, Storage, Toolchains, Emulator, Phone, Settings, Users, Profile, Devices, Findings, Projects)
+    tab-*.js                     one per document tab (Docker, Nodes, Jobs, nginx, Storage, Toolchains, Emulator, Phone, Apps, Settings, Users, Profile, Findings, Projects)
     nb-*.js                      one per notebook view; nb-core.js is the notebook itself
     page-*.js                    one per part of the page that is neither: the state, the tabs, the panes and the dock, a project's rows, the polls, the bell, the doctor and the rest
     static/                      the favicon set and the SVG marks the page draws

@@ -277,11 +277,12 @@ terminal you are looking at (thumbtack the ones you use to keep them on top),
 and browser terminals backed by tmux.
 
 Every tool is a page on the rail down the left edge, in groups: Home,
-Projects (with Analysis), Containers (the Docker manager), Machines (Nodes,
-Storage, nginx), Build (Toolchains, Emulator, Phone, CI runner), Jobs,
-Sessions, People (Users, Roles) and Settings (Controller settings, Profile).
-A page your account's grants forbid is not drawn. On a phone the rail is a
-bar of five across the foot (Home, Projects, Containers, Build, More), and
+Projects (with Analysis), Build (Toolchains, Emulator, Phone, CI runner,
+Apps), Containers (the Docker manager, nginx), Machines (Controller settings,
+Nodes, Storage), Sessions, Jobs, People (Users, Roles), Settings (Profile)
+and Help. A page your account's grants forbid is not drawn. On a phone the
+rail is a bar of five across the foot in the same order (Home, Projects,
+Build, Containers, More), and
 every page is the one page area, with the terminals and the chat in the dock
 at its foot. `bb doctor`'s verdict is the colored dot after the bell in the
 top bar; pressing it lists the checks and offers a ↻ that runs it now.

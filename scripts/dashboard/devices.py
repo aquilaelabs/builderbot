@@ -51,7 +51,7 @@ def door_refused(said):
     if n >= DOOR_MIN:
         return ""
     return (f"this app speaks the controller's door {n} and the controller needs {DOOR_MIN} or newer: "
-            "update the app from the Devices page, or let it update itself")
+            "update the app from the Apps page, or let it update itself")
 
 
 def configure(*, users, access=None, projects=None):

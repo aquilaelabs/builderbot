@@ -787,7 +787,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .ssplit>.snav{grid-column:1;grid-row:1 / span 99;align-self:stretch}
 /* The jump bar is the list's job here: hidden, over the dialog's own
    .field.sectjump rule, which outranks a plain one. */
-.snav,.sback,.ssplit>.sectjump,.ssplit>.field.sectjump,.ssplit>h3{display:none}
+.snav,.shback,.ssplit>.sectjump,.ssplit>.field.sectjump,.ssplit>h3{display:none}
 .ssplit>.snav{display:flex}
 .ssplit>details.sect:not(.scur){display:none}
 .ssplit>details.sect>summary{pointer-events:none}
@@ -801,7 +801,11 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   .ssplit>.snav{border-right:0}
   .ssplit:not(.sopen)>:not(.snav){display:none}
   .ssplit.sopen>.snav{display:none}
-  .ssplit.sopen>.sback{display:inline-flex;justify-self:start;margin:var(--row-y) var(--row-x) 0}
+  /* The open section's head is the way back: a chevron before its name,
+     the whole head the press (splitSects). */
+  .ssplit.sopen>.scur>summary,.rsplit.open>.rdetail>.rhead{pointer-events:auto;cursor:pointer}
+  :is(.ssplit.sopen>.scur>summary,.rsplit.open>.rdetail>.rhead)>.shback{display:inline-flex;align-items:center;color:var(--dim);font-size:1.3em;line-height:1}
+  .rsplit.open>.rdetail>.rhead>.shback{margin-right:8px;vertical-align:-1px}
   .ssplit:not(.sopen)>.snav .rrow.on{background:none}
   .ssplit.sopen[data-move="in"]>:not(.snav){animation:splitIn .26s cubic-bezier(.33,1,.68,1)}
   .ssplit:not(.sopen)[data-move="back"]>.snav{animation:splitBack .26s cubic-bezier(.33,1,.68,1)}
@@ -813,10 +817,9 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .rdetail{min-width:0;padding:0 0 0 var(--row-x)}
 .rdetail>.rhead{padding:var(--row-y) 0 4px;font:var(--f-sect)}
 .rdetail>.rhead .dim{font:var(--f-ui)}
-/* An account's devices on the Users page (R272 step 8): a label over the
-   Devices page's own table, under the account's settings. */
+/* An account's devices on the Users page (R272 step 8): a label over
+   Profile's own table, under the account's settings. */
 .rdetail>.uedevices{display:flex;flex-direction:column;gap:6px;margin-top:var(--field-gap)}
-.rback{display:none}
 /* Remove at the foot of a picked account's or role's settings, under Save
    and apart from it (the operator, 17 Oct). */
 .rdetail>.rfoot{display:flex;align-items:center;gap:8px;margin-top:var(--row-y);padding-top:var(--row-y);
@@ -842,7 +845,6 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   .rlist{border-right:0}
   .rdetail{padding:0 var(--row-x) var(--row-y)}
   .rsplit.open>.rlist,.rsplit:not(.open)>.rdetail{display:none}
-  .rback{display:inline-flex;margin:var(--row-y) 0 0}
   /* As a page of settings does: no row stays lit on the list, and the
      detail slides in from the right and the list back from the left. */
   .rsplit:not(.open)>.rlist .rrow.on{background:none}
@@ -6529,7 +6531,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="tab-users.js"></script>
 <script src="tab-roles.js"></script>
 <script src="tab-profile.js"></script>
-<script src="tab-devices.js"></script>
+<script src="tab-apps.js"></script>
 <script src="tab-toolchains.js"></script>
 <script src="tab-emulator.js"></script>
 <script src="tab-docker.js"></script>

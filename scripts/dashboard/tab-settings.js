@@ -204,7 +204,7 @@ async function clearReports(btn){
 const SETTING_GROUPS = [
   // The apps this controller offers its people (R272 step 3, apps.py): each
   // one on is fetched from the release matching this controller, checked
-  // against its sha256 and offered on the Devices page; Look now asks the
+  // against its sha256 and offered on the Apps page (under Build); Look now asks the
   // release again rather than waiting for the daily look.
   {key: "apps", title: "Apps", intro: appsIntro, status: appsStatus,
    heading: s => `${["apps_android", "apps_vscode", "apps_companion"].filter(k => s?.settings?.[k]?.value).length} offered`,
@@ -255,7 +255,7 @@ const SETTING_GROUPS = [
 // What the Apps section holds, over its switches, and Look now.
 function appsIntro(){
   return `<div class="sub">Each one on is fetched from the release that matches this controller, checked, and offered on the ${
-    pageLink("devices", "Devices page")} for your people to download and keep current.</div>
+    pageLink("apps", "Apps page")} for your people to download and keep current.</div>
     <div class="addbar ctlrow"><button type="button" id="setAppsCheck"${devApps?.checking ? " disabled" : ""}>${devApps?.checking ? "Looking…" : "Look now"}</button></div>`;
 }
 // ...and its line: what it holds, from which release, when it looked.

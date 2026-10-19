@@ -760,9 +760,9 @@ because there is no second port. The sign-out button, last in the header, ends t
 
 **The page is a rail, a top bar, a page on show and the dock**
 (R218 step 2). The rail down the left edge is ten groups, each one press:
-Home, Projects, Containers, Machines (Nodes, Storage, nginx), Build
-(Toolchains, Emulator, Phone, CI runner), Jobs, Sessions, People (Users,
-Roles), Settings (Controller, Profile) and Help; a group with several tools
+Home, Projects, Build (Toolchains, Emulator, Phone, CI runner, Apps),
+Containers (with nginx), Machines (Controller, Nodes, Storage), Sessions,
+Jobs, People (Users, Roles), Settings (Profile) and Help; a group with several tools
 shows them as a sub-nav at the top of its page. **Help** (R258) is these
 docs, read in the wiki's reader: listed in this folder's README groups beside
 the one open, a long one opening on its contents, a link to another doc
@@ -774,8 +774,8 @@ only for one that may read the controller. A page has an address
 (`#/containers`, `#/machines/nodes`, `#/projects/NAME`), so a reload, a
 shared link and the back button land on it. Terminals and the chat are the
 dock's, at the foot of every page (step 4). On a phone the rail is a bar of
-five across the foot (Home, Projects, Containers, Build, and More for the
-rest), and every page, Home and Projects included, is the one page area
+five across the foot in the rail's order (Home, Projects, Build,
+Containers, and More for the rest), and every page, Home and Projects included, is the one page area
 with the dock at its foot: there is no second view to switch to. The
 search in the top bar jumps to a page, a project, a container or a node as
 you type; it does not search inside notebooks.
@@ -1756,7 +1756,7 @@ the same on a project its own reads, whose transcript files of the account's
 are in the session's view read-only as well; nobody else's are anywhere. The commit identity is per account rather than per project, and
 reaches every session and shell that account opens as git's environment,
 which outranks whatever a repository has configured, so two people on one
-project are two authors. **Settings > Controller** on the rail, drawn only
+project are two authors. **Machines > Controller** on the rail, drawn only
 for an account that may read the controller, opens the Settings page, and
 **People > Users** holds the accounts. The Settings tab is what the
 **controller** owns and can apply live. The session-log policy lives there,

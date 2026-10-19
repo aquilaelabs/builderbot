@@ -196,12 +196,12 @@ ok(woke.status === 200 && (woke.changes || []).some(c => c[0] === 'from-laptop.t
   } finally { daemon.kill(); }
 }
 
-// ---- the Devices page lists them, and Disconnect signs one out -------------------------------
+// ---- Profile lists them, and Disconnect signs one out ---------------------------------------
 const PERSON = { Authorization: 'Basic ' + Buffer.from(`dv.rw:${people['dv.rw']}`).toString('base64'), 'Content-Type': 'application/json' };
 const prof = await (await fetch(`${base}/api/profile`, { headers: PERSON })).json();
 const listed = (prof.devices || []).map(d => d.name);
 ok(['TEST-PC', 'LAPTOP', 'ELSEWHERE'].every(n => listed.includes(n)) && (prof.devices || []).every(d => !('secret_hash' in d) && d.kind === 'pc'),
-   `the Devices page lists the person's devices, never their secrets (${JSON.stringify((prof.devices || []).map(d => d.name))})`);
+   `Profile lists the person's devices, never their secrets (${JSON.stringify((prof.devices || []).map(d => d.name))})`);
 const out = await (await fetch(`${base}/api/profile`, { method: 'POST', headers: PERSON,
   body: JSON.stringify({ action: 'device-signout', device: a.device.id }) })).json();
 const after = await dev(a.token, 'whoami', {}), still = await dev(b.token, 'whoami', {});

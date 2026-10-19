@@ -335,7 +335,7 @@ function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpt
 // A pointer to another page is a link to it (R256 step 2): the address that
 // page answers at, so a press goes there as the rail does and Back returns.
 const PAGE_AT = {nodes: "#/machines/nodes", docker: "#/containers", jobs: "#/jobs", toolchains: "#/build/toolchains",
-  users: "#/people/users", roles: "#/people/roles", devices: "#/settings/devices"};
+  users: "#/people/users", roles: "#/people/roles", apps: "#/build/apps"};
 function pageLink(page, words, hash = PAGE_AT[page]){
   return `<a href="${esc(hash || "#")}" class="pagelink">${esc(words)}</a>`;
 }
@@ -482,8 +482,10 @@ function docSection(kind, id, title, status, body, {cls = "", open, loud = false
 // The operator, 16 Oct: a page that is a run of settings sections (a
 // project's Settings, Controller settings, Profile) reads as a list of them,
 // each with what is in it, beside the one picked, the Roles page's shape;
-// on a phone the list, then the section sliding in over it with Back, and
-// the list sliding back. `root` holds the sections (details.sect) as
+// on a phone the list, then the section sliding in over it, its head the
+// way back (a chevron before its name; the operator, 19 Oct: a Back button
+// of its own was a row spent over a head that never folds), and the list
+// sliding back. `root` holds the sections (details.sect) as
 // children; `key` keeps which is picked; `says` is each section's line
 // under its name, by its data-sect id; `marks(id)` says whether one holds
 // something unsaved. Drawn again on every call, so a page that repaints
@@ -501,14 +503,18 @@ function splitSects(root, key, {says = {}, sel = ":scope > details.sect", marks 
     nav.className = "rlist snav";
     nav.setAttribute("role", "tablist");
     root.insertBefore(nav, root.firstChild);
-    const b = document.createElement("button");
-    b.type = "button"; b.className = "sback";
-    b.onclick = () => { SPLIT[root._split.key].open = false; splitMove(root, "back"); splitDraw(root); };
-    root.insertBefore(b, nav.nextSibling);
+    // A press on the open section's head, on a phone, goes back to the list.
+    root.addEventListener("click", e => {
+      const s = e.target.closest("summary"), d = s?.parentElement;
+      if (!d || d.parentElement !== root || !d.classList.contains("scur") || !root.classList.contains("sopen")
+          || !matchMedia("(max-width: 900px)").matches) return;
+      e.preventDefault();
+      SPLIT[root._split.key].open = false; splitMove(root, "back"); splitDraw(root);
+    });
     root.addEventListener("input", () => splitMarks(root));
     root.addEventListener("change", () => splitMarks(root));
   }
-  root.querySelector(":scope > .sback").textContent = "\u2039 " + back;
+  root._split.back = back;
   // A section shows or hides itself as what it holds arrives (People after
   // its read): the list follows.
   root._splitObs?.disconnect();
@@ -550,6 +556,9 @@ function splitDraw(root){
     });
   }
   all.forEach(d => { const on = splitId(d) === pick;
+    const s = d.querySelector(":scope > summary");
+    if (s && !s.querySelector(":scope > .shback"))
+      s.insertAdjacentHTML("afterbegin", `<span class="shback" role="img" aria-label="Back to ${esc(o.back)}">\u2039</span>`);
     if (d.classList.contains("scur") !== on) d.classList.toggle("scur", on);
     if (on && !d.open) d.open = true; });
   root.classList.toggle("sopen", st.open);

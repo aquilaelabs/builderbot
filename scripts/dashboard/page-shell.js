@@ -33,19 +33,18 @@ const RAIL_ICONS = {
 const RAIL = [
   {key: "home", label: "Home", icon: "home", tools: [["home", "Home"]]},
   {key: "projects", label: "Projects", icon: "projects", tools: [["projects", "Projects"], ["findings", "Analysis"]]},
+  {key: "build", label: "Build", icon: "toolchains", tools: [["toolchains", "Toolchains"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"], ["apps", "Apps"]]},
   {key: "containers", label: "Containers", icon: "docker", tools: [["docker", "Containers"], ["nginx", "nginx"]]},
-  {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"]]},
-  {key: "build", label: "Build", icon: "toolchains", tools: [["toolchains", "Toolchains"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"]]},
-  {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"]]},
+  {key: "machines", label: "Machines", icon: "nodes", tools: [["settings", "Controller"], ["nodes", "Nodes"], ["storage", "Storage"]]},
   {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
+  {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"]]},
   {key: "people", label: "People", icon: "people", tools: [["users", "Users"], ["roles", "Roles"]], admin: true},
-  {key: "settings", label: "Settings", icon: "settings", tools: [["settings", "Controller"], ["profile", "Profile"], ["devices", "Devices"]]},
+  {key: "settings", label: "Settings", icon: "settings", tools: [["profile", "Profile"]]},
   {key: "help", label: "Help", icon: "help", tools: [["help", "Help"]]},
 ];
-// The five on a phone's bar, in the rail's own order (the operator, 19 Oct:
-// Build where Jobs was, as a desk has it above Jobs); the rest are under
-// More, Jobs among them.
-const RAIL_PHONE = ["home", "projects", "containers", "build"];
+// The five on a phone's bar: the rail's first four, so a phone and a desk
+// keep one order (the operator, 19 Oct), and More for the rest in it.
+const RAIL_PHONE = RAIL.slice(0, 4).map(g => g.key);
 
 // A tool kind is a page: it leaves the strip and lives on the rail.
 function isToolKind(kind){ return kind !== "term" && kind !== "notebook"; }
@@ -79,8 +78,8 @@ function railGroups(){
   return RAIL.filter(g => (g.tools || []).some(([k]) => railAllows(k)));
 }
 // The page a group opens on: the one asked for when this account may open
-// it, else the group's first that it may. Settings opens Profile for an
-// account the Controller page is not drawn for, where it opened nothing.
+// it, else the group's first that it may. Machines opens Nodes for an
+// account the Controller page is not drawn for.
 function railTool(g, want){
   const ok = (g.tools || []).filter(([k]) => railAllows(k)).map(([k]) => k);
   return want && ok.includes(want) ? want : ok[0] || "";
@@ -109,7 +108,7 @@ const OPENERS = {
   toolchains: () => openToolchains(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
   runner: () => openRunnerTab(), jobs: () => openJobsTab(), users: () => openUsersTab(),
   roles: () => openRolesTab(), settings: () => openSettingsTab(), profile: () => openProfileTab(),
-  devices: () => openDevicesTab(),
+  apps: () => openAppsTab(),
   sessions: () => openSessionsTab(), help: () => openHelp(),
 };
 function railGo(key, tool){

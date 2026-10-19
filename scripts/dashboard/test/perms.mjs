@@ -236,18 +236,17 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
     jobsRail: !!document.querySelector('#rail [data-rail="jobs"]') }));
   ok(shown.toolchains && !shown.jobs && !shown.nodes && !shown.settings && !shown.users && !shown.roles && !shown.people && !shown.jobsRail,
      `its rail offers Toolchains and leaves out the pages it may not read (${JSON.stringify(shown)})`);
-  // A group opens on its first page this account may open (the operator,
-  // 16 Oct: Settings did nothing for an account the Controller page is not
-  // drawn for, though Profile is in it).
+  // Settings is the account's own Profile, open to anybody (the operator,
+  // 19 Oct: Controller settings went to Machines, first).
   // A new account is shown the guide on its first poll; it is put away, as
   // the person would, before the rail is pressed under it.
   await dp.waitForFunction(() => welcomed, null, { timeout: 15000 });
   await dp.evaluate(() => { if (!document.getElementById('aboutModal').hidden) closeAbout(); });
   await dp.click('#rail [data-rail="settings"]');
   await dp.waitForFunction(() => tabOf(panes[0])?.kind === 'profile', null, { timeout: 10000 });
-  ok(await dp.evaluate(() => location.hash === '#/settings/profile'
-       && [...document.querySelectorAll('#pane0 > .bar .subnav button')].map(b => b.textContent).join() === 'Profile,Devices'),
-     'Settings opens on Profile for an account that may not read the controller, its sub-nav its own pages alone (Profile, Devices)');
+  ok(await dp.evaluate(() => location.hash === '#/settings'
+       && [...document.querySelectorAll('#pane0 > .bar .subnav button')].map(b => b.textContent).join() === 'Profile'),
+     'Settings opens on Profile for an account that may not read the controller, alone on its sub-nav');
   await dp.close();
   await api('/api/roles', { action: 'assign', name: 'dep', roles: [] });
   await api('/api/roles', { action: 'remove', name: 'tc-viewer' });
