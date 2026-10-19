@@ -199,10 +199,10 @@ class Relocate(unittest.TestCase):
         import importlib
         real = importlib.import_module("devactions")
         plain = [st["name"] for st in real._plan("alpha", "main", "rebuild")]
-        self.assertEqual(plain, ["building", "stopping", "starting"], "a rebuild at home comes up")
+        self.assertEqual(plain, ["building", "pulling", "stopping", "starting"], "a rebuild at home comes up")
         relocate._set("alpha", "main", relocating={"mode": "move", "to": "main", "old": "n1", "new": "n3", "stage": "build"})
         arriving = [st["name"] for st in real._plan("alpha", "main", "rebuild")]
-        self.assertEqual(arriving, ["building", "stopping"], "on arrival it builds and stays down")
+        self.assertEqual(arriving, ["building", "pulling", "stopping"], "on arrival it builds and stays down")
         relocate._set("alpha", "main", relocating=None)
 
     def test_the_data_is_unpacked_on_arrival_unless_the_archive_is_to_stay(self):

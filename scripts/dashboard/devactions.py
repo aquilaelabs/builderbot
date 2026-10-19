@@ -230,7 +230,13 @@ def _plan(project, instance, action, extra=None):
     # R208).
     rel = devapp._read_rec(project, instance).get("relocating")
     arriving = isinstance(rel, dict) and rel.get("stage") == "build"
-    rebuild = [build, down] if devapp.missing_env(project, instance) or arriving else [build, down, up]
+    # The registry images it names fetched before the old containers go
+    # (B61): an image that cannot be pulled fails the rebuild while the app
+    # still runs, rather than after the down, which left it down. Only what
+    # the node lacks, so a registry out of reach stops nothing it has.
+    fetch = {"name": "pulling", "argv": base + ["pull", "--ignore-buildable", "--policy", "missing"],
+             "timeout": 1800, "env": ienv}
+    rebuild = [build, fetch, down] if devapp.missing_env(project, instance) or arriving else [build, fetch, down, up]
     # The project's own test command, inside its running instance (roadmap
     # R48): `exec` into the service the project builds, with the command the
     # settings dialog recorded and nothing else, and the caller's arguments
@@ -1350,6 +1356,16 @@ def _job_rebuild(project, instance, run):
             # Removed from the Docker tab while it was building (B633): the
             # remove took it down, and nothing of it is started again.
             return {"state": "failed", "error": "removed from the Containers page while it was building: the image is built, nothing started"}
+        # What it pulls from a registry, before the old containers go (B61):
+        # an image that cannot be had fails here with the app still up.
+        run.step("pulling")
+        r = devapp._run(devapp._compose(project, instance, "pull", "--ignore-buildable", "--policy", "missing"),
+                        timeout=1800, sink=run.line, hold=run.hold)
+        if run.canceled:
+            return {"state": "canceled", "error": "stopped: the image is built, and what ran before is still up"}
+        if r["code"] != 0:
+            return {"state": "failed", "error": "an image it names could not be pulled, so what ran before is "
+                                               "left running:\n" + r["out"][-400:]}
         run.step("stopping")
         devapp._run(devapp._compose(project, instance, "down", "--remove-orphans"), timeout=180,
                     sink=run.line, hold=run.hold)
