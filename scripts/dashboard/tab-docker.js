@@ -1534,7 +1534,7 @@ async function dmLogs(name, node = dockerNode){
   $("dlTitle").textContent = `Log: ${name}`;
   // Its foot from the first frame: a log read on a busy node takes seconds,
   // and a dialog with no Close meanwhile is one you cannot leave (B498).
-  body.innerHTML = `${skel("lines", 8, "reading…")}
+  body.innerHTML = `<div class="field">${skel("lines", 8, "reading…")}</div>
     <div class="foot"><span class="sp"></span><button type="button" id="dlClose">Close</button></div>`;
   body.querySelector("#dlClose").onclick = () => { modal.hidden = true; };
   modal.hidden = false;
