@@ -3289,7 +3289,12 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 @media(hover:hover){
   .pane .bar .subnav.pseg>button:hover,.pane .bar .subnav.pseg>button.on:hover{background:none;color:var(--ink)}
 }
-@media(max-width:900px){ .pane .bar .subnav.pseg>button{min-height:var(--tap)} }
+/* On a phone the tools share the bar's width on a tighter inset, so a
+   group of five (Build) reads whole down to a fold's 344px cover. */
+@media(max-width:900px){
+  .pane .bar .subnav.pseg{flex:1 1 auto}
+  .pane .bar .subnav.pseg>button{min-height:var(--tap);flex:1 1 auto;padding:0 6px}
+}
 /* A press that is only an icon (the trash, ⋯ where it is drawn as one)
    centers it: inline, an SVG sat on the text's baseline and two pixels off
    (the operator, 17 Oct). */
