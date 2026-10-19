@@ -470,6 +470,13 @@ function openTab(spec){
     // tab's arg: reloading the frame would only re-attach to it anyway.
     t.arg = spec.arg;
   }
+  // A Claude tab whose frame was built before its machine restarted carries
+  // that run's boot, and bb-tty refuses it, rightly for a frame reconnecting
+  // on its own. A press is the decision the refusal asks for, so the frame
+  // is built again with the machine's boot now: kept, every press after a
+  // crash reopened the refusal that said to press it (19 Oct).
+  if (isClaude(t) && t.frameBoot !== undefined && t.frameBoot !== bootFor(t.arg))
+    t.gen = (t.gen || 0) + 1;
   // The boot it was opened under, for the restart check on the poll: a tab
   // opened AFTER the machine came back is not one from before it. Stamped
   // here rather than only where a tab is CREATED, because a second click on

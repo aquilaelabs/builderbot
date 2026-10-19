@@ -225,14 +225,15 @@ function drawPanes(){
     if (!t){ showInStack(st, "", () =>
       `<div class="empty-pane">no tab here: “+” opens a terminal, Sessions reopens a running one</div>`);
       continue; }
-    const key = `${t.id}|${t.kind}|${t.arg}${t.popped ? "|popped" : ""}`;
+    const key = `${t.id}|${t.kind}|${t.arg}${t.gen ? "|" + t.gen : ""}${t.popped ? "|popped" : ""}`;
     // A terminal that was on screen a moment ago is kept alive behind the one
     // that replaced it, so coming back to it is instant. Two panes must never
     // hold the same one: a second live client on a session is the size fight one
     // client per terminal avoids.
     if (t.kind === "term" || t.kind === "notebook") dropElsewhere(i, key);
     // Same tab, different argument: a dead session's tab taking a Resume's
-    // transcript id: is a different frame, and the old one is nobody's now.
+    // transcript id: is a different frame, and the old one is nobody's now;
+    // so is one built again for a machine that restarted (openTab's gen).
     [...st.children].filter(c => c.dataset.key !== key
                             && c.dataset.key?.startsWith(t.id + "|"))
                     .forEach(c => c.remove());
@@ -252,6 +253,9 @@ function drawPanes(){
       // Documents are not kept: they redraw from state in a millisecond, and
       // one per pane means one #docN, which is what renders into them.
       : `<div class="doc fx" id="doc${i}"></div>`);
+    // The boot a new frame's URL carries, for openTab to tell one from before
+    // its machine restarted.
+    if (fresh && t.kind === "term") t.frameBoot = bootFor(t.arg);
     // The id names "the document being shown in pane i", so it must name one
     // node. A hidden document left in the stack (the notebook parks there)
     // used to keep it, and getElementById returns the first in DOM order,
