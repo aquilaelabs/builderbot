@@ -665,6 +665,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A failed agent update frees its button at once and says what the node was busy with, rather than staying on Updating (0ef4ae0)
 - A reload on a notebook view shows that view's own placeholder, and placeholder bars and section lines keep their inset on every page (0ef4ae0)
 - After a restart the Doctor says a node is back as soon as it dials in again, instead of reporting it as not dialing in for half an hour (07d7868)
+- Home's Getting started ticks off your node and Claude Code as soon as a node dials back in after a restart, without a reload (40e389a)
 
 ### Security
 

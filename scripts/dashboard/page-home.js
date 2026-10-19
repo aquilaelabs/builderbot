@@ -139,6 +139,13 @@ function homeGlanceHtml(){
 // away; read from setupSteps, the setup page's own reading, so the two
 // never disagree. Put away is this browser's, which is all it needs.
 let homeStartHidden = (() => { try{ return localStorage.getItem("bb.gsHidden") === "1"; }catch(e){ return false; } })();
+// Whether the card is up and its node steps read the nodes list: read once,
+// a list from before the nodes dialed in again after a restart said there
+// was no node and no Claude Code until a reload (19 Oct).
+function homeStartReadsNodes(){
+  return !homeStartHidden && !setupNeeded() && !!state?.can?.admin && railAllows("nodes")
+    && !(nodesList && setupSteps().claude);
+}
 function homeStartHtml(){
   // First run's continuation, so the owner's and an administrator's: a
   // person without the role may have no New project to press.
@@ -211,7 +218,8 @@ function renderHomeInto(i){
     else if (k === "project") openNewProject();
     else if (k === "hide"){ homeStartHidden = true; try{ localStorage.setItem("bb.gsHidden", "1"); }catch(e){ /* private */ } drawPanes(); }
   });
-  // The Claude step's state is the nodes list's, read once for the card.
-  if (!homeStartHidden && nodesList === null && railAllows("nodes")) loadNodes().then(() => drawPanes());
+  // The Claude step's state is the nodes list's, read on open and again
+  // when the nodes move (index.html's watch).
+  if (homeStartReadsNodes() && (nodesList === null || nodesStale)) loadNodes().then(() => drawPanes());
   wireNeeds(root);
 }

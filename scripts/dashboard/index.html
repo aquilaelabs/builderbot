@@ -7267,6 +7267,8 @@ onRev("nodes", () => {
   // Measure now asked for arrive with no Refresh (the operator, 17 Oct).
   if (shown("storage")) loadStorage();
   if (shown("emulator") && emu?.nonode) loadEmulator();
+  // ...and Home's Getting started, which says whether a node is online.
+  if (shown("home") && homeStartReadsNodes()) loadNodes().then(() => drawPanes());
   // ...and what is drawn off the status poll (the bell, the doctor): a job
   // on a node moves this rev, so they say it inside a second or two instead
   // of at the next fifteen-second poll.
