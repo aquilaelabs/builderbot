@@ -40,5 +40,27 @@ class Title(unittest.TestCase):
         self.assertIn(f"at most {bugs.MAX_SHORT}", e.get("error", ""), "an edit is held to it too")
 
 
+class EditHistory(unittest.TestCase):
+    """A bug edit's History names the fields that moved, not every one the
+    form sent (B42), and an edit that moved nothing leaves no line."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        (Path(self.tmp) / "ws" / "p").mkdir(parents=True)
+        bugs.configure(write_json=write_json, state=self.tmp, workspace=str(Path(self.tmp) / "ws"))
+
+    def test_only_what_moved_is_named(self):
+        r = bugs.add("p", "first", severity="low", area="nb", repro="press it")
+        n = r.get("id") or r["bug"]["id"]
+        form = {"title": "second", "severity": "low", "area": "nb", "repro": "press it",
+                "expected": "", "actual": "", "notes": ""}
+        bugs.edit("p", n, **form)
+        notes = [e.get("note") for e in bugs.history("p") if e.get("act") == "edited"]
+        self.assertEqual(notes, ["title"])
+        bugs.edit("p", n, **form)
+        self.assertEqual(len([e for e in bugs.history("p") if e.get("act") == "edited"]), 1,
+                         "the same form again is no edit")
+
+
 if __name__ == "__main__":
     unittest.main()
