@@ -201,6 +201,17 @@ def _own(repo, write=False):
             text.append(f'[{kind} "{gitrelay._q(name)[1:-1]}"]')
             text += [f"\t{k} = {gitrelay._q(v)}" for k, v in pairs]
         _atomic(d / "config", "\n".join(text) + "\n")
+        # The tree's own exclude file, where BuilderBot keeps its paths (the
+        # code map's .bb-map/, a new project's brief) out of the project's
+        # git: git reads it from the git dir, so a status through this one
+        # listed them as untracked and Commit all would take them. Patterns
+        # only, nothing git runs.
+        try:
+            ex = (common / "info" / "exclude").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            ex = ""
+        (d / "info").mkdir(exist_ok=True)
+        _atomic(d / "info" / "exclude", ex)
         tree_refs = gitrelay.refs(common)
         _atomic(d / "packed-refs", "# pack-refs with: sorted \n"
                 + "".join(f"{tree_refs[n]} {n}\n" for n in sorted(tree_refs)))
