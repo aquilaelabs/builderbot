@@ -167,6 +167,11 @@
      and the rows that already matched did so at --tap. */
   --ctl:var(--tap);
   --doc-w:1080px;
+  /* What a band that spans the pane (a pane's bar, the notebook's view
+     strip) sets in by so its contents start where the centered column's do:
+     half of what the pane has past the column, nothing on a narrower one.
+     Read where it is used, so 100% is that band's own box. */
+  --doc-in:max(0px, calc((100% - var(--doc-w)) / 2));
   /* A card's head: the ink a step into the panel, its own shade in every
      scheme (the operator, 18 Oct: a head the card's color did not pop). */
   --head-bg:color-mix(in srgb, var(--ink) 6%, var(--panel));
@@ -2526,7 +2531,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    the other from visible to auto, and the strip became a vertical scroller
    too. No scrollbar: under a row of tabs it reads as a divider. */
 .nbtabs{border-bottom:var(--hair) solid var(--line)}
-.nbtabs .nbgroups,.nbtabs .nbsub{display:flex;padding:0 8px;
+.nbtabs .nbgroups,.nbtabs .nbsub{display:flex;padding:0 calc(8px + var(--doc-in));
   overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .nbtabs .nbgroups::-webkit-scrollbar,.nbtabs .nbsub::-webkit-scrollbar{display:none}
 .nbtabs button{background:none;border:0;border-bottom:2px solid transparent;
@@ -2971,7 +2976,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .nb,.pane .doc > .nb{display:block;max-width:none}
 /* Every band of the notebook shares it, so the rows, the banner and the
    footer all end at the same edge. */
-.nb > *{max-width:var(--doc-w)}
+.nb > *{max-width:var(--doc-w);margin-inline:auto}
 .nb > .nbtabs{max-width:none}
 /* ...except the sheet, which is not a band of the document but a fixed
    overlay that happens to live here: one per notebook, so a split holds two
@@ -2999,7 +3004,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pane .stack:has(> .doc.on:is(.nbhost,.flush)){background:var(--panel)}
 /* The same reading width the notebook's bands take, so a row's controls do
    not end up an ultrawide pane away from the name they act on. */
-.projtab,.dmtab,.fxtab,.doctab{display:block;max-width:var(--doc-w)}
+.projtab,.dmtab,.fxtab,.doctab{display:block;max-width:var(--doc-w);margin-inline:auto}
 /* The notebook's Docker view draws the manager's rows under its own class:
    the suites address the manager as .dmtab, and a second element wearing
    that name, parked and hidden, was the first one they found. */
@@ -3191,12 +3196,12 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 }
 /* A page's bar: the group's tools as a segment (the same .pseg the gear's
    Appearance uses), or the page's name, and no close. */
-.pane .bar.page{padding:6px 10px;min-height:var(--pbar-h)}
+.pane .bar.page{padding:6px calc(var(--row-x) + var(--doc-in));min-height:var(--pbar-h)}
 .nbhead .nbsum{min-width:0;flex:1 1 auto}
 /* A project's page (R218 step 3): the bar is its header, one band: the name
    large, the branch and the node in the data face, the session's dot and
    word, and the actions at the right; the one notice under it. */
-.pane .bar.proj{padding:6px 10px;flex-wrap:wrap;gap:4px 10px;font:var(--f-ui);min-height:var(--pbar-h)}
+.pane .bar.proj{padding:6px calc(var(--row-x) + var(--doc-in));flex-wrap:wrap;gap:4px 10px;font:var(--f-ui);min-height:var(--pbar-h)}
 .pane .bar.proj .phead{display:flex;align-items:center;gap:10px;flex:1 1 auto;min-width:0;flex-wrap:wrap}
 .pane .bar.proj .pname{font-weight:600;font-size:1.15rem;line-height:1.3;color:var(--ink);white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
 .pane .bar.proj .pname .lockmark svg{width:14px;height:14px}
@@ -4748,10 +4753,11 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 /* A document has a reading width. Left to fill an ultrawide pane, every row
    here becomes a name at one end of two thousand pixels and the control that
    acts on it at the other (the bin, the Revert, the version pill) with the
-   eye traveling the whole way between them. Capped and left-aligned rather
-   than centered: the pane's own bar is at this edge, and the content should
-   start where the label naming it does. */
-.pane .doc > *{max-width:var(--doc-w)}
+   eye traveling the whole way between them. Capped and centered in the pane,
+   as the design's page says (the operator, 19 Oct: pinned left, a desk's
+   pane kept 214px empty at the right); a band spanning the pane sets its
+   contents in by --doc-in to start where the column does. */
+.pane .doc > *{max-width:var(--doc-w);margin-inline:auto}
 /* Every child of the stack occupies the whole of it, and one is visible. See
    paneStack(): the frames behind stay loaded and stay the same size. */
 .pane .stack{position:relative;flex:1;min-height:0}
