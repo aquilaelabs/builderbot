@@ -173,11 +173,11 @@ def uid_of(u):
 
 
 def starts_unpinned(u):
-    """Whether this account's sidebar starts with no project pinned until it
+    """Whether this account's Home starts with no project pinned until it
     pins one (projects.load_project_pins). Every account made since 7 Oct
     does (the operator: a new user starts with nothing pinned and adds what
     they want); one made before keeps "all of them" until it pins, so an
-    update does not empty a sidebar somebody was using."""
+    update does not empty a Home somebody was using."""
     return bool((u or {}).get("pins_empty"))
 
 

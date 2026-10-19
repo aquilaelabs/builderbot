@@ -3,8 +3,7 @@
 // tack that pins it. No bb commands: every one of them has its page now.
 // Each button types into the terminal; the list of what can be typed is the
 // server's (macros.py), never a string from here.
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand: pure
+// One classic script beside index.html (docs/design-language.md, Files): pure
 // declarations, nothing runs at load.
 
 "use strict";

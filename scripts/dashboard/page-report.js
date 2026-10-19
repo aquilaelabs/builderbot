@@ -3,7 +3,8 @@
 // `bb report`. The dialog asks for a category, what happened and how to make
 // it happen; the project is the row's, and the server adds the node and the
 // build it was seen on. One classic script beside index.html; the button is
-// page-sidebar.js's and the markup #reportModal is index.html's.
+// projectActions' (nb-core.js), its handler page-sidebar.js's and the markup
+// #reportModal index.html's.
 
 "use strict";
 

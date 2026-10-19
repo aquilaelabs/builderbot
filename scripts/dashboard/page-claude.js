@@ -3,8 +3,7 @@
 // and the way to a node's sign-in where this account has none there, all
 // from the chooser the Claude button opens.
 //
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand (R77):
+// One classic script beside index.html (docs/design-language.md, Files):
 // pure declarations, nothing runs at load. What runs at load stays in
 // index.html under the section's header.
 
@@ -14,9 +13,9 @@
 
 // Which project's chooser is open, if any.
 let resumeFor = null;
-// Where the chooser was asked for (R218 step 3): the project page's pane,
-// or the sidebar's card; it is drawn in that one and positioned under the
-// Claude button there.
+// Where the chooser was asked for (R218 step 3): the pane of the project's
+// page or of the Projects page; it is drawn in that one and positioned under
+// the Claude button there.
 let resumeHost = null;
 function resumeHostNow(){
   if (resumeHost?.isConnected) return resumeHost;

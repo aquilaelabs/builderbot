@@ -29,7 +29,7 @@
   {
     // #/group/tool, a group alone naming its first tool (RAIL's order).
     const [g, t] = location.hash.replace(/^#\/?/, "").split("/");
-    const FIRST = {home: "home", machines: "nodes", jobs: "jobs", people: "users", containers: "docker"};
+    const FIRST = {home: "home", machines: "settings", jobs: "jobs", people: "users", containers: "docker"};
     // Containers reads a node's list, the node this browser last listed
     // (tab-docker.js keeps it): known here, so its read starts with the
     // status read instead of after it, which on a busy controller took
@@ -39,13 +39,13 @@
     try{ dmNode = localStorage.getItem("bb.dmnode") || ""; }catch(e){ /* private */ }
     const BOOT_READS = {"home/home": ["/api/home?light=1"], "people/users": ["/api/users", "/api/roles"], "people/roles": ["/api/roles"],
                         "settings/profile": ["/api/profile"], "machines/nodes": ["/api/v1/nodes"],
-                        "machines/storage": ["/api/storage"], "containers/nginx": ["/api/nginx"], "machines/nginx": ["/api/nginx"], "jobs/jobs": ["/api/v1/jobs?n=100"],
+                        "machines/storage": ["/api/storage"], "containers/nginx": ["/api/nginx"], "jobs/jobs": ["/api/v1/jobs?n=100"],
                         "containers/docker": ["/api/docker" + (dmNode ? "?node=" + encodeURIComponent(dmNode) : "")]};
     // A project's page (#/projects/NAME): what its notebook reads as it opens.
     // Its Overview, the view it opens on, reads its rules, code base,
     // preamble and brief as well.
     const [, , view] = location.hash.replace(/^#\/?/, "").split("/");
-    const proj = g === "projects" && t && t !== "findings" && t !== "analysis" ? decodeURIComponent(t) : "";
+    const proj = g === "projects" && t && t !== "findings" ? decodeURIComponent(t) : "";
     const reads = proj ? ["roadmap", "memory", ...(!view || view === "overview" ? ["rules", "codebase", "preamble", "brief"] : [])]
         .map(k => `/api/${k}?project=${encodeURIComponent(proj)}`)
       : BOOT_READS[`${g}/${t || FIRST[g] || ""}`] || [];
@@ -59,7 +59,6 @@
   // <body> does not exist yet: a matching selector pair below reads either.
   try{
     let t = localStorage.getItem("bb.theme");
-    if (t === "fern") t = "nostromo";   // a stored Fern is Nostromo's light half; applyTheme writes it back
     if (t && t !== "default" && /^[a-z]{2,12}$/.test(t))
       document.documentElement.dataset.theme = t;
     // ...and whether it is the dark or the light half of it (R216): "system"
@@ -193,16 +192,13 @@
      elsewhere, where half a pixel would round away. Every border drawn in
      --line is this width. */
   --hair:1px;
-  /* The widest a control, or a row of them, may be on a document surface or
-     a sidebar card: a field that runs the whole width of a tab reads as a
+  /* The widest a control, or a row of them, may be on a document surface:
+     a field that runs the whole width of a tab reads as a
      form pretending to be a page (docs/design-language.md, Controls). */
   --ctl-w:30rem;
   /* The inset of a band on a document surface: a notebook row, a modal's
-     field, a document tab's row, a findings rule. It was retyped as 11px 14px
-     at every band and as 9px 11px at a few that were written against the
-     sidebar's tighter density by mistake, which is how one tab ends up with
-     four different left edges. The sidebar keeps its own, tighter, values;
-     this is the roomy one every document surface uses. */
+     field, a document tab's row, a findings rule. One value, because a band
+     retyped by hand is how one tab ends up with four different left edges. */
   --row-y:12px; --row-x:16px;
   /* The gap between the stacked things inside one band: a label-and-field
      pair, a hint, a row of them. One value, so a dialog cannot invent its
@@ -1174,7 +1170,7 @@ body.firstrun #panes{display:none}
    over the next row's words (R210). */
 .row.off > :not(.actbar),.row.off > .actbar > :not(.more),.row.off > .actbar > .more > button{opacity:.62}
 /* A directory name can be one long unbroken token; it wraps rather than
-   handing the whole sidebar a sideways scroll. */
+   handing the whole page a sideways scroll. */
 .row .name{font-weight:600;overflow-wrap:anywhere}
 .row .name.go{cursor:pointer}
 .row .sub{color:var(--dim);font:var(--f-data);overflow-wrap:anywhere}
@@ -1379,8 +1375,6 @@ input[type="number"]{-moz-appearance:textfield}
 button.primary{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:var(--row-y) var(--row-x)}
-/* A ghosted tool's reason, under the card's buttons and on their inset. */
-.toolwhy{padding:0 10px 9px;margin:0;font:var(--f-data);color:var(--bad);overflow-wrap:anywhere}
 /* The Toolchains page's band of actions (tab-toolchains.js): the bar is the
    band, and what Remove would take sits under it on the band's own inset. */
 .tcact .tcclean{padding:4px 0 0;font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
@@ -1503,19 +1497,8 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
 .row.stack2{flex-direction:column;align-items:stretch;gap:4px;flex-wrap:nowrap}
 .row.stack2 .grow{min-width:0;overflow-wrap:anywhere}
 .row.stack2 .acts{margin-left:0;flex-wrap:wrap}
-/* Who is working here, under the row's controls rather than above them: it is
-   a fact about the project, and the buttons are what somebody came to the row
-   for. The row is a column, so it simply falls last, except on the Projects
-   tab at desktop width, where the row turns back into a line and this has to
-   wrap onto its own beneath it. */
-.row.stack2 .sessline{width:100%;flex-basis:100%;min-width:0;overflow-wrap:anywhere;color:var(--pass)}
-/* ...but a refusal is a refusal: the accent beat .sub.bad on specificity and
-   'no node to run a Claude session on' read as a healthy state (B451). */
-.row.stack2 .sessline.bad{color:var(--bad)}
-.row.stack2 .sessline.warn{color:var(--warn)}
 /* Who has a session here: a line per name with a dot in front, bright while
    that session is working and dim while it waits. */
-.row.stack2 .sesslist{width:100%;flex-basis:100%;min-width:0;color:var(--pass)}
 .sessone{display:flex;align-items:center;gap:6px;line-height:1.6}
 .sessbehind{font:var(--f-ui);margin:0 0 2px 14px;color:var(--warn)}
 /* Its dot is the session dot (.st, below): one rule for every place a
@@ -1711,8 +1694,7 @@ textarea,select{
 .nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
   padding:8px 9px;font:var(--f-field)}
 /* ...and one height for all of them, the buttons beside them included
-   (the sidebar's cards and the header keep their own smaller buttons: they
-   sit beside no field). */
+   (the header keeps its own smaller buttons: they sit beside no field). */
 .modal input:where(:not([type="checkbox"],[type="radio"])),.modal select,
 .doc .row input,.doc .row select,.uimenu input,.uimenu select,
 .doctab input:where(:not([type="checkbox"],[type="radio"])),.doctab select,
@@ -2118,13 +2100,6 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
   background-color:color-mix(in srgb, var(--pc) 14%, transparent)}
 /* A pane's bar says whose it is with the stripe. */
 .pane .bar.pc{box-shadow:inset 3px 0 var(--pc)}
-/* The containers under a dev instance's row: one line each, the running
-   ones in the ok color, the rest dim. */
-.dmsvcs{line-height:1.5}
-.dmsvc.ok{color:var(--pass)}
-/* The project's node beside its name: a sibling of .name, so the name
-   element stays the name and nothing else. */
-.namerow{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0}
 /* The Tools card's buttons carry an icon, and the tab each opens carries
    the same one, so a button and its tab are one thing in two places. */
 .macros button svg{width:14px;height:14px;fill:none;stroke:currentColor;
@@ -2229,7 +2204,6 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .gbranches .gopens>.tline{cursor:pointer;border-radius:var(--r-small)}
 @media(hover:hover){.gbranches .gopens>.tline:hover{background:var(--btn)}}
 .gbranches .gbwhy{color:var(--bad);padding-bottom:var(--label-gap)}
-.gbranches .gcmp{background:var(--sunk);margin-top:var(--label-gap);padding:var(--row-y) var(--row-x);border-radius:var(--r-surface)}
 .gab{display:inline-grid;grid-template-columns:1fr 1fr;width:100%;max-width:7rem;vertical-align:middle;font:var(--f-note);color:var(--dim)}
 .gab>span{display:flex;flex-direction:column;gap:2px;padding:0 4px}
 .gab>.l{align-items:flex-end;border-right:var(--hair) solid var(--line)}
@@ -2293,9 +2267,6 @@ pre.diff .d-ctx{color:var(--dim)}
 .artrow .dim.bad{color:var(--bad)}
 /* One fact per line, indented under the line that says what kind they are. */
 .artrow .dim.li{padding-left:12px}
-/* One published port is a link; several is a question, asked in the sheet. */
-.portpick{display:flex;flex-direction:column;gap:8px;padding:var(--row-y) var(--row-x)}
-.portpick a.btn{justify-content:flex-start;gap:8px;font:var(--f-data)}
 .artrow .top .state{font:var(--f-note)}
 .artrow .top .state.ok{color:var(--pass)}
 /* Pushed right on a desktop; on a phone the buttons take their own line, the
@@ -2642,8 +2613,8 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .wkarticle .wkText,.wkadd .wkText{min-height:22em;font-family:var(--mono);width:100%;box-sizing:border-box}
 .wklogrow{padding:3px 0;font:var(--f-note)}
 #wkWhy{color:var(--bad);font:var(--f-note)}
-/* Narrow is the PANE's width, not the window's (B728): a notebook beside the
-   sidebar in a 1000px window, or on a phone, is 500px wide, and the page
+/* Narrow is the PANE's width, not the window's (B728): a notebook in one of
+   two panes in a 1000px window, or on a phone, is 500px wide, and the page
    column drawn over the article there was the window's rule not applying.
    The view is the container; under 620px the column gives way to the
    picker above the article. */
@@ -2702,10 +2673,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .dslayers .dslayer .t b{font-weight:600}
 .dslayers .dslayer .t span{color:var(--dim)}
 .dslayers .dslayer button.ic{flex:0 0 auto}
-/* The theme and the rule the section's pulldown shows: fields like any
+/* The theme the section's pulldown shows: fields like any
    tab's, not a box of their own (the operator, 28 Sep). */
-.dstheme,.dsrule{display:flex;flex-direction:column;gap:var(--field-gap)}
-.dsrule .dsctl input{width:12em}
+.dstheme{display:flex;flex-direction:column;gap:var(--field-gap)}
 .dscolors{display:flex;flex-direction:column;gap:var(--field-gap)}
 .dscolors .dsctl input{width:9em}
 .dscolors .dsctl .dsc input{width:7.5em}
@@ -2879,8 +2849,6 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    shape for a row you open, not two that drift. */
 #rlList{padding-top:0}
 .rulerow .rlName{width:100%;margin-bottom:6px}
-#grBody .field>label{margin-bottom:calc(var(--label-gap) - var(--field-gap))}
-#grBody .rulerow .hint{margin-top:2px}
 .rulerow .two{align-items:center}
 .rulerow textarea{min-height:96px;white-space:pre-wrap;margin:0 0 6px;width:100%}
 /* Which kind it is, said rather than chosen: a rule is conditional exactly
@@ -2988,10 +2956,8 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    .dkview, beside .dmtab in each rule: the suites address the manager as
    .dmtab, and a second element wearing that name, parked and hidden, was the
    first one they found. */
-/* A row takes the spacing tokens everywhere (consistency batch 4): the
-   sidebar card that wanted 7px/10px went with 2.0, and the list of pages
-   that put the tokens back had left the notebook's rows narrower than the
-   pages' beside them. */
+/* A row takes the spacing tokens everywhere (consistency batch 4), the
+   notebook's rows as wide as the pages' beside them. */
 .dmsrc{padding:var(--row-y) var(--row-x)}
 /* The last answer while a new one is on its way, or one the server kept
    from before the node's job: dimmed as a whole, still readable, with no
@@ -3400,22 +3366,19 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .dmsvctbl>.tline{border-top:var(--hair) solid var(--line)}
 .dmsvctbl>.thead{background:color-mix(in srgb, var(--sunk) 60%, transparent)}
 .dmsettings .setfoot.dmeditfoot{grid-column:1 / -1;justify-content:flex-end;gap:6px}
-/* What a card's settings are, read (factPills): pills on one wrapping line,
-   Edit settings at its right, which swaps the fields in. */
+/* What a card's settings are, read (factPills): pills on one wrapping line. */
 /* ...the same room above and below it (the operator, 17 Oct): the card's
    grid adds its 2px row gap above at a desk, and a fold's band starts below. */
 .fpills{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:6px 12px;margin:14px 0 12px}
 @media(max-width:900px){ .fpills{margin-top:16px} }
 .fpills>.fpl{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
-@media(max-width:600px){ .fpills{grid-template-columns:minmax(0,1fr)} .fpills>.fpedit{justify-self:start} }
+@media(max-width:600px){ .fpills{grid-template-columns:minmax(0,1fr)} }
 .fpill{display:inline-flex;align-items:baseline;gap:6px;padding:3px 9px;border:var(--hair) solid var(--line);
   border-radius:var(--r-small);background:var(--sunk);font:var(--f-note);color:var(--ink);max-width:100%;min-width:0}
 .fpill .k{color:var(--dim);flex:0 0 auto}
 .fpill .v{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .fpill .v a{color:var(--note)}
 .fpill.ok .v{color:var(--pass)}
-.fpills .fpedit{display:inline-flex;align-items:center;gap:6px}
-.fpills .fpedit svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linejoin:round}
 .dmapplyset{display:inline-flex;gap:6px}
 .dmhead{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px 16px;min-width:0}
 .dmhead>.dmid{flex:1 1 16rem;min-width:0}
@@ -3444,7 +3407,7 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 :is(.dmtab,.dkview) .dmsum .td a{color:var(--note)}
 :is(.dmtab,.dkview) details.dmline > .dmbody{padding:0 var(--row-x) var(--row-y);border-top:var(--hair) solid var(--line)}
 :is(.dmtab,.dkview) .dmviewseg button{min-height:var(--ctl)}
-.facts dd a,.dmports a{color:var(--note)}
+.facts dd a{color:var(--note)}
 /* The row's Log fold: each container's tail under its name, the whole no
    taller than a screen, and the Follow switch on its action bar. */
 .dmlogbox .dmlogsvc + .dmlogsvc{margin-top:8px}
@@ -3685,16 +3648,7 @@ button.eye.acc.on,button.eye.acc.on:hover{color:var(--accent)}
    removes it, and putting it in the same tray invited the hand that was going
    for the one beside it. Set apart by having no chrome at all, and last. */
 button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
-/* On a pane's width the buttons belong beside the name, not under it: a
-   project row is a name and the things you can do to it, and stacking them
-   costs a line each for no reason once there is room. The sidebar keeps the
-   stack (340px is not room) and so does a phone, where the whole layout is
-   one column anyway. */
 @media(min-width:901px){
-  .projtab .row.stack2{flex-direction:row;align-items:center;flex-wrap:wrap}
-  .projtab .row.stack2 .grow{min-width:0}
-  .projtab .row.stack2 .acts{margin-left:auto;flex-wrap:nowrap}
-
   /* A manager row is four facts and a set of buttons: what it is, how it is,
      what it publishes, and what you can do to it. Stacked they are four lines
      that have to be read in order; side by side they can be scanned down a
@@ -3837,7 +3791,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    with every bar control below. */
 .docbarrow>input[type=search]{flex:1 1 12rem;min-width:8rem}
 .docbarrow[hidden]{display:none}
-.ndtest.warn,.ndcheck.warn,#logDaysSaid.warn{color:var(--warn)}
+.ndtest.warn,.ndcheck.warn{color:var(--warn)}
 /* The one-time enrollment command: a pre, because a wrapped shell line lies
    about what runs, with the page's pre skin, inset like a field. */
 .ndcmd{margin:6px 0;border:var(--hair) solid var(--line);border-radius:var(--r-control);
@@ -4140,37 +4094,8 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    row (opacity) is a stacking context of its own, and the menu, z-indexed
    inside it, drew under the next row's words. */
 .row:has(.actmenu:not([hidden])){position:relative;z-index:41}
-/* A ROW ON A PHONE, measured: a project row was 140px against 98 on a
-   desktop, on a screen a third as wide: six rows to a screen where a
-   desktop gets nine, and a third of each row was its six icon buttons.
-   Nothing here shrinks type or tap targets (11px and 38px are at the floor
-   already); what it does is show fewer things at once.
-     - the row's own inset comes in 3px, which is every row on every tab
-     - the icons that are not the session or the notebook fold behind …
-   `…` is hidden on a desktop, where there is room for all of them. */
-/* The fold control itself: absent where there is room for every icon. It has
-   to be as specific as `button.eye` and it has to come FIRST, or the phone
-   rule below it cannot win at equal specificity, which is how the button
-   showed on a desktop, and then on neither. */
-button.eye.rowmore{display:none}
-@media(max-width:900px){
-  :root{--row-y:8px}
-  /* The hide is scoped to a row that is NOT folded out, so the two states
-     cannot fight: a `.moreon` rule that merely re-showed them lost on
-     specificity to this one (three :not()s outrank one class), and pressing
-     … re-stacked the row without producing a single extra icon. */
-  .projtab .row:not(.moreon) .acts .eye:not([data-c]):not([data-m]):not(.rowmore){
-    display:none}
-  button.eye.rowmore{display:inline-flex}
-  .row.moreon .rowmore{color:var(--accent)}
-  /* ...and with three icons rather than six they fit BESIDE the name, which
-     is where the height actually was: a stacked row spends a whole 38px line
-     on its buttons. Folded out, they wrap under it again, which is what
-     asking for them means. */
-  .projtab .row[data-row]:not(.moreon){flex-direction:row;align-items:flex-start;
-    flex-wrap:wrap}
-  .projtab .row[data-row]:not(.moreon) .acts{margin-left:auto;flex-wrap:nowrap}
-}
+/* A row's own inset is tighter on a phone, every row on every tab. */
+@media(max-width:900px){ :root{--row-y:8px} }
 button[aria-busy="true"]{opacity:.75}
 
 /* The configuration plane on an agent row (docs/nodes.md §12): sections of
@@ -4430,8 +4355,7 @@ pre{margin:0;padding:9px 11px;font:var(--f-code);white-space:pre-wrap;
    breathing. Not a bar and not a percentage: nothing here knows one, and
    inventing one would be a lie about progress. */
 @keyframes waiting{0%,100%{opacity:.35} 50%{opacity:.75}}
-/* A row's inset, as .empty's: one rule, where a second one with the
-   sidebar's 9px 11px came later and won on every page. */
+/* A row's inset, as .empty's: one rule. */
 .loading{color:var(--dim);padding:var(--row-y) var(--row-x);font-style:italic;
   animation:waiting 1.4s ease-in-out infinite}
 /* ...and, where what is coming has a known shape, the shape itself (R218
@@ -4871,10 +4795,9 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 
 /* The terminal's own bottom bar --------------------------------------- */
 /* The command lists and Sessions hang off the terminal, at every width, in
-   the bar that used to be the phone's alone. They are about the shell in
-   front of you and not about the box, and at the bottom of a twelve-card
-   sidebar they were being scrolled past. Ghosting is unaffected by the move:
-   wireMacros reads the ACTIVE PANE, not the parent element.
+   its bottom bar: they are about the shell in front of you and not about
+   the box. Ghosting reads the ACTIVE PANE (wireMacros), not the parent
+   element.
    One panel at a time (they share the same strip of space), but on a
    desktop the keys row is not part of that trade, because there is room for
    it and a panel at once. */
@@ -6790,7 +6713,7 @@ document.addEventListener("contextmenu", e => { if (ddrag) e.preventDefault(); }
 
 // ---- the welcome panel: the guide, and the changelog ----------------------
 // Its declarations are page-welcome.js; what runs at load is below.
-// Two guides, because an administrator and a user see different sidebars:
+// Two guides, because an administrator and a user see different rails:
 // the user's is what a person with projects and no machinery needs; the
 // administrator's adds the nodes, the tools, the accounts. Written here
 // rather than fetched, so the panel works on a first sign-in before anything
@@ -6858,16 +6781,14 @@ $("bOut").onclick = () => askSignOut();
 // keeps a swatch and the page it previews from ever disagreeing.
 // Alphabetical, with Default first because it is the one that is not a
 // choice among the others; it is what you get having made none.
-// Its functions are page-gear.js now, with the rest of the gear menu.
+// Its functions are page-gear.js, with the rest of the gear menu.
 
 // ---- times and sizes ----------------------------------------------------
 // Its declarations are page-state.js; nothing of it runs at load.
 
 // ---- logs --------------------------------------------------------------
-// In this menu rather than on a card: it is a setting about the container,
-// which is what the gear now holds, and it is read far less often than
-// anything the sidebar is for.
-// The menu's functions are page-gear.js; the gear is wired below.
+// The log settings are the Controller page's Logs section; their functions
+// (logSection) are page-gear.js's. The gear is wired below.
 
 // One of the header's panels open at a time (the operator, 16 Oct: the
 // doctor and the gear stood open together). Each button stops its click
@@ -6887,7 +6808,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && uiMenuOpen) toggleUiMenu(false);
 });
 
-// ---- sidebar ---------------------------------------------------------
+// ---- what a project offers ---------------------------------------------
 // Its declarations are page-sidebar.js; nothing of it runs at load.
 
 // ---- the Claude sign-in -------------------------------------------------
@@ -6923,11 +6844,11 @@ $("bDoctor").onclick = async () => {
 };
 
 // ---- commands ---------------------------------------------------------
-// Every `bb` command is listed, which is more than fits a sidebar card, so the
+// Every `bb` command is listed, which is more than fits a panel, so the
 // list is cut off and the ones an operator actually uses are pinned above the
 // cut. Pins live on the server with the rest of the state: the phone and the
 // desktop are looking at one machine and should agree about it.
-// Its functions are page-commands.js now.
+// Its functions are page-commands.js.
 
 // ---- custom commands --------------------------------------------------
 // The operator's own lists, typed into the terminal like the bb ones. Kept in
@@ -7141,7 +7062,7 @@ $("pCreate").onclick = createProject;
 // ---- a project's settings dialog: open, drawn and sent ------------------
 // Its declarations are page-projsettings.js; nothing of it runs at load.
 
-// ---- a project's pin, and rows that come and go -------------------------
+// ---- a project's pin ------------------------------------------------------
 // Its declarations are page-sidebar.js; nothing of it runs at load.
 
 // ---- the sessions card --------------------------------------------------
@@ -7317,12 +7238,10 @@ phFetch();
 
 // ---- the Analysis tab ----------------------------------------------------
 // The findings, browsable: one project or all of them, narrowed by level and
-// by text. This replaces the sidebar card, whose rows were only doors into
-// each notebook: a summary you could not read anything through. The per-
-// project Analysis view in the notebook stays: that one sits beside the
-// roadmap and the bugs a finding turns into, and this one is for looking
+// by text. The per-project Analysis view in the notebook sits beside the
+// roadmap and the bugs a finding turns into; this one is for looking
 // ACROSS projects, which no notebook can do.
-// Its functions are tab-findings.js now; nothing of it runs at load, so nothing stays here.
+// Its functions are tab-findings.js; nothing of it runs at load.
 
 // ---- the document-tab scaffold ------------------------------------------
 // Its declarations are page-docs.js; what runs at load is below.

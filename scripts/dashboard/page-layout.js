@@ -4,8 +4,7 @@
 // (R131: switching tabs on the phone switched the desk too, the operator,
 // 5 Oct); and render(), the one draw of the page every change ends in.
 //
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand (R77):
+// One classic script beside index.html (docs/design-language.md, Files):
 // pure declarations, nothing runs at load. What runs at load stays in
 // index.html under the section's header.
 
@@ -128,14 +127,13 @@ function adoptLayout(v){
   if (v.rev === 0 && !v.tabs.length){ myRev = v.rev; return; }
   myRev = v.rev;
   adopting = true;
-  // Taken whole, workspace tab included; it is an ordinary tab now, so a
-  // browser that closed it must not have it resurrected by this one. The map
-  // also quietly drops the `fixed` flag a layout saved by the older page has.
+  // Taken whole: a browser that closed a tab must not have it resurrected
+  // by this one.
   // `popped` (R8) survives only where this window holds the popped window's
   // handle: another browser's pop-out is not one this page can see or close,
   // and a placeholder nobody can reattach would be a dead pane.
-  // A tab of a kind this page no longer has (the Phone tab became a section
-  // of the Nodes tab, 2 Oct) is left out rather than drawn as nothing.
+  // A tab of a kind this page does not have is left out rather than drawn
+  // as nothing.
   tabs = v.tabs.filter(t => t.kind === "term" || TABKINDS[t.kind])
     .map(t => ({id:t.id, kind:t.kind, arg:t.arg, label:t.label,
                 popped: !!t.popped && popWins.has(t.id)}));

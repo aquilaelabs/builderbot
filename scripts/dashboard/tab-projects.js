@@ -1,7 +1,6 @@
 // The Projects tab and the bin behind it: every project as a row with its
 // controls, and what Unlink and Delete left to purge.
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand: pure
+// One classic script beside index.html (docs/design-language.md, Files): pure
 // declarations, nothing runs at load.
 
 "use strict";
@@ -90,9 +89,9 @@ const BIN = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M4.2 4.3l.7 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.7-8.3"/>
   <path d="M6.8 6.8v4"/><path d="M9.2 6.8v4"/></svg>`;
 
-// Every project, and the whole of each one. The card is a view of this filtered
-// to what is pinned, so a project that is not on the sidebar has lost nothing
-// but its place there, which is the only promise the thumbtack makes.
+// Every project, and the whole of each one. Home is a view of this filtered
+// to what is pinned, so a project that is not on Home has lost nothing but
+// its place there, which is the only promise a pin makes.
 function openProjectsTab(){
   openTab({kind: "projects", arg: "__projects", label: "Projects"});
 }

@@ -6,8 +6,7 @@
 // it shown there is no foot. The order still means something (bugs by
 // severity, the roadmap in the order the work has to happen in), and nothing
 // above the rows moves as more arrive under them.
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand: pure
+// One classic script beside index.html (docs/design-language.md, Files): pure
 // declarations, nothing runs at load.
 
 "use strict";

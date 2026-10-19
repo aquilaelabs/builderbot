@@ -8,14 +8,13 @@
 // through /api/toolchains; an install is a JOB on the node, so the list keeps
 // reporting progress rather than freezing on a request that cannot return.
 //
-// Moved out of index.html unchanged. Loaded BEFORE the page's own script, so
+// Loaded BEFORE the page's own script, so
 // everything here is a declaration and nothing runs at load.
 
 // ---- toolchains --------------------------------------------------------
-// The Tools card's other half, opened as a document tab beside the findings
-// report rather than a dialog: installing an SDK is not a detour to dismiss,
-// it is a thing to leave open for the several minutes it runs, and a tab can
-// be pinned to a pane, minimized, or left on the strip while you work.
+// A page rather than a dialog: installing an SDK is not a detour to
+// dismiss, it is a thing to leave running for the several minutes it takes
+// while you work elsewhere.
 //
 // Installs are queued by the server and polled from here, so the list keeps
 // reporting progress instead of freezing on a request that cannot return.

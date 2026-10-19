@@ -1850,7 +1850,7 @@ def _link(dest, name, forge, host, path, remote, keyed, pat,
 
 
 # ---------------------------------------------------------------------------
-# the create dialog's one submit, and the sidebar's pins
+# the create dialog's one submit, and the pins Home shows
 
 def create_from_dialog(req, *, env, account, may_node):
     """The create dialog's one submit, once the server has let an
@@ -1910,7 +1910,7 @@ def create_from_dialog(req, *, env, account, may_node):
                 body["note"] = f"{body.get('note') or 'ready'}; {label} not set: {r['error']}"
     # Pinned on arrival, once anything has ever been pinned. Without this a
     # project made while a pins file exists is absent from it, so it lands
-    # on disk and never reaches the sidebar: created, and apparently gone.
+    # on disk and never reaches Home: created, and apparently gone.
     # No file still means "all of them", so there is nothing to write then
     # and writing one would turn the first create into an unasked-for
     # decision about every other project.
@@ -1918,15 +1918,15 @@ def create_from_dialog(req, *, env, account, may_node):
         try:
             pin_new_project(name)
         except OSError:
-            pass                  # the project exists; the sidebar is not
+            pass                  # the project exists; its pin is not
                                   # worth failing the create over
     return body, code
 
 
-# Which projects the sidebar card shows. A THIRD axis, independent of the
-# locks and the settings: pinning says nothing about what may run, only about
-# what is worth looking at from the sidebar. Everything unpinned is still on
-# the Projects tab, whole and with every control.
+# Which projects Home shows. A THIRD axis, independent of the locks and the
+# settings: pinning says nothing about what may run, only about what is
+# worth looking at from Home. Everything unpinned is still on the Projects
+# page, whole and with every control.
 #
 # pinned-projects.json and not pinned-commands.json, which is the command
 # pin's (macros.py), as are its load_pins, save_pins, /api/pin and the
@@ -1962,11 +1962,11 @@ def load_project_pins(uid, fresh=False):
 
     None is not the same as empty and the difference decides what a fresh
     install looks like. No entry means this person has not had this thought
-    yet, so every project is pinned and the card is what it always was; an
-    empty LIST means they unpinned the last one on purpose, and a sidebar that
-    quietly refilled itself would be arguing with them. The pins are the
-    person's, not the controller's (the operator, 27 Sep): what is worth
-    looking at from the sidebar is a question each account answers.
+    yet, so every project is pinned; an empty LIST means they unpinned the
+    last one on purpose, and a Home that quietly refilled itself would be
+    arguing with them. The pins are the person's, not the controller's (the
+    operator, 27 Sep): what is worth looking at from Home is a question each
+    account answers.
     """
     d = _load_pins()
     if fresh and str(uid or "") not in d:
@@ -1984,7 +1984,7 @@ def save_project_pins(uid, names):
 def pin_new_project(name):
     """A project made after anything has been pinned is pinned for everyone
     who has a set: absent from theirs it would land on disk and never reach
-    their sidebar, created and apparently gone. Nothing to write while no
+    their Home, created and apparently gone. Nothing to write while no
     account has a set, since no file means all of them."""
     d = _load_pins()
     if not d:

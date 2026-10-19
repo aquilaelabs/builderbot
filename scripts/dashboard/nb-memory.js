@@ -162,7 +162,8 @@ function nbMemoryView({$, nb}){
       || `<div class="empty">none yet: sessions write these as they learn the project; Write a memory adds one by hand</div>`;
     paginate($("memList"), ":scope > .mem", {noun: "memories"});
     // The fold, driven rather than left to the browser's instant one: the same
-    // height tween the sidebar cards use, so a memory opens the way a card does.
+    // height tween every fold uses (slideDetails), so a memory opens the way a
+    // section does.
     $("memList").querySelectorAll(".mem > summary").forEach(sum => {
       sum.onclick = e => {
         e.preventDefault();                       // the browser's snap, replaced

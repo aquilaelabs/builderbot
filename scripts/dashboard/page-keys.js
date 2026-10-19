@@ -2,8 +2,7 @@
 // types with, and the panels (keys, macros, sessions, chat) that slide up
 // from the phone's own bar.
 //
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand (R77):
+// One classic script beside index.html (docs/design-language.md, Files):
 // pure declarations, nothing runs at load. What runs at load stays in
 // index.html under the section's header.
 
@@ -22,10 +21,8 @@ const KEYS = [
 
 // The phone's second panel. Keys and macros are exclusive there; see the
 // toggles below, and the macro lists are the dashboard's own #commands and
-// The lists used to be moved between their sidebar cards and this panel every
-// time the viewport crossed the phone breakpoint. They just live here now, at
-// every width: one DOM, one set of handlers, and no breakpoint to be on the
-// wrong side of.
+// The lists live here at every width: one DOM, one set of handlers, and no
+// breakpoint to be on the wrong side of.
 let showMacros = false;
 
 // One panel at a time on the phone: opening one closes the others.

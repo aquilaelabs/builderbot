@@ -1,13 +1,12 @@
 // Chat: the messages between people and sessions on a project, read and
 // sent from the dock's Chat tab.
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand: pure
+// One classic script beside index.html (docs/design-language.md, Files): pure
 // declarations, nothing runs at load.
 
 "use strict";
 
 let chatWith = null;                 // {who} or {project}, or null for the list
-let chatMsgs = [], chatDraft = {}, chatSeenRev = -1, chatTimer = null;
+let chatMsgs = [], chatDraft = {}, chatSeenRev = -1;
 let chatDrawn = "";                  // what the open conversation was last painted from
 
 const chatKey = w => w?.project ? `p:${w.project}` : w?.who ? `dm:${w.who}` : "";
@@ -26,15 +25,8 @@ async function loadChat(){
 }
 
 // An open chat follows the chat's revision, which every message moves (R218
-// step 10, page-poll.js's watch on "chat"): it read every four seconds while
-// open, a message or not. What is left here is putting away a timer an older
-// build of the page may still hold.
-function chatLoop(){
-  clearInterval(chatTimer);
-  chatTimer = null;
-}
-
-function chatOpen(w){ chatWith = w; chatMsgs = []; chatDrawn = ""; loadChat(); chatLoop(); }
+// step 10, page-poll.js's watch on "chat").
+function chatOpen(w){ chatWith = w; chatMsgs = []; chatDrawn = ""; loadChat(); }
 
 // The chat is the dock's Chat tab (R250 step 2): a tab of its own kind that
 // lives in the dock as a terminal does, its body the list of people and
@@ -62,7 +54,6 @@ function renderChatInto(i){
 function drawChat(){
   const box = document.querySelector(".chattab");
   if (!box) return;
-  chatLoop();
   setClass(box, "chattab" + (chatWith ? " open" : ""));
   drawChatList(box.querySelector(".chatlist"));
   drawChatThread(box.querySelector(".chatthread"));

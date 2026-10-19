@@ -1,8 +1,7 @@
 // The Sessions page: every terminal and Claude session this account has,
 // the tab each is in, and ending one.
 //
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand (R77):
+// One classic script beside index.html (docs/design-language.md, Files):
 // pure declarations, nothing runs at load. What runs at load stays in
 // index.html under the section's header.
 

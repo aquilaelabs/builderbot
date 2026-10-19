@@ -235,8 +235,8 @@ def _int(v):
 # ---- the reports themselves ---------------------------------------------
 # What the scanner on the host left under /reports: SARIF read into flat
 # findings, each attributed to the project its path names, the reports a
-# whole cycle behind their siblings left out, and the counts the sidebar
-# card and the Analysis view draw. Here rather than in server.py, beside the
+# whole cycle behind their siblings left out, and the counts the status
+# poll carries. Here rather than in server.py, beside the
 # history those reads feed (R60): the server hands in the project list it
 # already holds, and nothing in here knows who is asking.
 CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}")
@@ -580,9 +580,8 @@ def reports_mtime():
         return 0
 
 
-# The sidebar card wants per-project headline numbers without every client
-# fetching and parsing the full reports, so the totals ride the status poll,
-# cached on report mtime, because the SARIF can run to megabytes and the poll
+# Per-project headline numbers, without every client fetching and parsing
+# the full reports: the totals ride the status poll, cached on report mtime, because the SARIF can run to megabytes and the poll
 # arrives every 15 seconds.
 _counts = {"mtime": -1, "projects": {}, "heads": [], "ok": False}
 

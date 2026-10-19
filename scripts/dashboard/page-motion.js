@@ -3,8 +3,7 @@
 // row, a block that is shown and hidden). Height is real layout, so what is
 // below rides along frame by frame instead of jumping, which is the whole
 // vocabulary; docs/design-language.md, Motion.
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand: pure
+// One classic script beside index.html (docs/design-language.md, Files): pure
 // declarations, nothing runs at load. The modals are armed and the Tools
 // icons put on from index.html, under the motion header.
 

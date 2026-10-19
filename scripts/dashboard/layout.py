@@ -1,11 +1,9 @@
-"""What the page keeps on the server: each account's tab strip and panes,
-and the sidebar's cards.
+"""What the page keeps on the server: each account's tab strip and panes.
 
 The strip is kept per account and handed to every browser that account
 opens, so a phone picks up the desktop's layout; a revision on it keeps two
-browsers from fighting over it. The sidebar's card order and which cards are
-collapsed are one small file. Out of server.py whole (R77): the server holds
-the routes and reads these into the status poll.
+browsers from fighting over it. The server holds the routes and reads these
+into the status poll.
 """
 import json
 from pathlib import Path
@@ -13,11 +11,8 @@ from pathlib import Path
 # How many tabs the page will open. Each terminal tab is an iframe running a
 # full xterm.js with its own websocket, so this is a real ceiling on browser
 # memory rather than a tidiness rule, and a phone hits it far earlier than a
-# desktop does.
-# The tab cap: a constant, because each terminal tab is a live terminal over
-# its own socket and twelve is what a browser on this box takes without
-# falling over. It was a setting for one afternoon (R29) and nobody needed to
-# move it. It counts TERMINAL tabs, per account (the layout is kept per
+# desktop does: twelve is what a browser on this box takes without falling
+# over. It counts TERMINAL tabs, per account (the layout is kept per
 # account): a document tab is a draw from state and costs nothing to keep.
 MAX_TABS = 12
 
@@ -101,7 +96,6 @@ def load_layout(uid):
             continue
         ids.add(tid)
         tabs.append({"id": tid, "kind": t["kind"], "arg": arg, "label": label,
-                     "fixed": bool(t.get("fixed")),
                      # Popped out into its own window (R8): kept so the page
                      # that popped it reconciles; another page drops it.
                      "popped": bool(t.get("popped"))})
@@ -156,7 +150,7 @@ def prune_claude_tabs():
     to make, not one to make silently at boot.
 
     Called once at startup, and once for EVERY account: the strip is per
-    person now (roadmap #25), and a boot that pruned only one of them would
+    person (roadmap #25), and a boot that pruned only one of them would
     leave everyone else's dead Claude tabs on their strip.
 
     The revision is bumped so a browser left open across the restart adopts

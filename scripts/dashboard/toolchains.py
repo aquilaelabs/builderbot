@@ -1495,25 +1495,6 @@ def _landed_at(nid):
     return out
 
 
-def names_in(dirs):
-    """The recipes a store listing ({top, android}, store_dirs' shape) holds,
-    by the same reading the Toolchains page's rows make of a node's own."""
-    top = set((dirs or {}).get("top") or [])
-    andr = set((dirs or {}).get("android") or [])
-    out = []
-    for p in TOOLCHAINS:
-        probe = p["probe"]
-        if probe.startswith("android:"):
-            here = probe.split(":", 1)[1] in andr
-        elif probe == "android-tools":
-            here = "cmdline-tools" in andr
-        else:
-            here = probe in top
-        if here:
-            out.append(p["name"])
-    return out
-
-
 def cleanable(nid):
     """[{dir, what}] at the top of this node's toolchain store that no node
     runs from any more (R196): a directory named for a node that is retired

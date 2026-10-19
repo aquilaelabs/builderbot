@@ -2,8 +2,7 @@
 // that stay the way they were left), the lanes and diffs the Git view
 // draws, and the busy state a button wears while its request runs.
 //
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand (R77):
+// One classic script beside index.html (docs/design-language.md, Files):
 // pure declarations, nothing runs at load. What runs at load stays in
 // index.html under the section's header.
 
@@ -12,8 +11,8 @@
 // ---- the document-tab scaffold ------------------------------------------
 
 // Every document tab is the same five slots in the same order, and every tab
-// that wrote its own copy of them drifted: a bar with no inset, rows on the
-// sidebar's tighter padding, an error state flush against the edge. Three of
+// that wrote its own copy of them drifted: a bar with no inset, rows on a
+// tighter padding, an error state flush against the edge. Three of
 // those shipped and were fixed by inverting a mechanism each time; this is
 // the last inversion: the chrome is built HERE, once, and a renderer fills
 // slots instead of writing chrome. The conformance suite (test/uniform.mjs)
@@ -168,7 +167,6 @@ function barSaid(full, short){
 // afresh rather than inside it.
 function bootPage(hash){
   const parts = String(hash || "").replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
-  if (parts[0] === "machines" && parts[1] === "nginx") parts[0] = "containers";   // openRoute's alias
   const key = parts[0] || "home", g = RAIL.find(x => x.key === key) || RAIL[0];
   const tool = g.tools.some(([k]) => k === parts[1]) ? parts[1] : g.tools[0][0];
   const seg = (tools, on) => `<span class="subnav pseg">${tools.map(([k, label]) =>
@@ -176,7 +174,7 @@ function bootPage(hash){
   const doc = (barHtml, body) => `<div class="doc on flush"><div class="doctab">${barHtml
     ? `<div class="field docbarrow">${barHtml}</div>` : ""}<div class="doclist">${body}</div></div></div>`;
   let bar, body;
-  if (key === "projects" && parts[1] && !g.tools.some(([k]) => k === parts[1] || (k === "findings" && parts[1] === "analysis"))){
+  if (key === "projects" && parts[1] && !g.tools.some(([k]) => k === parts[1])){
     // A project's notebook: its header, its view strip under it the
     // pane's width with the view's group open, then rows.
     const GROUPS = [["overview", "Overview", [["overview", "Overview"], ["settings", "Settings"]]],
@@ -193,7 +191,7 @@ function bootPage(hash){
       ${bootView(view) || `<div class="nbview"><div class="field">${skRows(5)}</div></div>`}</div></div>`;
     return {rail: key, bar: `<div class="bar proj">${bar}</div>`, body: `<div class="skstack">${body}</div>`};
   }
-  bar = `<div class="bar page">${seg(g.tools, key === "projects" && parts[1] === "analysis" ? "findings" : tool)}</div>`;
+  bar = `<div class="bar page">${seg(g.tools, tool)}</div>`;
   if (key === "home")
     // Home's own order: the tiles, Attention and Last jobs, the projects at
     // a glance, each heading drawn and what fills it shimmering.
@@ -210,7 +208,7 @@ function bootPage(hash){
   // The rest: their rows in a floating card, as the pages draw them at a
   // desk (their exact first paints are R218's templates step).
   else body = doc("", `<div class="field"><div class="sk-card skrows">${skRows(6)}</div></div>`);
-  return {rail: key, bar, body: `<div class="skstack">${body}</div>`, tool: key === "projects" && parts[1] === "analysis" ? "findings" : tool};
+  return {rail: key, bar, body: `<div class="skstack">${body}</div>`, tool};
 }
 
 // A notebook view at the first paint is its own markup from the notebook's
@@ -389,9 +387,8 @@ function docSurface(i, kind){
 // page's life: a fold you opened stays open across every repaint, and a
 // reload starts every fold from its default: open on a desktop and shut on
 // a phone, so a phone shows headings. Not stored, on purpose: a page that
-// came back with last week's folds read as a page somebody else had left,
-// and the sidebar's cards are the one thing here that is meant to stay as
-// you arranged it. Pass `open` to override, which is for a section that IS
+// came back with last week's folds read as a page somebody else had left.
+// Pass `open` to override, which is for a section that IS
 // the answer rather than a place to go and look for it.
 const sectOpen = {};
 // The attributes of a fold that remembers: its key, and `open` when it was
@@ -958,24 +955,21 @@ function statTiles(tiles){
 // builders): drawn as a shimmer in the real markup.
 const GHOST = Object.freeze({ghost: true});
 
+// What a card's settings are, read (the operator's concept, 17 Oct): one
+// wrapping line of pills, each its label in the quiet voice and its value,
+// a pill with no label a state on its own (Starts on boot).
+function factPills(pairs, cls = ""){
+  const rows = (pairs || []).filter(p => p && String(p[1] ?? "").trim() !== "");
+  if (!rows.length) return "";
+  return `<div class="fpills${cls ? " " + esc(cls) : ""}"><div class="fpl">${rows.map(([k, v, tone]) =>
+    `<span class="fpill${tone ? " " + esc(tone) : ""}">${k ? `<span class="k">${esc(k)}</span>` : ""}<span class="v">${v}</span></span>`).join("")}</div></div>`;
+}
+
 // What a row knows, as labels and values: two columns at a desk, one on a
 // phone. A pair whose value is empty is left out, so a caller lists what
 // it has and the grid says what there is. `html` on a pair means the value
 // is already markup (a code span, a link); otherwise it is escaped, and
 // `cls` names the value's element for a suite that reads one.
-// What a card's settings are, read (the operator's concept, 17 Oct): one
-// wrapping line of pills, each its label in the quiet voice and its value,
-// a pill with no label a state on its own (Starts on boot); `edit` is the
-// button that swaps the fields in, at the line's right (rows-you-open),
-// wearing the pencil the Commands panel's edit wears (PENCIL).
-function factPills(pairs, edit = "", cls = ""){
-  const rows = (pairs || []).filter(p => p && String(p[1] ?? "").trim() !== "");
-  if (!rows.length && !edit) return "";
-  return `<div class="fpills${cls ? " " + esc(cls) : ""}"><div class="fpl">${rows.map(([k, v, tone]) =>
-    `<span class="fpill${tone ? " " + esc(tone) : ""}">${k ? `<span class="k">${esc(k)}</span>` : ""}<span class="v">${v}</span></span>`).join("")}</div>${
-    edit}</div>`;
-}
-
 function factGrid(pairs, cls = ""){
   const rows = (pairs || []).filter(p => p && p[1] !== undefined && p[1] !== null && String(p[1]).trim() !== "");
   if (!rows.length) return "";

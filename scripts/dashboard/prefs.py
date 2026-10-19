@@ -504,8 +504,8 @@ def hosts_changed(project, hosts):
 
 
 def _nodes_of(rec):
-    """The project's node set, primary first, from a record that may carry
-    only `node` (from before R82) or a `nodes` list as well."""
+    """The project's node set, primary (`node`) first, then the rest of its
+    `nodes` list."""
     primary = str(rec.get("node") or "")[:40]
     more = rec.get("nodes") if isinstance(rec.get("nodes"), list) else []
     out = [primary] if primary else []

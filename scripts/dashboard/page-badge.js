@@ -2,8 +2,7 @@
 // and icon carry a count of what waits, and the ages on the page are
 // written coarsely enough that they need no redraw every second.
 //
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand (R77):
+// One classic script beside index.html (docs/design-language.md, Files):
 // pure declarations, nothing runs at load. What runs at load stays in
 // index.html under the section's header.
 

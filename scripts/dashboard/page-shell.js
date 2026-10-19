@@ -199,13 +199,11 @@ function openRoute(hash){
     if (helpIndex && helpCur) helpRead(helpCur);
     return true;
   }
-  // nginx was a Machines tool until it joined Containers (the operator,
-  // 18 Oct): an address from before still lands on it.
-  const g = RAIL.find(x => x.key === (key === "machines" && a === "nginx" ? "containers" : key));
+  const g = RAIL.find(x => x.key === key);
   if (!g) return false;
   const multi = (g.tools || []).length > 1;
-  // ...and a group that had one tool named its node second
-  // (#/containers/NODE), which it still may.
+  // A group of one tool names its node second (#/group/NODE), as routeOf
+  // writes it.
   const named = (g.tools || []).some(([k]) => k === a);
   const kind = railTool(g, named ? a : "");
   if (!kind) return false;

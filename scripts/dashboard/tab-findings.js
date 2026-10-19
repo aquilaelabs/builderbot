@@ -1,7 +1,6 @@
 // The Analysis tab: the static-analysis findings, filtered by level and
 // by text, one document tab (kind: findings).
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand: pure
+// One classic script beside index.html (docs/design-language.md, Files): pure
 // declarations, nothing runs at load.
 
 "use strict";
@@ -65,8 +64,8 @@ function fxWireBar(root, st, redraw){
 
 // The one answer, from the poll: no /reports mount, nothing in it, or nothing
 // in it that parses: three ways to have nothing, and a control that is off
-// wants one of them, not three. Absent (an older server) is not "off", the
-// same rule dockerWhy is written to: a page with no opinion leaves the control
+// wants one of them, not three. Absent (a payload that has not landed yet)
+// is not "off", the same rule dockerWhy is written to: a page with no opinion leaves the control
 // as it was rather than switching it off on a hunch.
 const findingsOff = () =>
   state && state.reports_ok === false

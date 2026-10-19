@@ -4,8 +4,7 @@
 // frame they draw into, with its own strip, its presence line and its
 // save.
 //
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand (R77):
+// One classic script beside index.html (docs/design-language.md, Files):
 // pure declarations, nothing runs at load. What runs at load stays in
 // index.html under the section's header.
 
@@ -869,26 +868,26 @@ function makeNotebook(project){
 // A project is a page: its pane's bar is the header the design names (the
 // a-notebook/project-page rule): the name large, the branch and the node in
 // the data face, the session's state as the dot and a word, and at the
-// right the actions the sidebar's row carried: Start Claude, or Open
+// right its actions: Start Claude, or Open
 // Claude in green while yours runs (the chooser under it), Shell, and the rest behind one menu (link, phone, report,
 // lock, pin, settings). Drawn by paintBar on every pass like every bar; the
 // chooser sits on the pane, not in the bar, so a repaint leaves it up.
 // The session's state as the dot and a word: this account's session
 // first, then whose else is here, then none. The dot is the one every
-// session surface wears; the word is what the sidebar's rows said.
+// session surface wears.
 function projectState(p){
   const name = p.name, mine = liveSessions().has(myClaude(name));
   const busy = new Set((state?.claude_busy || {})[name] || []);
   const one = (st, word, cls = "") => `<span class="pstate${cls}">${st ? `<span class="st ${st}"></span>` : ""}${esc(word)}</span>`;
   // Yours first, then everybody else's with a session here, each with its
-  // own dot (the operator, 16 Oct: the card had stopped saying who else is
-  // working in the project, which the sidebar's rows used to).
+  // own dot (the operator, 16 Oct: a card that does not say who else is
+  // working in the project hides the one thing worth knowing first).
   const me = mine ? (busy.has(state?.me) ? one("working", "working") : one("waiting", "waiting for you")) : "";
   const them = othersOn(name).map(n => one(busy.has(n) ? "working" : "waiting", `${n}${busy.has(n) ? " working" : "'s session"}`, " other")).join("");
   return me || them ? `<span class="pstates">${me}${them}</span>` : one("", "no session");
 }
-// The one notice the sidebar's row carried (why nobody can start here, the
-// agent out of window), in the notice voice, or nothing.
+// The one notice a project carries (why nobody can start here, the agent
+// out of window), in the notice voice, or nothing.
 function projectNote(p){
   const here = withMe(p.name).length > 0;
   // What holds it back is the notice, in red, ahead of a wait that would
@@ -900,8 +899,8 @@ function projectNote(p){
     ? `<div class="pnote ${!held && p.session_waiting ? "dim" : "bad"}">${esc(said)}</div>` : "";
 }
 // The two actions a project page and its card show, and the rest behind
-// one menu (R238: nine look-alike icons on a row were one too many). The
-// data-* names are the sidebar row's, so wireProjectRows serves them.
+// one menu (R238: nine look-alike icons on a row were one too many). Its
+// data-* names are wireProjectRows', which serves them.
 function projectActions(p, extra = ""){
   const name = p.name, mine = liveSessions().has(myClaude(name));
   const dead = p.locked || notMine(p) || (!p.session_at && !!p.session_why && !mine) || (p.node_removed && !mine) || heldWhy(p);
@@ -927,9 +926,8 @@ function projectActions(p, extra = ""){
     `<button type="button" data-rn="${esc(name)}">Settings</button>`,
     extra,
   ].filter(Boolean).join("");
-  // What a press does, or why it is dead, in the button's own words (the
-  // sidebar row's chain, kept): a screen reader hears it, and a press on a
-  // dead one is told.
+  // What a press does, or why it is dead, in the button's own words: a
+  // screen reader hears it, and a press on a dead one is told.
   const live = liveSessions();
   const say = notMine(p) ? NOT_MINE_WHY
     : p.locked ? "archived; you run this one. Unarchive, in its menu, lets Claude back in"

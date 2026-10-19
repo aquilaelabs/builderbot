@@ -8,15 +8,15 @@
 // daemon, so the row reports progress rather than blocking on a request.
 //
 // dmRowsHtml and dmWireRows stay PAGE-LEVEL names on purpose: the notebook's
-// own Docker view (loadNbDocker, still in index.html) draws its rows with
+// own Docker view (loadNbDocker, nb-core.js) draws its rows with
 // them, and a classic script shares one global scope, which is what makes
 // that work without an export.
 //
-// Moved out of index.html unchanged. Loaded BEFORE the page's own script, so
+// Loaded BEFORE the page's own script, so
 // everything here is a declaration and nothing runs at load.
 
-// The one answer, from the poll. `on` absent (an older server, a payload that
-// has not landed yet) is not "off": a control the page has no opinion about
+// The one answer, from the poll. `on` absent (a payload that has not landed
+// yet) is not "off": a control the page has no opinion about
 // should behave as it always did rather than switch itself off on a hunch.
 
 "use strict";
@@ -919,7 +919,7 @@ const dmEditing = new Set();
 const dmEditBtn = key => mayDocker() && !dmEditing.has(key) && !dmRowDirty(key)
   ? `<button type="button" data-dmedit="${esc(key)}">Edit settings</button>` : "";
 function dmSetPills(pills){
-  return factPills(pills, "", "dmsetpills");
+  return factPills(pills, "dmsetpills");
 }
 // An instance's settings as pills: whose it is, what it is built from when
 // that is another project, its branch, where it is reached, whether it

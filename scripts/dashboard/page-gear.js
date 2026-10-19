@@ -1,9 +1,8 @@
-// The gear menu: what is this BROWSER's (the color scheme, the sidebar
-// layout) and the container's log settings, which is a setting read far
-// less often than anything the sidebar is for. Everything the controller
-// owns lives on the Settings tab instead (docs/nodes.md, section 13).
-// One classic script beside index.html (docs/design-language.md, Files),
-// moved out of the page's own script with bb map sections in hand: pure
+// The gear menu: what is this BROWSER's (the color scheme, the time zone)
+// and the way to the account's Profile. Everything the controller owns
+// lives on the Controller page instead (docs/nodes.md, section 13), the
+// log settings drawn here (logSection) among them.
+// One classic script beside index.html (docs/design-language.md, Files): pure
 // declarations, nothing runs at load. The gear button and the listeners
 // that close the menu are wired from index.html, under the logs header.
 
@@ -96,9 +95,7 @@ if (modeMedia) modeMedia.addEventListener("change", () => {
 let themingTimer = null;
 
 function applyTheme(id){
-  // Fern is Nostromo's light half: a stored one is read as Nostromo and
-  // written back so, once.
-  const use = id === "fern" ? "nostromo" : THEME_IDS.has(id) ? id : "default";
+  const use = THEME_IDS.has(id) ? id : "default";
   // Default carries no attribute at all, so its palette is the :root one and
   // there is nothing to strip if every scheme is ever removed.
   const root = document.documentElement;
@@ -219,9 +216,8 @@ function drawUiMenu(){
   el.querySelectorAll("[data-mode]").forEach(b =>
     b.onclick = () => applyMode(b.dataset.mode));
   // The graduation (docs/nodes.md §13): the gear keeps what is this
-  // BROWSER's (theme, layout) and everything the controller owns lives on
-  // the Settings tab, where it has room to say what it costs. The log
-  // section that used to render here moved with that rule.
+  // BROWSER's and everything the controller owns lives on the Controller
+  // page, where it has room to say what it costs.
   // The time zone is this browser's, beside its scheme (R218 step 31): a
   // pick, then Apply, as any setting (the settings rule's one exception is
   // the scheme, which is looked at rather than decided).
