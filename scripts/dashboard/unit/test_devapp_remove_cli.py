@@ -18,6 +18,7 @@ class Fake(http.server.BaseHTTPRequestHandler):
     """The controller: a remove queues j_1, and j_1 ends the way the test says."""
     outcome = "failed"
     polls = 0
+    ask = False               # held for a person, whose Allow queues the job
 
     def log_message(self, format, *args):  # noqa: A002 (the base class's name)
         del format, args
@@ -32,7 +33,12 @@ class Fake(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):  # noqa: N802 (the base class's name)
         self.rfile.read(int(self.headers.get("Content-Length") or 0))
-        self._send({"ok": True, "job": "j_1"})
+        if self.path.startswith("/api/phone"):
+            self._send({"ok": True, "state": "done", "out": "j_1", "code": 0, "why": ""})
+        elif Fake.ask:
+            self._send({"ok": True, "id": 7, "to": "the operator"})
+        else:
+            self._send({"ok": True, "job": "j_1"})
 
     def do_GET(self):  # noqa: N802 (the base class's name)
         Fake.polls += 1
@@ -47,6 +53,7 @@ class Fake(http.server.BaseHTTPRequestHandler):
 class RemoveFollowsItsJob(unittest.TestCase):
     def setUp(self):
         Fake.polls = 0
+        Fake.ask = False
         self.srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Fake)
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
 
@@ -75,6 +82,19 @@ class RemoveFollowsItsJob(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("removed; its env and data stay", r.stdout)
         self.assertGreaterEqual(Fake.polls, 2)
+
+    def test_an_allowed_remove_follows_its_job_too(self):
+        # B15: after Allow, the job the approval queued is followed as well,
+        # so a down that failed is not reported as removed.
+        Fake.ask, Fake.outcome = True, "failed"
+        r = self.run_remove()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("allowed, and removed", r.stdout)
+        self.assertIn("empty compose file", r.stderr)
+        Fake.polls, Fake.outcome = 0, "succeeded"
+        r = self.run_remove()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("allowed, and removed; its env and data stay", r.stdout)
 
 
 if __name__ == "__main__":
