@@ -328,17 +328,20 @@ function tpSeen(seen, was, offer = true){
 }
 
 // The dialog Add tool pack and a row's Edit open (the operator, 19 Oct): the
-// repository, Look, what it would install and run, then Add; for a pack
-// already here, Look for a newer commit, Update to it, or Remove.
+// repository, Look, what it would install and run, then Add. A pack already
+// here is looked at again as Edit opens, so its foot is Remove, Close and,
+// when the repository has moved on, Update: three short words that sit on
+// one row on a phone.
 function tpModalHtml(){
   const p = tpEdit ? (toolchains?.items || []).find(i => i.name === tpEdit && i.pack) : null;
   const f = tpForm, fresh = !p, seen = f.seen;
   const newer = !!(seen && p && seen.commit !== p.pack.commit);
   const offer = !!(seen && (fresh || newer));
-  const look = `<button type="button" data-tplook${f.busy ? " disabled" : ""}${offer ? "" : ` class="primary"`}>${
-    f.busy === "look" ? "Looking…" : fresh ? "Look" : "Look for a newer commit"}</button>`;
+  // Look is Add's first step, and Edit's only after a look that failed.
+  const look = fresh || f.error ? `<button type="button" data-tplook${f.busy ? " disabled" : ""}${offer ? "" : ` class="primary"`}>${
+    f.busy === "look" ? "Looking…" : fresh ? "Look" : "Look again"}</button>` : "";
   const add = offer ? `<button type="button" class="primary" data-tpadd${f.busy ? " disabled" : ""}>${
-    f.busy === "add" ? "Adding…" : fresh ? "Add" : `Update to ${esc(seen.commit.slice(0, 12))}`}</button>` : "";
+    f.busy === "add" ? (fresh ? "Adding…" : "Updating…") : fresh ? "Add" : "Update"}</button>` : "";
   const rm = p ? `<button type="button" class="danger" data-tprm="${esc(p.name)}">Remove</button>` : "";
   return `<div class="box wide"><h3>${fresh ? "Add tool pack" : `${esc(p.label)}, a tool pack`}</h3>
     ${fresh ? `<div class="field">${lbl("tpUrl", "Repository", "a git repository with a bbtool.json at its root: https, ssh, or http for a git host on your network")}
@@ -347,8 +350,10 @@ function tpModalHtml(){
           esc(p.pack.by || "an administrator")}${p.pack.at ? ` ${ago(p.pack.at)}` : ""}. Verbs: ${esc((p.pack.verbs || []).join(", "))}.</div></div>`}
     ${seen ? `<div class="field">${tpSeen(seen, p ? p.pack : null, offer)}</div>` : ""}
     ${f.error ? `<div class="field"><div class="hint bad">${esc(f.error)}</div></div>` : ""}
-    ${p && seen && !newer ? `<div class="field"><div class="hint">No newer commit: the repository's head is the one installed.</div></div>` : ""}
-    ${dlgFoot(`<button type="button" data-tpcancel>Cancel</button>`, `${look}${add}`, rm)}</div>`;
+    ${p && f.busy === "look" ? `<div class="field"><div class="hint">Looking for a newer commit…</div></div>` : ""}
+    ${p && seen && !newer ? `<div class="field"><div class="hint">No newer commit: the repository's head is the one added.</div></div>` : ""}
+    ${newer ? `<div class="field"><div class="hint">${esc(seen.commit.slice(0, 12))} is newer: Update keeps it, with the changes marked above.</div></div>` : ""}
+    ${dlgFoot(`<button type="button" data-tpcancel>${fresh || offer ? "Cancel" : "Close"}</button>`, `${look}${add}`, rm)}</div>`;
 }
 
 function tpSection(items){
@@ -375,6 +380,18 @@ function tpOpen(name){
   tpEdit = name || "";
   tpForm = {url: "", seen: null, error: "", busy: ""};
   tpDraw(true);
+  if (tpEdit) tpLook();
+}
+
+// Fetch the pack's repository at its head and show what it holds: Add's
+// Look, and what Edit does as it opens.
+async function tpLook(){
+  const name = tpEdit;
+  const url = name ? (toolchains?.items || []).find(i => i.name === name)?.pack?.url || "" : tpForm.url.trim();
+  tpForm.busy = "look"; tpForm.error = ""; tpDraw();
+  const j = await (await postJSON("/api/toolpacks", {action: "preview", url})).json().catch(() => ({error: "no answer"}));
+  if (tpEdit !== name) return;                 // closed, or another opened, meanwhile
+  tpForm.busy = ""; tpForm.seen = j.error ? null : j; tpForm.error = j.error || ""; tpDraw();
 }
 
 function tpClose(){
@@ -406,11 +423,8 @@ function tpDraw(first){
   m.querySelector("[data-tpcancel]").onclick = tpClose;
   const post = async body => (await postJSON("/api/toolpacks", body)).json().catch(() => ({error: "no answer"}));
   const packUrl = () => tpEdit ? (toolchains?.items || []).find(i => i.name === tpEdit)?.pack?.url || "" : tpForm.url.trim();
-  m.querySelector("[data-tplook]").onclick = async () => {
-    tpForm.busy = "look"; tpForm.error = ""; tpDraw();
-    const j = await post({action: "preview", url: packUrl()});
-    tpForm.busy = ""; tpForm.seen = j.error ? null : j; tpForm.error = j.error || ""; tpDraw();
-  };
+  const look = m.querySelector("[data-tplook]");
+  if (look) look.onclick = tpLook;
   const add = m.querySelector("[data-tpadd]");
   if (add) add.onclick = async () => {
     tpForm.busy = "add"; tpDraw();

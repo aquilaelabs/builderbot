@@ -990,12 +990,12 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
              strings: { about: 'Its strings.', usage: 'FILE', run: ['{dir}/bin/hexkit', 'strings', '{args}'] } } }));
   g('commit', '-qam', 'later');
   const newer = g('rev-parse', 'HEAD');
+  // Edit looks for a newer commit as it opens: no press of Look.
   await page.click('.doc.on [data-tpedit="hexkit"]');
-  await page.click('#tpmodal [data-tplook]');
   await page.waitForSelector('#tpmodal .tpseen', { timeout: 20000 });
   const diff = await page.$eval('#tpmodal .tpseen', e => e.textContent.replace(/\s+/g, ' '));
   ok(/dump --wide \{args\} changed was \{dir\}\/bin\/hexkit dump \{args\}/.test(diff) && /strings FILE runs .* new/.test(diff),
-     `Look for a newer commit says what the commit changes: a changed verb with what it was, a new one marked (${diff.slice(0, 200)})`);
+     `Edit says what a newer commit changes: a changed verb with what it was, a new one marked (${diff.slice(0, 200)})`);
   await page.click('#tpmodal [data-tpadd]');
   await page.waitForFunction(c => (toolchains?.items || []).find(i => i.name === 'hexkit')?.pack?.commit === c, newer, { timeout: 20000 });
   ok(true, '...and Update keeps the pack at the newer commit');
