@@ -981,6 +981,28 @@ def trash_restore(req):
     return {"ok": True, "name": back, "label": registry.label(back)}, 200
 
 
+def _rmtree_share(path, tries=5):
+    """rmtree on the projects share, which is FUSE on Unraid (B39): a file
+    deleted while something holds it open becomes a .fuse_hidden one that
+    vanishes, or turns up, while the tree is being taken apart. A file
+    already gone is deleted as far as this is concerned, and a directory
+    that is not empty yet is tried again for a few seconds while the share
+    lets go of the last of them."""
+    def gone(_fn, _path, exc):
+        if not isinstance(exc, FileNotFoundError):
+            raise exc
+    for attempt in range(tries):
+        try:
+            shutil.rmtree(path, onexc=gone)
+            return
+        except OSError:
+            if attempt == tries - 1 or not os.path.exists(path):
+                if os.path.exists(path):
+                    raise
+                return
+            time.sleep(1)
+
+
 def trash_purge(req):
     """Delete one for good, files and all. There is nothing after this.
 
@@ -1001,7 +1023,7 @@ def trash_purge(req):
             return {"error": f"already {DOING.get(_job['kind'], 'working on')} "
                              f"{_job['name']}"}, 409
     try:
-        shutil.rmtree(src)
+        _rmtree_share(src)
     except OSError as e:
         return {"error": f"could not delete it: {e}"}, 500
     # Gone for good, its directory still never handed out again (R154).
