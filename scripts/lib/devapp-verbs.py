@@ -158,7 +158,7 @@ def rebuild():
         # build, and from there this is the same poll as any other rebuild.
         rid = r["id"]
         print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}), waiting up "
-              "to 15 minutes for Allow on the dashboard's Containers page or bell", file=sys.stderr)
+              "to 15 minutes for Approve on the dashboard's Containers page or bell", file=sys.stderr)
         o = waits.outcome(auth, rid, "the rebuild was not allowed")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'the rebuild would not start'}")
@@ -282,7 +282,7 @@ def new():
     name = r.get("name") or inst
     if r.get("id"):
         print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}) to send it to "
-              f"Docker as {name}, waiting up to 15 minutes for Allow on the dashboard's Containers page "
+              f"Docker as {name}, waiting up to 15 minutes for Approve on the dashboard's Containers page "
               "or bell", file=sys.stderr)
         o = waits.outcome(auth, r["id"], "it was not allowed")
         if o.get("code"):
@@ -368,7 +368,7 @@ def edit():
         # On ask: Allow removes it, or writes the env and builds nothing,
         # since the card said env set and the rebuild is the next ask.
         print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}), waiting up "
-              "to 15 minutes for Allow on the dashboard's Containers page or bell", file=sys.stderr)
+              "to 15 minutes for Approve on the dashboard's Containers page or bell", file=sys.stderr)
         o = waits.outcome(auth, r["id"], "it was not allowed")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it would not start'}")
@@ -464,7 +464,7 @@ def ctl():
         raise SystemExit(0)
     if r.get("id"):
         print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}), waiting up "
-              "to 15 minutes for Allow on the dashboard's Containers page or bell", file=sys.stderr)
+              "to 15 minutes for Approve on the dashboard's Containers page or bell", file=sys.stderr)
         o = waits.outcome(auth, r["id"], "it was not allowed")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it did not happen'}")

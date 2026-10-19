@@ -152,19 +152,21 @@ def admit(me, req):
         # words go through and every other refuses by name, here rather
         # than in each verb, because the relayed bb runs on the controller
         # with a token for the project it is asked about.
+        # Each by the name the dashboard shows, not its directory (B58).
+        shown = lambda d: (registry.label(d) if registry else "") or d  # noqa: E731
         if project in (me.get("reads") or []):
             why = _not_a_read(argv)
             if why:
-                return None, ({"error": f"{project} is read-only from a session on "
-                                        f"{me['session']}: {why}"}, 403)
+                return None, ({"error": f"{shown(project)} is read-only from a session on "
+                                        f"{shown(me['session'])}: {why}"}, 403)
         else:
             # Said by name (MediaReducer, 7 Oct): "this session's token is
             # for another project" sent a session guessing at spellings, and
             # read the same for a project that does not exist.
             if not project or not (WORKSPACE / project).is_dir():
                 return None, ({"error": f"there is no project called {project}"}, 400)
-            return None, ({"error": f"{me['session']} does not read {project}: its owner adds it "
-                                    f"under Reads in {me['session']}'s settings, and a session "
+            return None, ({"error": f"{shown(me['session'])} does not read {shown(project)}: its owner adds it "
+                                    f"under Reads in {shown(me['session'])}'s settings, and a session "
                                     "started after that sees it"}, 403)
     # git's network half runs under the account's author like everything
     # else it does with a repository: none set, none run. Push, fetch and

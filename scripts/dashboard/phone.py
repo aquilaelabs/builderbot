@@ -1416,7 +1416,20 @@ def _root(nid, argv, why, by):
     r = nodes.root_wait(by, nid, argv, why=why, timeout=600)
     if r.get("error"):
         return {"code": 1, "out": r["error"]}
-    return {"code": r.get("code") or 0, "out": r.get("out") or ""}
+    return {"code": r.get("code") or 0, "out": root_said(r.get("out") or "")}
+
+
+# The line the agent opens a root command's log with, after its own lines
+# about the job (what kind it is, a sandbox tool refreshed from the bundle).
+ROOT_HEAD = "# root on this node, allowed by "
+
+
+def root_said(log):
+    """A root job's log as the session that asked reads it (B58): from who
+    allowed it on, without the agent's lines about the job before that,
+    which the Jobs page keeps. A log without that line is left whole."""
+    at = log.find(ROOT_HEAD)
+    return log[at:] if at > 0 and log[at - 1] == "\n" else log
 
 
 def outcome(rid, project=""):

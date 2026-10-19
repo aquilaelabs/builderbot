@@ -311,7 +311,10 @@ elif op in ("fix", "wontfix", "na", "reopen"):
     r = bugs.set_status(proj, n, status,
                         note=" ".join(rest[1:]), by="claude")
     bail(r)
-    print(f"{B(n)} {status}")
+    # A sentence, not "B7 na" (B58): what the bug is now, in words.
+    said = {"fixed": "marked fixed", "wontfix": "closed as won't fix",
+            "na": "closed as not applicable", "open": "reopened"}[status]
+    print(f"{B(n)} {said}")
 elif op == "pending":
     # The tracker's half of what is waiting for the operator (roadmap #27).
     rs = pending.listing(proj, "bugs")

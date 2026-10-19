@@ -80,6 +80,10 @@ const nd = page.dialogs.length;
 await btn('claude-alpha').click();
 await page.waitForFunction(() => !document.querySelector('[data-go="claude-alpha"]'), { timeout: 15000 });
 ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Claude'), 'End asked first, then ended the session');
+// B58: by the project's name, as its row is, never the tmux name.
+const alphaLabel = await page.evaluate(() => projLabel('alpha'));
+ok(page.dialogs[nd].includes(`Claude session on ${alphaLabel}?`) && !page.dialogs[nd].includes('claude-alpha'),
+   `...the question names the project, not the tmux session (${page.dialogs[nd].split('\n')[0]})`);
 // B54: focus is not left on another row's End, where a keyboard Enter would
 // end a second session.
 await sleep(300);

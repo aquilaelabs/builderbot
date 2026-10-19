@@ -461,7 +461,7 @@ function drawBell(){
         // would put on the page, whole.
         a.kind === "release-edit" && a.detail ? `<details class="bdetail"${sectAttr("bell:detail:" + a.id)}><summary>the new notes</summary><pre>${
             esc(a.detail)}</pre></details>` : ""}
-        <div class="bfoot"><span>${a.asker ? esc(a.asker) + "'s session · " : ""}${askLeft(a)}</span>
+        <div class="bfoot"><span>${a.asker || a.project ? esc(askWho(a)) + " · " : ""}${askLeft(a)}</span>
           <span class="acts"><a href="#" data-bdeny="${a.id}">Deny</a>${
             // A phone's commands come one after another: the second answer
             // lets the rest from this session run without asking (the

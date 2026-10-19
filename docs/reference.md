@@ -230,7 +230,7 @@ bb devapp rebuild [--why "..."]
                    over: Claude may: Run its container, in its settings dialog and
                    the new-project dialog, reads deny (the default, refused with the
                    sentence that names it), ask (the reason goes to a person and the
-                   command waits for Allow) or auto. Up, Down and a container of
+                   command waits for Approve) or auto. Up, Down and a container of
                    any other shape stay the operator's. The build sees BB_BUILD_REV,
                    BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
                    interpolate them; its other options are the compose file's own
@@ -249,13 +249,13 @@ bb devapp new [NAME] [--branch REF] [--compose FILE] [--override FILE] [--node N
                    puts it on a hosting node ticked under the project's Also
                    works on (marked Hosting only): built on the project's own
                    node and shipped there. On ask, one request carries all of it and
-                   Allow makes and builds it
+                   Approve makes and builds it
 bb devapp remove [--why "..."]
                    take the container out of the manager, under the same setting;
                    its env and data stay for a remake, as the row's Remove leaves them
 bb devapp env [set FILE|-] [--why "..."]
                    print the container's env, or replace it, under the same setting;
-                   on ask, Allow writes it and builds nothing, since the card said
+                   on ask, Approve writes it and builds nothing, since the card said
                    env set, and the rebuild is the next ask.
                    BuilderBot keeps it per container, never as a file in the project,
                    and points a compose line `env_file: .env` at it when it runs
@@ -427,7 +427,7 @@ bb phone run --why "..." -- adb args...
                    handset itself
 bb phone lease     whether the phone is lent to this project, for how long, and
                    which of its apps the lease covers. While lent, each of
-                   these asks the phone's owner and runs on their Allow
+                   these asks the phone's owner and runs on their Approve
                    (--why "..." is the sentence they read), or at once
                    once they allowed this session's commands:
 bb phone install dist/APP.apk   install one of this project's builds; its
@@ -444,7 +444,7 @@ bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--hand NAME] [--s
                    text "..." | key back|enter|del|tab|space|up|down|left|right
                    only while a lease app is in front or is the keyboard;
                    --any-app asks the owner for that one touch on whatever is
-                   in front (another project's keyboard), and Allow for this
+                   in front (another project's keyboard), and Approve for this
                    session does not cover it; bb phone ui prints the screen's
                    layout under the same rule
 bb container       what container asks are waiting on an administrator
@@ -452,7 +452,7 @@ bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NOD
                    a container built from a compose file the session wrote,
                    under the project's *Claude may: Run its container*: refused
                    at deny, asked at ask (an administrator reads the file on
-                   the bell, and Allow registers it through the Containers page's own
+                   the bell, and Approve registers it through the Containers page's own
                    New container path and starts its build), and at auto made
                    at once when it is this project's own on its own node; one
                    for another project or another node is always asked. A
