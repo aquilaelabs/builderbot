@@ -167,6 +167,8 @@
      and the rows that already matched did so at --tap. */
   --ctl:var(--tap);
   --doc-w:1080px;
+  /* The room between a page's cards at a desk, each card's top margin. */
+  --card-gap:12px;
   /* What a band that spans the pane (a pane's bar, the notebook's view
      strip) sets in by so its contents start where the centered column's do:
      half of what the pane has past the column, nothing on a narrower one.
@@ -1673,7 +1675,7 @@ dialog.modal::backdrop{background:transparent}
   margin-bottom:calc(var(--label-gap) - var(--field-gap))}
 .field .field{padding:0}
 .prefrow{gap:var(--field-gap)}
-.modal label,.nb label{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);
+.modal label,.nb label{display:block;font:var(--f-ui);color:var(--dim);
   margin-bottom:var(--label-gap)}
 /* The field skin, once, for EVERY control. This was an allowlist of container
    classes, which meant each new surface had to remember to join it, and the
@@ -2915,12 +2917,13 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* The fields of a row you open, under their labels. A memory and a test
    read this way too: the same shape for every fold, and Edit is what puts
    fields in its place. */
-.bug .bfield,.mem .bfield,.tst .bfield{margin-bottom:7px}
-.bug .bfield label,.mem .bfield label,.tst .bfield label{
-  font:600 10px/1.6 system-ui,sans-serif;color:var(--dim);
-  text-transform:uppercase;letter-spacing:.4px;display:block}
-.bug .bval,.mem .bval,.tst .bval{font:var(--f-ui);
-  white-space:pre-wrap;overflow-wrap:anywhere}
+/* A read-only field over its long value (a rule's text, a bug's steps): its
+   label in the facts' voice, the note a facts grid's names wear, wherever a
+   record draws one (consistency batch J: a third label style, small
+   uppercase, chosen through three components' names). */
+.bfield{margin-bottom:7px}
+.bfield>label{font:var(--f-note);color:var(--dim);display:block}
+.bval{font:var(--f-ui);white-space:pre-wrap;overflow-wrap:anywhere}
 .bval.dim{color:var(--dim)}
 .two{display:flex;gap:6px}
 .two>*{flex:1;min-width:0}
@@ -3023,7 +3026,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   .dmtab .dmcard,
   .nbview :is(#bugList, #roadmapList, #memList, #tstList, #roadmapHist):has(> :is(.bug, .grp, .mem, .tst, .hist, .skel)),
   .doctab>.doclist>.skt>.tbl,.doctab>.doclist>.skel:not(.skt){
-    margin:12px var(--row-x) 0;border:var(--hair) solid var(--line);
+    margin:var(--card-gap) var(--row-x) 0;border:var(--hair) solid var(--line);
     border-radius:var(--r-surface);background:var(--panel);overflow:hidden}
   :is(.doctab, .dmtab, .nbview) details.sect:not(details.sect details.sect, .row details.sect, .modal details.sect)[open]>summary{
     border-bottom:var(--hair) solid var(--line)}
@@ -3042,7 +3045,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
      their rows (the machine's own, the images to add, the images held) is
      a card of its own. */
   .doctab .tchead{border-bottom:0}
-  .doctab>.doclist>.tcs:not(.tbl):has(> .tc),.doctab>.doclist>.skt>.tcs:has(> .sk-row){margin:12px var(--row-x) 0;border:var(--hair) solid var(--line);
+  .doctab>.doclist>.tcs:not(.tbl):has(> .tc),.doctab>.doclist>.skt>.tcs:has(> .sk-row){margin:var(--card-gap) var(--row-x) 0;border:var(--hair) solid var(--line);
     border-radius:var(--r-surface);background:var(--panel);overflow:hidden}
   .doctab>.doclist>.tcs:not(.tbl)>:last-child{border-bottom:0}
   /* ...a run of rows straight on the page, one card; or straight in the one
@@ -3050,7 +3053,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
      and the same inside a template's wrapper (.skt), as they will land. */
   :is(.doctab>.doclist, .doctab>.doclist>.skt, .doctab>.doclist>:is(.phonetab, [data-stnode]), .doctab>.doclist>.skt>.phonetab)>.row{margin:0 var(--row-x);background:var(--panel);
     border-left:var(--hair) solid var(--line);border-right:var(--hair) solid var(--line)}
-  :is(.doctab>.doclist, .doctab>.doclist>.skt, .doctab>.doclist>:is(.phonetab, [data-stnode]), .doctab>.doclist>.skt>.phonetab)>:is(.row:first-child, :not(.row)+.row){margin-top:12px;
+  :is(.doctab>.doclist, .doctab>.doclist>.skt, .doctab>.doclist>:is(.phonetab, [data-stnode]), .doctab>.doclist>.skt>.phonetab)>:is(.row:first-child, :not(.row)+.row){margin-top:var(--card-gap);
     border-top:var(--hair) solid var(--line);border-top-left-radius:var(--r-surface);border-top-right-radius:var(--r-surface)}
   :is(.doctab>.doclist, .doctab>.doclist>.skt, .doctab>.doclist>:is(.phonetab, [data-stnode]), .doctab>.doclist>.skt>.phonetab)>:is(.row:last-child, .row:has(+:not(.row))){margin-bottom:0;
     border-bottom:var(--hair) solid var(--line);border-bottom-left-radius:var(--r-surface);border-bottom-right-radius:var(--r-surface)}
@@ -3058,13 +3061,13 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
      run of its placeholder rows is one card, its table a card. */
   .doctab>.doclist>.skt>.sk-row{margin:0 var(--row-x);background:var(--panel);
     border-left:var(--hair) solid var(--line);border-right:var(--hair) solid var(--line)}
-  .doctab>.doclist>.skt>:is(.sk-row:first-child, :not(.sk-row)+.sk-row){margin-top:12px;
+  .doctab>.doclist>.skt>:is(.sk-row:first-child, :not(.sk-row)+.sk-row){margin-top:var(--card-gap);
     border-top:var(--hair) solid var(--line);border-top-left-radius:var(--r-surface);border-top-right-radius:var(--r-surface)}
   .doctab>.doclist>.skt>:is(.sk-row:last-child, .sk-row:has(+:not(.sk-row))){
     border-bottom:var(--hair) solid var(--line);border-bottom-left-radius:var(--r-surface);border-bottom-right-radius:var(--r-surface)}
   /* Findings and the notebook's Analysis: a list of rules is one card, a
      project's name over its card on the Findings page. */
-  .fxtab .fx:has(> .rule),.nbview #anaList:has(> .rule){margin:12px var(--row-x) 0;border:var(--hair) solid var(--line);
+  .fxtab .fx:has(> .rule),.nbview #anaList:has(> .rule){margin:var(--card-gap) var(--row-x) 0;border:var(--hair) solid var(--line);
     border-radius:var(--r-surface);background:var(--panel);overflow:hidden}
   .fxtab .fx>.rule:first-child,.nbview #anaList>.rule:first-child{border-top:0}
   .fxtab.fxtab .fxproj{border-top:0;padding-top:calc(var(--row-y) + 6px)}
@@ -3074,7 +3077,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   /* The CI runner page (the operator, 18 Oct): every node's runners and
      this node's own each a card on the page's margin, and the pin's hint
      under them with no line across. */
-  .runnertab .runnersall,.runnertab .ndruns{margin:12px var(--row-x) 0;border:var(--hair) solid var(--line);
+  .runnertab .runnersall,.runnertab .ndruns{margin:var(--card-gap) var(--row-x) 0;border:var(--hair) solid var(--line);
     border-radius:var(--r-surface);background:var(--panel);overflow:hidden}
   .runnertab .ndruns>.row:last-child{border-bottom:0}
   .runnertab .ndrunpin{border-top:0;margin-top:4px}
@@ -4167,16 +4170,16 @@ button[aria-busy="true"]{opacity:.75}
 @media(min-width:901px){
   .doctab.nodestab>.doclist>.row.stack2.ndrow,
   .doctab.nodestab>.doclist>.skt>.row.stack2.ndrow{background:none;border:0;border-radius:0;padding:0;margin:0 var(--row-x)}
-  .nodestab .ndrow>.grow{margin:12px 0 0;padding:var(--row-y) var(--row-x);background:var(--panel);
+  .nodestab .ndrow>.grow{margin:var(--card-gap) 0 0;padding:var(--row-y) var(--row-x);background:var(--panel);
     border:var(--hair) solid var(--line);border-radius:var(--r-surface)}
   .nodestab .ndrow>.ndsections{margin:0;width:100%}
   .nodestab .ndrow>.ndsections>details.sect,
-  .nodestab .ndrow>.ndsections>.ndconf>.ndconfbody>details.sect{margin:12px 0 0;background:var(--panel);
+  .nodestab .ndrow>.ndsections>.ndconf>.ndconfbody>details.sect{margin:var(--card-gap) 0 0;background:var(--panel);
     border:var(--hair) solid var(--line);border-radius:var(--r-surface);overflow:hidden}
   .nodestab .ndrow>.ndsections>details.sect[open]>summary,
   .nodestab .ndrow>.ndsections>.ndconf>.ndconfbody>details.sect[open]>summary{border-bottom:var(--hair) solid var(--line)}
-  .nodestab .ndrow>.ndsections>.ndconf>.ndconfbody>.ndguest{margin:12px var(--row-x) 0}
-  .nodestab .ndrow>.ndsections>.sectjump{margin:12px 0 0;padding-left:0;padding-right:0;border:0}
+  .nodestab .ndrow>.ndsections>.ndconf>.ndconfbody>.ndguest{margin:var(--card-gap) var(--row-x) 0}
+  .nodestab .ndrow>.ndsections>.sectjump{margin:var(--card-gap) 0 0;padding-left:0;padding-right:0;border:0}
 }
 .ndrow .actbar.ndagent{margin-top:4px}
 /* A node's Advanced actions (the operator, 18 Oct): a row each, its name and
