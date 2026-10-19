@@ -407,6 +407,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Design view's Pages and Themes and the Overview's What a session is sent open like every other section instead of folding (b46ecb2)
 - At a desk every page's column is centered in the window instead of pinned to the left, and the page's header, its view strip and its cards line up on the same edges (f9e3446)
 - Sections lay out the same on every page: a section's rows, tables and notes start where its title does, with separators running edge to edge, and a hint reads the same quiet way everywhere (f9e3446)
+- Folds, empty lists, badges and page searches look the same on every page: one fold arrow, one empty-state line, one badge style and one size of search box in a page's bar (b13d72f)
+- On a phone, fields you type into never make iOS zoom the page, two fields side by side stack the same way everywhere, and buttons in a bar are the finger's height on any phone-sized screen (b13d72f)
 
 ### Removed
 
