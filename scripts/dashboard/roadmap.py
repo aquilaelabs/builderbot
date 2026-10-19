@@ -194,13 +194,18 @@ def _kinds(got):
     return {k: bool(got.get(k)) for k in KINDS}
 
 
-def _touch(d, project, kind="roadmap", on=True):
-    cur = _kinds(d.setdefault("unsaved", {}).get(project))
-    if kind is None:
-        cur = dict.fromkeys(KINDS, bool(on))
-    else:
-        cur[kind] = bool(on)
-    d["unsaved"][project] = cur
+def _touch(d, project, kind="roadmap", on=True, who=""):
+    # A session's own write (`who` is its seat) leaves the panel's flag as it
+    # was (B56): the flag says the operator has something the sessions were
+    # not told, and a session needs no telling about what it wrote. Another
+    # session hears of it all the same, by the counter below.
+    if not (on and who):
+        cur = _kinds(d.setdefault("unsaved", {}).get(project))
+        if kind is None:
+            cur = dict.fromkeys(KINDS, bool(on))
+        else:
+            cur[kind] = bool(on)
+        d["unsaved"][project] = cur
     # ...and a counter per kind that only ever goes up, which is what lets a
     # SESSION be told what it personally has not seen (roadmap #27). The
     # `unsaved` flag above is one per project: it answers "does the panel
@@ -679,7 +684,7 @@ def add(project, text, by="you", steps=(), who="", number=None):
         _log(d, project, by, {"act": "add", "id": row["id"], "text": text,
                               **({"steps": len(steps)} if steps else {})})
         d["projects"][project] = rows
-        _touch(d, project)
+        _touch(d, project, who=who)
         _credit(d, project, who)
         save(d)
     return {"ok": True, "item": row}
@@ -868,7 +873,7 @@ def _edit(project, item_id, change, by="you", who="", finished=False):
         # which since #27 means every session on the project is told the
         # roadmap moved when nothing did.
         if ok:
-            _touch(d, project)
+            _touch(d, project, who=who)
             _credit(d, project, who)
         save(d)
     return out
@@ -1075,7 +1080,7 @@ def reopen(project, item_id, by="you", who=""):
         rows.insert(sum(1 for r in rows if not r.get("shelved")), row)
         d["projects"][project] = rows
         _log(d, project, by, {"act": "reopen", "id": item_id, "text": row.get("text", "")})
-        _touch(d, project)
+        _touch(d, project, who=who)
         _credit(d, project, who)
         save(d)
     return {"ok": True, "item": row}
@@ -1199,7 +1204,7 @@ def move(project, item_id, step=None, dir=0, by="you", who=""):
             out = swap(rows, i)
             if out.get("ok"):
                 d["projects"][project] = rows
-                _touch(d, project)
+                _touch(d, project, who=who)
                 _credit(d, project, who)
                 _moved(d, project, by, row, i, i + dir)
                 save(d)
@@ -1414,7 +1419,7 @@ def restore(project, item_id, at=None, by="you", who=""):
                               **({"steps": len(row.get("steps") or [])}
                                  if row.get("steps") else {})})
         d["projects"][project] = rows
-        _touch(d, project)
+        _touch(d, project, who=who)
         _credit(d, project, who)
         save(d)
     return {"ok": True, "item": row}
