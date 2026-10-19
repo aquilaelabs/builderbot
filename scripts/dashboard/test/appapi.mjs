@@ -8,6 +8,7 @@
 import { ok, done, URL, DIR } from './lib.mjs';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, utimesSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -36,18 +37,30 @@ ok(typeof meta.body.built === 'string',
 // Where a newer app would be is a SIGNED build when there is one, however
 // new an unsigned one is: the phone's app was installed signed and Android
 // will not update it with a debug build (B507, 5 Oct).
+// BuilderBot's own project is the one whose origin is its repository, whatever
+// its folder is called (B4): a folder named BuilderBot with no such remote,
+// holding a newer signed build, is not where the app is sent.
 {
-  const d = `${DIR}/ws/BuilderBot/dist`;
+  const self = `${DIR}/ws/bb-public`, d = `${self}/dist`;
   mkdirSync(d, { recursive: true });
+  mkdirSync(`${self}/.git`, { recursive: true });
+  writeFileSync(`${self}/.git/config`,
+    '[core]\n\tbare = false\n[remote "origin"]\n\turl = https://github.com/aquilaelabs/builderbot.git\n'
+    + '\tfetch = +refs/heads/*:refs/remotes/origin/*\n');
   const signed = 'builderbot-app-0.7.0-dev.2284-d51d651-signed.apk';
   writeFileSync(`${d}/${signed}`, 'signed');
   writeFileSync(`${d}/builderbot-app-0.7.0-dev.2290-abc1234-dirty.apk`, 'dirty');
   writeFileSync(`${d}/builderbot-app-dev.apk`, 'a debug build');
   const old = new Date(Date.now() - 3600_000);
   utimesSync(`${d}/${signed}`, old, old);
-  const offered = (await get('/api/meta')).body.apk;
+  mkdirSync(`${DIR}/ws/BuilderBot/dist`, { recursive: true });
+  writeFileSync(`${DIR}/ws/BuilderBot/dist/builderbot-app-0.7.0-dev.9999-fffffff-signed.apk`, 'not ours');
+  const meta = (await get('/api/meta')).body;
+  rmSync(self, { recursive: true, force: true });
   rmSync(`${DIR}/ws/BuilderBot`, { recursive: true, force: true });
-  ok(offered === signed, `the app is offered the signed build, not a newer unsigned one (${offered})`);
+  ok(meta.apk === signed, `the app is offered the signed build, not a newer unsigned one (${meta.apk})`);
+  ok(meta.apk_sha256 === createHash('sha256').update('signed').digest('hex'),
+     `...read from the project whose origin is BuilderBot's repository, not a folder named BuilderBot (${meta.apk_sha256})`);
 }
 
 // ---- every GET the app makes answers with the fields it reads ------------------------

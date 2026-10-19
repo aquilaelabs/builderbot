@@ -174,6 +174,13 @@ ok(genv('GIT_CONFIG_KEY_0') === 'GIT_CONFIG_KEY_0=credential.helper'
    && genv('GIT_TERMINAL_PROMPT') === 'GIT_TERMINAL_PROMPT=0',
    `...and a credential helper that names bb git rather than asking for a username (${
      (genv('GIT_CONFIG_VALUE_0') || 'unset').slice(0, 60)})`);
+// ...and git's own user.name and user.email say the same author (B5), so
+// `git config user.name` agrees with the commits whatever a home's
+// .gitconfig still holds.
+ok(genv('GIT_CONFIG_COUNT') === 'GIT_CONFIG_COUNT=3'
+   && genv('GIT_CONFIG_KEY_1') === 'GIT_CONFIG_KEY_1=user.name' && genv('GIT_CONFIG_VALUE_1') === 'GIT_CONFIG_VALUE_1=Pat Tester'
+   && genv('GIT_CONFIG_KEY_2') === 'GIT_CONFIG_KEY_2=user.email' && genv('GIT_CONFIG_VALUE_2') === 'GIT_CONFIG_VALUE_2=pat@example.invalid',
+   `...and git's user.name and user.email are the same author (${genv('GIT_CONFIG_VALUE_1') || 'unset'})`);
 const cmd = paneCmd();
 ok(cmd.length < 200 && /project\/alpha\/claude-run\.sh$/.test(cmd),
    '...because tmux was handed a launcher, not the command');

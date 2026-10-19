@@ -3,7 +3,8 @@ the enrolled machines, and the runner labels the registry knows, read from
 the node store the way the Nodes page reads it (dashboard/nodes.py), and
 read-only.
 
-The first argument is the verb, `list` or `labels`, then nodes.py's path.
+The first argument is the verb, `list`, `show` or `labels`, then nodes.py's
+path, then for `show` the node's name or id.
 DASHBOARD_STATE says where the store is.
 """
 import contextlib
@@ -13,6 +14,7 @@ import sys
 import dash
 
 verb, py = sys.argv[1], sys.argv[2]
+arg = sys.argv[3] if len(sys.argv) > 3 else ""
 nodes = dash.load("nodes", dash.beside(py))
 
 
@@ -44,7 +46,45 @@ def list_():
         nums = (f' · cpu {s.get("cpu_pct", 0):.0f}% · {s.get("mem_used_mb", 0) / 1024:.1f}'
                 f'/{s.get("mem_mb", 0) / 1024:.0f}GB') if s and n.get("live") else ""
         print(f'{n["id"]:>12}  {state:<10} {n["kind"]:<6} {caps:<24} '
-              f'{n["name"]} · {where}{nums}')
+              f'{n["name"]} · {where}{nums}{_agent(n)}')
+
+
+def _agent(n):
+    """The agent a node runs beside the row (B9): its version, and
+    "update due" when it is not the one this controller ships, which is
+    what Update agent on the Nodes page fixes."""
+    if n["kind"] != "agent":
+        return ""
+    mine = (n.get("agent") or {}).get("version") or ""
+    if not mine:
+        return ""
+    return f" · agent {mine}" + (" · update due" if nodes.agent_stale(n) else "")
+
+
+def show(name):
+    """One node in full, by its name or id: `bb nodes show NAME`."""
+    try:
+        nodes.db.open_readonly(os.environ["DASHBOARD_STATE"])
+        rows = [n for n in nodes.node_list() if n["kind"] != "local"]
+    except Exception as e:
+        print(f"no node store yet; the dashboard creates it on boot ({e})")
+        raise SystemExit(0) from None
+    n = next((r for r in rows if name in (r["name"], r["id"])), None)
+    if not n:
+        raise SystemExit(f"[builderbot] ERROR: no node called {name}; bb nodes lists them: "
+                         + ", ".join(r["name"] for r in rows))
+    ag = n.get("agent") or {}
+    rows_out = [("node", f'{n["name"]} ({n["id"]})'), ("state", n["state"] + (", dialing in" if n.get("live") else "")),
+                ("kind", n["kind"]), ("address", ag.get("addr") or "-"),
+                ("does", ",".join(n["capabilities"]) or "-"), ("labels", ",".join(n.get("labels") or []) or "-")]
+    if n["kind"] == "agent":
+        ours = nodes.agent_file()["version"] or "?"
+        rows_out.append(("agent", f'{ag.get("version") or "?"} (this controller ships {ours})'))
+        stale = nodes.agent_stale(n)
+        if stale:
+            rows_out.append(("update", stale))
+    for k, v in rows_out:
+        print(f"  {k:<8} {v}")
 
 
 def labels():
@@ -53,4 +93,7 @@ def labels():
         print("\n".join(nodes.runner_labels_known()))
 
 
-{"list": list_, "labels": labels}[verb]()
+if verb == "show":
+    show(arg)
+else:
+    {"list": list_, "labels": labels}[verb]()

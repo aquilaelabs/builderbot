@@ -3531,6 +3531,13 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     { encoding: 'utf8', cwd: REPO, env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
   ok(/agentbox/.test(out) && /agent/.test(out),
      'bb nodes lists the agent node');
+  // ...with the agent it runs on the row, and one node in full (B9).
+  const row = out.split('\n').find(l => /agentbox/.test(l)) || '';
+  ok(/ · agent \d+\.\d+\.\d+/.test(row), `...naming the agent it runs (${row.trim()})`);
+  const one = execFileSync('bash', ['scripts/bb', 'nodes', 'show', 'agentbox'],
+    { encoding: 'utf8', cwd: REPO, env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+  ok(/node\s+agentbox \(/.test(one) && /agent\s+\S+ \(this controller ships \d+\.\d+\.\d+\)/.test(one),
+     `bb nodes show NAME prints that node, its agent against the one this controller ships (${one.trim().replace(/\s+/g, ' ').slice(0, 160)})`);
 }
 
 // Retire what this file made: the rows stay as history (door 1) and leave

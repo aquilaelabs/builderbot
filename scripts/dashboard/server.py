@@ -2183,11 +2183,37 @@ APP_API = 9
 PHONE_WAIT_S = 45
 
 
+# BuilderBot's own repository, as a project's origin names it over https or ssh.
+SELF_REPO = re.compile(r"github\.com[:/]aquilaelabs/builderbot(?:\.git)?/?$", re.I)
+
+
+def self_dist():
+    """dist/ of the project whose origin is BuilderBot's own repository, or
+    None. Found by the remote and not by the folder (B4), since a project
+    renamed on the dashboard keeps its folder. Each project's .git/config is
+    read rather than git asked, since the app asks /api/meta on every start."""
+    try:
+        dirs = sorted(p for p in WORKSPACE.iterdir() if p.is_dir())
+    except OSError:
+        return None
+    for p in dirs:
+        try:
+            conf = (p / ".git" / "config").read_text(errors="replace")
+        except OSError:
+            continue
+        m = re.search(r'^\[remote "origin"\][^\[]*?^\s*url\s*=\s*(\S+)', conf, re.M)
+        if m and SELF_REPO.search(m.group(1)):
+            return p / "dist"
+    return None
+
+
 def app_apk():
     """The newest companion APK in BuilderBot's own dist/, if this
     controller has the repository as a project: what the app points at when
     it finds itself behind. Its filename only; the Artifacts view serves it."""
-    d = WORKSPACE / "BuilderBot" / "dist"
+    d = self_dist()
+    if d is None:
+        return ""
     try:
         apks = sorted((p for p in d.iterdir() if p.suffix == ".apk" and p.is_file()),
                       key=lambda p: p.stat().st_mtime, reverse=True)
@@ -2207,11 +2233,12 @@ def app_apk_sha():
     """The newest companion APK's sha256, for the app to check a download
     against before it installs (B273); "" when there is none."""
     name = app_apk()
-    if not name:
+    d = self_dist()
+    if not name or d is None:
         return ""
     try:
         h = hashlib.sha256()
-        with open(WORKSPACE / "BuilderBot" / "dist" / name, "rb") as f:
+        with open(d / name, "rb") as f:
             for chunk in iter(lambda: f.read(1 << 20), b""):
                 h.update(chunk)
         return h.hexdigest()

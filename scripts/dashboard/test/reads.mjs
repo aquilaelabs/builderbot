@@ -100,6 +100,33 @@ ok(unreadR.status === 403 && /alpha does not read gamma: its owner adds it under
 const noneR = await relay(['roadmap'], 'nosuch');
 ok(noneR.status === 400 && /there is no project called nosuch/.test(noneR.error || ''),
    `...and a name that is no project says so (${noneR.error})`);
+// A long command arrives whole (B3): 40 steps are 81 words, which a cap of
+// 64 cut to a --step with nothing after it; past the cap it is refused by
+// name rather than run as a shorter command.
+{
+  const steps = Array.from({ length: 40 }, (_, i) => ['--step', `step ${i + 1}`]).flat();
+  const long = await relay(['roadmap', 'add', 'forty steps', ...steps], 'alpha');
+  const items = JSON.parse(readFileSync(`${DIR}/state/roadmap.json`, 'utf8')).projects?.alpha || [];
+  const made = items.find(i => i.text === 'forty steps');
+  ok(long.status === 200 && made?.steps?.length === 40,
+     `a relayed roadmap add with 40 steps keeps all 40 (${long.status} ${(long.error || '').slice(0, 60)} ${made?.steps?.length})`);
+  if (made) await relay(['roadmap', 'rm', String(made.id)], 'alpha');
+  const huge = await relay(['roadmap', 'add', ...Array(1100).fill('w')], 'alpha');
+  ok(huge.status === 400 && /sent 1102 words, and a relayed command carries 1024 at most/.test(huge.error || ''),
+     `...and one past the cap is refused, naming it (${huge.error})`);
+}
+// The name the dashboard shows answers for its directory (B1): the person
+// says it, and the session repeats it.
+{
+  const rn = await api('/api/rename', { name: 'beta', to: 'beta-shown' });
+  const byLabel = await relay(['roadmap'], 'beta-shown');
+  const addL = await relay(['roadmap', 'add', 'from alpha'], 'beta-shown');
+  await api('/api/rename', { name: 'beta', to: 'beta' });
+  ok(rn.status === 200 && byLabel.status === 200 && !byLabel.error,
+     `bb -p with the name beta is shown under answers for beta (${rn.status} ${byLabel.status} ${(byLabel.error || '').slice(0, 60)})`);
+  ok(addL.status === 403 && /beta is read-only from a session on alpha/.test(addL.error || ''),
+     `...and is held to beta's reads like its directory is (${addL.error})`);
+}
 
 // ---- the grant carries the reads, for the view and the walls ---------------------------
 const grant = await api('/api/v1/tty-grant', { arg: 'claude:alpha' }, asSession(tok));

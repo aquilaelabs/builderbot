@@ -227,8 +227,9 @@ DevTools-protocol client (Chrome) or a WebDriver BiDi one (Firefox).
 Two ways to look, by the question you are asking:
 
 - `bb capture shot` is one picture at rest, for what a screen looks like:
-  `URL FILE` for a page, `--emu [PKG] [FILE]` for the emulator's screen
-  (into `dist/emu/` when no file is named; PKG is launched only when it is
+  `URL [FILE]` for a page (into `dist/shot/` when no file is named),
+  `--emu [PKG] [FILE]` for the emulator's screen (into `dist/emu/` when no
+  file is named; PKG is launched only when it is
   not already on the screen), `--display :N FILE` for an X display. `--now`
   takes the shot at once rather than waiting for the screen to settle, and
   `--drive FILE.sh` works the surface first (`$ADB shell input ...`,

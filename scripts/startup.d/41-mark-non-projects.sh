@@ -5,10 +5,10 @@
 #
 # The projects folder is mounted whole, so anything an operator puts under it
 # becomes a project, including paths this container asked them to create.
-# The toolchain store is the one that bites: its default sits at
-# /mnt/user/development/SDK, which is inside /mnt/user/development, so the
-# same directory is both /sdk and /workspace/SDK and the Projects card lists
-# it as a repository with nothing in it.
+# The toolchain store is the one that bites: put inside the projects folder
+# (the store at /mnt/user/projects/SDK with the projects at
+# /mnt/user/projects), the same directory is both /sdk and /workspace/SDK and
+# the Projects card lists it as a repository with nothing in it.
 #
 # The marker is a plain hidden file, `.bbignore`, and its meaning is exactly
 # "not a project". Anyone can create one by hand for a directory they would

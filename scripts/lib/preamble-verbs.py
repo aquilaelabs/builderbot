@@ -15,7 +15,7 @@ import sys
 d, proj, op = sys.argv[1], sys.argv[2], sys.argv[3]
 arg = sys.argv[4] if len(sys.argv) > 4 else ""
 sys.path.insert(0, d)
-import statefile, rules, roadmap, bugs, preamble, prefs, design
+import statefile, rules, roadmap, bugs, preamble, prefs, design, registry
 state = os.environ.get("DASHBOARD_STATE", "/config")
 # Reading only: none of the callbacks a write would need are passed, and the
 # three stores take them as optional for exactly this case.
@@ -29,6 +29,11 @@ prefs.configure(write_json=statefile.write_json, state=state)
 design.configure(workspace=os.environ.get("WORKSPACE", "/workspace"), state=state,
                  write_json=statefile.write_json)
 preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs, prefs_mod=prefs)
+# The name each project is shown under (B1): without it a session was told
+# only directories, while the person names projects as the dashboard does.
+registry.configure(state=state, workspace=os.environ.get("WORKSPACE", "/workspace"),
+                   write_json=statefile.write_json)
+preamble.label_of = registry.label
 
 
 def node_gpu(project):

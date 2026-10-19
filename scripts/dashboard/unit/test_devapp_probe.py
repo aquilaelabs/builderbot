@@ -79,6 +79,21 @@ class Probe(unittest.TestCase):
         self.assertEqual(code, 200, out)
         self.assertEqual(out["ports"][0]["http"], 404, "a GET of the path asked, its status said")
 
+    def test_the_running_containers_ports_when_the_wiring_names_none(self):
+        # B7: a compose file whose port comes from an env value names none in
+        # its wiring, while docker has it bound; the probe asks what runs.
+        saved = devactions.running_ports
+        self.addCleanup(setattr, devactions, "running_ports", saved)
+        devactions.state_ports = lambda project, instance: []
+        devactions.running_ports = lambda project, instance: [f"{self.live}->{self.live}/tcp"]
+        out, code = devactions.probe("tl", "site", {}, "session:tl")
+        self.assertEqual(code, 200, out)
+        self.assertEqual(LocalQueue.asked[0][2], [self.live])
+        devactions.running_ports = lambda project, instance: []
+        out, code = devactions.probe("tl", "site", {}, "session:tl")
+        self.assertEqual(code, 400)
+        self.assertIn("publishes no TCP port", out["error"])
+
     def test_a_hosting_node_takes_this_program_and_no_other(self):
         self.assertTrue(nodes.host_exec_ok("exec", {"argv": ["python3", "-c", nodes.PROBE, "/", "9090"]}))
         self.assertFalse(nodes.host_exec_ok("exec", {"argv": ["python3", "-c", "import os; os.system('id')"]}))

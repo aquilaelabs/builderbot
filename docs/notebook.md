@@ -610,7 +610,8 @@ Each row is labeled by kind (apk, xpi, whatever the extension says) with
 its size and age, newest first. Everything can be **downloaded**.
 
 What a session looked with lands in `dist/` too: a reel's sheet under
-`dist/reel/NAME` and an emulator shot under `dist/emu`, each with a record
+`dist/reel/NAME`, a page's shot under `dist/shot` and an emulator's under
+`dist/emu`, each with a record
 of who asked and when (`bb capture`, R96). Those are not what ships, so the
 list leaves them out and the view draws them as one **Captures** fold, shut,
 saying how many and how long they are kept; open, each row says whose it is

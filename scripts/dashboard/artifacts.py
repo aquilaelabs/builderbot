@@ -24,8 +24,9 @@ extension this module does not know is opened and its first two bytes read.
 Nothing is executed from here, ever: the tab downloads and it reads.
 
 What a session looks with is in dist/ too (R96): a reel's sheet under
-dist/reel/NAME and an emulator shot under dist/emu, each with a record of
-who asked and when. Those are not what the project ships, so the listing
+dist/reel/NAME, a page's shot under dist/shot and an emulator's under
+dist/emu, each with a record of who asked and when. Those are not what the
+project ships, so the listing
 leaves them out and the tab draws them as one Captures fold, and they go by
 age: the project's "captures kept" days, swept here when the tab draws,
 since nothing can tell whether another session is still reading one. The
