@@ -266,20 +266,24 @@ function nginxBody(n){
   // (R192): its own action bar, since Check now and Update are two verbs.
   const im = n.image || {}, lt = nginxLatest || {};
   const pinned = `nginx:${im.tag || "?"}${im.digest ? ` (${im.digest.slice(7, 19)})` : ", not pinned to a digest yet"}`;
-  const news = n.behind ? `nginx:${n.behind} is out: Update pins it and rebuilds`
+  // A newer build of the tag it already runs is said as that, not as the
+  // same tag named twice.
+  const rebuild = !!n.behind && n.behind === im.tag;
+  const out = rebuild ? `a newer build of nginx:${n.behind}` : `nginx:${n.behind}`;
+  const news = n.behind ? `${out} is out: Update pins it and rebuilds`
     : lt.digest ? "the newest line the registry lists" : "no check has read the registry yet";
   const checked = lt.at ? `checked ${ago(lt.at)}` : "never checked";
   // Four sections (R218 step 29): each says its state in its head, opens
   // on one short line with the rest behind its ?, and saves what it writes
   // under itself; Remove stands apart at the page's foot.
   const pairs = Object.values(n.certs || {}).filter(c => c?.set).length;
-  const image = ngSect("image", n.behind ? `nginx:${n.behind} is out` : `nginx:${im.tag || "?"}`,
+  const image = ngSect("image", n.behind ? (rebuild ? "a newer build is out" : `${out} is out`) : `nginx:${im.tag || "?"}`,
     `<div class="field">
       <div class="sub ngimage">${esc(pinned)}</div>
       <div class="hint${n.behind ? " warn" : ""}">${esc(news)}.${helpIcon("The registry is read once a week by itself; a node is pinned to a digest when it is deployed or updated, so a Save never moves it.")}</div>
       <div class="actbar ngimgbar"><span class="state">${esc(checked)}${lt.error ? ` · ${esc(lt.error)}` : ""}</span><span class="sp"></span>
         <button type="button" data-ngcheck>Check now</button>
-        ${n.behind ? `<button type="button" class="primary" data-ngupdate>Update to ${esc(n.behind)}</button>` : ""}</div>
+        ${n.behind ? `<button type="button" class="primary" data-ngupdate>${rebuild ? "Update to the newer build" : `Update to ${esc(n.behind)}`}</button>` : ""}</div>
     </div>`, {cls: n.behind ? "warn" : ""});
   const clash = (n.clash || []).length
     ? `<div class="field"><div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div></div>` : "";
@@ -533,7 +537,7 @@ function wireNginxTab(root){
   };
   const upd = sect.querySelector("[data-ngupdate]");
   if (upd) upd.onclick = async e => {
-    if (!confirm(`Update nginx on ${n.name} to nginx:${n.behind}?\n\nIt is rebuilt with the new image, so its sites are down while the node pulls it.`)) return;
+    if (!confirm(`Update nginx on ${n.name} to ${n.behind === n.image?.tag ? "the newer build of " : ""}nginx:${n.behind}?\n\nIt is rebuilt with the new image, so its sites are down while the node pulls it.`)) return;
     nginxReadDraft(sect, n);
     busy(e.target, "Updating");
     await nginxAct({action: "update", node: nid});

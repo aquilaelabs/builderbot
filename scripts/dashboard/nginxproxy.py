@@ -534,7 +534,9 @@ def attention(deployed):
         im = image_of(rec)
         out.append({"kind": "nginx", "node": n.get("name") or nid, "id": nid,
                     "from": f"nginx:{im['tag']}" + (f" ({im['digest'][7:19]})" if im["digest"] else ", not pinned"),
-                    "to": f"nginx:{to} ({lt['digest'][7:19]})", "digest": lt["digest"]})
+                    "to": f"nginx:{to} ({lt['digest'][7:19]})", "digest": lt["digest"],
+                    # The tag it runs, rebuilt upstream: said as a newer build.
+                    "rebuild": im["tag"] == to})
     return out
 
 
