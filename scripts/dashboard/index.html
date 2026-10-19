@@ -4022,6 +4022,10 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    of the edge as every control does. */
 @media(max-width:440px){
   .doctab .field.docbarrow.dmpick>input{order:9;flex:0 1 100%;max-width:88%}
+  /* The picker is what gives up width on the line above it, from a zero
+     basis, so a long node name never puts Check and New under it. */
+  .doctab .field.docbarrow.dmpick>label.pick{flex:1 1 0;min-width:0;max-width:none}
+  .doctab .field.docbarrow.dmpick>label.pick>select:not([multiple]):not([size]){width:100%;text-overflow:ellipsis}
 }
 :is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.ctlrow,.ctlown,.actbar,.setgrid,.actmenu) *){
   max-width:min(var(--ctl-w),88%)}
