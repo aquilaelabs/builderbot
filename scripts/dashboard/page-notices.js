@@ -66,14 +66,9 @@ function noticesAskRows(){
         <div class="sub">${esc(a.why || "")}</div>
         <div class="bcmd">${askCmd(a)}</div>
         ${body ? `<details class="ntlong"${sectAttr("notices:ask:" + a.id)}><summary>${esc(what)}</summary><pre class="ntbox">${esc(body)}</pre></details>` : ""}
-        <div class="sub dim">${a.asker ? esc(a.asker) + "'s session · " : ""}${a.left > 60
-          ? `${Math.floor(a.left / 60)} min left to answer` : `${a.left}s left to answer`}</div>
+        <div class="sub dim">${a.asker ? esc(a.asker) + "'s session · " : ""}${askLeft(a)}</div>
       </div>
-      <div class="actbar">
-        <button type="button" class="primary" data-ntallow="${a.id}">Approve</button>
-        ${a.kind === "phone" || a.kind === "phone-use" ? `<button type="button" data-ntallow="${a.id}" data-session="1">Approve for this session</button>` : ""}
-        <button type="button" class="danger" data-ntdeny="${a.id}">Deny</button>
-      </div>
+      <div class="actbar">${askActs(a, {deny: "data-ntdeny", allow: "data-ntallow"})}</div>
     </div>`;
   });
 }
@@ -82,8 +77,8 @@ function noticesWaitingRows(){
   const invites = (state?.invites || []).map(i => `<div class="row stack2" data-invite="${i.id}">
       <div class="grow"><div class="name">${i.kind === "owner" ? `${esc(projLabel(i.project))} offered to you` : `Invited to ${esc(projLabel(i.project))}`}</div>
         <div class="sub">${esc(i.by || "Somebody")} ${i.kind === "owner" ? "offers you ownership" : `invited you${i.role ? ` as ${esc(i.role)}` : ""}`} · ${esc(ago(i.at))}</div></div>
-      <div class="actbar"><button type="button" class="primary" data-ntinvite="${i.id}" data-yes="1">Accept</button>
-        <button type="button" data-ntinvite="${i.id}" data-yes="0">Decline</button></div></div>`);
+      <div class="actbar"><button type="button" data-ntinvite="${i.id}" data-yes="0">Decline</button>
+        <button type="button" class="primary" data-ntinvite="${i.id}" data-yes="1">Accept</button></div></div>`);
   const held = (state?.projects || []).filter(p => p.pending > 0).map(p => `<div class="row stack2">
       <div class="grow"><div class="name">${p.pending} change${p.pending === 1 ? "" : "s"} from a session in ${esc(projLabel(p.name))}</div>
         <div class="sub">waiting for your approval on its notebook</div></div>

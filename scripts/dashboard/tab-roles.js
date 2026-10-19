@@ -110,7 +110,7 @@ function rolesAccessFields(name){
   // No role on a project at all: there is nothing to put it on a project
   // with, and the place that makes one is named instead of an empty picker.
   const anyProjRole = Object.values(d.roles || {}).some(r => r.scope === "projects");
-  const add = off.length && !anyProjRole ? `<div class="sub dim raddon">No role on a project yet: one made on the Roles page puts ${esc(p.name)} on a project.</div>`
+  const add = off.length && !anyProjRole ? `<div class="sub dim raddon">No role on a project yet: one made on the ${pageLink("roles", "Roles page")} puts ${esc(p.name)} on a project.</div>`
     : off.length ? `<div class="raddon">
       <select id="rolesAddProj" aria-label="the project">${off.map(pn => `<option value="${esc(pn)}"${pn === addPn ? " selected" : ""}>${esc(projLabel(pn))}</option>`).join("")}</select>
       <select id="rolesAddRole" aria-label="the role there">${rolesOnProject(addPn).map(r => `<option value="${esc(r.name)}">${esc(r.label || r.name)}</option>`).join("")}</select>
@@ -221,7 +221,7 @@ async function rolesAccessOpen(name, saved = () => {}){
   }
   rolesWho = ""; rolesPeopleDraft = null;
   m.innerHTML = `<div class="box"><h3>${esc(name)}'s roles</h3><div id="raFields"></div>
-    <div class="foot"><button id="raSave" class="primary">Save</button><button id="raCancel">Cancel</button></div></div>`;
+    ${dlgFoot(`<button type="button" id="raCancel">Cancel</button>`, `<button type="button" id="raSave" class="primary">Save</button>`)}</div>`;
   const draw = () => { const box = m.querySelector("#raFields");
     box.innerHTML = rolesAccessFields(name); wireRolesAccess(box, draw); };
   draw();
@@ -351,9 +351,7 @@ function rolesRoleBody(){
     ${ro ? "" : `<div class="setrow col ctlrow">${lbl("rolesNote", "What this role is for")}<input id="rolesNote" value="${esc(r.note)}" autocomplete="off"></div>`}
     ${areas}
     ${r.builtin ? `<div class="sub">${esc(r.note)}. Built in, every area to write, and not changed here.</div>` : ""}
-    ${ro ? "" : `<div class="actbar"><span class="state">${rolesRoleDirty() ? "unsaved" : ""}</span>
-      <button type="button" id="rolesRevert">Revert</button>
-      <button type="button" class="primary" id="rolesSave">Save</button></div>
+    ${ro ? "" : `${saveBar({save: 'id="rolesSave"', revert: 'id="rolesRevert"', state: rolesRoleDirty() ? "unsaved" : ""})}
       ${r.fresh ? "" : `<div class="rfoot"><button type="button" class="danger" id="rolesRemove">Remove ${esc(d.roles[r.name]?.label || r.name)}</button></div>`}`}`);
 }
 
@@ -379,7 +377,7 @@ function rolesNewOpen(){
     <div class="field">${lbl("rolesNewName", "Its name")}<input id="rolesNewName" autocomplete="off"></div>
     <div class="field">${lbl("rolesNewScope", "Kind", "On a project: given per project, and holds there. Everywhere: holds on every project and is the only kind that reaches the nodes, toolchains and the controller")}
       <select id="rolesNewScope"><option value="projects">On a project</option><option value="global">Everywhere</option></select></div>
-    <div class="foot"><button id="rolesAdd" class="primary" disabled>Make it</button><button id="rolesNewCancel">Cancel</button></div></div>`;
+    ${dlgFoot(`<button type="button" id="rolesNewCancel">Cancel</button>`, `<button type="button" id="rolesAdd" class="primary" disabled>Make it</button>`)}</div>`;
   // Make it wakes once a name is typed that no role has (the operator, 18
   // Oct).
   const nm = m.querySelector("#rolesNewName");

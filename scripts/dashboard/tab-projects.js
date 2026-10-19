@@ -106,14 +106,25 @@ function projectMatches(p, q){
 // edge, the name (a press opens its page), the branch and the node, the
 // session's dot and word, the one notice, and the two actions with the
 // rest behind the menu, the same parts the project page's header draws.
+// A project's lock, said one way on its card, its page's header and Home
+// (consistency batch J: the header said locked where the card said
+// archived): archived when it is locked, read-only when it is another
+// account's.
+function lockMark(p){
+  return p.locked || notMine(p) ? ` <span class="lockmark">${LOCK}${p.locked ? "archived" : "read-only"}</span>` : "";
+}
+// A project's facts line, the same parts wherever it is drawn: its branch,
+// that it may push, and the node it runs on.
+function projFacts(p){
+  const node = p.node_name || p.session_at || "";
+  return `${p.git ? `git: <span class="pbr">${esc(p.git)}</span>${p.push ? ` · <span class="ok">push</span>` : ""}` : ""}${p.git && node ? " · " : ""}${esc(node)}`;
+}
 function projectCard(p){
   const pc = colorAttrs(p.color), cls = {error:"bad", warning:"warn", locked:"locked"};
-  const node = p.node_name || p.session_at || "";
   return `<div class="pcard${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
-    <div class="pcname"><button type="button" class="name link" data-open="${esc(p.name)}" title="open ${esc(projLabel(p.name))}'s page">${esc(p.label || p.name)}</button>${
-      p.locked || notMine(p) ? ` <span class="lockmark">${LOCK}${p.locked ? "archived" : "read-only"}</span>` : ""}${
+    <div class="pcname"><button type="button" class="name link" data-open="${esc(p.name)}" title="open ${esc(projLabel(p.name))}'s page">${esc(p.label || p.name)}</button>${lockMark(p)}${
       p.pinned && !p.locked ? ` <span class="pinmark" title="pinned: on Home's glance" aria-label="pinned">${PIN}</span>` : ""}</div>
-    <div class="pcfacts">${p.git ? `git: <span class="pbr">${esc(p.git)}</span>${p.push ? ` · <span class="ok">push</span>` : ""}` : ""}${p.git && node ? " · " : ""}${esc(node)}</div>
+    <div class="pcfacts">${projFacts(p)}</div>
     ${projectState(p)}
     ${p.issues.map(i => `<div class="pnote ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
     ${state?.mapping?.[p.name] ? (m => m.running

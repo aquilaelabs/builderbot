@@ -330,6 +330,29 @@ function askCmd(a){
   return pre + esc((a.cmd || []).join(" "));
 }
 
+// How long an ask has left to be answered, said the same everywhere it is
+// shown (consistency batch J: five copies of the sum).
+function askLeft(a){
+  return a.left > 60 ? `${Math.floor(a.left / 60)} min left to answer` : `${a.left}s left to answer`;
+}
+// Whose session asks, the project by its label.
+function askWho(a){
+  return a.asker ? `${a.asker}'s session in ${a.project ? projLabel(a.project) : "a project"}` : a.project ? projLabel(a.project) : "a session";
+}
+// The answers to an ask, in one order and one word on every page: Deny,
+// then, for a phone's commands that come one after another, Approve for
+// this session, then Approve as the primary, last, as an inline ask's verb
+// is. Pages said Allow or Approve, put Approve first or last, and one drew
+// Deny as destructive. `deny`, `allow` and `session` are the page's own
+// data keys, which its wiring reads.
+function askActs(a, {deny, allow, session = "data-session"}){
+  const many = a.kind === "phone" || a.kind === "phone-use";
+  return `<button type="button" ${deny}="${a.id}">Deny</button>${many ? `
+    <button type="button" ${allow}="${a.id}" ${session}="1"
+      title="this one, and the rest this session sends to the phone, without asking">Approve for this session</button>` : ""}
+    <button type="button" class="primary" ${allow}="${a.id}">Approve</button>`;
+}
+
 // An answer to an ask, from the bell or the Notifications page, and onto
 // the account's record (kind "ask"): which ask, and what was said to it.
 function askAnswer(id, allow, session = false){
@@ -434,9 +457,7 @@ function drawBell(){
         // would put on the page, whole.
         a.kind === "release-edit" && a.detail ? `<details class="bdetail"${sectAttr("bell:detail:" + a.id)}><summary>the new notes</summary><pre>${
             esc(a.detail)}</pre></details>` : ""}
-        <div class="bfoot"><span>${a.asker ? esc(a.asker) + "'s session · " : ""}${a.left > 60
-          ? `${Math.floor(a.left / 60)} min left to answer`
-          : `${a.left}s left to answer`}</span>
+        <div class="bfoot"><span>${a.asker ? esc(a.asker) + "'s session · " : ""}${askLeft(a)}</span>
           <span class="acts"><a href="#" data-bdeny="${a.id}">Deny</a>${
             // A phone's commands come one after another: the second answer
             // lets the rest from this session run without asking (the

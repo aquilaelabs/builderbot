@@ -198,16 +198,9 @@ function phonePanel(n){
   // First after the state row, as said (R218 step 23): they were pushed last.
   rows.splice(1, 0, ...asks.map(a => `<div class="row phask">
       <div class="grow"><div class="name">${esc(a.why)}</div>
-        <div class="phcmd">adb ${esc(a.cmd.join(" "))}</div>
-        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project ? projLabel(a.project) : "a project") : a.project ? projLabel(a.project) : "a session")} on ${esc(a.node_name)} · ${a.left > 60
-          ? `${Math.floor(a.left / 60)} min left to answer`
-          : `${a.left}s left to answer`}</div></div>
-      <span class="acts">
-        <button type="button" data-deny="${a.id}">Deny</button>
-        <button type="button" data-allow="${a.id}" data-session="1"
-          title="this one, and the rest this session sends to the phone, without asking">Allow for this session</button>
-        <button type="button" class="primary" data-allow="${a.id}">Allow</button>
-      </span></div>`));
+        <div class="phcmd">${askCmd(a)}</div>
+        <div class="sub">${esc(askWho(a))} on ${esc(a.node_name)} · ${askLeft(a)}</div></div>
+      <span class="acts">${askActs({...a, kind: "phone"}, {deny: "data-deny", allow: "data-allow"})}</span></div>`));
   // Lent to a project (R113): its sessions drive that project's own app on
   // the phone with no ask per command, and the owner watches and takes it
   // back here. The lend controls are the owner's; everybody sees the lease.

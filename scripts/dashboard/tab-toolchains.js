@@ -277,9 +277,7 @@ function tcRow(p, busy, job, managed){
     mine ? prog : `<span class="where${p.installed ? " on" : ""}">${ver || (p.installed ? "installed" : "not installed")}</span>`,
     next, p.size ? `<span class="pill" title="${esc(p.size_from)}">${esc(p.size)}</span>` : "",
     pins.length ? `<span title="${esc(pins.join(", "))}">${esc(pins.join(", "))}</span>` : "",
-    p.installed && !mine ? `<button class="eye rm" data-rm="${esc(p.name)}" aria-label="uninstall ${esc(p.label)}"${
-      busy ? ` disabled title="another toolchain operation is running"`
-           : ` title="uninstall ${esc(p.label)}"`}>${BIN}</button>` : ""], "span", "tcline")}
+    p.installed && !mine ? rmIcon(`data-rm="${esc(p.name)}"`, `uninstall ${p.label}`, {title: `uninstall ${p.label}`, why: busy ? "another toolchain operation is running" : ""}) : ""], "span", "tcline")}
     ${upd}${err}${
       // Sessions that started before this landed still have the old PATH
       // (toolchains.py counts them); one line, and only while there are any.
@@ -302,7 +300,7 @@ const TC_COLS = [{label: "Toolchain", w: "minmax(0,2fr)"}, {label: "Installed", 
 const TC_DRIVER = "nvidia-driver";
 let tcDriverPick = "";       // the package picked on the row; "" is the recommended one
 function tcDriverLine(m){
-  const nodesBtn = ` <button type="button" class="link" data-tcnodes>Open the Nodes tab</button>`;
+  const nodesBtn = ` ${pageLink("nodes", "Open the Nodes page")}`;
   switch (m.state){
     case "absent": return `<span class="sub where">not installed: nouveau has the card, so nothing here can compute on it</span>`;
     case "waiting": return `<span class="sub warn">installed; it takes the card when the machine restarts, which Reboot on the node's row does and which ends every session there.${nodesBtn}</span>`;
@@ -357,9 +355,7 @@ function tcDriverRow(m, busy, job){
       ${job?.errors?.[TC_DRIVER] && !mine ? `<span class="sub bad">${esc(job.errors[TC_DRIVER])}</span>` : ""}
       ${!m.managed ? `<span class="sub warn">This machine is its owner's, not a BuilderBot sandbox: its driver is installed there by hand.</span>` : ""}
     </span>
-    ${m.here && !mine && may ? `<button class="eye rm" data-tcdrvrm aria-label="uninstall the NVIDIA driver"${
-      busy ? ` disabled title="another toolchain operation is running"`
-           : ` title="remove NVIDIA's driver from this machine"`}>${BIN}</button>` : ""}
+    ${m.here && !mine && may ? rmIcon("data-tcdrvrm", "uninstall the NVIDIA driver", {title: "remove NVIDIA's driver from this machine", why: busy ? "another toolchain operation is running" : ""}) : ""}
   </div>`;
 }
 
@@ -370,7 +366,7 @@ function tcDriverRow(m, busy, job){
 // reloads its configuration for it; no container stops.
 const TC_TOOLKIT = "nvidia-container-toolkit";
 function tcToolkitLine(m){
-  const nodesBtn = ` <button type="button" class="link" data-tcnodes>Open the Nodes tab</button>`;
+  const nodesBtn = ` ${pageLink("nodes", "Open the Nodes page")}`;
   switch (m.state){
     case "absent": return `<span class="sub where">not installed: a container here cannot reserve the card${
       m.driver ? "" : ". It needs the driver above: tick both, and the driver goes on first"}</span>`;
@@ -401,9 +397,7 @@ function tcToolkitRow(m, busy, job){
       ${job?.errors?.[TC_TOOLKIT] && !mine ? `<span class="sub bad">${esc(job.errors[TC_TOOLKIT])}</span>` : ""}
       ${!m.managed ? `<span class="sub warn">This machine is its owner's, not a BuilderBot sandbox: the toolkit is installed there by hand.</span>` : ""}
     </span>
-    ${m.here && !mine && may ? `<button class="eye rm" data-tcctkrm aria-label="uninstall the NVIDIA container toolkit"${
-      busy ? ` disabled title="another toolchain operation is running"`
-           : ` title="remove the container toolkit from this machine"`}>${BIN}</button>` : ""}
+    ${m.here && !mine && may ? rmIcon("data-tcctkrm", "uninstall the NVIDIA container toolkit", {title: "remove the container toolkit from this machine", why: busy ? "another toolchain operation is running" : ""}) : ""}
   </div>`;
 }
 
@@ -433,9 +427,7 @@ function tcClaudeRow(m, busy){
       ${m.state === "update" && !mine ? `<span class="sub upd">update available: ${esc(m.latest)}. Tick it and press Install selected</span>` : ""}
       ${m.error && !mine ? `<span class="sub bad">${esc(m.error)}</span>` : ""}
     </span>
-    ${m.here && !mine && may ? `<button class="eye rm" data-tcclrm aria-label="uninstall Claude Code"${
-      busy ? ` disabled title="another toolchain operation is running"`
-           : ` title="remove Claude Code from this node"`}>${BIN}</button>` : ""}
+    ${m.here && !mine && may ? rmIcon("data-tcclrm", "uninstall Claude Code", {title: "remove Claude Code from this node", why: busy ? "another toolchain operation is running" : ""}) : ""}
   </div>`;
 }
 
@@ -487,8 +479,7 @@ function renderToolchainsInto(i){
   // and no button that would be honest to offer.
   if (d.nonode){
     surf.setBar("");
-    surf.list.innerHTML = `<div class="empty tcnone">No node yet. Toolchains install on a node:
-        enroll one from the ${pageLink("nodes", "Nodes page")}.</div>`;
+    surf.list.innerHTML = noNodeYet("toolchains install on a node", "tcnone");
     return;
   }
 
@@ -634,7 +625,6 @@ function renderToolchainsInto(i){
     loadToolchains();
   });
   el.querySelectorAll("[data-tcneed]").forEach(b => b.onclick = () => tcAct("install", [b.dataset.tcneed]));
-  el.querySelectorAll("[data-tcnodes]").forEach(b => b.onclick = () => openNodesTab());
   const dsel = el.querySelector("#tcDrvSel");
   if (dsel) dsel.onchange = () => {
     // Picking a version is choosing to install it: the tick follows.

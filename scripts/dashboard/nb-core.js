@@ -327,9 +327,8 @@ function makeNotebook(project){
     const n = nb.stagers[key]?.count() || 0;
     // In a field band, as every line of a section's body is (a-dialog/layout):
     // bare, it sat beside the last row it followed rather than under it.
-    return `<div class="field"><div class="actbar sectbar" data-bar="${esc(key)}"><span class="state"></span><span class="sp"></span>
-      <button type="button" data-ssave="${esc(key)}"${n ? "" : " disabled"}>Save</button>
-      <button type="button" class="caution" data-srevert="${esc(key)}"${n ? "" : " disabled"}>Revert</button></div></div>`;
+    return `<div class="field">${saveBar({save: `data-ssave="${esc(key)}"`, revert: `data-srevert="${esc(key)}"`, dead: !n,
+      cls: "sectbar", attrs: `data-bar="${esc(key)}"`})}</div>`;
   }
   // A section holding unsaved work, or a change no session has been told
   // about yet, which the roadmap's and the memories' Saves settle.
@@ -746,7 +745,7 @@ function makeNotebook(project){
     let got;
     try{
       got = await (await fetch("/api/docker" + (node ? "?node=" + encodeURIComponent(node) : ""))).json();
-    }catch(e){ $("dkHint").textContent = "could not read the manager: " + e; return; }
+    }catch(e){ $("dkHint").textContent = "docker: " + e; return; }
     dockerSeen[got.node || node || ""] = got;
     // What belongs to the project, which is the Docker tab's group for it.
     const mine = (got.instances || []).filter(d => d.owner === project);
@@ -941,11 +940,9 @@ function projectActions(p, extra = ""){
 function projectHeader(t){
   const name = t.arg, p = (state?.projects || []).find(x => x.name === name);
   if (!p) return `<div class="phead"><span class="pname">${esc(projLabel(name))}</span></div>`;
-  const node = p.node_name || p.session_at || "";
   return `<div class="phead">
-    <span class="pname">${esc(p.label || name)}${p.locked || notMine(p)
-      ? ` <span class="lockmark">${LOCK}${p.locked ? "locked" : "read-only"}</span>` : ""}</span>
-    <span class="pfacts">${p.git ? `git: <span class="pbr">${esc(p.git)}</span>` : ""}${p.git && node ? " · " : ""}${esc(node)}</span>
+    <span class="pname">${esc(p.label || name)}${lockMark(p)}</span>
+    <span class="pfacts">${projFacts(p)}</span>
     ${projectState(p)}
     <span class="sp"></span>
     ${projectActions(p)}

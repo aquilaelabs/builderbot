@@ -123,7 +123,7 @@ function homeGlanceHtml(){
     const pc = colorAttrs(p.color);
     return `<div class="hproj${pc.cls}"${pc.style}>
       <button type="button" class="name link" data-hproj="${esc(p.name)}">${esc(p.label || p.name)}</button>
-      <div class="pcfacts">${p.git ? `git: <span class="pbr">${esc(p.git)}</span>` : ""}</div>
+      <div class="pcfacts">${projFacts(p)}</div>
       ${projectState(p)}
       ${projectNote(p)}
     </div>`;

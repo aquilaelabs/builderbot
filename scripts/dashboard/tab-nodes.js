@@ -383,7 +383,7 @@ function nodeRunnerSection(n, c, between = ""){
             title="drop the stored token and this row; a registered runner keeps running">${barSaid("Forget token", "Forget")}</button>` : ""}
           ${rep.installed || want.want ? `<button type="button" class="danger" data-nrunner="remove" data-slot="${esc(slot)}" ${busyNow || !stored ? "disabled" : ""}
             title="${why || (stored ? "deregister it and remove it from this node" : "add a token first")}">${barSaid("Remove runner", "Remove")}</button>` : ""}
-        </div>${ro ? `<div class="sub bad ndrunwhy">Your roles give no CI runner Write on this runner: an administrator gives it on the Users page.</div>` : ""}</div></div>`;
+        </div>${ro ? `<div class="sub bad ndrunwhy">Your roles give no CI runner Write on this runner: an administrator gives it on the ${pageLink("users", "Users page")}.</div>` : ""}</div></div>`;
   }).join("");
   // Adding is a button that unrolls the form in its own band, the shape
   // every view adds with; the form is four fields that wrap to the width
@@ -554,7 +554,7 @@ function unenrollWhat(all){
         <li>Its stores on its own disk (toolchains, caches, artifacts), unless that box is ticked.</li>
         <li>Anything the provisioner installed for the machine itself.</li>
       </ul>
-      The node leaves the Nodes tab and its tokens stop working; to use the machine again, enroll it again.
+      The node leaves the Nodes page and its tokens stop working; to use the machine again, enroll it again.
       A machine that is only removed here keeps BuilderBot's pieces until <code>sudo bb-sandbox uninstall</code> is run on it.
     </div>`;
 }
@@ -572,15 +572,11 @@ function openUnenroll(n){
       <label class="ndcap"><input type="checkbox" id="ndUnConf"> Also undo what was set up from the dashboard after enrolling: the mounts and their fstab lines, the runners, the GPU display</label>
       <label class="ndcap"><input type="checkbox" id="ndUnDoors"${host ? " checked" : ""}> Also shut what it was given as a host: the SSH door with its token, the port 22 rule, and the nginx container</label>
     </div>
-    <div class="foot"><span class="sp"></span>
-      <button type="button" class="danger" id="ndUnGo">Un-enroll</button>
-      <button type="button" id="ndUnCancel">Cancel</button></div>`
+    ${dlgFoot(`<button type="button" id="ndUnCancel">Cancel</button>`, `<button type="button" class="danger" id="ndUnGo">Un-enroll</button>`)}`
   : `<div class="field">
       <div class="hint bad">Are you sure? The machine cannot be cleaned from here: ${n.live ? "it was not provisioned by BuilderBot" : "its agent is not dialing in"}. The node is removed here and its tokens revoked; BuilderBot's pieces stay on the machine until <code>sudo bb-sandbox uninstall</code> is run there.</div>
     </div>
-    <div class="foot"><span class="sp"></span>
-      <button type="button" class="danger" id="ndUnGo">Remove it here</button>
-      <button type="button" id="ndUnCancel">Cancel</button></div>`;
+    ${dlgFoot(`<button type="button" id="ndUnCancel">Cancel</button>`, `<button type="button" class="danger" id="ndUnGo">Remove it here</button>`)}`;
   modal.hidden = false;
   const shut = () => { modal.hidden = true; };
   body.querySelector("#ndUnCancel").onclick = shut;
@@ -1431,14 +1427,9 @@ function renderNodesInto(i){
     const rootAsks = (typeof ph !== "undefined" && ph?.asks || []).filter(a => a.kind === "root");
     const askRows = rootAsks.map(a => `<div class="row ndask">
       <div class="grow"><div class="name">root: ${esc(a.why)}</div>
-        <div class="phcmd"># ${esc(a.cmd.join(" "))}</div>
-        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project ? projLabel(a.project) : "a project") : a.project ? projLabel(a.project) : "a session")} asks to run this as root on ${esc(a.node_name)} · ${a.left > 60
-          ? `${Math.floor(a.left / 60)} min left to answer`
-          : `${a.left}s left to answer`}</div></div>
-      <span class="acts">
-        <button type="button" data-rdeny="${a.id}">Deny</button>
-        <button type="button" class="primary" data-rallow="${a.id}">Allow</button>
-      </span></div>`).join("");
+        <div class="phcmd">${askCmd(a)}</div>
+        <div class="sub">${esc(askWho(a))} asks to run this as root on ${esc(a.node_name)} · ${askLeft(a)}</div></div>
+      <span class="acts">${askActs(a, {deny: "data-rdeny", allow: "data-rallow"})}</span></div>`).join("");
     // An update was pressed less than three minutes ago and the agent has
     // not come back with the new digest: the job row is gone the moment the
     // agent swaps itself in, but the row only learns that from its next
@@ -1622,7 +1613,7 @@ function renderRunnerInto(i){
     ? `<div class="ndrow runnerpanel" data-node="${esc(n.id)}"><div class="ndconf">${nodeRunnerSection(n, nodeDraft(n),
         // Several to compare; one is what the section under it says already.
         (state?.node_runners || []).length > 1 ? runnerRows() : "")}</div></div>`
-    : `<div class="hint">No node is enrolled yet: the Nodes tab enrolls one, and its runner is added here.</div>`;
+    : noNodeYet("a runner is added to a node");
   if (n) wireNodeConf(d.list.querySelector(".ndrow"), n.id);
   d.list.querySelectorAll(".ndrunro button").forEach(b => { b.disabled = true; });
   d.list.querySelectorAll("[data-runnode]").forEach(r => r.onclick = () => { runnerNode = r.dataset.runnode; nodesRev++; drawPanes(); });
@@ -1674,7 +1665,7 @@ async function nodeProjectRemove(b, name, id){
   if (!confirm(`Remove ${projLabel(name)} from ${nname}?\n\n`
         + (rest.length ? "" : "It is then on no node: nothing builds, tests or opens a session for it until one is picked. ")
         + (here.length ? `Its ${here.length} session${here.length === 1 ? "" : "s"} open there keep running until closed. ` : "")
-        + "Its containers there keep running, and the Docker tab still reaches them.")) return;
+        + "Its containers there keep running, and the Containers page still reaches them.")) return;
   busy(b, "Removing");
   const j = await (await postJSON("/api/prefs", {project: name, node, nodes: rest}))
     .json().catch(() => ({error: "no answer"}));
@@ -1768,11 +1759,8 @@ function ndDialogs(){
       <div class="field"><div class="hint">${enrolled
         ? "A new script for this node: run it again on the same machine, as root, to set it up afresh or change what it reaches the controller through. It carries no secret (the node keeps its WireGuard config and its door's); a secret pasted here replaces the node's. It refuses to run on another machine, and so does the controller."
         : "The script carries a token good once, for a day, and runs as root on a Linux machine."}</div></div>
-      <div class="foot">
-        <button type="button" class="primary" id="ndEnGo">Make the script</button>
-        <button type="button" id="ndEnTok">Just a token</button>
-        <button type="button" id="ndEnCancel">Cancel</button>
-      </div>`;
+      ${dlgFoot(`<button type="button" id="ndEnCancel">Cancel</button>`,
+        `<button type="button" id="ndEnTok">Just a token</button><button type="button" class="primary" id="ndEnGo">Make the script</button>`)}`;
     const $b = sel => body.querySelector(sel);
     if (again){
       const c = again.config || {};
@@ -1905,9 +1893,7 @@ function ndDialogs(){
         <label class="lbl">${r.reach === "public" ? "At home, on the tunnel" : "On your router"}</label>
         <pre class="ndcmd" id="ndHome">${esc(r.home)}</pre>
       </div>` : ""}
-      <div class="foot"><span class="sp"></span>
-        <button type="button" class="primary" id="ndScriptGet">Download ${esc(r.filename)}</button>
-        <button type="button" id="ndTokDone">Done</button></div>`;
+      ${dlgFoot(`<button type="button" id="ndTokDone">Done</button>`, `<button type="button" class="primary" id="ndScriptGet">Download ${esc(r.filename)}</button>`)}`;
     const save = () => Object.assign(document.createElement("a"), {href: url, download: r.filename}).click();
     body.querySelector("#ndScriptGet").onclick = save;
     save();
@@ -1995,12 +1981,9 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         <ol class="vmsteps">${(made.steps || []).map(x =>
           `<li>${esc(x)}</li>`).join("")}</ol>
       </div>` : ""}
-      <div class="foot">
-        ${made ? `<button type="button" id="vmCopy">Copy</button>` : ""}
-        <span class="sp"></span>
-        <button type="button" class="primary" id="vmGo">${made ? "Generate another" : "Generate"}</button>
-        <button type="button" id="vmCancel">${made ? "Done" : "Cancel"}</button>
-      </div>`;
+      ${dlgFoot(`<button type="button" id="vmCancel">${made ? "Done" : "Cancel"}</button>`,
+        `<button type="button" class="primary" id="vmGo">${made ? "Generate another" : "Generate"}</button>`,
+        made ? `<button type="button" id="vmCopy">Copy</button>` : "")}`;
     body.querySelectorAll("[data-vk]").forEach(el => {
       el.oninput = () => { vmDraft[el.dataset.vk] = el.value; };
     });

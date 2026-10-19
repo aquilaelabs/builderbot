@@ -125,9 +125,7 @@ function usersDetail(u){
     </div>
     <div class="setrow col ueaccess ctlrow">${lbl("", "Roles and projects", "what this account may do; what each role holds is on the Roles page")}<div id="ueAccess">${access}</div></div>
     <div class="sub bad" id="ueErr" hidden></div>
-    <div class="actbar"><span class="state">${usersDirty() ? "unsaved" : ""}</span>
-      <button type="button" id="ueRevert">Revert</button>
-      <button type="button" class="primary" id="ueSave">Save</button></div>
+    ${saveBar({save: 'id="ueSave"', revert: 'id="ueRevert"', state: usersDirty() ? "unsaved" : ""})}
     <div class="rfoot">${isOwner ? `<span class="sub dim">The owner cannot be deleted: rename it instead.</span>`
       : `<button type="button" class="danger" id="ueRemove">Remove ${esc(u.name)}</button>`}</div>`;
 }
@@ -246,7 +244,7 @@ function usersAddOpen(){
       <input id="uNewFull" autocomplete="off"></div>
     <div class="field">${lbl("uNewEmail", "Email", "optional")}<input id="uNewEmail" type="email" autocomplete="off"></div>
     <div class="field"><div class="hint">A new account holds no role: give it one beside its account once it is added.</div></div>
-    <div class="foot"><button id="uAdd" class="primary" disabled>Add</button><button id="uAddCancel">Cancel</button></div></div>`;
+    ${dlgFoot(`<button type="button" id="uAddCancel">Cancel</button>`, `<button type="button" id="uAdd" class="primary" disabled>Add</button>`)}</div>`;
   // Add wakes once there is a name and the password is typed the same twice
   // (the operator, 18 Oct).
   const ready = () => { m.querySelector("#uAdd").disabled = !(m.querySelector("#uNewName").value.trim()

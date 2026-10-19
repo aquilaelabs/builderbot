@@ -133,9 +133,7 @@ function emuRow(im, why){
         esc(im.id)].filter(Boolean).join(" · ")}</span>
       ${avds}
     </span>
-    ${mayToolchains(emuNode) ? `<button class="eye rm" data-rmimg="${esc(im.id)}" aria-label="remove ${esc(im.id)}"${
-      why ? ` disabled title="${esc(why)}"`
-           : ` title="remove this system image"`}>${BIN}</button>` : ""}
+    ${mayToolchains(emuNode) ? rmIcon(`data-rmimg="${esc(im.id)}"`, `remove ${im.id}`, {title: "remove this system image", why}) : ""}
   </label>`;
 }
 
@@ -183,8 +181,7 @@ function renderEmulatorInto(i){
     esc("could not read the images: " + d.error)}</div>`; return; }
   if (d.nonode){
     surf.setBar("");
-    surf.list.innerHTML = `<div class="empty">The emulator runs on a node, and none is
-      enrolled: the Nodes tab's <b>Enroll node</b> makes one.</div>`;
+    surf.list.innerHTML = noNodeYet("the emulator runs on a node");
 
     return;
   }

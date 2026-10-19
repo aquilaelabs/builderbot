@@ -261,7 +261,8 @@ function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpt
 
 // A pointer to another page is a link to it (R256 step 2): the address that
 // page answers at, so a press goes there as the rail does and Back returns.
-const PAGE_AT = {nodes: "#/machines/nodes", docker: "#/containers", jobs: "#/jobs", toolchains: "#/build/toolchains"};
+const PAGE_AT = {nodes: "#/machines/nodes", docker: "#/containers", jobs: "#/jobs", toolchains: "#/build/toolchains",
+  users: "#/people/users", roles: "#/people/roles"};
 function pageLink(page, words, hash = PAGE_AT[page]){
   return `<a href="${esc(hash || "#")}" class="pagelink">${esc(words)}</a>`;
 }
@@ -1023,6 +1024,46 @@ function wireCharts(root, fmtOf = () => v => `${Math.round(v)}%`){
     };
     if (chartHover.id === id && chartHover.i >= 0) show(Math.min(chartHover.i, pts.length - 1));
   });
+}
+
+// Save and Revert under what they save, in one order on every page
+// (consistency batch J: the notebook put Save first, Users and Roles Revert
+// first with Save filled): the state, then Save, then Revert in caution, the
+// undoing verb last. `save` and `revert` are each button's own attributes
+// (an id, a data key), `state` the words on its line, `dead` keeps both
+// asleep while there is nothing to save, so the bar does not move, and
+// `cls` and `attrs` are the bar's own.
+function saveBar({save, revert, state = "", dead = false, cls = "", attrs = ""}){
+  const off = dead ? " disabled" : "";
+  return `<div class="actbar${cls ? " " + cls : ""}"${attrs ? " " + attrs : ""}><span class="state">${state}</span><span class="sp"></span>
+    <button type="button" ${save}${off}>Save</button>
+    <button type="button" class="caution" ${revert}${off}>Revert</button></div>`;
+}
+
+// A dialog's foot in the design's order (a-dialog: the state on the left,
+// Cancel and the one filled button on the right), one way on every dialog
+// (consistency batch J: nine foots put the action before Cancel, two
+// without type="button"). `cancel` is the Cancel or Done button, `acts`
+// what follows it, the filled one last, and `lead` what sits at the left.
+function dlgFoot(cancel, acts, lead = ""){
+  return `<div class="foot">${lead}<span class="sp"></span>${cancel}${acts}</div>`;
+}
+
+// A row's remove, the bin, drawn one way on every page (consistency batch
+// J: eight copies, some without type="button"): `attr` is the page's data
+// key and its value, `label` what it removes for a screen reader, `title`
+// what it does, and `why` the reason it is off when it is.
+function rmIcon(attr, label, {title = "", why = ""} = {}){
+  return `<button type="button" class="eye rm" ${attr} aria-label="${esc(label)}"${
+    why ? ` disabled title="${esc(why)}"` : title ? ` title="${esc(title)}"` : ""}>${BIN}</button>`;
+}
+
+// A page that works on a node, with none enrolled: one sentence, the same
+// on every such page, and the way to one (consistency batch J: nginx,
+// storage, the emulator and toolchains each said it their own way, two
+// with a link and two without). `what` says what needs the node.
+function noNodeYet(what, cls = ""){
+  return `<div class="empty${cls ? " " + cls : ""}">No node yet: ${what}; enroll one on the ${pageLink("nodes", "Nodes page")}.</div>`;
 }
 
 // A row of chips narrowing a list: All first, then one per group with its

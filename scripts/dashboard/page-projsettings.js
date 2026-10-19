@@ -254,7 +254,7 @@ function rnDrawReach(focus){
         aria-label="an address a session here may reach"${ro ? " disabled" : ""}>
       ${ns.length > 1 ? `<span class="rnreachnodes">${ns.map(n => `<label class="ndcap"><input type="checkbox" data-reachnode value="${esc(n.id)}"${
         !e.nodes.length || e.nodes.includes(n.id) ? " checked" : ""}${ro ? " disabled" : ""}> ${esc(n.name)}</label>`).join("")}</span>` : ""}
-      ${ro ? "" : `<button type="button" class="eye rm" data-reachrm aria-label="remove this address" title="remove this address">${BIN}</button>`}
+      ${ro ? "" : rmIcon("data-reachrm", "remove this address", {title: "remove this address"})}
     </div>`).join("");
   // Empty is no box at all, so the field keeps its rhythm under the label.
   box.hidden = !rnReachDraft.length;
@@ -737,7 +737,7 @@ function rnDrawPeople(){
       <select id="rnInviteWho" aria-label="account to invite">${invitable.map(n => `<option>${esc(n)}</option>`).join("")}</select>
       <select id="rnInviteRole" aria-label="the role they are invited as">${v.roles.map(n => `<option>${esc(n)}</option>`).join("")}</select>
       <button type="button" id="rnInviteGo">Invite</button></div>`
-      : `<div class="sub warn">no role on this project to invite anybody with: add one on the Roles page</div>` : ""}`;
+      : `<div class="sub warn">no role on this project to invite anybody with: add one on the ${pageLink("roles", "Roles page")}</div>` : ""}`;
   const o = $("rnOwner");
   if (o) o.onchange = () => { d.owner = o.value; rnDrawPeople(); };
   // What each person holds (R152): a name opens their roles, which a

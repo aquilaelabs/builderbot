@@ -152,7 +152,7 @@ function nginxHostPick(r){
 function nginxHostLines(){
   const rows = nginxHostnames.map(h => `<div class="nghost"><span class="grow"><code>${esc(h.name)}</code> <span class="dim">${
       h.used.length ? "routed on " + esc([...new Set(h.used.map(u => u.node))].join(", ")) : "not routed yet"}</span></span>${
-      h.used.length ? "" : `<button type="button" class="eye rm" data-nghostrm="${esc(h.name)}" aria-label="delete ${esc(h.name)}">${BIN}</button>`}</div>`).join("");
+      h.used.length ? "" : rmIcon(`data-nghostrm="${esc(h.name)}"`, `delete ${h.name}`)}</div>`).join("");
   return `${rows || `<div class="hint">none yet</div>`}
     <div class="actbar"><input data-nghostnew placeholder="www.example.com" aria-label="a hostname to add" autocomplete="off" spellcheck="false">
       <button type="button" data-nghostadd>Add</button></div>`;
@@ -225,7 +225,7 @@ function nginxCertLines(n, d){
     return `<div class="row ngcert"><div class="grow"><div class="name">${esc(k)}</div>
       <div class="sub">${esc(c.subject || "")}${c.names ? ` (${esc(c.names)})` : ""}${when ? `, until ${esc(when)}` : ""}${
         used ? `; ${used} route${used === 1 ? "" : "s"}` : "; no route"}</div></div>
-      <button type="button" class="eye rm" data-ngcertrm="${esc(k)}" aria-label="take ${esc(k)}'s pair off" title="take this pair off the node">${BIN}</button></div>`;
+      ${rmIcon(`data-ngcertrm="${esc(k)}"`, `take ${k}'s pair off`, {title: "take this pair off the node"})}</div>`;
   }).join("");
 }
 
@@ -364,7 +364,7 @@ function renderNginxInto(i){
   const pnodes = nginxList.map(x => ({id: x.node, name: x.name, live: x.live}));
   d.setBar(nginxBar(pnodes, n));
   d.list.innerHTML = n ? nginxBody(n)
-    : `<div class="empty">no node to put nginx on yet: enroll one on the ${pageLink("nodes", "Nodes page")}</div>`;
+    : noNodeYet("nginx runs on a node");
   wireNginxTab(d.el);
 }
 

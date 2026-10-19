@@ -80,7 +80,7 @@ function storageHeld(n){
     // would free; the kind-by-kind list (images 3095 MB (7), ...) is the
     // Docker tab's to tell.
     items.push({name: "Docker", path: dk.root || "its data root", fs: dk.fs || "", mb: total,
-                note: recl ? `${sgb(recl)} of it reclaimable: prune on the Docker tab` : ""});
+                note: recl ? `${sgb(recl)} of it reclaimable: prune on the Containers page` : ""});
   }
   return items;
 }
@@ -210,7 +210,7 @@ function renderStorageInto(i){
   // Measure now in the bar; when it was measured on the status line under it.
   d.setBar(storageBar(pnodes, n));
   d.list.innerHTML = n ? storageBody(n, where)
-    : `<div class="empty">no node to measure yet: enroll one on the ${pageLink("nodes", "Nodes page")}</div>`;
+    : noNodeYet("the disks measured here are a node's");
   wireStorageTab(d.el);
 }
 

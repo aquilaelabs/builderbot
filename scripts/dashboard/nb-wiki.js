@@ -176,7 +176,7 @@ function nbWikiView({$, nb, project}){
     const d = nb.wkData || {};
     const n = articles().length;
     const rem = d.remote;
-    $("wkHint").textContent = d.error ? "the wiki could not be read" : `${n} page${n === 1 ? "" : "s"}`;
+    $("wkHint").textContent = d.error ? "wiki: " + d.error : `${n} page${n === 1 ? "" : "s"}`;
     $("wkExport").disabled = !pages().length;
     $("wkPull").hidden = $("wkPush").hidden = !rem?.label;
     $("wkNetState").textContent = rem?.label ? `${rem.label}'s wiki` : "no remote: Export is how it leaves";

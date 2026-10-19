@@ -394,10 +394,7 @@ function openDebugSettings(){
             helpIcon(f.hint)}</label></div>`).join("")}
       </div>
     </div>
-    <div class="foot"><span class="sp"></span>
-      <button type="button" class="primary" id="setdbgSave">Save</button>
-      <button type="button" id="setdbgCancel">Cancel</button>
-    </div>`;
+    ${dlgFoot(`<button type="button" id="setdbgCancel">Cancel</button>`, `<button type="button" class="primary" id="setdbgSave">Save</button>`)}`;
   modal.hidden = false;
   body.querySelector("#setdbgCancel").onclick = shut;
   const go = body.querySelector("#setdbgSave");

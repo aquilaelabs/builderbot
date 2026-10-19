@@ -2416,8 +2416,8 @@ function dmBar(b){
       nodePick("dmNode", ghost ? null : b.nodes, dockerNode || b?.nodes[0]?.id)}<input${ghost ? "" : ` id="dmSearch"`} type="search"
         placeholder="${isPhone() ? "search" : "name, image, port or project"}" autocomplete="off" aria-label="narrow the containers: name, image, port or project" value="${esc(dmSearch)}"${dead}><span class="sp"></span>
       <div class="pseg dmviewseg" role="group" aria-label="cards or a list">
-        <button type="button" data-dmview="cards" class="${dmView === "cards" ? "on" : ""}" title="each container as a card" aria-label="Cards"${dead}><span class="lng">Cards</span><span class="shrt">${DM_ICON_CARDS}</span></button>
-        <button type="button" data-dmview="list" class="${dmView === "list" ? "on" : ""}" title="one line per container, opening into its card" aria-label="List"${dead}><span class="lng">List</span><span class="shrt">${DM_ICON_LIST}</span></button></div>
+        <button type="button" data-dmview="cards" class="${dmView === "cards" ? "on" : ""}" aria-pressed="${dmView === "cards"}" title="each container as a card" aria-label="Cards"${dead}><span class="lng">Cards</span><span class="shrt">${DM_ICON_CARDS}</span></button>
+        <button type="button" data-dmview="list" class="${dmView === "list" ? "on" : ""}" aria-pressed="${dmView === "list"}" title="one line per container, opening into its card" aria-label="List"${dead}><span class="lng">List</span><span class="shrt">${DM_ICON_LIST}</span></button></div>
       ${mayDocker() ? `<span class="actbar">${
       b?.blind ? "" : `<button type="button"${ghost ? "" : ` id="bDockerCheck"`}${dead}>${barSaid("Check for updates", "Check")}</button>`}${
       `<button type="button"${ghost ? "" : ` id="bDockerNew"`} class="primary"${dead}>${barSaid("New container", "New")}</button>`}</span>` : ""}</div>`;
@@ -2574,15 +2574,9 @@ function renderDockerInto(i){
     .filter(a => a.kind === "rebuild");
   const askRows = asks.map(a => `<div class="row dmask">
       <div class="grow"><div class="name">${esc(askVerb(a))}: ${esc(a.why)}</div>
-        <div class="phcmd">bb ${esc(a.cmd.join(" "))}</div>
-        <div class="sub">${esc(a.asker ? a.asker + "'s session in " + (a.project || "a project")
-                                       : a.project || "a session")} asks to ${esc(askVerb(a))} it · ${
-          a.left > 60 ? `${Math.floor(a.left / 60)} min left to answer`
-                      : `${a.left}s left to answer`}</div></div>
-      <span class="acts">
-        <button type="button" data-rdeny="${a.id}">Deny</button>
-        <button type="button" class="primary" data-rallow="${a.id}">Allow</button>
-      </span></div>`).join("");
+        <div class="phcmd">${askCmd(a)}</div>
+        <div class="sub">${esc(askWho(a))} asks to ${esc(askVerb(a))} it · ${askLeft(a)}</div></div>
+      <span class="acts">${askActs(a, {deny: "data-rdeny", allow: "data-rallow"})}</span></div>`).join("");
   // `dmstale` while the rows are the last answer and a new one is on its
   // way: what a reader waiting on a refresh looks at, and what the note
   // below says in words.
