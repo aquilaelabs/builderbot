@@ -574,7 +574,8 @@ function renderToolchainsInto(i){
     const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
     surf.list.innerHTML = skTpl(`<div class="field"><div class="tiles">${tile("installed", `of ${skv(2)} offered`)}${tile("updates due")}${tile("free", "on the store")}</div></div>
       ${headLine(skv(22), "", "tcact")}
-      ${tcSections("", skTable(TC_COLS, 6, "tcs"), "")}`);
+      ${tcSections("", skTable(TC_COLS, 6, "tcs"), "")}
+      ${state?.can?.admin ? docSection("toolchains", "packs", "Tool packs", "", skTable(TP_COLS, 2, "tprecords")) : ""}`);
     return;
   }
   if (d.error){ surf.list.innerHTML = `<div class="empty">${

@@ -354,6 +354,9 @@ function rnDebugNow(){
 let rnToolsList = null;
 async function rnLoadTools(p){
   rnToolsList = null;
+  // Not on the repository's own door (rnMode "git"), like Reads beside it.
+  $("rnToolsField").hidden = rnMode === "git";
+  if (rnMode === "git") return;
   $("rnTools").innerHTML = `<div class="hint">reading the toolchains on its node…</div>`;
   const node = p?.prefs?.node || "";
   const j = await (await fetch("/api/toolchains" + (node ? `?node=${encodeURIComponent(node)}` : ""))).json().catch(() => ({}));
