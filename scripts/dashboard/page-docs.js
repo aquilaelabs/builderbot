@@ -83,6 +83,11 @@ function skel(shape = "rows", n = 0, said = "loading…"){
 // ("ctl" for a field's control, the height of one);
 // skRows() rows inside a real section or card.
 function skv(em = 5, cls = ""){ return `<i class="skv${cls ? " " + esc(cls) : ""}" style="width:${Number(em) || 5}em"></i>`; }
+// A field on its way: its real label over a control's box shimmering, as
+// wide as a typical value in em (consistency pass J5: four pages wrote it).
+function skField(label, em = 16, cls = ""){
+  return `<div class="${cls ? esc(cls) + " " : ""}setrow col ctlrow"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
+}
 function skRows(n = 4){
   return Array.from({length: n}, (_, j) => `<div class="sk-row"><i class="sk-b" style="width:${SKW[j % 8]}%"></i><i class="sk-b sub" style="width:${SKW[(j + 3) % 8] / 2}%"></i></div>`).join("");
 }

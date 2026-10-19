@@ -84,7 +84,7 @@ function renderProfileInto(i){
     // page's own; what is yours to fill them is on its way.
     // A page of settings as it lands (skSplit): the sections listed, Who
     // you are picked beside them with its fields.
-    const fld = label => `<div class="setrow col ctlrow"><span class="lbl">${esc(label)}</span>${skv(18, "ctl")}</div>`;
+    const fld = label => skField(label, 18);
     d.setBar(`<span class="barfacts">${skv(16)}</span>`);
     splitOff(d.list);                   // drawn before: its grid is the template's to bring
     d.list.innerHTML = skTpl(skSplit([["Who you are", PROFILE_SAYS.you], ["What you may do", PROFILE_SAYS.may],

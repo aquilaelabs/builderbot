@@ -142,7 +142,7 @@ function renderUsersInto(i){
   if (usersList === null){
     // Its template (R218 step 16): the list beside the settings, whose
     // labels are the page's own; the accounts are on their way.
-    const field = label => `<div class="setrow col ctlrow"><span class="lbl">${esc(label)}</span>${skv(16, "ctl")}</div>`;
+    const field = label => skField(label, 16);
     d.list.innerHTML = skTpl(`<div class="rsplit"><div class="rlist">${skRows(3)}</div><div class="rdetail">${
       field("Account name") + field("Their name") + field("Roles and projects")}</div></div>`);
     loadUsers();

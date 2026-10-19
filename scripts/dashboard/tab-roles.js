@@ -411,7 +411,7 @@ function renderRolesInto(i){
     // Its template (R218 step 16): the two sections and their fields' labels
     // are the page's own; who holds what is on its way.
     const split = detail => `<div class="rsplit"><div class="rlist">${skRows(4)}</div><div class="rdetail">${detail}</div></div>`;
-    const field = (label, em) => `<div class="setrow col ctlrow"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
+    const field = skField;
     d.list.innerHTML = skTpl(split(field("Kind", 12) + skTable(ROLE_AREA_COLS, 4, "rareas")));
     loadRoles();
     return;

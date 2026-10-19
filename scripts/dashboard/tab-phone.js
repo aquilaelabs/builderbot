@@ -51,7 +51,7 @@ function renderPhoneInto(i){
     // Its template (R218 step 16): the state row's words and the two ways in
     // (connect, pair) with their labels are the page's own; the node and
     // its phone are on their way.
-    const fld = (label, em, grow = false) => `<div class="${grow ? "grow " : ""}setrow col ctlrow"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
+    const fld = (label, em, grow = false) => skField(label, em, grow ? "grow" : "");
     d.setBar(phoneBar(null));
     // In the card the rows land in (.phonetab).
     d.list.innerHTML = skTpl(`<div class="phonetab"><div class="row toolstate"><div class="grow"><div class="name">Phone on ${skv(6)}</div>
