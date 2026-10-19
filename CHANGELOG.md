@@ -162,6 +162,8 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A dev container can lay another compose file from its tree over its own, chosen as Override in its settings or with bb devapp new --override and bb devapp override (658cbbf)
 - bb dashboard trace shows each request's CPU time, how busy the server was, and which named parts of a page's read took the time (658cbbf)
 - A session can ask a lent phone's owner for one touch on whatever app is in front (bb phone touch --any-app), so another project's keyboard can be tested; the owner answers each one (3930c2a)
+- A branch's comparison with main is its own page with a link of its own, like a pull request: its commits, each file's changes and diff, and Merge into main at the foot; Back and Forward move between it and the branches (fb03da1)
+- The Git view's head row has a branch picker like GitHub's: the branch the tree is on, a list to switch to another, and a box that finds one or creates a new one from where you are (fb03da1)
 
 ### Changed
 
@@ -649,6 +651,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A container's settings dialog takes typing again when the same project's page is open elsewhere; the hidden page's copy of the dialog had been opening on top of it (dfc8f9c)
 - Pull to refresh on a phone no longer fails when the list redraws under your finger, and the gear and the bell open when pressed again straight after closing (dfd2ccf)
 - The notebook's Wiki at a desk shows its pages beside the article again, not the article squeezed under the list (B856), and on a phone every section's first line has room under its head (B857) (b46ecb2)
+- A new branch made with uncommitted changes takes them along instead of being made and then refused (B858), and it waits for an open Claude session the way Switch does (B859) (fb03da1)
 
 ### Security
 
