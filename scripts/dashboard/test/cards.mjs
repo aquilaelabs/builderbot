@@ -1231,6 +1231,15 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
   const offered = await page.$$eval('.doc .projtab .askline datalist option', os => os.map(o => o.value));
   await page.click('.doc .projtab .askline [data-askno]');
+  // The pencil beside the group's name renames it in a box under the
+  // heading, for every project in it (R273).
+  await page.click('.doc .projtab .pjgroup[data-group="Clients"] [data-pjgrename]');
+  await page.waitForSelector('.doc .projtab .pjgroup .askline input', { timeout: 5000 });
+  await page.fill('.doc .projtab .pjgroup .askline input', 'Customers');
+  await page.press('.doc .projtab .pjgroup .askline input', 'Enter');
+  await page.waitForSelector('.doc .projtab .pjgroup[data-group="Customers"] .pcard[data-row="beta"]', { timeout: 15000 });
+  ok(!(await page.$('.doc .projtab .pjgroup[data-group="Clients"]')),
+     'the pencil beside a group\'s name renames the group, its projects with it');
   await group('beta', '');
   await page.waitForFunction(() => !document.querySelector('.doc .projtab .pjgroup') &&
     !!document.querySelector('.doc .projtab #pjGrid > .pgrid .pcard[data-row="beta"]'), null, { timeout: 15000 });

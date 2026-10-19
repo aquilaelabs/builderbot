@@ -2085,6 +2085,27 @@ def set_group(uid, name, group):
     return set_mark("group", uid, name, " ".join(str(group or "").split())[:GROUP_MAX])
 
 
+def rename_group(uid, old, new):
+    """Rename one of this account's groups for every project in it (R273):
+    a group is a person's own label, so nobody else's moves. A name already
+    in use joins the two. (payload, status)."""
+    old, new = " ".join(str(old or "").split()), " ".join(str(new or "").split())[:GROUP_MAX]
+    if not new:
+        return {"error": "a group needs a name: to empty one, take each project out of it"}, 400
+    with lock:
+        d = _marks("group")
+        mine = _clean_marks(d.get(str(uid or "")))
+        if old not in mine.values():
+            return {"error": f"no group named {old}"}, 400
+        mine = {k: (new if v == old else v) for k, v in mine.items()}
+        d[str(uid or "")] = mine
+        try:
+            write_json(STATE / MARK_FILES["group"], d)
+        except OSError as e:
+            return {"error": f"could not save: {e}"}, 500
+    return {"groups": mine}, 200
+
+
 # ---------------------------------------------------------------------------
 # the locks
 

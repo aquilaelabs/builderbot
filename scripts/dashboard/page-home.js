@@ -119,7 +119,9 @@ function homeGlanceHtml(){
   // Not an archived one (the operator, 18 Oct), pinned or not.
   const pinned = (state?.projects || []).filter(p => p.pinned && !p.locked);
   if (!pinned.length) return `<div class="empty">no project is pinned: a project's menu on the Projects page pins it here</div>`;
-  return `<div class="hglance">${pinned.map(p => {
+  // In groups, in the Projects page's order, each group's name over its
+  // cards (R273): the page this glances at is sorted so.
+  const card = p => {
     const pc = colorAttrs(p.color);
     return `<div class="hproj${pc.cls}"${pc.style}>
       <button type="button" class="name link" data-hproj="${esc(p.name)}">${esc(p.label || p.name)}</button>
@@ -127,7 +129,9 @@ function homeGlanceHtml(){
       ${projectState(p)}
       ${projectNote(p)}
     </div>`;
-  }).join("")}</div>`;
+  };
+  return byProjectGroup([...pinned].sort(byProjectName)).map(({group, list}) =>
+    `${group ? `<div class="hgroup">${esc(group)} <span class="dim">${list.length}</span></div>` : ""}<div class="hglance">${list.map(card).join("")}</div>`).join("");
 }
 
 // Getting started (R267): what is left of first run's four once Finish is

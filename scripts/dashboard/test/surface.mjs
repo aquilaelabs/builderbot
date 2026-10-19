@@ -38,7 +38,7 @@ import { dirname, join } from 'node:path';
 // Sorted, and one entry per name. Regenerate by failing the test and reading
 // what it prints. Do not hand-edit it into agreement without looking at why
 // it moved.
-const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptTheme', 'applyMode', 'applyNow', 'askProjectGroup', 'pickProjectColor', 'applyTheme',
+const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptTheme', 'applyMode', 'applyNow', 'askProjectGroup', 'renameProjectGroup', 'pickProjectColor', 'applyTheme',
   'sectRemember', 'sectRecall', 'isToolKind', 'groupOf', 'railAllows', 'railGroups', 'railOn', 'railGo', 'routeOf', 'openRoute', 'shellSync', 'shellBoot', 'shown',
   'drawRail', 'railMoreShow', 'shellBar', 'wireShellBar', 'jumpItems', 'drawJump', 'jumpGo', 'wireJump', 'revsDelay',
   'argForSession', 'armModal', 'arriveBox', 'arriveRow', 'askPurge', 'askReset', 'nginxHostPick', 'nginxHostLines', 'claudeRestart', 'restartNow', 'unenrollWhat', 'resetBusy', 'resetFollow', 'resetGone', 'cSeg', 'cSlide',
@@ -48,7 +48,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptTheme', 'applyMode', 'applyN
   'currentMode', 'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
   'dmState', 'dmWireRows', 'dnNodeSay', 'dnSubmit', 'docSurface', 'docSection', 'skel', 'skv', 'skRows', 'skTpl', 'skTable', 'skNodeBar', 'barSaid', 'dmBar', 'dmTiles', 'dmBootLoad', 'dmStatus', 'dmImagesSection', 'ndBar', 'ndFacts', 'ndDialogs', 'nodeSessSettings', 'nodeSessDirty', 'setupSteps', 'wireSetup', 'homeStartHtml', 'storageBar', 'phoneBar', 'nginxBar', 'jobsSection', 'tcSections', 'emuSections', 'emuAddBar', 'sectFixed', 'sectNewVisit', 'ndAgentButtons', 'ndTitle', 'homeCards', 'openHelp', 'loadHelp', 'helpRead', 'helpNames', 'helpGo', 'helpScroll', 'helpNav', 'helpArticle', 'helpResults', 'helpSearch', 'renderHelpInto', 'rolesSplit', 'askSignOut', 'pageLink', 'askInline', 'navPush', 'dmImage', 'railTool', 'sectAttr', 'wireSections', 'openMenu', 'openPopup', 'menuHolds', 'actMore', 'statTiles', 'factGrid', 'saveBar', 'dlgFoot', 'rmIcon', 'noNodeYet', 'chipBar', 'chipButtons', 'rmMatch', 'bugMatch', 'bugFacts', 'rmDay', 'shippedIn', 'clRefs', 'clLinks', 'dmChipGroups', 'loadDockerStats', 'dmStatStrip', 'loadRowLog', 'dmFollowTick', 'loadDockerImages', 'dmHealth', 'dmRowWrap', 'dmPorts', 'dmOpenWhy', 'dmOpenSoon', 'dmRoutesOf', 'dmMatch', 'wireMore', 'closeMore', 'floatAt', 'floatPlace', 'floatFollow', 'cardPress', 'dmNodesKey', 'emuOnNodes', 'busy', 'unbusy', 'dockerJob', 'drawBell', 'attRow', 'drawBuild',
   'drawCommands', 'drawCustom', 'drawDoctor', 'drawKeys',
-  'byProjectName', 'drawCard', 'drawPanes', 'drawProjects', 'renderSessionsInto', 'openSessionsTab', 'sessionProject',
+  'byProjectName', 'byProjectGroup', 'bootView', 'drawCard', 'drawPanes', 'drawProjects', 'renderSessionsInto', 'openSessionsTab', 'sessionProject',
   'drawShellCard', 'drawTrash', 'drawUiMenu', 'dressFrame',
   'dropElsewhere', 'dropTab', 'editCustom', 'endSession',
   'findingsRulesHtml', 'flip', 'focusTab', 'foldHeight',

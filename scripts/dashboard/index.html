@@ -1110,6 +1110,11 @@ body.firstrun #panes{display:none}
 .hcard .hjob:last-child{border-bottom:0}
 .hcard .hjob .sub{display:block}
 .hglance{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;padding:12px 16px 16px}
+/* A group's name over its cards, as on the Projects page (R273); the grid
+   under it closes up to it. */
+.hgroup{font:var(--f-ui);font-weight:600;color:var(--ink);padding:4px 16px 0;display:flex;align-items:baseline;gap:6px}
+.hgroup .dim{font:var(--f-note)}
+.hgroup+.hglance{padding-top:8px}
 .hproj{border:var(--hair) solid var(--line);border-radius:var(--r-surface);padding:12px 14px;min-width:0;
   background:var(--btn);display:flex;flex-direction:column;gap:4px}
 .hproj.pc{box-shadow:inset 3px 0 var(--pc);background:color-mix(in srgb, var(--pc) 16%, var(--btn));
@@ -3197,8 +3202,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    archived projects folded at the foot; both in the band's own inset. */
 #pjGrid>.pjgroup{margin-top:20px}
 #pjGrid>.pjgroup:first-child{margin-top:0}
-#pjGrid>.pjgroup>.pjgname{font:var(--f-sect);color:var(--ink);margin:0 0 8px}
-#pjGrid>.pjgroup>.pjgname .dim{font:var(--f-note);margin-left:6px}
+#pjGrid>.pjgroup>.pjgname{font:var(--f-sect);color:var(--ink);margin:0 0 8px;display:flex;align-items:center;gap:6px}
+#pjGrid>.pjgroup>.pjgname .dim{font:var(--f-note)}
+#pjGrid>.pjgroup>.askline{margin:0 0 8px}
 #pjGrid>details.sect{margin:20px 0 0}
 .pgrid .empty{grid-column:1/-1}
 .pcard{position:relative;display:flex;flex-direction:column;gap:6px;padding:var(--row-y) var(--row-x);background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);min-width:0}

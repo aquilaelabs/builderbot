@@ -87,6 +87,25 @@ ok(await page.evaluate(() => tabOf(panes[0])?.kind === 'home' && location.hash =
   await until(() => page.evaluate(() => !!document.querySelector('.doc.on .hglance [data-hproj="alpha"]')), 15000);
   ok(await page.$eval('.doc.on .hglance [data-hproj="alpha"]', b => b.closest('.hproj').querySelector('.pstate') !== null),
      'a pinned project is on Projects at a glance, with its session state');
+  // In groups, as the Projects page is (R273): the ones in no group first,
+  // then each group's name over its cards.
+  await page.evaluate(async () => {
+    setProjectPinned('beta', true);
+    await postJSON('/api/project-group', { name: 'alpha', group: 'Zed' });
+    await refresh();
+  });
+  await until(() => page.evaluate(() => !!document.querySelector('.doc.on .hgroup + .hglance [data-hproj="alpha"]')
+    && !!document.querySelector('.doc.on .hglance [data-hproj="beta"]')), 15000);
+  const order = await page.$$eval('.doc.on .hsect :is(.hgroup, [data-hproj])',
+    els => els.map(e => e.matches('.hgroup') ? '#' + e.firstChild.textContent.trim() : e.dataset.hproj));
+  ok(order.slice(-2).join() === '#Zed,alpha' && order.indexOf('beta') < order.indexOf('#Zed'),
+     `Projects at a glance is in groups, the Projects page's order (${order.join()})`);
+  await page.evaluate(async () => {
+    setProjectPinned('beta', false);
+    await postJSON('/api/project-group', { name: 'alpha', group: '' });
+    await refresh();
+  });
+  await until(() => page.evaluate(() => !document.querySelector('.doc.on .hgroup')), 15000);
   await page.click('.doc.on .hglance [data-hproj="alpha"]');
   await page.waitForFunction(() => tabOf(panes[0])?.kind === 'notebook' && tabOf(panes[0])?.arg === 'alpha', null, { timeout: 15000 });
   ok(true, '...and its name opens the project\'s page');

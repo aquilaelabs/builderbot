@@ -184,13 +184,14 @@ function renderProjectsInto(i){
   // its name, by name (the operator, 18 Oct); and the archived ones apart,
   // folded at the foot, their own fold whatever group they were in.
   const live = shown.filter(p => !p.locked), gone = shown.filter(p => p.locked);
-  const named = [...new Set(live.map(p => p.group).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const grid_ = list => `<div class="pgrid">${list.map(projectCard).join("")}</div>`;
-  const loose = live.filter(p => !p.group);
-  const html = (loose.length ? grid_(loose) : "")
-    + named.map(g => {
-        const list = live.filter(p => p.group === g);
-        return `<section class="pjgroup" data-group="${esc(g)}"><h3 class="pjgname">${esc(g)} <span class="dim">${list.length}</span></h3>${grid_(list)}</section>`;
+  const html = byProjectGroup(live).map(({group: g, list}) => {
+        if (!g) return grid_(list);
+        // The pencil renames the group for this account alone: a group is a
+        // person's own label, so it is never anybody else's to move (R273).
+        return `<section class="pjgroup" data-group="${esc(g)}"><h3 class="pjgname">${esc(g)} <span class="dim">${list.length}</span>${
+          state.session ? "" : `<button type="button" class="eye" data-pjgrename="${esc(g)}" aria-label="Rename the group ${esc(g)}" title="Rename">${PENCIL}</button>`
+        }</h3>${grid_(list)}</section>`;
       }).join("")
     + (gone.length ? docSection("projects", "archived", "Archived", `${gone.length} project${gone.length === 1 ? "" : "s"}`,
                                 grid_(gone), {open: false, cls: "dim", fold: true}) : "");
@@ -198,6 +199,7 @@ function renderProjectsInto(i){
     wireSections(grid);
     wireProjectRows(grid);
     wireProjectHeader(grid);
+    grid.querySelectorAll("[data-pjgrename]").forEach(b => b.onclick = () => renameProjectGroup(b));
     grid.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openNotebook(b.dataset.open));
     grid.querySelectorAll(".pcard[data-row]").forEach(c => c.onclick = e => {
       if (!cardPress(e)) return;
@@ -205,6 +207,21 @@ function renderProjectsInto(i){
     });
   }
   syncResumeMenu();
+}
+
+// A group renamed in a box under its heading, for every project in it
+// (R273); Enter saves, Escape leaves it as it was.
+async function renameProjectGroup(btn){
+  const was = btn.dataset.pjgrename, head = btn.closest(".pjgname");
+  const got = await askInline(head, {label: `Rename ${was} to`, value: was, ok: "Rename"});
+  if (got === null || got === was) return;
+  try{
+    const j = await (await postJSON("/api/project-group", {rename: was, to: got})).json();
+    if (j.error){ notify(j.error, true); return; }
+    applyNow(x => { x.group = (j.groups || {})[x.name] || ""; });
+    notify(`${was} is now ${got}`);
+  }catch(e){ notify("group: " + e, true); }
+  refresh();
 }
 
 // Whether a session in this project may rebuild its dev instance: the

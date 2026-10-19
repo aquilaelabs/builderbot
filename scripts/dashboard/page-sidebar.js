@@ -145,6 +145,15 @@ function openPhoneLend(name, lend){
 // numbers (the operator, 7 Oct). The server's order is the directory's, in
 // which every capitalised name came before every lower-case one.
 function byProjectName(a, b){ return String(a.label || a.name).localeCompare(String(b.label || b.name), undefined, {sensitivity: "base", numeric: true}); }
+// The projects in this account's groups, in the one order every page that
+// shows them keeps (the Projects page and Home, R273): the ones in no group
+// first, then each group by name, each list in the order it was handed.
+function byProjectGroup(list){
+  const named = [...new Set(list.map(p => p.group).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const loose = list.filter(p => !p.group);
+  return [...(loose.length ? [{group: "", list: loose}] : []),
+          ...named.map(g => ({group: g, list: list.filter(p => p.group === g)}))];
+}
 // The project job's row (a clone or a first push, running or failed), for
 // the Projects page: the card that drew it went with R218 step 3. An
 // ellipsis rather than a percentage: git's progress is a carriage-return
