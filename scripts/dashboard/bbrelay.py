@@ -134,6 +134,10 @@ def admit(me, req):
         return None, ({"error": "bb findings --all reads every project in the report, "
                                 "and a session reads its own: run it without --all"}, 403)
     project = field(req, "project") or me.get("session") or ""
+    # A shown name (R154) is taken for its directory (B1): the person names
+    # projects as the dashboard shows them, and a session repeats that name.
+    if project and not (WORKSPACE / project).is_dir() and registry:
+        project = registry.resolve(project) or project
     if me.get("session") and project != me["session"]:
         # A project this session's own reads (prefs.reads): the reading
         # words go through and every other refuses by name, here rather
@@ -149,11 +153,6 @@ def admit(me, req):
             # for another project" sent a session guessing at spellings, and
             # read the same for a project that does not exist.
             if not project or not (WORKSPACE / project).is_dir():
-                # A shown name (R154) is not a directory: say which one it is.
-                d = registry.resolve(project) if registry else ""
-                if d and d in (me.get("reads") or []):
-                    return None, ({"error": f"{project} is shown under that name; its directory, "
-                                            f"which bb -p takes, is {d}: bb -p {d}"}, 400)
                 return None, ({"error": f"there is no project called {project}"}, 400)
             return None, ({"error": f"{me['session']} does not read {project}: its owner adds it "
                                     f"under Reads in {me['session']}'s settings, and a session "

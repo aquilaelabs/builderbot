@@ -100,6 +100,18 @@ ok(unreadR.status === 403 && /alpha does not read gamma: its owner adds it under
 const noneR = await relay(['roadmap'], 'nosuch');
 ok(noneR.status === 400 && /there is no project called nosuch/.test(noneR.error || ''),
    `...and a name that is no project says so (${noneR.error})`);
+// The name the dashboard shows answers for its directory (B1): the person
+// says it, and the session repeats it.
+{
+  const rn = await api('/api/rename', { name: 'beta', to: 'beta-shown' });
+  const byLabel = await relay(['roadmap'], 'beta-shown');
+  const addL = await relay(['roadmap', 'add', 'from alpha'], 'beta-shown');
+  await api('/api/rename', { name: 'beta', to: 'beta' });
+  ok(rn.status === 200 && byLabel.status === 200 && !byLabel.error,
+     `bb -p with the name beta is shown under answers for beta (${rn.status} ${byLabel.status} ${(byLabel.error || '').slice(0, 60)})`);
+  ok(addL.status === 403 && /beta is read-only from a session on alpha/.test(addL.error || ''),
+     `...and is held to beta's reads like its directory is (${addL.error})`);
+}
 
 // ---- the grant carries the reads, for the view and the walls ---------------------------
 const grant = await api('/api/v1/tty-grant', { arg: 'claude:alpha' }, asSession(tok));

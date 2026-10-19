@@ -5526,11 +5526,19 @@ cmd_changelog() {
 if [ "${1:-}" = -p ] || [ "${1:-}" = --project ]; then
     [ -n "${2:-}" ] || die "bb -p NAME VERB: which project?"
     case "$2" in */*|.*) die "bb -p: '$2' is not a project name" ;; esac
-    export BB_PROJECT="$2" BB_ROADMAP_PROJECT="$2" BB_BUG_PROJECT="$2" BB_VERSION_PROJECT="$2"
+    p_dir="$2"
+    # The name the dashboard shows is taken for its directory (B1), here as
+    # well as at the relay, since bb map and bb transcripts read the tree
+    # locally: the relayed settings read answers with the directory's name.
+    if [ ! -d "$WORKSPACE/$p_dir" ] && on_node; then
+        p_res="$(BB_PROJECT="$p_dir" "$0" settings 2>/dev/null | sed -n '1s/:$//p')" || p_res=""
+        [ -n "$p_res" ] && [ -d "$WORKSPACE/$p_res" ] && p_dir="$p_res"
+    fi
+    export BB_PROJECT="$p_dir" BB_ROADMAP_PROJECT="$p_dir" BB_BUG_PROJECT="$p_dir" BB_VERSION_PROJECT="$p_dir"
     # ...and the verbs that read logs (B675): `bb -p X tests log` and
     # `bb -p X ci-log` answered for this session's own project.
-    export BB_TESTS_PROJECT="$2" BB_CILOG_PROJECT="$2"
-    export BB_TREE="$WORKSPACE/$2"
+    export BB_TESTS_PROJECT="$p_dir" BB_CILOG_PROJECT="$p_dir"
+    export BB_TREE="$WORKSPACE/$p_dir"
     shift 2
     # Said rather than answered for this project or for nothing
     # (MediaReducer, 7 Oct): `bb -p X status` printed this session's own
