@@ -592,6 +592,27 @@ async function unwrapped(){
 // A row of tiles is one height with its numbers in the stat voice, and a
 // facts grid is labels in the note voice over values in mono: the two
 // shapes every tab draws the same way or not at all.
+// A section's first thing keeps room under its head, at every width (the
+// operator, 19 Oct: on a phone the first field met the head on every page,
+// the room having been the desk card's alone). Measured from the head's
+// foot to the first box drawn in the body, a page's own section at a page's
+// level, not one inside a row or a dialog.
+function headRoom(){
+  return page.evaluate(() => {
+    const out = [];
+    for (const d of document.querySelectorAll('.doc.on details.sect[open]')){
+      if (d.parentElement.closest('details.sect, .row, .modal')) continue;
+      const s = d.querySelector(':scope > summary'), body = d.querySelector(':scope > .body');
+      if (!s || !body || !s.offsetHeight) continue;
+      const first = [...body.querySelectorAll('*')].find(e => e.offsetHeight > 0 && e.getBoundingClientRect().width > 0
+        && (e.children.length === 0 || /^(INPUT|BUTTON|SELECT|TEXTAREA)$/.test(e.tagName)));
+      if (!first) continue;
+      const gap = first.getBoundingClientRect().top - s.getBoundingClientRect().bottom;
+      if (gap < 6) out.push(`${d.dataset.sect || '?'} ${Math.round(gap)}px`);
+    }
+    return out;
+  });
+}
 async function glance(){
   return page.evaluate(() => {
     const box = document.querySelector('.pane .doc.on .doctab, .pane .doc.on .nb');
@@ -702,6 +723,9 @@ for (const kind of kinds){
   ok(!U.err && U.sizes.length === 0,
      `[${kind}] every control on a line is one height${
        U.err ? ` (${U.err})` : U.sizes.length ? `: ${U.sizes.join('; ')}` : ''}`);
+  const room = await headRoom();
+  ok(room.length === 0,
+     `[${kind}] every section's first line keeps room under its head${room.length ? `; touching: ${room.join(', ')}` : ''}`);
   const G = await glance();
   if (!G.err && (G.tiles || G.facts))
     ok(G.bad.length === 0,
@@ -1457,6 +1481,9 @@ for (const kind of kinds){
   }).filter(Boolean));
   ok(crowded.length === 0,
      `[${kind}] an action bar shows at most five buttons at phone width${crowded.length ? `: ${crowded.join(', ')}` : ''}`);
+  const room = await headRoom();
+  ok(room.length === 0,
+     `[${kind}] every section's first line keeps room under its head at phone width${room.length ? `; touching: ${room.join(', ')}` : ''}`);
   const W = await unwrapped();
   ok(!W.err && W.tall.length === 0,
      `[${kind}] every select is one line high at phone width${

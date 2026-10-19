@@ -3008,8 +3008,6 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
     border-radius:var(--r-surface);background:var(--panel);overflow:hidden}
   :is(.doctab, .dmtab, .nbview) details.sect:not(details.sect details.sect, .row details.sect, .modal details.sect)[open]>summary{
     border-bottom:var(--hair) solid var(--line)}
-  :is(.doctab, .dmtab, .nbview) details.sect:not(details.sect details.sect, .row details.sect, .modal details.sect)>.body{
-    padding-top:var(--row-y)}
   /* (the room under a page's last card is the list's own: see .doclist::after) */
   /* A list inside a band that is inset already (the roadmap's, memory's)
      takes no side margin of its own: its edge is the band's content edge,
@@ -3086,6 +3084,11 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   .dmtab .dmcard>.row+.row{box-shadow:inset 0 12px 0 var(--bg),inset 0 13px 0 var(--line);padding-top:calc(var(--row-y) + 13px)}
   .dmtab .row + .dmgroup{margin-top:0}
 }
+/* A section's body keeps a row's room under its head at every width (the
+   operator, 19 Oct: on a phone the first field met the head on every page,
+   the room having been the desk's card alone), so no page spaces its own. */
+:is(.doctab, .dmtab, .nbview) details.sect:not(details.sect details.sect, .row details.sect, .modal details.sect)>.body{
+  padding-top:var(--row-y)}
 
 /* ---- the shell (R218 step 2) ---------------------------------------------
    The rail: one column of groups at the left edge, an icon each, the label
