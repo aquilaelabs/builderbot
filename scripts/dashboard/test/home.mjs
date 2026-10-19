@@ -41,6 +41,10 @@ ok(await page.evaluate(() => tabOf(panes[0])?.kind === 'home' && location.hash =
      `...the machines' and the queue's numbers are /api/home's (${by.nodes.value} of ${h.nodes?.enrolled} nodes, ${by.jobs.value} jobs running)`);
   ok(Array.isArray(h.jobs.last) && h.jobs.last.length <= 10 && typeof h.jobs.failed_today === 'number',
      `...which carries the last ten jobs and the ones failed today (${h.jobs.last.length} rows, ${h.jobs.failed_today} failed)`);
+  // B59: the sessions tile is the number the Sessions page it opens counts.
+  const listed = await page.evaluate(() => (state?.sessions || []).length);
+  ok(by.sessions.value === String(listed) && listed > 0,
+     `...and sessions open is what the Sessions page lists, terminals included (${by.sessions.value} of ${listed})`);
 }
 
 // ---- a job that fails shows on Home by itself, through the jobs token ----------

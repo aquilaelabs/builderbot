@@ -1947,6 +1947,10 @@ def node_tmux_sessions():
                    "created": int(s.get("created") or 0)}
             if tmux_base(real).startswith("claude-"):
                 state, task = claude_state(s.get("title", ""))
+                # What it was last asked over the title, which Claude names
+                # from the first turn and keeps (B59).
+                task = projsessions.latest_task(who, tmux_base(real)[len("claude-"):],
+                                                row["created"]) or task
                 row["claude"] = {"state": state, "task": task}
             rows.append(row)
     return rows
@@ -3558,7 +3562,8 @@ gitview.OKAY = pushscan.okay
 import hooks                                                     # noqa: E402
 
 hooks.configure(users=users, rules=rules, preamble=preamble, overlap=overlap, chat=chat, roadmap=roadmap, pending=pending,
-                turns=turns, nodes=nodes, seen_note=session_seen_note, turn_scope=turn_scope)
+                turns=turns, nodes=nodes, seen_note=session_seen_note, turn_scope=turn_scope,
+                asked=projsessions.asked)
 
 
 # Written by entrypoint.sh once every startup hook has finished. Named here as

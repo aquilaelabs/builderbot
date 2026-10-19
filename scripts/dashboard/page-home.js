@@ -66,7 +66,11 @@ function homeUpdates(){
 // machine it may not read) is not drawn.
 function homeTiles(){
   const h = homeData || {};
-  const sessions = Object.values(state?.claude_where || {}).reduce((n, rows) => n + rows.length, 0);
+  // What the Sessions page lists and counts, so the tile and the page it
+  // opens say one number (B59): every session of this account's, Claude's
+  // and the terminals.
+  const ss = state?.sessions || [];
+  const sessions = ss.length, claudes = ss.filter(s => tmuxBase(s.name).startsWith("claude-")).length;
   const updates = homeUpdates(), red = (state?.ci_red || []).length;
   const jobs = h.jobs || {};
   const c = h.containers;
@@ -82,7 +86,7 @@ function homeTiles(){
     {key: "jobs", label: "jobs running", value: jobs.running ?? "–",
      sub: jobs.failed_today ? `${jobs.failed_today} failed today` : jobs.waiting ? `${jobs.waiting} waiting` : "none failed today",
      subTone: jobs.failed_today ? "bad" : ""},
-    {key: "sessions", label: "sessions open", value: sessions},
+    {key: "sessions", label: "sessions open", value: sessions, sub: claudes ? `${claudes} of them Claude` : ""},
     {key: "updates", label: "updates due", value: updates, tone: updates ? "warn" : ""},
     {key: "ci", label: "CI red", value: red, tone: red ? "bad" : "", sub: red === 1 ? projLabel(state.ci_red[0].project) : ""},
   ].filter(Boolean);
