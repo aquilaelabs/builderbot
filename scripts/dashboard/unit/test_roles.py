@@ -284,6 +284,26 @@ class R155(unittest.TestCase):
         self.assertEqual(st, 200, r)
         self.assertEqual(self.users.get("ann")["projects"], ["alpha"], "on a project is holding a role there")
 
+    def test_accounts_write_through_a_role_gives_roles_but_not_admin(self):
+        # B66: Accounts and roles Write held through a role of one's own
+        # gives roles as the administrator does; the built-in admin stays
+        # an administrator's.
+        roles.set_role("hr", "global", {"accounts": "write"})
+        with self.users._lock:
+            d = self.users.load()
+            d["users"]["hal"] = {"uid": "u_5", "role": "user", "projects": [], "roles": ["hr"]}
+            d["users"]["adm"] = {"uid": "u_6", "role": "admin", "projects": []}
+            self.users._save(d)
+        hal = self.users.get("hal")
+        self.assertTrue(self.users.assignable(hal)["admin"])
+        r, st = self.users.assign(hal, "ann", ["ops"], {"alpha": ["dev"]})
+        self.assertEqual(st, 200, r)
+        r, st = self.users.assign(hal, "ann", ["admin"], None)
+        self.assertEqual(st, 403, r)
+        r, st = self.users.assign(hal, "adm", [], None)
+        self.assertEqual(st, 403, r)
+        self.assertEqual(self.users.get("adm")["role"], "admin")
+
 
 class SessionAndAccount(unittest.TestCase):
     """A session does no more than the account behind it (the operator,

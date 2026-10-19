@@ -1286,7 +1286,10 @@ def assignable(me):
     import membership
     if not me or me.get("session"):
         return {"admin": False, "projects": []}
-    if is_admin(me):
+    # Accounts and roles Write through a role of one's own is the
+    # administrator's top section too (B66); assign keeps the built-in admin
+    # itself an administrator's.
+    if is_admin(me) or not may(me, "admin"):
         return {"admin": True, "projects": None}
     mine = uid_of(me)
     owned = sorted(p for p, r in membership._owners()["projects"].items()
@@ -1312,6 +1315,10 @@ def assign(me, name, global_roles=None, project_roles=None):
         # The owner's account is nobody's but the owner's to change (R152 (a)).
         if u.get("role") == "owner" and (me or {}).get("role") != "owner":
             return {"error": "the owner's roles and projects are the owner's alone"}, 403
+        # ...and the built-in admin an administrator's, given or taken (B66).
+        if not is_admin(me) and (u.get("role") == "admin"
+                                 or "admin" in [str(r) for r in global_roles or []]):
+            return {"error": "the admin role and an administrator's account are an administrator's to change"}, 403
         if global_roles is not None:
             if not can["admin"]:
                 return {"error": "Everywhere roles are an administrator's to give"}, 403
