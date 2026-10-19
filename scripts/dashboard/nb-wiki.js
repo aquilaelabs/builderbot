@@ -63,8 +63,12 @@ function wikiMarkdown(src){
       out.push(`<blockquote>${wikiMarkdown(body.join("\n"))}</blockquote>`);
     } else if (/^\s*([-*+]|\d+[.)])\s+/.test(l)){
       const ordered = /^\s*\d/.test(l), items = [];
-      for (; i < lines.length && /^\s*([-*+]|\d+[.)])\s+/.test(lines[i]); i++)
+      // An item's wrapped lines, indented under it, are the item's own.
+      for (; i < lines.length && /^\s*([-*+]|\d+[.)])\s+/.test(lines[i]); i++){
         items.push(lines[i].replace(/^\s*([-*+]|\d+[.)])\s+/, "").replace(/^\[( |x)\]\s+/i, (_, x) => x.trim() ? "☑ " : "☐ "));
+        while (i + 1 < lines.length && /^\s+\S/.test(lines[i + 1]) && !/^\s*([-*+]|\d+[.)])\s+/.test(lines[i + 1]))
+          items[items.length - 1] += " " + lines[++i].trim();
+      }
       const tag = ordered ? "ol" : "ul";
       out.push(`<${tag}>${items.map(x => `<li>${inline(x)}</li>`).join("")}</${tag}>`);
     } else if (/\|/.test(l) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])){
@@ -77,7 +81,9 @@ function wikiMarkdown(src){
     } else {
       const body = [];
       for (; i < lines.length && lines[i].trim() && !/^\s*(```|#{1,6}\s|>|([-*+]|\d+[.)])\s)/.test(lines[i]); i++) body.push(lines[i]);
-      out.push(`<p>${body.map(inline).join("<br>")}</p>`);
+      // A line break in the source is a space, as a forge shows a file; two
+      // spaces at a line's end are a break of its own.
+      out.push(`<p>${body.map((x, k) => inline(x.trim()) + (k === body.length - 1 ? "" : / {2,}$/.test(x) ? "<br>" : " ")).join("")}</p>`);
     }
   }
   return out.join("");

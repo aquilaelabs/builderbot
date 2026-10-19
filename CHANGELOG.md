@@ -676,6 +676,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - bb transcripts show prints the newest 16 MB of a long conversation, where it used to time out and print nothing; --all prints the whole of it (4c947ad)
 - A node whose agent update succeeded no longer asks for Update agent again: the controller counts it current at once instead of sending a second update that failed as busy (0b8fb49)
 - On a phone a page's tools read whole on its bar, Build's five down to a 344px fold cover (B879) (4bef55f)
+- Help and a project's wiki read a doc's paragraphs whole: a line break in the source is a space, as a forge shows the file, and a list item's wrapped lines stay in it (B880) (d1ebc1c)
 
 ### Security
 
