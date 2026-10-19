@@ -46,6 +46,10 @@ class Membership(unittest.TestCase):
     def test_an_open_project_takes_any_administrator(self):
         self.assertEqual(membership.member_refusal(self.me("bob"), "app"), "")
         self.assertNotEqual(membership.member_refusal(self.me("cy"), "app"), "")
+        # A plain account is refused for what it is, not told the project
+        # is invite only when it is not (B36).
+        self.assertNotIn("invite only", membership.member_refusal(self.me("cy"), "app"))
+        self.assertIn("ada", membership.member_refusal(self.me("cy"), "app"))
 
     def test_invite_only_keeps_administrators_out_but_not_the_owners(self):
         r, st = membership.set_owner(self.me("ada"), "app", restrict=True)
