@@ -299,7 +299,7 @@ function pArchivePicked(){
 function pDraw(){
   const m = PMODES[pMode];
   $("pTitle").textContent = m.title();
-  $("pCreate").textContent = $("pCreate").disabled ? $("pCreate").textContent : m.btn;
+  if (!$("pCreate").disabled) $("pCreate").textContent = m.btn;
   $("pLocal").classList.toggle("on", pMode === "init");
   $("pClone").classList.toggle("on", pMode === "clone");
   for (const f of ["pSrcField", "pNameField", "pVersionField", "pArchiveField", "pForgeField",
@@ -473,8 +473,7 @@ function pFillGates(){
     const el = $(id);
     if (el.dataset.built !== "1"){
       // A report has nothing to hold for approval: auto or deny.
-      el.innerHTML = (id === "pGateWiki" ? gateChoices("wiki") : GATE_MODES).filter(([v]) => id !== "pGateReport" || v !== "ask")
-        .map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
+      el.innerHTML = optionList((id === "pGateWiki" ? gateChoices("wiki") : GATE_MODES).filter(([v]) => id !== "pGateReport" || v !== "ask"));
       el.dataset.built = "1";
     }
     el.value = P_GATE_DEFAULT[id] || "auto";
@@ -500,7 +499,7 @@ function pOpen(mode){
   // open must not ride along invisibly into this one's submit.
   $("pKey").innerHTML = "";
   $("pErrWrap").hidden = $("pPubWrap").hidden = true;
-  $("pCreate").disabled = false; $("pCreate").textContent = PMODES[mode].btn;
+  unbusy($("pCreate"), PMODES[mode].btn);
   $("pmodal").hidden = false;
   pFillNode();
   // Fetched per open, not cached: keys change when the container restarts
@@ -514,10 +513,8 @@ function pOpen(mode){
     pForges = j.forges || [];
     pForgeHosts = j.hosts || {};
     if (!pForges.some(f => f.id === pForgeId)) pForgeId = (pForges[0] || {}).id || "";
-    $("pKey").innerHTML = `<option value="">none: ${pPat
-        ? "use the configured access token"
-        : "public repository"}</option>`
-      + pKeys.map(k => `<option value="${esc(k.name)}">${esc(k.name)}</option>`).join("");
+    $("pKey").innerHTML = optionList([["", `none: ${pPat ? "use the configured access token" : "public repository"}`],
+                                      ...pKeys.map(k => k.name)]);
     pShowKey(); pDraw();
   });
 }
@@ -616,8 +613,7 @@ async function createProject() {
   else if (!url) return fail("a repository address is required");
   $("pErrWrap").hidden = true;
   const b = $("pCreate");
-  b.disabled = true;
-  b.textContent = { init: "Creating…", clone: "Starting…", link: "Starting…" }[mode];
+  busy(b, { init: "Creating", clone: "Starting", link: "Starting" }[mode]);
   try{
     // A push has to authenticate somehow; catching this before the round-trip
     // spares typing a URL into a flow that cannot finish. Judged on the
@@ -645,13 +641,13 @@ async function createProject() {
     // hands back an id the create quotes.
     let archive = "";
     if (file){
-      b.textContent = "Uploading…";
+      busy(b, "Uploading");
       const u = await fetch("/api/upload-archive?name=" + encodeURIComponent(file.name),
                             {method: "POST", body: file});
       const uj = await u.json().catch(() => ({}));
       if (!u.ok) return fail(uj.error || `upload failed (HTTP ${u.status})`);
       archive = uj.id;
-      b.textContent = "Creating…";
+      busy(b, "Creating");
     }
     const r = mode === "link"
       ? await fetch("/api/link", {method:"POST",
@@ -696,6 +692,6 @@ async function createProject() {
     // outlives a dropped connection), so say to look rather than blindly retry.
     fail("lost the connection; check the Projects card before trying again");
   }finally{
-    if (gen === pGen){ b.disabled = false; b.textContent = PMODES[pMode].btn; }
+    if (gen === pGen) unbusy(b, PMODES[pMode].btn);
   }
 }

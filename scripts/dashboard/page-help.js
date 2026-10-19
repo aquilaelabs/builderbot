@@ -80,8 +80,7 @@ function helpNav(){
   const list = `<ul>${li(helpIndex.home, helpIndex.title)}</ul>` + helpIndex.groups.map(g =>
     `<strong>${esc(g.group)}</strong><ul>${g.docs.map(d => li(d.name, d.title)).join("")}</ul>`).join("");
   const pick = `<label class="pick wkpick">Doc <select id="helpPick" aria-label="the doc to read">${
-    [{name: helpIndex.home, title: helpIndex.title}, ...helpIndex.groups.flatMap(g => g.docs)].map(d =>
-      `<option value="${esc(d.name)}"${d.name === helpCur ? " selected" : ""}>${esc(d.title)}</option>`).join("")}</select></label>`;
+    optionList([{name: helpIndex.home, title: helpIndex.title}, ...helpIndex.groups.flatMap(g => g.docs)].map(d => [d.name, d.title]), helpCur)}</select></label>`;
   return `<nav class="wknav" aria-label="the docs">${list}</nav>${pick}`;
 }
 

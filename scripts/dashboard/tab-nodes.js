@@ -394,8 +394,7 @@ function nodeRunnerSection(n, c, between = ""){
           <input data-k="runner:url" value="${esc(d.runner.url)}" spellcheck="false" autocomplete="off"
             placeholder="https://github.com/your-org" aria-label="repository or organization URL"></div>
           <div class="setrow col ctlrow">${lbl("", "Host", "GitHub, or act_runner for Gitea, Forgejo and Codeberg")}
-          <select data-k="runner:forge" aria-label="host kind">${[["", "from the address"], ["github", "GitHub"], ["gitea", "Gitea or Forgejo"]].map(([v, t]) =>
-            `<option value="${v}"${(d.runner.forge || "") === v ? " selected" : ""}>${t}</option>`).join("")}</select></div>
+          <select data-k="runner:forge" aria-label="host kind">${optionList([["", "from the address"], ["github", "GitHub"], ["gitea", "Gitea or Forgejo"]], d.runner.forge || "")}</select></div>
           <div class="setrow col ctlrow">${lbl("", "Token", "a token that may register runners there. Stored on the controller only")}
           <input data-k="runner:token" type="password" value="${esc(d.runner.token || "")}" spellcheck="false" autocomplete="off"
             placeholder="paste a token" aria-label="runner token"></div>
@@ -1714,8 +1713,8 @@ function ndDialogs(){
               value="bb"></div>
           <div class="setrow col ctlrow">${lbl("ndEnSystem", "System",
             "what the machine runs. The script is built for it and refuses another machine by name; a system marked dev has not been walked on a node yet, and is offered with Offer dev features on")}
-            <select id="ndEnSystem">${(nodesSystems.length ? nodesSystems : [{id: "ubuntu", name: "Ubuntu 24.04 or later", vetted: true}])
-              .map(s => `<option value="${esc(s.id)}">${esc(s.name)}${s.vetted ? "" : " (dev)"}</option>`).join("")}</select></div>
+            <select id="ndEnSystem">${optionList((nodesSystems.length ? nodesSystems : [{id: "ubuntu", name: "Ubuntu 24.04 or later", vetted: true}])
+              .map(s => [s.id, `${s.name}${s.vetted ? "" : " (dev)"}`]))}</select></div>
         </div>
         <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
         <label class="ndcap"><input type="checkbox" id="ndEnHost"> Hosting only: it runs containers sent to it, and nothing of it comes back</label>

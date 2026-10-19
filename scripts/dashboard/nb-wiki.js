@@ -199,7 +199,7 @@ function nbWikiView({$, nb, project}){
       ? wikiMarkdown(sb.text)
       : `<ul>${articles().map(p => `<li><a href="#" class="wklink" data-page="${esc(p.name)}">${esc(p.title)}</a></li>`).join("")}</ul>`;
     const pick = `<label class="pick wkpick">Page <select id="wkPick" aria-label="the page to read">${
-      articles().map(p => `<option value="${esc(p.name)}"${p.name === nb.wkCur ? " selected" : ""}>${esc(p.title)}</option>`).join("")}</select></label>`;
+      optionList(articles().map(p => [p.name, p.title]), nb.wkCur)}</select></label>`;
     return `<nav class="wknav" aria-label="the wiki's pages">${list}</nav>${pick}`;
   }
 

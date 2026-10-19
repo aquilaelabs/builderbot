@@ -394,12 +394,9 @@ function nbGitView({$, nb, project}){
     const polDirty = Object.keys(gitPolDraft).length > 0;
     const policy = locked ? "" : `<div class="row stack2 gpolicy"><div class="grow">
         <div class="prefrow ctlrow">
-          <label class="pick">Push its branches <select data-gitpol="push">${["allow", "deny"].map(o =>
-            `<option value="${o}"${(pol.push || "allow") === o ? " selected" : ""}>${o}</option>`).join("")}</select></label>
-          <label class="pick">Push to ${esc(git.main || "main")} <select data-gitpol="main">${["allow", "deny"].map(o =>
-            `<option value="${o}"${(pol.main || "deny") === o ? " selected" : ""}>${o}</option>`).join("")}</select></label>
-          <label class="pick">Hold a push that looks sensitive <select data-gitpol="scan">${["hold", "off"].map(o =>
-            `<option value="${o}"${(pol.scan || "hold") === o ? " selected" : ""}>${o}</option>`).join("")}</select></label>
+          <label class="pick">Push its branches <select data-gitpol="push">${optionList(["allow", "deny"], pol.push || "allow")}</select></label>
+          <label class="pick">Push to ${esc(git.main || "main")} <select data-gitpol="main">${optionList(["allow", "deny"], pol.main || "deny")}</select></label>
+          <label class="pick">Hold a push that looks sensitive <select data-gitpol="scan">${optionList(["hold", "off"], pol.scan || "hold")}</select></label>
         </div>
         <div class="actbar">
           <span class="state">its own branches, one at a time ${helpIcon("Applies to pushes only. Tags, deletions and remote-only branches stay yours; commits and merges here are always allowed.")}</span>

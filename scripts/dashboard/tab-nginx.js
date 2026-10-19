@@ -109,9 +109,8 @@ function nginxCertPick(n, r){
   const auto = nginxResolve(n, r.host);
   const pick = r.tls === false ? "none" : (keys.includes(r.cert) ? r.cert : "");
   return `<select data-ng="cert" aria-label="the certificate this route serves 443 with">
-    <option value="none"${pick === "none" ? " selected" : ""}>80 only</option>
-    <option value=""${pick === "" ? " selected" : ""}>443, ${auto ? `${esc(auto)}'s pair` : "no pair covers it yet"}</option>
-    ${keys.map(k => `<option value="${esc(k)}"${pick === k ? " selected" : ""}>443, ${esc(k)}'s pair</option>`).join("")}
+    ${optionList([["none", "80 only"], ["", `443, ${auto ? `${auto}'s pair` : "no pair covers it yet"}`],
+                  ...keys.map(k => [k, `443, ${k}'s pair`])], pick)}
   </select>`;
 }
 // What a hostname resolves to with no pick of its own: the server's answer
@@ -141,7 +140,7 @@ function nginxHostPick(r){
   if (r.typed) return `<input data-ng="host" value="${esc(r.host || "")}" placeholder="app.example.com" aria-label="hostname" autocomplete="off" spellcheck="false">`;
   return `<select data-ng="host" aria-label="hostname">
     ${r.host ? "" : `<option value="" selected>pick a hostname</option>`}
-    ${names.map(h => `<option value="${esc(h)}"${h === r.host ? " selected" : ""}>${esc(h)}</option>`).join("")}
+    ${optionList(names, r.host)}
     <option value="*"${r.host === "*" ? " selected" : ""}>every name (*)</option>
     <option value="__type">type a hostname…</option>
   </select>`;

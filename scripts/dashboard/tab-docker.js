@@ -373,7 +373,7 @@ function openSendToDocker(project, sendAs, have, compose){
   $("dnName").value = sendAs || project;
   $("dnErrWrap").hidden = true;
   $("dnPreview").hidden = true;
-  $("dnGo").disabled = false; $("dnGo").textContent = "Create";
+  unbusy($("dnGo"), "Create");
   const from = dnCompose ? `${dnCompose} in ${projLabel(project)}` : `${projLabel(project)}'s codebase`;
   $("dnHint").textContent = have
     ? `Built from ${from}, beside the ${have === 1 ? "one" : have} it already has: give it ports of its own.`
@@ -387,8 +387,7 @@ function openSendToDocker(project, sendAs, have, compose){
   // nothing to fill.
   const refs = dockerList?.refs?.[project] || [];
   $("dnRefField").hidden = !refs.length;
-  $("dnRef").innerHTML = `<option value="">whatever the project is on</option>`
-    + refs.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join("");
+  $("dnRef").innerHTML = optionList([["", "whatever the project is on"], ...refs]);
   $("dnmodal").hidden = false;
   // Fetched per open, and only shown when the project actually declares an
   // example: a blank Environment box on a project with nothing to fill in is
@@ -590,7 +589,7 @@ async function dnSubmit(){
   const fail = m => ($("dnErr").textContent = m, $("dnErrWrap").hidden = false);
   if (!name) return fail("a name is needed");
   if ($("dnGo").disabled) return;
-  $("dnGo").disabled = true; $("dnGo").textContent = "Creating…";
+  busy($("dnGo"), "Creating");
   try{
     const r = await fetch("/api/devapp", {method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -603,7 +602,7 @@ async function dnSubmit(){
                             compose: dnCompose,
                             text: $("dnEnvField").hidden ? "" : $("dnEnv").value})});
     const j = await r.json();
-    if (j.error){ $("dnGo").disabled = false; $("dnGo").textContent = "Create";
+    if (j.error){ unbusy($("dnGo"), "Create");
                   return fail(j.error); }
     closeSendToDocker();
     // ...and build it. The manager lists what exists, so a container that was
@@ -612,7 +611,7 @@ async function dnSubmit(){
     // build carries the same confirmations pressing Build there would.
     openDocker();
     await dmAction(project, j.instance, "rebuild");
-  }catch(e){ $("dnGo").disabled = false; $("dnGo").textContent = "Create";
+  }catch(e){ unbusy($("dnGo"), "Create");
              return fail("could not create it: " + e); }
 }
 
@@ -741,11 +740,10 @@ function dmNginxLine(d){
       "A route on this node's nginx page to one of this container's published ports, at the hostname typed (a subdomain of the "
       + "certificate's domain), or at any hostname on 80 alone with no certificate. A port routed already takes another hostname; the rest of a route is changed on the nginx page.")}
     <div class="ctl"><select id="${esc("dmng-" + key)}" data-dmngcert="${esc(key)}" aria-label="which certificate the route serves under">
-      <option value="">no certificate: any hostname, 80 alone</option>${
-      (ng.certs || []).map(c => `<option value="${esc(c)}"${c === dr.cert ? " selected" : ""}>${esc(c)}</option>`).join("")}</select>
+      ${optionList([["", "no certificate: any hostname, 80 alone"], ...(ng.certs || [])], dr.cert || "")}</select>
     <input data-dmnghost="${esc(key)}" value="${esc(dr.host || "")}" data-was="${esc(dr.was || "")}" placeholder="app.example.com" aria-label="the hostname the route serves" autocomplete="off" spellcheck="false">
     <select data-dmngport="${esc(key)}" aria-label="which port the route goes to">${
-      ports.map(p => `<option value="${p}"${String(p) === String(dr.port) ? " selected" : ""}>${p}${routed.includes(p) ? " (routed)" : ""}</option>`).join("")}</select>
+      optionList(ports.map(p => [p, `${p}${routed.includes(p) ? " (routed)" : ""}`]), dr.port)}</select>
     <button type="button" data-dmngadd="${esc(key)}" title="write the route on the nginx page and apply it">Add route</button></div></div>`;
 }
 
@@ -763,9 +761,7 @@ function dmRefLine(d){
   return `<div class="setcell dmref">${lbl("dmr-" + key, "Branch",
       "The next build uses that branch. The project's checkout, env and data stay as they are.")}
     <select id="${esc("dmr-" + key)}" data-dmref="${esc(key)}" aria-label="which branch to build">
-      <option value=""${saved ? "" : " selected"}>whatever the project is on</option>${
-      refs.map(b => `<option value="${esc(b)}"${b === pick ? " selected" : ""}>${
-        esc(b)}</option>`).join("")}</select></div>`;
+      ${optionList([["", "whatever the project is on"], ...refs], pick || "")}</select></div>`;
 }
 
 // The compose file laid over the instance's own (the operator, 17 Oct): any
@@ -782,9 +778,7 @@ function dmOverrideLine(d){
   return `<div class="setcell dmov">${lbl("dmv-" + key, "Override",
       "Another compose file from the tree, laid over this one for this container alone: its ports, env, volumes or an extra service. The next build takes it.")}
     <select id="${esc("dmv-" + key)}" data-dmov="${esc(key)}" aria-label="compose file laid over it">
-      <option value=""${pick ? "" : " selected"}>none</option>${
-      [...new Set([...files, ...(saved ? [saved] : [])])].map(f => `<option value="${esc(f)}"${f === pick ? " selected" : ""}>${
-        esc(f)}</option>`).join("")}</select></div>`;
+      ${optionList([["", "none"], ...new Set([...files, ...(saved ? [saved] : [])])], pick || "")}</select></div>`;
 }
 
 function dmClaudeSaid(d, other = false){
@@ -884,9 +878,7 @@ function dmOwnerLine(r, key){
       "Its project's Claude sessions can see it and, as that project's Run its container setting allows, "
       + "work on it. No project keeps it from every session.")}
     <select id="${esc(id)}" data-dmown="${esc(key)}" aria-label="which project it belongs to">
-      <option value=""${pick ? "" : " selected"}>no project</option>${
-      names.map(n => `<option value="${esc(n)}"${n === pick ? " selected" : ""}>${
-        esc(shown(n))}</option>`).join("")}</select></div>`;
+      ${optionList([["", "no project"], ...names.map(n => [n, shown(n)])], pick || "")}</select></div>`;
 }
 
 // Which project a project's own instance is built from, and Move to put it
@@ -905,8 +897,7 @@ function dmMoveLine(d){
       "The project whose compose file and tree it is built from. Another one, applied, moves it "
       + "under that project, keeping its name, env and data; it then builds from that project's tree.")}
     <select id="${esc(id)}" data-dmmove="${esc(key)}" aria-label="the project it is built from">${
-      names.map(n => `<option value="${esc(n)}"${n === pick ? " selected" : ""}>${
-        esc(gone && n === d.project ? `${n} (deleted)` : projLabel(n))}</option>`).join("")}</select></div>`;
+      optionList(names.map(n => [n, gone && n === d.project ? `${n} (deleted)` : projLabel(n)]), pick)}</select></div>`;
 }
 
 function dmTestSaid(d){
@@ -1199,7 +1190,7 @@ async function openEditContainer(name){
   $("cUnderField").hidden = true;  // its project is changed on its row
   $("cYml").value = $("cEnv").value = "";
   $("cErrWrap").hidden = true;
-  $("cGo").textContent = "Save";
+  unbusy($("cGo"), "Save");
   cLock(!down || managed);
   cSeg("yml");
   $("cmodal").hidden = false;
@@ -1238,7 +1229,7 @@ async function openEditInstance(project, instance){
   $("cTabForm").hidden = true;
   $("cYml").value = $("cEnv").value = "";
   $("cErrWrap").hidden = true;
-  $("cGo").textContent = "Save";
+  unbusy($("cGo"), "Save");
   cLock(running);
   cSeg("yml");
   $("cmodal").hidden = false;
@@ -1265,24 +1256,24 @@ async function openEditInstance(project, instance){
 async function cSaveInstance(key){
   const fail = m => ($("cErr").textContent = m, $("cErrWrap").hidden = false);
   const {project, instance} = key, compose = $("cYml").value, env = $("cEnv").value;
-  $("cGo").disabled = true; $("cGo").textContent = "Saving…";
+  busy($("cGo"), "Saving");
   const send = body => postJSON("/api/devapp", {project, instance, ...body}).then(r => r.json());
   try{
     // The compose file first: compose reads it before it is kept, and a file
     // it refuses stops here with its words, before the env is touched.
     const c = compose !== key.was?.compose ? await send({action: "compose-set", text: compose}) : {};
-    if (c.error){ $("cGo").disabled = false; $("cGo").textContent = "Save"; cSeg("yml"); return fail(c.error); }
+    if (c.error){ unbusy($("cGo"), "Save"); cSeg("yml"); return fail(c.error); }
     const e = env !== key.was?.env ? await send({action: "env-set", text: env}) : {};
-    if (e.error){ $("cGo").disabled = false; $("cGo").textContent = "Save"; cSeg("env"); return fail(e.error); }
+    if (e.error){ unbusy($("cGo"), "Save"); cSeg("env"); return fail(e.error); }
     // ...and the name last, since the node carries the data under it.
     const typed = $("cName").value.trim();
     const n = typed && key.name && dockerSlug(typed) !== key.name ? await send({action: "rename", name: typed}) : {};
-    if (n.error){ $("cGo").disabled = false; $("cGo").textContent = "Save"; return fail(n.error); }
+    if (n.error){ unbusy($("cGo"), "Save"); return fail(n.error); }
     $("cmodal").hidden = true;
     notify(n.job ? `renaming ${key.name} to ${n.name}: its row says when it is done`
            : c.ok || e.ok ? "saved: rebuild it to bring the change up" : "nothing changed");
     dockerList = null; dockerRev++; loadDocker();
-  }catch(err){ $("cGo").disabled = false; $("cGo").textContent = "Save"; fail("could not save: " + err); }
+  }catch(err){ unbusy($("cGo"), "Save"); fail("could not save: " + err); }
 }
 
 // Which project a new container belongs to: every project this account
@@ -1301,8 +1292,7 @@ function myProjectNames(keep){
 
 function fillUnderSelect(sel, picked){
   const names = myProjectNames(picked);
-  sel.innerHTML = `<option value="">no project</option>` + names.map(n =>
-    `<option value="${esc(n)}"${n === picked ? " selected" : ""}>${esc(projLabel(n))}</option>`).join("");
+  sel.innerHTML = optionList([["", "no project"], ...names.map(n => [n, projLabel(n)])], picked);
 }
 
 // The node follows the project picked: a container of a project belongs on
@@ -1350,7 +1340,7 @@ function openNewContainer(){
   fillC();
   $("cNodeHint").hidden = true;
   $("cErrWrap").hidden = true;
-  $("cGo").disabled = false; $("cGo").textContent = "Create";
+  unbusy($("cGo"), "Create");
   for (const id of ["cImage", "cPorts", "cVols", "cEnvLines"]) $(id).value = "";
   $("cRestart").value = "unless-stopped";
   cYmlTouched = false;
@@ -1428,7 +1418,7 @@ async function cSubmit(){
   const fail = m => ($("cErr").textContent = m, $("cErrWrap").hidden = false);
   const editing = cEditing, verb = editing ? "Save" : "Create";
   if (!$("cName").value.trim()) return fail("a name is needed");
-  $("cGo").disabled = true; $("cGo").textContent = editing ? "Saving…" : "Creating…";
+  busy($("cGo"), editing ? "Saving" : "Creating");
   try{
     const r = await fetch("/api/container", {method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -1442,7 +1432,7 @@ async function cSubmit(){
                             compose: $("cYml").value, env: $("cEnv").value})});
     const j = await r.json();
     if (j.error){
-      $("cGo").disabled = false; $("cGo").textContent = verb;
+      unbusy($("cGo"), verb);
       // Compose's own complaint, which names the line: shown on the tab the
       // text is on, since that is where it has to be fixed.
       cSeg("yml");
@@ -1475,7 +1465,7 @@ async function cSubmit(){
       return;
     }
     notify(`${editing} saved: ${j.note || "rebuild it to bring the change up"}`);
-  }catch(e){ $("cGo").disabled = false; $("cGo").textContent = verb;
+  }catch(e){ unbusy($("cGo"), verb);
              return fail("could not create it: " + e); }
 }
 

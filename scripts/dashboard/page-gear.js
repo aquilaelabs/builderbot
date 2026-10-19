@@ -302,7 +302,7 @@ function wireLogSection(el){
     const days = parseInt(inp.value, 10);
     if (!(days >= 1)) return notify("days has to be 1 or more", true);
     const btn = el.querySelector("#logApply");
-    if (btn){ btn.disabled = true; btn.textContent = "Applying…"; }
+    busy(btn, "Applying");
     try{
       const r = await postJSON("/api/logs", {action: "days", days});
       const j = await r.json();
@@ -313,8 +313,7 @@ function wireLogSection(el){
         : `keeping ${j.days} days; nothing was past it`);
       refresh(); drawUiMenu();
     }catch(e){ notify("logs: " + e, true); }
-    finally{ if (btn && btn.isConnected){ btn.disabled = false;
-                                          btn.textContent = "Apply"; } }
+    finally{ if (btn?.isConnected) unbusy(btn, "Apply"); }
   };
   el.querySelector("#logApply").onclick = apply;
   // Enter in the field does what the button does, because a number typed into

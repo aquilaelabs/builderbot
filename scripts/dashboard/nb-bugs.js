@@ -140,8 +140,7 @@ function nbBugsView({$, nb, project}){
         placeholder="the picker loses its selection on rotate">${v("title")}</textarea>
       <div class="two">
         <div><label>Severity</label>
-          <select class="bfSev">${SEVS.map(x =>
-            `<option value="${x}"${(b?.severity || "medium") === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
+          <select class="bfSev">${optionList(SEVS, b?.severity || "medium")}</select></div>
         <div><label>Where<span class="help" data-help="files, component, screen" tabindex="0">?</span></label>
           <textarea class="bfArea proseline" rows="1" maxlength="1000"
             placeholder="scripts/dashboard/index.html, the picker">${v("area")}</textarea></div>

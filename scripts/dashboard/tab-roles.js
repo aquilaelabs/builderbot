@@ -112,8 +112,8 @@ function rolesAccessFields(name){
   const anyProjRole = Object.values(d.roles || {}).some(r => r.scope === "projects");
   const add = off.length && !anyProjRole ? `<div class="sub dim raddon">No role on a project yet: one made on the ${pageLink("roles", "Roles page")} puts ${esc(p.name)} on a project.</div>`
     : off.length ? `<div class="raddon">
-      <select id="rolesAddProj" aria-label="the project">${off.map(pn => `<option value="${esc(pn)}"${pn === addPn ? " selected" : ""}>${esc(projLabel(pn))}</option>`).join("")}</select>
-      <select id="rolesAddRole" aria-label="the role there">${rolesOnProject(addPn).map(r => `<option value="${esc(r.name)}">${esc(r.label || r.name)}</option>`).join("")}</select>
+      <select id="rolesAddProj" aria-label="the project">${optionList(off.map(pn => [pn, projLabel(pn)]), addPn)}</select>
+      <select id="rolesAddRole" aria-label="the role there">${optionList(rolesOnProject(addPn).map(r => [r.name, r.label || r.name]))}</select>
       <button type="button" id="rolesAddOn"${rolesOnProject(addPn).length ? "" : " disabled"}>Add to project</button></div>` : "";
   return `${global}
     <div class="setrow col ctlrow">${lbl("", d.admin ? "Projects" : "Your projects", "a role on a project puts the account on it; taken off, it is not on it")}

@@ -141,8 +141,7 @@ function nbDesignView({$, nb, project, root}){
   }
 
   // ---- drawing --------------------------------------------------------------------
-  const opt = (rows, cur, keyed = "key", labeled = "label") => (rows || [])
-    .map(r => `<option value="${esc(r[keyed])}"${r[keyed] === cur ? " selected" : ""}>${esc(r[labeled])}</option>`).join("");
+  const opt = (rows, cur, keyed = "key", labeled = "label") => optionList((rows || []).map(r => [r[keyed], r[labeled]]), cur);
   const ctl = (id, text, help, control, grow) =>
     `<div class="dsctl${grow ? " grow" : ""}">${lbl(id, text, help)}${control}</div>`;
 
@@ -191,8 +190,7 @@ function nbDesignView({$, nb, project, root}){
     const mine = CUSTOM.filter(([k]) => t[k] === "custom");
     if (!mine.length) return "";
     const rules = (t.rules || []).filter(r => r.name);
-    const pickRule = k => `<option value=""${(t.custom || {})[k] ? "" : " selected"}>no rule named</option>`
-      + rules.map(r => `<option value="${esc(r.name)}"${(t.custom || {})[k] === r.name ? " selected" : ""}>${esc(r.name)}</option>`).join("");
+    const pickRule = k => optionList([["", "no rule named"], ...rules.map(r => r.name)], (t.custom || {})[k] || "");
     return `<div class="field"><div class="dsrow">${mine.map(([k, word]) =>
       ctl(`dst-${i}-custom-${k}`, `${word}, by the rule`, "which of this theme's rules says it: a session reads that rule where the choice would be",
           `<select id="dst-${i}-custom-${k}" data-dstcustom="${k}">${pickRule(k)}</select>`)).join("")}</div></div>`;

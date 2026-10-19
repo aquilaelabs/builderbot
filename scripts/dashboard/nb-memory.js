@@ -358,8 +358,7 @@ function nbMemoryView({$, nb}){
         <input id="naName" maxlength="60" autocomplete="off" spellcheck="false"
           placeholder="no-parsed-progress"></div>
       <div><label for="naType">Kind</label>
-        <select id="naType">${nb.memTypes.map(t =>
-            `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select></div>
+        <select id="naType">${optionList(nb.memTypes)}</select></div>
     </div>
     <div class="hint" id="naWhat"></div>
     <label for="naHook">Hook (required)<span class="help" data-help="one line saying what this memory is about; the index lists it, and a memory needs one" tabindex="0">?</span></label>

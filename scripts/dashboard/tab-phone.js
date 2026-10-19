@@ -236,7 +236,7 @@ function phonePanel(n){
          <div class="name">Lend to a project</div>
          <div class="prefrow ctlrow">
            <label class="pick">Project <select id="phLendTo" aria-label="the project to lend the phone to"${ps.length ? "" : " disabled"}>${
-             ps.map(p => `<option value="${esc(p)}"${p === phLendTo ? " selected" : ""}>${esc(projLabel(p))}</option>`).join("")}</select></label>
+             optionList(ps.map(p => [p, projLabel(p)]), phLendTo)}</select></label>
            <label class="pick">For <select id="phLendFor" aria-label="how long">
              <option value="1"${phLendFor === "1" ? " selected" : ""}>1 hour</option>
              <option value="4"${phLendFor === "4" ? " selected" : ""}>4 hours</option>

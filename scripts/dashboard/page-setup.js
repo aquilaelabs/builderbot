@@ -133,7 +133,7 @@ function wireSetup(el, s){
     if (!r.ok){ unbusy(cl, "Install"); return notify(j.error || `could not start (HTTP ${r.status})`, true); }
     notifyJob(j.job, `installing Claude Code on ${s.node.name}`);
     // It turns to done when the node's census reports the version.
-    cl.textContent = "Installing…";
+    busy(cl, "Installing");
   };
   const np = el.querySelector("[data-setproject]");
   if (np) np.onclick = () => openNewProject();

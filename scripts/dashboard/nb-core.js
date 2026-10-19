@@ -276,7 +276,7 @@ function makeNotebook(project){
     // poll. If it is, and nothing local is at stake, the reload happens by
     // itself: the guard should only demand a click when a click would cost.
     if (rc) rc.onclick = async () => {
-      rc.disabled = true; rc.textContent = "Checking…";
+      busy(rc, "Checking");
       // The batch state, which is the question the button asks, not a reload
       // of one view, which is what it used to do and why the roadmap refreshed
       // while the other three tabs did not. If the batch has closed and nothing

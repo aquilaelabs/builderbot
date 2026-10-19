@@ -213,9 +213,7 @@ function nbTestsView({$, nb, project}){
     // ---- the filter --------------------------------------------------------
     const suites = [...new Set(all.map(t => t.suite))].sort();
     $("tstBar").hidden = false;
-    $("tstSuite").innerHTML = `<option value="">all suites</option>`
-      + suites.map(x => `<option value="${esc(x)}"${
-          x === nb.tstSuite ? " selected" : ""}>${esc(x)}</option>`).join("");
+    $("tstSuite").innerHTML = optionList([["", "all suites"], ...suites], nb.tstSuite);
     $("tstFlagged").checked = nb.tstFlagged;
     $("tstUndoc").checked = nb.tstUndoc;
     const shown = all.filter(t => (!nb.tstSuite || t.suite === nb.tstSuite)

@@ -430,9 +430,8 @@ async function unlinkProject(name){
       + `The remote and its stored token go; every commit and branch stays. `
       + `You can link it elsewhere afterwards.`)) return;
   const stop = m => { $("rnErr").textContent = m; $("rnErrWrap").hidden = false;
-                      $("rnUnlink").disabled = false;
-                      $("rnUnlink").textContent = `Unlink from ${p?.forge_name || "its remote"}`; };
-  $("rnUnlink").disabled = true; $("rnUnlink").textContent = "Unlinking…";
+                      unbusy($("rnUnlink"), `Unlink from ${p?.forge_name || "its remote"}`); };
+  busy($("rnUnlink"), "Unlinking");
   try{
     const r = await postJSON("/api/unlink", {name});
     const j = await r.json().catch(() => ({}));
@@ -595,7 +594,7 @@ function renameProject(name, mode = "all"){
   // is the way a project moves from one host to another, since linking
   // refuses a repo that already has one.
   $("rnUnlink").hidden = !(git && p?.linked);
-  $("rnUnlink").textContent = `Unlink from ${p?.forge_name || "its remote"}`;
+  unbusy($("rnUnlink"), `Unlink from ${p?.forge_name || "its remote"}`);
   // The bin, on the gear's door only: the chain's is about the remote.
   $("rnDelete").hidden = git || !p;
   $("rnKeyOut").hidden = true; $("rnKeyPaste").hidden = true; $("rnKeyPaste").value = "";
@@ -684,7 +683,7 @@ function rnDrawPeople(){
   $("rnPeople").innerHTML = `
     <div class="setrow ctlrow">${v.may_manage
       ? `<label class="ndcap" for="rnOwner">Project owner</label>
-         <select id="rnOwner">${v.accounts.map(n => `<option value="${esc(n)}"${n === owner ? " selected" : ""}>${esc(n)}</option>`).join("")}</select>`
+         <select id="rnOwner">${optionList(v.accounts, owner)}</select>`
       : `<span>Project owner: ${esc(v.owner || "BuilderBot's owner")}</span>`}</div>
     ${v.may_manage && !v.bb_owner && d.owner && d.owner !== v.owner
       ? `<div class="sub">Saving offers it to ${esc(d.owner)}, who becomes its owner on accepting from their bell.</div>` : ""}
@@ -796,8 +795,7 @@ function rnDrawFtp(){
     <div class="rnftppeople"${on || editor ? "" : " hidden"}>${v.people.map(p => {
       const a = d.access?.[p.uid] ?? p.access;
       return `<div class="rnftprow"><span class="grow">${esc(p.name)}</span>
-        <select data-ftpuid="${esc(p.uid)}" aria-label="${esc(p.name)}'s file access">${RN_FTP_ACCESS.map(([k, w]) =>
-          `<option value="${k}"${k === a ? " selected" : ""}>${w}</option>`).join("")}</select></div>`;
+        <select data-ftpuid="${esc(p.uid)}" aria-label="${esc(p.name)}'s file access">${optionList(RN_FTP_ACCESS, a)}</select></div>`;
     }).join("")}</div>`;
   $("rnFtpOn").onchange = e => { d.on = e.target.checked; rnDrawFtp(); };
   $("rnFtpEditor").onchange = e => { d.editor = e.target.checked; rnDrawFtp(); };

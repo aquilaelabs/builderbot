@@ -239,8 +239,7 @@ async function openBrief(name, node){
   $("briefText").value = "";
   for (const [id, table, cur] of [["briefModel", MODELS, p?.yours?.model || ""],
                                   ["briefEffort", EFFORTS, p?.yours?.effort || ""]]){
-    $(id).innerHTML = table.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("");
-    $(id).value = cur;
+    $(id).innerHTML = optionList(table, cur);
   }
   for (const b of ["briefGo", "briefSkip"]) $(b).disabled = true;
   $("briefModal").hidden = false;

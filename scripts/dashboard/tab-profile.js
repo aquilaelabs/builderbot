@@ -25,8 +25,7 @@ function tzOptions(cur){
   let zones = [];
   try{ zones = Intl.supportedValuesOf("timeZone"); }catch(e){ zones = own ? [own] : []; }
   if (!zones.includes("UTC")) zones = [...zones, "UTC"];
-  return `<option value=""${cur ? "" : " selected"}>This device's own${own ? ` (${esc(own)})` : ""}</option>`
-    + [...zones].sort().map(z => `<option value="${esc(z)}"${z === cur ? " selected" : ""}>${esc(z)}</option>`).join("");
+  return optionList([["", `This device's own${own ? ` (${own})` : ""}`], ...[...zones].sort()], cur || "");
 }
 
 function openProfileTab(){

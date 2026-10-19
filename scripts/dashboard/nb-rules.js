@@ -210,8 +210,7 @@ function nbRulesView({$, nb, project}){
                 value="${esc((r.refuse || []).join(", "))}" aria-label="commands it refuses"></div>
               <div>${lbl("", "In place of", "a global rule this one replaces here; a session in this project reads only this one")}
               <select class="rlRepl" aria-label="the global rule it replaces">
-                <option value="">no global rule</option>${(d.global || []).map(g =>
-                  `<option value="${esc(g.name)}"${g.name === r.replaces ? " selected" : ""}>${esc(g.name)}</option>`).join("")}
+                ${optionList([["", "no global rule"], ...(d.global || []).map(g => g.name)], r.replaces || "")}
               </select></div>
             </div>
             <div class="actbar macts">

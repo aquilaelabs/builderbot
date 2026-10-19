@@ -561,9 +561,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       // that finds the wrong element restores a scroll nobody moved.
       const scroller = () => pane.closest(".sheetslot") || pane.parentElement;
       const draw = (keep, sel) => {
-        const opts = (cur) => ["", ...names().filter(Boolean)]
-          .map(n => `<option value="${esc(n)}"${n === cur ? " selected" : ""}>${
-            esc(n || "no category")}</option>`).join("")
+        const opts = (cur) => optionList(["", ...names().filter(Boolean)].map(n => [n, n || "no category"]), cur)
           + `<option value="\u0000new">new category…</option>`;
         const box = scroller();
         const top = box ? box.scrollTop : null;
@@ -1006,9 +1004,7 @@ this directory">Send to Claude</button>
       <span>Claude access</span>
       <select id="verPolicy" data-was="${esc(v.policy)}"
         aria-label="what a Claude session may do with this project's version">
-        ${(v.policies || []).map(o => `<option value="${esc(o)}"${
-          o === (verPolicyPending ?? v.policy) ? " selected" : ""}>${
-          esc(POLICY_LABEL[o] || o)}</option>`).join("")}
+        ${optionList((v.policies || []).map(o => [o, POLICY_LABEL[o] || o]), verPolicyPending ?? v.policy)}
       </select>${verPolicyPending != null
         ? `<span class="vermark">staged: on Save</span>` : ""}
     </label>`;

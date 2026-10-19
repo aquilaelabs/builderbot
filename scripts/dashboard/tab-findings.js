@@ -37,9 +37,7 @@ function fxBarHtml(rows, st, extra, dead = false){
   // times on one page, and duplicate ids are how the wrong one gets wired.
   return `${extra || ""}
     <select class="fxLevel" aria-label="level"${dead ? " disabled" : ""}>
-      <option value="">every level</option>
-      ${lvls.map(l => `<option value="${esc(l)}"${l === st.level ? " selected" : ""}>${
-        esc(l)} · ${per[l]}</option>`).join("")}
+      ${optionList([["", "every level"], ...lvls.map(l => [l, `${l} · ${per[l]}`])], st.level)}
     </select>
     <input class="fxFind" maxlength="80" autocomplete="off"
       placeholder="search rules, paths, messages" value="${esc(st.find || "")}"${dead ? " disabled" : ""}>`;
@@ -225,9 +223,7 @@ function renderFindingsInto(i){
   const projects = Object.keys(perProject).sort((a, b) =>
     (a === "unattributed paths") - (b === "unattributed paths") || a.localeCompare(b));
   const projSelect = `<select id="fxProject" aria-label="project">
-      <option value="">all projects · ${all.length}</option>
-      ${projects.map(pn => `<option value="${esc(pn)}"${pn === fxProject ? " selected" : ""}>${
-        esc(projLabel(pn))} · ${perProject[pn]}</option>`).join("")}
+      ${optionList([["", `all projects · ${all.length}`], ...projects.map(pn => [pn, `${projLabel(pn)} · ${perProject[pn]}`])], fxProject)}
     </select>`;
   // Grouped by project when looking across them, flat when one is chosen:
   // a heading repeating the selector's own value is noise.
