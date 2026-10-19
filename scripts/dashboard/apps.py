@@ -201,7 +201,8 @@ def check():
     except (OSError, ValueError) as e:
         err = f"the releases did not answer: {e}"
         if "404" in str(e) and not _token():
-            err += " (a private repository answers 404 to anybody without a token: add one under Apps)"
+            err += (" (a private repository answers 404 to anybody without a token: an administrator adds one "
+                    "under Apps on the Controller page)")
     DIR.mkdir(parents=True, exist_ok=True)
     for name, a in APPS.items():
         if not offered(name):

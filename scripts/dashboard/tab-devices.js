@@ -57,7 +57,7 @@ function devAppRow(a){
       <div class="name">${esc(a.title)}${a.version ? ` <span class="pill${behind ? " warn" : ""}">${esc(a.version)}</span>` : ""}</div>
       <div class="hint">${esc(a.does)}</div>
       ${first ? `<div class="sub">${devHow(a.name)}</div>`
-        : `<div class="sub warn">Not fetched yet${devApps?.problem ? `: ${esc(devApps.problem)}` : ": the controller looks at its release a while after it starts, then daily"}.</div>`}
+        : `<div class="sub warn">Not fetched yet${devApps?.problem ? "" : ": the controller looks at its release a while after it starts, then daily"}.</div>`}
       ${rest.length ? `<div class="sub dim">Also: ${rest.map(f => `<a href="${esc(f.url)}" download>${esc(f.file)}</a>`).join(", ")}</div>` : ""}
     </div>
     <div class="actbar">${first ? `<a class="btn primary" href="${esc(first.url)}" download title="${esc(first.file)} · sha256 ${esc(first.sha256.slice(0, 12))}…">Download</a>`
@@ -78,7 +78,8 @@ function renderDevicesInto(i){
   const mine = profile.devices || [];
   d.setBar(`<span class="barfacts">controller ${esc(devApps.version || "unstamped")} · ${mine.length} device${mine.length === 1 ? "" : "s"}</span>`);
   d.list.innerHTML = docSection("devices", "apps", "Apps", String(offered.length || ""),
-      offered.length ? offered.map(devAppRow).join("")
+      offered.length ? (devApps.problem ? `<div class="field"><div class="notice warn">The controller's last look at its release did not work: ${
+          esc(devApps.problem)}</div></div>` : "") + offered.map(devAppRow).join("")
         : `<div class="empty">This controller offers no apps: an administrator picks them on the Controller page, under Apps.</div>`)
     + docSection("devices", "mine", "Signed in as you", String(mine.length || ""), profileDevices(mine));
   wireSections(d.list);
