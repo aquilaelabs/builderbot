@@ -15,3 +15,4 @@
 - A page's screenshot taken with no file named goes to the project's dist/shot and is listed and swept with the other captures (6404f8b)
 - bb devapp probe finds a dev instance's port from what its containers publish when the compose file sets the port from the environment (6404f8b)
 - A session's git config user.name and user.email name the author from your Profile, the same one its commits carry (6404f8b)
+- A session's own isolated agents no longer hold its project's sync behind: Claude Code's .claude/worktrees is left out of sync, so bb git push is not refused while they exist (B68) (abbd90d)
