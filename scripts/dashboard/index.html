@@ -570,7 +570,6 @@ header>button{min-height:var(--tap);min-width:var(--tap)}
 .spacer{flex:1}
 .meta{color:var(--dim);font:12px/1.4 var(--mono);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
-@media(max-width:600px){ .meta.host{display:none} }
 /* Making the header fit, which it did not: measured at 320px it wanted 369px
    of a 320px viewport and overflowed by 57, and the uptime: the only item
    here that shrinks, because .meta clips: was squeezed to nothing on the way.
@@ -3797,7 +3796,6 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 /* Vertical only: the shorthand wiped the band's horizontal inset, which is
    the one rule uniform.mjs measures across every tab. */
 .nodestab .ndrow{padding-top:10px;padding-bottom:10px}
-.nodestab .ndconfbody{gap:10px}
 /* Resource meters. A number in a sentence cannot be glanced at; a bar can,
    and pressure picks the color so a filling disk is what the eye finds. */
 .ndmeters{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
@@ -4191,7 +4189,6 @@ button[aria-busy="true"]{opacity:.75}
   .nodestab .ndrow>.grow{margin:12px 0 0;padding:var(--row-y) var(--row-x);background:var(--panel);
     border:var(--hair) solid var(--line);border-radius:var(--r-surface)}
   .nodestab .ndrow>.ndsections{margin:0;width:100%}
-  .nodestab .ndrow>.ndsections>.ndconf,.nodestab .ndrow>.ndsections>.ndconf>.ndconfbody{margin:0;padding:0;border:0;background:none}
   .nodestab .ndrow>.ndsections>details.sect,
   .nodestab .ndrow>.ndsections>.ndconf>.ndconfbody>details.sect{margin:12px 0 0;background:var(--panel);
     border:var(--hair) solid var(--line);border-radius:var(--r-surface);overflow:hidden}
