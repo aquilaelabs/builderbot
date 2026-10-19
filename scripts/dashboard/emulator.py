@@ -250,7 +250,7 @@ def payload(nid):
             "addable": [x for x in c["rows"] if x["id"] not in here],
             "flavors": c["flavors"],
             "loading": bool(c["loading"]),
-            # An agent too old to report its images is not a node with none.
+            # A node that has not reported its images is not a node with none.
             "known": "images" in rep,
             "missing": missing(n),
             # The levels this node's projects compile against with no image

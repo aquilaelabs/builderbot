@@ -123,16 +123,9 @@ class Ftp(unittest.TestCase):
         ftp.report("n1", [{"project": "alpha", "up": False, "why": "the ftp toolchain is not installed", "port": 2121}])
         self.assertIn("not installed", ftp.view("alpha", True)["status"]["why"])
 
-    def test_a_node_whose_agent_predates_it_is_said_not_waited_on(self):
+    def test_a_node_that_has_not_said_is_waited_on(self):
         ftp.save("alpha", {"on": True}, "boss")
-        ftp.node_agent = lambda nid: "0.7.140"
-        self.addCleanup(setattr, ftp, "node_agent", None)
-        st = ftp.view("alpha", True)["status"]
-        self.assertFalse(st["up"])
-        self.assertIn("0.7.140", st["why"])
-        self.assertIn("Update agent", st["why"])
-        ftp.node_agent = lambda nid: "0.7.141"
-        self.assertEqual(ftp.view("alpha", True)["status"], {}, "a new enough agent is waited on")
+        self.assertEqual(ftp.view("alpha", True)["status"], {})
 
     def test_a_node_without_the_toolchain_says_so_before_anything_is_tried(self):
         ftp.node_info = lambda nid: {"name": "box", "addr": "", "has_ftp": False}

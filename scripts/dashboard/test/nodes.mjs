@@ -867,9 +867,9 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ census: { ...CENSUS, services: svc },
                            version: shipped.version, digest: shipped.digest }) });
-  // A runner with no slot of its own joins the record's one runner rather
-  // than making a second row.
-  await runnerCensus({ runners: [{ installed: true, active: false, busy: false,
+  // A runner the census reports under the record's slot is that record's
+  // row rather than a second one.
+  await runnerCensus({ runners: [{ slot: GH, installed: true, active: false, busy: false,
                                    name: '', labels: ['builderbot', 'shed'] }] });
   await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
   await page.waitForFunction(sel => /not listening/.test(
@@ -1967,13 +1967,14 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     ok((await page.$$eval('.emutab .tiles .tile .tl', ls => ls.map(l => l.textContent.trim()))).includes('images'),
        'the Emulator page opens on tiles: images held and the AVDs built on them');
 
-    // An agent too old to report the field at all is not a node with no
-    // images: the tab would otherwise say "no image" for a node never asked.
+    // A census without the field (a node that has not reported it) is not a
+    // node with no images: the tab would otherwise say "no image" for a node
+    // never asked.
     const noField = { ...ANDROID }; delete noField.images;
     await hello(noField);
     const old = await emuApi();
     ok(old.known === false && old.images.length === 0,
-       `an agent that does not report images says so, rather than reporting none (${old.known})`);
+       `a node that has not reported images says so, rather than reporting none (${old.known})`);
     await runnerCensus({});     // put the fixture's census back
     await page.evaluate(() => { const t = tabs.find(t => t.kind === 'emulator'); if (t) dropTab(t.id); });
   }
@@ -3080,7 +3081,7 @@ ok(page.errors.length === 0,
     ok(words[0] === 'sound: none: no sound card and no sound server'
        && words[1] === 'sound: HDA Intel PCH through pipewire'
        && /Dummy \(virtual\), with no sound server/.test(words[2]) && words[3] === '',
-       `the row says the sound in words, and nothing for an agent too old to say (${words.join(' | ')})`);
+       `the row says the sound in words, and nothing for a node that has not said (${words.join(' | ')})`);
   }
   // The NVIDIA driver as a row of the Toolchains tab (R102): a row like the
   // store's, ticked into the same Install selected and asked by the same
@@ -3099,11 +3100,9 @@ ok(page.errors.length === 0,
                              version: shipped.version, digest: shipped.digest }) });
     const rowOf = async id => ((await napi(`/api/toolchains?node=${id}`)).machine || [])[0];
     const cancel = async r => { if (r?.job) await napi('/api/v1/jobs', { action: 'cancel', id: r.job }); };
-    await hello(shed, { sandbox: true, gpu_card: card });
-    let r = await rowOf(shed.id);
-    ok(r?.state === 'unknown' && r.managed === true, `an agent that does not report the driver reads as unknown (${r?.state})`);
-    const early = await napi('/api/toolchains', { action: 'install', names: ['nvidia-driver'], node: shed.id });
-    ok(/update it on the Nodes page/.test(early.error || ''), `...and an install waits for the agent's update (${early.error})`);
+    await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: { ...apt, installed: '', loaded: '', bound: 'nouveau' } });
+    const r = await rowOf(shed.id);
+    ok(r?.managed === true, `a sandbox's driver row is BuilderBot's to install (${r?.managed})`);
     const seen = [];
     for (const [gd, want] of [
       [{ installed: '', loaded: '', bound: 'nouveau' }, 'absent'],
@@ -3203,11 +3202,6 @@ ok(page.errors.length === 0,
       const on = { ...apt, installed: '595.91.07', loaded: '595.91.07', bound: 'nvidia',
         package: 'nvidia-driver-595', pkg_version: '595.91.07-0ubuntu1', candidate: '595.91.07-0ubuntu1' };
       const none = { installed: '', candidate: '', runtime: false };
-      await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: on });
-      const old = await kitOf(shed.id);
-      const kearly = await napi('/api/toolchains', { action: 'install', names: [KIT], node: shed.id });
-      ok(old?.state === 'unknown' && /update it on the Nodes page/.test(kearly.error || ''),
-         `an agent that does not report the container toolkit reads as unknown, and an install waits for its update (${old?.state}; ${kearly.error})`);
       await hello(shed, { sandbox: true, gpu_card: card, gpu_driver: absent, gpu_container: none });
       const lone = await napi('/api/toolchains', { action: 'install', names: [KIT], node: shed.id });
       ok(/tick the driver as well/.test(lone.error || ''), `without the driver the toolkit alone is refused, saying what to tick (${lone.error})`);

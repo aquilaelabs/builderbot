@@ -25,12 +25,7 @@ users = None
 audit = None
 project_node = None          # project -> its primary node id, "" for none
 ask_hello = None             # node id -> the agent is told now, not in ten minutes
-node_agent = None            # node id -> the version its agent runs, "" when unknown
 node_info = None             # node id -> {"name", "addr", "has_ftp": True|False|None}
-
-# The first agent that runs bb-ftpd (FtpServers). One older takes hello's
-# list and does nothing with it, so the section says so rather than waiting.
-FTP_AGENT = (0, 7, 141)
 
 ACCESS = ("r", "rw")
 PORT_MIN, PORT_MAX = 1024, 65535
@@ -52,11 +47,10 @@ FAIL_WINDOW_S = 300
 FAIL_LIMIT = 10
 
 
-def configure(*, state, workspace, write_json, users, audit, project_node, ask_hello=None, node_agent=None,
-              node_info=None):
+def configure(*, state, workspace, write_json, users, audit, project_node, ask_hello=None, node_info=None):
     globals().update(FILE=Path(state) / "ftp.json", WORKSPACE=Path(workspace), write_json=write_json,
                      users=users, audit=audit, project_node=project_node, ask_hello=ask_hello,
-                     node_agent=node_agent, node_info=node_info)
+                     node_info=node_info)
 
 
 def _node(node):
@@ -102,18 +96,6 @@ def ports_taken(node, port):
     for t in ts:
         t.join(2)
     return sorted(p for p, v in got.items() if v)
-
-
-def _too_old(version):
-    """Why this agent version cannot run file access, or ""."""
-    try:
-        have = tuple(int(x) for x in str(version).split(".")[:3])
-    except ValueError:
-        return ""
-    if len(have) == 3 and have < FTP_AGENT:
-        return (f"its node's agent is {version}, and file access needs "
-                f"{'.'.join(map(str, FTP_AGENT))} or newer: Update agent on the Nodes page")
-    return ""
 
 
 def _load():
@@ -272,10 +254,9 @@ def view(project, may_set):
                        "role": u.get("role") or "user"})
     with _lock:
         st = dict((_status.get(node) or {}).get(project) or {})
-    # Nothing heard yet: an agent too old to run it never will be, and a
-    # node without the toolchain has nothing to run.
+    # Nothing heard yet: a node without the toolchain has nothing to run.
     if rec["on"] and not st and node:
-        why = (_too_old(node_agent(node) or "") if node_agent else "") or missing_why(node)
+        why = missing_why(node)
         if why:
             st = {"up": False, "why": why}
     return {"missing": missing_why(node), "on": rec["on"], "editor": rec["editor"],

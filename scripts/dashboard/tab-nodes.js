@@ -316,11 +316,9 @@ function nodeRunnerSection(n, c, between = ""){
   // One runner per git host on a node (R53): the record's asks and the
   // census's reports, joined by slot, each a row with its own state and
   // buttons; the addbar at the top takes a new one, host, address and
-  // token, the way every view adds. A runner the census reports under no
-  // slot (an agent from before the list) joins the record's only entry.
+  // token, the way every view adds.
   const recs = n.services?.runners || {};
-  const reps = (n.reported?.services?.runners || []).map(r =>
-    r.slot || Object.keys(recs).length !== 1 ? r : {...r, slot: Object.keys(recs)[0]});
+  const reps = n.reported?.services?.runners || [];
   // Runner by runner (R260): one this account may not read is left out, one
   // it may only read keeps its row with its buttons dead and why.
   const mayOn = slot => n.runner_may ? (n.runner_may[slot] ?? "write") : "write";
@@ -650,16 +648,15 @@ function nodeSessionsSection(n){
   if (host){
     [status, cls] = ["hosting only", "ok"];
   } else if (!se || typeof se !== "object"){
-    [status, cls] = ["agent too old", "warn"];
-    notes.push(["Update the agent: this one is too old to run sessions.", "warn"]);
+    [status, cls] = ["not reported", "warn"];
+    notes.push(["The node has not said yet whether it runs sessions.", "warn"]);
   } else if (!se.up){
     [status, cls] = ["none", "warn"];
     notes.push([`${se.why || "no session account: provision it with --session-user"}. No Claude session can start here until it is up.`, "warn"]);
   } else {
     const shared = !!iso && !iso.sessions;
-    if (!se.boot) notes.push(["the agent reports no boot id: Update agent", "bad"]);
-    if (!iso) notes.push(["Update the agent to know whether sessions here see only their own project.", "dim"]);
-    else if (shared) notes.push([`Sessions here can read each other's projects: ${iso.why || "this machine cannot build a session's view"}.`, "warn"]);
+    if (!se.boot) notes.push(["the agent could not read this machine's boot id, which a terminal here is checked against", "bad"]);
+    if (shared) notes.push([`Sessions here can read each other's projects: ${iso.why || "this machine cannot build a session's view"}.`, "warn"]);
     [status, cls] = !se.boot ? ["blocked", "bad"]
       : [`${list.length ? `${list.length} open` : "ready"}${shared ? ", not isolated" : ""}`, shared ? "warn" : "ok"];
   }
@@ -771,7 +768,7 @@ function nodeContainerNetRow(n){
   }
   const ct = n.reported?.session_net?.ctr;
   const line = !on ? ""
-    : !ct ? `<div class="sub warn">Update the agent: this one cannot keep a project's containers to their own network.</div>`
+    : !ct ? `<div class="sub dim">The node has not reported it yet.</div>`
     : !ct.can ? `<div class="sub bad">Not in force: ${esc(ct.why || "this node cannot do it")}.</div>`
     : ct.error ? `<div class="sub bad">Not in force: ${esc(ct.error)}.</div>`
     : ct.active ? `<div class="sub">In force on ${ct.bridges} compose network${ct.bridges === 1 ? "" : "s"}: a container reaches its own project's containers, the ones its project reads, and the internet; not another project's by this node's address.</div>`
@@ -793,7 +790,7 @@ function nodePortsLocalRow(n){
     c.draft.portsLocal = on; c.draft.portsFrom = on;
   }
   const ip = n.reported?.docker_ip;
-  const line = ip === undefined ? `<div class="sub warn">Update the agent: this one does not say what docker binds published ports to.</div>`
+  const line = ip === undefined ? `<div class="sub dim">The node has not reported what docker binds published ports to yet.</div>`
     : on && ip === "127.0.0.1" ? `<div class="sub">In force: a published port binds to 127.0.0.1 unless its compose names an address, so only this node's nginx and its tunnel reach it.</div>`
     : on ? `<div class="sub dim">Setting it up: the agent writes docker's daemon.json and restarts docker once.</div>`
     : ip === "127.0.0.1" ? `<div class="sub dim">Off, and docker still binds to 127.0.0.1 until the agent puts it back.</div>`
@@ -823,7 +820,7 @@ function nodeSessNetRow(n){
   const sn = n.reported?.session_net || {};
   const told = Object.keys(sn).length > 0;
   const line = !told
-      ? (on ? `<div class="sub warn">Update the agent: this one cannot keep a session to its own project's network.</div>` : "")
+      ? (on ? `<div class="sub dim">The node has not reported it yet.</div>` : "")
     : on && !sn.can ? `<div class="sub bad">Not in force: ${esc(sn.why || "this node cannot do it")}.</div>`
     : on && sn.error ? `<div class="sub bad">Not in force, so no session starts here until it is: ${esc(sn.error)}.</div>`
     : on && sn.active ? `<div class="sub">Sessions started here reach the internet, the controller and their own project's containers at this node's address, and nothing else.</div>`
@@ -956,9 +953,8 @@ function nodeStale(n){
 }
 
 // The window a version promises: "0.4" of "0.4.27", empty for anything that
-// is not WINDOW.BUILD. Empty means "cannot say" and is never read as a
-// mismatch: an agent built before the window existed is behind for the
-// ordinary reason and does not need a louder claim invented about it.
+// is not WINDOW.BUILD (a node that has not said hello yet). Empty means
+// "cannot say" and is never read as a mismatch.
 const agentWindow = v => (/^(\d+\.\d+)\./.exec(String(v || "")) || [])[1] || "";
 const short = d => String(d || "").split(":").pop().slice(0, 8) || "?";
 
@@ -1037,8 +1033,7 @@ function nodeDrift(n){
   }else if (rn.addresses?.length){
     network = "unknown";      // dhcp: the census cannot say how it was addressed
   }
-  // Static routes, in either mode, against the ones the node reports (an
-  // agent from before 0.7.143 reports none, which reads as all to apply).
+  // Static routes, in either mode, against the ones the node reports.
   const have = new Set((rn.routes || []).map(r => `${r.to} ${r.via}`));
   const routes = (net.routes || []).filter(r => !have.has(`${r.to} ${r.via}`)).map(r => `route → ${r.to} via ${r.via}`);
   if (routes.length) network = [...(Array.isArray(network) ? network : []), ...routes];

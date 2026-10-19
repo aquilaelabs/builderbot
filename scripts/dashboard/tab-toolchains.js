@@ -306,8 +306,7 @@ function tcDriverLine(m){
     case "waiting": return `<span class="sub warn">installed; it takes the card when the machine restarts, which Reboot on the node's row does and which ends every session there.${nodesBtn}</span>`;
     case "update": return `<span class="sub warn">${esc(m.installed)} is installed and takes over from ${esc(m.loaded)} when the machine restarts.${nodesBtn}</span>`;
     case "leaving": return `<span class="sub warn">removed; it keeps the card until the machine restarts, when nouveau takes it back.${nodesBtn}</span>`;
-    case "loaded": return `<span class="sub where on">installed, and running the card</span>`;
-    default: return `<span class="sub warn">this node's agent does not report the driver yet: update it on the ${pageLink("nodes", "Nodes page")}.${nodesBtn}</span>`;
+    default: return `<span class="sub where on">installed, and running the card</span>`;
   }
 }
 // One option's words: the version first, since that is what is being
@@ -325,7 +324,7 @@ function tcDriverRow(m, busy, job){
   const ver = m.installed || m.loaded;
   const mine = !!(job && job.running && job.action !== "check" && job.current === TC_DRIVER);
   const doing = job && job.action === "remove" ? "removing" : "installing";
-  const may = m.managed && mayToolchains(tcNode) && m.state !== "unknown";
+  const may = m.managed && mayToolchains(tcNode);
   // A tick means "do something to this": install it where there is none,
   // update it where apt has a newer one. Installed and current, its box is
   // dead and ticked, as a toolchain's is.
@@ -366,21 +365,19 @@ function tcDriverRow(m, busy, job){
 // reloads its configuration for it; no container stops.
 const TC_TOOLKIT = "nvidia-container-toolkit";
 function tcToolkitLine(m){
-  const nodesBtn = ` ${pageLink("nodes", "Open the Nodes page")}`;
   switch (m.state){
     case "absent": return `<span class="sub where">not installed: a container here cannot reserve the card${
       m.driver ? "" : ". It needs the driver above: tick both, and the driver goes on first"}</span>`;
     case "unconfigured": return `<span class="sub warn">installed, but Docker here does not list the nvidia runtime: tick it and press Install selected, which configures Docker again</span>`;
-    case "ready": return m.driver_loaded
+    default: return m.driver_loaded
       ? `<span class="sub where on">installed: a compose file reserves the card with deploy.resources.reservations.devices (driver: nvidia)</span>`
       : `<span class="sub warn">installed; a container sees the card once the driver above is running it</span>`;
-    default: return `<span class="sub warn">this node's agent does not report the container toolkit yet: update it on the ${pageLink("nodes", "Nodes page")}.${nodesBtn}</span>`;
   }
 }
 function tcToolkitRow(m, busy, job){
   const mine = !!(job && job.running && job.action !== "check" && job.current === TC_TOOLKIT);
   const doing = job && job.action === "remove" ? "removing" : "installing";
-  const may = m.managed && mayToolchains(tcNode) && m.state !== "unknown";
+  const may = m.managed && mayToolchains(tcNode);
   // Ticked and dead where it is installed, current and known to Docker;
   // live where a tick has something to do (install, update, configure).
   const upToDate = !mine && m.state === "ready" && !m.newer;

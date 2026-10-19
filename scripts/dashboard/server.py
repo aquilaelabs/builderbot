@@ -1628,8 +1628,8 @@ def session_target(project, claude=False, node="", uid=""):
         # Without the node's boot the page would stamp this container's into
         # the tab, and bb-tty there would refuse every reconnect as a stale
         # tab (bug #56): a loop, not a session. Dead button, plain reason.
-        why = (f"{project}'s sessions run on {name}, whose agent is too old to report "
-               "its boot; use Update agent on its row on the Nodes page, then open this again")
+        why = (f"{project}'s sessions run on {name}, whose agent could not read that machine's "
+               "boot, which a session's terminal there is checked against")
     else:
         return {"where": "node", "id": nid, "name": name, "host": nodes.route_host(nid),
                 "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0),
@@ -1676,9 +1676,10 @@ def ctr_target(name, instance):
                "its next check-in, asked for now, so try again in a minute")
     elif not se.get("ctr_port"):
         # The container terminal is the agent's third ttyd, as the docker
-        # account; the session ones run as an account kept off docker.
+        # account; the session ones run as an account kept off docker, and
+        # it starts after them.
         why = (f"{nm} cannot open a container's shell: {se['ctr_why']}" if se.get("ctr_why")
-               else f"{nm}'s agent is from before a container's shell: Update agent on its row on the Nodes page")
+               else f"{nm} has not started its container terminal yet; try again in a minute")
     else:
         # Both ports the container terminal's: it has no read-only twin,
         # and an account without a shell was refused before this.
@@ -3676,7 +3677,6 @@ ftp.configure(state=STATE, workspace=WORKSPACE, write_json=write_json, users=use
               audit=lambda who, act, target, params: db.audit(who, act, target, params),
               project_node=lambda p: prefs.get(p)["node"] or "",
               ask_hello=lambda nid: None if NODES_OK else nodes.ask_hello(nid),
-              node_agent=lambda nid: "" if NODES_OK else ((nodes.node(nid) or {}).get("agent") or {}).get("version") or "",
               node_info=lambda nid: None if NODES_OK else _ftp_node(nid))
 nodes.ftp_for = ftp.for_node
 # The node's nginx container, for its log stream (R182): named only where the nginx tab put one.
@@ -6489,8 +6489,8 @@ class Handler(BaseHTTPRequestHandler):
         if auth.get("kind") == "node":
             why = nodes.host_refuses(auth["node"], verb, q.get("what", [""])[0] if verb == "download" else "")
             if why:
-                # Once an hour a node and verb: an agent from before the flag
-                # asks for its sync every half minute.
+                # Audited once an hour a node and verb, so a verb asked on a
+                # loop does not fill the log.
                 key = (auth["node"], verb)
                 if time.monotonic() - _host_refused_at.get(key, -3600) >= 3600:
                     _host_refused_at[key] = time.monotonic()

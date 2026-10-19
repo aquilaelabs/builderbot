@@ -286,11 +286,7 @@ def verb(name, auth, req, addr):
         # now from the root-only stash and never stored: the PAT stays
         # here, the hour-long token goes to the node that asked.
         kind = "remove" if field(req, "kind") == "remove" else "registration"
-        # An agent that predates slots names none: the node's one runner.
         slot = re.sub(r"[^a-z0-9.-]", "", field(req, "slot"))[:60]
-        if not slot:
-            only = list(nodes.runners_of(nodes.node(nid) or {}))
-            slot = only[0] if len(only) == 1 else ""
         r = runners.mint(kind, nid, slot, field(req, "runner_id"))
         db.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
         return _answer(r)

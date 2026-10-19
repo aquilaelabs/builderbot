@@ -46,8 +46,7 @@ def session_conf(state, user, net=False):
     """This machine's layout for bb-session: the session account and the
     stores whose other projects' parts a session's view leaves out, and,
     once the table is in place, that each session gets a network of its own
-    (R79). Off, the lines are not written at all, so an older bb-session
-    reads the file it always read."""
+    (R79). Off, the lines are not written at all."""
     stores = state.get("stores") or {}
     return (f"# Written by the BuilderBot agent (R35) for bb-session.\n"
             f"SESSION_USER={user}\n"

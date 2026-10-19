@@ -272,20 +272,19 @@ print(json.dumps({'file': os.path.isfile(target), 'mounts': len(calls), 'held': 
      `a file bound into a new home gets a file made to land on; a mount already gone is let go quietly and any other failure stops the view (${said})`);
 }
 {
-  // No TOOLCHAINS_STORE (an older agent's conf, before B157): no bundle bind at
-  // all, which leaves the store as it was rather than failing the view.
+  // An empty TOOLCHAINS_STORE (a node with no toolchain store): no bundle bind
+  // at all, which leaves the view as it was rather than failing it.
   const noStore = join(L, 'bb-session-nostore.conf');
   writeFileSync(noStore, [`SESSION_USER=${userInfo().username}`, `WORKSPACE=${ws}`, `HOME_ROOT=${homeRoot}`,
-    `DATA_STORE=${data}`, `ARTIFACTS_STORE=${art}`, `RUNNER_DIR=${runner}`, `HIDE=${devdata}`, 'STATE_DIR='].join('\n') + '\n', { mode: 0o644 });
+    `DATA_STORE=${data}`, `ARTIFACTS_STORE=${art}`, 'TOOLCHAINS_STORE=', `RUNNER_DIR=${runner}`, `HIDE=${devdata}`, 'STATE_DIR='].join('\n') + '\n', { mode: 0o644 });
   const g = (() => { try { return { code: 0, out: execFileSync(HELPER,
     ['plan', '--project', 'alpha', '--account', me, '--home', myHome, '--cwd', join(ws, '.worktrees', 'alpha', me)],
     { encoding: 'utf8', env: { ...process.env, BB_SESSION_CONF: noStore } }) };
   } catch (e) { return { code: e.status, out: `${e.stdout || ''}${e.stderr || ''}` }; } })();
   // No BUNDLE bind. The launcher's is planned either way: it is read off the
-  // home root, which every conf carries, so an older agent's node gets that
-  // half of B157 without being updated.
+  // home root, which every conf carries.
   ok(g.code === 0 && !JSON.parse(g.out).some(x => x[0] === 'bindro' && x[1].startsWith(pkg)),
-     '...and a conf without TOOLCHAINS_STORE (an agent from before B157) plans no bundle bind rather than failing');
+     '...and a conf with no TOOLCHAINS_STORE plans no bundle bind rather than failing');
   ok(JSON.parse(g.out).some(x => x[0] === 'bindro' && x[1] === `${STAGE}/base/.local/share/claude`),
      '...while the shared launcher is still made read-only there, since that is read off the home root');
 }

@@ -42,19 +42,17 @@ class SessionWatch:
     starting, ending, a Claude pane turning from waiting to working), so
     the dot beside a name on a project's row follows within seconds (the
     operator, 25 Sep). The heartbeat carries the same rows on its own turn,
-    every poll; this is the edge in between. A controller from before the
-    verb answers 404 once, and this goes quiet for the rest of the process."""
+    every poll; this is the edge in between."""
 
     def __init__(self, agent):
         self.agent = agent
         self.last = None
-        self.off = False
 
     def start(self):
         threading.Thread(target=self.run, name="sessions", daemon=True).start()
 
     def run(self):
-        while not self.off:
+        while True:
             try:
                 self.step()
             except Exception as e:                                # noqa: BLE001 (the loop must outlive one bad step; the journal has it)
@@ -70,10 +68,6 @@ class SessionWatch:
             return
         if self.last is not None:
             st, r = self.agent.ctl.call("sessions", {"sessions": rows}, timeout=15)
-            if st == 404:
-                self.off = True
-                log("sessions: this controller takes them on the heartbeat only")
-                return
             if st != 200:
                 return                      # said again on the next change
         self.last = key

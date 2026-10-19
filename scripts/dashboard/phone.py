@@ -265,8 +265,8 @@ DEV_TTL = 60.0
 
 def no_adb(nid):
     """True when the node's census says it carries no adb, so there is
-    nothing to probe. An agent too old to report toolchains is asked, as
-    it always was."""
+    nothing to probe. A node that has not reported its toolchains yet is
+    asked."""
     n = nodes.node(nid) if nodes is not None and nid else None
     tc = ((n or {}).get("reported") or {}).get("toolchains")
     if not isinstance(tc, dict):

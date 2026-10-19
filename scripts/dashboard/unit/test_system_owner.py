@@ -1,7 +1,7 @@
 """System, the owner of what BuilderBot deploys itself (R180): no project, so
 never a deleted one; given every compose project on its node by the
-containers' network map, with `all` for an agent that reads it; and set by
-the deployment alone, never through the owner picker."""
+containers' network map's `all`; and set by the deployment alone, never
+through the owner picker."""
 import os
 import sys
 import unittest
@@ -29,8 +29,8 @@ class SystemOwner(unittest.TestCase):
 
     def test_the_map_gives_system_everything_and_nobody_system(self):
         m = devapp.container_net_own("n1")
-        self.assertEqual(sorted(m["nginx-n1"]["to"]), sorted({"nginx-n1", "radarr", "alpha", "beta"}))
-        self.assertTrue(m["nginx-n1"].get("all"), "an agent that reads `all` adds what the controller never named")
+        self.assertEqual(m["nginx-n1"]["to"], ["nginx-n1"])
+        self.assertTrue(m["nginx-n1"].get("all"), "`all` reaches every compose project, the ones the controller never named included")
         self.assertEqual(sorted(m["alpha"]["to"]), ["alpha", "beta", "radarr"], "alpha reads beta, and nothing of System's")
         self.assertNotIn("all", m["alpha"])
 

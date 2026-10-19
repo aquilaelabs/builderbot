@@ -67,12 +67,6 @@ class ClaudeToolchain(unittest.TestCase):
         self.assertIsNone(toolchains.claude_row(n))
         self.assertEqual(claudecode.holds(), {})
 
-    def test_an_agent_too_old_to_say_holds_nothing(self):
-        n = node()
-        n["reported"]["session"].pop("claude")
-        self.use(n)
-        self.assertEqual(claudecode.holds(), {})
-
 
 if __name__ == "__main__":
     unittest.main()

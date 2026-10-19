@@ -184,7 +184,7 @@ def missing(n):
     """True when a node runs a session account and has measured no Claude
     Code for it: a session there has nothing to run."""
     se = (n.get("reported") or {}).get("session") or {}
-    return bool(se.get("up")) and "claude" in se and not installed(n)
+    return bool(se.get("up")) and not installed(n)
 
 
 def remove(principal, node_id):

@@ -168,8 +168,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         seconds that this node is still here: the census asks the slow
         questions, over a minute on a busy node, and with the work poll
         stopped for it the node read as not answering on every project row
-        (the operator, 7 Oct). A controller without the beat verb answers
-        404 and nothing else changes."""
+        (the operator, 7 Oct)."""
         done = threading.Event()
 
         def beat():
@@ -209,8 +208,8 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             self.controller_digest = (r.get("agent") or {}).get("digest") or ""
             # Where toolchains land, from the controller's catalog. Kept on the
             # record so a job started before the next hello still has it, and
-            # only replaced when the controller actually sends one: an older
-            # controller says nothing and this node keeps its built-in answer.
+            # only replaced when the controller has one: none (a catalog that
+            # did not open) leaves this node its built-in answer.
             lay = r.get("layout")
             if isinstance(lay, list) and lay and lay != self.state.get("layout"):
                 self.state["layout"] = lay
@@ -251,10 +250,8 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             self.keep_session_tokens(r.get("session_tokens") or [])
             # Whether each session here is kept to its own project's network,
             # and what each project owns here (R79), kept in node.json so it
-            # holds while the controller is down. Only replaced when the
-            # controller sends it: an older one says nothing.
-            # The FTPS servers for its projects' file access (R151); a
-            # controller from before them says nothing, and nothing runs.
+            # holds while the controller is down.
+            # The FTPS servers for its projects' file access (R151).
             ft = r.get("ftp")
             if isinstance(ft, list):
                 self.ftp.want(ft)
@@ -272,8 +269,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # hello rather than only when it moves: apply_ports_local writes
             # and restarts docker only when daemon.json differs, and an agent
             # that learned a second key (B666) met a switch already on and
-            # never wrote it (draconis, 11 Oct). An older controller says
-            # nothing and nothing changes.
+            # never wrote it (draconis, 11 Oct).
             # The journal kept across boots on a managed node (R185).
             self.keep_journal()
             # ...and the files the node writes itself kept to their size.

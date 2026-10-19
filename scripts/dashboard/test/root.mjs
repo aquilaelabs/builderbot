@@ -248,8 +248,8 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
   ok(!/runner\.log/.test(argv),
      '...not from a runner.log that a node with a service never writes');
 
-  // No unit: an agent too old to report the field, or a node with no systemd
-  // running run.sh in the foreground. The file, exactly as before.
+  // No unit: a node with no systemd running run.sh in the foreground. The
+  // file under its data store.
   ok(await census(''), 'a node whose runner is not a service reports no unit');
   r = await readLog('runner');
   argv = await ranArgv(r);

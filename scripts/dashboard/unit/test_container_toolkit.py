@@ -93,7 +93,6 @@ class Row(unittest.TestCase):
         self.assertIsNone(self.row({}, docker=""))
 
     def test_each_state(self):
-        self.assertEqual(self.row()["state"], "unknown")
         self.assertEqual(self.row({"installed": "", "candidate": "", "runtime": False})["state"], "absent")
         self.assertEqual(self.row({"installed": "1.17.8-1", "runtime": False})["state"], "unconfigured")
         self.assertEqual(self.row({"installed": "1.17.8-1", "runtime": True})["state"], "ready")
@@ -131,7 +130,7 @@ class JobName(unittest.TestCase):
         self.assertEqual(self.ask(node({"installed": "1.17.8-1", "runtime": True}, driver=ABSENT), "remove")[1], "")
 
     def test_refusals(self):
-        for n in (node(self.OFF, sandbox=False), node(self.OFF, lock=True), node(), node(self.OFF, docker=""),
+        for n in (node(self.OFF, sandbox=False), node(self.OFF, lock=True), node(self.OFF, docker=""),
                   node(self.OFF, card="")):
             name, why = self.ask(n)
             self.assertEqual(name, "")
@@ -182,7 +181,6 @@ class Why(unittest.TestCase):
         self.assertIn("no node", toolchains.container_why(None))
         self.assertIn("no NVIDIA card", toolchains.container_why(node(self.ON, card="")))
         self.assertIn("no Docker", toolchains.container_why(node(self.ON, docker="")))
-        self.assertIn("update it", toolchains.container_why(node()))
         self.assertIn("Toolchains page", toolchains.container_why(node({"installed": "", "runtime": False})))
         self.assertIn("runtime", toolchains.container_why(node({"installed": "1.17.8-1", "runtime": False})))
         self.assertIn("driver", toolchains.container_why(node(self.ON, driver={**ABSENT, "installed": "610.57.04"})))

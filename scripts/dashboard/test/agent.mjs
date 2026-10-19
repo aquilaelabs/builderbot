@@ -980,7 +980,7 @@ print(json.dumps({
          && /nameserver 192\.168\.1\.1\nsearch lan\n$/.test(sn.resolv),
          `a session's resolvers are the node's upstream ones, IPv4 and off the loopback, and none when the node names only its loopback (${JSON.stringify(sn.ns)})`);
       ok(/\nSESSION_NET=on\nSESSION_NET_CIDR=10\.231\.0\.0\/16\n$/.test(sn.on) && !/SESSION_NET/.test(sn.off),
-         '...the layout file says so only when it is on, and an older bb-session reads the file it always read');
+         '...the layout file says so only when it is on, and writes no line of it when off');
       ok(sn.ctrsys[1].some(p => p[0] === 'br-dddddddddddd' && p[1] === 'br-cccccccccccc')
          && sn.ctrsys[2].some(p => p[0] === 'br-dddddddddddd' && p[1] === 9000)
          && !sn.ctrsys[1].some(p => p[0] === 'br-aaaaaaaaaaaa' && p[1] === 'br-dddddddddddd'),

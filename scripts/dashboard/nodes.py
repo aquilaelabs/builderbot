@@ -1072,11 +1072,9 @@ def enroll(auth, census, addr, version="", digest="", user=""):
 def agent_window(version):
     """The compatibility window a version string promises: "0.4" of "0.4.27".
 
-    Empty for anything that is not WINDOW.BUILD, which includes every agent
-    built before the window existed. Empty means "cannot say", and every
-    caller reads it that way rather than guessing: an old agent is stale for
-    the ordinary reason (a different digest) and does not need a second,
-    louder claim made up about it.
+    Empty for anything that is not WINDOW.BUILD (a node that has not said
+    hello yet, or the suite's stub, which says "harness"). Empty means
+    "cannot say", and every caller reads it that way rather than guessing.
     """
     m = re.match(r"^(\d+\.\d+)\.", str(version or ""))
     return m.group(1) if m else ""
@@ -1171,9 +1169,9 @@ def _census(c):
         out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
                              for k in ("top", "android", "incomplete", "roots")}
         # ...and the versions under android's families (B712), kept only
-        # when the agent lists them (0.7.190 on): the Toolchains tab reads a
-        # version a project pins against this, and an agent that cannot say
-        # must not read as a store that lacks it.
+        # when the agent lists them (a node with a toolchain store): the
+        # Toolchains tab reads a version a project pins against this, and a
+        # node that cannot say must not read as a store that lacks it.
         if isinstance(sd.get("versions"), dict):
             out["store_dirs"]["versions"] = {
                 str(k)[:20]: [str(x)[:60] for x in (v or [])[:64]]
@@ -1213,7 +1211,7 @@ def _census(c):
             out[k] = str(c[k])[:200]
     # Where the NVIDIA driver stands (R102): installed for this kernel,
     # loaded now, and which driver has the card, for the Toolchains tab's
-    # driver row. Absent from an agent too old to say, which the row names.
+    # driver row.
     gd = c.get("gpu_driver")
     if c.get("gpu_card") and isinstance(gd, dict):
         clean = lambda v, n=60: re.sub(r"[^A-Za-z0-9._~+:-]", "", str(v or ""))[:n]  # noqa: E731
@@ -1233,7 +1231,7 @@ def _census(c):
         out["gpu_container"] = {"installed": ver(gc.get("installed")), "candidate": ver(gc.get("candidate")),
                                 "runtime": bool(gc.get("runtime"))}
     # The sound it has (R107): ALSA's cards, real and virtual apart, and the
-    # sound server installed. Absent from an agent too old to say.
+    # sound server installed.
     snd = c.get("sound")
     if isinstance(snd, dict):
         word = lambda v: re.sub(r"[^A-Za-z0-9 ._()/:+-]", "", str(v or ""))[:80]  # noqa: E731
@@ -1244,16 +1242,16 @@ def _census(c):
     # root.
     out["administers"] = bool(c.get("administers"))
     # Whether a session there sees only its own project (R35), in the
-    # helper's own answer, and why not. An agent from before it reports
-    # nothing, which the row says as unknown rather than as a no.
+    # helper's own answer, and why not. Absent until the node has said,
+    # which the row says as unknown rather than as a no.
     iso = c.get("isolation")
     if isinstance(iso, dict):
         out["isolation"] = {"sessions": bool(iso.get("sessions")), "why": str(iso.get("why") or "")[:200]}
     # ...and whether each session there reaches only its own project's
     # containers (R79): whether the node can, why not, whether it is in
     # force, how many sessions have a network of their own, and what went
-    # wrong setting it up. Absent from an older agent, and empty before its
-    # first look, both of which the row reads as not told.
+    # wrong setting it up. Empty before its first look, which the row reads
+    # as not told.
     sn = c.get("session_net")
     if isinstance(sn, dict) and sn:
         out["session_net"] = {"can": bool(sn.get("can")), "why": str(sn.get("why") or "")[:200],
@@ -1334,7 +1332,7 @@ def _census(c):
             "installed": bool(ar.get("installed")), "active": bool(ar.get("active")),
             "busy": bool(ar.get("busy")), "name": str(ar.get("name") or "")[:80],
             "url": url,
-            "slot": re.sub(r"[^a-z0-9.-]", "", str(ar.get("slot") or ""))[:60] or runner_slot(url),
+            "slot": re.sub(r"[^a-z0-9.-]", "", str(ar.get("slot") or ""))[:60],
             # Which host's runner it is: GitHub's, or Gitea's act_runner.
             "forge": re.sub(r"[^a-z]", "", str(ar.get("forge") or ""))[:16],
             # The systemd unit its output goes to, when it has one: what the
@@ -1356,9 +1354,9 @@ def _census(c):
         "funnel": {str(k)[:6]: _mb(v) for k, v in list(fun.items())[:8]}}
     # The session half (roadmap #24): whether this node runs sessions, on
     # which ports, as which account, and whether /workspace, where its
-    # synced copy is, is there. Absent (not empty) from an agent too
-    # old to report it, so the row can tell "no sessions here" from "did not
-    # say"; the proxy relays a project's session to a node only on the
+    # synced copy is, is there. Absent (not empty) until the node has
+    # said, so the row can tell "no sessions here" from "did not say"; the
+    # proxy relays a project's session to a node only on the
     # strength of this.
     se = c.get("session")
     if isinstance(se, dict):
@@ -1366,8 +1364,8 @@ def _census(c):
             "up": bool(se.get("up")), "port": _mb(se.get("port")) or 0,
             "ro_port": _mb(se.get("ro_port")) or 0,
             # The container terminal (R218 step 4): the agent's third ttyd,
-            # as the docker account; 0 from an agent before it or one that
-            # could not start it, with why.
+            # as the docker account; 0 from one that could not start it,
+            # with why.
             "ctr_port": _mb(se.get("ctr_port")) or 0,
             "ctr_why": str(se.get("ctr_why") or "")[:120],
             "user": re.sub(r"[^A-Za-z0-9._-]", "", str(se.get("user") or ""))[:32],
@@ -1398,8 +1396,7 @@ def _census(c):
         "addresses": [str(a)[:64] for a in (net.get("addresses") or [])[:8]],
         "gateway": str(net.get("gateway") or "")[:64],
         "dns": [str(a)[:64] for a in (net.get("dns") or [])[:8]],
-        # Its static routes beside the default one (absent from an agent
-        # before 0.7.143, which reads as none reported).
+        # Its static routes beside the default one.
         "routes": [{"to": str(r.get("to") or "")[:64], "via": str(r.get("via") or "")[:64]}
                    for r in (net.get("routes") or [])[:32] if isinstance(r, dict)]}
     # The machine's own tools, as the agent detected them: its package
@@ -1612,8 +1609,8 @@ LOG_STREAMS = {
     # runs run.sh itself and redirects it into runner.log under the data
     # store. Reading the file unconditionally is what this did, so the answer
     # on every properly installed runner was "No such file or directory".
-    # `unit` picks the first; an agent too old to report one falls to the
-    # second, which is exactly what it used to do.
+    # `unit` picks the first; a runner with no unit (a node with no systemd)
+    # the second.
     "runner": {"what": "the CI runner's service log", "store": "data",
                "argv": ["tail", "-n", "{lines}", "{data}/runner.log"],
                "unit_argv": ["journalctl", "-u", "{unit}", "--no-pager",
@@ -2141,8 +2138,8 @@ def agent_gap(n):
     """True when this node's agent is from ANOTHER compatibility window than
     the one this controller ships: 0.3 against 0.4. Inside a window any
     agent works with any controller and being behind is routine; across one
-    that promise was never made. Empty windows (an agent from before the
-    window existed) are never read as a gap."""
+    that promise was never made. An empty window (a node that has not said
+    which agent it runs) is never read as a gap."""
     ours = agent_window(agent_file()["version"])
     theirs = agent_window((n.get("agent") or {}).get("version"))
     return bool(ours and theirs and ours != theirs)
@@ -2214,8 +2211,8 @@ def auto_update(nid):
     n = node(nid)
     if not n or n["kind"] != "agent" or not agent_stale(n):
         return None
-    # The same window, known on both sides: an agent from before the window
-    # existed (or a harness's) is never a gap, but it is no proof of one either.
+    # The same window, known on both sides: a version that names none (the
+    # suite's stub) is never a gap, but it is no proof of one either.
     mine = agent_window((n.get("agent") or {}).get("version") or "")
     if not mine or mine != agent_window(agent_file()["version"]):
         return None
@@ -2766,9 +2763,8 @@ def node_sync_clean(principal, node_id):
 
 
 # Set by server.py at boot, because toolchains.py imports this one and the
-# catalog is its business, not the registry's. Absent (an older controller,
-# or a store that did not open) simply means the node keeps its built-in
-# answer.
+# catalog is its business, not the registry's. Empty (a store that did not
+# open) simply means the node keeps its built-in answer.
 layout_of = lambda: []
 bundle_digest = lambda: ""
 idle_minutes = lambda: 0            # noqa: E731  (idle.minutes, injected by server.py)
@@ -2857,7 +2853,7 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
                "addr": addr, "last_seen": int(time.time()),
                })
     # Why an idle session's token was not refreshed here, said by the agent
-    # that tried (B419); an agent from before says nothing and keeps none.
+    # that tried (B419).
     kc = keep_clean(keep)
     if kc is not None:
         ag["keep"] = kc
@@ -3004,7 +3000,7 @@ def heartbeat(nid, sample, addr, running=0):
         with contextlib.suppress(TypeError, ValueError):
             clean[k] = round(float(s.get(k) or 0), 1)
     # The card's gauges only when the node has one answering: absent is
-    # "no GPU", which a zero would not say (0.7.125 on).
+    # "no GPU", which a zero would not say.
     for k in ("gpu_pct", "gpu_mem_used_mb", "gpu_mem_mb"):
         if k in s:
             with contextlib.suppress(TypeError, ValueError):
@@ -3067,8 +3063,8 @@ def heartbeat(nid, sample, addr, running=0):
     if isinstance(s.get("sessions"), list):
         rep["sessions"] = _session_rows(s["sessions"])
     # The sessions a controller outage held (R251), for the bell's "stopped
-    # by the update" once this answers again; whitelisted, and absent from
-    # an older agent's heartbeat, which keeps what was there.
+    # by the update" once this answers again; whitelisted, and a heartbeat
+    # without it keeps what was there.
     if isinstance(s.get("held"), list):
         rep["held"] = [{"project": re.sub(r"[^A-Za-z0-9._-]", "", str(h.get("project") or ""))[:100],
                         "uid": re.sub(r"[^A-Za-z0-9_]", "", str(h.get("uid") or ""))[:40],
@@ -3094,7 +3090,7 @@ def heartbeat(nid, sample, addr, running=0):
                              "freed": max(0, int(c.get("freed") or 0)),
                              "error": str(c.get("error") or "")[:300]}
     # The fingerprint of its containers: kept on the row, and a change of it
-    # moves the Containers page's token (an older agent sends none).
+    # moves the Containers page's token (a node with no docker sends none).
     dig = re.sub(r"[^0-9a-f]", "", str(s.get("ctr_digest") or ""))[:32]
     if dig and dig != rep.get("ctr_digest"):
         rep["ctr_digest"] = dig
@@ -3976,8 +3972,8 @@ def job_next(node_id, wait, runner="node", alive=None):
                               (node_id, int(time.time()), upd["id"]))
                         _jstate_bump()
                         # ...naming what the agent last said it holds that
-                        # this side has finished or dropped. An agent from
-                        # 0.7.136 passes over only those of them whose work
+                        # this side has finished or dropped. The agent
+                        # passes over only those of them whose work
                         # has ended and that are only posting their end, so a
                         # stuck job no longer blocks its own way out and a
                         # job still working is never left behind (B520).

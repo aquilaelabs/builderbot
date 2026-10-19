@@ -838,10 +838,9 @@ def _available_agent(n):
 
     The daemon's own id comes with them, from the same census. It is how two
     VMs wearing one address are told apart (adopt), and the census is the
-    only place it is read from: never `docker info` over ssh. An agent too old
-    to report it sends nothing, and a record with no id is judged on its
-    address alone, which is what every record written before the field is
-    judged on and is documented as safe.
+    only place it is read from: never `docker info` over ssh. A node whose
+    docker does not answer sends none, and a record with no id is judged on
+    its address alone, which is documented as safe.
     """
     if not n.get("live"):
         return {"on": False,
@@ -3404,14 +3403,10 @@ def container_net_own(node_id):
     out = {}
     for owner, comps in owned.items():
         to = set(comps)
-        if owner == SYSTEM:
-            # BuilderBot's own (R180): every compose project here, the ones
-            # named for an older agent and `all` for one that reads it,
-            # which covers a container nobody here knows of.
-            for other in owned.values():
-                to |= other
         for r in (reads_of(owner) if reads_of and owner != SYSTEM else []) or []:
             to |= owned.get(r, set())
+        # BuilderBot's own (R180) reaches every compose project here by
+        # `all`, which covers a container nobody here knows of.
         for c in comps:
             out[c] = {"owner": owner, "to": sorted(to)} | ({"all": True} if owner == SYSTEM else {})
     return dict(sorted(out.items()))

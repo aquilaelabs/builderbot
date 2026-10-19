@@ -61,14 +61,10 @@ const en = await call('/api/v1/agent/enroll', { census: { cpu: 2, mem_mb: 4096, 
   version: shipped.version, digest: shipped.digest, user: 'bb' }, bearer(minted.token));
 const beat = logins => call('/api/v1/agent/work', { sample: { cpu_pct: 1, logins }, running: 0, wait: 0 }, bearer(en.token));
 await beat([{ ...mine, email: '' }]);
-let prof = await call('/api/profile');
+const prof = await call('/api/profile');
 const here = (prof.plugins || []).find(n => n.name === 'plugbox');
 ok(here && here.plugins.length === 3 && here.plugins.some(p => p.id.startsWith('pyright-lsp') && p.enabled === false),
    `the heartbeat puts them on the account's profile, under the node's name (${here?.plugins.length} on ${here?.name})`);
-await beat([{ uid: owner, email: '' }]);
-prof = await call('/api/profile');
-ok((prof.plugins || []).some(n => n.name === 'plugbox'),
-   'an agent that does not send the field changes nothing');
 const store = () => JSON.parse(readFileSync(`${DIR}/state/claude-plugins.json`, 'utf8'));
 const at = store()[owner][minted.id].at;
 await sleep(1100);

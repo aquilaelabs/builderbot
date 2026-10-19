@@ -29,9 +29,6 @@ class DriverRow(unittest.TestCase):
     def test_no_card_is_no_row(self):
         self.assertIsNone(row(card=""))
 
-    def test_an_agent_that_does_not_report_the_driver(self):
-        self.assertEqual(row()["state"], "unknown")
-
     def test_each_state(self):
         self.assertEqual(self.state(bound="nouveau"), "absent")
         self.assertEqual(self.state("580.95.05", bound="nouveau"), "waiting")
@@ -108,7 +105,6 @@ class DriverName(unittest.TestCase):
                 (self.node(lock=True), "install", ""),
                 (self.node(), "install", "nvidia-driver-999"),
                 (self.node(installed="595.91.07", package="nvidia-driver-595"), "install", "nvidia-driver-610"),
-                ({"id": "n", "name": "x", "reported": {"gpu_card": CARD, "sandbox": True}}, "install", ""),
                 ({"id": "n", "name": "x", "reported": {"sandbox": True}}, "install", "")):
             name, why = toolchains._driver_name(n, act, pkg)
             self.assertEqual(name, "")

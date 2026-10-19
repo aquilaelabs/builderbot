@@ -581,7 +581,7 @@ class WorkMixin:
             return "failed", 78
         action = spec.get("action")
         ids = [re.sub(r"[^A-Za-z0-9;._-]", "", str(i or ""))
-               for i in (spec.get("images") or [spec.get("image")])][:20]
+               for i in (spec.get("images") or [])][:20]
         ids = [i for i in ids if i]
         if action not in ("add", "remove") or not ids:
             job.say("refused: an image job adds or removes named system images\n")

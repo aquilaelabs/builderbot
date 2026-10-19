@@ -232,7 +232,7 @@ function renderEmulatorInto(i){
     ${d.wrong_platform ? "" : emuSections((d.images || []).length
       ? `<div class="tcs">${d.images.map(im => emuRow(im, held)).join("")}</div>`
       : `<div class="tchead">${d.known === false
-          ? `${esc(d.name)}'s agent is too old to report its system images: update it from the ${pageLink("nodes", "Nodes page")}.`
+          ? `${esc(d.name)} has not reported its system images yet.`
           : `No image yet: ${esc(d.name)}'s emulator has nothing to boot.`}</div>`,
       (d.images || []).length ? `${d.images.length}` : "none",
       emuAddRows(d, held) + `<div class="hint tcterms">Adding an image accepts

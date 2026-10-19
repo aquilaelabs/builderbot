@@ -2122,7 +2122,7 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
     for (const t0 = Date.now(); Date.now() - t0 < 20000; await sleep(500))
       if ((await term(`ctr:ep.silon:main:${offered[0].ctr}`)).status === 502) break;
   }
-  // ...and an agent from before the container terminal says what to do.
+  // ...and a node whose container terminal is not up yet says so.
   {
     const extra = `${DIR}/sandboxdata/census-extra.json`;
     writeFileSync(extra, JSON.stringify({ session: { ctr_port: 0 } }));
@@ -2132,8 +2132,8 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
       if (old.status === 403) break;
     }
     rmSync(extra, { force: true });
-    ok(old?.status === 403 && /agent is from before a container's shell: Update agent on its row/.test(old.error),
-       `a node whose agent runs no container terminal says to update it (${(old?.error || '').slice(0, 80)})`);
+    ok(old?.status === 403 && /has not started its container terminal yet/.test(old.error),
+       `a node whose agent runs no container terminal yet says so (${(old?.error || '').slice(0, 80)})`);
     for (const t0 = Date.now(); Date.now() - t0 < 20000; await sleep(500))
       if ((await term(`ctr:ep.silon:main:${offered[0].ctr}`)).status === 502) break;
   }

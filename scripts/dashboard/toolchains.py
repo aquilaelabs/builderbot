@@ -1106,8 +1106,8 @@ def pin_held(pid, versions):
 def pin_rows(nid, rep):
     """The rows for what the projects on `nid` pin: one per package, naming
     the projects and files that pin it, installed by the store's listing.
-    Nothing from an agent that does not list versions (before 0.7.190):
-    absence it cannot report is not absence."""
+    Nothing from a node that lists no versions (one with no toolchain
+    store): absence it cannot report is not absence."""
     vers = ((rep.get("store_dirs") or {}).get("versions"))
     if not isinstance(vers, dict) or project_nodes is None or WORKSPACE is None:
         return []
@@ -1380,13 +1380,10 @@ def driver_row(n):
     card = rep.get("gpu_card")
     if not card:
         return None
-    gd = rep.get("gpu_driver")
-    known = isinstance(gd, dict)
-    gd = gd if known else {}
+    gd = rep.get("gpu_driver") if isinstance(rep.get("gpu_driver"), dict) else {}
     inst, loaded, bound = gd.get("installed") or "", gd.get("loaded") or "", gd.get("bound") or ""
     has = bound == "nvidia" or bool(loaded)
-    state = ("unknown" if not known
-             else "update" if has and inst and loaded and inst != loaded
+    state = ("update" if has and inst and loaded and inst != loaded
              else "loaded" if has and inst
              else "leaving" if has
              else "waiting" if inst
@@ -1796,13 +1793,10 @@ def container_row(n):
     rep = n.get("reported") or {}
     if not rep.get("gpu_card") or not rep.get("docker"):
         return None
-    gc = rep.get("gpu_container")
-    known = isinstance(gc, dict)
-    gc = gc if known else {}
+    gc = rep.get("gpu_container") if isinstance(rep.get("gpu_container"), dict) else {}
     inst, cand = gc.get("installed") or "", gc.get("candidate") or ""
     drv = driver_row(n) or {}
-    state = ("unknown" if not known
-             else "absent" if not inst
+    state = ("absent" if not inst
              else "ready" if gc.get("runtime")
              else "unconfigured")
     return {"name": TOOLKIT, "label": "NVIDIA container toolkit", "installed": inst,
@@ -1853,8 +1847,6 @@ def container_why(n):
         return f"{name} has no NVIDIA card"
     if not row:
         return f"{name} reports no Docker"
-    if row["state"] == "unknown":
-        return f"{name}'s agent does not report the NVIDIA container toolkit yet: update it on the Nodes page"
     if row["state"] == "absent":
         return (f"{name} has no NVIDIA container toolkit, which is what hands the card to a container: "
                 "an administrator installs it from that node's Toolchains page")
@@ -1868,8 +1860,8 @@ def container_why(n):
 
 def _machine_name(n, action, name, also):
     """(the name the job carries, error) for the container toolkit, by the
-    machine's own rules as the driver's are: a sandbox's, an agent that
-    reports it, not a locked node, and the driver there first (or in the
+    machine's own rules as the driver's are: a sandbox's, not a locked
+    node, and the driver there first (or in the
     same batch, which installs it first)."""
     row = container_row(n)
     if not row:
@@ -1877,8 +1869,6 @@ def _machine_name(n, action, name, also):
     if not row["managed"]:
         return "", (f"{n['name']} is its owner's machine, not a BuilderBot sandbox: the container toolkit "
                     "is installed or removed there, the way NVIDIA's guide does it")
-    if row["state"] == "unknown":
-        return "", f"{n['name']}'s agent does not report the container toolkit yet: update it on the Nodes page first"
     if (n.get("config") or {}).get("lock"):
         return "", f"{n['name']} is locked to its console: nothing on it is installed from here"
     if action == "install" and not row["driver"] and DRIVER not in also:
@@ -1891,16 +1881,13 @@ def _driver_name(n, action, pkg):
     """(the name the job carries for the driver, error): nvidia-driver, or
     nvidia-driver:PACKAGE for a branch picked on the row. The machine's own
     rules, said before anything is queued: a guest machine's driver is its
-    owner's, an agent that does not report the driver cannot be asked, a
-    branch is one apt offers there, and one branch at a time."""
+    owner's, a branch is one apt offers there, and one branch at a time."""
     row = driver_row(n)
     if not row:
         return "", f"{n['name']} reports no NVIDIA card"
     if not row["managed"]:
         return "", (f"{n['name']} is its owner's machine, not a BuilderBot sandbox: its driver is "
                     "installed or removed there, the way its distribution does it")
-    if row["state"] == "unknown":
-        return "", f"{n['name']}'s agent does not report the driver yet: update it on the Nodes page first"
     if (n.get("config") or {}).get("lock"):
         return "", f"{n['name']} is locked to its console: nothing on it is installed from here"
     if action != "install" or not pkg:

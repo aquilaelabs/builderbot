@@ -238,18 +238,18 @@ def _lay_path(store, entry, rel):
 
 def store_layout(state):
     """What the controller last told us about where toolchains land, or the
-    built-in answer for a controller too old to say.
+    built-in answer before it has said (the census a first hello carries)
+    or when its catalog did not open.
 
-    The fallback is deliberately the old tables: a node whose controller
-    predates this must keep working, and a node whose controller is newer
-    must follow it rather than a copy of its own that can drift.
+    The controller's answer wins whenever there is one: a node follows it
+    rather than a copy of its own that can drift.
     """
     got = state.get("layout")
     return got if isinstance(got, list) and got else BUILTIN_LAYOUT
 
 
-# The answer this agent shipped with, used only when the controller does not
-# send one. Kept short and honest: it is a fallback, not a second authority.
+# The answer this agent shipped with, used only when the controller has not
+# sent one. Kept short and honest: it is a fallback, not a second authority.
 BUILTIN_LAYOUT = [
     {"name": "jdk", "dir": "jdk", "bin": ["bin"], "env": {"JAVA_HOME": ""},
      "tool": "bin/java", "reports": "java"},
@@ -336,8 +336,8 @@ def store_dirs(state):
     # ...and the versions under android's versioned families (B712): what a
     # project pins (ndkVersion, buildToolsVersion, compileSdk) is a directory
     # here, one listdir each, and the controller says which pins this store
-    # lacks. The key is sent even when empty: its absence is an agent from
-    # before this, which the controller reads as "cannot say".
+    # lacks. The key is sent even when empty: it is absent only where there
+    # is no toolchain store, which the controller reads as "cannot say".
     vers = {}
     for sub in ("ndk", "build-tools", "platforms", "cmake"):
         d = os.path.join(store, "android", sub)

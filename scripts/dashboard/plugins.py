@@ -61,7 +61,6 @@ def _clean(rows):
 
 def report(node_id, rows):
     """What a node's `bb login --list` said about each account's plugins.
-    Rows without the field are an agent that does not say, and are left be.
     True when anything was written."""
     if not isinstance(rows, list):
         return False
@@ -69,7 +68,7 @@ def report(node_id, rows):
         d = _load()
         moved = False
         for r in rows[:64]:
-            if not isinstance(r, dict) or "plugins" not in r:
+            if not isinstance(r, dict):
                 continue
             uid = str(r.get("uid") or "")
             if not uid.startswith("u_") or len(uid) > 16:

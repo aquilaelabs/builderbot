@@ -2,8 +2,7 @@
 package beside it. Python runs a zip whose __main__.py is at its root as it
 runs a script, whatever the file is called, so a node keeps one file at one
 path, and its unit (python3 FILE run), its self-update (the body written over
-that file) and the provisioner's download are what they were when the agent
-was one file: an agent from before the split updates across it.
+that file) and the provisioner's download each deal in that one file.
 
 The bytes are the same for the same sources, so the digest a node compares
 is a digest of the sources: members sorted, a fixed timestamp, stored rather
