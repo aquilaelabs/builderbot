@@ -99,6 +99,9 @@ function openProjectsTab(){
 // What the search box narrows the grid to: a view, this browser's, never
 // saved. Matched against the name, the label, the branch and the node.
 let pjQuery = "";
+// The group chip in force, "" for All and "none" for the projects in no
+// group: a view for the page's life, as the Containers page's chips are.
+let pjChip = "";
 function projectMatches(p, q){
   if (!q) return true;
   const hay = [p.name, p.label, p.git, p.node_name, p.session_at].filter(Boolean).join(" ").toLowerCase();
@@ -157,7 +160,7 @@ function renderProjectsInto(i){
         <span class="sp"></span>
         <span class="actbar"><button type="button" id="bTrashTab" aria-label="the trash" title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button>
         <button type="button" class="primary" id="bNewProjTab" title="a fresh local repo, or a clone">New project</button></span>`);
-    d.list.innerHTML = `<div class="field pjjob" id="pjJob" hidden></div><div class="field pgridband"><div id="pjGrid"></div></div>`;
+    d.list.innerHTML = `<div class="field pjjob" id="pjJob" hidden></div><div id="pjChips"></div><div class="field pgridband"><div id="pjGrid"></div></div>`;
     el.querySelector("#bNewProjTab").onclick = openNewProject;
     el.querySelector("#bTrashTab").onclick = openTrash;
     const box = el.querySelector("#pjSearch");
@@ -186,7 +189,18 @@ function renderProjectsInto(i){
   // The ones in no group first, then each of this account's groups under
   // its name, by name (the operator, 18 Oct); and the archived ones apart,
   // folded at the foot, their own fold whatever group they were in.
-  const live = shown.filter(p => !p.locked), gone = shown.filter(p => p.locked);
+  // The chips count every project that is not archived, whatever the search
+  // says, so what the search hides is still counted (the chips rule); one
+  // in force narrows the grid to its group, and the archived fold is All's.
+  const all = ps.filter(p => !p.locked);
+  const chips = byProjectGroup(all).map(({group: g, list}) => ({key: g || "none", label: g || "No group", count: list.length}));
+  if (pjChip && !chips.some(c => c.key === pjChip)) pjChip = "";
+  const cb = el.querySelector("#pjChips");
+  if (paint(cb, chips.some(c => c.key !== "none") ? chipBar(chips, pjChip, "data-pjchip") : ""))
+    cb.querySelectorAll("[data-pjchip]").forEach(c => c.onclick = () =>
+      fadeThrough(".pane .doc.on .projtab #pjGrid > *", () => { pjChip = c.dataset.pjchip; renderProjectsInto(i); }));
+  const inChip = p => !pjChip || (pjChip === "none" ? !p.group : p.group === pjChip);
+  const live = shown.filter(p => !p.locked && inChip(p)), gone = pjChip ? [] : shown.filter(p => p.locked);
   const grid_ = list => `<div class="pgrid">${list.map(projectCard).join("")}</div>`;
   const html = byProjectGroup(live).map(({group: g, list}) => {
         if (!g) return grid_(list);
@@ -213,16 +227,20 @@ function renderProjectsInto(i){
 }
 
 // A group renamed in a box under its heading, for every project in it
-// (R273); Enter saves, Escape leaves it as it was.
+// (R273); Enter saves, Escape leaves it as it was. Delete group, last on
+// the box, takes the group away and its projects back to no group (the
+// operator, 19 Oct).
 async function renameProjectGroup(btn){
   const was = btn.dataset.pjgrename, head = btn.closest(".pjgname");
-  const got = await askInline(head, {label: `Rename ${was} to`, value: was, ok: "Rename"});
+  const got = await askInline(head, {label: `Rename ${was} to`, value: was, ok: "Rename",
+                                     also: {key: "delete", label: "Delete group"}});
   if (got === null || got === was) return;
+  const gone = got?.also === "delete";
   try{
-    const j = await (await postJSON("/api/project-group", {rename: was, to: got})).json();
+    const j = await (await postJSON("/api/project-group", gone ? {delete: was} : {rename: was, to: got})).json();
     if (j.error){ notify(j.error, true); return; }
     applyNow(x => { x.group = (j.groups || {})[x.name] || ""; });
-    notify(`${was} is now ${got}`);
+    notify(gone ? `${was} is gone: its projects are in no group` : `${was} is now ${got}`);
   }catch(e){ notify("group: " + e, true); }
   refresh();
 }

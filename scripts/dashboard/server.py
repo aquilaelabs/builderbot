@@ -8375,13 +8375,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def _project_group(self, req):
         """Put a project in one of this account's groups, take it out, or
-        rename a group (projects.set_group, rename_group): a label for the
-        Projects page, nothing more."""
+        rename a group (projects.set_group, rename_group), or delete one
+        (delete_group): a label for the Projects page, nothing more."""
         me = self._who() or {}
         if me.get("session"):
             return self._json({"error": "a session has no Projects page: the groups are a person's own"}, 403)
         if "rename" in req:
             return self._json(*projects.rename_group(users.uid_of(me), field(req, "rename"), field(req, "to")))
+        if "delete" in req:
+            return self._json(*projects.delete_group(users.uid_of(me), field(req, "delete")))
         name = field(req, "name")
         if name not in set(project_names(me)):
             return self._json({"error": f"unknown project: {name}"}, 400)

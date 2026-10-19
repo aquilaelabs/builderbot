@@ -1226,6 +1226,17 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   const g = await page.$eval('.doc .projtab .pjgroup[data-group="Clients"]', s => ({
     head: s.querySelector('.pjgname').textContent.replace(/\s+/g, ' ').trim(),
     cards: [...s.querySelectorAll('.pcard')].map(c => c.dataset.row) }));
+  // The groups as chips over the grid, as the Containers page's are (the
+  // operator, 19 Oct): All, No group and Clients, each counted; a chip
+  // narrows the grid to its group, and All brings the rest back.
+  const chips = await page.$$eval('.doc .projtab #pjChips [data-pjchip]', cs => cs.map(c => c.textContent.replace(/\s+/g, ' ').trim()));
+  await page.click('.doc .projtab #pjChips [data-pjchip="Clients"]');
+  await page.waitForFunction(() => !document.querySelector('.doc .projtab .pcard[data-row="gamma"]')
+    && document.querySelector('.doc .projtab .pcard[data-row="beta"]'), null, { timeout: 5000 });
+  await page.click('.doc .projtab #pjChips [data-pjchip=""]');
+  await page.waitForSelector('.doc .projtab .pcard[data-row="gamma"]', { timeout: 5000 });
+  ok(chips[0]?.startsWith('All') && chips.some(c => c.startsWith('No group')) && chips.includes('Clients 1'),
+     `the groups are chips over the grid, each counted, and one narrows it to its group (${chips.join(' | ')})`);
   await pjMenu('gamma');
   await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
   await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
@@ -1240,6 +1251,17 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   await page.waitForSelector('.doc .projtab .pjgroup[data-group="Customers"] .pcard[data-row="beta"]', { timeout: 15000 });
   ok(!(await page.$('.doc .projtab .pjgroup[data-group="Clients"]')),
      'the pencil beside a group\'s name renames the group, its projects with it');
+  // Delete group, last on the pencil's box, takes the group away and its
+  // projects back to no group (the operator, 19 Oct).
+  await page.click('.doc .projtab .pjgroup[data-group="Customers"] [data-pjgrename]');
+  await page.waitForSelector('.doc .projtab .pjgroup .askline [data-askalso]', { timeout: 5000 });
+  const last = await page.$eval('.doc .projtab .pjgroup .askline .askrow', r => r.lastElementChild.matches('[data-askalso].danger'));
+  await page.click('.doc .projtab .pjgroup .askline [data-askalso]');
+  await page.waitForFunction(() => !document.querySelector('.doc .projtab .pjgroup') &&
+    !!document.querySelector('.doc .projtab #pjGrid > .pgrid .pcard[data-row="beta"]'), null, { timeout: 15000 });
+  ok(last, "the pencil's box ends with Delete group, which takes the group away and its projects back to no group");
+  await group('beta', 'Clients');
+  await page.waitForSelector('.doc .projtab .pjgroup[data-group="Clients"] .pcard[data-row="beta"]', { timeout: 15000 });
   await group('beta', '');
   await page.waitForFunction(() => !document.querySelector('.doc .projtab .pjgroup') &&
     !!document.querySelector('.doc .projtab #pjGrid > .pgrid .pcard[data-row="beta"]'), null, { timeout: 15000 });

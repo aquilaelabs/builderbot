@@ -168,6 +168,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - An Apps page under Build: the Android app, the VS Code extension and the Windows companion to download, each with its version and how to connect it, fetched by the controller from its own release and checked; and the devices signed in as you as the last section of your Profile. The Controller page's Apps section picks which are offered, a seed file chooses before the first start, and an administrator sees and disconnects each account's devices on the Users page (0ef4ae0)
 - The Windows companion keeps itself current from its controller: a newer copy is fetched, checked and started the next time the app does (0ef4ae0)
 - A pencil beside a project group's name renames it, and Home's Projects at a glance is in groups as the Projects page is (0ef4ae0)
+- Projects' groups are chips over the grid, as on the Containers page: All, each group and No group, each counted, a chip narrowing the grid to its group; and a group's pencil box ends with Delete group, which takes the group away and its projects back to no group (986c79d)
 
 ### Changed
 

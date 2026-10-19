@@ -75,7 +75,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/v1/tty-grant` | exact | `_tty_grant` | Whose terminal a node's bb-tty is about to start, answered here (B166). |  |
 | POST | `/api/lock` | prefix | `_lock` | Lock or unlock a project: keep it, stop Claude running in it (projects.lock_verb). | refused: lock |
 | POST | `/api/project-pin` | prefix | `_project_pin` | Pin or unpin a project: whether the sidebar card shows it (projects.pin). |  |
-| POST | `/api/project-group` | prefix | `_project_group` | Put a project in one of this account's groups, take it out, or rename a group (projects.set_group, rename_group): a label for the Projects page, nothing more. |  |
+| POST | `/api/project-group` | prefix | `_project_group` | Put a project in one of this account's groups, take it out, or rename a group (projects.set_group, rename_group), or delete one (delete_group): a label for the Projects page, nothing more. |  |
 | POST | `/api/apps` | prefix | `_apps` | POST /api/apps: look at the release again now (apps.check_now). | refused: controller |
 | POST | `/api/pc` | prefix | `_pc` | POST /api/pc: a session's word with a PC lent to its project (pcwork.py, bb pc): lent (which PCs lend which verbs), run (ask one, under the project's Claude may: Use a lent PC) and result (an ask's answer, held a while). |  |
 | POST | `/api/project-color` | prefix | `_project_color` | Give a project one of the colors for this account alone, or none (projects.set_mark): worn by its card, its tabs and its bar. |  |

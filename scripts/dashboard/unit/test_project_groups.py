@@ -30,6 +30,15 @@ class Groups(unittest.TestCase):
         self.addCleanup(setattr, projects, "lock", projects.lock)
         projects.lock = threading.Lock()
 
+    def test_a_group_deleted_leaves_its_projects_in_none(self):
+        projects.set_group("u1", "alpha", "Clients")
+        projects.set_group("u1", "beta", "Games")
+        projects.set_group("u2", "alpha", "Clients")
+        got, st = projects.delete_group("u1", "Clients")
+        self.assertEqual((st, got["groups"]), (200, {"beta": "Games"}), "the group's projects are in no group")
+        self.assertEqual(projects.load_project_groups("u2"), {"alpha": "Clients"}, "another account's group stays")
+        self.assertEqual(projects.delete_group("u1", "Clients")[1], 400, "a group that is not there is said so")
+
     def test_set_listed_and_cleared(self):
         self.assertEqual(projects.set_group("u1", "alpha", "  Clients   one ")[1], 200)
         projects.set_group("u1", "beta", "Clients one")

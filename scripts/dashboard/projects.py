@@ -2106,6 +2106,24 @@ def rename_group(uid, old, new):
     return {"groups": mine}, 200
 
 
+def delete_group(uid, name):
+    """Take one of this account's groups away, its projects with no group
+    again (the operator, 19 Oct): nobody else's moves. (payload, status)."""
+    name = " ".join(str(name or "").split())
+    with lock:
+        d = _marks("group")
+        mine = _clean_marks(d.get(str(uid or "")))
+        if name not in mine.values():
+            return {"error": f"no group named {name}"}, 400
+        mine = {k: v for k, v in mine.items() if v != name}
+        d[str(uid or "")] = mine
+        try:
+            write_json(STATE / MARK_FILES["group"], d)
+        except OSError as e:
+            return {"error": f"could not save: {e}"}, 500
+    return {"groups": mine}, 200
+
+
 # ---------------------------------------------------------------------------
 # the locks
 
