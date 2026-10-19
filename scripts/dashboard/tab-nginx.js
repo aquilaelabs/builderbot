@@ -259,7 +259,11 @@ function nginxBody(n){
   if (!n.deployed) return nginxUndeployed(n);
   const d = nginxDraftOf(n);
   const count = (n.routes || []).length;
-  const pill = n.state?.running === false ? `<span class="pill warn">deployed, down</span>`
+  // Down only when nothing is bringing it back: a Save rebuilds it, and the
+  // read right after one caught it between down and up and said "down"
+  // while the build was on its way to running it (B65).
+  const pill = n.state?.job?.running ? `<span class="pill">deployed, rebuilding</span>`
+    : n.state?.running === false ? `<span class="pill warn">deployed, down</span>`
     : `<span class="pill ok">deployed</span>`;
   const sub = `nginx-${esc(n.container.replace(/^nginx-/, ""))} on the ${pageLink("docker", "Containers page")}, ${count} route${count === 1 ? "" : "s"}${n.host_only ? "; a hosting-only node" : ""}`;
   // The image it is pinned to, the newest line, and Update when behind

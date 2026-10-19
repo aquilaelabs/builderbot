@@ -531,10 +531,11 @@ function pOpen(mode){
     pKeys = j.keys || []; pPat = !!j.pat;
     pForges = j.forges || [];
     pForgeHosts = j.hosts || {};
+    pTakenDirs = new Set(j.dirs || []);
     if (!pForges.some(f => f.id === pForgeId)) pForgeId = (pForges[0] || {}).id || "";
     $("pKey").innerHTML = optionList([["", `none: ${pPat ? "use the configured access token" : "public repository"}`],
                                       ...pKeys.map(k => k.name)]);
-    pShowKey(); pDraw();
+    pShowKey(); pDraw(); pNameShow();
   });
 }
 
@@ -594,14 +595,35 @@ function pNameShow(){
   const shown = new Set((state?.projects || []).map(p => String(p.label || p.name).toLowerCase()));
   let as = eff, n = 2;
   while (as && shown.has(as.toLowerCase())) as = `${eff}-${n++}`;
+  // ...and the folder it gets, numbered when any project ever had it,
+  // deleted for good included, so a new one never inherits an old one's
+  // notebook or containers (R154). Said here, before Create, rather than
+  // found afterwards (B63). The list rides on this open's /api/pubkeys.
+  const base = pDirOf(typed);
+  let dir = base, k = 2;
+  while (dir && pTakenDirs.has(dir.toLowerCase())) dir = `${base}-${k++}`;
+  const numbered = !!dir && dir !== base && as === eff;
   const empty = !!raw && !eff;
   $("pName").classList.toggle("bad", empty);
   $("pNamePreview").classList.toggle("bad", empty);
-  $("pNamePreview").hidden = !empty && as === typed;
+  $("pNamePreview").hidden = !empty && as === typed && !numbered;
   $("pNamePreview").textContent = empty ? "A name needs at least one letter or digit in it"
     : as !== eff ? `${eff} is already a project's name, so this one is shown as ${as}`
+    : numbered ? `Shown as ${as}, in the folder ${dir}: a deleted project had ${base}, and its notebook and containers stay its own`
     : `Shown as ${as}: names follow GitHub's rule, letters, digits, - _ and . only`;
 }
+
+// The folder a typed name becomes, before any number: projects.sanitize_name
+// in this language (a leading dot, dash or underscore dropped, runs of
+// dashes one).
+function pDirOf(raw){
+  return String(raw || "").trim().replace(/[^A-Za-z0-9._-]/g, "-").replace(/-{2,}/g, "-")
+    .replace(/^[._-]+/, "").replace(/-+$/, "").slice(0, 100);
+}
+
+// The folders a new project may not have (registry.taken_dirs), lowercased,
+// from this open's /api/pubkeys.
+let pTakenDirs = new Set();
 
 // The repository's own name out of a clone URL: the same rule the server
 // falls back to when the name field is empty.

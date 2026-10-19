@@ -6114,9 +6114,12 @@ class Handler(BaseHTTPRequestHandler):
         # list of hosts, and it is drawn once from one answer. `hosts` is
         # what the operator has already said their own servers run, so the
         # clone form knows not to ask a question it has the answer to.
+        # ...and the directories a new project may not have, so the name
+        # field can say before Create when its folder will be numbered (B63).
         return self._json({"keys": agent_keys(), "pat": gh_authed(),
                            "forges": forges.catalog(),
-                           "hosts": forges.known()})
+                           "hosts": forges.known(),
+                           "dirs": registry.taken_dirs()})
 
     def _read_json(self):
         """The body, once. Read here rather than in each handler: doing it

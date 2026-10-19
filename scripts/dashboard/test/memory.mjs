@@ -471,6 +471,26 @@ ok(!!await page.$('.pane .nb'), 'Escape does not dismiss it; a tab is not a dial
 ok(await page.evaluate(() => tabOf(panes[0])?.kind === 'notebook'
      && /alpha/.test(document.querySelector('#pane0 .bar.proj .pname')?.textContent || '')),
    'it is the page on show, its header named for its project');
+// A notebook whose project this account no longer has (deleted) sends no
+// presence beat, which the server answers with a 400 on every poll (B65);
+// its project back, it beats again. Planted and read in one evaluate.
+{
+  const asked = await page.evaluate(async () => {
+    const was = state.projects, realFetch = window.fetch;
+    let n = 0;
+    window.fetch = (u, o) => { if (/\/api\/presence/.test(String(u))) n++; return realFetch(u, o); };
+    try{
+      state.projects = was.filter(p => p.name !== 'alpha');
+      notebooks.get('alpha').poll(state);
+      const gone = n;
+      state.projects = was;
+      notebooks.get('alpha').poll(state);
+      return [gone, n];
+    }finally{ window.fetch = realFetch; state.projects = was; }
+  });
+  ok(asked[0] === 0 && asked[1] === 1,
+     `a deleted project's notebook sends no presence beat, and one it has again does (${asked.join(' then ')})`);
+}
 await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'notebook').id));
 await nbGone(page);
 ok(true, '...and closing that tab puts it away');

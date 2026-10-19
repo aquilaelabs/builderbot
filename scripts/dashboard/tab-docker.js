@@ -121,6 +121,24 @@ function openDocker(){
   if (!dockerFetching) loadDocker();
 }
 
+// ...on one node: the one a container was just made on, or the one a bell
+// line names (B62). Without this the page opened on whichever node it last
+// showed, and the build that had just started was nowhere on it. Moving
+// the node swaps in that node's last answer at once, as the picker does,
+// and asks for it even with another node's answer still on its way, since
+// that answer is dropped on landing (asked !== dockerNode).
+function openDockerOn(node){
+  const moved = !!node && node !== dockerNode;
+  if (moved){
+    dockerNode = node;
+    dockerList = dockerSeen[node] || null;
+    dockerRev++;
+  }
+  openDocker();
+  dockerNodeKeep();
+  if (moved && dockerFetching) loadDocker();
+}
+
 // ...and remembered when it changes, which is the only moment it can be
 // written: the picker is the only thing that moves it deliberately.
 function dockerNodeKeep(){
@@ -368,7 +386,7 @@ function dnNodeSay(){
   const say = $("dnNodeHint"), field = $("dnNodeField");
   if (!set.length){
     field.hidden = false; $("dnNode").innerHTML = ""; $("dnNode").disabled = true;
-    say.textContent = whose + " has no node: set one in its settings first, and the container goes there.";
+    say.textContent = projLabel(whose) + " has no node: set one in its settings first, and the container goes there.";
     say.classList.add("bad");
     $("dnGo").disabled = true;
     return;
@@ -380,13 +398,14 @@ function dnNodeSay(){
                  () => { if (dnFor === project && !$("dnmodal").hidden) dnNodeSay(); });
   field.hidden = false;
   groupNodeOptions($("dnNode"), set, whose);
+  const called = projLabel(whose);
   const says = () => {
     const ship = !set.includes($("dnNode").value);
     say.textContent = ship
-      ? `Not one of ${whose}'s nodes: the image is built on ${whose}'s node and shipped there, so the codebase never goes to it; binds into the project's tree are refused, and ${whose}'s sessions can rebuild it.`
+      ? `Not one of ${called}'s nodes: the image is built on ${called}'s node and shipped there, so the codebase never goes to it; binds into the project's tree are refused, and ${called}'s sessions can rebuild it.`
       : set.length > 1
-        ? `One of ${whose}'s nodes, its primary unless picked; an instance stays where it was made.`
-        : `${whose}'s node, ${esc(row?.node_name || "")}: where its sessions can reach it.`;
+        ? `One of ${called}'s nodes, its primary unless picked; an instance stays where it was made.`
+        : `${called}'s node, ${row?.node_name || ""}: where its sessions can reach it.`;
   };
   $("dnNode").onchange = says;
   says();
@@ -637,12 +656,18 @@ async function dnSubmit(){
     const j = await r.json();
     if (j.error){ unbusy($("dnGo"), "Create");
                   return fail(j.error); }
+    // Where it went: the node picked, else its project's primary, which is
+    // what an instance with no node of its own follows (create_instance).
+    const whose = $("dnUnder").value || project;
+    const goes = ($("dnNodeField").hidden ? "" : $("dnNode").value)
+      || (state?.projects?.find(p => p.name === whose)?.prefs?.nodes || []).filter(Boolean)[0] || "";
     closeSendToDocker();
     // ...and build it. The manager lists what exists, so a container that was
     // only registered would not appear there: "send to" has to produce
     // something, or it sends you to a page that does not mention it. The
     // build carries the same confirmations pressing Build there would.
-    openDocker();
+    // On the node it goes to, not the one the page last showed (B62).
+    openDockerOn(goes);
     await dmAction(project, j.instance, "rebuild");
   }catch(e){ unbusy($("dnGo"), "Create");
              return fail("could not create it: " + e); }
@@ -986,6 +1011,31 @@ function dockerJob(){
   return j && (j.running || j.error) ? j : null;
 }
 
+// A job that has just ended, said on its row the moment the queue says so
+// (B65): the row kept "stopping..." and Abort for the seconds the whole
+// listing took to read again after its build had failed. Asked of the one
+// job when the devapp revision moves, and written into the answer on
+// screen, which the fresh listing then replaces. Read synchronously up to
+// its fetch, so the caller may drop dockerList right after calling it.
+async function dmJobSettle(){
+  const j = dockerList?.job;
+  if (!j?.running || !j.id) return;
+  let got;
+  try{ got = await (await fetch(`/api/v1/jobs?id=${encodeURIComponent(j.id)}`)).json(); }catch(e){ return; }
+  if (!got || got.id !== j.id || !j.running || !["succeeded", "failed", "canceled"].includes(got.state)) return;
+  Object.assign(j, {running: false, state: got.state, step: "", aborting: false,
+                    error: got.state === "succeeded" ? "" : (got.error || got.state)});
+  dockerRev++; drawPanes();
+}
+
+// What a confirm or a notice calls a container: the name its row shows,
+// else its project's shown name and the instance, never the project's
+// directory, which a name reused after a delete has numbered (B64).
+function dmCalled(project, instance){
+  const d = (dockerList?.instances || []).find(i => i.project === project && i.instance === instance);
+  return d?.name || `${projLabel(project)}/${instance}`;
+}
+
 // What the artifact row's buttons used to do, moved here with them. The
 // confirmations come with it: taking something down and handing a compose
 // file more than its own directory are both decisions, and moving a button
@@ -1032,9 +1082,9 @@ async function dmAction(project, instance, act, btn){
     const d = (dockerList?.instances || []).find(i => i.project === project && i.instance === instance);
     if (!confirm(`Update ${d?.name || project}?\n\nThe newer ${(d?.images_behind || []).join(", ")} is pulled and it starts again on it, so it is down for a moment.`)) return;
   }
-  if (act === "down" && !confirm(`Take ${project}/${instance} down?`)) return;
+  if (act === "down" && !confirm(`Take ${dmCalled(project, instance)} down?`)) return;
   if (act === "remove" && !confirm(
-      `Remove ${project}/${instance}?\n\n`
+      `Remove ${dmCalled(project, instance)}?\n\n`
       // Which of the two halves is actually going to happen. A row whose
       // daemon is not answering loses the down, and somebody removing one
       // should be told that before they press it rather than read it
@@ -1054,7 +1104,7 @@ async function dmAction(project, instance, act, btn){
       st = (await r.json()).state || {};
     }catch(e){ notify("could not read its state: " + e, true); return; }
     if ((st.problems || []).length){
-      notify(`${project}/${instance} will not work as written: `
+      notify(`${dmCalled(project, instance)} will not work as written: `
              + st.problems.join("; "), true);
       return;
     }
@@ -1071,8 +1121,8 @@ async function dmAction(project, instance, act, btn){
       return;
     }
     if (act === "rebuild" && !confirm(
-        (st.built_rev ? `Rebuild ${project}/${instance}?\n\nBuilds the image, then down and up. `
-                      : `Build ${project}/${instance}?\n\nBuilds the first image and brings it up. `)
+        (st.built_rev ? `Rebuild ${dmCalled(project, instance)}?\n\nBuilds the image, then down and up. `
+                      : `Build ${dmCalled(project, instance)}?\n\nBuilds the first image and brings it up. `)
         + "New env settings stop it before up; the Env editor keeps your old values in comments.")) return;
     if (!st.risks_ack){
       if (!confirm("This compose file asks for more than its own directory:"
@@ -1084,7 +1134,7 @@ async function dmAction(project, instance, act, btn){
     // operator, 17 Oct: the person knows what is actually being shipped):
     // named, and a yes is this press's; a no leaves it unbuilt.
     if ((st.beside_new || []).length){
-      if (!confirm(`${project}'s compose now runs ${st.beside_new.join(", ")} beside the app, which its last build did not ship.`
+      if (!confirm(`${projLabel(project)}'s compose now runs ${st.beside_new.join(", ")} beside the app, which its last build did not ship.`
           + "\n\nShip it with the app? If it is not part of the app, cancel and give it a container of its own with New container.")) return;
       beside = st.beside_digest || "";
     }
@@ -1340,7 +1390,7 @@ function cUnderPicked(){
   if (whose && !set.length){
     $("cNodeField").hidden = false; $("cNode").innerHTML = ""; $("cNode").disabled = true;
     hint.hidden = false; hint.classList.add("bad");
-    hint.textContent = whose + " has no node: set one in its settings first, and the container goes there.";
+    hint.textContent = projLabel(whose) + " has no node: set one in its settings first, and the container goes there.";
     $("cGo").disabled = true;
     return;
   }
@@ -1348,7 +1398,7 @@ function cUnderPicked(){
   // project: its nodes only, its primary first (R82).
   fillNodeSelect($("cNode"), $("cNodeField"), set ? set[0] : dockerNode, null, set);
   hint.hidden = !set; hint.classList.remove("bad");
-  if (set) hint.textContent = set.length > 1 ? `One of ${whose}'s nodes.` : `${whose}'s node, where its sessions can reach it.`;
+  if (set) hint.textContent = set.length > 1 ? `One of ${projLabel(whose)}'s nodes.` : `${projLabel(whose)}'s node, where its sessions can reach it.`;
   $("cGo").disabled = false;
 }
 
@@ -1472,6 +1522,10 @@ async function cSubmit(){
     $("cmodal").hidden = true;
     if (!editing){
       notify(`${j.name} is in the manager: press Build to bring it up`);
+      // Shown on the node it was made on, which the picker may have moved
+      // off the one on screen (B62).
+      const made = $("cNodeField").hidden ? "" : $("cNode").value;
+      if (made && made !== dockerNode){ openDockerOn(made); return; }
       dockerList = null; dockerRev++; loadDocker();
       return;
     }
@@ -1626,6 +1680,9 @@ function dmShell(project, instance, ctr){
   openTab({kind: "term", arg: `ctr:${project}:${instance}:${ctr}`, label: `in ${ctr}`});
 }
 
+// What a row's pill says while its job runs, by the job's action.
+const DM_JOB_WORD = {rebuild: "rebuilding", up: "starting", down: "stopping", update: "updating", remove: "removing"};
+
 function dmRowsHtml(ins, job, blind){
   return ins.map(d => {
     // Explicitly running: dockerJob() keeps a finished job around now so the
@@ -1651,7 +1708,11 @@ function dmRowsHtml(ins, job, blind){
     // container unhealthy and the row says so; all of them healthy and it
     // says that rather than running; one still starting is said too.
     const hl = live.map(dmHealth).filter(Boolean);
-    const st = blind ? ["state unknown", ""]
+    // A row whose job is running knows what it is doing whatever the
+    // daemon said: a Rebuild read "state unknown" over its own "stopping"
+    // while its node was busy with it (B65).
+    const st = blind && busy ? [DM_JOB_WORD[job.action] || "working", "warn"]
+      : blind ? ["state unknown", ""]
       : partly ? [`partly up: ${live.filter(c => c.state === "running").length} of ${live.length}`, "warn"]
       : d.running && hl.includes("unhealthy") ? ["unhealthy", "bad"]
       : d.running && hl.includes("starting") ? ["starting", "warn"]
@@ -2108,8 +2169,8 @@ function dmWireRows(el, list = dockerList){
     const j = await (await postJSON("/api/devapp", {project, instance, action: "override", file})).json().catch(() => ({error: "no answer"}));
     if (j.error){ notify(j.error, true); return; }
     delete dmOvDraft[key];
-    notify(file ? `${project}/${instance} lays ${file} over its compose file from the next build`
-                : `${project}/${instance} has no override from the next build`);
+    notify(file ? `${dmCalled(project, instance)} lays ${file} over its compose file from the next build`
+                : `${dmCalled(project, instance)} has no override from the next build`);
   };
   const applyRef = async key => {
     const [project, instance] = key.split("|");
@@ -2119,8 +2180,8 @@ function dmWireRows(el, list = dockerList){
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
     delete dmRefDraft[key];
-    notify(ref ? `${project}/${instance} builds from ${ref} now`
-               : `${project}/${instance} builds from the project's own checkout again`);
+    notify(ref ? `${dmCalled(project, instance)} builds from ${ref} now`
+               : `${dmCalled(project, instance)} builds from the project's own checkout again`);
   };
   // Start, stop, restart and the log, on any container the daemon reported,
   // including the ones BuilderBot did not create (R68 steps 1 and 2). The
@@ -2228,7 +2289,7 @@ function dmWireRows(el, list = dockerList){
     const mode = sel?.value || "lan";
     const port = row.querySelector('[data-route="port"]')?.value || "";
     if (mode === "funnel" && sel.dataset.was !== "funnel" && !confirm(
-        `Open ${project}/${instance} to the internet?\n\nAnyone with the link can reach the port until the route goes back to lan.`)){
+        `Open ${dmCalled(project, instance)} to the internet?\n\nAnyone with the link can reach the port until the route goes back to lan.`)){
           row.querySelectorAll("[data-route]").forEach(x => { x.value = x.dataset.was; });
           delete dmRouteDraft[row.dataset.inst]; return; }
     delete dmRouteDraft[row.dataset.inst];

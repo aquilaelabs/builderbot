@@ -2429,6 +2429,27 @@ ok(dead.off.every(Boolean),
    '...grayed, every one of them, so an inert row looks inert before you press');
 ok(dead.pills.length > 0 && dead.pills.every(t => /state unknown/.test(t)),
    '...saying the state is unknown rather than reporting one nobody asked for');
+// ...except on a row whose own job is running, which knows what it is doing
+// (B65: a Rebuild read "state unknown" over its own "stopping"); and a job
+// the queue says has ended is said on its row at once, not when the whole
+// listing has been read again (it kept "stopping..." and Abort for seconds).
+{
+  const got = await page.evaluate(async () => {
+    const d = (dockerList?.instances || [])[0], was = dockerList.job, realFetch = window.fetch;
+    const job = { id: 'j_settle', running: true, project: d.project, instance: d.instance, action: 'rebuild', step: 'stopping' };
+    dockerList.job = job;
+    const pill = (dmRowsHtml([d], dockerJob(), true).match(/class="pill stat dmpill[^"]*">([^<]*)/) || [])[1];
+    window.fetch = async (u, o) => /\/api\/v1\/jobs\?id=j_settle/.test(String(u))
+      ? new Response(JSON.stringify({ id: 'j_settle', state: 'failed', error: 'up failed:\nport taken' }), { headers: { 'Content-Type': 'application/json' } })
+      : realFetch(u, o);
+    try{ await dmJobSettle(); }finally{ window.fetch = realFetch; }
+    const after = { running: job.running, error: job.error, shown: dockerJob() === job };
+    dockerList.job = was;
+    return { pill, after };
+  });
+  ok(got.pill === 'rebuilding' && got.after.running === false && /port taken/.test(got.after.error) && got.after.shown,
+     `a blind row with its own job running says what the job does, and an ended job is said at once (${got.pill}; ${JSON.stringify(got.after)})`);
+}
 ok(await page.$$eval('.dmtab .row[data-inst] .dmpill,.dmtab .row[data-inst] .actbar .state',
                      es => es.every(e => !e.classList.contains('ok'))),
    '...and nothing shows as running: green is a claim about a daemon that is not answering');
@@ -4866,6 +4887,47 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
   ok(!two.go && two.node === ids.spare && !two.disabled && two.options.slice().sort().join() === [ids.spare, ids.sandbox].sort().join()
      && /One of ep\.silon's nodes/.test(two.hint),
      `...and Send offers exactly its nodes, primary picked (${two.options.length} offered, ${two.node} picked)`);
+  // Create opens the Containers page on the node the container goes to, not
+  // the one it last showed (B62). The new and the build are stubbed: what is
+  // asked is where the page lands, and spare has no daemon to build on.
+  {
+    const landed = await page.evaluate(async ([spare, sandbox]) => {
+      dockerNode = sandbox;
+      const realFetch = window.fetch, realAct = dmAction;
+      window.fetch = async (u, o) => /\/api\/devapp/.test(String(u)) && /"action":"new"/.test(o?.body || '')
+        ? new Response(JSON.stringify({ ok: true, instance: 'landed' }), { headers: { 'Content-Type': 'application/json' } })
+        : realFetch(u, o);
+      let built = null;
+      dmAction = async (p, i, act) => { built = `${p}|${i}|${act}`; };
+      try{
+        openSendToDocker('ep.silon');
+        $('dnNode').value = spare;
+        await dnSubmit();
+      }finally{ window.fetch = realFetch; dmAction = realAct; }
+      const out = { node: dockerNode, arg: dockerTab()?.arg, built };
+      openDockerOn(sandbox);
+      return out;
+    }, [ids.spare, ids.sandbox]);
+    ok(landed.node === ids.spare && landed.arg === ids.spare && landed.built === 'ep.silon|landed|rebuild',
+       `Create opens the Containers page on the node the container went to (${landed.node}, tab ${landed.arg}, ${landed.built})`);
+  }
+  // A project is named as it is shown, never by its directory, which a name
+  // reused after a delete has numbered (B64): the dialog's node line, and
+  // what a confirm calls a container with no row yet. Planted and read in
+  // one evaluate, so a poll cannot put the label back between.
+  {
+    const said = await page.evaluate(() => {
+      const row = (state.projects || []).find(p => p.name === 'ep.silon'), was = row.label;
+      row.label = 'epsilon-shown';
+      try{
+        openSendToDocker('ep.silon');
+        return { hint: $('dnNodeHint').textContent, called: dmCalled('ep.silon', 'nosuch') };
+      }finally{ closeSendToDocker(); row.label = was; }
+    });
+    ok(/One of epsilon-shown's nodes/.test(said.hint) && !/ep\.silon/.test(said.hint)
+       && said.called === 'epsilon-shown/nosuch',
+       `the Send dialog and the confirms name the project as it is shown (${said.hint.slice(0, 40)}; ${said.called})`);
+  }
   const off = await post('/api/devapp', { project: 'ep.silon', action: 'new', instance: 'elsewhere', node: 'n_notanode' });
   ok(/ep\.silon works on spare, sandbox, and a container for it anywhere else/.test(off.error || ''),
      `a node outside the set is refused, naming the set (${String(off.error).slice(0, 70)})`);

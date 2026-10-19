@@ -188,8 +188,9 @@ else one `-`, so "Turing Lens" is shown as Turing-Lens, and the field says
 so as it is typed. Two live projects are never shown under one name: a
 second gets Name-2, whether it was created, cloned or put back from the
 trash. A name ever used gives a new project the next free
-directory (Name-2), so it never inherits an old project's notebook or
-containers, and a project put back from the trash always fits where it was.
+directory (Name-2), deleted for good included, while it is still shown as
+Name, and the New project dialog says so as the name is typed; so it never
+inherits an old project's notebook or containers, and a project put back from the trash always fits where it was.
 Only BuilderBot makes a project (create, clone, or start from an imported
 archive): a folder made by hand on the share is not listed, and the folders
 already there when this arrived were recorded once, as they were.

@@ -47,6 +47,11 @@ class Registry(unittest.TestCase):
         registry.mark("gone", "purged")
         self.assertEqual(registry.new_dir("gone"), "gone-2", "deleted for good still counts")
         self.assertEqual(registry.new_dir("fresh"), "fresh")
+        # What the New project dialog reads to say so before Create (B63).
+        taken = registry.taken_dirs()
+        self.assertIn("gone", taken, "a purged directory is listed as taken")
+        self.assertIn("alpha", taken)
+        self.assertNotIn("fresh", taken)
 
     def test_shown_names_are_unique_among_live_projects(self):
         registry.sync()

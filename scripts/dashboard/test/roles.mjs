@@ -198,6 +198,19 @@ for (const who of CAST) {
     const r = tabProject({ kind: 'term', arg: 'shell' }) || '-';
     state.sessions = was; return r; });
   ok(moved === 'alpha', `...and the workspace's shell, gone into alpha, wears alpha's (${moved})`);
+  // ...and is labeled with the name alpha is shown under, not its directory,
+  // which a name reused after a delete has numbered (B64): the tab, its row
+  // and the confirm that ends it all read the label. Planted and read in
+  // one evaluate, so a poll cannot land between.
+  const shown = await owner.page.evaluate(() => {
+    const was = state.sessions, row = (state.projects || []).find(p => p.name === 'alpha'), lbl = row?.label;
+    state.sessions = [...(was || []), { name: sessionOf('shell'), cwd: '/workspace/alpha' }];
+    if (row) row.label = 'alpha-shown';
+    const r = [sessionLabels().get(sessionOf('shell')) || '-', tabLabel({ kind: 'term', arg: 'shell', label: '' })];
+    state.sessions = was; if (row) row.label = lbl;
+    return r.join(' | '); });
+  ok(shown === 'sh: alpha-shown | sh: alpha-shown',
+     `...and its label names the project as it is shown, not its directory (${shown})`);
   await Promise.all([owner, user1, user2].map(p => refreshUntil(p.page,
     () => ((state.projects || []).find(p => p.name === 'alpha')?.yours?.model || '') === 'sonnet',
     { timeout: 20000 }).catch(() => {})));

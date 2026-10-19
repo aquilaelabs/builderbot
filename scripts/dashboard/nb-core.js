@@ -387,6 +387,10 @@ function makeNotebook(project){
 
   async function beat(leave, keepalive){
     if (!nb.memProj) return;
+    // Not for a project this account no longer has (deleted, or taken off
+    // it): the server answers that with a 400 on every poll (B65), and
+    // there is no one there to say anything to.
+    if (state && !(state.projects || []).some(p => p.name === nb.memProj)) return;
     try{
       const r = await fetch("/api/presence", {method: "POST",
         headers: {"Content-Type": "application/json"},

@@ -280,7 +280,7 @@ function tcRow(p, busy, job, managed){
     mine ? prog : `<span class="where${p.installed ? " on" : ""}">${ver || (p.installed ? "installed" : "not installed")}</span>`,
     next, p.size ? `<span class="pill" title="${esc(p.size_from)}">${esc(p.size)}</span>` : "",
     pins.length ? `<span title="${esc(pins.join(", "))}">${esc(pins.join(", "))}</span>` : "",
-    p.installed && !mine ? rmIcon(`data-rm="${esc(p.name)}"`, `uninstall ${p.label}`, {title: `uninstall ${p.label}`, why: busy ? "another toolchain operation is running" : ""}) : ""], "span", "tcline")}
+    p.installed && !mine ? rmIcon(`data-rm="${esc(p.name)}" data-rmlabel="${esc(p.label || p.name)}"`, `uninstall ${p.label}`, {title: `uninstall ${p.label}`, why: busy ? "another toolchain operation is running" : ""}) : ""], "span", "tcline")}
     ${upd}${err}${
       // Sessions that started before this landed still have the old PATH
       // (toolchains.py counts them); one line, and only while there are any.
@@ -820,8 +820,10 @@ function renderToolchainsInto(i){
     // Inside a <label>, so the click would otherwise toggle the checkbox on
     // its way past.
     e.preventDefault(); e.stopPropagation();
+    // Asked by the name its row shows: a pack's toolchain's name is the
+    // pack's id (B65).
     const name = b.dataset.rm;
-    if (confirm(`Uninstall ${name}? The files are deleted; installing it again re-downloads them.`))
+    if (confirm(`Uninstall ${b.dataset.rmlabel || name}? The files are deleted; installing it again re-downloads them.`))
       tcAct("remove", [name]);
   });
 
