@@ -44,6 +44,7 @@ turn_scope = None
 # server.asking_set and asking_clear: a session on its permission prompt (B52).
 asking_set = None
 asking_clear = None
+asked = None          # projsessions.asked: what a session was last asked (B59)
 
 
 def configure(**deps):
@@ -94,6 +95,9 @@ def verb(kind, req, me, uid, project):
         # after a summary (recall), not on every prompt that names it.
         told = set(req.get("told") or []) if isinstance(req.get("told"), list) else set()
         prompt = str(req.get("prompt") or "")[:20000]
+        # ...and what it was asked, for its row's task (B59).
+        if asked:
+            asked(uid, project, prompt)
         hit = [r for r in rules.matching(project, prompt=prompt) if r["name"] not in told]
         # ...and the open items and bugs the prompt names (R202), the same way.
         related, rnames = preamble.mentioned(project, prompt, told)

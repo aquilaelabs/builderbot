@@ -434,9 +434,9 @@ deselects it, so `ime set` again after one.
 A real phone is the person's who connected it (the Phone page, or the
 companion app's This phone), and only they lend it to a project, from the
 project's row. Lent, it reaches this project's own app only, and every
-command but `bb phone lease` asks its owner and runs on their Allow: give
+command but `bb phone lease` asks its owner and runs on their Approve: give
 each a `--why "..."` they can answer, and batch what you need rather than
-asking for one tap at a time. The owner may answer Allow for this session,
+asking for one tap at a time. The owner may answer Approve for this session,
 and the rest of yours then run at once until they take it back.
 
 Working a phone is a method, the same on the emulator with `bb emu` in place

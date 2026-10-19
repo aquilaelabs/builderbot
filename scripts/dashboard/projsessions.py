@@ -20,6 +20,7 @@ moves when either changes (live_token), so the page can ask cheaply.
 import hashlib
 import json
 import re
+import time
 
 from names import tmux_name
 
@@ -166,3 +167,38 @@ def live_token():
                   for s in SESSIONS())
     # A change token for the poll, not a secret: said so to hashlib.
     return hashlib.sha1(json.dumps(rows).encode(), usedforsecurity=False).hexdigest()[:12]
+
+
+# ---- what each session was last asked (B59) ----
+# A session's task came off its pane title alone, which Claude Code names
+# from the conversation's first turn and keeps, so the Sessions page said the
+# first thing a session was asked for every turn after it. The prompt hook's
+# `seen` trip carries what the person typed on every turn, and that is kept
+# here, in memory: one line per session, as old as its last prompt, gone with
+# a restart, when the title stands in until the next one.
+TASK_MAX = 120
+SKEW = 120
+_asked = {}           # (uid, tmux name of the project) -> (when, first line)
+
+
+def asked(uid, project, text, now=None):
+    """Note what a session was just asked: the first line of what the person
+    typed, trimmed. A turn that was all machinery (text "") changes nothing."""
+    line = next((x.strip() for x in str(text or "").splitlines() if x.strip()), "")
+    if not uid or not project or not line:
+        return
+    if len(line) > TASK_MAX:
+        line = line[:TASK_MAX - 1].rstrip() + "…"
+    _asked[(uid, tmux_name(project))] = (time.time() if now is None else now, line)
+
+
+def latest_task(uid, stem, created=0):
+    """What the session `claude-<stem>` of `uid` was last asked, or "" when
+    nothing has been heard since it began (a prompt to an earlier session of
+    the same name is not this one's)."""
+    got = _asked.get((uid, stem))
+    # `created` is the node's clock and the note this one's: a little slack,
+    # so a node running ahead does not lose a session's first prompt.
+    if not got or (created and got[0] < created - SKEW):
+        return ""
+    return got[1]

@@ -112,19 +112,27 @@ function renderSessionsInto(i){
 // while a session was still open on it, and the row knows which it meant.
 async function killSession(name, node = ""){
   const claude = tmuxBase(name).startsWith("claude-");
+  // Named as its row and its tab are, never by its tmux name (B58).
+  const proj = sessionProject(name);
+  const said = claude ? `the Claude session on ${proj ? projLabel(proj) : name}`
+    : `the session "${sessionLabels().get(name) || name}"`;
   if (!confirm(claude
-        ? `End the Claude session "${name}"?\n\nThe transcript is kept and can be `
+        ? `End ${said}?\n\nThe transcript is kept and can be `
           + `resumed later, but the conversation stops now.`
-        : `End the session "${name}"?\n\nAnything running in it is terminated.`)) return;
+        : `End ${said}?\n\nAnything running in it is terminated.`)) return;
   try{
     const j = await endSession(name, node);
     if (j.error){ notify(j.error, true); return; }
     // Its tab, if one is open, is now pointing at nothing.
     const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === name);
     if (t) dropTab(t.id);
-    notify(`ended ${name}`);
+    notify(`ended ${said}`);
   }catch(e){ notify("could not end it: " + e, true); }
-  refresh();
+  await refresh();
+  // Nowhere near another End (B54): with focus left on the list, a keyboard
+  // Enter after the redraw could end a second session.
+  const a = document.activeElement;
+  if (a?.matches?.("[data-k], .consend")) a.blur();
 }
 
 // End a session, no questions asked. killSession is this with the dialog in

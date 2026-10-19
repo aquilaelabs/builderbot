@@ -366,9 +366,11 @@ ok(!/picker drops focus/.test(bbBug('--prompt')) && /bug tracker with \d+ open/.
    '...and it leaves the count a session starts with, like any other closure');
 ok(/\[na\]/.test(bbBug('all')), '...but stays in the tracker, as its own kind of closed');
 bbBug('reopen', naId);
-bbBug('na', naId, 'removed again in the CLI');
+const naSaid = bbBug('na', naId, 'removed again in the CLI').trim();
 ok(read().find(b => String(b.id) === naId).status === 'na',
    'bb bug na does the same from a session');
+// B58: and says so in a sentence, not "B7 na".
+ok(naSaid === `B${naId} closed as not applicable`, `...in words (${naSaid})`);
 
 // ---- a session writing while the tab is open ------------------------------
 // The tracker is write-through on both sides, so there is nothing local to

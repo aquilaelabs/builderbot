@@ -41,8 +41,8 @@ def new():
         sys.exit(0)
     rid = r["id"]
     print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}): the compose file is on their "
-          "bell, waiting up to 15 minutes for Allow", file=sys.stderr)
-    o = waits.outcome(os.environ["BB_PHONE_AUTH"], rid, "the administrator said no")
+          "bell, waiting up to 15 minutes for Approve", file=sys.stderr)
+    o = waits.outcome(os.environ["BB_PHONE_AUTH"], rid, "denied on the dashboard; nothing ran")
     if o.get("code"):
         print(f"[builderbot] ERROR: {o.get('out') or 'refused'}", file=sys.stderr); sys.exit(1)
     print(f"[builderbot] allowed: {o.get('out')} (the build is a job on the Jobs page)")

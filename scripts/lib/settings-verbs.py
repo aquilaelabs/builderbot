@@ -9,6 +9,7 @@ the field and its value; for `show`, BB_SETTINGS_JSON=1 asks for the
 record as JSON. DASHBOARD_STATE says where the dashboard's files are and
 BB_ACCOUNT_UID which seat this session sits in.
 """
+import contextlib
 import json
 import os
 import sys
@@ -133,11 +134,20 @@ def show():
         print(json.dumps(rec))
         raise SystemExit(0)
     print(f"{proj}:")
+    # Nodes by the names the Nodes page shows (B58): the record keeps ids,
+    # which say nothing to a person or a session reading this.
+    named = {}
+    with contextlib.suppress(Exception):
+        nodes = dash.load("nodes", here)
+        nodes.db.open_readonly(state)
+        named = {n["id"]: n["name"] for n in nodes.node_list(all=True)}
     for k in ("node", "nodes", "reads", "sees", "model", "effort", "build", "test", "outputs", "policy", "locked",
               "toolchains_off"):
         v = rec.get(k)
         if v in (None, "", [], False):
             continue
+        if k in ("node", "nodes"):
+            v = [named.get(x, x) for x in v] if isinstance(v, list) else named.get(v, v)
         print(f"  {k:<8} {', '.join(v) if isinstance(v, list) else v}")
     # The Claude settings as the dialog names them, so a session can read
     # its own dials (the review of 26 Sep: the briefing said the refusal

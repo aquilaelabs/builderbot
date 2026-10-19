@@ -33,7 +33,8 @@ r = bbapi.call("/api/v1/bb", {"argv": argv, "project": project,
                               "from": "session" if os.environ.get("CLAUDECODE") else "operator"},
                auth=auth, timeout=200)
 if r.get("error") and "code" not in r:
-    sys.exit(f"[builderbot] ERROR: {r['error']} (relayed to {bbapi.url()})")
+    # The controller's own sentence, and nothing of how it travelled (B58).
+    sys.exit(f"[builderbot] ERROR: {r['error']}")
 if r.get("held"):
     # A push held for a person (R219): the flagged lines wait on the bell,
     # and this waits on the answer the way bb root run does; an approval

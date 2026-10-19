@@ -45,8 +45,8 @@ def run():
         print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
     rid = r["id"]
     print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}) for root on {r.get('node') or 'the node'}, "
-          "waiting up to 15 minutes for Allow on the dashboard's Nodes page or bell", file=sys.stderr)
-    o = waits.outcome(os.environ["BB_PHONE_AUTH"], rid, "the administrator said no")
+          "waiting up to 15 minutes for Approve on the dashboard's Nodes page or bell", file=sys.stderr)
+    o = waits.outcome(os.environ["BB_PHONE_AUTH"], rid, "denied on the dashboard; nothing ran")
     sys.stdout.write(o.get("out") or "")
     sys.exit(o.get("code") or 0)
 
