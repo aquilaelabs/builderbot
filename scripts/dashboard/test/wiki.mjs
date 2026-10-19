@@ -106,6 +106,12 @@ ok(true, 'the open view picks up a session\'s page on the poll');
 await page.click(`${NB} .wknav .wklink[data-page="Build-and-test"]`);
 await page.waitForSelector(`${NB} .wkarticle[data-name="Build-and-test"] .wkpage`, { timeout: 15000 });
 ok(/How to build/.test(await page.$eval(`${NB} .wkarticle .wkpage`, e => e.textContent)), 'a page in the list opens in place');
+// At a desk the list is a column beside the article and the picker is not
+// drawn: drawn, it took the article's column and pushed the article under
+// the list, 200px wide (B856, the operator 19 Oct).
+ok(await page.$eval(`${NB} .wkreader`, r => { const nav = r.querySelector('.wknav').getBoundingClientRect(), art = r.querySelector('.wkarticle').getBoundingClientRect();
+     return getComputedStyle(r.querySelector('.wkpick')).display === 'none' && art.left >= nav.right && art.width > 400; }),
+   'at a desk the pages are a column beside the article, the picker not drawn');
 // On a phone the list gives way to a picker above the article.
 await page.setViewportSize({ width: 393, height: 851 });
 ok(await page.$eval(`${NB} .wknav`, n => getComputedStyle(n).display === 'none')
