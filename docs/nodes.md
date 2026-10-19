@@ -224,7 +224,7 @@ schema surgery if it does not.
   "requested_by": "operator",              // a principal, see §8
   "placement": { "node": "n_7f3a91" },     // or { "select": { "capability": "…",
                                            //      "labels": {…}, "pool": "…" } }
-  "source": { "kind": "snapshot", "digest": "sha256:…", "ref": "main@e1615f5" },
+  "source": { "kind": "snapshot", "digest": "sha256:…", "ref": "main@045bb5a" },
   "spec": { "steps": [ … ], "env": {…}, "timeout": 3600 },
   "outputs": ["dist/**"],
   "state": "queued | assigned | running | succeeded | failed | canceled",

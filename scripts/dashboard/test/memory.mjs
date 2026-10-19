@@ -34,7 +34,7 @@ ok(await page.$$eval(`${row('delta')} [data-open]`, b => b.length === 1),
 await page.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(page);
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
-// Every section opens by default (the operator, 8 Oct: 9fd9ab9), the
+// Every section opens by default (the operator, 8 Oct: d890eda), the
 // memories with it, the count on the heading. Read once it has finished
 // sliding open, since the notebook's draw opens it.
 await page.waitForFunction(() => { const d = document.getElementById('memSect');
@@ -118,7 +118,7 @@ ok(await page.$('#memDrift details[data-sect="memory:drift"]') !== null
 }
 
 // The checks below read "the open memory", and every one opens by default
-// now (9fd9ab9): the others are shut first, so the open one is the one named.
+// now (d890eda): the others are shut first, so the open one is the one named.
 async function soleMem(name){
   await page.evaluate(n => document.querySelectorAll('#memList .mem[open]').forEach(d => {
     if (d.querySelector('.mname')?.textContent !== n) d.open = false;

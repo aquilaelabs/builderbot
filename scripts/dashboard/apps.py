@@ -104,7 +104,7 @@ def _index():
 
 
 def base_version(v):
-    """The release a build belongs to: 0.7.0 of 0.7.0-dev.3160+a1269ff."""
+    """The release a build belongs to: 0.7.0 of 0.7.0-dev.3160+43218c1."""
     m = re.match(r"v?(\d+\.\d+\.\d+)", str(v or ""))
     return m.group(1) if m else ""
 

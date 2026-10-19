@@ -67,7 +67,7 @@ class DevBuilds(unittest.TestCase):
     def test_an_unnamed_build_is_flagged_and_removed_only_by_a_person(self):
         self.assertTrue(artifacts.unversioned("app-debug.apk"))
         self.assertFalse(artifacts.unversioned("P-0.5.4-release.apk"))
-        self.assertFalse(artifacts.unversioned("builderbot-app-53eba569.apk"))
+        self.assertFalse(artifacts.unversioned("builderbot-app-fe2b94df.apk"))
         self.assertFalse(artifacts.unversioned("notes.txt"))
         self.make("app-debug.apk")
         self.assertEqual(artifacts.sweep_dev_builds("proj"), [])

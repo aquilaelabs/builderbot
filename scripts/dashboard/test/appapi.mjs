@@ -39,7 +39,7 @@ ok(typeof meta.body.built === 'string',
 {
   const d = `${DIR}/ws/BuilderBot/dist`;
   mkdirSync(d, { recursive: true });
-  const signed = 'builderbot-app-0.7.0-dev.2284-b083add-signed.apk';
+  const signed = 'builderbot-app-0.7.0-dev.2284-d51d651-signed.apk';
   writeFileSync(`${d}/${signed}`, 'signed');
   writeFileSync(`${d}/builderbot-app-0.7.0-dev.2290-abc1234-dirty.apk`, 'dirty');
   writeFileSync(`${d}/builderbot-app-dev.apk`, 'a debug build');

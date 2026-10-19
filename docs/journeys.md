@@ -202,7 +202,7 @@ the code.
 
 **The snag was in the walk itself.** The dev instance's dashboard answers
 from the image it was last built from, and only its TEST runs use the live
-checkout. It was serving `f681c5d`, built twenty hours earlier and thirty
+checkout. It was serving `0a1cfb3`, built twenty hours earlier and thirty
 commits behind the branch, so everything hardened that day (a session's
 findings scoped to its own project, the per-account model and commit author,
 B165's atomic fix) was not in what was walked. The walk proved yesterday's
@@ -213,7 +213,7 @@ instance before walking a journey on it, and record the build the walk was
 against.** A walk whose build is not written down says less than it appears
 to, which is the same fault as a green suite that ran somewhere else (R65).
 
-### Walked again on the build it was meant to prove (against `e8a6f5a`)
+### Walked again on the build it was meant to prove (against `3a0934b`)
 
 `bb devapp rebuild` took 136 seconds and brought the dashboard up on the
 branch head, so the same ground was covered again with that day's work
@@ -247,7 +247,7 @@ with the four projects it started with.
 
 ## Enrolling somebody's own machine as a guest node (18 September 2026)
 
-Walked against `e4f4fc1`, the branch head, on the dev pair. The point of a
+Walked against `0a49252`, the branch head, on the dev pair. The point of a
 guest node is that the machine stays its owner's, so the walk is as much
 about what is NOT on it afterwards as what is.
 
@@ -293,7 +293,7 @@ at all, and macOS, which is R23 step 3 and wants a Mac.
 ## 20 September: the Git view on a project linked over http, and two people
 
 Walked on the dev pair after `bb devapp rebuild`, so the instance was serving
-the branch tip (f9e021a) rather than whatever it was last built from, which is
+the branch tip (05381aa) rather than whatever it was last built from, which is
 the discipline the 17 September walk cost us.
 
 **Why this one.** The operator pressed **Pull** on the production Git view and
@@ -342,7 +342,7 @@ whoever reads it, and the two things behind it were not the same thing.
 ## 23 September: the tabs as a tester sees them, with the map and the trace in hand
 
 Walked on the dev pair after `bb devapp rebuild`, so the instance served the
-branch tip (8d15eca). This walk was as much about the method as the product:
+branch tip (4fe8554). This walk was as much about the method as the product:
 a browser script signed in as each person, opened every tab, screenshotted
 it, kept the console errors and counted what each open fetched, and the
 controller's own request trace was read beside it.
@@ -402,7 +402,7 @@ controller's own request trace was read beside it.
 
 ## 26 September: sending a project to Docker twice
 
-On `builderbot-dev` built from `3c794fe`, as the owner, with the project
+On `builderbot-dev` built from `d8f120d`, as the owner, with the project
 `web` (an nginx compose whose `.env.example` sets `WEB_PORT=8088`) already
 holding one container, `web-dev`, on `bb-dev-sandbox`.
 
@@ -421,7 +421,7 @@ holding one container, `web-dev`, on `bb-dev-sandbox`.
 3. **Send again.** The dialog opened on `web-2`, saying it goes beside the
    two it already has. With the Containers page's branches loaded, Build from
    showed too, carrying the same ports sentence a second time; that one
-   went (`5391ae1`). Canceled there.
+   went (`b14541f`). Canceled there.
 4. **What a session is handed.** `web`'s briefing (the Briefing tab's
    source, `/api/preamble`) carries the new paragraph: `bb devapp new
    [NAME] [--branch REF]` is Send done from a session, and it, not `bb
@@ -444,19 +444,19 @@ operator signed in, and a Haiku session opened on `web` from the dashboard's
 Claude button, in manual mode, at 10.231.0.2 on its own network. It was
 driven as a person would: prompts typed through the dashboard, each bash
 command approved at its prompt, its outputs appended to a file in the
-project and read off the dev share. On `builderbot-dev` at e559a4a, then
-1e03bde; `web`'s compose given `cap_add: CHOWN, SETUID` for the walk.
+project and read off the dev share. On `builderbot-dev` at 1f77097, then
+e8c11cc; `web`'s compose given `cap_add: CHOWN, SETUID` for the walk.
 
 1. **`bb devapp ls`** listed `web` and `web-dev` as the project's own.
    **`bb devapp log web-dev`** resolved to `web-dev-web-1` (B307's fix)
    and then failed: `docker logs` went out over `ssh://bb@192.168.1.18`,
    "Host key verification failed". Only the bare reads ran through the
    agent; the container verbs took the retired ssh path (B312, fixed in
-   1e03bde). Walked again after the rebuild: nginx's log came back.
+   e8c11cc). Walked again after the rebuild: nginx's log came back.
 2. **Rebuild, then curl at once.** `bb devapp --instance web-dev rebuild`
-   at e559a4a said "no build appeared within twenty seconds" over a build
+   at 1f77097 said "no build appeared within twenty seconds" over a build
    that succeeded: the same commit, finished between two looks at the row
-   (B312's other half). At 1e03bde it said "rebuilt 58e7e92; web-dev is
+   (B312's other half). At e8c11cc it said "rebuilt 58e7e92; web-dev is
    up", and `curl http://192.168.1.18:8088/` on the next line answered
    200: the port reachable the moment the verb returns, from inside the
    session's network, which is what the agent's refresh after a compose
@@ -493,7 +493,7 @@ manifest, six notes it places at the share's root).
 `builderbot-dev` could not read them: the `/reports` volume was a
 commented line in the compose, so a dev instance built from the compose as
 it is had no way to a scan. The line is live now, from
-`SCANNER_REPORTS_PATH` with the documented default (8bdeafa), and the dev
+`SCANNER_REPORTS_PATH` with the documented default (558f03b), and the dev
 instance names `/workspace-dev/.scanners/reports` in its env. *Snag, mine
 and filed (B314):* `bb devapp env` printed the env without a final newline,
 so the line I appended joined the one before it and the default path was

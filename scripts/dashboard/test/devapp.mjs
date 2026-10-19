@@ -543,7 +543,7 @@ ok(!/BUILDKIT=0/.test(log),
 // tools/build-image-here.sh gives a production image, so a commit built either
 // way answers with one string. It used to take the docker-tag-safe `file`
 // form, whose whole job is that it cannot carry `+`, so the same commit read
-// `…-dev.1633+8dfc0b2` on production and `…-dev.1633-8dfc0b2` on the dev
+// `…-dev.1633+59d8912` on production and `…-dev.1633-59d8912` on the dev
 // instance and the two read as different builds (B158). Asked of the function
 // against a repo that HAS a version, since the fixture project has none and
 // the assertion would pass on an empty string.

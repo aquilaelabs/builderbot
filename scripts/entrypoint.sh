@@ -22,7 +22,7 @@ PGID="${PGID:-100}"
 # Values arrive as /secrets/*.env files (a root-owned mount), or as container
 # variables someone set by hand. Either way they are turned into
 # log-redaction rules and scrubbed from the environment every builder process
-# inherits, always: there is no switch (SHIELD_SECRETS went with 1aa17f3).
+# inherits, always: there is no switch (SHIELD_SECRETS went with b218077).
 # The publishing tokens a shell on the controller uses; a git token is a
 # project's own, and a runner's is typed on the Nodes tab.
 SECRET_VARS=(NPM_TOKEN UV_PUBLISH_TOKEN)

@@ -5,7 +5,7 @@
 # Keeps the container alive and owns the graceful shutdown below. Neither CI
 # nor a Claude session runs here any more: every runner is on a node
 # (docs/nodes.md phase 7) and so is every session (R47), and the emulator left
-# with them (815d40e). So what a stop has to be careful with is the terminals,
+# with them (ccce6ee). So what a stop has to be careful with is the terminals,
 # and nothing here is slow.
 #
 set -euo pipefail
@@ -75,7 +75,7 @@ shutdown() {
     # A few seconds, and only for the dashboard: it writes its state on the
     # way out. There is nothing else slow here. This used to wait up to 90s
     # for an emulator to power off, and the emulator left the controller in
-    # 815d40e, so the wait was for a process that cannot be running (B177).
+    # ccce6ee, so the wait was for a process that cannot be running (B177).
     local t0 waited grace=5
     t0=$(date +%s)
     log "shutdown: stopping cleanly"

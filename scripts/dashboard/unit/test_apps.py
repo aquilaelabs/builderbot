@@ -38,7 +38,7 @@ class Apps(unittest.TestCase):
         return {"tag_name": tag, "assets": assets}
 
     def test_a_build_belongs_to_its_release(self):
-        self.assertEqual(apps.base_version("0.7.0-dev.3160+a1269ff"), "0.7.0")
+        self.assertEqual(apps.base_version("0.7.0-dev.3160+43218c1"), "0.7.0")
         self.assertEqual(apps.base_version("v1.2.3"), "1.2.3")
 
     def test_the_matching_release_else_the_newest_published(self):

@@ -112,7 +112,7 @@ ok(new RegExp(`${st.files.length} changes not committed`).test(await page.$eval(
    'the head row says the branch, the uncommitted count and the branches');
 ok(await page.$eval(`${NB}`, e => e.querySelectorAll('.gfile').length) === st.files.length,
    'Changes lists each uncommitted file as a fold');
-// Opened, not clicked: every fold opens by default (9fd9ab9), and a click
+// Opened, not clicked: every fold opens by default (d890eda), and a click
 // on one the view had already opened shut it, the diff with it (B566).
 await openFold(page, `${NB} .gfile[data-path="a.txt"]`);
 await page.waitForSelector(`${NB} .gfile[data-path="a.txt"] pre.diff`, { timeout: 10000 });
