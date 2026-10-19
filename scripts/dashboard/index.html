@@ -1460,7 +1460,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var
    wide as its longest option unless told otherwise, and
    "API 36-ext19 · 1.8 GB" was pushing the whole tab wider than the screen,
    which clipped every paragraph on it. */
-.imgadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:var(--row-y) var(--row-x)}
+.imgadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 /* Sizing only: the font is the house control font from the .doctab group.
    It carried its own 12px sans here, which the conformance suite flagged the
    first week it ran: two selects on one page in a different voice than every
@@ -1775,7 +1775,10 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    where containment cannot clip it. */
 select{contain:paint}
 select:focus{outline-offset:-2px}
-.modal .hint,.nb .hint{color:var(--dim);font:var(--f-note);margin-top:0}
+/* A hint is the quiet note of whatever holds it, the same on every page,
+   in a dialog and in the notebook (consistency batch 3: a page's hint took
+   body text and a band's padding, a notebook's the note voice and none). */
+.hint{color:var(--dim);font:var(--f-note);margin-top:0}
 /* Wrapping, because a footer that does not fit does not merely look cramped:
    the box scrolls sideways and the whole panel slides under your thumb. */
 .modal .foot,.nb .foot{display:flex;gap:8px;padding:var(--row-y) var(--row-x);border-top:var(--hair) solid var(--line);
@@ -1818,7 +1821,6 @@ select:focus{outline-offset:-2px}
    fold's body adds none of its own. */
 /* A section shows while a setting in it does; its own Save bar does not count. */
 .rngroup:not(:has(> .body > .field:not([hidden]):not(.rnbarf))){display:none}
-.rngroup > .body{padding:0 0 var(--row-y);gap:0}
 /* The jump bar over a long surface (sectJump): its sections' names in a
    line that wraps, each a link to its own. */
 .sectjump{display:flex;flex-wrap:wrap;gap:6px 8px;padding:var(--row-y) var(--row-x);
@@ -1850,13 +1852,13 @@ select:focus{outline-offset:-2px}
 .modal .pseg{display:flex}
 .modal .pseg button{flex:1;min-height:var(--tap)}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
-.modal .hint.bad,.nb .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
+.hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
 /* What to know before the press, in the warning's color (Copy or move's
    data choice: a volume already there is written over). */
-.modal .hint.warn{color:var(--warn)}
+.hint.warn{color:var(--warn)}
 /* The project settings' Test (the operator, 7 Oct): what is missing in red,
    a list when it is more than one thing, and its notes in the quiet voice. */
-.modal .hint.ok{color:var(--pass)}
+.hint.ok{color:var(--pass)}
 #rnTestField .setrow{align-items:center;flex-wrap:nowrap}
 #rnTestField .setrow .hint{flex:1 1 auto;min-width:0}
 /* File access (R151): one row per account, its name and its access. */
@@ -1867,14 +1869,11 @@ select:focus{outline-offset:-2px}
 #rnReachRows{display:flex;flex-direction:column;gap:6px}
 /* The Settings tab (tab-settings.js): sections of row bands, which carry
    their own inset, so the body adds none; the setup steps in a list. */
-.settingstab .sect>.body,.profiletab .sect>.body{padding:0 0 var(--row-y);gap:0}
-.settingstab .sect>.body>.row,.profiletab .sect>.body>.row{border-top:0}
 .settingstab .setsteps{margin:6px 0 0;padding-left:1.2em}
 .settingstab .setsteps li{margin:2px 0}
 /* The Storage tab (tab-storage.js): its sections hold field bands and rows,
    so the body adds no inset; the project rows carry their numbers in
    fixed columns, right-aligned, so the stack reads as a comparison. */
-.storagetab .sect>.body{padding:0 0 var(--row-y);gap:0}
 /* The filesystems one under another, each the band's full width, so a
    long mount path is read whole and the tracks compare down the column. */
 .storagetab .ndmeters{display:flex;flex-direction:column;gap:6px}
@@ -1887,7 +1886,6 @@ select:focus{outline-offset:-2px}
 @media (max-width:600px){.storagetab .ndmeter{grid-template-columns:6em minmax(0,1fr) 7.5em}}
 /* The nginx tab (tab-nginx.js): its sections hold field bands, which carry
    their own inset, so the body adds none (as a settings group's does). */
-.nginxtab .sect>.body{padding:0 0 var(--row-y);gap:0}
 /* ...and its routes, a table of records (the record-lists rule): a row
    reads a route, Edit at its right; the one open holds its form, sunk a
    step below the rows in place of the line it read (Cloudflare's DNS page),
@@ -3226,7 +3224,6 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 #pjGrid>.pjgroup>.pjgname{font:var(--f-sect);color:var(--ink);margin:0 0 8px}
 #pjGrid>.pjgroup>.pjgname .dim{font:var(--f-note);margin-left:6px}
 #pjGrid>details.sect{margin:20px 0 0}
-#pjGrid>details.sect>.body{padding:12px}
 .pgrid .empty{grid-column:1/-1}
 .pcard{position:relative;display:flex;flex-direction:column;gap:6px;padding:var(--row-y) var(--row-x);background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);min-width:0}
 .pcard.pc{box-shadow:inset 3px 0 var(--pc);background:color-mix(in srgb, var(--pc) 16%, var(--panel));
@@ -3560,7 +3557,7 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .doc .empty,.doc .loading{padding:var(--row-y) var(--row-x)}
 /* The findings card's footer: when the reports were written, and which were
    left out of the counts. */
-.fnote{padding:7px 10px;color:var(--dim);font:var(--f-note);
+.fnote{padding:7px var(--row-x);color:var(--dim);font:var(--f-note);
   border-top:var(--hair) solid var(--line)}
 .fnote .warn{color:var(--warn)}
 /* Which daemon, in the quiet voice the notebook uses for the same job: a
@@ -3768,14 +3765,11 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 /* A node's list that is empty says so in the words' own voice, not mono. */
 .ndrunnone{font:var(--f-ui)}
 .fxtab .fxbar select{flex:0 1 auto;min-width:0}
-/* A hint in a document tab is a band like any other: it was the Analysis
-   tab's own rule, so the same line on the Toolchains tab sat flush against
-   the edge with every band beside it indented. */
-.doctab .hint{padding:var(--row-y) var(--row-x)}
-/* ...but one inside a band is the band's note, as a dialog's and a
-   notebook's are: the band is inset already, and body text there read
-   louder than the label over it (B823). */
-.doctab .field>.hint{padding:0;color:var(--dim);font:var(--f-note)}
+/* A hint placed straight in a page's list is a band like any other: it
+   was the Analysis tab's own rule, so the same line on the Toolchains tab
+   sat flush against the edge with every band beside it indented. Anywhere
+   else it is the quiet note of what holds it (the hint rule above). */
+.doclist>.hint{padding:var(--row-y) var(--row-x)}
 /* Room under every page's last card, at every width (the operator, 17 Oct:
    the bottom of a page ran into the dock): a spacer at the end of the
    list, since a last child's margin is not kept at the end of a scrolling
@@ -3949,7 +3943,22 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .sect>summary .sst.warn,.actbar .state.warn{color:var(--warn)}
 .sect>summary .sst.bad,.actbar .state.bad{color:var(--bad)}
 .sect>summary .sst.note,.actbar .state.note{color:var(--note)}
-.sect>.body{padding:0 var(--row-x) var(--row-y);display:flex;flex-direction:column;gap:8px}
+.sect>.body{padding:0 0 var(--row-y);display:flex;flex-direction:column;gap:0}
+/* A section's body has no side inset of its own (consistency batch 3, the
+   operator 19 Oct: half the pages inset the body and zeroed its bands, the
+   other half the reverse, and a table sat 16px further in than its own
+   title). A band brings its own inset, so its separators run edge to edge
+   as a list's do on GitHub and its words start where the section's title
+   does: a field, a row, a table, a note, an empty or loading line, a
+   section inside it, a block holding bands. Anything else placed straight
+   in a body (a hint, a bar, a graph, a grid of cards, a placeholder's
+   lines) takes the same inset here, and the room above it from whatever
+   came before. */
+.sect>.body>:not(.field,.row,.tbl,.tcs,.tchead,.macros,details,.fnote,.empty,.loading,:has(> .field)){margin-inline:var(--row-x)}
+.sect>.body>:not(.field,.row,.tbl,.tcs,.tchead,.macros,details,.fnote,.empty,.loading,:has(> .field)):not(:first-child){margin-top:var(--field-gap)}
+/* Containers' images box is a slot its read fills, not a box: its tiles,
+   tables and notes are the section's own. */
+.dmimgbox{display:contents}
 .sect>.body>.sub:first-child{margin-top:0}
 /* A container's own folds (Ports and mounts, Log) start where its card's
    words do, not a section's inset further in (the operator's phone, 18 Oct). */
@@ -3958,17 +3967,6 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    it is everywhere else: the Git view's Branches line read at body size
    (the design pass, 4 Oct). */
 .sect>.body>.sub{font:var(--f-note)}
-/* A band inside a section's body does not inset again: the body already did.
-   The design language says it of a field inside a field, and it was never
-   applied here because nothing measured a notebook view other than the
-   Roadmap, which has no sections (R70). So Briefing and Git each drew three
-   and four left edges: a list, a footnote, a nested fold and its loading line
-   each adding their own inset to the body's. */
-.nb .sect>.body>.field,.nb .sect>.body>.fnote,.nb .sect>.body>.row,
-.nb .sect>.body .sect>summary,.nb .sect>.body .sect>.body,
-.nb .sect>.body .loading,.nb .sect>.body .empty,
-.nb .sect>.body .dstheme>.field,.nb .sect>.body .dsrule>.field,
-.nb .sect>.body [data-dspage]>.field{padding-left:0;padding-right:0}
 /* A control never spans its container. The cap goes on the ROW where there
    is one, and every row of controls wears one class for it, .ctlrow (a
    filter row, a field and its label, a picker row, an add row), so the
