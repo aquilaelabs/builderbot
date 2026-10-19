@@ -480,3 +480,27 @@ its pid or with `pkill -x NAME`.
 13 Oct 2026).** It reads gigabytes off the toolchain store; the next import
 takes seconds. A session that meets it starts the job in the background
 rather than waiting on it in the foreground.
+
+## The apps a person installs
+
+**Shipped with the controller and kept current by it, chosen on the Settings
+page (19 Oct 2026).** The Android app, the VS Code extension and the Windows
+companion are attached to each release with their sha256, and a controller
+fetches the ones it offers from the release matching its own version,
+keeps each only when it matches, and serves it from its Devices page. Which
+are offered is a setting, and a seed file a compose generator writes beside
+the compose file sets it before the first start, because a choice the
+dashboard can make is not an environment variable (env-only-what-must).
+They are not toolchains: a toolchain is what a node runs, and these run on a
+person's own machines.
+
+## A person's Windows PC is a device, not a node
+
+**The companion signs in as its person and is kept current by the
+controller, never enrolled (19 Oct 2026).** It reaches only what that person
+may: a project's files where their editor access allows, through a door of
+its own that never opens the dashboard. What it lends a project's sessions
+is a fixed table of verbs set up on the PC by its person (the editor, the
+game, a build, a log, a picture, the editor's local interface), each under
+the project's Claude may: Use a lent PC, deny by default; a session names a
+verb and never sends a command string to somebody's own machine.
