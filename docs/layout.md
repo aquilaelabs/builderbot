@@ -248,6 +248,7 @@ vscode/                          BuilderBot for VS Code (R159): plain JavaScript
   README.md                      what VS Code shows on the extension's page: setting it up, installing and using it
 windows/                         the Windows companion app (R270): a person's machine keeping a project's folder in step through the device door
   README.md                      what it does, signing in, picking a project and a folder, building it
+  bbcompanion/__init__.py        the package: what the app is
   bbcompanion/__main__.py        its command line (sign in, add, remove, run, sign out) and the packaged app's start
   bbcompanion/core.py            the node agent's own sync on the device door: the projects picked, a long poll per project, what Windows cannot hold left out
   bbcompanion/names.py           Windows' rules for a file's name: device names, a trailing dot or space, the refused characters, two names one by case
