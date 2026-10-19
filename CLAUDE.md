@@ -143,6 +143,7 @@ ref and nowhere else; `bb ci-log` reads a run's output.
 `README.md` is the front page and `docs/README.md` the index of the docs;
 `docs/reference.md` holds the configuration and `bb` references;
 `docs/install.md` is the setup checklist, `docs/unraid.md` the host-side
-walkthrough, `docs/how-it-works.md` the explanatory prose,
+walkthrough, `docs/how-it-works.md` the overview and the docs it names the
+explanatory prose,
 `docs/decisions.md` the design decisions with their dates and reasons, and
 `docs/layout.md` the file-by-file layout.

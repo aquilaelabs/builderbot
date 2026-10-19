@@ -57,8 +57,8 @@ What this buys you: SSH keys are served by a root-owned `ssh-agent`
 (sessions can push with them, never read them), a token in a `*.env` file
 here never enters a session's environment, and all logs are redacted of
 token patterns *and* the literal secret values. A node's runner token is
-not a file here: it is typed on the Nodes page and kept root-only by the
-controller. Details and threat model: [docs/unraid.md, Shielding
+not a file here: it is typed on the CI runner page (under Build) and kept
+root-only by the controller. Details and threat model: [docs/unraid.md, Shielding
 secrets](unraid.md#shielding-secrets-pat--ssh-keys-from-claude-sessions).
 
 Skippable: a project's settings can make an SSH deploy key for it or hold
@@ -97,9 +97,9 @@ Everything else has sane defaults: full reference in [reference.md](reference.md
 | Want | Do |
 |---|---|
 | Android emulator, builds, CI | Enroll a node from the dashboard's Nodes page. This container compiles nothing and renders nothing: the toolchains, the card and `/dev/kvm` are that machine's |
-| Web dashboard | Always on (it is the controller). Map port 7680 and open it: the first page is the setup, see step 7 and [Web dashboard](how-it-works.md#web-dashboard) |
+| Web dashboard | Always on (it is the controller). Map port 7680 and open it: the first page is the setup, see step 7 and [the dashboard](dashboard.md) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
-| Static analysis reports | Point the **Scanner reports** path at your scanner's output dir: read-only; see [Static analysis reports](how-it-works.md#static-analysis-reports) |
+| Static analysis reports | Point the **Scanner reports** path at your scanner's output dir: read-only; see [Static analysis reports](building.md#static-analysis-reports) |
 | Docker builds (CI jobs, a project's containers) | On a node, never in this container: a node's own Docker, or the Docker sandbox VM ([sandbox-vm.md](sandbox-vm.md)). The template has no Docker socket field |
 | Extra tools | the Toolchains page, per node; the controller carries what it needs in the image |
 
@@ -130,16 +130,16 @@ only CUDA), each stored **runner token** is still accepted by its host, and
 the Anthropic API are checked on a node, where sessions run.
 
 Each person signs in to Claude on each node they work on, from that node's
-row on the Nodes page: **Sign in** under Claude Code, which a project's
-Claude button offers the first time. The flow runs on that node, the
-machine Claude Code is installed on, and the code is pasted back on the
-row. Each node keeps the login it alone refreshes; the controller holds no
+Claude Code section on the Nodes page: **Sign in**, which a project's
+**Start Claude** offers the first time. The flow runs on that node, the
+machine Claude Code is installed on, and the code is pasted back in the
+section. Each node keeps the login it alone refreshes; the controller holds no
 credential, only which Anthropic account each node reported for you.
 
 **CI runs on a node, not in this container.** Take the node the setup
 enrolled, or enroll another (**Enroll node** on the Nodes page gives the
-command to run on the machine; [nodes.md](nodes.md) walks it), open its row on the Nodes page, add a runner for your git host
-and press **Install runner** on it. It registers under the node's own name,
+command to run on the machine; [nodes.md](nodes.md) walks it), open the CI runner page (under Build) with that node picked, add a runner
+for your git host and press **Install runner** on it. It registers under the node's own name,
 which is the label a workflow uses:
 
 ```yaml
@@ -158,20 +158,19 @@ the same reason; they make a job look routable when nothing will pick it up.
 
 ### 8. Daily use and updating
 
-A Claude session is opened from the dashboard, on the project's row, and runs
-on that project's node. There is no `claude` in this container to exec into.
+A Claude session is opened from the dashboard, with **Start Claude** on the
+project's card or page, and runs on that project's node. There is no `claude` in this container to exec into.
 
 ```bash
 docker exec -it BuilderBot bb shell                        # shell as builder
 docker exec -it BuilderBot bb status                       # what this box is
 ```
 
-**Adding a project**: make a folder in the projects share. That is the whole
-step: the folder is mounted along with everything else beside it, and it
-appears on the dashboard at the next poll. A directory that is not a working
-project is not hidden but reported: no git repository or the wrong ownership in
-red, no `CLAUDE.md` in amber, both behind **Show projects with errors**. Only
-empty directories and hidden ones are left out.
+**Adding a project**: **New project** on the Projects page makes one, as a
+fresh repository, a clone of one on a git host, or from an archive you already
+have. Only BuilderBot makes a project: a folder made by hand on the projects
+share is not listed. A project with a problem says so on its card: no git
+repository or the wrong ownership in red.
 
 **The apps for your machines**: the Android app, the VS Code extension and
 the Windows companion are on the **Apps** page, under Build, each with

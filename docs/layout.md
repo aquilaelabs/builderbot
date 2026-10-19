@@ -296,7 +296,18 @@ docs/unraid.md                   step-by-step Unraid walkthrough
 docs/install.md                  setup, start to finish: the checklist with the decisions each step needs
 docs/architecture.md             the map: the seven parts, how they reach each other, where each is explained
 docs/api.md                      every /api/ route with its method, handler, first sentence and what it refuses on, written by tools/api-doc.py
-docs/how-it-works.md             the controller, the nodes, the sessions, the dashboard, the notebook: how each works
+docs/how-it-works.md             the overview: what the image carries, its security model and hooks, and which doc explains each part
+docs/dashboard.md                the dashboard: signing in, the rail, Home, the bell, color schemes, the dock and its terminals
+docs/projects.md                 the Projects page: making, linking, archiving and deleting a project, and its repository's access
+docs/notebook.md                 a project's page: its header and its views, from the roadmap and bugs to the wiki and design
+docs/sessions.md                 Claude sessions: starting one, the Sessions page, a session's view and network, its briefing and rules
+docs/building.md                 builds, tests, CI runners and logs, the scanner's findings, dist/, signing and releases
+docs/toolchains.md               the toolchain store, the Toolchains and Emulator pages, the NVIDIA card, Android, the Phone page
+docs/containers.md               the Containers page and nginx: dev instances, how one is reached, networks, image updates
+docs/machines.md                 Controller settings, Nodes, Storage, the logs, the Jobs page, a Mac as a node
+docs/people.md                   the first account, Users and Roles, owners and invitations, the chat, your Profile
+docs/bb-command.md               the bb verbs with more behind them: the test harness, the code map, capture, sound and documents
+docs/companion-app.md            the companion app for an Android phone: pairing, its lock, notifications, how it is built
 docs/decisions.md                the design decisions, with their dates and reasons
 docs/layout.md                   this list, held to the tree by bb lint
 docs/changelog-0.5.md            the releases before 0.6, moved out of CHANGELOG.md so the file the dashboard reads stays the current series
@@ -305,7 +316,7 @@ docs/start-here.md               the one page for somebody given an account on s
 docs/journeys.md                 what a person does with BuilderBot, walked for real, dated
 docs/sandbox-vm.md               the Docker sandbox VM: why, how, and pointing this at it
 docs/nodes.md                    design: controller + nodes, homelab-default and enterprise-scalable
-docs/users.md                    accounts, roles, and what each one may reach
+docs/users.md                    design: accounts, roles, and what each one may reach
 docs/design-language.md          what the dashboard's surfaces owe each other: held by the
                                  house rule `design` and measured by test/uniform.mjs
 .hadolint.yaml                   Dockerfile lint config, shared by CI and bb lint

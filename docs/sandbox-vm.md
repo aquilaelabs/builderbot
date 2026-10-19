@@ -66,7 +66,7 @@ asks. Mount it anywhere else and every project's compose file is wrong in the
 worst way available: Docker does not fail on a missing bind source, it creates
 an empty directory and mounts that, and the app comes up with no data.
 
-A node's path mapping, on its row on the Nodes tab, exists for a daemon
+A node's path mapping, under Advanced on its Nodes page, exists for a daemon
 whose paths are not BuilderBot's. Give the sandbox parity and that mapping
 becomes an identity you can leave empty.
 
@@ -129,7 +129,7 @@ sudo bb-sandbox settings             # the lines to paste into BuilderBot
 ```
 
 Once the machine is enrolled as a node, the same mounts (and the agent's
-stores, and the address) are editable from the Nodes tab too: the agent
+stores, and the address) are editable from the Nodes page too: the agent
 applies them through these very verbs as audited `system` jobs, and
 `bb-sandbox list --json` is what its census reports. The menu stays as the
 console fallback, reading and writing the same fstab; see docs/nodes.md §12.
@@ -167,11 +167,11 @@ by hand the same path: `sudo -iu builder`, then
 `bb-tty u:<uid>:claude:<project>` with `BB_TOKEN` from `bb users token
 <project> <account>` on the controller. The projects share has to be mounted
 at `/workspace` for any of it to have a tree to work in: one more row in
-the node's mounts on the Nodes tab.
+the node's mounts on the Nodes page (Storage).
 
 **A Claude login is one account's, on one node.** Each person signs in on
-each node they work on, from that node's row on the Nodes tab (Claude Code,
-Sign in), and the login stays in that account's home on that machine: two
+each node they work on, from that node's Claude Code section on the Nodes page
+(Sign in), and the login stays in that account's home on that machine: two
 accounts on one node are two homes and two logins, and a login on one node
 does nothing for another. Nothing is copied between machines and the
 controller holds no credential: a refresh rotates the refresh token, so two
@@ -197,7 +197,7 @@ project's button, because a session that cannot save a file is worse than
 none. `:ro` on `add-share`/`add-nfs` decides it when the mount is made;
 `bb-sandbox readonly /workspace` decides it afterwards, and
 `readonly /workspace off` puts it back (or untick read-only on the mount's
-row on the Nodes tab and apply). `list` shows which mounts are read-only.
+row in the node's Storage section and apply). `list` shows which mounts are read-only.
 
 Leave the shares containers keep their data on (appdata, media) writable,
 being what they are for.
@@ -217,12 +217,12 @@ the arrangement buys. The dashboard can *see* what is mounted; it asks the
 daemon, and changing it is a decision made here.
 
 `settings` is the seam between the two machines. This VM cannot reach into
-BuilderBot, so it prints what to enter on the dashboard's Nodes tab: the
+BuilderBot, so it prints what to enter on the dashboard's Nodes page: the
 address to add this machine as a node, and the path mapping to set on its
-row, built from the mounts that actually exist here. Only the paths
+page, built from the mounts that actually exist here. Only the paths
 BuilderBot *also* mounts at the same place belong in it: a share this
 machine alone has belongs in neither list, and BuilderBot will say so on the
-Docker manager tab rather than leaving the line looking like it does something.
+Containers page rather than leaving the line looking like it does something.
 
 ## Building it
 
@@ -323,7 +323,7 @@ tool:
   unit, an OpenRC script under `supervise-daemon`, or a runit directory,
   and the Actions runner, which needs systemd for its own service, runs in
   the foreground under the agent where there is none;
-- the Nodes tab's Network section works on all of them: the agent detects
+- the Nodes page's Network section works on all of them: the agent detects
   which service owns the machine's network and writes the same address
   through it: netplan, NetworkManager, systemd-networkd, wicked,
   `/etc/network/interfaces` or `dhcpcd.conf`. Storage is fstab everywhere;
@@ -335,7 +335,7 @@ tool:
 
 Then run one script inside it. Bare, it prints its help and changes nothing.
 The command to run is the one the dashboard gives you: **Enroll node** on the
-Nodes tab mints a token and prints the line with the address and the token
+Nodes page mints a token and prints the line with the address and the token
 already in it, which is a paste rather than a questionnaire. The options
 below are what to add to it when this machine is not the plain case:
 
@@ -379,9 +379,9 @@ tty to prompt on, a non-interactive `ssh` gives it none, and stdin is already
 carrying the script.
 
 To make the VM a **node** as well: dialing in to the dashboard, taking jobs,
-reporting its numbers on the Nodes tab: add `--controller URL --token bbe_…`
+reporting its numbers on the Nodes page: add `--controller URL --token bbe_…`
 to that command, with the token **Enroll node** minted. It is single-use and
-lasts a day; [the Nodes tab section of how-it-works.md](how-it-works.md#the-nodes-tab)
+lasts a day; [the Nodes page section of machines.md](machines.md#the-nodes-page)
 says what the agent then is and
 what it may do. A run without the two flags leaves an existing enrollment
 alone, so re-running the provisioner for a mount does not re-enroll.
@@ -421,7 +421,7 @@ the installer ISO line in it changes, and the file lists them. Create the VM
 in **Form view** first so Unraid makes the domain folder and the vdisk, then
 switch to **XML view** and paste it over what is there.
 
-**The Nodes tab renders it for you, and not only for Unraid.** *Create
+**The Nodes page renders it for you, and not only for Unraid.** *Create
 sandbox VM*, beside *Enroll node*, asks what runs the machine: Unraid,
 Proxmox VE, libvirt/KVM, QEMU alone, VMware, Hyper-V or VirtualBox, one
 template each under `nodes/vm/`, then for the name, the cores, the memory,
@@ -540,8 +540,8 @@ Then what differs from Unraid's placeholder, each for a reason:
   together: change the rule first, then the address. Done the other way
   round the host refuses the mount ("access denied by server"), `nofail`
   lets the boot go on without it, and every project bound to the node loses
-  its Claude button: the node's row and the button say what the server
-  said. Apply network on the Nodes tab asks each server first and refuses
+  its Start Claude: the node's page and the button say what the server
+  said. Apply network on the Nodes page asks each server first and refuses
   an address the exports do not admit.
 
   `all_squash` with `anonuid=99,anongid=100` is the part that matters beyond
@@ -598,13 +598,13 @@ Three steps, none of them on the container's template, then the proxy comes off.
 
 **1. The VM's host key is met on first use, and there is nothing to do.**
 `docker -H ssh://…` shells out to `ssh`, and ssh run non-interactively
-REFUSES an unknown host rather than asking, so this used to stop everything
-with "Host key verification failed" and a grayed-out tab. The controller now
-scans the key itself the first time a daemon refuses for that reason, using
+REFUSES an unknown host rather than asking, which would stop everything
+with "Host key verification failed" and a grayed-out Containers page. The
+controller scans the key itself the first time a daemon refuses for that reason, using
 the address the node reported on its own authenticated dial-in, and asks
 again. It is written into the home volume, so it survives a restart.
 
-What it will not do is replace a key that CHANGED: the tab says so and
+What it will not do is replace a key that CHANGED: the Containers page says so and
 leaves it, because a rebuilt VM and something worth looking at produce the
 same message. If the machine really was rebuilt, clear its line:
 
@@ -615,13 +615,13 @@ docker exec -u builder BuilderBot ssh-keygen -R <vm-ip>
 `bb-sandbox sdk` is the one verb that reads rather than configures, and the
 one that needs no root: it hands you the controller's own `bb`, the copy
 the agent unpacks into the toolchain store to run jobs with, so `bb-sandbox
-sdk versions` at this console answers with exactly what the Toolchains tab shows
+sdk versions` at this console answers with exactly what the Toolchains page shows
 for this node, from the same generator. Read-only verbs only; installing
 from here would go around the one-install-at-a-time rule the controller
 keeps across every machine sharing a store, so it says so and points at the
-tab. Nothing to run until a toolchain job has put a `bb` there.
+Toolchains page. Nothing to run until a toolchain job has put a `bb` there.
 
-**2. Enroll it as a node.** On the dashboard's Nodes tab, **Enroll node**
+**2. Enroll it as a node.** On the dashboard's Nodes page, **Enroll node**
 mints a one-time token; run `provision-linux.sh --controller URL --token bbe_…` on
 the VM and it dials in and stays. The node opens no port and this container
 holds no key that logs into it: the credential the node keeps opens its own
@@ -655,10 +655,10 @@ version of something this daemon has never seen. The instances themselves stay:
 their compose files and env are this side's and have nothing to do with which
 daemon is plugged in.
 
-**3. The path mapping, on the node's row: `/workspace:/workspace`**, and a
+**3. The path mapping, on the node's page (Advanced): `/workspace:/workspace`**, and a
 pair for any other share you mounted on *both* sides. `/devdata` is not one of them: it belongs
 to the VM alone, BuilderBot never touches it, and naming it here would be a
-line of configuration nothing acts on (the manager says so on the row when
+line of configuration nothing acts on (the Containers page says so when
 you leave one in). An identity mapping, because the VM has the shares at
 the same paths this container does. It is accepted without being checked
 against this container's mount table, which describes its own mounts and says
@@ -691,4 +691,4 @@ Nothing of the controller's: no accounts, no notebook, no git credential
 `hostdev` block above is filled in (roadmap R20). What it does carry, Docker
 and, on a node that runs sessions, Claude Code, the emulator and the
 toolchains installed on it, is a node's and can be put back from the Nodes
-tab, and keeping the record off it is what makes throwing it away cheap.
+page, and keeping the record off it is what makes throwing it away cheap.

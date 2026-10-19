@@ -44,7 +44,7 @@ and any of your own, and their grants add up: a role never takes anything
 away, so the sum is readable. The built-in roles below are grants too, the
 ones that reproduce what each could do before roles existed, and they are
 not edited: Copy makes one of your own from a built-in. The page's buttons
-and tabs are drawn from the same answer the server refuses on
+and pages are drawn from the same answer the server refuses on
 (`state.can`), which is what keeps them consistent.
 
 **An area instance by instance** (R260, 16 Oct). On an Everywhere role the
@@ -160,7 +160,7 @@ refused. Absent.
 
 That is cheaper than it sounds, because there is already one chokepoint.
 `server.project_list()` is what enumerates the projects share, and all
-seventeen of its callers go through it: the sidebar, the state payload, and
+seventeen of its callers go through it: the Projects page, the state payload, and
 every `if name not in {p["name"] for p in project_list()}` guard. Filter it by
 the requesting principal and three things happen at once.
 
@@ -205,6 +205,8 @@ the honest amount of mechanism.
 
 ## The surface
 
-Administration → **Users**, opening a document tab like Nodes and Jobs. Rows of name,
-role, projects and last seen; add, edit, remove. The owner's row carries no
-delete control and says why, rather than offering one that fails.
+**Users**, under People on the rail, is a page of settings: the accounts as a
+list beside the picked one's settings (its name, roles and projects, profile
+and password, saved together), **Add user** at the right of the page's bar,
+and Remove at the foot. The owner's carries no Remove and says why, rather
+than offering one that fails.

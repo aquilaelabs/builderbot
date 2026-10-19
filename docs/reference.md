@@ -2,22 +2,22 @@
 
 The settings the container is given, every `bb` command a session has, the
 apps a controller offers, and how Android releases are signed. What each part is for is
-[how-it-works.md](how-it-works.md); setting one up is [install.md](install.md).
+[how-it-works.md](how-it-works.md) and the docs it names; setting one up is [install.md](install.md).
 
 ## Configuration reference
 
 Only what the container or the host has to know before BuilderBot runs is a
-variable; everything else is set in the dashboard: Settings for the
-controller, a project's settings for the project, the Nodes tab for each
-machine. Tokens are never variables: git keys and publishing tokens go in the
+variable; everything else is set in the dashboard: Controller settings (under
+Machines) for the controller, a project's settings for the project, the
+Nodes page for each machine. Tokens are never variables: git keys and publishing tokens go in the
 root-only secrets folder ([unraid.md](unraid.md#shielding-secrets-pat--ssh-keys-from-claude-sessions)),
 a project's settings make its deploy key or hold its access token, and a
-runner's token is typed on the Nodes tab.
+runner's token is typed on the CI runner page.
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
-| `TZ` | `Etc/UTC` | The container's clock, for its log lines. Optional: the dashboard shows times in each browser's own zone, or the one picked on the Profile tab |
+| `TZ` | `Etc/UTC` | The container's clock, for its log lines. Optional: the dashboard shows times in each browser's own zone, or the one picked under the gear in the header |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
 | `SCANNER_REPORTS_PATH` | `/mnt/user/appdata/scanners/reports` | the directory a scanner on the host writes SARIF into, mounted read-only at `/reports` and read by `bb findings` and the Analysis view; empty where no scanner runs |
 | `BUILDERBOT_PULL` | `missing` | BuilderBot's own dev instance only: compose's pull policy, `build` to build this checkout (with `BUILDERBOT_TAG=dev`) |
@@ -598,8 +598,6 @@ bb tool sound make PRESET [--seed N] [--name N] [--wav]  a sound effect for an
 bb toolchains             SDKs kept outside the image: status, check, install X, update X, remove X
 ```
 
-The dashboard's Commands flyout carries this same list in this same order.
-
 ## The apps a person installs
 
 The Android app, the VS Code extension and the Windows companion are built
@@ -632,15 +630,15 @@ compose file to choose what a new controller offers before anybody signs in:
 ```
 
 Read once, on the first start that finds it: each app named is offered and
-each one left out is not. It is then renamed `seed.json.applied`, and the
-Settings page owns the choice from there. Nothing about it is in the
+each one left out is not. It is then renamed `seed.json.applied`, and
+Controller settings owns the choice from there. Nothing about it is in the
 environment.
 
 ## Signing Android releases
 
-A project keeps its Android keys on the controller, under **Signing keys** in
+A project keeps its Android keys on the controller, under **Android signing** in
 its settings, and a build is signed on its node as a job no session can look
-inside: from the Artifacts tab, or by a session with `bb sign`, under the
+inside: from the Artifacts view, or by a session with `bb sign`, under the
 project's **Claude may: Sign a build**. No key is made or added until the
 project's owner has set its **backup password**, which every download of a
 key's backup asks for, BuilderBot's owner included; a backup goes only to an
@@ -663,5 +661,5 @@ up there. A project can keep several named keys (one per app, or one shared),
 generated on the controller or uploaded, with each app's package mapped to its
 key, and a sideload key can be **rotated** to another: builds then carry both
 and a proof, Android 9 and newer move to the new key, and the old one is kept
-for the devices before that. [how-it-works.md](how-it-works.md#android-signing-keys)
+for the devices before that. [building.md](building.md#android-signing-keys)
 has the rest.

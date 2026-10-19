@@ -25,7 +25,7 @@ before creating anything.
 Find the rows that describe what you want; you need every credential marked in
 those rows. Nothing else.
 
-| I want to… | Host GHCR token | Runner token (Nodes page) | SSH key | Per-project token |
+| I want to… | Host GHCR token | Runner token (CI runner page) | SSH key | Per-project token |
 |---|:--:|:--:|:--:|:--:|
 | Pull the image at all: *everyone needs this* | ● | | | |
 | Run Claude against the mounted projects, no remote git | ● | | | |
@@ -38,7 +38,7 @@ those rows. Nothing else.
 | Credential | Type | Permissions | Lives where |
 |---|---|---|---|
 | **Host GHCR token** | PAT **(classic)** | `read:packages`; nothing else | Unraid host, via `docker login` (step 2). Fine-grained tokens cannot pull from GHCR |
-| **Runner token** | PAT (fine-grained), resource owner = **the org** | *One* permission; see the runner-scope table below | Typed into the runner section of the node's row on the Nodes page; kept root-only on the controller. Never visible to sessions |
+| **Runner token** | PAT (fine-grained), resource owner = **the org** | *One* permission; see the runner-scope table below | Typed into the node's runner on the CI runner page; kept root-only on the controller. Never visible to sessions |
 | **SSH key** | ed25519, **no passphrase** | n/a, since access is whatever the git host grants the key | Made or pasted under **Deploy key** in a project's settings (kept at `/config/deploy-keys`, root-only), or dropped into `/secrets/ssh/` by hand. Either way loaded into a root-owned agent: usable by git, unreadable by sessions |
 | **Per-project token** | PAT (fine-grained) | *Contents*: R/W on the one repository | Typed into the dashboard's clone dialog or the project's settings, stored at `/config/gitcreds/<project>` and named by that repo's `.git/config`. There is no container-wide git token |
 
@@ -105,8 +105,8 @@ mkdir -p /mnt/user/appdata/BuilderBot/{home,config/startup.d}
 chown -R 99:100 /mnt/user/appdata/BuilderBot
 
 # The controller's toolchain store: the browsers `bb capture shot` uses. A node
-# keeps its own toolchains, in a directory of its own on the store its row
-# names. On a normal share rather than appdata; it is bulk data, it is not
+# keeps its own toolchains, in a directory of its own on the store its Nodes
+# page names. On a normal share rather than appdata; it is bulk data, it is not
 # written constantly, and keeping it out of the image is the point.
 mkdir -p /mnt/user/sdk
 chown 99:100 /mnt/user/sdk
@@ -147,14 +147,14 @@ Then in the WebUI: **Docker** tab → **Add Container** → in the *Template*
 dropdown pick **builderbot**. You get a form with everything already wired:
 
 * the projects folder (`/mnt/user/projects`) mapped to `/workspace`: one
-  mapping for all of them, so every folder in that share is a project and
-  adding one never means editing the container again
+  mapping for all of them, so every project BuilderBot makes lands in that
+  share and adding one never means editing the container again
 * the appdata paths for home and config
 * TZ under the advanced view, which only sets the container's own clock: each
-  person picks the zone the dashboard shows times in on their Profile page
+  person picks the zone the dashboard shows times in under the gear menu
 
 Claude Code is not configured here: it runs on the nodes, and each person
-signs in on each node's row (Nodes page, Claude Code) with their own Claude account.
+signs in on each node (its Claude Code section on the Nodes page) with their own Claude account.
 Each account's commit identity is set on its Profile page. Hit **Apply**. Unraid pulls the image and starts it.
 
 **Unraid never applies new template values to a container that already
@@ -164,7 +164,7 @@ nothing to a running container until you edit that setting on it yourself.
 ### Stopping the container
 
 Stopping from the Docker page sends SIGTERM and then SIGKILL. BuilderBot uses
-that window to save the open terminal tabs, so the next boot can put them
+that window to save the open terminals, so the next boot can put them
 back, and that takes milliseconds: Unraid's default ten seconds (Settings →
 Docker → Docker Stop Timeout) is plenty, and nothing in Extra Params changes
 it, since Unraid passes its own timeout on every stop.
@@ -243,7 +243,7 @@ on a project runs on that project's node, whose toolchain store holds the
 emulator (Toolchains page) and its images (Emulator page) and whose own
 `/dev/kvm` and card do the work. A node is a machine you enroll from the
 Nodes page (**Enroll node**, or **Create sandbox VM**) on a VM or a spare
-Linux box; a Mac is offered only with **Offer dev features** on in Settings.
+Linux box; a Mac is offered only with **Offer dev features** on in Controller settings.
 Nothing here needs a device or a runtime flag for it.
 
 ### Web dashboard
@@ -272,13 +272,13 @@ notebook context.
    runs without one
 
 You get container status and every node's runner, a rendered report of whatever SARIF your
-scanner drops in `/reports`, every `bb` command as a button that types into the
-terminal you are looking at (thumbtack the ones you use to keep them on top),
+scanner drops in `/reports`, command buttons that type into the terminal you are
+looking at (thumbtack the ones you use to keep them on top),
 and browser terminals backed by tmux.
 
 Every tool is a page on the rail down the left edge, in groups: Home,
 Projects (with Analysis), Build (Toolchains, Emulator, Phone, CI runner,
-Apps), Containers (the Docker manager, nginx), Machines (Controller settings,
+Apps), Containers (Containers, nginx), Machines (Controller settings,
 Nodes, Storage), Sessions, Jobs, People (Users, Roles), Settings (Profile)
 and Help. A page your account's grants forbid is not drawn. On a phone the
 rail is a bar of five across the foot in the same order (Home, Projects,
@@ -291,45 +291,44 @@ The Projects page is a card for each project in the projects share, and it
 says what is wrong with each one rather than hiding it: an error in red (no
 git repository, or ownership the container cannot work with), a warning in
 amber, because it is asking for something. A card with an error carries no
-Claude button, since a session cannot start there; a *locked* one keeps its
-button, ghosted, and a closed padlock after the name.
+Start Claude, since a session cannot start there; an *archived* one
+(**Archive** in its menu) is folded under Archived at the foot of the page.
 A directory with a `.bbignore` file in it is not treated as a project: the
 container marks its own paths that way (the toolchain store, if you put it inside
 the projects share), and you can drop the same file into
 anything you would rather the page ignored.
 
-**New project** in the page's bar creates one: a fresh local repo built
-from the name and description you give it, or a clone of a GitHub repository
-a deploy key or token can already reach, which needs only the URL:
-the name comes from the repository and the `CLAUDE.md` is drafted from its own
-README and build files.
+**New project** in the page's bar creates one: a fresh local repo from the
+name and the brief you give it, one unpacked from an archive you have, or a
+clone of a repository a deploy key or token can already reach, which needs
+only the URL: the name comes from the repository, and a `CLAUDE.md` it
+carries is kept as it is.
 
 Selecting text in a shell terminal copies it to your clipboard as you release
-the mouse. Claude tabs keep tmux's mouse mode instead, so they do not.
+the mouse. Claude terminals keep tmux's mouse mode instead, so they do not.
 Right-click gives you the browser's menu only: tmux's would be drawn
 underneath it, and Alt+right-click still opens tmux's if you want it.
 
-**Commands**, under the terminal in the dock, opens the `bb` commands between
-two more lists: **Linux commands** (disk, memory, processes, ports: live on
-any shell) above them, and **Git & GitHub** below, which grays out when the
-active shell's directory is not a git repository, and grays just its `gh`
-half when the repo has no GitHub remote. Last comes a list of your own:
-**+** takes a title and a list of command
-lines, and the button it makes types them into the terminal in order. They
-are kept in `/config`, so they survive updates.
+**Commands**, under the terminal in the dock, opens four lists: the
+commands you pinned, your own (**+** takes a title and a list of command
+lines, and the button it makes types them into the terminal in order, kept
+in `/config` so they survive updates), **Linux** (disk, memory, processes,
+ports: live on any shell) and **git**, which grays out when the active
+shell's directory is not a git repository.
 
-The page starts with one workspace tab; every tab, that one included, can be
-minimized. **Claude** opens one session per project: resumable if a previous
-conversation exists, and **Shell** opens another terminal each time you click
-it. Tabs are named for where they are (`sh: <directory>`, following a `cd`;
-`Claude: <project>`), with the full path on hover. They live in the dock at
-the foot of every page: one line when shut, half the screen when pulled up,
-the page above it.
+The dock starts with one workspace terminal; every terminal, that one
+included, can be minimized. **Start Claude** opens one session per project:
+resumable if a previous conversation exists, and **Shell** opens another
+terminal each time you click it. Terminals are named for where they are
+(`sh: <directory>`, following a `cd`; `Claude: <project>`), with the full path
+on hover. They live in the dock at the foot of every page: one line when
+shut, half the screen when pulled up, the page above it.
 
-A tab's **`&mdash;`** minimizes it: the terminal or Claude session keeps running and is
-listed under Sessions, where clicking the name brings its tab back. Ending a
-session for good is the ✕ in the Sessions list (Sessions on the rail, or a
-middle-click on its tab), and that is the only thing that asks.
+A terminal's **−** on the dock's line minimizes it: the terminal or Claude
+session keeps running and is listed on the Sessions page, where clicking the
+name brings it back. Ending a session for good is its **×** on the dock's
+line, a middle-click there, or the ✕ on the Sessions page, and that is the
+only thing that asks.
 
 Which terminals are open is stored on the container rather than in the
 browser, so a phone shows what the desktop has open. **Terminals survive a restart of the container**:
@@ -446,8 +445,8 @@ same picker also shows the public key to paste into the repo's
 private key in `secrets/ssh/` and restart the container so the agent picks
 it up.
 
-The same picker appears when **linking** a local repo to GitHub (the chain
-icon on a project row that has no remote): pick the key, or none if a PAT
+The same picker appears when **linking** a local repo to GitHub (**Link to a git host**
+in the menu of a project that has no remote): pick the key, or none if a PAT
 is configured. Linking only ever targets an *empty* GitHub repository,
 and with a PAT, one that does not exist yet is created for you, private.
 
@@ -612,7 +611,7 @@ Mixing direct-disk and user-share paths for the same data corrupts files.
 who can open a PR could run code on that machine.
 
 **Stopping cleanly.** Stop from the Docker tab (or `docker stop`) sends
-SIGTERM and the open terminal tabs are saved. Claude sessions, emulators and
+SIGTERM and the open terminals are saved. Claude sessions, emulators and
 runners are unaffected: they are on nodes, and nodes do not stop with this
 container.
 

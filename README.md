@@ -34,13 +34,14 @@ your projects mounted straight in, and to grow from one machine to several.
 
 ## Features
 
-- **Claude sessions from the browser.** Real terminals in tabs, side by side
-  or on a phone, each session in its own project's view of the disk. Resume,
+- **Claude sessions from the browser.** Real terminals in a dock at the foot
+  of every page, at a desk or on a phone, each session in its own project's
+  view of the disk. Resume,
   restart, pick the model and effort, and see at a glance which sessions need
   a restart to pick up a change.
-- **A notebook per project.** Briefing and house rules, roadmap, bug
-  tracker, design language, wiki, tests, git, artifacts, containers and
-  static analysis, shared between you and every session that works there.
+- **A page per project.** Its overview and house rules, roadmap, bug
+  tracker, git, tests, static analysis, artifacts, containers, wiki and
+  design, shared between you and every session that works there.
 - **Nodes that do the work.** Enroll a Linux machine or VM with one script.
   Each node carries its own toolchains (JDK, Android SDK, Flutter, Node,
   Python, Playwright and more), installed and updated from the Toolchains page
@@ -65,7 +66,7 @@ your projects mounted straight in, and to grow from one machine to several.
 
 <table>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/dashboard.png" alt="The dashboard: projects on the left, a terminal on the right"></td>
+    <td colspan="2"><img src="docs/screenshots/dashboard.png" alt="The dashboard at a desk"></td>
   </tr>
   <tr>
     <td width="50%" align="center"><img src="docs/screenshots/phone-dashboard.png" width="80%" alt="The dashboard on a phone"></td>
@@ -76,13 +77,17 @@ your projects mounted straight in, and to grow from one machine to several.
 ## Documentation
 
 Everything else, from installing to the full command reference, is in
-**[docs/](docs/README.md)**:
+**[docs/](docs/README.md)**, which is also the dashboard's Help:
 
 - [Install](docs/install.md), with the [Unraid walkthrough](docs/unraid.md)
 - [Start here](docs/start-here.md), for an account on somebody else's BuilderBot
-- [How it works](docs/how-it-works.md) and the [architecture](docs/architecture.md)
+- [How it works](docs/how-it-works.md), the overview, with a doc for each part
+  of the dashboard: [projects](docs/projects.md), [a project's page](docs/notebook.md),
+  [sessions](docs/sessions.md), [building](docs/building.md),
+  [toolchains](docs/toolchains.md), [containers](docs/containers.md),
+  [machines](docs/machines.md) and [people](docs/people.md)
 - [Reference](docs/reference.md): settings, every `bb` command, Android signing
-- [Contributing](CONTRIBUTING.md)
+- [Architecture](docs/architecture.md) and [Contributing](CONTRIBUTING.md)
 
 ## License
 

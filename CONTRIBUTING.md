@@ -110,7 +110,7 @@ answering from the old reading (8 Oct 2026).
 
 `README.md` is the front page; `docs/README.md` the index of the docs;
 `docs/reference.md` the configuration and `bb` reference;
-`docs/architecture.md` the map; `docs/how-it-works.md` the prose behind each
-part; `docs/decisions.md` the design decisions with their dates and reasons;
+`docs/architecture.md` the map; `docs/how-it-works.md` the overview, and the
+docs it names (one per part of the dashboard) the prose behind each part; `docs/decisions.md` the design decisions with their dates and reasons;
 `docs/layout.md` the file-by-file list; `docs/nodes.md` the design record for
 nodes.

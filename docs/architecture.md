@@ -24,19 +24,21 @@ One container (the Dockerfile, `docker-compose.yml`, the Unraid template).
 It holds the record and answers the dashboard; it runs nothing of a
 project's itself. `scripts/entrypoint.sh` starts it, `scripts/supervisor.sh`
 keeps it alive, and `scripts/startup.d/` are its hooks. Explained in
-how-it-works.md under *What's in the image*, *Startup hooks* and *Security
-model*.
+[how-it-works.md](how-it-works.md) under *What's in the image*, *Startup
+hooks* and *Security model*, and its settings and logs in
+[machines.md](machines.md#controller-settings).
 
 ## The dashboard
 
 `scripts/dashboard/server.py` is the routes, the transport and the gates;
 each handler checks who may ask and makes one call into the module beside
 it. `index.html` is the markup, the stylesheet and the wiring that runs at
-load; one `tab-*.js` per document tab, one `nb-*.js` per notebook view,
-one `page-*.js` per part of the page that is neither. No framework, no
+load; one `tab-*.js` per page on the rail, one `nb-*.js` per view of a
+project's page, one `page-*.js` per part of the page that is neither. No framework, no
 build step. The page's design language is `docs/design-language.md`; its
 suite is `scripts/dashboard/test/` (CONTRIBUTING.md says how to run it).
-Explained in how-it-works.md under *Web dashboard*, with a section per tab.
+Explained in [dashboard.md](dashboard.md), with a doc per group on the rail
+([how-it-works.md](how-it-works.md#where-each-part-is-explained) lists them).
 
 ## The notebook
 
@@ -46,8 +48,8 @@ view beside server.py (`roadmap.py`, `bugs.py`, `rules.py`, `testreg.py`,
 `memory.py`, `changelog.py`), one store each under /config, and `bb roadmap`,
 `bb bug`, `bb rules`, `bb tests`, `bb changelog` driving the same files; a
 session's writes that the project holds for approval go through
-`pending.py`. Explained in how-it-works.md under *The notebook*; the reasons
-in decisions.md under *The notebook*.
+`pending.py`. Explained in [notebook.md](notebook.md); the reasons in
+decisions.md under *The notebook*.
 
 ## Nodes and the agent
 
@@ -73,8 +75,8 @@ with the project's rules, roadmap and bugs. Its `bb` verbs reach the
 controller through the relay (`bbrelay.py`, `scripts/lib/relay-verbs`),
 its hooks post through `hooks.py`, and its git pushes go through
 `gitrelay.py`, since the controller holds the keys. Explained in
-how-it-works.md under *Keeping a session in its own project* and *Telling
-a project's sessions about this environment*.
+[sessions.md](sessions.md), under *Keeping a session in its own project* and
+*Telling a project's sessions about this environment*.
 
 ## The store and the toolchain store
 
@@ -85,17 +87,18 @@ big downloads live on the toolchain store, outside the image, in a directory
 of the node's own (`<store>/<node id>`; only the Android system images are
 shared, at `<store>/shared`), managed by `scripts/lib/sdk.sh` from
 `config/toolchains.json`. Explained in
-how-it-works.md under *The toolchain store lives outside the image*.
+[toolchains.md](toolchains.md#the-toolchain-store-lives-outside-the-image).
 
 ## The asks
 
 Some things wait on a person: root on a node, a phone, a container from a
 compose file, a session's rebuild under a project's setting. Each is a
-request on the bell and the tab it belongs to, answered with Allow or
+request on the bell and the page it belongs to, answered with Allow or
 Deny, and the session waits on the answer through the same verb
 (`phone.py` holds the queue; `bb root`, `bb phone`, `bb container`,
-`bb devapp`). Explained in how-it-works.md under *A phone, and asking
-before touching it* and *The dev instance and the Docker manager*.
+`bb devapp`). Explained in
+[toolchains.md](toolchains.md#a-phone-and-asking-before-touching-it) and
+[containers.md](containers.md).
 
 ## Where the rest is
 
@@ -104,6 +107,7 @@ before touching it* and *The dev instance and the Docker manager*.
   (written from `bb help` by `tools/bb-ref.sh`), and Android signing.
 - `docs/decisions.md`: the design decisions with their dates and reasons.
 - `docs/layout.md`: every file, held to the tree by `bb lint`.
-- `docs/users.md`: accounts, roles, what each may reach.
+- `docs/users.md`: the design of accounts and roles; `docs/people.md` how
+  they work on the People pages.
 - `docs/journeys.md`: what a person does with it, walked for real, dated.
 - `CONTRIBUTING.md`: a person's way in; `CLAUDE.md`: a session's.

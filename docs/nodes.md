@@ -8,7 +8,7 @@ Sessions, builds, tests, CI and the emulator run on nodes; the controller
 runs none of them. It was written before that was true (the first sections
 describe turning one container with one remote daemon into this) and kept as
 the reasons behind each decision; what is built is described in
-[how-it-works.md](how-it-works.md), with its settings and `bb` commands in
+[how-it-works.md](how-it-works.md) and the docs it names, with its settings and `bb` commands in
 [reference.md](reference.md), and where this document differs from them, the
 code and those are right.
 
@@ -152,7 +152,7 @@ setting.** A node is not "for" docker or for building; a project names ONE
 node and that node does everything the project needs, so nobody is asked
 which. Every node enrols with the full set, and what a project can actually
 DO on its node is what is INSTALLED there: the census's `toolchains`, which
-the node's row now shows in place of the toggles, and which the Toolchains tab
+the node's page shows in place of the toggles, and which the Toolchains page
 adds to. Three projects on three VMs keeps them apart; three projects on one
 VM shares it; the choice is the project's node, and nothing else.
 
@@ -164,7 +164,7 @@ expressible through the API; it is simply not something anyone has to
 configure to get ordinary work done. Two things are unchanged and stay
 gated on facts rather than toggles: `system` jobs are offered only to a node
 whose census says it carries `bb-sandbox`, and `local`: the controller's
-own record, which is registry plumbing rather than a row on the tab
+own record, which is registry plumbing rather than a node on the Nodes page
 itself: is never given `docker-host`, because containers there would run
 beside `/config` and the dashboard credential (§12).
 
@@ -347,7 +347,7 @@ every phase (`system`, `toolchain`, `cache-clear`, compose plans, `bb` verbs,
 store listings), and an older agent meets an unknown one with a shrug rather
 than an error, which is the worst of the three possible answers. So
 `job_add` refuses and `fits` declines every job whose runner is the node,
-`self-update` excepted; the Nodes tab and the Toolchains tab ghost the buttons and
+`self-update` excepted; the Nodes page and the Toolchains page ghost the buttons and
 say why before the press. It is one rule in `nodes.agent_stale` and the UI
 only mirrors it.
 
@@ -483,12 +483,12 @@ no new agent. It does not reset at a boundary (`0.5.28` follows `0.4.27`),
 so "which of these is newer" always has an answer.
 
 A node whose agent is from another window is reported as such and not
-refused: the Nodes tab separates *behind* (a newer build in the same window,
+refused: the Nodes page separates *behind* (a newer build in the same window,
 routine) from *out of window* (the promise was never made, update before
 relying on it). Refusing would strand a node on a guess. The one thing an
 out-of-window agent does stop is Claude sessions on the projects bound to
 that node: the controller ends the running ones and ghosts each such
-project's Claude button until the node is updated, per project, so a
+project's Start Claude until the node is updated, per project, so a
 project on a current node is untouched.
 
 What a session is briefed with is no longer in this window, or in any
@@ -586,7 +586,7 @@ session meets a toolchain another node is replacing, no two distros'
 binaries land in one place, an install on one node waits for no other, and
 a node enrolled again starts afresh under its new id. What no node runs
 from any more (a retired or unknown node's directory, `store_dirs.roots`)
-is offered for removal on the Toolchains tab (`toolchains.cleanable`).
+is offered for removal on the Toolchains page (`toolchains.cleanable`).
 This controller keeps its own toolchains (Playwright's browsers for
 `bb capture shot`) under `<store>/<os>-<arch>`, which is never offered. The census reports the scope beside the store's
 path, and its listing of the directory (`store_dirs`, every hello) is the
@@ -664,9 +664,9 @@ controller is.
 - **Not synced:** what a node rebuilds (`node_modules`, `.gradle`, virtualenvs,
   caches), git's lock files, and a symlink pointing out of the project.
   `.git` and `dist/` are synced: a session commits on the node, and a build
-  there lands its artifacts where the Artifacts tab reads them.
+  there lands its artifacts where the Artifacts view reads them.
 - **A session waits** for its project's first copy: the node reports each
-  project as copying or ready, and the Claude button says which. Binding a
+  project as copying or ready, and Start Claude says which. Binding a
   project to a synced node, or changing what it reads, tells every synced
   node at once (`wssync.held_changed`), so the first copy starts on the
   save rather than at the node's next look of its own, half a minute
@@ -702,8 +702,8 @@ controller is.
   on a synced node is the node's own: the agent makes `/workspace/.claude`
   as the session account, and its mirror (`claudesync.py` on both sides)
   keeps the folders of the projects bound to the node in step with the
-  controller's, which the Profile and Memory tabs, `bb transcripts` and
-  the resume offer read. A transcript only grows, so a change goes up as
+  controller's, which the Profile page, the notebook's Memories,
+  `bb transcripts` and the resume offer read. A transcript only grows, so a change goes up as
   its new tail, checked against the controller's last 4 KB; a memory goes
   whole. What the controller has that the node never had comes down when it
   is a megabyte or less; a longer conversation comes down when it is
@@ -783,7 +783,7 @@ store and `bb toolchains`, operator-gated; that has to generalize without forkin
   (`type: exec`, spec from the catalog) placed on that node, with the same
   logs, audit and one-at-a-time-per-node rule as everything else, which also
   keeps the existing gate: sessions cannot trigger it, operators can, and now
-  the audit row says who did. The Toolchains tab's installer gains the same node
+  the audit row says who did. The Toolchains page's installer gains the same node
   picker the Docker manager gets: pick a node, see what is installed *there*,
   install or remove there. The controller is not offered at all (roadmap
   #26): it takes no toolchains, and its own record is registry plumbing.
@@ -808,7 +808,7 @@ is a system directory**: exactly or inside one, and a bare top-level
 directory like `/mnt` with it. A store is a directory this system creates,
 fills and (for the cache) empties on request, so `--cache /etc` would have
 made *Clear cache* delete every directory under `/etc`. Checked on the
-controller so the tab says no before anybody presses Apply, and again on the
+controller so the Nodes page says no before anybody presses Apply, and again on the
 node whatever it is told: the same reasoning as the capability refusal,
 applied to disk.
 
@@ -826,13 +826,12 @@ minutes would be minutes of stat traffic for a number already known. Adding
 one is the ordinary toolchain job with `android-tools` (and its JDK) put in
 front of it, since the install is sdkmanager's.
 
-*Amended 19 September:* images left the Toolchains tab for an **Emulator**
-tab of their own, and the toolchain job for an `image` job (`bb emu image
+*Amended 19 September:* images left the Toolchains page for an **Emulator**
+page of their own, and the toolchain job for an `image` job (`bb emu image
 add|remove ID` on the node, through the same bundle). The two job types take
 turns on a store. An image add on a node without `android-tools` is refused
 with the reason rather than having the tools put in front of it: the Emulator
-tab says what is missing and links to the Toolchains tab, and its button on
-the Tools card is ghosted until some node has the tools and the emulator.
+page says what is missing and links to the Toolchains page.
 
 - **The store is a role with a location, not a mount.** Each node has a
   `toolchains` store: default an internal path
@@ -888,7 +887,7 @@ toolchain install on a node is a `toolchain` job: the agent fetches the
 bundle (bb, its library, the catalog) by digest into the toolchain store
 and runs `bb toolchains install` from it with `SDK_ROOT` at the store, gated on the
 store's headroom when this controller has measured the toolchain before; the
-Toolchains tab's node picker shows what the node's census says it has. Not
+Toolchains page's node picker shows what the node's census says it has. Not
 landed: the node browser is the kept-workspace path in the job's log and
 `bb run`'s last line, not a file view; and an APK has not yet compiled on a
 real node: the mechanism is complete, the proof needs a node with a JDK.
@@ -896,7 +895,7 @@ real node: the mechanism is complete, the proof needs a node with a JDK.
 ### Artifacts
 
 The job declares outputs as globs; the agent uploads on success,
-content-addressed; the controller stores them and the Artifacts tab lists them
+content-addressed; the controller stores them and the Artifacts view lists them
 under the version stamp that is already the convention. Retention by count and
 age per project, with pool-level quotas as the later enterprise knob.
 
@@ -970,7 +969,7 @@ node holding a container the project owns). What the image itself holds is
 the Dockerfile's: a final stage that copies the source carries the source.
 
 **Copy or move a container to another node, its data with it (10 Oct).**
-Send to Docker makes a fresh container; Copy or move on a Docker tab row
+Send to Docker makes a fresh container; Copy or move on a Containers page row
 takes one that exists, with its named volumes and its data directory, to
 any agent node, the project's own listed first (and only they carry its
 codebase, its development and its Claude sessions; on any other its image
@@ -1012,7 +1011,7 @@ the pieces stack:
    (`bb.example.com`), forwarding `/api/v1/agent/` and answering
    everything else 404 (the dialog prints the rule, with cloudflared's
    config as the example; or the controller runs that tunnel itself from
-   the Settings tab's Reach from outside group, R176, `tunnel.py`), the VPS dials that name over HTTPS with its node
+   Controller settings' Reach from outside group, R176, `tunnel.py`), the VPS dials that name over HTTPS with its node
    token, nothing on the router changes, and the VPS never learns the home
    address, since it only ever talks to the tunnel's edge; the controller
    answers that hostname on the agent API alone (`tunnel_refuses`, by the
@@ -1033,7 +1032,7 @@ the pieces stack:
    journald drop-in (`Storage=persistent`), and the agent does the same on
    a managed node enrolled before, so `bb logs --node NAME --crash` has the
    boot before a crash to read; a fresh VPS keeps its journal in memory.
-2. *Make it hosting only*, ticked in the Enroll dialog or later on its row
+2. *Make it hosting only*, ticked in the Enroll dialog or later on its page
    (`nodes.host_only`): no project may list it, so no code, synced copy or
    session goes there, and its hello hands it no bb bundle, no session
    tokens and no FTP; the agent stops its session half and runs no sync. At
@@ -1053,10 +1052,10 @@ the pieces stack:
    a note in the bell, not a line on the row. Its name is its own and can be
    changed in Edit while it is down, the node carrying its volumes and data
    directory to the new one (R191). Its registry images keep up to date
-   with Check for updates and Update on the Docker tab (R195); what is
+   with Check for updates and Update on the Containers page (R195); what is
    built from code keeps Rebuild.
 4. *Tick it under Also works on*, in the project's settings, where it is
-   marked Hosting only (Where it runs; one list on screen, `prefs.hosts`
+   marked Hosting only (the Nodes section; one list on screen, `prefs.hosts`
    underneath for the hosting-only rows and `prefs.nodes` for the rest; a
    hosting-only node may be ticked by whoever may set the project's node;
    the Node picker above the list never offers one, since it holds no code
@@ -1073,7 +1072,7 @@ the pieces stack:
    a new token, since a token is good once and never kept) and Discard,
    which takes a row that never enrolled off outright (`node_discard`);
    an enrolled node is retired, its history kept.
-4a. *Enroll it again* (R177): Enroll script on the node's row makes a new
+4a. *Enroll it again* (R177): Enroll script on the node's page makes a new
    script for a node already here, opened on its own answers, with no
    secret in it (the node keeps its WireGuard config and its door's; a
    secret pasted replaces the node's), bound to the machine the node
@@ -1083,9 +1082,9 @@ the pieces stack:
    one agent is left. For setting a node up afresh, or changing how it
    reaches the controller.
 4b. *A door in for SSH* (R174): a tunnel client on the node, switched on
-   and off from the node's row (a `door` system job the agent answers by
+   and off from the node's page (a `door` system job the agent answers by
    starting or stopping it; the census reports `door: {kind, host,
-   installed, active}` and the row's switch reads that). Which client is a
+   installed, active}` and the page's switch reads that). Which client is a
    recipe the provisioner knows (`--door`): cloudflared publishing port 22
    at a hostname of its own with a tunnel token (`/etc/cloudflared/env`,
    root's, read by its unit; the public hostname goes to
@@ -1104,18 +1103,18 @@ the pieces stack:
    rather than all being `localhost:22`, and says MobaXterm's way in: its
    own SSH sessions read no ssh config, so a Shell session that runs `ssh
    NAME` (R179).
-5. *Put nginx in front of them* (R171, the nginx tab): one reverse proxy
-   per node, BuilderBot's own, listed for every node on the Tools card's
-   nginx tab. Its routes (a hostname or path to a port a container
+5. *Put nginx in front of them* (R171, the nginx page): one reverse proxy
+   per node, BuilderBot's own, listed for every node on the nginx page,
+   under Containers on the rail. Its routes (a hostname or path to a port a container
    publishes on that node, with or without TLS) and its certificates (a
    Cloudflare origin certificate for a site behind Cloudflare) are kept on
    the controller (`nginxproxy.py`, the key 0600 and never shown back). A
    route's hostname is picked from one list every node's nginx shares
-   A container's row on the Docker tab writes a route too (R209): the
+   A container's row on the Containers page writes a route too (R209): the
    certificate it serves under, one of its published ports, Add route; a
    port that has a route already is refused by name.
-   (Hostnames on the tab, the operator, 12 Oct; or typed into a route row
-   with "type a hostname…", or into a Docker row's Route through nginx,
+   (Hostnames on the nginx page, the operator, 12 Oct; or typed into a route row
+   with "type a hostname…", or into a container row's Route through nginx,
    and put on the list by the save): a name is added once and
    any route on any node, for any project's container, picks it, and one a
    route still uses cannot be deleted. A
@@ -1134,7 +1133,7 @@ the pieces stack:
    reach them and nothing is open to the internet by accident; a port that
    must be public is published as `0.0.0.0:PORT:80` in the compose on
    purpose. The agent writes two keys to `daemon.json` when the switch on
-   the node's row says so (on by default for a hosting-only node): `ip`,
+   the node's page says so (on by default for a hosting-only node): `ip`,
    the default bridge's, and `default-network-opts`'
    `com.docker.network.bridge.host_binding_ipv4`, which every network
    compose makes takes instead (B666: with `ip` alone a compose
@@ -1142,16 +1141,16 @@ the pieces stack:
    hello and restarts docker only when the file differs, so an agent
    update that learns more of the setting applies it by itself (B667). A
    network keeps the options it was made with, so a container made before
-   is bound again by a Down and Up; its Docker row says so in red while a
+   is bound again by a Down and Up; its Containers row says so in red while a
    port is still published on every address, and says why when the compose
    file is the reason (R217): a variable defaulting to `0.0.0.0` (named, to
    set to `127.0.0.1` under Env) or the address written in, since either
    wins over the daemon's default; a down row with such a file says so
    before it comes up.
    nginx's image is pinned per node by digest (R192): a weekly check of the
-   registry, Check now and Update on the nginx tab, Update on its Docker
-   row, and a bell note when a newer line is out. Its Docker row's Edit is
-   for reading: name, compose file and env are the nginx tab's to write,
+   registry, Check now and Update on the nginx page, Update on its Containers
+   row, and a bell note when a newer line is out. Its Containers row's Edit is
+   for reading: name, compose file and env are the nginx page's to write,
    and the server refuses them from anywhere else.
    Deploy writes a container from them through the written-container path
    (`containers.create_container`), its nginx config and certificate inline
@@ -1159,15 +1158,15 @@ the pieces stack:
    nothing new. nginx runs on the host network and proxies to 127.0.0.1, so
    it holds 80 and 443 on the machine and a container publishing either is
    named as the clash. Save rewrites and rebuilds a deployed one; Remove
-   takes it off the Docker tab and keeps the routes. The Enroll dialog's
+   takes it off the Containers page and keeps the routes. The Enroll dialog's
    "Put nginx on it once it is enrolled" (`config.nginx`, `nodes.ON_ENROLL`)
    deploys it on the node's first hello, so a box runs the script and
-   nginx appears with whatever the tab holds for it. A node without nginx
-   shows one line and Deploy on the tab, and the routes and certificates
+   nginx appears with whatever the page holds for it. A node without nginx
+   shows one line and Deploy on the nginx page, and the routes and certificates
    once it is there (R181); routes kept for it before (the API, the Enroll
-   tick) are said on that line and come up with it. On the Docker tab, a
+   tick) are said on that line and come up with it. On the Containers page, a
    running container on such a node whose 127.0.0.1 port no route points at
-   says so, with the way to the nginx tab: a container moved to a VPS
+   says so, with the way to the nginx page: a container moved to a VPS
    answers nowhere until a route does.
 
 What runs in those containers has no node token (it lives root-owned in
@@ -1277,7 +1276,7 @@ What gets each tier there:
 
 A node's daemon and its path mapping are node fields, never environment
 variables: the address is what the node dialed in from, and the path mapping
-lives on the node record (`config.paths`, edited on an agent node's row, read
+lives on the node record (`config.paths`, edited on an agent node's page under Advanced, read
 by `devapp.host_map` through the node being addressed).
 
 **Check, beside it (roadmap #13).** Under the identity mapping: the shipped
@@ -1299,20 +1298,22 @@ key. The `ssh_addr` column stays, written empty and read by nothing:
 migrations are numbered and append-only, and dropping a column across two
 engines is a one-way door for a cosmetic gain.
 
-**Tools → Nodes** is the screen: a row per node with state, the toolchains
+The **Nodes page**, under Machines on the rail, is the screen: one node at
+a time, picked in its bar, with state, the toolchains
 its census reports (capabilities stopped being toggles on 2 Sep, §2),
 services, labels, pool, concurrency, last seen, and Enroll, Test, Drain,
 Un-enroll, Reboot and Shut down, plus the approval queue when a bulk
 token is in play. Drain means "finish what you are running, accept nothing
 new", and it is what makes a node safe to patch, at home and in a fleet alike.
-Reboot and Shut down are the machine's own, asked for from its row: a system
+Reboot and Shut down are the machine's own, asked for from its Advanced
+section: a system
 job the agent answers by scheduling `systemctl reboot` or `poweroff` a few
 seconds out, so the job reports before the agent goes with it. The press
 names the sessions open there, since a reboot ends them; the buttons are
 dead, with the reason under them, while the agent is away (nothing from the
 controller reaches the machine then: its console or its hypervisor does),
 and refused on the controller's own machine and on a locked node. After a
-power-off the row reads away until somebody switches the machine on.
+power-off the node reads away until somebody switches the machine on.
 
 Profiles rather than knobs: the config surface stays one file/env-set, and the
 **defaults are the homelab** (SQLite, single-use tokens auto-approved, local
@@ -1331,12 +1332,12 @@ not a one-off migration:
 
 - **Every env var gets a scope from §13.** Container-scoped ones (ports,
   mounts, credentials, `DATABASE_URL`) stay env forever; that is what env is
-  for. Everything controller-scoped moves to the DB-backed settings the
-  Settings tab edits.
+  for. Everything controller-scoped moves to the DB-backed settings
+  Controller settings edits.
 - **Precedence: env seeds, the database owns.** On first boot a set env var
   seeds the setting; from then on the DB value is the truth and the env var
   is ignored: never a silent override, because two live sources for one
-  value is how a box disagrees with its own screen. The Settings tab marks
+  value is how a box disagrees with its own screen. Controller settings marks
   any setting that came from a seed, so where a value originated is never a
   mystery.
 - **Each phase unhardwires the vars it touches**, and the five-places list
@@ -1421,9 +1422,9 @@ non-event.
 
 A node is somebody's machine before it is BuilderBot's, so taking BuilderBot
 off it is a verb of its own, in three places that do one thing: **Un-enroll**
-on the node's row (Advanced), `sudo bb-sandbox uninstall` on the machine, and
+on the node's page (Advanced), `sudo bb-sandbox uninstall` on the machine, and
 `provision-linux.sh --remove`, which runs the machine's own bb-sandbox. None
-of the three goes through from the row while a Claude session or a container
+of the three goes through from the page while a Claude session or a container
 runs on the node: end them first, and the refusal counts them. What always
 goes is what the provisioner put there for BuilderBot alone: the agent and
 its unit, the sessions' firewall rules and their own networks (every piece
@@ -1431,7 +1432,7 @@ of the isolation, R79), the `bb` and `builder` accounts with their homes
 (Claude Code, the runners' directories, caches), `/etc/builderbot` with the
 tunnel to the controller, the sandbox label in `daemon.json` (docker keeps
 running; it takes at its next restart) and bb-sandbox itself. Three rings
-are asked for, on the row's dialog as boxes and on the machine as flags:
+are asked for, in the Un-enroll dialog as boxes and on the machine as flags:
 `--stores` takes the stores on the machine's own disk (the toolchains, the
 caches, the artifacts, a dev instance's data, the synced project copies,
 `/var/lib/builderbot`); `--configured` undoes what was set up from the
@@ -1450,8 +1451,8 @@ still ask the controller for the tokens; the two on-machine forms cannot,
 and say so. The agent starts the removal under a transient unit of its own,
 reports the job, and is gone with it; the controller retires the row when
 that result lands. Enrolling the machine again is a fresh provisioner run.
-The row's dialog says in one box what un-enrolling takes off a machine and
-what it leaves, and Reset BuilderBot on the Settings tab shows the same box
+The Un-enroll dialog says in one box what un-enrolling takes off a machine and
+what it leaves, and Reset BuilderBot on Controller settings shows the same box
 and offers to un-enroll every node first, so each machine is clean to enroll
 again; a node with sessions or containers running cannot be ticked there
 either (the operator, 12 Oct).
@@ -1460,7 +1461,7 @@ either (the operator, 12 Oct).
 
 Provisioning is once; a node's storage and network change over its life, and
 the operator has named the goal plainly: **never having to ssh in for it.**
-So the provisioner's decisions become a *configuration plane* the Nodes tab
+So the provisioner's decisions become a *configuration plane* the Nodes page
 edits: declarative, applied by the agent, with the same desired-vs-reported
 split capabilities use:
 
@@ -1498,7 +1499,7 @@ store is stranded in it.
 The two are kept in step structurally rather than by matching rules:
 **`bb-sandbox` reads the store paths out of the agent's own `node.json`**
 instead of keeping a list of its own, so a store repointed from the Nodes
-tab is visible at the console on the next command with nothing to
+page is visible at the console on the next command with nothing to
 synchronize. `test/agent.mjs` runs the real `bb-sandbox`: pulled out of the
 provisioner the way `bb lint` pulls it out for shellcheck, against the
 agent's `mount_covering` on the same cases, including the string-prefix
@@ -1515,7 +1516,7 @@ move must leave the old store able to serve. `cache` is the exception and
 says so in the log; it is rebuildable by definition, and copying tens of
 gigabytes of it across a link would be work for nothing. Because that copy
 can legitimately run for hours, a storage apply that moves a store gets a
-six-hour clock instead of the usual fifteen minutes, and the Nodes tab asks
+six-hour clock instead of the usual fifteen minutes, and the Nodes page asks
 before starting one.
 
 **Network changes get commit/confirm safety, because they are the one change
@@ -1568,7 +1569,7 @@ census reports both with the init system (`distro`), so the row says what
 a change would go through. The store is shared and those libraries are
 not, so the census also reports `sysdeps`: for every recipe the store
 holds, the system packages this machine still lacks for its family. The
-Toolchains tab shows them with one press, a toolchain job of action `sysdeps`,
+Toolchains page shows them with one press, a toolchain job of action `sysdeps`,
 which installs the libraries and leaves the recipes alone (roadmap R51);
 a node the agent does not administer refuses it and names them for the
 owner, as an install there does.
@@ -1580,7 +1581,7 @@ that session's own account when it is an administrator's, and to every
 administrator when it is a user's, because a sandbox is shared and root on
 it is not a user's to allow: the way a phone request waits on the phone's
 owner, which is the asker when the phone is theirs (same list, `kind:
-root`, on the Nodes tab and the bell; a per-user grant for root on a
+root`, on the Nodes page and the bell; a per-user grant for root on a
 sandbox is a permissions design of its own, not written). Allow queues the job with the reason and the approver in
 its spec so its log is the record, and only a sandbox node takes it: the
 agent refuses it without the stamp like storage and network. It is not
@@ -1588,12 +1589,12 @@ sudo: there is no second command without a second question, and nothing
 pretends. A node can be LOCKED (`config.lock`, the Lock under Advanced,
 `nodes.node_lock`): while it is, `node_apply` for storage and network and
 `root_wait` refuse with `node_locked`'s sentence, a root ask is refused at
-ask time, and the tab ghosts both Apply buttons saying why, for a machine
+ask time, and the Nodes page ghosts both Apply buttons saying why, for a machine
 whose fstab, address and root are managed at its own console. The runner
 and funnel jobs are not covered. The controller offers system jobs only to an
 online agent node whose census says sandbox, one at a time per node; the
 agent refuses them without bb-sandbox whatever the row says. On the Nodes
-tab the row grows a *storage & network* fold: the editor is a draft that
+page these are the Storage and Network sections: the editor is a draft that
 survives the heartbeat repaint, Save keeps the record, Apply queues the job
 (asking first when it would unmount something, and always for network), and
 each desired mount says what the node reports for it. bb-sandbox at the
@@ -1616,8 +1617,9 @@ and the scope decides its surface and its storage.** Five scopes cover
 everything this design adds, and the rule for placing a future setting is at
 the end.
 
-**Browser-scoped**: theme, sidebar layout. Per viewer, cosmetic, instant.
-Stays where it is: the gear's popup. Nothing here changes.
+**Browser-scoped**: the color scheme, its dark or light half, the time
+zone. Per viewer, cosmetic, instant. Stays where it is: the gear's popup.
+Nothing here changes.
 
 **Container-scoped**, what the process needs before it can think: ports,
 mounts, credentials, PUID/PGID, `DATABASE_URL` itself. Stays in the
@@ -1640,7 +1642,9 @@ graduates.** The popup keeps the per-browser items plus one entry,
 rendering banded groups in the house pattern, same as every other document
 surface. The graduation lands with the first batch of controller settings
 (phase 2), not before: converting the popup while it holds one setting would
-be ceremony.
+be ceremony. *Where it stands (19 Oct):* the controller's settings are
+**Controller settings**, the first page under Machines on the rail, and the
+gear keeps the scheme, the time zone and Profile.
 
 **Project-scoped**, which node runs this project's work. One node, named in
 the project row's existing settings dialog beside the person's own settings (the
@@ -1676,7 +1680,10 @@ and Analysis. Row anatomy in the house language: name, state as a pill
 says how), the toolchains its census reports, labels, last-seen, and per-row Test / Drain /
 Un-enroll; Enroll at the top; the pending-approval strip above the list when a
 bulk token is in play, in the same held-above-the-fold shape the Phone tab's
-asks use.
+asks use. *Where it stands (19 Oct):* the **Nodes page**, under Machines
+on the rail, shows one node at a time, picked in its bar, its sections
+Health, Projects, Sessions, GPU, Claude Code, Storage, Network and
+Advanced, with Create sandbox VM and Enroll node in the bar.
 
 **The rule for anything new:** *who has to be able to change it, and what has
 to restart for it to take?* Answer those two and the scope, and therefore
@@ -1700,9 +1707,13 @@ scopes is two settings wearing one name, and should be split before it ships.
 - The row's build/log tail is the job view scoped to that instance, and each
   row names the node it ran on (phase 4).
 
+*Where it stands (19 Oct):* the Docker manager is the **Containers** page on
+the rail, one node at a time, and a project's own containers are its page's
+Docker view.
+
 ### The rest
 
-- **Jobs** (phase 4): a document tab, with queue, running, recent; per-job log
+- **Jobs** (phase 4): a page (Jobs on the rail), with queue, running, recent; per-job log
   tail (the dev-instance row's rendering, generalized), Cancel on a row, and
   a filter for what is not over. `bb jobs` is the read-only form: `bb jobs
   [--node NAME] [--type T]` lists, `bb jobs ID [--all]` reads one job's log,
@@ -1712,6 +1723,13 @@ scopes is two settings wearing one name, and should be split before it ships.
   table phase 1 starts writing), pool filters wherever a node list appears.
 
 ### The page itself: one page, still
+
+*Where it stands (19 Oct):* the tab strip and the panes below are gone.
+Every tool is a page on the rail with an address (`#/containers`,
+`#/machines/nodes`, `#/projects/NAME/roadmap`), and the terminals and the
+chat live in the dock at the foot of every page, which keeps them alive
+across a move between pages as the strip did. What follows is the reasoning
+as it was written.
 
 The dashboard is one page: a tab strip over panes, every view a document tab
 or a terminal, no router, no framework, ~11k lines of classic-script JS in
@@ -1916,9 +1934,9 @@ container's until the local emulator goes with phase 10.
 Job-scoped emulation first: instrumented-test jobs that boot an emulator on a
 GPU node for the life of the job and return results as artifacts: no network
 adb involved. The GPU display arrangement is `bb-sandbox gpu` on a node that
-has the card, pressed from its row (R20); the driver alone, for compute
+has the card, pressed from its Nodes page (R20); the driver alone, for compute
 as well as the display, is `bb-sandbox gpu-driver install|remove`, pressed
-from the driver's row on the Toolchains tab (R102), and the container toolkit
+from the driver's row on the Toolchains page (R102), and the container toolkit
 under it is `bb-sandbox gpu-container install|remove`, which adds or takes
 away NVIDIA's package source and has Docker reload its configuration. The interactive `device-host` service (a
 long-lived emulator a session reaches over network adb) is designed in §2 and
@@ -2203,9 +2221,9 @@ above, in order:
    session half up, the session is relayed there; otherwise it is this
    container's, as it always was.
 3. **The login is per node and per account**, in that account's home on the
-   node, and it is made there: Sign in on the node's row (Nodes tab, Claude
-   Code) runs `claude auth login` on that machine as a job, with the code
-   pasted back on the row, and Sign out there runs `claude auth logout` the
+   node, and it is made there: Sign in in the node's Claude Code section (Nodes
+   page) runs `claude auth login` on that machine as a job, with the code
+   pasted back in that section, and Sign out there runs `claude auth logout` the
    same way. Nothing fetches a login from anywhere: one machine, one
    account, one login. **Transcripts and memories are one place**: every
    account's `~/.claude/projects`, on every machine, is a link to
@@ -2215,7 +2233,7 @@ above, in order:
    controller's: see the synced copy above), and
    the tree rule is the same on both machines: the owner in the project
    directory, everybody else in a worktree, so the transcript slug is the
-   same string wherever the session ran, and the controller's Memory tab and
+   same string wherever the session ran, and the notebook's Memories and the
    resume chooser read a node's conversations without knowing where they
    happened. A home that already held transcripts has them copied across
    and the original kept beside the link, renamed, for the operator to
@@ -2256,8 +2274,8 @@ local, the node (`reported.session.up` and `/workspace` mounted), or
 refused with the reason (offline, no session half, no mount) rather than
 quietly started on the wrong machine, and `_term_proxy` dials the node's
 ttyd on the address it enrolled from, stamping `tok:` and `name:` after the
-account. The project row carries the same decision (`session_at`,
-`session_why`), so the Claude button is dead with the sentence before
+account. The project's card carries the same decision (`session_at`,
+`session_why`), so Start Claude is dead with the sentence before
 anything is asked. Two of its refusals are passing and say to wait rather
 than to unbind: the agent not answering (a reboot, an update), and a node
 that came up under ten minutes ago whose network mount has not landed;
@@ -2290,7 +2308,7 @@ The node's sessions are on the Sessions card too: the agent's heartbeat
 carries the session account's tmux sessions (name, attached, directory,
 pane title), the controller lists them beside its own under its own naming
 rule: the owner's bare, everybody else's prefixed, `node_name` keeping the
-node's: each with an "on <node>" pill, claude_with and the project rows
+node's: each with an "on <node>" pill, claude_with and the project cards
 count them, and ending one queues a kill the agent's held poll takes at
 once (`nodes.session_kill`, `{"kill_sessions": [...]}` in the work reply).
 The two hooks a session runs post from a node too: `POST /api/v1/hook`
@@ -2326,14 +2344,14 @@ agent's cgroup holds the ttyds, the tmux servers under them and the Claude
 sessions inside those, so Update agent ended every conversation on the
 machine. The agent stops what is its own on SIGTERM, its ttyds and its jobs,
 and leaves the tmux alone. What must NOT outlive anything is the idle rule:
-the Settings tab's "end a Claude session after N idle minutes" rides the
+Controller settings' "end a Claude session after N idle minutes" rides the
 hello reply into node.json and the agent enforces it on its own tmux,
 controller up or down (idle.py).
 The account's CLAUDE LOGIN NEVER TRAVELS (R47). Each machine signs in for
 itself and keeps the grant it alone refreshes, because a refresh rotates the
 refresh token and two machines holding copies of one grant sign each other
 out, which is what a day of node sessions produced twice (bug #64, B100).
-So a login is one account's on one node: signed in from that node's row,
+So a login is one account's on one node: signed in from that node's Claude Code section,
 signed out there, and no business of any other node's. What crosses the
 wire is one sentence and no secret: "this account is signed in here as X",
 or that it is not. `bb login --check` sends it on every connection, the
@@ -2356,7 +2374,7 @@ Nodes exist for resource management: a sandbox on this server or another,
 a cloud box, a Mac, a Windows machine, and the controller exists so all of
 that is configured, enrolled and updated from one place. So the toolchain,
 the lint tools, the browser module, the session half: fine on a node, *as
-long as they arrive from the controller*: the Toolchains tab, the catalog, the
+long as they arrive from the controller*: the Toolchains page, the catalog, the
 bundle, the agent's self-update, and never by somebody logging in and
 setting them up. A new node is a provisioner run and a few clicks, not a
 checklist.

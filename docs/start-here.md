@@ -2,14 +2,15 @@
 
 You have an account on somebody's BuilderBot. This page is the whole of what
 you need to do something useful with it; [how-it-works.md](how-it-works.md)
-is the reference, and it is long because it is a reference.
+is the overview, and each part of the dashboard has a doc of its own beside
+it in Help.
 
 ## What it is
 
-A Claude Code workstation you reach in a browser. Each project on the left is
-a git repository on a shared disk. A **session** is Claude working in that
+A Claude Code workstation you reach in a browser. Each project on the Projects page
+is a git repository on a shared disk. A **session** is Claude working in that
 repository, on one of the machines behind the dashboard, with a terminal you
-can watch and type into. The **notebook** beside each project is where you and
+can watch and type into. A project's page holds its **notebook**, where you and
 Claude keep the plan: the roadmap, the bugs, the house rules and the git view.
 
 Nothing runs on your laptop, and nothing here is on your laptop. Close the tab
@@ -17,22 +18,23 @@ and a session keeps going.
 
 ## The first five minutes
 
-1. **Sign in** with the account you were given, and change the password from
-   the gear menu if somebody set it for you.
-2. **Your profile** (the gear, top right): your name, your email and the git
+1. **Sign in** with the account you were given, and change the password on your
+   Profile if somebody set it for you.
+2. **Your profile** (the gear, top right, then Profile): your name, your email and the git
    identity your commits will carry. No session starts until these are set,
    because a commit with no author is a mess somebody else has to clean up.
 3. **Install Claude Code, then sign in to Claude**, on each machine your
-   projects work on. A node has no Claude Code until its **Toolchains**
-   tab installs it (tick Claude Code, press Install selected). Then press a
-   project's **Claude** button: where you are not signed in on its node yet,
+   projects work on. A node has no Claude Code until the **Toolchains**
+   page (under Build, with that node picked) installs it: tick Claude Code,
+   press Install selected. Then press a project's **Start Claude**: where you are not signed in on its node yet,
    it offers **Sign in on** that node, which opens the node's page at its
    Claude Code section. Press Sign in there, open the link, and paste the
    code back. The login stays on that machine and is yours: it is not
    shared with the other people here, nobody else's sessions use it, and
    another node asks for its own the first time you work there.
-4. **Open a project**: press its name for the notebook, **Claude** for a
-   session, the terminal button for a plain shell.
+4. **Open a project**: press its name for its page and notebook, **Start
+   Claude** for a session, **Shell** for a plain shell. Terminals open in the
+   dock at the foot of every page.
 5. **Say what you want done.** A session starts already knowing this project's
    house rules, its roadmap and its open bugs, so you can ask for the thing
    rather than explaining the place.
@@ -56,13 +58,13 @@ The four you are most likely to meet:
 - **the node is away**: the machine a project builds on is not answering, so
   nothing runs there until it is back. It is not your doing.
 - **a tool is missing**: builds use what the machine has, and installing more
-  is an administrator's call, on the Toolchains tab. Say what you needed.
+  is an administrator's call, on the Toolchains page. Say what you needed.
 - **a session may not push here**: the project's git policy keeps pushing with
   a person. Your commit is made; push it from the notebook's Git view.
 
 ## Telling somebody
 
-Use the **Bugs** tab in the project's notebook. It is the same tracker the
+Use the **Bugs** view (under Plan) on the project's page. It is the same tracker the
 sessions read, so what you file is what gets picked up, and a report that says
 what you pressed and what it said back is worth ten that say it broke. If the
 dashboard itself is the thing that is broken, tell the person who gave you the
@@ -70,8 +72,8 @@ account, because a tracker on a box that is down helps nobody.
 
 ## Two habits worth having
 
-**Ask which build is running before deciding a fix did not work.** The header
-carries the commit the box is on, and `bb status` in any terminal prints it.
+**Ask which build is running before deciding a fix did not work.** The header's
+About control carries the build the box is on, and `bb status` in any terminal prints it.
 
 **Let the notebook hold the plan.** Anything you want Claude to pick up later
 belongs on the roadmap rather than in a message: the next session reads the

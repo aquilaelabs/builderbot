@@ -419,6 +419,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The rail runs Home, Projects, Build, Containers, Machines, Sessions, Jobs, People, Settings and Help, and a phone's bar keeps the same order: its first four, then More (4bef55f)
 - Every page's top bar is one height and one line: the node picker says Node beside it rather than above, and a count or a line of text sits centered beside the buttons, so each page's content starts at the same place (4bef55f)
 - A project's page header wears its color as its card on Projects does: the ground, the edge and its buttons tinted (4bef55f)
+- Help is easier to find your way in: its front page says where to start and groups the docs by what you are doing (set it up, work on a project, build and ship, machines and people, look things up), and the one long how-it-works page is a short overview over a doc per part of the rail: the dashboard, projects, the notebook, sessions, building, toolchains, containers, machines, people, the bb command and the companion app (497e3f9)
 
 ### Removed
 
