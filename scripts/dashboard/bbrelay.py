@@ -68,8 +68,14 @@ def configure(**deps):
     globals().update(deps)
 
 
+# The most words one relayed command carries. Beyond it the command is
+# refused whole (B3): cut short, a verb ran as a different command, a
+# roadmap add losing its last steps or keeping a --step with nothing after it.
+MAX_WORDS = 1024
+
+
 def _argv(req):
-    return [str(a) for a in (req.get("argv") or []) if isinstance(a, (str, int))][:64]
+    return [str(a) for a in (req.get("argv") or []) if isinstance(a, (str, int))]
 
 
 # The relayed words a session may send about a project it READS: each verb
@@ -112,6 +118,9 @@ def admit(me, req):
     a verb that is not relayed, a token naming another project, git with no
     author, a name that is not a project."""
     argv = _argv(req)
+    if len(argv) > MAX_WORDS:
+        return None, ({"error": f"bb {argv[0]} sent {len(argv)} words, and a relayed command "
+                                f"carries {MAX_WORDS} at most: split it into several"}, 400)
     if not argv or argv[0] not in VERBS:
         return None, ({"error": f"bb {argv[0] if argv else ''} is not relayed: "
                        "it answers for the machine the session is on"}, 400)

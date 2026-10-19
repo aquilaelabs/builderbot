@@ -100,6 +100,21 @@ ok(unreadR.status === 403 && /alpha does not read gamma: its owner adds it under
 const noneR = await relay(['roadmap'], 'nosuch');
 ok(noneR.status === 400 && /there is no project called nosuch/.test(noneR.error || ''),
    `...and a name that is no project says so (${noneR.error})`);
+// A long command arrives whole (B3): 40 steps are 81 words, which a cap of
+// 64 cut to a --step with nothing after it; past the cap it is refused by
+// name rather than run as a shorter command.
+{
+  const steps = Array.from({ length: 40 }, (_, i) => ['--step', `step ${i + 1}`]).flat();
+  const long = await relay(['roadmap', 'add', 'forty steps', ...steps], 'alpha');
+  const items = JSON.parse(readFileSync(`${DIR}/state/roadmap.json`, 'utf8')).projects?.alpha || [];
+  const made = items.find(i => i.text === 'forty steps');
+  ok(long.status === 200 && made?.steps?.length === 40,
+     `a relayed roadmap add with 40 steps keeps all 40 (${long.status} ${(long.error || '').slice(0, 60)} ${made?.steps?.length})`);
+  if (made) await relay(['roadmap', 'rm', String(made.id)], 'alpha');
+  const huge = await relay(['roadmap', 'add', ...Array(1100).fill('w')], 'alpha');
+  ok(huge.status === 400 && /sent 1102 words, and a relayed command carries 1024 at most/.test(huge.error || ''),
+     `...and one past the cap is refused, naming it (${huge.error})`);
+}
 // The name the dashboard shows answers for its directory (B1): the person
 // says it, and the session repeats it.
 {
