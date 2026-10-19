@@ -1098,7 +1098,6 @@ function nodeConfSections(n){
   const stale = nodeStale(n);
   const drift = nodeDrift(n);
   const netPend = drift && (drift.network === "unknown" || drift.network.length);
-  const pending = drift ? drift.storage.concat(drift.network === "unknown" ? [] : drift.network) : [];
   // An apply that ran and did not work, said where the button is. A failed
   // apply leaves the drift exactly as it was, so the section went back to
   // "4 changes to apply" and mentioned the attempt nowhere, which is
@@ -1123,21 +1122,27 @@ function nodeConfSections(n){
       ? [`The last ${kind} apply ${la.state === "canceled" ? "was canceled" : "failed"}${
           la.error ? ": " + la.error : ""}. Its log is on the Jobs page; fix it and Apply again.`, "bad"]
       : null;
-  // The state line answers one question: is there anything to press Apply
-  // for, and names the changes when there is, so the button is not a leap.
-  const [status, statusCls] = busyNow
-    ? [`applying ${busyNow.what}${busyNow.what === "network" ? ": waiting for it to dial back in" : "…"}`, "note"]
-    : stale ? [staleWhy(n), windowGap(n) ? "bad" : "warn"]
-    : c.dirty ? ["Unsaved: press Save, then Apply.", "warn"]
-    : !drift ? ["nothing configured yet: the node runs on whatever it was set up with", ""]
-    : pending.length ? [`${pending.length} change${pending.length === 1 ? "" : "s"} to apply: ${
-        pending.slice(0, 3).join("; ")}${pending.length > 3 ? "; …" : ""}`, "warn"]
-    : drift.network === "unknown"
-      ? ["the node matches what is saved here, except dhcp, which cannot be told from here", ""]
-      : ["the node matches what is saved here", "ok"];
-  // The dhcp caveat is Network's; under Storage it read as a storage fault.
-  const [storStatus, storStatusCls] = drift?.network === "unknown" && status.startsWith("the node matches")
-    ? ["the node matches what is saved here", "ok"] : [status, statusCls];
+  // Each section's state line answers one question: is there anything in
+  // it to press its Apply for, and names those changes when there is, so
+  // the button is not a leap. Storage's changes are never said under
+  // Network, nor Network's under Storage.
+  const lineFor = kind => {
+    const pending = !drift ? [] : kind === "storage" ? drift.storage
+      : drift.network === "unknown" ? [] : drift.network;
+    return busyNow
+      ? [`applying ${busyNow.what}${busyNow.what === "network" ? ": waiting for it to dial back in" : "…"}`, "note"]
+      : stale ? [staleWhy(n), windowGap(n) ? "bad" : "warn"]
+      : c.dirty ? ["Unsaved: press Save, then Apply.", "warn"]
+      : !drift ? ["nothing configured yet: the node runs on whatever it was set up with", ""]
+      : pending.length ? [`${pending.length} change${pending.length === 1 ? "" : "s"} to apply: ${
+          pending.slice(0, 3).join("; ")}${pending.length > 3 ? "; …" : ""}`, "warn"]
+      // The dhcp caveat is Network's; under Storage it read as a storage fault.
+      : kind === "network" && drift.network === "unknown"
+        ? ["the node matches what is saved here, except dhcp, which cannot be told from here", ""]
+        : ["the node matches what is saved here", "ok"];
+  };
+  const [storStatus, storStatusCls] = lineFor("storage");
+  const [status, statusCls] = lineFor("network");
   const saveBtn = `<button type="button" data-nsave ${c.dirty ? "" : "disabled"}
       title="save these settings; Apply puts them on the node">Save</button>`;
   const storage = `
