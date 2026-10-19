@@ -53,12 +53,14 @@ async function loadHome(light = false){
   if (homeAgain){ const whole = homeAgain === "whole"; homeAgain = null; loadHome(!whole); }
 }
 
-// The updates due across the install: each toolchain behind on a node, an
-// image or nginx behind, an agent behind. A move (relocate) is not an
-// update, and a CI run has its own tile.
+// The updates due across the install, each thing behind counted once: each
+// toolchain behind on a node, each container with a newer image, nginx
+// behind, an agent behind. A move (relocate) is not an update, and a CI run
+// has its own tile.
 function homeUpdates(){
   return (state?.attention || []).reduce((n, a) =>
-    a.kind === "relocate" ? n : n + (a.kind === "toolchain" ? (a.tools || []).length || 1 : 1), 0);
+    a.kind === "relocate" ? n : n + (a.kind === "toolchain" ? (a.tools || []).length || 1
+      : a.kind === "image" ? (a.containers || []).length || 1 : 1), 0);
 }
 
 // The tiles, each one a press into its page (the home rule: unlike a tab's
