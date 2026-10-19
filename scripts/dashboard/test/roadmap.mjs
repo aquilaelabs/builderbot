@@ -394,6 +394,9 @@ await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(id => document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="0"]`)?.classList.contains('sent'),
   s1.id, { timeout: 15000 });
+ok(await page.$eval(`#roadmapList .roadmap[data-id="${s1.id}"][data-step="0"] .txt`,
+   e => getComputedStyle(e).textDecorationLine) === 'none',
+   'a sent step is dim, not struck through: it is still open (B55)');
 items = await open();
 ok(items.find(i => i.text === 'then re-measure it').can,
    'sending the first opens the second, and only then');

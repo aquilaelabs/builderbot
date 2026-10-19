@@ -2449,14 +2449,14 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* A step is one of these, not a smaller kind of one: it was 12.5 against the
    item's 13, which reads as a rendering accident rather than a hierarchy.
    What makes it secondary is its indent and its number, not half a pixel. */
-/* Struck through means *sent*, not done. It stays where it was: the order is
-   the record, so that a step that was handed over and quietly not carried out
-   is still there to send again. */
-.roadmap.sent .txt{color:var(--dim);text-decoration:line-through}
-/* Done is a session's mark, not the dashboard's: struck the same way, because
-   it needs no sending either, but the number becomes a tick so the two are
-   not confused: a line that went and a line that is finished are different
-   claims, and only the second one comes from whoever did the work. */
+/* Sent is dim, not struck: it is still open, counted to send and sendable
+   again, so it stays where it was, the order being the record, and a step
+   that was handed over and quietly not carried out is still there to send
+   again (B55). */
+.roadmap.sent .txt{color:var(--dim)}
+/* Done is a session's mark, not the dashboard's: struck, and the number
+   becomes a tick, because a line that went and a line that is finished are
+   different claims, and only the second one comes from whoever did the work. */
 .roadmap.done .txt{color:var(--dim);text-decoration:line-through}
 .roadmap .n.tick{color:var(--accent)}
 /* Shelved: parked, at the bottom, and visibly not asking for anything. Dark
