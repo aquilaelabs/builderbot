@@ -3409,6 +3409,9 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 :is(.dmtab,.dkview) details.dmline[open] > summary.dmsum .td.lead::before{content:"\25BE"}
 :is(.dmtab,.dkview) .dmsum .td a{color:var(--note)}
 :is(.dmtab,.dkview) details.dmline > .dmbody{padding:0 var(--row-x) var(--row-y);border-top:var(--hair) solid var(--line)}
+/* One control high, its edge drawn inside it as an outline rather than
+   around it, so the switch is the height of every control beside it. */
+:is(.dmtab,.dkview) .dmviewseg{border:0;outline:var(--hair) solid var(--line);outline-offset:calc(-1 * var(--hair))}
 :is(.dmtab,.dkview) .dmviewseg button{min-height:var(--ctl)}
 .facts dd a{color:var(--note)}
 /* The row's Log fold: each container's tail under its name, the whole no
