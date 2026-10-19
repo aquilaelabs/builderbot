@@ -1887,31 +1887,33 @@ select:focus{outline-offset:-2px}
 /* The nginx tab (tab-nginx.js): its sections hold field bands, which carry
    their own inset, so the body adds none (as a settings group's does). */
 .nginxtab .sect>.body{padding:0 0 var(--row-y);gap:0}
-/* ...and its route rows: hostname, path, port, TLS. A grid, so a route's
-   fields line up with the route above it at a desk; a phone draws it on two
-   lines (below). */
-.ngroute{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,1.2fr) 6em minmax(0,3fr) auto;
-  align-items:center;gap:8px;margin:4px 0}
-.ngroute>:not(.eye){width:100%;min-width:0}
-.ngroute>.eye{width:auto}
+/* ...and its routes, a table of records (the record-lists rule): a row
+   reads a route, Edit at its right; the one open holds its form, sunk a
+   step below the rows in place of the line it read (Cloudflare's DNS page),
+   the four fields in a row at a desk and stacked on a phone, Delete at the
+   bar's left and Cancel and Save at its right. */
+.ngrecords{border:var(--hair) solid var(--line);border-radius:var(--r-surface);overflow:hidden}
+.ngrecords>.row{padding:var(--label-gap) var(--row-x)}
+.tbl.ngrecords>.row.ngrec{align-items:stretch}   /* over .row:has(.setrow), which ends a row of fields at its right */
+.ngrecords>.ngrec.open{background:var(--sunk);padding:var(--row-y) var(--row-x)}
+.ngrecords>.ngrec.open>.tline{display:none}
+.ngform{display:flex;flex-direction:column;gap:var(--field-gap);min-width:0}
+/* The fields sit under the table's own columns, the buttons' column left
+   empty, so a route's form lines up with the line it opened from; the row
+   of them is the record's, so its fields are not capped one by one. */
+.ngfields{display:grid;grid-template-columns:var(--tcols);column-gap:var(--row-x);row-gap:var(--field-gap);min-width:0}
+.ngfields>.setrow.col{margin:0;min-width:0;max-width:none}
+.ngformbar{margin:0;padding:0}
 /* The shared hostname list on the nginx tab: a name, where it is routed,
    and Delete where it is routed nowhere; the box to add one under it. */
 .nghost{display:flex;align-items:center;gap:8px;margin:2px 0}
 .nghost + .actbar input,.field > .actbar input[data-nghostnew]{flex:1 1 14em;min-width:0}
-.ngroute .ndcap{white-space:nowrap}
-.ngroutes:empty{display:none}
-/* The routes are a field band like the rest of the page, so they keep its
-   inset (the operator, 18 Oct: they ran to the screen's edge on a phone,
-   the port cut off past it). A phone draws each route on two lines,
-   hostname, path and port, then the pair and its delete, a hairline
-   between routes; its fields share the line as a bar's buttons do, so they
-   are not capped one by one (the cap rule's row list names .ngroute). */
+/* On a phone a route's form stacks: hostname, path and port beside each
+   other, the pair under them (the operator, 18 Oct: the fields ran past
+   the screen's edge). */
 @media(max-width:900px){
-  .ngroute{grid-template-columns:minmax(0,1fr) 4.5em 5em;margin:0;padding:8px 0;
-    border-bottom:var(--hair) solid var(--line)}
-  .ngroute:last-child{border-bottom:0}
-  .ngroute>:nth-child(4){grid-column:1 / 3}
-  .ngroute>.eye{justify-self:end}
+  .ngfields{grid-template-columns:minmax(0,1fr) 5em;column-gap:var(--field-gap)}
+  .ngfields>:first-child,.ngfields>:nth-child(4){grid-column:1 / -1}
 }
 /* A pair's line sits on the band's inset, not a row's inset on top of it,
    its delete at the band's right edge where every other one is. */

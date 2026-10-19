@@ -68,7 +68,7 @@ ok(true, '...and the undeployed node says Deploy will bring that route up');
 {
   const two = [...row.routes, { host: 'two.example.com', path: '/', port: 8081, tls: false }];
   await api('/api/nginx', { action: 'save', node: sandbox.node, routes: two });
-  const came = await page.waitForFunction(id => document.querySelectorAll(`.nginxtab [data-ngnode="${id}"] .ngroute`).length === 2
+  const came = await page.waitForFunction(id => document.querySelectorAll(`.nginxtab [data-ngnode="${id}"] .ngrec`).length === 2
       || /2 routes/.test(document.querySelector(`.nginxtab [data-ngnode="${id}"] .toolstate`)?.textContent || ''),
     sandbox.node, { timeout: 15000 }).then(() => true, () => false);
   ok(came, 'a route saved from elsewhere shows on the open tab within a poll, with no Refresh pressed');
@@ -121,30 +121,32 @@ ok(await page.$eval(sect, s => /deployed/.test(s.querySelector('.toolstate .pill
 ok(/already on the Docker tab/.test((await api('/api/nginx', { action: 'deploy', node: sandbox.node })).error || ''),
    'a second Deploy is refused');
 // The deployed page in sections (R218 step 29): Hostnames, Routes,
-// Certificates and Image, each its state in its head; Routes' Save and
-// Revert under the routes; Remove apart at the foot; the certificate form
+// Certificates and Image, each its state in its head; the routes a table
+// of records, each read-only with its Edit, no Save until one is open
+// (the record-lists rule); Remove apart at the foot; the certificate form
 // rolled up until Add a certificate, its Add asleep until a pair is pasted,
 // Cancel rolling it back.
 {
   const shape = await page.$eval(sect, s => ({
     sects: [...s.querySelectorAll(':scope > details.sect')].map(d => `${d.querySelector('.t').textContent}:${d.querySelector('.sst')?.textContent || ''}`),
-    save: !!s.querySelector('details[data-sect="nginx:routes"] [data-ngsave]'),
+    save: s.querySelectorAll('details[data-sect="nginx:routes"] .ngrecords .ngrec [data-ngedit]').length === 1
+      && !s.querySelector('details[data-sect="nginx:routes"] [data-ngsave]') && !s.querySelector('.ngform'),
     foot: !!s.querySelector(':scope > .field .ngfoot [data-ngremove]') && !s.querySelector('details.sect [data-ngremove]'),
     form: s.querySelector('.ngcertform').hidden }));
   ok(shape.sects.map(x => x.split(':')[0]).join() === 'Hostnames,Routes,Certificates,Image' && /1 route/.test(shape.sects[1])
      && shape.save && shape.foot && shape.form,
-     `the deployed page is four sections with their states, Save under Routes, Remove apart, and the certificate form rolled up (${shape.sects.join(' | ')})`);
+     `the deployed page is four sections with their states, the route a record with its Edit and no Save, Remove apart, and the certificate form rolled up (${shape.sects.join(' | ')})`);
   await page.click(`${sect} [data-ngcertopen]`);
   await page.waitForFunction(s => !document.querySelector(s + ' .ngcertform').hidden, sect, { timeout: 5000 });
   const asleep = await page.$eval(`${sect} [data-ngcertsave]`, b => b.disabled);
   await page.fill(`${sect} #ngCert`, '-----BEGIN CERTIFICATE-----');
   await page.fill(`${sect} #ngKey`, '-----BEGIN PRIVATE KEY-----');
   const awake = await page.$eval(`${sect} [data-ngcertsave]`, b => !b.disabled);
-  const routesQuiet = await page.$eval(`${sect} [data-ngsave]`, b => b.disabled);
+  const routesQuiet = !(await page.$(`${sect} .ngform`));
   await page.click(`${sect} [data-ngcertcancel]`);
   await page.waitForFunction(s => document.querySelector(s + ' .ngcertform').hidden && !document.querySelector(s + ' #ngCert').value, sect, { timeout: 5000 });
   ok(asleep && awake && routesQuiet,
-     `Add a certificate unrolls the form, its Add waking once a pair is pasted and Routes' Save staying asleep, and Cancel rolls it back empty (${JSON.stringify({ asleep, awake, routesQuiet })})`);
+     `Add a certificate unrolls the form, its Add waking once a pair is pasted and no route's form opening, and Cancel rolls it back empty (${JSON.stringify({ asleep, awake, routesQuiet })})`);
 }
 
 // On the deployed form, a route typed: Save wakes, and Save keeps it and
@@ -157,17 +159,51 @@ await page.waitForFunction(() => (nginxHostnames || []).some(h => h.name === 'ap
 await page.waitForSelector(`${sect} .nghost [data-nghostrm="api.example.com"]`, { timeout: 15000 });
 ok(true, 'a hostname added to the list is on it, with Delete while nothing routes it');
 await page.click(`${sect} [data-ngadd]`);
-await page.waitForSelector(`${sect} .ngroute:nth-child(2)`, { timeout: 5000 });
-ok(await page.$eval(`${sect} .ngroute:nth-child(2) [data-ng="host"]`, el => el.tagName === 'SELECT'
-     && [...el.options].some(o => o.value === 'api.example.com') && [...el.options].some(o => o.value === '*')),
-   '...and a new route picks its hostname from that list, every name (*) beside it');
-await page.selectOption(`${sect} .ngroute:nth-child(2) [data-ng="host"]`, 'api.example.com');
-await page.fill(`${sect} .ngroute:nth-child(2) [data-ng="port"]`, '8081');
-ok(await page.$eval(`${sect} [data-ngsave]`, b => !b.disabled), 'a route typed wakes the section\'s Save');
-await page.click(`${sect} [data-ngsave]`);
+const fresh = `${sect} .ngform[data-i="-1"]`;
+await page.waitForSelector(fresh, { timeout: 5000 });
+ok(await page.$eval(`${fresh} [data-ng="host"]`, el => el.tagName === 'SELECT'
+     && [...el.options].some(o => o.value === 'api.example.com') && [...el.options].some(o => o.value === '*'))
+   && await page.$eval(sect, s => s.querySelector('.ngrecords > .row:not(.thead)')?.matches('.ngrec.open[data-i="-1"]') && s.querySelector('[data-ngadd]').disabled),
+   '...and Add route opens a form at the table\'s top, its hostname picked from that list, every name (*) beside it');
+await page.selectOption(`${fresh} [data-ng="host"]`, 'api.example.com');
+const asleepNew = await page.$eval(`${fresh} [data-ngsave]`, b => b.disabled);
+await page.fill(`${fresh} [data-ng="port"]`, '8081');
+ok(asleepNew && await page.$eval(`${fresh} [data-ngsave]`, b => !b.disabled) && !(await page.$(`${fresh} [data-ngdel]`)),
+   'the form\'s Save wakes once it has a hostname and a port, and a new route has no Delete');
+await page.click(`${fresh} [data-ngsave]`);
 await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.routes?.length === 2, sandbox.node, { timeout: 15000 });
 ok((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).routes.some(r => r.host === 'api.example.com' && r.port === 8081),
    '...and Save keeps it on the controller');
+await page.waitForFunction(s => !document.querySelector(s + ' .ngform') && document.querySelectorAll(s + ' .ngrec').length === 2, sect, { timeout: 15000 });
+ok(await page.$eval(`${sect} .ngrec[data-i="1"]`, r => /api\.example\.com/.test(r.textContent) && /8081/.test(r.textContent)),
+   '...and folds back to a row reading the route');
+// Edit opens that row in place, Cancel folds it back unchanged, Save
+// writes the one route and Delete takes it out.
+await page.click(`${sect} [data-ngedit="1"]`);
+await page.waitForSelector(`${sect} .ngrec.open[data-i="1"] .ngform [data-ngdel]`, { timeout: 5000 });
+ok(await page.$eval(`${sect} .ngform`, f => f.querySelector('[data-ng="port"]').value === '8081'
+     && f.closest('.ngrec').dataset.i === '1') && await page.$$eval(`${sect} .ngform`, l => l.length === 1),
+   'Edit opens that route in place, one form at a time, with what it holds');
+await page.fill(`${sect} .ngform [data-ng="port"]`, '9999');
+await page.click(`${sect} .ngform [data-ngcancel]`);
+await page.waitForFunction(s => !document.querySelector(s + ' .ngform'), sect, { timeout: 5000 });
+ok(await page.$eval(`${sect} .ngrec[data-i="1"]`, r => /8081/.test(r.textContent)), '...and Cancel folds it back as it was');
+await page.click(`${sect} [data-ngedit="1"]`);
+await page.waitForSelector(`${sect} .ngform`, { timeout: 5000 });
+await page.fill(`${sect} .ngform [data-ng="port"]`, '8083');
+await page.click(`${sect} .ngform [data-ngsave]`);
+await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.routes?.some(r => r.port === 8083), sandbox.node, { timeout: 15000 });
+ok((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).routes.map(r => r.port).join() === '8080,8083',
+   '...and its Save writes that one route, the other kept');
+await page.waitForFunction(s => !document.querySelector(s + ' .ngform'), sect, { timeout: 15000 });
+await page.click(`${sect} [data-ngedit="1"]`);
+await page.waitForSelector(`${sect} .ngform [data-ngdel]`, { timeout: 5000 });
+await page.click(`${sect} .ngform [data-ngdel]`);
+await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.routes?.length === 1, sandbox.node, { timeout: 15000 });
+ok(/Delete the route api\.example\.com to port 8083/.test(page.dialogs.at(-1) || '')
+   && (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).routes.every(r => r.host === 'www.example.com'),
+   `...and Delete asks, naming the route, then takes it out (${page.dialogs.at(-1)})`);
+await api('/api/nginx', { action: 'save', node: sandbox.node, routes: [...row.routes, { host: 'api.example.com', path: '/', port: 8081, tls: true }] });
 {
   const busyName = await api('/api/nginx', { action: 'host-remove', name: 'api.example.com' });
   ok(/routed on sandbox: take those routes off first/.test(busyName.error || ''),
@@ -196,10 +232,13 @@ await page.evaluate(() => loadNginx());
      `a pasted pair is kept under the domain its names say, and the route for that hostname resolves to it (${JSON.stringify(v.certs)})`);
   await page.evaluate(() => loadNginx());
   await page.waitForFunction(id => document.querySelector(`.nginxtab [data-ngnode="${id}"] .ngcert .name`)?.textContent === 'www.example.com', sandbox.node, { timeout: 10000 });
+  await page.click(`${sect} [data-ngedit="0"]`);
+  await page.waitForSelector(`${sect} .ngform`, { timeout: 5000 });
   ok(await page.$eval(sect, s => /1 route/.test(s.querySelector('.ngcert .sub').textContent)
        && [...s.querySelectorAll('.ngroute [data-ng="cert"] option')].some(o => o.value === 'www.example.com')
        && /443, www\.example\.com's pair/.test(s.querySelector('.ngroute [data-ng="cert"] option[value=""]').textContent)),
      "...and the section lists it with the route that uses it, and the route's picker names it as the automatic pick");
+  await page.click(`${sect} .ngform [data-ngcancel]`);
   await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, drop_cert: 'www.example.com' });
   ok(!((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).certs?.['www.example.com']), '...and it can be taken off again by its key');
 }

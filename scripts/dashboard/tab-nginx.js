@@ -158,14 +158,44 @@ function nginxHostLines(){
       <button type="button" data-nghostadd>Add</button></div>`;
 }
 
-function nginxRouteRow(n, r, i){
-  return `<div class="ngroute" data-i="${i}">
-    ${nginxHostPick(r)}
-    <input data-ng="path" value="${esc(r.path)}" placeholder="/" aria-label="path" autocomplete="off" spellcheck="false">
-    <input data-ng="port" value="${esc(String(r.port))}" placeholder="8080" aria-label="port on the node" inputmode="numeric" autocomplete="off">
-    ${nginxCertPick(n, r)}
-    <button type="button" class="eye rm" data-ngrm aria-label="remove this route" title="remove this route">${BIN}</button>
+// Routes as records (R218 step 44, the design's record-lists rule, the
+// operator 19 Oct: lists like Cloudflare's DNS page): a table, a row a route
+// read-only with Edit at its right; Edit opens that row in place into its
+// form (Delete, Cancel, Save), Add route opens the same form at the table's
+// top, one open at a time, and Save writes that one route.
+const NG_ROUTE_COLS = [{label: "Hostname"}, {label: "Path", w: "minmax(0,.6fr)"}, {label: "Port", w: "5rem", num: true},
+  {label: "TLS"}, {act: true, w: "5rem"}];
+let nginxEdit = null;            // {node, i}: the route open in its form, i -1 for a new one
+let nginxForm = null;            // that form's fields as typed, kept across a poll's redraw
+function nginxTls(n, r){
+  if (r.tls === false) return "80 only";
+  if (r.cert) return `443, ${esc(r.cert)}'s pair`;
+  const auto = nginxResolve(n, r.host);
+  return auto ? `443, ${esc(auto)}'s pair` : `<span class="warn">443, no pair covers it yet</span>`;
+}
+function nginxRouteForm(n, r, i){
+  return `<div class="ngform ngroute" data-i="${i}">
+    <div class="ngfields">
+      <label class="setrow col"><span class="lbl">Hostname</span>${nginxHostPick(r)}</label>
+      <label class="setrow col"><span class="lbl">Path</span><input data-ng="path" value="${esc(r.path || "/")}" placeholder="/" aria-label="path" autocomplete="off" spellcheck="false"></label>
+      <label class="setrow col"><span class="lbl">Port</span><input data-ng="port" value="${esc(String(r.port ?? ""))}" placeholder="8080" aria-label="port on the node" inputmode="numeric" autocomplete="off"></label>
+      <label class="setrow col"><span class="lbl">TLS</span>${nginxCertPick(n, r)}</label>
+    </div>
+    <div class="actbar ngformbar">${i >= 0 ? `<button type="button" class="danger lead" data-ngdel>Delete</button>` : ""}
+      <button type="button" data-ngcancel>Cancel</button>
+      <button type="button" class="primary" data-ngsave>Save</button></div>
   </div>`;
+}
+function nginxRoutesTable(n){
+  const ed = nginxEdit && nginxEdit.node === n.node ? nginxEdit.i : null;
+  const rec = (r, i) => `<div class="row ngrec${ed === i ? " open" : ""}" data-i="${i}">${tblLine(NG_ROUTE_COLS, [
+      r.host === "*" ? "every name (*)" : esc(r.host || ""), esc(r.path || "/"), esc(String(r.port)), nginxTls(n, r),
+      ed === i ? "" : `<button type="button" data-ngedit="${i}">Edit</button>`])}${
+      ed === i ? nginxRouteForm(n, nginxForm || r, i) : ""}</div>`;
+  const fresh = ed === -1 ? `<div class="row ngrec open" data-i="-1">${nginxRouteForm(n, nginxForm || {host: "", path: "/", port: "", tls: true}, -1)}</div>` : "";
+  const routes = n.routes || [];
+  if (!routes.length && ed !== -1) return `<div class="hint">no route yet: Add route sends a hostname to a port a container publishes</div>`;
+  return tblWrap(NG_ROUTE_COLS, fresh + routes.map(rec).join(""), "ngrecords");
 }
 
 // A repaint of the tab: its live key is the revision, so a draft's change
@@ -177,7 +207,7 @@ function nginxRedraw(){ nginxRev++; drawPanes(); }
 // pasted under Certificates, and Add the other way about.
 function nginxDraftOf(n){
   const d = nginxDraft[n.node] || (nginxDraft[n.node] = {routes: null, cert: "", key: "", certFor: ""});
-  if (!d.routes) d.routes = (n.routes || []).map(r => ({...r}));
+
   return d;
 }
 
@@ -264,13 +294,8 @@ function nginxBody(n){
   const routes = ngSect("routes", count ? `${count} route${count === 1 ? "" : "s"}` : "no route yet",
     `<div class="field"><div class="hint">Each hostname or path to a port a container publishes on ${esc(n.name)}.${helpIcon(
       "nginx runs on the host network and reaches a container at 127.0.0.1. A route serves 443 with the pair it picks, or with its domain's when it picks none; nothing is a default. A name nothing routes is answered by closing the connection.")}</div></div>
-      <div class="field ngroutes">${d.routes.map((r, i) => nginxRouteRow(n, r, i)).join("")}</div>
-      <div class="field"><div class="actbar ngbar" data-ngbar="${esc(n.node)}">
-        <span class="state"></span><span class="sp"></span>
-        <button type="button" data-ngadd>Add route</button>
-        <button type="button" class="primary" data-ngsave disabled>Save</button>
-        <button type="button" class="caution" data-ngrevert disabled>Revert</button>
-      </div></div>`);
+      <div class="field"><div class="addbar" data-add="route"><button type="button" data-ngadd${nginxEdit?.node === n.node && nginxEdit.i === -1 ? " disabled" : ""}>Add route</button></div></div>
+      <div class="field ngroutes">${nginxRoutesTable(n)}</div>`);
   // The pairs held, and Add a certificate unrolling the form under them: a
   // paste is now and then, not on every visit (the operator, step 29).
   const open = nginxCertOpen || !!(d.cert.trim() || d.key.trim());
@@ -343,24 +368,20 @@ function renderNginxInto(i){
   wireNginxTab(d.el);
 }
 
-// What the node's fields say now, into its draft, and whether that
-// differs from what is saved.
+// The open route's form as typed, into nginxForm, and a pair half pasted
+// under Certificates, into the node's draft: both kept across a redraw.
 function nginxReadDraft(sect, n){
-  const d = nginxDraftOf(n);
-  d.routes = [...sect.querySelectorAll(".ngroute")].map(row => {
-    const pick = row.querySelector('.ngroute [data-ng="cert"]').value;
-    const host = row.querySelector('[data-ng="host"]');
-    return {host: host.value, typed: host.tagName === "INPUT",
-            path: row.querySelector('[data-ng="path"]').value.trim() || "/",
-            port: row.querySelector('[data-ng="port"]').value.trim(),
-            tls: pick !== "none", cert: pick === "none" ? "" : pick};
-  });
-  d.cert = sect.querySelector('#ngCert').value;
-  d.key = sect.querySelector('#ngKey').value;
+  const d = nginxDraftOf(n), f = sect.querySelector(".ngform");
+  if (f){
+    const pick = f.querySelector('[data-ng="cert"]').value, host = f.querySelector('[data-ng="host"]');
+    nginxForm = {host: host.value === "__type" ? "" : host.value, typed: host.tagName === "INPUT",
+                 path: f.querySelector('[data-ng="path"]').value.trim() || "/",
+                 port: f.querySelector('[data-ng="port"]').value.trim(),
+                 tls: pick !== "none", cert: pick === "none" ? "" : pick};
+  }
+  d.cert = sect.querySelector('#ngCert')?.value || "";
+  d.key = sect.querySelector('#ngKey')?.value || "";
   d.certFor = sect.querySelector('[data-ng="certfor"]')?.value.trim() || "";
-  const shape = r => ({host: r.host, path: r.path, port: String(r.port), tls: r.tls !== false, cert: r.cert || ""});
-  // Whether the routes differ from what is saved: Routes' Save's question.
-  return JSON.stringify(d.routes.map(shape)) !== JSON.stringify((n.routes || []).map(shape));
 }
 
 function wireNginxTab(root){
@@ -373,7 +394,6 @@ function wireNginxTab(root){
   const nid = sect.dataset.ngnode;
   const n = nginxList.find(x => x.node === nid);
   if (!n) return;
-  const bar = sect.querySelector(".ngbar");
   // Not deployed: Deploy is the one thing on it (R181).
   if (!n.deployed){
     const dep = root.querySelector("[data-ngdeploy]");
@@ -397,14 +417,15 @@ function wireNginxTab(root){
     // The pair a route resolves to follows its hostname: the automatic
     // option said "no pair covers it yet" for a name picked after the
     // row was drawn (the operator, 13 Oct).
-    sect.querySelectorAll(".ngroute").forEach(row => {
+    sect.querySelectorAll(".ngform").forEach(row => {
       const host = row.querySelector('[data-ng="host"]')?.value || "";
       const auto = row.querySelector('[data-ng="cert"] option[value=""]');
       if (auto){ const k = nginxResolve(n, host.trim().toLowerCase()); auto.textContent = `443, ${k ? `${k}'s pair` : "no pair covers it yet"}`; }
     });
-    const dirty = nginxReadDraft(sect, n);
-    bar.querySelector("[data-ngsave]").disabled = !dirty;
-    bar.querySelector("[data-ngrevert]").disabled = !dirty;
+    nginxReadDraft(sect, n);
+    // A route's Save wants a hostname and a port.
+    const save = sect.querySelector(".ngform [data-ngsave]");
+    if (save) save.disabled = !(nginxForm?.host?.trim() && nginxForm?.port);
     const d = nginxDraftOf(n), add = sect.querySelector("[data-ngcertsave]");
     if (add) add.disabled = !(d.cert.trim() && d.key.trim());
   };
@@ -418,8 +439,8 @@ function wireNginxTab(root){
     if (!confirm(`Take ${k}'s pair off ${n.name}?\n\nA route that picked it falls back to what its hostname resolves to, or answers on 80 only.`)) return;
     nginxReadDraft(sect, n);
     busy(b, "Removing");
-    const j = await nginxAct({action: "save", node: nid, routes: nginxDraftOf(n).routes, drop_cert: k});
-    if (!j.error) delete nginxDraft[nid];
+    const j = await nginxAct({action: "save", node: nid, routes: n.routes || [], drop_cert: k});
+    if (!j.error){ nginxDraftOf(n).cert = nginxDraftOf(n).key = nginxDraftOf(n).certFor = ""; }
     nginxRedraw();
   });
   // The hostname list is saved at the press, and every node's draft kept:
@@ -440,26 +461,40 @@ function wireNginxTab(root){
     await nginxAct({action: "host-remove", name: b.dataset.nghostrm});
     nginxRedraw();
   });
-  sect.querySelector("[data-ngadd]").onclick = () => {
+  // A route at a time: Add route and Edit open the one form, Cancel folds it
+  // back, Save writes that route into the node's list and Delete takes it
+  // out of it, each sent as the list with that one change.
+  const open = i => { nginxEdit = {node: nid, i}; nginxForm = null; nginxRedraw(); };
+  const shut = () => { nginxEdit = null; nginxForm = null; nginxRedraw(); };
+  sect.querySelector("[data-ngadd]").onclick = () => open(-1);
+  sect.querySelectorAll("[data-ngedit]").forEach(b => b.onclick = () => open(+b.dataset.ngedit));
+  const form = sect.querySelector(".ngform");
+  if (form){
+    const i = +form.dataset.i;
+    form.querySelector("[data-ngcancel]").onclick = shut;
+    const save = form.querySelector("[data-ngsave]");
     nginxReadDraft(sect, n);
-    nginxDraftOf(n).routes.push({host: "", path: "/", port: "", tls: true});
-    nginxRedraw();
-  };
-  sect.querySelectorAll("[data-ngrm]").forEach(b => b.onclick = () => {
-    nginxReadDraft(sect, n);
-    nginxDraftOf(n).routes.splice(+b.closest(".ngroute").dataset.i, 1);
-    nginxRedraw();
-  });
-  // Routes' Save writes the routes alone, Revert lets them go; a pair half
-  // pasted below stays in the draft either way.
-  bar.querySelector("[data-ngsave]").onclick = async e => {
-    nginxReadDraft(sect, n);
-    busy(e.target, "Saving");
-    const j = await nginxAct({action: "save", node: nid, routes: nginxDraftOf(n).routes});
-    if (!j.error) nginxDraftOf(n).routes = null;
-    nginxRedraw();
-  };
-  bar.querySelector("[data-ngrevert]").onclick = () => { nginxReadDraft(sect, n); nginxDraftOf(n).routes = null; nginxRedraw(); };
+    save.disabled = !(nginxForm?.host?.trim() && nginxForm?.port);
+    save.onclick = async () => {
+      nginxReadDraft(sect, n);
+      const routes = (n.routes || []).map(r => ({...r}));
+      const r = {...nginxForm, host: nginxForm.host.trim()};
+      if (i >= 0) routes[i] = r; else routes.push(r);
+      busy(save, "Saving");
+      const j = await nginxAct({action: "save", node: nid, routes});
+      if (!j.error){ nginxEdit = null; nginxForm = null; }
+      nginxRedraw();
+    };
+    const del = form.querySelector("[data-ngdel]");
+    if (del) del.onclick = async () => {
+      const r = (n.routes || [])[i] || {};
+      if (!confirm(`Delete the route ${r.host === "*" ? "every name" : r.host}${r.path && r.path !== "/" ? r.path : ""} to port ${r.port}?`)) return;
+      busy(del, "Deleting");
+      const j = await nginxAct({action: "save", node: nid, routes: (n.routes || []).filter((_, k) => k !== i)});
+      if (!j.error){ nginxEdit = null; nginxForm = null; }
+      nginxRedraw();
+    };
+  }
   // Add a certificate unrolls the form; Add writes the pair beside the
   // routes as saved (an unsaved route is Routes' to save), Cancel lets the
   // paste go and rolls the form back up.
