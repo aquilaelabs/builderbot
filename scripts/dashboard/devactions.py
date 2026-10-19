@@ -913,6 +913,14 @@ def _exists(project, instance=devapp.MAIN):
 
 
 @devapp._on_instance
+def running_ports(project, instance=devapp.MAIN):
+    """The ports an instance's running containers publish, from its own
+    daemon's listing (the Docker page's), in _ports() form."""
+    got = devapp._agent_instance_containers(devapp._agent_here(), project, instance, True)
+    return [p for c in (got or []) for p in c.get("ports") or []]
+
+
+@devapp._on_instance
 def running_names(project, instance=devapp.MAIN):
     """The names of an instance's running containers, from its own daemon:
     what a container's Shell may name (R218 step 4), asked when one opens
@@ -1594,6 +1602,11 @@ def probe(project, instance, req, principal):
     if not nid:
         return {"error": f"{devapp.pname(project, instance)} has no node to probe on"}, 400
     mine = host_ports(state_ports(project, instance))
+    if not mine:
+        # What its running containers publish, as the Docker page lists them
+        # (B7): the compose file's wiring can name none, a port set from an
+        # env value it could not read, while docker has the port bound.
+        mine = host_ports(running_ports(project, instance))
     if not mine:
         return {"error": f"{devapp.pname(project, instance)} publishes no TCP port on its node "
                          "(is it up? bb devapp says)"}, 400
