@@ -4911,6 +4911,7 @@ gfx_tool() {
     d="$(sdk_find "$recipe" 2>/dev/null)" || d=""
     if [ -n "$d" ] && [ -x "$d/bin/$name" ]; then printf '%s' "$d/bin/$name"; return 0; fi
     if command -v "$name" >/dev/null 2>&1; then command -v "$name"; return 0; fi
+    ! sdk_off "$recipe" || die "${recipe} is switched off for this project: its settings' Toolchains group turns it on"
     die "no ${name} here: install the ${recipe} toolchain on the Toolchains page with this node picked"
 }
 

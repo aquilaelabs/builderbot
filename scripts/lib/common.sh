@@ -202,8 +202,16 @@ sdk_removed_marker() {
     printf '%s/.removed/%s' "$(sdk_root)" "$(printf '%s' "$1" | tr ':/' '--')"
 }
 
+# sdk_off NAME: whether this project's settings switch the toolchain off for
+# its sessions (R77): bb-tty exports the list, and to bb it is not there.
+sdk_off() {
+    case " ${BB_TOOLCHAINS_OFF:-} " in *" $1 "*) return 0 ;; esac
+    return 1
+}
+
 sdk_find() {
     local name="$1" root fallback
+    ! sdk_off "$name" || return 1
     root="$(sdk_root)"
     fallback="${BUILDER_HOME:-${HOME:-/home/builder}}/.sdk"
     if sdk_have "$root" "$name"; then printf '%s/%s' "$root" "$name"; return 0; fi

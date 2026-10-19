@@ -783,6 +783,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
         if (cur["node"] or cur["hosts"] or cur["color"] or cur["reads"] or cur["sees"] or cur["reaches"]
+                or cur["tc_off"] or cur["packs_on"]
                 or cur["log_from"] or cur["diag"]
                 or not cur["build_local"]
                 or cur["build"] or cur["test"] or cur["outputs"]
@@ -827,6 +828,9 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("dev_keep", None)
             if cur["build_local"]:
                 rec.pop("build_local", None)
+            for k in ("tc_off", "packs_on"):
+                if not cur[k]:
+                    rec.pop(k, None)
             d["projects"][project] = rec
         else:
             d["projects"].pop(project, None)

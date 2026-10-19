@@ -96,6 +96,12 @@ class Install(unittest.TestCase):
         self.assertIn("bb tool hexkit dump|", self.bb("tool").stdout.replace("dump ...", "dump|"))
         r = self.bb("tool", "nosuch")
         self.assertIn("no tool called nosuch", r.stderr)
+        # Switched off for the project (its settings' Toolchains group): bb
+        # refuses its verbs by that name and leaves it off PATH.
+        self.env["BB_TOOLCHAINS_OFF"] = "hexkit"
+        r = self.bb("tool", "hexkit", "dump", "x")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("hexkit is switched off for this project", r.stderr)
 
 
 if __name__ == "__main__":

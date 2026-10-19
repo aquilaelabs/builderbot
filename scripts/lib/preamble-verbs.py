@@ -36,6 +36,20 @@ registry.configure(state=state, workspace=os.environ.get("WORKSPACE", "/workspac
 preamble.label_of = registry.label
 
 
+def _packs():
+    """The tool packs added here (R77), from the controller's own file."""
+    try:
+        with open(os.path.join(state, "toolpacks.json")) as f:
+            packs = json.load(f).get("packs") or {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+    return {n: {"label": (r.get("manifest") or {}).get("label") or n, "guidance": r.get("guidance") or ""}
+            for n, r in packs.items() if isinstance(r, dict)}
+
+
+preamble.packs_of = _packs
+
+
 def node_gpu(project):
     """Whether the project's node reports an NVIDIA card (R102), read from
     the node store as it stands, read-only: what decides the briefing's GPU

@@ -299,11 +299,21 @@ let tpForm = {url: "", seen: null, error: "", busy: ""};
 // What a pack would install and give a session, from the manifest a look
 // fetched: its downloads are its install steps, its verbs the words each
 // runs, so the person adding it reads both before Add.
-function tpSeen(seen){
+// On an update, `was` is the installed pack's (its verbs' words and its
+// install steps): what the new commit changes is said on its line, and a
+// verb it drops is listed as gone, so the approval is of the difference.
+function tpSeen(seen, was){
   const m = seen.manifest, w = a => `<code>${esc(a.join(" "))}</code>`;
+  const same = (a, b) => JSON.stringify(a || null) === JSON.stringify(b || null);
+  const mark = (now, then) => !was ? "" : then === undefined ? ` <span class="pill warn">new</span>`
+    : same(now, then) ? "" : ` <span class="pill warn">changed</span> <span class="sub">was ${w(then)}</span>`;
   const verbs = Object.entries(m.verbs || {}).map(([v, x]) =>
-    `<div class="sub">bb tool ${esc(m.name)} ${esc(v)} ${esc(x.usage || "")} runs ${w(x.run)}${x.about ? `: ${esc(x.about)}` : ""}</div>`).join("");
-  const steps = (m.steps || []).map(w).join(", ");
+    `<div class="sub">bb tool ${esc(m.name)} ${esc(v)} ${esc(x.usage || "")} runs ${w(x.run)}${mark(x.run, was?.runs?.[v])}${
+      x.about ? `: ${esc(x.about)}` : ""}</div>`).join("")
+    + Object.keys(was?.runs || {}).filter(v => !(v in (m.verbs || {})))
+      .map(v => `<div class="sub">bb tool ${esc(m.name)} ${esc(v)} <span class="pill warn">gone</span></div>`).join("");
+  const steps = (m.steps || []).map(w).join(", ") + (was && !same(m.steps || [], was.steps || [])
+    ? ` <span class="pill warn">changed</span>${(was.steps || []).length ? ` <span class="sub">was ${(was.steps || []).map(w).join(", ")}</span>` : ""}` : "");
   return `<div class="tpseen">
     <div class="name">${esc(m.label)} <span class="pill">${esc(m.name)}</span> <span class="sub">at ${esc(seen.commit.slice(0, 12))}</span></div>
     ${m.about ? `<div class="sub">${esc(m.about)}</div>` : ""}
@@ -323,7 +333,7 @@ function tpFormHtml(p){
       placeholder="https://github.com/owner/repo" aria-label="the pack's repository" autocomplete="off" spellcheck="false"></label>`
       : `<div class="sub">From <code>${esc(p.pack.url)}</code> at ${esc(p.pack.commit.slice(0, 12))}, added by ${esc(p.pack.by || "an administrator")}${
         p.pack.at ? ` ${ago(p.pack.at)}` : ""}. Verbs: ${esc((p.pack.verbs || []).join(", "))}.</div>`}
-    ${seen ? tpSeen(seen) : ""}
+    ${seen ? tpSeen(seen, p ? p.pack : null) : ""}
     ${f.error ? `<div class="hint bad">${esc(f.error)}</div>` : ""}
     ${p && seen && !newer ? `<div class="hint">No newer commit: the repository's head is the one installed.</div>` : ""}
     <div class="actbar ngformbar">${p ? `<button type="button" class="danger lead" data-tprm="${esc(p.name)}">Remove</button>` : ""}
@@ -370,7 +380,8 @@ function tpWire(el){
     tpForm.busy = "add"; redraw();
     const j = await post({action: "add", url: packUrl(), commit: tpForm.seen?.commit || ""});
     if (j.error){ tpForm.busy = ""; tpForm.error = j.error; redraw(); return; }
-    notify(`${j.pack.name} ${j.replaced ? "updated" : "added"}: install it below like any toolchain`);
+    notify(j.replaced ? `${j.pack.name} updated: where it is installed, uninstall it and install it again to take the new commit`
+                      : `${j.pack.name} added: install it below like any toolchain`);
     close(); loadToolchains();
   });
   el.querySelectorAll("[data-tprm]").forEach(b => b.onclick = async () => {

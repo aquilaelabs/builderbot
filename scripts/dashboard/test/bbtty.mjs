@@ -80,7 +80,7 @@ if len(parts) == 3 and len(parts[1].encode()) > SHARE:
              % (len(rows) - kept, len(rows))]
 t = "\\n\\n".join(parts)
 print(json.dumps({"text": t, "bytes": len(t.encode()), "parts": [], "notes": notes}))' ;;
-  settings) [ "\${2:-}" = --json ] && printf '{"git_name":"Pat Tester","git_email":"pat@example.invalid","git_ready":%s}\\n' "$([ "\${FAKE_GIT_READY:-1}" = 0 ] && echo false || echo true)" ;;
+  settings) [ "\${2:-}" = --json ] && printf '{"git_name":"Pat Tester","git_email":"pat@example.invalid","toolchains_off":[%s],"git_ready":%s}\\n' "$([ "\${BB_PROJECT:-}" = alpha ] && echo '"hexkit","flutter"')" "$([ "\${FAKE_GIT_READY:-1}" = 0 ] && echo false || echo true)" ;;
   # A brief staged with Build it, taken once, the way the controller hands
   # it over (brief.py): the file is the stage, and taking it clears it.
   brief) if [ "\${2:-}" = take ] && [ -n "\${FAKE_BRIEF:-}" ] && [ -f "$FAKE_BRIEF" ]; then
@@ -181,6 +181,10 @@ ok(genv('GIT_CONFIG_COUNT') === 'GIT_CONFIG_COUNT=3'
    && genv('GIT_CONFIG_KEY_1') === 'GIT_CONFIG_KEY_1=user.name' && genv('GIT_CONFIG_VALUE_1') === 'GIT_CONFIG_VALUE_1=Pat Tester'
    && genv('GIT_CONFIG_KEY_2') === 'GIT_CONFIG_KEY_2=user.email' && genv('GIT_CONFIG_VALUE_2') === 'GIT_CONFIG_VALUE_2=pat@example.invalid',
    `...and git's user.name and user.email are the same author (${genv('GIT_CONFIG_VALUE_1') || 'unset'})`);
+// ...and the toolchains its project's settings switch off (R77), which bb
+// reads as not there and the view leaves out.
+ok(genv('BB_TOOLCHAINS_OFF') === 'BB_TOOLCHAINS_OFF=hexkit flutter',
+   `the session carries the toolchains its project switches off (${genv('BB_TOOLCHAINS_OFF') || 'unset'})`);
 const cmd = paneCmd();
 ok(cmd.length < 200 && /project\/alpha\/claude-run\.sh$/.test(cmd),
    '...because tmux was handed a launcher, not the command');

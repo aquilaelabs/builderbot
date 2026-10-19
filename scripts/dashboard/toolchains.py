@@ -159,7 +159,14 @@ def load_toolchains(packs=()):
         if isinstance(pk, dict):
             row["pack"] = {"url": str(pk.get("url") or ""), "commit": str(pk.get("commit") or "")[:40],
                            "by": str(pk.get("by") or ""), "at": int(pk.get("at") or 0),
-                           "verbs": sorted(str(v) for v in (r.get("verbs") or {}))[:40]}
+                           "verbs": sorted(str(v) for v in (r.get("verbs") or {}))[:40],
+                           # What it runs now, for an update to be read as
+                           # what changes: each verb's words, and the
+                           # install steps after the fetch.
+                           "runs": {str(v): [str(w) for w in (x.get("run") or [])][:40]
+                                    for v, x in list((r.get("verbs") or {}).items())[:40] if isinstance(x, dict)},
+                           "steps": [[str(w) for w in (t.get("run") or [])][:40]
+                                     for t in ((r.get("source") or {}).get("then") or [])[:20] if isinstance(t, dict)]}
         out.append(row)
     # Sorted here rather than trusted from the file, so a toolchain added at the
     # end of the catalog still lands where somebody would look for it. Leading

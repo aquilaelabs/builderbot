@@ -3087,6 +3087,8 @@ if not settings.debug_available():
 # after preamble is configured, so it is handed over here.
 preamble.prefs_mod = prefs
 preamble.label_of = registry.label
+preamble.packs_of = lambda: {n: {"label": (r.get("manifest") or {}).get("label") or n, "guidance": r.get("guidance") or ""}
+                             for n, r in toolpacks.packs().items()}
 
 
 def _project_node_gpu(project):

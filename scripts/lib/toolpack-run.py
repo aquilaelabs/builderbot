@@ -49,6 +49,8 @@ if not rest or rest[0] in ("-h", "--help"):
     usage()
     raise SystemExit(0)
 verb, args = rest[0], rest[1:]
+if name in os.environ.get("BB_TOOLCHAINS_OFF", "").split():
+    die(f"{name} is switched off for this project: its settings' Toolchains group turns it on")
 spec = verbs.get(verb)
 if not spec:
     die(f"{name} has no verb {verb}: " + ", ".join(sorted(verbs)) + f" (bb tool {name})")

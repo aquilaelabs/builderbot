@@ -35,7 +35,8 @@ scripts/
   lib/syncwait.py                a session's bb on a synced node waits for its copy to be in step with the controller's (R163)
   lib/codemap.py                 the code map bb map answers from: an index over the tree, rebuilt when a source is newer (R75)
   lib/trace-verbs.py             bb dashboard trace: what the server was asked over a window, by endpoint and asker
-  lib/sdkmeta.py                 reads config/toolchains.json for bb: fields, argv, versions
+  lib/sdkmeta.py                 reads config/toolchains.json for bb, with the tool packs beside it: fields, argv, versions
+  lib/toolpack-run.py            `bb tool PACK VERB`: a tool pack's verb from its manifest, the caller's words in place of {args}
   lib/docker-probe.py            which daemon is live, for `bb doctor` and the boot log
   lib/log-split.sh               splits a long-running process's output: all of it to its own file, warnings to the boot log
   lib/embedded.py                pulls scripts and python out of quoted heredocs so `bb lint` sees them
@@ -124,7 +125,7 @@ scripts/
     tunnel.py                    the home tunnel the controller runs itself (R176): cloudflared as its child from the settings, and the hostname's record and rules through Cloudflare's API
     statefile.py                 writing a state file, and holding it while you read-modify-write one
     toolchains.py                everything behind the Toolchains page: catalog, sizes, the job worker
-    toolpacks.py                 the tool packs a person adds (R77): a repository's bbtool.json, pinned to a commit, as catalog rows
+    toolpacks.py                 the tool packs a person adds (docs/tool-packs.md): a repository's bbtool.json, pinned to a commit, as catalog rows
     emulator.py                  everything behind the Emulator page: a node's Android system images
     enrollscript.py              Enroll node as one script: the answers, the token and a WireGuard tunnel inside the provisioner
     memory.py                    everything behind the memory book: what Claude remembers per project
@@ -304,6 +305,7 @@ docs/notebook.md                 a project's page: its header and its views, fro
 docs/sessions.md                 Claude sessions: starting one, the Sessions page, a session's view and network, its briefing and rules
 docs/building.md                 builds, tests, CI runners and logs, the scanner's findings, dist/, signing and releases
 docs/toolchains.md               the toolchain store, the Toolchains and Emulator pages, the NVIDIA card, Android, the Phone page
+docs/tool-packs.md               tool packs: adding one, a project's Toolchains setting, and writing a bbtool.json
 docs/containers.md               the Containers page and nginx: dev instances, how one is reached, networks, image updates
 docs/machines.md                 Controller settings, Nodes, Storage, the logs, the Jobs page, a Mac as a node
 docs/people.md                   the first account, Users and Roles, owners and invitations, the chat, your Profile

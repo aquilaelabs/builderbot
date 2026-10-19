@@ -187,6 +187,19 @@ ok(has('tmpfs', data, 'mode=0755') && bound(join(data, 'emu', 'alpha')) && !boun
    'the agent\'s stores keep its own emulator folder, its own CI logs and artifacts; another project\'s emulator, jobs, compose files, the runner and dev data are gone');
 ok(has('bindro', pkg, pkg) && !bound(join(pkg, 'jdk')) && !steps.some(x => x[0] === 'bindrw' && x[1] === join(pkg, 'jdk')),
    'the whole toolchain store is read-only in the view, the bundle and every toolchain, so a session cannot plant a command a job or another session runs (B157, B163)');
+// A toolchain the project's settings switch off (R77): its directory hidden
+// after the store and its writable parts are bound, so nothing covers the
+// hide; a name that is not a toolchain's is refused by name.
+{
+  const offd = plan({ off: 'flutter' });
+  const os2 = offd.code === 0 ? JSON.parse(offd.out) : [];
+  const ix = (...s) => os2.findIndex(x => JSON.stringify(x) === JSON.stringify(s));
+  ok(ix('hide', join(pkg, 'flutter')) > ix('bindro', pkg, pkg) && ix('hide', join(pkg, 'flutter')) > ix('bindrw', join(pkg, 'flutter'), join(pkg, 'flutter'))
+     && !os2.some(x => x[0] === 'hide' && x[1] === join(pkg, 'jdk')),
+     `--off hides that toolchain's directory in the store, after it is bound, and no other (${offd.code}: ${offd.out.slice(0, 60)})`);
+  const bad = plan({ off: '../etc' });
+  ok(bad.code !== 0 && /--off takes a toolchain's name/.test(bad.out), `...and --off refuses what is not a toolchain's name (${bad.out.trim().slice(0, 80)})`);
+}
 const at = (...s) => steps.findIndex(x => JSON.stringify(x) === JSON.stringify(s));
 const fl = join(pkg, 'flutter');
 ok(at('bindro', pkg, pkg) < at('bindrw', fl, fl) && at('bindrw', fl, fl) < at('bindro', join(fl, 'bin'), join(fl, 'bin'))

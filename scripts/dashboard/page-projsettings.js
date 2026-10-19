@@ -36,7 +36,7 @@ const EFFORTS = [["", "Claude's default"], ["low", "low"], ["medium", "medium"],
 // session is restarted, which is not something to do because somebody opened
 // a menu.
 let rnPrefWas = {git_name: "", git_email: "",
-                 node: "", nodes: "", hosts: "", reads: "", sees: "", reaches: "", build: "", test: "", outputs: "",
+                 node: "", nodes: "", hosts: "", reads: "", tc_off: "", packs_on: "", sees: "", reaches: "", build: "", test: "", outputs: "",
                  capture_days: "7", snapshot_days: "14", dev_keep: "3", gate: "", debug: ""};
 // The colors a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
@@ -97,6 +97,7 @@ function rnPrefsOf(p){
                nodes: (p?.prefs?.nodes || []).join(","),
                hosts: (p?.prefs?.hosts || []).join(","),
                reads: (p?.prefs?.reads || []).join(","),
+               tc_off: (p?.prefs?.tc_off || []).join(","), packs_on: (p?.prefs?.packs_on || []).join(","),
                sees: (p?.prefs?.sees || []).join(", "),
                reaches: JSON.stringify(p?.prefs?.reaches || []),
                debug: rnDebugKey(p?.prefs?.diag, p?.prefs?.log_from),
@@ -141,6 +142,7 @@ function rnFillPrefs(p){
   rnFillPrefsRest(p);
   rnFillReads();
   rnFillDebug();
+  rnLoadTools(p);
 }
 
 // The project's node: every node but this container, because local can
@@ -345,6 +347,34 @@ function rnDebugNow(){
   return {diag: on.includes("@diag"), log_from: on.filter(v => v !== "@diag")};
 }
 
+// ---- the Toolchains group (R77) -------------------------------------------
+// The toolchains installed on the project's node, as its Toolchains page
+// lists them, and every tool pack: a row each, ticked when its sessions may
+// use it. Fetched when the settings open; null until it has arrived.
+let rnToolsList = null;
+async function rnLoadTools(p){
+  rnToolsList = null;
+  $("rnTools").innerHTML = `<div class="hint">reading the toolchains on its node…</div>`;
+  const node = p?.prefs?.node || "";
+  const j = await (await fetch("/api/toolchains" + (node ? `?node=${encodeURIComponent(node)}` : ""))).json().catch(() => ({}));
+  if (p?.name && p.name !== rnFor) return;          // another project's settings opened meanwhile
+  rnToolsList = (j.items || []).filter(i => i.installed || i.pack);
+  rnFillTools();
+}
+function rnFillTools(){
+  const box = $("rnTools");
+  if (!box || rnToolsList === null) return;
+  const off = new Set(rnPrefWas.tc_off.split(",").filter(Boolean)), on = new Set(rnPrefWas.packs_on.split(",").filter(Boolean));
+  const shipped = rnToolsList.filter(i => !i.pack).sort((a, b) => a.label.localeCompare(b.label));
+  const packs = rnToolsList.filter(i => i.pack).sort((a, b) => a.label.localeCompare(b.label));
+  const row = (i, attr, ticked, sub) => lrow(i.name, i.label, sub, ticked).replace("<input ", `<input ${attr} `);
+  box.innerHTML = shipped.map(i => row(i, "data-shipped", !off.has(i.name), i.version || "installed"))
+    .concat(packs.map(i => row(i, "data-pack", on.has(i.name),
+      `tool pack, added by ${i.pack.by || "an administrator"}${i.installed ? "" : "; not installed on its node yet"}`))).join("")
+    || `<div class="hint">nothing is installed on its node yet</div>`;
+  box.querySelectorAll("input").forEach(i => i.onchange = () => rnBars());
+}
+
 function rnFillReads(){
   const box = $("rnReads"), wrap = $("rnReadsField");
   if (!box) return;
@@ -508,6 +538,7 @@ const RN_LIST = {
   yours: "your replies, questions and commit name here",
   repo: "how it pushes and pulls", runs: "where it builds, tests and runs",
   build: "commands, outputs, and what is kept", sees: "other projects, shares, addresses, logs",
+  tools: "the toolchains and tool packs its sessions use",
   files: "its files over FTP and in an editor", snapshots: "the days kept, and putting one back",
   signing: "the keys its builds are signed with", sessions: "every account's sessions here, to end",
 };
@@ -1395,11 +1426,12 @@ function closeRename(){
 // and moved on had saved nothing (Reads on BuilderBot, 10 Oct). Where the
 // section holds something a running session takes only when it starts, its
 // bar offers both answers at once: Save, keep it running and Save and end it.
-const RN_SECTS = ["project", "people", "repo", "runs", "files", "sees", "build", "signing", "claude", "yours"];
+const RN_SECTS = ["project", "people", "repo", "runs", "files", "sees", "tools", "build", "signing", "claude", "yours"];
 // Which section each of rnPrefWas's fields is in, and what it is called.
 const RN_WAS = {
   node: ["runs", "Node"], nodes: ["runs", "Node"], hosts: ["runs", "Hosts its containers on"], gpu: ["runs", "The node's GPU"], tests_in: ["runs", "Where tests run"],
   reads: ["sees", "Reads"], sees: ["sees", "Also sees"], reaches: ["sees", "Also reaches"], debug: ["sees", "Debugging"],
+  tc_off: ["tools", "Toolchains"], packs_on: ["tools", "Tool packs"],
   build: ["build", "Build"], test: ["build", "Test"], outputs: ["build", "Outputs"],
   capture_days: ["build", "Captures kept"], snapshot_days: ["build", "Snapshots kept"], dev_keep: ["build", "Dev builds kept"],
   gate: ["claude", "Claude may"], test_change: ["claude", "During a test run, a change asked for"],
@@ -1411,7 +1443,8 @@ const RN_WAS = {
 // What a running session takes only when it starts (the briefing, the launch
 // flags, the view it runs in); everything else is read when it is used.
 const RN_AT_START = new Set(["reply", "asks", "git_name", "git_email", "node", "nodes",
-                             "reads", "sees", "test_change", "gpu", "capture_days", "snapshot_days", "dev_keep"]);
+                             "reads", "sees", "test_change", "gpu", "capture_days", "snapshot_days", "dev_keep",
+                             "tc_off", "packs_on"]);
 
 // The fields as they stand, in rnPrefWas's own shape, so each compares with
 // its saved value directly.
@@ -1429,6 +1462,12 @@ function rnEnc(){
           // prefs.nodes: one list on screen, two settings underneath.
           hosts: !drawn ? rnPrefWas.hosts : [...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value).filter(id => rnHostIds().has(id)).join(","),
           reads: [...$("rnReads").querySelectorAll("input:checked")].map(i => i.value).join(","),
+          // The rows are drawn once the node's toolchains have arrived;
+          // until then the saved values stand, so an open is no change.
+          tc_off: rnToolsList === null ? rnPrefWas.tc_off
+            : [...$("rnTools").querySelectorAll("input[data-shipped]:not(:checked)")].map(i => i.value).join(","),
+          packs_on: rnToolsList === null ? rnPrefWas.packs_on
+            : [...$("rnTools").querySelectorAll("input[data-pack]:checked")].map(i => i.value).join(","),
           sees: $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean).join(", "),
           reaches: JSON.stringify(rnReachNow()),
           debug: dbg ? rnDebugKey(dbg.diag, dbg.log_from) : rnPrefWas.debug,
@@ -1528,6 +1567,8 @@ function rnRevertSect(sect){
     $("rnGpu").value = w.gpu; $("rnDevTest").value = w.tests_in;
   } else if (sect === "files"){
     rnFtpDraft = {}; rnDrawFtp();
+  } else if (sect === "tools"){
+    rnFillTools();
   } else if (sect === "sees"){
     rnFillReads();
     $("rnSees").value = w.sees;
@@ -1658,6 +1699,7 @@ async function rnSubmit(sect, end = false){
       const r = await fetch("/api/prefs", {method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify({project: name, restart: restartNow, ...pick({git_name: v.git_name, git_email: v.git_email,
                               node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
+                              tc_off: v.tc_off, packs_on: v.packs_on,
                               build: v.build, test: v.test, gate: v.gate, ...(v.dbg || {}),
                               tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks,
                               devbuild: v.devbuild, report: v.report, sign: v.sign, keys: v.keys, release: v.release, pc: v.pc,

@@ -5740,6 +5740,17 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="hint">Read only while Debug mode is on, and only by a session whose account has the debug grant.</div>
     </div>
     </div></details>
+    <!-- Which toolchains a session here may use (R77): every one installed
+         on the project's node, shipped ones on and tool packs off until
+         ticked. A toolchain left off is not on a session's PATH or in its
+         view of the store, and bb refuses it by this setting's name. -->
+    <details class="sect rngroup" data-sect="rn:tools"><summary><span class="t">Toolchains</span></summary><div class="body">
+    <div class="field" id="rnToolsField">
+      <label id="rnToolsLabel">Its sessions use<span class="help" data-help="what a session here has on its PATH and in its view of the toolchain store; one left off is not there for it, and bb says this setting is why. A session started after the save takes it" tabindex="0">?</span></label>
+      <div class="lbox" id="rnTools" role="group" aria-labelledby="rnToolsLabel"></div>
+      <div class="hint" id="rnToolsHint">Shipped toolchains start on and tool packs off: a pack an administrator adds reaches no project until it is ticked here.</div>
+    </div>
+    </div></details>
     <details class="sect rngroup" data-sect="rn:files"><summary><span class="t">File access</span></summary><div class="body">
     <!-- The project's tree over FTPS from outside BuilderBot (R151, ftp.py):
          on, the port, and each account's access. Set by an account with the

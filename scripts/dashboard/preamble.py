@@ -346,7 +346,7 @@ def briefing(project, gates=True):
                 continue
             if line.strip() in (_READS, _DESIGN):
                 said = "\n\n".join(x for x in (identity_line(project), reads_line(project),
-                                                sees_line(project)) if x) \
+                                                sees_line(project), packs_line(project)) if x) \
                     if line.strip() == _READS else design_line(project)
                 if said:
                     out.append(said)
@@ -387,11 +387,46 @@ def topics(project):
     return [(slug, gist, len(body.encode("utf-8"))) for slug, _, gist, body in split(briefing(project))[1]]
 
 
+# The tool packs added here (R77), name to {label, guidance}: set by the
+# server (toolpacks.packs) and by bb preamble, which reads the same file.
+packs_of = None
+
+
+def _packs_on(project):
+    """The packs this project's settings switch on that are still added."""
+    if packs_of is None or prefs_mod is None:
+        return {}
+    try:
+        on = (prefs_mod.get(project) or {}).get("packs_on") or []
+        have = packs_of() or {}
+    except Exception:                                                # noqa: BLE001
+        return {}
+    return {n: have[n] for n in on if n in have}
+
+
+def packs_line(project):
+    """The tool packs a session here may use, said where it learns its
+    project; "" when the project uses none."""
+    on = _packs_on(project)
+    if not on:
+        return ""
+    names = ", ".join(f"{(r.get('label') or n)} (`bb tool {n}`)" for n, r in sorted(on.items()))
+    return (f"This project's sessions may use the tool packs {names}: `bb tool NAME` lists a pack's verbs, "
+            f"and `bb help tool-NAME` prints what the pack says about using them. A person here added each; "
+            f"none is shipped with BuilderBot.")
+
+
 def topic(project, slug):
     """One topic's text, headed, for `bb help TOPIC`; None when there is
     none by that name. Every topic answers, the tree's gates aside: a
     question about the emulator on a project with no Android is still a
-    question."""
+    question. tool-NAME is a tool pack's own guidance, for a project that
+    uses the pack (R77)."""
+    if slug.startswith("tool-"):
+        rec = _packs_on(project).get(slug[5:])
+        if rec is not None:
+            return (f"## {rec.get('label') or slug[5:]} (a tool pack)\n\n"
+                    + (rec.get("guidance") or f"The pack says nothing more: `bb tool {slug[5:]}` lists its verbs."))
     for s, title, _, body in split(briefing(project, gates=False))[1]:
         if s == slug:
             return f"## {title}\n\n{body}"

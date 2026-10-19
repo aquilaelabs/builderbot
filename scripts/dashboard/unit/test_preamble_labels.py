@@ -33,6 +33,27 @@ class PreambleLabels(unittest.TestCase):
             self.assertIn("This project is shown as public; its directory is /workspace/here", out.stdout)
             self.assertIn("This project reads old-private (directory Old), plain:", out.stdout)
 
+    def test_a_project_is_told_its_tool_packs(self):
+        # R77: the packs its settings switch on, by name, and a pack's own
+        # guidance as bb help tool-NAME; a project that has not switched one
+        # on is told nothing about it.
+        with tempfile.TemporaryDirectory() as t:
+            for d in ("here", "other"):
+                os.makedirs(os.path.join(t, "ws", d))
+            with open(os.path.join(t, "toolpacks.json"), "w") as f:
+                json.dump({"packs": {"hexkit": {"manifest": {"label": "Hex kit"}, "guidance": "Dump before you patch."}}}, f)
+            with open(os.path.join(t, "claude-prefs.json"), "w") as f:
+                json.dump({"projects": {"here": {"packs_on": ["hexkit"]}}}, f)
+            env = dict(os.environ, DASHBOARD_STATE=t, WORKSPACE=os.path.join(t, "ws"))
+
+            def run(proj, *a):
+                return subprocess.run([sys.executable, VERBS, DASH, proj, *a], env=env,
+                                      capture_output=True, text=True, timeout=60)
+            self.assertIn("This project's sessions may use the tool packs Hex kit (`bb tool hexkit`)", run("here", "").stdout)
+            self.assertIn("Dump before you patch.", run("here", "--topic", "tool-hexkit").stdout)
+            self.assertNotIn("tool packs", run("other", "").stdout)
+            self.assertNotEqual(run("other", "--topic", "tool-hexkit").returncode, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
