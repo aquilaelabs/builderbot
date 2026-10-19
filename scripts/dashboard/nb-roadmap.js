@@ -450,7 +450,7 @@ function nbRoadmapView({$, nb}){
   // day claude put a confirmation behind that command.
   function sendBoxEl({label, sub, placeholder, onSend, onCancel}){
     const box = document.createElement("div");
-    box.className = "sendbox";
+    box.className = "sendbox ctlown";
     box.innerHTML = `<div class="q">${esc(label)}${
         sub ? ` <span>· ${esc(sub)}</span>` : ""}</div>
     <textarea id="sendMore" rows="2" maxlength="4000"
@@ -724,7 +724,7 @@ function nbRoadmapView({$, nb}){
       ? "the one behind it takes its place"
       : (r?.steps || []).length ? `its ${r.steps.length} steps go too` : "";
     const box = document.createElement("div");
-    box.className = "dropbox";
+    box.className = "dropbox ctlown";
     box.innerHTML = `<div class="q">Drop this?${also ? ` <span>· ${esc(also)}</span>` : ""}</div>
     <textarea class="proseline" rows="1" maxlength="4000"
       placeholder="why it is going (optional, kept in the history)"></textarea>
@@ -758,7 +758,7 @@ function nbRoadmapView({$, nb}){
     const r0 = findRow(id);
     const wasInfo = (step < 0 ? r0?.info : r0?.steps?.[step]?.info) || "";
     const box = document.createElement("div");
-    box.className = "dropbox editbox";
+    box.className = "dropbox editbox ctlown";
     box.innerHTML = `<div class="q">${step < 0 ? "Reword it"
         : `Reword step ${step + 1}`}<span>: Enter saves, shift+Enter is a new line</span></div>
     <textarea maxlength="4000" spellcheck="false"></textarea>

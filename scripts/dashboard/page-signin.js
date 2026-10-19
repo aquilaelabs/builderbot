@@ -67,7 +67,7 @@ function signinBlock(n){
       <div class="sub">${lg.url
         ? `<a href="${esc(lg.url)}" target="_blank" rel="noopener">Open the sign-in page ↗</a>, approve, and paste the code it gives you.`
         : `Starting the sign-in on ${esc(n.name)}<span class="dots"></span>`}</div>
-      <div class="setrow col">${lbl("authCode", "Code", "the code the sign-in page shows once you approve")}
+      <div class="setrow col ctlrow">${lbl("authCode", "Code", "the code the sign-in page shows once you approve")}
         <input id="authCode" autocomplete="off" spellcheck="false" autocapitalize="none"
           placeholder="paste the code here" aria-label="sign-in code"${lg.waiting ? "" : " disabled"}></div>
       <div class="actbar"><span class="state">${lg.sent ? "checking the code" : lg.waiting ? "waiting for the code" : "waiting for the link"}</span>

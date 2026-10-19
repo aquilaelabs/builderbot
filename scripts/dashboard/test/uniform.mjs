@@ -437,7 +437,7 @@ async function spanning(){
     const cap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ctl-w')) * 16 || 480;
     const LIM = Math.min(W * 0.9, cap + 2);
     const CTL = 'input:not([type=checkbox]):not([type=radio]), select, textarea, button';
-    const ROWS = '.actbar, .addbar, .roadmapadd, .histbar, .logdays, .setrow, .prefrow, .setcell .ctl, .setfoot, .imgadd, .tcnode, .ndpaths, .chips';
+    const ROWS = '.actbar, .ctlrow, .setcell .ctl, .setfoot, .tcnode, .chips';
     // A tab strip is navigation, and the phone rule for one is the opposite
     // of a control's: it wraps into rows of equal-width tabs, every one of
     // them visible (the design language, The notebook).
@@ -597,6 +597,15 @@ async function unwrapped(){
 // the room having been the desk card's alone). Measured from the head's
 // foot to the first box drawn in the body, a page's own section at a page's
 // level, not one inside a row or a dialog.
+// Every row of controls wears the one class the cap and the line-up rules
+// read (R218 step 64): a row kind that forgot it would be capped by nothing,
+// or each of its controls capped a second time, which is how three lists of
+// row kinds in the stylesheet drifted apart. Field rows, add rows, filter
+// rows and picker rows are the kinds the page draws.
+function rowsWearTheClass(){
+  return page.evaluate(() => [...document.querySelectorAll('.doc.on :is(.setrow, .addbar, .prefrow, .histbar, .logdays, .imgadd, .memadd, .uadd, .ndpaths, .ndname)')]
+    .filter(e => !e.classList.contains('ctlrow')).map(e => e.className.split(' ').slice(0, 3).join('.')));
+}
 function headRoom(){
   return page.evaluate(() => {
     const out = [];
@@ -726,6 +735,8 @@ for (const kind of kinds){
   const room = await headRoom();
   ok(room.length === 0,
      `[${kind}] every section's first line keeps room under its head${room.length ? `; touching: ${room.join(', ')}` : ''}`);
+  const bare = await rowsWearTheClass();
+  ok(bare.length === 0, `[${kind}] every row of controls wears .ctlrow${bare.length ? `; not: ${[...new Set(bare)].join(', ')}` : ''}`);
   const G = await glance();
   if (!G.err && (G.tiles || G.facts))
     ok(G.bad.length === 0,

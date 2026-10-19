@@ -329,7 +329,7 @@ function nbMemoryView({$, nb}){
 
   function drawMemAdd(){
     const box = $("memAdd");
-    box.innerHTML = `<div class="addbar" data-add="memory">
+    box.innerHTML = `<div class="addbar ctlrow" data-add="memory">
     <button type="button">Write a memory</button></div>`;
     box.querySelector("button").onclick = openMemAdd;
   }
@@ -350,7 +350,7 @@ function nbMemoryView({$, nb}){
   }
 
   function paintMemAdd(box){
-    box.innerHTML = `<div class="memadd">
+    box.innerHTML = `<div class="memadd ctlrow">
     <label for="naTitle">Title<span class="help" data-help="how it reads in the index" tabindex="0">?</span></label>
     <input id="naTitle" maxlength="80" autocomplete="off" placeholder="No parsed progress">
     <div class="two">

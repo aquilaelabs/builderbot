@@ -88,7 +88,7 @@ function rolesAccessFields(name){
   if (!rolesPeopleDraft) rolesPeopleDraft = rolesPeopleFrom(p);
   const dr = rolesPeopleDraft;
   const everywhere = Object.values(d.roles || {}).filter(r => r.scope === "global" && r.name !== "owner");
-  const global = d.admin ? `<div class="setrow col">${lbl("", "Everywhere roles", "hold on every project and on BuilderBot itself, as far as each one's areas say")}
+  const global = d.admin ? `<div class="setrow col ctlrow">${lbl("", "Everywhere roles", "hold on every project and on BuilderBot itself, as far as each one's areas say")}
       <div class="upick" id="rolesGlobal">${everywhere.map(r => `<label class="pick"><input type="checkbox" data-rglobal="${esc(r.name)}"${
         dr.roles.includes(r.name) ? " checked" : ""}> ${esc(r.label || r.name)}</label>`).join("")}</div></div>` : "";
   // The projects it is on, and only those: holding a role on a project is
@@ -116,7 +116,7 @@ function rolesAccessFields(name){
       <select id="rolesAddRole" aria-label="the role there">${rolesOnProject(addPn).map(r => `<option value="${esc(r.name)}">${esc(r.label || r.name)}</option>`).join("")}</select>
       <button type="button" id="rolesAddOn"${rolesOnProject(addPn).length ? "" : " disabled"}>Add to project</button></div>` : "";
   return `${global}
-    <div class="setrow col">${lbl("", d.admin ? "Projects" : "Your projects", "a role on a project puts the account on it; taken off, it is not on it")}
+    <div class="setrow col ctlrow">${lbl("", d.admin ? "Projects" : "Your projects", "a role on a project puts the account on it; taken off, it is not on it")}
       <div class="rprojects">${rows || `<div class="empty">on no project yet</div>`}</div>${add}</div>
     ${rolesCanDo(p.name, dr)}`;
 }
@@ -183,7 +183,7 @@ function rolesCanDo(name, dr){
     return got;
   };
   if (dr.roles.includes("admin"))
-    return `<div class="setrow col">${lbl("", `What ${name} can do`)}<div class="sub">everything but change the owner: admin holds every area</div></div>`;
+    return `<div class="setrow col ctlrow">${lbl("", `What ${name} can do`)}<div class="sub">everything but change the owner: admin holds every area</div></div>`;
   const glob = per(dr.roles);
   const nm = k => (areas.find(a => a[0] === k) || [])[1] || k;
   const projKeys = areas.filter(a => a[2] !== "global").map(a => a[0]);
@@ -197,7 +197,7 @@ function rolesCanDo(name, dr){
     : `<div class="empty">nothing on any project</div>`;
   const w = globKeys.filter(k => glob[k] === "write"), r = globKeys.filter(k => glob[k] === "read");
   const beyond = [w.length ? `writes ${w.map(nm).join(", ")}` : "", r.length ? `reads ${r.map(nm).join(", ")}` : ""].filter(Boolean).join("; ");
-  return `<div class="setrow col">${lbl("", `What ${name} can do`, "worked out from the boxes above, saved or not")}
+  return `<div class="setrow col ctlrow">${lbl("", `What ${name} can do`, "worked out from the boxes above, saved or not")}
     ${grid}
     <div class="sub">${beyond ? `<b>Beyond projects</b>: ${esc(beyond)}` : `<span class="dim">nothing beyond projects</span>`}</div></div>`;
 }
@@ -343,12 +343,12 @@ function rolesRoleBody(){
     ? `<div class="sub bad" id="rolesWhyOff">The gray areas are not about one project: only an Everywhere role holds them.</div>` : "";
   const areas = why + tblWrap(ROLE_AREA_COLS, rows, "rareas");
   return rolesSplit("roles", list, `${pick}
-    <div class="setrow col">${lbl("rolesScope", "Kind", "On a project: given per project under People, and holds there. Everywhere: given to the account, holds on every project and is the only kind that reaches the nodes, toolchains and the controller")}
+    <div class="setrow col ctlrow">${lbl("rolesScope", "Kind", "On a project: given per project under People, and holds there. Everywhere: given to the account, holds on every project and is the only kind that reaches the nodes, toolchains and the controller")}
       <select id="rolesScope"${ro ? " disabled" : ""}>
         <option value="projects"${r.scope !== "global" ? " selected" : ""}>On a project</option>
         <option value="global"${r.scope === "global" ? " selected" : ""}>Everywhere</option>
       </select></div>
-    ${ro ? "" : `<div class="setrow col">${lbl("rolesNote", "What this role is for")}<input id="rolesNote" value="${esc(r.note)}" autocomplete="off"></div>`}
+    ${ro ? "" : `<div class="setrow col ctlrow">${lbl("rolesNote", "What this role is for")}<input id="rolesNote" value="${esc(r.note)}" autocomplete="off"></div>`}
     ${areas}
     ${r.builtin ? `<div class="sub">${esc(r.note)}. Built in, every area to write, and not changed here.</div>` : ""}
     ${ro ? "" : `<div class="actbar"><span class="state">${rolesRoleDirty() ? "unsaved" : ""}</span>
@@ -413,7 +413,7 @@ function renderRolesInto(i){
     // Its template (R218 step 16): the two sections and their fields' labels
     // are the page's own; who holds what is on its way.
     const split = detail => `<div class="rsplit"><div class="rlist">${skRows(4)}</div><div class="rdetail">${detail}</div></div>`;
-    const field = (label, em) => `<div class="setrow col"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
+    const field = (label, em) => `<div class="setrow col ctlrow"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
     d.list.innerHTML = skTpl(split(field("Kind", 12) + skTable(ROLE_AREA_COLS, 4, "rareas")));
     loadRoles();
     return;

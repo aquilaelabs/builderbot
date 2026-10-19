@@ -51,13 +51,13 @@ function renderPhoneInto(i){
     // Its template (R218 step 16): the state row's words and the two ways in
     // (connect, pair) with their labels are the page's own; the node and
     // its phone are on their way.
-    const fld = (label, em, grow = false) => `<div class="${grow ? "grow " : ""}setrow col"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
+    const fld = (label, em, grow = false) => `<div class="${grow ? "grow " : ""}setrow col ctlrow"><span class="lbl">${esc(label)}</span>${skv(em, "ctl")}</div>`;
     d.setBar(phoneBar(null));
     // In the card the rows land in (.phonetab).
     d.list.innerHTML = skTpl(`<div class="phonetab"><div class="row toolstate"><div class="grow"><div class="name">Phone on ${skv(6)}</div>
         <div class="sub">${skv(10)}</div></div></div>
       <div class="row">${fld("Phone IP address", 18, true)}${fld("Port", 7)}<span class="acts"><button type="button" class="primary" disabled>Connect</button></span></div>
-      <div class="row"><div class="grow prefrow">${fld("Pairing port", 9)}${fld("Pairing code", 9)}</div>
+      <div class="row"><div class="grow prefrow ctlrow">${fld("Pairing port", 9)}${fld("Pairing code", 9)}</div>
         <span class="acts"><button type="button" disabled>Pair</button></span>
         <div class="sub">On the phone: Wireless debugging, then <b>Pair device with pairing code</b>. Keep that dialog open.</div></div></div>`);
     return;
@@ -158,10 +158,10 @@ function phonePanel(n){
     // toggled; the node used to scan the phone for it, which across a VPN is
     // what a network flags as port scanning (the operator, 9 Oct).
     `<div class="row">
-       <div class="grow setrow col">${lbl("phIp", "Phone IP address", "from its wireless debugging screen, before the colon")}
+       <div class="grow setrow col ctlrow">${lbl("phIp", "Phone IP address", "from its wireless debugging screen, before the colon")}
          <input id="phIp" maxlength="15" autocomplete="off"
          placeholder="192.168.0.10" value="${esc(phIp)}"${off ? " disabled" : ""}></div>
-       <div class="setrow col">${lbl("phConnPort", "Port", "after the colon on the wireless debugging screen; it changes each time that is turned on")}
+       <div class="setrow col ctlrow">${lbl("phConnPort", "Port", "after the colon on the wireless debugging screen; it changes each time that is turned on")}
          <input id="phConnPort" maxlength="5" inputmode="numeric" autocomplete="off"
          placeholder="41235" value="${esc(phConnPort)}"${off ? " disabled" : ""}></div>
        <span class="acts"><button type="button" id="phConnect" class="primary"${off ? ' data-off="1"' : ""}${
@@ -175,11 +175,11 @@ function phonePanel(n){
     // Pairing in the open rather than behind a fold: it is two fields, and a
     // fold over two fields is a click that buys nothing.
     `<div class="row">
-       <div class="grow prefrow">
-         <div class="setrow col">${lbl("phPairPort", "Pairing port", "from the pairing dialog, not the main screen")}
+       <div class="grow prefrow ctlrow">
+         <div class="setrow col ctlrow">${lbl("phPairPort", "Pairing port", "from the pairing dialog, not the main screen")}
          <input id="phPairPort" maxlength="5" autocomplete="off" placeholder="37123"
            value="${esc(phPort)}"${off ? " disabled" : ""}></div>
-         <div class="setrow col">${lbl("phPairCode", "Pairing code")}
+         <div class="setrow col ctlrow">${lbl("phPairCode", "Pairing code")}
          <input id="phPairCode" maxlength="6" autocomplete="off" placeholder="123456"
            value="${esc(phCode)}"${off ? " disabled" : ""}></div>
        </div>
@@ -241,7 +241,7 @@ function phonePanel(n){
     rows.push(`<div class="row phlend">
        <div class="grow">
          <div class="name">Lend to a project</div>
-         <div class="prefrow">
+         <div class="prefrow ctlrow">
            <label class="pick">Project <select id="phLendTo" aria-label="the project to lend the phone to"${ps.length ? "" : " disabled"}>${
              ps.map(p => `<option value="${esc(p)}"${p === phLendTo ? " selected" : ""}>${esc(projLabel(p))}</option>`).join("")}</select></label>
            <label class="pick">For <select id="phLendFor" aria-label="how long">

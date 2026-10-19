@@ -3972,13 +3972,18 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .nb .sect>.body .dstheme>.field,.nb .sect>.body .dsrule>.field,
 .nb .sect>.body [data-dspage]>.field{padding-left:0;padding-right:0}
 /* A control never spans its container. The cap goes on the ROW where there
-   is one (an action bar, a filter bar, a picker row, an add form), so the
+   is one, and every row of controls wears one class for it, .ctlrow (a
+   filter row, a field and its label, a picker row, an add row), so the
    controls in it stop short together and are not capped a second time
-   inside it; a lone control takes the cap itself. The union of a row's
-   controls is what uniform.mjs measures, against the surface holding it.
-   Terminals and logs are not controls and are not here, and neither is a
-   menu, a surface of its own whose fields run its width (.actmenu below). */
-:is(.doctab,.nb) :is(.histbar,.logdays,.setrow,.prefrow,.imgadd,.addbar,.roadmapadd,.memadd,.uadd,.ndpaths,.ndname){
+   inside it; a lone control takes the cap itself. No page is named here
+   (R218 step 64, the operator 19 Oct: three lists of row kinds had drifted
+   apart): a new surface's row is capped by wearing the class. Beside it,
+   the shared parts that size their own contents: an action bar, the
+   settings grid, a menu (a surface of its own whose fields run its width),
+   and .ctlown for a box that sizes its own (a reason box). The union of a
+   row's controls is what uniform.mjs measures, against the surface holding
+   it. Terminals and logs are not controls and are not here. */
+:is(.doctab,.nb) .ctlrow{
   max-width:min(var(--ctl-w),88%)}
 /* The grid itself is capped as a whole, so its cells share the surface's
    control width and do not stretch across a wide tab. */
@@ -4058,7 +4063,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 @media(max-width:440px){
   .doctab .field.docbarrow.dmpick>input,.dmtab .dmpick #dmSearch{order:9;flex:0 1 100%;max-width:88%}
 }
-:is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.actbar,.histbar,.logdays,.setrow,.prefrow,.setgrid,.imgadd,.addbar,.roadmapadd,.memadd,.ndpaths,.dropbox,.sendbox,.ngroute,.actmenu) *){
+:is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.ctlrow,.ctlown,.actbar,.setgrid,.actmenu) *){
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.
    A row mixes fields that carry a label above them (`.setrow.col`) with
@@ -4069,10 +4074,10 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    because a select is not quite a field's height. The bottom edge is the
    line the eye reads, whatever is stacked above it and whatever each
    control's own height is. `.col` is the stacked field itself and keeps
-   its stretch. uniform.mjs measures every line on every tab.  */
-:is(.doctab,.nb,.modal) :is(.actbar,.histbar,.logdays,.setrow,.prefrow,
-  .imgadd,.addbar,.roadmapadd,.memadd,.uadd,.filepick,.ndpaths,.ndname,
-  .ndmount,.ndnet,.ndstore):not(.col){align-items:flex-end}
+   its stretch. A row of controls (.ctlrow), a line of them each in its own
+   grid cell (.ctlline: a mount, a network, a store) and an action bar all
+   line up this way. uniform.mjs measures every line on every tab.  */
+:is(.doctab,.nb,.modal) :is(.ctlrow,.ctlline,.actbar):not(.col){align-items:flex-end}
 /* A row whose text column holds a field is a row of controls, and its
    action cluster belongs on the field's line: the Phone tab's Connect and
    Pair sit beside one. A row of prose keeps its centered cluster.
@@ -5082,13 +5087,13 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            what it adds, beside Reorder, the other thing done TO the list; it
            unrolls the box in its place, which stays open for the next line
            until Cancel or Escape. -->
-      <div class="addbar" data-add="roadmap" id="roadmapAddBar">
+      <div class="addbar ctlrow" data-add="roadmap" id="roadmapAddBar">
         <button id="roadmapShow" type="button">Add to roadmap</button>
         <button id="roadmapOrder" type="button" hidden
           title="reorder; the send controls come back after"
           >Reorder</button>
       </div>
-      <div class="roadmapadd" id="roadmapForm" hidden>
+      <div class="roadmapadd ctlrow" id="roadmapForm" hidden>
         <textarea id="roadmapText" class="proseline" rows="1" maxlength="500"
                placeholder="something for the roadmap"></textarea>
         <button id="roadmapCancel" type="button" class="stop">Cancel</button>
@@ -5112,7 +5117,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     <div class="field clash" id="roadmapClash" hidden></div>
     <!-- Only while the log is up. A search box over the list itself would be
          a different feature answering a different question. -->
-    <div class="field histbar" id="histBar" hidden>
+    <div class="field histbar ctlrow" id="histBar" hidden>
       <input id="histFind" maxlength="80" autocomplete="off"
              placeholder="search the log, and the reasons things went">
       <select id="histWhen" aria-label="how far back">
@@ -5153,7 +5158,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           title="every change to this notebook, with when">History</button>
       </div>
       <div id="rulesBox" data-skel="briefing"></div>
-      <div class="field histbar" id="memHistBar" hidden>
+      <div class="field histbar ctlrow" id="memHistBar" hidden>
         <input maxlength="80" autocomplete="off" placeholder="search the memory log">
         <select class="hwhen" aria-label="how far back">
           <option value="0">all time</option><option value="1">today</option>
@@ -5196,7 +5201,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" id="bugLog"
           title="every change to the tracker, by either of you, with when">History</button>
       </div>
-      <div class="field histbar" id="bugHistBar" hidden>
+      <div class="field histbar ctlrow" id="bugHistBar" hidden>
         <input maxlength="80" autocomplete="off" placeholder="search the tracker's log">
         <select class="hwhen" aria-label="how far back">
           <option value="0">all time</option><option value="1">today</option>
@@ -5247,7 +5252,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" id="tstOut" title="the last run's output in this project's shell, following it while it runs">Open the run's output</button></div>
       <div class="field" id="tstStats" hidden></div>
       <div id="tstFolds"></div>
-      <div class="field histbar" id="tstBar" hidden>
+      <div class="field histbar ctlrow" id="tstBar" hidden>
         <label for="tstSuite">Suite</label>
         <select id="tstSuite"><option value="">all</option></select>
         <label class="ndcap"><input type="checkbox" id="tstFlagged"> flagged only</label>
@@ -5352,7 +5357,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" id="anaLog"
           title="what changed between the last two scans">History</button>
       </div>
-      <div class="field histbar" id="anaHistBar" hidden>
+      <div class="field histbar ctlrow" id="anaHistBar" hidden>
         <input maxlength="80" autocomplete="off" placeholder="search the findings log">
         <select class="hwhen" aria-label="how far back">
           <option value="0">all time</option><option value="1">today</option>
@@ -5510,7 +5515,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          what a change asked for does while a test run is going. -->
     <div class="field" id="rnGateField">
       <label id="rnGateLabel">While a test runs</label>
-      <div class="prefrow" role="group" aria-labelledby="rnGateLabel">
+      <div class="prefrow ctlrow" role="group" aria-labelledby="rnGateLabel">
         <label class="pick wide">A change asked for <select id="rnTestChange"
           aria-label="what a change asked for during a test run does">
           <option value="wait">waits: the ask in hand is finished and tested first</option>
@@ -5518,7 +5523,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         </select></label>
       </div>
       <label id="rnGateMayLabel">On its own, asked first, or not at all</label>
-      <div class="prefrow" role="group" aria-labelledby="rnGateMayLabel">
+      <div class="prefrow ctlrow" role="group" aria-labelledby="rnGateMayLabel">
         <label class="pick">Add to roadmap <select id="rnGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
         <label class="pick">File bugs <select id="rnGateBugs"
@@ -5572,7 +5577,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          govern is: one place to change each, two to read it. -->
     <div class="field" id="rnGitPolField" hidden>
       <label>Push</label>
-      <div class="setrow"><span class="hint grow" id="rnGitPol"></span>
+      <div class="setrow ctlrow"><span class="hint grow" id="rnGitPol"></span>
         <button type="button" id="rnGitPolGo">Git view</button></div>
     </div>
 </div></details>
@@ -5586,7 +5591,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     <div class="field" id="rnMineField">
       <label id="rnMineLabel">Your sessions and commits<span class="help" data-help="yours alone: your sessions and your commits here" tabindex="0">?</span></label>
       <div class="hint">Yours alone; the other sections are the project's, for everybody on it.</div>
-      <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
+      <div class="prefrow ctlrow" role="group" aria-labelledby="rnMineLabel">
         <label class="pick">Replies <select id="rnReply"
           aria-label="how wordy Claude's replies to you are here">
           <option value="">Claude's default</option>
@@ -5601,7 +5606,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         </select></label>
       </div>
       <div class="hint" id="rnPrefHint"></div>
-      <div class="prefrow" role="group" aria-labelledby="rnMineLabel">
+      <div class="prefrow ctlrow" role="group" aria-labelledby="rnMineLabel">
         <label class="pick">Commit name <input id="rnGitName" type="text"
           autocomplete="off" spellcheck="false" maxlength="120"
           aria-label="name your commits here carry"></label>
@@ -5619,7 +5624,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          credential is the remote's. -->
     <!-- In the Settings view, where the credential fields are not: what its
          remote is and how it pushes, and the door to the rest (B813). -->
-    <div class="field" id="rnRepoSum" hidden><div class="setrow"><span class="hint grow" id="rnRepoSay"></span>
+    <div class="field" id="rnRepoSum" hidden><div class="setrow ctlrow"><span class="hint grow" id="rnRepoSay"></span>
       <button type="button" id="rnRepoGo"></button></div></div>
     <div class="field" id="rnGitNone" hidden><div class="hint"></div></div>
     <div class="field" id="rnTokenField" hidden>
@@ -5642,7 +5647,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div id="rnKeyPub" tabindex="0" aria-label="the deploy key's public half" hidden></div>
       <textarea id="rnKeyPaste" rows="4" autocomplete="off" spellcheck="false" data-bwignore hidden
                 placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
-      <div class="logdays setrow"><span class="hint grow" id="rnKeyHint"></span>
+      <div class="logdays setrow ctlrow"><span class="hint grow" id="rnKeyHint"></span>
         <button type="button" id="rnKeyMake">Make a key</button>
         <button type="button" id="rnKeyPasteBtn">Paste a key</button>
         <button type="button" id="rnKeyCopy" hidden>Copy public key</button>
@@ -5670,7 +5675,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          button in red, never only in a tooltip (projects.auth_test). A token
          typed and not saved is what is tested, so it can be checked first. -->
     <div class="field" id="rnTestField" hidden>
-      <div class="logdays setrow"><span class="hint grow" id="rnTestHint">Test tries a read and a dry-run push with this, which sends nothing.</span>
+      <div class="logdays setrow ctlrow"><span class="hint grow" id="rnTestHint">Test tries a read and a dry-run push with this, which sends nothing.</span>
         <button type="button" id="rnTest">Test</button></div>
       <div class="hint" id="rnTestOut" hidden></div>
     </div>
@@ -5703,7 +5708,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them. One marked Hosting only takes containers alone, built on the project's node and sent there; its sessions may make, rebuild and remove them there under Claude may: Run its container. A hosting node not ticked is yours to copy to and rebuild on from the Docker tab.</div>
       <!-- What the project may use there (R102): the card, and where its
            tests run when it has a dev instance. -->
-      <div class="prefrow">
+      <div class="prefrow ctlrow">
         <label class="pick wide">The node's GPU <select id="rnGpu"
           aria-label="whether this project's sessions, builds and tests may compute on its node's NVIDIA card">
           <option value="on">may be computed on, where the node has one and allows it</option>
@@ -5738,13 +5743,13 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            emulator shot), under the Artifacts tab's Captures fold, and goes
            by age rather than by need: nothing can tell whether another
            session is still reading one (R96). -->
-      <div class="logdays setrow"><label class="ndcap" for="rnCaptureDays">Captures kept for<span class="help" data-help="a session's reels and emulator shots are removed from dist/ this many days after they were taken; 0 keeps them until somebody removes them" tabindex="0">?</span></label>
+      <div class="logdays setrow ctlrow"><label class="ndcap" for="rnCaptureDays">Captures kept for<span class="help" data-help="a session's reels and emulator shots are removed from dist/ this many days after they were taken; 0 keeps them until somebody removes them" tabindex="0">?</span></label>
         <input id="rnCaptureDays" type="number" min="0" max="365" step="1" inputmode="numeric" aria-label="days a capture is kept"> <span class="dim">days</span></div>
       <!-- The project's daily snapshots (R165): what a node gone wrong, or
            compromised, through its synced copy is undone from. -->
-      <div class="logdays setrow"><label class="ndcap" for="rnSnapDays">Snapshots kept for<span class="help" data-help="the project's tree is snapshotted once a day on the controller, where no node reaches, and each day is kept this long; 0 takes none. Restored from Snapshots below" tabindex="0">?</span></label>
+      <div class="logdays setrow ctlrow"><label class="ndcap" for="rnSnapDays">Snapshots kept for<span class="help" data-help="the project's tree is snapshotted once a day on the controller, where no node reaches, and each day is kept this long; 0 takes none. Restored from Snapshots below" tabindex="0">?</span></label>
         <input id="rnSnapDays" type="number" min="0" max="3650" step="1" inputmode="numeric" aria-label="days a snapshot is kept"> <span class="dim">days</span></div>
-      <div class="logdays setrow"><label class="ndcap" for="rnDevKeep">Dev builds kept<span class="help" data-help="of each product in dist/, every file of its newest this many builds stays and older builds are removed, a signed build keeping its signed copy alone; a release and anything pinned always stay; 0 keeps everything" tabindex="0">?</span></label>
+      <div class="logdays setrow ctlrow"><label class="ndcap" for="rnDevKeep">Dev builds kept<span class="help" data-help="of each product in dist/, every file of its newest this many builds stays and older builds are removed, a signed build keeping its signed copy alone; a release and anything pinned always stay; 0 keeps everything" tabindex="0">?</span></label>
         <input id="rnDevKeep" type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="dev builds kept of each product"> <span class="dim">builds</span></div>
     </div>
     </div></details>
@@ -6160,7 +6165,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     </div>
     <div class="field">
       <label id="briefMineLabel">Yours on this project</label>
-      <div class="prefrow" role="group" aria-labelledby="briefMineLabel">
+      <div class="prefrow ctlrow" role="group" aria-labelledby="briefMineLabel">
         <label class="pick">Model <select id="briefModel"
           aria-label="model your sessions here start on"></select></label>
         <label class="pick">Effort <select id="briefEffort"
@@ -6225,7 +6230,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            Settings view (R245): a dialog is for what cannot wait. The
            selects stay, hidden, since the submit reads them. -->
       <div class="sub dim">The defaults: auto for its notebook, its build and test fields and reports to BuilderBot; ask for its container, a signed build, a release and its keys. Each is changed on the project's Settings.</div>
-      <div class="prefrow" role="group" aria-labelledby="pGateLabel" hidden>
+      <div class="prefrow ctlrow" role="group" aria-labelledby="pGateLabel" hidden>
         <label class="pick">Add to roadmap <select id="pGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
         <label class="pick">File bugs <select id="pGateBugs"
@@ -6262,7 +6267,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            what was picked stands beside the button. -->
       <input id="pArchive" type="file" hidden
              accept=".zip,.tar,.tgz,.tar.gz,.tbz2,.tar.bz2,.txz,.tar.xz,application/zip,application/gzip,application/x-tar">
-      <div class="filepick"><button type="button" id="pArchivePick">Choose an archive</button>
+      <div class="filepick ctlline"><button type="button" id="pArchivePick">Choose an archive</button>
         <span class="dim" id="pArchiveName">none picked</span></div>
       <div class="hint">zip or tar; a single top-level folder is dropped.</div>
     </div>

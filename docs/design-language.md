@@ -504,7 +504,7 @@ and this layout cannot zoom back, so fields you type into are 16px under
 field size everywhere else. A browser without `appearance: base-select` (Firefox, Safari) draws the closed picker the page's way too, the same dim triangle and end padding (the operator, 18 Oct: match Chrome); its open list stays the browser's. A `<select>` never zooms, so it keeps the field
 size at every width: a 16px mono picker beside an 11px label is the loudest
 thing on the tab, and it was on every tab. Tap targets are `min-height: var(--tap)`. A row of filters
-is `<div class="field histbar">`. A control stops short of its surface (`min(--ctl-w, 88%)`), the cap on its row where it has one (an action bar, a filter bar, an add row), never a page's own exception; a floating menu is a surface of its own, and a field in it runs the menu's width as its buttons do (the operator, 19 Oct).
+is `<div class="field histbar">`. A control stops short of its surface (`min(--ctl-w, 88%)`), the cap on its row where it has one: every row of controls (a field and its label, a filter row, a picker row, an add row) wears `.ctlrow`, the one class the cap and the bottom line-up read, a line of controls each in its own grid cell `.ctlline`, a box that sizes its own `.ctlown`; no page is named in those rules (R218 step 64); a floating menu is a surface of its own, and a field in it runs the menu's width as its buttons do (the operator, 19 Oct).
 
 **A field's label sits above it**, as `.lbl` (`lbl(id, text, help)`), two
 or three words and no more: a field that is filled in still says what it

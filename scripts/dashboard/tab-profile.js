@@ -70,7 +70,7 @@ function renderProfileInto(i){
     // page's own; what is yours to fill them is on its way.
     // A page of settings as it lands (skSplit): the sections listed, Who
     // you are picked beside them with its fields.
-    const fld = label => `<div class="setrow col"><span class="lbl">${esc(label)}</span>${skv(18, "ctl")}</div>`;
+    const fld = label => `<div class="setrow col ctlrow"><span class="lbl">${esc(label)}</span>${skv(18, "ctl")}</div>`;
     d.setBar(`<span class="barfacts">${skv(16)}</span>`);
     splitOff(d.list);                   // drawn before: its grid is the template's to bring
     d.list.innerHTML = skTpl(skSplit([["Who you are", PROFILE_SAYS.you], ["What you may do", PROFILE_SAYS.may],
@@ -95,7 +95,7 @@ function renderProfileInto(i){
     ${sec("you", "Who you are", `
         <div class="logset">
           ${PROFILE_FIELDS.map(([k, label, hint, type]) => `
-            <div class="logdays setrow col">
+            <div class="logdays setrow col ctlrow">
               ${lbl("pf_" + k, label, hint)}
               <input id="pf_${k}" type="${type}" data-pf="${k}" value="${esc(val(k))}"
                      spellcheck="false" autocomplete="off">
@@ -112,15 +112,15 @@ function renderProfileInto(i){
         ${wm.may.length ? factGrid(wm.may) : `<div class="hint">nothing yet: an administrator gives you a role</div>`}`)}
     ${sec("password", "Password", `
         <div class="logset">
-          <div class="logdays setrow col">
+          <div class="logdays setrow col ctlrow">
             ${lbl("pfCur", "Current password")}
             <input id="pfCur" type="password" autocomplete="current-password">
           </div>
-          <div class="logdays setrow col">
+          <div class="logdays setrow col ctlrow">
             ${lbl("pfNew", "New password", "at least 8 characters; every browser signed in as you signs out")}
             <input id="pfNew" type="password" autocomplete="new-password">
           </div>
-          <div class="logdays setrow col">
+          <div class="logdays setrow col ctlrow">
             ${lbl("pfNew2", "New password again")}
             <input id="pfNew2" type="password" autocomplete="new-password">
           </div>

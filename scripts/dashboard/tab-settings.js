@@ -388,7 +388,7 @@ function openDebugSettings(){
   body.innerHTML = `<div class="field">
       <div class="hint">For developing BuilderBot itself. Nothing here is on until saved.</div>
       <div class="logset">${g.debug.map(f => `
-        <div class="logdays setrow"><label class="ndcap">
+        <div class="logdays setrow ctlrow"><label class="ndcap">
           <input type="checkbox" data-dbgset="${esc(f.key)}"${
             s?.settings?.[f.key]?.value ? " checked" : ""}> ${esc(f.label)}${
             helpIcon(f.hint)}</label></div>`).join("")}
@@ -434,7 +434,7 @@ function settingsSections(){
             // left empty it is left alone, and its own tick takes it off.
             if (f.type === "text" || f.type === "secret"){
               const isSet = f.type === "secret" ? !!s.settings[f.key]?.set : !!v;
-              return `<div class="setrow col"><label for="${id}">${esc(f.label)}${helpIcon(f.hint)}${
+              return `<div class="setrow col ctlrow"><label for="${id}">${esc(f.label)}${helpIcon(f.hint)}${
                   f.type === "secret" ? (isSet ? ` <span class="pill ok">set</span>` : ` <span class="pill">not set</span>`) : src(f.key)}</label>
                 <input id="${id}" type="${f.type === "secret" ? "password" : "text"}" data-set="${f.key}"${
                   f.type === "secret" ? ' data-secret="1"' : ""} value="${esc(f.type === "secret" ? "" : sdVal(id, v || ""))}"
@@ -446,7 +446,7 @@ function settingsSections(){
             // Every other setting is a switch: a checkbox inside its label,
             // the way the Tests bar's are, with what the label cannot say on
             // the ? (docs/design-language.md, Controls).
-            return `<div class="logdays setrow"><label class="ndcap">
+            return `<div class="logdays setrow ctlrow"><label class="ndcap">
                 <input id="${id}" type="checkbox" data-set="${f.key}"${sdVal(id, !!v) ? " checked" : ""}> ${esc(f.label)}${helpIcon(f.hint)}</label>${src(f.key)}
               </div>`;
     };
@@ -455,7 +455,7 @@ function settingsSections(){
     // yet is not debug mode.
     const debugOn = !!s.settings.debug_mode?.value;
     const fold = !g.debug ? "" : `
-          <div class="addbar" data-add="debug"><button type="button" data-debugshow
+          <div class="addbar ctlrow" data-add="debug"><button type="button" data-debugshow
             ${debugOn ? "" : " disabled"}
             title="${debugOn ? "the settings kept behind debug mode"
                              : "turn Debug mode on and Apply first: these are its settings"}"
@@ -526,7 +526,7 @@ function idleSection(){
   return `<h4>Claude sessions</h4>
     <div class="logset">
       <div class="dim">A session idle this long is ended, on every node.</div>
-      <div class="logdays setrow col">
+      <div class="logdays setrow col ctlrow">
         ${lbl("idleMin", "Minutes idle before a session ends (0: never)", "shells are left alone")}
         <input id="idleMin" type="number" min="0" max="100000" step="1"
                value="${sdVal("idleMin", m)}" inputmode="numeric">
@@ -578,7 +578,7 @@ function pathsSection(){
       : p.moving?.error ? `<div class="sub bad">moving to ${esc(p.moving.to)} stopped: ${esc(p.moving.error)}</div>`
       : p.moving ? `<div class="dim">moving to ${esc(p.moving.to)}; ${esc(p.path)} is in use until it is done</div>`
       : !p.set ? "" : `<div class="dim">default: ${esc(p.default)}</div>`;
-    return `<div class="logdays setrow col">
+    return `<div class="logdays setrow col ctlrow">
         ${lbl(id, p.name, p.what)}
         <input id="${id}" type="text" data-path="${esc(p.name)}" spellcheck="false" autocomplete="off"
                value="${esc(sdVal(id, p.path))}"${p.pinned || (p.moving && !p.moving.error) ? " disabled" : ""}>

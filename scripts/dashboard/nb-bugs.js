@@ -134,7 +134,7 @@ function nbBugsView({$, nb, project}){
   // it lives, how to make it happen, and the gap between should and does.
   function bugForm(b){
     const v = k => esc(b?.[k] || "");
-    return `<div class="memadd bugform">
+    return `<div class="memadd bugform ctlrow">
       <label>Title</label>
       <textarea class="bfTitle proseline" rows="1" maxlength="1000"
         placeholder="the picker loses its selection on rotate">${v("title")}</textarea>
@@ -178,7 +178,7 @@ function nbBugsView({$, nb, project}){
 
   function drawBugAdd(){
     const box = $("bugAdd");
-    box.innerHTML = `<div class="addbar" data-add="bug">
+    box.innerHTML = `<div class="addbar ctlrow" data-add="bug">
       <button type="button">Report a bug</button></div>`;
     // The same fold the memory writer opens with: the two are the same control
     // on two views of one notebook, and one of them appearing whole while the
@@ -296,7 +296,7 @@ function nbBugsView({$, nb, project}){
         const body = d.querySelector(".body");
         if (body.querySelector(".dropbox")) return;
         const box = document.createElement("div");
-        box.className = "dropbox";
+        box.className = "dropbox ctlown";
         box.innerHTML = `<div class="q">${esc(q)}<span>: kept on the bug</span></div>
           <textarea class="proseline" rows="1" maxlength="1000" placeholder="a commit, a word"></textarea>
           <div class="actbar">
@@ -372,7 +372,7 @@ function nbBugsView({$, nb, project}){
         const body = d.querySelector(".body");
         if (body.querySelector(".dropbox")) return;
         const box = document.createElement("div");
-        box.className = "dropbox";
+        box.className = "dropbox ctlown";
         box.innerHTML = `<div class="q">Delete this report?<span>: it is gone for good;
             to keep a record, close it instead</span></div>
           <textarea class="proseline" rows="1" maxlength="1000"

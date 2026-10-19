@@ -87,8 +87,8 @@ function drawSetup(){
     ${card(2, "Your name and email", s.git, false, s.git
       ? `<p>Your commits carry them. Your profile, in the gear, changes them.</p>`
       : `<p>Every commit carries an author, and no Claude session starts without one.</p>
-         <div class="setfields"><div class="setrow col">${lbl("setName", "Your name")}<input id="setName" type="text" autocomplete="name" placeholder="Ada Lovelace"></div>
-           <div class="setrow col">${lbl("setEmail", "Your email")}<input id="setEmail" type="email" autocomplete="email" placeholder="ada@example.com"></div></div>`,
+         <div class="setfields"><div class="setrow col ctlrow">${lbl("setName", "Your name")}<input id="setName" type="text" autocomplete="name" placeholder="Ada Lovelace"></div>
+           <div class="setrow col ctlrow">${lbl("setEmail", "Your email")}<input id="setEmail" type="email" autocomplete="email" placeholder="ada@example.com"></div></div>`,
       s.git ? "" : `<button type="button" class="primary" data-setgit disabled>Save</button>`)}
     ${card(3, "Claude Code on your node", !!s.claude, false, s.claude
       ? `<p>${esc(s.claude)} on ${nodeName}. A project's Start Claude signs you in there the first time.</p>`

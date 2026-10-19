@@ -261,7 +261,7 @@ function nbWikiView({$, nb, project}){
           <div class="actbar macts"><span class="state">Create writes the page now</span>
             <button type="button" class="stop" id="wkNewCancel">Cancel</button>
             <button type="button" class="primary" id="wkNewSave">Create</button></div></div>`
-      : `<div class="field"><div class="addbar" data-add="wiki"><button type="button" id="wkNew">New page</button></div></div>`;
+      : `<div class="field"><div class="addbar ctlrow" data-add="wiki"><button type="button" id="wkNew">New page</button></div></div>`;
     const log = !nb.wkLog ? "" : `<div class="field wklog">${(d.history || []).length
         ? (d.history || []).map(h => `<div class="wklogrow"><span class="mono">${esc(h.commit)}</span> ${esc(h.what)} <span class="dim">· ${esc(h.by)} · ${esc(ago(h.at))}</span></div>`).join("")
         : `<span class="dim">nothing yet</span>`}</div>`;

@@ -99,7 +99,7 @@ function emuAddRows(d, why){
   // Adding images is an administrator's (the server's gate on /api/emulator):
   // not offered without the grant (R137 step 4), the list above is everybody's.
   if (state?.can?.admin === false) return "";
-  return `<div class="imgadd emadd"><label for="imgFlavor">Kind</label>
+  return `<div class="imgadd emadd ctlrow"><label for="imgFlavor">Kind</label>
       <select id="imgFlavor">${
         flavors.map(f => `<option value="${esc(f.kind)}"${f.kind === chosen ? " selected" : ""}
           >${esc(f.label)}</option>`).join("")}</select>

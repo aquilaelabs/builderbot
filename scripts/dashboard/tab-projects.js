@@ -59,7 +59,7 @@ function askPurge(name){
   const row = $("tList").querySelector(`.trow[data-t="${CSS.escape(name)}"]`);
   if (!row || row.querySelector(".dropbox")) return;
   const box = document.createElement("div");
-  box.className = "dropbox";
+  box.className = "dropbox ctlown";
   box.innerHTML = `<div class="hint bad">This deletes every file in
       <b>${esc(name)}</b>. It is not moved anywhere and there is nothing to
       undo it with. Type its directory's name, ${esc(name)}, to confirm.</div>

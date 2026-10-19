@@ -176,10 +176,10 @@ function nginxTls(n, r){
 function nginxRouteForm(n, r, i){
   return `<div class="ngform ngroute" data-i="${i}">
     <div class="ngfields">
-      <label class="setrow col"><span class="lbl">Hostname</span>${nginxHostPick(r)}</label>
-      <label class="setrow col"><span class="lbl">Path</span><input data-ng="path" value="${esc(r.path || "/")}" placeholder="/" aria-label="path" autocomplete="off" spellcheck="false"></label>
-      <label class="setrow col"><span class="lbl">Port</span><input data-ng="port" value="${esc(String(r.port ?? ""))}" placeholder="8080" aria-label="port on the node" inputmode="numeric" autocomplete="off"></label>
-      <label class="setrow col"><span class="lbl">TLS</span>${nginxCertPick(n, r)}</label>
+      <label class="setrow col ctlrow"><span class="lbl">Hostname</span>${nginxHostPick(r)}</label>
+      <label class="setrow col ctlrow"><span class="lbl">Path</span><input data-ng="path" value="${esc(r.path || "/")}" placeholder="/" aria-label="path" autocomplete="off" spellcheck="false"></label>
+      <label class="setrow col ctlrow"><span class="lbl">Port</span><input data-ng="port" value="${esc(String(r.port ?? ""))}" placeholder="8080" aria-label="port on the node" inputmode="numeric" autocomplete="off"></label>
+      <label class="setrow col ctlrow"><span class="lbl">TLS</span>${nginxCertPick(n, r)}</label>
     </div>
     <div class="actbar ngformbar">${i >= 0 ? `<button type="button" class="danger lead" data-ngdel>Delete</button>` : ""}
       <button type="button" data-ngcancel>Cancel</button>
@@ -294,7 +294,7 @@ function nginxBody(n){
   const routes = ngSect("routes", count ? `${count} route${count === 1 ? "" : "s"}` : "no route yet",
     `<div class="field"><div class="hint">Each hostname or path to a port a container publishes on ${esc(n.name)}.${helpIcon(
       "nginx runs on the host network and reaches a container at 127.0.0.1. A route serves 443 with the pair it picks, or with its domain's when it picks none; nothing is a default. A name nothing routes is answered by closing the connection.")}</div></div>
-      <div class="field"><div class="addbar" data-add="route"><button type="button" data-ngadd${nginxEdit?.node === n.node && nginxEdit.i === -1 ? " disabled" : ""}>Add route</button></div></div>
+      <div class="field"><div class="addbar ctlrow" data-add="route"><button type="button" data-ngadd${nginxEdit?.node === n.node && nginxEdit.i === -1 ? " disabled" : ""}>Add route</button></div></div>
       <div class="field ngroutes">${nginxRoutesTable(n)}</div>`);
   // The pairs held, and Add a certificate unrolling the form under them: a
   // paste is now and then, not on every visit (the operator, step 29).

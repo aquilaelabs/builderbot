@@ -50,7 +50,7 @@ function fxBarHtml(rows, st, extra, dead = false){
 // provides as a slot.
 function fxBarBand(rows, st, extra){
   const inner = fxBarHtml(rows, st, extra);
-  return inner ? `<div class="field histbar fxbar">${inner}</div>` : "";
+  return inner ? `<div class="field histbar fxbar ctlrow">${inner}</div>` : "";
 }
 
 function fxWireBar(root, st, redraw){

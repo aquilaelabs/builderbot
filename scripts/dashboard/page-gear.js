@@ -261,7 +261,7 @@ function logSection(){
         : `${L.files} file${L.files === 1 ? "" : "s"}, ${humanBytes(L.bytes)}`}${
         L.ci ? ` · ${L.ci} CI run${L.ci === 1 ? "" : "s"}` : ""}${
         L.oldest ? ` · reaching back ${back} day${back === 1 ? "" : "s"}` : ""}</div>
-      <div class="logdays setrow col">
+      <div class="logdays setrow col ctlrow">
         ${lbl("logDays", "Days of logs kept", "older files are deleted when this is applied")}
         <input id="logDays" type="number" min="1" max="3650" step="1"
                value="${typeof sdVal === "function" ? sdVal("logDays", L.days) : L.days}" inputmode="numeric">

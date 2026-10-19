@@ -123,7 +123,7 @@ function usersDetail(u){
       ${f("ueGitEmail", "git_email", "Git email", "email", "", "on their commits. Blank means their email")}
       ${f("uePw", "pw", "New password", "password", 'autocomplete="new-password"', "blank keeps the current one. Set without the old one, which is the way back in for somebody locked out")}
     </div>
-    <div class="setrow col ueaccess">${lbl("", "Roles and projects", "what this account may do; what each role holds is on the Roles page")}<div id="ueAccess">${access}</div></div>
+    <div class="setrow col ueaccess ctlrow">${lbl("", "Roles and projects", "what this account may do; what each role holds is on the Roles page")}<div id="ueAccess">${access}</div></div>
     <div class="sub bad" id="ueErr" hidden></div>
     <div class="actbar"><span class="state">${usersDirty() ? "unsaved" : ""}</span>
       <button type="button" id="ueRevert">Revert</button>
@@ -142,7 +142,7 @@ function renderUsersInto(i){
   if (usersList === null){
     // Its template (R218 step 16): the list beside the settings, whose
     // labels are the page's own; the accounts are on their way.
-    const field = label => `<div class="setrow col"><span class="lbl">${esc(label)}</span>${skv(16, "ctl")}</div>`;
+    const field = label => `<div class="setrow col ctlrow"><span class="lbl">${esc(label)}</span>${skv(16, "ctl")}</div>`;
     d.list.innerHTML = skTpl(`<div class="rsplit"><div class="rlist">${skRows(3)}</div><div class="rdetail">${
       field("Account name") + field("Their name") + field("Roles and projects")}</div></div>`);
     loadUsers();

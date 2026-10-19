@@ -388,18 +388,18 @@ function nodeRunnerSection(n, c, between = ""){
   // Adding is a button that unrolls the form in its own band, the shape
   // every view adds with; the form is four fields that wrap to the width
   // they have, one per line on a phone, and its own action bar.
-  const addbar = c.addRunner ? `<div class="addbar ndrunadd" data-add="runner"><div class="grow">
-        <div class="uadd">
-          <div class="setrow col">${lbl("", "Repository or organization", "a repository, or an organization for all of its repositories")}
+  const addbar = c.addRunner ? `<div class="addbar ndrunadd ctlrow" data-add="runner"><div class="grow">
+        <div class="uadd ctlrow">
+          <div class="setrow col ctlrow">${lbl("", "Repository or organization", "a repository, or an organization for all of its repositories")}
           <input data-k="runner:url" value="${esc(d.runner.url)}" spellcheck="false" autocomplete="off"
             placeholder="https://github.com/your-org" aria-label="repository or organization URL"></div>
-          <div class="setrow col">${lbl("", "Host", "GitHub, or act_runner for Gitea, Forgejo and Codeberg")}
+          <div class="setrow col ctlrow">${lbl("", "Host", "GitHub, or act_runner for Gitea, Forgejo and Codeberg")}
           <select data-k="runner:forge" aria-label="host kind">${[["", "from the address"], ["github", "GitHub"], ["gitea", "Gitea or Forgejo"]].map(([v, t]) =>
             `<option value="${v}"${(d.runner.forge || "") === v ? " selected" : ""}>${t}</option>`).join("")}</select></div>
-          <div class="setrow col">${lbl("", "Token", "a token that may register runners there. Stored on the controller only")}
+          <div class="setrow col ctlrow">${lbl("", "Token", "a token that may register runners there. Stored on the controller only")}
           <input data-k="runner:token" type="password" value="${esc(d.runner.token || "")}" spellcheck="false" autocomplete="off"
             placeholder="paste a token" aria-label="runner token"></div>
-          <div class="setrow col">${lbl("", "Extra labels", `comma-separated. builderbot, self-hosted, linux, the arch and ${n.name} are always on`)}
+          <div class="setrow col ctlrow">${lbl("", "Extra labels", `comma-separated. builderbot, self-hosted, linux, the arch and ${n.name} are always on`)}
           <input data-k="runner:labels" value="${esc(d.runner.labels)}" spellcheck="false" autocomplete="off"
             placeholder="gpu, android" aria-label="labels"></div>
         </div>
@@ -864,12 +864,12 @@ function nodeTurnsRow(n){
   }
   const winp = `ndWorkers-${n.id}`;
   // What 0 means is in each label, where a phone reads it (B459).
-  return `<div class="ndnums"><div class="logdays setrow col">
+  return `<div class="ndnums"><div class="logdays setrow col ctlrow">
       ${lbl(inp, "Claude sessions working at once (0: no limit)", "a prompt past it waits for a turn instead of starting")}
       <input id="${esc(inp)}" data-k="turns" type="number" min="0" max="64" step="1" inputmode="numeric"
         value="${esc(c.draft.turnsText)}">
     </div>
-    <div class="logdays setrow col">
+    <div class="logdays setrow col ctlrow">
       ${lbl(winp, `Test workers (0: every core${n.reported?.cpu ? `, ${n.reported.cpu} here` : ""})`,
         "how many workers a test run here may use, as BB_TEST_WORKERS in its environment")}
       <input id="${esc(winp)}" data-k="workers" type="number" min="0" max="256" step="1" inputmode="numeric"
@@ -909,15 +909,15 @@ function nodeAdvancedSection(n, stale, inflight){
   const act = (title, say, btn, cls = "") => `<div class="ndact${cls ? " " + cls : ""}"><div class="grow"><div class="name">${esc(title)}</div>
       <div class="sub">${say}</div></div><div class="acts actbar">${btn}</div></div>`;
   const body = `
-    <div class="ndname actbar">
-      <div class="setrow col grow">${lbl("", "Name", "its name in the pickers, on the project rows and as a runner label")}
+    <div class="ndname actbar ctlrow">
+      <div class="setrow col grow ctlrow">${lbl("", "Name", "its name in the pickers, on the project rows and as a runner label")}
       <input data-k="name" value="${esc(c.draft.nameText)}" spellcheck="false" autocomplete="off"
         maxlength="60" aria-label="node name"></div>
       <button type="button" data-nd="rename"${!String(c.draft.nameText || "").trim() || String(c.draft.nameText).trim() === n.name ? " disabled" : ""}
         title="a runner already installed keeps its old label until reinstalled">Rename</button>
     </div>
-    <div class="ndpaths actbar">
-      <div class="setrow col grow">${lbl("", "Path mapping", "here:there pairs, comma-separated; only needed when a path a compose file names is somewhere else on the node")}
+    <div class="ndpaths actbar ctlrow">
+      <div class="setrow col grow ctlrow">${lbl("", "Path mapping", "here:there pairs, comma-separated; only needed when a path a compose file names is somewhere else on the node")}
       <input data-k="paths" value="${esc(c.draft.pathsText)}" spellcheck="false" autocomplete="off"
         placeholder="/workspace:/workspace, /devdata:/mnt/user/appdata/bb-dev"
         aria-label="path mapping"></div>
@@ -1068,15 +1068,15 @@ function nodeConfSections(n){
   const mounts = d.mounts.map((m, i) => {
     const [st, cls] = mountState(m, rep.mounts);
     return `
-    <div class="ndmount" data-i="${i}">
+    <div class="ndmount ctlline" data-i="${i}">
       <select data-k="type" aria-label="type">
         <option value="nfs" ${m.type !== "virtiofs" ? "selected" : ""}>nfs</option>
         <option value="virtiofs" ${m.type === "virtiofs" ? "selected" : ""}>virtiofs</option>
       </select>
-      <div class="setrow col">${lbl("", "Source", m.type === "virtiofs" ? "the share tag" : "host:/export")}
+      <div class="setrow col ctlrow">${lbl("", "Source", m.type === "virtiofs" ? "the share tag" : "host:/export")}
       <input data-k="source" value="${esc(m.source || "")}" spellcheck="false" autocomplete="off"
         placeholder="${m.type === "virtiofs" ? "appdata" : "nas:/mnt/user/appdata"}" aria-label="source"></div>
-      <div class="setrow col">${lbl("", "Mountpoint", "blank means /mnt/ and the export's name")}
+      <div class="setrow col ctlrow">${lbl("", "Mountpoint", "blank means /mnt/ and the export's name")}
       <input data-k="path" value="${esc(m.path || "")}" spellcheck="false" autocomplete="off"
         placeholder="/mnt/appdata" aria-label="mountpoint"></div>
       <label class="ndcap"><input type="checkbox" data-k="ro" ${m.ro ? "checked" : ""}> read-only</label>
@@ -1093,7 +1093,7 @@ function nodeConfSections(n){
     const now = r ? (r.free_mb === null ? `${r.path}: missing` : `${r.path}, ${
       sgb(r.free_mb)} free`) : "";
     return `
-    <div class="ndstore">
+    <div class="ndstore ctlline">
       ${lbl("", role, STORE_ABOUT[role] || "")}
       <input data-k="store:${esc(role)}" value="${esc(d.stores[role] || "")}" spellcheck="false"
         autocomplete="off" placeholder="${esc(r?.path || "/var/lib/builderbot/" + role)}">
@@ -1185,25 +1185,25 @@ function nodeConfSections(n){
         dist.pretty ? " (" + esc(dist.pretty) + ")" : ""}; a change would be refused.</b>`;
   const network = `
       <div class="sub">Applied with a three-minute dial-back, or reverted.${via}</div>
-      <div class="ndnet${isStatic ? "" : " dhcp"}">
+      <div class="ndnet ctlline${isStatic ? "" : " dhcp"}">
         <select data-k="net:mode" aria-label="mode">
           <option value="dhcp" ${isStatic ? "" : "selected"}>dhcp</option>
           <option value="static" ${isStatic ? "selected" : ""}>static</option>
         </select>
         ${isStatic ? `
-        <div class="setrow col">${lbl("", "Address", "with its prefix length")}
+        <div class="setrow col ctlrow">${lbl("", "Address", "with its prefix length")}
         <input data-k="net:address" value="${esc(d.network.address || "")}"
           spellcheck="false" autocomplete="off" placeholder="10.0.0.12/24" aria-label="address"></div>
-        <div class="setrow col">${lbl("", "Gateway")}
+        <div class="setrow col ctlrow">${lbl("", "Gateway")}
         <input data-k="net:gateway" value="${esc(d.network.gateway || "")}"
           spellcheck="false" autocomplete="off" placeholder="10.0.0.1" aria-label="gateway"></div>
-        <div class="setrow col">${lbl("", "DNS", "comma-separated")}
+        <div class="setrow col ctlrow">${lbl("", "DNS", "comma-separated")}
         <input data-k="net:dns" value="${esc((d.network.dns || []).join(", "))}"
           spellcheck="false" autocomplete="off" placeholder="10.0.0.1, 1.1.1.1" aria-label="dns"></div>
-        <div class="setrow col">${lbl("", "Interface", "blank means the default route's")}
+        <div class="setrow col ctlrow">${lbl("", "Interface", "blank means the default route's")}
         <input data-k="net:interface" value="${esc(d.network.interface || "")}" spellcheck="false"
           autocomplete="off" placeholder="${esc(net.interface || "eth0")}" aria-label="interface"></div>` : ""}
-        <div class="setrow col ndroutes">${lbl("", "Static routes", "one a line: a network with its prefix, via the router that reaches it")}
+        <div class="setrow col ndroutes ctlrow">${lbl("", "Static routes", "one a line: a network with its prefix, via the router that reaches it")}
         <textarea data-k="net:routes" rows="${Math.max(2, (d.network.routes || []).length + 1)}" spellcheck="false"
           autocomplete="off" placeholder="10.20.0.0/24 via 192.168.1.1" aria-label="static routes">${
           esc((d.network.routes || []).map(r => `${r.to} via ${r.via}`).join("\n"))}</textarea></div>
@@ -1714,14 +1714,14 @@ function ndDialogs(){
     document.getElementById("ndTitle").textContent = again ? `Enroll ${again.name} again` : "Enroll a node";
     boxWidth(false);
     body.innerHTML = `<div class="field">
-        <div class="prefrow">
-          <div class="setrow col">${lbl("ndEnName", "Name")}
+        <div class="prefrow ctlrow">
+          <div class="setrow col ctlrow">${lbl("ndEnName", "Name")}
             <input id="ndEnName" maxlength="60" autocomplete="off" placeholder="buildbox"></div>
-          <div class="setrow col">${lbl("ndEnUser", "Jobs run as",
+          <div class="setrow col ctlrow">${lbl("ndEnUser", "Jobs run as",
             "the account the provisioner makes and every job runs as. bb unless that name is taken on the machine")}
             <input id="ndEnUser" maxlength="32" autocomplete="off" spellcheck="false"
               value="bb"></div>
-          <div class="setrow col">${lbl("ndEnSystem", "System",
+          <div class="setrow col ctlrow">${lbl("ndEnSystem", "System",
             "what the machine runs. The script is built for it and refuses another machine by name; a system marked dev has not been walked on a node yet, and is offered with Offer dev features on")}
             <select id="ndEnSystem">${(nodesSystems.length ? nodesSystems : [{id: "ubuntu", name: "Ubuntu 24.04 or later", vetted: true}])
               .map(s => `<option value="${esc(s.id)}">${esc(s.name)}${s.vetted ? "" : " (dev)"}</option>`).join("")}</select></div>
@@ -1729,17 +1729,17 @@ function ndDialogs(){
         <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
         <label class="ndcap"><input type="checkbox" id="ndEnHost"> Hosting only: it runs containers sent to it, and nothing of it comes back</label>
         <div class="hint" id="ndEnHostHint" hidden>No project's code, no sessions and no bb go to it; its agent may ask the controller for its own jobs and nothing else. For a public box such as a cloud VPS.</div>
-        <div class="setrow col">${lbl("ndEnDoor", "SSH door",
+        <div class="setrow col ctlrow">${lbl("ndEnDoor", "SSH door",
           "a way in for ssh, switched on and off from the node's row. cloudflared publishes the machine's port 22 at a hostname of its own, with a tunnel token from Zero Trust; Tailscale joins the machine to your tailnet with an auth key and answers ssh there, with no public name")}
           <select id="ndEnDoor">
             <option value="">none</option>
             <option value="cloudflared">cloudflared: port 22 at a hostname</option>
             <option value="tailscale">Tailscale: ssh on the tailnet</option>
           </select></div>
-        <div class="setrow col" id="ndEnDoorHostRow" hidden>${lbl("ndEnDoorHost", "The door's hostname",
+        <div class="setrow col ctlrow" id="ndEnDoorHostRow" hidden>${lbl("ndEnDoorHost", "The door's hostname",
           "a public hostname of its own on the tunnel (not the controller's), set in Zero Trust to go to ssh://localhost:22")}
           <input id="ndEnDoorHost" autocomplete="off" spellcheck="false" placeholder="ssh-vps.example.com"></div>
-        <div class="setrow col" id="ndEnDoorSecretRow" hidden>${lbl("ndEnDoorSecret", "The door's secret",
+        <div class="setrow col ctlrow" id="ndEnDoorSecretRow" hidden>${lbl("ndEnDoorSecret", "The door's secret",
           "cloudflared's tunnel token, or a Tailscale auth key. It rides in the script until the script has run, then leaves it; the node keeps it")}
           <input id="ndEnDoorSecret" type="password" autocomplete="off" spellcheck="false"></div>
         <label class="ndcap" id="ndEnDoorCloseRow" hidden><input type="checkbox" id="ndEnDoorClose"> Close port 22 to the internet once the door is up</label>
@@ -1748,18 +1748,18 @@ function ndDialogs(){
         <div class="hint" id="ndEnNginxHint" hidden>BuilderBot's own reverse proxy, deployed the moment the node enrolls, with the routes and certificate the nginx tab holds for it (set them there first or after).</div>
       </div>
       <div class="field">
-        <div class="setrow col">${lbl("ndEnReach", "Reaches the controller",
+        <div class="setrow col ctlrow">${lbl("ndEnReach", "Reaches the controller",
           "how the machine dials in. Through WireGuard, the config your router made for it goes inside the script, and only the controller is routed through the tunnel. Through a public hostname, a tunnel at home (Cloudflare Tunnel, Tailscale Funnel, ngrok, frp) publishes the controller at a name and the machine dials that: nothing on your router changes and it never learns your address")}
           <select id="ndEnReach">
             <option value="lan">on this network</option>
             <option value="wireguard">WireGuard</option>
             <option value="public">a public hostname (a tunnel from home)</option>
           </select></div>
-        <div class="setrow col">${lbl("ndEnCtl", "Controller's address",
+        <div class="setrow col ctlrow">${lbl("ndEnCtl", "Controller's address",
           "the URL the machine dials. Behind WireGuard, the controller's address on your network, which the tunnel routes to. Through a public hostname, the name the tunnel publishes, as https://bb.example.com")}
           <input id="ndEnCtl" autocomplete="off" spellcheck="false" value="${esc(location.origin)}"></div>
         <div class="hint" id="ndEnCfHint" hidden>Hosting only, and no sessions: the controller cannot reach back through the tunnel. The machine verifies the hostname's public certificate and never sees your home address.</div>
-        <div class="setrow col" id="ndEnWgRow" hidden>${lbl("ndEnWgText", "WireGuard config",
+        <div class="setrow col ctlrow" id="ndEnWgRow" hidden>${lbl("ndEnWgText", "WireGuard config",
             "the .conf your router made for this machine: choose the file, or paste what is in it. Only the controller's address is routed through it on the machine")}
           <input type="file" id="ndEnWg" accept=".conf,text/plain" aria-label="choose the WireGuard config file">
           <textarea id="ndEnWgText" rows="7" spellcheck="false" autocomplete="off"
@@ -1957,7 +1957,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     document.getElementById("ndTitle").textContent = "Create a sandbox VM";
     boxWidth(!!made);
     const f = (k, label, help, extra = "") =>
-      `<div class="setrow col">${lbl("vm_" + k, label, help)}
+      `<div class="setrow col ctlrow">${lbl("vm_" + k, label, help)}
         <input id="vm_${k}" data-vk="${k}" autocomplete="off" spellcheck="false"
           value="${esc(String(vmDraft[k]))}"${extra}></div>`;
     const kinds = vmKinds || [{id: "unraid", label: "Unraid", wants: ["uuid", "mac"],
@@ -1966,11 +1966,11 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
     const takes = k => (kind.wants || []).includes(k);
     body.innerHTML = `<div class="field vmform">
         <div class="hint">Pick where it runs; the machine is written the same everywhere.</div>
-        <div class="setrow col">${lbl("vm_hv", "Runs on")}
+        <div class="setrow col ctlrow">${lbl("vm_hv", "Runs on")}
           <select id="vm_hv" data-vk="hv">${kinds.map(k =>
             `<option value="${esc(k.id)}"${k.id === kind.id ? " selected" : ""}>${
               esc(k.label)}${k.dev ? " (dev)" : ""}</option>`).join("")}</select></div>
-        <div class="prefrow">
+        <div class="prefrow ctlrow">
           ${f("name", "Name", "the machine's name, and the folder its disk goes in")}
           ${f("cores", "Cores", "", ' type="number" min="1" max="64"')}
           ${f("memory_gb", "Memory GiB", "", ' type="number" min="1" max="512"')}
@@ -1981,7 +1981,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
               ' type="number" min="100"') : ""}
         </div>
         ${f("iso", "Installer ISO", "a file you have already put where that manager keeps them. Ubuntu Server is the tested one")}
-        <div class="prefrow">
+        <div class="prefrow ctlrow">
           ${takes("uuid") ? f("uuid", "UUID",
               "blank mints one. Made the VM already? Paste the manager's, or its firmware settings are left behind") : ""}
           ${f("mac", "MAC", `blank mints one in ${kind.mac_prefix}, which is the range this one accepts`)}

@@ -320,8 +320,8 @@ function resumePicker(p, m, card, anchor, ns, several){
       r.restart ? "resuming its conversation" : r.sessionId ? `from ${esc(ago(p.last_claude?.when))}` : "a fresh start"}${
       several || n.name ? ` on ${esc(n.name || "")}` : ""}</span></div>
     <div class="rmfields">
-      <div class="setrow col"><label class="lbl" for="rmModel">Model</label><select id="rmModel" aria-label="model this session starts on">${opts(MODELS, r.model)}</select></div>
-      <div class="setrow col"><label class="lbl" for="rmEffort">Effort</label><select id="rmEffort" aria-label="effort this session starts on">${opts(EFFORTS, r.effort)}</select></div>
+      <div class="setrow col ctlrow"><label class="lbl" for="rmModel">Model</label><select id="rmModel" aria-label="model this session starts on">${opts(MODELS, r.model)}</select></div>
+      <div class="setrow col ctlrow"><label class="lbl" for="rmEffort">Effort</label><select id="rmEffort" aria-label="effort this session starts on">${opts(EFFORTS, r.effort)}</select></div>
     </div>
     <div class="actbar rmacts"><span class="state" id="rmSay"></span><span class="sp"></span>
       <button type="button" data-back>Back</button>

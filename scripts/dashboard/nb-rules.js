@@ -96,7 +96,7 @@ function nbRulesView({$, nb, project}){
     const adding = ed && ed.i === -1 ? row(ed.r, -1) : "";
     return `<div class="sub dim ggroup">Global rules: every project's sessions are handed these. Switch one off for this project here${
         may ? "; as an administrator you also change them for every project" : ""}.</div>${
-      may && !(ed && ed.i === -1) ? `<div class="addbar" data-add="global"><button type="button" id="grAddHere">Add a global rule</button></div>` : ""}
+      may && !(ed && ed.i === -1) ? `<div class="addbar ctlrow" data-add="global"><button type="button" id="grAddHere">Add a global rule</button></div>` : ""}
       <div class="field" id="rlGlobal">${adding}${gs.map(row).join("")}</div>`;
   }
 
@@ -163,7 +163,7 @@ function nbRulesView({$, nb, project}){
     const chars = ruleDirty() ? null : d.chars;
     const body = `
       <div class="hint">How you want this project worked on. A session reads these at the start and cannot change yours.</div>
-      <div class="addbar" data-add="rule"><button type="button" id="rlAdd">Add a rule</button></div>
+      <div class="addbar ctlrow" data-add="rule"><button type="button" id="rlAdd">Add a rule</button></div>
       <div class="field" id="rlList">${rows.map((r, i) => `
         <details class="bug rulerow${nb.ruleEditing.has(i) ? " editing" : ""}" data-i="${i}"${
             nb.ruleEditing.has(i) || nb.ruleOpen.has(i) ? " open" : ""}>

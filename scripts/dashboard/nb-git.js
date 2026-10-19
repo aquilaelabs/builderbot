@@ -260,7 +260,7 @@ function nbGitView({$, nb, project}){
     // band, above the files it will take.
     const treeNote = tree.notMine ? `<div class="sub dim">${esc(tree.owner)}'s uncommitted changes in the project directory${
       tree.barred ? `; only ${esc(tree.owner)} commits or discards them` : ""}</div>` : "";
-    const commitBar = files.length && !locked && !tree.barred ? `<div class="addbar gcommitbar" data-add="commit">
+    const commitBar = files.length && !locked && !tree.barred ? `<div class="addbar gcommitbar ctlrow" data-add="commit">
         <textarea id="gitMsg" class="proseline" rows="1" maxlength="200" placeholder="what changed, for the log"
           aria-label="commit message">${esc(gitMsgDraft)}</textarea>
         <button type="button" class="primary" id="gitCommit"
@@ -393,7 +393,7 @@ function nbGitView({$, nb, project}){
     const pol = {...((state?.projects || []).find(p => p.name === project)?.prefs?.gitpol || {}), ...gitPolDraft};
     const polDirty = Object.keys(gitPolDraft).length > 0;
     const policy = locked ? "" : `<div class="row stack2 gpolicy"><div class="grow">
-        <div class="prefrow">
+        <div class="prefrow ctlrow">
           <label class="pick">Push its branches <select data-gitpol="push">${["allow", "deny"].map(o =>
             `<option value="${o}"${(pol.push || "allow") === o ? " selected" : ""}>${o}</option>`).join("")}</select></label>
           <label class="pick">Push to ${esc(git.main || "main")} <select data-gitpol="main">${["allow", "deny"].map(o =>
