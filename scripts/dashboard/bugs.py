@@ -604,7 +604,10 @@ def edit(project, bug_id, by="you", act="edited", rev=None, **fields):
     notes field, but "noted" and "edited" are different claims to whoever
     reads the history back.
     """
+    keys = set(FIELDS) | {"title", "severity"}
+
     def change(bug):
+        before = {k: bug.get(k) for k in keys}
         if "title" in fields:
             if _too_long(fields["title"]):
                 return {"error": _too_long(fields["title"])}
@@ -624,7 +627,11 @@ def edit(project, bug_id, by="you", act="edited", rev=None, **fields):
                     bug[k] = v
                 else:
                     bug.pop(k, None)
-        changed = sorted(set(fields) & (set(FIELDS) | {"title", "severity"}))
+        # The History names what moved: the form sends every field, and a
+        # field sent as it was is not an edit. Nothing moved is no line.
+        changed = sorted(k for k in keys if bug.get(k) != before[k])
+        if not changed:
+            return {"ok": True, "bug": bug}
         return {"ok": True, "bug": bug,
                 "log": {"act": act, "id": bug["id"], "text": bug["title"],
                         "note": ", ".join(changed)}}

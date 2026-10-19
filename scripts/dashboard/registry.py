@@ -10,8 +10,9 @@ the next free directory (Name-2, Name-3), and the name shown stays Name. So
 a restore always fits back where it was, a new project never inherits an old
 one's notebook or containers, and a rename is the shown name alone.
 
-projects.json: {"next": N, "projects": {dir: {"id", "name", "state", "at"}}},
-state being live, trashed or purged. Only BuilderBot makes a project: a
+projects.json: {"next": N, "projects": {dir: {"id", "name", "state", "at",
+"moved"}}}, state being live, trashed or purged, and moved when it last
+changed (the trash's "deleted 2 min ago"). Only BuilderBot makes a project: a
 folder made by hand on the share is not one. On the first run every folder
 already there is recorded, which is the whole migration.
 """
@@ -252,6 +253,7 @@ def mark(dirname, state):
         if state == "live" and r.get("state") != "live":
             r["name"] = unique_name(str(r.get("name") or dirname), but=dirname)
         r["state"] = state
+        r["moved"] = int(time.time())
         _save(d)
         return dict(r)
 

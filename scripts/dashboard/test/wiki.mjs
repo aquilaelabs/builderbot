@@ -39,8 +39,12 @@ await page.click(`${NB} #wkNewSave`);
 await page.waitForSelector(`${NB} .wkarticle[data-name="Home"] .wkpage`, { timeout: 15000 });
 const html = await page.$eval(`${NB} .wkarticle[data-name="Home"] .wkpage`, e => e.innerHTML);
 ok(/<h3 id="wk-welcome">Welcome<\/h3>/.test(html) && /<strong>this<\/strong>/.test(html) && /<li>one<\/li>/.test(html)
-   && /class="wklink" data-page="Build and test"/.test(html) && !/<script>/.test(html) && /&lt;script&gt;/.test(html),
+   && /class="wklink[^"]*" data-page="Build and test"/.test(html) && !/<script>/.test(html) && /&lt;script&gt;/.test(html),
    `the page opens drawn from its Markdown, a [[link]] a link, and markup in it shown as text (${html.slice(0, 160)})`);
+// A link to a page the wiki does not have yet is drawn as one (B46).
+ok(await page.$eval(`${NB} .wkpage .wklink[data-page="Build and test"]`, a => a.classList.contains('wkmissing')
+     && getComputedStyle(a).color !== getComputedStyle(document.querySelector('.nb .wknav .wklink')).color),
+   'a link to a page that is not there is drawn apart from a live one');
 ok(/1 page/.test(await page.$eval(`${NB} #wkHint`, e => e.textContent)), 'the head row counts it');
 // Read like an encyclopedia (the operator, 2 Oct): the title over a rule,
 // said once though the page opens with it, a Contents box for its
@@ -126,6 +130,9 @@ await page.setViewportSize({ width: 1280, height: 1000 });
 // Rename asks in a box under the article's tabs, not the browser's prompt
 // (R256 step 4): the name to change in it, Enter to rename, Escape to leave.
 {
+  // Home links to the page about to be renamed: the rename moves the link.
+  const h = await api(`/api/wiki?project=${P}&page=Home`);
+  await api('/api/wiki', { project: P, action: 'save', name: 'Home', text: 'See [[Build and test]].', base: h.rev });
   const nd = page.dialogs.length;
   await page.click(`${NB} #wkRename`);
   await page.waitForSelector(`${NB} .askline input`, { timeout: 5000 });
@@ -138,6 +145,10 @@ await page.setViewportSize({ width: 1280, height: 1000 });
   await page.waitForFunction(() => /Building it/.test(document.querySelector('.nb .wkarticle .wktitle')?.textContent || ''), null, { timeout: 15000 });
   ok(was === 'Build and test' && gone && page.dialogs.length === nd,
      `Rename asks in a box in the page with the name to change, Escape leaves it and Enter renames (${was})`);
+  const after = await api(`/api/wiki?project=${P}&page=Home`);
+  ok(after.text === 'See [[Building it]].\n', `...and a link to it on another page follows it (${JSON.stringify(after.text)})`);
+  ok(await page.evaluate(() => /links to it on 1 page now use its new name/.test(document.body.textContent)),
+     '...and the page says how many pages it changed');
 }
 await api('/api/prefs', { project: P, gate: { wiki: 'ask' } });
 ok(/held for the operator's approval/.test(bb('save', 'Faq', src)) && /no page called/.test(bbErr('show', 'Faq')),

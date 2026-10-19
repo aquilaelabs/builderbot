@@ -1159,7 +1159,7 @@ function rmIcon(attr, label, {title = "", why = ""} = {}){
 // storage, the emulator and toolchains each said it their own way, two
 // with a link and two without). `what` says what needs the node.
 function noNodeYet(what, cls = ""){
-  return `<div class="empty${cls ? " " + cls : ""}">No node yet: ${what}; enroll one on the ${pageLink("nodes", "Nodes page")}.</div>`;
+  return `<div class="empty${cls ? " " + cls : ""}">No node yet: ${what}; enroll one on the ${pageLink("nodes", "Nodes page")} under Machines.</div>`;
 }
 
 // A row of chips narrowing a list: All first, then one per group with its

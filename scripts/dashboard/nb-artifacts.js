@@ -70,7 +70,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             ? `<div class="hint">Builds run on <b>${esc(b.name)}</b>${b.tools?.length
                 ? `; it carries ${b.tools.map(esc).join(", ")}`
                 : "; it reports no toolchains yet, so a compile will not find one"}.
-               Add to it from the Tools tab.</div>`
+               Add to it from the ${pageLink("toolchains", "Toolchains page")}.</div>`
             : `<div class="hint">No node: nothing can be compiled for this project here.
                ${esc(b.why || "")}</div>`,
           {cls: b.node ? (b.gap ? "bad" : "") : "warn"});

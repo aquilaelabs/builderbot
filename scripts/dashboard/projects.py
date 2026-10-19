@@ -933,10 +933,15 @@ def trash_list():
     for d in entries:
         if not d.is_dir() or d.name.startswith("."):
             continue
-        try:
-            at = int(d.stat().st_mtime)
-        except OSError:
-            at = 0
+        # When it was deleted is the registry's; the directory's own mtime is
+        # when its contents last changed, and stands in only for a folder
+        # moved into the bin by hand.
+        at = int(registry.get(d.name).get("moved") or 0)
+        if not at:
+            try:
+                at = int(d.stat().st_mtime)
+            except OSError:
+                at = 0
         # `name-2` is the second delete of `name`; the original name is what
         # somebody is looking for, and what a restore would put back.
         # Since R154 the directory is the project's own, never reused, and

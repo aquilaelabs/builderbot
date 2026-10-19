@@ -264,18 +264,78 @@ def remove(project, name, base="", who=None, why=""):
         return {"ok": True}
 
 
+_WIKILINK = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
+_MDLINK = re.compile(r"(\[[^\]]*\]\()([^)\s]+)(\))")
+
+
+def _links_to(target, a):
+    """Whether a link's target names the page whose file is `a`."""
+    try:
+        return file_of(target.removeprefix("./")).lower() == a.lower()
+    except Refused:
+        return False
+
+
+def _relink(text, a, title):
+    """`text` with every link to the page whose file is `a` pointed at
+    `title` instead: [[Page]], GitHub's [[Text|Page]] and [text](Page).
+    (new text, how many links moved)."""
+    n = 0
+
+    def wiki(m):
+        nonlocal n
+        first, second = m.group(1), m.group(2)
+        if second is None:
+            if not _links_to(first.strip(), a):
+                return m.group(0)
+            n += 1
+            return f"[[{title}]]"
+        if not _links_to(second.strip(), a):
+            return m.group(0)
+        n += 1
+        return f"[[{first}|{title}]]"
+
+    def md(m):
+        nonlocal n
+        url = m.group(2)
+        if "/" in url.removeprefix("./") or ":" in url or not _links_to(url, a):
+            return m.group(0)
+        n += 1
+        return f"{m.group(1)}{title.replace(' ', '-')}{'.md' if url.lower().endswith('.md') else ''}{m.group(3)}"
+
+    text = _WIKILINK.sub(wiki, text)
+    return _MDLINK.sub(md, text), n
+
+
 def rename(project, old, new, who=None):
+    """Rename a page, and in the same commit point every link to it, on
+    every page, at its new name, so no [[link]] is left to a page that is
+    gone. {ok, name, relinked: how many pages had links moved}."""
     a, b = file_of(old), file_of(new)
     if a == b:
-        return {"ok": True, "name": b[:-3]}
+        return {"ok": True, "name": b[:-3], "relinked": 0}
     with _locked(project):
         if not _blob(project, a):
             raise Refused(f"no page called {title_of(a)!r}")
         if _blob(project, b):
             raise Refused(f"{title_of(b)!r} is already a page")
         _git(project, "mv", "--", a, b)
-        _commit(project, f"Rename {title_of(a)} to {title_of(b)}", who)
-        return {"ok": True, "name": b[:-3]}
+        relinked = 0
+        for p in pages(project):
+            f = b if p["file"] == a else p["file"]
+            path = repo(project) / f
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            moved, n = _relink(text, a, title_of(b))
+            if n:
+                path.write_text(moved, encoding="utf-8")
+                _git(project, "add", "--", f)
+                relinked += 1
+        _commit(project, f"Rename {title_of(a)} to {title_of(b)}"
+                + (f", its links in {relinked} page{'' if relinked == 1 else 's'} with it" if relinked else ""), who)
+        return {"ok": True, "name": b[:-3], "relinked": relinked}
 
 
 def export_zip(project):

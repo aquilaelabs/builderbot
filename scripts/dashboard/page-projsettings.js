@@ -558,7 +558,7 @@ function settingsInto(name, host){
 // beside the one picked; on a phone the list, then the section with Back.
 // The dialog (the Git view's remote door) keeps them open under a jump bar.
 const RN_LIST = {
-  project: "name and color", people: "owner, who is on it, invitations",
+  project: "the name it is shown under", people: "owner, who is on it, invitations",
   claude: "what its sessions do on their own, ask about, or may not",
   yours: "your replies, questions and commit name here",
   repo: "how it pushes and pulls", runs: "where it builds, tests and runs",

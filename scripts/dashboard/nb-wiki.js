@@ -242,13 +242,14 @@ function nbWikiView({$, nb, project}){
     $("wkHint").textContent = d.error ? "wiki: " + d.error : `${n} page${n === 1 ? "" : "s"}`;
     $("wkExport").disabled = !pages().length;
     $("wkPull").hidden = $("wkPush").hidden = !rem?.label;
-    $("wkNetState").textContent = rem?.label ? `${rem.label}'s wiki` : "no remote: Export is how it leaves";
+    // An empty wiki is its empty state, not a fault: the bar's own line
+    // says its buttons wait for a page, in the bar's voice, not in red.
+    $("wkNetState").textContent = (rem?.label ? `${rem.label}'s wiki` : "no remote: Export is how it leaves")
+      + (pages().length ? "" : rem?.label ? "; Export and Push wait for a page" : "; it waits for a page");
     $("wkPush").disabled = !rem?.auth || !pages().length;
     // Why Push is dead, on the row and not in a tooltip (the operator, 23
     // Sep): a phone has no hover.
-    const why = !pages().length
-      ? (rem?.label ? "Export and Push have nothing to send until there is a page." : "Export has nothing to send until there is a page.")
-      : rem?.label && !rem.auth
+    const why = pages().length && rem?.label && !rem.auth
       ? `Push needs the project's push rights on ${rem.label}: grant them in the project's remote dialog. Pull works without them for a public wiki.` : "";
     $("wkWhy").textContent = why;
     $("wkWhy").hidden = !why;
@@ -341,7 +342,12 @@ function nbWikiView({$, nb, project}){
     const on = (id, fn) => { const b = box.querySelector("#" + id); if (b) b.onclick = fn; };
     const name = nb.wkCur;
     // A [[link]], the nav's and the sidebar's: that page, in place.
-    box.querySelectorAll(".wklink").forEach(a => a.onclick = ev => { ev.preventDefault(); go(a.dataset.page); });
+    // A link to a page the wiki does not have is drawn as one, the way an
+    // encyclopedia draws a red link: pressed, it says New page makes it.
+    box.querySelectorAll(".wklink").forEach(a => {
+      a.classList.toggle("wkmissing", !!nb.wkData && !byName(a.dataset.page));
+      a.onclick = ev => { ev.preventDefault(); go(a.dataset.page); };
+    });
     box.querySelectorAll("[data-anchor]").forEach(a => a.onclick = ev => { ev.preventDefault(); wikiScroll(box, a.dataset.anchor); });
     const pick = box.querySelector("#wkPick");
     if (pick) pick.onchange = () => go(pick.value);
@@ -371,7 +377,9 @@ function nbWikiView({$, nb, project}){
         : prompt("Rename the page to:", byName(name)?.title || name);
       if (!to || !to.trim()) return;
       const j = await post({action: "rename", name, to});
-      if (j){ nb.wkCur = j.name; loadWiki(); }
+      if (!j) return;
+      if (j.relinked) notify(`Renamed; the links to it on ${j.relinked} page${j.relinked === 1 ? "" : "s"} now use its new name`);
+      nb.wkCur = j.name; loadWiki();
     });
     on("wkNew", () => {
       nb.wkAdding = {name: articles().length ? "" : "Home", text: ""};

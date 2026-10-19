@@ -71,6 +71,11 @@ ok(cb.files === 2 && cb.lines === 3 && cb.code_lines === 2
 ok(new RegExp(`${cb.files} file`).test(await page.$eval('#rulesBox .sect', e => e.textContent))
    && /tracked by git/.test(await page.$eval('#rulesBox .sect', e => e.textContent)),
    '...and the section says the files, the lines, and that it is git that decides what counts');
+// One count, head and body (B49): the body restates the head's totals and
+// then says how much of them is code, never a code-only number beside them.
+const cbText = await page.$eval('#rulesBox .sect', e => e.textContent.replace(/\s+/g, ' '));
+ok(/2 files and 3 lines tracked by git/.test(cbText) && /2 lines of code in 1 file\b/.test(cbText),
+   `...and its body is the head's totals, then the code among them (${cbText.slice(0, 160)})`);
 const nogit = await (await fetch(URL + 'api/codebase?project=gamma', { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
 ok(/not a git repository/.test(nogit.error || ''), 'a project that is not a repository says so rather than counting nothing');
 ok(await page.$('#memList') !== null,

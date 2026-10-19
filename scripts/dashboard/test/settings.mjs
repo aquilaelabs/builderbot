@@ -552,6 +552,25 @@ ok(elsewhere.git_name === 'T. Person',
   await page.evaluate(() => { document.querySelectorAll('.modal:not(.inline)').forEach(m => { m.hidden = true; }); openProjectSettings('alpha'); });
   await page.waitForSelector('#rnSnapDays', { state: 'attached', timeout: 15000 });
   ok(await page.$eval('#rnSnapDays', i => i.value) === '14', 'a project keeps 14 days of snapshots unless set otherwise');
+  // Each number beside its unit, not over it (B51: "days" on a line under
+  // its box), at a desk and on a phone.
+  {
+    await rnSect(page, 'rn:build');
+    await openFold(page, 'details.sect[data-sect="rn:build"]');
+    const was = page.viewportSize(), apart = [];
+    for (const width of [1280, 393]){
+      await page.setViewportSize({ width, height: 900 });
+      await page.waitForTimeout(200);
+      apart.push(...(await page.$$eval('#rnCaptureDays, #rnSnapDays, #rnDevKeep', is => is.map(i => {
+        const a = i.getBoundingClientRect(), b = i.nextElementSibling.getBoundingClientRect();
+        // On the box's line (the row lines up at the bottom) and after it.
+        return b.top < a.bottom && b.bottom > a.top && b.left >= a.right ? ''
+          : `${i.id} ${[a.left, a.top, a.width, b.left, b.top].map(Math.round).join('/')} in ${i.closest('.modal, .nb')?.className.split(' ')[0]} ${i.checkVisibility()}`;
+      }).filter(Boolean))).map(x => `${width} ${x}`));
+    }
+    await page.setViewportSize(was);
+    ok(apart.length === 0, `Build and test's numbers each have their unit beside them (${apart.join(', ') || 'all beside'})`);
+  }
   writeFileSync(`${DIR}/ws/alpha/snapped.txt`, 'as it was\n');
   const took = await post('/api/snapshots', { project: 'alpha', action: 'take' });
   ok(took.status === 200 && took.body.files > 0, `Take one now snapshots the tree (${took.body.files} files)`);
