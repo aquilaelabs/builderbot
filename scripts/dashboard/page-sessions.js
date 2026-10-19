@@ -112,17 +112,20 @@ function renderSessionsInto(i){
 // while a session was still open on it, and the row knows which it meant.
 async function killSession(name, node = ""){
   const claude = tmuxBase(name).startsWith("claude-");
+  // Called what its tab and its row call it ("sh: Name", "Claude: Name"),
+  // not the tmux name, which carries the project's directory (B64).
+  const said = sessionLabels().get(name) || name;
   if (!confirm(claude
-        ? `End the Claude session "${name}"?\n\nThe transcript is kept and can be `
+        ? `End "${said}"?\n\nThe transcript is kept and can be `
           + `resumed later, but the conversation stops now.`
-        : `End the session "${name}"?\n\nAnything running in it is terminated.`)) return;
+        : `End "${said}"?\n\nAnything running in it is terminated.`)) return;
   try{
     const j = await endSession(name, node);
     if (j.error){ notify(j.error, true); return; }
     // Its tab, if one is open, is now pointing at nothing.
     const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === name);
     if (t) dropTab(t.id);
-    notify(`ended ${name}`);
+    notify(`ended ${said}`);
   }catch(e){ notify("could not end it: " + e, true); }
   refresh();
 }

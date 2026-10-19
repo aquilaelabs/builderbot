@@ -4869,6 +4869,23 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
     ok(landed.node === ids.spare && landed.arg === ids.spare && landed.built === 'ep.silon|landed|rebuild',
        `Create opens the Containers page on the node the container went to (${landed.node}, tab ${landed.arg}, ${landed.built})`);
   }
+  // A project is named as it is shown, never by its directory, which a name
+  // reused after a delete has numbered (B64): the dialog's node line, and
+  // what a confirm calls a container with no row yet. Planted and read in
+  // one evaluate, so a poll cannot put the label back between.
+  {
+    const said = await page.evaluate(() => {
+      const row = (state.projects || []).find(p => p.name === 'ep.silon'), was = row.label;
+      row.label = 'epsilon-shown';
+      try{
+        openSendToDocker('ep.silon');
+        return { hint: $('dnNodeHint').textContent, called: dmCalled('ep.silon', 'nosuch') };
+      }finally{ closeSendToDocker(); row.label = was; }
+    });
+    ok(/One of epsilon-shown's nodes/.test(said.hint) && !/ep\.silon/.test(said.hint)
+       && said.called === 'epsilon-shown/nosuch',
+       `the Send dialog and the confirms name the project as it is shown (${said.hint.slice(0, 40)}; ${said.called})`);
+  }
   const off = await post('/api/devapp', { project: 'ep.silon', action: 'new', instance: 'elsewhere', node: 'n_notanode' });
   ok(/ep\.silon works on spare, sandbox, and a container for it anywhere else/.test(off.error || ''),
      `a node outside the set is refused, naming the set (${String(off.error).slice(0, 70)})`);
