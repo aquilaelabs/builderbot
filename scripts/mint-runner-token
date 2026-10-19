@@ -93,7 +93,7 @@ case "$kind" in
         exit 0 ;;
 esac
 
-[ -f "$file" ] || die "no runner token stored for this runner on $node: add it in the runner section of the node's row on the Nodes tab"
+[ -f "$file" ] || die "no runner token stored for this runner on $node: add it in the runner section of the node's row on the Nodes page"
 # shellcheck disable=SC1090
 . "$file"
 [ -n "${RUNNER_URL:-}" ] && [ -n "${RUNNER_TOKEN:-}" ] || die "the token stored for $slot on $node is incomplete: store it again"

@@ -54,7 +54,7 @@
        on for the kvm module. On Unraid that is one file, then a reboot:
          /boot/config/modprobe.d/kvm-amd.conf    options kvm-amd nested=1
          /boot/config/modprobe.d/kvm-intel.conf  options kvm-intel nested=1
-       `bb emu gpu` and the Nodes tab's census say whether the guest got it. -->
+       `bb emu gpu` and the Nodes page's census say whether the guest got it. -->
   <cpu mode="host-passthrough" migratable="on">
     <topology sockets="1" cores="6" threads="1"/>
     <cache mode="passthrough"/>

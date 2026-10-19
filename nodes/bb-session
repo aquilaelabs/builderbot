@@ -863,7 +863,7 @@ def net_ready():
         why = str(e)
     if why:
         raise Refused("bb-session: this node keeps each session to its own project's network, and the "
-                      f"agent has not set that up: {why}. Its row on the Nodes tab says why")
+                      f"agent has not set that up: {why}. Its row on the Nodes page says why")
     return os.open(NET_DIR, os.O_RDONLY | os.O_DIRECTORY)
 
 

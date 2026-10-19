@@ -80,7 +80,7 @@ With no arguments this prints the help and changes nothing. With options it
 provisions the machine (safe to run again: every step checks before it
 acts); --check runs only the pre-flight.
 
-The command to run is the one the dashboard's Nodes tab gives you: Enroll
+The command to run is the one the dashboard's Nodes page gives you: Enroll
 node mints a token and prints this line with the address and the token in
 it, which is a paste rather than a questionnaire.
 
@@ -142,7 +142,7 @@ it, which is a paste rather than a questionnaire.
                        bind mounts and is not what the server offers, so the
                        mount fails, quietly, because of nofail.
   --controller URL     BuilderBot's dashboard, and --token the one-time
-  --token bbe_…        enrollment token its Nodes tab minted. Given together,
+  --token bbe_…        enrollment token its Nodes page minted. Given together,
                        this machine also becomes a NODE: the agent is
                        downloaded from the controller, enrolled, and left
                        running under systemd, dialing out; nothing here is
@@ -150,7 +150,7 @@ it, which is a paste rather than a questionnaire.
                        (--user, bb), never as root. Re-run with a fresh token to enroll again; a
                        re-run without either leaves the enrollment alone.
   --wg-conf FILE       reach the controller through WireGuard: the config
-                       (from the Nodes tab's enroll script, which carries
+                       (from the Nodes page's enroll script, which carries
                        it) goes in as wg-quick@bb before anything else, the
                        controller is checked through it, and the session
                        ports listen on the tunnel's address alone.
@@ -160,10 +160,10 @@ it, which is a paste rather than a questionnaire.
                        enrolling, and verified by the system's CAs on every
                        call rather than pinned. Such a node is hosting only,
                        with no sessions.
-  --machine HASH       made for one machine (the Nodes tab's Enroll script
+  --machine HASH       made for one machine (the Nodes page's Enroll script
                        on a node's row): runs there and nowhere else.
   --door cloudflared   a door in for SSH, switched on and off from the
-  --door tailscale     node's row on the Nodes tab. cloudflared publishes
+  --door tailscale     node's row on the Nodes page. cloudflared publishes
                        this machine's port 22 at --door-host HOST (a
                        public hostname set on the tunnel in Zero Trust,
                        with the tunnel's token in --door-secret FILE);
@@ -180,7 +180,7 @@ it, which is a paste rather than a questionnaire.
                        (per project underneath, so one VM can be several
                        projects' node). A store may be a mount (point it at
                        one of the --share paths), and its free space is what
-                       the Nodes tab reports for it. A system path is refused:
+                       the Nodes page reports for it. A system path is refused:
                        a store is a directory of its own, since the agent
                        creates, fills and (for the cache) empties it.
 
@@ -294,9 +294,9 @@ machine_id() {
 if [ -n "$MACHINE" ]; then
     here="$(machine_id || true)"
     if [ -z "$here" ]; then
-        echo "this script was made for one machine and this one has no machine id to compare: make a new script on the Nodes tab (Enroll node)" >&2; exit 1
+        echo "this script was made for one machine and this one has no machine id to compare: make a new script on the Nodes page (Enroll node)" >&2; exit 1
     elif [ "$here" != "$MACHINE" ]; then
-        echo "this script was made for another machine (the node that enrolled with it): it does nothing here. Enroll this machine with a script of its own from the Nodes tab" >&2; exit 1
+        echo "this script was made for another machine (the node that enrolled with it): it does nothing here. Enroll this machine with a script of its own from the Nodes page" >&2; exit 1
     fi
 fi
 case "$TOKEN" in
@@ -364,7 +364,7 @@ guest_run() {
     [ "$bad" = 0 ] || exit 1
     [ "${CHECK_ONLY:-0}" = 0 ] || { say "this machine can be a guest node"; exit 0; }
     [ -n "$CONTROLLER" ] && [ -n "$TOKEN" ] \
-        || { warn "--guest needs --controller and --token, from Enroll node on the Nodes tab"; exit 1; }
+        || { warn "--guest needs --controller and --token, from Enroll node on the Nodes page"; exit 1; }
 
     say "the footprint: $foot"
     mkdir -p "$foot/bin" "$foot/log" "$foot/runner"
@@ -779,10 +779,10 @@ if [ "$REACH" = public ]; then
     fi
     case "$code" in
         200) ;;
-        000|"") warn "${CONTROLLER} does not answer with a certificate this machine trusts. Is the tunnel at home up (the Settings tab's Public hostname line says connected), and does the hostname resolve here? curl -v ${CONTROLLER%/}/api/v1/agent/download says more"; exit 1 ;;
+        000|"") warn "${CONTROLLER} does not answer with a certificate this machine trusts. Is the tunnel at home up (the Settings page's Public hostname line says connected), and does the hostname resolve here? curl -v ${CONTROLLER%/}/api/v1/agent/download says more"; exit 1 ;;
         404) warn "${CONTROLLER} answers 404 on the agent's API: the tunnel at home does not forward /api/v1/agent/ to the controller yet (Apply on Controller settings with an API token writes the rule, or add the public hostname in Zero Trust)"; exit 1 ;;
         502|530) warn "${CONTROLLER} answers ${code}: the tunnel at home is up but what it forwards to does not answer. The hostname's service must be http://localhost:7680 when the controller runs the tunnel itself (Controller settings), or the controller's LAN address and port when cloudflared runs elsewhere at home"; exit 1 ;;
-        401|403) warn "${CONTROLLER} refused the enrollment token (${code}): it was used already or has run out; make a new script on the Nodes tab"; exit 1 ;;
+        401|403) warn "${CONTROLLER} refused the enrollment token (${code}): it was used already or has run out; make a new script on the Nodes page"; exit 1 ;;
         *) warn "${CONTROLLER} answers ${code} on the agent's API, not 200: enrollment would fail; curl -v ${CONTROLLER%/}/api/v1/agent/download says more"; exit 1 ;;
     esac
     printf '   %s answers\n' "$CONTROLLER"
@@ -813,7 +813,7 @@ if [ "$DOOR" = cloudflared ]; then
         # unit's own command line, which any account here could read.
         umask 077; printf 'TUNNEL_TOKEN=%s\n' "$(door_secret)" > /etc/cloudflared/env; umask 022
     elif [ ! -s /etc/cloudflared/env ]; then
-        warn "no tunnel token: the door's secret left the enroll script once it ran; make a new script on the Nodes tab"; exit 1
+        warn "no tunnel token: the door's secret left the enroll script once it ran; make a new script on the Nodes page"; exit 1
     fi
     svc_install cloudflared "BuilderBot: the door in for SSH (cloudflared)" "${cfbin} --no-autoupdate tunnel run" "EnvironmentFile=/etc/cloudflared/env"
     printf '   up; in Zero Trust the tunnel'"'"'s public hostname %s goes to ssh://localhost:22, and Cloudflare Access decides who reaches it\n' "$DOOR_HOST"
@@ -825,7 +825,7 @@ elif [ "$DOOR" = tailscale ]; then
     if [ -n "$(door_secret)" ]; then
         tailscale up --ssh --auth-key="$(door_secret)" || { warn "tailscale up did not join the tailnet: is the auth key still valid?"; exit 1; }
     else
-        tailscale status >/dev/null 2>&1 || { warn "no auth key: the door's secret left the enroll script once it ran; make a new script on the Nodes tab"; exit 1; }
+        tailscale status >/dev/null 2>&1 || { warn "no auth key: the door's secret left the enroll script once it ran; make a new script on the Nodes page"; exit 1; }
     fi
     printf '   up; ssh reaches this machine on the tailnet, and its ACLs decide who\n'
 fi
@@ -1445,7 +1445,7 @@ cmd_remove() {
         warn "$path holds $(printf '%s' "$held" | tr '\n' ' ')"
         printf "   Unmounting it would leave those on this machine's own disk,\n"
         printf '   where the agent would report them as healthy stores with the\n'
-        printf '   root filesystem free space. Move them first (the Nodes tab\n'
+        printf '   root filesystem free space. Move them first (the Nodes page\n'
         printf '   copies a store when you repoint it), or, if you mean it:\n'
         printf '     bb-sandbox remove %s --force\n' "$path"
         return 1
@@ -1628,7 +1628,7 @@ cmd_settings() {
     done < <(ours)
     cat <<EOF
 
-On BuilderBot's dashboard, Nodes tab, on this machine's row (${ip:-<this-vm>}):
+On BuilderBot's dashboard, Nodes page, on this machine's row (${ip:-<this-vm>}):
 
   Path mapping:    ${pairs:-<none yet>}
 
@@ -1768,7 +1768,7 @@ cmd_uninstall() {
     printf '   stays: docker, nfs-common, python3, tmux, jq, curl, the empty mountpoints,\n'
     printf '          everything on the shares (other nodes may use them)%s\n' "$([ "$stores" = 1 ] || printf ', the stores')"
     printf '   note:  a runner registered from here stays listed on its forge;\n'
-    printf '          the Nodes tab'"'"'s Un-enroll deregisters it first, this cannot\n'
+    printf '          the Nodes page'"'"'s Un-enroll deregisters it first, this cannot\n'
     if [ "$yes" != 1 ]; then
         printf '\nType uninstall to go on: '
         read -r a
@@ -1998,8 +1998,8 @@ cmd_gpu() {
     # operator, 30 Sep): the driver is the Toolchains tab's row, the one
     # place it is installed, so a machine has it because somebody chose to.
     if [ -z "$(gpu_driver_version)" ]; then
-        gpu_state "needs the driver: install the NVIDIA driver on this node's Toolchains tab first"
-        die "the NVIDIA driver is not installed on this machine: install it from this node's Toolchains tab, then set the display up"
+        gpu_state "needs the driver: install the NVIDIA driver on this node's Toolchains page first"
+        die "the NVIDIA driver is not installed on this machine: install it from this node's Toolchains page, then set the display up"
     fi
     if ! command -v Xorg >/dev/null 2>&1; then
         have apt-get || die "no Xorg on this machine, and it is not installed from here on this family: install an X server, then set the display up again"
@@ -2048,7 +2048,7 @@ cmd_gpu_off() {
     if have systemctl; then
         systemctl disable --now "$GPU_UNIT" >/dev/null 2>&1 || true
     fi
-    gpu_state "off: switched off on the Nodes tab; an emulator here renders in software"
+    gpu_state "off: switched off on the Nodes page; an emulator here renders in software"
     say "the GPU display is off: an emulator here renders in software from its next start"
 }
 cmd_gpu_display() {
@@ -2272,7 +2272,7 @@ cmd_gpu_driver() {
                 cmd_gpu_nodes
                 say "the driver has the card: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -1)"
             else
-                say "it takes the card at the next boot, since nouveau holds it now: Reboot on this node's row in the Nodes tab, which ends every session on it"
+                say "it takes the card at the next boot, since nouveau holds it now: Reboot on this node's row in the Nodes page, which ends every session on it"
             fi ;;
         remove)
             have dpkg-query || die "the driver was not installed from here on this family: remove it the way it was installed"
@@ -2310,7 +2310,7 @@ cmd_gpu_driver() {
             rm -f /etc/modprobe.d/blacklist-nvidia-nouveau.conf
             if have update-initramfs; then update-initramfs -u >/dev/null 2>&1 || true; fi
             if [ -d /sys/module/nvidia ]; then
-                say "removed; the loaded driver keeps the card until the next boot, when nouveau takes it back: Reboot on this node's row in the Nodes tab"
+                say "removed; the loaded driver keeps the card until the next boot, when nouveau takes it back: Reboot on this node's row in the Nodes page"
             else
                 say "removed; nouveau has the card"
             fi ;;
@@ -2375,7 +2375,7 @@ cmd_gpu_container() {
         install)
             have apt-get || die "the container toolkit is installed from here on Debian and Ubuntu only: on this family, from NVIDIA's repository for it"
             have docker || die "no docker on this machine, so there is no container to hand the card to"
-            [ -n "$(gpu_driver_version)" ] || die "the NVIDIA driver is not installed on this machine: install it from this node's Toolchains tab first; the toolkit hands its libraries to a container"
+            [ -n "$(gpu_driver_version)" ] || die "the NVIDIA driver is not installed on this machine: install it from this node's Toolchains page first; the toolkit hands its libraries to a container"
             have curl || die "curl is not on this machine, and the package source is fetched with it"
             say "adding NVIDIA's package source for the container toolkit"
             curl -fsSL "$NVCT_URL/gpgkey" > "$NVCT_KEY" \
@@ -2836,7 +2836,7 @@ if [ -f /etc/builderbot/node.json ]; then
     cat <<EOF
 
 As a node: the agent is running ($(case "$INIT" in systemd) echo "systemctl status builderbot-agent" ;; openrc) echo "rc-service builderbot-agent status" ;; runit) echo "sv status builderbot-agent" ;; esac)) and the
-Nodes tab should show this machine live within a minute. It dials out, so
+Nodes page should show this machine live within a minute. It dials out, so
 nothing was opened here for it. Jobs run as ${USER_NAME}.
 
   sudo builderbot-agent status    what this node is, and does the controller answer

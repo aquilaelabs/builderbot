@@ -239,7 +239,7 @@ sdk_status() {
         # honest list is empty rather than this container's own store,
         # which holds the browsers its boot put there and is --local's.
         if [ -z "$node" ]; then
-            log "this project has no node: toolchains are installed on a node (the Nodes tab), and a project with none cannot compile here"
+            log "this project has no node: toolchains are installed on a node (the Nodes page), and a project with none cannot compile here"
             log "bb toolchains --local lists this container's own store: what its boot keeps for bb capture shot, nothing to install"
             return 0
         fi
@@ -425,7 +425,7 @@ sdk_nvidia_line() {
         else echo "$inst, running the card: nvidia-smi says how much of its memory is free"
         fi
     elif [ -n "$inst" ]; then echo "$inst installed; it takes the card when the machine restarts"
-    else echo "not installed: nouveau has the card; the operator installs the driver on the Toolchains tab"
+    else echo "not installed: nouveau has the card; the operator installs the driver on the Toolchains page"
     fi
 }
 
@@ -444,7 +444,7 @@ sdk_nvidia_container_line() {
         v="$(nvidia-ctk --version 2>/dev/null | sed -n 's/.*version \([^ ]*\).*/\1/p' | head -1)"
         echo "toolkit ${v:-installed}: a compose file reserves the card with deploy.resources.reservations.devices (driver: nvidia)"
     else
-        echo "no container toolkit: a container here cannot reserve the card; the operator installs it on the Toolchains tab"
+        echo "no container toolkit: a container here cannot reserve the card; the operator installs it on the Toolchains page"
     fi
 }
 
@@ -472,9 +472,9 @@ sdk_builds_with() {
     if [ -n "$plats" ]; then
         newest="${plats##* }"
         printf '  %-14s %s\n' platforms "$plats"
-        printf '  %-14s %s\n' compileSdk "up to ${newest}: a library that wants a newer platform fails checkDebugAarMetadata; the operator adds one on the Toolchains tab"
+        printf '  %-14s %s\n' compileSdk "up to ${newest}: a library that wants a newer platform fails checkDebugAarMetadata; the operator adds one on the Toolchains page"
     else
-        printf '  %-14s %s\n' platforms "none: nothing compiles here until the operator adds one on the Toolchains tab"
+        printf '  %-14s %s\n' platforms "none: nothing compiles here until the operator adds one on the Toolchains page"
     fi
     [ -n "$tools" ] && printf '  %-14s %s\n' build-tools "${tools% }"
     local nv; nv="$(sdk_nvidia_line)"
@@ -916,7 +916,7 @@ sdk_update() {
 sdk_operator_only() {
     [ -n "${CLAUDECODE:-}" ] || return 0
     die "installing SDKs is the operator's decision, and this is a Claude session.
-Ask them to do it from the dashboard's Toolchains tab, or to
+Ask them to do it from the dashboard's Toolchains page, or to
 run: bb toolchains $*
 If you ARE the operator at this keyboard: env -u CLAUDECODE bb toolchains $*"
 }
@@ -1638,7 +1638,7 @@ cmd_emu_images() {
             [ -n "$id" ] || die "usage: bb emu image add|remove ID (bb emu images --available lists them, bb emu flavors names the short ones)"
             sdk_is_image "$id" || die "${id} is not a system image: bb emu images --available lists them"
             [ -z "${CLAUDECODE:-}" ] || die "a system image is the operator's to add or remove, and this is a Claude session.
-Ask them to do it from the dashboard's Emulator tab, or to
+Ask them to do it from the dashboard's Emulator page, or to
 run: bb emu image ${verb} ${id}
 If you ARE the operator at this keyboard: env -u CLAUDECODE bb emu image ${verb} ${id}"
             case "$verb" in

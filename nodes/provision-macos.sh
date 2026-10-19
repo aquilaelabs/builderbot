@@ -33,11 +33,11 @@ usage: bash provision-macos.sh --controller URL --token bbe_… [--toolchains PA
        bash provision-macos.sh --remove
 
 With no arguments this prints the help and changes nothing. The command to
-run is the one the dashboard's Nodes tab gives you: Enroll node mints a
+run is the one the dashboard's Nodes page gives you: Enroll node mints a
 token and prints this line with the address and the token in it.
 
   --controller URL     the dashboard's address, as you open it in a browser
-  --token bbe_…        an enrollment token from the Nodes tab (good once, for a day)
+  --token bbe_…        an enrollment token from the Nodes page (good once, for a day)
   --toolchains PATH      where this Mac's toolchain store is. Point it at the same
                        share the Linux nodes use, mounted over SMB (say
                        /Volumes/SDK): this machine's toolchains land under
@@ -207,7 +207,7 @@ fi
 
 cat <<EOF
 
-Done. This Mac is a GUEST node: the dashboard's Nodes tab shows it live
+Done. This Mac is a GUEST node: the dashboard's Nodes page shows it live
 within a minute, with Storage and Network not offered (they are yours), and
 the Tools tab installs into its own scope of the toolchain store,
 $TOOLCHAINS/darwin-$(uname -m). Root is never asked for here.
