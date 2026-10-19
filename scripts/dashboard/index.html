@@ -2589,7 +2589,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* No pages yet: no nav, so the empty state is the whole width, not the
    nav's 200px column (B457's walk). */
 .wkreader:not(:has(.wknav)){grid-template-columns:minmax(0,1fr)}
-.wknav{position:sticky;top:0;font-size:var(--f-row);border-right:var(--hair) solid var(--line);padding-right:14px}
+.wknav{position:sticky;top:0;font:var(--f-row);border-right:var(--hair) solid var(--line);padding-right:14px}
 .wknav ul{list-style:none;margin:0;padding:0}
 .wknav li{margin:0 0 6px}
 .wknav p,.wknav h2,.wknav h3{margin:0 0 6px;font-size:inherit}
@@ -2616,9 +2616,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .wktabs .wktab.on{color:var(--ink);border-color:var(--line);background:var(--bg)}
 .wktabs .wktab.danger{color:var(--bad)}
 .wktitle{font:400 1.75em/1.25 var(--serif);color:var(--ink);margin:4px 0 2px;padding-bottom:4px;border-bottom:var(--hair) solid var(--line)}
-.wkmeta{color:var(--dim);font-size:var(--f-note);margin:4px 0 14px}
+.wkmeta{color:var(--dim);font:var(--f-note);margin:4px 0 14px}
 .wktoc{display:inline-block;min-width:180px;max-width:100%;border:var(--hair) solid var(--line);border-radius:var(--r-small);
-  background:var(--panel);padding:8px 14px 8px 12px;margin:0 0 16px;font-size:var(--f-row)}
+  background:var(--panel);padding:8px 14px 8px 12px;margin:0 0 16px;font:var(--f-row)}
 .wktochead{font-weight:600;text-align:center;margin-bottom:4px;color:var(--ink)}
 .wktoc ol{margin:0;padding-left:1.4em}
 .wktoc li.l2{margin-left:1em}
@@ -2641,9 +2641,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .wkpage hr{border:0;border-top:var(--hair) solid var(--line);margin:16px 0}
 .wkpage a,.wknav a,.wktoc a,.wkfooter a{color:var(--note);text-decoration:none}
 .wkpage a:hover,.wknav a:hover,.wktoc a:hover{text-decoration:underline}
-.wkfooter{border-top:var(--hair) solid var(--line);margin-top:20px;padding-top:8px;color:var(--dim);font-size:var(--f-note)}
+.wkfooter{border-top:var(--hair) solid var(--line);margin-top:20px;padding-top:8px;color:var(--dim);font:var(--f-note)}
 .wkarticle .wkText,.wkadd .wkText{min-height:22em;font-family:var(--mono);width:100%;box-sizing:border-box}
-.wklogrow{padding:3px 0;font-size:var(--f-note)}
+.wklogrow{padding:3px 0;font:var(--f-note)}
 #wkWhy{color:var(--bad);font:var(--f-note)}
 /* Narrow is the PANE's width, not the window's (B728): a notebook beside the
    sidebar in a 1000px window, or on a phone, is 500px wide, and the page
