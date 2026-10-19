@@ -164,6 +164,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A session can ask a lent phone's owner for one touch on whatever app is in front (bb phone touch --any-app), so another project's keyboard can be tested; the owner answers each one (3930c2a)
 - A branch's comparison with main is its own page with a link of its own, like a pull request: its commits, each file's changes and diff, and Merge into main at the foot; Back and Forward move between it and the branches (fb03da1)
 - The Git view's head row has a branch picker like GitHub's: the branch the tree is on, a list to switch to another, and a box that finds one or creates a new one from where you are (fb03da1)
+- A Windows companion app keeps a folder on your PC in step with a BuilderBot project both ways, so a Windows-only tool can work on the same files Claude does; sign it in once and it shows under your devices on the Profile page, where Disconnect ends it (cca4b51)
 
 ### Changed
 
