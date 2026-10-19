@@ -409,6 +409,31 @@ class JSScanner:
     IDENT = re.compile(r"[A-Za-z_$][\w$]*")
     REGEX_BEFORE = set("(,=:[!&|?{};+-*%<>~^")
 
+    def arrow_defaults(self, name):
+        """The calls in an arrow's default parameters (`f = (a, b = g()) =>`),
+        recorded before the `=>` said whose they were, handed to it."""
+        mark = getattr(self, "arrow_mark", None)
+        self.arrow_mark = None
+        if not mark or mark[1] != self.parens:
+            return
+        # Only when the marked ( is this arrow's own parameter list: its
+        # matching ) is followed by the `=>`, not a parenthesized expression
+        # some lines before an arrow of another name.
+        text, depth, close = self.s, 0, -1
+        for k in range(mark[3], self.i):
+            if text[k] == "(":
+                depth += 1
+            elif text[k] == ")":
+                depth -= 1
+                if depth == 0:
+                    close = k
+                    break
+        if close < 0 or not re.fullmatch(r"\s*(=>\s*)?", text[close + 1:self.i]):
+            return
+        for call in self.sink.calls[mark[0]:]:
+            if call["caller"] == mark[2]:
+                call["caller"] = name
+
     def __init__(self, text, sink, line0=1, top="(top level)", shape_methods=True, base=0,
                  fn_words=None, words=None, ts=False, jsx=False, typed=False):
         self.s = text
@@ -929,6 +954,11 @@ class JSScanner:
         s = self.s
         if c == "(":
             prev = self.last_sig
+            # `name = (a, b = f()) =>`: this may be an arrow's parameter list,
+            # which is known only at its `=>`; the calls recorded from here
+            # are handed to the arrow then (its default parameters' calls).
+            if prev == "=" and re.search(r"[A-Za-z_$][\w$]*\s*=\s*(?:async\s*)?$", s[max(0, self.i - 120):self.i]):
+                self.arrow_mark = (len(self.sink.calls), self.parens, self.enclosing(), self.i)
             if prev == ">" and self.ts:
                 # TypeScript's generic call, `new Map<number, Set<number>>()`:
                 # the name before the matching `<`
@@ -1073,6 +1103,7 @@ class JSScanner:
                 name = self.arrow_name()
                 if name:
                     d = self.add_def(name, self.line, "arrow", self.enclosing_or_blank())
+                    self.arrow_defaults(name)
                     d["at"] = self.base + self.i + 1
                     d["prop"] = getattr(self, "_prop", False)
                     self.stack.append((name, self.depth, d))
@@ -1178,6 +1209,7 @@ class JSScanner:
                     self.exprs.append((anon, self.depth, self.nest(), len(self.stack)))
                 if m and m.group(1) not in self.kw and self.last_kw != "function":
                     d = self.add_def(m.group(1), self.line, "arrow", self.enclosing_or_blank())
+                    self.arrow_defaults(m.group(1))
                     d["expr"] = True
                     self.exprs.append((d, self.depth, self.nest(), len(self.stack)))
                     # A property (`nb.clashResume = () =>`): the object's to

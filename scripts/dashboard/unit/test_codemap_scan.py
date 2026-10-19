@@ -270,6 +270,15 @@ class ThirdPass(unittest.TestCase):
 class FourthPass(unittest.TestCase):
     """The fourth pass (9 Oct)."""
 
+    def test_a_call_in_an_arrows_default_parameter_is_the_arrows(self):
+        # B871: `const asset = (n, sum = createHash(...).digest()) => {...}`
+        # gave its default's calls to the top level, babel to asset; a
+        # parenthesized expression before another arrow keeps its own.
+        s = scan("const asset = (name, sum = hash(name).hex()) => {\n  write(name);\n  return sum;\n};\n"
+                 "const y = (g() + 1);\nconst h = () => { k(); };\n", "a.js")
+        got = {(c["name"], c["caller"]) for c in s.calls}
+        self.assertTrue({("hash", "asset"), ("hex", "asset"), ("write", "asset"), ("g", "(top level)"), ("k", "h")} <= got, got)
+
     def test_a_parameters_default_is_not_a_definition(self):
         s = scan('function pick(id, why = () => "") {\n  return why(id);\n}\n'
                  "function mock({ token = 1, now = () => Date.now() } = {}) {}\n"
