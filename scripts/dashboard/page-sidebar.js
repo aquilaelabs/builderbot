@@ -170,9 +170,8 @@ function projectJobHtml(){
            <div class="sub">${esc(pJob.step || pJob.kind)}<span class="dots"></span>${
              pJob.for > 4 ? ` · ${pJob.for}s` : ""}</div>
          </div>
-         <span class="acts"><button id="bJobStop"${pJob.aborting ? " disabled" : ""}
-           title="stop it: a half-cloned directory is removed, a remote already set stays"
-           >${pJob.aborting ? "Stopping…" : "Abort"}</button></span>
+         <span class="acts">${abortBtn('id="bJobStop"', pJob.aborting,
+             "stop it: a half-cloned directory is removed, a remote already set stays")}</span>
        </div>`
     // The last outcome, if it went wrong. Kept until it is dismissed rather
     // than shown in a toast that is gone in seven seconds: the page may not

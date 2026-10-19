@@ -514,8 +514,7 @@ function renderToolchainsInto(i){
   const may = mayToolchains(tcNode);
   const clean = onNode && (d.cleanable || []).length && may ? d.cleanable : [];
   surf.setBar(nodeBar(nodePick("tcNodeSel", pnodes, tcNode), `
-      ${busy && may ? `<button data-tc="abort"${job.aborting ? " disabled" : ""}>${
-        job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
+      ${busy && may ? abortBtn('data-tc="abort"', job.aborting) : ""}
       <button data-tc="check"${busy ? ` class="tcidle"` : ""}${busy || pstale || !may ? " disabled" : ""}
         title="ask each upstream what it has now">${
         busy && job.action === "check"

@@ -83,6 +83,14 @@ function skel(shape = "rows", n = 0, said = "loading…"){
 // ("ctl" for a field's control, the height of one);
 // skRows() rows inside a real section or card.
 function skv(em = 5, cls = ""){ return `<i class="skv${cls ? " " + esc(cls) : ""}" style="width:${Number(em) || 5}em"></i>`; }
+// A running job's Abort, the same on every page that has one (consistency
+// pass J11): while its stop is on the way it reads Stopping, busy and dead.
+// `attrs` is the page's own data key, `title` what stopping keeps.
+function abortBtn(attrs, aborting, title = ""){
+  return `<button type="button" ${attrs}${title ? ` title="${esc(title)}"` : ""}${
+    aborting ? ` disabled aria-busy="true">Stopping…` : ">Abort"}</button>`;
+}
+
 // A field on its way: its real label over a control's box shimmering, as
 // wide as a typical value in em (consistency pass J5: four pages wrote it).
 function skField(label, em = 16, cls = ""){

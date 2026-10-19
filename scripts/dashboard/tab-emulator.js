@@ -154,7 +154,7 @@ function emuAddBar(d, held, job){
       ${held && !job.running ? `<span class="state bad">${esc(held)}</span>` : ""}
       <button class="primary" data-emu="install"${held || job.running || !emuTickedHere(d).length ? " disabled" : ""}>Install selected${
         emuTickedHere(d).length > 1 ? ` (${emuTickedHere(d).length})` : ""}</button>
-      ${job.running ? `<button data-emu="abort"${job.aborting ? " disabled" : ""}>${job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
+      ${job.running ? abortBtn('data-emu="abort"', job.aborting) : ""}
     </div>`;
 }
 

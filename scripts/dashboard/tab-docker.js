@@ -1672,10 +1672,7 @@ function dmRowsHtml(ins, job, blind){
         ${d.nginx_to && !busy ? `<button type="button" data-dm="nginx-update"
           title="pin nginx-${esc(d.nginx_to)}'s digest on the nginx page's record and rebuild with it">Update</button>` : ""}
         `}
-        ${busy ? `<button type="button" data-dm="abort" ${
-            job.aborting ? "disabled" : ""}
-            title="stop this build; what is already built is kept"
-            >${job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
+        ${busy ? abortBtn('data-dm="abort"', job.aborting, "stop this build; what is already built is kept") : ""}
         ${managed || !mayDocker() ? "" : `<button type="button" data-dm="rebuild" ${
           // A button that refuses is not information: a rebuild when nothing
           // moved is a cached build and a restart, behind a confirm that
