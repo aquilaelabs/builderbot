@@ -214,7 +214,9 @@ const SETTING_GROUPS = [
     {key: "apps_vscode", label: "VS Code extension", type: "bool",
      hint: "A project's files and terminal in VS Code."},
     {key: "apps_companion", label: "Windows companion", type: "bool",
-     hint: "A folder on a Windows PC kept in step with a project, for a tool that only runs there."}]},
+     hint: "A folder on a Windows PC kept in step with a project, for a tool that only runs there."},
+    {key: "apps_token", label: "GitHub token for the releases (optional)", type: "secret",
+     hint: "Only while BuilderBot's repository is private: a token that may read its releases. GitHub answers 404 without one."}]},
   // The home tunnel the controller runs itself (R176): the public hostname
   // a node off the LAN dials, the tunnel's token, and an API token that
   // writes the hostname's record and the tunnel's rules rather than having
@@ -261,7 +263,7 @@ function appsStatus(){
   if (!devApps) return "applies at once";
   const held = (devApps.apps || []).filter(a => a.files.length);
   const when = devApps.checked ? `looked ${ago(devApps.checked)}` : "not looked yet";
-  if (devApps.error) return `${devApps.error} · ${when}`;
+  if (devApps.problem) return `${devApps.problem} · ${when}`;
   return held.length ? `holds ${held.map(a => a.title).join(", ")} from ${devApps.release}${devApps.matched ? "" : " (no release matches this controller: the newest)"} · ${when}` : when;
 }
 

@@ -55,7 +55,7 @@ class Apps(unittest.TestCase):
         v = apps.check()
         held = {a["name"]: [f["file"] for f in a["files"]] for a in v["apps"]}
         self.assertEqual(held["companion"], ["builderbot-companion-0.7.0.exe"])
-        self.assertIn("does not match its sha256", v["error"])
+        self.assertIn("does not match its sha256", v["problem"])
         self.assertTrue(apps.path("android", "builderbot-app-0.7.0.apk"))
         self.assertIsNone(apps.path("android", "../index.json"))
         self.assertIsNone(apps.path("companion", "builderbot-companion-0.7.0.pyz"))

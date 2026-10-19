@@ -27,6 +27,7 @@ import re
 import shutil
 import threading
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -77,9 +78,15 @@ _lock = threading.Lock()
 _state = {"checking": False}
 
 
-def configure(*, state, version, setting, write_json, audit=None):
+def _token():
+    return ""
+
+
+def configure(*, state, version, setting, write_json, audit=None, token=None):
     globals().update(DIR=Path(state) / "apps", SEED=Path(state) / "seed.json", _version=version,
                      _setting=setting, write_json=write_json, audit=audit)
+    if token:
+        globals()["_token"] = token
     globals()["INDEX"] = DIR / "index.json"
 
 
@@ -103,7 +110,7 @@ def base_version(v):
 
 
 def view():
-    """{apps: [...], checked, error, release, matched, checking, version}:
+    """{apps: [...], checked, problem, release, matched, checking, version}:
     each app with whether it is offered, the files held of it and their
     sha256, for the Settings section and the Devices page."""
     idx = _index()
@@ -116,7 +123,7 @@ def view():
                     "files": [{"file": f["file"], "sha256": f["sha256"], "size": f["size"],
                                "url": f"/apps/{name}/{f['file']}"}
                               for f in h.get("files") or []]})
-    return {"apps": out, "checked": idx.get("checked", 0), "error": idx.get("error", ""),
+    return {"apps": out, "checked": idx.get("checked", 0), "problem": idx.get("problem", ""),
             "release": idx.get("release", ""), "matched": bool(idx.get("matched")),
             "checking": _state["checking"], "version": _version()}
 
@@ -133,14 +140,33 @@ def path(name, file):
     return None
 
 
-def _get(url, limit=MAX_BYTES):
-    req = urllib.request.Request(url, headers={"Accept": "application/octet-stream, application/json",
-                                               "User-Agent": "builderbot-apps"})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:        # noqa: S310 (our releases, or a test's file)
+def _get(url, limit=MAX_BYTES, accept="application/octet-stream, application/json"):
+    headers = {"Accept": accept, "User-Agent": "builderbot-apps"}
+    # The token only to GitHub's API, where a private repository's releases
+    # and their files are read with it; never to wherever a file redirects.
+    if _token() and url.startswith("https://api.github.com/"):
+        headers["Authorization"] = "Bearer " + _token()
+    req = urllib.request.Request(url, headers=headers)
+    with _OPENER.open(req, timeout=TIMEOUT) as r:                   # noqa: S310 (our releases, or a test's file)
         body = r.read(limit + 1)
     if len(body) > limit:
         raise ValueError(f"more than {limit >> 20} MB")
     return body
+
+
+class _NoTokenAway(urllib.request.HTTPRedirectHandler):
+    """A redirect to another host goes without the token: GitHub sends a
+    file to signed storage, which refuses a request carrying both."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None and urllib.parse.urlsplit(newurl).hostname != urllib.parse.urlsplit(req.full_url).hostname:
+            new.headers.pop("Authorization", None)
+            new.unredirected_hdrs.pop("Authorization", None)
+        return new
+
+
+_OPENER = urllib.request.build_opener(_NoTokenAway)
 
 
 def _pick(releases, want):
@@ -174,6 +200,8 @@ def check():
             err = "no published release to take the apps from"
     except (OSError, ValueError) as e:
         err = f"the releases did not answer: {e}"
+        if "404" in str(e) and not _token():
+            err += " (a private repository answers 404 to anybody without a token: add one under Apps)"
     DIR.mkdir(parents=True, exist_ok=True)
     for name, a in APPS.items():
         if not offered(name):
@@ -207,7 +235,7 @@ def check():
                           "files": files, "at": int(time.time())}
         if missing and not err:
             err = f"{a['title']}: {', '.join(missing)} not in {rel.get('tag_name')}"
-    idx = {"apps": held, "checked": int(time.time()), "error": err,
+    idx = {"apps": held, "checked": int(time.time()), "problem": err,
            "release": str((rel or {}).get("tag_name") or idx.get("release") or ""), "matched": matched}
     write_json(INDEX, idx)
     return view()
@@ -217,7 +245,7 @@ def _keep(name, asset, sha_asset, was):
     """One file of an app: kept as it is when the sha256 has not moved,
     else downloaded and checked. Its index entry, or a sentence."""
     try:
-        want = _get(sha_asset["browser_download_url"], 4096).decode("ascii", "replace").split()[0].lower()
+        want = _get(_where(sha_asset), 4096).decode("ascii", "replace").split()[0].lower()
     except (OSError, ValueError, IndexError, KeyError) as e:
         return f"{sha_asset.get('name')} ({e})"
     if not re.fullmatch(r"[0-9a-f]{64}", want):
@@ -227,7 +255,7 @@ def _keep(name, asset, sha_asset, was):
         if f.get("file") == asset["name"] and f.get("sha256") == want and dest.is_file():
             return f
     try:
-        body = _get(asset["browser_download_url"])
+        body = _get(_where(asset))
     except (OSError, ValueError, KeyError) as e:
         return f"{asset['name']} ({e})"
     if hashlib.sha256(body).hexdigest() != want:
@@ -237,6 +265,13 @@ def _keep(name, asset, sha_asset, was):
     tmp.write_bytes(body)
     os.replace(tmp, dest)
     return {"file": asset["name"], "sha256": want, "size": len(body)}
+
+
+def _where(asset):
+    """Where a release's file is read from: its API address with the token
+    (the one way into a private repository's files), else its download
+    link."""
+    return asset["url"] if _token() and asset.get("url") else asset["browser_download_url"]
 
 
 def check_now():
@@ -250,7 +285,7 @@ def check_now():
         try:
             check()
         except Exception as e:              # noqa: BLE001 (said on the section)
-            write_json(INDEX, {**_index(), "checked": int(time.time()), "error": f"{type(e).__name__}: {e}"})
+            write_json(INDEX, {**_index(), "checked": int(time.time()), "problem": f"{type(e).__name__}: {e}"})
         finally:
             _state["checking"] = False
     threading.Thread(target=run, daemon=True, name="apps-check").start()

@@ -135,7 +135,7 @@ const DRIVERS = {
   devices: {
     // Its two sections are always there, the apps and the devices signed in.
     open: () => page.evaluate(() => openDevicesTab()),
-    readyWhen: '.devicestab .snav .rrow',
+    readyWhen: '.devicestab [data-devapp]',
   },
 };
 

@@ -3720,7 +3720,8 @@ profiletab.configure(devices=devices)
 # Settings page's, set first by the seed file (step 4).
 import apps                                                      # noqa: E402
 apps.configure(state=STATE, version=lambda: image_stamp().get("version") or "",
-               setting=settings.get, write_json=write_json, audit=db.audit)
+               setting=settings.get, write_json=write_json, audit=db.audit,
+               token=lambda: settings.secret("apps_token"))
 devices.configure_apps(apps)
 
 # A person's PC lent to a project (R270 step 6): the companion lends a

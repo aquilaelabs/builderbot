@@ -249,8 +249,8 @@ ok(otherOut.error && (await dev(b.token, 'whoami', {})).status === 200,
   const by = Object.fromEntries((v.apps || []).map(x => [x.name, x]));
   ok(started.ok && v.release === 'v0.4.0' && v.matched && by.android?.files.length === 1 && by.vscode?.files.length === 1,
      `Look now fetches each offered app from the release matching this controller (${v.release}, ${JSON.stringify((v.apps || []).map(x => [x.name, x.files.length]))})`);
-  ok(by.companion?.files.map(f => f.file).join() === 'builderbot-companion-0.4.0.exe' && /does not match its sha256/.test(v.error || ''),
-     `...and keeps none that does not match its sha256, saying so (${v.error})`);
+  ok(by.companion?.files.map(f => f.file).join() === 'builderbot-companion-0.4.0.exe' && /does not match its sha256/.test(v.problem || ''),
+     `...and keeps none that does not match its sha256, saying so (${v.problem})`);
   const dl = await fetch(`${base}/apps/android/builderbot-app-0.4.0.apk`, { headers: PERSON });
   const nope = await fetch(`${base}/apps/android/..%2Fsettings.json`, { headers: PERSON });
   const anon = await fetch(`${base}/apps/android/builderbot-app-0.4.0.apk`, { redirect: 'manual' });
