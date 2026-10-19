@@ -3815,11 +3815,16 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .docbarrow .sp{flex:1}
 /* The page bar is one row at every width (the design's page head): a band
    of its own, not a filter row, so the filter row's narrow wrap (.histbar
-   under 560px) never takes it to two lines. Its controls line up on their
-   bottom edge as every row's do (a picker's label above its select).
-   Containers' bar alone gives its search a line of its own under 440px
-   (.dmpick, below). */
-.docbarrow{display:flex;gap:var(--field-gap);align-items:flex-end;flex-wrap:nowrap}
+   under 560px) never takes it to two lines. It is one control high on every
+   page, whatever it holds (the operator, 19 Oct: a picker's word above it,
+   a count alone and a count beside a button each made a bar of its own
+   height): what it says and what it holds centered on that line, a
+   picker's word to its left. Containers' bar alone gives its search a line
+   of its own under 440px (.dmpick, below). */
+.docbarrow{display:flex;gap:var(--field-gap);align-items:center;flex-wrap:nowrap}
+.doctab .field.docbarrow{min-height:calc(var(--ctl) + 2 * var(--row-y))}
+.doctab .field.docbarrow>label.pick{display:inline-flex;align-items:center;gap:var(--field-gap);margin:0}
+.doctab .field.docbarrow>label.pick>.pickw{font:var(--f-ui);color:var(--dim)}
 /* A page bar's search, one size on every page (Projects, Containers, Help
    each sized their own: 220px, 12rem with a cap of their own, 85%), capped
    with every bar control below. */

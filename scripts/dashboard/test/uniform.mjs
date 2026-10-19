@@ -1462,6 +1462,32 @@ for (const kind of kinds){
        bad.length ? `: ${bad.join('; ')}` : ''}`);
 }
 
+// Every page's bar is one control high, whatever it holds, and a picker's
+// word sits on its line, to its left (the operator, 19 Oct: a picker's word
+// above it, a count alone and a count beside a button each made a bar of
+// its own height, and the content under each started somewhere else).
+{
+  const bars = {};
+  for (const kind of kinds){
+    if (!DRIVERS[kind]) continue;
+    await bring(kind);
+    await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
+    await sleep(250);
+    const b = await page.evaluate(() => {
+      const bar = document.querySelector('.pane .doc.on .doctab > .docbarrow:not([hidden])');
+      if (!bar || !bar.offsetHeight) return null;
+      const w = bar.querySelector(':scope > label.pick > .pickw'), sel = bar.querySelector(':scope > label.pick > select');
+      const mid = e => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; };
+      return { h: Math.round(bar.getBoundingClientRect().height), inline: !w || !sel || Math.abs(mid(w) - mid(sel)) <= 2 };
+    });
+    if (b) bars[kind] = b;
+  }
+  const hs = [...new Set(Object.values(bars).map(b => b.h))];
+  ok(hs.length === 1, `every page's bar is one height, whatever it holds (${JSON.stringify(Object.fromEntries(Object.entries(bars).map(([k, b]) => [k, b.h])))})`);
+  const above = Object.entries(bars).filter(([, b]) => !b.inline).map(([k]) => k);
+  ok(above.length === 0, `...and a picker's word sits on its line, to its left${above.length ? `; above it: ${above.join(', ')}` : ''}`);
+}
+
 // The same page, held to the same rules at phone width: nothing may scroll
 // the page sideways, and every text control is 16px so iOS does not zoom a
 // layout that cannot zoom back.
