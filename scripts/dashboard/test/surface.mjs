@@ -38,7 +38,7 @@ import { dirname, join } from 'node:path';
 // Sorted, and one entry per name. Regenerate by failing the test and reading
 // what it prints. Do not hand-edit it into agreement without looking at why
 // it moved.
-const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptTheme', 'applyMode', 'applyNow', 'askProjectGroup', 'renameProjectGroup', 'pickProjectColor', 'applyTheme',
+const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'adoptTheme', 'applyMode', 'applyNow', 'askProjectGroup', 'renameProjectGroup', 'pickProjectColor', 'applyTheme',
   'sectRemember', 'sectRecall', 'isToolKind', 'groupOf', 'railAllows', 'railGroups', 'railOn', 'railGo', 'routeOf', 'openRoute', 'shellSync', 'shellBoot', 'shown',
   'drawRail', 'railMoreShow', 'shellBar', 'wireShellBar', 'jumpItems', 'drawJump', 'jumpGo', 'wireJump', 'revsDelay',
   'argForSession', 'armModal', 'arriveBox', 'askPurge', 'askReset', 'nginxHostPick', 'nginxHostLines', 'claudeRestart', 'restartNow', 'unenrollWhat', 'resetBusy', 'resetFollow', 'resetGone', 'cSeg', 'cSlide',

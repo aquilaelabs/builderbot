@@ -66,6 +66,8 @@
     const m = localStorage.getItem("bb.mode");
     if (m === "light" || (m === "system" && matchMedia("(prefers-color-scheme: light)").matches))
       document.documentElement.dataset.mode = "light";
+    // ...and less motion, where the account asked for it in the gear's menu.
+    if (localStorage.getItem("bb.motion") === "reduce") document.documentElement.dataset.motion = "reduce";
   }catch(e){ /* private mode: the default scheme is a fine answer */ }
 
 </script>
@@ -699,6 +701,9 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 /* The time zone (R218 step 31): its pick and Apply on a line, what times
    read under it. */
 .uimenu .tzrow{display:flex;gap:6px}
+.uimenu .uimotion{display:flex;align-items:center;gap:var(--field-gap);margin-top:var(--field-gap);
+  min-height:var(--tap);font:var(--f-ui);color:var(--ink)}
+.uimenu .uimotion input{margin:0;flex:0 0 auto}
 .uimenu .tzrow select{flex:1 1 auto;min-width:0}
 .uimenu .tzsaid{font:var(--f-note);color:var(--dim);margin-top:4px}
 /* What a page's bar knows about the one thing it is about, in the facts
@@ -1688,7 +1693,7 @@ textarea,select{
 
 .modal input,.modal textarea,.modal select,
 .row input,.row select,
-.uimenu input,.uimenu textarea,.uimenu select,
+.uimenu input:where(:not([type="checkbox"],[type="radio"])),.uimenu textarea,.uimenu select,
 .doctab input:where(:not([type="checkbox"],[type="radio"])),
 .doctab select,.doctab textarea,
 .nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
@@ -1696,7 +1701,7 @@ textarea,select{
 /* ...and one height for all of them, the buttons beside them included
    (the header keeps its own smaller buttons: they sit beside no field). */
 .modal input:where(:not([type="checkbox"],[type="radio"])),.modal select,
-.doc .row input,.doc .row select,.uimenu input,.uimenu select,
+.doc .row input,.doc .row select,.uimenu input:where(:not([type="checkbox"],[type="radio"])),.uimenu select,
 .doctab input:where(:not([type="checkbox"],[type="radio"])),.doctab select,
 .nb input:where(:not([type="checkbox"],[type="radio"])),.nb select{min-height:var(--ctl)}
 .modal button,.nb button,.doctab button,.uimenu button,.doc .row button{min-height:var(--ctl)}
@@ -4487,6 +4492,15 @@ span.skel.sk-word{display:inline-block;vertical-align:middle;padding:0}
 /* Over a dialog with no gutter beside it (toastPlace): at the top, and every press goes through. */
 #toast.overdlg{top:calc(8px + env(safe-area-inset-top));bottom:auto}
 #toast.overdlg .tst,#toast.overdlg .tx{pointer-events:none}
+/* ...and the same less motion where the account asked for it in the gear's
+   menu (the operator, 19 Oct; noMotion reads it too): every animation
+   and transition ends where it would have, at once, and the two the
+   device's rules above give a still state of their own keep it. */
+html[data-motion="reduce"] *,html[data-motion="reduce"] *::before,html[data-motion="reduce"] *::after{
+  animation-duration:0s !important;animation-delay:0s !important;animation-iteration-count:1 !important;
+  transition-duration:0s !important;transition-delay:0s !important}
+html[data-motion="reduce"] #bBell.waiting{background:var(--warn)}
+html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
 @media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.railmore,.pane .doc.on,.panes.dockup .pane.dock,.panes.dockdown .pane.dock{animation:none} .pane .stack > .doc.leaving{visibility:hidden;animation:none} .help{transition:none} }
 
 /* The page column ------------------------------------------------------ */

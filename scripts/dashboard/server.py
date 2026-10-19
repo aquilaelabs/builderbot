@@ -4155,6 +4155,7 @@ def _snapshot(who):
         # index.html's adoptTheme says why localStorage still outranks it.
         "theme": users.prefs(who).get("theme", ""),
         "mode": users.prefs(who).get("mode", ""),
+        "motion": users.prefs(who).get("motion", ""),
         # Whether this account has read the getting-started guide, and
         # which image's changelog it acknowledged: the welcome panel opens
         # itself once for each (the guide on a first sign-in, the changelog

@@ -131,6 +131,7 @@ async function refresh(){
     // undone by the desktop's next poll.
     adoptTheme(state.theme, state.me);
     adoptMode(state.mode, state.me);
+    adoptMotion(state.motion, state.me);
     // An account with no shell must not be sitting in one. The page opens on
     // a workspace terminal and the saved strip may carry more, both of which
     // predate knowing who is asking, so the first payload that says so is

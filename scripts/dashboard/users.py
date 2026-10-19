@@ -1149,6 +1149,10 @@ def own_prefs(name, want):
     # beside it for the same reason.
     if want.get("mode") in ("dark", "light", "system"):
         keep["mode"] = want["mode"]
+    # Less motion, or what the device asks for (the operator, 19 Oct): a
+    # person's own, kept beside the scheme for the same reason.
+    if want.get("motion") in ("reduce", "system"):
+        keep["motion"] = want["motion"]
     # The welcome panel's two marks: the getting-started guide has
     # been read, and which image's changelog was acknowledged.
     if isinstance(want.get("welcome_seen"), bool):

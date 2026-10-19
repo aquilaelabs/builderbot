@@ -191,6 +191,8 @@ function drawUiMenu(){
     <div class="pseg modeseg" role="group" aria-label="dark or light">${MODES.map(([id, label]) => `
       <button type="button" data-mode="${id}" class="${id === mode ? "on" : ""}"
         role="menuitemradio" aria-checked="${id === mode}">${esc(label)}</button>`).join("")}</div>
+    <label class="uimotion"><input type="checkbox" id="uiMotion"${document.documentElement.dataset.motion === "reduce" ? " checked" : ""}> Reduce motion${
+      helpIcon("pages switch, menus open and sections fold at once, in every browser you sign in to; off, the page follows what this device asks for")}</label>
     <h4>Color scheme</h4>
     <div class="swgrid">${THEMES.map(([id, label]) => `
       <button type="button" class="sw${id === cur ? " on" : ""}" data-theme="${id}"
@@ -215,6 +217,9 @@ function drawUiMenu(){
     b.onclick = () => applyTheme(b.dataset.theme));
   el.querySelectorAll("[data-mode]").forEach(b =>
     b.onclick = () => applyMode(b.dataset.mode));
+  // Less motion beside the scheme's half (the operator, 19 Oct): the
+  // account's own, kept as the scheme is (page-motion.js applyMotion).
+  el.querySelector("#uiMotion").onchange = e => applyMotion(e.target.checked);
   // The graduation (docs/nodes.md §13): the gear keeps what is this
   // BROWSER's and everything the controller owns lives on the Controller
   // page, where it has room to say what it costs.

@@ -9,7 +9,37 @@
 
 "use strict";
 
-const noMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+// Less motion, asked for by the device or by the account in the gear's menu
+// (the operator, 19 Oct): the one gate every moving thing asks.
+const noMotion = () => document.documentElement.dataset.motion === "reduce"
+  || matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// The account's choice, as the scheme is kept: on <html> for the paint
+// (index.html reads it before the stylesheet does), in this browser for the
+// next load, and on the account for a browser that has never seen it.
+let motionSaved = null;
+function applyMotion(reduce, {save = true} = {}){
+  const root = document.documentElement;
+  if (reduce) root.dataset.motion = "reduce";
+  else delete root.dataset.motion;
+  if (!save) return;
+  const use = reduce ? "reduce" : "system";
+  try{ localStorage.setItem("bb.motion", use); localStorage.setItem("bb.motion.who", state?.me || ""); }catch(e){ /* private mode */ }
+  motionSaved = use;
+  fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "prefs", prefs: { motion: use } }) }).catch(() => {});
+}
+// ...taken up only by a browser that has none of its own (adoptTheme's rule).
+function adoptMotion(m, who){
+  let had, whose;
+  try{ had = localStorage.getItem("bb.motion"); whose = localStorage.getItem("bb.motion.who"); }catch(e){ return; }
+  const same = !who || !had || (whose || "") === who;
+  if (had && same) return;
+  const use = m === "reduce" ? "reduce" : "system";
+  if (same && (!m || use === motionSaved)) return;
+  motionSaved = use;
+  applyMotion(use === "reduce");
+}
 
 // Every modal leaves the way it arrived. Closing one is `hidden = true` at a
 // dozen sites, and any dialog added later closes the same way, so the leaving

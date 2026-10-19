@@ -169,6 +169,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - The Windows companion keeps itself current from its controller: a newer copy is fetched, checked and started the next time the app does (0ef4ae0)
 - A pencil beside a project group's name renames it, and Home's Projects at a glance is in groups as the Projects page is (0ef4ae0)
 - Projects' groups are chips over the grid, as on the Containers page: All, each group and No group, each counted, a chip narrowing the grid to its group; and a group's pencil box ends with Delete group, which takes the group away and its projects back to no group (986c79d)
+- Reduce motion in the gear's menu, beside Dark, Light and System: pages switch, menus open and sections fold at once, kept for your account in every browser you sign in to, as the scheme is (986c79d)
 
 ### Changed
 

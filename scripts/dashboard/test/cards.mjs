@@ -733,6 +733,22 @@ ok(await page.evaluate(() => document.documentElement.dataset.theme) === undefin
      'Light repaints the page on the press, the light half of the same scheme');
   ok(await page.evaluate(() => { try { return localStorage.getItem('bb.mode'); } catch (e) { return 'no storage'; } }) === 'light',
      '...and the browser keeps it, as it keeps the scheme');
+  // Reduce motion sits beside Dark, Light and System, the account's own and
+  // kept as the scheme is (the operator, 19 Oct): on <html> at once, in this browser, and on
+  // the account; every animation then ends where it would have, at once.
+  await page.check('#uiMenu #uiMotion');
+  await page.waitForFunction(() => document.documentElement.dataset.motion === 'reduce', null, { timeout: 5000 });
+  const still = await page.evaluate(async () => {
+    const e = document.createElement('div'); e.style.animation = 'docIn .5s'; document.body.append(e);
+    const d = getComputedStyle(e).animationDuration; e.remove();
+    let kept = ''; try { kept = localStorage.getItem('bb.motion'); } catch (x) { kept = 'no storage'; }
+    const st = await (await fetch('/api/status')).json();
+    return { d, kept, gate: noMotion(), acct: st.motion };
+  });
+  await page.uncheck('#uiMenu #uiMotion');
+  await page.waitForFunction(() => !document.documentElement.dataset.motion, null, { timeout: 5000 });
+  ok(still.d === '0s' && still.kept === 'reduce' && still.gate && still.acct === 'reduce' && !(await page.evaluate(() => noMotion())),
+     `Reduce motion beside the scheme's half stills the page, kept in this browser and on the account, and off again it moves (${JSON.stringify(still)})`);
   const swLight = await page.$eval('#uiMenu .sw[data-theme="moss"]', b => getComputedStyle(b).backgroundColor);
   // A switch's pick (the gear's Dark and Light) is the lit control on show:
   // the page's sub-nav is tabs with no fill since 17 Oct.
