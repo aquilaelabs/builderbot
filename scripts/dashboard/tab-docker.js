@@ -2662,7 +2662,10 @@ function renderDockerInto(i){
       clearTimeout(dmSearchTimer);
       dmSearchTimer = setTimeout(() => { dockerRev++; drawPanes(); }, 120);
     };
-    if (dmSearchCaret !== null && document.activeElement !== sb && dmSearchTouched()){
+    // ...never from under an open dialog: a redraw just after typing took
+    // the focus back from the one New container had opened (B872).
+    if (dmSearchCaret !== null && document.activeElement !== sb && dmSearchTouched()
+        && !document.querySelector(".modal:not([hidden])")){
       sb.focus(); try{ sb.setSelectionRange(dmSearchCaret, dmSearchCaret); }catch(e){ /* a type that cannot */ }
     }
   }
