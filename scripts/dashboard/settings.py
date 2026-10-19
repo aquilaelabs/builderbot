@@ -77,13 +77,6 @@ KEYS = {
     "tunnel_host": {"default": "", "kind": "text", "applied": "now"},
     "tunnel_token": {"default": "", "kind": "secret", "applied": "now"},
     "cf_api_token": {"default": "", "kind": "secret", "applied": "now"},
-    # Off, Claude Code on a node stays on the version it has until Update is
-    # pressed on the Nodes tab: the bell says when a newer one is out. On,
-    # a session asked for on a node that is behind updates it first: the
-    # start is held with the reason, the person presses again when the
-    # row comes back, and no open conversation is ever ended for it
-    # (claudecode.start_hold). The same switch is on each node's Claude
-    # Code section.
 }
 
 
