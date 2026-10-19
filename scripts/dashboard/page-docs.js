@@ -21,7 +21,7 @@
 // failure, not as a style.
 //
 //   const d = docSurface(i, "nodes");
-//   d.bar.innerHTML  = ...   // filters/actions: a .field histbar, pre-made
+//   d.bar.innerHTML  = ...   // filters/actions: a .field docbarrow, pre-made
 //   d.list.innerHTML = ...   // the bands: .row / .rule / .empty / .loading
 //   d.foot.innerHTML = ...   // the quiet footer line (.fnote), or leave empty
 //
@@ -128,7 +128,7 @@ function bootPage(hash){
   const seg = (tools, on) => `<span class="subnav pseg">${tools.map(([k, label]) =>
       `<button type="button" disabled class="${k === on ? "on" : ""}">${esc(label)}</button>`).join("")}</span>`;
   const doc = (barHtml, body) => `<div class="doc on flush"><div class="doctab">${barHtml
-    ? `<div class="field histbar docbarrow">${barHtml}</div>` : ""}<div class="doclist">${body}</div></div></div>`;
+    ? `<div class="field docbarrow">${barHtml}</div>` : ""}<div class="doclist">${body}</div></div></div>`;
   let bar, body;
   if (key === "projects" && parts[1] && !g.tools.some(([k]) => k === parts[1] || (k === "findings" && parts[1] === "analysis"))){
     // A project's notebook: its header, its view strip under it the
@@ -286,7 +286,7 @@ function docSurface(i, kind){
   if (!box || el.children.length !== 1 || !box.classList.contains("doctab") || !box.classList.contains(`${kind}tab`)
       || !box.querySelector(":scope > .doclist")){
     el.innerHTML = `<div class="doctab ${esc(kind)}tab">
-      <div class="field histbar docbarrow" hidden></div>
+      <div class="field docbarrow" hidden></div>
       <div class="doclist"></div>
       <div class="fnote" hidden></div>
     </div>`;

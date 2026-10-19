@@ -2412,7 +2412,7 @@ const DM_ICON_CARDS = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidd
 const DM_ICON_LIST = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"/></svg>`;
 function dmBar(b){
   const ghost = !b, dead = ghost ? " disabled" : "";
-  return `<div class="field histbar docbarrow dmpick">${
+  return `<div class="field docbarrow dmpick">${
       nodePick("dmNode", ghost ? null : b.nodes, dockerNode || b?.nodes[0]?.id)}<input${ghost ? "" : ` id="dmSearch"`} type="search"
         placeholder="${isPhone() ? "search" : "name, image, port or project"}" autocomplete="off" aria-label="narrow the containers: name, image, port or project" value="${esc(dmSearch)}"${dead}><span class="sp"></span>
       <div class="pseg dmviewseg" role="group" aria-label="cards or a list">
