@@ -124,7 +124,11 @@ async function killSession(name, node = ""){
     if (t) dropTab(t.id);
     notify(`ended ${name}`);
   }catch(e){ notify("could not end it: " + e, true); }
-  refresh();
+  await refresh();
+  // Nowhere near another End (B54): with focus left on the list, a keyboard
+  // Enter after the redraw could end a second session.
+  const a = document.activeElement;
+  if (a?.matches?.("[data-k], .consend")) a.blur();
 }
 
 // End a session, no questions asked. killSession is this with the dialog in

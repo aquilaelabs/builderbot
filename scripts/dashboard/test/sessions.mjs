@@ -80,6 +80,12 @@ const nd = page.dialogs.length;
 await btn('claude-alpha').click();
 await page.waitForFunction(() => !document.querySelector('[data-go="claude-alpha"]'), { timeout: 15000 });
 ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Claude'), 'End asked first, then ended the session');
+// B54: focus is not left on another row's End, where a keyboard Enter would
+// end a second session.
+await sleep(300);
+const fo = await page.evaluate(() => { const a = document.activeElement;
+  return a?.matches?.('[data-k]') ? a.dataset.k : ''; });
+ok(!fo, `after End, focus is on no other row's End (${fo || 'none'})`);
 
 // The session is gone; a tab still pointing at it takes a Resume's argument
 // so the transcript id reaches the terminal, and the frame is rebuilt for it.
