@@ -33,7 +33,7 @@ r = bbapi.call("/api/v1/bb", {"argv": argv, "project": project,
                               "from": "session" if os.environ.get("CLAUDECODE") else "operator"},
                auth=auth, timeout=200)
 if r.get("error") and "code" not in r:
-    # The controller's own sentence, and nothing of how it travelled (B58).
+    # The controller's own sentence, and nothing of how it traveled (B58).
     sys.exit(f"[builderbot] ERROR: {r['error']}")
 if r.get("held"):
     # A push held for a person (R219): the flagged lines wait on the bell,

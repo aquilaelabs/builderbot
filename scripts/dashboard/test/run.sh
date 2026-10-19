@@ -113,8 +113,9 @@ if [ -z "${BB_TEST_HOLD:-}" ] && [ -z "${BB_TEST_WORKER:-}" ] && [ -z "${BB_TEST
             case "$f" in */_probe-*) rm -f "$f" ;; esac
         done
         exit "$rc"
+    else
+        rm -f "$KEEPF"     # its keeper is gone
     fi
-    rm -f "$KEEPF"
 fi
 # ...and never straight off the projects share. The server serves its own
 # code on every request and the suite reads its files as it goes, and
