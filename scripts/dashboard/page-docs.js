@@ -66,7 +66,7 @@ function skel(shape = "rows", n = 0, said = "loading…"){
     rows: () => rows(n || 5),
     cards: () => `<div class="sk-cards">${times(n || 6, card)}</div>`,
     tiles: () => tiles(n || 6),
-    home: () => tiles(6) + `<div class="sk-cards two">${times(2, j => `<div class="sk-card">${b("", 30)}${rows(4 - j)}</div>`)}</div>`,
+    home: () => tiles(6) + `<div class="sk-cards halves">${times(2, j => `<div class="sk-card">${b("", 30)}${rows(4 - j)}</div>`)}</div>`,
     lines: () => times(n || 7, j => b("line", j % 4 === 3 ? 30 : 40 + SKW[j % 8] * .7)),
     chips: () => times(n || 6, j => b("chip", 0)),
     word: () => b("", 0),

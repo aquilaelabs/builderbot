@@ -1061,7 +1061,6 @@ body.firstrun #panes{display:none}
 .setfields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--field-gap);margin-top:8px}
 .setfields input{width:100%;box-sizing:border-box;min-height:var(--ctl);padding:8px 9px;font:var(--f-field)}
 @media(max-width:600px){ .setfields{grid-template-columns:minmax(0,1fr)} }
-@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .setfields input{font-size:16px} } }
 .setfinish{display:flex;flex-direction:column;gap:8px;padding-top:4px}
 .setfinish p{margin:0;font:var(--f-note)}
 .setfinish>.actbar{justify-content:flex-end}
@@ -1757,12 +1756,13 @@ textarea.proseline{resize:none;overflow:hidden;white-space:pre-wrap;
    phone: the fields are mono, and 16px mono beside an 11px label is the
    biggest thing on the tab, so every pulldown read as shouting. They keep the
    field size, which is the size of the text around them. */
-@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .modal input:not([type=checkbox]):not([type=radio]),
-  .modal textarea,
-  .row input:not([type=checkbox]):not([type=radio]),
-  .uimenu input:not([type=checkbox]):not([type=radio]),.uimenu textarea,
-  .doctab input:not([type=checkbox]):not([type=radio]),.doctab textarea,
-  .nb input:not([type=checkbox]):not([type=radio]),.nb textarea{font-size:16px} } }
+/* iOS's no-zoom size, once for every field typed into (consistency batch
+   6: nine copies, one per surface). Safari zooms the page into a typed field
+   under 16px and this layout cannot zoom back, so on iOS no such field is
+   smaller, whatever its component sets: a platform guard, which is why it
+   outranks them. A select never zooms and keeps the field size. */
+@media(max-width:900px){ @supports (-webkit-touch-callout:none){
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]),textarea{font-size:16px !important} } }
 .modal input:focus,.modal textarea:focus,.modal select:focus,
 .uimenu input:focus,.uimenu textarea:focus,.uimenu select:focus,
 .doctab input:focus,.doctab select:focus,.doctab textarea:focus,
@@ -2007,7 +2007,6 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
    zoomed into a layout that cannot zoom back. Every other control that sets
    its own font says so again here (the chat bar, the code box);
    this one had been forgotten, and uniform.mjs caught it. */
-@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .verinit .vstart{font-size:16px} } }
 .verinit .vdir{flex:0 1 auto;min-width:0}
 /* The changelog. pre-wrap keeps the file's own line breaks; it is a document
    someone wrote, not data to reflow. Otherwise it is a history: same padding,
@@ -2051,7 +2050,6 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .clog .clsha{font:11px/1 var(--mono);color:var(--dim);flex:0 1 auto;
   overflow-wrap:anywhere}
 @media(max-width:900px){
-  @supports (-webkit-touch-callout:none){ .clog .clrow textarea.cltext{font-size:16px} }
   /* The commit is a lookup, not a label: on a phone it is on the row's own
      title and out of the layout, where it was taking the space between the
      category and the buttons. */
@@ -2147,7 +2145,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .veradd{margin-top:10px}
 .veradd>summary{color:var(--dim);font:var(--f-note);min-height:var(--tap)}
 @media(hover:hover){ .veradd>summary:hover{color:var(--ink)} }
-@media(max-width:520px){
+@media(max-width:600px){
   /* The component fold's picker and field earn a line each on a phone: a
      directory name plus a version plus two buttons will not share one. The
      starting-version line is the exception: a short field and a one-word
@@ -2177,7 +2175,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
   font:var(--f-note);color:var(--dim)}
 .verpol > span{flex:0 0 118px}
 .verpol select{flex:1 1 auto;min-width:0;max-width:22em}
-@media(max-width:520px){
+@media(max-width:600px){
   .verpol{flex-wrap:wrap}
   .verpol > span{flex:0 0 100%}
   .verpol select{max-width:none}
@@ -2186,7 +2184,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
    values above it instead of being a full-width bar of its own. */
 .verln .verinit{margin-top:0;flex:1 1 auto}
 .verln .verinit .vstart{width:7em}
-@media(max-width:520px){
+@media(max-width:600px){
   .verln span:first-child{flex:0 0 100%}
   .verln{padding:3px 0}
 }
@@ -2428,7 +2426,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .hist .who{color:var(--purple);margin-left:6px}
 .hist .who.you{color:var(--dim)}
 .hist .was{color:var(--dim);text-decoration:line-through}
-@media(max-width:560px){ .hist{display:block}
+@media(max-width:600px){ .hist{display:block}
   .hist .when{display:inline;margin-right:6px} }
 .roadmap .n{flex:0 0 auto;color:var(--dim);font:600 11px/1.5 var(--mono);
   min-width:1.2em;text-align:right}
@@ -2519,7 +2517,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 @media(hover:hover){ .roadmap .rm:hover{color:var(--bad);border-color:var(--red2-edge)} }
 /* Four controls and a number on one line is tight on a phone; the buttons
    lose their padding before the words lose their width. */
-@media(max-width:620px){ .roadmap .go,.roadmap .x,.roadmap .rm,.roadmap .ed{padding:5px 4px}
+@media(max-width:600px){ .roadmap .go,.roadmap .x,.roadmap .rm,.roadmap .ed{padding:5px 4px}
   .roadmap{gap:5px} }
 /* The notebook's own strip (R259): five groups in a row, underlined, not
    boxed, since they switch what the page shows; a group's views in a row
@@ -2652,7 +2650,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    The view is the container; under 620px the column gives way to the
    picker above the article. */
 .nbview[data-view="wiki"]{container-type:inline-size}
-@container (max-width:620px){
+@container (max-width:600px){
   .wkreader{display:block}
   .wknav{display:none}
   .wkreader>.wkpick{display:flex;margin-bottom:10px}
@@ -2661,7 +2659,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* ...and the window's rule too: a container query is not evaluated for a
    view the phone's layout has not laid out yet, and a phone is narrow
    whatever the pane's width. */
-@media(max-width:620px){
+@media(max-width:600px){
   .wkreader{display:block}
   .wknav{display:none}
   .wkreader>.wkpick{display:flex;margin-bottom:10px}
@@ -2774,7 +2772,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    line up with the words in the row above it. Measured against the button
    rather than guessed: 16px of icon inside the same padding and border. */
 .roadmap .ph{display:inline-block;width:32px;height:1px;flex:0 0 auto}
-@media(max-width:620px){ .roadmap .ph{width:26px} }
+@media(max-width:600px){ .roadmap .ph{width:26px} }
 /* The send strip: always there once there is a list, everything on it dead
    until an arrow is armed. */
 /* The hint and the Reorder toggle share a line: the toggle belongs to the
@@ -2792,11 +2790,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .dropbox .q span{color:var(--dim)}
 .dropbox input{width:100%;box-sizing:border-box;padding:6px 8px;
   font:var(--f-row);min-height:var(--tap)}
-@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .dropbox input{font-size:16px} } }
 .dropbox textarea{width:100%;box-sizing:border-box;padding:7px 8px;
   font:var(--f-row);min-height:86px;resize:vertical;
   white-space:pre-wrap}
-@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .dropbox textarea{font-size:16px} } }
 /* Rewording is not a deletion; it borrows the box and not the red. */
 .editbox{border-color:var(--line);
   background:color-mix(in srgb, var(--panel), #000000 22%)}
@@ -2811,7 +2807,6 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .addstep textarea{flex:1;min-width:0;padding:5px 8px;
   font:var(--f-row);min-height:var(--tap)}
 .addstep button{flex:0 0 auto;min-height:var(--tap)}
-@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .addstep textarea{font-size:16px} } }
 /* Moving things about: dim until it can, like every other row control. */
 .roadmap .mv{color:var(--dim)}
 .roadmap .mv[disabled]{opacity:.3}
@@ -2875,7 +2870,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .mem .ix{display:flex;gap:6px;margin-bottom:4px}
 .mem .ix .ixt{flex:0 0 33%}
 .mem .ix .ixh{flex:1;min-width:0}
-@media(max-width:560px){ .mem .ix{display:block}
+@media(max-width:600px){ .mem .ix{display:block}
   .mem .ix .ixt{margin-bottom:6px} }
 .mem .ixnote{color:var(--dim);font:var(--f-note);margin-bottom:8px}
 .mem .ixnote.bad{color:var(--gold)}
@@ -2888,28 +2883,14 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .rulerow .rlName{width:100%;margin-bottom:6px}
 #grBody .field>label{margin-bottom:calc(var(--label-gap) - var(--field-gap))}
 #grBody .rulerow .hint{margin-top:2px}
-.rulerow .two{display:flex;gap:6px;align-items:center}
-.rulerow .two>*{flex:1;min-width:0}
+.rulerow .two{align-items:center}
 .rulerow textarea{min-height:96px;white-space:pre-wrap;margin:0 0 6px;width:100%}
 /* Which kind it is, said rather than chosen: a rule is conditional exactly
    when it has a trigger, so this follows the fields instead of being a third
    thing to keep in step with them. */
 .rulerow .rlkind,.grule .rlkind{flex:0 0 auto;font:var(--f-note);color:var(--dim)}
 .rulerow .rlkind.cond,.grule .rlkind.cond{color:var(--accent)}
-@media(max-width:600px){
-  .rulerow .two{display:block}
-  .rulerow .two>*+*{margin-top:6px}
-}
 .memadd{border:1px dashed var(--line);border-radius:var(--r-surface);padding:10px}
-.memadd .two{display:flex;gap:6px}
-.memadd .two>*{flex:1;min-width:0}
-/* Stacked on a phone, like the bug form's pairs: half of 393px shows a
-   dozen characters of a file name, and the file name is the one field here
-   that has to be read to be checked. */
-@media(max-width:600px){
-  .memadd .two{display:block}
-  .memadd .two>*+*{margin-top:6px}
-}
 .memadd label{margin-top:8px}
 .memadd>label:first-child{margin-top:0}
 /* Wrapped, unlike the command editor's: this one is prose, and `.modal
@@ -2950,14 +2931,16 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .bug .bval,.mem .bval,.tst .bval{font:var(--f-ui);
   white-space:pre-wrap;overflow-wrap:anywhere}
 .bval.dim{color:var(--dim)}
-.bugform .two{display:flex;gap:6px}
-.bugform .two>*{flex:1;min-width:0}
-/* ...but not on a phone, where half of 393px is a field showing a dozen
-   characters and a label wrapping to three lines above it. Stacked, the same
-   answer the add row and the action bars give at this width. */
+.two{display:flex;gap:6px}
+.two>*{flex:1;min-width:0}
+/* Two fields side by side, the same pair in the bug form, a memory's and a
+   rule's (consistency batch 6: three copies with three phone blocks), and
+   stacked on a phone, where half of 393px is a field showing a dozen
+   characters (a memory's file name is one that has to be read to be
+   checked) and a label wrapping to three lines above it. */
 @media(max-width:600px){
-  .bugform .two{display:block}
-  .bugform .two>*+*{margin-top:6px}
+  .two{display:block}
+  .two>*+*{margin-top:6px}
 }
 /* Drift between the index and the files: never fatal, which is exactly why it
    has to be said out loud rather than left to be noticed. */
@@ -4119,12 +4102,15 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    the chooser is one, and was placed against its pane, a pane's height off) */
 .floatm.floatm{position:fixed;z-index:60;overflow-y:auto;overscroll-behavior:contain}
 .floatm.up{animation-name:menuRise}
+/* The finger height on a phone, from 900px down as every tap target's is
+   (consistency batch 6: a bar's buttons got it only under 600px). */
+@media(max-width:900px){ .actbar button,.actbar select{min-height:var(--tap)} }
 @media(max-width:600px){
-  /* The finger height, and nothing of the width: a phone's action bar used
-     to share the row between its buttons, which made every set of two span
-     the screen edge to edge: the shape the width rule above forbids. The
-     buttons keep their own size and sit at the right, as on a desktop. */
-  .actbar button,.actbar select{flex:0 0 auto;min-height:var(--tap)}
+  /* Nothing of the width: a phone's action bar used to share the row
+     between its buttons, which made every set of two span the screen edge
+     to edge: the shape the width rule above forbids. The buttons keep their
+     own size and sit at the right, as on a desktop. */
+  .actbar button,.actbar select{flex:0 0 auto}
   /* ...except a FULL bar, four buttons SHOWING or more (a hidden one does
      not count, and More counts as one): those share the width rather than each taking its text's, so
      the last is never pushed to a line of its own (the phone rule
@@ -4492,9 +4478,9 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .skboot>.skstack>.doc{position:absolute;inset:0}
 .sk-cards,.sk-tiles{display:grid;gap:12px;padding:var(--row-y) 0}
 .sk-cards{grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
-.sk-cards.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding-top:0}
+.sk-cards.halves{grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding-top:0}
 .sk-tiles{grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));gap:var(--field-gap)}
-@media(max-width:900px){ .sk-tiles{grid-template-columns:repeat(2,1fr)} .sk-cards.two{grid-template-columns:minmax(0,1fr)} }
+@media(max-width:900px){ .sk-tiles{grid-template-columns:repeat(2,1fr)} .sk-cards.halves{grid-template-columns:minmax(0,1fr)} }
 .sk-card{background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
   padding:14px 14px 18px;min-height:132px;min-width:0}
 .sk-card>.sk-b:first-of-type{height:1em;margin-bottom:6px}
@@ -4829,11 +4815,9 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 .chatmsg.ev{opacity:.75;font-style:italic}
 .chatbar{display:flex;gap:6px;padding:6px;border-top:var(--hair) solid var(--line)}
 .chatbar input{flex:1;min-width:0}
-@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .chatbar input{font-size:16px} } }
 .consbar{display:flex;gap:6px;padding:6px;background:var(--bg);
   border-top:var(--hair) solid var(--line);align-items:center}
 .consbar .consin{flex:1;min-width:0}
-@media(max-width:900px){ @supports (-webkit-touch-callout:none){ .consbar .consin{font-size:16px} } }
 /* An opaque cover over the frame until the terminal is really there.
    The frame's own background (below) is enough in Chromium, and is not in
    Firefox on Android, which paints its white document canvas over it anyway,
