@@ -143,6 +143,28 @@ function rnFillPrefs(p){
   rnFillReads();
   rnFillDebug();
   rnLoadTools(p);
+  rnLockSettings(p);
+}
+
+// The project's own sections, read only for an account whose roles do not
+// hold Project settings (B19): every control in them dead, and why said on
+// each in red, not in a tooltip. Just for you stays live, being the
+// account's own; Snapshots and Running sessions say their own reasons.
+const RN_LOCKED_SAID = "Read only for you: changing these needs a role that holds Project settings on this project.";
+function rnLockSettings(p){
+  const locked = p?.may_settings === false;
+  document.querySelectorAll("details.rngroup").forEach(d => {
+    const k = (d.dataset.sect || "").replace(/^rn:/, "");
+    if (["yours", "snapshots", "sessions"].includes(k)) return;
+    const body = d.querySelector(":scope > .body");
+    if (!body) return;
+    body.querySelector(":scope > .rnlocked")?.remove();
+    body.querySelectorAll("input, select, textarea, button").forEach(c => {
+      if (locked && !c.disabled){ c.disabled = true; c.dataset.rnlock = "1"; }
+      else if (!locked && c.dataset.rnlock){ c.disabled = false; delete c.dataset.rnlock; }
+    });
+    if (locked) body.insertAdjacentHTML("afterbegin", `<div class="field rnlocked"><div class="hint bad">${esc(RN_LOCKED_SAID)}</div></div>`);
+  });
 }
 
 // The project's node: every node but this container, because local can

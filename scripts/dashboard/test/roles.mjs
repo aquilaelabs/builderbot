@@ -206,4 +206,35 @@ for (const who of CAST) {
   ok(models.every(m => m === 'sonnet'), `each person's own model on alpha is their own setting (${models.join(', ')})`);
 }
 
+// ---- found walking the dev pair (19 Oct) ----------------------------------------------
+// B19: a member whose role reads Project settings and does not write them
+// (lib.mjs MEMBER) is refused the project's own settings, and keeps what is
+// their own there; the page is told, to lock them with the reason.
+// B21: such a member is not handed every account name by the People view.
+// B20: a role removed is taken off every account that held it, so a role
+// made later under its name gives them nothing.
+{
+  const u2 = await pageFor(CAST.find(c => c.name === 'w.user2'));
+  const own = await api(u2, '/api/prefs', { project: 'alpha', capture_days: 9 });
+  ok(own.status === 403, `a member without Project settings is refused a project setting (${own.status} ${own.error || ''})`);
+  const mine = await api(u2, '/api/prefs', { project: 'alpha', reply: 'short' });
+  ok(mine.status === 200, `...and still sets what is their own on it (${mine.status} ${mine.error || ''})`);
+  const row = await u2.evaluate(() => (state.projects || []).find(p => p.name === 'alpha')?.may_settings);
+  ok(row === false, `...and the page is told the project's settings are not theirs to change (${row})`);
+  const view = await api(u2, '/api/members', { action: 'view', project: 'alpha' });
+  ok(view.status === 200 && Array.isArray(view.accounts) && view.accounts.length === 0 && view.may_invite === false,
+     `a member who may not invite is not handed every account's name (${(view.accounts || []).length} named)`);
+  await u2.close();
+  const owner = await pageFor(CAST[0]);
+  const made = await api(owner, '/api/roles', { action: 'set', name: 'walk-g', scope: 'global', perms: { jobs: 'read' } });
+  await api(owner, '/api/roles', { action: 'assign', name: 'w.user3', roles: ['walk-g'] });
+  const held = () => usersPy('d = u.load(); print(json.dumps(d["users"]["w.user3"].get("roles") or []))');
+  const before = JSON.parse(held());
+  const gone = await api(owner, '/api/roles', { action: 'remove', name: 'walk-g' });
+  const after = JSON.parse(held());
+  ok(made.status === 200 && before.includes('walk-g') && gone.status === 200 && !after.includes('walk-g') && gone.held_by === 1,
+     `a role removed is taken off the account that held it (${before.join()} then ${after.join() || 'none'}, ${gone.held_by} held it)`);
+  await owner.close();
+}
+
 await done(browser);

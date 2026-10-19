@@ -916,6 +916,11 @@ def configure_dialog(**parts):
     globals().update(parts)
 
 
+# The dialog's fields that are the asking account's own on the project, not
+# the project's: anybody on it sets these for themselves.
+YOURS = ("model", "effort", "git_name", "git_email", "reply", "asks")
+
+
 def dialog_save(name, req, uid):
     """A project's settings dialog saved, once server.py has let this person
     at the project, its node and its container dial: the project's own
@@ -955,7 +960,7 @@ def dialog_save(name, req, uid):
     # here carry. Same dialog, same request, different store, because two
     # people on one project are two authors on two models and neither
     # should be able to change the other's (17 Sep).
-    mine = {k: req[k] for k in ("model", "effort", "git_name", "git_email", "reply", "asks") if k in req}
+    mine = {k: req[k] for k in YOURS if k in req}
     if mine and not r.get("error"):
         r = dict(r) | {"yours": set_for_user(uid, name, mine)}
     # The restart is asked for by the dialog, which is where the

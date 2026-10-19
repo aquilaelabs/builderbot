@@ -1355,3 +1355,31 @@ def assign(me, name, global_roles=None, project_roles=None):
         _save(d)
         out = {k: u.get(k) for k in ("role", "roles", "projects", "project_roles")}
     return {"ok": True, "name": name, **out}, 200
+
+
+def forget_role(name):
+    """A removed role taken off every account that held it, everywhere and
+    on each project (B20): left on them, a role made later under the same
+    name would hand them its access without anybody giving it. How many
+    accounts held it."""
+    n = 0
+    with _lock:
+        d = load()
+        for u in d["users"].values():
+            held = False
+            if name in (u.get("roles") or []):
+                u["roles"] = [r for r in u["roles"] if r != name]
+                held = True
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            for proj in list(pr):
+                if name in (pr[proj] or []):
+                    pr[proj] = [r for r in pr[proj] if r != name]
+                    held = True
+                    if not pr[proj]:
+                        pr.pop(proj)
+            if held:
+                u["project_roles"] = pr
+                n += 1
+        if n:
+            _save(d)
+    return n

@@ -192,10 +192,11 @@ def view(me, project):
     rows = [r for r in every if r.get("kind") != "owner"]
     offer = next((r for r in every if r.get("kind") == "owner"), None)
     manage = may_manage(me, project)
+    invite = manage or (users.is_admin(me) and not invite_only(project))
     on = set(members(project))
     return {"project": project, "owner": _name_of(o), "invite_only": invite_only(project),
             "may_manage": manage,
-            "may_invite": manage or (users.is_admin(me) and not invite_only(project)),
+            "may_invite": invite,
             "members": sorted(on),
             # Ownership offered and not yet accepted (the project's owner
             # hands it on; BuilderBot's owner moves it at once).
@@ -204,8 +205,10 @@ def view(me, project):
             "invites": [
                 {"id": r["id"], "name": _name_of(r["uid"]), "by": _name_of(r.get("by") or ""),
                  "at": r.get("at", 0), "role": r.get("role") or ""} for r in rows],
-            # Who could be invited or made owner: every account, named.
-            "accounts": sorted(u.get("name") or "" for u in users.all_users()),
+            # Who could be invited or made owner: every account, named, and
+            # only to somebody who may invite or manage (B21); a member has
+            # no use for the controller's whole list of accounts.
+            "accounts": sorted(u.get("name") or "" for u in users.all_users()) if invite else [],
             # The roles an invitation may offer: those on a project (R155).
             "roles": sorted(n for n, r in users.roles.all_roles().items()
                             if r.get("scope") == "projects" and not n.endswith("_owner"))}

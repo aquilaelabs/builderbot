@@ -1147,6 +1147,9 @@ def _project_columns(who, facts):
                     "git_ready": _row_git_ready(base_git, mine_prefs.get(d.name))
                                  if users.uid_of(who) else True,
                     "push_how": projects.push_how(d.name),
+                    # Whether its settings are this account's to change (B19):
+                    # the page locks them, with the reason, where not.
+                    "may_settings": not users.may(who, "settings", d.name) if who else True,
                     # Whether this project has a compose file, which is the
                     # same question as "could its tests run in a container of
                     # its own": the settings dialog offers that choice only
@@ -6174,6 +6177,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self._readonly(name):
             return None
+        # The project's own settings are the Project settings area's to
+        # write (B19); what is the asker's own here (prefs.YOURS) is anybody's
+        # on the project. Projects Write alone is not enough.
+        if set(req) - set(prefs.YOURS) - {"project", "restart"} and self._refused("settings", name):
+            return None
         # Everything else in this dialog is the project's own; the node is
         # not, because a node is shared and moving a project onto one
         # reaches every other project there. Only a CHANGE is asked about
@@ -7902,7 +7910,11 @@ class Handler(BaseHTTPRequestHandler):
                                                    only=req.get("only") if isinstance(req.get("only"), dict) else {}))
             return self._result(roles.set_role(field(req, "name"), grants=req.get("grants"), note=field(req, "note")))
         if act == "remove":
-            return self._result(roles.remove(field(req, "name")))
+            r = roles.remove(field(req, "name"))
+            if r.get("ok"):
+                # ...and off every account that held it (B20).
+                r["held_by"] = users.forget_role(r["name"])
+            return self._result(r)
         return self._json({"error": "unknown action"}, 400)
 
     def _toolchains(self, req):
