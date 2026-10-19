@@ -194,6 +194,39 @@ async function loadDocker(){
   loadDockerStats(got);
 }
 
+// ---- the jump bar's containers ----
+// Every node's containers, not only the node this page last showed: what
+// each node last answered (dockerSeen), with the nodes not yet asked read
+// once the bar is focused, at most once a minute. A refusal answers 200
+// with its reason, so a node this account may not read adds nothing.
+let dmJumpAsked = 0;
+function dmJumpLoad(){
+  if (!nodesList || Date.now() - dmJumpAsked < 60000) return Promise.resolve();
+  dmJumpAsked = Date.now();
+  const ids = nodesList.filter(n => n.kind !== "local" && n.state !== "retired" && !dockerSeen[n.id]).map(n => n.id);
+  return Promise.all(ids.map(id => fetch("/api/docker?node=" + encodeURIComponent(id)).then(r => r.json())
+    .then(got => { const k = got.node || id; if (!dockerSeen[k]) dockerSeen[k] = got; }).catch(() => {})));
+}
+// [{name, node, where}]: each container with the node it is on, by name.
+function dmJumpRows(){
+  const rows = [];
+  for (const [nid, got] of Object.entries(dockerSeen)){
+    if (!got || got.error) continue;
+    const where = (nodesList || []).find(n => n.id === nid)?.name || got.node_name || nid || "its node";
+    for (const d of got.instances || []) rows.push({name: d.name || d.instance, node: nid, where});
+    for (const c of got.containers || []) rows.push({name: c.name || c.id, node: nid, where});
+  }
+  return rows.filter(r => r.name);
+}
+// Picked there: the page on that node, its search narrowed to the one.
+function dmJumpTo(nid, name){
+  if (nid && nid !== dockerNode){ dockerNode = nid; dockerList = dockerSeen[nid] || null; }
+  dmSearch = name; dmChip = "";
+  railGo("containers", "docker");
+  dockerNodeKeep();
+  dockerRev++; drawPanes();
+}
+
 // What each container is using now (R216): asked once the list has landed
 // and never inside it, since a sample of the daemon takes a second or two
 // and the list must not wait on it. Kept by node; a row draws its strip
