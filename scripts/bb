@@ -4885,8 +4885,14 @@ cmd_tool() {
             printf '  bb tool docs read FILE... | pages FILE [--pages N-M] [--dpi N] [--out DIR]\n'
             printf '  bb tool office convert FILE... [--to pdf|docx|xlsx|pptx|odt|txt] [--out DIR]\n'
             printf '  bb tool sound make PRESET [--seed N] | tone HZ [--ms N] [--to HZ] | look FILE | presets\n'
-            printf '  bb tool sound say "TEXT" | hear FILE   (the audio toolchain)\n' ;;
-        *) die "no tool called ${tool}: bb tool lists them" ;;
+            printf '  bb tool sound say "TEXT" | hear FILE   (the audio toolchain)\n'
+            # ...and the tool packs a person added (R77), each by its verbs.
+            python3 "$BB_LIB/toolpack-run.py" "" "" --list ;;
+        # Any other name is a tool pack's, or nothing: toolpack-run.py reads
+        # its verb from the catalog and runs it, no shell between.
+        *) local proj; proj="$(project_here 2>/dev/null || true)"
+           exec python3 "$BB_LIB/toolpack-run.py" "$(sdk_find "$tool" 2>/dev/null || true)" \
+               "${proj:+${WORKSPACE}/${proj}}" "$tool" "$@" ;;
     esac
 }
 

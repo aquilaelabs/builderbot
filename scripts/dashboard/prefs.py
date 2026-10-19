@@ -261,6 +261,12 @@ def _clean(rec):
             # to them refused. Named here by the operator, never by a
             # session; a project never reads itself.
             "reads": _reads_of(rec),
+            # Which toolchains its sessions may use (R77): the shipped ones
+            # switched off here, and the tool packs switched on. Shipped
+            # toolchains are on and packs off until somebody says otherwise,
+            # so adding a pack hands it to no project by itself.
+            "tc_off": _toolchain_names(rec, "tc_off"),
+            "packs_on": _toolchain_names(rec, "packs_on"),
             # The places on its node a session here is shown besides its own
             # project: a share it works with. A session's view is built from
             # what it is given (bb-session, B378), so a share mounted on the
@@ -443,6 +449,18 @@ def all_projects(workspace=None):
     return {k: _clean(v) for k, v in d.items() if isinstance(k, str)}
 
 
+def _toolchain_names(rec, key):
+    """A list of toolchain names as stored: a catalog name's characters
+    (android:<package> included), at most 64, in the order given."""
+    got = rec.get(key) if isinstance(rec.get(key), list) else []
+    out = []
+    for n in got:
+        n = str(n or "").strip()[:80]
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9:;._-]*", n) and n not in out:
+            out.append(n)
+    return out[:64]
+
+
 def _reads_of(rec):
     """The projects this one reads, as stored: names that could be a
     project directory, at most 16, in the order given."""
@@ -618,7 +636,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
               snapshot_days=None,
               release=None, log_from=None, diag=None, build_local=None, reaches=None, hosts=None,
-              pc=None):
+              pc=None, tc_off=None, packs_on=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -639,6 +657,10 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             cur["node"] = str(node)[:40]
             if cur["node"] and cur["node"] not in cur["nodes"]:
                 cur["nodes"] = [cur["node"]] + cur["nodes"]
+        for key, val in (("tc_off", tc_off), ("packs_on", packs_on)):
+            if val is not None:
+                got = val if isinstance(val, list) else str(val).split(",")
+                cur[key] = _toolchain_names({key: [str(x).strip() for x in got]}, key)
         if reads is not None:
             got = reads if isinstance(reads, list) else str(reads).split(",")
             cur["reads"] = [r for r in _reads_of({"reads": got}) if r != project]
@@ -920,6 +942,7 @@ def dialog_save(name, req, uid):
                   release=req.get("release"), pc=req.get("pc"),
                   color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
                   reaches=req.get("reaches"), hosts=req.get("hosts"),
+                  tc_off=req.get("tc_off"), packs_on=req.get("packs_on"),
                   log_from=req.get("log_from"), diag=req.get("diag") if isinstance(req.get("diag"), bool) else None,
                   build_local=req.get("build_local") if isinstance(req.get("build_local"), bool) else None,
                   workspace=WORKSPACE)

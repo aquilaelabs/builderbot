@@ -111,6 +111,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/roles` | prefix | `_roles` | POST /api/roles: assign (an account's Everywhere roles and its roles on each project, as far as the asker may, R152 and R155), set (make or change a role: its scope, its areas and note) or remove one; owner and admin are | refused: admin |
 | POST | `/api/users` | prefix | `_users` | The Users page's verbs. | refused: admin |
 | POST | `/api/toolchains` | prefix | `_toolchains` | Queue installs or removals of the toolchains the Tools card offers: an administrator's, and toolchains.verb says what each action does with which names. |  |
+| POST | `/api/toolpacks` | exact | `_toolpacks` | POST /api/toolpacks: look at a tool pack by its repository's address, add it at the commit that was shown, or remove it (R77). | refused: admin |
 | POST | `/api/emulator` | prefix | `_emulator` | Add system images to a node, or remove one: a job there, against its toolchain store. | refused: toolchains-write |
 | POST | `/api/logs` | prefix | `_logs` | The log policy, and the two things that can be done to the pile: logs.verb. | refused: controller |
 | POST | `/api/idle` | prefix | `_idle` | The idle rule for Claude sessions (idle.py): minutes, 0 for never. | refused: controller |

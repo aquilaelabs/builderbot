@@ -73,8 +73,9 @@ def configure(*, run, write_json, state, project_nodes=None, workspace=None):
 TOOLCHAINS_FILE = HERE.parent.parent / "config" / "toolchains.json"
 
 
-def load_toolchains():
-    """The toolchain catalog, or an empty one.
+def load_toolchains(packs=()):
+    """The toolchain catalog, or an empty one, with the tool packs a person
+    added (R77, toolpacks.recipes()) among the rows under names of their own.
 
     Empty rather than an exception: this runs at import, and a missing or
     malformed file must leave a dashboard that says the tab is empty, not one
@@ -85,6 +86,9 @@ def load_toolchains():
         rows = doc["toolchains"]
     except (OSError, ValueError, KeyError, TypeError):
         return []
+    if isinstance(rows, list) and packs:
+        names = {r.get("name") for r in rows if isinstance(r, dict)}
+        rows = rows + [r for r in packs if isinstance(r, dict) and r.get("name") not in names]
     out = []
     for r in rows if isinstance(rows, list) else []:
         if not isinstance(r, dict):
@@ -148,6 +152,14 @@ def load_toolchains():
         if isinstance(sysd, dict):
             row["system"] = {str(k)[:12]: [str(x)[:80] for x in (v or [])][:64]
                              for k, v in sysd.items() if isinstance(v, list)}
+        # Added by a person rather than shipped (R77): who added it, from
+        # where and at which commit, and the verbs bb tool gives it, for the
+        # row to say so and a project's Toolchains group to offer it.
+        pk = r.get("pack")
+        if isinstance(pk, dict):
+            row["pack"] = {"url": str(pk.get("url") or ""), "commit": str(pk.get("commit") or "")[:40],
+                           "by": str(pk.get("by") or ""), "at": int(pk.get("at") or 0),
+                           "verbs": sorted(str(v) for v in (r.get("verbs") or {}))[:40]}
         out.append(row)
     # Sorted here rather than trusted from the file, so a toolchain added at the
     # end of the catalog still lands where somebody would look for it. Leading
@@ -163,8 +175,22 @@ TOOLCHAINS = load_toolchains()
 # recipe (a probe path, a version command, a new toolchain) makes the answer
 # about something that no longer exists. Digested rather than compared whole
 # so the key stays a line rather than the file.
-CATALOG_DIGEST = hashlib.sha256(
-    json.dumps(TOOLCHAINS, sort_keys=True, default=str).encode()).hexdigest()[:16]
+def _digest():
+    return hashlib.sha256(json.dumps(TOOLCHAINS, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
+CATALOG_DIGEST = _digest()
+
+# toolpacks.recipes, handed over by the server: the packs' catalog rows.
+packs_rows = None
+
+
+def refresh_packs():
+    """The catalog again, after a pack was added, updated or removed: the
+    same list object every reader holds, rebuilt in place, and its digest,
+    so a remembered check of the old catalog is not taken for the new one."""
+    TOOLCHAINS[:] = load_toolchains(packs_rows() if packs_rows else ())
+    globals()["CATALOG_DIGEST"] = _digest()
 
 # What the last check found, kept on the state volume. Held only in memory
 # until now, which meant a dashboard restart (or a container update) wiped
@@ -468,6 +494,8 @@ def payload():
                       # per recipe, so a row says what installing it adds to
                       # a session and the suite holds two from claiming one.
                       "tool": p.get("tool") or "",
+                      # A tool pack a person added (R77): who, from where, its verbs.
+                      "pack": p.get("pack") or None,
                       # Whether a newer version can be fetched in place, or
                       # whether getting one means removing this first.
                       "updatable": bool(p.get("updatable")),
@@ -1197,6 +1225,8 @@ def payload_for_node(nid):
                       # per recipe, so a row says what installing it adds to
                       # a session and the suite holds two from claiming one.
                       "tool": p.get("tool") or "",
+                      # A tool pack a person added (R77): who, from where, its verbs.
+                      "pack": p.get("pack") or None,
                       # Whether a newer version can be fetched in place, or
                       # whether getting one means removing this first.
                       "updatable": bool(p.get("updatable")),

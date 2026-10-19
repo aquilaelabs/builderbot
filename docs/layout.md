@@ -124,6 +124,7 @@ scripts/
     tunnel.py                    the home tunnel the controller runs itself (R176): cloudflared as its child from the settings, and the hostname's record and rules through Cloudflare's API
     statefile.py                 writing a state file, and holding it while you read-modify-write one
     toolchains.py                everything behind the Toolchains page: catalog, sizes, the job worker
+    toolpacks.py                 the tool packs a person adds (R77): a repository's bbtool.json, pinned to a commit, as catalog rows
     emulator.py                  everything behind the Emulator page: a node's Android system images
     enrollscript.py              Enroll node as one script: the answers, the token and a WireGuard tunnel inside the provisioner
     memory.py                    everything behind the memory book: what Claude remembers per project

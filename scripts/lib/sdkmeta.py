@@ -77,11 +77,40 @@ def _catalog():
         die(f"cannot read {CATALOG}: {e}")
 
 
+def packs_at(path):
+    """The tool packs a person added (R77), the rows of the toolpacks.json
+    beside the catalog at `path`: the controller writes it into the bundle,
+    so a node installs a pack by name exactly as it does a shipped toolchain.
+    [] when none were added."""
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(path)), "toolpacks.json")) as f:
+            rows = json.load(f).get("toolchains") or []
+    except (OSError, ValueError, AttributeError):
+        return []
+    return [p for p in rows if isinstance(p, dict) and p.get("name")]
+
+
+def catalog_at(path):
+    """Every toolchain the catalog at `path` lists, the packs beside it
+    after the shipped ones under names of their own; [] when it cannot be
+    read. What bb's readers in sdk.sh take, so none of them reads the file
+    alone and misses the packs."""
+    try:
+        with open(path) as f:
+            shipped = json.load(f)["toolchains"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    names = {p.get("name") for p in shipped if isinstance(p, dict)}
+    return shipped + [p for p in packs_at(path) if p["name"] not in names]
+
+
 def catalog():
     try:
-        return _catalog()["toolchains"]
+        shipped = _catalog()["toolchains"]
     except KeyError as e:
         die(f"cannot read {CATALOG}: {e}")
+    names = {p.get("name") for p in shipped}
+    return shipped + [p for p in packs_at(CATALOG) if p["name"] not in names]
 
 
 def toolchain(name):

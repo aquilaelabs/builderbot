@@ -3,7 +3,6 @@ import base64
 import contextlib
 import errno
 import glob
-import json
 import os
 import re
 import shutil
@@ -323,12 +322,11 @@ class WorkMixin:
         # what an update or a removal would pull out from under whatever is
         # running it (the operator, 6 Oct).
         try:
-            with open(os.path.join(into, "config", "toolchains.json"), encoding="utf-8") as f:
-                cat = json.load(f)
+            cat = read_catalog(into)
             cat = cat.get("toolchains", cat) if isinstance(cat, dict) else cat
             cat = {e.get("name"): e for e in (cat if isinstance(cat, list) else cat.values())
                    if isinstance(e, dict)}
-        except (OSError, ValueError, AttributeError):
+        except (AttributeError, TypeError):
             cat = {}
         for name in names:
             # Which one it is on, for the tab's "Installing …". Only compose

@@ -293,5 +293,7 @@ def recipes():
 
 
 def catalog_json():
-    """What the bundle carries beside config/toolchains.json, for the nodes."""
-    return json.dumps({"toolchains": recipes()}, indent=1, sort_keys=True)
+    """What the bundle carries beside config/toolchains.json, for the nodes:
+    "" when no pack was added, so the bundle carries no file for none."""
+    rows = recipes()
+    return json.dumps({"toolchains": rows}, indent=1, sort_keys=True) if rows else ""
