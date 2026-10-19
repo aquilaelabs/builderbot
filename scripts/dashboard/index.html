@@ -1860,6 +1860,9 @@ select:focus{outline-offset:-2px}
 /* File access (R151): one row per account, its name and its access. */
 #rnFtp .logdays{flex-wrap:nowrap}
 #rnFtp .logdays input[type=number]{width:7em;flex:0 0 auto;text-align:center}
+/* A number and its unit on one line, every such row in the settings: the
+   notebook's field width (100%) put "days" on a line under its box. */
+:is(.nb,.modal) .logdays>input[type=number]{width:7em;flex:0 0 auto;text-align:center}
 .rnftppeople{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 /* Also reaches: an address per row, its nodes ticked beside it, and its bin. */
 #rnReachRows{display:flex;flex-direction:column;gap:6px}
@@ -2367,6 +2370,12 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* A group's steps sit under its title, indented and hairlined, so the shape
    of "these go in this order" is visible without reading them. */
 .roadmap.step{padding:5px 0 5px 26px;border-top:1px dashed var(--btn)}
+/* A step's send button lines up under its item's, which sits in the
+   summary's inset, rather than on the card's edge. */
+.fx details.grp .roadmap.step{padding-right:var(--row-x)}
+/* What is under a row's words (done Oct 19, in 0.5.0) is a row's sub line,
+   in the data voice, not the summary's bold body text. */
+.roadmap .sub{color:var(--dim);font:var(--f-data);overflow-wrap:anywhere}
 /* The log. One line per change, newest first, and deliberately plain: it is
    read when something is not where it was left, which is a moment for facts
    and not for decoration. */
@@ -2686,6 +2695,8 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .dslayers .dslayer .t b{font-weight:600}
 .dslayers .dslayer .t span{color:var(--dim)}
 .dslayers .dslayer button.ic{flex:0 0 auto}
+/* An empty list's line sits where a layer's would, at a layer's inset. */
+.dslayers>.hint{display:flex;align-items:center;min-height:var(--tap);padding:0 10px;margin:0}
 /* The theme the section's pulldown shows: fields like any
    tab's, not a box of their own (the operator, 28 Sep). */
 .dstheme{display:flex;flex-direction:column;gap:var(--field-gap)}
@@ -3504,6 +3515,8 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    A row the band leaves out wears .off, so paging counts only what is shown. */
 .lfilter{display:flex;align-items:center;gap:var(--field-gap);flex-wrap:wrap}
 .lfilter .chips{flex:1 1 auto;min-width:0}
+/* With no chips to draw (one kind of row), the search starts the band. */
+.lfilter .chips:empty{display:none}
 .lfilter input[type=search]{flex:0 1 16rem;min-width:10rem}
 /* A band's order (Sort on Bugs) keeps its label beside its menu. */
 .lfilter .lsort{display:flex;align-items:center;gap:6px;flex:0 0 auto}
