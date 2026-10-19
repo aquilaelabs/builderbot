@@ -2047,6 +2047,13 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   ok(await page.$eval(`${ROW} .ndconfstate`, e => /1 change to apply.*\/mnt\/new/.test(e.textContent)),
      `...and says how many changes are waiting and what they are (${
        await page.$eval(`${ROW} .ndconfstate`, e => e.textContent.trim().slice(0, 90))})`);
+  // ...under Storage alone: Network's line beside its dead Apply says nothing of a mount (B23).
+  {
+    const netSaid = await page.$eval(`${ROW} [data-napply="network"]`,
+      b => b.closest('.actbar')?.querySelector('.ndconfstate')?.textContent.trim() || '');
+    ok(!/to apply|\/mnt\/new/.test(netSaid) && /matches/.test(netSaid),
+       `Network's state line keeps to the network while a storage change waits (${netSaid.slice(0, 90)})`);
+  }
 
   // ---- locked to the console: the dashboard applies nothing ------------------
   // The lock is the operator saying this machine's fstab, address and root

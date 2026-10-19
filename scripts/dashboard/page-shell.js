@@ -130,8 +130,10 @@ function railGo(key, tool){
 const NODE_PICKED = {nodes: () => nodesPick, storage: () => storageNode, nginx: () => nginxNode,
   toolchains: () => tcNode === "local" ? "" : tcNode, emulator: () => emuNode, phone: () => phNode,
   runner: () => runnerNode, docker: () => dockerNode};
+// Toolchains' "local" (the controller's own store, for a shell and the
+// suite) is no node, so an address naming it opens on the node tcPick picks.
 const NODE_SET = {nodes: v => { nodesPick = v; }, storage: v => { storageNode = v; }, nginx: v => { nginxNode = v; },
-  toolchains: v => { tcNode = v; }, emulator: v => { emuNode = v; }, phone: v => { phNode = v; },
+  toolchains: v => { tcNode = v === "local" ? "" : v; }, emulator: v => { emuNode = v; }, phone: v => { phNode = v; },
   runner: v => { runnerNode = v; }, docker: v => { dockerNode = v; }};
 
 // A move inside a page (a notebook view, a wiki page) is a history entry,

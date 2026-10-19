@@ -38,6 +38,17 @@ await page.evaluate(() => openToolchains());
 await page.waitForSelector('.doc .tctab #tcNodeSel', { timeout: 20000 });
 ok(await page.$$eval('.doc #tcNodeSel option', os => !os.some(o => o.value === 'local')),
    'the Tools tab opens on a node and never offers this container');
+// ...nor does an address that names it: #/build/toolchains/local opens on a
+// node, its store under its own name (B25).
+{
+  await page.evaluate(() => { openRoute('#/build/toolchains/local'); });
+  await page.waitForFunction(() => tcNode && tcNode !== 'local' && toolchains?.name
+    && document.querySelector('.doc.on #tcNodeSel')?.value === tcNode, null, { timeout: 20000 });
+  ok(await page.waitForFunction(() => location.hash === '#/build/toolchains/' + encodeURIComponent(tcNode),
+       null, { timeout: 10000 }).then(() => true, () => false),
+     `an address naming "local" shows the picked node's store, and the address names that node (${
+       await page.evaluate(() => location.hash)})`);
+}
 await page.evaluate(() => { nodesList = []; tcNode = ''; toolchains = null; loadToolchains(); });
 await page.waitForSelector('.doc .tctab .tcnone', { timeout: 20000 });
 ok(await page.evaluate(() => !document.querySelector('.doc .tc') && !document.querySelector('#tcNodeSel')),
@@ -486,12 +497,14 @@ const checking = await page.evaluate(() => {
   toolchains.job.action = 'check'; toolchains.job.running = true;
   tcRev++; drawPanes();
   const t = document.querySelector('.doc [data-tc="check"]').textContent;
+  const line = document.querySelector('.doc .tcact .state')?.textContent || '';
   [toolchains.job.action, toolchains.job.running] = was;
   tcRev++; drawPanes(); clearTimeout(tcPoll);
-  return t;
+  return { t, line };
 });
-ok(/^Checking for updates/.test(checking),
-   `...and the check button says what it is doing (${checking.trim()})`);
+ok(/^Checking for updates/.test(checking.t) && !/Checking/.test(checking.line),
+   `...and the check button says what it is doing, once: the status line keeps to the store (B31) (${
+     checking.t.trim()} | ${checking.line.trim().slice(0, 60)})`);
 await page.evaluate(() => { toolchains.job.running = false; tcRev++; drawPanes(); });
 ok(await page.$$eval('.doc [data-rm]', bs => bs.every(b => !b.disabled))
    && await page.$$eval('.doc .tc input:not(:disabled)', is => is.length > 0),
@@ -877,6 +890,31 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   });
   ok(/Remove takes off the store what no node uses: n_0ldd0ne1 \(gone's, a node since retired/.test(seen.clean) && seen.rm,
      `a retired node's directory on the store is offered with Remove (R196) (${seen.clean.slice(0, 60)})`);
+  // The updates-due tile counts This machine's rows as Home and the bell do (B24).
+  const due = await page.evaluate(() => {
+    const was = { tcNode, toolchains };
+    toolchains = { node: 'n_shared', name: 'sandbox', live: true, root: '/mnt/store/x', checked: 1,
+                   items: [{ name: 'jdk', label: 'JDK', installed: '17', latest: '21', state: 'update', terms: [] },
+                           { name: 'android:emulator', label: 'Android Emulator', installed: true, version: 'present',
+                             latest: '', state: 'current', terms: [] },
+                           { name: 'gradle', label: 'Gradle', installed: '9', latest: '9', state: 'current', terms: [] }],
+                   machine: [{ name: 'claude-code', label: 'Claude Code', here: true, installed: '2.1.302',
+                               latest: '2.1.303', state: 'update' }],
+                   job: { running: false } };
+    tcNode = 'n_shared'; tcRev++; drawPanes();
+    const tile = [...document.querySelectorAll('.tctab .tiles .tile')]
+      .find(t => t.querySelector('.tl')?.textContent.trim() === 'updates due');
+    const v = tile?.querySelector('.tv')?.textContent.trim();
+    const emu = [...document.querySelectorAll('.tctab label.tc')].find(r => /Android Emulator/.test(r.textContent));
+    const emuSaid = emu?.querySelector('.where')?.textContent.trim() || '';
+    const hint = document.querySelector('.tctab .tcdrv .upd')?.innerHTML || '';
+    tcNode = was.tcNode; toolchains = was.toolchains; tcRev++; drawPanes();
+    return { v, emuSaid, hint };
+  });
+  ok(due.v === '2', `the updates-due tile counts Claude Code under This machine beside the store's rows (${due.v})`);
+  ok(due.emuSaid === 'installed', `a tool the census calls "present" reads installed (B31) (${due.emuSaid})`);
+  ok(/press Install<span class="lng"> selected<\/span>/.test(due.hint),
+     `a row's hint names Install as the bar's button says it at each width (B31) (${due.hint.slice(-80)})`);
 }
 
 // ---- the versions a project pins are rows on its node's tab (B712) --------

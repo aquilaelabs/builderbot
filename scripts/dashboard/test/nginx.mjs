@@ -293,6 +293,21 @@ ok(/image: nginx:1\.29-alpine@sha256:b{64}/.test(pinned.compose || '')
    && !(await page.$(`${sect} [data-ngupdate]`)),
    'Update pins the digest into the compose file and rebuilds, and the node is not behind any more');
 ok((await api('/api/nginx', { action: 'update', node: sandbox.node })).same === true, 'a second Update has nothing to move to and says so');
+// The same tag built again upstream is a newer build, not the tag named twice (B27).
+{
+  const tags = d => writeFileSync(`${DIR}/nginx-tags.json`, JSON.stringify({ results: [
+    { name: '1.29-alpine', digest: 'sha256:' + d.repeat(64) }] }));
+  tags('f');
+  await page.click(`${sect} [data-ngcheck]`);
+  await page.waitForSelector(`${sect} [data-ngupdate]`, { timeout: 10000 });
+  const said = await page.$eval(sect, s => ({ btn: s.querySelector('[data-ngupdate]').textContent.trim(),
+    hint: s.querySelector('.ngimgbar').previousElementSibling.textContent }));
+  ok(said.btn === 'Update to the newer build' && /a newer build of nginx:1\.29-alpine is out/.test(said.hint),
+     `a rebuilt tag is said as a newer build of it (${said.btn} | ${said.hint.trim().slice(0, 60)})`);
+  tags('b');
+  await page.click(`${sect} [data-ngcheck]`);
+  await page.waitForFunction(s => !document.querySelector(s + ' [data-ngupdate]'), sect, { timeout: 10000 });
+}
 // Its rebuild is a job of the instance, and a compose verb is refused while
 // one runs (_submit): the Save and the Remove below wait for quiet.
 const quiet = async () => until(async () => ((await api('/api/v1/jobs?active=1')).jobs || []).some(j => j.project === 'nginx-sandbox') ? null : true, 90000, 500);

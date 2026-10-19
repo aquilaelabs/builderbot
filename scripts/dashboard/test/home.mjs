@@ -43,6 +43,21 @@ ok(await page.evaluate(() => tabOf(panes[0])?.kind === 'home' && location.hash =
      `...which carries the last ten jobs and the ones failed today (${h.jobs.last.length} rows, ${h.jobs.failed_today} failed)`);
 }
 
+// ---- updates due counts each thing behind once (B28) ------------------------
+{
+  const n = await page.evaluate(() => {
+    const was = state.attention;
+    state.attention = [
+      {kind: 'toolchain', tools: [{name: 'a'}, {name: 'b'}]},
+      {kind: 'image', containers: [{name: 'c1'}, {name: 'c2'}, {name: 'c3'}]},
+      {kind: 'nginx'}, {kind: 'agent'}, {kind: 'relocate'}];
+    const got = homeUpdates();
+    state.attention = was;
+    return got;
+  });
+  ok(n === 7, `updates due is two toolchains, three containers, nginx and an agent, and no move (${n})`);
+}
+
 // ---- a job that fails shows on Home by itself, through the jobs token ----------
 {
   const q = await api('/api/v1/nodes', { action: 'exec', id: 'local', argv: ['sh', '-c', 'echo from home; exit 3'] });

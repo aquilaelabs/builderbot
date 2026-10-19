@@ -123,17 +123,19 @@ def _filesystems():
 
 
 def fs_of(path, filesystems):
-    """The mount point of the listed filesystem a path is on: the longest
-    one that is a prefix of its real path."""
+    """The mount point of the listed filesystem a path is on: the one whose
+    mount point, or one of the places it is also mounted, is the longest
+    prefix of its real path."""
     try:
         real = os.path.realpath(path)
     except OSError:
         real = path
-    best = ""
+    best, longest = "", -1
     for f in filesystems:
-        p = f["path"].rstrip("/") or "/"
-        if (real == p or real.startswith(p.rstrip("/") + "/")) and len(p) > len(best):
-            best = p
+        for at in [f["path"]] + list(f.get("also") or []):
+            p = at.rstrip("/") or "/"
+            if (real == p or real.startswith(p.rstrip("/") + "/")) and len(p) > longest:
+                best, longest = f["path"].rstrip("/") or "/", len(p)
     return best
 
 

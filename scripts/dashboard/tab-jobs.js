@@ -127,9 +127,12 @@ function jobTook(j){
 }
 // Who asked: every job has an asker, so it is a column and not a line
 // under each row; an account is named without its "user:" prefix.
+// A job BuilderBot asked for itself is "system:WHAT", said in words.
+const JOB_BY_SYSTEM = {"auto-update": "automatic update"};
 function jobBy(j){
   const by = j.requested_by || "";
-  return esc(by.startsWith("user:") ? by.slice(5) : by);
+  return esc(by.startsWith("user:") ? by.slice(5)
+    : by.startsWith("system:") ? JOB_BY_SYSTEM[by.slice(7)] || by.slice(7).replace(/-/g, " ") : by);
 }
 const JOB_COLS = [{label: "Job"}, {label: "State", w: "7.5rem"}, {label: "Kind", w: "7rem"},
                   {label: "Node", w: "minmax(0,.7fr)"}, {label: "By", w: "minmax(0,.5fr)"}, {label: "When", w: "7.5rem"},

@@ -22,6 +22,9 @@
 "use strict";
 
 let toolchains = null, tcRev = 0, tcPoll = null;
+// The bar's main action as a row's hint names it: the words the button
+// wears at the width the page is at.
+const tcInstallSaid = () => barSaid("Install selected", "Install");
 const tcTicked = new Set();     // survives a redraw; a poll must not untick
 const tcOpen = new Set();       // the rows opened on their details (R218 step 22)
 
@@ -112,14 +115,12 @@ function tcPick(){
 // through the batch it is. It was a green line of its own between the
 // buttons, naming the recipe's id (the operator, 6 Oct: "Installing ndk...").
 const tcWorking = (job, items) => {
-  const verb = {install: "Installing", remove: "Removing", update: "Updating",
-                check: "Checking"}[job.action] || "Working on";
+  const verb = {install: "Installing", remove: "Removing", update: "Updating"}[job.action] || "Working on";
   const row = (items || []).find(i => i.name === job.current);
-  const what = job.action === "check" ? "for updates"
-    : row?.label || (job.current || "").replace(/^android:/, "");
+  const what = row?.label || (job.current || "").replace(/^android:/, "");
   const done = (job.done || []).length + (job.failed || []).length + (job.passed || []).length,
         left = (job.queue || []).length;
-  const of = job.action !== "check" && done + left > 0 ? `, ${done + 1} of ${done + left + 1}` : "";
+  const of = done + left > 0 ? `, ${done + 1} of ${done + left + 1}` : "";
   return `${esc(verb)} ${esc(what)}${of}<span class="dots"></span>`;
 };
 
@@ -209,8 +210,10 @@ function tcRow(p, busy, job, managed){
   // been installed: what Install would fetch. Only the middle one is yellow,
   // because only it is news; a version on an absent row is just a fact about
   // the shelf, and coloring six of them amber would be crying wolf.
-  const ver = p.version && p.version !== "-"
-    ? ` <span class="pill" title="installed">${esc(p.version)}</span>` : "";
+  // "present" is a census's word for a tool that answered without a
+  // version (the emulator): the cell says "installed" for it instead.
+  const ver = p.version && p.version !== "-" && p.version !== "present"
+    ?` <span class="pill" title="installed">${esc(p.version)}</span>` : "";
   // Only on a row that has nothing installed, where it is the one version
   // worth showing: what Install would fetch. An installed row that is behind
   // says so in words underneath: an amber arrow pointing at a number was one
@@ -222,7 +225,7 @@ function tcRow(p, busy, job, managed){
   // is locked as installed, and "tick it" was an instruction it could not
   // follow (the operator, 6 Oct, on JDK 21).
   const upd = p.state === "update"
-    ? `<span class="sub upd">update available: tick it and press Install selected${
+    ? `<span class="sub upd">update available: tick it and press ${tcInstallSaid()}${
         p.updatable ? "" : "; it is removed and installed again"}</span>`
     : "";
   // What went wrong, on the row it went wrong on. This is what the scrolling
@@ -509,7 +512,7 @@ function tcDriverRow(m, busy, job){
       <span class="sub">For this machine's ${esc(card)}: CUDA, the hardware video encoder and the emulator's GPU rendering need it. It is this machine's own, not a copy on the store.</span>
       ${sel}
       ${mine ? `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(tcDots)}</span></span>` : tcDriverLine(m)}
-      ${m.newer && !mine ? `<span class="sub upd">update available: ${esc(m.newer)}. Tick it and press Install selected</span>` : ""}
+      ${m.newer && !mine ? `<span class="sub upd">update available: ${esc(m.newer)}. Tick it and press ${tcInstallSaid()}</span>` : ""}
       ${job?.errors?.[TC_DRIVER] && !mine ? `<span class="sub bad">${esc(job.errors[TC_DRIVER])}</span>` : ""}
       ${!m.managed ? `<span class="sub warn">This machine is its owner's, not a BuilderBot sandbox: its driver is installed there by hand.</span>` : ""}
     </span>
@@ -527,7 +530,7 @@ function tcToolkitLine(m){
   switch (m.state){
     case "absent": return `<span class="sub where">not installed: a container here cannot reserve the card${
       m.driver ? "" : ". It needs the driver above: tick both, and the driver goes on first"}</span>`;
-    case "unconfigured": return `<span class="sub warn">installed, but Docker here does not list the nvidia runtime: tick it and press Install selected, which configures Docker again</span>`;
+    case "unconfigured": return `<span class="sub warn">installed, but Docker here does not list the nvidia runtime: tick it and press ${tcInstallSaid()}, which configures Docker again</span>`;
     default: return m.driver_loaded
       ? `<span class="sub where on">installed: a compose file reserves the card with deploy.resources.reservations.devices (driver: nvidia)</span>`
       : `<span class="sub warn">installed; a container sees the card once the driver above is running it</span>`;
@@ -549,7 +552,7 @@ function tcToolkitRow(m, busy, job){
       <label class="nm" for="tcCtkTick">${esc(m.label)}${m.installed ? ` <span class="pill" title="installed">${esc(m.installed.split("-")[0])}</span>` : ""}</label>
       <span class="sub">Lets a container on this machine use the card. From NVIDIA's own package source, which installing adds and removing takes away. Running containers keep running.</span>
       ${mine ? `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(tcDots)}</span></span>` : tcToolkitLine(m)}
-      ${m.newer && !mine ? `<span class="sub upd">update available: ${esc(m.newer.split("-")[0])}. Tick it and press Install selected</span>` : ""}
+      ${m.newer && !mine ? `<span class="sub upd">update available: ${esc(m.newer.split("-")[0])}. Tick it and press ${tcInstallSaid()}</span>` : ""}
       ${job?.errors?.[TC_TOOLKIT] && !mine ? `<span class="sub bad">${esc(job.errors[TC_TOOLKIT])}</span>` : ""}
       ${!m.managed ? `<span class="sub warn">This machine is its owner's, not a BuilderBot sandbox: the toolkit is installed there by hand.</span>` : ""}
     </span>
@@ -580,7 +583,7 @@ function tcClaudeRow(m, busy){
         !m.installed && m.latest ? ` <span class="pill" title="what Install selected would fetch">${esc(m.latest)}</span>` : ""}</label>
       <span class="sub">What a Claude session on this node runs, for the node's session account. Installing or updating it ends the Claude sessions here first; they start again from the project rows.</span>
       ${line}
-      ${m.state === "update" && !mine ? `<span class="sub upd">update available: ${esc(m.latest)}. Tick it and press Install selected</span>` : ""}
+      ${m.state === "update" && !mine ? `<span class="sub upd">update available: ${esc(m.latest)}. Tick it and press ${tcInstallSaid()}</span>` : ""}
       ${m.error && !mine ? `<span class="sub bad">${esc(m.error)}</span>` : ""}
     </span>
     ${m.here && !mine && may ? rmIcon("data-tcclrm", "uninstall Claude Code", {title: "remove Claude Code from this node", why: busy ? "another toolchain operation is running" : ""}) : ""}
@@ -683,6 +686,7 @@ function renderToolchainsInto(i){
       ${clean.length ? `<button type="button" class="danger${busy ? " tcidle" : ""}" data-tcclean${busy ? " disabled" : ""}>Remove</button>` : ""}`));
   // What the store is and where, said on the page's status line under the
   // tiles (the operator, 17 Oct: one order for every page's top).
+  const working = busy && job.action !== "check";
   const storeSaid = onNode
       ? (d.root
           // Nothing here about a shared store. Several nodes pointing at one
@@ -709,7 +713,11 @@ function renderToolchainsInto(i){
     (() => {
       const items = (d.items || []).filter(x => !x.wrong_platform);
       if (!items.length) return "";
-      const due = items.filter(x => x.state === "update").length;
+      // This machine's rows count too (Claude Code, the driver, the
+      // toolkit), as Home and the bell count them.
+      const due = items.filter(x => x.state === "update").length
+        + (onNode ? (d.machine || []).filter(m =>
+          m.name === TC_CLAUDE ? m.state === "update" : !!m.newer).length : 0);
       const need = items.filter(x => (x.pinned_by || []).length && !x.installed).length;
       return statTiles([
         {label: "installed", value: items.filter(x => x.installed).length, sub: `of ${items.length} offered`},
@@ -723,9 +731,10 @@ function renderToolchainsInto(i){
     ${
     // The page's status line under its tiles (the operator, 16 and 17 Oct):
     // the store and when its versions were checked, or what is running; and
-    // what the bar's Remove would take, when it is there.
-    headLine(busy ? tcWorking(job, d.items) : `${storeSaid}${d.checked ? ` Versions checked ${ago(d.checked)}.` : ""}`, "", "tcact",
-             {state: busy ? "tcworking" : "", under: clean.length ? `<div class="sub tcclean">Remove takes off the store what no node uses: ${
+    // what the bar's Remove would take, when it is there. A check is said
+    // on its own button, so the line keeps to the store while one runs.
+    headLine(working ? tcWorking(job, d.items) : `${storeSaid}${d.checked ? ` Versions checked ${ago(d.checked)}.` : ""}`, "", "tcact",
+             {state: working ? "tcworking" : "", under: clean.length ? `<div class="sub tcclean">Remove takes off the store what no node uses: ${
                clean.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</div>` : ""})}
     ${(() => {
       // Held recipes whose system libraries this machine lacks (roadmap

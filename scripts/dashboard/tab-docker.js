@@ -2453,7 +2453,9 @@ async function dmCheck(btn, node, after){
 function dmTiles(t){
   const g = !t;
   return statTiles([
-    {label: "running", value: g ? GHOST : t.running, sub: g ? GHOST : `of ${t.all} container${t.all === 1 ? "" : "s"}`,
+    // "of 6" alone on a small phone, where the word wrapped the tile.
+    {label: "running", value: g ? GHOST : t.running, sub: g ? GHOST
+      : `of ${t.all}${matchMedia("(max-width:440px)").matches ? "" : ` container${t.all === 1 ? "" : "s"}`}`,
      tone: !g && t.all && !t.running ? "warn" : ""},
     {label: "updates due", value: g ? GHOST : t.behind, tone: !g && t.behind ? "warn" : "", omit: !g && !t.checked && !t.behind},
     {label: "projects", value: g ? GHOST : t.projects, omit: !g && t.projects === undefined},

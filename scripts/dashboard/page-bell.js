@@ -256,7 +256,8 @@ function attRow(a){
   if (a.kind === "nginx"){
     return `<div class="bnote att">
       <div class="bt">nginx update on ${esc(a.node)}</div>
-      <div class="bsum">runs ${esc(a.from)} and ${esc(a.to)} is out</div>
+      <div class="bsum">${a.rebuild ? `runs ${esc(a.from)}; a newer build of that tag is out`
+        : `runs ${esc(a.from)} and ${esc(a.to)} is out`}</div>
       <div class="bfoot"><span>on its nginx page</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bnginx="${esc(a.id)}">nginx page</a></span></div></div>`;
