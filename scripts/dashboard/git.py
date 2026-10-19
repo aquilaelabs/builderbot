@@ -1372,7 +1372,11 @@ def in_use(project, action, args, uid):
     is done with plumbing and checks nothing out, so it moves nothing here
     and the session is no reason to refuse it: that is the merge the
     operator makes to accept a session's work while it keeps working."""
-    lands_here = action == "switch" or (
+    # A new branch switched to moves the branch the session is on as a
+    # switch does (B859: it went round this, the tree moved under an open
+    # session).
+    switching = action == "switch" or (action == "branch" and bool(args.get("switch")))
+    lands_here = switching or (
         action == "merge" and str(args.get("into") or "")
         in ("", status(WORKSPACE / project).get("branch") or ""))
     if not lands_here:
@@ -1385,7 +1389,7 @@ def in_use(project, action, args, uid):
     # "your" to the owner: "the owner's" read as somebody else's.
     owner_uid = OWNER_UID()
     whose = "your" if uid == owner_uid else f"{OWNER_NAME()}'s"
-    if action == "switch":
+    if switching:
         if SESSION_OPEN(project):
             return (f"{whose} Claude session is running in this directory; end it "
                     "before switching the branch under it")
