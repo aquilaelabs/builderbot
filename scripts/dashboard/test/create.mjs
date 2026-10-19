@@ -1296,6 +1296,15 @@ await page.waitForFunction(() => document.getElementById('tmodal').hidden);
        JSON.stringify(listed)}, ${worked.status}${worked.error ? ': ' + worked.error : ''})`);
 }
 
+// A notebook on a project that is no longer there (a layout saved before
+// the project was deleted) is put away once the project list says so (B40).
+{
+  await page.evaluate(() => { tabs.push({ id: 't9001', kind: 'notebook', arg: 'gone-project', label: 'gone-project' }); drawPanes(); });
+  await refreshUntil(page, () => !tabs.some(t => t.arg === 'gone-project'), { timeout: 15000 });
+  ok(await page.evaluate(() => !tabs.some(t => t.arg === 'gone-project')),
+     'a notebook tab on a project that is gone is put away at the next poll');
+}
+
 const errs = page.errors.filter(e => !/status of (400|500)/.test(e));
 ok(errs.length === 0, `zero console errors${errs.length ? ': ' + errs.join(' | ') : ''}`);
 await done(browser);
