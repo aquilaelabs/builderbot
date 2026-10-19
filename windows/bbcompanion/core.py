@@ -1,0 +1,180 @@
+"""The companion app's sync (R270 step 3): a folder on this machine kept in
+step with a BuilderBot project, both ways, by the node agent's own sync
+(builderbot_agent.wssync), shared rather than copied, spoken through the
+device door (/api/v1/device/) with the person's device token.
+
+What the agent's sync expects of a node, this answers for a person:
+- which projects to hold: the ones the person picked in the app, each in its
+  own folder (WorkspaceSync.top), read-only where their access is read;
+- a hint when a project moves: a long poll per project on the device door,
+  which nudges the sync the way a node's held work request does;
+- what comes down: only paths Windows can hold (names.held), the rest left
+  out and said, from the state, the changes and the first copy's archive.
+"""
+import os
+import sys
+import tarfile
+import threading
+
+try:
+    from builderbot_agent import controller as _controller, wssync as _wssync
+except ImportError:                                   # a checkout: the agent beside this tree
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "agent"))
+    from builderbot_agent import controller as _controller, wssync as _wssync
+
+from . import names
+
+POLL_WAIT = 25          # seconds the device door holds a long poll
+
+
+class DeviceDoor:
+    """The agent's Controller on the device door, with what comes down cut
+    to what this machine can hold and the projects to hold the person's
+    choice. `picked` is {project: folder}."""
+
+    def __init__(self, url, token, pin="", picked=None):
+        self.ctl = _controller.Controller(url, token, pin, door="device")
+        self.picked = dict(picked or {})
+        self.access = {}          # project -> "rw" | "r", from the door
+        self.left_out = {}        # project -> {path: why}: what Windows cannot hold
+        self.error = ""
+
+    def call(self, verb, body=None, timeout=30, method="POST", raw=False):
+        if verb == "sync" and (body or {}).get("action") == "projects":
+            return self._projects()
+        st, r = self.ctl.call(verb, body, timeout=timeout, method=method, raw=raw)
+        if verb == "sync" and st == 200 and isinstance(r, dict):
+            project = (body or {}).get("project", "")
+            key = "files" if "files" in r else "changes" if "changes" in r else ""
+            if key:
+                kept, out = names.held([row[0] for row in r[key]])
+                if key == "files":
+                    self.left_out[project] = out
+                else:
+                    self.left_out.setdefault(project, {}).update(out)
+                r[key] = [row for row in r[key] if row[0] in kept]
+        return st, r
+
+    def _projects(self):
+        """The agent's question, which projects this machine holds: the
+        ones picked here that the person may still read, each at its
+        revision; one read-only for them is held read-only."""
+        st, r = self.ctl.call("projects", {})
+        if st != 200:
+            self.error = str((r or {}).get("error") or f"the controller answered {st}")
+            return st, r
+        self.error = ""
+        mine = {p["project"]: p for p in r.get("projects") or []}
+        self.access = {n: mine[n]["access"] for n in self.picked if n in mine}
+        want = {n: mine[n]["rev"] for n in self.picked if n in mine and mine[n]["access"] == "rw"}
+        reads = {n: mine[n]["rev"] for n in self.picked if n in mine and mine[n]["access"] == "r"}
+        return 200, {"mode": "sync", "projects": want, "reads": reads}
+
+    def fetch(self, path, dest, timeout=600):
+        code, digest = self.ctl.fetch(path, dest, timeout=timeout)
+        if code == 200 and path.startswith("sync-tar?"):
+            _drop_unheld(dest)
+        return code, digest
+
+    def upload(self, path, src, timeout=600, offset=0, length=None):
+        return self.ctl.upload(path, src, timeout=timeout, offset=offset, length=length)
+
+
+def _drop_unheld(tar_path):
+    """The first copy's archive, rewritten without the members Windows
+    cannot hold, so the agent's unpack meets none of them."""
+    with tarfile.open(tar_path) as t:
+        members = t.getmembers()
+        kept, out = names.held([m.name for m in members if not m.isdir()])
+        if not out:
+            return
+        tmp = tar_path + ".held"
+        with tarfile.open(tmp, "w", format=tarfile.PAX_FORMAT) as w:
+            for m in members:
+                if m.isdir() or m.name in kept:
+                    w.addfile(m, t.extractfile(m) if m.isfile() else None)
+    os.replace(tmp, tar_path)
+
+
+class DeviceAgent:
+    """What the agent's sync reads off its agent, for a person's machine:
+    the door as its controller, and a data folder for its records."""
+
+    def __init__(self, door, data_dir):
+        self.ctl = door
+        self.state = {"stores": {"data": data_dir}}
+
+
+class FolderSync(_wssync.WorkspaceSync):
+    """The agent's sync with each project in the folder its person picked."""
+
+    def __init__(self, agent, picked):
+        super().__init__(agent, root=agent.state["stores"]["data"])
+        self.picked = dict(picked)
+
+    def top(self, name):
+        return self.picked.get(name) or super().top(name)
+
+
+class Companion:
+    """One person's machine kept in step: the sync's loop, and a long poll
+    per project that wakes it the moment the project moves."""
+
+    def __init__(self, url, token, picked, data_dir, pin=""):
+        os.makedirs(data_dir, exist_ok=True)
+        self.door = DeviceDoor(url, token, pin, picked)
+        self.sync = FolderSync(DeviceAgent(self.door, data_dir), picked)
+        self.picked = dict(picked)
+        self.stopped = threading.Event()
+        self.polls = []
+
+    def start(self):
+        self.sync.start()
+        for name in self.picked:
+            t = threading.Thread(target=self._poll, args=(name,), name=f"poll-{name}", daemon=True)
+            t.start()
+            self.polls.append(t)
+
+    def _poll(self, name):
+        """Hold a long poll on the project and nudge the sync when it moves.
+        The revision is the sync's own, so a change this machine made and
+        the sync has already taken in does not wake it again."""
+        while not self.stopped.is_set():
+            p = self.sync.projects.get(name)
+            rev = p.rev if p and p.ready else 0
+            st, r = self.door.ctl.call("sync", {"action": "since", "project": name, "rev": rev,
+                                                "wait": POLL_WAIT}, timeout=POLL_WAIT + 15)
+            if st == 200 and (r.get("changes") or r.get("reset")):
+                self.sync.nudge({name: r.get("rev")})
+            elif st != 200:
+                self.stopped.wait(10)      # down or refused: try again, not in a spin
+
+    def status(self):
+        """For the tray: each project's state, what Windows could not hold,
+        and the door's own trouble."""
+        st = self.sync.status() or {}
+        return {"error": self.door.error,
+                "projects": {n: {**st.get(n, {"ready": False}), "access": self.door.access.get(n, ""),
+                                 "left_out": self.door.left_out.get(n, {})} for n in self.picked}}
+
+    def conflicts(self):
+        """The conflict copies in the picked folders: what the controller
+        kept beside a file when two changes met."""
+        out = []
+        for top in self.picked.values():
+            for d, _, files in os.walk(top):
+                out += [os.path.join(d, f) for f in files if ".conflict-" in f]
+        return out
+
+    def stop(self):
+        self.stopped.set()
+
+
+def sign_in(url, username, password, name, pin=""):
+    """Trade the person's name and password, once, for a device token:
+    ({token, device, account} | {error})."""
+    ctl = _controller.Controller(url, "", pin, door="device")
+    st, r = ctl.call("signin", {"username": username, "password": password, "name": name, "kind": "pc"})
+    if st != 200:
+        return {"error": (r or {}).get("error") or f"the controller answered {st}"}
+    return r

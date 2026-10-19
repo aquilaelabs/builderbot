@@ -1,5 +1,5 @@
 {
-  "include": ["scripts/dashboard", "scripts/lib", "scripts/agent", "tools"],
+  "include": ["scripts/dashboard", "scripts/lib", "scripts/agent", "tools", "windows"],
   "exclude": ["**/__pycache__", "scripts/dashboard/test"],
   "typeCheckingMode": "standard",
   "reportOptionalMemberAccess": "none",
@@ -9,6 +9,7 @@
   "reportOptionalOperand": "none",
   "executionEnvironments": [
     {"root": "scripts/agent", "pythonVersion": "3.9"},
+    {"root": "windows", "pythonVersion": "3.9", "extraPaths": ["scripts/agent"]},
     {"root": "scripts/dashboard", "pythonVersion": "3.12", "extraPaths": ["scripts/lib"]},
     {"root": "scripts/lib", "pythonVersion": "3.12"},
     {"root": "tools", "pythonVersion": "3.14"}

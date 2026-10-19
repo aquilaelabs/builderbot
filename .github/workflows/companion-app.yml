@@ -1,0 +1,80 @@
+# The Windows companion app (R270): the .exe, built with PyInstaller on a
+# hosted Windows runner from windows/bbcompanion and the four node-agent
+# modules its sync is, and attached to the release as an asset beside the
+# Android app's APK, for every controller to fetch and offer (R272).
+#
+# Only when a release is published, or by hand for a release that exists: a
+# hosted Windows runner bills twice a Linux one's minutes, and a build on
+# every push kept as an artifact is what filled the account's Actions
+# storage once already (B669). Signed when the repository holds a
+# code-signing certificate (BB_WIN_CERT_PFX_B64 and BB_WIN_CERT_PASSWORD);
+# built unsigned and said so in the log where it does not.
+name: companion app
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "the release to attach the .exe to"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: companion-app
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1, pinned by commit (B274)
+        with:
+          fetch-depth: 0   # bb version counts commits
+
+      - name: Build the .exe
+        run: |
+          set -eo pipefail
+          python -m pip install --disable-pip-version-check --quiet pyinstaller
+          v="${TAG#v}"
+          printf '%s\n' "$v" > windows/bbcompanion/VERSION
+          printf 'from bbcompanion.__main__ import entry\nentry()\n' > "$RUNNER_TEMP/companion.py"
+          python -m PyInstaller --noconfirm --onefile --windowed --name "builderbot-companion-$v" \
+            --paths windows --paths scripts/agent \
+            --hidden-import builderbot_agent.wssync --hidden-import builderbot_agent.controller \
+            --add-data "windows/bbcompanion/VERSION;bbcompanion" \
+            --distpath dist "$RUNNER_TEMP/companion.py"
+          echo "EXE=dist/builderbot-companion-$v.exe" >> "$GITHUB_ENV"
+
+      - name: Sign it where the repository holds a certificate
+        env:
+          BB_WIN_CERT_PFX_B64: ${{ secrets.BB_WIN_CERT_PFX_B64 }}
+          BB_WIN_CERT_PASSWORD: ${{ secrets.BB_WIN_CERT_PASSWORD }}
+        run: |
+          set -eo pipefail
+          if [ -z "$BB_WIN_CERT_PFX_B64" ]; then
+            echo "no code-signing certificate in this repository's secrets: the .exe is unsigned, and Windows says so on first run"
+            exit 0
+          fi
+          printf '%s' "$BB_WIN_CERT_PFX_B64" | base64 -d > "$RUNNER_TEMP/cert.pfx"
+          signtool="$(find "/c/Program Files (x86)/Windows Kits/10/bin" -path '*/x64/signtool.exe' | sort | tail -1)"
+          "$signtool" sign //f "$RUNNER_TEMP/cert.pfx" //p "$BB_WIN_CERT_PASSWORD" //fd sha256 \
+            //tr http://timestamp.digicert.com //td sha256 "$EXE"
+          rm -f "$RUNNER_TEMP/cert.pfx"
+
+      - name: Attach it to the release with its sha256
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eo pipefail
+          sha256sum "$EXE" | sed 's|dist/||' > "$EXE.sha256"
+          gh release upload "$TAG" "$EXE" "$EXE.sha256" --clobber

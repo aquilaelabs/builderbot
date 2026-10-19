@@ -141,6 +141,7 @@ scripts/
     systems.py                   the systems a node can be: what Enroll node's pulldown offers, each with its provisioner family and its vetting (R204)
     ftp.py                       a project's file access over FTP and in an editor: the switches, the port, each account's access, and access_for, the one answer both doors give (R151, R159)
     wssync.py                    a node's projects as a synced copy: the index, state, since, get and put for its agent, and conflicts (R162)
+    devices.py                   a person's devices: the token an app signs in for, the Devices list and Disconnect, and the device door an app syncs a project through as a node does (R270, R272)
     snapshots.py                 each project's tree as it was each day, stored once by content, pruned to the project's days, and restored whole or a file at a time (R165)
     paths.py                     where the controller keeps what grows (snapshots, the git relay, logs), as the Settings page's Storage section sets it, and the move between two
     claudesync.py                a synced node's Claude conversations: the listing, get and put (whole, a tail, gone) for its agent's mirror (B613)
@@ -245,6 +246,14 @@ vscode/                          BuilderBot for VS Code (R159): plain JavaScript
   lib/ws.js                      a websocket client in Node's own modules, for the terminal
   lib/ttyd.js                    ttyd's protocol over the /term relay: the dashboard's own terminal, from VS Code
   README.md                      what VS Code shows on the extension's page: setting it up, installing and using it
+windows/                         the Windows companion app (R270): a person's machine keeping a project's folder in step through the device door
+  README.md                      what it does, signing in, picking a project and a folder, building it
+  bbcompanion/__main__.py        its command line (sign in, add, remove, run, sign out) and the packaged app's start
+  bbcompanion/core.py            the node agent's own sync on the device door: the projects picked, a long poll per project, what Windows cannot hold left out
+  bbcompanion/names.py           Windows' rules for a file's name: device names, a trailing dot or space, the refused characters, two names one by case
+  bbcompanion/creds.py           the device token in Windows' credential store, or a file only its owner reads elsewhere
+  bbcompanion/settings.py        the projects kept and their folders, the controller's address
+  bbcompanion/app.py             the window: sign in, the projects and each one's state, Add, Remove, Open folder, Conflicts
 nodes/bb-session                    the root helper that runs a session in a view of its own project; the agent installs it
 nodes/provision-macos.sh            enrolls a Mac as a guest node (a dev feature, behind Offer dev features): one directory, one launchd agent, no root; --remove takes it away
 nodes/provision-linux.sh                  turns a Linux machine into a node (the Docker sandbox, the stores, the session half) and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
@@ -269,6 +278,7 @@ test/nettest/.env.example        the two addresses it needs: the controller's an
 tools/american-spelling.sh       the house rule spelling's check: no British spelling on a line this branch adds
 tools/no-net-growth.sh           the everything-files against their ceilings in tools/ratchet.txt (R77)
 tools/vscode-vsix.py             packages vscode/ as a .vsix with python's zipfile, BuilderBot's version inside (R159)
+tools/companion-build.py         builds the Windows companion as one .pyz with the four agent modules its sync is (R270)
 tools/ratchet.txt                those ceilings, one per file
 pyrightconfig.json               how pyright (the pyright-lsp plugin, or the CLI) reads this repo: each directory's imports and Python
                                  version, with the None checks off, since a module's configure() fills what it declares as None
@@ -299,5 +309,6 @@ docs/design-language.md          what the dashboard's surfaces owe each other: h
   lint.yml                       the linters, on a pull request, on this runner
   dashboard.yml                  the dashboard's browser suite, on a pull request that changes it, on this runner
   android-app.yml                the companion app's build
+  companion-app.yml              the Windows companion's .exe: PyInstaller on a hosted Windows runner, on a published release or by hand, attached to the release
   runner-smoke-test.yml          proves this runner picks up jobs, carries its toolchain and cannot see the shielded PAT (manual)
 ```
