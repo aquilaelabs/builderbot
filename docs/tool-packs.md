@@ -12,7 +12,8 @@ analyzer, a game engine's headless editor, your company's internal CLI.
 ## Adding one
 
 1. On the **Toolchains** page, press **Add tool pack** and give the
-   repository's address. Only an administrator can.
+   repository's address (`https://`, ssh, or `http://` for a git host on
+   your network). Only an administrator can.
 2. Press **Look**. BuilderBot fetches the repository at its current commit
    and shows what it would do: what it fetches and runs to install, each
    command Claude would get and the exact words it runs, its license, and

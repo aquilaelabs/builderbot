@@ -322,6 +322,7 @@ function tpSeen(seen, was){
     ${verbs}
     ${(m.terms || []).length ? `<div class="sub">Under ${m.terms.map(t => t.url ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.label)}</a>` : esc(t.label)).join(", ")}.</div>` : ""}
     ${seen.guidance ? `<div class="sub">Comes with guidance a session reads as <code>bb help tool-${esc(m.name)}</code>.</div>` : ""}
+    ${seen.plain ? `<div class="hint warn">Fetched over plain http: what Add keeps is this commit, checked by its hash, but read what it runs here before you add it.</div>` : ""}
   </div>`;
 }
 

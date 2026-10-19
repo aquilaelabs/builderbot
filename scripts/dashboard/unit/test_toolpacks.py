@@ -113,6 +113,7 @@ class Repository(unittest.TestCase):
         git("commit", "-q", "-am", "gone", cwd=self.repo)
         self.assertIn("has no bbtool.json", toolpacks.fetch(self.url)["error"])
         self.assertIn("a pack is a git repository's address", toolpacks.fetch("ftp://x/y")["error"])
+        self.assertTrue(toolpacks.URL.fullmatch("http://192.168.1.16:3000/lab/hexkit.git"), "a LAN git host over http")
 
     def test_remove(self):
         toolpacks.add(self.url, toolpacks.fetch(self.url)["commit"], "operator")

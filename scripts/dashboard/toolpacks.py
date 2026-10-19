@@ -44,7 +44,10 @@ PLATFORM = re.compile(r"^(linux|darwin)/(amd64|arm64|\*)$")
 PLACEHOLDERS = ("{dir}", "{dist}", "{project}", "{args}")
 GUIDANCE_MAX = 16 * 1024
 MANIFEST_MAX = 64 * 1024
-URL = re.compile(r"^(https://|git@|ssh://)[A-Za-z0-9._~:/@+-]{3,300}$")
+# http too, for a git host on the LAN: what is installed is the commit an
+# administrator approved, and git checks every object against its hash, so a
+# fetch altered on the way is refused rather than installed.
+URL = re.compile(r"^(https://|http://|git@|ssh://)[A-Za-z0-9._~:/@+-]{3,300}$")
 FETCH_TIMEOUT = 120
 
 
@@ -227,7 +230,8 @@ def fetch(url, commit="", shipped=()):
             if g is None:
                 return {"error": f"{MANIFEST} names {clean['guidance_file']} as its guidance, and it is not there"}
             guidance = g[:GUIDANCE_MAX].decode("utf-8", "replace")
-        return {"commit": got, "manifest": clean, "guidance": guidance}
+        return {"commit": got, "manifest": clean, "guidance": guidance,
+                "plain": url.startswith("http://")}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
