@@ -2567,6 +2567,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    and the picker drawn at a desk took the article's column, the article
    falling under the page list into its 200px. */
 .wkreader>.wkpick{display:none}
+/* Its word beside it, as a page bar's picker has (the operator, 19 Oct). */
+.wkreader>.wkpick>.pickw{font:var(--f-ui);color:var(--dim);flex:0 0 auto}
+.wkreader>.wkpick>select{flex:1 1 auto;min-width:0}
 .wkarticle{min-width:0;max-width:820px}
 /* Help (R258): BuilderBot's docs in this reader, the one on show marked in
    the list, the bar's search as wide as a control, and a search's lines as
@@ -2622,7 +2625,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 @container (max-width:600px){
   .wkreader{display:block}
   .wknav{display:none}
-  .wkreader>.wkpick{display:flex;margin-bottom:10px}
+  .wkreader>.wkpick{display:flex;align-items:center;gap:var(--field-gap);margin-bottom:10px}
   .wktitle{font-size:1.5em}
 }
 /* ...and the window's rule too: a container query is not evaluated for a
@@ -2631,7 +2634,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 @media(max-width:600px){
   .wkreader{display:block}
   .wknav{display:none}
-  .wkreader>.wkpick{display:flex;margin-bottom:10px}
+  .wkreader>.wkpick{display:flex;align-items:center;gap:var(--field-gap);margin-bottom:10px}
   .wktitle{font-size:1.5em}
 }
 
