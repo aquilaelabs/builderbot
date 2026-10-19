@@ -29,6 +29,7 @@ from pathlib import Path
 # import finds nothing.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fields import field  # noqa: E402
+from names import tmux_name  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 
@@ -970,8 +971,28 @@ def attention(project_nodes):
             tools.insert(0, {"name": CLAUDE, "label": "Claude Code",
                              "from": claudecode.installed(n), "to": claudecode.latest()["version"]})
         if tools:
+            live = claude_running(n["id"], project_nodes)
             out.append({"kind": "toolchain", "node": n["name"], "id": n["id"], "tools": tools,
-                        "projects": sorted(p for p, nid in project_nodes.items() if nid == n["id"])})
+                        "sessions": len(live), "projects": sorted(set(live))})
+    return out
+
+
+_OWNER = re.compile(r"^u_[0-9a-f]{8}~")
+
+
+def claude_running(node_id, project_nodes):
+    """The project of each Claude session running on a node now, one entry
+    per session, from its last heartbeat. What an update of Claude Code
+    there ends (B57): the projects bound to the node said 5, 6 or 7 with
+    one session running, or none."""
+    rows = ((nodes.node_sessions() or {}).get(node_id) or ("", []))[1] if nodes else []
+    by_tmux = {tmux_name(p): p for p in project_nodes}
+    out = []
+    for r in rows:
+        base = _OWNER.sub("", str((r or {}).get("name") or ""))
+        if base.startswith("claude-"):
+            stem = base[len("claude-"):]
+            out.append(by_tmux.get(stem, stem))
     return out
 
 

@@ -206,14 +206,16 @@ function logNote(msg, bad){
 function attRow(a){
   if (a.kind === "toolchain"){
     const keys = a.tools.map(t => t.key).filter(Boolean).join(" ");
-    const cc = a.tools.some(t => t.name === "claude-code") && a.projects.length;
+    // The Claude sessions running there now, which an update ends (B57), not
+    // the projects bound to the node.
+    const cc = a.tools.some(t => t.name === "claude-code") && a.sessions > 0;
     const n = a.tools.length;
     return `<div class="bnote att">
       <div class="bt">${n} toolchain update${n === 1 ? "" : "s"} on ${esc(a.node)}</div>
       <div class="bsum">${a.tools.map(t => esc(t.label)).join(", ")}</div>
       ${cc ? `<div class="bwarn">Updating Claude Code ends the Claude sessions there
-        (${a.projects.length} project${a.projects.length === 1 ? "" : "s"})</div>` : ""}
-      <details class="bdetail"${sectAttr("bell:tc:" + a.id)}><summary>versions${cc ? " and projects" : ""}</summary><pre>${
+        (${a.sessions} running)</div>` : ""}
+      <details class="bdetail"${sectAttr("bell:tc:" + a.id)}><summary>versions${cc ? " and sessions" : ""}</summary><pre>${
         a.tools.map(t => `${esc(t.label)}: ${esc(t.from || "?")} → ${t.to === "newer" ? "a newer version" : esc(t.to)}`).join("\n")}${
         cc ? `\n\nsessions there: ${a.projects.map(esc).join(", ")}` : ""}</pre></details>
       <div class="bfoot"><span>on its Toolchains page</span>

@@ -3365,6 +3365,11 @@ ok(page.errors.length === 0,
   ok(/2 toolchain updates on clbox/.test(tcBell) && /Claude Code, Go/.test(tcBell)
      && /Claude Code: 1\.0\.0 → 1\.2\.0/.test(tcBell) && /Go: 1\.27\.0 → 1\.28\.0/.test(tcBell),
      `the bell says it in a line, every toolchain behind on the node in one row, the versions under its fold (${tcBell.slice(0, 160)})`);
+  // B57: what the update ends is the Claude sessions running there, counted,
+  // not the projects bound to the node.
+  const ends = /ends the Claude sessions there \((\d+) running\)/.exec(tcBell);
+  ok(typeof row.sessions === 'number' && (row.sessions ? ends && +ends[1] === row.sessions : !ends && !/ends the Claude/.test(tcBell)),
+     `...and its warning counts the Claude sessions running there (${row.sessions}: ${ends?.[0] || 'none said'})`);
   // Dismiss puts that version away for this account (bellseen.py, R144),
   // with the drawer left open; Show again brings it back.
   await page.click(`#bellPanel [data-bdismiss]`);
