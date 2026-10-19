@@ -3841,9 +3841,11 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .docbarrow .sp{flex:1}
 /* The page bar is one row at every width (the design's page head): a band
    of its own, not a filter row, so the filter row's narrow wrap (.histbar
-   under 560px) never takes it to two lines. Containers' bar alone gives its
-   search a line of its own under 440px (.dmpick, below). */
-.docbarrow{display:flex;gap:7px;align-items:center;flex-wrap:nowrap}
+   under 560px) never takes it to two lines. Its controls line up on their
+   bottom edge as every row's do (a picker's label above its select).
+   Containers' bar alone gives its search a line of its own under 440px
+   (.dmpick, below). */
+.docbarrow{display:flex;gap:7px;align-items:flex-end;flex-wrap:nowrap}
 .docbarrow[hidden]{display:none}
 .ndtest.warn,.ndcheck.warn,#logDaysSaid.warn{color:var(--warn)}
 /* The one-time enrollment command: a pre, because a wrapped shell line lies
