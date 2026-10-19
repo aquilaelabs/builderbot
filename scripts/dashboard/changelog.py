@@ -696,14 +696,12 @@ def since_minor(secs):
     The About panel is read by somebody asking what changed in the build in
     front of them, and the whole file is the wrong answer there: it grows for
     the life of the project. So the panel shows everything unreleased and the
-    dated releases of the newest minor (0.6.2, 0.6.1, 0.6.0) and nothing
-    older. When 0.7.0 is cut, 0.6's releases fall off it in that one gesture,
+    dated releases of the newest minor (1.2.2, 1.2.1, 1.2.0) and nothing
+    older. When 1.3.0 is cut, 1.2's releases fall off it in that one gesture,
     without anybody pruning a file.
 
-    Nothing is deleted and nothing is lost: CHANGELOG.md keeps the current
-    series and the one before it, docs/changelog-0.5.md what came before
-    those (moved out on 27 Sep, when the file passed 130KB), and the panel
-    says how many it is not showing rather than quietly ending.
+    Nothing is deleted and nothing is lost: CHANGELOG.md keeps every release,
+    and the panel says how many it is not showing rather than quietly ending.
 
     Returns (kept, held, series).
     """

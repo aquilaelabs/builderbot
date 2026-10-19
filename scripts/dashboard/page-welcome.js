@@ -145,7 +145,7 @@ function abDrawLog(j){
   }
   if (j.held)
     rows.push(`<p class="dim" id="abHeld">${j.held} earlier release${j.held === 1 ? "" : "s"}`
-      + ` ${j.held === 1 ? "is" : "are"} in CHANGELOG.md. Before 0.6, docs/changelog-0.5.md.</p>`);
+      + ` ${j.held === 1 ? "is" : "are"} in CHANGELOG.md.</p>`);
   el.innerHTML = rows.join("") || `<p class="dim">Nothing logged yet.</p>`;
   el.querySelectorAll("[data-abmore]").forEach(a => a.onclick = e => {
     e.preventDefault();

@@ -471,15 +471,15 @@ can evolve and one frozen by its oldest node.
 
 **That version is `WINDOW.BUILD`, and only the first half is a promise.** The
 window is BuilderBot's own semver minor: while the project is `0.5.x`, any
-`0.5` agent works with any `0.5` controller, in both directions. `0.6.0` is
-where that ends, and it is therefore where a breaking change to this protocol
+`0.5` agent works with any `0.5` controller, in both directions. The next
+minor is where that ends, and it is therefore where a breaking change to this protocol
 and the removal of the compatibility paths carrying old ones belong. Inside a
 window: add, do not change, so a field gains a default rather than a new
 meaning, a verb gains a sibling rather than a signature.
 
 The build is the agent file's own counter and moves only when that file
 moves, which is why it is not the project's patch number; most patches ship
-no new agent. It does not reset at a boundary (`0.5.28` follows `0.4.27`),
+no new agent. It does not reset at a boundary (`0.6.28` follows `0.5.27`),
 so "which of these is newer" always has an answer.
 
 A node whose agent is from another window is reported as such and not
@@ -495,13 +495,6 @@ What a session is briefed with is no longer in this window, or in any
 window: it is assembled per session by the controller and handed to `claude`
 on the way in, so there is no copy of it on a node or in a project to be from
 another version (R63). The window is the agent's alone.
-
-`0.5.0` was such a boundary and is what it looks like in practice: the flat
-`protocol` integer both sides declared and neither ever compared went, along
-with every read that tolerated an agent from before a census field existed,
-the two spellings of a project's node, the session token minted before an
-account rode along, and two migrations that had run everywhere. Nothing was
-kept for a `0.4` agent, which is the whole meaning of the number moving.
 
 ### Tailscale
 
