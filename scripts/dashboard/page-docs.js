@@ -211,8 +211,8 @@ const SKTPLS = {
   // what the repository holds, so the placeholder promises neither.
   git: () => skTpl(`<nav class="sectjump">${GIT_SECTS.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav>`
     + GIT_SECTS.map(([k, t]) => docSection("git", k, t, "", skRows(2))).join("")),
-  design: () => skTpl(docSection("design", "pages", "Pages", "", skRows(2), {open: false})
-    + docSection("design", "themes", "Themes", "", skRows(2), {open: false})),
+  design: () => skTpl(docSection("design", "pages", "Pages", "", skRows(2))
+    + docSection("design", "themes", "Themes", "", skRows(2))),
   // Its list, by the view's own titles (nb-artifacts.js ART_TITLES)...
   artifacts: () => skTpl([["build", 1], ["files", 2]]
     .map(([k, n]) => docSection("artifacts", k, artTitle(k), "", skRows(n))).join("")),
@@ -222,7 +222,7 @@ const SKTPLS = {
   briefing: () => {
     const sects = BRIEF_SECTS.filter(([k]) => k !== "brief");
     return skTpl(`<nav class="sectjump">${[...sects.map(([, t]) => t), "Memories"].map(t => `<a href="#">${esc(t)}</a>`).join("")}</nav>`
-      + sects.map(([k, t, open], j) => docSection("briefing", k, t, "", skRows(j ? 1 : 3), {open, fold: k === "preamble"})).join(""));
+      + sects.map(([k, t, open], j) => docSection("briefing", k, t, "", skRows(j ? 1 : 3), {open})).join(""));
   },
   // ...and the Version box above it, which the view fills on its own.
   version: () => skTpl(docSection("artifacts", "version", artTitle("version"), "", skRows(1))),

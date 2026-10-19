@@ -2,8 +2,8 @@
 // language (colors as tokens, type, shape, space, motion and the operator's
 // own rules) and pages laid out as labeled blocks on a phone or desktop
 // frame, each named for what it is for and the platform it is built for.
-// Three folds: the pages, the language and the themes; the pages and the
-// themes show one at a time, chosen on a pulldown, and each entry, the
+// Two sections, the pages and the themes, open like every page's (the
+// operator, 19 Oct: they folded for no reason); each shows one at a time, chosen on a pulldown, and each entry, the
 // language included, carries its rules as a section inside it, every rules
 // list the Briefing's.
 // Every edit is staged and its section's Save (Themes or Pages) writes it at
@@ -225,7 +225,7 @@ function nbDesignView({$, nb, project, root}){
       </div></div>` : ""}
       ${t ? themeBand(t, nb.dsShow.theme, themes.length) : `<div class="field"><div class="hint">No theme yet. Add one, or leave it: a session that builds the project chooses the colors, the type, corners, space and motion, and puts them here.</div></div>`}`;
     return docSection("design", "themes", "Themes", `${themes.length} theme${themes.length === 1 ? "" : "s"}${status ? " · " + status : ""}`,
-                      body + nb.sectBar("design:themes"), {open: false, fold: true});
+                      body + nb.sectBar("design:themes"));
   }
 
   // The design's rules, the Briefing's shape (nb-rules.js, drawRules): Add a
@@ -418,7 +418,7 @@ function nbDesignView({$, nb, project, root}){
       ${p ? pageBody(p) : ""}`
       : `<div class="field"><div class="hint">No pages yet: pick a platform and a template and press Add page.</div></div>`);
     return docSection("design", "pages", "Pages", n ? `${n} page${n === 1 ? "" : "s"}` : "none yet",
-                      body + nb.sectBar("design:pages"), {open: false, fold: true});
+                      body + nb.sectBar("design:pages"));
   }
 
   function pageBody(p){

@@ -168,7 +168,7 @@ function nbAnalysisView({$, nb, project}){
       </div>`;
     }
     return docSection("briefing", "preamble", briefTitle("preamble"),
-                      status, body, {open: false, cls, fold: true});
+                      status, body, {cls});
   }
 
   // ---- the brief it was started from -----------------------------------------

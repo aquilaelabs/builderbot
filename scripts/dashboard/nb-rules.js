@@ -10,7 +10,7 @@
 // (page-docs.js SKTPLS.briefing), so neither falls behind (R218, the
 // operator 18 Oct). The Brief is only a project started from one's.
 const BRIEF_SECTS = [["codebase", "Code base", true], ["brief", "Brief", false], ["rules", "Your rules", false],
-                     ["preamble", "What a session is sent", false]];
+                     ["preamble", "What a session is sent", true]];
 const briefTitle = k => (BRIEF_SECTS.find(s => s[0] === k) || [k, k])[1];
 
 function nbRulesView({$, nb, project}){

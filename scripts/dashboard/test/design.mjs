@@ -80,11 +80,12 @@ ok(/no pages yet/.test(await page.$eval(`${NB} #dsHint`, e => e.textContent))
    && !!(await page.$(`${NB} [data-sect="design:pages"] [data-ssave="design:pages"]`))
    && !!(await page.$(`${NB} [data-sect="design:themes"] [data-ssave="design:themes"]`)),
    'the view opens on its head row, saying there are no pages, each section with its own Save');
-// The three sections start shut on a new tab, and Add page is the Pages
-// section's own (the operator, 29 Sep).
-ok(await page.$$eval(`${NB} #dsBody > details.sect`, ds => ds.map(d => `${d.dataset.sect}:${d.open ? "open" : "shut"}`).join(' ')) === 'design:pages:shut design:themes:shut'
+// The two sections are open like every page's, not folds (the operator,
+// 19 Oct), and Add page is the Pages section's own (the operator, 29 Sep).
+ok(await page.$$eval(`${NB} #dsBody > details.sect`, ds => ds.map(d => `${d.dataset.sect}:${d.open ? "open" : "shut"}`).join(' ')) === 'design:pages:open design:themes:open'
+   && await page.$$eval(`${NB} #dsBody > details.sect`, ds => ds.every(d => !d.hasAttribute('data-fold')))
    && !!(await page.$(`${NB} [data-sect="design:pages"] #dsAdd`)) && !(await page.$(`${NB} [data-sect="design:language"]`)),
-   'the view opens with Pages and Themes folded, Add page inside Pages, and no Design language section of its own: the language is each theme\'s');
+   'the view opens with Pages and Themes open and no folds, Add page inside Pages, and no Design language section of its own: the language is each theme\'s');
 // The sections start shut, so each is opened before its controls are used.
 const openSect = async id => { if (!(await page.$eval(`${NB} [data-sect="design:${id}"]`, d => d.open))) await openFold(page, `${NB} [data-sect="design:${id}"]`); };
 await openSect('pages');

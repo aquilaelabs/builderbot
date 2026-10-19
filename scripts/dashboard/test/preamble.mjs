@@ -179,8 +179,8 @@ const head = await page.$eval('[data-sect="briefing:preamble"] summary',
                               el => el.textContent.replace(/\s+/g, ' ').trim());
 ok(/What a session is sent/.test(head) && /KB|bytes/.test(head),
    `...under a heading that says what it is and how big (${head})`);
-ok(await page.$eval('[data-sect="briefing:preamble"]', el => !el.open),
-   '...shut by default: it is a thing to check, not a thing to read every time');
+ok(await page.$eval('[data-sect="briefing:preamble"]', el => el.open && !el.hasAttribute('data-fold')),
+   '...open like the Overview\'s other sections, not a fold (the operator, 19 Oct)');
 
 // Put the fixture back for whatever runs next.
 put('rules.json', { projects: {} });
