@@ -1165,9 +1165,10 @@ function noNodeYet(what, cls = ""){
 // A row of chips narrowing a list: All first, then one per group with its
 // count, the one in force wearing `.on`. A chip is a view, never a setting:
 // the caller keeps which is on for the page's life and nothing is saved.
-// `groups` is [{key, label, count}], `on` the key in force ("" for All).
-function chipBar(groups, on, attr){
-  const chips = chipButtons(groups, on, attr);
+// `groups` is [{key, label, count}], `on` the key in force ("" for All),
+// `all` All's count where the groups overlap (chipButtons).
+function chipBar(groups, on, attr, all){
+  const chips = chipButtons(groups, on, attr, all);
   return chips ? `<div class="field"><div class="chips">${chips}</div></div>` : "";
 }
 // The chips alone, for a band that holds more than them (a list's search
