@@ -238,6 +238,8 @@
      named so it moves with the scale below rather than staying 12px while
      everything around it grew. */
   --f-data:12px/1.4 var(--mono);
+  /* code and logs read as prose in mono: a diff, a commit message, a log */
+  --f-code:12px/1.5 var(--mono);
   --f-pill:11px/1 var(--mono);
   /* A tile's number (R216): the one voice above --f-sect, for a figure a
      tab is about, read from across the room. */
@@ -267,6 +269,7 @@
     --f-field:12px/1.5 var(--mono);
     --f-sect:600 15px/1.4 system-ui,sans-serif;
     --f-data:13px/1.4 var(--mono);
+    --f-code:13px/1.5 var(--mono);
     --f-pill:12px/1 var(--mono);
     --f-stat:650 30px/1.05 var(--display);
   }
@@ -575,7 +578,7 @@ header>button{min-height:var(--tap);min-width:var(--tap)}
   .modal:not([hidden]):not(.inline),.modal:not([hidden]):not(.inline)>.box,.pinmenu{animation:none}
 }
 .spacer{flex:1}
-.meta{color:var(--dim);font:12px/1.4 var(--mono);white-space:nowrap;
+.meta{color:var(--dim);font:var(--f-data);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 /* Making the header fit, which it did not: measured at 320px it wanted 369px
    of a 320px viewport and overflowed by 57, and the uptime: the only item
@@ -951,7 +954,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .bnote.ask .acts a[data-ballow]{background:var(--warn);color:var(--bg);
   border-color:var(--warn);font-weight:600}
 .bnote .bdetail summary{font:var(--f-note);color:var(--dim);cursor:pointer;margin-top:4px}
-.bnote .bdetail pre{font:12px/1.4 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto;margin:6px 0 0;padding:8px;background:var(--sunk);border-radius:var(--r-control)}
+.bnote .bdetail pre{font:var(--f-data);white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto;margin:6px 0 0;padding:8px;background:var(--sunk);border-radius:var(--r-control)}
 .bnote .bcmd{font:11px/1.5 var(--mono);color:var(--dim);overflow-wrap:anywhere;
   margin-top:3px}
 .bnote .bfoot{display:flex;gap:10px;align-items:center;margin-top:5px;
@@ -989,7 +992,7 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   border-top:var(--hair) solid var(--line)}
 .about .aline{display:flex;gap:10px;align-items:baseline;padding:3px 0}
 .about .aline span{flex:0 0 96px;color:var(--dim);font:var(--f-note)}
-.about .aline code{font:12px/1.5 var(--mono);overflow-wrap:anywhere;min-width:0}
+.about .aline code{font:var(--f-code);overflow-wrap:anywhere;min-width:0}
 /* The welcome panel's switch and its two pages: the guide is prose, the
    changelog is a list with a line under what is new since the reader last
    looked. Segmented like the notebook's strip, not a select. */
@@ -1136,7 +1139,7 @@ body.firstrun #panes{display:none}
 .ntask.bad{box-shadow:inset 3px 0 var(--bad)}
 .ntask .bcmd{font:var(--f-data);color:var(--dim);overflow-wrap:anywhere;margin-top:4px}
 .ntlong summary{font:var(--f-note);color:var(--dim);cursor:pointer;margin-top:6px}
-.ntbox{font:12px/1.45 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;max-height:50vh;overflow:auto;
+.ntbox{font:var(--f-code);white-space:pre-wrap;overflow-wrap:anywhere;max-height:50vh;overflow:auto;
   margin:6px 0 0;padding:8px 10px;background:var(--sunk);border:var(--hair) solid var(--line);border-radius:var(--r-control)}
 .ntrow{align-items:flex-start;flex-wrap:nowrap}
 .ntrow .tic svg{width:16px;height:16px;display:block;margin-top:2px;fill:none;stroke:currentColor;
@@ -1375,7 +1378,7 @@ button.primary{background:var(--accent-deep);border-color:var(--accent-mid);colo
 button.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:var(--row-y) var(--row-x)}
 /* A ghosted tool's reason, under the card's buttons and on their inset. */
-.toolwhy{padding:0 10px 9px;margin:0;font:12px/1.4 var(--mono);color:var(--bad);overflow-wrap:anywhere}
+.toolwhy{padding:0 10px 9px;margin:0;font:var(--f-data);color:var(--bad);overflow-wrap:anywhere}
 /* The Toolchains page's band of actions (tab-toolchains.js): the bar is the
    band, and what Remove would take sits under it on the band's own inset. */
 .tcact .tcclean{padding:4px 0 0;font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
@@ -2046,7 +2049,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .clog .clmeta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .clog .clmeta select{flex:0 0 auto;width:auto;min-width:0}
 .clog .clmeta .sp{flex:1 1 auto}
-.clog .clsha{font:11px/1 var(--mono);color:var(--dim);flex:0 1 auto;
+.clog .clsha{font:var(--f-pill);color:var(--dim);flex:0 1 auto;
   overflow-wrap:anywhere}
 @media(max-width:900px){
   /* The commit is a lookup, not a label: on a phone it is on the row's own
@@ -2157,7 +2160,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 }
 .verln{display:flex;gap:8px;align-items:baseline;padding:2px 0;flex-wrap:wrap}
 .verln span:first-child{flex:0 0 118px;color:var(--dim);font:var(--f-note)}
-.verln code{font:12px/1.5 var(--mono);overflow-wrap:anywhere;min-width:0}
+.verln code{font:var(--f-code);overflow-wrap:anywhere;min-width:0}
 .verln.off code{color:var(--dim)}
 .vermark{font:var(--f-note);color:var(--warn)}
 /* An error on the version row is red and a warning yellow, as everywhere
@@ -2214,7 +2217,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .glines .gn.on{fill:var(--ink)}
 #gitDetail{border-top:var(--hair) solid var(--line);padding:var(--row-y) 0 0}
 .gcommit .name{font:600 13px/1.4 system-ui,sans-serif;overflow-wrap:anywhere}
-.gmsg{font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;color:var(--dim)}
+.gmsg{font:var(--f-code);white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;color:var(--dim)}
 .gadd{color:var(--accent)} .gdel{color:var(--bad)}
 /* The branches table (R269 step 1): a line a branch, its verbs behind the
    ⋯ in the last column, drawn as every table is (tables), on a phone too;
@@ -2273,7 +2276,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
    own box on a phone rather than the pane. */
 .dfile{border-top:var(--hair) solid var(--line);margin-top:6px}
 .dfile>summary{padding:6px 0;font:var(--f-ui);color:var(--dim)}
-pre.diff{margin:0;overflow-x:auto;font:12px/1.5 var(--mono);white-space:pre;
+pre.diff{margin:0;overflow-x:auto;font:var(--f-code);white-space:pre;
   background:var(--sunk);border:var(--hair) solid var(--line);border-radius:var(--r-control);padding:6px 8px}
 pre.diff span{display:block;min-width:max-content;padding:0 4px}
 pre.diff .d-add{background:color-mix(in srgb, var(--accent), transparent 82%)}
@@ -2293,7 +2296,7 @@ pre.diff .d-ctx{color:var(--dim)}
 .artrow .dim.li{padding-left:12px}
 /* One published port is a link; several is a question, asked in the sheet. */
 .portpick{display:flex;flex-direction:column;gap:8px;padding:var(--row-y) var(--row-x)}
-.portpick a.btn{justify-content:flex-start;gap:8px;font:12px/1.4 var(--mono)}
+.portpick a.btn{justify-content:flex-start;gap:8px;font:var(--f-data)}
 .artrow .top .state{font:var(--f-note)}
 .artrow .top .state.ok{color:var(--pass)}
 /* Pushed right on a desktop; on a phone the buttons take their own line, the
@@ -2448,7 +2451,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   font:11px/1.4 system-ui,sans-serif;align-self:flex-start;min-height:0}
 @media(hover:hover){ .roadmap .dtog:hover{color:var(--ink)} }
 .roadmap .dinfo{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dim);
-  font:12px/1.5 var(--mono);border-left:2px solid var(--line);
+  font:var(--f-code);border-left:2px solid var(--line);
   padding:3px 0 3px 9px;margin-top:2px}
 .editbox .qd{margin-top:8px}
 /* pre-wrap, because a step may be written across a few lines: one step is one
@@ -4356,7 +4359,7 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
 .st.bad{background:var(--bad)}
 /* The doctor's panel under its dot in the top bar (R218 step 3). */
 .docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}
-#docWhen{font:11px/1 var(--mono);color:var(--dim);margin-left:auto}
+#docWhen{font:var(--f-pill);color:var(--dim);margin-left:auto}
 #doctor:not([hidden]){border-top:var(--hair) solid var(--line)}
 .doctor .probs{padding:7px 10px;display:flex;flex-direction:column;gap:4px}
 .doctor .probs:empty{display:none}
@@ -4398,7 +4401,7 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
   border-radius:var(--r-small);white-space:nowrap}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
+pre{margin:0;padding:9px 11px;font:var(--f-code);white-space:pre-wrap;
   word-break:break-word;max-height:300px;overflow:auto;color:color-mix(in srgb, var(--ink) 80%, var(--dim))}
 /* An empty state, one style everywhere (consistency batch 5): the page's
    own was 9px 11px, a document's the tokens and a list box's 8px 10px. */
@@ -4941,15 +4944,15 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 .fx .rule{border-top:var(--hair) solid var(--line);padding:0 var(--row-x)}
 .fx .rule>summary{flex-wrap:wrap;padding:var(--row-y) 0}
 .fx .rule .rbody{padding:0 0 var(--row-y) 17px}
-.fx .rule .rid{font:12px/1.5 var(--mono);color:var(--dim);word-break:break-all}
+.fx .rule .rid{font:var(--f-code);color:var(--dim);word-break:break-all}
 .fx .rule .rid .rname{color:var(--ink)}
 .fx .rule .desc{margin:3px 0 6px;overflow-wrap:anywhere}
 .fx .loc{font:12px/1.7 var(--mono);color:color-mix(in srgb, var(--ink) 80%, var(--dim));overflow-wrap:anywhere}
-.fx .msg{font:12px/1.5 var(--mono);color:var(--dim);white-space:pre-wrap;
+.fx .msg{font:var(--f-code);color:var(--dim);white-space:pre-wrap;
   margin:5px 0 0;padding-left:9px;border-left:2px solid var(--line);
   overflow-wrap:anywhere}
 .fx a{color:var(--note)}
-.fx .cve{display:inline-block;font:11px/1 var(--mono);padding:3px 7px;
+.fx .cve{display:inline-block;font:var(--f-pill);padding:3px 7px;
   border-radius:99px;border:1px solid var(--red2-edge);color:var(--bad);
   text-decoration:none;margin:0 4px 4px 0}
 /* A reason line in red wherever it is drawn (B426). Last, so it outranks

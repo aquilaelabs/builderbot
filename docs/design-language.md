@@ -464,7 +464,7 @@ colors agree everywhere: error and high are red, warning and medium yellow,
 note and low blue.
 
 A section's heading is `--f-sect` (600 14px system sans, 13px for a section
-inside a section), the one voice above a row's. What a row says is `--f-row` (13px system sans), what is typed into is `--f-field` (mono, a step below the text beside it, because mono at the same size reads larger), and a pill is `--f-tag`.
+inside a section), the one voice above a row's. What a row says is `--f-row` (13px system sans), what is typed into is `--f-field` (mono, a step below the text beside it, because mono at the same size reads larger), and a pill is `--f-tag`. Code and logs read as prose in mono (a diff, a commit message, a log, a command) are `--f-code`, and a short mono fact `--f-data`: never a pixel size by hand, which stayed put when every voice grew a pixel at a desk.
 
 **One step up at a desk (R210).** The sizes above are the phone's, set against a thumb's width; at a desk, `@media(min-width:901px)`, every voice is one pixel larger (`--f-note` 12, `--f-ui` 13, `--f-row` 14, `--f-field` 12 mono, `--f-sect` 15) so the ladder between them is the same ladder at both sizes. A row's mono facts are `--f-data` (12px, 13 at a desk) and a pill's text `--f-pill`; a button speaks in `--f-ui`, never the browser's default (B711). Nothing retypes a size: a voice is named once on `:root` and once in the desk block.
 
