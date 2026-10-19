@@ -1667,7 +1667,7 @@ r = a._job_rebuild('alpha', 'main', run)
 print(json.dumps({'phases': phases, 'steps': run.steps, 'result': r}))
 `], { encoding: 'utf8' });
 const AB = JSON.parse(ab.trim().split('\n').pop());
-ok(!AB.phases.includes('up') && AB.steps.join() === 'building,stopping',
+ok(!AB.phases.includes('up') && AB.steps.join() === 'building,pulling,stopping',
    'an abort during the stopping step stops there, rather than starting it anyway');
 ok(AB.result.state === 'canceled' && /stopped/.test(AB.result.error),
    '...and the result says so, which it was already saying with the thing running');
