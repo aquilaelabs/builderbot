@@ -50,6 +50,10 @@ def start(name):
             return False
         _jobs[name] = {"running": True, "at": time.time(), "took": 0,
                        "files": 0, "error": ""}
+    # Out of git first, here, before anything writes .bb-map/: every create
+    # path (a fresh repo, a clone, an archive) comes through this, and a
+    # clone whose build did not get the line in had its map committed.
+    exclude(WORKSPACE / name)
     threading.Thread(target=_build, args=(name,), daemon=True).start()
     return True
 
@@ -101,6 +105,21 @@ def exclude(dest):
                        capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
         pass                     # the map still builds; only the exclude is lost
+
+
+def exclude_all():
+    """`.bb-map/` out of git in every project under the workspace, once at
+    start: a project made before its create path wrote the line, linked,
+    or moved in by hand gets it too. Quiet where it already is."""
+    if not WORKSPACE:
+        return
+    try:
+        trees = [d for d in WORKSPACE.iterdir()
+                 if not d.name.startswith(".") and (d / ".git").exists()]
+    except OSError:
+        return
+    for d in trees:
+        exclude(d)
 
 
 def held(name):

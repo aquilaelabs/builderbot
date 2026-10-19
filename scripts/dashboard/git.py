@@ -139,6 +139,9 @@ MERGERS = re.compile(r"^merge\.[^.]+\.driver$")
 STATE_FILES = ("MERGE_HEAD", "MERGE_MSG", "MERGE_MODE", "ORIG_HEAD",
                "CHERRY_PICK_HEAD", "REVERT_HEAD", "AUTO_MERGE")
 ZERO = "0" * 40
+# BuilderBot's code map under a tree (codemap.py's INDEX_DIR), never the
+# project's to commit.
+MAP_DIR = ".bb-map/"
 
 
 def _own(repo, write=False):
@@ -205,11 +208,16 @@ def _own(repo, write=False):
         # code map's .bb-map/, a new project's brief) out of the project's
         # git: git reads it from the git dir, so a status through this one
         # listed them as untracked and Commit all would take them. Patterns
-        # only, nothing git runs.
+        # only, nothing git runs. The code map's line is here whatever the
+        # tree's file says: a tree whose own exclude never got it (a clone
+        # whose .git the map's build could not write) had Commit all take
+        # .bb-map/ and Push send it to the project's remote.
         try:
             ex = (common / "info" / "exclude").read_text(encoding="utf-8", errors="replace")
         except OSError:
             ex = ""
+        if MAP_DIR not in ex.split("\n"):
+            ex += ("" if ex.endswith("\n") or not ex else "\n") + MAP_DIR + "\n"
         (d / "info").mkdir(exist_ok=True)
         _atomic(d / "info" / "exclude", ex)
         tree_refs = gitrelay.refs(common)

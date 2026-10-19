@@ -3464,6 +3464,8 @@ projsessions.BEHIND = session_behind
 # create paths, and the one thing a Claude session on a new project waits for.
 mapping.configure(workspace=WORKSPACE,
                   codemap=Path(__file__).resolve().parent.parent / "lib" / "codemap.py")
+# Every project's .bb-map/ out of its git, once, beside the start.
+threading.Thread(target=mapping.exclude_all, daemon=True).start()
 projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
                    project_name=PROJECT_NAME,
