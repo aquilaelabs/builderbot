@@ -286,23 +286,24 @@ function tcRow(p, busy, job, managed){
   </label>`;
 }
 // ---- tool packs (R77) -------------------------------------------------------
-// The packs an administrator added, as a record list (the design's
-// record-lists rule): a row each with Edit at its end, and Add tool pack
-// over the table opening the same form at its top. A pack is looked at
-// before it is added: the form fetches its manifest at a commit and shows
-// what it would download and run, and Add keeps exactly that commit.
+// The packs an administrator added, as a table, a row each with Edit at its
+// end and Add tool pack over it, both opening one dialog (tpDraw). A pack is
+// looked at before it is added: the dialog fetches its manifest at a commit
+// and shows what it would download and run, and Add keeps exactly that commit.
 const TP_COLS = [{label: "Pack"}, {label: "From"}, {label: "Commit", w: "6.5rem"},
   {label: "Added by", w: "minmax(0,.6fr)"}, {act: true, w: "5rem"}];
-let tpEdit = null;             // "" a new pack's form open, else the name of the pack open
+let tpEdit = null;             // the dialog's pack: "" for Add tool pack, else the name of the pack in Edit
 let tpForm = {url: "", seen: null, error: "", busy: ""};
 
 // What a pack would install and give a session, from the manifest a look
 // fetched: its downloads are its install steps, its verbs the words each
 // runs, so the person adding it reads both before Add.
+// `offer` is whether Add or Update stands beside it: the plain-http warning
+// is about approving what is shown, so it is said only then.
 // On an update, `was` is the installed pack's (its verbs' words and its
 // install steps): what the new commit changes is said on its line, and a
 // verb it drops is listed as gone, so the approval is of the difference.
-function tpSeen(seen, was){
+function tpSeen(seen, was, offer = true){
   const m = seen.manifest, w = a => `<code>${esc(a.join(" "))}</code>`;
   const same = (a, b) => JSON.stringify(a || null) === JSON.stringify(b || null);
   const mark = (now, then) => !was ? "" : then === undefined ? ` <span class="pill warn">new</span>`
@@ -322,76 +323,111 @@ function tpSeen(seen, was){
     ${verbs}
     ${(m.terms || []).length ? `<div class="sub">Under ${m.terms.map(t => t.url ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.label)}</a>` : esc(t.label)).join(", ")}.</div>` : ""}
     ${seen.guidance ? `<div class="sub">Comes with guidance a session reads as <code>bb help tool-${esc(m.name)}</code>.</div>` : ""}
-    ${seen.plain ? `<div class="hint warn">Fetched over plain http: what Add keeps is this commit, checked by its hash, but read what it runs here before you add it.</div>` : ""}
+    ${seen.plain && offer ? `<div class="hint warn">Fetched over plain http: what Add keeps is this commit, checked by its hash, but read what it runs here before you add it.</div>` : ""}
   </div>`;
 }
 
-function tpFormHtml(p){
+// The dialog Add tool pack and a row's Edit open (the operator, 19 Oct): the
+// repository, Look, what it would install and run, then Add; for a pack
+// already here, Look for a newer commit, Update to it, or Remove.
+function tpModalHtml(){
+  const p = tpEdit ? (toolchains?.items || []).find(i => i.name === tpEdit && i.pack) : null;
   const f = tpForm, fresh = !p, seen = f.seen;
-  const newer = seen && p && seen.commit !== p.pack.commit;
-  return `<div class="ngform tpform">
-    ${fresh ? `<label class="setrow col ctlrow"><span class="lbl">Repository</span><input id="tpUrl" value="${esc(f.url)}"
-      placeholder="https://github.com/owner/repo" aria-label="the pack's repository" autocomplete="off" spellcheck="false"></label>`
-      : `<div class="sub">From <code>${esc(p.pack.url)}</code> at ${esc(p.pack.commit.slice(0, 12))}, added by ${esc(p.pack.by || "an administrator")}${
-        p.pack.at ? ` ${ago(p.pack.at)}` : ""}. Verbs: ${esc((p.pack.verbs || []).join(", "))}.</div>`}
-    ${seen ? tpSeen(seen, p ? p.pack : null) : ""}
-    ${f.error ? `<div class="hint bad">${esc(f.error)}</div>` : ""}
-    ${p && seen && !newer ? `<div class="hint">No newer commit: the repository's head is the one installed.</div>` : ""}
-    <div class="actbar ngformbar">${p ? `<button type="button" class="danger lead" data-tprm="${esc(p.name)}">Remove</button>` : ""}
-      <button type="button" data-tpcancel>Cancel</button>
-      <button type="button"${seen && (fresh || newer) ? "" : " class=\"primary\""} data-tplook${f.busy ? " disabled" : ""}>${
-        f.busy === "look" ? "Looking…" : fresh ? "Look" : "Look for a newer commit"}</button>
-      ${seen && (fresh || newer) ? `<button type="button" class="primary" data-tpadd${f.busy ? " disabled" : ""}>${
-        f.busy === "add" ? "Adding…" : fresh ? "Add" : `Update to ${esc(seen.commit.slice(0, 12))}`}</button>` : ""}</div>
-  </div>`;
+  const newer = !!(seen && p && seen.commit !== p.pack.commit);
+  const offer = !!(seen && (fresh || newer));
+  const look = `<button type="button" data-tplook${f.busy ? " disabled" : ""}${offer ? "" : ` class="primary"`}>${
+    f.busy === "look" ? "Looking…" : fresh ? "Look" : "Look for a newer commit"}</button>`;
+  const add = offer ? `<button type="button" class="primary" data-tpadd${f.busy ? " disabled" : ""}>${
+    f.busy === "add" ? "Adding…" : fresh ? "Add" : `Update to ${esc(seen.commit.slice(0, 12))}`}</button>` : "";
+  const rm = p ? `<button type="button" class="danger" data-tprm="${esc(p.name)}">Remove</button>` : "";
+  return `<div class="box wide"><h3>${fresh ? "Add tool pack" : `${esc(p.label)}, a tool pack`}</h3>
+    ${fresh ? `<div class="field">${lbl("tpUrl", "Repository", "a git repository with a bbtool.json at its root: https, ssh, or http for a git host on your network")}
+      <input id="tpUrl" value="${esc(f.url)}" placeholder="https://github.com/owner/repo" autocomplete="off" spellcheck="false"></div>`
+      : `<div class="field"><div class="sub">From <code>${esc(p.pack.url)}</code> at ${esc(p.pack.commit.slice(0, 12))}, added by ${
+          esc(p.pack.by || "an administrator")}${p.pack.at ? ` ${ago(p.pack.at)}` : ""}. Verbs: ${esc((p.pack.verbs || []).join(", "))}.</div></div>`}
+    ${seen ? `<div class="field">${tpSeen(seen, p ? p.pack : null, offer)}</div>` : ""}
+    ${f.error ? `<div class="field"><div class="hint bad">${esc(f.error)}</div></div>` : ""}
+    ${p && seen && !newer ? `<div class="field"><div class="hint">No newer commit: the repository's head is the one installed.</div></div>` : ""}
+    ${dlgFoot(`<button type="button" data-tpcancel>Cancel</button>`, `${look}${add}`, rm)}</div>`;
 }
 
 function tpSection(items){
   const packs = (items || []).filter(i => i.pack);
-  const rec = p => `<div class="row ngrec${tpEdit === p.name ? " open" : ""}">${tblLine(TP_COLS, [
+  const rec = p => `<div class="row ngrec">${tblLine(TP_COLS, [
       `${esc(p.label)} <span class="sub">${esc(p.name)}</span>`, `<code>${esc(p.pack.url)}</code>`, esc(p.pack.commit.slice(0, 12)),
-      esc(p.pack.by || ""), tpEdit === p.name ? "" : `<button type="button" data-tpedit="${esc(p.name)}">Edit</button>`])}${
-      tpEdit === p.name ? tpFormHtml(p) : ""}</div>`;
-  const fresh = tpEdit === "" ? `<div class="row ngrec open">${tpFormHtml(null)}</div>` : "";
-  const body = packs.length || fresh ? tblWrap(TP_COLS, fresh + packs.map(rec).join(""), "tprecords")
+      esc(p.pack.by || ""), `<button type="button" data-tpedit="${esc(p.name)}">Edit</button>`])}</div>`;
+  const body = packs.length ? tblWrap(TP_COLS, packs.map(rec).join(""), "tprecords")
     : `<div class="hint">none yet: Add tool pack brings in a toolchain from a repository you choose</div>`;
   return docSection("toolchains", "packs", "Tool packs", packs.length ? `${packs.length} added` : "none added",
     `<div class="field"><div class="hint">Toolchains you add from a repository with a bbtool.json, not shipped with BuilderBot.${helpIcon(
       "A pack installs like any toolchain and gives a session bb tool verbs. It is kept at the commit you looked at, and a project's sessions use it only once its settings switch it on.")}</div></div>
-    <div class="field"><div class="addbar ctlrow" data-add="pack"><button type="button" data-tpnew${tpEdit === "" ? " disabled" : ""}>Add tool pack</button></div></div>
+    <div class="field"><div class="addbar ctlrow" data-add="pack"><button type="button" data-tpnew>Add tool pack</button></div></div>
     <div class="field">${body}</div>`);
 }
 
+// The section's two doors into the dialog.
 function tpWire(el){
-  const redraw = () => { tcRev++; drawPanes(); };
-  const close = () => { tpEdit = null; tpForm = {url: "", seen: null, error: "", busy: ""}; redraw(); };
-  const url = el.querySelector("#tpUrl");
-  if (url) url.oninput = () => { tpForm.url = url.value; tpForm.seen = null; tpForm.error = ""; };
-  el.querySelectorAll("[data-tpnew]").forEach(b => b.onclick = () => { tpEdit = ""; tpForm = {url: "", seen: null, error: "", busy: ""}; redraw(); });
-  el.querySelectorAll("[data-tpedit]").forEach(b => b.onclick = () => { tpEdit = b.dataset.tpedit; tpForm = {url: "", seen: null, error: "", busy: ""}; redraw(); });
-  el.querySelectorAll("[data-tpcancel]").forEach(b => b.onclick = close);
+  el.querySelectorAll("[data-tpnew]").forEach(b => b.onclick = () => tpOpen(""));
+  el.querySelectorAll("[data-tpedit]").forEach(b => b.onclick = () => tpOpen(b.dataset.tpedit));
+}
+
+function tpOpen(name){
+  tpEdit = name || "";
+  tpForm = {url: "", seen: null, error: "", busy: ""};
+  tpDraw(true);
+}
+
+function tpClose(){
+  const m = document.getElementById("tpmodal");
+  if (m) m.hidden = true;
+  tpEdit = null;
+}
+
+// Drawn again on each step (looking, what came back, adding), the URL as
+// typed kept in tpForm across the redraws.
+function tpDraw(first){
+  let m = document.getElementById("tpmodal");
+  if (!m){
+    m = document.createElement("div");
+    m.id = "tpmodal"; m.className = "modal"; m.hidden = true;
+    m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true");
+    document.body.appendChild(m);
+    armModal(m);
+  }
+  m.innerHTML = tpModalHtml();
+  m.hidden = false;
+  m.onclick = e => { if (e.target === m) tpClose(); };
+  const url = m.querySelector("#tpUrl");
+  if (url){
+    url.oninput = () => { tpForm.url = url.value; if (tpForm.seen || tpForm.error){ tpForm.seen = null; tpForm.error = ""; tpDraw(); url.focus(); } };
+    url.onkeydown = e => { if (e.key === "Enter") m.querySelector("[data-tplook]")?.click(); };
+    if (first) url.focus();
+  }
+  m.querySelector("[data-tpcancel]").onclick = tpClose;
   const post = async body => (await postJSON("/api/toolpacks", body)).json().catch(() => ({error: "no answer"}));
   const packUrl = () => tpEdit ? (toolchains?.items || []).find(i => i.name === tpEdit)?.pack?.url || "" : tpForm.url.trim();
-  el.querySelectorAll("[data-tplook]").forEach(b => b.onclick = async () => {
-    tpForm.busy = "look"; tpForm.error = ""; redraw();
+  m.querySelector("[data-tplook]").onclick = async () => {
+    tpForm.busy = "look"; tpForm.error = ""; tpDraw();
     const j = await post({action: "preview", url: packUrl()});
-    tpForm.busy = ""; tpForm.seen = j.error ? null : j; tpForm.error = j.error || ""; redraw();
-  });
-  el.querySelectorAll("[data-tpadd]").forEach(b => b.onclick = async () => {
-    tpForm.busy = "add"; redraw();
+    tpForm.busy = ""; tpForm.seen = j.error ? null : j; tpForm.error = j.error || ""; tpDraw();
+  };
+  const add = m.querySelector("[data-tpadd]");
+  if (add) add.onclick = async () => {
+    tpForm.busy = "add"; tpDraw();
     const j = await post({action: "add", url: packUrl(), commit: tpForm.seen?.commit || ""});
-    if (j.error){ tpForm.busy = ""; tpForm.error = j.error; redraw(); return; }
+    if (j.error){ tpForm.busy = ""; tpForm.error = j.error; tpDraw(); return; }
     notify(j.replaced ? `${j.pack.name} updated: where it is installed, uninstall it and install it again to take the new commit`
                       : `${j.pack.name} added: install it below like any toolchain`);
-    close(); loadToolchains();
-  });
-  el.querySelectorAll("[data-tprm]").forEach(b => b.onclick = async () => {
-    const n = b.dataset.tprm;
+    tpClose(); loadToolchains();
+  };
+  const rm = m.querySelector("[data-tprm]");
+  if (rm) rm.onclick = async () => {
+    const n = rm.dataset.tprm;
     if (!confirm(`Remove the tool pack ${n}? It leaves the catalog; uninstall it from each node's store first if it is installed.`)) return;
     const j = await post({action: "remove", name: n});
-    if (j.error){ notify(j.error, true); return; }
-    close(); loadToolchains();
-  });
+    if (j.error){ tpForm.error = j.error; tpDraw(); return; }
+    tpClose(); loadToolchains();
+  };
 }
 
 const TC_COLS = [{label: "Toolchain", w: "minmax(0,2fr)"}, {label: "Installed", w: "minmax(0,.6fr)"}, {label: "Latest", w: "6.5rem"},

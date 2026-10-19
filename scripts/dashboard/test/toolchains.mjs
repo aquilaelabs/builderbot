@@ -953,14 +953,14 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   await page.evaluate(() => { tcRev++; drawPanes(); });
   await page.waitForSelector('.doc.on [data-tpnew]', { timeout: 15000 });
   await page.click('.doc.on [data-tpnew]');
-  await page.fill('.doc.on #tpUrl', `file://${repo}`);
-  await page.click('.doc.on [data-tplook]');
-  await page.waitForSelector('.doc.on .tpseen', { timeout: 20000 });
-  const seen = await page.$eval('.doc.on .tpseen', e => e.textContent.replace(/\s+/g, ' '));
+  await page.fill('#tpmodal #tpUrl', `file://${repo}`);
+  await page.click('#tpmodal [data-tplook]');
+  await page.waitForSelector('#tpmodal .tpseen', { timeout: 20000 });
+  const seen = await page.$eval('#tpmodal .tpseen', e => e.textContent.replace(/\s+/g, ' '));
   ok(/Hex kit hexkit at [0-9a-f]{12}/.test(seen) && /bb tool hexkit dump FILE runs \{dir\}\/bin\/hexkit dump \{args\}/.test(seen)
      && /bb help tool-hexkit/.test(seen),
      `Look shows the pack at its commit, each verb's words and its guidance before Add (${seen.slice(0, 160)})`);
-  await page.click('.doc.on [data-tpadd]');
+  await page.click('#tpmodal [data-tpadd]');
   await page.waitForFunction(() => (toolchains?.items || []).some(i => i.name === 'hexkit' && i.pack), null, { timeout: 20000 });
   const row = await page.evaluate(() => (toolchains.items || []).find(i => i.name === 'hexkit'));
   ok(row.pack.commit === commit && row.pack.verbs.join() === 'dump' && row.pack.by,
@@ -991,18 +991,18 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   g('commit', '-qam', 'later');
   const newer = g('rev-parse', 'HEAD');
   await page.click('.doc.on [data-tpedit="hexkit"]');
-  await page.click('.doc.on [data-tplook]');
-  await page.waitForSelector('.doc.on .tpseen', { timeout: 20000 });
-  const diff = await page.$eval('.doc.on .tpseen', e => e.textContent.replace(/\s+/g, ' '));
+  await page.click('#tpmodal [data-tplook]');
+  await page.waitForSelector('#tpmodal .tpseen', { timeout: 20000 });
+  const diff = await page.$eval('#tpmodal .tpseen', e => e.textContent.replace(/\s+/g, ' '));
   ok(/dump --wide \{args\} changed was \{dir\}\/bin\/hexkit dump \{args\}/.test(diff) && /strings FILE runs .* new/.test(diff),
      `Look for a newer commit says what the commit changes: a changed verb with what it was, a new one marked (${diff.slice(0, 200)})`);
-  await page.click('.doc.on [data-tpadd]');
+  await page.click('#tpmodal [data-tpadd]');
   await page.waitForFunction(c => (toolchains?.items || []).find(i => i.name === 'hexkit')?.pack?.commit === c, newer, { timeout: 20000 });
   ok(true, '...and Update keeps the pack at the newer commit');
   const bad = await api('/api/toolpacks', { action: 'preview', url: `file://${DIR}/nowhere` });
   ok(/could not fetch/.test(bad.error || ''), `a repository that is not there is said so (${bad.error})`);
   await page.click('.doc.on [data-tpedit="hexkit"]');
-  await page.click('.doc.on [data-tprm="hexkit"]');
+  await page.click('#tpmodal [data-tprm="hexkit"]');
   await page.waitForFunction(() => !(toolchains?.items || []).some(i => i.name === 'hexkit'), null, { timeout: 20000 });
   ok(true, '...and Remove takes it out of the catalog');
 }
