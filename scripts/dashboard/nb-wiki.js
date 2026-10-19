@@ -107,6 +107,63 @@ function wikiToc(src){
   return out;
 }
 
+// ---- the reader, Help's and a project's Wiki view's ----------------------
+// One reader for both (the operator, 19 Oct: so the two cannot drift): the
+// list beside the article with its picker on a phone, the article's head,
+// its contents box and its page. The Wiki view adds its Read and Edit tabs
+// and its footer; Help adds its search.
+
+// The list of pages beside the article, and the picker that stands for it
+// on a phone, the word beside it as a page bar's picker has.
+function wikiNav(list, aria, {id, word, items, cur}){
+  return `<nav class="wknav" aria-label="${esc(aria)}">${list}</nav><label class="pick wkpick"><span class="pickw">${esc(word)}</span><select id="${esc(id)}" aria-label="${esc(aria)}">${
+    optionList(items, cur)}</select></label>`;
+}
+// A page's text without its own # title when that title is said by the
+// article's head: always for Help's docs, when it is the page's name in a
+// wiki.
+function wikiUntitled(text, title = null){
+  const first = String(text || "").match(/^\s*#\s+(.*?)\s*\n/);
+  return first && (title === null || first[1].trim().toLowerCase() === title.toLowerCase()) ? text.slice(first[0].length) : text;
+}
+// The contents box for a page with three headings or more; a long one's goes
+// two levels deep, every heading of it being a list longer than the page's
+// first screen. A press scrolls to its heading (wikiWireAnchors).
+function wikiContents(text){
+  let toc = wikiToc(text);
+  if (toc.length > 30) toc = toc.filter(h => h.level <= 2);
+  return toc.length >= 3 ? `<div class="wktoc"><div class="wktochead">Contents</div><ol>${
+    toc.map(h => `<li class="l${h.level}"><a href="#" data-anchor="${esc(h.id)}">${esc(h.text)}</a></li>`).join("")}</ol></div>` : "";
+}
+// A heading of `root`'s page by its anchor, scrolled to the top of what
+// scrolls: the reader's own id (wk-...), or a forge's as a doc's links write
+// it, which drops what the reader's ids turn into dashes. The pane is what
+// scrolls, so the pane is scrolled: scrollIntoView moved the PAGE instead,
+// the heading went up under the header and the article sat where it was
+// (the operator, 4 Oct). False when there is no such heading.
+function wikiScroll(root, anchor){
+  const doc = root?.querySelector(".wkpage");
+  if (!doc || !anchor) return false;
+  const flat = s => s.toLowerCase().replace(/^wk-/, "").replace(/[^a-z0-9]/g, "");
+  const h = doc.querySelector(`[id="${CSS.escape(anchor)}"]`) || doc.querySelector(`[id="wk-${CSS.escape(anchor)}"]`)
+    || [...doc.querySelectorAll("h2[id], h3[id], h4[id], h5[id], h6[id]")].find(x => flat(x.id) === flat(anchor));
+  if (!h) return false;
+  let sc = h.parentElement;
+  while (sc && !(/(auto|scroll)/.test(getComputedStyle(sc).overflowY) && sc.scrollHeight > sc.clientHeight)) sc = sc.parentElement;
+  if (!sc) return false;
+  sc.scrollTo({top: sc.scrollTop + h.getBoundingClientRect().top - sc.getBoundingClientRect().top - 8,
+               behavior: noMotion() ? "auto" : "smooth"});
+  return true;
+}
+// The article: what goes over its title (the wiki's tabs), its title, the
+// line under it, and its body.
+function wikiArticle({name, title, meta, over = "", body}){
+  return `<article class="wkarticle" data-name="${esc(name)}">${over}
+      <h2 class="wktitle">${esc(title)}</h2>
+      <div class="wkmeta">${meta}</div>
+      ${body}</article>`;
+}
+
 function nbWikiView({$, nb, project}){
   // Read like an encyclopedia (the operator, 2 Oct): one article at a time,
   // its title over a rule, a contents box for a page with sections, and
@@ -204,9 +261,7 @@ function nbWikiView({$, nb, project}){
     const list = sb && !sb.error
       ? wikiMarkdown(sb.text)
       : `<ul>${articles().map(p => `<li><a href="#" class="wklink" data-page="${esc(p.name)}">${esc(p.title)}</a></li>`).join("")}</ul>`;
-    const pick = `<label class="pick wkpick">Page <select id="wkPick" aria-label="the page to read">${
-      optionList(articles().map(p => [p.name, p.title]), nb.wkCur)}</select></label>`;
-    return `<nav class="wknav" aria-label="the wiki's pages">${list}</nav>${pick}`;
+    return wikiNav(list, "the wiki's pages", {id: "wkPick", word: "Page", items: articles().map(p => [p.name, p.title]), cur: nb.wkCur});
   }
 
   function article(){
@@ -234,21 +289,14 @@ function nbWikiView({$, nb, project}){
       body = `<div class="hint bad">${esc(pg.error)}</div>`;
     } else {
       // A page that opens with its own title as a # heading says it once.
-      let text = pg.text;
-      const first = text.match(/^\s*#\s+(.*?)\s*\n/);
-      if (first && first[1].trim().toLowerCase() === meta.title.toLowerCase()) text = text.slice(first[0].length);
-      const toc = wikiToc(text);
-      const box = toc.length >= 3 ? `<div class="wktoc"><div class="wktochead">Contents</div><ol>${
-        toc.map(h => `<li class="l${h.level}"><a href="#${esc(h.id)}" data-anchor="${esc(h.id)}">${esc(h.text)}</a></li>`).join("")}</ol></div>` : "";
+      const text = wikiUntitled(pg.text, meta.title);
       const foot = nb.wkPages._Footer && !nb.wkPages._Footer.error
         ? `<footer class="wkfooter">${wikiMarkdown(nb.wkPages._Footer.text)}</footer>` : "";
-      body = `${box}<div class="wkpage">${wikiMarkdown(text) || `<span class="dim">an empty page</span>`}</div>${foot}`;
+      body = `${wikiContents(text)}<div class="wkpage">${wikiMarkdown(text) || `<span class="dim">an empty page</span>`}</div>${foot}`;
     }
-    return `<article class="wkarticle" data-name="${esc(meta.name)}">${tabs}
-      <h2 class="wktitle">${esc(meta.title)}</h2>
-      <div class="wkmeta">${[meta.by ? `last edited by ${esc(meta.by)}` : "", meta.at ? esc(ago(meta.at)) : "",
-        `<span class="mono">${esc(meta.file)}</span>`].filter(Boolean).join(" · ")}</div>
-      ${body}</article>`;
+    return wikiArticle({name: meta.name, title: meta.title, over: tabs, body,
+      meta: [meta.by ? `last edited by ${esc(meta.by)}` : "", meta.at ? esc(ago(meta.at)) : "",
+             `<span class="mono">${esc(meta.file)}</span>`].filter(Boolean).join(" · ")});
   }
 
   function drawWiki(){
@@ -294,20 +342,7 @@ function nbWikiView({$, nb, project}){
     const name = nb.wkCur;
     // A [[link]], the nav's and the sidebar's: that page, in place.
     box.querySelectorAll(".wklink").forEach(a => a.onclick = ev => { ev.preventDefault(); go(a.dataset.page); });
-    // The pane is what scrolls, so the pane is scrolled: scrollIntoView
-    // moved the PAGE instead, the heading went up under the header and the
-    // article sat where it was, which read as the contents doing nothing
-    // (the operator, 4 Oct).
-    box.querySelectorAll("[data-anchor]").forEach(a => a.onclick = ev => {
-      ev.preventDefault();
-      const h = box.querySelector("#" + CSS.escape(a.dataset.anchor));
-      if (!h) return;
-      let sc = h.parentElement;
-      while (sc && !(/(auto|scroll)/.test(getComputedStyle(sc).overflowY) && sc.scrollHeight > sc.clientHeight)) sc = sc.parentElement;
-      if (!sc) return;
-      sc.scrollTo({top: sc.scrollTop + h.getBoundingClientRect().top - sc.getBoundingClientRect().top - 8,
-                   behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
-    });
+    box.querySelectorAll("[data-anchor]").forEach(a => a.onclick = ev => { ev.preventDefault(); wikiScroll(box, a.dataset.anchor); });
     const pick = box.querySelector("#wkPick");
     if (pick) pick.onchange = () => go(pick.value);
     on("wkRead", () => { if (nb.wkEdit && !confirm("Stop editing? What you typed is not saved.")) return; nb.wkEdit = null; drawWiki(); });

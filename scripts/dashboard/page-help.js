@@ -61,17 +61,9 @@ function helpGo(name, anchor = ""){
   if (!anchor) document.querySelector(".doc.on")?.scrollTo?.({top: 0});
 }
 
-// A section by its anchor: the reader's own (wk-...), or a forge's as a
-// doc's links write them, which drop what the reader's turn into dashes.
+// A section of the doc on show by its anchor (wikiScroll, the reader's).
 function helpScroll(anchor){
-  const doc = document.querySelector(".doc.on .helptab .wkpage");
-  if (!doc || !anchor) return false;
-  const flat = s => s.toLowerCase().replace(/^wk-/, "").replace(/[^a-z0-9]/g, "");
-  const h = doc.querySelector(`[id="${CSS.escape(anchor)}"]`) || doc.querySelector(`[id="wk-${CSS.escape(anchor)}"]`)
-    || [...doc.querySelectorAll("h2[id], h3[id], h4[id], h5[id], h6[id]")].find(x => flat(x.id) === flat(anchor));
-  if (!h) return false;
-  h.scrollIntoView({block: "start", behavior: noMotion() ? "auto" : "smooth"});
-  return true;
+  return wikiScroll(document.querySelector(".doc.on .helptab"), anchor);
 }
 
 function helpNav(){
@@ -79,9 +71,8 @@ function helpNav(){
     name === helpCur ? " on" : ""}" data-page="${esc(name)}"${name === helpCur ? ' aria-current="page"' : ""}>${esc(title)}</a></li>`;
   const list = `<ul>${li(helpIndex.home, helpIndex.title)}</ul>` + helpIndex.groups.map(g =>
     `<strong>${esc(g.group)}</strong><ul>${g.docs.map(d => li(d.name, d.title)).join("")}</ul>`).join("");
-  const pick = `<label class="pick wkpick"><span class="pickw">Doc</span><select id="helpPick" aria-label="the doc to read">${
-    optionList([{name: helpIndex.home, title: helpIndex.title}, ...helpIndex.groups.flatMap(g => g.docs)].map(d => [d.name, d.title]), helpCur)}</select></label>`;
-  return `<nav class="wknav" aria-label="the docs">${list}</nav>${pick}`;
+  return wikiNav(list, "the docs", {id: "helpPick", word: "Doc", cur: helpCur,
+    items: [{name: helpIndex.home, title: helpIndex.title}, ...helpIndex.groups.flatMap(g => g.docs)].map(d => [d.name, d.title])});
 }
 
 function helpArticle(){
@@ -89,23 +80,12 @@ function helpArticle(){
   const meta = helpIndex.groups.flatMap(g => g.docs).find(d => d.name === helpCur);
   if (!doc) return `<article class="wkarticle">${skel("lines", 12)}</article>`;
   if (doc.error) return `<article class="wkarticle"><div class="hint bad">${esc(doc.error)}</div></article>`;
-  // The doc's own # title is the article's title, said once.
-  let text = doc.text;
-  const first = text.match(/^\s*#\s+(.*?)\s*\n/);
-  if (first) text = text.slice(first[0].length);
-  // A link out of the docs (../CONTRIBUTING.md, a script in the tree) has
-  // nothing here to open: its words, not its Markdown.
-  text = text.replace(/\[([^\]]*)\]\((?!https?:)([^)#]*\/[^)]*)\)/g, "$1");
-  // A long doc's contents go two levels deep; every heading of one is a
-  // list longer than the doc's first screen.
-  let toc = wikiToc(text);
-  if (toc.length > 30) toc = toc.filter(h => h.level <= 2);
-  const box = toc.length >= 3 ? `<div class="wktoc"><div class="wktochead">Contents</div><ol>${
-    toc.map(h => `<li class="l${h.level}"><a href="#" data-anchor="${esc(h.id)}">${esc(h.text)}</a></li>`).join("")}</ol></div>` : "";
-  return `<article class="wkarticle" data-name="${esc(doc.name)}">
-      <h2 class="wktitle">${esc(doc.title)}</h2>
-      <div class="wkmeta">${meta?.blurb ? `${esc(meta.blurb)} · ` : ""}<span class="mono">docs/${esc(doc.name)}.md</span></div>
-      ${box}<div class="wkpage">${wikiMarkdown(text)}</div></article>`;
+  // The doc's own # title is the article's title, said once; a link out of
+  // the docs (../CONTRIBUTING.md, a script in the tree) has nothing here to
+  // open, so it is its words, not its Markdown.
+  const text = wikiUntitled(doc.text).replace(/\[([^\]]*)\]\((?!https?:)([^)#]*\/[^)]*)\)/g, "$1");
+  return wikiArticle({name: doc.name, title: doc.title, body: `${wikiContents(text)}<div class="wkpage">${wikiMarkdown(text)}</div>`,
+    meta: `${meta?.blurb ? `${esc(meta.blurb)} · ` : ""}<span class="mono">docs/${esc(doc.name)}.md</span>`});
 }
 
 // The search's results, in the article's place: each line found with its

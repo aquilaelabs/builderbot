@@ -117,6 +117,11 @@ await page.setViewportSize({ width: 393, height: 851 });
 ok(await page.$eval(`${NB} .wknav`, n => getComputedStyle(n).display === 'none')
    && await page.$eval(`${NB} .wkpick`, n => getComputedStyle(n).display !== 'none'),
    'on a phone the pages are a picker over the article');
+// The reader is Help's as well (the operator, 19 Oct: one reader, so the two
+// cannot drift): its picker's word beside it, on the field gap.
+ok(await page.$eval(`${NB} .wkpick`, l => { const w = l.querySelector(':scope > .pickw'), s = l.querySelector(':scope > select');
+     return !!w && !!s && w.getBoundingClientRect().right <= s.getBoundingClientRect().left && w.textContent === 'Page'; }),
+   "...the reader's own picker, its word beside it as Help's is");
 await page.setViewportSize({ width: 1280, height: 1000 });
 // Rename asks in a box under the article's tabs, not the browser's prompt
 // (R256 step 4): the name to change in it, Enter to rename, Escape to leave.

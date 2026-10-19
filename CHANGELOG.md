@@ -680,6 +680,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - On a phone a page's tools read whole on its bar, Build's five down to a 344px fold cover (B879) (4bef55f)
 - Help and a project's wiki read a doc's paragraphs whole: a line break in the source is a space, as a forge shows the file, and a list item's wrapped lines stay in it (B880) (d1ebc1c)
 - On a phone Help's Doc picker has its word beside it rather than run into it (B881) (d1ebc1c)
+- A project's wiki and Help are one reader: the wiki's phone picker has its word beside it as Help's does, and Help's contents scroll the pane to the heading rather than moving the page under the header (986c79d)
 
 ### Security
 
