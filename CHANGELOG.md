@@ -400,6 +400,9 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - A press anywhere on a project's card opens its page, on Projects and on Home; a card's menu and the Claude chooser open over the page, so a card in Archived no longer has its menu cut off, and on a phone both open as a sheet above the bottom bar (3930c2a)
 - Menus open beside their button on a phone as at a desk and slide the way they open; Containers' bar is one line on a phone; nginx's loading view shows its sections (acb4047)
 - On a phone the bottom bar has Build where Jobs was (Jobs is under More), and a pinned project's card shows a pin beside its name instead of every other card saying unpinned (201262c)
+- nginx's routes are a list like Cloudflare's DNS records: each route a read-only row with Edit, which opens it in place with Delete, Cancel and Save, and Add route opens the same form at the top (b46ecb2)
+- The Git view's branches are a table, one line a branch with when it last moved, how far behind and ahead of main, whose it is, and its actions behind a ⋯; chips (Active, Yours, In main, Only on the remote) and a search narrow it (b46ecb2)
+- The Design view's Pages and Themes and the Overview's What a session is sent open like every other section instead of folding (b46ecb2)
 
 ### Removed
 
@@ -645,6 +648,7 @@ Releases before 0.6 are in docs/changelog-0.5.md.
 - Typing in the Enroll node and VM dialogs no longer lands in a node's rename box, the Nodes page no longer shows an older list over a save, and Check beside Path mapping keeps its answer (3930c2a)
 - A container's settings dialog takes typing again when the same project's page is open elsewhere; the hidden page's copy of the dialog had been opening on top of it (dfc8f9c)
 - Pull to refresh on a phone no longer fails when the list redraws under your finger, and the gear and the bell open when pressed again straight after closing (dfd2ccf)
+- The notebook's Wiki at a desk shows its pages beside the article again, not the article squeezed under the list (B856), and on a phone every section's first line has room under its head (B857) (b46ecb2)
 
 ### Security
 
