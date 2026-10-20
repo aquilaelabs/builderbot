@@ -54,6 +54,16 @@ def accounts():
             print(f'{u["name"]:<24} {u["role"]:<8} seen {seen:<10} {projects}')
         raise SystemExit(0)
     name = rest[0]
+    # --seen (B135): the account starts having read the guide and this
+    # image's changelog, for one a script makes for somebody it shows the
+    # dashboard to already (a seeded teammate, a classroom's accounts), where
+    # the welcome window opened over everything at the first sign-in.
+    seen = "--seen" in rest
+
+    def mark_seen():
+        if seen:
+            users.prefs_set(name, {"welcome_seen": True,
+                                   "image_seen": os.environ.get("BB_IMAGE_REV", "").strip()[:40]})
     # The owner, as the first-run page makes it (R84): for a setup scripted
     # from a shell rather than clicked through. Refused once there is one.
     if sub == "claim":
@@ -61,6 +71,7 @@ def accounts():
         if r.get("error"):
             print(r["error"], file=sys.stderr)
             raise SystemExit(1)
+        mark_seen()
         print(f"{name}: created as the owner")
         raise SystemExit(0)
     if sub == "passwd":
@@ -81,9 +92,12 @@ def accounts():
             if r.get("error"):
                 print(r["error"], file=sys.stderr)
                 raise SystemExit(1)
+            mark_seen()
             print(f"{name}: created as the owner, since it is the first account")
             raise SystemExit(0)
         r = users.add(name, pw, role=role)
+        if not r.get("error"):
+            mark_seen()
     if r.get("error"):
         print(r["error"], file=sys.stderr)
         raise SystemExit(1)

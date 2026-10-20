@@ -78,8 +78,9 @@ function wirePull(){
     const sc = pullScroller(t);
     if (sc && sc.scrollTop > 0) return reset();
     y0 = e.touches[0].clientY; live = false; last = 0;
-    // It comes down from the header's lower edge, wherever that is.
-    hint.style.top = `${Math.round(document.querySelector("header")?.getBoundingClientRect().bottom || 0)}px`;
+    // It comes down from the header's lower edge, wherever that is, or the
+    // install's banner's under it (R88).
+    hint.style.top = `${Math.round((document.getElementById("banner") || document.querySelector("header"))?.getBoundingClientRect().bottom || 0)}px`;
     unhold();
     const away = f => ev => { if (!t.isConnected) f(ev); };
     held = {t, mv: away(onMove), en: away(onEnd), cn: away(reset)};

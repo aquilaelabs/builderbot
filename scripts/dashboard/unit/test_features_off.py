@@ -54,10 +54,33 @@ class FeaturesOff(unittest.TestCase):
         m = self.load("shell", "a shared classroom install")
         self.assertEqual(m.sentences(), {"shell": "A terminal on the controller itself is off: a shared classroom install"})
 
+    def test_an_offline_install_switches_off_what_reaches_out(self):
+        m = self.load("internet")
+        self.assertEqual(sorted(m.off()), ["apps", "image-updates", "internet", "runner", "tunnel"])
+
     def test_a_name_that_is_not_a_feature_switches_nothing_off(self):
         m = self.load("tunel,enroll")
         self.assertEqual(list(m.off()), ["enroll"])
         self.assertEqual(m.off()["enroll"], m.WHY_DEFAULT)
+
+
+class Banner(unittest.TestCase):
+    def band(self, **env):
+        with mock.patch.dict(os.environ, {"BANNER_TEXT": "", "BANNER_LINK": "", "BANNER_LINK_LABEL": "", **env}):
+            return featuresoff.banner_html()
+
+    def test_none_without_text(self):
+        self.assertEqual(self.band(), "")
+
+    def test_the_text_escaped_with_its_link(self):
+        got = self.band(BANNER_TEXT="A <b>shared</b> install", BANNER_LINK="/demo/about", BANNER_LINK_LABEL="about it")
+        self.assertEqual(got, '<div class="banner" id="banner" role="status">A &lt;b&gt;shared&lt;/b&gt; install'
+                              ' <a href="/demo/about">about it</a></div>')
+
+    def test_a_link_that_is_not_http_or_a_path_is_dropped(self):
+        got = self.band(BANNER_TEXT="hi", BANNER_LINK="javascript:alert(1)")
+        self.assertNotIn("<a", got)
+        self.assertNotIn("javascript", got)
 
 
 if __name__ == "__main__":

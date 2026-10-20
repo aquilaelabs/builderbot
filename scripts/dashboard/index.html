@@ -560,6 +560,12 @@ header{display:flex;align-items:center;gap:10px;padding:8px 12px;
   background:var(--panel);border-bottom:var(--hair) solid var(--line);flex:0 0 auto;
   position:relative}   /* the bell's panel hangs from it */
 header h1{font-size:15px;margin:0;font-weight:600}
+/* The install's banner (R88): a band of the page's column under the header,
+   so the content below is shorter by it and nothing pinned to the page sits
+   over it. One line at a desk, wrapping on a phone. */
+.banner{flex:0 0 auto;padding:6px 12px;font-size:13px;line-height:1.4;color:var(--ink);
+  background:var(--panel);border-bottom:var(--hair) solid var(--line);overflow-wrap:anywhere}
+.banner a{color:var(--note);margin-left:6px}
 /* Every header button one box, at every width: the bell carried the tap
    size on its own and the bug, gear and sign-out got it only on a narrow
    screen, so on a desk the bell stood taller and wider than its row (the
@@ -6515,6 +6521,9 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     </svg>
   </button>
 </header>
+<!-- The install's banner (R88), when its environment sets one: the server
+     writes it here, a band in the page's column under the header. -->
+<!--BANNER-->
 <div id="pollWhy" class="pollwhy" role="status" hidden></div>
 
 <main>

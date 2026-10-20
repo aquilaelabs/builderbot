@@ -5314,6 +5314,10 @@ EOF
 
 cmd_doctor() {
     local ok=0
+    # A feature this install switched off (FEATURES_OFF, R81): its check is
+    # said as skipped, with why, never as a failure nobody here can fix, and
+    # never faked as passing (R88).
+    off() { case ",$(printf '%s' "${FEATURES_OFF:-}" | tr -d ' ' | tr 'A-Z' 'a-z')," in *",$1,"*) return 0 ;; esac; return 1; }
     check() { # check DESCRIPTION COMMAND...
         local desc="$1"; shift
         if "$@" >/dev/null 2>&1; then
@@ -5375,7 +5379,11 @@ cmd_doctor() {
     if on_node; then
         check "anthropic api reachable" curl -sS -m 10 -o /dev/null https://api.anthropic.com/
     fi
-    check "github api reachable"      curl -sS -m 10 -o /dev/null https://api.github.com/
+    if off internet; then
+        printf '  [skip] github api reachable: this install is offline (FEATURES_OFF)\n'
+    else
+        check "github api reachable"      curl -sS -m 10 -o /dev/null https://api.github.com/
+    fi
     # ...and the question this box exists to answer: can a session run at all?
     # A Claude session runs on a node and nowhere else now, so a controller
     # with no node able to take one can start nothing, which is worth saying
@@ -5460,7 +5468,9 @@ cmd_doctor() {
     # helper. Presence is not validity: GitHub is asked, so a revoked or
     # expired token cannot keep reading [ok] here.
     runner_ids="$(sudo -n /opt/builderbot/scripts/mint-runner-token --list 2>/dev/null || true)"
-    if [ -z "$runner_ids" ]; then
+    if off runner || off internet; then
+        printf '  [skip] runner tokens: CI runners are switched off on this install (FEATURES_OFF)\n'
+    elif [ -z "$runner_ids" ]; then
         printf '  [skip] no runner token stored for any node (the CI runner page takes one)\n'
     else
         while read -r rid rslot; do

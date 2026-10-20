@@ -11,6 +11,8 @@ locked-down host) is what this is for. A name not on the list is said once at
 start and otherwise ignored, so a typo switches nothing off silently.
 """
 import os
+import re
+from html import escape
 
 # Each feature, and what it is in the words Settings lists it by.
 FEATURES = {
@@ -23,7 +25,12 @@ FEATURES = {
     "runner": "CI runners on nodes",
     "enroll": "enrolling a node",
     "shell": "a terminal on the controller itself",
+    # An install meant to run with no way out (R88): what reaches the
+    # internet is off with it, and the Doctor skips asking.
+    "internet": "reaching the internet from this install",
 }
+# What switching the internet off switches off with it.
+IMPLIES = {"internet": ("apps", "image-updates", "tunnel", "runner")}
 WHY_DEFAULT = "switched off on this install"
 TUNNEL_SETTINGS = ("tunnel_host", "tunnel_token", "cf_api_token")
 _off = None
@@ -40,6 +47,9 @@ def off():
             print(f"dashboard: FEATURES_OFF names {', '.join(unknown)}, which are not features; "
                   f"the features are {', '.join(FEATURES)}", flush=True)
         _off = {n: why for n in names if n in FEATURES}
+        for n in list(_off):
+            for m in IMPLIES.get(n, ()):
+                _off.setdefault(m, why)
     return _off
 
 
@@ -93,3 +103,35 @@ def refused(method, path, req=None):
         return ""
     f = _feature(method, path, req)
     return sentences().get(f, "")
+
+
+# ---- the install banner (R88) ----------------------------------------------
+# One line every visitor sees, on every page and the sign-in page: a shared
+# install's word to whoever is on it ("a classroom install: paste no real
+# keys", a maintenance notice). Drawn by the page as a band under its
+# header, in its own layout, so nothing pinned to the page covers it.
+
+BANNER_MAX = 200
+_LINK = re.compile(r"^(https?://[^\s<>\"']+|/[^\s<>\"']*)$")
+
+
+def banner():
+    """{text, link, label} from BANNER_TEXT, BANNER_LINK and
+    BANNER_LINK_LABEL, or None when there is no text. A link is http(s) or
+    a path on this site, anything else dropped."""
+    text = " ".join(os.environ.get("BANNER_TEXT", "").split())[:BANNER_MAX]
+    if not text:
+        return None
+    link = os.environ.get("BANNER_LINK", "").strip()
+    link = link if _LINK.match(link) else ""
+    label = " ".join(os.environ.get("BANNER_LINK_LABEL", "").split())[:60] or ("more" if link else "")
+    return {"text": text, "link": link, "label": label if link else ""}
+
+
+def banner_html():
+    """The band, escaped, or "" when there is none."""
+    b = banner()
+    if not b:
+        return ""
+    a = (f' <a href="{escape(b["link"], quote=True)}">{escape(b["label"])}</a>' if b["link"] else "")
+    return f'<div class="banner" id="banner" role="status">{escape(b["text"])}{a}</div>'
