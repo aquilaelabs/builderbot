@@ -85,6 +85,17 @@ function jobTitle(j){
   // A job its caller named in words (nodes.run_wait's title): a shell line
   // is not what a person reads a job list for (the design pass, 4 Oct).
   if (s.title) return esc(s.title);
+  // The kinds with no command of their own, each in the words of what it
+  // did: a storage walk read as a bare "exec" (B70).
+  if (j.type === "storage") return "measure the disks";
+  if (j.type === "claude-login") return "sign Claude in";
+  if (j.type === "claude-logout") return "sign Claude out";
+  if (j.type === "claude-update") return "update Claude Code";
+  if (j.type === "sign") return `sign ${esc(s.file || "a build")}`;
+  if (j.type === "tell"){
+    const text = String(s.text || "").replace(/\s+/g, " ");
+    return `tell ${esc(s.session || "a session")}: "${esc(text.slice(0, 60))}${text.length > 60 ? "…" : ""}"`;
+  }
   if (j.type === "cache-clear") return `clear ${s.project ? esc(projLabel(s.project)) + "'s caches" : "every cache"}`;
   // Run on another node of the project's set because its primary was not
   // up (R82 step 6): said on the row, since the row is where it is looked for.

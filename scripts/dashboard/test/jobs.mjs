@@ -221,6 +221,13 @@ await ready(page);
   ok(/nothing is running or waiting/.test(empty), 'the active-only filter says so when nothing is');
   await page.click('#jbActive');
   await page.waitForSelector('.jobstab .jbrow', { timeout: 10000 });
+
+  // A kind with no command of its own says what it did, where a storage
+  // walk read as a bare "exec" (B70).
+  const titles = await page.evaluate(() => ['storage', 'claude-update', 'claude-login']
+    .map(type => jobTitle({ type, spec: { timeout: 900 } })));
+  ok(titles.every(t => !/exec/.test(t)) && titles[0] === 'measure the disks',
+     `a storage job's row is titled what it did, not "exec" (${titles.join(' | ')})`);
 }
 
 // bb jobs reads the same listing the tab does, through the API as the
