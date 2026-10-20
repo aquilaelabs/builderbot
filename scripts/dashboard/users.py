@@ -1258,8 +1258,9 @@ def what_may(name):
     rec = dict(rec, project_roles=pr)
     held = [roles.label(r) for r in roles.roles_of(rec) if r != "user"]
     for proj, names in sorted(pr.items()):
-        held += [f"{roles.label(r)} on {proj}" for r in names if roles.label(r) != f"Owner of {proj}"]
-        held += [roles.label(r) for r in names if roles.label(r) == f"Owner of {proj}"]
+        own = roles.owner_role_name(proj)
+        held += [f"{roles.label(r)} on {roles.shown(proj)}" for r in names if r != own]
+        held += [roles.label(r) for r in names if r == own]
     got = roles.summary(rec)
     return {"roles": held,
             "may": [[label, "Write" if got[key] == "write" else "Read"]

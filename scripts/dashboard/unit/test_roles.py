@@ -101,15 +101,33 @@ class Model(unittest.TestCase):
         u = {"name": "o", "role": "user", "roles": [], "projects": ["alpha", "beta", "gamma"],
              "project_roles": {"alpha": [live], "beta": [gone, "peek"], "gamma": [binned]}}
         with mock.patch.object(users, "get", lambda n: u), mock.patch.object(registry, "FILE", "x"), \
-                mock.patch.object(registry, "is_project", lambda p: p == "alpha"):
+                mock.patch.object(registry, "is_project", lambda p: p == "alpha"), \
+                mock.patch.object(registry, "label", str):
             got = users.what_may("o")
         self.assertEqual(got["roles"], ["Owner of alpha"])
         self.assertEqual(sorted(u["project_roles"]), ["alpha", "beta", "gamma"], "the grants are kept")
         roles.set_role("alpha_owner", scope="projects", perms={"projects": "read"})
         with mock.patch.object(users, "get", lambda n: u), mock.patch.object(registry, "FILE", "x"), \
-                mock.patch.object(registry, "is_project", lambda p: p == "alpha"):
+                mock.patch.object(registry, "is_project", lambda p: p == "alpha"), \
+                mock.patch.object(registry, "label", str):
             got = users.what_may("o")
         self.assertEqual(got["may"], [["Projects", "Read"]], "a gone project's grant adds nothing")
+
+    def test_an_owner_role_is_named_by_the_project_s_shown_name(self):
+        # B102: a project whose folder is not its name (syncwalk-mv1bm36p,
+        # shown as syncwalk) is owned, and held on, by the name shown.
+        import registry
+        import users
+        name = roles.ensure_owner_role("syncwalk-mv1bm36p")
+        roles.set_role("peek", scope="projects", perms={"projects": "read"})
+        u = {"name": "o", "role": "user", "roles": [], "projects": ["syncwalk-mv1bm36p"],
+             "project_roles": {"syncwalk-mv1bm36p": [name, "peek"]}}
+        with mock.patch.object(users, "get", lambda n: u), mock.patch.object(registry, "FILE", "x"), \
+                mock.patch.object(registry, "is_project", lambda p: True), \
+                mock.patch.object(registry, "label", lambda p: {"syncwalk-mv1bm36p": "syncwalk"}.get(p, p)):
+            self.assertEqual(roles.label(name), "Owner of syncwalk")
+            got = users.what_may("o")
+        self.assertEqual(got["roles"], ["peek on syncwalk", "Owner of syncwalk"])
 
     def test_an_owner_role_is_every_project_area_and_can_be_cut_back(self):
         name = roles.ensure_owner_role("alpha")

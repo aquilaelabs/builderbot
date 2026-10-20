@@ -248,10 +248,18 @@ def all_roles():
     with _lock:
         for n, r in sorted(_load().items()):
             out[n] = dict(r, name=n)
-            # A project's owner role reads as whose it is, not as its key.
+            # A project's owner role reads as whose it is, not as its key,
+            # by the name the project is shown under, not its folder (B102).
             if str(r.get("note") or "").startswith("the owner of ") and n.endswith("_owner"):
-                out[n]["label"] = "Owner of " + str(r["note"])[len("the owner of "):]
+                out[n]["label"] = "Owner of " + shown(str(r["note"])[len("the owner of "):])
     return out
+
+
+def shown(project):
+    """The name a project is shown under (the registry's), or its folder
+    where there is no registry, as in a unit test."""
+    import registry
+    return registry.label(project) if registry.FILE is not None else str(project)
 
 
 def label(name):

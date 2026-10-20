@@ -447,8 +447,14 @@ def human_kb(kb):
 
 def payload():
     items = []
+    # The job as it stood when the rows below are read, taken once: read again
+    # after them, a job that ended while they were read said "done" over rows
+    # read while it was still removing, and the page, seeing nothing running,
+    # stopped asking and kept a toolchain installed that was gone (B13).
     with _tc_lock:
         busy = _tc_job["running"]
+        job = {k: (list(v) if isinstance(v, list) else v)
+               for k, v in _tc_job.items()}
     # Nothing is probed while a job runs. The toolchain being installed has a
     # directory that is filling up, and every probe here reads a non-empty
     # directory as a finished install: a half-written NDK reported itself
@@ -525,9 +531,6 @@ def payload():
                                  and v["installed"] or local.get(p["name"], ""),
                       "latest": v.get("latest", ""),
                       "state": v.get("status", "")})
-    with _tc_lock:
-        job = {k: (list(v) if isinstance(v, list) else v)
-               for k, v in _tc_job.items()}
     return {"root": sdk_root_path(),
             "shared": is_mount(sdk_root_path()),
             "checked": _tc_checked,

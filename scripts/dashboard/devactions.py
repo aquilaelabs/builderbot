@@ -1040,6 +1040,12 @@ def state(project, instance=devapp.MAIN):
         if nogpu:
             out["problems"].append(nogpu)
         out.update(devapp.wiring(cfg))
+        # Whether that is the wiring or only nothing read: a compose that
+        # could not be resolved this time (a config call timed out under
+        # load) is not a compose that publishes nothing, and the Containers
+        # page's Ports and mounts kept "publishes nothing" over the lines it
+        # had read a moment before (B12).
+        out["wired"] = cfg is not None
         # ...and the ports somebody else is already on. After wiring(), which
         # is what says which ports this instance wants. Its own field rather
         # than a line in `problems`, because the two views that read this
@@ -1096,6 +1102,7 @@ def state(project, instance=devapp.MAIN):
         out["problems"] = []
         out["ports"] = []
         out["mounts"] = []
+        out["wired"] = False
         out["risks_digest"] = ""
         out["risks_ack"] = True
     return out

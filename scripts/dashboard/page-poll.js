@@ -68,6 +68,12 @@ function reapDeadTerminals(){
 
 let refreshBusy = false;     // a poll is out
 let refreshAgain = false;    // ...and somebody asked for another while it was
+// ...and who is waiting on that other one: an `await refresh()` asked while a
+// poll was out resolved at once, on the state from before, so a project's
+// settings Save read "what is saved now" from a poll sent before somebody
+// else's save and wrote over it unseen (B100). It resolves when the read
+// asked for has landed.
+let refreshWaiters = [];
 // How many action answers applyNow has adopted: a poll sent before the last
 // of them was read before that action, so its reply is older than the rows
 // on screen (B294).
@@ -88,7 +94,7 @@ async function refresh(){
   // Asked while one is out, the request is remembered rather than dropped:
   // an explicit refresh after an action has to land, or the page shows the
   // state from before the thing the operator just did.
-  if (refreshBusy){ refreshAgain = true; return; }
+  if (refreshBusy){ refreshAgain = true; return new Promise(r => refreshWaiters.push(r)); }
   refreshBusy = true;
   const adoptedBefore = adoptSeq;
   let fetched = false;     // the container answered; what failed is this page
@@ -243,7 +249,12 @@ async function refresh(){
       });
   }finally{
     refreshBusy = false;
-    if (refreshAgain){ refreshAgain = false; refresh(); }
+    if (refreshAgain){
+      refreshAgain = false;
+      const waiting = refreshWaiters;
+      refreshWaiters = [];
+      Promise.resolve(refresh()).finally(() => waiting.forEach(r => r()));
+    }
     else statusLater();
   }
 }

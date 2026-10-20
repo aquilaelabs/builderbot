@@ -323,11 +323,38 @@ function makeNotebook(project){
   // The bar, drawn by whichever view draws the section; dead rather than
   // absent while there is nothing to save, so it does not move under a thumb.
   function sectBar(key){
-    const n = nb.stagers[key]?.count() || 0;
+    // Drawn as syncSave would leave it, its words and its dead buttons with
+    // it (B2): a view whose draw did not call syncSave after (the rules')
+    // left the bar untitled until whatever synced next, and that wrote two
+    // titles into a status read that brought nothing.
+    const b = barSays(key);
     // In a field band, as every line of a section's body is (a-dialog/layout):
     // bare, it sat beside the last row it followed rather than under it.
-    return `<div class="field">${saveBar({save: `data-ssave="${esc(key)}"`, revert: `data-srevert="${esc(key)}"`, dead: !n,
-      cls: "sectbar", attrs: `data-bar="${esc(key)}"`})}</div>`;
+    return `<div class="field"${key === "roadmap" && b.hide ? " hidden" : ""}>${saveBar({
+      save: `data-ssave="${esc(key)}" title="${esc(b.saveTitle)}"${b.saveDead ? " disabled" : ""}`,
+      revert: `data-srevert="${esc(key)}" title="${esc(b.rvTitle)}"${b.rvDead ? " disabled" : ""}`,
+      state: esc(b.state), cls: "sectbar", attrs: `data-bar="${esc(key)}"`})}</div>`;
+  }
+  // What a section's bar says and which of its buttons are dead, the one
+  // answer sectBar draws and syncSave keeps.
+  function barSays(key){
+    const st = nb.stagers[key], n = st?.count() || 0, held = nbHeld();
+    return {
+      hide: !(n > 0 || sectDirty(key) || nb.roadmapOrdering),
+      saveDead: !sectDirty(key) || (key === "roadmap" && held),
+      rvDead: !n,
+      rvTitle: n ? `throw away ${st.what()}: it goes back to what is on disk` : "nothing unsaved here to throw away",
+      saveTitle: key === "roadmap" && held
+        ? (nb.roadmapBatch ? "a session is part-way through changing this list"
+                           : "a session changed this list: reload it before saving over it")
+        : "save this section; a session running here hears about it on its next prompt",
+      // A panel holding unsaved work stops re-reading, since a redraw would
+      // eat the typing (B199); said where the Save is, once something here
+      // has moved under it. A Save lit with nothing staged is the change no
+      // session has been told about yet, which says so rather than sitting
+      // there unexplained.
+      state: n && nb.movedUnder ? "this has changed since you loaded it: Save will ask which version wins"
+        : n ? `${n} unsaved` : sectDirty(key) ? "changed, not told to the session yet" : ""};
   }
   // A section holding unsaved work, or a change no session has been told
   // about yet, which the roadmap's and the memories' Saves settle.
@@ -342,32 +369,21 @@ function makeNotebook(project){
     // after one finishes; that is the list's own business, so it holds only
     // the roadmap's Save. Reverting is allowed either way: throwing away your
     // own unsaved work never depends on what anybody else is doing.
-    const held = nbHeld();
     if (![...Object.keys(nb.stagers)].some(k => nb.stagers[k].count() > 0)) nb.movedUnder = false;
     root.querySelectorAll(".sectbar[data-bar]").forEach(bar => {
       const key = bar.dataset.bar, st = nb.stagers[key];
       const save = bar.querySelector("[data-ssave]"), rv = bar.querySelector("[data-srevert]");
       if (!st || !save || !rv || save.getAttribute("aria-busy")) return;
-      const n = st.count();
+      const b = barSays(key);
       // The Roadmap's bar is the one that sat dead most of the time (R224):
       // it appears with a reorder or an edit staged, and goes with the Save.
       // The rest stay, dead, so they do not move under a thumb.
-      if (key === "roadmap") setHidden(bar.closest(".field"), !(n > 0 || sectDirty(key) || nb.roadmapOrdering));
-      setDisabled(save, !sectDirty(key) || (key === "roadmap" && held));
-      setDisabled(rv, !n);
-      setTitle(rv, n ? `throw away ${st.what()}: it goes back to what is on disk` : "nothing unsaved here to throw away");
-      setTitle(save, key === "roadmap" && held
-        ? (nb.roadmapBatch ? "a session is part-way through changing this list"
-                           : "a session changed this list: reload it before saving over it")
-        : "save this section; a session running here hears about it on its next prompt");
-      // A panel holding unsaved work stops re-reading, since a redraw would
-      // eat the typing (B199); said where the Save is, once something here
-      // has moved under it.
-      const state = bar.querySelector(".state");
-      // ...and a Save lit with nothing staged is the change no session has
-      // been told about yet, which says so rather than sitting there unexplained.
-      setText(state, n && nb.movedUnder ? "this has changed since you loaded it: Save will ask which version wins"
-        : n ? `${n} unsaved` : sectDirty(key) ? "changed, not told to the session yet" : "");
+      if (key === "roadmap") setHidden(bar.closest(".field"), b.hide);
+      setDisabled(save, b.saveDead);
+      setDisabled(rv, b.rvDead);
+      setTitle(rv, b.rvTitle);
+      setTitle(save, b.saveTitle);
+      setText(bar.querySelector(".state"), b.state);
     });
   }
 
@@ -891,7 +907,11 @@ function projectState(p){
   const asking = mine && claudeOf(myClaude(name))?.state === "asking";
   const me = mine ? (asking ? one("asking", "asking you") : busy.has(state?.me) ? one("working", "working")
     : one("waiting", "waiting for you")) : "";
-  const them = othersOn(name).map(n => one(busy.has(n) ? "working" : "waiting", `${n}${busy.has(n) ? " working" : "'s session"}`, " other")).join("");
+  // Another account's session on the prompt reads asking too (B104), but
+  // not "asking you": only that person's terminal answers it.
+  const asks = new Set((state?.claude_asking || {})[tmuxName(name)] || (state?.claude_asking || {})[name] || []);
+  const them = othersOn(name).map(n => asks.has(n) ? one("asking", `${n} asking`, " other")
+    : one(busy.has(n) ? "working" : "waiting", `${n}${busy.has(n) ? " working" : "'s session"}`, " other")).join("");
   return me || them ? `<span class="pstates">${me}${them}</span>` : one("", "no session");
 }
 // The one notice a project carries (why nobody can start here, the agent

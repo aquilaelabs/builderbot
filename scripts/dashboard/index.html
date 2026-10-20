@@ -5318,6 +5318,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="field nbhead vbar"><span id="dsHint" data-skel="word">loading…</span><span class="sp"></span>
         <button type="button" id="dsWrite"
           title="write docs/design-language.md into the project from what is saved here; a session commits it with the work">Write the file</button></div>
+      <!-- Why Write the file and every control below are dead (B101). -->
+      <div class="field" id="dsWhyF" hidden><div class="notice bad deadwhy" id="dsWhy"></div></div>
       <!-- Add page is the Pages section's own (the operator, 29 Sep):
            nb-design.js draws it at the top of that section. -->
       <div id="dsBody" data-skel="design"></div>
@@ -6050,6 +6052,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     </div>
     <div class="field" id="pendListF"><div id="pendList"></div></div>
     <div class="field"><div id="pendEmpty" hidden>Nothing is waiting here.</div></div>
+    <!-- Why Approve and Deny are dead for this account (B101). -->
+    <div class="field" id="pendWhyF" hidden><div class="notice bad deadwhy" id="pendWhy"></div></div>
     <div class="foot">
       <button id="pendApprove" class="primary">Approve</button>
       <button id="pendDeny" class="danger">Deny</button>

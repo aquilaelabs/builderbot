@@ -11,7 +11,7 @@ The companion app's own contract is `android/api-surface.json`.
 | Method | Path | Match | Handler | What it does | Refuses on |
 |---|---|---|---|---|---|
 | GET | `/api/revs` | prefix | `_get_revs` | GET /api/revs. |  |
-| GET | `/api/live` | exact | `_get_live` | GET /api/live: who has a Claude session on each project and which of them are working, the two maps the status payload also carries, alone and cheap. |  |
+| GET | `/api/live` | exact | `_get_live` | GET /api/live: who has a Claude session on each project this account sees, which of them are working and which asking, the maps the status payload also carries (projsessions.maps), alone and cheap. |  |
 | GET | `/api/trace` | prefix | `_get_trace` | GET /api/trace?since=T: what this server was asked since T, grouped by endpoint (R75 step 4). |  |
 | GET | `/api/status` | prefix | `_get_status` | GET /api/status. |  |
 | GET | `/api/reset` | exact | `_get_reset` | GET /api/reset: how a Reset that un-enrolls its nodes first is getting on: each node, done or why not, and the error that stopped it. | refused: controller-read |
