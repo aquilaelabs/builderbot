@@ -1151,6 +1151,10 @@ def _project_columns(who, facts):
                     # Whether its settings are this account's to change (B19):
                     # the page locks them, with the reason, where not.
                     "may_settings": not users.may(who, "settings", d.name) if who else True,
+                    # ...and the reason where not, which the Snapshots and
+                    # Running sessions sections say without asking for what
+                    # they would only be refused (B89).
+                    "settings_why": users.may(who, "settings", d.name) if who else "",
                     # ...and why its notebook, its tree and the project itself
                     # are not this account's to change, or "" (B86): a role
                     # that gives Projects Read alone sees the page with every

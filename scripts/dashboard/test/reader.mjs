@@ -4,7 +4,8 @@
 // red, rather than live and refused at the press (B86).
 // Also: Start Claude says why it is grey (B88); New project and the trash
 // are dead for an account without them, and the trash never reads a
-// refusal as an empty bin (B87).
+// refusal as an empty bin (B87); the settings page does not ask for what
+// the role cannot read (B89).
 import { launch, newPage, ok, done, ready, sleep, URL, DIR, nbShown, splitPick } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -44,8 +45,8 @@ page.on('request', r => asked.push(r.url().replace(/^https?:\/\/[^/]+/, '')));
 await page.goto(URL); await ready(page); await sleep(800);
 
 const row = await page.evaluate(() => (state.projects || []).find(p => p.name === 'alpha') || {});
-ok(/no Projects Write on alpha/.test(row.write_why || '') && !!row.trash_why,
-   `the row carries why alpha is not this account's to change or delete (${row.write_why})`);
+ok(/no Projects Write on alpha/.test(row.write_why || '') && !!row.trash_why && !!row.settings_why,
+   `the row carries why alpha is not this account's to change, delete or set up (${row.write_why})`);
 
 // ---- the Projects page (B86, B87, B88) -----------------------------------
 await page.evaluate(() => openProjectsTab());
@@ -133,16 +134,21 @@ else {
   ok(gt.verbs === 0, `...and no branch carries Merge, Ask Claude, Switch or Delete (${gt.verbs})`);
 }
 
-// Settings: Delete project dead with why.
+// Settings: Delete project dead with why, and nothing asked to be refused (B89).
+const before = asked.length;
 await view('settings', '#rnDelete');
 await sleep(1500);
 const st = await page.evaluate(() => ({ del: document.querySelector('#rnDelete')?.disabled,
   why: document.querySelector('#rnDeleteWhy')?.checkVisibility() ? document.querySelector('#rnDeleteWhy').textContent : '' }));
 ok(st.del === true && /deleting a project needs Project settings Write on alpha/.test(st.why), `Settings: Delete project dead, why under it (${st.why})`);
+const refusedAsks = asked.slice(before).filter(u => /\/api\/(snapshots|project-sessions)/.test(u));
+ok(refusedAsks.length === 0, `...and Snapshots and Running sessions are not asked for (${refusedAsks.join(', ') || 'none'})`);
+await splitPick(page, 'snapshots');
+const snapSaid = await page.evaluate(() => document.querySelector('#rnSnapRows')?.textContent || '');
+ok(/Project settings Write on alpha/.test(snapSaid), `...Snapshots says why, from the row (${snapSaid.slice(0, 80)})`);
 
-// Refused on the way, and expected: the bin opened by hand; Snapshots and
-// Running sessions, which still ask for what this role cannot read.
-const errs = page.errors.filter(e => !/\/api\/(trash|snapshots|project-sessions)\b/.test(e));
+// The bin opened by hand above is the one refusal asked for on purpose.
+const errs = page.errors.filter(e => !/\/api\/trash\b/.test(e));
 ok(errs.length === 0, `no console errors through the walk${errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''}`);
 await api('/api/roles', { action: 'remove', name: 'rdread' });
 await done(browser);
