@@ -3431,6 +3431,15 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px var(--row-x);margin:4px 0 0}
 @media(max-width:900px){ .facts{grid-template-columns:minmax(0,1fr)} }
 .facts .fact{display:grid;grid-template-columns:minmax(5.5rem,auto) minmax(0,1fr);gap:0 8px;align-items:baseline;min-width:0}
+/* Every value of a grid's column starts at one line, whatever its label's
+   length (B76: on a phone each value began where its own label ended, two
+   ragged columns): the labels share one track per column through subgrid. */
+@supports (grid-template-columns:subgrid){
+  .facts{grid-template-columns:repeat(2,minmax(5.5rem,max-content) minmax(0,1fr));column-gap:8px}
+  @media(max-width:900px){ .facts{grid-template-columns:minmax(5.5rem,max-content) minmax(0,1fr)} }
+  .facts .fact{grid-column:span 2;grid-template-columns:subgrid}
+  .facts .fact > dd{padding-right:calc(var(--row-x) - 8px)}
+}
 .facts dt{font:var(--f-note);color:var(--dim);margin:0;white-space:nowrap}
 .facts dd{font:var(--f-data);color:var(--ink);margin:0;min-width:0;overflow-wrap:anywhere}
 .facts dd code{font:inherit}
