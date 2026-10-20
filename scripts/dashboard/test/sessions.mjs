@@ -210,8 +210,10 @@ await page.waitForFunction(() => document.getElementById('anaHist').hidden,
 // the findings tab used to carry, now the notebook's.
 await layoutSettled(l => l.tabs.some(t => t.kind === 'notebook'));
 await page.reload();
-await page.waitForFunction(() => document.querySelector('.pane .nb') !== null,
-                           { timeout: 30000 });
+// The tab itself, not only its body: the page can draw a notebook before
+// the restored tab list is in place, and the line below reads the list.
+await page.waitForFunction(() => document.querySelector('.pane .nb') !== null
+                                 && tabs.some(t => t.kind === 'notebook'), null, { timeout: 30000 });
 ok(true, 'a notebook tab restored from the layout loads itself');
 // The notebook was the page on show: Sessions in front again for the rest.
 await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'notebook').id));

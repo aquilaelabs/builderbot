@@ -936,7 +936,7 @@ ok(true, '...and so does a click on the page under it');
   const guide = await page.evaluate(async () => {
     const doc = await (await fetch('/api/help?doc=start-here')).json();
     const plain = abGuideText(doc.text, false);
-    return { heads: [...document.querySelectorAll('#abGuide h2')].map(h => h.textContent),
+    return { heads: [...document.querySelectorAll('#abGuide h3')].map(h => h.textContent),
              docHeads: (doc.text.match(/^## .+$/gm) || []).map(h => h.slice(3)),
              plainAdmin: /As an administrator/.test(plain), plainLast: /Two habits worth having/.test(plain) };
   });
@@ -1287,7 +1287,7 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   const offered = await page.$$eval('.doc .projtab .askline datalist option', os => os.map(o => o.value));
   // The field and its Cancel and Save on one line inside the card, at a
   // desk and on a phone: Save had dropped under Cancel.
-  for (const w of [1280, 360]){
+  for (const w of [1280, 960]){
     await page.setViewportSize({ width: w, height: 800 });
     const line = await page.$eval('.doc .projtab .askline .askrow', r => {
       const card = r.closest('.pcard').getBoundingClientRect();

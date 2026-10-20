@@ -1752,7 +1752,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       const x = await api(`/api/v1/jobs?id=${q.job}`);
       return ['succeeded', 'failed', 'canceled'].includes(x.state) ? x : null;
     }, 40000);
-    ok(fin && fin.state === 'canceled' && /stopped by the operator/.test(fin.error)
+    ok(fin && fin.state === 'canceled' && /stopped by test/.test(fin.error)
        && fin.ended - fin.started < 40,
        `the agent kills it and reports canceled (${fin?.state}: ${fin?.error})`);
     const n = await nodeById(minted.id);

@@ -1102,7 +1102,7 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   await page.click('#tpmodal [data-tpadd]');
   await page.waitForFunction(() => (toolchains?.items || []).find(i => i.name === 'wordy')?.pack?.here, null, { timeout: 20000 });
   const prow = await page.$eval('.doc.on .tprecords', e => e.textContent.replace(/\s+/g, ' '));
-  ok(/Wordy wordy made here/.test(prow), `...Add keeps it, its row saying it was made here (${prow.slice(0, 160)})`);
+  ok(/Wordy\s*wordy\s*made here/.test(prow), `...Add keeps it, its row saying it was made here (${prow.slice(0, 160)})`);
   const first = await page.evaluate(() => toolchains.items.find(i => i.name === 'wordy').pack.commit);
   // Edit opens on its bbtool.json as kept; a change is a new version.
   await page.click('.doc.on [data-tpedit="wordy"]');

@@ -177,6 +177,10 @@ await call('/api/v1/nodes', { action: 'online', id: box.id });
 // and its own sign-in live: the one thing on the tab that is its to change.
 await call('/api/users', { action: 'add', name: 's.user', password: 's.user-pass-1', role: 'user' });
 await call('/api/users', { action: 'projects', name: 's.user', projects: ['beta'] });
+// A Claude session is work on the project, so it holds Projects Write there,
+// and a terminal to watch it in (B86: Start Claude is dead without them).
+await call('/api/roles', { action: 'set', name: 'si-worker', scope: 'projects', perms: { projects: 'write', terminal: 'write' } });
+await call('/api/roles', { action: 'assign', name: 's.user', project_roles: { beta: ['si-worker'] } });
 // ...with the name and email its commits carry, which a session waits for.
 await call('/api/users', { action: 'edit', name: 's.user', profile: { full_name: 'S User', email: 's.user@example.invalid' } });
 {
