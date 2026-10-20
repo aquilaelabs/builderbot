@@ -2280,7 +2280,9 @@ def uptime():
 # and field the app reads and carries the same number, test/appapi.mjs
 # holds the running server to that file, and the app compares this against
 # its own TARGET_API to say when it is behind. A change to a path or a
-# field listed there bumps all three together: the app, the file, this.
+# field listed there bumps all three together: the app, the file, this; a
+# field is removed only in the release after a released app stopped
+# reading it, with a changelog line (R79 step 8).
 APP_API = 9
 # How long the app's live connection is held before an empty answer (R125):
 # under the app's 60 s read timeout, and long enough to cost little.
@@ -6785,7 +6787,8 @@ class Handler(BaseHTTPRequestHandler):
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         # An app from before a break in the door is told so, whatever it
         # asked; except where it asks what to update to.
-        if (why := devices.door_refused(self.headers.get("X-BB-Door"))) and verb not in ("apps", "app-file"):
+        if ((why := devices.door_refused(self.headers.get("X-BB-Door"), self.headers.get("X-BB-App")))
+                and verb not in ("apps", "app-file")):
             return self._json({"error": why, "update": True}, 426)
         if verb == "signin":
             if self.command != "POST":
@@ -8287,6 +8290,8 @@ class Handler(BaseHTTPRequestHandler):
         if me.get("session"):
             return self._json({"error": "a session has its project's tree already: this is a "
                                         "person's editor's"}, 403)
+        if why := files.api_refused(self.headers.get("X-BB-Api"), self.headers.get("X-BB-App")):
+            return self._json({"error": why, "update": True}, 426)
         if field(req, "action") == "projects":
             # The ones this account may open, each with its access: asked
             # project by project through the same gate as every call after.
@@ -8295,7 +8300,7 @@ class Handler(BaseHTTPRequestHandler):
                 a, _ = ftp.access_for(me, name, "editor")
                 if a:
                     mine.append({"name": name, "access": a})
-            return self._json({"api": files.API, "projects": mine})
+            return self._json({"api": files.API, "api_min": files.API_MIN, "projects": mine})
         project = field(req, "project")
         if self._not_project(project):
             return None

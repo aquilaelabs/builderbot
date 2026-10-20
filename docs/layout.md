@@ -215,7 +215,7 @@ scripts/
                                  what a run measured it costing
     notify.py                    getting a line into a running Claude session, and knowing it landed
     signin.py                    the Claude sign-in and sign-out on one node, as jobs there
-    test/                        its Playwright suite: `bb dashboard test`, isolated
+    test/                        its Playwright suite: `bb dashboard test`, isolated; device-api.json in it pins what the released companion and VS Code extension read from the controller, each field's type, and deviceapi.mjs drives it (R79)
     unit/                        its python unit tier: `bb tests unit`, the modules' rules without a server or a browser, run first by preflight (agentpkg.py loads the node agent for it)
   agent/builderbot-agent.py      the node agent's entry: runs the package beside it, and is the __main__.py of the zip a node runs
   agent/builderbot_agent/        the node agent, stdlib only, shipped to nodes by the dashboard as one zip
@@ -243,7 +243,7 @@ scripts/
     cli.py                       enroll, run, status, sample
     coverage.py                  function coverage under bb tests coverage only
   agent/ruff.toml                the linter's settings for the agent, pinned to the python a Rocky node carries
-android/                         the companion app: api-surface.json is its contract with the dashboard, app/ the Kotlin
+android/                         the companion app: api-surface.json is its contract with the dashboard, each field's type pinned, app/ the Kotlin
 vscode/                          BuilderBot for VS Code (R159): plain JavaScript, no build step and no dependencies
   package.json                   the extension's manifest: its commands, its settings, and builderbotApi, the Files API it speaks
   extension.js                   the builderbot: file system, the sign-in, open project, search and the session's terminal

@@ -73,12 +73,17 @@ needs an account with anybody, and nothing is kept in the repository.
 **Keeping it in step with the dashboard.** `android/api-surface.json` names
 every path the app calls and the fields it reads, and carries a number that
 `server.py`'s `APP_API` and the app's `TARGET_API` both carry. The dashboard
-suite's `appapi.mjs` holds the running server to that file, so a change that
-renames a field or a path the app reads fails the suite until the app is
-updated with it; and the app compares the dashboard's number to its own on
-the More screen and says when it is behind, naming the newer APK in
-BuilderBot's own Artifacts view. Moving the surface means moving all three
-together: the file, the constant, the app.
+suite's `appapi.mjs` holds the running server to that file, each field's
+type pinned too, so a change that removes, renames or retypes a field or a
+path the app reads fails the suite; and the app compares the dashboard's
+number to its own on the More screen and says when either is behind, naming
+the newer APK in BuilderBot's own Artifacts view. A field may be added at any
+time; one is removed only in the release after the app stopped reading it,
+with the file, the constant and a changelog line moved in that change. The
+Windows companion and the VS Code extension are pinned the same way in
+`scripts/dashboard/test/device-api.json` and held by `deviceapi.mjs`, and
+each says plainly when its controller is too old or too new for it
+([reference](reference.md)).
 
 **Building it.** `.github/workflows/android-app.yml` builds the debug APK on
 a node's runner: the JDK and the Android SDK come from the node's toolchain

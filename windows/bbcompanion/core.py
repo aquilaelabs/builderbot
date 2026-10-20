@@ -35,7 +35,7 @@ class DeviceDoor:
 
     def __init__(self, url, token, pin="", picked=None):
         self.ctl = _controller.Controller(url, token, pin, door="device")
-        self.ctl.headers["X-BB-Door"] = str(update.DOOR)
+        self.ctl.headers.update(update.headers())
         self.picked = dict(picked or {})
         self.too_old = False      # the controller's door is past this app's (426)
         self.access = {}          # project -> "rw" | "r", from the door
@@ -71,6 +71,13 @@ class DeviceDoor:
         if st != 200:
             self.error = str((r or {}).get("error") or f"the controller answered {st}")
             return st, r
+        # A controller older than this app: said plainly, and the sync told
+        # nothing this time (a refusal, which it waits out), rather than a
+        # sync that half works against answers it misreads.
+        too_new = update.controller_too_old(r)
+        if too_new:
+            self.error = too_new
+            return 409, {"error": too_new}
         self.error = ""
         mine = {p["project"]: p for p in r.get("projects") or []}
         self.access = {n: mine[n]["access"] for n in self.picked if n in mine}
@@ -234,6 +241,7 @@ def sign_in(url, username, password, name, pin=""):
     """Trade the person's name and password, once, for a device token:
     ({token, device, account} | {error})."""
     ctl = _controller.Controller(url, "", pin, door="device")
+    ctl.headers.update(update.headers())
     st, r = ctl.call("signin", {"username": username, "password": password, "name": name, "kind": "pc"})
     if st != 200:
         return {"error": (r or {}).get("error") or f"the controller answered {st}"}

@@ -7,7 +7,13 @@
     "with it; and `api` here is the number server.py's APP_API and the app's",
     "TARGET_API both carry. Move all three together. A field listed is one",
     "the app draws or acts on; the app tolerates an extra one and blanks a",
-    "missing one, so this is the contract, not the whole answer."
+    "missing one, so this is the contract, not the whole answer.",
+    "types pins each field's type as the app reads it (R79 step 8; the language is",
+    "scripts/dashboard/test/device-api.json's), a row's as LIST[].FIELD: a field",
+    "whose type changes fails as one gone does. Adding a field is always allowed; a",
+    "field or path may be removed only in the release after the app stopped reading",
+    "it, with this file updated in the same change as the removal and a changelog",
+    "line saying which app releases it leaves behind."
   ],
   "api": 9,
   "endpoints": [
@@ -76,5 +82,30 @@
      "logs": ["project", "id", "at", "bytes", "first"]},
     {"method": "POST", "path": "/api/profile", "actions": ["save", "password"]},
     {"method": "POST", "path": "/api/prefs", "actions": ["(project settings)"]}
-  ]
+  ],
+  "types": {
+    "/api/meta": {"api": "number", "version": "string", "apk": "string", "apk_sha256": "string", "apk_url": "string"},
+    "/api/status": {"me": "string", "can": "object", "image": "object", "host": "string", "projects": "array", "attention": "array", "phone_asks": "number", "welcome": "object", "sessions": "array", "tmux_prefix": "string", "doctor": "object", "invites": "array", "projects[].name": "string", "projects[].label": "string", "projects[].git": "string|null", "projects[].locked": "boolean", "projects[].pending": "number", "projects[].roadmap": "number", "projects[].bugs": "number", "projects[].session_at": "string", "projects[].pinned": "boolean", "projects[].prefs": "object", "projects[].issues": "array", "projects[].testing": "any", "sessions[].name": "string", "can.admin": "boolean"},
+    "/api/phone": {"nodes": "array", "asks": "array", "nodes[].id": "string", "nodes[].name": "string", "nodes[].live": "boolean", "nodes[].phone": "object", "nodes[].owner": "any", "nodes[].mine": "boolean", "nodes[].lease": "any", "nodes[].lendable": "array", "nodes[].trust": "array"},
+    "/api/phone/wait": {"token": "string"},
+    "/api/pending?project=": {"pending": "array", "counts": "object", "gate": "object"},
+    "/api/roadmap?project=": {"items": "array", "rev": "number", "session": "string"},
+    "/api/bugs?project=": {"bugs": "array"},
+    "/api/rules?project=": {"rules": "array", "standing": "number", "conditional": "number", "global": "array", "global[].name": "string", "global[].text": "string", "global[].disabled": "boolean", "global[].off_here": "boolean"},
+    "/api/wiki?project=": {"pages": "array", "rev": "number"},
+    "/api/memory?project=": {"memories": "array", "project": "string", "memories[].name": "string", "memories[].description": "string", "memories[].type": "string", "memories[].when": "number"},
+    "/api/artifacts?project=": {"artifacts": "array", "build": "object", "captures": "array"},
+    "/api/version?project=": {"forms": "object", "policy": "string", "released": "boolean", "dirty": "boolean", "unreleased": "number", "tag": "string", "warn": "any"},
+    "/api/design?project=": {"language": "object", "pages": "array", "presets": "object"},
+    "/api/docker?project=": {"instances": "array", "error": "string"},
+    "/api/tests?project=": {"n": "number", "total_ms": "number", "last_wall_ms": "number", "suspect": "number", "undocumented": "number", "suites": "array"},
+    "/api/transcripts?project=": {"rows": "array", "rows[].project": "string", "rows[].id": "string", "rows[].at": "number", "rows[].bytes": "number", "rows[].first": "string"},
+    "/api/git?project=&what=status": {"branch": "string", "upstream": "string", "ahead": "number", "behind": "number", "files": "array"},
+    "/api/v1/nodes": {"nodes": "array", "agent": "object", "nodes[].id": "string", "nodes[].name": "string", "nodes[].state": "string", "nodes[].kind": "string", "nodes[].live": "any", "nodes[].config": "object", "nodes[].reported": "object"},
+    "/api/v1/jobs": {"jobs": "array"},
+    "/api/welcome": {"sections": "array", "sections[].title": "string", "sections[].entries": "array"},
+    "/api/toolchains?node=": {"items": "array", "job": "object", "root": "string", "shared": "boolean", "items[].name": "string", "items[].label": "string", "items[].about": "string", "items[].installed": "boolean", "items[].version": "string", "items[].size": "string", "items[].needs": "array", "items[].updatable": "boolean"},
+    "/api/users": {"users": "array", "owner": "string", "me": "string", "roles": "array", "projects": "array", "users[].name": "string", "users[].role": "string", "users[].projects": "array", "users[].profile": "object"},
+    "/api/profile": {"name": "string", "role": "string", "profile": "object", "git": "object", "git_ready": "boolean", "logs": "array", "logs[].project": "string", "logs[].id": "string", "logs[].at": "number", "logs[].bytes": "number", "logs[].first": "string"}
+  }
 }
