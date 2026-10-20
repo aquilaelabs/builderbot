@@ -694,6 +694,18 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
      && /not yet in/.test(grouped.words) && !/level with/.test(grouped.words)
      && grouped.oneLine && grouped.shown.every(k => k === 'active'),
      `branches are a table a line a branch, Active chosen until another chip is pressed: work not yet in main offers Merge into main, branches already in main are one Delete, and a remote row mirroring a local branch is not repeated (${JSON.stringify(grouped).slice(0, 240)})`);
+  // B80: a branch with nothing of its own (level with main) has nothing to
+  // merge, rebase or review, so its ⋯ offers none of it.
+  git('branch', 'level-b80', main);
+  // A branch made beside the tree moves no HEAD log, so the view reads again
+  // when it is opened, as a person would.
+  await page.evaluate(() => getNotebook('beta').view('git'));
+  await page.waitForSelector('.nb .nbview[data-view="git"] .gbranch[data-branch="level-b80"]', { state: 'attached', timeout: 15000 });
+  const level = await page.$eval('.nb .nbview[data-view="git"] .gbranch[data-branch="level-b80"]', r => ({
+    merge: !!r.querySelector('[data-gitmerge]'), asks: [...r.querySelectorAll('[data-gitaskkind]')].map(o => o.dataset.gitaskkind) }));
+  ok(!level.merge && !level.asks.length && grouped.into,
+     `...and a branch level with ${main} offers neither Merge into ${main} nor an ask of Claude, while old-work keeps Merge (${JSON.stringify(level)})`);
+  git('branch', '-D', 'level-b80');
   // The chips narrow the table in place, and the search beside them by name.
   await page.click('.nb .nbview[data-view="git"] [data-gbchip="remote"]');
   await page.waitForFunction(() => [...document.querySelectorAll('.nb .nbview[data-view="git"] .gbranch:not([hidden])')].every(r => r.dataset.kind === 'remote'), null, { timeout: 5000 });
@@ -1255,7 +1267,9 @@ ok(strip.groups.n === 5 && strip.groups.rows === 1 && strip.groups.inside && str
   });
   ok(/test's working tree/.test(peerTreeView.hint) && peerTreeView.writes === 0 && peerTreeView.note,
      `...and its view says whose working tree it is and offers nothing that changes it (${JSON.stringify(peerTreeView)})`);
-  ok(peerRow.acts === 0 && peerRow.asks.join() === 'review' && /only w\.dev merges it/.test(peerRow.text),
+  // Review at most: the merge above put the branch in main, and a branch with
+  // nothing of its own has nothing to review either (B80).
+  ok(peerRow.acts === 0 && peerRow.asks.every(k => k === 'review') && /only w\.dev merges it/.test(peerRow.text),
      `...while a plain account's row offers none of it and says whose it is (${JSON.stringify({ acts: peerRow.acts, asks: peerRow.asks })})`);
   await peerPage.close();
   // B236: the project directory is the owner's working tree. A plain

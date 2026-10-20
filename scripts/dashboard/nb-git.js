@@ -338,10 +338,14 @@ function nbGitView({$, nb, project}){
       : [!b.remote && b.name !== main && b.main_ahead ? `<button type="button" data-gitcmp="${esc(b.name)}">Compare with ${esc(main)}</button>` : "",
          b.name === main ? (b.head || barred(here_) ? "" : `<button type="button" data-gitmerge="${esc(main)}"${whoAttr(here_)}
             title="bring ${esc(main)} into ${esc(st.branch || "this branch")}, here, so this branch is up to date with it">Merge ${esc(main)} into here</button>`)
-           : !barred(b) && (b.main_ahead || st.branch !== main) && !(b.head && st.branch === main) ? `<button type="button" data-gitmerge="${esc(b.name)}" data-gitinto="${esc(main)}"${whoAttr(b)}
+           : !barred(b) && b.main_ahead ? `<button type="button" data-gitmerge="${esc(b.name)}" data-gitinto="${esc(main)}"${whoAttr(b)}
             title="merge ${esc(b.name)} into ${esc(main)}; push ${esc(main)} afterwards">Merge into ${esc(main)}</button>` : "",
          b.head || barred(b) || tree.barred ? "" : `<button type="button" data-gitswitch="${esc(b.name)}" title="put the tree on this branch">Switch to it</button>`,
-         ...(b.name === main ? [] : [...(barred(b) ? [] : [["merge", `Ask Claude to merge it into ${esc(main)}`], ["rebase", `Ask Claude to rebase it onto ${esc(main)}`]]),
+         // A branch with nothing of its own (0 ahead of main) has nothing to
+         // merge or review, and one that is not also behind nothing to
+         // rebase (B80).
+         ...(b.name === main || !b.main_ahead ? [] : [...(barred(b) ? [] : [["merge", `Ask Claude to merge it into ${esc(main)}`],
+              ...(b.main_behind ? [["rebase", `Ask Claude to rebase it onto ${esc(main)}`]] : [])]),
               ["review", "Ask Claude to review it"]].map(([k, w]) => `<button type="button" data-gitaskbranch="${esc(b.name)}" data-gitaskkind="${k}"${
               k === "review" ? "" : whoAttr(b)} title="hand this branch to the project's Claude session with this ask">${w}</button>`)),
          b.head || b.name === main || barred(b) ? "" : `<button type="button" class="danger"
