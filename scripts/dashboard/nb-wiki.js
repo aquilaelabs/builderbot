@@ -74,7 +74,9 @@ function wikiMarkdown(src){
     } else if (/\|/.test(l) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])){
       const head = cells(l), rows = [];
       for (i += 2; i < lines.length && /\|/.test(lines[i]) && lines[i].trim(); i++) rows.push(cells(lines[i]));
-      out.push(`<table><thead><tr>${head.map(c => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>${
+      // A head with nothing in it (| | |, a table of label and value) is no
+      // head: drawn, it was a blank first row (B78).
+      out.push(`<table>${head.some(c => c.trim()) ? `<thead><tr>${head.map(c => `<th>${inline(c)}</th>`).join("")}</tr></thead>` : ""}<tbody>${
         rows.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
     } else if (!l.trim()){
       i++;

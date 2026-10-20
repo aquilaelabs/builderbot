@@ -59,6 +59,22 @@ class HelpDocs(unittest.TestCase):
         self.assertFalse(any(x["doc"] == "secret" for x in helpdocs.search("token")[0]["results"]))
         self.assertEqual(helpdocs.search("t")[0]["results"], [])
 
+    def test_the_phrase_whole_words_and_the_doc_it_titles_rank_first(self):
+        # B77: "tool pack" listed every line with "tool" and "pack" in it in
+        # the docs' order, "toolchains ... packages" first, and the Tool
+        # packs doc's own line screens down.
+        d = Path(self.tmp.name)
+        (d / "README.md").write_text(README + "- [packs.md](packs.md): tool packs\n")
+        (d / "install.md").write_text("# Installing\n\nThe toolchains and their packages.\n\nA tool and a pack.\n")
+        (d / "packs.md").write_text("# Tool packs\n\nA tool pack is a toolchain you add.\n\nUnpacks into the toolchain.\n")
+        rows = [(r["doc"], r["text"]) for r in helpdocs.search("tool pack")[0]["results"]]
+        self.assertEqual(rows[:2], [("packs", "# Tool packs"), ("packs", "A tool pack is a toolchain you add.")])
+        self.assertEqual(rows[-1], ("install", "The toolchains and their packages."),
+                         "pieces of longer words come last")
+        self.assertLess(rows.index(("install", "A tool and a pack.")),
+                        rows.index(("install", "The toolchains and their packages.")),
+                        "whole words before pieces of longer ones")
+
 
 if __name__ == "__main__":
     unittest.main()

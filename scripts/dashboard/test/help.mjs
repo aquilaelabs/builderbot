@@ -65,6 +65,19 @@ for (const [W, H] of [[1280, 900], [393, 852]]){
   await page.goBack();
   await page.waitForFunction(() => location.hash === '#/help/install' || location.hash === '#/help', null, { timeout: 10000 });
   ok(true, `${at}: Back returns to the doc before (${await page.evaluate(() => location.hash)})`);
+  // A table with an empty head (| | |) draws no blank first row, and its
+  // first column's words are never broken inside (B78: 'Playwrig ht').
+  await page.evaluate(() => { location.hash = '#/help/how-it-works'; });
+  await page.waitForFunction(() => [...document.querySelectorAll('.helptab .wkarticle[data-name="how-it-works"] .wkpage table')]
+    .some(t => /Playwright/.test(t.textContent)), null, { timeout: 10000 });
+  const tbl = await page.evaluate(() => {
+    const t = [...document.querySelectorAll('.helptab .wkpage table')].find(x => /Playwright/.test(x.textContent));
+    // A one-word label on one line: its text box is one rect wide.
+    const split = [...t.querySelectorAll('tbody tr > td:first-child strong')]
+      .filter(s => !/\s/.test(s.textContent.trim()) && s.getClientRects().length > 1).map(s => s.textContent);
+    return { head: !!t.querySelector('thead'), split };
+  });
+  ok(!tbl.head && !tbl.split.length, `${at}: a table with an empty head has none, and no word of its first column breaks (${JSON.stringify(tbl)})`);
   ok(page.errors.length === 0, `${at}: zero console errors (${page.errors.join(' | ').slice(0, 200)})`);
   await page.close();
 }

@@ -21,6 +21,7 @@ the compose runner to jobs.py through configure() here.
 """
 
 import contextlib
+import contextvars
 import json
 import os
 import re
@@ -52,6 +53,24 @@ users = None
 ask_rebuild = None
 say = None
 net_nudge = None
+
+
+# Who a job queued here is asked by (B69): the account that pressed the
+# button, set by request() around act(), so the Jobs page's By column and a
+# Cancel's end name that account rather than "operator" for every container
+# job. What runs with no person behind it (a hook, an Allow's build) keeps
+# the old word.
+_by = contextvars.ContextVar("devactions_by", default="operator")
+
+
+@contextlib.contextmanager
+def acting_as(principal):
+    """Queue and cancel the jobs inside the block as `principal`."""
+    tok = _by.set(principal or "operator")
+    try:
+        yield
+    finally:
+        _by.reset(tok)
 
 
 # One action per INSTANCE at a time. Two clicks on one row are two compose
@@ -378,7 +397,7 @@ def _ship_submit(project, instance, target):
     builder = builder or own[0]
     held = {"project": project, "instance": instance, "action": "rebuild", "hold": True,
             "ship": "build", "target": target}
-    r = devapp.queue.job_add("operator", {"node": builder}, "compose", held, project)
+    r = devapp.queue.job_add(_by.get(), {"node": builder}, "compose", held, project)
     if r.get("error"):
         return r
     devapp._bump()
@@ -422,7 +441,8 @@ def ship_next(job, state):
         return
     target = sp.get("target") or devapp._instance_node(project, instance)
     held = {"project": project, "instance": instance, "action": "rebuild", "hold": True, "ship": "run"}
-    r = devapp.queue.job_add("operator", {"node": target}, "compose", held, project)
+    # The second half is asked by whoever asked for the first.
+    r = devapp.queue.job_add(job.get("requested_by") or "operator", {"node": target}, "compose", held, project)
     if r.get("error"):
         _image_file(project, instance).unlink(missing_ok=True)
         _clear_marker(project, instance)
@@ -714,7 +734,7 @@ def _submit(project, instance, action, extra=None, check=None):
     held = {"project": project, "instance": instance, "action": action, "hold": True}
     if fell_over:
         held["fell_over"] = fell_over
-    r = devapp.queue.job_add("operator", {"node": nid}, "compose", held, project)
+    r = devapp.queue.job_add(_by.get(), {"node": nid}, "compose", held, project)
     if r.get("error"):
         return r
     devapp._bump()
@@ -787,7 +807,7 @@ def route_set(project, instance, mode, port=None):
         fport = port or (devapp.route_view(project, instance, state_ports(project, instance)).get("port"))
         if not fport:
             return {"error": "a funnel needs a port, and the instance publishes none"}
-        r = devapp.queue.node_funnel("operator", nid, fport, on=(mode == "funnel"))
+        r = devapp.queue.node_funnel(_by.get(), nid, fport, on=(mode == "funnel"))
         if r.get("error"):
             return r
         job = r.get("job")
@@ -805,9 +825,9 @@ def abort_job(project, instance):
     if j is None:
         return False
     if devapp.runner is not None:
-        devapp.runner.cancel("operator", j["id"])
+        devapp.runner.cancel(_by.get(), j["id"])
     else:
-        devapp.queue.job_cancel("operator", j["id"])
+        devapp.queue.job_cancel(_by.get(), j["id"])
     devapp._bump()
     return True
 
@@ -1713,7 +1733,8 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
         say(project, users.uid_of(me),
             f"{principal[len('user:'):]} ran {action} on "
             f"{project}" + (f" ({instance})" if instance != devapp.MAIN else ""))
-    payload, status = act(project, instance, action, req, test_cmd=test_cmd, gate=not sess)
+    with acting_as(principal):
+        payload, status = act(project, instance, action, req, test_cmd=test_cmd, gate=not sess)
     # An instance made, removed or given to another project changes what
     # a project's sessions may reach on its node (R79).
     if status == 200 and action in ("new", "remove", "owner"):

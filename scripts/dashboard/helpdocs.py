@@ -85,13 +85,42 @@ def _slug(t):
     return "wk-" + re.sub(r"[^a-z0-9]+", "-", t.lower()).strip("-")
 
 
+def _whole(w):
+    """`w` as a word of its own, or its plural: "pack" in "tool packs", not
+    in "packages"."""
+    return re.compile(r"(?<![a-z0-9])" + re.escape(w) + r"(?:s|es)?(?![a-z0-9])")
+
+
+def _rank(low, words, phrase, title, head):
+    """How well a line answers the search, highest first (B77): the phrase as
+    typed, whole words rather than pieces of longer ones, a doc whose title
+    it is, and a heading over the lines under it. A line that only holds the
+    words as pieces still counts, after all of those."""
+    t = title.lower()
+    score = 0
+    if len(words) > 1 and _whole(phrase).search(low):
+        score += 8
+    elif len(words) > 1 and phrase in low:
+        score += 3
+    if all(_whole(w).search(low) for w in words):
+        score += 4
+    if _whole(phrase).search(t):
+        score += 6
+    elif all(_whole(w).search(t) for w in words):
+        score += 3
+    if head:
+        score += 2
+    return score
+
+
 def search(q):
     """Every line of every listed doc that holds all the words of `q`, with
     the heading it sits under, so a result opens the doc at that section.
-    A heading that matches comes first in its doc; at most SEARCH_MAX."""
+    Ranked by _rank, then in the docs' order; at most SEARCH_MAX."""
     words = [w for w in re.split(r"\s+", str(q or "").strip().lower()) if w]
     if not words or len(" ".join(words)) < 2:
         return {"q": q, "results": []}, 200
+    phrase = " ".join(words)
     out, names = [], _names()
     for name in names:
         text = _text(name) or ""
@@ -119,6 +148,7 @@ def search(q):
             cut = plain if len(plain) <= 240 else ("…" if at > 120 else "") + plain[max(0, at - 120) if at > 120 else 0:][:240]
             out.append({"doc": name, "title": title, "heading": heading if not h or len(h.group(1)) > 1 else "",
                         "anchor": _slug(heading) if heading and (not h or len(h.group(1)) > 1) else "",
-                        "text": cut, "head": bool(h)})
-    out.sort(key=lambda r: (names.index(r["doc"]), not r["head"]))
+                        "text": cut, "head": bool(h), "rank": _rank(low, words, phrase, title, bool(h))})
+    # Stable, so lines that rank alike keep the docs' order and their own.
+    out.sort(key=lambda r: (-r["rank"], names.index(r["doc"])))
     return {"q": q, "results": out[:SEARCH_MAX], "more": max(0, len(out) - SEARCH_MAX)}, 200

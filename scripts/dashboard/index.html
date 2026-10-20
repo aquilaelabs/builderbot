@@ -1132,6 +1132,7 @@ body.firstrun #panes{display:none}
 .hproj .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);font:var(--f-ui)}
 .hproj .pnote{font:var(--f-ui)} .hproj .pnote.bad{color:var(--bad)} .hproj .pnote.warn{color:var(--warn)} .hproj .pnote.dim{color:var(--dim)}
 .jbrow.focus{box-shadow:inset 3px 0 var(--accent)}
+.hcard.focus{border-color:var(--accent);transition:border-color .2s}
 /* A job's line opens it (rows-you-open, R218 step 25): pressed like a
    list's row, with the lists' own hover. */
 .jbrow > .jbopen{cursor:pointer}
@@ -2628,7 +2629,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   border-radius:var(--r-small);overflow-x:auto;white-space:pre}
 .wkpage pre code{background:none;padding:0}
 .wkpage table{border-collapse:collapse;display:block;overflow-x:auto;font-family:system-ui,sans-serif;font-size:.92em}
-.wkpage th,.wkpage td{border:var(--hair) solid var(--line);padding:5px 9px;text-align:left;vertical-align:top}
+/* A cell breaks between words, never inside one (B78: 'Playwrig ht', 'Pyth on'):
+   the page's overflow-wrap:anywhere let a column shrink below its longest
+   word; break-word only breaks a word wider than the whole table can be. */
+.wkpage th,.wkpage td{border:var(--hair) solid var(--line);padding:5px 9px;text-align:left;vertical-align:top;overflow-wrap:break-word}
 .wkpage th{background:var(--panel)}
 .wkpage hr{border:0;border-top:var(--hair) solid var(--line);margin:16px 0}
 .wkpage a,.wknav a,.wktoc a,.wkfooter a{color:var(--note);text-decoration:none}
@@ -3296,7 +3300,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    (the operator, 17 Oct). */
 button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;align-items:center;justify-content:center}
 /* Search in the top bar: a field that jumps, its rows under it. */
-.jump{position:relative;flex:0 1 280px;min-width:0}
+.jump{position:relative;flex:0 1 360px;min-width:0}
 .jump input{width:100%;min-height:32px;padding:4px 10px;background:var(--sunk);color:var(--ink);font:var(--f-data)}
 .jump input::placeholder{color:var(--dim)}
 @media(max-width:1000px){ .jump{flex:0 1 150px} .meta.host{display:none} }
@@ -3308,6 +3312,7 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
   background:transparent;color:var(--ink);font:var(--f-ui);text-align:left;min-height:var(--tap)}
 .jrow.on,.jrow:hover{background:var(--btn-hi)}
 .jrow .jw{color:var(--dim);font:var(--f-note);white-space:nowrap}
+.jnone{padding:8px 10px;color:var(--dim);font:var(--f-ui);overflow-wrap:anywhere}
 /* On a phone the field takes the width between the brand and the buttons:
    the spacer beside it grew too and took half (the operator, 18 Oct: the
    hint cut off beside a blank gap). */
@@ -3446,6 +3451,15 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px var(--row-x);margin:4px 0 0}
 @media(max-width:900px){ .facts{grid-template-columns:minmax(0,1fr)} }
 .facts .fact{display:grid;grid-template-columns:minmax(5.5rem,auto) minmax(0,1fr);gap:0 8px;align-items:baseline;min-width:0}
+/* Every value of a grid's column starts at one line, whatever its label's
+   length (B76: on a phone each value began where its own label ended, two
+   ragged columns): the labels share one track per column through subgrid. */
+@supports (grid-template-columns:subgrid){
+  .facts{grid-template-columns:repeat(2,minmax(5.5rem,max-content) minmax(0,1fr));column-gap:8px}
+  @media(max-width:900px){ .facts{grid-template-columns:minmax(5.5rem,max-content) minmax(0,1fr)} }
+  .facts .fact{grid-column:span 2;grid-template-columns:subgrid}
+  .facts .fact > dd{padding-right:calc(var(--row-x) - 8px)}
+}
 .facts dt{font:var(--f-note);color:var(--dim);margin:0;white-space:nowrap}
 .facts dd{font:var(--f-data);color:var(--ink);margin:0;min-width:0;overflow-wrap:anywhere}
 .facts dd code{font:inherit}
@@ -4252,12 +4266,8 @@ button[aria-busy="true"]{opacity:.75}
   .ndmount select,.ndmount input:not([type=checkbox]),.ndmount .ndmstate{grid-column:1 / -1}
   .ndmount .ndcap{grid-column:1} .ndmount .eye{grid-column:2;justify-self:end}
 }
-/* The Jobs tab: the filter is one checkbox in the bar, skinned like a
-   capability toggle; the reason a job ended badly is a warn line; the log
-   is the manager's compose log, same box. */
-.jbfilter{display:inline-flex;gap:6px;align-items:center;font:var(--f-ui);
-  color:var(--ink)}
-.jbfilter input{width:15px;height:15px;flex:0 0 auto}
+/* The Jobs tab: it is narrowed by chips (B74); the reason a job ended
+   badly is a warn line; the log is the manager's compose log, same box. */
 .jberr.warn{color:var(--warn)}
 /* The notebook's Analysis list is a full-bleed band: its rows and its filter
    bar carry the inset themselves, exactly as they do in the tab, so a finding
@@ -4353,6 +4363,10 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
    phone never shows. */
 .doctor .probs .why{display:block;color:var(--dim);font:var(--f-note);white-space:pre-line;
   overflow-wrap:anywhere;margin-top:2px}
+/* ...and where it is fixed, when the server knows (B71): a link on its own
+   line, a thumb's height on a phone. */
+.doctor .probs .pagelink{display:inline-flex;align-items:center;min-height:32px;color:var(--accent);font:var(--f-ui)}
+@media (pointer:coarse){.doctor .probs .pagelink{min-height:44px}}
 /* A long check wraps rather than ending in an ellipsis: with no tooltips
    (11 Oct) a cut chip says nothing of the rest. A chip of two lines takes the
    control's corners, where a pill's round ends would bulge. */
@@ -6883,7 +6897,8 @@ document.addEventListener("keydown", e => {
 $("bDocDot").onclick = e => { e.stopPropagation(); headerOnly("doctor"); toggleDoctor(); };
 document.addEventListener("click", e => {
   if (docShown && e.target.isConnected
-      && !$("docPanel").contains(e.target) && !$("bDocDot").contains(e.target))
+      && (!$("docPanel").contains(e.target) || e.target.closest("#docPanel a[href]"))
+      && !$("bDocDot").contains(e.target))
     toggleDoctor(false);
 });
 document.addEventListener("keydown", e => {

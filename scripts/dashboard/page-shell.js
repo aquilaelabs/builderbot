@@ -127,12 +127,14 @@ function railGo(key, tool){
 
 // A node page's picked node, read and set by the address (R256 step 3): the
 // node is the address's last part, so a reload, a link and Back land on it.
-const NODE_PICKED = {nodes: () => nodesPick, storage: () => storageNode, nginx: () => nginxNode,
+// The Jobs page has no node; its second segment is the chip it is narrowed
+// to (#/jobs/failed, which Home's "failed today" opens, B74).
+const NODE_PICKED = {jobs: () => jobsShow, nodes: () => nodesPick, storage: () => storageNode, nginx: () => nginxNode,
   toolchains: () => tcNode === "local" ? "" : tcNode, emulator: () => emuNode, phone: () => phNode,
   runner: () => runnerNode, docker: () => dockerNode};
 // Toolchains' "local" (the controller's own store, for a shell and the
 // suite) is no node, so an address naming it opens on the node tcPick picks.
-const NODE_SET = {nodes: v => { nodesPick = v; }, storage: v => { storageNode = v; }, nginx: v => { nginxNode = v; },
+const NODE_SET = {jobs: v => jobsShowSet(v), nodes: v => { nodesPick = v; }, storage: v => { storageNode = v; }, nginx: v => { nginxNode = v; },
   toolchains: v => { tcNode = v === "local" ? "" : v; }, emulator: v => { emuNode = v; }, phone: v => { phNode = v; },
   runner: v => { runnerNode = v; }, docker: v => { dockerNode = v; }};
 
@@ -331,14 +333,36 @@ function jumpItems(q){
   return hit.slice(0, 8);
 }
 let jumpRows = [];
+let jumpAt = 0;                  // the row the arrow keys have marked, Enter's
 function drawJump(){
   const inp = $("jump"), list = $("jumpList");
   if (!inp || !list) return;
   jumpRows = jumpItems(inp.value);
-  list.hidden = !jumpRows.length;
-  list.innerHTML = jumpRows.map(([label, where], i) =>
-    `<button type="button" class="jrow${i === 0 ? " on" : ""}" data-jump="${i}" role="option"><span class="jl">${esc(label)}</span><span class="jw">${esc(where)}</span></button>`).join("");
+  jumpAt = 0;
+  // Something typed that matches nothing says so, rather than the list
+  // staying shut as if the field had not heard (B72).
+  const none = !jumpRows.length && !!inp.value.trim();
+  list.hidden = !jumpRows.length && !none;
+  list.innerHTML = none ? `<div class="jnone" role="option" aria-disabled="true">nothing matches “${esc(inp.value.trim())}”</div>`
+    : jumpRows.map(([label, where], i) =>
+    `<button type="button" class="jrow${i === 0 ? " on" : ""}" id="jumpRow${i}" data-jump="${i}" role="option" aria-selected="${i === 0}"><span class="jl">${esc(label)}</span><span class="jw">${esc(where)}</span></button>`).join("");
   list.querySelectorAll("[data-jump]").forEach(b => b.onclick = () => jumpGo(Number(b.dataset.jump)));
+  if (jumpRows.length) inp.setAttribute("aria-activedescendant", "jumpRow0");
+  else inp.removeAttribute("aria-activedescendant");
+}
+// ArrowDown and ArrowUp move the mark through the rows, round at the ends,
+// so the second hit is a key away and not only the mouse's (B72).
+function jumpMove(by){
+  const list = $("jumpList");
+  if (!jumpRows.length || !list) return;
+  jumpAt = (jumpAt + by + jumpRows.length) % jumpRows.length;
+  list.querySelectorAll("[data-jump]").forEach(b => {
+    const on = Number(b.dataset.jump) === jumpAt;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", String(on));
+    if (on) b.scrollIntoView({block: "nearest"});
+  });
+  $("jump")?.setAttribute("aria-activedescendant", "jumpRow" + jumpAt);
 }
 function jumpGo(i){
   const row = jumpRows[i] || jumpRows[0];
@@ -352,16 +376,26 @@ function jumpGo(i){
 function wireJump(){
   const inp = $("jump"), list = $("jumpList");
   if (!inp || !list) return;
-  // The whole hint where it fits; a phone's field is narrower than it, so
-  // there it says what it is for in two words (the operator, 18 Oct: cut
-  // off mid-word). The aria-label keeps the whole of it either way.
-  const said = () => { inp.placeholder = isPhone() ? "jump to…" : "jump to a page, project, container or node"; };
+  // The whole hint where it fits, else a shorter one, else two words (the
+  // operator, 18 Oct: cut off mid-word), measured against the field as it is
+  // laid out, since at a desk it was still cut at 1280 (B72). The aria-label
+  // keeps the whole of it either way.
+  const said = () => {
+    const cs = getComputedStyle(inp);
+    const room = inp.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 4;
+    const ctx = (said.ctx ||= document.createElement("canvas").getContext("2d"));
+    ctx.font = cs.font;
+    const hint = ["jump to a page, project, container or node", "jump to a page, project or node", "jump to…"]
+      .find(t => ctx.measureText(t).width <= room) || "jump to…";
+    if (inp.placeholder !== hint) inp.placeholder = hint;
+  };
   said();
-  matchMedia("(max-width: 900px)").addEventListener("change", said);
+  if (window.ResizeObserver) new ResizeObserver(said).observe(inp);
   inp.oninput = drawJump;
   inp.onfocus = () => { (nodesList === null ? loadNodes() : Promise.resolve()).then(dmJumpLoad).then(drawJump); drawJump(); };
   inp.onkeydown = e => {
-    if (e.key === "Enter"){ e.preventDefault(); jumpGo(0); }
+    if (e.key === "Enter"){ e.preventDefault(); jumpGo(jumpAt); }
+    else if (e.key === "ArrowDown" || e.key === "ArrowUp"){ e.preventDefault(); jumpMove(e.key === "ArrowDown" ? 1 : -1); }
     else if (e.key === "Escape"){ inp.value = ""; list.hidden = true; inp.blur(); }
   };
   document.addEventListener("click", e => { if (!e.target.closest(".jump")) list.hidden = true; });

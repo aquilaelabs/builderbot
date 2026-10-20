@@ -634,4 +634,23 @@ ok(elsewhere.git_name === 'T. Person',
      '...and an empty path puts it back at its default, with what is there');
 }
 
+// ---- Profile's What you may do on a phone (B76) -------------------------------
+// One column of facts, every value starting at one line: each began where
+// its own label ended, two ragged columns.
+{
+  const phone = await newPage(browser, { viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true });
+  await phone.goto(URL);
+  await ready(phone);
+  await phone.evaluate(() => openProfileTab());
+  await phone.waitForSelector('.profiletab [data-spick="may"]', { timeout: 15000 });
+  await phone.click('.profiletab [data-spick="may"]');
+  await phone.waitForSelector('.profiletab dl.facts dd', { timeout: 10000 });
+  const xs = await phone.$$eval('.profiletab dl.facts .fact dd', ds => [...new Set(ds.filter(d => d.offsetHeight)
+    .map(d => Math.round(d.getBoundingClientRect().left)))]);
+  const over = await phone.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  if (process.env.BB_SHOT_DIR) await phone.screenshot({ path: `${process.env.BB_SHOT_DIR}/profile-may-360.png` });
+  ok(xs.length === 1 && over <= 0, `on a phone What you may do lines its values up in one column (starts at ${xs.join('/')})`);
+  await phone.close();
+}
+
 await done(browser);
