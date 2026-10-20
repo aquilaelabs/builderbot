@@ -1728,8 +1728,28 @@ def account_names():
 # says nothing about text size, so a phone's browser may boost the font of a
 # page it takes for a desktop one, and the terminal drew at about twice its
 # size with each line's right half cut off. Said once at the top of <head>.
+#
+# The script is B91, what was really drawing the letters two and three times
+# too large: xterm's WebGL renderer sizes its canvas from a ResizeObserver's
+# device-pixel-content-box while it draws each glyph at devicePixelRatio, and
+# where the two disagree (Chromium's device emulation, which Playwright's
+# phone contexts and a desktop's device toolbar use, scales the ratio but not
+# that box) the canvas holds a third of the grid and shows its top-left
+# corner. Where the box does not match the content box times the ratio, it
+# is answered with that product, so the canvas and the glyphs agree; a phone
+# whose box already matches is handed its own exact one unchanged.
+_TTYD_DPR = (b'<script>(function(){var P=window.ResizeObserverEntry&&ResizeObserverEntry.prototype,'
+             b'd=P&&Object.getOwnPropertyDescriptor(P,"devicePixelContentBoxSize");'
+             b'if(!d||!d.get)return;'
+             b'Object.defineProperty(P,"devicePixelContentBoxSize",{configurable:true,enumerable:true,'
+             b'get:function(){var s=d.get.call(this),c=this.contentBoxSize,r=window.devicePixelRatio||1;'
+             b'if(!s||!s[0]||!c||!c[0])return s;'
+             b'var w=c[0].inlineSize*r,h=c[0].blockSize*r;'
+             b'if(Math.abs(s[0].inlineSize-w)<=2&&Math.abs(s[0].blockSize-h)<=2)return s;'
+             b'return[{inlineSize:Math.round(w),blockSize:Math.round(h)}];}});})();</script>')
 _TTYD_HEAD = (b'<meta name="viewport" content="width=device-width, initial-scale=1">'
-              b'<style>html{-webkit-text-size-adjust:100%;text-size-adjust:100%}</style>')
+              b'<style>html{-webkit-text-size-adjust:100%;text-size-adjust:100%}</style>'
+              + _TTYD_DPR)
 
 
 def _ttyd_page(raw):

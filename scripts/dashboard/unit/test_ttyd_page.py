@@ -11,7 +11,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = open(os.path.join(HERE, "..", "server.py"), encoding="utf-8").read()
 TREE = ast.parse(SRC).body
 NODES = [n for n in TREE if (isinstance(n, ast.FunctionDef) and n.name == "_ttyd_page")
-         or (isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "_TTYD_HEAD" for t in n.targets))]
+         or (isinstance(n, ast.Assign) and any(getattr(t, "id", "") in ("_TTYD_HEAD", "_TTYD_DPR") for t in n.targets))]
 NS = {}
 exec(compile(ast.Module(NODES, []), "server.py", "exec"), NS)  # noqa: S102 (our own function)
 page, HEAD = NS["_ttyd_page"], NS["_TTYD_HEAD"]
@@ -31,6 +31,15 @@ class TtydPage(unittest.TestCase):
         self.assertIn(b'<head><meta name="viewport" content="width=device-width', body)
         self.assertIn(b"text-size-adjust:100%", body)
         self.assertTrue(body.endswith(b"</html>"))
+
+    def test_the_head_squares_the_device_pixel_box_with_the_ratio(self):
+        # B91: the WebGL canvas was sized from a device-pixel box that
+        # emulation leaves unscaled while the glyphs were drawn at the ratio.
+        _, _, body = page(answer())
+        self.assertIn(b'"devicePixelContentBoxSize"', body)
+        self.assertIn(b"window.devicePixelRatio", body)
+        # Before ttyd's own scripts, so xterm finds it in place.
+        self.assertLess(body.find(b"devicePixelContentBoxSize"), body.find(b"<title>"))
 
     def test_the_old_length_is_dropped_and_the_rest_kept(self):
         _, hdrs, _ = page(answer())
