@@ -6,8 +6,8 @@
   <Network>bridge</Network>
   <Shell>bash</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/aquilaelabs/BuilderBot/issues</Support>
-  <Project>https://github.com/aquilaelabs/BuilderBot</Project>
+  <Support>https://github.com/aquilaelabs/builderbot/issues</Support>
+  <Project>https://github.com/aquilaelabs/builderbot</Project>
   <Overview>
 Claude Code workstation and the controller for your build nodes - the machines where builds, tests, CI and the Android emulator run.
 
@@ -15,22 +15,19 @@ Open the dashboard on its port; a Claude session runs on a node from there.
 Helper CLI inside:       docker exec -it BuilderBot bb status
 
 NOTES
-- The image is a private GHCR package: run `docker login ghcr.io` on the Unraid host once (and persist it via the go file) or the pull will fail. See docs/unraid.md in the repo.
 - This container is the controller and nothing else: it compiles nothing, renders nothing and claims no GPU. Builds, tests, CI and the Android emulator run on a NODE - a machine you enroll from the dashboard's Nodes tab, which holds its own toolchains, its own card and its own /dev/kvm. So there is no runtime, no device and no Android setting to get right here.
 - Docker features (the dashboard's Docker manager and dev instances) run on a separate sandbox VM, never on this host's daemon. Set Sandbox VM to its address to turn them on; see docs/sandbox-vm.md for the one-script setup. Empty leaves them off.
   </Overview>
   <Category>Tools: Productivity:</Category>
   <WebUI>http://[IP]:[PORT:7680]/</WebUI>
   <TemplateURL/>
-  <!-- Unreachable while this repo is private, because raw.githubusercontent.com
-       answers 404 to Unraid's unauthenticated fetch, and that is fine. The
-       container seeds Unraid's own icon cache at startup (see the "Unraid icon
-       cache" mapping below), and Unraid only downloads when the cache is
-       empty. This value must still be NON-EMPTY: getIcon() returns early on an
-       empty URL and never consults the cache, so an empty <Icon/> shows the
-       question-mark placeholder however many PNGs are sitting on disk.
-       If the repo ever goes public this starts working on its own. -->
-  <Icon>https://raw.githubusercontent.com/aquilaelabs/BuilderBot/main/config/icon.png</Icon>
+  <!-- The container also seeds Unraid's own icon cache at startup (see the
+       "Unraid icon cache" mapping below), and Unraid only downloads when the
+       cache is empty. This value must be NON-EMPTY either way: getIcon()
+       returns early on an empty URL and never consults the cache, so an
+       empty <Icon/> shows the question-mark placeholder however many PNGs
+       are sitting on disk. -->
+  <Icon>https://raw.githubusercontent.com/aquilaelabs/builderbot/main/config/icon.png</Icon>
   <ExtraParams>--hostname=builderbot --log-opt max-size=20m --log-opt max-file=3</ExtraParams>
   <PostArgs/>
   <DonateText/>
@@ -54,7 +51,7 @@ NOTES
   <Config Name="Secrets directory (shielded tokens)" Target="/secrets" Default="/mnt/user/appdata/BuilderBot/secrets" Mode="ro" Description="RECOMMENDED: a root-owned folder (chmod 700) holding an ssh/ subfolder of private git keys, and any *.env file of publishing tokens. Shielded means a session can USE them and cannot read them. A runner's token is typed on the Nodes tab instead. See docs/unraid.md." Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/BuilderBot/secrets</Config>
   <Config Name="toolchain store" Target="/sdk" Default="/mnt/user/sdk" Mode="rw" Description="This controller's own toolchains (the browsers bb capture shot uses), kept outside the image so an update never downloads them again. A node keeps its own. Empty falls back to the home volume." Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/sdk</Config>
   <Config Name="Scanner reports (read-only)" Target="/reports" Default="/mnt/user/appdata/scanners/reports" Mode="ro" Description="Optional: a static analyzer's output directory on the host. Mounted READ-ONLY and without the scanner, so nothing here can run or reconfigure it. Read them with: bb findings" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/scanners/reports</Config>
-  <Config Name="Unraid icon cache" Target="/unraid-icons" Default="/var/lib/docker/unraid/images" Mode="rw" Description="Optional, cosmetic: mounted here, the container writes its icon in on every start so the Docker page shows one without downloading it - which is what fails while this repo is private." Type="Path" Display="advanced" Required="false" Mask="false">/var/lib/docker/unraid/images</Config>
+  <Config Name="Unraid icon cache" Target="/unraid-icons" Default="/var/lib/docker/unraid/images" Mode="rw" Description="Optional, cosmetic: mounted here, the container writes its icon in on every start so the Docker page shows one without downloading it." Type="Path" Display="advanced" Required="false" Mask="false">/var/lib/docker/unraid/images</Config>
 
   <!-- ===================== core settings ===================== -->
   <Config Name="TZ" Target="TZ" Default="Etc/UTC" Mode="" Description="The container's clock, for its logs and file names (e.g. America/New_York). Optional: each person picks the zone the dashboard shows times in, per browser, on their Profile tab" Type="Variable" Display="advanced" Required="false" Mask="false">Etc/UTC</Config>
