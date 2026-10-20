@@ -8,6 +8,11 @@
 - Tool packs: an administrator adds a toolchain from a git repository with a bbtool.json, pinned to the commit they looked at; it installs like any toolchain, gives sessions bb tool commands, and each project's Settings → Toolchains says which toolchains and packs its sessions may use (f6c5013)
 - A tool pack can be made right on the Toolchains page, with no repository of its own: paste its bbtool.json or upload a zip or tar of its files. The controller keeps it as a version you approve, Edit changes it in place, and the nodes install it from the controller (37c6332)
 
+### Changed
+
+- Installing a toolchain under an agreement (Google's Android SDK terms, NVIDIA's CUDA license) now asks you to accept it, named and linked, before anything downloads, and records who accepted (d06ec8e)
+- Speech (bb tool sound say) uses the ljspeech voice, trained on a public-domain dataset, instead of lessac, whose dataset is licensed for research; install the audio toolchain again to switch (d06ec8e)
+
 ### Fixed
 
 - A session knows each project by the name the dashboard shows as well as its folder, and bb -p takes either (6404f8b)
