@@ -6,6 +6,7 @@ import glob
 import os
 import re
 import shutil
+import stat
 import subprocess
 import urllib.request
 import zipfile
@@ -68,6 +69,16 @@ class WorkMixin:
             if not d.startswith("/") or ".." in d.split("/"):
                 job.say(f"skipping a bind directory that is not a plain path: {d}\n")
                 continue
+            # A socket or a device that is there (the daemon's socket) is
+            # bound as it is: making it a directory can only fail, and that
+            # ended every compose that mounted /var/run/docker.sock (diag
+            # report #117). A plain file where a directory should be still
+            # fails below, before the plan runs.
+            with contextlib.suppress(OSError):
+                mode = os.stat(d).st_mode
+                if stat.S_ISSOCK(mode) or stat.S_ISCHR(mode) or stat.S_ISBLK(mode):
+                    job.say(f"bind source {d} is a socket or a device, bound as it is\n")
+                    continue
             try:
                 # Only a directory this step makes is given to the session
                 # account. One that was there already is somebody's: the
