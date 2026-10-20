@@ -5199,12 +5199,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._term_page(up, down)
             sel.register(up, selectors.EVENT_READ, down)
             sel.register(down, selectors.EVENT_READ, up)
+            # Maintenance mode switched on while this terminal is open ends it
+            # for anybody but the owner: the sign-in was checked when it
+            # connected, and a relay runs until a side hangs up.
+            who = self._who_raw()
             while True:
-                for key, _ in sel.select():
+                for key, _ in sel.select(timeout=5):
                     data = key.fileobj.recv(65536)
                     if not data:
                         return
                     key.data.sendall(data)
+                if kept_out(who):
+                    return
         except OSError:
             pass                          # either side hung up mid-relay
         finally:

@@ -1781,6 +1781,31 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
   const set = (h, on) => bare('/api/settings', { method: 'POST', headers: h, body: JSON.stringify({ set: { maintenance_mode: on } }) });
   const SAID = /down for maintenance: only its owner can sign in/;
 
+  // Two terminals open before it starts, relayed to a stand-in for ttyd on
+  // the harness's port: the administrator's ends when maintenance starts,
+  // the owner's goes on.
+  const net = await import('node:net');
+  const ttyd = net.createServer(s => { s.on('error', () => {});
+    s.once('data', () => s.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n')); });
+  await new Promise(res => ttyd.listen(7999, '127.0.0.1', res));
+  const u0 = new globalThis.URL(URL);
+  const openTerm = (cookie, n) => new Promise(res => {
+    const t = { closed: false, status: '' };
+    const c = net.connect(+u0.port, u0.hostname);
+    let got = '';
+    c.on('error', () => {});
+    c.on('close', () => { t.closed = true; res(t); });
+    c.on('data', d => { got += d; if (!t.status && got.includes('\r\n\r\n')) { t.status = got.split('\r\n')[0]; t.sock = c; res(t); } });
+    c.write(`GET /term/ws?arg=sh%3A${n}%3Aalpha HTTP/1.1\r\nHost: ${u0.host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n`
+      + `Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: tty\r\nCookie: ${cookie}\r\n\r\n`);
+  });
+  const cookieOf = async (u, pw) => ((await form(u, pw)).headers.get('set-cookie') || '').split(';')[0];
+  // An author first: a terminal is refused to an account with none.
+  await bare('/api/profile', { method: 'POST', headers: adm,
+    body: JSON.stringify({ action: 'save', profile: { full_name: 'Maint Admin', email: 'maintadm@example.invalid' } }) });
+  const admTerm = await openTerm(await cookieOf('maintadm', 'maintpass22'), 7);
+  const ownTerm = await openTerm(await cookieOf('test', 'test'), 8);
+
   let r = await set(adm, true);
   ok(r.status === 403 && /only the owner/.test((await r.json()).error || ''), 'an administrator cannot switch maintenance mode on');
   ok((await set(owner, true)).status === 200, '...and the owner can');
@@ -1803,6 +1828,12 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
      'the owner is answered, and the owner\'s own session too');
   await page.waitForFunction(() => document.getElementById('maintband') && !document.getElementById('maintband').hidden, null, { timeout: 15000 })
     .then(() => true, () => false).then(v => ok(v, "the owner's page shows the maintenance band"));
+
+  for (let i = 0; i < 24 && !admTerm.closed; i++) await sleep(500);
+  ok(/101/.test(admTerm.status) && admTerm.closed && /101/.test(ownTerm.status) && !ownTerm.closed,
+     `a terminal another account had open ends when it starts, and the owner's goes on (${JSON.stringify({ adm: [admTerm.status, admTerm.closed], own: [ownTerm.status, ownTerm.closed] })})`);
+  ownTerm.sock?.destroy();
+  await new Promise(res => ttyd.close(res));
 
   ok((await set(owner, false)).status === 200, 'the owner switches it off');
   ok((await bare('/api/status', { headers: { Cookie: theirCookie } })).status === 200,
