@@ -259,6 +259,15 @@ ${code}`], { encoding: 'utf8' });
      'a short password and an empty name are both refused');
   ok(existsSync(`${fresh}/users.json`), 'and the store is written where it will persist');
 
+  // `bb users add` on an empty store makes the owner as the form does, with
+  // an id of its own (diag report #116: written by hand it had none).
+  const bare2 = mkdtempSync(`${tmpdir()}/bbsetup-`);
+  execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'add', 'firstboss'],
+    { input: 'longenough1\nlongenough1\n', encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: bare2 } });
+  const first = JSON.parse(readFileSync(`${bare2}/users.json`, 'utf8')).users.firstboss;
+  ok(first?.role === 'owner' && /^u_[0-9a-f]{8}$/.test(first?.uid || ''),
+     `bb users add on an empty store makes the owner with an id, as the first-run form does (${first?.role} ${first?.uid})`);
+
   // ...and the door is shut on a server that already has an owner, which is
   // this one. A second claim through the form would be a second owner.
   const shut = await bare('/setup', { method: 'POST',
