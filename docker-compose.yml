@@ -59,9 +59,14 @@ services:
       # owner, so open it as soon as the container is up.
       DASHBOARD_PORT: ${DASHBOARD_PORT:-7680}
       # Features switched off for this install (tunnel, ftp, phone, devices,
-      # apps, image-updates, runner, enroll, shell), and the sentence each shows.
+      # apps, image-updates, runner, enroll, shell, internet), and the sentence
+      # each shows.
       FEATURES_OFF: ${FEATURES_OFF:-}
       FEATURES_OFF_WHY: ${FEATURES_OFF_WHY:-}
+      # One line every visitor sees under the header, with an optional link.
+      BANNER_TEXT: ${BANNER_TEXT:-}
+      BANNER_LINK: ${BANNER_LINK:-}
+      BANNER_LINK_LABEL: ${BANNER_LINK_LABEL:-}
 
     volumes:
       # --- your projects ----------------------------------------------------

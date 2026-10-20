@@ -367,6 +367,21 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
     def finished(self, job):
         with self.lock:
             self.jobs.pop(job.job["id"], None)
+            go = getattr(self, "reexec_pending", False) and not self.jobs
+        if go:
+            self.reexec()
+
+    def reexec_when_idle(self):
+        """The new agent, once no job is running: one taken beside the update,
+        after its busy check, was lost to an exec mid-way (B134). Asked again
+        by finished() as each job ends."""
+        with self.lock:
+            busy = bool(self.jobs)
+            self.reexec_pending = busy
+        if busy:
+            log("the new agent is installed; it starts once the running jobs end")
+            return
+        self.reexec()
 
     def cancel(self, ids):
         with self.lock:
@@ -641,7 +656,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             f.write(body)
         os.chmod(tmp, 0o755)
         os.replace(tmp, me)
-        job.say(f"installed {got[:19]}…; restarting\n")
+        # Only a file actually installed restarts the agent: "already current"
+        # above did too, and a second update queued behind the first ended
+        # the rebuild taken beside it (B134).
+        job.installed = True
+        job.say(f"installed {got[:19]}…; restarting once nothing else runs\n")
         return "succeeded", 0
 
     def _run_as(self, job, who, cwd, argv):

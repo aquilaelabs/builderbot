@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- An install can carry a banner: BANNER_TEXT, with an optional BANNER_LINK and BANNER_LINK_LABEL, is shown as a band under the header on every page and on the sign-in page (033ffa6)
+- FEATURES_OFF takes internet, for an install meant to run offline: it turns off apps, image updates, the tunnel and the CI runner together (033ffa6)
+- bb users add and bb users claim take --seen, so an account a script makes does not open on the guide and the what's-new window (033ffa6)
+
+### Fixed
+
+- Updating a node's agent no longer cuts short a job running on it: the agent restarts only after installing a newer version, and only once its jobs end (aac08b2)
+- A dev instance pinned to a branch builds on a node (aac08b2)
+- A container's Start on boot is applied on a hosting-only node (c56e2c0)
+- The Doctor reports a switched-off feature's checks as skipped, not failed (033ffa6)
+
 ## 0.5.2: 2026-10-20
 
 ### Added

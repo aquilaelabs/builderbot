@@ -3748,7 +3748,15 @@ def host_exec_ok(type, spec):
         return False
     if [str(a) for a in argv[:3]] == ["python3", "-c", PROBE]:
         return True
-    return str(argv[0]).rsplit("/", 1)[-1] == "docker" and str(argv[1]) in HOST_DOCKER
+    if str(argv[0]).rsplit("/", 1)[-1] != "docker":
+        return False
+    # ...and a container's Start on boot, in the one form the Docker tab
+    # sends: refused, the choice never reached a hosting-only node and the
+    # controller asked again at every read of its list (B139).
+    if [str(a) for a in argv[1:3]] == ["update", "--restart"] and len(argv) > 4 \
+            and str(argv[3]) in ("unless-stopped", "no"):
+        return True
+    return str(argv[1]) in HOST_DOCKER
 
 
 # Whether a container answers on its node's loopback (R248): a TCP connect

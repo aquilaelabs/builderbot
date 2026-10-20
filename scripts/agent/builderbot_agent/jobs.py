@@ -292,8 +292,8 @@ class Job(threading.Thread):
             self.agent.sessnet.containers_at = 0.0
         self.report(state, code, error)
         self.agent.finished(self)
-        if state == "succeeded" and self.job.get("type") == "self-update":
-            self.agent.reexec()
+        if state == "succeeded" and self.job.get("type") == "self-update" and getattr(self, "installed", False):
+            self.agent.reexec_when_idle()
 
     def report(self, state, code, error):
         """Post the job's end: its log first, then the result."""

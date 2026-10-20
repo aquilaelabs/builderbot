@@ -2547,6 +2547,40 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
        && JSON.stringify(done) === JSON.stringify([['end', 'n_ubu'], ['start', '']]),
        `...then its Restart asks, ends the session and only then starts it again (${JSON.stringify(done)})`);
   }
+  // On a phone the Restart step stays on the screen, its Restart included,
+  // with the model's longest choice in the box and nothing in it reaching
+  // past its edge (B140). Drawn by resumePicker itself, from alpha's card.
+  {
+    const desk = page.viewportSize();
+    // An XL phone, 449 wide: under 420 the two fields are one column.
+    await page.setViewportSize({ width: 449, height: 900 });
+    await page.evaluate(() => openProjectsTab());
+    await page.waitForTimeout(600);
+    const fit = await page.evaluate(() => {
+      // Hosted where the page hosts it, the pane, as placeResumeMenu does.
+      resumeFor = 'alpha';
+      const card = resumeHostNow();
+      const anchor = card?.querySelector('[data-c="alpha"]');
+      if (!card || !anchor) return { card: !!card, anchor: !!anchor };
+      resumeModelNow = { project: 'alpha', model: 'claude-opus-4-1-20250805' };
+      resumePick = { project: 'alpha', node: 'n_ubu', restart: true };
+      const m = document.createElement('div');
+      m.className = 'pinmenu resumemenu'; m.id = 'resumemenu';
+      resumePicker(state.projects.find(x => x.name === 'alpha'), m, card, anchor,
+                   [{ id: 'n_ubu', name: 'ubu', where: 'node', why: '' }], false);
+      const go = m.querySelector('[data-start]');
+      const far = Math.max(...[...m.querySelectorAll('*')].map(e => e.getBoundingClientRect().right));
+      const out = { card: true, menu: Math.round(m.getBoundingClientRect().right), go: Math.round(go?.getBoundingClientRect().right || 0),
+                    far: Math.round(far), w: innerWidth, model: !!m.querySelector('#rmModel'),
+                    longest: Math.max(...[...m.querySelectorAll('option')].map(o => o.textContent.length)) };
+      resumePick = null; resumeFor = null; m.remove();
+      return out;
+    });
+    await page.setViewportSize(desk);
+    await page.waitForTimeout(300);
+    ok(fit.model && fit.menu > 0 && fit.far <= fit.menu && fit.menu <= fit.w && fit.go > 0 && fit.go <= fit.w,
+       `on a phone the Restart step stays on the screen, its Restart too (${JSON.stringify(fit)})`);
+  }
   // A project on one node: its chooser names that node with what it has,
   // as each of several gets.
   const one = await page.evaluate(() => {

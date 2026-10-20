@@ -85,6 +85,13 @@ ok(dropped.status === 400, 'a read taken away in the settings is gone from a run
 const relay = (argv, project) => api('/api/v1/bb', { argv, project, cwd: `${DIR}/ws/${project}` }, asSession(tok));
 const list = await relay(['roadmap'], 'beta');
 ok(list.status === 200 && !list.error, `bb roadmap relayed for beta from alpha's session answers (${list.status} ${(list.error || '').slice(0, 60)})`);
+// A new install's setup from a shell is an administrator's: the relay
+// refuses it to a session on its own project, whatever the verb does (R84).
+for (const argv of [['nodes', 'enroll-token', 'sneaky'], ['settings', 'node', 'shed']]){
+  const r = await relay(argv, 'alpha');
+  ok(r.status === 403 && /an administrator's, from a shell on the controller, never a session's/.test(r.error || ''),
+     `bb ${argv.slice(0, 2).join(' ')} from a session is refused at the relay (${r.status} ${(r.error || '').slice(0, 60)})`);
+}
 // list is the bare verb's own form, and reads (diag report #115, B119).
 for (const argv of [['roadmap', 'list'], ['bug', 'list']]){
   const r = await relay(argv, 'beta');

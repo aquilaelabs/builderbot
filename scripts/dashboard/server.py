@@ -285,7 +285,11 @@ LOGIN_HTML = """<!doctype html>
     background:color-mix(in srgb, var(--bad) 10%, transparent);border:1px solid color-mix(in srgb, var(--bad) 35%, transparent)}
   .note{color:var(--dim);font-size:13px;margin:0 0 6px}
   .note b{color:var(--ink)}
+  .banner{position:fixed;top:0;left:0;right:0;padding:6px 12px;font-size:13px;text-align:center;
+    color:var(--ink);background:var(--panel);border-bottom:1px solid var(--line)}
+  .banner a{color:var(--note)}
 </style></head><body>
+<!--BANNER-->
 <form method="post" action="<!--ACTION-->">
   <div class="head">
     <span class="mark"><svg viewBox="0 0 32 32" aria-hidden="true"><mask id="m">
@@ -2401,6 +2405,11 @@ def _versioned_page(raw, tag):
         parts.append(v)
         return b'<script src="' + m.group(1) + b"?v=" + v.encode() + b'">'
     out = _SCRIPT_TAG.sub(named, raw)
+    # The install's banner (R88), at its place under the header; part of the
+    # page's tag, so a banner changed at a restart is not served from a copy.
+    band = featuresoff.banner_html()
+    out = out.replace(b"<!--BANNER-->", band.encode())
+    parts.append(hashlib.sha256(band.encode()).hexdigest()[:8])
     # Every script runs as written, in order: Cloudflare's Rocket Loader
     # defers the ones that do not say so, and the page then met its own
     # names before they were defined (a ReferenceError, B138).
@@ -4659,7 +4668,8 @@ class Handler(BaseHTTPRequestHandler):
                 # What was typed comes back with a refusal: a wrong password
                 # keeps the username and where it was going (B38).
                 .replace("<!--NAME-->", html_escape(name, quote=True))
-                .replace("<!--NEXT-->", html_escape(nxt or "/", quote=True))).encode()
+                .replace("<!--NEXT-->", html_escape(nxt or "/", quote=True))
+                .replace("<!--BANNER-->", featuresoff.banner_html())).encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-store")

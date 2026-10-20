@@ -21,6 +21,7 @@ the compose runner to jobs.py through configure() here.
 """
 
 import contextlib
+import shutil
 import contextvars
 import json
 import os
@@ -120,6 +121,12 @@ def sync_work_tree(project, instance):
     # --project-directory), so it wants the ref's COMMIT and no claim on the
     # name. A tree made before this and still holding a branch detaches on its
     # next build and gives the name back.
+    # A build tree that is no worktree (a node's own checkout of the ref,
+    # files and no .git, where a node shares this disk) is made again as one:
+    # git cannot move what is not its own (B121).
+    if at.exists() and not (at / ".git").exists():
+        shutil.rmtree(at, ignore_errors=True)
+        devapp._run(["git", "-C", str(repo), "worktree", "prune"], timeout=60)
     if not at.exists():
         r = devapp._run(["git", "-C", str(repo), "worktree", "add", "--force",
                          "--detach", str(at), ref], timeout=120)
@@ -259,6 +266,25 @@ def _plan(project, instance, action, extra=None):
     fetch = {"name": "pulling", "argv": stamped + base + ["pull", "--ignore-buildable", "--policy", "missing"],
              "timeout": 1800, "env": env}
     rebuild = [build, fetch, down] if devapp.missing_env(project, instance) or arriving else [build, fetch, down, up]
+    # An instance pinned to a ref builds from a tree of that ref (work_tree),
+    # which the controller makes on its share, and a node never sees: it holds
+    # synced copies of projects, and the build tree is none (B121, "unable to
+    # prepare context"). So the node makes its own from its copy, first: the
+    # ref's files by git archive, which writes nothing into the repository
+    # (a worktree's records would sync back up to the controller's .git).
+    if at is not None and not ship:
+        ref = str(devapp._read_rec(project, instance).get("ref") or "").strip()
+        checkout = {"name": "checking out", "timeout": 600, "env": {}, "argv": [
+            # A worktree there already is the controller's own, on a disk this
+            # node shares, put on the ref before the plan was sent: left alone.
+            "sh", "-c", '[ -e "$2/.git" ] && exit 0; set -e; rm -rf "$2.new"; mkdir -p "$2.new"; '
+            'git -C "$1" archive --format=tar "$3" | tar -x -C "$2.new"; '
+            'rm -rf "$2"; mv "$2.new" "$2"; echo "a build tree, not a project" > "$2/.bbignore"',
+            "sh", str(devapp.WORKSPACE / project), str(at), ref]}
+        rebuild = [checkout] + rebuild
+        up = [checkout, up]
+    else:
+        up = [up]
     # The project's own test command, inside its running instance (roadmap
     # R48): `exec` into the service the project builds, with the command the
     # settings dialog recorded and nothing else, and the caller's arguments
@@ -291,9 +317,9 @@ def _plan(project, instance, action, extra=None):
     pull = {"name": "pulling", "argv": stamped + base + ["pull", "--ignore-buildable"], "timeout": 1800, "env": env}
     stop = {"name": "stopping", "argv": stamped + base + ["stop"], "timeout": 180, "env": env}
     start = {"name": "starting", "argv": stamped + base + ["start"], "timeout": 300, "env": env}
-    return {"up": [up], "down": [down], "remove": [down],
+    return {"up": up, "down": [down], "remove": [down],
             "rebuild": rebuild, "test": test, "stop": [stop], "start": [start],
-            "update": [pull, up]}.get(action) or []
+            "update": [pull] + up}.get(action) or []
 
 
 # ---- an image shipped to a node that does not hold the project (R166) ------------
@@ -625,13 +651,22 @@ def _compose_done(job, state):
                 "fetching": "fetching the image from the controller failed",
                 "loading": "loading the image failed", "stopping": "stopping it failed",
                 "starting": "up failed", "testing": "the tests failed",
-                "preparing": "a bind directory could not be made on the node"}.get(step, "")
+                "preparing": "a bind directory could not be made on the node",
+                "checking out": "the branch's files could not be checked out on the node"}.get(step, "")
         # The row says what failed and the last line the step wrote, which
         # is where compose and docker put the reason ("No such image:
         # mariadb:11"); the whole tail was the row's before, newlines and
         # all, and read as a wall (the operator, 11 Oct). The log is the
         # Jobs tab's.
-        return (head + ": " + last_line(tail)) if head and last_line(tail) else head
+        said = (head + ": " + last_line(tail)) if head and last_line(tail) else head
+        # A node behind this controller's agent may be why (B133: a fix that
+        # is the agent's, sent to an agent without it): said after the
+        # reason, in agent_stale's words, which name Update agent.
+        stale = ""
+        with contextlib.suppress(Exception):
+            q = devapp.queue
+            stale = q.agent_stale(q.node(job.get("node") or "")) if q is not None and job.get("node") else ""
+        return f"{said}. {stale}" if said and stale else (said or stale)
     # A gated rebuild built and stopped, and that is the whole of what it was
     # asked to do: rewrite the env with the old values in comments and leave
     # Up to the operator. The row below would clear the flag, so this returns.
