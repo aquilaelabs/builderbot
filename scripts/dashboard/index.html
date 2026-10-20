@@ -5062,6 +5062,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           title="reorder; the send controls come back after"
           >Reorder</button>
       </div>
+      <div class="notice bad deadwhy" id="roadmapWhy" hidden></div>
       <div class="roadmapadd ctlrow" id="roadmapForm" hidden>
         <textarea id="roadmapText" class="proseline" rows="1" maxlength="500"
                placeholder="something for the roadmap"></textarea>
@@ -5279,6 +5280,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" data-gitact="pull" title="fast-forward this branch to its upstream">Pull</button>
         <button type="button" data-gitact="push" class="primary" title="send this branch up, with the project's credentials">Push</button>
       </div>
+      <div class="field" id="gitWhyF" hidden><div class="notice bad deadwhy" id="gitWhy"></div></div>
       <div id="gitBody" data-skel="git"></div>
       <!-- A branch against main, its own page (R269 step 2): drawn in
            place of the sections above while the address names it. -->
@@ -5836,6 +5838,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         title="move it to .trash; everything is kept">Delete project…</button>
       <button id="rnUnlink" class="danger" hidden>Unlink</button>
     </div>
+    <!-- Why Delete project is dead for this account (B86), under it. -->
+    <div class="notice bad deadwhy" id="rnDeleteWhy" hidden></div>
   </div>
 </div>
 

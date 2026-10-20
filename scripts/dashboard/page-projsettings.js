@@ -652,6 +652,12 @@ function renameProject(name, mode = "all"){
   unbusy($("rnUnlink"), `Unlink from ${p?.forge_name || "its remote"}`);
   // The bin, on the gear's door only: the chain's is about the remote.
   $("rnDelete").hidden = git || !p;
+  // ...dead, with why under it, for an account whose roles do not give
+  // deleting it (B86): the server's own refusal, read off the row.
+  const delWhy = p?.trash_why || "";
+  $("rnDelete").disabled = !!delWhy;
+  setText($("rnDeleteWhy"), delWhy);
+  setHidden($("rnDeleteWhy"), git || !p || !delWhy);
   $("rnKeyOut").hidden = true; $("rnKeyPaste").hidden = true; $("rnKeyPaste").value = "";
   rnLoadAuth(name);
   rnLoadSigning(name);

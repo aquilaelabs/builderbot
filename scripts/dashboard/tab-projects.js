@@ -114,10 +114,10 @@ function projectMatches(p, q){
 // rest behind the menu, the same parts the project page's header draws.
 // A project's lock, said one way on its card, its page's header and Home
 // (consistency batch J: the header said locked where the card said
-// archived): archived when it is locked, read-only when it is another
-// account's.
+// archived): archived when it is locked, read-only when it is not this
+// account's to change (not taken on, or a role that reads it alone).
 function lockMark(p){
-  return p.locked || notMine(p) ? ` <span class="lockmark">${LOCK}${p.locked ? "archived" : "read-only"}</span>` : "";
+  return p.locked || writeWhy(p) ? ` <span class="lockmark">${LOCK}${p.locked ? "archived" : "read-only"}</span>` : "";
 }
 // A project's facts line, the same parts wherever it is drawn: its branch,
 // that it may push, and the node it runs on.
@@ -142,7 +142,7 @@ function projectCard(p){
         p.phone.mine ? "you" : esc(p.phone.owner)}</div>` : ""}
     ${p.testing ? `<div class="pnote dim">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}
     ${projectNote(p)}
-    <div class="pcacts actbar">${projectActions(p, `<button type="button" class="danger" data-del="${esc(p.name)}">Delete</button>`)}</div>
+    <div class="pcacts actbar">${projectActions(p, p.trash_why ? "" : `<button type="button" class="danger" data-del="${esc(p.name)}">Delete</button>`)}</div>
   </div>`;
 }
 

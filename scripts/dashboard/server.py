@@ -1151,6 +1151,13 @@ def _project_columns(who, facts):
                     # Whether its settings are this account's to change (B19):
                     # the page locks them, with the reason, where not.
                     "may_settings": not users.may(who, "settings", d.name) if who else True,
+                    # ...and why its notebook, its tree and the project itself
+                    # are not this account's to change, or "" (B86): a role
+                    # that gives Projects Read alone sees the page with every
+                    # writing control dead and this said under it, rather
+                    # than each refused only at the press.
+                    "write_why": users.may(who, "write", d.name) if who else "",
+                    "trash_why": users.may(who, "trash", d.name) if who else "",
                     # Whether this project has a compose file, which is the
                     # same question as "could its tests run in a container of
                     # its own": the settings dialog offers that choice only
