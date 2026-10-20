@@ -3153,6 +3153,7 @@ ok(page.errors.length === 0,
     // A toolchain store the node cannot write (R85): the Toolchains page
     // says so and holds Install, before a job fails on it.
     await hello({ store_ro: true });
+    await page.evaluate(() => loadNodes());
     await page.evaluate(() => openToolchains());
     await page.waitForSelector('.tctab #tcNodeSel', { timeout: 15000 });
     await page.selectOption('.tctab #tcNodeSel', shed.id);
