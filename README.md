@@ -90,10 +90,9 @@ your projects mounted straight in, and to grow from one machine to several.
 
 ### What you need
 
-- **A server for the controller**: a Linux machine with Docker and Docker
-  Compose. It runs on Unraid (a template ships with it) and on Ubuntu today.
-  It runs the dashboard and keeps the record; it needs little CPU, but give
-  it a disk for your projects.
+- **A server for the controller**: any machine that runs Docker, with
+  Docker Compose. The controller is one container: it runs the dashboard and
+  keeps the record, needs little CPU, and wants a disk for your projects.
 - **At least one node**: a Linux machine or VM where sessions, builds and
   tests actually run, on **Ubuntu 24.04 or later** or **Rocky Linux 9**,
   the systems nodes are tested on. A separate VM keeps what Claude runs
