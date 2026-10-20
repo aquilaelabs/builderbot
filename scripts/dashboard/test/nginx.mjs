@@ -260,8 +260,10 @@ await page.evaluate(() => loadNginx());
   await page.waitForSelector(`${sect} .ngform`, { timeout: 5000 });
   ok(await page.$eval(sect, s => /1 route/.test(s.querySelector('.ngcert .sub').textContent)
        && [...s.querySelectorAll('.ngroute [data-ng="cert"] option')].some(o => o.value === 'www.example.com')
-       && /443, www\.example\.com's pair/.test(s.querySelector('.ngroute [data-ng="cert"] option[value=""]').textContent)),
-     "...and the section lists it with the route that uses it, and the route's picker names it as the automatic pick");
+       && /443, whichever pair covers it \(now www\.example\.com's\)/.test(s.querySelector('.ngroute [data-ng="cert"] option[value=""]').textContent)
+       && new Set([...s.querySelectorAll('.ngroute [data-ng="cert"] option')].map(o => o.textContent)).size
+          === s.querySelectorAll('.ngroute [data-ng="cert"] option').length),
+     "...and the section lists it with the route that uses it, and the route's picker names it as the automatic pick, no two choices worded alike");
   await page.click(`${sect} .ngform [data-ngcancel]`);
   await api('/api/nginx', { action: 'save', node: sandbox.node, routes: row.routes, drop_cert: 'www.example.com' });
   ok(!((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).certs?.['www.example.com']), '...and it can be taken off again by its key');
