@@ -100,6 +100,14 @@ class Release(unittest.TestCase):
         self.assertEqual(r["assets"], ["app-0.5.0-dev.12-65298e0-release-signed.apk"])
         self.assertEqual(fr.kept("app")["v0.5.0"]["url"], "https://github.com/o/app/releases/tag/v0.5.0")
 
+    def test_a_version_cut_without_a_bump_releases_what_is_under_unreleased(self):
+        # v0.5.0 went out reading "builderbot-2 0.5.0" (B116): its changes
+        # were still under Unreleased, never dated by a bump.
+        r = fr.publish("app", "v0.6.0", "0.6.0", "65298e0")
+        self.assertTrue(r.get("made"), r)
+        made = [b for m, p, b in SEEN if m == "POST"][0]
+        self.assertEqual(made["body"], "- not yet")
+
     def test_a_tag_on_a_merge_carries_the_builds_of_the_same_files(self):
         # The builds were made and signed on the branch tip; the tag went on
         # the merge commit, another id with the same tree (Shebang-DevBoard's

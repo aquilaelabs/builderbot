@@ -99,20 +99,36 @@ def _keep(project, tag, url, error="", forge="GitHub"):
 
 def notes(where, version):
     """The changelog's section for `version`, as Markdown, or "" when the
-    file has none: its categories as headings and its entries as a list."""
+    file has none: its categories as headings and its entries as a list.
+    A version cut without a bump has its changes still under Unreleased,
+    and those are what it releases (v0.5.0 went out with no notes, B116)."""
     text = changelog.read(where) or ""
+    pending = None
     for sec in changelog.sections(text):
         title = sec.get("title") or ""
         if title == version or title.startswith(version + ":") or title.startswith(version + " "):
-            out, cat = [], None
-            for e in sec.get("entries") or []:
-                if e.get("cat") != cat:
-                    cat = e.get("cat")
-                    if cat:
-                        out.append(f"\n### {cat}\n")
-                out.append(f"- {e.get('text', '')}")
-            return "\n".join(out).strip()
-    return ""
+            return _listed(sec)
+        if pending is None and title == "Unreleased":
+            pending = sec
+    return _listed(pending) if pending else ""
+
+
+def _listed(sec):
+    out, cat = [], None
+    for e in sec.get("entries") or []:
+        if e.get("cat") != cat:
+            cat = e.get("cat")
+            if cat:
+                out.append(f"\n### {cat}\n")
+        out.append(f"- {e.get('text', '')}")
+    return "\n".join(out).strip()
+
+
+def _shown(project):
+    """The name the project is shown under, not its folder (B116: a release
+    read "builderbot-2 0.5.0")."""
+    import roles
+    return roles.shown(project)
 
 
 def assets(project, sha):
@@ -203,7 +219,7 @@ def publish(project, tag, version, sha, comp=""):
     base = forges.api_base(entry, at["host"], scheme or ("https" if at["scheme"] == "ssh" else at["scheme"]))
     where = WORKSPACE / project / comp if comp else WORKSPACE / project
     title = f"{comp + ' ' if comp else ''}{version}"
-    body = notes(where, version) or f"{project} {version}"
+    body = notes(where, version) or f"{_shown(project)} {version}"
     try:
         made = (_gitlab if entry["kind"] == "gitlab" else _gitea)(
             _Forge(base, entry, token), at, project, tag, version, sha, title, body)
@@ -229,7 +245,7 @@ def _github(project, tag, version, sha, comp=""):
             return {"url": have.get("html_url") or "", "made": False, "assets": [], "skipped": [],
                     "forge": "GitHub"}
         where = WORKSPACE / project / comp if comp else WORKSPACE / project
-        body = notes(where, version) or f"{project} {version}"
+        body = notes(where, version) or f"{_shown(project)} {version}"
         rel = _req("POST", base, token, {"tag_name": tag, "name": f"{comp + ' ' if comp else ''}{version}",
                                          "body": body, "draft": False, "prerelease": False})
         up, skipped = [], []
