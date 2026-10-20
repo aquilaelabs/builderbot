@@ -384,7 +384,10 @@ function drawBell(){
   const waiting = (state?.projects || []).filter(p => p.pending > 0);
   // Claude sessions sitting on Claude Code's own permission prompt (B52),
   // which only their terminal can answer: the row opens it.
-  const asking = (state?.sessions || []).filter(s => s.claude?.state === "asking");
+  // This account's own: the owner's bare-named session on a shared project
+  // is in a member's list too, and is not asking that member (B104).
+  const asking = (state?.sessions || []).filter(s => s.claude?.state === "asking"
+    && (!state?.tmux_prefix || s.name.startsWith(state.tmux_prefix)));
   // What the nodes need: an agent behind, or from another window. From the
   // poll, never stored here, so a row leaves the moment it stops being true.
   const att = state?.attention || [];

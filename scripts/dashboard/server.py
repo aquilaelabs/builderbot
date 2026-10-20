@@ -4135,7 +4135,8 @@ def _snapshot(who):
     # bare (node_tmux_sessions), and by the bare name they read as unowned,
     # so every account on that project listed the owner's Claude as its own.
     with timing.timed("status:sessions"):
-        sessions = [s for s in tmux_sessions() + node_tmux_sessions()
+        every = tmux_sessions() + node_tmux_sessions()
+        sessions = [s for s in every
                     if _session_visible(s.get("node_name") or s["name"], mine, seen, users.sees_all(who))]
     with timing.timed("status:signin"):
         login = signin.state(mine)
@@ -4297,13 +4298,13 @@ def _snapshot(who):
         # in a worktree of their own, so this is a list and it is information
         # rather than a refusal: the row says who is here and nothing is
         # grayed for it. The page decides how to word "you and alice".
-        "claude_with": projsessions.with_(sessions),
-        # ...and which of them are working on a prompt right now, for the
-        # dot beside each name (the operator, 24 Sep).
-        "claude_busy": projsessions.busy(sessions),
-        # ...and the same, one row per account per node, for the project
-        # row's list: which machine each session is on.
-        "claude_where": projsessions.where(sessions),
+        # claude_with; which of them are working on a prompt right now, for
+        # the dot beside each name (the operator, 24 Sep), claude_busy; which
+        # are on Claude Code's permission prompt, claude_asking (B104); and
+        # one row per account per node, claude_where, for the project row's
+        # list: which machine each session is on. Every account's sessions
+        # on the projects this account sees, as /api/live gives them.
+        **projsessions.maps(every, seen),
         # This account's own name, so the row can say "you and alice" rather
         # than reading your own name back at you.
         "me": (who or {}).get("name", ""),
@@ -5446,13 +5447,13 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(snapshot(self._who()))
 
     def _get_live(self):
-        """GET /api/live: who has a Claude session on each project and which
-        of them are working, the two maps the status payload also carries,
-        alone and cheap. Fetched when the revs token `live` moves."""
-        sessions = tmux_sessions() + node_tmux_sessions()
-        return self._json({"claude_with": projsessions.with_(sessions),
-                           "claude_busy": projsessions.busy(sessions),
-                           "claude_where": projsessions.where(sessions)})
+        """GET /api/live: who has a Claude session on each project this
+        account sees, which of them are working and which asking, the maps
+        the status payload also carries (projsessions.maps), alone and
+        cheap. Fetched when the revs token `live` moves."""
+        who = self._who()
+        return self._json(projsessions.maps(tmux_sessions() + node_tmux_sessions(),
+                                            None if users.sees_all(who) else (who or {}).get("projects") or []))
 
     def _get_findings(self):
         """GET /api/findings: findings.view, scoped to the projects this

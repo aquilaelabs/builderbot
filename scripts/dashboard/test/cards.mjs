@@ -594,6 +594,20 @@ print(json.dumps(out))
     });
     ok(/asking you/.test(asked.word) && asked.asking,
        `a session on its permission prompt reads asking, with the amber dot (${asked.word})`);
+    // B104: another account's session on the prompt reads asking too, by
+    // that person's name and not "asking you", on the card's state and its
+    // session rows.
+    const theirs = await page.evaluate(() => {
+      state.claude_asking = { alpha: ['alice'] }; state.claude_busy = {};
+      drawProjects(state.projects);
+      const st = document.querySelector('.pgrid .pcard[data-row="alpha"] .pstate.other');
+      const out = { word: st?.textContent || '', asking: !!st?.querySelector('.st.asking'),
+                    row: /class="st asking"[^>]*>[^<]*<\/span>alice/.test(sessionRows('alpha')) };
+      state.claude_asking = {}; drawProjects(state.projects);
+      return out;
+    });
+    ok(theirs.word === 'alice asking' && theirs.asking && theirs.row,
+       `another account's session on its permission prompt reads asking, not waiting (${JSON.stringify(theirs)})`);
   }
   await page.evaluate(() => { state.claude_with = {}; state.claude_busy = {}; drawProjects(state.projects); });
   await page.evaluate(() => liveRefresh());

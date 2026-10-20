@@ -891,7 +891,11 @@ function projectState(p){
   const asking = mine && claudeOf(myClaude(name))?.state === "asking";
   const me = mine ? (asking ? one("asking", "asking you") : busy.has(state?.me) ? one("working", "working")
     : one("waiting", "waiting for you")) : "";
-  const them = othersOn(name).map(n => one(busy.has(n) ? "working" : "waiting", `${n}${busy.has(n) ? " working" : "'s session"}`, " other")).join("");
+  // Another account's session on the prompt reads asking too (B104), but
+  // not "asking you": only that person's terminal answers it.
+  const asks = new Set((state?.claude_asking || {})[tmuxName(name)] || (state?.claude_asking || {})[name] || []);
+  const them = othersOn(name).map(n => asks.has(n) ? one("asking", `${n} asking`, " other")
+    : one(busy.has(n) ? "working" : "waiting", `${n}${busy.has(n) ? " working" : "'s session"}`, " other")).join("");
   return me || them ? `<span class="pstates">${me}${them}</span>` : one("", "no session");
 }
 // The one notice a project carries (why nobody can start here, the agent
