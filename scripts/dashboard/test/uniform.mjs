@@ -2018,6 +2018,15 @@ const DIALOGS = {
   // real shape rather than an error band.
   dockerlog: async () => { openDocker(); await new Promise(r => setTimeout(r, 1200));
                            dmLogs('someone-elses'); },
+  // A conversation read on the Profile page (R83): the account's newest if
+  // it has one, else the same box with nothing said in it, never a 404 the
+  // console would count.
+  conversation: async () => {
+    const c = ((await (await fetch('/api/profile')).json()).logs || [])[0];
+    if (c) return openConversation(c.project, c.id);
+    $('cvBody').innerHTML = '<div class="empty">Nothing said in it yet.</div>';
+    $('cvModal').hidden = false;
+  },
   enroll: async () => { openNodesTab();
     for (let i = 0; i < 40 && !document.querySelector('.nodestab button'); i++) await new Promise(r => setTimeout(r, 250));
     [...document.querySelectorAll('.nodestab button')].find(b => /enroll/i.test(b.textContent))?.click(); },
