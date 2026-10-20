@@ -252,6 +252,70 @@ def render(uid, project, sid, tz=None, tail=0):
     return "\n".join(out).rstrip() + "\n", name
 
 
+# The reader's cap on one tool's answer: the folded line is a glance, and the
+# download holds the whole of it.
+TURN_RESULT_MAX = 4000
+
+
+def turns(uid, project, sid, tz=None, tail=0):
+    """(payload, status) for the dashboard's reader (R83): the conversation as
+    turns, {who: "you" | "claude" | "system", at, text, tools: [{call, result,
+    error}]}, each tool's answer attached to the call it answers, from the
+    same records render() writes the text download from."""
+    f = _find(uid, project, sid)
+    if f is None:
+        return {"error": "no such conversation of yours on this project"}, 404
+    out, calls, total, partial = [], {}, 0, False
+    try:
+        size = f.stat().st_size
+        with open(f, encoding="utf-8", errors="replace") as fh:
+            if tail and size > tail:
+                fh.seek(size - tail)
+                fh.readline()
+                partial = True
+            for line in fh:
+                if total > MAX_OUT:
+                    partial = True
+                    break
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                if d.get("isSidechain"):
+                    continue
+                kind, msg = d.get("type"), d.get("message") or {}
+                content = msg.get("content")
+                stamp = _when(d, tz)
+                if kind == "user":
+                    for b in content if isinstance(content, list) else []:
+                        if isinstance(b, dict) and b.get("type") == "tool_result" and b.get("tool_use_id") in calls:
+                            text = _result_text(b)
+                            calls[b["tool_use_id"]].update(result=text[:TURN_RESULT_MAX], cut=len(text) > TURN_RESULT_MAX,
+                                                           error=bool(b.get("is_error")))
+                            total += min(len(text), TURN_RESULT_MAX)
+                    texts = [t for t in _texts(content) if t.strip()]
+                    if texts:
+                        who = "system" if d.get("isMeta") or d.get("isCompactSummary") else "you"
+                        out.append({"who": who, "at": stamp, "text": "\n".join(texts), "tools": []})
+                        total += sum(len(t) for t in texts)
+                elif kind == "assistant":
+                    for b in content if isinstance(content, list) else []:
+                        if not isinstance(b, dict):
+                            continue
+                        if b.get("type") == "text" and str(b.get("text") or "").strip():
+                            out.append({"who": "claude", "at": stamp, "text": str(b["text"]), "tools": []})
+                            total += len(b["text"])
+                        elif b.get("type") == "tool_use":
+                            if not out or out[-1]["who"] != "claude":
+                                out.append({"who": "claude", "at": stamp, "text": "", "tools": []})
+                            call = {"call": _tool_line(b), "result": "", "cut": False, "error": False}
+                            out[-1]["tools"].append(call)
+                            calls[str(b.get("id") or "")] = call
+    except OSError as e:
+        return {"error": f"could not read it: {e}"}, 500
+    return {"project": project, "id": sid, "partial": partial, "turns": out}, 200
+
+
 # ---- what the conversations did, against the house rules (R200 step 6) -----
 
 AUDIT_DAYS = 7

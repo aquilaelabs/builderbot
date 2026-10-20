@@ -190,7 +190,7 @@ function profileLogs(rows){
       <div class="grow">
         <div class="top"><b>${esc(projLabel(r.project))}</b> <span class="dim">${esc(fmtTime(r.at * 1000))} · ${esc(size(r.bytes))}</span></div>
         ${r.first ? `<div class="dim first">${esc(r.first)}</div>` : ""}</div>
-      <div class="acts"><a class="btn" href="/api/transcript?project=${encodeURIComponent(r.project)}&id=${encodeURIComponent(r.id)}&tz=${encodeURIComponent(tz)}" download>Download</a></div>
+      <div class="acts"><button type="button" data-cvread="${esc(r.id)}" data-cvproject="${esc(r.project)}">Read</button><a class="btn" href="/api/transcript?project=${encodeURIComponent(r.project)}&id=${encodeURIComponent(r.id)}&tz=${encodeURIComponent(tz)}" download>Download</a></div>
     </div>`).join("")}</div>
     <div class="dim">The text is the whole exchange: your words, Claude's, each command it ran and what the command answered. Claude's private reasoning is not in it.</div>`;
 }
@@ -213,7 +213,33 @@ function wireDeviceOut(root){
   });
 }
 
+// A conversation read here (R83): its turns as the reader route gives them,
+// the newest part of a long one, with the commands folded under Claude's.
+async function openConversation(project, id){
+  const m = $("cvModal"), body = $("cvBody");
+  $("cvTitle").textContent = `Conversation on ${projLabel(project)}`;
+  $("cvNote").textContent = "";
+  body.innerHTML = skel("lines", 8, "reading…");
+  m.hidden = false;
+  $("cvClose").onclick = () => { m.hidden = true; };
+  const tz = userTZ() || Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  let j;
+  try{
+    j = await (await fetch(`/api/transcript?project=${encodeURIComponent(project)}&id=${encodeURIComponent(id)}&as=turns&tz=${encodeURIComponent(tz)}`)).json();
+  }catch(e){ j = {error: "could not reach the controller: " + e}; }
+  if (j.error){ body.innerHTML = deadWhy(j.error); return; }
+  const WHO = {you: "You", claude: "Claude", system: "System"};
+  body.innerHTML = (j.turns || []).map(t => `<div class="cvturn ${esc(t.who)}">
+      <div class="cvwho">${esc(WHO[t.who] || t.who)}${t.at ? ` · ${esc(t.at)}` : ""}</div>
+      ${t.text ? `<div class="cvtext">${esc(t.text)}</div>` : ""}
+      ${(t.tools || []).map(c => `<details class="cvtool${c.error ? " err" : ""}"><summary>${esc(c.call.split("\n")[0])}</summary>
+        <pre>${esc(c.result || "(nothing)")}${c.cut ? "\n[cut here: the download has the rest]" : ""}</pre></details>`).join("")}
+    </div>`).join("") || `<div class="empty">Nothing said in it yet.</div>`;
+  $("cvNote").textContent = j.partial ? "The newest part of a long conversation: the download has all of it." : "";
+  body.scrollTop = body.scrollHeight;
+}
 function wireProfile(root){
+  root.querySelectorAll("[data-cvread]").forEach(b => b.onclick = () => openConversation(b.dataset.cvproject, b.dataset.cvread));
   const p = {...(profile?.profile || {}), account: profile?.name};
   root.querySelectorAll("[data-pf]").forEach(inp => inp.oninput = () => {
     const k = inp.dataset.pf;
