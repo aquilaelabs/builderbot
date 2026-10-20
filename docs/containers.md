@@ -255,6 +255,8 @@ build sees `BB_BUILD_REV`, `BB_BUILD_AT` and `BB_BUILD_VERSION`: the commit
 it is from, when, and the project's version, for a compose whose build args
 want a stamp (BuilderBot's own passes them to its Dockerfile). An image tag
 takes `BB_BUILD_TAG`, the same version with no `+`, which a tag cannot carry.
+`BB_DOCKER_GID` is the docker group's id on the instance's node, for a
+service that reaches the daemon's socket as a member of that group.
 Every step of a rebuild (the pull, the stop, the start) reads the compose
 file with the same variables, so an image named by `${BB_BUILD_REV}` is the
 one pulled and started. BuilderBot itself gets the

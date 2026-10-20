@@ -593,6 +593,7 @@ copying or moving one with its data, is a person's on the Containers page. A
 build sees `BB_BUILD_REV`, `BB_BUILD_AT` and `BB_BUILD_VERSION` (the commit,
 when, and the project's version), so `build.args` can interpolate them
 (`GIT_SHA: ${BB_BUILD_REV}`) without reading `.git`; an image tag takes
-`BB_BUILD_TAG`, the version with no `+`. The project's Tests run
+`BB_BUILD_TAG`, the version with no `+`, and `BB_DOCKER_GID` is the node's
+docker group (a session's docker socket is a stand-in, which stat cannot read it from). The project's Tests run
 setting decides whether `bb test` runs inside it or on the node.
 <!-- BUILDERBOT:END -->

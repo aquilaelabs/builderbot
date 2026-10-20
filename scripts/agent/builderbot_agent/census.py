@@ -137,6 +137,15 @@ def machine_now():
     return ""
 
 
+def _docker_gid():
+    """The docker group's id here, or None where there is no such group."""
+    import grp
+    try:
+        return grp.getgrnam("docker").gr_gid
+    except KeyError:
+        return None
+
+
 def _docker_ip():
     """127.0.0.1 where published ports stay on the node: both docker's `ip`
     (the default bridge) and the networks' default bind (every network
@@ -189,6 +198,10 @@ def census(state):
         # R190): "127.0.0.1" where they stay on the node, "" where docker's
         # own default (every address) holds.
         "docker_ip": _docker_ip(),
+        # The docker group's id (R86), for a compose that runs something as
+        # a member of it: a session cannot stat the socket for it, since
+        # its /var/run/docker.sock is a stand-in that reads root's.
+        "docker_gid": _docker_gid(),
         "gpu": gpu.splitlines()[0][:80] if gpu else "",
         "gpu_card": _gpu_card(),
         "gpu_driver": _gpu_driver(),

@@ -124,6 +124,7 @@ DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 # available(), and a probe should not start writing files.
 log_dir = None
 project_node = None   # the project's own node, from prefs (docs/nodes.md §13)
+node_reported = None  # a node's reported facts by id (nodes.node), for BB_DOCKER_GID
 project_nodes = None  # ...and the set it works on, primary first (R82)
 all_project_nodes = None  # () -> {project: [node ids]}, every project's set
 reads_of = None           # project -> [projects it reads] (prefs.reads), set by the server
@@ -575,8 +576,8 @@ def latest_job():
 
 def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
               node_addr=None, queue=None, runner=None, project_node=None, project_nodes=None,
-              node_paths=None, field=None):
-    globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
+              node_paths=None, field=None, node_reported=None):
+    globals().update(WORKSPACE=Path(workspace), STATE=Path(state), node_reported=node_reported,
                      write_json=write_json, log_dir=log_dir, field=field,
                      node_for=node_for, node_addr=node_addr, project_node=project_node,
                      project_nodes=project_nodes,
@@ -2618,6 +2619,13 @@ def _build_env(project, instance=MAIN):
         t = forms.get("file")
         if t:
             out["BB_BUILD_TAG"] = str(t)
+    # The docker group's id on the instance's node (R86), for a compose that
+    # runs a service as a member of it to reach the daemon's socket.
+    with contextlib.suppress(Exception):
+        nid = _instance_node(project, instance) if instance else ""
+        g = (node_reported(nid) or {}).get("docker_gid") if nid and node_reported else None
+        if isinstance(g, int):
+            out["BB_DOCKER_GID"] = str(g)
     return out
 
 

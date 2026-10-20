@@ -3407,7 +3407,8 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  runner=jobs if not NODES_OK else None,
                  project_node=lambda p: prefs.get(p)["node"],
                  project_nodes=lambda p: prefs.get(p)["nodes"],
-                 node_paths=nodes.node_paths if not NODES_OK else None)
+                 node_paths=nodes.node_paths if not NODES_OK else None,
+                 node_reported=(lambda nid: (nodes.node(nid) or {}).get("reported") or {}) if not NODES_OK else None)
 # The layer on top of it: the compose runner is its, so it is the one that
 # hands jobs.py the function.
 devactions.configure(runner=jobs if not NODES_OK else None)

@@ -1709,6 +1709,20 @@ const BP = JSON.parse(bp.trim().split('\n').pop());
 ok(BP.length === 4 && BP.every(([, has]) => has),
    `every step of a rebuild on a node has the build's variables, the pull among them (${JSON.stringify(BP)})`);
 
+// The node's docker group id reaches the compose as BB_DOCKER_GID (R86): a
+// session cannot stat the socket for it, its own being a stand-in.
+const gid = execFileSync('python3', ['-c', `
+import importlib.util, json, tempfile, sys
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.configure(workspace='/tmp', state=tempfile.mkdtemp(), write_json=lambda p, o: None,
+            project_node=lambda p: 'n1', node_reported=lambda nid: {'docker_gid': 983} if nid == 'n1' else {})
+print(json.dumps(m._build_env('alpha', 'main').get('BB_DOCKER_GID')))
+`], { encoding: 'utf8' });
+ok(JSON.parse(gid.trim().split('\n').pop()) === '983',
+   `a build sees the node's docker group id as BB_DOCKER_GID (${gid.trim()})`);
+
 // The tail is a display, not a transcript. Compose with no terminal writes a
 // new line per progress tick instead of rewriting one, so a single layer of a
 // single image arrives as dozens of near-identical lines, enough to push

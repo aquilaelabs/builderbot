@@ -236,8 +236,9 @@ bb devapp rebuild [--why "..."]
                    command waits for Approve) or auto. Up, Down and a container of
                    any other shape stay the operator's. The build sees BB_BUILD_REV,
                    BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
-                   interpolate them, and BB_BUILD_TAG, the version as an image tag
-                   can carry it; its other options are the compose file's own
+                   interpolate them, BB_BUILD_TAG, the version as an image tag
+                   can carry it, and BB_DOCKER_GID, the node's docker group; its
+                   other options are the compose file's own
 bb devapp new [NAME] [--branch REF] [--compose FILE] [--override FILE] [--node NODE] [--env FILE] [--why "..."]
                    send the project to Docker, as the Artifacts view's Send to Docker
                    manager does, under the same setting: a container made from its
@@ -3010,7 +3011,8 @@ bb devapp rebuild [--why "what it is for"]
   BB_BUILD_REV, BB_BUILD_AT and BB_BUILD_VERSION in its environment (the
   commit, when, the version), so a compose whose build.args interpolate them
   (GIT_SHA: ${BB_BUILD_REV}) stamps the image without reading .git, and
-  BB_BUILD_TAG, the version with no +, for an image tag. Its other
+  BB_BUILD_TAG, the version with no +, for an image tag, and BB_DOCKER_GID,
+  the docker group's id on the node, for a service that talks to the daemon. Its other
   options (args, target, Dockerfile) are the compose file's own to say.
 EOT
                         return 0 ;;

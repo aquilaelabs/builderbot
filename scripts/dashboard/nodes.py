@@ -1205,6 +1205,9 @@ def _census(c):
                          for k, v in list(tc.items())[:16]}
     # The address docker binds published ports to by default (R190).
     out["docker_ip"] = str(c.get("docker_ip") or "")[:40]
+    # ...and its docker group's id (R86), passed to a compose as BB_DOCKER_GID.
+    g = c.get("docker_gid")
+    out["docker_gid"] = g if isinstance(g, int) and not isinstance(g, bool) and 0 <= g < 2**31 else None
     # The configuration plane's reported half (docs/nodes.md §12): whether
     # the node was provisioned as a sandbox (bb-sandbox is there: the stamp
     # system jobs are gated on), what it mounts as bb-sandbox reads it, and
