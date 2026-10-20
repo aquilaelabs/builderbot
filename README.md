@@ -17,6 +17,18 @@
   <a href="https://github.com/aquilaelabs/BuilderBot/pkgs/container/builderbot"><img src="https://img.shields.io/badge/image-ghcr.io-2496ed?logo=docker&logoColor=white" alt="container image on GHCR"></a>
 </p>
 
+> [!WARNING]
+> **BuilderBot is early software.** It runs Claude Code sessions that edit,
+> commit, run and push code on your machines, and it is still changing fast.
+> Do not point it at production repositories or at anything you cannot afford
+> to lose: try it on separate repositories made for testing, and keep backups
+> of what it works on.
+>
+> **Check a project's rules before you use it there.** Some open source
+> projects, employers and clients forbid AI coding tools, or contributions
+> written with them. That is their call to make, and BuilderBot does not
+> check it for you.
+
 ## Overview
 
 BuilderBot is one container, the **controller**, and the machines you enroll
