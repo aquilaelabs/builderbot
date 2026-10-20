@@ -566,6 +566,10 @@ header h1{font-size:15px;margin:0;font-weight:600}
 .banner{flex:0 0 auto;padding:6px 12px;font-size:13px;line-height:1.4;color:var(--ink);
   background:var(--panel);border-bottom:var(--hair) solid var(--line);overflow-wrap:anywhere}
 .banner a{color:var(--note);margin-left:6px}
+/* Maintenance mode's, for the owner while it is on: in the warning color,
+   since everybody else is kept out until it is off. */
+.banner.maint{background:color-mix(in srgb, var(--warn) 18%, var(--panel))}
+.banner[hidden]{display:none}
 /* Every header button one box, at every width: the bell carried the tap
    size on its own and the bug, gear and sign-out got it only on a narrow
    screen, so on a desk the bell stood taller and wider than its row (the

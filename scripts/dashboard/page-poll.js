@@ -129,6 +129,7 @@ async function refresh(){
     // phone and the page's own notes: a row that appeared with the poll
     // would otherwise wait for something else to happen to be seen.
     drawBell();
+    drawMaintBand();
     // The account's scheme, on a browser that has never seen this account
     // (roadmap #25). localStorage is the PAINT path: the scheme is applied
     // at the top of this file before the stylesheet parses, and a value

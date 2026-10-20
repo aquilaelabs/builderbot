@@ -1759,4 +1759,56 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
   }
 }
 
+
+// ---- maintenance mode: the owner alone, until it is off --------------------
+// Every door another account comes in by is shut with the same sentence:
+// the page (its cookie kept for after), the API, a sign-in, a session's
+// token and the phone app's. The switch is the owner's and not an admin's.
+{
+  const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
+  const env = { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` };
+  const users = (args, input) => execFileSync('bash', [`${REPO}/scripts/bb`, 'users', ...args], { input, encoding: 'utf8', env });
+  users(['add', 'maintuser', '--role', 'user'], 'maintpass11\nmaintpass11\n');
+  users(['add', 'maintadm', '--role', 'admin'], 'maintpass22\nmaintpass22\n');
+  await member('maintuser');
+  const basic = (u, pw) => ({ Authorization: 'Basic ' + Buffer.from(`${u}:${pw}`).toString('base64'), 'Content-Type': 'application/json' });
+  const owner = basic('test', 'test'), user = basic('maintuser', 'maintpass11'), adm = basic('maintadm', 'maintpass22');
+  const form = (u, pw) => bare('/login', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `username=${u}&password=${pw}&next=/` });
+  const theirCookie = ((await form('maintuser', 'maintpass11')).headers.get('set-cookie') || '').split(';')[0];
+  const token = who => execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', ...(who ? [who] : [])], { encoding: 'utf8', env }).trim();
+  const ownerTok = token('test'), userTok = token('maintuser');
+  const set = (h, on) => bare('/api/settings', { method: 'POST', headers: h, body: JSON.stringify({ set: { maintenance_mode: on } }) });
+  const SAID = /down for maintenance: only its owner can sign in/;
+
+  let r = await set(adm, true);
+  ok(r.status === 403 && /only the owner/.test((await r.json()).error || ''), 'an administrator cannot switch maintenance mode on');
+  ok((await set(owner, true)).status === 200, '...and the owner can');
+
+  r = await bare('/api/status', { headers: user });
+  ok(r.status === 503 && SAID.test((await r.json()).error || ''), 'while it is on, another account is answered 503 with the sentence');
+  r = await bare('/', { headers: { Cookie: theirCookie } });
+  const page1 = r.status === 200 ? await r.text() : '';
+  ok(SAID.test(page1) && /<form/.test(page1), `...its signed-in page is the sign-in card saying why (${r.status})`);
+  r = await form('maintuser', 'maintpass11');
+  ok(!r.headers.get('set-cookie') && SAID.test(await r.text()), '...a sign-in is refused with it, and no cookie minted');
+  ok(SAID.test(await (await bare('/login')).text()), '...the sign-in page says it before anybody tries');
+  ok((await bare('/api/status', { headers: { Authorization: 'Bearer ' + userTok } })).status === 503,
+     "...a session of theirs is answered 503");
+  r = await bare('/api/v1/device/signin', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'maintuser', password: 'maintpass11', name: 'their phone', kind: 'phone' }) });
+  ok(r.status === 503 && SAID.test((await r.json()).error || ''), '...and the phone app cannot sign in');
+  ok((await bare('/api/status', { headers: owner })).status === 200
+     && (await bare('/api/status', { headers: { Authorization: 'Bearer ' + ownerTok } })).status === 200,
+     'the owner is answered, and the owner\'s own session too');
+  await page.waitForFunction(() => document.getElementById('maintband') && !document.getElementById('maintband').hidden, null, { timeout: 15000 })
+    .then(() => true, () => false).then(v => ok(v, "the owner's page shows the maintenance band"));
+
+  ok((await set(owner, false)).status === 200, 'the owner switches it off');
+  ok((await bare('/api/status', { headers: { Cookie: theirCookie } })).status === 200,
+     "...and the other account's cookie is good again: nobody was signed out");
+  await page.waitForFunction(() => document.getElementById('maintband')?.hidden, null, { timeout: 15000 })
+    .then(() => true, () => false).then(v => ok(v, '...and the band goes'));
+}
+
 await done(browser);

@@ -300,6 +300,12 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   rules (the agent's API to the controller, everything else 404) are written
   on Apply rather than clicked; the section's line says whether cloudflared
   is in the image, running and registered.
+- **Maintenance**: the owner's alone. While *Maintenance mode* is on, only
+  the owner signs in and is answered, from the page, the phone app or a Claude
+  session of theirs. Everybody else is told BuilderBot is down for
+  maintenance, by the sign-in page, the API (503) and the app, and stays
+  signed in for when it ends. Nodes are not accounts and keep running, and a
+  band under the header reminds the owner it is on.
 - **Debugging**: one switch, *Debug mode*, and a *Debug settings* button
   beside it that is live only while the switch is saved on: behind the button
   are the settings a developer of BuilderBot reaches for and nobody else
