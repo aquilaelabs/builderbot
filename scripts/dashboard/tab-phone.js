@@ -293,7 +293,8 @@ function phonePanel(n){
 function wirePhoneTab(root){
   const $$ = id => root.querySelector("#" + id);
   const pick = $$("phPick");
-  if (pick) pick.onchange = () => { phNode = pick.value; phIp = ""; phFetch(null, true); };
+  // A pick is a history entry (B31), so Back returns to the node before.
+  if (pick) pick.onchange = () => navPush(() => { phNode = pick.value; phIp = ""; phFetch(null, true); });
   const rf = $$("phRefresh");
   // Refresh says so on the button itself, like every other tab's (the
   // operator, 13 Oct); the pill is for what the phone is being asked to do.

@@ -141,6 +141,14 @@ ok(await page.$eval('#pNamePreview', el => el.hidden),
   ok(await page.$eval('#pNamePreview', el => !el.hidden
        && /Shown as relic, in the folder relic-2: a deleted project had relic/.test(el.textContent)),
      '...and a name whose folder a deleted project had says it is shown as itself in the folder Name-2');
+  // ...while a folder a live project is in says which, not that a deleted
+  // project had it (B93).
+  await page.evaluate(() => { state.projects.push({ name: 'held-2', label: 'held' }); pTakenDirs.add('held-2'); });
+  await page.fill('#pName', 'held-2');
+  const heldSaid = await page.$eval('#pNamePreview', el => el.hidden ? '' : el.textContent);
+  await page.evaluate(() => { state.projects = state.projects.filter(p => p.name !== 'held-2'); pTakenDirs.delete('held-2'); });
+  ok(/in the folder held-2-2: held is in the folder held-2/.test(heldSaid) && !/deleted/.test(heldSaid),
+     `...and a live project's folder is named as that project's, not a deleted one's (${heldSaid})`);
   await page.fill('#pName', 'plain');
 }
 // Put the field back as it was found: a mode switch does not clear it, only
@@ -1319,6 +1327,19 @@ await page.waitForFunction(() => document.getElementById('tmodal').hidden);
   await refreshUntil(page, () => !tabs.some(t => t.arg === 'gone-project'), { timeout: 15000 });
   ok(await page.evaluate(() => !tabs.some(t => t.arg === 'gone-project')),
      'a notebook tab on a project that is gone is put away at the next poll');
+}
+// ...and one on show when its project goes (deleted from its Settings, or
+// elsewhere) gives way to Projects, not to the Profile (B94).
+{
+  const made = await page.evaluate(async () => (await (await postJSON('/api/create', { name: 'gone-front', mode: 'init' })).json()).name);
+  await refreshUntil(page, () => state?.projects?.some(p => p.name === 'gone-front'), { timeout: 15000 });
+  await page.evaluate(() => openNotebook('gone-front', 'settings'));
+  await page.waitForFunction(() => location.hash.startsWith('#/projects/gone-front'), null, { timeout: 10000 });
+  await page.evaluate(n => postJSON('/api/trash', { name: n }), made || 'gone-front');
+  await refreshUntil(page, () => !tabs.some(t => t.arg === 'gone-front'), { timeout: 15000 });
+  const at = await page.waitForFunction(() => /^#\/projects(\/projects)?$/.test(location.hash) && tabOf(panes[0])?.kind === 'projects',
+    null, { timeout: 10000 }).then(() => true, () => false);
+  ok(at, `a notebook on show whose project is deleted lands on Projects (${await page.evaluate(() => location.hash + ' ' + tabOf(panes[0])?.kind)})`);
 }
 
 const errs = page.errors.filter(e => !/status of (400|500)/.test(e));

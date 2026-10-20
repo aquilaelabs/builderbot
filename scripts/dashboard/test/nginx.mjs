@@ -198,7 +198,24 @@ ok(await page.$eval(`${sect} .ngrec[data-i="1"]`, r => /8081/.test(r.textContent
 await page.click(`${sect} [data-ngedit="1"]`);
 await page.waitForSelector(`${sect} .ngform`, { timeout: 5000 });
 await page.fill(`${sect} .ngform [data-ng="port"]`, '8083');
-await page.click(`${sect} .ngform [data-ngsave]`);
+// The tab's reads held back, as a node's slow daemon holds them: the row
+// says the saved port, and the pill the rebuild the Save started, the
+// moment the Save answers, not when the read lands (B99, B65).
+{
+  const slow = async r => { if (r.request().method() === 'GET') await new Promise(f => setTimeout(f, 4000)); await r.continue().catch(() => {}); };
+  await page.route('**/api/nginx', slow);
+  await page.click(`${sect} .ngform [data-ngsave]`);
+  const quick = await page.waitForFunction(s => !document.querySelector(s + ' .ngform')
+      && /8083/.test(document.querySelector(s + ' .ngrec[data-i="1"]')?.textContent || ''), sect, { timeout: 3000 })
+    .then(() => true, () => false);
+  const said = await page.$eval(sect, s => s.querySelector('.toolstate .pill')?.textContent || '');
+  ok(quick && /rebuilding/.test(said),
+     `a route's Save shows the saved port and "deployed, rebuilding" at once, before the tab is read again (${quick}, ${said})`);
+  // Unrouted only once the held reads have gone on, or unroute answers
+  // them itself and the handler's continue finds them handled.
+  await page.waitForTimeout(4500);
+  await page.unroute('**/api/nginx', slow);
+}
 await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.routes?.some(r => r.port === 8083), sandbox.node, { timeout: 15000 });
 ok((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).routes.map(r => r.port).join() === '8080,8083',
    '...and its Save writes that one route, the other kept');

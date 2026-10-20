@@ -614,13 +614,19 @@ function pNameShow(){
   let dir = base, k = 2;
   while (dir && pTakenDirs.has(dir.toLowerCase())) dir = `${base}-${k++}`;
   const numbered = !!dir && dir !== base && as === eff;
+  const heldBy = numbered ? (state?.projects || []).find(p => p.name.toLowerCase() === base.toLowerCase())?.name || "" : "";
   const empty = !!raw && !eff;
   $("pName").classList.toggle("bad", empty);
   $("pNamePreview").classList.toggle("bad", empty);
   $("pNamePreview").hidden = !empty && as === typed && !numbered;
   $("pNamePreview").textContent = empty ? "A name needs at least one letter or digit in it"
     : as !== eff ? `${eff} is already a project's name, so this one is shown as ${as}`
-    : numbered ? `Shown as ${as}, in the folder ${dir}: a deleted project had ${base}, and its notebook and containers stay its own`
+    : numbered ? `Shown as ${as}, in the folder ${dir}: ${heldBy
+        // A live project holding the folder is named, not called deleted
+        // (B93: rcclone-2 typed said a deleted project had it while it was
+        // a live project's folder).
+        ? `${projLabel(heldBy)} is in the folder ${base}`
+        : `a deleted project had ${base}, and its notebook and containers stay its own`}`
     : `Shown as ${as}: names follow GitHub's rule, letters, digits, - _ and . only`;
 }
 

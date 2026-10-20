@@ -234,13 +234,13 @@ def _runner_failed(row, last, applying):
     want = runners_of(row).get(slot) or {}
     if not want.get("want"):
         return None
-    return {"id": last["id"], "slot": slot, "ended": last["ended"], "why": _failed_why(last["id"])}
+    return {"id": last["id"], "slot": slot, "ended": last["ended"], "why": failed_why(last["id"])}
 
 
 _WHY = {}
 
 
-def _failed_why(job_id):
+def failed_why(job_id):
     """What a failed job's log says about why, for one line on a row.
 
     A job that ran a command failed on it, so it is that command's output,

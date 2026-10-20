@@ -1371,6 +1371,27 @@ def assign(me, name, global_roles=None, project_roles=None):
     return {"ok": True, "name": name, **out}, 200
 
 
+def forget_project(project):
+    """A project that is gone for good off every account: its list and the
+    roles held on it (membership.forget_project, B95)."""
+    project = str(project or "")
+    with _lock:
+        d = load()
+        changed = False
+        for u in d["users"].values():
+            have = list(u.get("projects") or [])
+            if project in have:
+                u["projects"] = [p for p in have if p != project]
+                changed = True
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            if project in pr:
+                pr.pop(project)
+                u["project_roles"] = pr
+                changed = True
+        if changed:
+            _save(d)
+
+
 def forget_role(name):
     """A removed role taken off every account that held it, everywhere and
     on each project (B20): left on them, a role made later under the same

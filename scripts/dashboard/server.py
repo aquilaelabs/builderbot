@@ -3014,6 +3014,12 @@ try:
     users.migrate_r155()
 except Exception as e:                                                # noqa: BLE001
     print(f"[dashboard] roles migration (R155) skipped: {type(e).__name__}: {e}", flush=True)
+# ...and, on every start, the owner roles of projects that are gone for good
+# or never were (a clone that failed before B95, a folder purged by hand).
+try:
+    membership.prune_gone(registry)
+except Exception as e:                                                # noqa: BLE001
+    print(f"[dashboard] owner roles of gone projects not pruned: {type(e).__name__}: {e}", flush=True)
 gitview.configure(workspace=WORKSPACE,
                   worktrees=WORKTREES,
                   tell=notify.tell, tmux_name=tmux_name, state=STATE,
@@ -3586,6 +3592,10 @@ projects.take_on = users.take_on
 projects.set_prefs = lambda name, **kw: prefs.set_prefs(name, workspace=WORKSPACE, **kw)
 projects.live_sessions = tmux_sessions
 projects.brief_writer = brief.write
+# A create that never took, and a project deleted for good, leave no owner,
+# owner role or account entry behind (B93, B95); the first its settings too.
+projects.purged = lambda name: membership.forget_project(name, live=registry.live_dirs())
+projects.unmade = lambda name: (prefs.forget(name), projects.purged(name))
 
 # ---- a node's git, relayed --------------------------------------------------
 # Push, fetch, pull and ls-remote from a session on a node, done in a
@@ -5721,6 +5731,14 @@ class Handler(BaseHTTPRequestHandler):
         # A project's owner role is named after its directory; the tab says
         # whose it is by the name the project is shown under (R154).
         owners_of = {roles.owner_role_name(d): d for d in registry.labels()}
+        # One whose project is not live (in the trash) is not listed: it is
+        # kept for Put back, and listed it was counted as a project's owner
+        # and could share a label with the live one shown under that name
+        # (B95). A role of the same cut name a live project holds wins.
+        for d in registry.live_dirs():
+            owners_of[roles.owner_role_name(d)] = d
+        rs = {n: r for n, r in rs.items()
+              if n not in owners_of or (registry.get(owners_of[n]) or {}).get("state") == "live"}
         # ...and which project it is for, so the People section offers it
         # under that project alone (B726).
         rs = {n: (dict(r, label=f"owner of {registry.label(owners_of[n])}", project=owners_of[n]) if n in owners_of else r)
@@ -8398,6 +8416,9 @@ class Handler(BaseHTTPRequestHandler):
                                      host=field(req, "host"))
         elif act == "save":
             r = nginxproxy.save_routes(nid, req.get("routes"))
+            # The routes as kept go back with the answer, so the row says
+            # the saved port at once rather than after a read (B99).
+            kept = {"routes": r["routes"]} if isinstance(r.get("routes"), list) else {}
             # The certificate pasted is the node's default, or one
             # hostname's own when cert_for names it (R175).
             saved = {}
@@ -8411,7 +8432,7 @@ class Handler(BaseHTTPRequestHandler):
             if not r.get("error") and drop:
                 r = nginxproxy.drop_cert(nid, drop if isinstance(drop, str) else field(req, "cert_for"))
             if not r.get("error"):
-                r = nginxproxy.apply(nid, containers, devactions, devapp) | saved
+                r = nginxproxy.apply(nid, containers, devactions, devapp) | saved | kept
         elif act == "remove":
             r = nginxproxy.remove(nid, devactions, devapp)
         elif act == "check":

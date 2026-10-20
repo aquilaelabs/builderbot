@@ -886,7 +886,11 @@ function projectState(p){
   // Yours first, then everybody else's with a session here, each with its
   // own dot (the operator, 16 Oct: a card that does not say who else is
   // working in the project hides the one thing worth knowing first).
-  const me = mine ? (busy.has(state?.me) ? one("working", "working") : one("waiting", "waiting for you")) : "";
+  // On Claude Code's permission prompt it is asking, in amber, as the dock
+  // and Sessions say it (B98), not waiting.
+  const asking = mine && claudeOf(myClaude(name))?.state === "asking";
+  const me = mine ? (asking ? one("asking", "asking you") : busy.has(state?.me) ? one("working", "working")
+    : one("waiting", "waiting for you")) : "";
   const them = othersOn(name).map(n => one(busy.has(n) ? "working" : "waiting", `${n}${busy.has(n) ? " working" : "'s session"}`, " other")).join("");
   return me || them ? `<span class="pstates">${me}${them}</span>` : one("", "no session");
 }

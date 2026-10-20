@@ -1748,7 +1748,10 @@ function dmRowsHtml(ins, job, blind){
             esc(st[0])}${dockerList?.stale && !blind ? ", as last seen" : ""}</span>${
             meta ? `<span class="dmmeta state">${esc(meta)}</span>` : ""}</div>
         ${origin ? `<div class="sub dmorigin">${origin}</div>` : ""}
-        ${said ? `<div class="sub dmstate state${!blind && d.running ? " ok" : mine && job.error ? " bad" : ""}">${said}</div>` : ""}
+        ${said ? `<div class="sub dmstate state${
+          // A job that failed is said in the bad tone even while the old
+          // container still runs (B96: a failed Rebuild read in green).
+          mine && job.error && !busy ? " bad" : !blind && d.running ? " ok" : ""}">${said}</div>` : ""}
         </div>
         <div class="actbar dmacts">
         ${open}
@@ -2743,14 +2746,15 @@ function renderDockerInto(i){
   const ck = el.querySelector("#bDockerCheck");
   if (ck) ck.onclick = () => dmCheck(ck, dockerList?.node || dockerNode || "", () => { dockerRev++; loadDocker(); });
   const pk = el.querySelector("#dmNode");
-  if (pk) pk.onchange = () => {
+  // A pick is a history entry (B31), so Back returns to the node before.
+  if (pk) pk.onchange = () => navPush(() => {
     dockerNode = pk.value;
     dockerNodeKeep();
     // The last-known answer first: instant, honestly stale (the blind path
     // says so), and a fresh ask behind it.
     dockerList = dockerSeen[dockerNode] || null;
     dockerRev++; drawPanes(); loadDocker();
-  };
+  });
   const nb = el.querySelector("#bDockerNew");
   if (nb) nb.onclick = openNewContainer;
   // A chip narrows the list to one project's group (the chips rule): a

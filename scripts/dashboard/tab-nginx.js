@@ -36,14 +36,23 @@ function openNginxTab(node){
   openTab({kind: "nginx", arg: "__nginx", label: "nginx"});
 }
 
+// Which read is the newest asked: a read started before a Save and slowed by
+// a node's daemon landed after the Save's own and put the old port and the
+// plain "deployed" back for seconds (B99, B65). A read older than the last
+// one drawn is dropped.
+let nginxAsked = 0, nginxDrawn = 0;
 async function loadNginx(){
+  const asked = ++nginxAsked;
   try{
     const j = await (await bootFetch("/api/nginx")).json();
+    if (asked < nginxDrawn) return;
+    nginxDrawn = asked;
     nginxErr = j.error || "";
     nginxList = j.nodes || [];
     nginxLatest = j.latest || {};
     nginxHostnames = j.hostnames || [];
   }catch(e){
+    if (asked < nginxDrawn) return;
     nginxErr = String(e);
     nginxList = nginxList || [];
   }
@@ -81,6 +90,20 @@ async function nginxAct(body){
   // the pull-downs hold it the moment the answer lands rather than after
   // the whole tab is read again (every node's daemon, B721).
   if (Array.isArray(j.hostnames)) nginxHostnames = j.hostnames;
+  // What was saved is what the row says at once, and a rebuild it started
+  // says so on the pill, before the tab is read again: the read waits on
+  // the node's daemon, and the row went on showing the old port (B99).
+  // A pair pasted or taken off is the read's to say (its names and dates are
+  // the server's), so that Save waits for it as before.
+  const n = !j.error && body.node && body.action === "save" && !body.cert && !body.drop_cert
+    && (nginxList || []).find(x => x.node === body.node);
+  if (n){
+    n.routes = Array.isArray(j.routes) ? j.routes : (body.routes || []).map(r => ({...r}));
+    if (j.job) n.state = {...(n.state || {}), job: {...(n.state?.job || {}), id: j.job, running: true}};
+    nginxRev++;
+    loadNginx();
+    return j;
+  }
   await loadNginx();
   return j;
 }
@@ -391,9 +414,10 @@ function nginxReadDraft(sect, n){
 
 function wireNginxTab(root){
   const psel = root.querySelector("#ngNodeSel");
-  if (psel) psel.onchange = () => { nginxNode = psel.value;
+  // A pick is a history entry (B31), so Back returns to the node before.
+  if (psel) psel.onchange = () => navPush(() => { nginxNode = psel.value;
                                     try{ localStorage.setItem("bb.ngnode", nginxNode); }catch(e){ /* private */ }
-                                    nginxRedraw(); };
+                                    nginxRedraw(); });
   const sect = root.querySelector("[data-ngnode]");
   if (!sect) return;
   const nid = sect.dataset.ngnode;

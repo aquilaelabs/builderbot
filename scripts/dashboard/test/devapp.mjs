@@ -983,6 +983,20 @@ ok(await page.evaluate(() => [
      jobWhy(''),
    ].join(' | ')) === 'creating network: pool overlaps | build failed; the tail of its output is below | ',
    'a failed job is summarized by its reason, not by the label above it');
+// ...in the bad tone, even while the container it meant to replace still
+// runs (B96: a failed Rebuild read in the success green).
+{
+  const tone = await page.evaluate(() => {
+    const d = Object.assign({}, (dockerList?.instances || []).find(i => i.project === 'ep.silon'), { running: true, containers: 1 });
+    const job = { project: d.project, instance: d.instance, running: false, state: 'failed',
+                  error: 'Error response from daemon: manifest for nginx:walk-typo-404 not found (exit 1)' };
+    const box = document.createElement('div'); box.innerHTML = dmRowsHtml([d], job, false);
+    const s = box.querySelector('.dmstate');
+    return { text: s?.textContent || '', bad: !!s?.classList.contains('bad'), ok: !!s?.classList.contains('ok') };
+  });
+  ok(/not found/.test(tone.text) && tone.bad && !tone.ok,
+     `a failed job on a running container's row says why, in the bad tone (${JSON.stringify(tone)})`);
+}
 // Rebuild has to wake for the retry. A build records itself before the up
 // that follows it, so a failed up left the row insisting the build was
 // current: true, and not what somebody looking at a red row wants offered.

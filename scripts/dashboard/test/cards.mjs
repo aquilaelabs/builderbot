@@ -580,6 +580,21 @@ print(json.dumps(out))
       && getComputedStyle(dot).animationName === getComputedStyle(tab).animationName;
     tab.remove(); return same && !document.querySelector('.sdot');
   }), "the card's dot is drawn by the one rule the session dots share, and no dot of its own is left");
+  // On Claude Code's permission prompt it is asking, amber, as the dock
+  // and Sessions say (B98), not waiting for you.
+  {
+    const asked = await page.evaluate(() => {
+      const nm = myClaude('alpha'), kept = state.sessions;
+      state.sessions = [...(kept || []).filter(s => s.name !== nm), { name: nm, claude: { state: 'asking', task: '' } }];
+      drawProjects(state.projects);
+      const st = document.querySelector('.pgrid .pcard[data-row="alpha"] .pstate');
+      const out = { word: st?.textContent || '', asking: !!st?.querySelector('.st.asking') };
+      state.sessions = kept; drawProjects(state.projects);
+      return out;
+    });
+    ok(/asking you/.test(asked.word) && asked.asking,
+       `a session on its permission prompt reads asking, with the amber dot (${asked.word})`);
+  }
   await page.evaluate(() => { state.claude_with = {}; state.claude_busy = {}; drawProjects(state.projects); });
   await page.evaluate(() => liveRefresh());
   ok(/waiting for you|working/.test(await stateWord()),

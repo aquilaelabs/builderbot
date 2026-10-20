@@ -779,9 +779,10 @@ function renderToolchainsInto(i){
   });
   el.querySelectorAll("[data-tc]").forEach(b => b.onclick = () => tcAct(b.dataset.tc));
   const psel = el.querySelector("#tcNodeSel");
-  if (psel) psel.onchange = () => { tcNode = psel.value; toolchains = null; tcTicked.clear(); tcDriverPick = "";
+  // A pick is a history entry (B31), so Back returns to the node before.
+  if (psel) psel.onchange = () => navPush(() => { tcNode = psel.value; toolchains = null; tcTicked.clear(); tcDriverPick = "";
                                     try{ localStorage.setItem("bb.tcnode", tcNode); }catch(e){ /* private */ }
-                                    tcRev++; drawPanes(); loadToolchains(); };
+                                    tcRev++; drawPanes(); loadToolchains(); });
   const sd = el.querySelector("#tcSysdeps");
   if (sd) sd.onclick = () => tcAct("sysdeps");
   el.querySelectorAll("[data-tcsys]").forEach(b => b.onclick = () => tcAct("sysdeps", [b.dataset.tcsys]));
