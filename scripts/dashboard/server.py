@@ -4236,6 +4236,9 @@ def _snapshot(who):
                # ...and what other projects a session may read: the owner's
                # alone (the operator, 6 Oct), whatever the grants say.
                | {"reads": (who or {}).get("role") == "owner"},
+        # ...and, for the page-wide ones a bar offers, the server's own
+        # refusal, which is said under the dead control (B87).
+        "can_why": {name: users.may(who, name) for name in ("create", "trash")},
         # Each area's level anywhere (R152 step 3), so the page hides a tab
         # whose area this account may not read: "", read or write.
         "areas": {a: ("write" if users.is_admin(who or {}) or (who or {}).get("session")

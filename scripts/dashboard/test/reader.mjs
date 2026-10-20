@@ -2,7 +2,9 @@
 // walking the dev pair on 20 Oct: every control on the project's page that
 // would change it is dead, with the server's own reason written under it in
 // red, rather than live and refused at the press (B86).
-// Also: Start Claude says why it is grey (B88).
+// Also: Start Claude says why it is grey (B88); New project and the trash
+// are dead for an account without them, and the trash never reads a
+// refusal as an empty bin (B87).
 import { launch, newPage, ok, done, ready, sleep, URL, DIR, nbShown, splitPick } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -45,9 +47,25 @@ const row = await page.evaluate(() => (state.projects || []).find(p => p.name ==
 ok(/no Projects Write on alpha/.test(row.write_why || '') && !!row.trash_why,
    `the row carries why alpha is not this account's to change or delete (${row.write_why})`);
 
-// ---- the Projects page (B86, B88) ----------------------------------------
+// ---- the Projects page (B86, B87, B88) -----------------------------------
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.pgrid .pcard[data-row="alpha"]', { timeout: 15000 });
+const bar = await page.evaluate(() => ({ np: document.querySelector('.doc.on #bNewProjTab')?.disabled,
+  bin: document.querySelector('.doc.on #bTrashTab')?.disabled,
+  why: [...document.querySelectorAll('.doc.on #pjWhy .deadwhy')].map(e => e.textContent) }));
+ok(bar.np === true && bar.bin === true, 'New project and the trash are dead for an account without them');
+ok(bar.why.some(t => /making a project needs New projects Write/.test(t)) && bar.why.some(t => /deleting a project/.test(t)),
+   `...each with the server's reason under the bar, in red (${bar.why.join(' | ')})`);
+const red = await page.$eval('.doc.on #pjWhy .deadwhy', e => getComputedStyle(e).color);
+const bad = await page.evaluate(() => { const d = document.createElement('i'); d.style.color = 'var(--bad)'; document.body.append(d);
+  const c = getComputedStyle(d).color; d.remove(); return c; });
+ok(red === bad, `...the bad color (${red})`);
+// The bin, opened all the same: a refusal is said, not read as empty.
+await page.evaluate(() => openTrash());
+await page.waitForFunction(() => !document.querySelector('#tList .sk-row') && document.querySelector('#tList').textContent.trim(), null, { timeout: 15000 });
+const bin = await page.$eval('#tList', e => e.textContent.trim());
+ok(!/nothing deleted/.test(bin) && /deleting a project/.test(bin), `the bin, asked anyway, says the refusal and not 'nothing deleted' (${bin.slice(0, 80)})`);
+await page.evaluate(() => { $("tmodal").hidden = true; });
 const card = await page.evaluate(() => {
   const c = document.querySelector('.pgrid .pcard[data-row="alpha"]');
   return { dead: c.querySelector('[data-c]')?.disabled, note: [...c.querySelectorAll('.pnote.bad')].map(n => n.textContent).join(' | '),
@@ -122,9 +140,9 @@ const st = await page.evaluate(() => ({ del: document.querySelector('#rnDelete')
   why: document.querySelector('#rnDeleteWhy')?.checkVisibility() ? document.querySelector('#rnDeleteWhy').textContent : '' }));
 ok(st.del === true && /deleting a project needs Project settings Write on alpha/.test(st.why), `Settings: Delete project dead, why under it (${st.why})`);
 
-// Refused on the way, and expected: Snapshots and Running sessions, which
-// still ask for what this role cannot read.
-const errs = page.errors.filter(e => !/\/api\/(snapshots|project-sessions)\b/.test(e));
+// Refused on the way, and expected: the bin opened by hand; Snapshots and
+// Running sessions, which still ask for what this role cannot read.
+const errs = page.errors.filter(e => !/\/api\/(trash|snapshots|project-sessions)\b/.test(e));
 ok(errs.length === 0, `no console errors through the walk${errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''}`);
 await api('/api/roles', { action: 'remove', name: 'rdread' });
 await done(browser);
