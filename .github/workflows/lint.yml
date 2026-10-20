@@ -166,9 +166,13 @@ jobs:
         # (R79): every migration at the newest v* tag, byte-for-byte, the
         # check bb lint runs. The release tags are fetched because the
         # checkout above carries none, and without them this passes by
-        # omission.
+        # omission. A repository with no release yet (a fork, a fresh one)
+        # has nothing to fetch, and a glob that matches nothing fails the
+        # fetch (B115), so it is fetched only when ls-remote lists one.
         run: |
-          git fetch --no-tags --depth=1 origin '+refs/tags/v*:refs/tags/v*' 2>&1 | tee -a "$CI_LOG"
+          if git ls-remote --tags --exit-code origin 'refs/tags/v*' >/dev/null; then
+            git fetch --no-tags --depth=1 origin '+refs/tags/v*:refs/tags/v*' 2>&1 | tee -a "$CI_LOG"
+          fi
           python3 scripts/lib/lint-checks.py shipped 2>&1 | tee -a "$CI_LOG"
 
       - name: Python
