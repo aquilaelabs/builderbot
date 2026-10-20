@@ -834,7 +834,7 @@ const about = await page.$eval('#aboutModal', e => e.textContent);
 ok(about.includes('abc1234def5678901234567890abcdef12345678')
    && about.includes('2026-08-21T19:30Z') && /An update moves it/.test(about),
    '...and About carries the whole commit, the build time and where to look');
-await page.click('#aboutModal >> text=Close');
+await page.click('#aboutClose');
 await page.waitForSelector('#aboutModal', { state: 'hidden' });
 // Escape and the backdrop let a person out too (B229): after an update the
 // popup opens itself over whatever they came to do.
@@ -913,8 +913,20 @@ ok(true, '...and so does a click on the page under it');
   await page.click('#bAbout');
   await page.waitForSelector('#aboutModal:not([hidden])', { timeout: 15000 });
   await page.click('.abswitch [data-ab="guide"]');
+  await page.waitForFunction(() => /As an administrator/.test($('abGuide').textContent), null, { timeout: 15000 });
   ok(await page.$eval('#abGuide', e => !e.hidden && /Your profile/.test(e.textContent) && /As an administrator/.test(e.textContent)),
      '...and About opens on the guide: the administrator\'s, for an owner');
+  // The guide is docs/start-here.md, so About and Help cannot drift apart;
+  // a plain account's leaves out the administrator's section alone.
+  const guide = await page.evaluate(async () => {
+    const doc = await (await fetch('/api/help?doc=start-here')).json();
+    const plain = abGuideText(doc.text, false);
+    return { heads: [...document.querySelectorAll('#abGuide h2')].map(h => h.textContent),
+             docHeads: (doc.text.match(/^## .+$/gm) || []).map(h => h.slice(3)),
+             plainAdmin: /As an administrator/.test(plain), plainLast: /Two habits worth having/.test(plain) };
+  });
+  ok(guide.heads.join('|') === guide.docHeads.join('|') && !guide.plainAdmin && guide.plainLast,
+     `About's guide is docs/start-here.md, section for section, and a plain account's leaves out As an administrator only (${guide.heads.join(', ')})`);
   await page.click('.abswitch [data-ab="log"]');
   // Whatever the top section is: Unreleased while entries are accumulating,
   // a dated number the moment somebody bumps. Asserted on the SHAPE (a

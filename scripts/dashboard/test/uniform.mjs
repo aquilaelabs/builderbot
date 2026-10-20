@@ -1510,7 +1510,7 @@ for (const kind of kinds){
   await page.click('#bAbout');
   await page.waitForSelector('#aboutModal:not([hidden])');
   const left = await animatedDuring(page, async () => {
-    await page.click('#aboutModal >> text=Close');
+    await page.click('#aboutClose');
     await page.waitForSelector('#aboutModal', { state: 'hidden' });
   });
   ok(left.some(k => /aboutModal/.test(k)),
