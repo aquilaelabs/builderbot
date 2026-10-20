@@ -2,6 +2,7 @@
 // walking the dev pair on 20 Oct: every control on the project's page that
 // would change it is dead, with the server's own reason written under it in
 // red, rather than live and refused at the press (B86).
+// Also: Start Claude says why it is grey (B88).
 import { launch, newPage, ok, done, ready, sleep, URL, DIR, nbShown, splitPick } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -44,7 +45,7 @@ const row = await page.evaluate(() => (state.projects || []).find(p => p.name ==
 ok(/no Projects Write on alpha/.test(row.write_why || '') && !!row.trash_why,
    `the row carries why alpha is not this account's to change or delete (${row.write_why})`);
 
-// ---- the Projects page (B86) ---------------------------------------------
+// ---- the Projects page (B86, B88) ----------------------------------------
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.pgrid .pcard[data-row="alpha"]', { timeout: 15000 });
 const card = await page.evaluate(() => {
@@ -52,6 +53,7 @@ const card = await page.evaluate(() => {
   return { dead: c.querySelector('[data-c]')?.disabled, note: [...c.querySelectorAll('.pnote.bad')].map(n => n.textContent).join(' | '),
            del: !!c.querySelector('[data-del]'), mark: c.querySelector('.lockmark')?.textContent.trim() };
 });
+ok(card.dead && /no Projects Write on alpha/.test(card.note), `Start Claude is dead and the card says why under it, in red (${card.note})`);
 ok(!card.del && card.mark === 'read-only', `the card offers no Delete, and its name is marked read-only (${card.mark})`);
 
 // ---- the project's page (B86) ---------------------------------------------
@@ -63,6 +65,11 @@ const view = async (v, sel) => {
 };
 await view('briefing', '#rlAdd');
 await page.waitForSelector('.pane .nb #memAdd button', { state: 'attached', timeout: 20000 });
+const head = await page.evaluate(() => {
+  const h = document.querySelector('.pane .phead [data-c]'), n = document.querySelector('.pane .pnote.bad');
+  return { dead: h?.disabled, note: n?.textContent || '' };
+});
+ok(head.dead && /no Projects Write/.test(head.note), `the page's header: Start Claude dead, why under it (${head.note})`);
 const ov = await page.evaluate(() => {
   const nb = document.querySelector('.pane .nb'), add = nb.querySelector('#rlAdd');
   return { add: add.disabled, why: add.closest('.addbar')?.nextElementSibling?.textContent || '',

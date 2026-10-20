@@ -898,16 +898,40 @@ function projectNote(p){
   // end by itself (B826: a copy going up was said in red and the missing
   // Claude Code that really held it was never said); a wait alone is dim.
   const held = p.held && !state?.mapping?.[p.name]?.running ? p.held : "";
+  // Not this account's to change comes first (B88): no node coming back
+  // or map finishing would let it start a session here, and somebody else
+  // working in it is no answer to why this account cannot.
+  const perm = p.locked ? "" : writeWhy(p);
+  if (perm) return `<div class="pnote bad">${esc(perm)}</div>`;
   const said = held || p.session_why;
-  return said && !p.locked && !here
-    ? `<div class="pnote ${!held && p.session_waiting ? "dim" : "bad"}">${esc(said)}</div>` : "";
+  if (said && !p.locked && !here)
+    return `<div class="pnote ${!held && p.session_waiting ? "dim" : "bad"}">${esc(said)}</div>`;
+  // ...and otherwise why Start Claude is dead, whatever made it so (B88):
+  // a role that only reads the project, a Profile with no commit author.
+  // An archived one says so by its mark, and is left out; others working
+  // here do not make the button live for this account, so it is said too.
+  const dead = p.locked ? "" : claudeDeadWhy(p);
+  return dead ? `<div class="pnote bad">${esc(dead)}</div>` : "";
+}
+// Why Start Claude is dead on this project, or "" when it is live: the one
+// answer the button, its description and the line under it all read.
+function claudeDeadWhy(p){
+  const mine = liveSessions().has(myClaude(p.name));
+  if (p.locked) return "archived; you run this one. Unarchive, in its menu, lets Claude back in";
+  if (notMine(p)) return NOT_MINE_WHY;
+  // A Claude session is work on the project (B86): Projects Write.
+  if (p.write_why) return p.write_why;
+  if (heldWhy(p)) return heldWhy(p);
+  if (!p.session_at && p.session_why && !mine) return p.session_why;
+  if (p.node_removed && !mine) return p.session_why || "its node was removed: pick another in its settings";
+  return "";
 }
 // The two actions a project page and its card show, and the rest behind
 // one menu (R238: nine look-alike icons on a row were one too many). Its
 // data-* names are wireProjectRows', which serves them.
 function projectActions(p, extra = ""){
   const name = p.name, mine = liveSessions().has(myClaude(name));
-  const dead = p.locked || notMine(p) || (!p.session_at && !!p.session_why && !mine) || (p.node_removed && !mine) || heldWhy(p);
+  const dead = claudeDeadWhy(p);
   const menu = [
     p.git_ok && !isBroken(p)
       ? `<button type="button" data-l="${esc(name)}"${state?.can?.["git-auth"] === false ? " disabled" : ""}>${
@@ -933,9 +957,7 @@ function projectActions(p, extra = ""){
   // What a press does, or why it is dead, in the button's own words: a
   // screen reader hears it, and a press on a dead one is told.
   const live = liveSessions();
-  const say = notMine(p) ? NOT_MINE_WHY
-    : p.locked ? "archived; you run this one. Unarchive, in its menu, lets Claude back in"
-    : heldWhy(p) ? heldWhy(p)
+  const say = dead ? dead
     : p.session_why ? p.session_why
     : othersOn(name).length ? `${othersOn(name).join(", ")} also working here, in a checkout of their own: start yours`
     : p.session_node && !claudeOn(p.session_node) && !live.has(myClaude(name))
