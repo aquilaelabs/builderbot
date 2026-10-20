@@ -155,6 +155,14 @@ const graph = await page.$eval(`${NB} .gitgraph`, g => ({
   edges: g.querySelectorAll('path').length, lanes: parseInt(getComputedStyle(g).getPropertyValue('--glanes')) }));
 ok(graph.rows >= 4 && graph.nodes === graph.rows && graph.edges >= graph.rows - 1 && graph.lanes >= 2,
    `History is a graph: a node per commit, edges to parents, and a second lane for the branch (${JSON.stringify(graph)})`);
+// ...and one anybody can see: each lane's line and dot take their color from
+// a class built as gl${lane % 5}, which a sweep for unused CSS once removed (B79).
+const inked = await page.$eval(`${NB} .gitgraph`, g => {
+  const strokes = [...g.querySelectorAll('path, circle')].map(e => getComputedStyle(e).stroke);
+  return { strokes: new Set(strokes).size, bare: strokes.filter(s => !s || s === 'none').length };
+});
+ok(inked.bare === 0 && inked.strokes >= 2,
+   `...drawn: every line and dot has a stroke, a color per lane (${JSON.stringify(inked)})`);
 await page.click(`${NB} .grow[data-sha="${merge.sha}"]`);
 await page.waitForSelector(`${NB} #gitDetail .gcommit`, { timeout: 10000 });
 ok(await page.$eval(`${NB} #gitDetail`, e => /Merge feature/.test(e.textContent) && /merge/.test(e.textContent)),

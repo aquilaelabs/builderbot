@@ -18,7 +18,7 @@ and a line pass for shell. `bb map languages` says which files are read.
     bb map draws ID|.class       which functions draw it, which suites name it
     bb map suites FILE...        the suites that reach what these files define, draw or name
                                  (--names: one suite name per line, for a script)
-    bb map unused [FILE]         page functions nothing calls and nothing passes by name: dead by measurement
+    bb map unused [FILE]         page functions nothing calls and nothing passes by name, and a page's CSS classes nothing names whole or by a template: dead by measurement
     bb map state [FILE]          the page-level `let`s of a page script (all of them with no FILE), each
                                  with where it is assigned and from what: one assigned from `state`
                                  mirrors the poll and drifts from it, which is what to read instead
@@ -2557,7 +2557,60 @@ def _decorated(f, line):
     return i >= 0 and lines[i].lstrip().startswith("@")
 
 
+_STYLE = re.compile(r"<style[^>]*>(.*?)</style>", re.S)
+_CSS_NOTE = re.compile(r"/\*.*?\*/", re.S)
+_CSS_PRELUDE = re.compile(r"([^{}]*)\{")   # a rule's selector, or an @media's condition
+_CSS_CLASS = re.compile(r"\.(-?[A-Za-z_][\w-]*)")
+# A class name a template builds: `gl${lane % 5}` and `sk-${shape}` give a
+# family by its head, `${kind}tab` by its tail (B79: R60's sweep read only
+# whole names, took .gl0 to .gl4 for dead and left the Git graph blank).
+_TPL_HEAD = re.compile(r"""(?:^|[\s"'`])([A-Za-z_][\w-]*)\$\{""")
+_TPL_TAIL = re.compile(r"""\}([A-Za-z_][\w-]*)(?=[\s"'`]|$)""")
+_SRC_EXT = (".html", ".htm", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".py", ".vue", ".svelte", ".svg")
+
+
+def unused_classes(idx, path=None, root="."):
+    """The classes a page's own stylesheet (an .html file's <style>) styles
+    that no source the page is drawn from names, whole or as a template's
+    head or tail: tests do not count, since a suite asking for a class does
+    not render it. Answers [(file, class)]."""
+    sheets, words, heads, tails = [], set(), set(), set()
+    for f in sorted(idx["files"]):
+        if Path(f).suffix not in _SRC_EXT or is_test(f) or "/unit/" in "/" + f:
+            continue
+        try:
+            text = (Path(root) / f).read_text(errors="replace")
+        except OSError:
+            continue
+        if Path(f).suffix in (".html", ".htm") and (not path or f == path or f.endswith("/" + path)):
+            css = _CSS_NOTE.sub("", "\n".join(_STYLE.findall(text)))
+            if css.strip():
+                sheets.append((f, set(_CSS_CLASS.findall(" ".join(_CSS_PRELUDE.findall(css))))))
+        text = _STYLE.sub("", text)
+        words.update(re.findall(r"[\w-]+", text))
+        heads.update(_TPL_HEAD.findall(text))
+        tails.update(_TPL_TAIL.findall(text))
+    out = []
+    for f, classes in sheets:
+        for c in sorted(classes):
+            if c in words or any(c.startswith(h) and c != h for h in heads) \
+                    or any(c.endswith(t) and c != t for t in tails):
+                continue
+            out.append((f, c))
+    return out
+
+
 def q_unused(idx, path=None, root="."):
+    css = [] if path and not path.endswith((".html", ".htm")) else unused_classes(idx, path, root)
+    css_out = [f"{len(css)} class{'es' if len(css) != 1 else ''} the stylesheet styles and nothing names,"
+               " whole or as a template's head or tail:"] + [f"  {f}  .{c}" for f, c in css] if css else []
+    if path and path.endswith((".html", ".htm")):
+        return css_out or [f"nothing in this page's stylesheet is unused by this measure ({path})"]
+    out = q_functions_unused(idx, path, root)
+    return out + css_out
+
+
+def q_functions_unused(idx, path=None, root="."):
     called = {}
     for c in idx["calls"]:
         called[c["name"]] = called.get(c["name"], 0) + 1

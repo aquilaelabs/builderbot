@@ -2191,6 +2191,10 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .grow .gsub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:var(--f-row)}
 .grow .gsub .pill{margin-right:4px}
 .grow .gmeta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:var(--f-note);color:var(--dim)}
+/* A lane's color: nb-git.js builds the name as gl${lane % 5}, so no file
+   holds .gl0 whole (R60 took these for dead, B79). */
+.gl0{stroke:var(--accent)} .gl1{stroke:var(--note)} .gl2{stroke:var(--warn)}
+.gl3{stroke:var(--bad)} .gl4{stroke:var(--dim)}
 .glines path{fill:none;stroke-width:2;opacity:.8}
 .glines .gn{fill:var(--panel);stroke-width:2}
 .glines .gn.on{fill:var(--ink)}
