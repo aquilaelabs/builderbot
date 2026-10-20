@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A node run in a container as a user with no account entry, or with its /workspace in memory, keeps dialing in and syncs its projects (3f38db0)
+
 ## 0.5.1: 2026-10-20
 
 ### Added
