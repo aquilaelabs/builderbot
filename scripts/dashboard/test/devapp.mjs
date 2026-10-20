@@ -2075,6 +2075,25 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
   ok(await page.waitForFunction(sel => document.querySelectorAll(sel + ' .sect .wire .wgrp').length === 2, DM, { timeout: 15000 })
        .then(() => true, () => false),
      '...and an open Ports and mounts keeps its lines when the list redraws');
+  // ...and keeps them when the read behind the redraw could not resolve the
+  // compose (B12: under a loaded gate the config call ran out, the answer
+  // said no ports and no mounts, and the fold said it publishes nothing).
+  {
+    const route = '**/api/devapp';
+    await page.route(route, async r => {
+      const body = r.request().postDataJSON?.() || {};
+      if (body.action !== 'state') return r.fallback();
+      const real = await r.fetch();
+      const j = await real.json();
+      j.state = { ...(j.state || {}), ports: [], mounts: [], wired: false };
+      await r.fulfill({ response: real, json: j });
+    });
+    await page.evaluate(() => { dockerRev++; drawPanes(); });
+    await page.waitForTimeout(1500);
+    const kept = await page.$$eval(`${DM} .sect .wire`, ws => ws.map(w => w.querySelectorAll('.wgrp').length + ':' + /publishes nothing/.test(w.textContent)));
+    await page.unroute(route);
+    ok(kept.includes('2:false'), `...and keeps them when a read could not resolve the compose, never "publishes nothing" (${kept.join(' ')})`);
+  }
   // Its services a table in the card (the operator's concept, 17 Oct): each
   // its own line, its ports in their column.
   const svcs = await page.$$eval(`${DM} .dmsvctbl .tline`, ls => ls.map(l => ({

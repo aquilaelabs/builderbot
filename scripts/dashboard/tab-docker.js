@@ -1184,9 +1184,15 @@ async function loadWire(d){
   const [project, instance] = d.closest("[data-inst]").dataset.inst.split("|");
   const box = d.querySelector(".wire");
   let html;
+  const key = `${project}|${instance}`;
   try{
     const r = await postJSON("/api/devapp", {project, instance, action:"state"});
     const st = (await r.json()).state || {};
+    // An answer that could not read the compose (the daemon or compose not
+    // answering in time, as under a loaded gate) says nothing about the
+    // wiring: what was read before stays, and with nothing read before it
+    // says it could not (B12), never "publishes nothing".
+    if (!st.wired) throw new Error(dmWireSeen[key] ? "kept" : "the compose file could not be read just now");
     const ports = st.ports || [], mounts = st.mounts || [];
     const portLine = p => {
       const at = `${daemonHost()}:${p.published || ""}`;
@@ -1212,8 +1218,11 @@ async function loadWire(d){
           mounts.filter(m => (m.service || "") === sv).map(mountLine).join("")}</div>`).join("")
       : ports.map(portLine).join("") + mounts.map(mountLine).join("");
     html = lines || `<div class="dim li">it publishes nothing and mounts nothing</div>`;
-  }catch(e){ html = `<div class="dim li bad">could not read it: ${esc(String(e))}</div>`; }
-  dmWireSeen[`${project}|${instance}`] = html;
+  }catch(e){
+    html = dmWireSeen[key] && e.message === "kept" ? dmWireSeen[key]
+      : `<div class="dim li bad">could not read it: ${esc(e.message || String(e))}</div>`;
+  }
+  dmWireSeen[key] = html;
   if (!d.isConnected){
     // The manager repainted under it, because every step of a job does that now,
     // and the fold the operator opened is a fresh, closed one with nothing in
