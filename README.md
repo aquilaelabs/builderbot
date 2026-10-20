@@ -86,6 +86,93 @@ your projects mounted straight in, and to grow from one machine to several.
   </tr>
 </table>
 
+## Quick start
+
+### What you need
+
+- **A server for the controller**: a Linux machine with Docker and Docker
+  Compose. It runs on Unraid (a template ships with it) and on Ubuntu today.
+  It runs the dashboard and keeps the record; it needs little CPU, but give
+  it a disk for your projects.
+- **At least one node**: a Linux machine or VM where sessions, builds and
+  tests actually run, on **Ubuntu 24.04 or later** or **Rocky Linux 9**,
+  the systems nodes are tested on. A separate VM keeps what Claude runs
+  away from your server.
+- **Your repositories** on GitHub, Gitea or Forgejo, or any git remote over
+  plain git.
+- **A Claude account** for each person who will run Claude sessions. Each
+  signs in to Claude Code themselves, on the node.
+- **Repositories made for trying it** (see the warning above).
+
+### Install the controller
+
+Make the folders it keeps its state in, owned by the user the container
+should run as (`id -u` and `id -g` give yours):
+
+```bash
+mkdir -p /srv/projects /srv/builderbot/{home,config,sdk}
+chown -R 1000:1000 /srv/projects /srv/builderbot
+```
+
+Then save this as `docker-compose.yml`, changing the paths and the IDs to
+match:
+
+```yaml
+services:
+  builderbot:
+    image: ghcr.io/aquilaelabs/builderbot:latest
+    container_name: BuilderBot
+    hostname: builderbot
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    environment:
+      PUID: 1000          # the owner of the folders above
+      PGID: 1000
+      TZ: Etc/UTC         # your time zone, e.g. America/Chicago
+      DASHBOARD_PORT: 7680
+    volumes:
+      - /srv/projects:/workspace           # your projects: one folder each
+      - /srv/builderbot/sdk:/sdk           # the controller's own toolchains
+      - /srv/builderbot/home:/home/builder # each account's home
+      - /srv/builderbot/config:/config     # accounts, settings, notebooks, logs
+      - runner-tokens:/config/runner-tokens
+    ports:
+      - "7680:7680"
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "3"}
+
+volumes:
+  runner-tokens:
+```
+
+Start it, and open the dashboard straight away:
+
+```bash
+docker compose up -d
+```
+
+Go to `http://YOUR-SERVER:7680`. The first page asks you to make the owner
+account, so do this before anyone else can reach it. Then:
+
+1. **Your profile** (the gear, then Profile): your name, email and git
+   identity, which your commits carry.
+2. **Enroll a node**: Machines, then Nodes, then **Enroll node**. It gives
+   you one command to run on the node machine, which sets it up and connects
+   it.
+3. **Install Claude Code on the node**: Build, then Toolchains, with that
+   node picked.
+4. **Add a project** on the Projects page (clone one, start an empty one,
+   or upload an archive), and press **Start Claude**. The first time, it walks you
+   through signing in to Claude on that node.
+
+The full checklist, with every option and the Unraid way, is
+**[docs/install.md](docs/install.md)**. Once it is running, the people you
+give accounts to start with **[Start here](docs/start-here.md)**, the
+getting started guide, which is also the About screen's guide in the
+dashboard.
+
 ## Documentation
 
 Everything else, from installing to the full command reference, is in

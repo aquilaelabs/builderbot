@@ -448,9 +448,6 @@ in the audit log. A Claude session is never the one to accept: `bb
 toolchains install android:...` from a session, on a store nobody has
 accepted Google's terms for, is refused and sent to this page.
 
-Xcode installs only on a Mac, as Apple's license requires, through `xcodes`
-signed in with your own Apple ID; nothing accepts Xcode's license for you.
-
 ## Multiple Android versions
 
 Nothing Android is in the image: the SDK, the emulator and the system images
