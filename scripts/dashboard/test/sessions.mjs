@@ -22,6 +22,15 @@ const sp = await page.evaluate(() => ({ hash: location.hash, on: document.queryS
 ok(sp.hash === '#/sessions' && sp.on && sp.head.join(',') === 'Session,Project,Node,Started' && !sp.bar && !sp.panel,
    `the rail's Sessions opens its page at #/sessions, a table of Session, Project, Node, Started, the old panel gone (${JSON.stringify(sp)})`);
 const row = n => page.locator('.sesstbl .sessrow', { has: page.locator(`[data-go="${n}"]`) });
+// ...and a session on the controller itself says when it started, as a
+// node's does: its Started was blank for every one here (B149).
+{
+  const started = await page.evaluate(() => {
+    const r = document.querySelector('.sesstbl .sessrow [data-go="shell-9"]')?.closest('.sessrow');
+    return r ? [...r.querySelectorAll('.td')].map(c => c.textContent.trim())[3] || '' : null;
+  });
+  ok(/ago|now/.test(started || ''), `a session here says when it started (${JSON.stringify(started)})`);
+}
 const btn = n => row(n).locator('button').first();
 
 ok((await btn('shell-9').textContent()).trim() === 'Open', 'minimized session shows Open');

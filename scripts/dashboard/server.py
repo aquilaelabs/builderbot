@@ -1926,7 +1926,7 @@ def tmux_owner(name):
 
 
 def tmux_sessions():
-    r = run(["tmux", "list-sessions", "-F", "#{session_name}\t#{session_attached}"],
+    r = run(["tmux", "list-sessions", "-F", "#{session_name}\t#{session_attached}\t#{session_created}"],
             timeout=10)
     if r["code"] != 0:
         return []          # no server running yet is the normal empty case
@@ -1934,10 +1934,13 @@ def tmux_sessions():
     rows = []
     for line in r["out"].splitlines():
         if "\t" in line:
-            name, attached = line.split("\t", 1)
+            name, attached, created = (line.split("\t") + ["", ""])[:3]
             info = panes.get(name, {})
+            # When it started, as a node's rows say, for the Sessions page's
+            # Started column, which was blank for every one here (B149).
             row = {"name": name, "attached": attached.strip() not in ("", "0"),
-                   "cwd": info.get("cwd", "")}
+                   "cwd": info.get("cwd", ""),
+                   "created": int(created) if created.strip().isdigit() else 0}
             # By the unprefixed name, the way node rows are read, so another
             # account's session here says whether it is working too.
             if tmux_base(name).startswith("claude-"):
