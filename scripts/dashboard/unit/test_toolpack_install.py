@@ -25,6 +25,8 @@ def git(*a, cwd):
 
 
 class Install(unittest.TestCase):
+    MODE = 0o755
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -33,7 +35,7 @@ class Install(unittest.TestCase):
         os.makedirs(os.path.join(pack, "bin"))
         with open(os.path.join(pack, "bin", "hexkit"), "w") as f:
             f.write("#!/bin/sh\necho \"hexkit 1.0\"; for a in \"$@\"; do echo \"arg[$a]\"; done\n")
-        os.chmod(os.path.join(pack, "bin", "hexkit"), 0o755)
+        os.chmod(os.path.join(pack, "bin", "hexkit"), self.MODE)
         with open(os.path.join(pack, "install.sh"), "w") as f:
             f.write("#!/bin/sh\necho fetched > \"$(dirname \"$0\")/payload.txt\"\n")
         with open(os.path.join(pack, "bbtool.json"), "w") as f:
@@ -102,6 +104,22 @@ class Install(unittest.TestCase):
         r = self.bb("tool", "hexkit", "dump", "x")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("hexkit is switched off for this project", r.stderr)
+
+
+class NotExecutable(Install):
+    """B83: the tool committed without its executable bit, as a file added
+    through Gitea's or GitHub's web editor is. Every install failed
+    'Permission denied'; the install marks what the pack runs executable,
+    so the whole of the test above passes on it too."""
+    MODE = 0o644
+
+    def test_the_install_marks_the_tool_executable(self):
+        r = self.bb("toolchains", "install", "hexkit")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("marking bin/hexkit executable", r.stdout + r.stderr)
+        d = [os.path.join(self.store, x, "hexkit") for x in os.listdir(self.store)
+             if os.path.isdir(os.path.join(self.store, x, "hexkit"))][0]
+        self.assertTrue(os.access(os.path.join(d, "bin", "hexkit"), os.X_OK))
 
 
 if __name__ == "__main__":

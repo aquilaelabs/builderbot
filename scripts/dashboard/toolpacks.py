@@ -281,6 +281,17 @@ def recipe(rec):
         src["then"] = [{"run": s} for s in m["steps"]]
     if m.get("verify"):
         src["verify"] = m["verify"]
+    # What the install marks executable (B83): a file committed through a
+    # forge's web editor has no executable bit, and every run of it was
+    # 'Permission denied'. The programs the verbs, the steps and verify run
+    # by path, the layout's tool, and whatever is in its bin directories.
+    progs = [w[0] for w in [*(v["run"] for v in m["verbs"].values()), *m["steps"], m.get("verify") or [""]]
+             if w and w[0].startswith("{dir}/")]
+    tool = m["layout"].get("tool")
+    if tool and tool != MANIFEST:
+        progs.append("{dir}/" + tool)
+    src["exec"] = sorted(set(progs))
+    src["exec_dirs"] = ["{dir}/" + b for b in m["layout"].get("bin") or []]
     row = {"name": m["name"], "label": m["label"], "probe": m["name"], "about": m["about"],
            "platforms": m["platforms"], "layout": m["layout"], "source": src, "terms": m["terms"],
            "verbs": m["verbs"],

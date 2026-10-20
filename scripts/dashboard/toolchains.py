@@ -561,6 +561,28 @@ def _job_tail(out, keep=16):
     return [ln for ln in lines if ln and not _PROGRESS_FRAME.match(ln)][-keep:]
 
 
+# What git says on the way to a fetch: where from, which ref, how far. Not a
+# reason, and a pack's install prints it right before the one that is.
+_GIT_NOISE = re.compile(r"^(\* branch\b|From |remote: |Receiving objects|Resolving deltas|Unpacking objects|hint: )")
+
+
+def _reason(said, last, cap=400):
+    """A failed row's line: the log's last lines (bb's own prefix and git's
+    fetch chatter dropped), then `last`, the verb and its exit. Too long,
+    whole lines go from the front, and the one left that alone is too long
+    keeps its start and loses its end at a word: a cut by characters from
+    the end began mid-word, '3pack · * branch' (B83)."""
+    lines = [re.sub(r"^\[builderbot\]\s*", "", s.strip()) for s in said]
+    parts = [s for s in lines if s and not _GIT_NOISE.match(s)][-4:] + [last]
+    while len(parts) > 2 and len(" · ".join(parts)) > cap:
+        # bb's ERROR is the reason, so the lines around it go first.
+        parts.pop(next((i for i, s in enumerate(parts[:-1]) if not s.startswith("ERROR:")), 0))
+    if len(" · ".join(parts)) > cap and len(parts) == 2:
+        room = max(cap - len(last) - 4, 20)
+        parts[0] = parts[0][:room].rsplit(" ", 1)[0] + "…"
+    return " · ".join(parts)
+
+
 def job_rev():
     """A token for "anything this tab draws has moved", for the revisions poll.
 
@@ -646,8 +668,8 @@ def _tc_worker():
                 r = run([BB, "toolchains", "remove", name], timeout=1800, register=_hold_child)
                 if r["code"] != 0:
                     with _tc_lock:
-                        _tc_job["errors"][name] = " · ".join(
-                            _job_tail(r["out"], keep=4) + [f"remove before the install failed (exit {r['code']})"])[-400:]
+                        _tc_job["errors"][name] = _reason(
+                            _job_tail(r["out"], keep=40), f"remove before the install failed (exit {r['code']})")
                         _tc_job["failed"].append(name)
                     continue
         with _tc_lock:
@@ -691,9 +713,8 @@ def _tc_worker():
                 # killed sdkmanager prints nothing at all, and a tail of
                 # progress bars reads exactly like a run that simply stopped.
                 # 137 is the OOM killer, 124 a timeout.
-                said = _job_tail(r["out"], keep=4)
-                _tc_job["errors"][name] = " · ".join(
-                    said + [f"{verb} failed (exit {r['code']})"])[-400:]
+                said = _job_tail(r["out"], keep=40)
+                _tc_job["errors"][name] = _reason(said, f"{verb} failed (exit {r['code']})")
             (_tc_job["done"] if r["code"] == 0 else _tc_job["failed"]).append(name)
         if action in ("install", "remove", "update"):
             _tc_local["key"] = None      # whatever just happened moved a version
@@ -819,7 +840,7 @@ def _node_errors(job_id, failed, verb):
                     log.append(x)
             apt = next((x[3:].strip() for x in log if x.startswith("E: ")), "")
             why = next((x.lstrip("! ") for x in reversed(log) if x.startswith(("!!", "refused:"))), "")
-            out[name] = " · ".join([w for w in (apt or why,) if w] + [f"{verb} failed on the node"])[-400:]
+            out[name] = _reason([w for w in (apt or why,) if w], f"{verb} failed on the node")
             continue
         lines = []
         for ln in parts.get(name) or []:
@@ -833,8 +854,8 @@ def _node_errors(job_id, failed, verb):
             if ln.strip() and not ln.strip().strip("#=O- "):
                 continue
             lines.append(ln)
-        said = _job_tail("\n".join(lines), keep=4) or ([refused] if refused else [])
-        out[name] = " · ".join(said + [f"{verb} failed on the node"])[-400:]
+        said = _job_tail("\n".join(lines), keep=40) or ([refused] if refused else [])
+        out[name] = _reason(said, f"{verb} failed on the node")
     _node_errors_seen[key] = out
     # The newest few jobs' answers: it was kept for every job ever read.
     while len(_node_errors_seen) > 64:

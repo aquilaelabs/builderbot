@@ -99,6 +99,11 @@ followed by a script inside the pack. These may appear in the words:
 So `bb tool hexkit dump "a b" '$(id)'` runs `{dir}/bin/hexkit` with
 exactly the arguments `dump`, `a b` and `$(id)`. Nothing is expanded.
 
+The install marks executable every file a verb, an install step or
+`verify` runs by its path, the layout's `tool`, and the files in its `bin`
+directories. A file committed without its executable bit, as a forge's web
+editor commits one, still runs.
+
 ### What a pack can and cannot do
 
 - It installs and runs as the node's job account, inside the session's view

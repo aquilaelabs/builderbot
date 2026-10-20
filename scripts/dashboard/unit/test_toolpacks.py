@@ -93,7 +93,9 @@ class Repository(unittest.TestCase):
         row = toolpacks.recipes()[0]
         self.assertEqual(row["source"], {"kind": "git", "url": self.url, "commit": seen["commit"], "fresh_only": True,
                                          "then": [{"run": ["sh", "{dir}/install.sh"]}],
-                                         "verify": ["{dir}/bin/hexkit", "--version"]})
+                                         "verify": ["{dir}/bin/hexkit", "--version"],
+                                         # B83: what the install marks executable
+                                         "exec": ["{dir}/bin/hexkit"], "exec_dirs": ["{dir}/bin"]})
         self.assertEqual(row["pack"]["by"], "operator")
         self.assertIn("dump", row["verbs"])
         self.assertEqual(json.loads(toolpacks.catalog_json())["toolchains"][0]["name"], "hexkit")
