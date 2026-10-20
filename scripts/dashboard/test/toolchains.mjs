@@ -1031,6 +1031,15 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   await page.click('.doc.on [data-tprm="hexkit"]');
   await page.waitForFunction(() => !(toolchains?.items || []).some(i => i.name === 'hexkit'), null, { timeout: 20000 });
   ok(true, '...Remove takes it out of the catalog');
+  // B85: a project that had ticked it opens its Toolchains group unchanged:
+  // the saved list still names the pack, which the form cannot draw.
+  await page.evaluate(() => renameProject('alpha', 'all'));
+  await page.waitForFunction(() => rnToolsList !== null, null, { timeout: 20000 });
+  const group = await page.evaluate(() => ({ dirty: !document.querySelector('.rnbar[data-rnbar="tools"] [data-rnsave]')?.disabled,
+    said: document.querySelector('.rnbar[data-rnbar="tools"]')?.textContent.replace(/\s+/g, ' ').trim() || '' }));
+  ok(!group.dirty && !/changed/.test(group.said),
+     `...and a project that used it opens its Toolchains group with nothing unsaved (${JSON.stringify(group)})`);
+  await page.evaluate(() => closeRename());
   await api('/api/prefs', { project: 'alpha', packs_on: '' });
 }
 

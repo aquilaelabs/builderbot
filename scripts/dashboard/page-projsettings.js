@@ -378,6 +378,17 @@ function rnFillTools(){
   box.querySelectorAll("input").forEach(i => i.onchange = () => rnBars());
 }
 
+// A list setting read off the Toolchains rows, in its saved order. A saved
+// name with no row (a pack since removed, a toolchain gone from the node)
+// stays as saved: the form cannot draw it, and not drawing it is no change
+// (B85: the group opened marked unsaved). A drawn one stays while its row
+// still says so, and one newly said goes on the end.
+function rnRowsList(saved, inputs, says){
+  const rows = [...inputs], drawn = new Set(rows.map(i => i.value)), now = rows.filter(says).map(i => i.value);
+  const was = saved.split(",").filter(Boolean);
+  return [...was.filter(n => !drawn.has(n) || now.includes(n)), ...now.filter(n => !was.includes(n))].join(",");
+}
+
 function rnFillReads(){
   const box = $("rnReads"), wrap = $("rnReadsField");
   if (!box) return;
@@ -1468,9 +1479,9 @@ function rnEnc(){
           // The rows are drawn once the node's toolchains have arrived;
           // until then the saved values stand, so an open is no change.
           tc_off: rnToolsList === null ? rnPrefWas.tc_off
-            : [...$("rnTools").querySelectorAll("input[data-shipped]:not(:checked)")].map(i => i.value).join(","),
+            : rnRowsList(rnPrefWas.tc_off, $("rnTools").querySelectorAll("input[data-shipped]"), i => !i.checked),
           packs_on: rnToolsList === null ? rnPrefWas.packs_on
-            : [...$("rnTools").querySelectorAll("input[data-pack]:checked")].map(i => i.value).join(","),
+            : rnRowsList(rnPrefWas.packs_on, $("rnTools").querySelectorAll("input[data-pack]"), i => i.checked),
           sees: $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean).join(", "),
           reaches: JSON.stringify(rnReachNow()),
           debug: dbg ? rnDebugKey(dbg.diag, dbg.log_from) : rnPrefWas.debug,
