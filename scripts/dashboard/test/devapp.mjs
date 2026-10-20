@@ -1709,6 +1709,33 @@ const BP = JSON.parse(bp.trim().split('\n').pop());
 ok(BP.length === 4 && BP.every(([, has]) => has),
    `every step of a rebuild on a node has the build's variables, the pull among them (${JSON.stringify(BP)})`);
 
+// An instance pinned to a branch builds from that branch's files, which the
+// node makes from its own synced copy first: the controller's build tree is
+// on its share, which no node sees (B121).
+const br = execFileSync('python3', ['-c', `
+import importlib.util, json, tempfile, sys
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+sys.modules['devapp'] = m
+spec = importlib.util.spec_from_file_location('devactions', ${
+  JSON.stringify(new globalThis.URL('../devactions.py', import.meta.url).pathname)})
+a = importlib.util.module_from_spec(spec); spec.loader.exec_module(a)
+m.configure(workspace='/workspace', state=tempfile.mkdtemp(), write_json=lambda p, o: None)
+m.missing_env = lambda *a, **k: []
+m._load = lambda: {'alpha': {'main': {'ref': 'feature/x'}}}
+m._read_rec = lambda p, i: {'ref': 'feature/x'}
+m._build_env = lambda *a, **k: {}
+m._dev_data_env = lambda *a, **k: {}
+rb, up = a._plan('alpha', 'main', 'rebuild'), a._plan('alpha', 'main', 'up')
+print(json.dumps({'rebuild': [s['name'] for s in rb], 'up': [s['name'] for s in up], 'argv': rb[0]['argv'][-3:],
+                  'pdir': next(x for s in rb if s['name'] == 'building' for i, x in enumerate(s['argv']) if s['argv'][i - 1] == '--project-directory')}))
+`], { encoding: 'utf8' });
+const BR = JSON.parse(br.trim().split('\n').pop());
+ok(BR.rebuild[0] === 'checking out' && BR.up.join() === 'checking out,starting'
+   && BR.argv.join() === '/workspace/alpha,/workspace/alpha-main-build,feature/x' && BR.pdir.startsWith('/workspace/alpha-main-build'),
+   `a branch's instance checks its files out on the node before it builds or starts, where compose then builds from (${JSON.stringify(BR)})`);
+
 // The node's docker group id reaches the compose as BB_DOCKER_GID (R86): a
 // session cannot stat the socket for it, its own being a stand-in.
 const gid = execFileSync('python3', ['-c', `
