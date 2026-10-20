@@ -1215,6 +1215,11 @@ case "$target" in
         # since the briefing joined it, empty means the fetch failed (B160).
         pre="$(BB_PROJECT="$proj" BB_UID="$account" bb preamble --json 2>/dev/null || true)"
         roadmap_block="$(printf '%s' "$pre" | jq -r '.text // ""' 2>/dev/null || true)"
+        # Named as the dashboard shows the project, with its id, not by its
+        # folder: the name is what the Claude app lists the session under,
+        # as "builderbot (P3)".
+        shown="$(printf '%s' "$pre" | jq -r 'if (.name // "") == "" then "" elif (.id // "") != "" then "\(.name) (\(.id))" else .name end' 2>/dev/null || true)"
+        [ -n "$shown" ] && cmd[2]="$shown"
         # The block goes in a file, so the kernel's argv ceiling is not the
         # limit; what bounds it is what a session should be asked to read,
         # since every conversation pays for all of it. Each part keeps to a

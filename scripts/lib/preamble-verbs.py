@@ -34,6 +34,7 @@ preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs, prefs_mo
 registry.configure(state=state, workspace=os.environ.get("WORKSPACE", "/workspace"),
                    write_json=statefile.write_json)
 preamble.label_of = registry.label
+preamble.id_of = registry.pid
 
 
 def _packs():

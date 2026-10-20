@@ -36,7 +36,8 @@ usage() {
 bb: BuilderBot helper
 
 bb -p NAME VERB    any verb, about another project this one reads (its
-                   settings name them): bb -p NAME roadmap, bb -p NAME map find X
+                   settings name them): bb -p NAME roadmap, bb -p NAME map find X;
+                   NAME is its shown name, its folder or its id (P3)
 bb status          tool versions, runner registration, the projects here
 bb version         this project's version, and who is allowed to move it
 bb version --code  one form only: --code (Android versionCode), --quad (= --win:

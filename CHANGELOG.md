@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- A project has an id, P and a number, shown first on its card and its page; a Claude session is named after the project with its id, as "builderbot (P3)", rather than after its folder, and bb -p takes the id too (3b7aa0e)
+
 ### Fixed
 
 - A release cut without a bump carries the changelog's Unreleased changes as its notes, and is named by the project's name rather than its folder (81c2b675)

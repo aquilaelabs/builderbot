@@ -66,6 +66,15 @@ class Registry(unittest.TestCase):
         self.assertEqual(registry.resolve("alpha-3"), "alpha-3")
         self.assertEqual(registry.resolve("nope"), "")
 
+    def test_a_project_is_named_by_its_id_too(self):
+        registry.sync()
+        pid = registry.pid("alpha")
+        self.assertRegex(pid, r"^P\d+$")
+        self.assertEqual(registry.resolve(pid), "alpha")
+        self.assertEqual(registry.resolve(pid.lower()), "alpha")
+        self.assertEqual(registry.resolve("P99999"), "")
+        self.assertEqual(registry.pid("nope"), "")
+
     def test_a_restore_whose_name_was_taken_meanwhile_is_numbered(self):
         registry.sync()
         registry.mark("alpha", "trashed")
