@@ -29,7 +29,9 @@ To update a pack, open its row's **Edit** and press **Look for a newer
 commit**. The form marks every command the new commit adds, changes (with
 what it was) or removes, and **Update** keeps the new commit. Where the pack
 is installed, uninstall it and install it again to take the new commit.
-**Remove** takes it out of the catalog.
+**Remove** takes it out of the catalog. It is refused while a node's store
+holds the pack, naming the node: uninstall it there first, since a pack gone
+from the catalog leaves no row to uninstall its files from.
 
 ## What a project's sessions can use
 
@@ -98,6 +100,11 @@ followed by a script inside the pack. These may appear in the words:
 
 So `bb tool hexkit dump "a b" '$(id)'` runs `{dir}/bin/hexkit` with
 exactly the arguments `dump`, `a b` and `$(id)`. Nothing is expanded.
+
+The install marks executable every file a verb, an install step or
+`verify` runs by its path, the layout's `tool`, and the files in its `bin`
+directories. A file committed without its executable bit, as a forge's web
+editor commits one, still runs.
 
 ### What a pack can and cannot do
 

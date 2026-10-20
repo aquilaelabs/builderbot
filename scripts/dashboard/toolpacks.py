@@ -261,7 +261,20 @@ def add(url, commit, by, shipped=()):
     return {"ok": True, "pack": rec, "replaced": bool(was)}
 
 
-def remove(name):
+def where_said(name, where):
+    """The refusal for removing a pack still installed (B84): its files
+    would stay in those stores with no row left to uninstall them from, and
+    a pack added back would read as installed with no install run."""
+    return {"error": f"{name} is installed on {', '.join(where)}: uninstall it there first "
+                     f"(pick that node on the Toolchains page and press the uninstall on its row), "
+                     f"then remove the pack", "installed": list(where)}
+
+
+def remove(name, where=()):
+    """Take a pack out of the catalog; refused while `where` (the nodes that
+    hold it) names any."""
+    if where:
+        return where_said(name, where)
     with _lock:
         d = _load()
         if name not in d["packs"]:
@@ -281,6 +294,17 @@ def recipe(rec):
         src["then"] = [{"run": s} for s in m["steps"]]
     if m.get("verify"):
         src["verify"] = m["verify"]
+    # What the install marks executable (B83): a file committed through a
+    # forge's web editor has no executable bit, and every run of it was
+    # 'Permission denied'. The programs the verbs, the steps and verify run
+    # by path, the layout's tool, and whatever is in its bin directories.
+    progs = [w[0] for w in [*(v["run"] for v in m["verbs"].values()), *m["steps"], m.get("verify") or [""]]
+             if w and w[0].startswith("{dir}/")]
+    tool = m["layout"].get("tool")
+    if tool and tool != MANIFEST:
+        progs.append("{dir}/" + tool)
+    src["exec"] = sorted(set(progs))
+    src["exec_dirs"] = ["{dir}/" + b for b in m["layout"].get("bin") or []]
     row = {"name": m["name"], "label": m["label"], "probe": m["name"], "about": m["about"],
            "platforms": m["platforms"], "layout": m["layout"], "source": src, "terms": m["terms"],
            "verbs": m["verbs"],

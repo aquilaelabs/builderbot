@@ -1263,6 +1263,7 @@ sdk_install_git() {
         "${g[@]}" checkout -q --detach FETCH_HEAD
         [ "$("${g[@]}" rev-parse HEAD)" = "$commit" ] \
             || die "${what}: ${url} answered $("${g[@]}" rev-parse --short HEAD) where ${commit:0:12} was approved"
+        sdk_mark_exec "$what" "$d"
     else
         log "cloning ${what} (${branch:-default}) into ${d}"
         # --progress: git prints none unless stderr is a terminal, and this runs
@@ -1288,7 +1289,27 @@ sdk_install_git() {
     # A repository that installs more than itself (a tool pack's install
     # steps fetching its binaries) runs them as the script kind does.
     sdk_install_steps "$what" "$d"
+    [ -z "$commit" ] || sdk_mark_exec "$what" "$d"
     sdk_install_verify "$what" "$d" ""
+}
+
+# The programs a tool pack runs by path, marked executable (B83): what its
+# verbs, steps and verify name and what is in its bin directories
+# (toolpacks.recipe lists them). A file committed through a forge's web
+# editor carries no executable bit, and every run of it was 'Permission
+# denied'. Run after the checkout and again after the steps, which may have
+# downloaded into bin/. A path the pack does not have yet is passed over.
+sdk_mark_exec() {
+    local what="$1" d="$2" p
+    local -a files dirs
+    sdk_meta_into files argv "$what" source.exec "dir=$d"
+    sdk_meta_into dirs argv "$what" source.exec_dirs "dir=$d"
+    for p in "${files[@]}"; do
+        [ ! -f "$p" ] || [ -x "$p" ] || { log "marking ${p#"$d"/} executable"; chmod a+x "$p"; }
+    done
+    for p in "${dirs[@]}"; do
+        [ ! -d "$p" ] || find "$p" -maxdepth 1 -type f ! -perm -u+x -exec chmod a+x {} +
+    done
 }
 
 # Something already in the image, pointed at the install directory.

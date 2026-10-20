@@ -215,7 +215,7 @@ function renderProjectsInto(i){
   if (paint(grid, html || `<div class="empty">nothing matches ${esc(pjQuery)}</div>`)){
     wireSections(grid);
     wireProjectRows(grid);
-    wireProjectHeader(grid);
+    wireProjectMenu(grid);
     grid.querySelectorAll("[data-pjgrename]").forEach(b => b.onclick = () => renameProjectGroup(b));
     grid.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openNotebook(b.dataset.open));
     grid.querySelectorAll(".pcard[data-row]").forEach(c => c.onclick = e => {

@@ -191,8 +191,11 @@ function nbGitView({$, nb, project}){
     if (!ci.at && !ci.workflows && !git.remote) return "";
     const fs = ci.findings || [];
     const red = fs.some(f => f.sev === "bad");
-    const status = !ci.at ? "not looked at yet" : red ? "failing" : fs.length ? `${fs.length} to look at` : "nothing drifting";
-    const cls = red ? "bad" : fs.length ? "note" : ci.at ? "ok" : "";
+    // A look that found no workflow says so, not "nothing drifting" in
+    // green: there is no CI to drift (B81).
+    const none = !!ci.at && !ci.workflows && !fs.length && !ci.run?.id;
+    const status = !ci.at ? "not looked at yet" : red ? "failing" : fs.length ? `${fs.length} to look at` : none ? "no workflows" : "nothing drifting";
+    const cls = red ? "bad" : fs.length ? "note" : ci.at && !none ? "ok" : "";
     const word = {run: "Check", label: "Runner", action: "Action", notice: "GitHub says"};
     // A moving label and an action a major behind carry their fix (R117
     // step 4): Fix writes that one line into the working tree, uncommitted,
@@ -205,7 +208,7 @@ function nbGitView({$, nb, project}){
           title="write ${esc(f.fix.to)} on that line, in the working tree; you commit it">Fix</button>` : ""}</div>`).join("");
     const run = ci.run?.id ? ` The newest run on ${esc(ci.run.branch)} ${esc(ci.run.ended || "ended " + ci.run.conclusion)}.` : "";
     const body = `<div class="sub dim">${ci.at ? `Looked ${esc(ago(ci.at))}${ci.repo ? ` at ${esc(ci.repo)} on GitHub` : ""}.${run}` :
-        "Not looked at yet."} Looked at once a day and when the project is linked; a session reads a run with bb ci-log.</div>${
+        "Not looked at yet."}${none ? " The tree has no workflow in .github/workflows, so there is no CI here to watch." : ""} Looked at once a day and when the project is linked; a session reads a run with bb ci-log.</div>${
       ci.error ? `<div class="sub bad">${esc(ci.error)}</div>` : ""}${rows}
       <div class="actbar"><button type="button" id="gitCiLook">Look now</button></div>`;
     return docSection("git", "ci", "CI", status, body, {cls, open: red, loud: red});
@@ -338,10 +341,14 @@ function nbGitView({$, nb, project}){
       : [!b.remote && b.name !== main && b.main_ahead ? `<button type="button" data-gitcmp="${esc(b.name)}">Compare with ${esc(main)}</button>` : "",
          b.name === main ? (b.head || barred(here_) ? "" : `<button type="button" data-gitmerge="${esc(main)}"${whoAttr(here_)}
             title="bring ${esc(main)} into ${esc(st.branch || "this branch")}, here, so this branch is up to date with it">Merge ${esc(main)} into here</button>`)
-           : !barred(b) && (b.main_ahead || st.branch !== main) && !(b.head && st.branch === main) ? `<button type="button" data-gitmerge="${esc(b.name)}" data-gitinto="${esc(main)}"${whoAttr(b)}
+           : !barred(b) && b.main_ahead ? `<button type="button" data-gitmerge="${esc(b.name)}" data-gitinto="${esc(main)}"${whoAttr(b)}
             title="merge ${esc(b.name)} into ${esc(main)}; push ${esc(main)} afterwards">Merge into ${esc(main)}</button>` : "",
          b.head || barred(b) || tree.barred ? "" : `<button type="button" data-gitswitch="${esc(b.name)}" title="put the tree on this branch">Switch to it</button>`,
-         ...(b.name === main ? [] : [...(barred(b) ? [] : [["merge", `Ask Claude to merge it into ${esc(main)}`], ["rebase", `Ask Claude to rebase it onto ${esc(main)}`]]),
+         // A branch with nothing of its own (0 ahead of main) has nothing to
+         // merge or review, and one that is not also behind nothing to
+         // rebase (B80).
+         ...(b.name === main || !b.main_ahead ? [] : [...(barred(b) ? [] : [["merge", `Ask Claude to merge it into ${esc(main)}`],
+              ...(b.main_behind ? [["rebase", `Ask Claude to rebase it onto ${esc(main)}`]] : [])]),
               ["review", "Ask Claude to review it"]].map(([k, w]) => `<button type="button" data-gitaskbranch="${esc(b.name)}" data-gitaskkind="${k}"${
               k === "review" ? "" : whoAttr(b)} title="hand this branch to the project's Claude session with this ask">${w}</button>`)),
          b.head || b.name === main || barred(b) ? "" : `<button type="button" class="danger"

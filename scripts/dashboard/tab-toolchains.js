@@ -440,7 +440,12 @@ function tpDraw(first){
   const rm = m.querySelector("[data-tprm]");
   if (rm) rm.onclick = async () => {
     const n = rm.dataset.tprm;
-    if (!confirm(`Remove the tool pack ${n}? It leaves the catalog; uninstall it from each node's store first if it is installed.`)) return;
+    // Refused while a node's store holds it (B84), said on the form with
+    // where, before anything is asked: its files would stay there with no
+    // row left to uninstall them from.
+    const at = await post({action: "where", name: n});
+    if (at.error){ tpForm.error = at.error; tpDraw(); return; }
+    if (!confirm(`Remove the tool pack ${n}? It leaves the catalog, and projects that use it lose it.`)) return;
     const j = await post({action: "remove", name: n});
     if (j.error){ tpForm.error = j.error; tpDraw(); return; }
     tpClose(); loadToolchains();

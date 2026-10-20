@@ -60,6 +60,26 @@ class Reason(unittest.TestCase):
         got = self.why("refused: this agent does not administer the machine, so its owner installs these: playwright: libXtst\n")
         self.assertIn("does not administer the machine", got)
 
+    def test_a_long_reason_starts_at_a_line_not_mid_word(self):
+        # B83: a tool pack's install, as bb-dev-sandbox logged it; the row
+        # was cut by characters from the end and began '3pack · * branch'.
+        out = "Permission denied: " + "x" * 300
+        got = self.why("== bb toolchains install wordy\n"
+                       "[builderbot] fetching wordy at 047e27a1b2c3 into /mnt/bbdata/toolchains/n_6d799c7c/wordy\n"
+                       "From http://192.168.1.16:3000/labadmin/r3pack\n"
+                       " * branch            047e27a1b2c3d4e5f60718293a4b5c6d7e8f9012 -> FETCH_HEAD\n"
+                       f"[builderbot] ERROR: wordy installed but /mnt/bbdata/toolchains/n_6d799c7c/wordy/bin/wordy does not run: {out}\n"
+                       "[builderbot] WARN: install failed (exit 1); removing the partial /mnt/bbdata/toolchains/n_6d799c7c/wordy\n",
+                       name="wordy")
+        self.assertTrue(got.startswith("ERROR: wordy installed but"), got[:80])
+        self.assertNotIn("FETCH_HEAD", got)
+        self.assertTrue(got.endswith("failed on the node"), got[-60:])
+        self.assertLessEqual(len(got), 400)
+        # ...and one line too long for the row keeps its start, cut at a word.
+        got = toolchains._reason(["ERROR: the tool said " + "word " * 120], "install failed on the node")
+        self.assertTrue(got.startswith("ERROR: the tool said word") and got.endswith("… · install failed on the node"), got)
+        self.assertLessEqual(len(got), 400)
+
 
 if __name__ == "__main__":
     unittest.main()

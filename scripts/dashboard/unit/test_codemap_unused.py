@@ -44,5 +44,43 @@ class Unused(unittest.TestCase):
                          ["nothing in this python module is unused by this measure (app.py)"])
 
 
+class UnusedClasses(unittest.TestCase):
+    """bb map unused over a page's stylesheet (B79): R60 swept the classes
+    nothing names and took .gl0 to .gl4, which nb-git.js builds as
+    gl${lane % 5}, for dead. A template's head or tail names a family."""
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+        (self.root / "index.html").write_text(
+            "<style>\n.gl0{stroke:red} .gl4{stroke:blue}\n.sk-word{x:1}\n.fxtab .row{y:2}\n"
+            "@media (max-width:600px){.gone{z:3} .used{z:4}}\n</style>\n<div class=\"used row\"></div>\n")
+        (self.root / "page.js").write_text(
+            "const a = `<path class=\"gl${lane % 5}\"/>`;\n"
+            "const b = `<i class=\"loading sk-${shape}\">`;\n"
+            "const c = `<div class=\"doctab ${kind}tab\">`;\n")
+        (self.root / "test").mkdir()
+        (self.root / "test" / "x.mjs").write_text("page.$('.gone')\n")
+        files = {"index.html": {"lang": "html", "defs": [], "refs": {}},
+                 "page.js": {"lang": "js", "defs": [], "refs": {}},
+                 "test/x.mjs": {"lang": "js", "defs": [], "refs": {}}}
+        self.idx = {"files": files, "defs": [], "calls": [], "draws": []}
+
+    def test_a_template_built_class_is_used_and_a_dead_one_is_named(self):
+        self.assertEqual(codemap.unused_classes(self.idx, None, str(self.root)), [("index.html", "gone")],
+                         "gl0 and gl4 by their head, sk-word likewise, fxtab by its tail; a suite naming .gone does not render it")
+        out = "\n".join(codemap.q_unused(self.idx, "index.html", str(self.root)))
+        self.assertIn("index.html  .gone", out)
+        self.assertNotIn(".gl0", out)
+
+    def test_the_git_graph_lanes_are_styled_and_not_read_as_dead(self):
+        repo = Path(__file__).resolve().parents[3]
+        html = (repo / "scripts/dashboard/index.html").read_text()
+        for n in range(5):
+            self.assertRegex(html, rf"\.gl{n}\{{stroke:var\(--", f".gl{n} gives lane {n} its color")
+        idx = {"files": {f: {} for f in ("scripts/dashboard/index.html", "scripts/dashboard/nb-git.js")}}
+        self.assertFalse([c for _, c in codemap.unused_classes(idx, None, str(repo)) if c.startswith("gl")])
+
+
 if __name__ == "__main__":
     unittest.main()

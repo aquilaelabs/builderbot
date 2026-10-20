@@ -8058,8 +8058,13 @@ class Handler(BaseHTTPRequestHandler):
             r = toolpacks.fetch(field(req, "url"), shipped=shipped)
         elif action == "add":
             r = toolpacks.add(field(req, "url"), field(req, "commit"), (self._who() or {}).get("name") or "", shipped)
+        elif action == "where":
+            # Asked before Remove's confirm: refused here, saying where, while
+            # a node's store holds it (B84).
+            w = toolchains.installed_where(field(req, "name"))
+            r = toolpacks.where_said(field(req, "name"), w) if w else {"installed": []}
         elif action == "remove":
-            r = toolpacks.remove(field(req, "name"))
+            r = toolpacks.remove(field(req, "name"), toolchains.installed_where(field(req, "name")))
         else:
             return self._json({"error": "a tool pack is previewed, added or removed"}, 400)
         if r.get("error"):

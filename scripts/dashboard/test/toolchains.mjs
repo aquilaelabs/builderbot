@@ -976,7 +976,7 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
 // the harness lets the server fetch (BB_TOOLPACKS_FILE_URLS).
 {
   const { execFileSync } = await import('node:child_process');
-  const { mkdirSync, writeFileSync } = await import('node:fs');
+  const { mkdirSync, writeFileSync, rmSync } = await import('node:fs');
   const api = (path, body) => page.evaluate(async ([p, b]) => (await (await fetch(p, b ? { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) } : {})).json()), [path, body]);
   const repo = `${DIR}/packrepo`;
@@ -1041,10 +1041,48 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   ok(true, '...and Update keeps the pack at the newer commit');
   const bad = await api('/api/toolpacks', { action: 'preview', url: `file://${DIR}/nowhere` });
   ok(/could not fetch/.test(bad.error || ''), `a repository that is not there is said so (${bad.error})`);
+  // B84: installed on a node, Remove is refused on the form, saying where,
+  // before anything is asked: its files would stay in that store with no row
+  // left to uninstall them from, and the pack added back would read installed.
+  const sb = (await api('/api/v1/nodes')).nodes.find(n => n.name === 'sandbox');
+  await api('/api/prefs', { project: 'alpha', packs_on: 'hexkit' });
+  writeFileSync(`${DIR}/sandboxdata/census-extra.json`, JSON.stringify({ store_dirs: { top: ['hexkit'], android: [] } }));
+  const heldBy = async want => {
+    for (let i = 0; i < 60; i++){
+      const t = await api(`/api/toolchains?node=${sb.id}`);
+      if (!!(t.items || []).find(r => r.name === 'hexkit')?.installed === want) return true;
+      await new Promise(r => setTimeout(r, 500));
+    }
+    return false;
+  };
+  ok(await heldBy(true), 'the sandbox node reports the pack in its store');
+  page.dialogs = [];
   await page.click('.doc.on [data-tpedit="hexkit"]');
+  // Edit looks for a newer commit as it opens; its answer redraws the form.
+  await page.waitForFunction(() => !tpForm.busy, null, { timeout: 20000 });
+  await page.click('#tpmodal [data-tprm="hexkit"]');
+  await page.waitForSelector('#tpmodal .hint.bad', { timeout: 15000 });
+  const refused = await page.$eval('#tpmodal .hint.bad', e => e.textContent);
+  const kept = await api('/api/toolpacks', { action: 'remove', name: 'hexkit' });
+  const still = ((await api(`/api/toolchains?node=${sb.id}`)).items || []).some(i => i.name === 'hexkit');
+  ok(/hexkit is installed on sandbox: uninstall it there first/.test(refused) && !page.dialogs.length
+     && still && /installed on sandbox/.test(kept.error || ''),
+     `Remove is refused while a node holds the pack, saying where, with nothing asked, and the route refuses it too (${refused})`);
+  rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
+  ok(await heldBy(false), '...and once that store no longer holds it...');
   await page.click('#tpmodal [data-tprm="hexkit"]');
   await page.waitForFunction(() => !(toolchains?.items || []).some(i => i.name === 'hexkit'), null, { timeout: 20000 });
-  ok(true, '...and Remove takes it out of the catalog');
+  ok(true, '...Remove takes it out of the catalog');
+  // B85: a project that had ticked it opens its Toolchains group unchanged:
+  // the saved list still names the pack, which the form cannot draw.
+  await page.evaluate(() => renameProject('alpha', 'all'));
+  await page.waitForFunction(() => rnToolsList !== null, null, { timeout: 20000 });
+  const group = await page.evaluate(() => ({ dirty: !document.querySelector('.rnbar[data-rnbar="tools"] [data-rnsave]')?.disabled,
+    said: document.querySelector('.rnbar[data-rnbar="tools"]')?.textContent.replace(/\s+/g, ' ').trim() || '' }));
+  ok(!group.dirty && !/changed/.test(group.said),
+     `...and a project that used it opens its Toolchains group with nothing unsaved (${JSON.stringify(group)})`);
+  await page.evaluate(() => closeRename());
+  await api('/api/prefs', { project: 'alpha', packs_on: '' });
 }
 
 await done(browser);
