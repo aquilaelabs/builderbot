@@ -520,6 +520,23 @@ def route_view(project, instance, ports, prefer=None):
     return out
 
 
+def job_why(j):
+    """How a compose job ended, in words: a failed one whose reason is only
+    its exit code says what its log says instead, as the Jobs page shows it
+    (B96: a Rebuild whose image could not be pulled read 'exit 1' on its
+    row, and why was only in the Jobs page's output)."""
+    err = str(j.get("error") or "")
+    if j.get("state") != "failed" or not re.fullmatch(r"\s*(exit \d+)?\s*", err):
+        return err
+    try:
+        why = queue.failed_why(j["id"]) if hasattr(queue, "failed_why") else ""
+    except Exception:  # a row is drawn without it, never refused
+        why = ""
+    if not why or why.strip() == err.strip():
+        return err or "failed"
+    return f"{why} ({err.strip()})" if err.strip() else why
+
+
 def job_view(project, instance):
     """This instance's job as the row draws it: the one in flight, or the
     last one while it has something to say about how it ended. A job that
@@ -538,7 +555,7 @@ def job_view(project, instance):
                 "action": (j.get("spec") or {}).get("action", ""),
                 "step": ("queued" if j["state"] == "queued" else j["step"])
                         if running else "",
-                "error": "" if running else j["error"],
+                "error": "" if running else job_why(j),
                 "aborting": bool(running and j["cancel"]),
                 "node": j["node"]}
     return None
