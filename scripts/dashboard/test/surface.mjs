@@ -73,7 +73,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'ado
   'openEmulator', 'emuPick', 'loadEmulator', 'emuAddRows', 'emuFlavorNow', 'emuTickedHere', 'emuRow', 'renderEmulatorInto', 'emuAct', 'tcRow', 'tcTermsLine', 'tcSystemLine', 'tcNeedsLine', 'tcDriverRow', 'tcDriverLine', 'tcDriverOption', 'tcToolkitRow', 'tcToolkitLine', 'nodesReadOnly', 'headerOnly', 'splitSects', 'splitDraw', 'splitAway', 'bootOwn', 'splitMove', 'splitMarks', 'splitOff', 'rnSplit', 'rolesInsts', 'rolesLvlAt', 'rolesSetAll', 'headLine', 'pageKey', 'pageLimit', 'rnPrefsOf',
   // The Claude sign-in on a node's row (page-signin.js), and the press that goes to it.
   'signinRev', 'signinCannot', 'signinBusy', 'signinBlock', 'wireSignin', 'openNodeClaude', 'signinCancel', 'claudeSigninFirst', 'claudeNodes', 'claudeEnd', 'modalTop', 'keepOpen', 'keepLine', 'pollRevsOnce', 'oneOpen', 'sectGroup', 'soleOpen', 'sectJump', 'topModal', 'modalOpened', 'modalClosed', 'modalFocusables', 'dismissModal', 'modalKeys', 'scrollHint', 'scrollHints',
-  'openToolchainsOn', 'nodeGpuSection', 'nodeSound', 'tcTickDots',
+  'openToolchainsOn', 'nodeGpuSection', 'nodeSound', 'nodeInternet', 'tcTickDots',
   'claudeNodeFacts', 'placeResumeMenu', 'pollRevs', 'postCustom',
   'postTrash', 'phoneWhy', 'dmBootLine', 'nodePick', 'nodeToolsLine', 'openRunnerTab', 'renderPhoneInto', 'renderRunnerInto', 'phoneRowPress', 'openPhoneLend', 'openProjectSettings', 'settingsInto', 'settingsOut', 'pushLayout', 'readLocalPanes', 'keepLocalPanes', 'quietFields', 'reapDeadTerminals',
   'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'settingsKeep', 'settingsWake', 'countReports', 'gitLanes', 'renderDiff',

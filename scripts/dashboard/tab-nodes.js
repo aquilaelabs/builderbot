@@ -180,6 +180,13 @@ function nodeSound(n){
     : "none: no sound card and no sound server";
   return `<div class="actbar ndsound"><span class="state ${card && s.server ? "ok" : ""}">sound: ${esc(word)}</span></div>`;
 }
+// Whether this node reaches the internet (R82), said only when it does not:
+// a toolchain, an image or a system image is a download, and each install
+// here refuses with this before it starts.
+function nodeInternet(n){
+  if (n.kind !== "agent" || n.reported?.internet !== false) return "";
+  return `<div class="actbar ndnet"><span class="state warn">no internet: toolchains, images and updates cannot download here</span></div>`;
+}
 // What this node's NVIDIA card is for (R102): two switches and one Apply.
 // The emulator renders on it or does not, which is the headless X server
 // the display needs; and sessions and jobs may compute on it or not, which
@@ -1487,6 +1494,7 @@ function renderNodesInto(i){
         ${nodeGit(n)}
         ${nodeGpu(n)}
         ${nodeSound(n)}
+        ${nodeInternet(n)}
         ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}</div>`,
       {cls: n.kind === "agent" && n.live ? "ok" : "", open: true});
     // Every live agent node gets the plane: the runner needs no stamp. What

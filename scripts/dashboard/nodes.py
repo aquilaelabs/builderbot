@@ -1208,6 +1208,11 @@ def _census(c):
     # ...and its docker group's id (R86), passed to a compose as BB_DOCKER_GID.
     g = c.get("docker_gid")
     out["docker_gid"] = g if isinstance(g, int) and not isinstance(g, bool) and 0 <= g < 2**31 else None
+    # ...and whether it reaches the internet (R82); None from an agent that
+    # does not say.
+    out["internet"] = c.get("internet") if isinstance(c.get("internet"), bool) else None
+    # ...and whether its toolchain store is read-only to it (R85).
+    out["store_ro"] = c.get("store_ro") is True
     # The configuration plane's reported half (docs/nodes.md §12): whether
     # the node was provisioned as a sandbox (bb-sandbox is there: the stamp
     # system jobs are gated on), what it mounts as bb-sandbox reads it, and

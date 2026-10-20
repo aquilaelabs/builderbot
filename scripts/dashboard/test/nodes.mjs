@@ -3134,6 +3134,33 @@ ok(page.errors.length === 0,
        && words[1] === 'sound: HDA Intel PCH through pipewire'
        && /Dummy \(virtual\), with no sound server/.test(words[2]) && words[3] === '',
        `the row says the sound in words, and nothing for a node that has not said (${words.join(' | ')})`);
+    // ...and whether it reaches the internet (R82), with its docker group
+    // (R86): kept as a boolean and a number, the row saying only "no".
+    await hello({ internet: false, docker_gid: 983 });
+    const rec2 = (await napi('/api/v1/nodes')).nodes.find(n => n.id === shed.id);
+    ok(rec2?.reported?.internet === false && rec2.reported.docker_gid === 983,
+       `the census's internet and docker group are kept (${JSON.stringify([rec2?.reported?.internet, rec2?.reported?.docker_gid])})`);
+    await hello({ internet: 'yes', docker_gid: '983; rm' });
+    const rec3 = (await napi('/api/v1/nodes')).nodes.find(n => n.id === shed.id);
+    ok(rec3?.reported?.internet === null && rec3.reported.docker_gid === null,
+       `...and anything else is not kept (${JSON.stringify([rec3?.reported?.internet, rec3?.reported?.docker_gid])})`);
+    const net = await page.evaluate(() => [
+      nodeInternet({ kind: 'agent', reported: { internet: false } }),
+      nodeInternet({ kind: 'agent', reported: { internet: true } }),
+      nodeInternet({ kind: 'agent', reported: {} })].map(h => h.replace(/<[^>]+>/g, '').trim()));
+    ok(/^no internet: /.test(net[0]) && net[1] === '' && net[2] === '',
+       `the row says a node has no internet, and nothing when it has or has not said (${net.join(' | ')})`);
+    // A toolchain store the node cannot write (R85): the Toolchains page
+    // says so and holds Install, before a job fails on it.
+    await hello({ store_ro: true });
+    await page.evaluate(() => openToolchains());
+    await page.waitForSelector('.tctab #tcNodeSel', { timeout: 15000 });
+    await page.selectOption('.tctab #tcNodeSel', shed.id);
+    const ro = await page.waitForSelector('.tctab .tcro', { timeout: 15000 }).then(() => true, () => false);
+    ok(ro && await page.$eval('.tctab [data-tc="install"]', b => b.disabled).catch(() => true),
+       'a node whose toolchain store is read-only to it says so on the Toolchains page, and Install is held');
+    await hello({});
+    await page.evaluate(() => openNodesTab());
   }
   // The NVIDIA driver as a row of the Toolchains tab (R102): a row like the
   // store's, ticked into the same Install selected and asked by the same

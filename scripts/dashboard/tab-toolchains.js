@@ -741,6 +741,9 @@ function renderToolchainsInto(i){
   // The server refuses it either way (nodes.agent_stale); this is the reason,
   // said before the press rather than after it.
   const pstale = onNode && nodeStale(pnodes.find(n => n.id === tcNode) || {});
+  // A store the node reports it cannot write (R85): read-only to it, so
+  // nothing installs, said here rather than as a failed job.
+  const pro = onNode && (pnodes.find(n => n.id === tcNode) || {}).reported?.store_ro === true;
   // The page's buttons, in its bar with the one node switcher (page-docs.js
   // nodePick, R121), every header button on one row (the operator, 17 Oct):
   // Check for updates, Abort while a job runs, Install selected, and Remove
@@ -754,7 +757,7 @@ function renderToolchainsInto(i){
         busy && job.action === "check"
           ? `${barSaid("Checking for updates", "Checking")}<span class="dots">${".".repeat(tcDots)}</span>`
         : (d.items || []).some(i => i.state) ? barSaid("Re-check for updates", "Re-check") : barSaid("Check for updates", "Check")}</button>
-      ${!may ? "" : `<button class="primary${busy ? " tcidle" : ""}" data-tc="install"${busy || pstale || !tcTicked.size ? " disabled" : ""}
+      ${!may ? "" : `<button class="primary${busy ? " tcidle" : ""}" data-tc="install"${busy || pstale || pro || !tcTicked.size ? " disabled" : ""}
         ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === tcNode)))}"` : ""}
         >${barSaid("Install selected", "Install")}</button>`}
       ${clean.length ? `<button type="button" class="danger${busy ? " tcidle" : ""}" data-tcclean${busy ? " disabled" : ""}>Remove</button>` : ""}`));
@@ -781,6 +784,7 @@ function renderToolchainsInto(i){
   surf.list.innerHTML = `
     ${pstale ? `<div class="field"><div class="notice warn tcstale">${esc(staleWhy(
       pnodes.find(n => n.id === tcNode)))}. Nothing installs here until it is.</div></div>` : ""}
+    ${pro ? `<div class="field"><div class="notice warn tcro">${esc(d.name || "This node")}'s toolchain store is read-only to it, so nothing installs here: what is in it is what it has. Make it writable on the machine to install.</div></div>` : ""}
     ${
     // The store at a glance (R216): what is installed, what has an update
     // due, what a project needs that the store lacks, and the room left.
