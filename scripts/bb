@@ -236,7 +236,8 @@ bb devapp rebuild [--why "..."]
                    command waits for Approve) or auto. Up, Down and a container of
                    any other shape stay the operator's. The build sees BB_BUILD_REV,
                    BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
-                   interpolate them; its other options are the compose file's own
+                   interpolate them, and BB_BUILD_TAG, the version as an image tag
+                   can carry it; its other options are the compose file's own
 bb devapp new [NAME] [--branch REF] [--compose FILE] [--override FILE] [--node NODE] [--env FILE] [--why "..."]
                    send the project to Docker, as the Artifacts view's Send to Docker
                    manager does, under the same setting: a container made from its
@@ -3008,7 +3009,8 @@ bb devapp rebuild [--why "what it is for"]
   under the project's dial (Claude may: Run its container). The build sees
   BB_BUILD_REV, BB_BUILD_AT and BB_BUILD_VERSION in its environment (the
   commit, when, the version), so a compose whose build.args interpolate them
-  (GIT_SHA: ${BB_BUILD_REV}) stamps the image without reading .git. Its other
+  (GIT_SHA: ${BB_BUILD_REV}) stamps the image without reading .git, and
+  BB_BUILD_TAG, the version with no +, for an image tag. Its other
   options (args, target, Dockerfile) are the compose file's own to say.
 EOT
                         return 0 ;;
@@ -4184,15 +4186,30 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
     elif need docker; then
         for cf in "${composes[@]}"; do
             # Validation only, with no daemon involved. An .env.example stands in
-            # for the gitignored .env so required variables interpolate.
+            # for the gitignored .env so required variables interpolate: the
+            # one beside the compose file first, as a container built from it
+            # reads, then the root's. Its empty values (an example carries
+            # names, not values) are filled with a stand-in, or a required
+            # ${NAME:?} failed lint on every run (the demo, 20 Oct).
             local -a envarg=()
-            [ -f .env ] || { [ -f .env.example ] && envarg=(--env-file .env.example); }
+            local cdir ex="" stand=""
+            cdir="$(dirname "$cf")"
+            if [ ! -f "$cdir/.env" ] && [ ! -f .env ]; then
+                if [ -f "$cdir/.env.example" ]; then ex="$cdir/.env.example"
+                elif [ -f .env.example ]; then ex=.env.example; fi
+            fi
+            if [ -n "$ex" ]; then
+                stand="$(mktemp)"
+                sed -E 's/^([A-Za-z_][A-Za-z0-9_]*)=[[:space:]]*$/\1=lint-stand-in/' "$ex" > "$stand"
+                envarg=(--env-file "$stand")
+            fi
             if docker compose "${envarg[@]}" -f "$cf" config -q 2>&1 | sed 's/^/  /'; then
                 printf '  [ok]   %s\n' "$cf"
             else
                 printf '  [FAIL] %s\n' "$cf"
                 rc=1
             fi
+            [ -z "$stand" ] || rm -f "$stand"
         done
     fi
 
