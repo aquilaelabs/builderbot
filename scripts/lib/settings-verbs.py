@@ -190,4 +190,41 @@ def show():
         print(f"    Claude may: {'Move the version':<28} unknown ({str(e)[:60]})")
 
 
-{"set": set_field, "show": show}[verb]()
+def set_node():
+    """The project's node from a shell on the controller (R84), saved as its
+    Settings page saves it. A project with containers is sent to that page:
+    moving it there keeps them on the node they run on, which needs the
+    running dashboard."""
+    sys.path.insert(0, here)
+    import prefs, dash
+    def _w(path, obj):
+        tmp = str(path) + ".tmp"
+        with open(tmp, "w") as f: json.dump(obj, f)
+        os.replace(tmp, path)
+    state = os.environ["DASHBOARD_STATE"]
+    prefs.configure(state=state, write_json=_w)
+    # The running dashboard's hooks, which a shell has none of: no container
+    # to pin (one with containers is refused below), and a session or a
+    # network to tell is the dashboard's next look at the setting.
+    prefs.WORKSPACE = os.environ.get("WORKSPACE", "/workspace")
+    prefs.pin_instances = lambda name: []
+    prefs.end_claude = lambda name: {}
+    prefs.net_nudge = lambda: None
+    want = os.environ["BB_SET_VALUE"].strip()
+    with contextlib.suppress(OSError, ValueError):
+        if (json.load(open(os.path.join(state, "devapps.json"))) or {}).get(proj):
+            sys.exit(f"[builderbot] ERROR: {proj} has containers: change its node on its Settings page, "
+                     "which keeps them on the machine they run on")
+    nodes = dash.load("nodes", dash.beside(os.path.join(here, "nodes.py")))
+    nodes.db.open_readonly(state)
+    hit = [n for n in nodes.node_list() if n.get("kind") == "agent" and n.get("state") != "retired"
+           and want in (n.get("id"), n.get("name"))]
+    if not hit:
+        sys.exit(f"[builderbot] ERROR: no node called {want}: bb nodes lists them")
+    body, code = prefs.dialog_save(proj, {"node": hit[0]["id"]}, "")
+    if body.get("error"):
+        sys.exit("[builderbot] ERROR: " + body["error"])
+    print(f"{proj} works on {hit[0]['name']} ({hit[0]['id']})")
+
+
+{"set": set_field, "show": show, "node": set_node}[verb]()

@@ -197,14 +197,25 @@ bb nodes           the machines enrolled as nodes, each with the agent it runs,
                    read-only in a terminal; the Nodes page is where they are edited
 bb nodes show NAME one of them in full, by name or id: its agent against the one
                    this controller ships, and what Update agent would fix
+bb nodes enroll-token NAME [--user U]
+                   a new node's enrollment token, printed once, from a shell on
+                   the controller: Enroll node's Just a token, for a scripted setup
+bb projects adopt FOLDER [--name NAME]
+                   a folder already under the projects share made a project, as
+                   if BuilderBot had made it, from a shell on the controller: a
+                   folder made by hand is not one until this says so
 bb settings        this project's settings as the dashboard has them: node,
                    model, effort, build and test commands, lock. On a node
                    it is relayed from the controller, and it is what bb-tty
                    and bb build read there. `set build|test|outputs VALUE`
                    is the one write: a session fills a field in for the
-                   operator, under the project's gate (below).
+                   operator, under the project's gate (below). `node NODE`,
+                   from a shell on the controller, sets the project's node as
+                   its Settings page does, for a scripted setup.
 bb users           the dashboard's accounts. `passwd NAME` resets one from a
-                   shell, which is the way back when the owner is locked out
+                   shell, which is the way back when the owner is locked out;
+                   `claim NAME` makes the owner of a new install, as its first
+                   page does, for a setup scripted from a shell
 bb work            who else is working this project, and which files two of
                    you have uncommitted at once: read-only
 bb jobs [-n N | ID]    the recent jobs: state, node, what ran, how it ended,
@@ -706,6 +717,20 @@ cmd_status() {
 }
 
 cmd_projects() {
+    if [ "${1:-}" = adopt ]; then
+        # A folder already under the projects share made a project on
+        # purpose (R84), for a setup scripted from a shell: by design a
+        # folder made by hand is not one until somebody says so, and this
+        # is that saying. An administrator's, from a shell on the controller.
+        [ -z "${BB_TOKEN:-}${BB_ACCOUNT_UID:-}" ] && ! on_node \
+            || die "bb projects adopt is run in a shell on the controller, not from a session"
+        [ -n "${2:-}" ] || die "bb projects adopt FOLDER [--name NAME]: which folder under ${WORKSPACE}?"
+        local name="" folder="$2"
+        [ "${3:-}" = --name ] && name="${4:-}"
+        BB_ADOPT_DIR="$folder" BB_ADOPT_NAME="$name" DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
+            WORKSPACE="$WORKSPACE" python3 "$BB_LIB/projects-adopt.py" "$(dirname "$(readlink -f "$0")")/dashboard"
+        return
+    fi
     echo "== projects (${WORKSPACE}) =="
     local d found=0
     for d in "$WORKSPACE"/*/; do
@@ -3524,6 +3549,17 @@ cmd_settings() {
             proj=""
         }
     fi
+    if [ "${1:-}" = node ]; then
+        # A project's node from a shell on the controller (R84), for a
+        # scripted setup: an administrator's, as on the Settings page.
+        [ -z "${BB_TOKEN:-}${BB_ACCOUNT_UID:-}" ] && ! on_node \
+            || die "bb settings node is run in a shell on the controller, not from a session: a project's node is its Settings page's"
+        [ -n "$proj" ] || die "not inside a project under ${WORKSPACE}; cd into one first, or bb -p NAME settings node NODE"
+        [ -n "${2:-}" ] || die "bb settings node NODE: which node? bb nodes lists them"
+        BB_SET_VALUE="$2" DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
+            python3 "$BB_LIB/settings-verbs.py" node "$(dirname "$(readlink -f "$0")")/dashboard" "$proj"
+        return
+    fi
     if [ "${1:-}" = set ]; then
         [ -n "$proj" ] || die "not inside a project under ${WORKSPACE}; cd into one first"
         local field="${2:-}"; shift 2 2>/dev/null || true
@@ -3568,7 +3604,7 @@ cmd_users() {
     [ -f "$py" ] || die "users.py is missing from this image"
     shift || true
     case "$sub" in
-        list|passwd|add) ;;
+        list|passwd|add|claim) ;;
         token)
             # A session token for one project, the kind bb-tty mints for a
             # session it starts: user rights over that project, an expiry.
@@ -3591,12 +3627,12 @@ cmd_users() {
             # node-bound terminal gets) and can fetch its Claude login.
             DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/users-verbs.py" token "$py" "$1" "${2:-}"
             return ;;
-        *) die "usage: bb users [list|passwd NAME|add NAME --role admin|user|token PROJECT]" ;;
+        *) die "usage: bb users [list|claim NAME|passwd NAME|add NAME --role admin|user|token PROJECT]" ;;
     esac
     # The password is READ, never an argument: an argument is in the process
     # table for anyone on this box to see, and in the shell history after.
     local pw="" pw2=""
-    if [ "$sub" = passwd ] || [ "$sub" = add ]; then
+    if [ "$sub" = passwd ] || [ "$sub" = add ] || [ "$sub" = claim ]; then
         [ -n "${1:-}" ] || die "which account? bb users ${sub} NAME"
         printf 'password for %s: ' "$1" >&2; read -rs pw; printf '\n' >&2
         printf 'again: ' >&2; read -rs pw2; printf '\n' >&2
@@ -3614,9 +3650,18 @@ cmd_nodes() {
         "") DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/nodes-verbs.py" list "$py" ;;
         show) [ -n "${2:-}" ] || die "bb nodes show NAME: which node?"
               DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/nodes-verbs.py" show "$py" "$2" ;;
+        enroll-token)
+            # An administrator's act, from a shell on the controller: a
+            # session's bb answers for the machine it is on, and minting a
+            # node is nothing a session decides (R84).
+            [ -z "${BB_TOKEN:-}${BB_ACCOUNT_UID:-}" ] && ! on_node \
+                || die "bb nodes enroll-token is run in a shell on the controller (docker exec BuilderBot bb nodes enroll-token NAME), not from a session"
+            shift
+            DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/nodes-verbs.py" enroll-token "$py" "$@" ;;
         -h|--help) echo "bb nodes            the enrolled machines, each with the agent it runs"
-                   echo "bb nodes show NAME  one of them in full, by name or id" ;;
-        *) die "bb nodes [show NAME]: '$1' is not one of its forms" ;;
+                   echo "bb nodes show NAME  one of them in full, by name or id"
+                   echo "bb nodes enroll-token NAME [--user U]  a new node's enrollment token, from a shell on the controller" ;;
+        *) die "bb nodes [show NAME|enroll-token NAME]: '$1' is not one of its forms" ;;
     esac
 }
 
@@ -5716,7 +5761,7 @@ case "${1:-help}" in
     settings) shift; cmd_settings "$@" ;;
     version)  shift; cmd_version "$@" ;;
     changelog) shift; cmd_changelog "$@" ;;
-    projects) cmd_projects ;;
+    projects) shift; cmd_projects "$@" ;;
     shell)    exec bash -l ;;
     login)    shift; cmd_login "$@" ;;
     emu)      shift; dist_ignored; cmd_emu "$@" ;;

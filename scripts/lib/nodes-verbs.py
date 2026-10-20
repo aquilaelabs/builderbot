@@ -93,7 +93,31 @@ def labels():
         print("\n".join(nodes.runner_labels_known()))
 
 
+def enroll_token():
+    """A node's enrollment token for a setup scripted from a shell (R84):
+    the row and the token Enroll node's Just a token makes, printed once.
+    Its run user is --user's, bb by default."""
+    rest = sys.argv[3:]
+    if not rest or rest[0].startswith("-"):
+        sys.exit("[builderbot] ERROR: bb nodes enroll-token NAME [--user U]: which name?")
+    name, user = rest[0], "bb"
+    if "--user" in rest:
+        i = rest.index("--user")
+        if i + 1 >= len(rest):
+            sys.exit("[builderbot] ERROR: --user needs the account the node's jobs run as")
+        user = rest[i + 1]
+    nodes.configure(state=os.environ["DASHBOARD_STATE"])
+    r = nodes.enroll_mint("user:shell", name, user=user)
+    if r.get("error"):
+        sys.exit(f"[builderbot] ERROR: {r['error']}")
+    print(r["token"])
+    print(f"{name} ({r['id']}) waits for it, until {__import__('time').strftime('%d %b %H:%M', __import__('time').localtime(r['expires']))}",
+          file=sys.stderr)
+
+
 if verb == "show":
     show(arg)
+elif verb == "enroll-token":
+    enroll_token()
 else:
     {"list": list_, "labels": labels}[verb]()

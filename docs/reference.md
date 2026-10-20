@@ -195,14 +195,25 @@ bb nodes           the machines enrolled as nodes, each with the agent it runs,
                    read-only in a terminal; the Nodes page is where they are edited
 bb nodes show NAME one of them in full, by name or id: its agent against the one
                    this controller ships, and what Update agent would fix
+bb nodes enroll-token NAME [--user U]
+                   a new node's enrollment token, printed once, from a shell on
+                   the controller: Enroll node's Just a token, for a scripted setup
+bb projects adopt FOLDER [--name NAME]
+                   a folder already under the projects share made a project, as
+                   if BuilderBot had made it, from a shell on the controller: a
+                   folder made by hand is not one until this says so
 bb settings        this project's settings as the dashboard has them: node,
                    model, effort, build and test commands, lock. On a node
                    it is relayed from the controller, and it is what bb-tty
                    and bb build read there. `set build|test|outputs VALUE`
                    is the one write: a session fills a field in for the
-                   operator, under the project's gate (below).
+                   operator, under the project's gate (below). `node NODE`,
+                   from a shell on the controller, sets the project's node as
+                   its Settings page does, for a scripted setup.
 bb users           the dashboard's accounts. `passwd NAME` resets one from a
-                   shell, which is the way back when the owner is locked out
+                   shell, which is the way back when the owner is locked out;
+                   `claim NAME` makes the owner of a new install, as its first
+                   page does, for a setup scripted from a shell
 bb work            who else is working this project, and which files two of
                    you have uncommitted at once: read-only
 bb jobs [-n N | ID]    the recent jobs: state, node, what ran, how it ended,
