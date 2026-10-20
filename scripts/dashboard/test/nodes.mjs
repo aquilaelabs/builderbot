@@ -2566,6 +2566,8 @@ await page.evaluate(async () => {
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
   const offeredOff = await page.evaluate(() => ({ reach: [...$('ndEnReach').options].map(o => o.value),
     door: [...$('ndEnDoor').options].map(o => o.value) }));
+  const namedOff = await page.evaluate(() => ($('ndBody').innerHTML.match(/WireGuard|Tailscale|tailnet/g) || []));
+  ok(!namedOff.length, `...and nothing in the dialog, its help included, names them (${namedOff.join(', ')})`);
   const refusedOff = await page.evaluate(wg => nodeAct({ action: 'enroll', script: true, name: 'wgoff', reach: 'wireguard',
     controller: location.origin, wg_conf: wg }), WG);
   ok(offeredOff.reach.join() === 'lan,public' && offeredOff.door.join() === ',cloudflared'

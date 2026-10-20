@@ -82,7 +82,7 @@ function drawSetup(){
       ? `<p><b>${nodeName}</b> is enrolled and answering.</p>`
       : s.waiting
       ? `<p>Waiting for <b>${esc(s.waiting.name)}</b> to dial in: run its enroll script on the machine. This turns to done by itself.</p>`
-      : `<p>A sandbox VM made for it, or a machine you already have, on this network or over WireGuard.</p>`,
+      : `<p>A sandbox VM made for it, or a machine you already have, on this network or reached over the internet.</p>`,
       s.node ? "" : `<button type="button" data-setvm>Create sandbox VM</button><button type="button" class="primary" data-setenroll>Enroll node</button>`)}
     ${card(2, "Your name and email", s.git, false, s.git
       ? `<p>Your commits carry them. Your profile, in the gear, changes them.</p>`
