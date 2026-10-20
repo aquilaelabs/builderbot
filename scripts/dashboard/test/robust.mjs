@@ -46,15 +46,19 @@ const get = (path, extra = {}) => new Promise((resolve, reject) => {
 // cannot be answered from a copy made before it.
 {
   const g0 = await get('/');
-  const v = g0.text.match(/<script src="nb-history\.js\?v=([0-9a-f]+-[0-9a-f]+)">/);
-  ok(!!v && !/<script src="(tab|nb)-[a-z-]+\.js">/.test(g0.text),
+  const v = g0.text.match(/<script data-cfasync="false" src="nb-history\.js\?v=([0-9a-f]+-[0-9a-f]+)">/);
+  ok(!!v && !/<script[^>]* src="(tab|nb)-[a-z-]+\.js">/.test(g0.text),
      `every tab and notebook script is named with its version (${v ? v[1] : 'unversioned'})`);
+  // ...and every script runs as written: Cloudflare's Rocket Loader leaves
+  // one marked data-cfasync="false" alone (B138).
+  ok(!/<script(?![^>]*data-cfasync="false")/.test(g0.text),
+     'every script on the page is marked for Rocket Loader to leave it as it is');
   const served = new globalThis.URL('../nb-history.js', import.meta.url).pathname;
   const { utimesSync } = await import('node:fs');
   const later = new Date(Date.now() + 5000);
   utimesSync(served, later, later);
   const g1 = await get('/');
-  const v1 = g1.text.match(/<script src="nb-history\.js\?v=([0-9a-f]+-[0-9a-f]+)">/);
+  const v1 = g1.text.match(/<script data-cfasync="false" src="nb-history\.js\?v=([0-9a-f]+-[0-9a-f]+)">/);
   ok(v1 && v && v1[1] !== v[1] && g1.tag !== g0.tag,
      `...and a script that changes gets a new name and a new page tag, the page itself untouched (${v1?.[1]}, ${g1.tag !== g0.tag})`);
   const js = await get('/nb-history.js?v=' + (v1 ? v1[1] : ''));
