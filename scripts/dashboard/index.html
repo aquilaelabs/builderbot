@@ -3393,6 +3393,9 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
   .tiles > .tile:only-child{grid-column:1 / -1}
   .tiles:has(> .tile:last-child:nth-child(odd)) .tl,
   .tiles:has(> .tile:last-child:nth-child(odd)) .ts{overflow-wrap:anywhere}
+  /* ...and a number with its unit wraps at the space rather than being cut
+     in a third of the screen ("11.1 TB" read "11.1…", B150). */
+  .tiles:has(> .tile:last-child:nth-child(odd)) .tv{white-space:normal}
 }
 /* A container's card (the operator's concept, 17 Oct). Its head: the name,
    its pill and how long it has been up, a mono line of what it is (image,

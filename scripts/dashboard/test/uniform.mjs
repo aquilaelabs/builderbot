@@ -1602,6 +1602,11 @@ for (const kind of kinds){
   }).filter(Boolean));
   ok(crowded.length === 0,
      `[${kind}] an action bar shows at most five buttons at phone width${crowded.length ? `: ${crowded.join(', ')}` : ''}`);
+  // A tile's number is read whole at phone width (B150): three to a row,
+  // "11.1 TB" was cut to "11.1…" in a third of the screen.
+  const cut = await page.$$eval('.doc.on .tile .tv', vs => vs.filter(v => v.offsetParent && v.scrollWidth > v.clientWidth + 1)
+    .map(v => v.textContent.trim()));
+  ok(cut.length === 0, `[${kind}] every tile's number is whole at phone width${cut.length ? `; cut: ${cut.join(', ')}` : ''}`);
   const room = await headRoom();
   ok(room.length === 0,
      `[${kind}] every section's first line keeps room under its head at phone width${room.length ? `; touching: ${room.join(', ')}` : ''}`);
