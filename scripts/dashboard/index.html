@@ -3488,7 +3488,10 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .tbl .thead,.tbl .tline{display:grid;grid-template-columns:var(--tcols);column-gap:var(--row-x);align-items:center;min-width:0}
 .tbl .thead{padding:var(--label-gap) var(--row-x);font:var(--f-note);color:var(--dim);border-bottom:var(--hair) solid var(--line)}
 .tbl .th,.tbl .td{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tbl .td.lead{white-space:normal;overflow-wrap:anywhere;font-weight:600}
+/* A lead cell wraps between words and breaks one only when it is longer
+   than its column: anywhere cut 'nginx-bb-dev-sandbox' mid-word in a column
+   that had room for it on the next line (B112). */
+.tbl .td.lead{white-space:normal;overflow-wrap:break-word;font-weight:600}
 .tbl .th.num,.tbl .td.num{text-align:right;font-variant-numeric:tabular-nums}
 .tbl .td{font:var(--f-data);color:var(--dim)}
 .tbl .td.lead{font:var(--f-ui);font-weight:600;color:var(--ink)}

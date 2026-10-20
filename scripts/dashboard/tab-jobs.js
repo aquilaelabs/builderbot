@@ -97,7 +97,7 @@ function jobTitle(j){
   if (j.type === "sign") return `sign ${esc(s.file || "a build")}`;
   if (j.type === "tell"){
     const text = String(s.text || "").replace(/\s+/g, " ");
-    return `tell ${esc(s.session || "a session")}: "${esc(text.slice(0, 60))}${text.length > 60 ? "…" : ""}"`;
+    return `tell ${esc(jobSessionWords(s.session))}: "${esc(text.slice(0, 60))}${text.length > 60 ? "…" : ""}"`;
   }
   if (j.type === "cache-clear") return `clear ${s.project ? esc(projLabel(s.project)) + "'s caches" : "every cache"}`;
   // Run on another node of the project's set because its primary was not
@@ -108,6 +108,18 @@ function jobTitle(j){
   // before the command (docs/nodes.md §6).
   const src = j.source?.digest ? `${esc(projLabel(j.project || s.project || ""))} · ` : "";
   return `${src}exec ${esc(argv.slice(0, 80))}${argv.length > 80 ? "…" : ""}`;
+}
+
+// The session a tell job typed into, by its project rather than by its
+// tmux name (B112): "u_525cbd90~claude-hello" is the machine's spelling,
+// "Claude on hello" the person's. A shell is named for its project too.
+function jobSessionWords(name){
+  if (!name) return "a session";
+  const b = tmuxBase(name);
+  let m;
+  if ((m = /^claude-(.+)$/.exec(b))) return `Claude on ${projLabel(projFor(m[1]) ?? m[1])}`;
+  if ((m = /^shell-(.+)-\d+$/.exec(b))) return `a shell on ${projLabel(projFor(m[1]) ?? m[1])}`;
+  return b;
 }
 
 function jobStatePill(j){
@@ -166,9 +178,13 @@ function jobBy(j){
   return esc(by.startsWith("user:") ? by.slice(5)
     : by.startsWith("system:") ? JOB_BY_SYSTEM[by.slice(7)] || by.slice(7).replace(/-/g, " ") : by);
 }
-const JOB_COLS = [{label: "Job"}, {label: "State", w: "7.5rem"}, {label: "Kind", w: "7rem"},
-                  {label: "Node", w: "minmax(0,.7fr)"}, {label: "By", w: "minmax(0,.5fr)"}, {label: "When", w: "7.5rem"},
-                  {label: "Took", w: "5.5rem", num: true}, {act: true, w: "10rem"}];
+// The Job column has the room (B112): a title wraps at a word only when
+// its column holds the longest word, so it takes most of the shares; Node
+// and By keep a floor that holds a node's and an account's name whole, and
+// the buttons' column is one Cancel wide, not a blank band at the right.
+const JOB_COLS = [{label: "Job", w: "minmax(0,4fr)"}, {label: "State", w: "6rem"}, {label: "Kind", w: "6rem"},
+                  {label: "Node", w: "minmax(7rem,1fr)"}, {label: "By", w: "minmax(5.5rem,.7fr)"}, {label: "When", w: "6.5rem"},
+                  {label: "Took", w: "5rem", num: true}, {act: true, w: "5.5rem"}];
 
 // What a job left behind: the artifacts it delivered into dist/, as the
 // download links the Artifacts tab would offer, and the workspace a failed

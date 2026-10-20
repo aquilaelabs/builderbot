@@ -244,6 +244,24 @@ await ready(page);
     .map(type => jobTitle({ type, spec: { timeout: 900 } })));
   ok(titles.every(t => !/exec/.test(t)) && titles[0] === 'measure the disks',
      `a storage job's row is titled what it did, not "exec" (${titles.join(' | ')})`);
+  // B112: a tell names the session by its project, not by its tmux name.
+  const tell = await page.evaluate(() => [
+    jobTitle({ type: 'tell', spec: { session: 'u_525cbd90~claude-hello', text: 'Polish the header' } }),
+    jobTitle({ type: 'tell', spec: { session: 'claude-hello', text: 'go' } })]);
+  ok(tell.every(t => /^tell Claude on hello: "/.test(t) && !/u_525cbd90|claude-hello/.test(t)),
+     `a tell job names the session as Claude on its project (${tell.join(' | ')})`);
+  // ...and at 1280 the table gives its room to the Job column: no word is
+  // cut, Node and By are whole, and no blank band is left at the right.
+  const cols = await page.evaluate(() => {
+    const line = document.querySelector('.jobstab .jbtbl .jbrow .tline');
+    const cell = th => line.querySelector(th ? `.td[data-th="${th}"]` : '.td.lead');
+    const cut = ['Node', 'By'].filter(th => { const c = cell(th); return c.scrollWidth > c.clientWidth + 1; });
+    const act = line.querySelector('.td.act').getBoundingClientRect().width;
+    return { job: Math.round(cell('').getBoundingClientRect().width), cut, act: Math.round(act),
+             wrap: getComputedStyle(cell('')).overflowWrap };
+  });
+  ok(cols.job >= 220 && !cols.cut.length && cols.act <= 100 && cols.wrap === 'break-word',
+     `the Job column has the room, Node and By are whole and the buttons' column is one button wide (${JSON.stringify(cols)})`);
 }
 
 // bb jobs reads the same listing the tab does, through the API as the
