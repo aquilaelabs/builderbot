@@ -10,11 +10,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/aquilaelabs/BuilderBot/actions/workflows/build-image.yml"><img src="https://github.com/aquilaelabs/BuilderBot/actions/workflows/build-image.yml/badge.svg" alt="build image"></a>
-  <a href="https://github.com/aquilaelabs/BuilderBot/actions/workflows/lint.yml"><img src="https://github.com/aquilaelabs/BuilderBot/actions/workflows/lint.yml/badge.svg" alt="lint"></a>
-  <a href="https://github.com/aquilaelabs/BuilderBot/actions/workflows/dashboard.yml"><img src="https://github.com/aquilaelabs/BuilderBot/actions/workflows/dashboard.yml/badge.svg" alt="dashboard tests"></a>
+  <a href="https://github.com/aquilaelabs/builderbot/actions/workflows/build-image.yml"><img src="https://github.com/aquilaelabs/builderbot/actions/workflows/build-image.yml/badge.svg" alt="build image"></a>
+  <a href="https://github.com/aquilaelabs/builderbot/actions/workflows/lint.yml"><img src="https://github.com/aquilaelabs/builderbot/actions/workflows/lint.yml/badge.svg" alt="lint"></a>
+  <a href="https://github.com/aquilaelabs/builderbot/actions/workflows/dashboard.yml"><img src="https://github.com/aquilaelabs/builderbot/actions/workflows/dashboard.yml/badge.svg" alt="dashboard tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache 2.0 license"></a>
-  <a href="https://github.com/aquilaelabs/BuilderBot/pkgs/container/builderbot"><img src="https://img.shields.io/badge/image-ghcr.io-2496ed?logo=docker&logoColor=white" alt="container image on GHCR"></a>
+  <a href="https://github.com/aquilaelabs/builderbot/pkgs/container/builderbot"><img src="https://img.shields.io/badge/image-ghcr.io-2496ed?logo=docker&logoColor=white" alt="container image on GHCR"></a>
 </p>
 
 > [!WARNING]

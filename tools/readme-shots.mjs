@@ -21,7 +21,8 @@
 // one workspace shell, so the account's own layout is untouched and no new
 // terminal is left running. README_SHOT_PROJECT names the project the
 // notebook picture opens (the first one shown otherwise), README_SHOT_VIEW
-// the view it opens on (roadmap otherwise).
+// the view it opens on (roadmap otherwise), README_SHOT_OPEN the number of a
+// roadmap item to show unfolded, with its steps.
 import { createRequire } from 'node:module';
 // require, not import: ESM resolution ignores NODE_PATH (test/lib.mjs).
 const { chromium } = createRequire(import.meta.url)('playwright');
@@ -137,7 +138,12 @@ const desk = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 };
   await page.waitForTimeout(3000); await shoot(page, 'dashboard.png'); await ctx.close(); }
 { const { ctx, page } = await open(desk);
   const name = process.env.README_SHOT_PROJECT || await page.evaluate(() => (state.projects || [])[0]?.name);
-  await tab(page, `openNotebook(${JSON.stringify(name)}, ${JSON.stringify(process.env.README_SHOT_VIEW || "roadmap")})`); await shoot(page, 'notebook.png'); await ctx.close(); }
+  await tab(page, `openNotebook(${JSON.stringify(name)}, ${JSON.stringify(process.env.README_SHOT_VIEW || "roadmap")})`);
+  if (process.env.README_SHOT_OPEN){
+    await page.click(`#roadmapList details.grp[data-id="${process.env.README_SHOT_OPEN}"] > summary .txt`).catch(() => {});
+    await page.waitForTimeout(800);
+  }
+  await shoot(page, 'notebook.png'); await ctx.close(); }
 { const { ctx, page } = await open(desk);
   await tab(page, 'openNodesTab()', 6000); await shoot(page, 'nodes.png'); await ctx.close(); }
 { const { ctx, page } = await open(desk);

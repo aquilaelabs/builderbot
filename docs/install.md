@@ -4,23 +4,19 @@ The Unraid-specific detail for every step lives in
 **[unraid.md](unraid.md)**; this is the complete checklist with the
 decisions you need to make.
 
-### 0. Know the three credentials (they are NOT interchangeable)
+The image, `ghcr.io/aquilaelabs/builderbot`, is public: pulling it needs no
+login.
 
-Three credentials, three places, three jobs: a **GHCR pull token** on the
-host so the server can pull a private image, a **runner token** for the
-nodes' CI runners, and **git SSH keys** for your projects. Which of them
-your setup needs, what each is exactly, and the three things that trip
-people up are in [unraid.md, shared step 1](unraid.md#shared-step-1-credentials);
-decide there before going on.
+### 0. Know the credentials (they are NOT interchangeable)
 
-### 1. Authorize the server to pull the image (one-time)
+Separate credentials for separate jobs: a **runner token** for the nodes' CI
+runners, and **git SSH keys** or a per-project token for your projects.
+Which of them your setup needs, what each is exactly, and the three things
+that trip people up are in
+[unraid.md, shared step 1](unraid.md#shared-step-1-credentials); decide
+there before going on.
 
-A `docker login ghcr.io` on the host with the pull token, persisted across
-Unraid's reboot of root's filesystem: the commands, and why the token must
-be `read:packages` only, are in
-[unraid.md, shared step 2](unraid.md#shared-step-2-log-the-unraid-host-into-ghcr).
-
-### 2. Create the state directories
+### 1. Create the state directories
 
 ```bash
 mkdir -p /mnt/user/appdata/BuilderBot/{home,config/startup.d}
@@ -33,9 +29,9 @@ chown -R 99:100 /mnt/user/appdata/BuilderBot
 | `config/` | your custom startup hooks (`config/startup.d/*.sh`) + persistent logs (`config/logs/`) |
 
 Keep `home/` on a cache/SSD-backed share: it does heavy small-file IO.
-(Logs can be relocated to the array; see step 6.)
+(Logs can be relocated to the array; see step 5.)
 
-### 3. Create the secrets folder (recommended)
+### 2. Create the secrets folder (recommended)
 
 Root-owned, so its contents are **never readable by Claude sessions**:
 
@@ -66,21 +62,18 @@ its git access token instead, one project at a time. Or, if you don't care
 about shielding, put keys in `home/.ssh/`; everything works, Claude can just
 see them.
 
-### 4. Install the container
+### 3. Install the container
 
 **Docker template (recommended)**: get
 [`unraid/builderbot.xml`](../unraid/builderbot.xml) into
 `/boot/config/plugins/dockerMan/templates-user/`, then **Docker → Add
-Container →** pick *builderbot*. The repo is private, so the raw URL 404s
-without auth: easiest is to save the file from your browser and drop it on
-the `flash` SMB share; [docs/unraid.md](unraid.md#install) also has an
-API-based `curl` (which needs a *contents*-read token, not the
-`read:packages` one).
+Container →** pick *builderbot*. From the Unraid terminal that is one
+`curl` of the raw file, in [docs/unraid.md](unraid.md#install).
 
 **Compose Manager**: copy `docker-compose.yml` + `.env.example`→`.env` into
 a compose stack. Same container either way; don't run both.
 
-### 5. Fill in the fields
+### 4. Fill in the fields
 
 Required / usually touched:
 
@@ -88,22 +81,22 @@ Required / usually touched:
 |---|---|
 | Projects folder | One mapping for all of them: `/mnt/user/projects` → `/workspace`. Every folder inside it is a project |
 | State paths | Pre-wired to `/mnt/user/appdata/BuilderBot/{home,config}` |
-| **Secrets directory** | The folder from step 3 (or leave empty if unshielded) |
+| **Secrets directory** | The folder from step 2 (or leave empty if unshielded) |
 
 Everything else has sane defaults: full reference in [reference.md](reference.md#configuration-reference).
 
-### 6. Optional features
+### 5. Optional features
 
 | Want | Do |
 |---|---|
 | Android emulator, builds, CI | Enroll a node from the dashboard's Nodes page. This container compiles nothing and renders nothing: the toolchains, the card and `/dev/kvm` are that machine's |
-| Web dashboard | Always on (it is the controller). Map port 7680 and open it: the first page is the setup, see step 7 and [the dashboard](dashboard.md) |
+| Web dashboard | Always on (it is the controller). Map port 7680 and open it: the first page is the setup, see step 6 and [the dashboard](dashboard.md) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir: read-only; see [Static analysis reports](building.md#static-analysis-reports) |
 | Docker builds (CI jobs, a project's containers) | On a node, never in this container: a node's own Docker, or the Docker sandbox VM ([sandbox-vm.md](sandbox-vm.md)). The template has no Docker socket field |
 | Extra tools | the Toolchains page, per node; the controller carries what it needs in the image |
 
-### 7. First boot
+### 6. First boot
 
 ```bash
 docker logs -f BuilderBot          # banner → hooks → ready
@@ -156,7 +149,7 @@ knows, `bb lint` refuses a `runs-on` naming one that nothing carries, and
 stale **Offline** runners carrying a label a job wants are worth deleting for
 the same reason; they make a job look routable when nothing will pick it up.
 
-### 8. Daily use and updating
+### 7. Daily use and updating
 
 A Claude session is opened from the dashboard, with **Start Claude** on the
 project's card or page, and runs on that project's node. There is no `claude` in this container to exec into.
@@ -228,7 +221,7 @@ it.
 ## Building locally instead of pulling
 
 ```bash
-git clone https://github.com/aquilaelabs/BuilderBot.git && cd BuilderBot
+git clone https://github.com/aquilaelabs/builderbot.git && cd builderbot
 cp .env.example .env && nano .env
 docker compose build && docker compose up -d
 ```

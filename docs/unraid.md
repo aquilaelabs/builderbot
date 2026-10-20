@@ -25,19 +25,20 @@ before creating anything.
 Find the rows that describe what you want; you need every credential marked in
 those rows. Nothing else.
 
-| I want to… | Host GHCR token | Runner token (CI runner page) | SSH key | Per-project token |
-|---|:--:|:--:|:--:|:--:|
-| Pull the image at all: *everyone needs this* | ● | | | |
-| Run Claude against the mounted projects, no remote git | ● | | | |
-| `git clone` / `pull` / `push` private repos from inside | ● | | ● | *or* ● |
-| Run a self-hosted runner for **one repo** | ● | ● | | |
-| Run a self-hosted runner for the **whole org** | ● | ● | | |
+| I want to… | Runner token (CI runner page) | SSH key | Per-project token |
+|---|:--:|:--:|:--:|
+| Run Claude against the mounted projects, no remote git | | | |
+| `git clone` / `pull` / `push` private repos from inside | | ● | *or* ● |
+| Run a self-hosted runner for **one repo** | ● | | |
+| Run a self-hosted runner for the **whole org** | ● | | |
+
+Pulling the image needs none of them: `ghcr.io/aquilaelabs/builderbot` is
+public.
 
 ### What each one is, exactly
 
 | Credential | Type | Permissions | Lives where |
 |---|---|---|---|
-| **Host GHCR token** | PAT **(classic)** | `read:packages`; nothing else | Unraid host, via `docker login` (step 2). Fine-grained tokens cannot pull from GHCR |
 | **Runner token** | PAT (fine-grained), resource owner = **the org** | *One* permission; see the runner-scope table below | Typed into the node's runner on the CI runner page; kept root-only on the controller. Never visible to sessions |
 | **SSH key** | ed25519, **no passphrase** | n/a, since access is whatever the git host grants the key | Made or pasted under **Deploy key** in a project's settings (kept at `/config/deploy-keys`, root-only), or dropped into `/secrets/ssh/` by hand. Either way loaded into a root-owned agent: usable by git, unreadable by sessions |
 | **Per-project token** | PAT (fine-grained) | *Contents*: R/W on the one repository | Typed into the dashboard's clone dialog or the project's settings, stored at `/config/gitcreds/<project>` and named by that repo's `.git/config`. There is no container-wide git token |
@@ -73,32 +74,13 @@ one repo opens one repo.
 fine-grained tokens don't cover GitHub Packages. Images are built on a node,
 never in this container: it has no Docker socket (see the notes at the end).
 
-## Shared step 2: log the Unraid host into GHCR
+## Shared step 2: the appdata directories
 
-The image auto-publishes to `ghcr.io/aquilaelabs/builderbot` on every
-push to `main` (plus a weekly freshness rebuild). While the package is
-private the Unraid host must authenticate to pull it; a public package needs
-no login, and this step can be skipped.
+The image is `ghcr.io/aquilaelabs/builderbot`, public, published on every
+push to `main` and every release (plus a weekly freshness rebuild); pulling
+it needs no login.
 
 In the Unraid terminal:
-
-```bash
-docker login ghcr.io -u <your-github-username>
-# paste the classic PAT with read:packages when prompted
-```
-
-Unraid's root filesystem is rebuilt from flash on every boot, so that login
-would vanish on reboot. Persist it:
-
-```bash
-cp /root/.docker/config.json /boot/config/ghcr-auth.json
-echo 'install -D -m 600 /boot/config/ghcr-auth.json /root/.docker/config.json' >> /boot/config/go
-```
-
-> The auth file on flash contains your PAT base64-encoded (not encrypted).
-> Scope that token to `read:packages` only, so it can't do anything else.
-
-Create the appdata directories:
 
 ```bash
 mkdir -p /mnt/user/appdata/BuilderBot/{home,config/startup.d}
@@ -118,28 +100,17 @@ chown 99:100 /mnt/user/sdk
 
 ### Install
 
-Get the template onto the flash drive. The repo is private, so a plain
-`wget` of the raw URL returns 404, so pick one of these:
-
-**Copy it over (simplest, no token).** The flash drive is an SMB share. On a
-desktop logged into GitHub, open `unraid/builderbot.xml` → **Raw** → save,
-then drop it into `\\<TOWER>\flash\config\plugins\dockerMan\templates-user\`
-as `my-builderbot.xml`.
-
-**Fetch via the API.** Note this needs a token with *repository contents*
-read: the `read:packages` token from step 2 will **not** work (it returns
-404, because GitHub answers 404 rather than 403 for things your token can't
-see). Use a fine-grained token with Contents: read, or a classic one with
-`repo`. Also note `raw.githubusercontent.com` does not reliably accept
-`Authorization` headers for private repos; the API endpoint does:
+Get the template onto the flash drive, from the Unraid terminal:
 
 ```bash
-curl -fsSL \
-  -H "Authorization: Bearer <TOKEN_WITH_CONTENTS_READ>" \
-  -H "Accept: application/vnd.github.raw" \
-  -o /boot/config/plugins/dockerMan/templates-user/my-builderbot.xml \
-  https://api.github.com/repos/aquilaelabs/BuilderBot/contents/unraid/builderbot.xml
+curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-builderbot.xml \
+  https://raw.githubusercontent.com/aquilaelabs/builderbot/main/unraid/builderbot.xml
 ```
+
+**Or copy it over.** The flash drive is an SMB share: open
+`unraid/builderbot.xml` on GitHub → **Raw** → save, then drop it into
+`\\<TOWER>\flash\config\plugins\dockerMan\templates-user\` as
+`my-builderbot.xml`.
 
 **Or copy it out of a clone**, if you already cloned the repo for Option B.
 
@@ -372,9 +343,9 @@ metadata before it reached any code.
    STACK=/boot/config/plugins/compose.manager/projects/builderbot
    mkdir -p "$STACK"
    cd /mnt/user/appdata
-   git clone https://<YOUR_PAT>@github.com/aquilaelabs/BuilderBot.git
-   cp BuilderBot/docker-compose.yml "$STACK"/
-   cp BuilderBot/.env.example "$STACK"/.env
+   git clone https://github.com/aquilaelabs/builderbot.git
+   cp builderbot/docker-compose.yml "$STACK"/
+   cp builderbot/.env.example "$STACK"/.env
    nano "$STACK"/.env && chmod 600 "$STACK"/.env
    ```
 3. ```bash
@@ -512,11 +483,11 @@ than a gate.
 
 ## First-run checks
 
-The first boot, what `bb doctor` checks and how each person signs in to Claude: [install.md, step 7](install.md#7-first-boot).
+The first boot, what `bb doctor` checks and how each person signs in to Claude: [install.md, step 6](install.md#6-first-boot).
 
 ## Daily use
 
-Opening a session, a shell and the status line, adding a project, and updating: [install.md, step 8](install.md#8-daily-use-and-updating).
+Opening a session, a shell and the status line, adding a project, and updating: [install.md, step 7](install.md#7-daily-use-and-updating).
 
 ### Playwright
 
