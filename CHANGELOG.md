@@ -6,6 +6,7 @@
 
 - Updating a node's agent no longer cuts short a job running on it: the agent restarts only after installing a newer version, and only once its jobs end (aac08b2)
 - A dev instance pinned to a branch builds on a node (aac08b2)
+- A container's Start on boot is applied on a hosting-only node (c56e2c0)
 
 ## 0.5.2: 2026-10-20
 
