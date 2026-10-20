@@ -78,15 +78,9 @@ _lock = threading.Lock()
 _state = {"checking": False}
 
 
-def _token():
-    return ""
-
-
-def configure(*, state, version, setting, write_json, audit=None, token=None):
+def configure(*, state, version, setting, write_json, audit=None):
     globals().update(DIR=Path(state) / "apps", SEED=Path(state) / "seed.json", _version=version,
                      _setting=setting, write_json=write_json, audit=audit)
-    if token:
-        globals()["_token"] = token
     globals()["INDEX"] = DIR / "index.json"
 
 
@@ -141,32 +135,14 @@ def path(name, file):
 
 
 def _get(url, limit=MAX_BYTES, accept="application/octet-stream, application/json"):
-    headers = {"Accept": accept, "User-Agent": "builderbot-apps"}
-    # The token only to GitHub's API, where a private repository's releases
-    # and their files are read with it; never to wherever a file redirects.
-    if _token() and url.startswith("https://api.github.com/"):
-        headers["Authorization"] = "Bearer " + _token()
-    req = urllib.request.Request(url, headers=headers)
-    with _OPENER.open(req, timeout=TIMEOUT) as r:                   # noqa: S310 (our releases, or a test's file)
+    # No credential: the apps come from BuilderBot's public releases alone
+    # (the operator, 20 Oct), so a controller holds no GitHub token for them.
+    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "builderbot-apps"})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:                   # noqa: S310 (our releases, or a test's file)
         body = r.read(limit + 1)
     if len(body) > limit:
         raise ValueError(f"more than {limit >> 20} MB")
     return body
-
-
-class _NoTokenAway(urllib.request.HTTPRedirectHandler):
-    """A redirect to another host goes without the token: GitHub sends a
-    file to signed storage, which refuses a request carrying both."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        new = super().redirect_request(req, fp, code, msg, headers, newurl)
-        if new is not None and urllib.parse.urlsplit(newurl).hostname != urllib.parse.urlsplit(req.full_url).hostname:
-            new.headers.pop("Authorization", None)
-            new.unredirected_hdrs.pop("Authorization", None)
-        return new
-
-
-_OPENER = urllib.request.build_opener(_NoTokenAway)
 
 
 def _pick(releases, want):
@@ -200,9 +176,8 @@ def check():
             err = "no published release to take the apps from"
     except (OSError, ValueError) as e:
         err = f"the releases did not answer: {e}"
-        if "404" in str(e) and not _token():
-            err += (" (a private repository answers 404 to anybody without a token: an administrator adds one "
-                    "under Apps on the Controller page)")
+        if "404" in str(e):
+            err += " (the apps come from BuilderBot's public releases, and its repository is not public yet)"
     DIR.mkdir(parents=True, exist_ok=True)
     for name, a in APPS.items():
         if not offered(name):
@@ -269,10 +244,8 @@ def _keep(name, asset, sha_asset, was):
 
 
 def _where(asset):
-    """Where a release's file is read from: its API address with the token
-    (the one way into a private repository's files), else its download
-    link."""
-    return asset["url"] if _token() and asset.get("url") else asset["browser_download_url"]
+    """Where a release's file is read from: its public download link."""
+    return asset["browser_download_url"]
 
 
 def check_now():

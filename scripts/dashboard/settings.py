@@ -85,10 +85,6 @@ KEYS = {
     "apps_android": {"default": True, "kind": "bool", "applied": "now"},
     "apps_vscode": {"default": True, "kind": "bool", "applied": "now"},
     "apps_companion": {"default": True, "kind": "bool", "applied": "now"},
-    # ...and a token that may read the releases, for as long as BuilderBot's
-    # repository is private: GitHub answers a private repository's releases
-    # 404 to anybody without one. A secret, never shown back.
-    "apps_token": {"default": "", "kind": "secret", "applied": "now"},
 }
 
 
@@ -117,6 +113,25 @@ def reset_debug():
         if on:
             write_json(FILE, d)
     return bool(on)
+
+
+# Settings that no longer exist, cleared off disk at start: apps_token was
+# a GitHub token for the apps' releases while the repository was private,
+# and the apps are fetched from public releases alone now (the operator,
+# 20 Oct), so a token saved then is not left lying in /config.
+RETIRED = ("apps_token",)
+
+
+def retire():
+    """Drop every retired setting still on disk. Which were there."""
+    with _lock:
+        d = load()
+        gone = [k for k in RETIRED if k in d]
+        for k in gone:
+            d.pop(k)
+        if gone:
+            write_json(FILE, d)
+    return gone
 
 
 def configure(*, write_json, state):

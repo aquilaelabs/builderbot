@@ -3194,6 +3194,11 @@ if not settings.debug_available():
             print("dashboard: DEBUG_MODE is not 1, so every debug and dev option was turned off", flush=True)
     except Exception as e:                                # noqa: BLE001 (a start must not fail on this)
         print(f"dashboard: debug options not reset: {e}", flush=True)
+try:
+    if (gone := settings.retire()):
+        print(f"dashboard: retired settings cleared: {', '.join(gone)}", flush=True)
+except Exception as e:                                    # noqa: BLE001 (a start must not fail on this)
+    print(f"dashboard: retired settings not cleared: {e}", flush=True)
 # The briefing reads a project's own settings for its "While tests run"
 # section (what a change asked for during a run does); prefs is imported
 # after preamble is configured, so it is handed over here.
@@ -3902,8 +3907,7 @@ profiletab.configure(devices=devices)
 # Settings page's, set first by the seed file (step 4).
 import apps                                                      # noqa: E402
 apps.configure(state=STATE, version=lambda: image_stamp().get("version") or "",
-               setting=settings.get, write_json=write_json, audit=db.audit,
-               token=lambda: settings.secret("apps_token"))
+               setting=settings.get, write_json=write_json, audit=db.audit)
 devices.configure_apps(apps)
 
 # A person's PC lent to a project (R270 step 6): the companion lends a
