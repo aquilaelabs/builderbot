@@ -62,6 +62,20 @@ class Apps(unittest.TestCase):
         self.assertIsNone(apps.path("android", "../index.json"))
         self.assertIsNone(apps.path("companion", "builderbot-companion-0.7.0.pyz"))
 
+    def test_a_release_with_no_file_of_an_app_says_so_on_its_row(self):
+        # 0.5.3 went out with no APK: every install's Apps page said its look
+        # at the release did not work, where the look was fine.
+        rel = self.release("v0.7.0", ["builderbot-vscode-0.7.0.vsix", "builderbot-companion-0.7.0.exe"])
+        (self.tmp / "releases.json").write_text(json.dumps([rel]))
+        apps.RELEASES_URL = f"file://{self.tmp / 'releases.json'}"
+        v = apps.check()
+        rows = {a["name"]: a for a in v["apps"]}
+        self.assertEqual(rows["android"]["absent"], "v0.7.0")
+        self.assertEqual(rows["android"]["files"], [])
+        self.assertEqual(rows["vscode"]["absent"], "")
+        self.assertIn("builderbot-companion-*.pyz not in v0.7.0", v["problem"])
+        self.assertNotIn("Android", v["problem"])
+
     def test_the_companion_and_the_extension_are_dev_features(self):
         # The operator, 20 Oct: offered, fetched and served only with Offer
         # dev features on; the Android app is not one.

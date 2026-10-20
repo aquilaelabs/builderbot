@@ -124,7 +124,7 @@ def view():
         if a.get("dev") and not unvetted_ok():
             continue
         out.append({"name": name, "title": a["title"], "does": a["does"], "offered": offered(name),
-                    "version": h.get("version", ""),
+                    "version": h.get("version", ""), "absent": (idx.get("absent") or {}).get(name, ""),
                     "files": [{"file": f["file"], "sha256": f["sha256"], "size": f["size"],
                                "url": f"/apps/{name}/{f['file']}"}
                               for f in h.get("files") or []]})
@@ -190,6 +190,9 @@ def check():
         if "404" in str(e):
             err += " (the apps come from BuilderBot's public releases, and its repository is not public yet)"
     DIR.mkdir(parents=True, exist_ok=True)
+    # An app the release carries no file of at all is said on its own row,
+    # not as a look that did not work: a release may go out without one.
+    absent = {}
     for name, a in APPS.items():
         if not offered(name):
             shutil.rmtree(DIR / name, ignore_errors=True)
@@ -220,9 +223,11 @@ def check():
                     old.unlink(missing_ok=True)
             held[name] = {"version": base_version(rel.get("tag_name")) or str(rel.get("tag_name") or ""),
                           "files": files, "at": int(time.time())}
-        if missing and not err:
+        if not any(_asset(rel, prefix, suffix) for prefix, suffix in a["files"]):
+            absent[name] = str(rel.get("tag_name") or "")
+        elif missing and not err:
             err = f"{a['title']}: {', '.join(missing)} not in {rel.get('tag_name')}"
-    idx = {"apps": held, "checked": int(time.time()), "problem": err,
+    idx = {"apps": held, "checked": int(time.time()), "problem": err, "absent": absent,
            "release": str((rel or {}).get("tag_name") or idx.get("release") or ""), "matched": matched}
     write_json(INDEX, idx)
     return view()
