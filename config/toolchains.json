@@ -1146,7 +1146,7 @@
         "run": [
           "sh",
           "-ec",
-          "dst=\"$2\"; mkdir -p \"$dst/bin\" \"$dst/libexec\" \"$dst/models/voices\" \"$dst/models/whisper\"; rm -rf \"$dst\"/.work.* 2>/dev/null || true; t=\"$(mktemp -d \"$dst/.work.XXXXXX\")\"; tar -xzf \"$1\" -C \"$t\"; cp \"$(find \"$t\" -name uv -type f | head -1)\" \"$dst/libexec/uv\"; chmod +x \"$dst/libexec/uv\"; rm -rf \"$dst/python\" \"$dst/venv\"; export UV_PYTHON_INSTALL_DIR=\"$dst/python\" UV_CACHE_DIR=\"$t/cache\" UV_NO_CONFIG=1 UV_LINK_MODE=copy HF_HUB_DISABLE_TELEMETRY=1; \"$dst/libexec/uv\" venv -q --python 3.12 \"$dst/venv\"; \"$dst/libexec/uv\" pip install -q --python \"$dst/venv/bin/python\" piper-tts faster-whisper \"av<16\"; \"$dst/venv/bin/python\" -m piper.download_voices --download-dir \"$dst/models/voices\" en_US-lessac-medium; \"$dst/venv/bin/python\" -c \"import sys; from faster_whisper import download_model; download_model('base.en', output_dir=sys.argv[1])\" \"$dst/models/whisper/base.en\"; ln -sf ../venv/bin/piper \"$dst/bin/piper\"; printf '#!/bin/sh\\nhere=\"$(dirname \"$(readlink -f \"$0\")\")\"\\nexec \"$here/../venv/bin/python\" \"$@\"\\n' > \"$dst/bin/python-audio\"; chmod +x \"$dst/bin/python-audio\"; rm -rf \"$t\" 2>/dev/null || true",
+          "dst=\"$2\"; mkdir -p \"$dst/bin\" \"$dst/libexec\" \"$dst/models/voices\" \"$dst/models/whisper\"; rm -rf \"$dst\"/.work.* 2>/dev/null || true; t=\"$(mktemp -d \"$dst/.work.XXXXXX\")\"; tar -xzf \"$1\" -C \"$t\"; cp \"$(find \"$t\" -name uv -type f | head -1)\" \"$dst/libexec/uv\"; chmod +x \"$dst/libexec/uv\"; rm -rf \"$dst/python\" \"$dst/venv\"; export UV_PYTHON_INSTALL_DIR=\"$dst/python\" UV_CACHE_DIR=\"$t/cache\" UV_NO_CONFIG=1 UV_LINK_MODE=copy HF_HUB_DISABLE_TELEMETRY=1; \"$dst/libexec/uv\" venv -q --python 3.12 \"$dst/venv\"; \"$dst/libexec/uv\" pip install -q --python \"$dst/venv/bin/python\" piper-tts faster-whisper \"av<16\"; \"$dst/venv/bin/python\" -m piper.download_voices --download-dir \"$dst/models/voices\" en_US-ljspeech-medium; \"$dst/venv/bin/python\" -c \"import sys; from faster_whisper import download_model; download_model('base.en', output_dir=sys.argv[1])\" \"$dst/models/whisper/base.en\"; ln -sf ../venv/bin/piper \"$dst/bin/piper\"; printf '#!/bin/sh\\nhere=\"$(dirname \"$(readlink -f \"$0\")\")\"\\nexec \"$here/../venv/bin/python\" \"$@\"\\n' > \"$dst/bin/python-audio\"; chmod +x \"$dst/bin/python-audio\"; rm -rf \"$t\" 2>/dev/null || true",
           "--",
           "{script}",
           "{dir}"
@@ -1164,8 +1164,8 @@
           "url": "https://github.com/rhasspy/piper/blob/master/LICENSE.md"
         },
         {
-          "label": "the lessac voice, trained on a research-licensed dataset",
-          "url": "https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/lessac/medium/MODEL_CARD"
+          "label": "the ljspeech voice, trained on the public-domain LJ Speech dataset",
+          "url": "https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ljspeech/medium/MODEL_CARD"
         },
         {
           "label": "faster-whisper (MIT)",
