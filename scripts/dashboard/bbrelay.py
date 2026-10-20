@@ -130,6 +130,13 @@ def admit(me, req):
     if argv[:2] == ["rules", "check"]:
         return None, ({"error": "bb rules check runs on the machine the session is on, "
                                 "not on the controller: run it there"}, 400)
+    # A new install's setup from a shell (R84): an administrator's, at the
+    # controller. Each verb refuses a session itself; this refuses it here as
+    # well, whatever the verb does, so nothing a session sends sets a
+    # project's node or mints a node's token.
+    if me.get("session") and (argv[:2] in (["nodes", "enroll-token"], ["settings", "node"])):
+        return None, ({"error": f"bb {' '.join(argv[:2])} is an administrator's, from a shell on the "
+                                "controller, never a session's"}, 403)
     # `bb findings --all` means every project in the scanner's report, and
     # the report covers the whole share. The rest of this door keeps a
     # session inside its own project; this flag walks straight out of it,
