@@ -13,6 +13,8 @@
 - A container whose folders the host will not let it re-own (NFS that squashes root, some NAS shares) starts and says so in its log, rather than restarting forever; the first-account page says when /config cannot be written and what to do on the host (4b9077b)
 - The install guide and the Unraid template no longer ask for a GitHub token or a docker login: the image is public (4b9077b)
 - A container whose compose mounts the Docker socket starts on a node (c9b08d4)
+- A dev instance's rebuild pulls, stops and starts with the same build variables it builds with, and a build gets BB_BUILD_TAG, its version in a form an image tag accepts (d8586f6)
+- bb lint passes a compose file whose required variables are left empty in .env.example (d8586f6)
 
 ## 0.5.0: 2026-10-20
 
