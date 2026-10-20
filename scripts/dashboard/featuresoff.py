@@ -22,6 +22,7 @@ FEATURES = {
     "image-updates": "checking for and pulling container image updates",
     "runner": "CI runners on nodes",
     "enroll": "enrolling a node",
+    "shell": "a terminal on the controller itself",
 }
 WHY_DEFAULT = "switched off on this install"
 TUNNEL_SETTINGS = ("tunnel_host", "tunnel_token", "cf_api_token")

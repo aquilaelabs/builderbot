@@ -5081,6 +5081,10 @@ class Handler(BaseHTTPRequestHandler):
                            uid=users.uid_of(self._who() or {}) or "")
         if target["where"] == "refused":
             return self._term_notice(target["why"], 503)
+        # A terminal on the controller itself, switched off for this install
+        # (R81): what a node runs is the node's, and stays.
+        if target["where"] != "node" and (why := featuresoff.sentences().get("shell")):
+            return self._term_notice(why, 403)
         rest = self._scoped_arg(self.path[len("/term"):], node=target["where"] == "node")
         if not rest or rest.startswith("?"):
             # ttyd's client resolves "token" and "ws" against the page URL,
