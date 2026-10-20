@@ -9,10 +9,12 @@ import re
 import threading
 import time
 
-# Injected by configure(): the server's subprocess runner, and the wait that
-# holds the first run until the container has finished starting.
+# Injected by configure(): the server's subprocess runner, the wait that
+# holds the first run until the container has finished starting, and what a
+# runner token's node id and slot are in a person's words (B71).
 run = None
 wait_for_boot = None
+runner_named = None
 
 # Half an hour, a constant (R29): the card's own button re-runs it on demand,
 # which is the control anybody actually reached for.
@@ -27,8 +29,33 @@ _verdict = {"when": 0, "checks": [], "failed": False, "running": True}
 LINE = re.compile(r"^\s*\[(ok|FAIL|skip|warn)\]\s+(.*\S)")
 
 
-def configure(*, run, wait_for_boot):
-    globals().update(run=run, wait_for_boot=wait_for_boot)
+# bb doctor's runner token line: it knows the token store's node id and
+# slot, which name nothing a person can find on screen.
+RUNNER = re.compile(r"^runner token for (\S+) on (n_[0-9a-f]{8}): (.*)$")
+
+
+def configure(*, run, wait_for_boot, runner_named=None):
+    globals().update(run=run, wait_for_boot=wait_for_boot, runner_named=runner_named)
+
+
+def _runner_line(check):
+    """A runner token's line with its node by name and its runner by the
+    repository it serves, and for a failure the way to the page a new token
+    is given on (B71): `href` and `act` the panel draws as a link."""
+    m = RUNNER.match(check["text"])
+    if not m or runner_named is None:
+        return check
+    slot, nid, rest = m.groups()
+    try:
+        node, repo = runner_named(nid, slot)
+    except Exception:                                                 # noqa: BLE001
+        return check
+    out = dict(check, text=f"the CI runner token for {repo or slot} on {node or nid}: {rest}")
+    if check["level"] == "FAIL":
+        out.update(href=f"#/build/runner/{nid}", act="Open its CI runner",
+                   detail=(check["detail"] + "\n" if check["detail"] else "")
+                   + "Add runner there with the same address and a new token from the git host")
+    return out
 
 
 def refresh():
@@ -64,6 +91,7 @@ def _run_once():
             checks.append({"level": m.group(1), "text": m.group(2), "detail": ""})
         elif checks and line.strip() and not line.startswith("=="):
             checks[-1]["detail"] = (checks[-1]["detail"] + "\n" + line.strip()).strip()
+    checks = [_runner_line(c) for c in checks]
     with _lock:
         _verdict.update(when=int(time.time()), checks=checks, failed=r["code"] != 0)
 

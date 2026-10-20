@@ -4318,6 +4318,10 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
    phone never shows. */
 .doctor .probs .why{display:block;color:var(--dim);font:var(--f-note);white-space:pre-line;
   overflow-wrap:anywhere;margin-top:2px}
+/* ...and where it is fixed, when the server knows (B71): a link on its own
+   line, a thumb's height on a phone. */
+.doctor .probs .pagelink{display:inline-flex;align-items:center;min-height:32px;color:var(--accent);font:var(--f-ui)}
+@media (pointer:coarse){.doctor .probs .pagelink{min-height:44px}}
 /* A long check wraps rather than ending in an ellipsis: with no tooltips
    (11 Oct) a cut chip says nothing of the rest. A chip of two lines takes the
    control's corners, where a pill's round ends would bulge. */
@@ -6848,7 +6852,8 @@ document.addEventListener("keydown", e => {
 $("bDocDot").onclick = e => { e.stopPropagation(); headerOnly("doctor"); toggleDoctor(); };
 document.addEventListener("click", e => {
   if (docShown && e.target.isConnected
-      && !$("docPanel").contains(e.target) && !$("bDocDot").contains(e.target))
+      && (!$("docPanel").contains(e.target) || e.target.closest("#docPanel a[href]"))
+      && !$("bDocDot").contains(e.target))
     toggleDoctor(false);
 });
 document.addEventListener("keydown", e => {

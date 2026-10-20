@@ -3732,7 +3732,11 @@ def client_gone(sock):
 # ---- bb doctor, cached for the Doctor card: doctor.py ----------------------
 import doctor                                                    # noqa: E402
 
-doctor.configure(run=run, wait_for_boot=lambda: (wait_for_boot(), wait_for_nodes()))
+doctor.configure(run=run, wait_for_boot=lambda: (wait_for_boot(), wait_for_nodes()),
+                 runner_named=lambda nid, slot: (
+                     (nodes.node(nid) or {}).get("name") or "",
+                     re.sub(r"^[a-z]+://[^/]+/|\.git$|/$", "",
+                            ((nodes.runners_of(nodes.node(nid) or {}).get(slot) or {}).get("url") or ""))))
 # A node dialing in after silence re-asks the doctor now rather than in up
 # to half an hour: after a reboot the card kept saying no node could run a
 # session long after they were all back (the operator, 25 Sep).
