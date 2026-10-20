@@ -177,6 +177,7 @@ dashboard.
 Everything else, from installing to the full command reference, is in
 **[docs/](docs/README.md)**, which is also the dashboard's Help:
 
+- [Everything it does](docs/features.md), one area at a time
 - [Install](docs/install.md), with the [Unraid walkthrough](docs/unraid.md)
 - [Start here](docs/start-here.md), for an account on somebody else's BuilderBot
 - [How it works](docs/how-it-works.md), the overview, with a doc for each part
