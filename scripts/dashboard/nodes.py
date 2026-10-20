@@ -970,6 +970,14 @@ def enroll_script(principal, req):
     ans = enrollscript.check(req | ({"sessions": False} if ho else {}), again=enrolled)
     if ans.get("error"):
         return ans
+    # No walk on record yet (R48): reaching the controller through WireGuard
+    # and a Tailscale SSH door are dev features until each is proved and
+    # written down. A public hostname and the cloudflared door are in daily
+    # use (the operator, 20 Oct).
+    if (ans["reach"] == "wireguard" or ans.get("door") == "tailscale") \
+            and not (forges and forges.unvetted_ok and forges.unvetted_ok()):
+        return {"error": "reaching the controller through WireGuard, and a Tailscale SSH door, are dev features: "
+                         "turn on Offer dev features under Controller settings to use them"}
     prov = HERE.parent.parent / "nodes" / "provision-linux.sh"
     if not prov.is_file():
         return {"error": "this controller ships no provisioner"}

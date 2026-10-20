@@ -1699,6 +1699,9 @@ function ndDialogs(){
     // A node that has a machine (B637): a pending one never ran its script,
     // so its new one is a first enrollment, worded and checked as one.
     const enrolled = !!again && again.state !== "pending";
+    // WireGuard reach and the Tailscale door have no walk on record (R48):
+    // offered with Offer dev features on, marked so.
+    const dev = !!state?.settings?.settings?.offer_unvetted?.value;
     document.getElementById("ndTitle").textContent = again ? `Enroll ${again.name} again` : "Enroll a node";
     boxWidth(false);
     body.innerHTML = `<div class="field">
@@ -1721,8 +1724,8 @@ function ndDialogs(){
           "a way in for ssh, switched on and off from the node's row. cloudflared publishes the machine's port 22 at a hostname of its own, with a tunnel token from Zero Trust; Tailscale joins the machine to your tailnet with an auth key and answers ssh there, with no public name")}
           <select id="ndEnDoor">
             <option value="">none</option>
-            <option value="cloudflared">cloudflared: port 22 at a hostname</option>
-            <option value="tailscale">Tailscale: ssh on the tailnet</option>
+            <option value="cloudflared">cloudflared: port 22 at a hostname</option>${dev ? `
+            <option value="tailscale">Tailscale: ssh on the tailnet (dev)</option>` : ""}
           </select></div>
         <div class="setrow col ctlrow" id="ndEnDoorHostRow" hidden>${lbl("ndEnDoorHost", "The door's hostname",
           "a public hostname of its own on the tunnel (not the controller's), set in Zero Trust to go to ssh://localhost:22")}
@@ -1739,8 +1742,8 @@ function ndDialogs(){
         <div class="setrow col ctlrow">${lbl("ndEnReach", "Reaches the controller",
           "how the machine dials in. Through WireGuard, the config your router made for it goes inside the script, and only the controller is routed through the tunnel. Through a public hostname, a tunnel at home (Cloudflare Tunnel, Tailscale Funnel, ngrok, frp) publishes the controller at a name and the machine dials that: nothing on your router changes and it never learns your address")}
           <select id="ndEnReach">
-            <option value="lan">on this network</option>
-            <option value="wireguard">WireGuard</option>
+            <option value="lan">on this network</option>${dev ? `
+            <option value="wireguard">WireGuard (dev)</option>` : ""}
             <option value="public">a public hostname (a tunnel from home)</option>
           </select></div>
         <div class="setrow col ctlrow">${lbl("ndEnCtl", "Controller's address",

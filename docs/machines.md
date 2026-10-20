@@ -130,6 +130,11 @@ VMware refuses a static address outside `00:50:56:00-3F`, Hyper-V uses
 Paste the manager's own uuid and MAC into the two fields when the VM already
 exists. `docs/sandbox-vm.md` is the long version.
 
+Two of Enroll node's options are dev features too, offered tagged *(dev)*
+only while *Offer dev features* is on, since neither has been proven end to
+end yet: reaching the controller **through WireGuard**, and a **Tailscale**
+SSH door. A public hostname and the cloudflared door are offered to everyone.
+
 **Enroll node** is the other way in, and the one the design is built around:
 it makes a pending node and mints a one-time token (`bbe_…`, good for a day),
 shown once inside the command to run on the machine,

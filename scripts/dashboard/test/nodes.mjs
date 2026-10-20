@@ -2556,6 +2556,23 @@ await page.evaluate(async () => {
     'PublicKey = cHVibGlja2V5cHVibGlja2V5cHVibGlja2V5cHViMDA=', 'AllowedIPs = 0.0.0.0/0',
     'Endpoint = home.example.net:51820', ''].join('\n');
   const rows = async () => (await page.evaluate(async () => { await loadNodes(); return nodesList.length; }));
+  // WireGuard and the Tailscale door have no walk on record (R48): with dev
+  // features off they are not offered, and the server refuses them.
+  const devSet = v => page.evaluate(async on => { await fetch('/api/settings', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ set: { offer_unvetted: on } }) });
+    await refresh(); }, v);
+  await devSet(false);
+  await page.click('.nodestab #ndEnroll');
+  await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
+  const offeredOff = await page.evaluate(() => ({ reach: [...$('ndEnReach').options].map(o => o.value),
+    door: [...$('ndEnDoor').options].map(o => o.value) }));
+  const refusedOff = await page.evaluate(() => nodeAct({ action: 'enroll', script: true, name: 'wgoff', reach: 'wireguard',
+    controller: location.origin, wireguard: '[Interface]' }));
+  ok(offeredOff.reach.join() === 'lan,public' && offeredOff.door.join() === ',cloudflared'
+     && /WireGuard, and a Tailscale SSH door, are dev features/.test(refusedOff.error || ''),
+     `with dev features off, Enroll node offers the LAN, a public hostname and the cloudflared door, and the server refuses WireGuard and Tailscale (${JSON.stringify(offeredOff)}; ${refusedOff.error})`);
+  await page.click('#ndBody #ndEnCancel');
+  await devSet(true);
   await page.click('.nodestab #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
   ok(await page.$eval('#ndBody #ndEnWgRow', r => r.hidden) && await page.$eval('#ndBody #ndEnCtl', i => i.value) === new globalThis.URL(URL).origin,
@@ -2725,6 +2742,8 @@ await page.evaluate(async () => {
   const probe = await page.evaluate(() => nodeAct({ action: 'vm-xml', name: 'probe' }));
   ok((probe.catalog || []).map(h => h.id).join() === 'unraid' && !probe.catalog[0].dev,
      `with unvetted features off the generator offers Unraid alone (${(probe.catalog || []).map(h => h.id).join(', ')})`);
+  await page.evaluate(async () => { await fetch('/api/settings', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ set: { offer_unvetted: false } }) }); });
   const no = await page.evaluate(() => nodeAct({ action: 'vm-xml', name: 'probe', hv: 'proxmox' }));
   ok(/Proxmox VE is dev, not yet vetted/.test(no.error || '') && /Offer dev features/.test(no.error || ''),
      `...and refuses another, naming the switch (${no.error})`);
