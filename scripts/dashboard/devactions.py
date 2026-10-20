@@ -232,7 +232,7 @@ def _plan(project, instance, action, extra=None):
           + (["--no-build", "--pull", "missing"] if ship else []), "timeout": 1800, "env": env}
     # Every step reads the compose file with the same variables, the build's
     # and the commit's among them: a file naming its images by BB_BUILD_REV
-    # was pulled as :dev, which no registry has (the demo, 20 Oct).
+    # was pulled as :dev, which no registry has (20 Oct).
     down = {"name": "stopping", "argv": stamped + base + ["down", "--remove-orphans"], "timeout": 180, "env": env}
     build = {"name": "building", "argv": stamped + base + ["build"], "timeout": 3600, "env": env}
     # The env gate, in the only place a PLAN can carry it: a rebuild that

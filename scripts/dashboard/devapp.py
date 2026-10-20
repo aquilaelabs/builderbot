@@ -2614,7 +2614,7 @@ def _build_env(project, instance=MAIN):
             out["BB_BUILD_VERSION"] = str(f)
         # ...and the same version in the form an image tag can carry, with
         # no `+` (docker refused "...:0.5.0-dev.6+ba86e7d" as an invalid
-        # reference, the demo, 20 Oct): the one to put after a colon.
+        # reference, 20 Oct): the one to put after a colon.
         t = forms.get("file")
         if t:
             out["BB_BUILD_TAG"] = str(t)

@@ -4190,7 +4190,7 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
             # one beside the compose file first, as a container built from it
             # reads, then the root's. Its empty values (an example carries
             # names, not values) are filled with a stand-in, or a required
-            # ${NAME:?} failed lint on every run (the demo, 20 Oct).
+            # ${NAME:?} failed lint on every run (20 Oct).
             local -a envarg=()
             local cdir ex="" stand=""
             cdir="$(dirname "$cf")"

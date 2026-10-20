@@ -1688,7 +1688,7 @@ ok(AB.result.state === 'canceled' && /stopped/.test(AB.result.error),
 
 // Every step of a rebuild on a node reads the compose file with the build's
 // variables: the pull ran without them, so a file naming its images by
-// ${BB_BUILD_REV} pulled :dev, which no registry has (the demo, 20 Oct).
+// ${BB_BUILD_REV} pulled :dev, which no registry has (20 Oct).
 const bp = execFileSync('python3', ['-c', `
 import importlib.util, json, tempfile, sys
 spec = importlib.util.spec_from_file_location('d', ${
