@@ -5,7 +5,8 @@
 // Also: Start Claude says why it is grey (B88); New project and the trash
 // are dead for an account without them, and the trash never reads a
 // refusal as an empty bin (B87); the settings page does not ask for what
-// the role cannot read (B89).
+// the role cannot read (B89); the Profile's Password says what is wrong
+// under the field it is about (B90).
 import { launch, newPage, ok, done, ready, sleep, URL, DIR, nbShown, splitPick } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -147,8 +148,40 @@ await splitPick(page, 'snapshots');
 const snapSaid = await page.evaluate(() => document.querySelector('#rnSnapRows')?.textContent || '');
 ok(/Project settings Write on alpha/.test(snapSaid), `...Snapshots says why, from the row (${snapSaid.slice(0, 80)})`);
 
-// The bin opened by hand above is the one refusal asked for on purpose.
-const errs = page.errors.filter(e => !/\/api\/trash\b/.test(e));
+// ---- the Profile's Password (B90) -----------------------------------------
+await page.evaluate(() => openProfileTab());
+await page.waitForSelector('#pfPasswd', { state: 'attached', timeout: 15000 });
+await splitPick(page, 'password');
+const pwState = () => page.evaluate(() => ({ live: !document.querySelector('#pfPasswd').disabled,
+  cur: document.querySelector('#pfCurWhy').hidden ? '' : document.querySelector('#pfCurWhy').textContent,
+  nw: document.querySelector('#pfNewWhy').hidden ? '' : document.querySelector('#pfNewWhy').textContent,
+  nw2: document.querySelector('#pfNew2Why').hidden ? '' : document.querySelector('#pfNew2Why').textContent }));
+ok(!(await pwState()).live, 'Change password is dead with nothing typed');
+await page.fill('#pfCur', PW);
+await page.fill('#pfNew', 'short');
+let s = await pwState();
+ok(!s.live && /shorter than 8/.test(s.nw), `a new one under 8 says so under it, the button dead (${s.nw})`);
+await page.fill('#pfNew', 'a-new-pass-1');
+await page.fill('#pfNew2', 'a-new-pass-2');
+s = await pwState();
+ok(!s.live && /two new passwords differ/.test(s.nw2), `two that differ say so under the second, the button dead (${s.nw2})`);
+await page.fill('#pfNew2', 'a-new-pass-1');
+await page.fill('#pfCur', 'not-the-password');
+s = await pwState();
+ok(s.live && !s.nw && !s.nw2, 'the same twice, 8 or more, and a current one typed: live, nothing said');
+const toasts = await page.evaluate(() => document.querySelectorAll('.tst').length);
+await page.click('#pfPasswd');
+await page.waitForFunction(() => !document.querySelector('#pfCurWhy').hidden, null, { timeout: 15000 });
+s = await pwState();
+ok(/current password is not right/.test(s.cur) && await page.evaluate(() => document.querySelectorAll('.tst').length) === toasts,
+   `a wrong current one is said under Current password, not in a toast (${s.cur})`);
+await page.fill('#pfCur', PW);
+s = await pwState();
+ok(!s.cur, '...and goes as the field is typed into again');
+
+// The bin opened by hand above, and the wrong current password, are the
+// two refusals asked for on purpose.
+const errs = page.errors.filter(e => !/\/api\/(trash|profile)\b/.test(e));
 ok(errs.length === 0, `no console errors through the walk${errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''}`);
 await api('/api/roles', { action: 'remove', name: 'rdread' });
 await done(browser);
