@@ -85,6 +85,11 @@ ok(dropped.status === 400, 'a read taken away in the settings is gone from a run
 const relay = (argv, project) => api('/api/v1/bb', { argv, project, cwd: `${DIR}/ws/${project}` }, asSession(tok));
 const list = await relay(['roadmap'], 'beta');
 ok(list.status === 200 && !list.error, `bb roadmap relayed for beta from alpha's session answers (${list.status} ${(list.error || '').slice(0, 60)})`);
+// list is the bare verb's own form, and reads (diag report #115, B119).
+for (const argv of [['roadmap', 'list'], ['bug', 'list']]){
+  const r = await relay(argv, 'beta');
+  ok(r.status === 200 && !r.error, `bb ${argv.join(' ')} relayed for beta from alpha's session answers (${r.status} ${(r.error || '').slice(0, 60)})`);
+}
 const add = await relay(['roadmap', 'add', 'from alpha'], 'beta');
 ok(add.status === 403 && /beta is read-only from a session on alpha: bb roadmap add would change it/.test(add.error || ''),
    `...and bb roadmap add for beta is refused, naming the words (${add.error})`);

@@ -82,8 +82,8 @@ def _argv(req):
 # with the forms of it that only look. Anything not listed is a write, or a
 # verb that acts on the project's machines, and is refused by name.
 READ_FORMS = {
-    "roadmap": ("", "show", "history", "pending", "--json"),
-    "bug": ("", "all", "show", "find", "history", "pending", "--json"),
+    "roadmap": ("", "list", "ls", "show", "history", "pending", "--json"),
+    "bug": ("", "list", "ls", "all", "show", "find", "history", "pending", "--json"),
     "rules": ("", "show", "history", "pending", "--json"),
     "tests": ("", "show", "drift", "flagged", "projection", "last", "log", "--json"),
     "history": None,                    # every form reads
