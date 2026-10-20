@@ -340,4 +340,49 @@ ok(noVid.status !== 0 && /no such video/.test(noVid.stderr || ''), 'a video that
   ok(gone.status === 3 && !existsSync(`${S}/gone.png`) && /did not answer/.test(gone.stderr || ''),
      `...and a page that does not answer is no picture and exit 3, saying so (${gone.status}; ${(gone.stderr || '').trim().slice(0, 80)})`);
 }
+// B143: this session's own token goes to the controller's origin alone. A
+// page on another host (here the same loopback under another port, as a dev
+// instance on bb-sandbox:7680 was beside the controller's :7680) is shot
+// and recorded without it; the controller itself is shot with it.
+{
+  const { spawn } = await import('node:child_process');
+  const web = `${S}/heard`; mkdirSync(web, { recursive: true });
+  const log = `${web}/auth.log`;
+  writeFileSync(`${web}/srv.py`, `import http.server, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        open(sys.argv[2], "a").write((self.headers.get("Authorization") or "-") + "\\n")
+        self.send_response(200); self.send_header("Content-Type", "text/html"); self.end_headers()
+        self.wfile.write(b"<!doctype html><h1>heard</h1>")
+    def log_message(self, *a): pass
+http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+`);
+  const port = 30000 + Math.floor(Math.random() * 20000);
+  const srv = spawn('python3', [`${web}/srv.py`, String(port), log], { stdio: 'ignore' });
+  for (let i = 0; i < 150; i++){
+    try { if ((await fetch(`http://127.0.0.1:${port}/`)).ok) break; } catch {}
+    await new Promise(r => setTimeout(r, 100));
+  }
+  const heard = () => { const t = existsSync(log) ? readFileSync(log, 'utf8') : ''; writeFileSync(log, ''); return t; };
+  heard();
+  const as = controller => ({ ...process.env, BB_TOKEN: 'bbs_dGVzdA', BB_CONTROLLER: controller, DASHBOARD_PORT: String(port) });
+  const url = `http://127.0.0.1:${port}/`;
+  const away = spawnSync('bash', [`${REPO}/scripts/bb`, 'capture', 'shot', url, `${S}/heard-away.png`, '--now'],
+    { encoding: 'utf8', env: as('http://127.0.0.2:7680') });
+  const awayHeard = heard();
+  const home = spawnSync('bash', [`${REPO}/scripts/bb`, 'capture', 'shot', url, `${S}/heard-home.png`, '--now'],
+    { encoding: 'utf8', env: as(`http://127.0.0.1:${port}`) });
+  const homeHeard = heard();
+  let reelHeard = 'skipped';
+  if (spawnSync('ffmpeg', ['-version']).status === 0) {
+    spawnSync('bash', [`${REPO}/scripts/bb`, 'capture', 'reel', '--url', url, '--seconds', '1'],
+      { encoding: 'utf8', env: as('http://127.0.0.2:7680'), cwd: S });
+    reelHeard = heard();
+  }
+  srv.kill();
+  ok(away.status === 0 && awayHeard.length > 0 && !/bbs_/.test(awayHeard) && !/bbs_/.test(reelHeard)
+     && home.status === 0 && /Bearer bbs_dGVzdA/.test(homeHeard),
+     `this session's token goes to the controller alone: a page elsewhere on its port is shot and recorded without it, the controller with it (${
+       JSON.stringify({ away: awayHeard.trim().split('\n')[0], home: homeHeard.trim().split('\n')[0], reel: reelHeard.trim().split('\n')[0] })})`);
+}
 await done();

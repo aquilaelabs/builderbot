@@ -10,7 +10,8 @@ records a page's shot as a capture, `capture.py ls DIST` lists the
 captures under a project's dist/ and `capture.py prune DIST [--days N]
 [NAME...]` removes them (R96). BB_CAPTURE_FFMPEG is the ffmpeg binary,
 BB_CAPTURE_ADB the emulator's adb, BB_CAPTURE_NODE_PATH and BB_CAPTURE_CHROME what a
-page needs, BB_CAPTURE_AUTH the credential a dashboard page takes, and
+page needs, BB_CAPTURE_AUTH the credential a dashboard page takes, BB_CAPTURE_TRUST
+the origins it may go to (the controller's, B143), and
 BB_CAPTURE_SCRATCH where the working files go.
 
 What stays and what goes (R96): dist/ is what a project ships and the
@@ -333,15 +334,23 @@ def from_url(url, seconds, drive, work):
     os.makedirs(vdir)
     script = r"""
 const { chromium } = require("playwright");
-const [exe, url, seconds, drive, vdir, auth] = process.argv.slice(2);
+const [exe, url, seconds, drive, vdir, auth, trust] = process.argv.slice(2);
 (async () => {
   const b = await chromium.launch({ executablePath: exe });
   const bearer = /^bbs_/.test(auth || "");
   const [username, password] = !bearer && (auth || "").includes(":") ? auth.split(/:(.*)/) : [null, null];
+  // The credential goes to the controller's own origin and nowhere else
+  // (B143): on the context it rode every request of the recording.
+  const mine = new Set((trust || "").split(",").filter(Boolean));
   const ctx = await b.newContext({ viewport: { width: 1280, height: 800 },
     recordVideo: { dir: vdir, size: { width: 1280, height: 800 } },
-    ...(username ? { httpCredentials: { username, password } } : {}) });
-  if (bearer) await ctx.setExtraHTTPHeaders({ authorization: "Bearer " + auth });
+    ...(username && mine.size ? { httpCredentials: { username, password, origin: [...mine][0] } } : {}) });
+  if (bearer && mine.size)
+    await ctx.route("**/*", async (route) => {
+      let same = false;
+      try { same = mine.has(new URL(route.request().url()).origin); } catch {}
+      await route.continue(same ? { headers: { ...route.request().headers(), authorization: "Bearer " + auth } } : {});
+    });
   const page = await ctx.newPage();
   const started = Date.now();
   await page.goto(url, { waitUntil: "domcontentloaded" }).catch(e => console.error("goto: " + e.message));
@@ -357,7 +366,7 @@ const [exe, url, seconds, drive, vdir, auth] = process.argv.slice(2);
 """
     env = dict(os.environ, NODE_PATH=node_path)
     r = subprocess.run(["node", "-", chrome, url, str(seconds), drive or "", vdir,
-                        os.environ.get("BB_CAPTURE_AUTH", "")], input=script, capture_output=True,
+                        os.environ.get("BB_CAPTURE_AUTH", ""), os.environ.get("BB_CAPTURE_TRUST", "")], input=script, capture_output=True,
                        text=True, timeout=seconds + 120, check=False, env=env)
     if r.returncode:
         die(f"the recording did not finish: {(r.stderr or '').strip()[-400:]}")

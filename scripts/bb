@@ -4611,13 +4611,25 @@ cmd_browser() {
     BB_BROWSER_CHROME="$(find_chromium 2>/dev/null || true)" BB_BROWSER_FIREFOX="$ff" exec "$node" "$BB_LIB/browser.mjs" "$@"
 }
 
+# Where this shell's own credential may go (B143): the controller's origin,
+# or this machine's own dashboard when the shell is on the controller. Never
+# another host on the same port: a dev instance on :7680 got the session's
+# token and refused it, and anybody's page there would have had it too.
+capture_trust() {
+    if [ -n "${BB_CONTROLLER:-}" ]; then
+        printf '%s' "$BB_CONTROLLER" | sed -E 's#^(https?://[^/]+).*#\1#'
+    else
+        printf 'http://127.0.0.1:%s,http://localhost:%s' "${DASHBOARD_PORT:-7680}" "${DASHBOARD_PORT:-7680}"
+    fi
+}
+
 # The store's tools for capture.py, which shot and reel share.
 capture_env() {
     local root; root="$(sdk_root 2>/dev/null || true)"
     local ff; ff="$(command -v ffmpeg || true)"; [ -n "$ff" ] || { [ -x "$root/ffmpeg/bin/ffmpeg" ] && ff="$root/ffmpeg/bin/ffmpeg"; }
     local adb; adb="$(command -v adb || true)"; [ -n "$adb" ] || { [ -x "$root/platform-tools/adb" ] && adb="$root/platform-tools/adb"; }
     BB_CAPTURE_FFMPEG="$ff" BB_CAPTURE_NODE_PATH="$(pw_node_path)" BB_CAPTURE_CHROME="$(find_chromium 2>/dev/null || true)" \
-    BB_CAPTURE_ADB="$adb" BB_CAPTURE_AUTH="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" "$@"
+    BB_CAPTURE_ADB="$adb" BB_CAPTURE_AUTH="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" BB_CAPTURE_TRUST="$(capture_trust)" "$@"
 }
 
 capture_reel() {
@@ -4683,7 +4695,7 @@ capture_shot() {
     # The operator's password, or a session's token, whichever this shell
     # has. --auth overrides both.
     local auth="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" width=1280 height=800 scale=1 wait=0 settle="" src="" pkg="" disp="" drive=""
-    local full=0 resize="" out="" mode=file urls=() mark=0
+    local full=0 resize="" out="" mode=file urls=() mark=0 trust; trust="$(capture_trust)"
     # A shot nobody named goes to the project's dist/ whatever directory the
     # command is run in (B6), under emu/ or shot/ with a record beside it
     # (--mark): the Artifacts tab lists those as captures and the project's
@@ -4696,7 +4708,7 @@ capture_shot() {
     if [ "${1:-}" = --print-node-path ]; then pw_node_path; printf '\n'; return 0; fi
     while [ $# -gt 0 ]; do
         case "$1" in
-            --auth)   auth="$2"; shift 2 ;;
+            --auth)   auth="$2"; trust=named; shift 2 ;;
             --size)   width="${2%x*}"; height="${2#*x}"; shift 2 ;;
             --scale)  scale="$2"; shift 2 ;;
             --wait)   wait="$2"; shift 2 ;;
@@ -4761,11 +4773,11 @@ capture_shot() {
     local files st=0
     files="$(NODE_PATH="$(pw_node_path)" node - \
         "$chrome" "$auth" "$width" "$height" "$scale" "$wait" "$full" \
-        "$mode" "$out" "${DASHBOARD_PORT:-7680}" "$resize" "$settle" "${drive:+$(readlink -f "$drive")}" "${urls[@]}" <<'EOF'
+        "$mode" "$out" "$trust" "$resize" "$settle" "${drive:+$(readlink -f "$drive")}" "${urls[@]}" <<'EOF'
 const { chromium } = require("playwright");
 const fs = require("fs");
 const path = require("path");
-const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, settle, drive, ...urls]
+const [exe, auth, w, h, scale, wait, full, mode, dest, trust, resize, settle, drive, ...urls]
   = process.argv.slice(2);
 (async () => {
   const b = await chromium.launch({ executablePath: exe });
@@ -4778,21 +4790,26 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, port, resize, settle, dri
     ? auth.split(/:(.*)/) : [null, null];
   const header = bearer ? "Bearer " + auth
     : username ? "Basic " + Buffer.from(auth).toString("base64") : "";
+  // Matched on the whole origin, the controller's own (B143): a port alone
+  // let a dev instance, or anybody's page, on :7680 have this session's
+  // token. A credential named with --auth goes to the URLs named with it.
+  const trusted = new Set(trust === "named" ? [] : trust.split(",").filter(Boolean));
+  const mine = new Set(urls.filter(u => {
+    try { return trust === "named" || trusted.has(new URL(u).origin); } catch { return false; }
+  }).map(u => new URL(u).origin));
   // Credentials go both ways: httpCredentials answers a server that
   // challenges, the preemptive Authorization header satisfies one that
   // deliberately never does (the dashboard, whose challenge-free 401s are
-  // what keep browsers from popping their own dialog).
+  // what keep browsers from popping their own dialog). The challenge is
+  // answered for one trusted origin alone, Playwright's limit.
   const ctx = await b.newContext({
     viewport: { width: +w, height: +h },
     deviceScaleFactor: +scale,
-    ...(username ? { httpCredentials: { username, password } } : {}) });
+    ...(username && mine.size === 1 ? { httpCredentials: { username, password, origin: [...mine][0] } } : {}) });
   // The header goes to the DASHBOARD and nowhere else. On the context it went
   // to every URL in the run, so `bb capture shot <dashboard> https://example.com`
   // handed the credential to example.com as well (bug #49). Per-route, matched
   // on origin, so shooting somebody else's page cannot carry it there.
-  const mine = new Set(urls.filter(u => {
-    try { return new URL(u).port === String(port); } catch { return false; }
-  }).map(u => new URL(u).origin));
   if (header && mine.size) {
     await ctx.route("**/*", async (route) => {
       let same = false;
