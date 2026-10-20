@@ -2566,8 +2566,14 @@ await page.evaluate(async () => {
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
   const offeredOff = await page.evaluate(() => ({ reach: [...$('ndEnReach').options].map(o => o.value),
     door: [...$('ndEnDoor').options].map(o => o.value) }));
-  const namedOff = await page.evaluate(() => ($('ndBody').innerHTML.match(/WireGuard|Tailscale|tailnet/g) || []));
-  ok(!namedOff.length, `...and nothing in the dialog, its help included, names them (${namedOff.join(', ')})`);
+  // What a person can see or open: the shown text and the help of shown
+  // rows (Tailscale Funnel, a tunnel of one's own at home, is not the door).
+  const namedOff = await page.evaluate(() => {
+    const seen = [$('ndBody').innerText, ...[...$('ndBody').querySelectorAll('[data-help]')]
+      .filter(e => e.offsetParent).map(e => e.dataset.help)].join(' ');
+    return seen.match(/WireGuard|Tailscale(?! Funnel)|tailnet/g) || [];
+  });
+  ok(!namedOff.length, `...and nothing shown in the dialog, its help included, names them (${namedOff.join(', ')})`);
   const refusedOff = await page.evaluate(wg => nodeAct({ action: 'enroll', script: true, name: 'wgoff', reach: 'wireguard',
     controller: location.origin, wg_conf: wg }), WG);
   ok(offeredOff.reach.join() === 'lan,public' && offeredOff.door.join() === ',cloudflared'
