@@ -200,6 +200,14 @@ class MadeHere(unittest.TestCase):
         self.assertNotIn(".git/config", seen["files"], "an uploaded repository's own history is left out")
         self.assertTrue(toolpacks.add_staged(seen["staged"], "operator").get("ok"))
 
+    def test_a_pack_without_about_is_still_a_row(self):
+        # B106: about is optional, and the catalog drops a row without one.
+        import toolchains
+        m = {"name": "bare", "platforms": ["linux/amd64"], "verbs": {"go": {"run": ["{dir}/go"]}}}
+        self.assertTrue(toolpacks.add_staged(self.paste(m)["staged"], "operator").get("ok"))
+        rows = toolchains.load_toolchains(toolpacks.recipes())
+        self.assertEqual([r["name"] for r in rows if r.get("pack")], ["bare"])
+
     def test_what_is_refused(self):
         self.assertIn("paste a bbtool.json", toolpacks.stage("  ")["error"])
         self.assertIn("is not JSON", toolpacks.stage("{nope")["error"])

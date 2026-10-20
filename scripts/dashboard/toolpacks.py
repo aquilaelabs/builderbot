@@ -500,7 +500,9 @@ def recipe(rec):
         progs.append("{dir}/" + tool)
     src["exec"] = sorted(set(progs))
     src["exec_dirs"] = ["{dir}/" + b for b in m["layout"].get("bin") or []]
-    row = {"name": m["name"], "label": m["label"], "probe": m["name"], "about": m["about"],
+    # about is optional in a manifest, and a catalog row without one is not
+    # drawn (B106): the label stands in for it.
+    row = {"name": m["name"], "label": m["label"], "probe": m["name"], "about": m["about"] or m["label"],
            "platforms": m["platforms"], "layout": m["layout"], "source": src, "terms": m["terms"],
            "verbs": m["verbs"],
            "pack": {"url": rec["url"], "commit": rec["commit"], "by": rec.get("by", ""), "at": rec.get("at", 0),
