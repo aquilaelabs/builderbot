@@ -249,6 +249,23 @@ ok(/nothing changed here that a rule/.test(bb('check')),
   let out = '';
   try { bb('check', 'design'); } catch (e) { out = String(e.stdout || ''); }
   ok(/FAIL  design/.test(out), 'a failing check fails by name, with a non-zero exit');
+  // B103: run from a git worktree of the project, the check runs in that
+  // worktree (whose .git is a file), not in the main checkout (a directory);
+  // from a directory that is no tree of the project, in the project's own.
+  {
+    const wt = `${DIR}/wt-alpha`;
+    execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'worktree', 'add', '-q', '--orphan', '-b', 'wt-check', wt]);
+    bb('edit', 'design', '--check', 'test -f .git');
+    const inWt = execFileSync(BB, ['rules', 'check', 'design'], { env: ENV, cwd: wt }).toString();
+    let outside = '';
+    try { bb('check', 'design'); } catch (e) { outside = String(e.stdout || ''); }
+    ok(/PASS  design/.test(inWt) && /FAIL  design/.test(outside),
+       `bb rules check runs in the worktree it is called from, and in the project's tree from elsewhere (${
+         inWt.slice(-60)} / ${outside.slice(-60)})`);
+    // Its orphan branch never had a commit, so it goes with the worktree.
+    execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'worktree', 'remove', '--force', wt]);
+    bb('edit', 'design', '--check', 'false');
+  }
   ok(/checked by: false/.test(bb('show', 'design')), 'bb rules show prints the doc and the check');
 
   // ---- the Stop hook (R31, step 2): a failing check refuses the stop ------

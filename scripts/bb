@@ -2360,7 +2360,18 @@ cmd_rules() {
         # failed check (B412).
         rules_json="$(BB_PROJECT="$proj" bash "$0" rules --json)" \
             || { warn "could not read the rules, so no check ran: the controller may be restarting"; return 75; }
-        RULES_JSON="$rules_json" python3 "$BB_LIB/rules-check.py" "$WORKSPACE/$proj" "$@"
+        # The tree is the one the check is run in: a git worktree of the
+        # project (a subagent's, under .claude/worktrees) is checked as
+        # itself, not as the main checkout's branch (B103). Any other
+        # directory is the project's own tree.
+        local tree="$WORKSPACE/$proj" top
+        top="$(git rev-parse --show-toplevel 2>/dev/null)" || top=""
+        if [ -n "$top" ] && [ "$top" != "$tree" ] \
+            && [ "$(git -C "$top" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+                 = "$(git -C "$tree" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ]; then
+            tree="$top"
+        fi
+        RULES_JSON="$rules_json" python3 "$BB_LIB/rules-check.py" "$tree" "$@"
         return $?
     fi
     # `bb rules audit [DAYS]` (R200): this account's conversations on the
