@@ -84,11 +84,32 @@ class Model(unittest.TestCase):
         import users
         name = roles.ensure_owner_role("alpha")
         u = {"name": "o", "role": "user", "roles": [], "projects": ["alpha"], "project_roles": {"alpha": [name]}}
-        with mock.patch.object(users, "get", lambda n: u):
+        import registry
+        with mock.patch.object(users, "get", lambda n: u), mock.patch.object(registry, "FILE", None):
             got = users.what_may("o")
         self.assertEqual(got["roles"], ["Owner of alpha"])
         self.assertIn(["Projects", "Write"], got["may"])
         self.assertNotIn("Nodes", [a for a, _ in got["may"]])
+
+    def test_a_project_gone_is_not_said(self):
+        # B75: Owner of a project in the bin, or purged, is neither listed
+        # nor counted toward what the account may do; the grant is kept.
+        import registry
+        import users
+        live, gone, binned = (roles.ensure_owner_role(p) for p in ("alpha", "beta", "gamma"))
+        roles.set_role("peek", scope="projects", perms={"projects": "read", "containers": "write"})
+        u = {"name": "o", "role": "user", "roles": [], "projects": ["alpha", "beta", "gamma"],
+             "project_roles": {"alpha": [live], "beta": [gone, "peek"], "gamma": [binned]}}
+        with mock.patch.object(users, "get", lambda n: u), mock.patch.object(registry, "FILE", "x"), \
+                mock.patch.object(registry, "is_project", lambda p: p == "alpha"):
+            got = users.what_may("o")
+        self.assertEqual(got["roles"], ["Owner of alpha"])
+        self.assertEqual(sorted(u["project_roles"]), ["alpha", "beta", "gamma"], "the grants are kept")
+        roles.set_role("alpha_owner", scope="projects", perms={"projects": "read"})
+        with mock.patch.object(users, "get", lambda n: u), mock.patch.object(registry, "FILE", "x"), \
+                mock.patch.object(registry, "is_project", lambda p: p == "alpha"):
+            got = users.what_may("o")
+        self.assertEqual(got["may"], [["Projects", "Read"]], "a gone project's grant adds nothing")
 
     def test_an_owner_role_is_every_project_area_and_can_be_cut_back(self):
         name = roles.ensure_owner_role("alpha")
