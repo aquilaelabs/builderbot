@@ -605,8 +605,10 @@ bb toolchains             SDKs kept outside the image: status, check, install X,
 
 The Android app, the VS Code extension and the Windows companion are built
 for every release and attached to it, each with a `.sha256` file beside it.
-A controller offers the ones ticked under **Apps** on its Controller
-settings page: a while after it starts and once a day it fetches each from
+The VS Code extension and the Windows companion are dev features: a
+controller offers them only with **Offer dev features** on, and otherwise
+neither lists, fetches nor serves them. A controller offers the ones ticked
+under **Apps** on its Controller settings page: a while after it starts and once a day it fetches each from
 the release matching its own version (the newest release when none does,
 and the section says so), keeps it only if it matches its sha256, and
 serves it from `/config/apps`. A switch moved, or **Look now**, looks at

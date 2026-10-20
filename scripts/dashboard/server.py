@@ -3910,6 +3910,7 @@ profiletab.configure(devices=devices)
 import apps                                                      # noqa: E402
 apps.configure(state=STATE, version=lambda: image_stamp().get("version") or "",
                setting=settings.get, write_json=write_json, audit=db.audit)
+apps.unvetted_ok = channel.unvetted_ok      # the Windows companion and the VS Code extension are dev features
 devices.configure_apps(apps)
 
 # A person's PC lent to a project (R270 step 6): the companion lends a

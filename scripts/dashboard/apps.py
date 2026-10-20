@@ -46,10 +46,12 @@ APPS = {
     "android": {"title": "Android app", "setting": "apps_android",
                 "does": "The notebook, the bell and your sessions on a phone, and the phone lent to a project.",
                 "files": [("builderbot-app-", ".apk")]},
-    "vscode": {"title": "VS Code extension", "setting": "apps_vscode",
+    # dev: offered only with Offer dev features on, until walked on a real
+    # Windows PC and a real VS Code (the operator, 20 Oct).
+    "vscode": {"title": "VS Code extension", "setting": "apps_vscode", "dev": True,
                "does": "A project's files and its terminal in VS Code, opened from the controller.",
                "files": [("builderbot-vscode-", ".vsix")]},
-    "companion": {"title": "Windows companion", "setting": "apps_companion",
+    "companion": {"title": "Windows companion", "setting": "apps_companion", "dev": True,
                   "does": "A folder on a Windows PC kept in step with a project both ways, for a tool that only runs there.",
                   "files": [("builderbot-companion-", ".exe"), ("builderbot-companion-", ".pyz")]},
 }
@@ -84,8 +86,15 @@ def configure(*, state, version, setting, write_json, audit=None):
     globals()["INDEX"] = DIR / "index.json"
 
 
+# Whether dev features are offered (settings' offer_unvetted), set by server.py.
+unvetted_ok = lambda: False  # noqa: E731
+
+
 def offered(name):
-    return bool(_setting(APPS[name]["setting"]))
+    """On in Settings, and for a dev app, dev features on too: neither
+    fetched, listed nor served otherwise."""
+    a = APPS[name]
+    return bool(_setting(a["setting"])) and (not a.get("dev") or bool(unvetted_ok()))
 
 
 def _index():
@@ -112,6 +121,8 @@ def view():
     out = []
     for name, a in APPS.items():
         h = held.get(name) or {}
+        if a.get("dev") and not unvetted_ok():
+            continue
         out.append({"name": name, "title": a["title"], "does": a["does"], "offered": offered(name),
                     "version": h.get("version", ""),
                     "files": [{"file": f["file"], "sha256": f["sha256"], "size": f["size"],
@@ -125,7 +136,7 @@ def view():
 def path(name, file):
     """A held file's path, or None: only a name the index holds, so a
     request can never name anything else under /config."""
-    if name not in APPS or not SAFE.match(str(file or "")):
+    if name not in APPS or not SAFE.match(str(file or "")) or not offered(name):
         return None
     for f in ((_index().get("apps") or {}).get(name) or {}).get("files") or []:
         if f.get("file") == file:

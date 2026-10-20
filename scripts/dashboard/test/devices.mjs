@@ -239,6 +239,9 @@ ok(otherOut.error && (await dev(b.token, 'whoami', {})).status === 200,
   const assets = [...asset('builderbot-app-0.4.0.apk', 'an apk'), ...asset('builderbot-vscode-0.4.0.vsix', 'a vsix'),
                   ...asset('builderbot-companion-0.4.0.exe', 'an exe'), ...asset('builderbot-companion-0.4.0.pyz', 'a pyz', '0'.repeat(64))];
   writeFileSync(`${DIR}/releases.json`, JSON.stringify([{ tag_name: 'v0.5.0', assets: [] }, { tag_name: 'v0.4.0', assets }]));
+  // The companion and the extension are dev features (the operator, 20 Oct):
+  // on for this block, and checked gone with them off at its end.
+  await admin('/api/settings', { set: { offer_unvetted: true } });
   const started = await admin('/api/apps', { action: 'check' });
   let v = null;
   for (let i = 0; i < 40; i++) {
@@ -280,6 +283,11 @@ ok(otherOut.error && (await dev(b.token, 'whoami', {})).status === 200,
   ok(!vs?.offered && !vs?.files.length && gone.status === 404,
      `an app switched off is no longer held or served (${JSON.stringify(off).slice(0, 60)}; ${gone.status})`);
   await admin('/api/settings', { set: { apps_vscode: true } });
+  await admin('/api/settings', { set: { offer_unvetted: false } });
+  const plain = await (await fetch(`${base}/api/apps`, { headers: ADMIN })).json();
+  const hidden = await fetch(`${base}/apps/companion/builderbot-companion-0.4.0.exe`, { headers: PERSON });
+  ok((plain.apps || []).map(x => x.name).join() === 'android' && hidden.status === 404,
+     `without dev features only the Android app is offered, and the companion is not served (${(plain.apps || []).map(x => x.name)}; ${hidden.status})`);
 }
 
 done();

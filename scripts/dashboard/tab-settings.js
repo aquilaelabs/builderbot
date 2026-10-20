@@ -210,13 +210,14 @@ const SETTING_GROUPS = [
   // against its sha256 and offered on the Apps page (under Build); Look now asks the
   // release again rather than waiting for the daily look.
   {key: "apps", title: "Apps", intro: appsIntro, status: appsStatus,
-   heading: s => `${["apps_android", "apps_vscode", "apps_companion"].filter(k => s?.settings?.[k]?.value).length} offered`,
+   heading: s => `${["apps_android", ...(s?.settings?.offer_unvetted?.value ? ["apps_vscode", "apps_companion"] : [])]
+     .filter(k => s?.settings?.[k]?.value).length} offered`,
    fields: [
     {key: "apps_android", label: "Android app", type: "bool",
      hint: "The notebook, the bell and your sessions on a phone, and the phone lent to a project."},
-    {key: "apps_vscode", label: "VS Code extension", type: "bool",
+    {key: "apps_vscode", label: "VS Code extension", type: "bool", dev: true,
      hint: "A project's files and terminal in VS Code."},
-    {key: "apps_companion", label: "Windows companion", type: "bool",
+    {key: "apps_companion", label: "Windows companion", type: "bool", dev: true,
      hint: "A folder on a Windows PC kept in step with a project, for a tool that only runs there."}]},
   // The home tunnel the controller runs itself (R176): the public hostname
   // a node off the LAN dials, the tunnel's token, and an API token that
@@ -505,7 +506,7 @@ function settingsSections(){
       <div class="grow">
         <div class="logset">
           ${g.intro ? g.intro(s) : ""}
-          ${g.fields.map(field).join("")}${fold}
+          ${g.fields.filter(f => !f.dev || s.settings.offer_unvetted?.value).map(field).join("")}${fold}
           <div class="actbar">
             <span class="state">${g.status ? g.status(s) : "applies at once"}</span>
             <button type="button" class="setApply" title="save">Apply</button>

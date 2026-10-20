@@ -172,9 +172,10 @@ have. Only BuilderBot makes a project: a folder made by hand on the projects
 share is not listed. A project with a problem says so on its card: no git
 repository or the wrong ownership in red.
 
-**The apps for your machines**: the Android app, the VS Code extension and
-the Windows companion are on the **Apps** page, under Build, each with
-Download and how to connect it, fetched by the controller from its own
+**The apps for your machines**: the Android app is on the **Apps** page,
+under Build, with Download and how to connect it (the VS Code extension and
+the Windows companion are dev features, offered there only with **Offer dev
+features** on), fetched by the controller from its own
 release and kept current there. The devices signed in as you are the last
 section of your **Profile**, under Settings, each with Disconnect. Which are offered is the **Apps** section of
 the Controller settings page, or `/config/seed.json` before the first start
