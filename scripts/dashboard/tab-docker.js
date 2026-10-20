@@ -2720,6 +2720,10 @@ function renderDockerInto(i){
     // machine nobody just asked.
     rows || `<div class="empty">${dmSearch ? `nothing here matches ${esc(dmSearch)}` : blind
       ? "nothing on record here: an instance appears once it has been sent"
+      : dockerList?.unseen
+      // Left out by the server, not absent (B89): what runs here belongs to
+      // projects this account's roles give no Containers Read on.
+      ? "nothing here is yours to see: what runs on this daemon belongs to projects whose Containers your roles do not read"
       : "nothing on this daemon yet"}</div>`}
     ${
     // The daemon's images and volumes (R216): a section at the foot, read

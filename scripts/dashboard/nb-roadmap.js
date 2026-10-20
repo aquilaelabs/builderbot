@@ -179,7 +179,10 @@ function nbRoadmapView({$, nb}){
     // The send is the Claude mark, first of the row's own buttons on the
     // right (the operator, 29 Sep); the fold's caret takes the arrow's old
     // place on a group's row, level with the first line of its words.
-    const send = nb.roadmapOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : ` aria-disabled="true"`}
+    // A role that reads the project and does not write it (B86): the row
+    // carries nothing that changes the list or sends from it.
+    const ro = projWriteWhy(nb.memProj);
+    const send = nb.roadmapOrdering || ro ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : ` aria-disabled="true"`}
       title="${esc(why)}" aria-label="send to Claude"
       aria-pressed="${on ? "true" : "false"}">${SPARK}</button>`;
     return `<div class="roadmap${st.sent ? " sent" : ""}${st.done ? " done" : ""}${
@@ -200,7 +203,7 @@ function nbRoadmapView({$, nb}){
         isOpen ? "▾" : "▸"} ${st.info ? "details" : "more"}</button>
       ${(() => { const f = rowFacts(r, idx); return f ? `<div class="dfacts"${isOpen ? "" : " hidden"}>${f}</div>` : ""; })()}
       ${st.info ? `<div class="dinfo"${isOpen ? "" : " hidden"}>${esc(st.info)}</div>` : ""}
-      <div class="rowacts actbar"${isOpen ? "" : " hidden"}>${idx < 0 ? `<button class="dn" type="button"
+      ${ro ? "" : `<div class="rowacts actbar"${isOpen ? "" : " hidden"}>${idx < 0 ? `<button class="dn" type="button"
         title="tick it off: it moves to Finished with its plan, and Reopen there puts it back until a release ships it">Done</button>` : ""}${shelf ? `<button class="x${r.shelved ? " on" : ""}" type="button"
         aria-label="${r.shelved ? "take it off the shelf" : "shelve it"}"
         title="${r.shelved
@@ -212,7 +215,7 @@ function nbRoadmapView({$, nb}){
       <button class="rm danger" type="button" aria-label="drop it"
         title="${idx < 0 ? "take it off the list, with a note saying why"
                            : "drop this step; the one behind it takes its place"}"
-        >Drop</button></div>`}
+        >Drop</button></div>`}`}
     </span>
     ${nb.roadmapOrdering ? moves : send}
   </div>`;
@@ -317,6 +320,8 @@ function nbRoadmapView({$, nb}){
     if ($("roadmapDoneSect").open && !nb.roadmapDoneAsking
         && (nb.roadmapDone === null || nb.roadmapDone.length !== finishedN)) loadFinished();
     if (nb.roadmapLogOn) nb.drawHistory();
+    // A role that reads the project and does not write it (B86).
+    const ro = projWriteWhy(nb.memProj);
     {
     // A group is a fold, like a bug's row (the operator, 29 Sep): its own
     // row is the summary, its steps open under it on a tap. Which were
@@ -332,7 +337,7 @@ function nbRoadmapView({$, nb}){
         (r.steps || []).map((_, i) => stepRow(r, i, live)).join("")}${
         // How a plain item becomes a plan: give it a step. Hidden while
         // reordering, where the question is only where things sit.
-        nb.roadmapOrdering ? "" : `<div class="addstep" data-id="${r.id}"><button
+        nb.roadmapOrdering || ro ? "" : `<div class="addstep" data-id="${r.id}"><button
         type="button" class="link">Add a step</button></div>`}</details>`).join("");
     // The row's ground and its words open and shut the fold, on the same
     // tween a bug's row uses; a control on the row acts and does not fold.
@@ -394,7 +399,7 @@ function nbRoadmapView({$, nb}){
       const dt = row.querySelector(".dtog");
       if (dt) dt.onclick = () => {
         const info = row.querySelector(".dinfo"), acts = row.querySelector(".rowacts"), fx = row.querySelector(".dfacts");
-        const show = acts.hidden, key = `${id}:${step}`;
+        const show = dt.getAttribute("aria-expanded") !== "true", key = `${id}:${step}`;
         if (show) nb.roadmapOpen.add(key); else nb.roadmapOpen.delete(key);
         // The caret turns with the slide rather than after it, so the row reads
         // as one movement instead of a glyph flicking ahead of the content.
@@ -402,7 +407,7 @@ function nbRoadmapView({$, nb}){
         dt.setAttribute("aria-expanded", String(show));
         if (info) slideHidden(info, show);
         if (fx) slideHidden(fx, show);
-        slideHidden(acts, show);
+        if (acts) slideHidden(acts, show);
       };
       // Guarded like every other control on this row: reordering replaces all
       // three of them, so in that mode there is no pencil to bind and an
@@ -411,7 +416,7 @@ function nbRoadmapView({$, nb}){
       if (ed) ed.onclick = reword;
       // A step's words reword it; a group's words open its fold (the
       // operator, 29 Sep), and the pencil is what rewords those.
-      if (step >= 0) row.querySelector(".txt").onclick = reword;
+      if (step >= 0 && !ro) row.querySelector(".txt").onclick = reword;
     });
     }
     nb.roadmapItems = rows;
@@ -419,7 +424,12 @@ function nbRoadmapView({$, nb}){
     if (j.batch !== undefined) nb.noteBatch(j.batch);
     nb.drawBatchNote();
     nb.syncSave();
-    $("roadmapOrder").hidden = !rows.length;
+    $("roadmapOrder").hidden = !rows.length || !!ro;
+    // Add to roadmap dead, with why under it (B86), and its box shut.
+    $("roadmapShow").disabled = !!ro;
+    if (ro && !$("roadmapForm").hidden){ $("roadmapForm").hidden = true; $("roadmapShow").hidden = false; }
+    setText($("roadmapWhy"), ro);
+    setHidden($("roadmapWhy"), !ro);
     // An empty band (the box open, nothing to reorder) is not drawn.
     $("roadmapAddBar").hidden = !$("roadmapForm").hidden && $("roadmapOrder").hidden;
     $("roadmapOrder").classList.toggle("on", nb.roadmapOrdering);

@@ -663,6 +663,12 @@ function renameProject(name, mode = "all"){
   unbusy($("rnUnlink"), `Unlink from ${p?.forge_name || "its remote"}`);
   // The bin, on the gear's door only: the chain's is about the remote.
   $("rnDelete").hidden = git || !p;
+  // ...dead, with why under it, for an account whose roles do not give
+  // deleting it (B86): the server's own refusal, read off the row.
+  const delWhy = p?.trash_why || "";
+  $("rnDelete").disabled = !!delWhy;
+  setText($("rnDeleteWhy"), delWhy);
+  setHidden($("rnDeleteWhy"), git || !p || !delWhy);
   $("rnKeyOut").hidden = true; $("rnKeyPaste").hidden = true; $("rnKeyPaste").value = "";
   rnLoadAuth(name);
   rnLoadSigning(name);
@@ -907,6 +913,9 @@ const RN_SIGN = [
 let rnSignKeys = null, rnSignTool = false, rnSignDraft = {}, rnSignMap = {}, rnSignMapDraft = {}, rnSignNew = [],
     rnSignBackup = false, rnSignLocked = false, rnSignMayLock = false, rnSignLockOpen = false, rnSignPw = {};
 
+// Why this account may not read or change the project's settings, sessions
+// and snapshots, from its row, or "" (B89).
+const rnSettingsWhy = name => (state?.projects || []).find(p => p.name === name)?.settings_why || "";
 // A section this account may not use, shown with why under it in red, the
 // server's own words naming the area and level that would open it (R255
 // step 4), not hidden as if there were nothing there.
@@ -944,6 +953,10 @@ let rnSnap = null;
 function rnLoadSnapshots(name, keep = false){
   if (!keep){ rnSnap = null; $("rnSnapField").hidden = true; }
   if (rnMode === "git") return;
+  // Not asked for where the row already says it would be refused (B89): the
+  // reason is said under the section, without a 403 in the console.
+  const no = rnSettingsWhy(name);
+  if (no){ rnWhyOff($("rnSnapField"), $("rnSnapRows"), no); return; }
   fetch("/api/snapshots?project=" + encodeURIComponent(name))
     .then(r => r.json())
     .then(j => {

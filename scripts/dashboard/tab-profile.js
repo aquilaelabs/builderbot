@@ -130,18 +130,21 @@ function renderProfileInto(i){
           <div class="logdays setrow col ctlrow">
             ${lbl("pfCur", "Current password")}
             <input id="pfCur" type="password" autocomplete="current-password">
+            <div class="notice bad" id="pfCurWhy" hidden></div>
           </div>
           <div class="logdays setrow col ctlrow">
             ${lbl("pfNew", "New password", "at least 8 characters; every browser signed in as you signs out")}
             <input id="pfNew" type="password" autocomplete="new-password">
+            <div class="notice bad" id="pfNewWhy" hidden></div>
           </div>
           <div class="logdays setrow col ctlrow">
             ${lbl("pfNew2", "New password again")}
             <input id="pfNew2" type="password" autocomplete="new-password">
+            <div class="notice bad" id="pfNew2Why" hidden></div>
           </div>
           <div class="actbar">
             <span class="state"></span>
-            <button type="button" id="pfPasswd">Change password</button>
+            <button type="button" id="pfPasswd" disabled>Change password</button>
           </div>
         </div>`)}
     ${sec("plugins", "Claude plugins", `
@@ -244,22 +247,37 @@ function wireProfile(root){
     }catch(e){ notify("profile: " + e, true); }
     finally{ if (save.isConnected) unbusy(save, "Save"); }
   };
+  // Change password wakes once the current one is typed and the new one is
+  // 8 or more, typed the same twice; what is wrong is said under the field
+  // it is about as it is typed, and the server's refusal lands there too,
+  // never only in a toast (B90, Add user's B37).
   const pw = root.querySelector("#pfPasswd");
+  const fld = id => root.querySelector("#" + id);
+  const sayAt = (id, t) => { setText(fld(id + "Why"), t); setHidden(fld(id + "Why"), !t); };
+  const pwReady = () => {
+    const cur = fld("pfCur").value, a = fld("pfNew").value, b2 = fld("pfNew2").value;
+    sayAt("pfNew", a && a.length < 8 ? "The new password is shorter than 8 characters." : "");
+    sayAt("pfNew2", a && b2 && a !== b2 ? "The two new passwords differ." : "");
+    if (pw && !pw.getAttribute("aria-busy")) pw.disabled = !(cur && a.length >= 8 && a === b2);
+  };
+  if (pw){
+    fld("pfCur").oninput = () => { sayAt("pfCur", ""); pwReady(); };
+    fld("pfNew").oninput = fld("pfNew2").oninput = pwReady;
+    pwReady();
+  }
   if (pw) pw.onclick = async () => {
-    const cur = root.querySelector("#pfCur").value, a = root.querySelector("#pfNew").value,
-          b2 = root.querySelector("#pfNew2").value;
-    if (a.length < 8) return notify("a password is at least 8 characters", true);
-    if (a !== b2) return notify("the two new passwords differ", true);
+    const cur = fld("pfCur").value, a = fld("pfNew").value, b2 = fld("pfNew2").value;
+    if (!cur || a.length < 8 || a !== b2) return pwReady();
     busy(pw, "Changing");
     try{
       const r = await fetch("/api/profile", {method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({action: "password", current: cur, password: a})});
       const j = await r.json();
-      if (j.error) return notify(j.error, true);
+      if (j.error){ sayAt(/current/.test(j.error) ? "pfCur" : "pfNew", j.error); return; }
       notify("password changed: sign in again where you are asked to");
-      ["pfCur", "pfNew", "pfNew2"].forEach(id => { const el = root.querySelector("#" + id); if (el) el.value = ""; });
-    }catch(e){ notify("profile: " + e, true); }
-    finally{ if (pw.isConnected) unbusy(pw, "Change password"); }
+      ["pfCur", "pfNew", "pfNew2"].forEach(id => { const el = fld(id); if (el) el.value = ""; });
+    }catch(e){ sayAt("pfCur", "could not reach the controller: " + e); }
+    finally{ if (pw.isConnected){ unbusy(pw, "Change password"); pwReady(); } }
   };
 }

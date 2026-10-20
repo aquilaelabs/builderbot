@@ -104,6 +104,9 @@ function nbMemoryView({$, nb}){
       const t = d.querySelector(".ixt"), h = d.querySelector(".ixh");
       if (ta || t) typed.set(d.dataset.file, {text: ta?.value, title: t?.value, hook: h?.value});
     });
+    // A role that reads the project and does not write it (B86): no Edit
+    // or Remove on a memory, and Write a memory dead with the reason.
+    const ro = projWriteWhy(nb.memProj);
     $("memList").innerHTML = j.memories.map(m => `
     <details class="mem chev" data-file="${esc(m.file)}"${open.has(m.file) ? " open" : ""}>
       <summary>
@@ -120,12 +123,12 @@ function nbMemoryView({$, nb}){
             ? `<div class="hint bad">${(m.bytes/1024).toFixed(0)}kB: too large to
                edit here; open it in a terminal</div>`
             : `<div class="bfield"><label>the memory</label><div class="bval mtext">${esc(m.text)}</div></div>`}
-        <div class="actbar macts">
+        ${ro ? "" : `<div class="actbar macts">
           ${m.big ? "" : `<button type="button" class="mEdit">Edit</button>`}
           <button type="button" class="danger" data-del="${esc(m.file)}"
             title="delete this memory and take its line out of the index"
             >Remove</button>
-        </div>` : `
+        </div>`}` : `
         <div class="ix" data-file="${esc(m.file)}">
           ${lbl("", "Title")}
           <input class="ixt" maxlength="80" autocomplete="off" spellcheck="false"
@@ -329,9 +332,9 @@ function nbMemoryView({$, nb}){
     reference: "a pointer somewhere else: a URL, a dashboard, a ticket"};
 
   function drawMemAdd(){
-    const box = $("memAdd");
+    const box = $("memAdd"), ro = projWriteWhy(nb.memProj);
     box.innerHTML = `<div class="addbar ctlrow" data-add="memory">
-    <button type="button">Write a memory</button></div>`;
+    <button type="button"${ro ? " disabled" : ""}>Write a memory</button></div>${deadWhy(ro)}`;
     box.querySelector("button").onclick = openMemAdd;
   }
 

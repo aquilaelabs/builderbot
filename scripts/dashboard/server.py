@@ -1151,6 +1151,17 @@ def _project_columns(who, facts):
                     # Whether its settings are this account's to change (B19):
                     # the page locks them, with the reason, where not.
                     "may_settings": not users.may(who, "settings", d.name) if who else True,
+                    # ...and the reason where not, which the Snapshots and
+                    # Running sessions sections say without asking for what
+                    # they would only be refused (B89).
+                    "settings_why": users.may(who, "settings", d.name) if who else "",
+                    # ...and why its notebook, its tree and the project itself
+                    # are not this account's to change, or "" (B86): a role
+                    # that gives Projects Read alone sees the page with every
+                    # writing control dead and this said under it, rather
+                    # than each refused only at the press.
+                    "write_why": users.may(who, "write", d.name) if who else "",
+                    "trash_why": users.may(who, "trash", d.name) if who else "",
                     # Whether this project has a compose file, which is the
                     # same question as "could its tests run in a container of
                     # its own": the settings dialog offers that choice only
@@ -4253,6 +4264,9 @@ def _snapshot(who):
                # ...and what other projects a session may read: the owner's
                # alone (the operator, 6 Oct), whatever the grants say.
                | {"reads": (who or {}).get("role") == "owner"},
+        # ...and, for the page-wide ones a bar offers, the server's own
+        # refusal, which is said under the dead control (B87).
+        "can_why": {name: users.may(who, name) for name in ("create", "trash")},
         # Each area's level anywhere (R152 step 3), so the page hides a tab
         # whose area this account may not read: "", read or write.
         "areas": {a: ("write" if users.is_admin(who or {}) or (who or {}).get("session")

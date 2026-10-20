@@ -94,6 +94,10 @@ function nbGitView({$, nb, project}){
   // The project directory is the owner's working tree (B236): anybody else
   // sees whose it is, a plain account gets nothing that changes it, and an
   // administrator is asked by the server first.
+  // Nothing here changes the tree, the branches or what a session may push
+  // while the project is archived, or for a role that reads it and does
+  // not write it (B86), which the view then says under Fetch and Push.
+  const shut = () => !!(state?.projects || []).find(p => p.name === project)?.locked || !!projWriteWhy(project);
   const treeOf = () => {
     const owner = git?.owner || "", notMine = !!owner && owner !== state?.me;
     return {owner, notMine, barred: notMine && !state?.admin};
@@ -141,10 +145,16 @@ function nbGitView({$, nb, project}){
           ? `pull first: ${git.host?.name || "the remote"} has ${st.behind} commit${st.behind === 1 ? "" : "s"} this branch does not, and this branch has ${st.ahead} to push (${st.upstream})`
           : `${git.host?.name || "the remote"}, ${st.upstream}${st.ahead ? ` · ${st.ahead} to push` : ""}${st.behind ? ` · ${st.behind} to pull` : ""}`)
         : "no upstream yet: Push sets one";
-      net.querySelector('[data-gitact="push"]').disabled = !git.push;
-      net.querySelector('[data-gitact="pull"]').disabled = !st.upstream;
+      const ro = projWriteWhy(project);
+      net.querySelector('[data-gitact="fetch"]').disabled = !!ro;
+      net.querySelector('[data-gitact="push"]').disabled = !git.push || !!ro;
+      net.querySelector('[data-gitact="pull"]').disabled = !st.upstream || !!ro;
       net.querySelector('[data-gitact="pull"]').hidden = tree.barred;
     }
+    // Why none of it is this account's, under the bar (or alone where there
+    // is no remote), once for every verb the view leaves out.
+    const why = $("gitWhy"), ro = projWriteWhy(project);
+    if (why){ setText(why, ro); setHidden($("gitWhyF"), !ro || !!(state?.projects || []).find(p => p.name === project)?.locked); }
     drawGit();
   }
 
@@ -200,7 +210,7 @@ function nbGitView({$, nb, project}){
     // A moving label and an action a major behind carry their fix (R117
     // step 4): Fix writes that one line into the working tree, uncommitted,
     // for Changes to show; nothing is committed or pushed by the press.
-    const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+    const locked = shut();
     const mayFix = !locked && !treeOf().barred;
     const rows = fs.map(f => `<div class="actbar"><span class="state ${f.sev === "bad" ? "bad" : f.sev === "warn" ? "warn" : ""}">${
         esc(word[f.kind] || f.kind)}: ${esc(f.text)} <code>${esc(f.where || "")}</code></span>${
@@ -243,7 +253,7 @@ function nbGitView({$, nb, project}){
     drawPicker();
     const st = git.status || {}, files = st.files || [], commits = git.commits || [];
     const local = (git.branches || []).filter(b => !b.remote), remote = (git.branches || []).filter(b => b.remote);
-    const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+    const locked = shut();
     const tree = treeOf();
     const fileKey = f => `${f.state}|${f.staged ? 1 : 0}|${f.at || ""}`;
     const fileRows = files.map(f => `<details class="sect gfile" data-path="${esc(f.path)}" data-key="${esc(fileKey(f))}"${
@@ -529,7 +539,7 @@ function nbGitView({$, nb, project}){
     if (!box || !git || git.error) return;
     const st = git.status || {}, cur = st.branch || "";
     const local = (git.branches || []).filter(b => !b.remote);
-    const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+    const locked = shut();
     const still = locked || treeOf().barred || !cur;
     box.hidden = !cur;
     const label = `<span class="gbpickic" aria-hidden="true">${BRANCH_ICON}</span><span class="gbpickname">${esc(cur)}</span>`;
@@ -665,7 +675,7 @@ function nbGitView({$, nb, project}){
     const s_ = n => n === 1 ? "" : "s";
     const commits = j.commits || [], files = j.files || [];
     const added = files.reduce((n, f) => n + (f.added || 0), 0), removed = files.reduce((n, f) => n + (f.removed || 0), 0);
-    const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+    const locked = shut();
     const theirs = !!b.who && b.who !== state?.me, barred = theirs && !state?.admin;
     // The commits as the history draws them, newest first; the files as a
     // list with their counts, then each one's diff.
@@ -721,7 +731,7 @@ function nbGitView({$, nb, project}){
         ${c.message.includes("\n") ? `<pre class="gmsg">${esc(c.message.split("\n").slice(1).join("\n").trim())}</pre>` : ""}
         <div class="sub">${c.files.length} file${c.files.length === 1 ? "" : "s"}: ${c.files.map(f =>
           `<code>${esc(f.path)}</code>${f.added != null ? ` <span class="gadd">+${f.added}</span> <span class="gdel">−${f.removed}</span>` : ""}`).join(", ")}</div>
-        ${(state?.projects || []).find(p => p.name === project)?.locked ? "" : `<div class="actbar">
+        ${shut() ? "" : `<div class="actbar">
           ${treeOf().barred ? "" : `<span class="state">revert makes a new commit undoing this one; a branch starts from it</span>`}
           <select data-gitaskkind aria-label="what to ask"><option value="review">review</option>
             <option value="explain">explain</option><option value="revert">revert</option></select>

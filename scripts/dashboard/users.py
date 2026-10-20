@@ -1249,8 +1249,15 @@ def what_may(name):
     names a person reads (and where each holds), and the areas they add up
     to with the best level held anywhere, in the Roles page's order."""
     rec = get(name) or {}
+    # The projects that are projects now (B75): a grant on one in the bin or
+    # purged is kept, for a restore to bring back, and is not said, nor
+    # counted toward what the account may do.
+    import registry
+    live = registry.is_project if registry.FILE is not None else (lambda _p: True)
+    pr = {p: rs for p, rs in (rec.get("project_roles") or {}).items() if live(p)}
+    rec = dict(rec, project_roles=pr)
     held = [roles.label(r) for r in roles.roles_of(rec) if r != "user"]
-    for proj, names in sorted((rec.get("project_roles") or {}).items()):
+    for proj, names in sorted(pr.items()):
         held += [f"{roles.label(r)} on {proj}" for r in names if roles.label(r) != f"Owner of {proj}"]
         held += [roles.label(r) for r in names if roles.label(r) == f"Owner of {proj}"]
     got = roles.summary(rec)

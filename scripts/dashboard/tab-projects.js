@@ -23,6 +23,8 @@ async function drawTrash(){
   let j;
   try{ j = await (await fetch("/api/trash")).json(); }
   catch(e){ el.innerHTML = `<div class="hint bad">${esc(String(e))}</div>`; return; }
+  // A refusal is said, never read as an empty bin (B87).
+  if (j?.error){ el.innerHTML = `<div class="hint bad">${esc(j.error)}</div>`; return; }
   const items = j?.items || [];
   if (!items.length){
     el.innerHTML = `<div class="empty">nothing deleted</div>`;
@@ -114,10 +116,10 @@ function projectMatches(p, q){
 // rest behind the menu, the same parts the project page's header draws.
 // A project's lock, said one way on its card, its page's header and Home
 // (consistency batch J: the header said locked where the card said
-// archived): archived when it is locked, read-only when it is another
-// account's.
+// archived): archived when it is locked, read-only when it is not this
+// account's to change (not taken on, or a role that reads it alone).
 function lockMark(p){
-  return p.locked || notMine(p) ? ` <span class="lockmark">${LOCK}${p.locked ? "archived" : "read-only"}</span>` : "";
+  return p.locked || writeWhy(p) ? ` <span class="lockmark">${LOCK}${p.locked ? "archived" : "read-only"}</span>` : "";
 }
 // A project's facts line, the same parts wherever it is drawn: its branch,
 // that it may push, and the node it runs on.
@@ -142,7 +144,7 @@ function projectCard(p){
         p.phone.mine ? "you" : esc(p.phone.owner)}</div>` : ""}
     ${p.testing ? `<div class="pnote dim">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}
     ${projectNote(p)}
-    <div class="pcacts actbar">${projectActions(p, `<button type="button" class="danger" data-del="${esc(p.name)}">Delete</button>`)}</div>
+    <div class="pcacts actbar">${projectActions(p, p.trash_why ? "" : `<button type="button" class="danger" data-del="${esc(p.name)}">Delete</button>`)}</div>
   </div>`;
 }
 
@@ -160,7 +162,7 @@ function renderProjectsInto(i){
         <span class="sp"></span>
         <span class="actbar"><button type="button" id="bTrashTab" aria-label="the trash" title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button>
         <button type="button" class="primary" id="bNewProjTab" title="a fresh local repo, or a clone">New project</button></span>`);
-    d.list.innerHTML = `<div class="field pjjob" id="pjJob" hidden></div><div id="pjChips"></div><div class="field pgridband"><div id="pjGrid"></div></div>`;
+    d.list.innerHTML = `<div class="field" id="pjWhy" hidden></div><div class="field pjjob" id="pjJob" hidden></div><div id="pjChips"></div><div class="field pgridband"><div id="pjGrid"></div></div>`;
     el.querySelector("#bNewProjTab").onclick = openNewProject;
     el.querySelector("#bTrashTab").onclick = openTrash;
     const box = el.querySelector("#pjSearch");
@@ -168,6 +170,15 @@ function renderProjectsInto(i){
     box.oninput = () => { pjQuery = box.value; renderProjectsInto(i); };
   }
   const grid = el.querySelector("#pjGrid");
+  // New project and the trash, dead for an account whose roles do not give
+  // them, with the server's reason under the bar (B87): the form was filled
+  // before the refusal came, and the trash read an empty bin from a 403.
+  const why = state?.can_why || {};
+  setDisabled(el.querySelector("#bNewProjTab"), state?.can?.create === false);
+  setDisabled(el.querySelector("#bTrashTab"), state?.can?.trash === false);
+  const wb = el.querySelector("#pjWhy");
+  paint(wb, (state?.can?.create === false ? deadWhy(why.create) : "") + (state?.can?.trash === false ? deadWhy(why.trash) : ""));
+  setHidden(wb, !wb.innerHTML.trim());
   // The project job (a clone, a first push) running or failed, its own
   // band above the grid, where its result will appear.
   const jb = el.querySelector("#pjJob"), jh = projectJobHtml();
