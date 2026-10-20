@@ -1,20 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.5.1: 2026-10-20
 
 ### Added
 
-- A project has an id, P and a number, shown first on its card and its page; a Claude session is named after the project with its id, as "builderbot (P3)", rather than after its folder, and bb -p takes the id too (3b7aa0e)
+- A project has an id, P and a number, shown first on its card and its page; a Claude session is named after the project with its id, as "builderbot (P3)", rather than after its folder, and bb -p takes the id too (d2ff341)
 
 ### Fixed
 
-- A release cut without a bump carries the changelog's Unreleased changes as its notes, and is named by the project's name rather than its folder (81c2b675)
-- A first start on new folders works: the container makes its home folders and /config its own account's, so the first account can be created and sign-ins are kept (4b9077b)
-- A container whose folders the host will not let it re-own (NFS that squashes root, some NAS shares) starts and says so in its log, rather than restarting forever; the first-account page says when /config cannot be written and what to do on the host (4b9077b)
-- The install guide and the Unraid template no longer ask for a GitHub token or a docker login: the image is public (4b9077b)
-- A container whose compose mounts the Docker socket starts on a node (c9b08d4)
-- A dev instance's rebuild pulls, stops and starts with the same build variables it builds with, and a build gets BB_BUILD_TAG, its version in a form an image tag accepts (d8586f6)
-- bb lint passes a compose file whose required variables are left empty in .env.example (d8586f6)
+- A release cut without a bump carries the changelog's Unreleased changes as its notes, and is named by the project's name rather than its folder (3bbf872)
+- A first start on new folders works: the container makes its home folders and /config its own account's, so the first account can be created and sign-ins are kept (abbdd4b)
+- A container whose folders the host will not let it re-own (NFS that squashes root, some NAS shares) starts and says so in its log, rather than restarting forever; the first-account page says when /config cannot be written and what to do on the host (3cb1ed1)
+- The install guide and the Unraid template no longer ask for a GitHub token or a docker login: the image is public (b3153f0)
+- A container whose compose mounts the Docker socket starts on a node (2a605ef)
+- A dev instance's rebuild pulls, stops and starts with the same build variables it builds with, and a build gets BB_BUILD_TAG, its version in a form an image tag accepts (ead0fa9)
+- bb lint passes a compose file whose required variables are left empty in .env.example (a5dc372)
 
 ## 0.5.0: 2026-10-20
 
