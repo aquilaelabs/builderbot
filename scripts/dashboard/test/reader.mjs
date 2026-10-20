@@ -148,6 +148,92 @@ await splitPick(page, 'snapshots');
 const snapSaid = await page.evaluate(() => document.querySelector('#rnSnapRows')?.textContent || '');
 ok(/Project settings Write on alpha/.test(snapSaid), `...Snapshots says why, from the row (${snapSaid.slice(0, 80)})`);
 
+// ---- Tests, Wiki, Design, Artifacts and Pending (B101) --------------------
+// What each has to show, made by the owner: a test run ingested, a wiki
+// page, a build in dist/.
+{
+  const { writeFileSync, mkdirSync } = await import('node:fs');
+  writeFileSync(`${DIR}/ws/alpha/.bb-test-run.log`,
+    '[dashboard-test] == shape.mjs ==\nPASS  [+0.1s] a row a reader opens\n1 passed, 0 failed in 0.1s\n');
+  execFileSync(join(HERE, '..', 'bb'), ['tests', 'ingest', '.bb-test-run.log'],
+    { cwd: `${DIR}/ws/alpha`, env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '',
+      DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'alpha' } });
+  mkdirSync(`${DIR}/ws/alpha/dist`, { recursive: true });
+  writeFileSync(`${DIR}/ws/alpha/dist/rd-app-0.1.0.apk`, 'not really an apk');
+  const wk = await api('/api/wiki', { project: 'alpha', action: 'save', name: 'Home', text: 'a page a reader reads', base: '' });
+  ok(wk.status === 200, `the owner writes a wiki page for the reader to read (${wk.status} ${wk.error || ''})`);
+}
+await view('tests', '#tstList .tst > summary');
+await page.click('.pane .nb #tstList .tst > summary');
+await page.waitForSelector('.pane .nb #tstList .tst[open] .tstEdit', { state: 'attached', timeout: 15000 });
+const ts = await page.evaluate(() => {
+  const b = document.querySelector('.pane .nb #tstList .tst[open] .tstEdit');
+  return { dead: b.disabled, why: b.closest('.actbar')?.nextElementSibling?.classList.contains('deadwhy')
+    ? b.closest('.actbar').nextElementSibling.textContent : '' };
+});
+ok(ts.dead && /no Projects Write on alpha/.test(ts.why), `Tests: a test's Edit dead, why under it (${ts.why})`);
+
+await view('wiki', '#wkNew');
+await page.waitForSelector('.pane .nb #wkBody .wktabs', { state: 'attached', timeout: 20000 });
+const wk = await page.evaluate(() => {
+  const nb = document.querySelector('.pane .nb');
+  return { add: nb.querySelector('#wkNew').disabled, why: nb.querySelector('#wkAddBox .deadwhy')?.textContent || '',
+           verbs: nb.querySelectorAll('#wkEditTab, #wkRename, #wkRm').length };
+});
+ok(wk.add && /no Projects Write/.test(wk.why) && wk.verbs === 0,
+   `Wiki: New page dead with why under it, and no Edit, Rename or Remove on a page (${wk.why})`);
+
+await view('design', '#dsWrite');
+await page.waitForFunction(() => document.querySelector('.pane .nb #dsBody [data-sect]'), null, { timeout: 20000 });
+const ds = await page.evaluate(() => {
+  const nb = document.querySelector('.pane .nb');
+  const live = [...nb.querySelectorAll('#dsBody input, #dsBody select:not([data-dspick]), #dsBody textarea, #dsBody button')]
+    .filter(e => !e.disabled).map(e => e.id || e.className || e.tagName);
+  return { write: nb.querySelector('#dsWrite').disabled,
+           why: nb.querySelector('#dsWhyF')?.checkVisibility() ? nb.querySelector('#dsWhy').textContent : '', live };
+});
+ok(ds.write && /no Projects Write/.test(ds.why) && !ds.live.length,
+   `Design: Write the file and every field dead, why under the head (${ds.why}; live: ${ds.live.join(', ')})`);
+
+// The fixture's alpha has no commit, so no version to move: the version a
+// project with one is read as, from the server's own shape, and drawn.
+// Routed before the view opens, which reads it.
+await page.route('**/api/version?project=alpha*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({
+  project: 'alpha', target: '0.1.0', tag: 'v0.1.0', released: false, prev: '', ordinal: 3,
+  next: { patch: '0.1.1', minor: '0.2.0', major: '1.0.0' }, forms: { semver: '0.1.0-dev.3' },
+  since: { commits: 3 }, policy: 'ask', policies: ['ask'], versions: [], candidates: [] }) }));
+await view('artifacts', '#artList');
+await page.waitForFunction(() => /rd-app-0\.1\.0\.apk/.test(document.querySelector('.pane .nb #artList')?.textContent || '')
+  && document.querySelector('.pane .nb #verBox [data-sect]'), null, { timeout: 20000 });
+const ar = await page.evaluate(() => {
+  const nb = document.querySelector('.pane .nb');
+  return { verbs: nb.querySelectorAll('#artList [data-artinstall], #artList [data-artpush], #artList [data-artpin], #artList [data-artunnamed], #artList [data-artsign]').length,
+           dl: nb.querySelectorAll('#artList a[download]').length,
+           why: nb.querySelector('#artList .deadwhy')?.textContent || '' };
+});
+ok(ar.verbs === 0 && ar.dl > 0 && /no Projects Write/.test(ar.why),
+   `Artifacts: a build carries Download and no Install, pin, Remove or Sign, the reason over the list (${ar.why})`);
+await page.waitForSelector('.pane .nb #verBox [data-verbump]', { state: 'attached', timeout: 15000 });
+Object.assign(ar, await page.evaluate(() => {
+  const nb = document.querySelector('.pane .nb');
+  return { ver: [...nb.querySelectorAll('#verBox [data-verbump], #verBox [data-verrelease], #verPolicy')].map(b => b.disabled),
+           verWhy: nb.querySelector('#verBox .verbtns + .deadwhy')?.textContent || '',
+           verSaid: (nb.querySelector('#verBox')?.textContent || '').replace(/\s+/g, ' ').slice(0, 120) };
+}));
+await page.unroute('**/api/version?project=alpha*');
+ok(ar.ver.length > 0 && ar.ver.every(Boolean) && /Releases and versions Write on alpha/.test(ar.verWhy),
+   `...and the version's bumps, Release and Claude access dead, the reason under them (${ar.verWhy || ar.verSaid})`);
+const cl = await api('/api/changelog', { project: 'alpha', component: '', groups: [] }, { ...owner, Authorization: auth });
+ok(cl.status === 403 && /no Projects Write/.test(cl.error || ''), `...and the changelog's Save is refused it at the server too (${cl.status} ${cl.error || ''})`);
+
+// Pending: what a session left for approval, drawn into the review dialog.
+await page.evaluate(() => { pendFor = 'alpha'; $("pendModal").hidden = false;
+  drawPendingModal({ pending: [{ id: 1, kind: 'roadmap', verb: 'add', summary: 'something a session added', args: {} }], gate: {} }); });
+const pd = await page.evaluate(() => ({ ok: $("pendApprove").disabled, no: $("pendDeny").disabled,
+  why: $("pendWhyF").checkVisibility() ? $("pendWhy").textContent : '' }));
+ok(pd.ok && pd.no && /no Projects Write/.test(pd.why), `Pending: Approve and Deny dead, why over the foot (${pd.why})`);
+await page.evaluate(() => { $("pendModal").hidden = true; pendFor = null; });
+
 // ---- the Profile's Password (B90) -----------------------------------------
 await page.evaluate(() => openProfileTab());
 await page.waitForSelector('#pfPasswd', { state: 'attached', timeout: 15000 });

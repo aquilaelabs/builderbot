@@ -113,6 +113,12 @@ const NOT_MINE_WHY = "read-only: you hold no role on this project; its owner or 
 // on it, with this under it in red; the server refuses the same.
 const writeWhy = p => !p ? "" : notMine(p) ? NOT_MINE_WHY : (p.write_why || "");
 const projWriteWhy = name => writeWhy((state?.projects || []).find(p => p.name === name));
+// ...and why its version is not this account's to move or release, or ""
+// (B101): Releases and versions Write, which Projects Write does not carry.
+const projReleaseWhy = name => {
+  const p = (state?.projects || []).find(x => x.name === name);
+  return !p ? "" : notMine(p) ? NOT_MINE_WHY : (p.release_why || "");
+};
 // The reason under a dead control, in the notice voice: one line, red.
 const deadWhy = why => why ? `<div class="notice bad deadwhy">${esc(why)}</div>` : "";
 // May this account have a shell at all (roadmap #27)? An account without one

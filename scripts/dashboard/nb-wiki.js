@@ -248,10 +248,14 @@ function nbWikiView({$, nb, project}){
     // says its buttons wait for a page, in the bar's voice, not in red.
     $("wkNetState").textContent = (rem?.label ? `${rem.label}'s wiki` : "no remote: Export is how it leaves")
       + (pages().length ? "" : rem?.label ? "; Export and Push wait for a page" : "; it waits for a page");
-    $("wkPush").disabled = !rem?.auth || !pages().length;
+    // A role that reads the project and does not write it (B101): Pull and
+    // Push dead, and that is the reason said under them.
+    const ro = projWriteWhy(project);
+    $("wkPull").disabled = !!ro;
+    $("wkPush").disabled = !!ro || !rem?.auth || !pages().length;
     // Why Push is dead, on the row and not in a tooltip (the operator, 23
     // Sep): a phone has no hover.
-    const why = pages().length && rem?.label && !rem.auth
+    const why = ro && rem?.label ? ro : pages().length && rem?.label && !rem.auth
       ? `Push needs the project's push rights on ${rem.label}: grant them in the project's remote dialog. Pull works without them for a public wiki.` : "";
     $("wkWhy").textContent = why;
     $("wkWhy").hidden = !why;
@@ -272,13 +276,16 @@ function nbWikiView({$, nb, project}){
     if (!meta) return `<article class="wkarticle"><div class="hint">No pages yet. Start with Home, the page a wiki opens on; a session adds pages with bb wiki save${
       nb.wkData?.gate === "deny" ? ", though this project's Claude may: Write the wiki is deny" : ""}.</div></article>`;
     const pg = nb.wkPages[meta.name];
-    const editing = nb.wkEdit && nb.wkEdit.name === meta.name;
+    // A reader (B101) gets no Edit, Rename or Remove on a page: New page,
+    // dead above, says why.
+    const ro = projWriteWhy(project);
+    const editing = !ro && nb.wkEdit && nb.wkEdit.name === meta.name;
     const tabs = `<div class="wktabs" role="tablist">
-        <button type="button" class="wktab${editing ? "" : " on"}" id="wkRead" role="tab" aria-selected="${!editing}">Read</button>
+        <button type="button" class="wktab${editing ? "" : " on"}" id="wkRead" role="tab" aria-selected="${!editing}">Read</button>${ro ? "" : `
         <button type="button" class="wktab${editing ? " on" : ""}" id="wkEditTab" role="tab" aria-selected="${!!editing}"${pg && !pg.error ? "" : " disabled"}>Edit</button>
         <span class="sp"></span>
         <button type="button" class="wktab" id="wkRename">Rename</button>
-        <button type="button" class="wktab danger" id="wkRm">Remove</button></div>`;
+        <button type="button" class="wktab danger" id="wkRm">Remove</button>`}</div>`;
     let body;
     if (editing){
       body = `${lbl("wkText", "Markdown", "GitHub's wiki Markdown: [[Another page]] links to a page here")}
@@ -309,7 +316,8 @@ function nbWikiView({$, nb, project}){
     const d = nb.wkData;
     if (!d){ box.innerHTML = ""; return; }
     if (d.error){ box.innerHTML = `<div class="field"><div class="hint bad">${esc(d.error)}</div></div>`; return; }
-    const a = nb.wkAdding;
+    const ro = projWriteWhy(project);
+    const a = ro ? null : nb.wkAdding;
     const add = a
       ? `<div class="field wkadd">${lbl("wkNewName", "Page name", "Home is the page a wiki opens on; _Sidebar and _Footer frame every page")}
           <input id="wkNewName" maxlength="200" autocomplete="off" placeholder="${articles().length ? "Getting started" : "Home"}" value="${esc(a.name)}">
@@ -318,7 +326,8 @@ function nbWikiView({$, nb, project}){
           <div class="actbar macts"><span class="state">Create writes the page now</span>
             <button type="button" class="stop" id="wkNewCancel">Cancel</button>
             <button type="button" class="primary" id="wkNewSave">Create</button></div></div>`
-      : `<div class="field"><div class="addbar ctlrow" data-add="wiki"><button type="button" id="wkNew">New page</button></div></div>`;
+      : `<div class="field"><div class="addbar ctlrow" data-add="wiki"><button type="button" id="wkNew"${
+          ro ? " disabled" : ""}>New page</button></div>${deadWhy(ro)}</div>`;
     const log = !nb.wkLog ? "" : `<div class="field wklog">${(d.history || []).length
         ? (d.history || []).map(h => `<div class="wklogrow"><span class="mono">${esc(h.commit)}</span> ${esc(h.what)} <span class="dim">· ${esc(h.by)} · ${esc(ago(h.at))}</span></div>`).join("")
         : `<span class="dim">nothing yet</span>`}</div>`;

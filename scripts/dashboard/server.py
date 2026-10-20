@@ -1162,6 +1162,10 @@ def _project_columns(who, facts):
                     # than each refused only at the press.
                     "write_why": users.may(who, "write", d.name) if who else "",
                     "trash_why": users.may(who, "trash", d.name) if who else "",
+                    # ...and why its version is not this account's to move or
+                    # release (Releases and versions Write), for the
+                    # Artifacts view's bumps, Release and Set (B101).
+                    "release_why": users.may(who, "version", d.name) if who else "",
                     # Whether this project has a compose file, which is the
                     # same question as "could its tests run in a container of
                     # its own": the settings dialog offers that choice only
@@ -8192,7 +8196,9 @@ class Handler(BaseHTTPRequestHandler):
                                         "`bb changelog add`, and corrects one with "
                                         "`edit`, `merge`, `split` or `rm`"}, 403)
         name = req.get("project", "")
-        if self._not_project(name):
+        # A role that reads the project does not rearrange its changelog
+        # either (B101): the Save was live for it, and went through.
+        if self._not_project(name) or self._readonly(name):
             return
         if (bad := projects.locked_out(name)):
             return self._json(bad, 409)

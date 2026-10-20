@@ -44,6 +44,11 @@ function nbDesignView({$, nb, project, root}){
   // The slug a holder's rule is named under, as design.py's _slug makes it.
   const holderSlug = name => (name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "color";
 
+  // Nothing here changes: a locked project's notebook, or a role that reads
+  // the project and does not write it (B101), whose reason is said under
+  // the head.
+  const dsRo = () => root.classList.contains("ro") || !!projWriteWhy(project);
+
   async function loadDesign(){
     try{
       const j = await (await fetch(`/api/design?project=${encodeURIComponent(project)}`)).json();
@@ -71,10 +76,12 @@ function nbDesignView({$, nb, project, root}){
       : f.current ? `${f.path} is written and current`
       : `${f.path} is behind what is saved: Write the file`;
     $("dsHint").textContent = `${pages} · ${file}`;
-    const w = $("dsWrite");
-    w.disabled = !!nb.dsDirty;
+    const w = $("dsWrite"), ro = projWriteWhy(project);
+    w.disabled = !!nb.dsDirty || !!ro;
     w.title = nb.dsDirty ? "Save first: the file is written from what is saved"
       : "write docs/design-language.md into the project from what is saved here; a session commits it with the work";
+    $("dsWhy").textContent = ro;
+    $("dsWhyF").hidden = !ro;
   }
 
   function drawAdd(){
@@ -168,7 +175,7 @@ function nbDesignView({$, nb, project, root}){
     body.querySelectorAll("[data-dsrules]").forEach(wireRulesList);
     // A locked project reads its notebook: every control here is dead but
     // Copy, which takes nothing anywhere, and the pulldowns, which show.
-    if (root.classList.contains("ro"))
+    if (dsRo())
       body.querySelectorAll("input,select:not([data-dspick]),textarea,button").forEach(e => e.disabled = true);
     drawHint();
   }
@@ -559,8 +566,8 @@ function nbDesignView({$, nb, project, root}){
       row.onclick = pick;
       row.onkeydown = e => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); pick(); } };
     });
-    el.querySelectorAll("[data-dslup]").forEach(b => b.onclick = e => { e.stopPropagation(); if (!root.classList.contains("ro")) moveLayer(p, +b.dataset.dslup, 1); });
-    el.querySelectorAll("[data-dsldown]").forEach(b => b.onclick = e => { e.stopPropagation(); if (!root.classList.contains("ro")) moveLayer(p, +b.dataset.dsldown, -1); });
+    el.querySelectorAll("[data-dslup]").forEach(b => b.onclick = e => { e.stopPropagation(); if (!dsRo()) moveLayer(p, +b.dataset.dslup, 1); });
+    el.querySelectorAll("[data-dsldown]").forEach(b => b.onclick = e => { e.stopPropagation(); if (!dsRo()) moveLayer(p, +b.dataset.dsldown, -1); });
   }
   const kindLabel = k => byKey(presets().kinds, k)?.label || k;
   function repaintBoard(p){
@@ -759,7 +766,7 @@ function nbDesignView({$, nb, project, root}){
     const P = presets();
     board.addEventListener("pointerdown", e => {
       const el = e.target.closest(".dsblock");
-      if (!el || root.classList.contains("ro")) return;
+      if (!el || dsRo()) return;
       const i = +el.dataset.i, b = p.blocks[i];
       if (!b) return;
       if (nb.dsSel[key] !== i){ nb.dsSel[key] = i; drawDesign(); return; }
@@ -806,7 +813,7 @@ function nbDesignView({$, nb, project, root}){
     });
     board.addEventListener("keydown", e => {
       const el = e.target.closest(".dsblock");
-      if (!el || root.classList.contains("ro")) return;
+      if (!el || dsRo()) return;
       const b = p.blocks[+el.dataset.i];
       if (!b) return;
       const d = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[e.key];
