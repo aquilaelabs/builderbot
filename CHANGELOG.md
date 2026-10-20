@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- A release cut without a bump carries the changelog's Unreleased changes as its notes, and is named by the project's name rather than its folder (3bbf872)
+- A release cut without a bump carries the changelog's Unreleased changes as its notes, and is named by the project's name rather than its folder (81c2b675)
 
 ## 0.5.0: 2026-10-20
 
