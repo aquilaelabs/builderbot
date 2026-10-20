@@ -21,7 +21,7 @@ FROM ubuntu:24.04
 
 LABEL org.opencontainers.image.title="BuilderBot" \
       org.opencontainers.image.description="Claude Code workstation and build-node controller" \
-      org.opencontainers.image.source="https://github.com/aquilaelabs/BuilderBot" \
+      org.opencontainers.image.source="https://github.com/aquilaelabs/builderbot" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 ARG DEBIAN_FRONTEND=noninteractive
