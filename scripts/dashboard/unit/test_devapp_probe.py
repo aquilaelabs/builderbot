@@ -99,6 +99,15 @@ class Probe(unittest.TestCase):
         self.assertFalse(nodes.host_exec_ok("exec", {"argv": ["python3", "-c", "import os; os.system('id')"]}))
         self.assertFalse(nodes.host_exec_ok("exec", {"argv": ["curl", "http://127.0.0.1:9090"]}))
 
+    def test_a_hosting_node_takes_a_containers_start_on_boot_and_no_other_update(self):
+        # B139: refused, the choice never reached it, asked again at every read.
+        self.assertTrue(nodes.host_exec_ok("exec", {"argv": ["docker", "update", "--restart", "unless-stopped", "app-1"]}))
+        self.assertTrue(nodes.host_exec_ok("exec", {"argv": ["docker", "update", "--restart", "no", "app-1", "db-1"]}))
+        self.assertFalse(nodes.host_exec_ok("exec", {"argv": ["docker", "update", "--restart", "always", "app-1"]}))
+        self.assertFalse(nodes.host_exec_ok("exec", {"argv": ["docker", "update", "--memory", "1g", "app-1"]}))
+        self.assertFalse(nodes.host_exec_ok("exec", {"argv": ["docker", "update", "--restart", "no"]}))
+        self.assertFalse(nodes.host_exec_ok("exec", {"argv": ["docker", "rm", "-f", "app-1"]}))
+
     def test_host_ports_reads_both_shapes(self):
         self.assertEqual(devactions.host_ports(["127.0.0.1:9090->80/tcp", "9787->9787/tcp", "53->53/udp",
                                                "9090->81/tcp"]), [9090, 9787])
