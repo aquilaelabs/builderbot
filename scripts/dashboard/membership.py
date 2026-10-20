@@ -33,6 +33,7 @@ import threading
 import time
 from pathlib import Path
 
+import roles
 import users
 
 STATE = None
@@ -176,6 +177,31 @@ def forget_account(uid):
             _write("project-owners.json", d)
 
 
+def forget_project(project, live=()):
+    """A project that will never be listed again (a create that never took,
+    one deleted for good): its owner, its invitations, every account's roles
+    on it and its PROJECT_owner role go (B95). Left, the Profile and the
+    Roles page went on naming an owner of a clone that had failed and of
+    one purged, two of them under one label. `live` is every live
+    project's directory: a role name is cut to a length, so one another
+    live project's owner role shares is kept."""
+    project = str(project or "")
+    if not project:
+        return
+    with _lock:
+        d = _owners()
+        if d["projects"].pop(project, None) is not None:
+            _write("project-owners.json", d)
+        i = _invites()
+        if i["projects"].pop(project, None) is not None:
+            _write("invites.json", i)
+    users.forget_project(project)
+    name = roles.owner_role_name(project)
+    if not any(roles.owner_role_name(p) == name for p in live if p != project):
+        roles.remove(name)
+        users.forget_role(name)
+
+
 def members(project):
     """The accounts this project is on, by name, BuilderBot's owner first."""
     out = []
@@ -212,7 +238,7 @@ def view(me, project):
             # no use for the controller's whole list of accounts.
             "accounts": sorted(u.get("name") or "" for u in users.all_users()) if invite else [],
             # The roles an invitation may offer: those on a project (R155).
-            "roles": sorted(n for n, r in users.roles.all_roles().items()
+            "roles": sorted(n for n, r in roles.all_roles().items()
                             if r.get("scope") == "projects" and not n.endswith("_owner"))}
 
 
@@ -266,7 +292,7 @@ def invite(me, project, name, role=""):
     u = users.get(name)
     if not u or not u.get("uid"):
         return {"error": f"no account called {name}"}, 400
-    r = users.roles.get(role) if role else None
+    r = roles.get(role) if role else None
     if not r or r.get("scope") != "projects":
         return {"error": "pick the role they are invited as: a role on a project"}, 400
     if name in members(project):

@@ -220,6 +220,23 @@ live_sessions = None
 # brief.write: the brief a new project is made with, kept in its tree for the
 # first Claude session rather than written into CLAUDE.md.
 brief_writer = None
+# What a create that never took leaves elsewhere, put away (B93, B95): its
+# settings, its owner and the owner role (server: prefs.forget,
+# membership.forget_project).
+unmade = None
+# ...and what a project deleted for good leaves on the accounts: its owner
+# and the owner role (membership.forget_project); its settings stay under
+# the directory, which is never handed out again (R154).
+purged = None
+
+
+def _unmade(name):
+    """A create that never took: the directory was removed a moment ago, so
+    its record goes and its folder is free for the next try (registry.forget),
+    and what was written for it beside goes with it."""
+    if registry.forget(name) and unmade:
+        with contextlib.suppress(Exception):  # the create has failed already; this is tidying
+            unmade(name)
 
 
 def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
@@ -1033,6 +1050,9 @@ def trash_purge(req):
         return {"error": f"could not delete it: {e}"}, 500
     # Gone for good, its directory still never handed out again (R154).
     registry.mark(name, "purged")
+    if purged:
+        with contextlib.suppress(Exception):  # the files are gone already; this is tidying
+            purged(name)
     return {"ok": True, "name": name}, 200
 
 
@@ -1303,6 +1323,7 @@ def create(req, env=None):
             r = unpack_archive(arch, dest)
             if r.get("error"):
                 shutil.rmtree(dest, ignore_errors=True)
+                _unmade(name)
                 return r, 400
             body, code = _init(dest, name, about, _field(req, "version"), env)
             if code == 200:
@@ -1319,6 +1340,7 @@ def create(req, env=None):
                   lambda: _clone(dest, key_url or url, helper, want_push)):
         shutil.rmtree(dest, ignore_errors=True)             # made a moment ago
         forget_token(name)                                  # written a moment ago
+        _unmade(name)
         return {"error": "another project job is already running"}, 409
     if want_push:
         grant_push(name, addr["host"], repo_id, "token" if token else "key")
@@ -1332,6 +1354,7 @@ def _init(dest, name, about, version="", env=None):
     r = run(["git", "init", "-b", "main", str(dest)], timeout=30)
     if r["code"] != 0:
         shutil.rmtree(dest, ignore_errors=True)             # made a moment ago
+        _unmade(name)
         return {"error": r["out"].strip()[-2000:] or "git init failed"}, 500
     note = brief_writer(dest, about) if brief_writer else ""
     # A starting version (the operator, 25 Sep): the tree as made is the
@@ -1614,10 +1637,12 @@ def _clone(dest, url, helper="", may_push_=False):
     if _aborted():
         shutil.rmtree(dest, ignore_errors=True)             # made by this job
         forget_token(dest.name); drop_push(dest.name)
+        _unmade(dest.name)
         return "stopped: the half-cloned directory was removed", ""
     if r["code"] != 0:
         shutil.rmtree(dest, ignore_errors=True)
         forget_token(dest.name); drop_push(dest.name)
+        _unmade(dest.name)
         return r["out"].strip()[-2000:] or "git clone failed", ""
     if helper:
         _scope_to_token(dest, helper)
@@ -1946,6 +1971,11 @@ def create_from_dialog(req, *, env, account, may_node):
         except OSError:
             pass                  # the project exists; its pin is not
                                   # worth failing the create over
+    # A clone that failed while the lines above ran was put away before its
+    # owner and settings were written: they go now too (B95).
+    if not registry.get(name) and unmade:
+        with contextlib.suppress(Exception):
+            unmade(name)
     return body, code
 
 

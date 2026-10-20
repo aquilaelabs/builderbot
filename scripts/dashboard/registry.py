@@ -233,6 +233,25 @@ def claim(dirname, name):
         return dict(r)
 
 
+def forget(dirname):
+    """A create that never took (a clone that failed, an archive refused,
+    git init failing): its record goes, so its folder is free again and the
+    next try with the name lands in it rather than in NAME-2 (B93). Only a
+    record whose folder is not there: nothing was ever kept under it."""
+    with _lock:
+        d = _load()
+        if dirname in d["projects"] and not (WORKSPACE / dirname).exists():
+            d["projects"].pop(dirname)
+            _save(d)
+            return True
+        return False
+
+
+def live_dirs():
+    """Every live project's directory."""
+    return sorted(k for k, r in _load()["projects"].items() if r.get("state") == "live")
+
+
 def set_name(dirname, name):
     """A rename: the shown name alone. {ok} or {error}."""
     name = clean_name(name)

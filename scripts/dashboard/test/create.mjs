@@ -141,6 +141,14 @@ ok(await page.$eval('#pNamePreview', el => el.hidden),
   ok(await page.$eval('#pNamePreview', el => !el.hidden
        && /Shown as relic, in the folder relic-2: a deleted project had relic/.test(el.textContent)),
      '...and a name whose folder a deleted project had says it is shown as itself in the folder Name-2');
+  // ...while a folder a live project is in says which, not that a deleted
+  // project had it (B93).
+  await page.evaluate(() => { state.projects.push({ name: 'held-2', label: 'held' }); pTakenDirs.add('held-2'); });
+  await page.fill('#pName', 'held-2');
+  const heldSaid = await page.$eval('#pNamePreview', el => el.hidden ? '' : el.textContent);
+  await page.evaluate(() => { state.projects = state.projects.filter(p => p.name !== 'held-2'); pTakenDirs.delete('held-2'); });
+  ok(/in the folder held-2-2: held is in the folder held-2/.test(heldSaid) && !/deleted/.test(heldSaid),
+     `...and a live project's folder is named as that project's, not a deleted one's (${heldSaid})`);
   await page.fill('#pName', 'plain');
 }
 // Put the field back as it was found: a mode switch does not clear it, only

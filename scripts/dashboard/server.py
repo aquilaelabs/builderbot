@@ -3555,6 +3555,10 @@ projects.take_on = users.take_on
 projects.set_prefs = lambda name, **kw: prefs.set_prefs(name, workspace=WORKSPACE, **kw)
 projects.live_sessions = tmux_sessions
 projects.brief_writer = brief.write
+# A create that never took, and a project deleted for good, leave no owner,
+# owner role or account entry behind (B93, B95); the first its settings too.
+projects.purged = lambda name: membership.forget_project(name, live=registry.live_dirs())
+projects.unmade = lambda name: (prefs.forget(name), projects.purged(name))
 
 # ---- a node's git, relayed --------------------------------------------------
 # Push, fetch, pull and ls-remote from a session on a node, done in a
