@@ -33,6 +33,7 @@ import re
 import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 # Semgrep flags this import (use-defused-xml) and it is a fair thing to ask
@@ -514,6 +515,37 @@ def size_of(tc, pkg_id=""):
     return str(total) if total else ""
 
 
+# Where a source kind with no url of its own downloads from: sdkmanager's
+# packages are Google's.
+KIND_HOST = {"sdkmanager": "dl.google.com"}
+
+
+def source_host(tc):
+    """The host an install of `tc` downloads from first, or "" where the
+    catalog does not say (a command run through another tool)."""
+    src = tc.get("source") or {}
+    url = for_platform(src.get("url")) if src.get("url") else ""
+    if isinstance(url, str) and "://" in url:
+        return urllib.parse.urlsplit(url).hostname or ""
+    return KIND_HOST.get(str(src.get("kind") or ""), "")
+
+
+def unreachable(host, timeout=6):
+    """Why `host` cannot be reached from here on 443 (its name not found, or
+    no answer), or "" when it can (R82): asked before an install starts, so a
+    machine with no internet is told in one sentence, not a traceback."""
+    import socket
+    try:
+        socket.getaddrinfo(host, 443)
+    except OSError:
+        return f"{host} could not be looked up: this machine has no internet, or no name server that answers"
+    try:
+        socket.create_connection((host, 443), timeout=timeout).close()
+    except OSError as e:
+        return f"{host} did not answer ({e.strerror or e}): this machine cannot reach the internet"
+    return ""
+
+
 def main(argv):
     if not argv:
         die("usage: sdkmeta.py names|flavors|images|field|argv|resolve|size ...")
@@ -560,6 +592,15 @@ def main(argv):
         subs = dict(a.split("=", 1) for a in argv[3:] if "=" in a)
         for k, v in (dig(tc, argv[2]) or {}).items():
             sys.stdout.write(f"{k}={fill(str(v), subs)}\0")
+
+    elif op == "reach":
+        # Exit 0 quietly when the source's host answers, or when the catalog
+        # names none; else the sentence, and 1.
+        host = source_host(tc)
+        why = unreachable(host) if host else ""
+        if why:
+            print(why)
+            raise SystemExit(1)
 
     elif op == "resolve":
         version, url = resolve(tc)

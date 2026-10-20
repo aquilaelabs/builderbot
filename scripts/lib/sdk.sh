@@ -1405,6 +1405,14 @@ sdk_install() {
     [ -n "$kind" ] || case "$what" in android:*\;*) kind=sdkmanager ;; esac
     [ -n "$kind" ] || { sdk_image_flavor "$what" >/dev/null && kind=sdkmanager; }
     [ -n "$kind" ] || die "unknown toolchain: ${what} (bb toolchains list names them)"
+    # The internet before anything is touched (R82): a machine with none was
+    # told by a urllib traceback, or curl's "Could not resolve host", cut
+    # short in the row's red line. A versioned android id has no catalog row
+    # to ask, and its host is sdkmanager's, which the row for it names.
+    local why=""
+    case "$what" in android:*\;*) why="$(sdk_meta reach android:platform-tools 2>/dev/null)" ;;
+                    *)            why="$(sdk_meta reach "$what" 2>/dev/null)" ;; esac
+    [ -z "$why" ] || die "${what} cannot be installed here: ${why}"
     mkdir -p "$root"
     [ "$kind" = sdkmanager ] || sdk_clear_interrupted "$(sdk_dir "$what")"
     # EXIT rather than RETURN: a failing step here reaches `die`, which exits
