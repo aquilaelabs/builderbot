@@ -51,8 +51,8 @@ class FeaturesOff(unittest.TestCase):
         self.assertEqual(m.refused("POST", "/api/settings", {"set": {"log_days": 7}}), "")
 
     def test_the_controllers_shell_has_its_sentence(self):
-        m = self.load("shell", "a hosted demo")
-        self.assertEqual(m.sentences(), {"shell": "A terminal on the controller itself is off: a hosted demo"})
+        m = self.load("shell", "a shared classroom install")
+        self.assertEqual(m.sentences(), {"shell": "A terminal on the controller itself is off: a shared classroom install"})
 
     def test_a_name_that_is_not_a_feature_switches_nothing_off(self):
         m = self.load("tunel,enroll")
