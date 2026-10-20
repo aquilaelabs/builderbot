@@ -1285,6 +1285,18 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
   await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
   const offered = await page.$$eval('.doc .projtab .askline datalist option', os => os.map(o => o.value));
+  // The field and its Cancel and Save on one line inside the card, at a
+  // desk and on a phone: Save had dropped under Cancel.
+  for (const w of [1280, 360]){
+    await page.setViewportSize({ width: w, height: 800 });
+    const line = await page.$eval('.doc .projtab .askline .askrow', r => {
+      const card = r.closest('.pcard').getBoundingClientRect();
+      const boxes = [...r.children].filter(e => e.offsetParent).map(e => e.getBoundingClientRect());
+      return { tops: new Set(boxes.map(b => Math.round(b.top))).size, inside: boxes.every(b => b.right <= card.right + 1) };
+    });
+    ok(line.tops === 1 && line.inside, `a card's Group ask is one line at ${w}: its field, Cancel and Save, inside the card (${JSON.stringify(line)})`);
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.click('.doc .projtab .askline [data-askno]');
   // The pencil beside the group's name renames it in a box under the
   // heading, for every project in it (R273).

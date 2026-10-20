@@ -2079,8 +2079,12 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 /* An ask in a card (Group) sits on the card's own inset, not a band's. */
 .pcard .askline{padding:6px 0 2px}
 /* An ask box's field takes the row, its two buttons after it, wherever the
-   box is drawn (a card's Group, a group's rename): the box is one thing. */
-.askline .askrow input{flex:1 1 auto;min-width:0}
+   box is drawn (a card's Group, a group's rename): the box is one thing, on
+   one line. The field starts at a control's width, so a wrapping bar sent
+   Save under Cancel in a card before the field gave up any of it. */
+.askline .askrow{flex-wrap:nowrap}
+.askline .askrow input{flex:1 1 auto;min-width:0;width:auto}
+.askline .askrow>button{flex:none}
 /* A finger, not a pointer: the small controls that measured under 32px in the
    polish tour (18 Sep, 344 to 840px wide) grow to a thumb's size on a touch
    screen, and a desktop keeps its tighter strip. The bell stays bare (see its
