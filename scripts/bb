@@ -5424,8 +5424,16 @@ cmd_doctor() {
     # after the session line, and every check below it went unprinted.
     # One line per node with a daemon (there is no primary among them), so
     # every line the probe prints is read, not the first.
-    docker_line="$(python3 "$lib" \
-        "$(dirname "$(readlink -f "$0")")/dashboard/devapp.py" 2>/dev/null || true)"
+    # A node holds no /config and no node store, so the probe has nothing
+    # to ask, whatever tree bb runs from: the daemons are the controller's to
+    # check, and the line says where rather than naming a file that is not
+    # here or answering "no node" from a store it cannot read (B148).
+    if on_node; then
+        docker_line="skip docker daemon: the controller checks it; its Doctor (the dot in the dashboard's header) says"
+    else
+        docker_line="$(python3 "$lib" \
+            "$(dirname "$(readlink -f "$0")")/dashboard/devapp.py" 2>/dev/null || true)"
+    fi
     [ -n "$docker_line" ] || docker_line="none"
     while read -r dst dmsg; do
         case "$dst" in
