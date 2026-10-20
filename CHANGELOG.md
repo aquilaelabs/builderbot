@@ -12,6 +12,7 @@
 - A first start on new folders works: the container makes its home folders and /config its own account's, so the first account can be created and sign-ins are kept (4b9077b)
 - A container whose folders the host will not let it re-own (NFS that squashes root, some NAS shares) starts and says so in its log, rather than restarting forever; the first-account page says when /config cannot be written and what to do on the host (4b9077b)
 - The install guide and the Unraid template no longer ask for a GitHub token or a docker login: the image is public (4b9077b)
+- A container whose compose mounts the Docker socket starts on a node (c9b08d4)
 
 ## 0.5.0: 2026-10-20
 
