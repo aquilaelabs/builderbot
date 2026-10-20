@@ -310,6 +310,7 @@ docs/containers.md               the Containers page and nginx: dev instances, h
 docs/machines.md                 Controller settings, Nodes, Storage, the logs, the Jobs page, a Mac as a node
 docs/people.md                   the first account, Users and Roles, owners and invitations, the chat, your Profile
 docs/bb-command.md               the bb verbs with more behind them: the test harness, the code map, capture, sound and documents
+docs/privacy.md                  data and privacy: what an install keeps, what it contacts, how to remove it
 docs/companion-app.md            the companion app for an Android phone: pairing, its lock, notifications, how it is built
 docs/decisions.md                the design decisions, with their dates and reasons
 docs/layout.md                   this list, held to the tree by bb lint

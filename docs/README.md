@@ -50,6 +50,7 @@ dashboard's rail.
 
 - [reference.md](reference.md): every setting in the environment, every `bb` command, the apps to install, and signing Android releases
 - [bb-command.md](bb-command.md): the `bb` verbs with more behind them: the test harness, the code map, capture, sound and documents
+- [privacy.md](privacy.md): what an install keeps about the people who use it, what it contacts, and how to remove it; nothing goes to BuilderBot's authors
 
 ## Working on BuilderBot
 

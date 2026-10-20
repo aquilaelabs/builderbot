@@ -99,6 +99,7 @@ Everything else, from installing to the full command reference, is in
   [toolchains](docs/toolchains.md), [containers](docs/containers.md),
   [machines](docs/machines.md) and [people](docs/people.md)
 - [Reference](docs/reference.md): settings, every `bb` command, Android signing
+- [Data and privacy](docs/privacy.md): what an install keeps and contacts; nothing is sent to us
 - [Architecture](docs/architecture.md) and [Contributing](CONTRIBUTING.md)
 
 ## License
