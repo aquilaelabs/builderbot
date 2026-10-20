@@ -134,12 +134,13 @@ jobs:
               -PbbVersion='${{ steps.v.outputs.semver }}' -PbbCode='${{ steps.v.outputs.code }}'
             rm -f "$ks"
             echo "apk=app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_OUTPUT"
+            echo "signed=1" >> "$GITHUB_OUTPUT"
             echo "signed release build"
           else
             ./gradlew --no-daemon --console=plain assembleDebug \
               -PbbVersion='${{ steps.v.outputs.semver }}' -PbbCode='${{ steps.v.outputs.code }}'
             echo "apk=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
-            echo "::warning::no BB_APP_KEYSTORE_B64 secret: this is a DEBUG build signed with this runner's own key; set the four BB_APP_* secrets for a release"
+            echo "::warning::no BB_APP_KEYSTORE_B64 secret: this is a DEBUG build signed with this runner's own key; set the four BB_APP_* secrets for a release; a debug build is never attached to one"
           fi
 
       - name: Name it by the repository's version
@@ -177,7 +178,10 @@ jobs:
           fi
 
       - name: Attach it to the release with its sha256
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+        # Only a build signed with the repository's key: a debug build on a
+        # public release would be installed, and the signed one after it
+        # could then not update it.
+        if: steps.build.outputs.signed == '1' && (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.tag != ''))
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
