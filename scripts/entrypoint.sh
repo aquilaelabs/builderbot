@@ -322,8 +322,12 @@ seed_home() {
     # Recursed only when the top of the tree is not already the account's:
     # a home of gigabytes was walked on every start (B283). That check is
     # the whole switch; the CHOWN_HOME variable that also skipped it is gone.
+    # A share that will not let root change owners (NFS squashing root, some
+    # NAS shares) is said and survived: under set -e this chown restarted
+    # the container forever with nothing in the log saying why (B122).
     if [ "$(stat -c %u:%g "$BUILDER_HOME" 2>/dev/null)" != "$PUID:$PGID" ]; then
-        chown -R "$PUID:$PGID" "$BUILDER_HOME"
+        chown -R "$PUID:$PGID" "$BUILDER_HOME" 2>/dev/null \
+            || warn "$BUILDER_HOME could not be made ${PUID}:${PGID}: chown the folder mounted there on the host"
     fi
     # ...and what this function made itself, always: a home already the
     # account's (a folder chowned as the install says, whose owner is the
@@ -333,7 +337,7 @@ seed_home() {
         "$BUILDER_HOME/.local" "$BUILDER_HOME/.local/bin" "$BUILDER_HOME/.ssh" \
         "$BUILDER_HOME/.cache" 2>/dev/null || true
     for f in "$BUILDER_HOME"/.bashrc "$BUILDER_HOME"/.profile; do
-        [ "$(stat -c %u "$f" 2>/dev/null)" = 0 ] && chown "$PUID:$PGID" "$f"
+        [ "$(stat -c %u "$f" 2>/dev/null)" = 0 ] && { chown "$PUID:$PGID" "$f" 2>/dev/null || true; }
     done
     # /config is BuilderBot's own state, never a share: one Docker made for a
     # missing host path, or a new named volume, is root's, and the dashboard,
@@ -343,6 +347,8 @@ seed_home() {
     local state="${DASHBOARD_STATE:-/config}"
     [ "$(stat -c %u:%g "$state" 2>/dev/null)" = "$PUID:$PGID" ] \
         || chown "$PUID:$PGID" "$state" 2>/dev/null || true
+    run_as_builder test -w "$state" \
+        || warn "$state is not writable by ${PUID}:${PGID}: nothing can be saved, not even the first account, until the folder mounted there is chowned ${PUID}:${PGID} on the host"
     # Make the persistent log readable/rotatable from the share.
     [ "$(stat -c %u:%g "$(bb_log_dir)" 2>/dev/null)" = "$PUID:$PGID" ] \
         || chown -R "$PUID:$PGID" "$(bb_log_dir)" 2>/dev/null || true
