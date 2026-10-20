@@ -177,7 +177,7 @@ function tcTermsLine(p){
   const link = t => `<a href="${esc(t.url)}" target="_blank" rel="noreferrer">${esc(t.label)}</a>`;
   const acc = (p.terms || []).filter(t => t.accept), lic = (p.terms || []).filter(t => !t.accept);
   if (!acc.length && !lic.length) return "";
-  return `<span class="sub tcterms">${acc.length ? `Installing it accepts ${acc.map(link).join(" and ")}.` : ""}${
+  return `<span class="sub tcterms">${acc.length ? `Installing it asks you to accept ${acc.map(link).join(" and ")}.` : ""}${
     acc.length && lic.length ? " " : ""}${lic.length ? `Licensed: ${lic.map(link).join(", ")}.` : ""}</span>`;
 }
 
@@ -972,9 +972,18 @@ async function tcAct(action, only){
   // are ghosted anyway. What happens to them afterwards is decided by how it
   // went: installed rows carry their own tick, failed ones let go of it.
   try{
-    const r = await postJSON("/api/toolchains", {action, names, node: tcNode,
-                                                 ...(drv && tcDriverPick ? {driver: tcDriverPick} : {})});
-    const j = await r.json().catch(() => ({}));
+    const body = {action, names, node: tcNode, ...(drv && tcDriverPick ? {driver: tcDriverPick} : {})};
+    let r = await postJSON("/api/toolchains", body);
+    let j = await r.json().catch(() => ({}));
+    // An agreement a toolchain installs under (Google's Android SDK terms,
+    // NVIDIA's CUDA license) is the person's to accept, named, before
+    // anything is fetched: the server says which, and keeps who accepted.
+    if (r.status === 409 && Array.isArray(j.accept) && j.accept.length){
+      if (!confirm(`Installing ${names.join(", ")} accepts ${j.accept.map(t => t.label).join(" and ")}.\n\n${
+            j.accept.map(t => `${t.label}: ${t.url}`).join("\n")}\n\nAccept and install?`)) return;
+      r = await postJSON("/api/toolchains", {...body, accept: j.accept.map(t => t.label)});
+      j = await r.json().catch(() => ({}));
+    }
     // A toolchain that needs another used to be installed without it and fail
     // inside it: android-tools with no jdk, from sdkmanager, naming
     // neither. The catalog says so now, and so does this, rather than an

@@ -1789,7 +1789,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     // this, android-tools with no jdk failed inside sdkmanager with a
     // message naming neither Java nor the toolchain that supplies it.
     const dep = await napi('/api/toolchains', { action: 'install',
-                                              names: ['android-tools'], node: minted.id });
+                                              names: ['android-tools'], node: minted.id, accept: ["Google's Android SDK terms"] });
     const depjob = dep.job ? await napi(`/api/v1/jobs?id=${dep.job}`) : null;
     ok(depjob && JSON.stringify(depjob.spec.names) === JSON.stringify(['jdk', 'android-tools'])
        && JSON.stringify(dep.added) === JSON.stringify(['jdk']),
@@ -1808,7 +1808,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
         store_dirs: { top: ['jdk'], android: ['cmdline-tools'] } },
         version: shipped.version, digest: shipped.digest }) });
     const hollow = await napi('/api/toolchains', { action: 'install',
-                                                 names: ['android:ndk'], node: minted.id });
+                                                 names: ['android:ndk'], node: minted.id, accept: ["Google's Android SDK terms"] });
     const hj = hollow.job ? await napi(`/api/v1/jobs?id=${hollow.job}`) : null;
     ok(hj && (hj.spec.names || []).includes('android-tools'),
        `an empty cmdline-tools directory does not count as android-tools (${
@@ -1995,7 +1995,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     await page.evaluate(() => { const t = tabs.find(t => t.kind === 'emulator'); if (t) dropTab(t.id); });
   }
 
-  const gate = await napi('/api/toolchains', { action: 'install', names: ['android:platform-tools'], node: 'local' });
+  const gate = await napi('/api/toolchains', { action: 'install', names: ['android:platform-tools'], node: 'local', accept: ["Google's Android SDK terms"] });
   ok(gate.ok !== undefined || gate.error, '(local installs still go through the installer here)');
 
   // ---- the project's nodes, in its settings dialog (phase 6) --------------

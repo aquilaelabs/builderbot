@@ -150,7 +150,7 @@ ok(pw?.layout?.env?.NODE_PATH === 'node_modules' && /npm install/.test(pw?.sourc
     name: r.querySelector('input')?.value, text: r.querySelector('.tcterms')?.textContent || '',
     google: !!r.querySelector('.tcterms a[href*="developer.android.com/studio/terms"]') })));
   const android = terms.filter(t => /^android/.test(t.name));
-  ok(android.length && android.every(t => t.google && /Installing it accepts Google's Android SDK terms/.test(t.text)),
+  ok(android.length && android.every(t => t.google && /Installing it asks you to accept Google's Android SDK terms/.test(t.text)),
      `each Android row says Install accepts Google's Android SDK terms, linked (${android.length} rows)`);
   const bare = terms.filter(t => !t.text);
   ok(!bare.length, `...and every other row names its terms (${bare.map(t => t.name).join(', ') || 'none without'})`);
@@ -959,9 +959,14 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
      `...and the tab draws them as rows with a tick, like any toolchain (${drawn.join(', ')})`);
   // Ticked and installed like any row: the versioned id is a name the node's
   // tab drew, so the handler takes it, where a name off any tab is refused.
-  const queued = await api('/api/toolchains', { action: 'install', names: ['android:ndk;29.0.14206865'], node: sb.id });
+  // Google's terms are a person's to accept, named, before anything installs
+  // under them; a pinned version is its row's, and the server keeps who did.
+  const unasked = await api('/api/toolchains', { action: 'install', names: ['android:ndk;29.0.14206865'], node: sb.id });
+  ok(/accepts Google's Android SDK terms/.test(unasked.error || '') && unasked.accept?.[0]?.url,
+     `an install under an agreement is refused until it is accepted, naming it with its link (${unasked.error})`);
+  const queued = await api('/api/toolchains', { action: 'install', names: ['android:ndk;29.0.14206865'], node: sb.id, accept: ["Google's Android SDK terms"] });
   ok(queued.ok && /^j_/.test(queued.job || ''), `Install takes a pinned version by its id (${queued.job || queued.error})`);
-  const stray = await api('/api/toolchains', { action: 'install', names: ['android:ndk;1.2.3'], node: sb.id });
+  const stray = await api('/api/toolchains', { action: 'install', names: ['android:ndk;1.2.3'], node: sb.id, accept: ["Google's Android SDK terms"] });
   ok(/nothing selected/.test(stray.error || ''), `...and a version nobody pins is still refused (${stray.error})`);
   await api('/api/toolchains', { action: 'abort', node: sb.id });
   rmSync(`${DIR}/ws/alpha/app`, { recursive: true, force: true });

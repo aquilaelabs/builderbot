@@ -433,6 +433,24 @@ for that reason. Any number of machines may share one: each node installs
 under its own directory in the store, named by its node id (R196), so no
 machine runs a binary another put there.
 
+### Licenses and agreements
+
+Every row names what its tool is under, with a link. BuilderBot ships none of
+these tools: an install downloads each from its own vendor onto your node.
+
+A few install under an agreement rather than a license alone: Google's
+Android SDK terms (every Android row) and NVIDIA's CUDA license (PyTorch).
+Their rows say "Installing it asks you to accept", and Install selected
+names each agreement with its link and asks **Accept and install** before
+anything is fetched. The server refuses an install under an agreement that
+was not accepted, and keeps who accepted it, when, and for which toolchains
+in the audit log. A Claude session is never the one to accept: `bb
+toolchains install android:...` from a session, on a store nobody has
+accepted Google's terms for, is refused and sent to this page.
+
+Xcode installs only on a Mac, as Apple's license requires, through `xcodes`
+signed in with your own Apple ID; nothing accepts Xcode's license for you.
+
 ## Multiple Android versions
 
 Nothing Android is in the image: the SDK, the emulator and the system images

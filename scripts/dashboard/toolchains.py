@@ -1740,6 +1740,29 @@ def with_requires(names, have):
     return out, [n for n in out if n not in names]
 
 
+def agreements(names):
+    """The agreements installing `names` accepts, with what they require
+    (android:ndk brings android-tools): [{label, url}], each once. Only a
+    person accepts one, on the page, never a recipe on their behalf."""
+    by = {p["name"]: p for p in TOOLCHAINS}
+    out, seen = [], set()
+
+    def walk(n, depth=0):
+        if n in seen or depth > 4 or n not in by:
+            return
+        seen.add(n)
+        for r in by[n].get("requires") or []:
+            walk(r, depth + 1)
+        for t in by[n].get("terms") or []:
+            if t.get("accept") and t["label"] not in [x["label"] for x in out]:
+                out.append({"label": t["label"], "url": t["url"]})
+
+    # A pinned version (android:ndk;29.0.14206865) is its row's.
+    for n in names or []:
+        walk(str(n).split(";")[0])
+    return out
+
+
 def platform_of(n):
     """"<os>/<arch>" for a node, or "" when it has not said."""
     os_ = str((n or {}).get("os") or "").strip().lower()

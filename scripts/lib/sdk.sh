@@ -102,26 +102,29 @@ sdkmgr() {
 # The android SDK licenses, once per toolchain store root.
 #
 # sdkmanager installs nothing into a root whose licenses have not been
-# accepted, and the refusal names the package rather than the license: "The
-# following packages can not be installed since their licenses or those of
-# the packages they depend on were not accepted". This image accepts them at
-# build time (Dockerfile) into the image's own <sdk>/licenses, which is why
-# nothing here ever had to. A node's toolchain store is a DIFFERENT root, and
-# nothing had ever accepted them there, so an android:* install on a node
-# failed at this second hurdle immediately after the SDK-root one.
+# accepted, and the refusal names the package rather than the license. They
+# are Google's terms, and a person accepts them: the Toolchains page names
+# them, links them and asks before it queues the install, and the server
+# keeps who accepted. The job that page queues then records that acceptance
+# here, in the store, the way sdkmanager keeps it.
+#
+# Never a session's to accept: a Claude session that runs `bb toolchains
+# install android:...` on a store nobody has accepted the terms for is
+# refused, and sent to the page, rather than accepting them for a person.
 #
 # Skipped when the directory is there: accepting is a JVM start, and a store
 # that has been through this once does not need it again. If Google ships a
-# new license the install refuses with the message above, which at least
+# new license the install refuses with sdkmanager's message, which at least
 # names what to do.
 sdk_android_licenses() {
     local root; root="${ANDROID_HOME:-$(sdk_dir android)}"
     [ ! -d "$root/licenses" ] || return 0
-    log "accepting the android SDK licenses for ${root}, once per store"
+    [ -z "${CLAUDECODE:-}" ] \
+        || die "the Android SDK installs under Google's terms, which a person accepts: install it from the Toolchains page, which asks"
+    log "recording the android SDK licenses accepted on the Toolchains page, for ${root}"
     mkdir -p "$root"
     # `yes` dies of SIGPIPE when sdkmanager stops reading. Expected, not a
-    # failure; hence the || true inside the pipeline's first stage, the same
-    # shape the Dockerfile uses.
+    # failure; hence the || true inside the pipeline's first stage.
     (yes || true) | sdkmanager "$(sdk_root_flag)" --licenses >/dev/null 2>&1 || true
 }
 

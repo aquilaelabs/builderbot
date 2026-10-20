@@ -8106,6 +8106,19 @@ class Handler(BaseHTTPRequestHandler):
         # everywhere, a role of your own where it says.
         if (why := users.may_node(self._who(), "toolchains-write", field(req, "node"))):
             return self._json({"error": why}, 403)
+        # An agreement (Google's Android SDK terms, NVIDIA's CUDA license) is
+        # a person's to accept, by name, before anything installs under it;
+        # the page asks, and the acceptance is on the record.
+        if req.get("action") == "install":
+            need = toolchains.agreements(req.get("names") or [])
+            given = req.get("accept") if isinstance(req.get("accept"), list) else []
+            if (missing := [t for t in need if t["label"] not in given]):
+                return self._json({"error": "installing this accepts " + " and ".join(t["label"] for t in missing)
+                                            + ": accept it on the Toolchains page first",
+                                   "accept": missing}, 409)
+            if need:
+                db.audit(self._principal(), "terms-accepted", ",".join(map(str, req.get("names") or []))[:200],
+                         {"terms": [t["label"] for t in need], "node": field(req, "node")})
         return self._json(*toolchains.verb(req.get("action"), req, self._principal()))
 
     def _toolpacks(self, req):
