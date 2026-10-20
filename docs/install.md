@@ -173,9 +173,7 @@ share is not listed. A project with a problem says so on its card: no git
 repository or the wrong ownership in red.
 
 **The apps for your machines**: the Android app is on the **Apps** page,
-under Build, with Download and how to connect it (the VS Code extension and
-the Windows companion are dev features, offered there only with **Offer dev
-features** on), fetched by the controller from its own
+under Build, with Download and how to connect it, fetched by the controller from its own
 release and kept current there. The devices signed in as you are the last
 section of your **Profile**, under Settings, each with Disconnect. Which are offered is the **Apps** section of
 the Controller settings page, or `/config/seed.json` before the first start
@@ -216,9 +214,8 @@ a newer release rather than reading what it does not understand.
 
 **Nodes and apps follow.** After the controller, update each node's agent
 from its page when the dashboard asks; a node on an agent from before a
-breaking change is held until it is updated, and says so. The Android app,
-the companion and the VS Code extension tell you when they and the
-controller are too far apart.
+breaking change is held until it is updated, and says so. The Android app
+tells you when it and the controller are too far apart.
 
 **Read the release notes first.** A release that needs anything from you
 (a setting that moved, a node to update) says so under **Upgrading** in its

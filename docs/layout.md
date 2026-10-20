@@ -265,7 +265,7 @@ windows/                         the Windows companion app (R270): a person's ma
   bbcompanion/update.py          kept current by its controller: what it holds asked at start and daily, a newer copy checked and swapped in at the next start
   bbcompanion/app.py             the window: sign in, the projects and each one's state, Add, Remove, Open folder, Conflicts
 nodes/bb-session                    the root helper that runs a session in a view of its own project; the agent installs it
-nodes/provision-macos.sh            enrolls a Mac as a guest node (a dev feature, behind Offer dev features): one directory, one launchd agent, no root; --remove takes it away
+nodes/provision-macos.sh            a provisioner for macOS, not offered by default takes it away
 nodes/provision-linux.sh                  turns a Linux machine into a node (the Docker sandbox, the stores, the session half) and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
 nodes/families/                           the provisioner's family files, one per package family (deb, rhel, arch, suse, alpine, void, gentoo): package names and verbs, where docker comes from; the enroll script carries the picked system's beside the core
 nodes/unraid-vm.xml             the node as an Unraid VM: one file for every distribution; only the installer ISO line changes

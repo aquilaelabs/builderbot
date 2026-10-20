@@ -223,8 +223,8 @@ provisioner's; a session's own updater is off. The helper
 then drops to the session account with `no_new_privs`, so nothing inside
 can gain privilege again. The agent installs the helper, its layout file and
 the sudo rule from the bundle, and reports on the node's Sessions section
-whether a view can be built and why not. A Mac, a guest machine or a
-container node, whose agent is not root, cannot, and says so there. The
+whether a view can be built and why not. A guest machine or a container
+node, whose agent is not root, cannot, and says so there. The
 view is not a VM: the kernel is shared, and so is the network unless the
 node keeps each session to its own project's network (below).
 A workspace-root shell, which needs the `terminal` right, is not confined.

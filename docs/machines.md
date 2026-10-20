@@ -5,7 +5,7 @@ owns and applies live; **Nodes**, every machine work runs on; and
 **Storage**, what a node's disks hold. **Jobs**, the queue of work placed on
 the nodes, is a page of its own on the rail. This doc covers enrolling and
 running nodes, their stores and their network, the controller's settings and
-logs, the jobs, and a Mac as a node. The design behind nodes is
+logs, and the jobs. The design behind nodes is
 [nodes.md](nodes.md); the sandbox VM a node usually is,
 [sandbox-vm.md](sandbox-vm.md).
 
@@ -57,7 +57,7 @@ the machine's own disk (toolchains, caches, artifacts, dev instance data, the
 synced project copies, `/var/lib/builderbot`); what was configured from the
 dashboard after enrolling (the mounts and their fstab lines, the runners'
 units, the GPU display); and, ticked for a hosting node, what it was given
-as a host (cloudflared with its token, Tailscale's login, the port 22 rule,
+as a host (cloudflared with its token, the port 22 rule,
 the nginx container). Unticked, those stay, so the machine can be enrolled
 again, here or on another controller, with its stores and mounts as they
 were. What the provisioner installed for the machine itself (docker, the
@@ -129,11 +129,6 @@ VMware refuses a static address outside `00:50:56:00-3F`, Hyper-V uses
 `52:54:00`, so a hand-copied address is how two machines end up on one.
 Paste the manager's own uuid and MAC into the two fields when the VM already
 exists. `docs/sandbox-vm.md` is the long version.
-
-Two of Enroll node's options are dev features too, offered tagged *(dev)*
-only while *Offer dev features* is on, since neither has been proven end to
-end yet: reaching the controller **through WireGuard**, and a **Tailscale**
-SSH door. A public hostname and the cloudflared door are offered to everyone.
 
 **Enroll node** is the other way in, and the one the design is built around:
 it makes a pending node and mints a one-time token (`bbe_…`, good for a day),
@@ -314,16 +309,6 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
 The page says plainly what still comes from the environment and why (the
 placement rule and the unhardwiring are docs/nodes.md §13 and §11).
 
-One switch in Debug settings, *Offer dev features*, decides which product
-this dashboard is: alpha is what has been run for real (GitHub and Gitea
-among git hosts, Unraid among the VM sandbox methods, Debian's and RHEL's
-families for the provisioner), dev is the rest, written to each product's
-documented shape and never run. Off, only alpha is in the pickers and a dev
-entry asked for by name is refused with the sentence that names the switch;
-on, dev appears tagged *(dev)* and the header says *dev*, so the two
-dashboards are never confused. Each catalog entry carries the evidence that
-vetted it (`forges.py`, `vmtemplate.py`, the provisioner's family list), and
-an entry crosses over when a lab suite or a real run proves it.
 
 **Reset BuilderBot** starts the controller over at the setup page: accounts,
 node enrollments, project settings, git tokens, the notebook, memories and
@@ -444,37 +429,3 @@ a grant of their own. The log is the only copy:
 a node buffers it and posts it here, and keeps nothing. `/api/v1/healthz` answers without a credential with
 the queue's counts, and `/metrics` answers with one in Prometheus text.
 
-## A Mac as a node
-
-Enrolling a Mac is a dev feature: Enroll node offers it, tagged *(dev)*, and
-the controller serves `provision-macos.sh`, only while *Offer dev features*
-is on, since the Mac path has not been proven end to end; a node that is
-already a Mac keeps working either way.
-
-`nodes/provision-macos.sh` enrolls a Mac as a **guest** node (bare, it prints
-its help; the command to run is the one **Enroll node** gives you): one
-directory
-(`~/.builderbot`) and one launchd agent that runs as you at login, no root,
-nothing in `/etc`, and `--remove` takes exactly that away. It is written for
-the bash macOS ships, so it is its own file rather than a branch of the
-Linux provisioner. `--check` runs only the pre-flight: the command line
-tools, python3, Homebrew, Xcode, room, and whether the controller answers.
-
-What a Mac node is for is what only a Mac builds: iOS, macOS, the Apple
-half of a Flutter app. `--toolchains /Volumes/SDK` points its toolchain store at
-the same share the Linux nodes use, mounted over SMB; its toolchains land under
-its own directory in it, named by its node id, and nobody else's are touched. The
-Toolchains page shows the node as a Mac and offers what the catalog packages for
-`darwin`: the JDK, Node, Go and Flutter resolve their macOS downloads
-through the same recipes, and `xcodes` installs and switches Xcode versions
-from Apple's own downloads (Xcode itself is Apple's to serve and needs an
-Apple ID once). The agent's package manager there is Homebrew, its service
-launchd; the Nodes page offers no Storage or Network, because a Mac's mounts
-and address are its owner's, and asks for no root. Sessions on the Mac
-itself need a `/workspace` the agent can keep a synced copy in, which on
-macOS is one line in `/etc/synthetic.conf`, and are not set up by the
-script.
-
-Untested on a real Mac yet: the script and the agent's macOS path are
-written against Apple's documentation and the agent's own tests, and the
-first enrollment is the proof.

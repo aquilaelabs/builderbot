@@ -603,11 +603,8 @@ bb toolchains             SDKs kept outside the image: status, check, install X,
 
 ## The apps a person installs
 
-The Android app, the VS Code extension and the Windows companion are built
-for every release and attached to it, each with a `.sha256` file beside it.
-The VS Code extension and the Windows companion are dev features: a
-controller offers them only with **Offer dev features** on, and otherwise
-neither lists, fetches nor serves them. A controller offers the ones ticked
+The apps are built for every release and attached to it, each with a
+`.sha256` file beside it. A controller offers the ones ticked
 under **Apps** on its Controller settings page: a while after it starts and once a day it fetches each from
 the release matching its own version (the newest release when none does,
 and the section says so), keeps it only if it matches its sha256, and
@@ -618,20 +615,17 @@ once.
 |---|---|
 | Build, Apps | each offered app with its version, **Download**, and how to connect it |
 | Settings, Profile | the devices signed in as you, with **Disconnect** |
-| `GET /apps/NAME/FILE` | one file the controller holds (`android`, `vscode`, `companion`), for anybody signed in |
+| `GET /apps/NAME/FILE` | one file the controller holds (`android`), for anybody signed in |
 | `GET /api/apps` | what is offered and held: each app's files, their sha256 and size, the release, when it last looked |
 | `POST /api/v1/device/apps` | the same for a device's app (its own token), to update itself from; `GET /api/v1/device/app-file?app=NAME&file=FILE` fetches one |
 
 A device's app sends the door it speaks as `X-BB-Door` (none means 1) and
-which app and release it is as `X-BB-App` (`companion/0.5.0`); one from
+which app and release it is as `X-BB-App`; one from
 before the controller's window is answered 426 with the way to update, by
 name. The device door's `projects` and `apps` answers say the controller's
 `door` and `door_min`, so an app newer than its controller says so plainly.
-The VS Code extension does the same on the Files API (`/api/v1/files`) with
-`X-BB-Api`, and its `projects` answer says `api` and `api_min`. What each
-released app reads is pinned with its types in
-`scripts/dashboard/test/device-api.json` (the Android app's in
-`android/api-surface.json`): a field may be added at any time, and removed
+What each released app reads is pinned with its types (the Android app's
+in `android/api-surface.json`): a field may be added at any time, and removed
 only in the release after the apps that read it stopped, with the pin moved
 in the same change and a changelog line.
 

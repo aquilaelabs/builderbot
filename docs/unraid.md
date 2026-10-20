@@ -243,7 +243,7 @@ on a project runs on that project's node, whose toolchain store holds the
 emulator (Toolchains page) and its images (Emulator page) and whose own
 `/dev/kvm` and card do the work. A node is a machine you enroll from the
 Nodes page (**Enroll node**, or **Create sandbox VM**) on a VM or a spare
-Linux box; a Mac is offered only with **Offer dev features** on in Controller settings.
+Linux box.
 Nothing here needs a device or a runtime flag for it.
 
 ### Web dashboard

@@ -1,8 +1,7 @@
 # What BuilderBot does
 
 Everything BuilderBot 0.5.0 offers, one area at a time, with the doc that
-explains each in full. What is still being proven is listed at the end, as
-dev features.
+explains each in full.
 
 ## The dashboard
 
@@ -172,15 +171,3 @@ The machines that do the work ([machines.md](machines.md), [nodes.md](nodes.md))
   first and a clear refusal on an unsupported jump ([install.md](install.md#upgrading)).
 - **Settings**, logs and diagnostics on the Controller settings page.
 - **Nothing is sent to us**: no telemetry ([privacy.md](privacy.md)).
-
-## Dev features
-
-Offered only while **Offer dev features** is on (Controller settings), since
-they have not been proven end to end yet:
-
-- Nodes on other systems (Debian, Fedora, Arch, openSUSE, Alpine and more),
-  and Macs as nodes.
-- Reaching the controller through WireGuard, and a Tailscale SSH door.
-- Other git hosts and VM managers not listed above.
-- The Windows companion app (a folder on a PC kept in step with a project)
-  and the VS Code extension.

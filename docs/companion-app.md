@@ -79,11 +79,7 @@ path the app reads fails the suite; and the app compares the dashboard's
 number to its own on the More screen and says when either is behind, naming
 the newer APK in BuilderBot's own Artifacts view. A field may be added at any
 time; one is removed only in the release after the app stopped reading it,
-with the file, the constant and a changelog line moved in that change. The
-Windows companion and the VS Code extension are pinned the same way in
-`scripts/dashboard/test/device-api.json` and held by `deviceapi.mjs`, and
-each says plainly when its controller is too old or too new for it
-([reference](reference.md)).
+with the file, the constant and a changelog line moved in that change.
 
 **Building it.** `.github/workflows/android-app.yml` builds the debug APK on
 a node's runner: the JDK and the Android SDK come from the node's toolchain
