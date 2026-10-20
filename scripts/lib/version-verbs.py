@@ -261,8 +261,9 @@ print(("  released as       " if v["released"] else "  building towards  ") + (
 if v["released"]:
     print(f"  tag               {v['tag']}  (on this commit)")
 elif v["target"]:
-    print("  not released yet  the operator cuts it on the Artifacts view: "
-          "Release tags this commit and pushes it")
+    print("  not released yet  Release on the Artifacts view, or bb version release "
+          "--why under Claude may: Tag and publish a release, tags this commit and "
+          "pushes it")
 if v["ordinal"] is not None:
     print(f"  ordinal           {v['ordinal']}")
 if v["sha"]:
