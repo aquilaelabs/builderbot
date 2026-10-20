@@ -261,7 +261,20 @@ def add(url, commit, by, shipped=()):
     return {"ok": True, "pack": rec, "replaced": bool(was)}
 
 
-def remove(name):
+def where_said(name, where):
+    """The refusal for removing a pack still installed (B84): its files
+    would stay in those stores with no row left to uninstall them from, and
+    a pack added back would read as installed with no install run."""
+    return {"error": f"{name} is installed on {', '.join(where)}: uninstall it there first "
+                     f"(pick that node on the Toolchains page and press the uninstall on its row), "
+                     f"then remove the pack", "installed": list(where)}
+
+
+def remove(name, where=()):
+    """Take a pack out of the catalog; refused while `where` (the nodes that
+    hold it) names any."""
+    if where:
+        return where_said(name, where)
     with _lock:
         d = _load()
         if name not in d["packs"]:

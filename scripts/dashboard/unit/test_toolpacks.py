@@ -123,6 +123,15 @@ class Repository(unittest.TestCase):
         self.assertEqual(toolpacks.recipes(), [])
         self.assertIn("no tool pack called", toolpacks.remove("hexkit")["error"])
 
+    def test_remove_is_refused_while_a_node_holds_it(self):
+        # B84: its files would stay in that store with no row left to
+        # uninstall them from, and the pack added back would read installed.
+        toolpacks.add(self.url, toolpacks.fetch(self.url)["commit"], "operator")
+        r = toolpacks.remove("hexkit", ["bb-dev-sandbox"])
+        self.assertEqual(r["installed"], ["bb-dev-sandbox"])
+        self.assertIn("hexkit is installed on bb-dev-sandbox: uninstall it there first", r["error"])
+        self.assertEqual([x["name"] for x in toolpacks.recipes()], ["hexkit"], "still in the catalog")
+
 
 if __name__ == "__main__":
     unittest.main()

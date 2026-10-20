@@ -1679,6 +1679,15 @@ def node_has(n):
     return out
 
 
+def installed_where(name):
+    """The names of the nodes whose store holds `name`, by what each last
+    reported: what a tool pack's removal is refused over (B84), since a pack
+    gone from the catalog leaves no row to uninstall its files from."""
+    if not nodes:
+        return []
+    return [n.get("name") or n["id"] for n in nodes.node_list() if name in node_has(n)]
+
+
 def with_requires(names, have):
     """`names`, with anything they declare a requirement on put in front.
 
