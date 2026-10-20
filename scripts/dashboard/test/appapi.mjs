@@ -5,7 +5,7 @@
 // that is renamed, or a number moved on one side and not the others fails
 // here, before the app finds out by drawing blanks. Moving the surface is
 // fine; moving it without the app is what this catches.
-import { ok, done, URL, DIR } from './lib.mjs';
+import { ok, done, URL, DIR, pinBreaks } from './lib.mjs';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, utimesSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -67,7 +67,7 @@ ok(typeof meta.body.built === 'string',
 // Against the fixture project alpha, which has a roadmap, bugs, rules and a
 // dist/ from the other files' fixtures, or empty lists, which still carry
 // the keys.
-let missing = [];
+let missing = [], typed = [];
 for (const e of surface.endpoints) {
   if (e.method !== 'GET') continue;
   // A download is bytes and has no fields to check: what it owes is that the
@@ -92,6 +92,8 @@ for (const e of surface.endpoints) {
   const r = await get(path);
   if (r.status !== 200) { missing.push(`${e.path}: HTTP ${r.status} ${r.body?.error || ''}`); continue; }
   for (const f of e.fields || []) if (!(f in r.body)) missing.push(`${e.path}: no "${f}" in the answer`);
+  // ...and each as the type the app reads it as (R79 step 8).
+  typed.push(...pinBreaks(r.body, (surface.types || {})[e.path], e.path));
   // The rows' fields, on the first row where there is one.
   for (const [key, want] of Object.entries(e)) {
     if (['method', 'path', 'fields', 'actions', 'binary', 'needs'].includes(key)) continue;
@@ -101,6 +103,11 @@ for (const e of surface.endpoints) {
   }
 }
 ok(missing.length === 0, `every path the app reads answers with the fields it draws${missing.length ? ': ' + missing.join('; ') : ''}`);
+// A field pinned a type is one the app reads: removed or retyped, it fails
+// here until the release after the app stopped reading it (api-surface.json).
+const unpinned = Object.keys(surface.types || {}).filter(p => !surface.endpoints.some(e => e.path === p && e.method === 'GET'));
+ok(typed.length === 0 && unpinned.length === 0,
+   `...each as the type the app reads it as${typed.length ? ': ' + typed.join('; ') : ''}${unpinned.length ? '; types for no GET: ' + unpinned.join(', ') : ''}`);
 
 // ---- every POST action the app sends is one the server knows --------------------------
 // Read from the source rather than sent: a real send would change the

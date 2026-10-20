@@ -33,24 +33,30 @@ USERS = None                    # () -> users.load(): who an account is, by uid
 ACCESS = None                   # (account, project) -> "rw" | "r" | "": the editor's door, ftp.access_for
 PROJECTS = None                 # (account) -> [project names this account may see]
 WAIT_MAX = 25                   # seconds a device's long poll is held
-# The door's compatibility window (R270 step 9), as the agent's: an app says
-# which door it speaks in X-BB-Door (none is 1), and one from before
-# DOOR_MIN is refused with the way to update rather than half working.
-# DOOR moves with a change an older app would misread; DOOR_MIN with the
-# removal of what it superseded.
+# The door's compatibility window (R270 step 9, R79 step 8), as the agent's:
+# an app says which door it speaks in X-BB-Door (none is 1) and which app and
+# release it is in X-BB-App ("companion/0.3.1"), and one from before DOOR_MIN
+# is refused with the way to update rather than half working. The controller
+# says its own DOOR and DOOR_MIN in the projects and apps answers, so an app
+# newer than its controller says so too. DOOR moves with a change an older
+# app would misread; DOOR_MIN with the removal of what it superseded, never
+# before the release after the apps were changed (test/device-api.json pins
+# what each released app reads).
 DOOR = 1
 DOOR_MIN = 1
 
 
-def door_refused(said):
-    """Why an app speaking door `said` is refused, or ""."""
+def door_refused(said, app=""):
+    """Why an app speaking door `said` is refused, or "". `app` is its
+    X-BB-App, named in the refusal when it said one."""
     try:
         n = int(said or 1)
     except (TypeError, ValueError):
         n = 0
     if n >= DOOR_MIN:
         return ""
-    return (f"this app speaks the controller's door {n} and the controller needs {DOOR_MIN} or newer: "
+    who = " ".join(str(app or "").split())[:60] or "this app"
+    return (f"{who} speaks the controller's door {n} and the controller needs {DOOR_MIN} or newer: "
             "update the app from the Apps page, or let it update itself")
 
 
@@ -192,7 +198,7 @@ def verb(name, auth, req):
         return PC.result(auth["device"], req.get("id"), req)
     if name == "apps":
         v = APPS.view() if APPS else {"apps": []}
-        return {"version": v.get("version", ""), "door": DOOR,
+        return {"version": v.get("version", ""), "door": DOOR, "door_min": DOOR_MIN,
                 "apps": [{k: a[k] for k in ("name", "version", "files")} for a in v["apps"] if a["offered"]]}, 200
     if name == "whoami":
         return {"device": auth["device"], "name": auth["name"], "kind": auth["kind"],
@@ -203,7 +209,7 @@ def verb(name, auth, req):
             a = _access(auth, p)
             if a:
                 out.append({"project": p, "access": a, "rev": wssync.rev_of(p)})
-        return {"projects": out}, 200
+        return {"projects": out, "door": DOOR, "door_min": DOOR_MIN}, 200
     if name == "sync":
         act, project = str(req.get("action") or ""), str(req.get("project") or "")
         if not _access(auth, project):

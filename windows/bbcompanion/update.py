@@ -18,6 +18,28 @@ import sys
 import urllib.parse
 
 DOOR = 1                # the device door this app speaks (devices.DOOR)
+NEEDS_DOOR = 1          # the oldest controller door this app works with
+
+
+def headers():
+    """What this app says on every call: the door it speaks and which app
+    and release it is, so a controller can refuse it by name (R79 step 8)."""
+    return {"X-BB-Door": str(DOOR), "X-BB-App": f"companion/{version()}"}
+
+
+def controller_too_old(answer):
+    """The plain sentence for a controller older than this app, from the
+    door it said in a projects or apps answer, or "". One that says none
+    predates the handshake and speaks door 1."""
+    said = (answer or {}).get("door") if isinstance(answer, dict) else None
+    try:
+        theirs = 1 if said is None else int(said)
+    except (TypeError, ValueError):
+        theirs = 0
+    if theirs >= NEEDS_DOOR:
+        return ""
+    return (f"the controller speaks door {theirs} and this companion needs {NEEDS_DOOR} or newer: "
+            "update BuilderBot on the controller, or use the companion it offers")
 
 
 def version():

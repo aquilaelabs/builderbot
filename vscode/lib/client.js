@@ -7,8 +7,13 @@ const http = require('http');
 const https = require('https');
 const ws = require('./ws');
 
-// The Files API version this extension speaks; the server says its own.
+// The Files API version this extension speaks, said on every call with the
+// extension's own release; the server says its own in the projects answer,
+// and refuses one older than it keeps (426) in words this shows (R79 step 8).
 const API = 1;
+let RELEASE = '';
+try { RELEASE = require('../package.json').version || ''; } catch { RELEASE = ''; }
+const SAYS = { 'X-BB-Api': String(API), 'X-BB-App': `vscode/${RELEASE || '0.0.0'}` };
 
 class Refused extends Error {
   constructor(status, message, body) {
@@ -66,7 +71,7 @@ class Client {
   }
 
   headers(extra = {}) {
-    return { Cookie: `bb_session=${this.cookie}`, ...extra };
+    return { Cookie: `bb_session=${this.cookie}`, ...SAYS, ...extra };
   }
 
   async post(path, payload) {
@@ -90,7 +95,7 @@ class Client {
   // The projects this account may open in an editor, with its access to each.
   async projects() {
     const j = await this.post('/api/v1/files', { action: 'projects' });
-    return { api: j.api, projects: j.projects || [] };
+    return { api: j.api, projects: j.projects || [], tooOld: controllerTooOld(j) };
   }
 
   // A session's terminal: the dashboard's own relay at /term, so the same
@@ -111,4 +116,14 @@ class Client {
   }
 }
 
-module.exports = { API, Client, Refused, signIn, request };
+// The plain sentence for a controller older than this extension, from the
+// API its projects answer says (none said is 1), or ''. A newer controller
+// keeps what this one reads, and refuses it outright once it does not.
+function controllerTooOld(answer) {
+  const said = (answer || {}).api;
+  const theirs = said === undefined || said === null ? 1 : Number(said) || 0;
+  return theirs >= API ? ''
+    : `BuilderBot's Files API is version ${theirs} and this extension needs ${API}: update BuilderBot on the controller.`;
+}
+
+module.exports = { API, SAYS, Client, Refused, signIn, request, controllerTooOld };

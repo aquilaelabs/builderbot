@@ -620,8 +620,18 @@ once.
 | `GET /api/apps` | what is offered and held: each app's files, their sha256 and size, the release, when it last looked |
 | `POST /api/v1/device/apps` | the same for a device's app (its own token), to update itself from; `GET /api/v1/device/app-file?app=NAME&file=FILE` fetches one |
 
-A device's app sends the door it speaks as `X-BB-Door` (none means 1); one
-from before the controller's window is answered 426 with the way to update.
+A device's app sends the door it speaks as `X-BB-Door` (none means 1) and
+which app and release it is as `X-BB-App` (`companion/0.5.0`); one from
+before the controller's window is answered 426 with the way to update, by
+name. The device door's `projects` and `apps` answers say the controller's
+`door` and `door_min`, so an app newer than its controller says so plainly.
+The VS Code extension does the same on the Files API (`/api/v1/files`) with
+`X-BB-Api`, and its `projects` answer says `api` and `api_min`. What each
+released app reads is pinned with its types in
+`scripts/dashboard/test/device-api.json` (the Android app's in
+`android/api-surface.json`): a field may be added at any time, and removed
+only in the release after the apps that read it stopped, with the pin moved
+in the same change and a changelog line.
 
 ### The seed file
 
