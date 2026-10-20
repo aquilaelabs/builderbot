@@ -121,6 +121,9 @@ const projReleaseWhy = name => {
 };
 // The reason under a dead control, in the notice voice: one line, red.
 const deadWhy = why => why ? `<div class="notice bad deadwhy">${esc(why)}</div>` : "";
+// A feature this install switched off (R81): its sentence, or "" when it is
+// on. Every control the feature draws is dead with this under it.
+const featureOff = feature => state?.off?.[feature] || "";
 // May this account have a shell at all (roadmap #27)? An account without one
 // gets its Claude session as a read-only console: the proxy relays it to a
 // ttyd started without --writable and refuses any argument that is not a

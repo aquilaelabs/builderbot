@@ -1335,9 +1335,18 @@ function nodeCharts(n){
 const ND_SECTS = [["health", "Health"], ["projects", "Projects"], ["sessions", "Sessions"], ["gpu", "GPU"],
                   ["claude", "Claude Code"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
 function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
+// Why Create sandbox VM and Enroll node are dead, when this install switched
+// enrolling off (R81): under the bar, since a reason in a tooltip is nothing
+// on a phone.
+function ndOffLine(){
+  const why = featureOff("enroll");
+  return why ? `<div class="field">${deadWhy(why)}</div>` : "";
+}
 // The bar: the node switcher, Create sandbox VM, and Enroll node.
 function ndBar(live){
-  const g = !live, dead = g ? " disabled" : "";
+  // Enrolling switched off on this install (R81): both dead, the reason on
+  // the page under the bar (ndOffLine).
+  const g = !live, dead = g || featureOff("enroll") ? " disabled" : "";
   return nodeBar(nodePick("ndPick", g ? null : live.map(x => ({id: x.id, name: x.name, live: x.live})), nodesPick),
     `<button type="button"${g ? "" : ` id="ndVm"`}${dead}>${barSaid("Create sandbox VM", "New VM")}</button>
       <button type="button" class="primary"${g ? "" : ` id="ndEnroll"`}${dead}>${barSaid("Enroll node", "Enroll")}</button>`);
@@ -1533,7 +1542,7 @@ function renderNodesInto(i){
   // Enrolling is a dialog now (#ndmodal), not two panels appended here; see
   // the markup's comment. Which means a poll landing while it is open cannot
   // take the name being typed with it, because this list is not where it is.
-  d.list.innerHTML = rows + none
+  d.list.innerHTML = ndOffLine() + rows + none
     + (!nodesList.length ? `<div class="empty">The node list could not be read.</div>` : "");
   wireNodesTab(d.el);
   nodesReadOnly(d.el);
@@ -1620,6 +1629,12 @@ function renderRunnerInto(i){
     : noNodeYet("a runner is added to a node");
   if (n) wireNodeConf(d.list.querySelector(".ndrow"), n.id);
   d.list.querySelectorAll(".ndrunro button").forEach(b => { b.disabled = true; });
+  // CI runners switched off on this install (R81): every control here dead,
+  // the sentence above them.
+  if (featureOff("runner")){
+    d.list.querySelectorAll("button, input, select").forEach(b => { b.disabled = true; });
+    d.list.insertAdjacentHTML("afterbegin", `<div class="field">${deadWhy(featureOff("runner"))}</div>`);
+  }
   d.list.querySelectorAll("[data-runnode]").forEach(r => r.onclick = () => { runnerNode = r.dataset.runnode; nodesRev++; drawPanes(); });
   const pick = d.el.querySelector("#rnrPick");
   // A pick is a history entry (B31), so Back returns to the node before.
@@ -1631,7 +1646,7 @@ function renderRunnerInto(i){
 // while the add band is open it is the band's to finish or cancel.
 function runnerAddBtn(n, c){
   if (!n || c.addRunner) return "";
-  return `<button type="button" class="primary" data-nrunnershow ${n.applying || nodeStale(n) || n.runner_new === false || nodeMay(n) !== "write" ? "disabled" : ""}
+  return `<button type="button" class="primary" data-nrunnershow ${n.applying || nodeStale(n) || n.runner_new === false || nodeMay(n) !== "write" || featureOff("runner") ? "disabled" : ""}
     title="a runner for another git host, or this one's under another address">Add runner</button>`;
 }
 

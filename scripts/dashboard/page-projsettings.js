@@ -838,6 +838,12 @@ function rnDrawFtp(){
   const v = rnFtp, d = rnFtpDraft;
   const on = d.on ?? v.on, editor = d.editor ?? v.editor, st = v.status || {}, where = rnFtpWhere(v);
   const box = $("rnFtp");
+  // Switched off on this install (R81): the sentence, and nothing to set.
+  if (featureOff("ftp")){
+    $("rnFtpField").hidden = false;
+    box.innerHTML = deadWhy(featureOff("ftp"));
+    return;
+  }
   if (!v.may_set){
     $("rnFtpField").hidden = !v.on && !v.editor;
     box.innerHTML = `${v.on ? `<div>Served over FTPS${where ? `, at ${esc(where)}` : ""}.</div>` : ""}
