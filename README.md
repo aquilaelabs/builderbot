@@ -119,7 +119,7 @@ match:
 ```yaml
 services:
   builderbot:
-    image: ghcr.io/aquilaelabs/builderbot:latest
+    image: ghcr.io/aquilaelabs/builderbot:0.5   # a release line; see Upgrading in docs/install.md
     container_name: BuilderBot
     hostname: builderbot
     restart: unless-stopped
