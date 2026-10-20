@@ -172,7 +172,14 @@ class SessionsMixin:
         if os.geteuid() == 0:
             return self.state.get("session_user") or ""
         import pwd
-        return pwd.getpwuid(os.geteuid()).pw_name
+        # A uid with no passwd entry (a container started as a bare number,
+        # OpenShift's random uids) has no name to look up: the agent died on
+        # the KeyError after its first hello and never dialed in again (diag
+        # report #119). Its own name from the environment, then the number.
+        try:
+            return pwd.getpwuid(os.geteuid()).pw_name
+        except KeyError:
+            return os.environ.get("USER") or str(os.geteuid())
 
     def session_env(self, into):
         """What every session on this node inherits, through ttyd: this
