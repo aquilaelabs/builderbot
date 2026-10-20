@@ -147,12 +147,20 @@ jobs:
         run: |
           exec > >(tee -a "$CI_LOG") 2>&1
           echo "== Land it in BuilderBot's dist/"
-          if [ -d /workspace/BuilderBot ]; then
-            mkdir -p /workspace/BuilderBot/dist
-            cp "${{ steps.name.outputs.file }}" /workspace/BuilderBot/dist/
-            echo "in dist/: ${{ steps.name.outputs.file }}"
+          # The project is found by its remote, not its folder's name: the
+          # folder is whatever the controller named it, and a name written
+          # here went on landing APKs in an old project after a move (B105).
+          proj=""
+          for d in /workspace/*/; do
+            url="$(git -c safe.directory='*' -C "$d" remote get-url origin 2>/dev/null || true)"
+            case "$url" in *"$GITHUB_REPOSITORY"|*"$GITHUB_REPOSITORY.git") proj="${d%/}"; break ;; esac
+          done
+          if [ -n "$proj" ]; then
+            mkdir -p "$proj/dist"
+            cp "${{ steps.name.outputs.file }}" "$proj/dist/"
+            echo "in $proj/dist/: ${{ steps.name.outputs.file }}"
           else
-            echo "::warning::the projects share is not mounted on this runner, so the APK went nowhere: it is not kept as a workflow artifact (B669)"
+            echo "::warning::no project on this runner's share has $GITHUB_REPOSITORY as its remote, so the APK went nowhere: it is not kept as a workflow artifact (B669)"
           fi
 
       - name: Attach it to the release with its sha256
