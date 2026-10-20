@@ -56,6 +56,18 @@ class Manifest(unittest.TestCase):
         self.assertIn("verb escape runs", said, "a path out of the pack is refused")
         self.assertIn("install step 1 is a list of words", said)
 
+    def test_a_platform_is_os_and_arch_and_the_refusal_names_the_wildcard(self):
+        # B111: the doc and the refusal agree: linux/* is any architecture,
+        # a bare * is refused, and the refusal shows the wildcard's form.
+        ok = json.loads(json.dumps(GOOD))
+        ok["platforms"] = ["linux/*", "darwin/*"]
+        self.assertEqual(toolpacks.validate(ok)[1], [])
+        bare = json.loads(json.dumps(GOOD))
+        bare["platforms"] = ["*"]
+        said = " | ".join(toolpacks.validate(bare)[1])
+        self.assertIn("linux/*", said)
+        self.assertIn("darwin/*", said)
+
     def test_a_shipped_name_is_refused(self):
         _, errors = toolpacks.validate(GOOD, shipped=("hexkit",))
         self.assertTrue(any("BuilderBot ships" in e for e in errors), errors)
