@@ -16,10 +16,16 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 // A card's link, lock, pin and the rest sit behind its menu on the Projects
 // page (R218 step 3): opened first, the way a thumb does.
 const pjMenu = async name => {
-  // An archived card is in the Archived fold at the page's foot: opened first.
+  // An archived card is in the Archived fold at the page's foot: opened
+  // first, and the card brought on screen, as a person scrolls to it. A
+  // floating menu whose button is off screen closes itself (floatFollow),
+  // so a menu opened below the fold by script shut at once (B108).
   await page.evaluate(n => { const c = document.querySelector(`.doc .projtab .pcard[data-row="${CSS.escape(n)}"]`);
     const fold = c?.closest('details.sect');
     if (fold && !fold.open) fold.open = true;
+    c?.scrollIntoView({ block: 'center' }); }, name);
+  await page.waitForTimeout(150);
+  await page.evaluate(n => { const c = document.querySelector(`.doc .projtab .pcard[data-row="${CSS.escape(n)}"]`);
     if (c?.querySelector('.actmenu')?.hidden) c.querySelector('[data-pmore]')?.click(); }, name);
   await page.waitForTimeout(150);
 };await page.goto(URL);
@@ -2032,6 +2038,11 @@ ok(/Archived/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
    '...and says which of the two reasons it is');
 await page.click('#rnCancel');
 await pjMenu('gamma');
+console.log('DEBUG108', JSON.stringify(await page.evaluate(() => { const c = document.querySelector('.doc .projtab .pcard[data-row="gamma"]');
+  const k = document.querySelector('.doc .projtab [data-k="gamma"]'); const r = k?.getBoundingClientRect();
+  return { card: !!c, fold: c?.closest('details.sect')?.open, menuHidden: c?.querySelector('.actmenu')?.hidden,
+    kIn: !!k, kRect: r && [r.x, r.y, r.width, r.height], kDisp: k && getComputedStyle(k).display, kVis: k && getComputedStyle(k).visibility,
+    rn: !document.getElementById('rnmodal')?.hidden, docOn: document.querySelector('.pane .doc.on')?.className, hash: location.hash }; })));
 await page.click(`.doc .projtab [data-k="gamma"]`);
 await page.waitForFunction(() => !(state?.projects || [])
   .some(p => p.name === 'gamma' && p.locked), { timeout: 15000 });
