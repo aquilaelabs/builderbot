@@ -88,5 +88,22 @@ class Unmade(unittest.TestCase):
         projects.purged(d)
         self.assertIn(roles.owner_role_name(other), roles.all_roles())
 
+    def test_the_boot_prune_puts_away_what_happened_before(self):
+        d = self.make("rcclone")
+        purged = self.make("old")
+        live = self.make("site")
+        registry.mark(purged, "purged")
+        shutil.rmtree(self.ws / d)
+        with registry._lock:                 # a record gone as a failed clone left it before B93
+            rec = registry._load()
+            rec["projects"].pop(d)
+            registry._save(rec)
+        self.assertEqual(membership.prune_gone(registry), 2)
+        self.assertEqual(self.held(d), (False, False, False, None))
+        self.assertEqual(self.held(purged), (False, False, False, None))
+        self.assertEqual(self.held(live)[:3], (True, True, True))
+        self.assertEqual(membership.prune_gone(registry), 0, "and once is all it takes")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2983,6 +2983,12 @@ try:
     users.migrate_r155()
 except Exception as e:                                                # noqa: BLE001
     print(f"[dashboard] roles migration (R155) skipped: {type(e).__name__}: {e}", flush=True)
+# ...and, on every start, the owner roles of projects that are gone for good
+# or never were (a clone that failed before B95, a folder purged by hand).
+try:
+    membership.prune_gone(registry)
+except Exception as e:                                                # noqa: BLE001
+    print(f"[dashboard] owner roles of gone projects not pruned: {type(e).__name__}: {e}", flush=True)
 gitview.configure(workspace=WORKSPACE,
                   worktrees=WORKTREES,
                   tell=notify.tell, tmux_name=tmux_name, state=STATE,
@@ -5687,6 +5693,14 @@ class Handler(BaseHTTPRequestHandler):
         # A project's owner role is named after its directory; the tab says
         # whose it is by the name the project is shown under (R154).
         owners_of = {roles.owner_role_name(d): d for d in registry.labels()}
+        # One whose project is not live (in the trash) is not listed: it is
+        # kept for Put back, and listed it was counted as a project's owner
+        # and could share a label with the live one shown under that name
+        # (B95). A role of the same cut name a live project holds wins.
+        for d in registry.live_dirs():
+            owners_of[roles.owner_role_name(d)] = d
+        rs = {n: r for n, r in rs.items()
+              if n not in owners_of or (registry.get(owners_of[n]) or {}).get("state") == "live"}
         # ...and which project it is for, so the People section offers it
         # under that project alone (B726).
         rs = {n: (dict(r, label=f"owner of {registry.label(owners_of[n])}", project=owners_of[n]) if n in owners_of else r)

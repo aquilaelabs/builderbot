@@ -202,6 +202,27 @@ def forget_project(project, live=()):
         users.forget_role(name)
 
 
+def prune_gone(registry):
+    """Every project's owner, owner role and account entries put away where
+    the project is gone for good or was never made (no record, or purged):
+    what forget_project does at the time, for what happened before it did
+    (B95). A trashed project keeps them, for Put back. How many went."""
+    recs = {k: (registry.get(k) or {}).get("state") for k in registry.labels()}
+    if not recs:
+        return 0                  # no record read at all is no reason to drop anything
+    live = [k for k, st in recs.items() if st == "live"]
+    gone = {p for p in _owners()["projects"] if recs.get(p) in (None, "purged")}
+    for n, r in roles.all_roles().items():
+        note = str(r.get("note") or "")
+        if n.endswith("_owner") and note.startswith("the owner of "):
+            p = note[len("the owner of "):]
+            if recs.get(p) in (None, "purged") and roles.owner_role_name(p) == n:
+                gone.add(p)
+    for p in sorted(gone):
+        forget_project(p, live=live)
+    return len(gone)
+
+
 def members(project):
     """The accounts this project is on, by name, BuilderBot's owner first."""
     out = []
