@@ -40,7 +40,7 @@ import { dirname, join } from 'node:path';
 // it moved.
 const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'adoptTheme', 'applyMode', 'applyNow', 'askProjectGroup', 'renameProjectGroup', 'pickProjectColor', 'applyTheme',
   'sectRemember', 'sectRecall', 'isToolKind', 'groupOf', 'railAllows', 'railGroups', 'railOn', 'railGo', 'routeOf', 'openRoute', 'shellSync', 'shellBoot', 'shown',
-  'drawRail', 'railMoreShow', 'shellBar', 'wireShellBar', 'jumpItems', 'drawJump', 'jumpGo', 'wireJump', 'revsDelay',
+  'drawRail', 'railMoreShow', 'shellBar', 'wireShellBar', 'jumpItems', 'drawJump', 'jumpMove', 'jumpGo', 'wireJump', 'revsDelay',
   'argForSession', 'armModal', 'arriveBox', 'askPurge', 'askReset', 'nginxHostPick', 'nginxHostLines', 'claudeRestart', 'restartNow', 'unenrollWhat', 'resetBusy', 'resetFollow', 'resetGone', 'cSeg', 'cSlide',
   'askVerb', 'cSubmit', 'cUnderPicked', 'daemonHost', 'closeEditor',
   'closeNewProject', 'createProject',

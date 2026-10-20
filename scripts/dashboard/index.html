@@ -3277,7 +3277,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    (the operator, 17 Oct). */
 button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;align-items:center;justify-content:center}
 /* Search in the top bar: a field that jumps, its rows under it. */
-.jump{position:relative;flex:0 1 280px;min-width:0}
+.jump{position:relative;flex:0 1 360px;min-width:0}
 .jump input{width:100%;min-height:32px;padding:4px 10px;background:var(--sunk);color:var(--ink);font:var(--f-data)}
 .jump input::placeholder{color:var(--dim)}
 @media(max-width:1000px){ .jump{flex:0 1 150px} .meta.host{display:none} }
@@ -3289,6 +3289,7 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
   background:transparent;color:var(--ink);font:var(--f-ui);text-align:left;min-height:var(--tap)}
 .jrow.on,.jrow:hover{background:var(--btn-hi)}
 .jrow .jw{color:var(--dim);font:var(--f-note);white-space:nowrap}
+.jnone{padding:8px 10px;color:var(--dim);font:var(--f-ui);overflow-wrap:anywhere}
 /* On a phone the field takes the width between the brand and the buttons:
    the spacer beside it grew too and took half (the operator, 18 Oct: the
    hint cut off beside a blank gap). */

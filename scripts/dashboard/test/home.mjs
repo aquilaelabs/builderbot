@@ -126,6 +126,32 @@ ok(await page.evaluate(() => tabOf(panes[0])?.kind === 'home' && location.hash =
   await page.waitForSelector('.doc.on .homegrid', { timeout: 15000 });
 }
 
+// ---- the top bar's search (B72) ------------------------------------------------
+{
+  ok(await page.$eval('#jump', i => i.placeholder) === 'jump to a page, project, container or node',
+     'at 1280 the search\'s whole hint is shown, not cut mid-word');
+  await page.fill('#jump', 'zzzz');
+  await page.waitForSelector('#jumpList:not([hidden]) .jnone', { timeout: 5000 });
+  ok(/nothing matches/.test(await page.$eval('#jumpList .jnone', e => e.textContent)),
+     'a search that matches nothing says so');
+  await page.fill('#jump', 'a');
+  await page.waitForSelector('#jumpList:not([hidden]) .jrow', { timeout: 5000 });
+  const n = await page.$$eval('#jumpList .jrow', rs => rs.length);
+  await page.keyboard.press('ArrowDown');
+  const marked = await page.$$eval('#jumpList .jrow', rs => rs.findIndex(r => r.classList.contains('on')));
+  await page.keyboard.press('ArrowUp');
+  const back = await page.$$eval('#jumpList .jrow', rs => rs.findIndex(r => r.classList.contains('on')));
+  ok(n > 1 && marked === 1 && back === 0, `ArrowDown marks the second row and ArrowUp the first again (${n} rows; ${marked}, ${back})`);
+  await page.keyboard.press('ArrowDown');
+  const want = await page.$eval('#jumpList .jrow.on .jl', e => e.textContent);
+  await page.keyboard.press('Enter');
+  await sleep(400);
+  ok(await page.$eval('#jumpList', l => l.hidden) && await page.$eval('#jump', i => i.value) === '',
+     `...and Enter opens the marked row (${want})`);
+  await page.click('#rail [data-rail="home"]');
+  await page.waitForSelector('.doc.on .homegrid', { timeout: 15000 });
+}
+
 // ---- on a phone the cards stack and nothing scrolls sideways -----------------
 {
   await page.setViewportSize({ width: 393, height: 851 });
