@@ -6,6 +6,7 @@
 
 - bb nodes shows the agent each node runs and whether it needs Update agent, and bb nodes show NAME gives one node in full (6404f8b)
 - Tool packs: an administrator adds a toolchain from a git repository with a bbtool.json, pinned to the commit they looked at; it installs like any toolchain, gives sessions bb tool commands, and each project's Settings → Toolchains says which toolchains and packs its sessions may use (f6c5013)
+- A tool pack can be made right on the Toolchains page, with no repository of its own: paste its bbtool.json or upload a zip or tar of its files. The controller keeps it as a version you approve, Edit changes it in place, and the nodes install it from the controller (37c6332)
 
 ### Fixed
 

@@ -296,7 +296,10 @@ function tcRow(p, busy, job, managed){
 const TP_COLS = [{label: "Pack"}, {label: "From"}, {label: "Commit", w: "6.5rem"},
   {label: "Added by", w: "minmax(0,.6fr)"}, {act: true, w: "5rem"}];
 let tpEdit = null;             // the dialog's pack: "" for Add tool pack, else the name of the pack in Edit
-let tpForm = {url: "", seen: null, error: "", busy: ""};
+// `from` is where Add takes the pack (a repository, a pasted bbtool.json or
+// an uploaded archive of its files); a pack made here edits by the last two.
+let tpForm = {url: "", seen: null, error: "", busy: "", from: "repo", text: "", file: null};
+const TP_BLANK = () => ({url: "", seen: null, error: "", busy: "", from: "repo", text: "", file: null});
 
 // What a pack would install and give a session, from the manifest a look
 // fetched: its downloads are its install steps, its verbs the words each
@@ -319,9 +322,10 @@ function tpSeen(seen, was, offer = true){
   const steps = (m.steps || []).map(w).join(", ") + (was && !same(m.steps || [], was.steps || [])
     ? ` <span class="pill warn">changed</span>${(was.steps || []).length ? ` <span class="sub">was ${(was.steps || []).map(w).join(", ")}</span>` : ""}` : "");
   return `<div class="tpseen">
-    <div class="name">${esc(m.label)} <span class="pill">${esc(m.name)}</span> <span class="sub">at ${esc(seen.commit.slice(0, 12))}</span></div>
+    <div class="name">${esc(m.label)} <span class="pill">${esc(m.name)}</span> <span class="sub">${seen.here
+      ? `as given here, ${seen.nfiles} file${seen.nfiles === 1 ? "" : "s"}` : `at ${esc(seen.commit.slice(0, 12))}`}</span></div>
     ${m.about ? `<div class="sub">${esc(m.about)}</div>` : ""}
-    <div class="sub">Installs by fetching the repository at that commit${steps ? `, then running ${steps}` : ""}${
+    <div class="sub">Installs ${seen.here ? "by copying these files to the node" : "by fetching the repository at that commit"}${steps ? `, then running ${steps}` : ""}${
       m.verify ? `, and checks it with ${w(m.verify)}` : ""}; on ${esc((m.platforms || []).join(", "))}.</div>
     ${verbs}
     ${(m.terms || []).length ? `<div class="sub">Under ${m.terms.map(t => t.url ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.label)}</a>` : esc(t.label)).join(", ")}.</div>` : ""}
@@ -335,26 +339,46 @@ function tpSeen(seen, was, offer = true){
 // here is looked at again as Edit opens, so its foot is Remove, Close and,
 // when the repository has moved on, Update: three short words that sit on
 // one row on a phone.
+// Where a new pack comes from, and a pack made here's own two: its
+// manifest as text, and an archive of its files.
+function tpFromHtml(f, here){
+  const seg = here ? "" : `<div class="field"><label id="tpFromLabel">From</label>
+    <div class="pseg" role="group" aria-labelledby="tpFromLabel">${[["repo", "A repository"], ["paste", "Paste bbtool.json"], ["upload", "Upload files"]]
+      .map(([k, t]) => `<button type="button" data-tpfrom="${k}" class="${f.from === k ? "on" : ""}" aria-pressed="${f.from === k}">${t}</button>`).join("")}</div></div>`;
+  if (f.from === "repo") return seg + `<div class="field">${lbl("tpUrl", "Repository", "a git repository with a bbtool.json at its root: https, ssh, or http for a git host on your network")}
+      <input id="tpUrl" value="${esc(f.url)}" placeholder="https://github.com/owner/repo" autocomplete="off" spellcheck="false"></div>`;
+  const text = `<div class="field">${lbl("tpText", here ? "Its bbtool.json" : "bbtool.json",
+      "the whole pack when its install steps fetch the tool itself; Help's Tool packs says what each field is")}
+      <textarea id="tpText" class="mono" rows="12" spellcheck="false" autocomplete="off"
+        placeholder='{"name": "mytool", "platforms": ["linux/amd64"], "install": {...}, "verbs": {...}}'>${esc(f.text)}</textarea></div>`;
+  const file = `<div class="field">${lbl("tpFile", here ? "Or upload a new version" : "The pack's files",
+      "a zip or tar with bbtool.json at its top and the scripts it runs; a single top-level folder is dropped; up to 8 MB")}
+      <input id="tpFile" type="file" hidden accept=".zip,.tar,.tgz,.tar.gz,.tbz2,.tar.bz2,.txz,.tar.xz,application/zip,application/gzip,application/x-tar">
+      <div class="filepick ctlline"><button type="button" data-tpfile>Choose an archive</button>
+        <span class="dim">${f.file ? esc(f.file.name) : "none picked"}</span></div></div>`;
+  return seg + (here ? text + file : f.from === "paste" ? text : file);
+}
+
 function tpModalHtml(){
   const p = tpEdit ? (toolchains?.items || []).find(i => i.name === tpEdit && i.pack) : null;
-  const f = tpForm, fresh = !p, seen = f.seen;
-  const newer = !!(seen && p && seen.commit !== p.pack.commit);
-  const offer = !!(seen && (fresh || newer));
-  // Look is Add's first step, and Edit's only after a look that failed.
-  const look = fresh || f.error ? `<button type="button" data-tplook${f.busy ? " disabled" : ""}${offer ? "" : ` class="primary"`}>${
-    f.busy === "look" ? "Looking…" : fresh ? "Look" : "Look again"}</button>` : "";
+  const f = tpForm, fresh = !p, seen = f.seen, here = !!p?.pack?.here;
+  const newer = !!(seen && p && !here && seen.commit !== p.pack.commit);
+  const offer = !!(seen && (fresh || newer || here));
+  // Look is Add's first step, Edit's only after a look that failed, and a
+  // pack made here's whenever its text or files are given again.
+  const look = fresh || f.error || here ? `<button type="button" data-tplook${f.busy ? " disabled" : ""}${offer ? "" : ` class="primary"`}>${
+    f.busy === "look" ? "Looking…" : fresh || here ? "Look" : "Look again"}</button>` : "";
   const add = offer ? `<button type="button" class="primary" data-tpadd${f.busy ? " disabled" : ""}>${
     f.busy === "add" ? (fresh ? "Adding…" : "Updating…") : fresh ? "Add" : "Update"}</button>` : "";
   const rm = p ? `<button type="button" class="danger" data-tprm="${esc(p.name)}">Remove</button>` : "";
   return `<div class="box wide"><h3>${fresh ? "Add tool pack" : `${esc(p.label)}, a tool pack`}</h3>
-    ${fresh ? `<div class="field">${lbl("tpUrl", "Repository", "a git repository with a bbtool.json at its root: https, ssh, or http for a git host on your network")}
-      <input id="tpUrl" value="${esc(f.url)}" placeholder="https://github.com/owner/repo" autocomplete="off" spellcheck="false"></div>`
-      : `<div class="field"><div class="sub">From <code>${esc(p.pack.url)}</code> at ${esc(p.pack.commit.slice(0, 12))}, added by ${
-          esc(p.pack.by || "an administrator")}${p.pack.at ? ` ${ago(p.pack.at)}` : ""}. Verbs: ${esc((p.pack.verbs || []).join(", "))}.</div></div>`}
+    ${p ? `<div class="field"><div class="sub">${here ? "Made here" : `From <code>${esc(p.pack.url)}</code>`} at ${esc(p.pack.commit.slice(0, 12))}, added by ${
+          esc(p.pack.by || "an administrator")}${p.pack.at ? ` ${ago(p.pack.at)}` : ""}. Verbs: ${esc((p.pack.verbs || []).join(", "))}.</div></div>` : ""}
+    ${fresh || here ? tpFromHtml(f, here) : ""}
     ${seen ? `<div class="field">${tpSeen(seen, p ? p.pack : null, offer)}</div>` : ""}
     ${f.error ? `<div class="field"><div class="hint bad">${esc(f.error)}</div></div>` : ""}
-    ${p && f.busy === "look" ? `<div class="field"><div class="hint">Looking for a newer commit…</div></div>` : ""}
-    ${p && seen && !newer ? `<div class="field"><div class="hint">No newer commit: the repository's head is the one added.</div></div>` : ""}
+    ${p && !here && f.busy === "look" ? `<div class="field"><div class="hint">Looking for a newer commit…</div></div>` : ""}
+    ${p && !here && seen && !newer ? `<div class="field"><div class="hint">No newer commit: the repository's head is the one added.</div></div>` : ""}
     ${newer ? `<div class="field"><div class="hint">${esc(seen.commit.slice(0, 12))} is newer: Update keeps it, with the changes marked above.</div></div>` : ""}
     ${dlgFoot(`<button type="button" data-tpcancel>${fresh || offer ? "Cancel" : "Close"}</button>`, `${look}${add}`, rm)}</div>`;
 }
@@ -362,13 +386,14 @@ function tpModalHtml(){
 function tpSection(items){
   const packs = (items || []).filter(i => i.pack);
   const rec = p => `<div class="row ngrec">${tblLine(TP_COLS, [
-      `${esc(p.label)} <span class="sub">${esc(p.name)}</span>`, `<code>${esc(p.pack.url)}</code>`, esc(p.pack.commit.slice(0, 12)),
+      `${esc(p.label)} <span class="sub">${esc(p.name)}</span>`, p.pack.here ? `<span class="sub">made here</span>` : `<code>${esc(p.pack.url)}</code>`,
+      esc(p.pack.commit.slice(0, 12)),
       esc(p.pack.by || ""), `<button type="button" data-tpedit="${esc(p.name)}">Edit</button>`])}</div>`;
   const body = packs.length ? tblWrap(TP_COLS, packs.map(rec).join(""), "tprecords")
-    : `<div class="hint">none yet: Add tool pack brings in a toolchain from a repository you choose</div>`;
+    : `<div class="hint">none yet: Add tool pack brings in a toolchain you choose</div>`;
   return docSection("toolchains", "packs", "Tool packs", packs.length ? `${packs.length} added` : "none added",
-    `<div class="field"><div class="hint">Toolchains you add from a repository with a bbtool.json, not shipped with BuilderBot.${helpIcon(
-      "A pack installs like any toolchain and gives a session bb tool verbs. It is kept at the commit you looked at, and a project's sessions use it only once its settings switch it on.")}</div></div>
+    `<div class="field"><div class="hint">Toolchains you add yourself, for any tool: from a git repository, a pasted bbtool.json or an upload of the pack's files.${helpIcon(
+      "A pack installs like any toolchain and gives a session bb tool verbs. It is kept as the version you looked at, and a project's sessions use it only once its settings switch it on. Help's Tool packs says how to write one for somebody else's tool.")}</div></div>
     <div class="field"><div class="addbar ctlrow" data-add="pack"><button type="button" data-tpnew>Add tool pack</button></div></div>
     <div class="field">${body}</div>`);
 }
@@ -381,20 +406,47 @@ function tpWire(el){
 
 function tpOpen(name){
   tpEdit = name || "";
-  tpForm = {url: "", seen: null, error: "", busy: ""};
+  tpForm = TP_BLANK();
+  const here = !!(toolchains?.items || []).find(i => i.name === tpEdit)?.pack?.here;
+  if (here) tpForm.from = "paste";
   tpDraw(true);
-  if (tpEdit) tpLook();
+  if (here) tpSource();
+  else if (tpEdit) tpLook();
 }
 
-// Fetch the pack's repository at its head and show what it holds: Add's
-// Look, and what Edit does as it opens.
-async function tpLook(){
+// A pack made here opens on its bbtool.json as kept, to change in place.
+async function tpSource(){
   const name = tpEdit;
-  const url = name ? (toolchains?.items || []).find(i => i.name === name)?.pack?.url || "" : tpForm.url.trim();
-  tpForm.busy = "look"; tpForm.error = ""; tpDraw();
-  const j = await (await postJSON("/api/toolpacks", {action: "preview", url})).json().catch(() => ({error: "no answer"}));
+  const j = await (await postJSON("/api/toolpacks", {action: "source", name})).json().catch(() => ({error: "no answer"}));
+  if (tpEdit !== name) return;
+  if (j.error) tpForm.error = j.error; else tpForm.text = j.text;
+  tpDraw();
+}
+
+// Show what the pack holds: a repository fetched at its head (Add's Look,
+// and what Edit does as it opens), or a pack made here from the text or the
+// archive given, checked and held on the controller until Add.
+async function tpLook(){
+  const name = tpEdit, f = tpForm;
+  const pack = name ? (toolchains?.items || []).find(i => i.name === name)?.pack : null;
+  f.busy = "look"; f.error = ""; tpDraw();
+  let body;
+  if (pack && !pack.here) body = {action: "preview", url: pack.url};
+  else if (!pack && f.from === "repo") body = {action: "preview", url: f.url.trim()};
+  else if (f.file){
+    // The archive goes up on its own first, as New project's does, and the
+    // look quotes the id the spool hands back.
+    const u = await fetch("/api/upload-archive?name=" + encodeURIComponent(f.file.name), {method: "POST", body: f.file});
+    const uj = await u.json().catch(() => ({}));
+    if (!u.ok || uj.error){
+      if (tpEdit !== name) return;
+      f.busy = ""; f.error = uj.error || `the upload failed (HTTP ${u.status})`; tpDraw(); return;
+    }
+    body = {action: "preview", archive: uj.id};
+  } else body = {action: "preview", text: f.text};
+  const j = await (await postJSON("/api/toolpacks", body)).json().catch(() => ({error: "no answer"}));
   if (tpEdit !== name) return;                 // closed, or another opened, meanwhile
-  tpForm.busy = ""; tpForm.seen = j.error ? null : j; tpForm.error = j.error || ""; tpDraw();
+  f.busy = ""; f.seen = j.error ? null : j; f.error = j.error || ""; tpDraw();
 }
 
 function tpClose(){
@@ -423,6 +475,21 @@ function tpDraw(first){
     url.onkeydown = e => { if (e.key === "Enter") m.querySelector("[data-tplook]")?.click(); };
     if (first) url.focus();
   }
+  m.querySelectorAll("[data-tpfrom]").forEach(b => b.onclick = () => {
+    if (tpForm.from === b.dataset.tpfrom) return;
+    Object.assign(tpForm, {from: b.dataset.tpfrom, seen: null, error: ""});
+    tpDraw();
+    m.querySelector("#tpUrl, #tpText")?.focus();
+  });
+  const text = m.querySelector("#tpText");
+  if (text){
+    text.oninput = () => { tpForm.text = text.value; tpForm.file = null;
+      if (tpForm.seen || tpForm.error){ tpForm.seen = null; tpForm.error = ""; tpDraw(); m.querySelector("#tpText")?.focus(); } };
+    if (first && tpForm.from === "paste" && !tpEdit) text.focus();
+  }
+  const file = m.querySelector("#tpFile");
+  m.querySelector("[data-tpfile]")?.addEventListener("click", () => file?.click());
+  if (file) file.onchange = () => { tpForm.file = file.files[0] || null; tpForm.seen = null; tpForm.error = ""; tpDraw(); };
   m.querySelector("[data-tpcancel]").onclick = tpClose;
   const post = async body => (await postJSON("/api/toolpacks", body)).json().catch(() => ({error: "no answer"}));
   const packUrl = () => tpEdit ? (toolchains?.items || []).find(i => i.name === tpEdit)?.pack?.url || "" : tpForm.url.trim();
@@ -431,10 +498,12 @@ function tpDraw(first){
   const add = m.querySelector("[data-tpadd]");
   if (add) add.onclick = async () => {
     tpForm.busy = "add"; tpDraw();
-    const j = await post({action: "add", url: packUrl(), commit: tpForm.seen?.commit || ""});
+    const j = await post(tpForm.seen?.staged ? {action: "add", staged: tpForm.seen.staged}
+                                             : {action: "add", url: packUrl(), commit: tpForm.seen?.commit || ""});
     if (j.error){ tpForm.busy = ""; tpForm.error = j.error; tpDraw(); return; }
-    notify(j.replaced ? `${j.pack.name} updated: where it is installed, uninstall it and install it again to take the new commit`
-                      : `${j.pack.name} added: install it below like any toolchain`);
+    notify(j.unchanged ? `${j.pack.name}: nothing changed, so it is kept as it was`
+         : j.replaced ? `${j.pack.name} updated: where it is installed, uninstall it and install it again to take the new version`
+         : `${j.pack.name} added: install it below like any toolchain`);
     tpClose(); loadToolchains();
   };
   const rm = m.querySelector("[data-tprm]");

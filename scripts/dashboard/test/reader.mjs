@@ -2,7 +2,7 @@
 // walking the dev pair on 20 Oct: every control on the project's page that
 // would change it is dead, with the server's own reason written under it in
 // red, rather than live and refused at the press (B86).
-// Also: Start Claude says why it is grey (B88); New project and the trash
+// Also: Start Claude says why it is dead (B88); New project and the trash
 // are dead for an account without them, and the trash never reads a
 // refusal as an empty bin (B87); the settings page does not ask for what
 // the role cannot read (B89); the Profile's Password says what is wrong

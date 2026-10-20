@@ -2807,7 +2807,8 @@ toolchains.configure(run=run, write_json=write_json, state=STATE,
 # /config, and carried to the nodes in the bundle beside the shipped one.
 import toolpacks                                                   # noqa: E402
 
-toolpacks.configure(state=STATE, write_json=write_json)
+toolpacks.configure(state=STATE, write_json=write_json,
+                    unpack=lambda aid, dest: projects.unpack_archive(aid, dest))
 toolchains.packs_rows = toolpacks.recipes
 toolchains.refresh_packs()
 # The Android system images on each node's store, behind the Emulator tab:
@@ -3041,6 +3042,7 @@ import paths                                                     # noqa: E402
 paths.configure(state=STATE, workspace=WORKSPACE)
 workspace.configure(workspace=WORKSPACE, state=STATE)
 workspace.packs_json = toolpacks.catalog_json
+workspace.packs_files = toolpacks.hosted_files
 
 
 def no_node_advice(name):
@@ -8104,16 +8106,26 @@ class Handler(BaseHTTPRequestHandler):
 
     def _toolpacks(self, req):
         """POST /api/toolpacks: look at a tool pack by its repository's
-        address, add it at the commit that was shown, or remove it (R77).
+        address, or at one made here from a pasted manifest or an uploaded
+        archive (/api/upload-archive's id); add it as it was shown; read a
+        pack made here's manifest back for Edit; or remove it (R77).
         An administrator's, since a pack joins every node's catalog."""
         if self._refused("admin"):
             return None
         action = req.get("action")
         shipped = {r["name"] for r in toolchains.load_toolchains()}
-        if action == "preview":
+        by = (self._who() or {}).get("name") or ""
+        if action == "preview" and ("text" in req or field(req, "archive")):
+            r = toolpacks.stage(req.get("text") if isinstance(req.get("text"), str) else None,
+                                field(req, "archive"), shipped)
+        elif action == "preview":
             r = toolpacks.fetch(field(req, "url"), shipped=shipped)
+        elif action == "add" and field(req, "staged"):
+            r = toolpacks.add_staged(field(req, "staged"), by, shipped)
         elif action == "add":
-            r = toolpacks.add(field(req, "url"), field(req, "commit"), (self._who() or {}).get("name") or "", shipped)
+            r = toolpacks.add(field(req, "url"), field(req, "commit"), by, shipped)
+        elif action == "source":
+            r = toolpacks.source(field(req, "name"))
         elif action == "where":
             # Asked before Remove's confirm: refused here, saying where, while
             # a node's store holds it (B84).
@@ -8122,10 +8134,10 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "remove":
             r = toolpacks.remove(field(req, "name"), toolchains.installed_where(field(req, "name")))
         else:
-            return self._json({"error": "a tool pack is previewed, added or removed"}, 400)
+            return self._json({"error": "a tool pack is previewed, added, read or removed"}, 400)
         if r.get("error"):
             return self._json(r, 400)
-        if action != "preview":
+        if action not in ("preview", "source"):
             toolchains.refresh_packs()
         return self._json(r)
 

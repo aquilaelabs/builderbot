@@ -1083,6 +1083,65 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
      `...and a project that used it opens its Toolchains group with nothing unsaved (${JSON.stringify(group)})`);
   await page.evaluate(() => closeRename());
   await api('/api/prefs', { project: 'alpha', packs_on: '' });
+
+  // A pack made here, with no repository of its own: a pasted bbtool.json,
+  // looked at, added, edited in place as a new version, and an upload of
+  // the pack's files. Each is kept as a commit on the controller.
+  const pasted = { name: 'wordy', label: 'Wordy', about: 'Counts words.', platforms: ['linux/amd64', 'linux/arm64'],
+    install: { steps: [['sh', '-c', 'mkdir -p "$1/bin"', 'x', '{dir}']] },
+    verbs: { count: { about: 'Words in a file.', usage: 'FILE', run: ['{dir}/bin/wordy', '{args}'] } } };
+  await page.click('.doc.on [data-tpnew]');
+  await page.click('#tpmodal [data-tpfrom="paste"]');
+  await page.fill('#tpText', JSON.stringify(pasted, null, 1));
+  await page.click('#tpmodal [data-tplook]');
+  await page.waitForSelector('#tpmodal .tpseen', { timeout: 20000 });
+  const pseen = await page.$eval('#tpmodal .tpseen', e => e.textContent.replace(/\s+/g, ' '));
+  ok(/Wordy wordy as given here, 1 file/.test(pseen) && /Installs by copying these files to the node/.test(pseen)
+     && /bb tool wordy count FILE runs \{dir\}\/bin\/wordy \{args\}/.test(pseen),
+     `a pasted bbtool.json is looked at like a repository's: what it installs and what each verb runs (${pseen.slice(0, 160)})`);
+  await page.click('#tpmodal [data-tpadd]');
+  await page.waitForFunction(() => (toolchains?.items || []).find(i => i.name === 'wordy')?.pack?.here, null, { timeout: 20000 });
+  const prow = await page.$eval('.doc.on .tprecords', e => e.textContent.replace(/\s+/g, ' '));
+  ok(/Wordy wordy made here/.test(prow), `...Add keeps it, its row saying it was made here (${prow.slice(0, 160)})`);
+  const first = await page.evaluate(() => toolchains.items.find(i => i.name === 'wordy').pack.commit);
+  // Edit opens on its bbtool.json as kept; a change is a new version.
+  await page.click('.doc.on [data-tpedit="wordy"]');
+  await page.waitForFunction(() => /"Wordy"/.test(document.getElementById('tpText')?.value || ''), null, { timeout: 20000 });
+  await page.fill('#tpText', JSON.stringify({ ...pasted, label: 'Wordy two' }));
+  await page.click('#tpmodal [data-tplook]');
+  await page.waitForSelector('#tpmodal [data-tpadd]', { timeout: 20000 });
+  ok(await page.$eval('#tpmodal [data-tpadd]', e => e.textContent) === 'Update',
+     '...Edit opens on its bbtool.json, and a changed one is offered as an Update');
+  await page.click('#tpmodal [data-tpadd]');
+  await page.waitForFunction(c => { const p = (toolchains?.items || []).find(i => i.name === 'wordy');
+    return p && p.label === 'Wordy two' && p.pack.commit !== c; }, first, { timeout: 20000 });
+  ok(true, '...and Update keeps it as a new commit made here');
+  // An upload of the pack's files, a tarball with one top folder.
+  const up = `${DIR}/uppack/stamp`;
+  mkdirSync(`${up}/bin`, { recursive: true });
+  writeFileSync(`${up}/bin/stamp`, '#!/bin/sh\ndate\n', { mode: 0o755 });
+  writeFileSync(`${up}/GUIDE.md`, 'Stamp what you build.');
+  writeFileSync(`${up}/bbtool.json`, JSON.stringify({ name: 'stamp', platforms: ['linux/amd64', 'linux/arm64'],
+    layout: { bin: ['bin'], tool: 'bin/stamp' }, verbs: { now: { run: ['{dir}/bin/stamp'] } }, guidance: 'GUIDE.md' }));
+  execFileSync('tar', ['-czf', `${DIR}/uppack.tgz`, '-C', `${DIR}/uppack`, 'stamp']);
+  await page.click('.doc.on [data-tpnew]');
+  await page.click('#tpmodal [data-tpfrom="upload"]');
+  await page.setInputFiles('#tpFile', `${DIR}/uppack.tgz`);
+  await page.click('#tpmodal [data-tplook]');
+  await page.waitForSelector('#tpmodal .tpseen', { timeout: 20000 });
+  const useen = await page.$eval('#tpmodal .tpseen', e => e.textContent.replace(/\s+/g, ' '));
+  ok(/as given here, 3 files/.test(useen) && /bb help tool-stamp/.test(useen),
+     `an uploaded archive of the pack's files is looked at the same way, its guidance with it (${useen.slice(0, 160)})`);
+  await page.click('#tpmodal [data-tpadd]');
+  await page.waitForFunction(() => (toolchains?.items || []).find(i => i.name === 'stamp')?.pack?.here, null, { timeout: 20000 });
+  ok(true, '...and Add keeps it made here');
+  for (const n of ['wordy', 'stamp']){
+    page.dialogs = [];
+    await page.click(`.doc.on [data-tpedit="${n}"]`);
+    await page.click(`#tpmodal [data-tprm="${n}"]`);
+    await page.waitForFunction(x => !(toolchains?.items || []).some(i => i.name === x), n, { timeout: 20000 });
+  }
+  ok(true, 'a pack made here is removed like any other');
 }
 
 await done(browser);

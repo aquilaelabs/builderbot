@@ -82,12 +82,25 @@ def packs_at(path):
     beside the catalog at `path`: the controller writes it into the bundle,
     so a node installs a pack by name exactly as it does a shipped toolchain.
     [] when none were added."""
+    here = os.path.dirname(os.path.abspath(path))
     try:
-        with open(os.path.join(os.path.dirname(os.path.abspath(path)), "toolpacks.json")) as f:
+        with open(os.path.join(here, "toolpacks.json")) as f:
             rows = json.load(f).get("toolchains") or []
     except (OSError, ValueError, AttributeError):
         return []
-    return [p for p in rows if isinstance(p, dict) and p.get("name")]
+    rows = [p for p in rows if isinstance(p, dict) and p.get("name")]
+    # A pack made on the controller travels as a git bundle beside this file
+    # (config/toolpacks/NAME.bundle): its address made whole here, so the
+    # pinned fetch reads it like any repository.
+    for p in rows:
+        src = p.get("source") if isinstance(p.get("source"), dict) else {}
+        url = str(src.get("url") or "")
+        if url.startswith("bundle:"):
+            rel = url[len("bundle:"):]
+            ok = rel.startswith("toolpacks/") and rel.endswith(".bundle") and "/" not in rel[len("toolpacks/"):] \
+                and ".." not in rel
+            src["url"] = os.path.join(here, rel) if ok else ""
+    return rows
 
 
 def catalog_at(path):

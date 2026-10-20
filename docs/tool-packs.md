@@ -11,24 +11,41 @@ analyzer, a game engine's headless editor, your company's internal CLI.
 
 ## Adding one
 
-1. On the **Toolchains** page, press **Add tool pack** and give the
-   repository's address (`https://`, ssh, or `http://` for a git host on
-   your network). Only an administrator can.
-2. Press **Look**. BuilderBot fetches the repository at its current commit
-   and shows what it would do: what it fetches and runs to install, each
-   command Claude would get and the exact words it runs, its license, and
-   whether it comes with guidance.
-3. Press **Add**. The pack is kept at the commit you looked at. A later
-   commit to the repository changes nothing here until somebody approves it.
+A pack is a `bbtool.json` (Writing one, below, says what goes in it) and
+whatever scripts it runs. It does not have to come from the tool's own
+authors: you can write one for any tool, as Wrapping someone else's tool,
+at the end, shows.
+
+1. On the **Toolchains** page, press **Add tool pack**. Only an
+   administrator can. Then pick where it comes from:
+   - **A repository**: a git repository with the `bbtool.json` at its root
+     (`https://`, ssh, or `http://` for a git host on your network).
+   - **Paste bbtool.json**: the manifest alone, which is the whole pack
+     when its install steps fetch the tool itself.
+   - **Upload files**: a zip or tar of the pack's folder, the `bbtool.json`
+     at its top beside the scripts it runs. A single top-level folder is
+     dropped, as with a project's archive, and it is at most 8 MB, since
+     every node carries it; a pack fetches anything bigger as it installs.
+2. Press **Look**. BuilderBot shows what it would do: what it fetches and
+   runs to install, each command Claude would get and the exact words it
+   runs, its license, and whether it comes with guidance.
+3. Press **Add**. A repository's pack is kept at the commit you looked at,
+   and a later commit to it changes nothing here until somebody approves it.
+   A pasted or uploaded pack is kept on the controller as a repository of
+   its own, its version a commit there; the nodes take it from the
+   controller, so it needs no git host at all.
 4. Install it on a node from the same page, like any toolchain.
 5. In each project that should use it, open **Settings**, then
    **Toolchains**, and tick it. A pack starts off in every project, so
    adding one hands it to nobody by itself.
 
-To update a pack, open its row's **Edit** and press **Look for a newer
-commit**. The form marks every command the new commit adds, changes (with
-what it was) or removes, and **Update** keeps the new commit. Where the pack
-is installed, uninstall it and install it again to take the new commit.
+To update a pack, open its row's **Edit**. For a repository's pack it looks
+at the repository's head as it opens; for a pack made here it opens on its
+`bbtool.json`, to change in place, or takes an upload of a new version, and
+**Look** reads what you gave. Either way the form marks every command the
+new version adds, changes (with what it was) or removes, and **Update**
+keeps it. Where the pack is installed, uninstall it and install it again to
+take the new version.
 **Remove** takes it out of the catalog. It is refused while a node's store
 holds the pack, naming the node: uninstall it there first, since a pack gone
 from the catalog leaves no row to uninstall its files from.
@@ -47,7 +64,8 @@ A session started after you save takes the change.
 
 ## Writing one
 
-A pack is a repository with a `bbtool.json` at its root:
+A pack is a `bbtool.json`, at the top of a repository or of an upload, beside
+the scripts it runs:
 
 ```json
 {
@@ -115,3 +133,33 @@ editor commits one, still runs.
   verb runs.
 - It runs only what its manifest says, at the commit an administrator
   approved.
+
+## Wrapping someone else's tool
+
+A tool's authors need never have heard of BuilderBot. To give Claude a
+decompiler, say, write the pack yourself: a `bbtool.json` whose install
+steps download the tool's own release, and whose verbs run it.
+
+```json
+{
+  "name": "ghidra",
+  "label": "Ghidra",
+  "platforms": ["linux/amd64"],
+  "terms": [{"label": "Apache-2.0", "url": "https://github.com/NationalSecurityAgency/ghidra/blob/master/LICENSE"}],
+  "install": {
+    "steps": [["sh", "{dir}/install.sh"]],
+    "verify": ["{dir}/ghidra/support/analyzeHeadless", "-help"]
+  },
+  "layout": {"tool": "ghidra/support/analyzeHeadless"},
+  "verbs": {
+    "analyze": {"about": "Decompile a binary headless, the results into dist/.", "usage": "FILE",
+                "run": ["{dir}/ghidra/support/analyzeHeadless", "{dist}", "proj", "-import", "{args}"]}
+  }
+}
+```
+
+`install.sh` beside it fetches the release archive and unpacks it into the
+pack's directory. Upload the two files as a zip, or keep them in a
+repository of your own; a pack whose install needs no script of its own
+can be pasted as its `bbtool.json` alone. Claude then has
+`bb tool ghidra analyze FILE`, and nothing else of the tool's.

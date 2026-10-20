@@ -159,7 +159,7 @@ def load_toolchains(packs=()):
         pk = r.get("pack")
         if isinstance(pk, dict):
             row["pack"] = {"url": str(pk.get("url") or ""), "commit": str(pk.get("commit") or "")[:40],
-                           "by": str(pk.get("by") or ""), "at": int(pk.get("at") or 0),
+                           "by": str(pk.get("by") or ""), "at": int(pk.get("at") or 0), "here": bool(pk.get("here")),
                            "verbs": sorted(str(v) for v in (r.get("verbs") or {}))[:40],
                            # What it runs now, for an update to be read as
                            # what changes: each verb's words, and the
