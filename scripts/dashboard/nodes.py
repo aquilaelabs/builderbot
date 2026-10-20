@@ -4477,7 +4477,7 @@ def job_refuse(job_id, why):
         _wake.notify_all()
 
 
-def _canceller(principal):
+def _canceler(principal):
     """The account a Cancel came from, by name, or "" when no person pressed
     it (a waiter giving up, the sign-in flow): a job's end says who stopped
     it rather than "the operator" whoever pressed (B69)."""
@@ -4493,7 +4493,7 @@ def _stopped_by(job_id, err):
         return err
     got = _rows("SELECT principal FROM audit WHERE action = 'job-cancel' AND target = ? "
                 "ORDER BY at DESC LIMIT 1", (job_id,))
-    who = _canceller(got[0]["principal"]) if got else ""
+    who = _canceler(got[0]["principal"]) if got else ""
     return f"stopped by {who}" if who else (err or "stopped")
 
 
@@ -4514,7 +4514,7 @@ def job_cancel(principal, job_id):
     # the agent hears the cancel rather than running a job the row calls
     # canceled (the review of 26 Sep).
     if got[0]["state"] == "queued":
-        who = _canceller(principal)
+        who = _canceler(principal)
         cur = _exec("UPDATE jobs SET state = 'canceled', ended = ?, error = ? "
                     "WHERE id = ? AND state = 'queued'",
                     (int(time.time()), f"canceled by {who} before it started" if who
