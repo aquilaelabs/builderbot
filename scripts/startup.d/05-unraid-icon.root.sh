@@ -15,9 +15,8 @@
 #     }
 #
 # It downloads only when *both* are missing. The RAM copy is tmpfs and is gone
-# after every reboot; the disk copy survives, and is what we write here. So a
-# private repo, whose raw.githubusercontent URL answers 404 to Unraid's
-# unauthenticated fetch, stops mattering: there is nothing left to fetch.
+# after every reboot; the disk copy survives, and is what we write here, so
+# the Docker page shows the icon with nothing to fetch.
 #
 # Two things this cannot paper over:
 #

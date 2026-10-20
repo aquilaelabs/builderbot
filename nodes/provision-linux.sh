@@ -10,7 +10,7 @@
 #
 # Run it inside the VM, once:
 #
-#   curl -fsSLO https://raw.githubusercontent.com/<org>/BuilderBot/main/nodes/provision-linux.sh
+#   curl -fsSLO https://raw.githubusercontent.com/aquilaelabs/builderbot/main/nodes/provision-linux.sh
 #   sudo bash provision-linux.sh --key "ssh-ed25519 AAAA..."
 #
 # With --controller URL --token bbe_… (the Nodes tab mints the token) it also
