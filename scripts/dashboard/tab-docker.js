@@ -2455,7 +2455,7 @@ function dmTiles(t){
   return statTiles([
     {label: "running", value: g ? GHOST : t.running, sub: g ? GHOST : `of ${t.all} container${t.all === 1 ? "" : "s"}`,
      tone: !g && t.all && !t.running ? "warn" : ""},
-    {label: "updates due", value: g ? GHOST : t.behind, tone: !g && t.behind ? "warn" : "", omit: !g && !t.checked && !t.behind},
+    {label: !g && t.behind === 1 ? "update due" : "updates due", value: g ? GHOST : t.behind, tone: !g && t.behind ? "warn" : "", omit: !g && !t.checked && !t.behind},
     {label: "projects", value: g ? GHOST : t.projects, omit: !g && t.projects === undefined},
     {label: "not ours", value: g ? 0 : t.notOurs, omit: g || !t.notOurs, title: "on this daemon, started by nobody here"},
   ]);

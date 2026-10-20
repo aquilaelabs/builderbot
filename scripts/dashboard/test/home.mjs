@@ -74,6 +74,17 @@ ok(await page.evaluate(() => tabOf(panes[0])?.kind === 'home' && location.hash =
   ok(true, '...and the containers tile the Containers page');
   await page.click('#rail [data-rail="home"]');
   await page.waitForSelector('.doc.on .homegrid', { timeout: 15000 });
+  // Updates due are every node's toolchains, images, nginx and agents, which
+  // one node's Toolchains page never held: the tile brings Home's own
+  // Attention card into view, where they are listed (B73).
+  ok(await page.$eval('.doc.on .hometiles [data-htile="updates"]', t => t.getAttribute('href')) === '#/home',
+     'the updates tile is a link to Home itself, not one node\'s Toolchains page');
+  await page.click('.doc.on .hometiles [data-htile="updates"]');
+  const marked = await page.waitForFunction(() => tabOf(panes[0])?.kind === 'home'
+    && document.querySelector('.doc.on .hattn.focus'), null, { timeout: 5000 }).then(() => true, () => false);
+  ok(marked, '...and a press marks the Attention card where the updates are listed');
+  ok(await page.evaluate(() => homeTiles().find(t => t.key === 'updates').label === (homeUpdates() === 1 ? 'update due' : 'updates due')),
+     '...its label in the singular for one');
 }
 
 // ---- Attention is the bell's rows, and the pinned projects are at a glance ----

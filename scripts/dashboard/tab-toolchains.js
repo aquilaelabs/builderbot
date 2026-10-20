@@ -663,7 +663,7 @@ function renderToolchainsInto(i){
       const need = items.filter(x => (x.pinned_by || []).length && !x.installed).length;
       return statTiles([
         {label: "installed", value: items.filter(x => x.installed).length, sub: `of ${items.length} offered`},
-        {label: "updates due", value: due, tone: due ? "warn" : "", omit: !due && !d.checked},
+        {label: due === 1 ? "update due" : "updates due", value: due, tone: due ? "warn" : "", omit: !due && !d.checked},
         {label: "needed by a project", value: need, tone: need ? "warn" : "", omit: !need},
         // Storage's reading of a size (sgb), TB past ten of them (B834).
         {label: "free", value: typeof d.free_mb === "number" ? sgb(d.free_mb) : "",
