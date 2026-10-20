@@ -1875,7 +1875,18 @@ ok(true, '...and none takes it off again');
 // Back to the projects tab, which the notebook pushed out of the pane.
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
-await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
+// B82: alpha's page was open a moment ago, and its card's Settings still
+// goes there, to the Settings view, rather than turning the notebook behind
+// the Projects page.
+await pjMenu('alpha');
+await page.click('.doc .projtab .pcard[data-row="alpha"] [data-rn]');
+const toSettings = await page.waitForSelector('.nb .nbview[data-view="settings"]:not([hidden]) .nbsettings #rnName', { timeout: 10000 })
+  .then(() => true, () => false);
+ok(toSettings && !(await page.evaluate(() => !!document.querySelector('.doc.on .projtab'))),
+   `a card's Settings goes to the project's Settings view after its page was opened once (${await page.evaluate(() => location.hash)})`);
+await page.evaluate(() => openProjectsTab());
+await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
+await page.evaluate(n => renameProject(n), 'alpha');  // the settings form (the row's gear went in R119 step 3)
 await page.waitForSelector('#rnmodal:not([hidden])');
 await page.click('#rnCancel');
 

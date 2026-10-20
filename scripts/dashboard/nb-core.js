@@ -964,11 +964,17 @@ function projectHeader(t){
 function wireProjectHeader(bar){
   wireProjectRows(bar);
   // On the project's own page its menu's Settings is the notebook's Settings
-  // view (R259: the view strip carries no tab for it), not the dialog.
+  // view (R259: the view strip carries no tab for it), not the dialog. Only
+  // there: a card on the Projects page keeps wireProjectRows' Settings, which
+  // goes to the page (B82: this one turned the notebook in the background).
   bar.querySelectorAll("[data-rn]").forEach(b => b.onclick = () => {
     const n = getNotebook(b.dataset.rn);
     if (n) n.view("settings"); else openProjectSettings(b.dataset.rn);
   });
+  wireProjectMenu(bar);
+}
+// A project's ⋯, on its header and on its card alike.
+function wireProjectMenu(bar){
   bar.querySelectorAll("[data-pmore]").forEach(b => b.onclick = e => {
     e.stopPropagation();
     const m = b.nextElementSibling, open = m.hidden;
