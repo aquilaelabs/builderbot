@@ -1,8 +1,11 @@
 """A toolchain install asks its source's host first (R82): a machine with
 no internet is told in one sentence, naming the host, before anything is
 touched."""
+import json
 import os
+import subprocess
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -31,6 +34,39 @@ class Reach(unittest.TestCase):
              mock.patch("socket.create_connection", return_value=conn):
             self.assertEqual(sdkmeta.unreachable("nodejs.org"), "")
 
+
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
+# sdk_install itself, under bb's set -e, with the session guard (not what is
+# asked here) answered yes: reach answers 1 exactly when it has the sentence,
+# and the assignment that took it ended the install there in silence (B144).
+RUN = r"""set -euo pipefail
+REPO="$1" STORE="$2"
+die() { echo "DIE: $*"; exit 3; }
+source "$REPO/scripts/lib/sdk.sh"
+sdk_operator_only() { :; }
+SDK_META="$REPO/scripts/lib/sdkmeta.py"
+sdk_root() { echo "$STORE"; }
+sdk_install go
+echo "went on"
+"""
+
+
+class InstallSays(unittest.TestCase):
+    def test_an_install_with_no_internet_says_so_and_stops(self):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(REPO, "config", "toolchains.json")) as f:
+                text = f.read().replace("go.dev", "nowhere.invalid")
+            cat = os.path.join(d, "cat.json")
+            with open(cat, "w") as f:
+                json.dump(json.loads(text), f)
+            r = subprocess.run(["bash", "-c", RUN, "run", REPO, os.path.join(d, "store")],
+                               capture_output=True, text=True, timeout=60,
+                               env=dict(os.environ, BB_TOOLCHAINS_JSON=cat))
+            said = r.stdout + r.stderr
+            self.assertEqual(r.returncode, 3, said)
+            self.assertIn("go cannot be installed here: nowhere.invalid could not be looked up", said)
+            self.assertFalse(os.path.exists(os.path.join(d, "store", "go")))
 
 if __name__ == "__main__":
     unittest.main()

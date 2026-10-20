@@ -1409,9 +1409,11 @@ sdk_install() {
     # told by a urllib traceback, or curl's "Could not resolve host", cut
     # short in the row's red line. A versioned android id has no catalog row
     # to ask, and its host is sdkmanager's, which the row for it names.
+    # Reach answers 1 exactly when it has the sentence, which set -e took for
+    # a failure and ended the install on, silently (B144).
     local why=""
-    case "$what" in android:*\;*) why="$(sdk_meta reach android:platform-tools 2>/dev/null)" ;;
-                    *)            why="$(sdk_meta reach "$what" 2>/dev/null)" ;; esac
+    case "$what" in android:*\;*) why="$(sdk_meta reach android:platform-tools 2>/dev/null)" || true ;;
+                    *)            why="$(sdk_meta reach "$what" 2>/dev/null)" || true ;; esac
     [ -z "$why" ] || die "${what} cannot be installed here: ${why}"
     mkdir -p "$root"
     [ "$kind" = sdkmanager ] || sdk_clear_interrupted "$(sdk_dir "$what")"
