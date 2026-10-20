@@ -163,6 +163,27 @@ class Look(unittest.TestCase):
         self.assertEqual(ciwatch.red(["app"]), [])
         self.assertTrue(ciwatch.due("app"))
 
+    def test_gitea_and_forgejo_workflows_are_read_too(self):
+        # B92: a repository on a Gitea or Forgejo host keeps its workflows
+        # in its own directory; a file there is read, named with its
+        # directory, offered an action's fix, and not GitHub's label.
+        for d in (".gitea", ".forgejo"):
+            wf = self.tmp / "ws" / "lab" / d / "workflows"
+            wf.mkdir(parents=True)
+            (wf / "android.yml").write_text(FLOW)
+        self.assertTrue(ciwatch.due("lab"))
+        rec = ciwatch.look("lab")
+        self.assertEqual(rec["workflows"], 2)
+        fixes = {f["where"]: f["fix"] for f in rec["findings"] if f.get("fix")}
+        self.assertEqual(sorted(fixes), [".forgejo/workflows/android.yml:7", ".forgejo/workflows/android.yml:8",
+                                         ".gitea/workflows/android.yml:7", ".gitea/workflows/android.yml:8"])
+        self.assertNotIn("label", [f["kind"] for f in rec["findings"]])
+        r = ciwatch.fix("lab", ".gitea/workflows/android.yml:7")
+        self.assertTrue(r["ok"], r)
+        self.assertEqual(r["file"], ".gitea/workflows/android.yml")
+        self.assertIn("actions/checkout@v7", (self.tmp / "ws" / "lab" / ".gitea" / "workflows" / "android.yml").read_text())
+        self.assertIn("error", ciwatch.fix("lab", ".git/hooks/android.yml:7"))
+
     def test_a_project_with_no_workflows_is_never_due(self):
         (self.tmp / "ws" / "bare").mkdir()
         self.assertFalse(ciwatch.due("bare"))

@@ -178,8 +178,10 @@ GitHub's storage, and the token is not sent on to it. R115.
 schedule, not the project's: a runner label is repointed, an action's old
 major stops working when GitHub retires the Node it runs on. The controller looks at every project with
 workflows once a day, and at once when one is linked (`ciwatch.py`): the
-tree's workflows for a hosted job on a moving `-latest` label and for each
-action against its newest release, and on GitHub, with the token `bb ci-log`
+tree's workflows (`.github/workflows`, and `.gitea/workflows` and
+`.forgejo/workflows` for a repository on those hosts) for a GitHub-hosted
+job on a moving `-latest` label and for each action against its newest
+release, and on GitHub, with the token `bb ci-log`
 uses, whether the newest run on the main branch passed and what GitHub wrote
 on it (its warnings about a retired Node or a label about to move). What it
 finds is kept under `ciwatch/` in the state, shown as the Git view's CI

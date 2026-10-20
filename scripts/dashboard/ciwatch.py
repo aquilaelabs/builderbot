@@ -76,12 +76,35 @@ def read(project):
 USES = re.compile(r"^\s*-?\s*uses:\s*([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(?:/[^@\s]*)?@([^\s#]+)\s*(?:#\s*(v?\d[\w.]*))?")
 
 
+# Where a tree keeps its workflows: GitHub's, then Gitea's and Forgejo's,
+# which read the same YAML (a repository on the lab Gitea read as having
+# none, B92). A file under .github is named by itself, as the page has
+# always shown it; one under the others carries its directory, so two
+# hosts' ci.yml are two findings.
+WORKFLOW_DIRS = (".github/workflows", ".gitea/workflows", ".forgejo/workflows")
+
+
+def _workflow_files(project):
+    """[(where-name, path)] for every workflow file in the tree, in
+    WORKFLOW_DIRS order."""
+    out = []
+    for d in WORKFLOW_DIRS:
+        for f in sorted((WORKSPACE / project / d).glob("*.y*ml")):
+            out.append((f.name if d == WORKFLOW_DIRS[0] else f"{d}/{f.name}", f))
+    return out
+
+
+def has_workflows(project):
+    """Whether the tree has a workflow directory any host reads."""
+    return any((WORKSPACE / project / d).is_dir() for d in WORKFLOW_DIRS)
+
+
 def workflows(project):
     """[(file:line, kind, value)] for every runs-on and uses: in the tree's
     workflows, read as text: nothing in them is run. A commit pin's value
     carries its comment's version, and is not offered a fix (see look)."""
     out = []
-    for f in sorted((WORKSPACE / project / ".github" / "workflows").glob("*.y*ml")):
+    for name, f in _workflow_files(project):
         try:
             text = f.read_text(errors="replace")
         except OSError:
@@ -89,12 +112,12 @@ def workflows(project):
         for i, line in enumerate(text.splitlines(), 1):
             m = re.match(r"\s*runs-on:\s*(.+?)\s*(#.*)?$", line)
             if m and "${{" not in m.group(1):
-                out.append((f"{f.name}:{i}", "runs-on", m.group(1)))
+                out.append((f"{name}:{i}", "runs-on", m.group(1)))
             m = USES.match(line)
             if m:
                 # A commit pin carries its version in the comment beside it.
                 ref = m.group(2) if not re.fullmatch(r"[0-9a-f]{40}", m.group(2)) else (m.group(3) or "")
-                out.append((f"{f.name}:{i}", "uses", f"{m.group(1)}@{ref}"))
+                out.append((f"{name}:{i}", "uses", f"{m.group(1)}@{ref}"))
     return out
 
 
@@ -142,9 +165,11 @@ def fix(project, where):
     if not hit:
         return {"error": "no fix for that line in the last look: Look now looks again"}
     name, _, num = str(where).rpartition(":")
-    if not WORKFLOW_FILE.fullmatch(name) or not num.isdigit():
+    folder, _, base = name.rpartition("/")
+    folder = folder or WORKFLOW_DIRS[0]
+    if folder not in WORKFLOW_DIRS or not WORKFLOW_FILE.fullmatch(base) or not num.isdigit():
         return {"error": f"not a workflow line: {where}"}
-    path = WORKSPACE / project / ".github" / "workflows" / name
+    path = WORKSPACE / project / folder / base
     try:
         lines = path.read_text().split("\n")
     except OSError as e:
@@ -158,7 +183,7 @@ def fix(project, where):
         path.write_text("\n".join(lines))
     except OSError as e:
         return {"error": f"cannot write {name}: {e.strerror or e}"}
-    return {"ok": True, "file": f".github/workflows/{name}", "line": i + 1, "from": old, "to": new,
+    return {"ok": True, "file": f"{folder}/{base}", "line": i + 1, "from": old, "to": new,
             "out": f"{name}:{num} now names {new}: commit it, or send it to Claude, from Changes"}
 
 
@@ -174,7 +199,9 @@ def look(project):
     token = cilogs._token(project)
     flows = workflows(project)
     for where, kind, val in flows:
-        if kind == "runs-on":
+        # A moving label is GitHub's: a Gitea or Forgejo runner's labels are
+        # its own config, which moves only when its admin moves it.
+        if kind == "runs-on" and not where.startswith("."):
             for os_ in re.findall(r"\b(ubuntu|windows|macos)-latest\b", val):
                 found.append({"kind": "label", "sev": "warn", "where": where,
                               "fix": {"from": f"{os_}-latest", "to": PINNED[os_]},
@@ -314,7 +341,7 @@ def look_soon(project):
 def due(project, now=None):
     """Whether a project wants a look: it has workflows and its last look is
     a day old or never happened."""
-    if not (WORKSPACE / project / ".github" / "workflows").is_dir():
+    if not has_workflows(project):
         return False
     return (now or time.time()) - read(project).get("at", 0) >= EVERY
 
