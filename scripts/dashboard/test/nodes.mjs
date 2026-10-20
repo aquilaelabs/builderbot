@@ -2566,8 +2566,8 @@ await page.evaluate(async () => {
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
   const offeredOff = await page.evaluate(() => ({ reach: [...$('ndEnReach').options].map(o => o.value),
     door: [...$('ndEnDoor').options].map(o => o.value) }));
-  const refusedOff = await page.evaluate(() => nodeAct({ action: 'enroll', script: true, name: 'wgoff', reach: 'wireguard',
-    controller: location.origin, wireguard: '[Interface]' }));
+  const refusedOff = await page.evaluate(wg => nodeAct({ action: 'enroll', script: true, name: 'wgoff', reach: 'wireguard',
+    controller: location.origin, wg_conf: wg }), WG);
   ok(offeredOff.reach.join() === 'lan,public' && offeredOff.door.join() === ',cloudflared'
      && /WireGuard, and a Tailscale SSH door, are dev features/.test(refusedOff.error || ''),
      `with dev features off, Enroll node offers the LAN, a public hostname and the cloudflared door, and the server refuses WireGuard and Tailscale (${JSON.stringify(offeredOff)}; ${refusedOff.error})`);
@@ -2732,6 +2732,8 @@ await page.evaluate(async () => {
      `...and the pending row knows the door (${JSON.stringify(row3?.config?.door)})`);
   await page.click('#ndBody #ndTokDone');
   if (row3) await page.evaluate(id => nodeAct({ action: 'retire', id }), row3.id);
+  // Off again, for what follows: dev features were on for WireGuard above.
+  await devSet(false);
 }
 
 // What is offered (roadmap R54, step 6): with unvetted features off the
