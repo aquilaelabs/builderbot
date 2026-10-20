@@ -175,6 +175,16 @@ def use_scope(store, node_id):
     return node_id
 
 
+def noexec(path):
+    """True when `path` is on a filesystem mounted noexec: nothing in it can
+    run, the bb bundle and its terminals included (a tmpfs Docker made is
+    noexec unless told otherwise)."""
+    try:
+        return bool(os.statvfs(path).f_flag & os.ST_NOEXEC)
+    except (OSError, AttributeError):
+        return False
+
+
 def tc_root(state):
     """Where THIS machine's toolchains live: <store>/<node id>, or "" when
     the node has no toolchain store or no id yet."""

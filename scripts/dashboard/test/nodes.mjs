@@ -3150,6 +3150,10 @@ ok(page.errors.length === 0,
       nodeInternet({ kind: 'agent', reported: {} })].map(h => h.replace(/<[^>]+>/g, '').trim()));
     ok(/^no internet: /.test(net[0]) && net[1] === '' && net[2] === '',
        `the row says a node has no internet, and nothing when it has or has not said (${net.join(' | ')})`);
+    const nx = await page.evaluate(() => nodeInternet({ kind: 'agent', reported: { internet: true, store_noexec: true } })
+      .replace(/<[^>]+>/g, '').trim());
+    ok(/^the toolchain store is mounted noexec: bb and every terminal here cannot run/.test(nx),
+       `...and a store mounted noexec, which stops every terminal there (${nx})`);
     // A toolchain store the node cannot write (R85): the Toolchains page
     // says so and holds Install, before a job fails on it.
     await hello({ store_ro: true });

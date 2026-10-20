@@ -31,7 +31,7 @@ from .base import (
     log,
     log_once,
 )
-from .stores import tc_root
+from .stores import noexec, tc_root
 from .backends import _have
 from .toolchains import sdk_env
 from .census import controller_ip, network_now
@@ -467,7 +467,18 @@ class SessionsMixin:
         refreshed"), and only the next job or session start fetched it.
         Once a minute at most while it is missing."""
         store = tc_root(self.state)
-        if not store or os.access(os.path.join(store, ".bb", "current", "scripts", "bb"), os.X_OK):
+        bb = os.path.join(store, ".bb", "current", "scripts", "bb") if store else ""
+        if not store or os.access(bb, os.X_OK):
+            return
+        # There and unable to run: a store mounted noexec. Fetching again
+        # changes nothing, and saying it was gone was wrong (every terminal
+        # closed at once, with the log blaming a missing bundle). Said once;
+        # the census carries it to the node's page.
+        if os.path.exists(bb) and noexec(store):
+            if not getattr(self, "_noexec_said", False):
+                log(f"sessions: the toolchain store {store} is mounted noexec, so bb and every terminal "
+                    "cannot run from it; remount it with exec")
+                self._noexec_said = True
             return
         now = time.time()
         if now - getattr(self, "_bundle_back_at", 0) < self.BUNDLE_BACK_EVERY:

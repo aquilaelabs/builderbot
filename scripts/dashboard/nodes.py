@@ -1213,6 +1213,8 @@ def _census(c):
     out["internet"] = c.get("internet") if isinstance(c.get("internet"), bool) else None
     # ...and whether its toolchain store is read-only to it (R85).
     out["store_ro"] = c.get("store_ro") is True
+    # ...and whether it is mounted noexec, which stops every terminal there.
+    out["store_noexec"] = c.get("store_noexec") is True
     # The configuration plane's reported half (docs/nodes.md §12): whether
     # the node was provisioned as a sandbox (bb-sandbox is there: the stamp
     # system jobs are gated on), what it mounts as bb-sandbox reads it, and

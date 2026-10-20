@@ -24,7 +24,7 @@ from .base import (
     _probe_died,
     _run,
 )
-from .stores import _stores, store_dirs, tc_root
+from .stores import _stores, noexec, store_dirs, tc_root
 from .backends import _have, net_backend, pkg_backend
 from .toolchains import _toolchains, sdk_images, sdk_versions, sysdeps_now
 from .gpu import (
@@ -239,6 +239,9 @@ def census(state):
         # A toolchain store this node holds but cannot write (R85), so the
         # Toolchains page holds Install with the reason before a job fails.
         "store_ro": _store_ro(state),
+        # ...or mounted noexec, so the bb bundle and every terminal from it
+        # cannot run: the page says why, which the closing terminals do not.
+        "store_noexec": bool(tc_root(state)) and noexec(tc_root(state)),
         "gpu": gpu.splitlines()[0][:80] if gpu else "",
         "gpu_card": _gpu_card(),
         "gpu_driver": _gpu_driver(),

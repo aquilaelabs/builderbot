@@ -184,8 +184,13 @@ function nodeSound(n){
 // a toolchain, an image or a system image is a download, and each install
 // here refuses with this before it starts.
 function nodeInternet(n){
-  if (n.kind !== "agent" || n.reported?.internet !== false) return "";
-  return `<div class="actbar ndnet"><span class="state warn">no internet: toolchains, images and updates cannot download here</span></div>`;
+  if (n.kind !== "agent") return "";
+  // A store mounted noexec: nothing in it runs, the bb bundle and every
+  // terminal from it included, which closed at once with nothing saying why.
+  const noexec = n.reported?.store_noexec === true
+    ? `<div class="actbar ndnoexec"><span class="state bad">the toolchain store is mounted noexec: bb and every terminal here cannot run until it is remounted with exec</span></div>` : "";
+  if (n.reported?.internet !== false) return noexec;
+  return noexec + `<div class="actbar ndnet"><span class="state warn">no internet: toolchains, images and updates cannot download here</span></div>`;
 }
 // What this node's NVIDIA card is for (R102): two switches and one Apply.
 // The emulator renders on it or does not, which is the headless X server
