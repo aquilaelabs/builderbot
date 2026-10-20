@@ -12,6 +12,7 @@
 - The header's search field is as tall as the buttons beside it, and the dock's + and pull as tall as its tabs (3cd49c2)
 - A job on a node whose agent runs as an account with no home (a container started as a bare user id) gets one, so tools like npm run (407fc51)
 - With no node running Docker, the Containers page names the nodes that need it, instead of asking for a sandbox VM to be enrolled (68ff224)
+- The Sessions page says when a session on the controller started (29da93d)
 
 ### Security
 
