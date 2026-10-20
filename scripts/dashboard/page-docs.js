@@ -339,7 +339,10 @@ function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpt
 // page answers at, so a press goes there as the rail does and Back returns.
 const PAGE_AT = {nodes: "#/machines/nodes", docker: "#/containers", jobs: "#/jobs", toolchains: "#/build/toolchains",
   users: "#/people/users", roles: "#/people/roles", apps: "#/build/apps"};
+// A page this account may not open is its words and no link (B114): the
+// address of one a grant forbids landed on the group's first page instead.
 function pageLink(page, words, hash = PAGE_AT[page]){
+  if (typeof railAllows === "function" && !railAllows(page)) return esc(words);
   return `<a href="${esc(hash || "#")}" class="pagelink">${esc(words)}</a>`;
 }
 // A table on its way: its real head over rows whose cells shimmer, each as
