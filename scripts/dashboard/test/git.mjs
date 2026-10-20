@@ -1388,7 +1388,7 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
 // ---- the CI watch (R117) ------------------------------------------------------
 // What the daily look found, planted where ciwatch keeps it: a CI section on
 // the Git view saying it in rows, a bell row while main is red, and Look now
-// replacing it with a fresh look (beta has no workflows: nothing drifting).
+// replacing it with a fresh look (beta has no workflows, and it says so).
 {
   mkdirSync(`${DIR}/state/ciwatch`, { recursive: true });
   writeFileSync(`${DIR}/state/ciwatch/beta.json`, JSON.stringify({
@@ -1452,10 +1452,15 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
     rmSync(`${DIR}/ws/beta/.github`, { recursive: true, force: true });
   }
   await page.click(`${NB} #gitCiLook`);
-  await page.waitForFunction(sel => document.querySelector(sel)?.textContent === 'nothing drifting',
+  await page.waitForFunction(sel => document.querySelector(sel)?.textContent === 'no workflows',
                              `${NB} details.sect[data-sect="git:ci"] .sst`, { timeout: 20000 });
   const fresh = JSON.parse(readFileSync(`${DIR}/state/ciwatch/beta.json`, 'utf8'));
-  ok(fresh.findings.length === 0 && fresh.workflows === 0, 'Look now looks again and keeps it: beta has no workflows, so nothing drifts');
+  ok(fresh.findings.length === 0 && fresh.workflows === 0, 'Look now looks again and keeps it: beta has no workflows');
+  // B81: and the section says that, not "nothing drifting" in green.
+  const bare = await page.$eval(`${NB} details.sect[data-sect="git:ci"]`, d => ({
+    ok: d.querySelector('.sst').classList.contains('ok'), said: d.querySelector('.body .sub').textContent }));
+  ok(!bare.ok && /no workflow in \.github\/workflows/.test(bare.said),
+     `...and the section says there is no CI and where it looked, not "nothing drifting" in green (${bare.said})`);
   await page.evaluate(() => refresh());
   await page.waitForFunction(() => !(state?.ci_red || []).length, null, { timeout: 15000 });
   ok(true, '...and the bell row leaves with the red run');

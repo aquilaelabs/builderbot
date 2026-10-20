@@ -1978,7 +1978,9 @@ print(f"  looked {age} h ago" + (f" at {r['repo']} on GitHub" if r.get("repo") e
       + (f"; the newest run on {run.get('branch')} {run.get('ended') or 'ended ' + str(run.get('conclusion'))}" if run else ""))
 for f in r.get("findings") or []:
     print(f"  {f.get('kind', ''):<7} {f.get('where', '')}: {f.get('text', '')[:300]}")
-if not r.get("findings"):
+if not r.get("findings") and not r.get("workflows") and not run:
+    print("  no workflow in .github/workflows: there is no CI here to watch")
+elif not r.get("findings"):
     print("  nothing drifting")
 if r.get("error"):
     print(f"  (GitHub: {r['error']})")

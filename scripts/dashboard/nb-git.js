@@ -191,8 +191,11 @@ function nbGitView({$, nb, project}){
     if (!ci.at && !ci.workflows && !git.remote) return "";
     const fs = ci.findings || [];
     const red = fs.some(f => f.sev === "bad");
-    const status = !ci.at ? "not looked at yet" : red ? "failing" : fs.length ? `${fs.length} to look at` : "nothing drifting";
-    const cls = red ? "bad" : fs.length ? "note" : ci.at ? "ok" : "";
+    // A look that found no workflow says so, not "nothing drifting" in
+    // green: there is no CI to drift (B81).
+    const none = !!ci.at && !ci.workflows && !fs.length && !ci.run?.id;
+    const status = !ci.at ? "not looked at yet" : red ? "failing" : fs.length ? `${fs.length} to look at` : none ? "no workflows" : "nothing drifting";
+    const cls = red ? "bad" : fs.length ? "note" : ci.at && !none ? "ok" : "";
     const word = {run: "Check", label: "Runner", action: "Action", notice: "GitHub says"};
     // A moving label and an action a major behind carry their fix (R117
     // step 4): Fix writes that one line into the working tree, uncommitted,
@@ -205,7 +208,7 @@ function nbGitView({$, nb, project}){
           title="write ${esc(f.fix.to)} on that line, in the working tree; you commit it">Fix</button>` : ""}</div>`).join("");
     const run = ci.run?.id ? ` The newest run on ${esc(ci.run.branch)} ${esc(ci.run.ended || "ended " + ci.run.conclusion)}.` : "";
     const body = `<div class="sub dim">${ci.at ? `Looked ${esc(ago(ci.at))}${ci.repo ? ` at ${esc(ci.repo)} on GitHub` : ""}.${run}` :
-        "Not looked at yet."} Looked at once a day and when the project is linked; a session reads a run with bb ci-log.</div>${
+        "Not looked at yet."}${none ? " The tree has no workflow in .github/workflows, so there is no CI here to watch." : ""} Looked at once a day and when the project is linked; a session reads a run with bb ci-log.</div>${
       ci.error ? `<div class="sub bad">${esc(ci.error)}</div>` : ""}${rows}
       <div class="actbar"><button type="button" id="gitCiLook">Look now</button></div>`;
     return docSection("git", "ci", "CI", status, body, {cls, open: red, loud: red});
