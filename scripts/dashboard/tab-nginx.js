@@ -391,9 +391,10 @@ function nginxReadDraft(sect, n){
 
 function wireNginxTab(root){
   const psel = root.querySelector("#ngNodeSel");
-  if (psel) psel.onchange = () => { nginxNode = psel.value;
+  // A pick is a history entry (B31), so Back returns to the node before.
+  if (psel) psel.onchange = () => navPush(() => { nginxNode = psel.value;
                                     try{ localStorage.setItem("bb.ngnode", nginxNode); }catch(e){ /* private */ }
-                                    nginxRedraw(); };
+                                    nginxRedraw(); });
   const sect = root.querySelector("[data-ngnode]");
   if (!sect) return;
   const nid = sect.dataset.ngnode;

@@ -1614,7 +1614,8 @@ function renderRunnerInto(i){
   d.list.querySelectorAll(".ndrunro button").forEach(b => { b.disabled = true; });
   d.list.querySelectorAll("[data-runnode]").forEach(r => r.onclick = () => { runnerNode = r.dataset.runnode; nodesRev++; drawPanes(); });
   const pick = d.el.querySelector("#rnrPick");
-  if (pick) pick.onchange = () => { runnerNode = pick.value; nodesRev++; drawPanes(); };
+  // A pick is a history entry (B31), so Back returns to the node before.
+  if (pick) pick.onchange = () => navPush(() => { runnerNode = pick.value; nodesRev++; drawPanes(); });
 }
 
 // Add runner, the page's main action, in its bar with every other header

@@ -2739,14 +2739,15 @@ function renderDockerInto(i){
   const ck = el.querySelector("#bDockerCheck");
   if (ck) ck.onclick = () => dmCheck(ck, dockerList?.node || dockerNode || "", () => { dockerRev++; loadDocker(); });
   const pk = el.querySelector("#dmNode");
-  if (pk) pk.onchange = () => {
+  // A pick is a history entry (B31), so Back returns to the node before.
+  if (pk) pk.onchange = () => navPush(() => {
     dockerNode = pk.value;
     dockerNodeKeep();
     // The last-known answer first: instant, honestly stale (the blind path
     // says so), and a fresh ask behind it.
     dockerList = dockerSeen[dockerNode] || null;
     dockerRev++; drawPanes(); loadDocker();
-  };
+  });
   const nb = el.querySelector("#bDockerNew");
   if (nb) nb.onclick = openNewContainer;
   // A chip narrows the list to one project's group (the chips rule): a

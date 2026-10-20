@@ -216,9 +216,10 @@ function renderStorageInto(i){
 
 function wireStorageTab(root){
   const psel = root.querySelector("#stNodeSel");
-  if (psel) psel.onchange = () => { storageNode = psel.value;
+  // A pick is a history entry (B31), so Back returns to the node before.
+  if (psel) psel.onchange = () => navPush(() => { storageNode = psel.value;
                                     try{ localStorage.setItem("bb.stnode", storageNode); }catch(e){ /* private */ }
-                                    storageRev++; drawPanes(); };
+                                    storageRev++; drawPanes(); });
   root.querySelectorAll("[data-stmeasure]").forEach(b => b.onclick = async () => {
     busy(b, "Asking");
     const j = await (await postJSON("/api/storage", {action: "measure", node: b.dataset.stmeasure})).json().catch(() => ({error: "no answer"}));

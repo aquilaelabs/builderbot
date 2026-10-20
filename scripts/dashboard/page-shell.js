@@ -132,9 +132,15 @@ const NODE_PICKED = {nodes: () => nodesPick, storage: () => storageNode, nginx: 
   runner: () => runnerNode, docker: () => dockerNode};
 // Toolchains' "local" (the controller's own store, for a shell and the
 // suite) is no node, so an address naming it opens on the node tcPick picks.
+// A page that keeps what it read for one node forgets it when Back names
+// another, or the other node's list showed under this one until the read.
 const NODE_SET = {nodes: v => { nodesPick = v; }, storage: v => { storageNode = v; }, nginx: v => { nginxNode = v; },
-  toolchains: v => { tcNode = v === "local" ? "" : v; }, emulator: v => { emuNode = v; }, phone: v => { phNode = v; },
-  runner: v => { runnerNode = v; }, docker: v => { dockerNode = v; }};
+  toolchains: v => { const n = v === "local" ? "" : v;
+                     if (n !== tcNode){ tcNode = n; toolchains = null; tcTicked.clear(); tcDriverPick = ""; } },
+  emulator: v => { if (v !== emuNode){ emuNode = v; emu = null; emuTicked.clear(); } },
+  phone: v => { if (v !== phNode){ phNode = v; phIp = ""; } },
+  runner: v => { runnerNode = v; },
+  docker: v => { if (v !== dockerNode){ dockerNode = v; dockerList = dockerSeen[v] || null; } }};
 
 // A move inside a page (a notebook view, a wiki page) is a history entry,
 // so Back returns to where it was (R256 step 3): the draw replaces the
