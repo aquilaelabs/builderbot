@@ -214,13 +214,24 @@ await ready(page);
                              { timeout: 15000 });
   ok(true, 'Cancel on the row stops it, and the row follows the revision to canceled');
 
-  // the filter
-  await page.click('#jbActive');
-  await page.waitForSelector('.jobstab .empty', { timeout: 10000 });
-  const empty = await page.$eval('.jobstab .empty', e => e.textContent);
-  ok(/nothing is running or waiting/.test(empty), 'the active-only filter says so when nothing is');
-  await page.click('#jbActive');
-  await page.waitForSelector('.jobstab .jbrow', { timeout: 10000 });
+  // The chips (B74): one per way a job stands, Failed among them, each
+  // narrowing the list to its own; the address says which.
+  await page.waitForSelector('.jobstab [data-jbshow="failed"]', { timeout: 10000 });
+  await page.click('.jobstab [data-jbshow="failed"]');
+  await page.waitForFunction(() => location.hash === '#/jobs/failed'
+    && document.querySelector('.jobstab [data-jbshow="failed"].on'), null, { timeout: 10000 });
+  const states = await page.$$eval('.jobstab .jbrow', rs => [...new Set(rs.map(r => r.dataset.state))]);
+  ok(states.length === 1 && states[0] === 'failed',
+     `the Failed chip lists the failed jobs alone, at #/jobs/failed (${states.join(', ')})`);
+  await page.click('.jobstab [data-jbshow=""]');
+  await page.waitForFunction(() => location.hash === '#/jobs'
+    && new Set([...document.querySelectorAll('.jobstab .jbrow')].map(r => r.dataset.state)).size > 1, null, { timeout: 10000 });
+  ok(true, '...and All puts every job back');
+  // An address naming the chip opens the page on it: Home's "failed today".
+  await page.evaluate(() => { location.hash = '#/jobs/failed'; });
+  await page.waitForFunction(() => document.querySelector('.jobstab [data-jbshow="failed"].on'), null, { timeout: 10000 });
+  ok(true, '#/jobs/failed opens the page narrowed to the failed jobs');
+  await page.evaluate(() => { jobsShowSet(''); drawPanes(); shellSync(); });
 
   // A kind with no command of its own says what it did, where a storage
   // walk read as a bare "exec" (B70).

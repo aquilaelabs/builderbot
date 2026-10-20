@@ -127,10 +127,12 @@ function railGo(key, tool){
 
 // A node page's picked node, read and set by the address (R256 step 3): the
 // node is the address's last part, so a reload, a link and Back land on it.
-const NODE_PICKED = {nodes: () => nodesPick, storage: () => storageNode, nginx: () => nginxNode,
+// The Jobs page has no node; its second segment is the chip it is narrowed
+// to (#/jobs/failed, which Home's "failed today" opens, B74).
+const NODE_PICKED = {jobs: () => jobsShow, nodes: () => nodesPick, storage: () => storageNode, nginx: () => nginxNode,
   toolchains: () => tcNode === "local" ? "" : tcNode, emulator: () => emuNode, phone: () => phNode,
   runner: () => runnerNode, docker: () => dockerNode};
-const NODE_SET = {nodes: v => { nodesPick = v; }, storage: v => { storageNode = v; }, nginx: v => { nginxNode = v; },
+const NODE_SET = {jobs: v => jobsShowSet(v), nodes: v => { nodesPick = v; }, storage: v => { storageNode = v; }, nginx: v => { nginxNode = v; },
   toolchains: v => { tcNode = v; }, emulator: v => { emuNode = v; }, phone: v => { phNode = v; },
   runner: v => { runnerNode = v; }, docker: v => { dockerNode = v; }};
 

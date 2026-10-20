@@ -93,7 +93,10 @@ function homeTiles(){
 // is a panel, with no address, and opens it on the press.
 function homeHref(key){
   const c = (state?.ci_red || [])[0];
-  return {nodes: "#/machines/nodes", containers: "#/containers", jobs: "#/jobs", updates: "#/build/toolchains",
+  // The jobs tile says what failed today when anything did, and opens the
+  // Jobs page narrowed to the failed ones (B74).
+  const failed = homeData?.jobs?.failed_today;
+  return {nodes: "#/machines/nodes", containers: "#/containers", jobs: failed ? "#/jobs/failed" : "#/jobs", updates: "#/build/toolchains",
           ci: c ? `#/projects/${encodeURIComponent(c.project)}/git` : "#/projects", sessions: "#"}[key] || "#";
 }
 function homeTilesHtml(tiles){

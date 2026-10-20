@@ -52,6 +52,8 @@ ok(await page.evaluate(() => tabOf(panes[0])?.kind === 'home' && location.hash =
   ok(await page.$eval('.doc.on .hometiles [data-htile="jobs"]', t => !t.classList.contains('bad')
        && /failed today/.test(t.querySelector('.ts.bad')?.textContent || '')),
      '...and the jobs tile says how many failed today, the line in the bad tone rather than the count running');
+  ok(await page.$eval('.doc.on .hometiles [data-htile="jobs"]', t => t.getAttribute('href')) === '#/jobs/failed',
+     '...and opens the Jobs page narrowed to the failed ones (B74)');
   await page.click(`.doc.on [data-hjob="${q.job}"]`);
   await page.waitForFunction(id => tabOf(panes[0])?.kind === 'jobs'
     && document.querySelector(`.jbrow[data-job="${id}"].focus .jblog`), q.job, { timeout: 15000 });

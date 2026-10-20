@@ -4223,12 +4223,8 @@ button[aria-busy="true"]{opacity:.75}
   .ndmount select,.ndmount input:not([type=checkbox]),.ndmount .ndmstate{grid-column:1 / -1}
   .ndmount .ndcap{grid-column:1} .ndmount .eye{grid-column:2;justify-self:end}
 }
-/* The Jobs tab: the filter is one checkbox in the bar, skinned like a
-   capability toggle; the reason a job ended badly is a warn line; the log
-   is the manager's compose log, same box. */
-.jbfilter{display:inline-flex;gap:6px;align-items:center;font:var(--f-ui);
-  color:var(--ink)}
-.jbfilter input{width:15px;height:15px;flex:0 0 auto}
+/* The Jobs tab: it is narrowed by chips (B74); the reason a job ended
+   badly is a warn line; the log is the manager's compose log, same box. */
 .jberr.warn{color:var(--warn)}
 /* The notebook's Analysis list is a full-bleed band: its rows and its filter
    bar carry the inset themselves, exactly as they do in the tab, so a finding

@@ -16,7 +16,10 @@ let jobsList = null;             // last answer, or null before the first
 let jobsNodes = {};              // id -> name, from the same answer
 let jobsRev = 0;                 // bumped when it changes, so panes repaint
 let jobsErr = "";
-let jobsActive = false;          // the filter: everything, or only what is not over
+// The chip in force: "" for every job, else a state group's key (JOB_GROUPS).
+// A view, never a setting: kept for the page's life, nothing saved; Home's
+// "failed today" opens the page on "failed" by its address (B74).
+let jobsShow = "";
 const jobsOpen = new Set();      // ids whose log is unfolded
 const jobsLogs = {};             // id -> the log fetched for an unfolded row
 let jobsFocus = "";              // a row to bring into view on the next draw (openJob)
@@ -39,7 +42,7 @@ function openJob(id){
 
 async function loadJobs(){
   try{
-    const j = await (await bootFetch(`/api/v1/jobs?n=100${jobsActive ? "&active=1" : ""}`)).json();
+    const j = await (await bootFetch("/api/v1/jobs?n=100")).json();
     jobsErr = j.error || "";
     jobsList = j.jobs || [];
     jobsNodes = j.nodes || {};
@@ -136,6 +139,24 @@ function jobTook(j){
     && !String(j.error || "").includes(`exit ${j.exit_code}`) ? `exit ${j.exit_code}` : "";
   return [took, code].filter(Boolean).join(" · ");
 }
+// The list's groups by how a job stands, for its chips (B74): what is not
+// over, what failed, what was canceled, what succeeded. They partition it.
+const JOB_GROUPS = [
+  {key: "live", label: "Running or waiting", is: j => !["succeeded", "failed", "canceled"].includes(j.state)},
+  {key: "failed", label: "Failed", is: j => j.state === "failed"},
+  {key: "canceled", label: "Canceled", is: j => j.state === "canceled"},
+  {key: "succeeded", label: "Succeeded", is: j => j.state === "succeeded"},
+];
+function jobsShown(list){
+  const g = JOB_GROUPS.find(x => x.key === jobsShow);
+  return g ? list.filter(g.is) : list;
+}
+// The page's address names the chip a link opens it on (#/jobs/failed), the
+// way a node page's names its node.
+function jobsShowSet(v){
+  jobsShow = JOB_GROUPS.some(g => g.key === v) ? v : "";
+}
+
 // Who asked: every job has an asker, so it is a column and not a line
 // under each row; an account is named without its "user:" prefix.
 function jobBy(j){
@@ -172,9 +193,7 @@ function renderJobsInto(i){
   if (jobsList === null){
     // Its template (R218 step 16): the bar's filter and the table's head are
     // the page's own; the count and the rows are on their way.
-    d.setBar(`<span class="dim">${skv(4)}</span><span class="sp"></span>
-      <label class="jbfilter"><input type="checkbox" id="jbActive" ${jobsActive ? "checked" : ""}>
-        only what is running or waiting</label>`);
+    d.setBar(`<span class="dim">${skv(4)}</span>`);
     d.list.innerHTML = skTpl(jobsSection(skTable(JOB_COLS, 6, "jbtbl"), ""));
     wireJobsTab(d.el);
     loadJobs();
@@ -186,11 +205,9 @@ function renderJobsInto(i){
   }
   const live = jobsList.filter(j => !["succeeded", "failed", "canceled"].includes(j.state)).length;
   d.setBar(`<span class="dim">${jobsList.length} job${jobsList.length === 1 ? "" : "s"}${
-      live ? `, ${live} not finished` : ""}</span>
-    <span class="sp"></span>
-    <label class="jbfilter"><input type="checkbox" id="jbActive" ${jobsActive ? "checked" : ""}>
-      only what is running or waiting</label>`);
-  const rows = jobsList.map(j => {
+      live ? `, ${live} not finished` : ""}</span>`);
+  const shown = jobsShown(jobsList);
+  const rows = shown.map(j => {
     const open = jobsOpen.has(j.id);
     const over = ["succeeded", "failed", "canceled"].includes(j.state);
     return `
@@ -226,10 +243,17 @@ function renderJobsInto(i){
      omit: !count(j => j.state === "failed")},
     {label: "succeeded", value: count(j => j.state === "succeeded"), sub: `of ${jobsList.length} listed`},
   ]);
-  d.list.innerHTML = tiles + jobsSection(jobsList.length ? tblWrap(JOB_COLS, rows, "jbtbl")
-    : `<div class="empty">${jobsActive ? "nothing is running or waiting"
-                                       : "no jobs yet: a compose action, an exec on a node, or an agent update will appear here"}</div>`,
-    jobsList.length ? `${jobsList.length}` : "none");
+  // Narrowed by how a job stands (B74): a chip per state group with jobs
+  // in it, under the tiles; the one a link named stays on even when its
+  // group is empty, so the list says so rather than showing everything.
+  const chips = chipBar(JOB_GROUPS.map(g => ({key: g.key, label: g.label, count: count(g.is)})), jobsShow, "data-jbshow");
+  const said = JOB_GROUPS.find(g => g.key === jobsShow);
+  d.list.innerHTML = tiles + chips + jobsSection(shown.length ? tblWrap(JOB_COLS, rows, "jbtbl")
+    : `<div class="empty">${said ? (said.key === "live" ? "nothing is running or waiting"
+                                     : `nothing ${said.key} among the last ${jobsList.length} jobs`)
+                                   + ` <button type="button" data-jbshow="">Show every job</button>`
+                                 : "no jobs yet: a compose action, an exec on a node, or an agent update will appear here"}</div>`,
+    shown.length ? `${shown.length}` : "none");
   // Paged like every other long list here. This one grows without bound:
   // every compose action, exec and agent update lands on it forever, so it
   // was the tab most in need of it and the one that had it least.
@@ -245,8 +269,9 @@ function renderJobsInto(i){
 }
 
 function wireJobsTab(root){
-  const f = root.querySelector("#jbActive");
-  if (f) f.onchange = () => { jobsActive = f.checked; jobsList = null; jobsRev++; drawPanes(); loadJobs(); };
+  root.querySelectorAll("[data-jbshow]").forEach(b => b.onclick = () => {
+    jobsShowSet(b.dataset.jbshow); jobsRev++; drawPanes(); shellSync();
+  });
   // Every tail sits at its own bottom after a draw: the end is where the
   // reason is, the same rule the manager's compose log keeps.
   root.querySelectorAll('.jblog[data-tail="1"]').forEach(t => { t.scrollTop = t.scrollHeight; });
