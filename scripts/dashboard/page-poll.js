@@ -278,9 +278,15 @@ let pollFails = 0;
 // account's) is put away once the project list has said so (B40): restored
 // from the saved layout, it opened on red "not a project" lines and seven
 // refused requests on every load.
+// One that was on show gives way to Projects, where the project was, not to
+// whichever page the fallback found (B94: deleted from its Settings, the page
+// landed on the Profile).
 function dropGoneNotebooks(){
   const have = new Set((state?.projects || []).map(p => p.name));
-  tabs.filter(t => t.kind === "notebook" && t.arg && !have.has(t.arg)).forEach(t => hideTab(t.id));
+  const front = tabOf(panes[0]);
+  const gone = tabs.filter(t => t.kind === "notebook" && t.arg && !have.has(t.arg));
+  gone.forEach(t => hideTab(t.id));
+  if (front && gone.includes(front) && !tabOf(front.id)){ railWant = "projects"; openProjectsTab(); }
 }
 
 let findingsGated = false;

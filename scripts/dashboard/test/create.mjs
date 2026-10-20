@@ -1328,6 +1328,19 @@ await page.waitForFunction(() => document.getElementById('tmodal').hidden);
   ok(await page.evaluate(() => !tabs.some(t => t.arg === 'gone-project')),
      'a notebook tab on a project that is gone is put away at the next poll');
 }
+// ...and one on show when its project goes (deleted from its Settings, or
+// elsewhere) gives way to Projects, not to the Profile (B94).
+{
+  const made = await page.evaluate(async () => (await (await postJSON('/api/create', { name: 'gone-front', mode: 'init' })).json()).name);
+  await refreshUntil(page, () => state?.projects?.some(p => p.name === 'gone-front'), { timeout: 15000 });
+  await page.evaluate(() => openNotebook('gone-front', 'settings'));
+  await page.waitForFunction(() => location.hash.startsWith('#/projects/gone-front'), null, { timeout: 10000 });
+  await page.evaluate(n => postJSON('/api/trash', { name: n }), made || 'gone-front');
+  await refreshUntil(page, () => !tabs.some(t => t.arg === 'gone-front'), { timeout: 15000 });
+  const at = await page.waitForFunction(() => /^#\/projects(\/projects)?$/.test(location.hash) && tabOf(panes[0])?.kind === 'projects',
+    null, { timeout: 10000 }).then(() => true, () => false);
+  ok(at, `a notebook on show whose project is deleted lands on Projects (${await page.evaluate(() => location.hash + ' ' + tabOf(panes[0])?.kind)})`);
+}
 
 const errs = page.errors.filter(e => !/status of (400|500)/.test(e));
 ok(errs.length === 0, `zero console errors${errs.length ? ': ' + errs.join(' | ') : ''}`);
