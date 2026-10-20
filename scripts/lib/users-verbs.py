@@ -63,13 +63,15 @@ def accounts():
         # No accounts at all means this is the first one, and the first one is the
         # owner whatever was asked for: a store whose only account cannot
         # administer it is a store nobody can use.
+        # Made as the first-run page makes it (users.claim), so it has an id
+        # like every other account: written by hand here it had none, and
+        # the owner had no transcripts, no projects of its own and tokens
+        # naming nobody (diag report #116).
         if not users.all_users():
-            with users._lock:
-                d = users.load()
-                d["users"][name] = {"role": "owner", "projects": [],
-                                    "password": users.hash_password(pw),
-                                    "created": int(__import__("time").time()), "seen": 0}
-                users._save(d)
+            r = users.claim(name, pw)
+            if r.get("error"):
+                print(r["error"], file=sys.stderr)
+                raise SystemExit(1)
             print(f"{name}: created as the owner, since it is the first account")
             raise SystemExit(0)
         r = users.add(name, pw, role=role)

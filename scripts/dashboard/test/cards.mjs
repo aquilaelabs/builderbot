@@ -569,6 +569,8 @@ print(json.dumps(out))
   await plant({ node_name: 'shed' });
   ok(/shed/.test(await page.$eval(`${C} .pcfacts`, e => e.textContent)),
      '...and the node is a fact beside the branch, not a sentence');
+  const facts = await page.$eval(`${C} .pcfacts`, e => e.textContent);
+  ok(/^P\d+ · /.test(facts), `...and the project's id comes first on the line (${facts})`);
   await plant({ locked: true });
   ok(await line() === '', 'a locked project says nothing: no session there is the decision, not a fault');
   await plant({ locked: false, session_at: '', session_why: '' });

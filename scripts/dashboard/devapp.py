@@ -2575,7 +2575,8 @@ def check_paths(node_id=None):
         return out
 
 def _build_env(project, instance=MAIN):
-    """BB_BUILD_REV, BB_BUILD_AT and BB_BUILD_VERSION for a compose whose
+    """BB_BUILD_REV, BB_BUILD_AT, BB_BUILD_VERSION and BB_BUILD_TAG (the
+    version as an image tag can carry it) for a compose whose
     build args opt in with them: the commit the build is from (the tree's
     HEAD, or the pinned ref's tip), when, and the project's version in its
     file form. The same convention as BB_DEV_DATA, and the same reason: a
@@ -2607,9 +2608,16 @@ def _build_env(project, instance=MAIN):
         # 0.5.0-dev.1633+59d8912 on production and 0.5.0-dev.1633-59d8912 on
         # the dev instance, and the rule that makes this string the first
         # thing anybody compares turned one build into two (B158).
-        f = ((version.render(project) or {}).get("forms") or {}).get("semver")
+        forms = (version.render(project) or {}).get("forms") or {}
+        f = forms.get("semver")
         if f:
             out["BB_BUILD_VERSION"] = str(f)
+        # ...and the same version in the form an image tag can carry, with
+        # no `+` (docker refused "...:0.5.0-dev.6+ba86e7d" as an invalid
+        # reference, 20 Oct): the one to put after a colon.
+        t = forms.get("file")
+        if t:
+            out["BB_BUILD_TAG"] = str(t)
     return out
 
 

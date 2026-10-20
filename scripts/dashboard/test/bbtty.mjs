@@ -79,7 +79,8 @@ if len(parts) == 3 and len(parts[1].encode()) > SHARE:
     notes = ["the roadmap part is over its share of a session prompt and leaves out %d of its %d open items"
              % (len(rows) - kept, len(rows))]
 t = "\\n\\n".join(parts)
-print(json.dumps({"text": t, "bytes": len(t.encode()), "parts": [], "notes": notes}))' ;;
+print(json.dumps({"text": t, "bytes": len(t.encode()), "parts": [], "notes": notes,
+                  "name": "Alpha-Shown", "id": "P7"}))' ;;
   settings) [ "\${2:-}" = --json ] && printf '{"git_name":"Pat Tester","git_email":"pat@example.invalid","toolchains_off":[%s],"git_ready":%s}\\n' "$([ "\${BB_PROJECT:-}" = alpha ] && echo '"hexkit","flutter"')" "$([ "\${FAKE_GIT_READY:-1}" = 0 ] && echo false || echo true)" ;;
   # A brief staged with Build it, taken once, the way the controller hands
   # it over (brief.py): the file is the stage, and taking it clears it.
@@ -254,6 +255,10 @@ const prefPath = (argv.split('\0').find(a => /preamble\.txt$/.test(a)) || '');
 const pref = prefPath && existsSync(prefPath) ? readFileSync(prefPath, 'utf8') : '';
 ok(argv.includes('--append-system-prompt-file') && prefPath && pref.length > 40000,
    `...which reaches claude whole, roadmap and all, in a file (${pref.length} bytes)`);
+// The session is named as the briefing names the project, its shown name
+// and its id, never its folder: that is what the Claude app lists it under.
+const rcName = argv.split('\0')[argv.split('\0').indexOf('--remote-control') + 1];
+ok(rcName === 'Alpha-Shown (P7)', `...and is named for Remote Control as the project is shown, with its id (${rcName})`);
 // The operator's rules go in front of the list: how they want this worked on
 // before what there is to work on. Asserted by ORDER, not presence, since
 // either would be "in" the block.

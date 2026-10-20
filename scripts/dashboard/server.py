@@ -3192,6 +3192,7 @@ if not settings.debug_available():
 # after preamble is configured, so it is handed over here.
 preamble.prefs_mod = prefs
 preamble.label_of = registry.label
+preamble.id_of = registry.pid
 preamble.packs_of = lambda: {n: {"label": (r.get("manifest") or {}).get("label") or n, "guidance": r.get("guidance") or ""}
                              for n, r in toolpacks.packs().items()}
 
@@ -4678,7 +4679,15 @@ class Handler(BaseHTTPRequestHandler):
         if pw != pw2:
             return self._login_page("Those two passwords are not the same.",
                                     setup=True)
-        r = users.claim(name, pw)
+        # A /config the account cannot write is said on the page with what to
+        # do, not answered as a raw error the browser shows as text (B122).
+        try:
+            r = users.claim(name, pw)
+        except OSError as e:
+            return self._login_page(
+                f"The account could not be saved: {STATE} is not writable here ({e.strerror}). "
+                f"On the host, chown the folder mounted at {STATE} to the PUID and PGID the "
+                "container runs as, and restart it.", setup=True)
         if r.get("error"):
             return self._login_page(r["error"], setup=True)
         print(f"dashboard: {name} claimed this container as the owner",

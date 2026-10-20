@@ -153,6 +153,8 @@ def sees_line(project):
 # registry.label, set by the server (R154): the name a project is shown
 # under, which is not its directory once a name has been used before.
 label_of = None
+# The project's id as it is written (registry.pid): P3.
+id_of = None
 
 
 def _shown(project):
@@ -163,13 +165,17 @@ def _shown(project):
 
 
 def identity_line(project):
-    """Said only when the shown name is not the directory: the person says
-    one, every path and `bb -p` take the other."""
+    """The project's id, and its shown name where that is not the directory:
+    the person says the name, every path takes the directory, and the id
+    names it for good, renamed or not."""
     lab = label_of(project) if label_of else project
+    pid = id_of(project) if id_of else ""
+    said = f"This project's id is {pid}, which never changes; `bb -p {pid}` names it." if pid else ""
     if not lab or lab == project:
-        return ""
+        return said
     return (f"This project is shown as {lab}; its directory is /workspace/{project}, which every "
-            f"path and `bb -p` use. Call it {lab} when you speak of it.")
+            f"path and `bb -p` use. Call it {lab} when you speak of it."
+            + (f" Its id is {pid}, which never changes." if pid else ""))
 
 
 def reads_line(project):
@@ -582,6 +588,10 @@ def payload(project, reply="", asks=""):
     ps = parts(project, reply, asks)
     text = "\n\n".join(t for _, t, _ in ps)
     return {"text": text, "bytes": len(text.encode("utf-8")),
+            # The name the project is shown under, which the launcher names
+            # the session by (the Claude app listed folders otherwise).
+            "name": (label_of(project) if label_of else "") or project,
+            "id": id_of(project) if id_of else "",
             # What is pointed at rather than sent: the topics, with what
             # each would cost, so the tab says what the block leaves out.
             "topics": [{"slug": s, "gist": g, "bytes": b} for s, g, b in topics(project)],

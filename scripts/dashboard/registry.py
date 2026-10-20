@@ -159,6 +159,14 @@ def label(dirname):
     return str((r or {}).get("name") or dirname or "")
 
 
+def pid(dirname):
+    """The project's id as it is written, P and its number (P3), or "": the
+    registry's number, never handed out twice, so it names one project for
+    good where a name can change."""
+    n = (_load()["projects"].get(str(dirname or "")) or {}).get("id")
+    return f"P{n}" if n else ""
+
+
 def labels():
     return {k: str(v.get("name") or k) for k, v in _load()["projects"].items()}
 
@@ -289,7 +297,8 @@ def mark(dirname, state):
 
 def resolve(word):
     """A live project's directory from what somebody typed: the directory
-    itself, else a shown name that is one project's. "" when neither."""
+    itself, its id (P3), else a shown name that is one project's. "" when
+    none of them."""
     word = str(word or "").strip()
     if not word:
         return ""
@@ -297,4 +306,11 @@ def resolve(word):
     r = ps.get(word)
     if r is not None and r.get("state") == "live":
         return word
+    # Its id, as the page and a session's name write it (P3).
+    if re.fullmatch(r"[Pp]\d+", word):
+        n = int(word[1:])
+        for k, r in ps.items():
+            if r.get("state") == "live" and r.get("id") == n:
+                return k
+        return ""
     return live_named(word)

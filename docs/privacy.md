@@ -14,8 +14,8 @@ On the controller, in its state directory (`/config`):
 - **Accounts**: each person's sign-in name, full name, email address and git
   identity (what their commits carry), their roles, and their password as a
   salted PBKDF2 hash, never the password itself.
-- **Devices signed in**: for each phone app, PC companion or editor an
-  account pairs, its name, its kind and when it was paired and last seen.
+- **Devices signed in**: for each device an account
+  pairs, its name, its kind and when it was paired and last seen.
 - **The audit log**: when, who, what was done and to what, with a digest of
   the request rather than the request itself, so a token or an environment
   typed into a form is not kept in it.

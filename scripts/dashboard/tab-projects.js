@@ -121,12 +121,17 @@ function projectMatches(p, q){
 function lockMark(p){
   return p.locked || writeWhy(p) ? ` <span class="lockmark">${LOCK}${p.locked ? "archived" : "read-only"}</span>` : "";
 }
-// A project's facts line, the same parts wherever it is drawn: its branch,
-// that it may push, and the node it runs on.
+// A project's facts line, the same parts wherever it is drawn: its id, its
+// branch, that it may push, and the node it runs on.
 function projFacts(p){
   const node = p.node_name || p.session_at || "";
-  return `${p.git ? `git: <span class="pbr">${esc(p.git)}</span>${p.push ? ` · <span class="ok">push</span>` : ""}` : ""}${p.git && node ? " · " : ""}${esc(node)}`;
+  return [p.pid ? `<span class="pid" title="this project's id, which never changes: bb -p ${projId(p)} names it">${projId(p)}</span>` : "",
+          p.git ? `git: <span class="pbr">${esc(p.git)}</span>${p.push ? ` · <span class="ok">push</span>` : ""}` : "",
+          esc(node)].filter(Boolean).join(" · ");
 }
+// A project's id as it is written (P3), as a roadmap item is R12 and a bug
+// B7: the registry's number, never reused, so it names one project for good.
+const projId = p => p?.pid ? `P${p.pid}` : "";
 function projectCard(p){
   const pc = colorAttrs(p.color), cls = {error:"bad", warning:"warn", locked:"locked"};
   return `<div class="pcard${pc.cls}" data-row="${esc(p.name)}"${pc.style}>

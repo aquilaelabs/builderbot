@@ -3293,6 +3293,29 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
       rmSync(`${DIR}/devdata/blocked`, { force: true });
       await api('/api/devapp', { project: 'ep.silon', instance: 'blocked', action: 'remove' });
     }
+    // A socket there (the daemon's own, /var/run/docker.sock) is bound as
+    // it is: making it a directory failed every compose that mounted it
+    // (diag report #117).
+    {
+      const { createServer } = await import('node:net');
+      const made = await api('/api/devapp', { project: 'ep.silon', action: 'new', instance: 'sockd', node: minted.id });
+      ok(made.ok, `an instance whose bind source is a socket (${made.error || made.instance})`);
+      const sock = createServer();
+      await new Promise(res => sock.listen(`${DIR}/devdata/sockd`, res));
+      const up = await api('/api/devapp', { project: 'ep.silon', instance: 'sockd', action: 'up' });
+      const js = await until(async () => {
+        const r = await api('/api/v1/jobs?project=ep.silon&type=compose&n=1');
+        const one = (r.jobs || [])[0];
+        if (!one || !['succeeded', 'failed', 'canceled'].includes(one.state) || one.id === j.id) return null;
+        return api(`/api/v1/jobs?id=${one.id}`);
+      }, 60000);
+      ok((up.ok || up.started) && js && /bind source .*\/sockd is a socket or a device, bound as it is/.test(js.log || '')
+         && !(js.outputs || []).some(o => o.failed_at === 'preparing'),
+         `a socket as a bind source is bound as it is, not made a directory (${js?.state}: ${((js?.log || '').match(/bind (source|directory)[^\n]*|could not make[^\n]*/) || [''])[0].slice(0, 100)})`);
+      sock.close();
+      rmSync(`${DIR}/devdata/sockd`, { force: true });
+      await api('/api/devapp', { project: 'ep.silon', instance: 'sockd', action: 'remove' });
+    }
     // A bind directory that is there already is somebody's (a container's
     // config directory, a tree an administrator chowned on request) and is
     // left as it is: handing every mount source to the agent's account on

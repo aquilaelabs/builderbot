@@ -443,17 +443,7 @@ picked system's family file (`nodes/families/`) beside it, those answers and
 the token inside, built on the press and kept nowhere. The core sources the
 family file and refuses a machine whose os-release names another family, by
 name.
-Behind WireGuard the config the person's router made goes in too, narrowed
-to route the controller's address alone, with its own commands (PostUp) and
-resolver dropped and a keepalive added; the provisioner brings it up as
-`wg-quick@bb` before anything else and checks the controller answers through
-it, and the agent binds the session ports to the tunnel's address. The
-tunnel is one-way only where the home end makes it so (the node may open the
-controller's port and nothing else, and the LAN opens the session ports
-back), because root on the node could undo anything done there; the dialog
-gives the router's rules. The controller holds up its half: a node's tunnel
-address is answered on `/api/v1/agent/*` and refused everything else, by the
-socket's own address. "Just a token" is the old commands.
+"Just a token" is the old commands.
 
 **mTLS is a later layer, not a redesign**: the pinned-cert enrollment above is
 where a private CA slots in when a security review asks for it: same
@@ -1013,12 +1003,7 @@ the pieces stack:
    under the edge's request limit (Cloudflare's is 100 MB;
    `Controller.upload_pieces`, `relocate.data_put`). Such a node is hosting
    only by construction: the controller cannot reach its session ports back
-   through the tunnel. Through WireGuard (R161), for a
-   remote reached by address: the script narrows the router's WireGuard
-   config to the controller's one address, and the router's rules (the
-   dialog prints them) let the VPS open connections to the controller's
-   port and nothing else at home; the controller in turn answers its tunnel
-   address on the agent API alone.
+   through the tunnel.
 1a. *Its journal is kept across boots* (R185): the provisioner writes a
    journald drop-in (`Storage=persistent`), and the agent does the same on
    a managed node enrolled before, so `bb logs --node NAME --crash` has the
@@ -1065,7 +1050,7 @@ the pieces stack:
    an enrolled node is retired, its history kept.
 4a. *Enroll it again* (R177): Enroll script on the node's page makes a new
    script for a node already here, opened on its own answers, with no
-   secret in it (the node keeps its WireGuard config and its door's; a
+   secret in it (the node keeps its door's; a
    secret pasted replaces the node's), bound to the machine the node
    reported (`--machine`, the hash of its machine id, which the provisioner
    checks before it changes anything and `nodes.enroll` checks again), and
@@ -1080,13 +1065,10 @@ the pieces stack:
    at a hostname of its own with a tunnel token (`/etc/cloudflared/env`,
    root's, read by its unit; the public hostname goes to
    `ssh://localhost:22` in Zero Trust, since a token tunnel is remotely
-   managed), or Tailscale joining a tailnet with an auth key and answering
-   ssh there (`tailscale up --ssh`), with no public name. The secret rides
-   in the enroll script until it has run, then leaves it as the WireGuard
-   config does; the controller keeps none of it. Who reaches the door is
-   the tunnel's own say (Cloudflare Access, the tailnet's ACLs). Closing
-   public port 22 (`--door-close22`, an nftables rule leaving the loopback
-   and the tailnet) is a separate, default-off choice, since the person
+   managed). The secret rides in the enroll script until it has run, then
+   leaves it; the controller keeps none of it. Who reaches the door is the
+   tunnel's own say (Cloudflare Access). Closing public port 22
+   (`--door-close22`, an nftables rule leaving the loopback) is a separate, default-off choice, since the person
    running the script is usually on that port. An open cloudflared door's
    row hands the PC an `~/.ssh/config` block named for the node (`Host
    NAME`, `HostName`, `User`, `ProxyCommand cloudflared access ssh

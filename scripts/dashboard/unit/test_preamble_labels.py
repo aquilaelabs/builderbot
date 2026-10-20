@@ -33,6 +33,19 @@ class PreambleLabels(unittest.TestCase):
             self.assertIn("This project is shown as public; its directory is /workspace/here", out.stdout)
             self.assertIn("This project reads old-private (directory Old), plain:", out.stdout)
 
+    def test_the_id_reaches_the_briefing_and_the_session_name(self):
+        with tempfile.TemporaryDirectory() as t:
+            os.makedirs(os.path.join(t, "ws", "here-2"))
+            with open(os.path.join(t, "projects.json"), "w") as f:
+                json.dump({"next": 4, "projects": {
+                    "here-2": {"id": 3, "name": "here", "state": "live"}}}, f)
+            env = dict(os.environ, DASHBOARD_STATE=t, WORKSPACE=os.path.join(t, "ws"))
+            run = lambda *a: subprocess.run([sys.executable, VERBS, DASH, "here-2", *a], env=env,  # noqa: E731
+                                            capture_output=True, text=True, timeout=60)
+            got = json.loads(run("--json").stdout)
+            self.assertEqual((got["name"], got["id"]), ("here", "P3"))
+            self.assertIn("Its id is P3, which never changes.", run("").stdout)
+
     def test_a_project_is_told_its_tool_packs(self):
         # R77: the packs its settings switch on, by name, and a pack's own
         # guidance as bb help tool-NAME; a project that has not switched one

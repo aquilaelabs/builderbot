@@ -230,7 +230,10 @@ def _plan(project, instance, action, extra=None):
     # "No such image" and the move was undone (B660, aquilaeLabs, 11 Oct).
     up = {"name": "starting", "argv": stamped + base + ["up", "-d", "--remove-orphans"]
           + (["--no-build", "--pull", "missing"] if ship else []), "timeout": 1800, "env": env}
-    down = {"name": "stopping", "argv": base + ["down", "--remove-orphans"], "timeout": 180, "env": ienv}
+    # Every step reads the compose file with the same variables, the build's
+    # and the commit's among them: a file naming its images by BB_BUILD_REV
+    # was pulled as :dev, which no registry has (20 Oct).
+    down = {"name": "stopping", "argv": stamped + base + ["down", "--remove-orphans"], "timeout": 180, "env": env}
     build = {"name": "building", "argv": stamped + base + ["build"], "timeout": 3600, "env": env}
     # The env gate, in the only place a PLAN can carry it: a rebuild that
     # would start an instance whose env does not answer the repo's new
@@ -253,8 +256,8 @@ def _plan(project, instance, action, extra=None):
     # (B61): an image that cannot be pulled fails the rebuild while the app
     # still runs, rather than after the down, which left it down. Only what
     # the node lacks, so a registry out of reach stops nothing it has.
-    fetch = {"name": "pulling", "argv": base + ["pull", "--ignore-buildable", "--policy", "missing"],
-             "timeout": 1800, "env": ienv}
+    fetch = {"name": "pulling", "argv": stamped + base + ["pull", "--ignore-buildable", "--policy", "missing"],
+             "timeout": 1800, "env": env}
     rebuild = [build, fetch, down] if devapp.missing_env(project, instance) or arriving else [build, fetch, down, up]
     # The project's own test command, inside its running instance (roadmap
     # R48): `exec` into the service the project builds, with the command the
@@ -285,9 +288,9 @@ def _plan(project, instance, action, extra=None):
     # Update (R195): the registry images pulled again, then up, so what moved
     # upstream is what runs; nothing is built. --ignore-buildable leaves the
     # services built from code to Rebuild.
-    pull = {"name": "pulling", "argv": base + ["pull", "--ignore-buildable"], "timeout": 1800, "env": ienv}
-    stop = {"name": "stopping", "argv": base + ["stop"], "timeout": 180, "env": ienv}
-    start = {"name": "starting", "argv": base + ["start"], "timeout": 300, "env": ienv}
+    pull = {"name": "pulling", "argv": stamped + base + ["pull", "--ignore-buildable"], "timeout": 1800, "env": env}
+    stop = {"name": "stopping", "argv": stamped + base + ["stop"], "timeout": 180, "env": env}
+    start = {"name": "starting", "argv": stamped + base + ["start"], "timeout": 300, "env": env}
     return {"up": [up], "down": [down], "remove": [down],
             "rebuild": rebuild, "test": test, "stop": [stop], "start": [start],
             "update": [pull, up]}.get(action) or []
@@ -1271,6 +1274,7 @@ def _job_update(project, instance, run):
     """Update where the controller runs the job itself: pull, then up."""
     run.step("pulling")
     r = devapp._run(devapp._compose(project, instance, "pull", "--ignore-buildable"), timeout=1800,
+                    env_extra=devapp._dev_data_env(project, instance) | devapp._build_env(project, instance),
                     sink=run.line, hold=run.hold)
     if run.canceled:
         return {"state": "canceled", "error": "stopped before it started again"}
@@ -1386,8 +1390,11 @@ def _job_rebuild(project, instance, run):
         # What it pulls from a registry, before the old containers go (B61):
         # an image that cannot be had fails here with the app still up.
         run.step("pulling")
+        # With the build's variables, as the build had them: a file naming
+        # its images by BB_BUILD_REV was pulled as :dev otherwise.
         r = devapp._run(devapp._compose(project, instance, "pull", "--ignore-buildable", "--policy", "missing"),
-                        timeout=1800, sink=run.line, hold=run.hold)
+                        timeout=1800, env_extra=devapp._dev_data_env(project, instance) | devapp._build_env(project, instance),
+                        sink=run.line, hold=run.hold)
         if run.canceled:
             return {"state": "canceled", "error": "stopped: the image is built, and what ran before is still up"}
         if r["code"] != 0:
