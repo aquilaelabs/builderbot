@@ -13,6 +13,7 @@
 
 - A node run in a container as a user with no account entry, or with its /workspace in memory, keeps dialing in and syncs its projects (3f38db0)
 - A node says when it has no internet, when its toolchain store is read-only, and when the store is mounted noexec (which stops its terminals); a toolchain install on a machine with no internet stops in one sentence before it starts (40a86bf)
+- A dashboard put behind Cloudflare under its own hostname loads: it is no longer taken for the controller's own tunnel, and Rocket Loader leaves its scripts alone (e9be926)
 
 ## 0.5.1: 2026-10-20
 
