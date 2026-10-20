@@ -6,7 +6,7 @@
 // identity landing in the repo's own config through /api/prefs and coming out
 // of bb settings, and bb_setting (the boot scripts' read) run as bash
 // against the same file.
-import { launch, newPage, ok, done, ready, saveDialog, sectSave, rnSect, splitPick, refreshUntil, openFold, URL, DIR, unfold } from './lib.mjs';
+import { launch, newPage, ok, done, ready, saveDialog, sectSave, rnSect, splitPick, refreshUntil, openFold, URL, DIR, unfold, sleep } from './lib.mjs';
 import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -502,12 +502,31 @@ ok(elsewhere.git_name === 'T. Person',
     await refreshUntil(page, () => !(state?.projects || []).find(p => p.name === 'alpha')?.prefs?.build, { timeout: 20000 });
     await page.evaluate(() => { settingsOut(); openProjectSettings('alpha'); });
     await page.waitForSelector('.nbsettings .snav [data-spick="build"]', { timeout: 15000 });
+    // A status read already out, answered before the save below and landing
+    // only after Save is pressed, as a loaded box has them (B100): the Save
+    // read "what is saved now" from it, and wrote over the other save
+    // unseen. Held here, so the order is the one the gate met by chance.
+    let release, read = false, caught = false;
+    const held = new Promise(r => { release = r; });
+    await page.route('**/api/status', async r => {
+      if (caught) return r.fallback();
+      caught = true;
+      const before = await r.fetch();
+      read = true;
+      await held;
+      await r.fulfill({ response: before });
+    });
+    await page.evaluate(() => { refresh(); });
+    for (let i = 0; i < 300 && !read; i++) await sleep(100);
     // Elsewhere, after this window opened: the color (another section) and
     // the build command (this one), as a session or another window would.
     await post('/api/prefs', { project: 'alpha', color: 'teal', build: 'make theirs' });
     await rnSect(page, 'build');
     await page.fill('#rnBuildCmd', 'make mine');
+    setTimeout(release, 1500);
     const first = await sectSave(page, 'build');
+    await page.unroute('**/api/status');
+    ok(read, 'a status read sent before the other save was out when Save was pressed');
     const kept = await page.evaluate(() => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.build);
     ok(/Build changed since these settings were opened/.test(first) && kept === 'make theirs',
        `a field saved elsewhere since the settings opened is not written over unseen: the save is refused, naming it (${first.slice(0, 90)}; saved: ${kept})`);
