@@ -287,6 +287,7 @@ test/nettest/probe.sh            the probe itself: DNS, the internet, the contro
 test/nettest/.env.example        the two addresses it needs: the controller's and the node's
 tools/american-spelling.sh       the house rule spelling's check: no British spelling on a line this branch adds
 tools/no-net-growth.sh           the everything-files against their ceilings in tools/ratchet.txt (R77)
+tools/upgrade-snapshot.py        a lived-in /config made by this tree's controller through its API, written to scripts/dashboard/test/upgrade/VERSION/ for the upgrade suite; a release runs it
 tools/vscode-vsix.py             packages vscode/ as a .vsix with python's zipfile, BuilderBot's version inside (R159)
 tools/companion-build.py         builds the Windows companion as one .pyz with the four agent modules its sync is (R270)
 tools/ratchet.txt                those ceilings, one per file
