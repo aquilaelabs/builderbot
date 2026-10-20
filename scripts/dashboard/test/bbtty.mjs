@@ -669,6 +669,11 @@ tmuxKill('claude-alpha');
     // (a shell, and not the owner) and a plain user (no shell at all).
     const usersPy = code => execFileSync('python3', ['-c', `
 import importlib.util, json
+
+// bb-tty leaves git's GIT_CONFIG_n to whoever set them, and a Claude session
+// running this suite has set its own: they are not this suite's to inherit
+// (B151, as settings.mjs's B146).
+for (const k of Object.keys(process.env)) if (/^GIT_CONFIG_(COUNT|KEY_|VALUE_)/.test(k)) delete process.env[k];
 spec = importlib.util.spec_from_file_location("users", ${JSON.stringify(join(REPO, 'scripts', 'dashboard', 'users.py'))})
 u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
 u.configure(state=${JSON.stringify(join(DIR, 'state'))}, write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
