@@ -15,6 +15,7 @@
 const AB_GUIDE_DOC = "start-here";
 const AB_ADMIN_HEAD = "## As an administrator";
 let abGuideDoc = null;       // {text} | {error}, read once
+let abGuideTitles = {};      // doc name -> title, from the Help listing
 
 function abGuideText(text, admin){
   let t = wikiUntitled(String(text || ""));
@@ -34,12 +35,17 @@ async function abLoadGuide(){
   const el = $("abGuide");
   if (!abGuideDoc){
     el.innerHTML = skel("lines", 8);
-    try{ abGuideDoc = await (await fetch("/api/help?doc=" + AB_GUIDE_DOC)).json(); }
+    try{
+      const [doc, index] = await Promise.all([fetch("/api/help?doc=" + AB_GUIDE_DOC), fetch("/api/help")]
+        .map(p => p.then(r => r.json())));
+      abGuideDoc = doc;
+      if (!index.error) abGuideTitles = helpTitles(index);
+    }
     catch(e){ abGuideDoc = {error: "the guide could not be read: " + e}; }
   }
   if (abPage !== "guide") return;
   if (abGuideDoc.error){ el.innerHTML = `<p class="hint bad">${esc(abGuideDoc.error)}</p>`; return; }
-  el.innerHTML = wikiMarkdown(abGuideText(abGuideDoc.text, state?.can?.admin !== false));
+  el.innerHTML = wikiMarkdown(abGuideText(abGuideDoc.text, state?.can?.admin !== false), abGuideTitles);
   // A link to another doc opens it on the Help page.
   el.querySelectorAll("a.wklink[data-page]").forEach(a => a.onclick = e => {
     e.preventDefault();
@@ -53,6 +59,7 @@ function abShow(which){
   document.querySelectorAll(".abswitch button").forEach(b => b.classList.toggle("on", b.dataset.ab === which));
   $("abGuide").hidden = which !== "guide";
   $("abLog").hidden = which !== "log";
+  $("abBuild").hidden = which !== "log";
   if (which === "guide") abLoadGuide();
   if (which === "log" && !abLogLoaded) abLoadLog();
 }

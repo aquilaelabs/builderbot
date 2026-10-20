@@ -16,7 +16,7 @@
 // inline code, links and [[wiki links]]. Everything is escaped first and
 // only these shapes are put back, so a page can carry no markup of its own
 // into the dashboard; a link is followed only to http(s) or another page.
-function wikiMarkdown(src){
+function wikiMarkdown(src, titles){
   const lines = String(src || "").replace(/\r\n?/g, "\n").split("\n");
   const out = [];
   const inline = s => {
@@ -30,7 +30,12 @@ function wikiMarkdown(src){
     t = t.replace(/!?\[([^\]]*)\]\(([^)\s]+)\)/g, (m, text, url) => {
       if (/^https?:\/\//i.test(url)) return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text || url}</a>`;
       const pageName = url.replace(/\.md$/i, "").replace(/^\.\//, "");
-      return /^[^:/]+$/.test(pageName) ? `<a href="#" class="wklink" data-page="${pageName}">${text || pageName}</a>` : m;
+      // A link whose words are its own file name ([how-it-works.md](...))
+      // reads as the page's title where the caller knows it (B110): a file
+      // name is the source's spelling, not what a reader looks for.
+      const doc = pageName.replace(/#.*$/, ""), file = url.replace(/^\.\//, "").replace(/#.*$/, "");
+      const words = titles?.[doc] && (!text || text === file || text === url) ? esc(titles[doc]) : text || pageName;
+      return /^[^:/]+$/.test(pageName) ? `<a href="#" class="wklink" data-page="${pageName}">${words}</a>` : m;
     });
     t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/__([^_]+)__/g, "<strong>$1</strong>")
          .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>").replace(/(^|\W)_([^_\s][^_]*)_(?=\W|$)/g, "$1<em>$2</em>")
@@ -60,7 +65,7 @@ function wikiMarkdown(src){
     } else if (/^\s*>/.test(l)){
       const body = [];
       for (; i < lines.length && /^\s*>/.test(lines[i]); i++) body.push(lines[i].replace(/^\s*>\s?/, ""));
-      out.push(`<blockquote>${wikiMarkdown(body.join("\n"))}</blockquote>`);
+      out.push(`<blockquote>${wikiMarkdown(body.join("\n"), titles)}</blockquote>`);
     } else if (/^\s*([-*+]|\d+[.)])\s+/.test(l)){
       const ordered = /^\s*\d/.test(l), items = [];
       // An item's wrapped lines, indented under it, are the item's own.
