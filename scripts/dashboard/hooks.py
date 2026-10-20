@@ -41,6 +41,10 @@ turns = None
 nodes = None
 seen_note = None
 turn_scope = None
+# server.asking_set and asking_clear: a session on its permission prompt (B52).
+asking_set = None
+asking_clear = None
+asked = None          # projsessions.asked: what a session was last asked (B59)
 
 
 def configure(**deps):
@@ -74,6 +78,8 @@ def verb(kind, req, me, uid, project):
                                  + (f" ({field(req, 'node')})" if field(req, "node") else ""))
         seen_note(project, uid, field(req, "node"), who=me, begin=True)
         return {"ok": True}, 200
+    if kind in ("seen", "turn-done") and asking_clear is not None:
+        asking_clear(project, uid)
     if kind == "seen":
         # What this session has not been told about the notebook, and
         # marked told (roadmap #27). The answer rides back into the turn
@@ -89,11 +95,20 @@ def verb(kind, req, me, uid, project):
         # after a summary (recall), not on every prompt that names it.
         told = set(req.get("told") or []) if isinstance(req.get("told"), list) else set()
         prompt = str(req.get("prompt") or "")[:20000]
+        # ...and what it was asked, for its row's task (B59).
+        if asked:
+            asked(uid, project, prompt)
         hit = [r for r in rules.matching(project, prompt=prompt) if r["name"] not in told]
         # ...and the open items and bugs the prompt names (R202), the same way.
         related, rnames = preamble.mentioned(project, prompt, told)
         return {"ok": True, "line": line, "rules": rules.said(hit), "related": related,
                 "names": [r["name"] for r in hit] + rnames}, 200
+    if kind == "asking":
+        # Claude Code waits on its own permission prompt (B52): marked until
+        # it works again, its turn ends or it is sent a prompt.
+        if asking_set is not None:
+            asking_set(project, uid, str(req.get("text") or ""))
+        return {"ok": True}, 200
     if kind == "guards":
         return {"ok": True, "guards": rules.guards(project)}, 200
     if kind == "recall":
@@ -115,4 +130,4 @@ def verb(kind, req, me, uid, project):
             n = nodes.node(nid) or {}
             r["node"] = n.get("name") or nid
         return {"ok": True, **r}, 200
-    return {"error": "a hook is note, asked, started, seen, guards, recall, turn or turn-done"}, 400
+    return {"error": "a hook is note, asked, started, seen, asking, guards, recall, turn or turn-done"}, 400

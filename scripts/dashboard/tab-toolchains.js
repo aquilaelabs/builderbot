@@ -22,6 +22,9 @@
 "use strict";
 
 let toolchains = null, tcRev = 0, tcPoll = null;
+// The bar's main action as a row's hint names it: the words the button
+// wears at the width the page is at.
+const tcInstallSaid = () => barSaid("Install selected", "Install");
 const tcTicked = new Set();     // survives a redraw; a poll must not untick
 const tcOpen = new Set();       // the rows opened on their details (R218 step 22)
 
@@ -112,14 +115,12 @@ function tcPick(){
 // through the batch it is. It was a green line of its own between the
 // buttons, naming the recipe's id (the operator, 6 Oct: "Installing ndk...").
 const tcWorking = (job, items) => {
-  const verb = {install: "Installing", remove: "Removing", update: "Updating",
-                check: "Checking"}[job.action] || "Working on";
+  const verb = {install: "Installing", remove: "Removing", update: "Updating"}[job.action] || "Working on";
   const row = (items || []).find(i => i.name === job.current);
-  const what = job.action === "check" ? "for updates"
-    : row?.label || (job.current || "").replace(/^android:/, "");
+  const what = row?.label || (job.current || "").replace(/^android:/, "");
   const done = (job.done || []).length + (job.failed || []).length + (job.passed || []).length,
         left = (job.queue || []).length;
-  const of = job.action !== "check" && done + left > 0 ? `, ${done + 1} of ${done + left + 1}` : "";
+  const of = done + left > 0 ? `, ${done + 1} of ${done + left + 1}` : "";
   return `${esc(verb)} ${esc(what)}${of}<span class="dots"></span>`;
 };
 
@@ -176,7 +177,7 @@ function tcTermsLine(p){
   const link = t => `<a href="${esc(t.url)}" target="_blank" rel="noreferrer">${esc(t.label)}</a>`;
   const acc = (p.terms || []).filter(t => t.accept), lic = (p.terms || []).filter(t => !t.accept);
   if (!acc.length && !lic.length) return "";
-  return `<span class="sub tcterms">${acc.length ? `Installing it accepts ${acc.map(link).join(" and ")}.` : ""}${
+  return `<span class="sub tcterms">${acc.length ? `Installing it asks you to accept ${acc.map(link).join(" and ")}.` : ""}${
     acc.length && lic.length ? " " : ""}${lic.length ? `Licensed: ${lic.map(link).join(", ")}.` : ""}</span>`;
 }
 
@@ -209,8 +210,10 @@ function tcRow(p, busy, job, managed){
   // been installed: what Install would fetch. Only the middle one is yellow,
   // because only it is news; a version on an absent row is just a fact about
   // the shelf, and coloring six of them amber would be crying wolf.
-  const ver = p.version && p.version !== "-"
-    ? ` <span class="pill" title="installed">${esc(p.version)}</span>` : "";
+  // "present" is a census's word for a tool that answered without a
+  // version (the emulator): the cell says "installed" for it instead.
+  const ver = p.version && p.version !== "-" && p.version !== "present"
+    ?` <span class="pill" title="installed">${esc(p.version)}</span>` : "";
   // Only on a row that has nothing installed, where it is the one version
   // worth showing: what Install would fetch. An installed row that is behind
   // says so in words underneath: an amber arrow pointing at a number was one
@@ -222,7 +225,7 @@ function tcRow(p, busy, job, managed){
   // is locked as installed, and "tick it" was an instruction it could not
   // follow (the operator, 6 Oct, on JDK 21).
   const upd = p.state === "update"
-    ? `<span class="sub upd">update available: tick it and press Install selected${
+    ? `<span class="sub upd">update available: tick it and press ${tcInstallSaid()}${
         p.updatable ? "" : "; it is removed and installed again"}</span>`
     : "";
   // What went wrong, on the row it went wrong on. This is what the scrolling
@@ -277,7 +280,7 @@ function tcRow(p, busy, job, managed){
     mine ? prog : `<span class="where${p.installed ? " on" : ""}">${ver || (p.installed ? "installed" : "not installed")}</span>`,
     next, p.size ? `<span class="pill" title="${esc(p.size_from)}">${esc(p.size)}</span>` : "",
     pins.length ? `<span title="${esc(pins.join(", "))}">${esc(pins.join(", "))}</span>` : "",
-    p.installed && !mine ? rmIcon(`data-rm="${esc(p.name)}"`, `uninstall ${p.label}`, {title: `uninstall ${p.label}`, why: busy ? "another toolchain operation is running" : ""}) : ""], "span", "tcline")}
+    p.installed && !mine ? rmIcon(`data-rm="${esc(p.name)}" data-rmlabel="${esc(p.label || p.name)}"`, `uninstall ${p.label}`, {title: `uninstall ${p.label}`, why: busy ? "another toolchain operation is running" : ""}) : ""], "span", "tcline")}
     ${upd}${err}${
       // Sessions that started before this landed still have the old PATH
       // (toolchains.py counts them); one line, and only while there are any.
@@ -286,23 +289,27 @@ function tcRow(p, busy, job, managed){
   </label>`;
 }
 // ---- tool packs (R77) -------------------------------------------------------
-// The packs an administrator added, as a record list (the design's
-// record-lists rule): a row each with Edit at its end, and Add tool pack
-// over the table opening the same form at its top. A pack is looked at
-// before it is added: the form fetches its manifest at a commit and shows
-// what it would download and run, and Add keeps exactly that commit.
+// The packs an administrator added, as a table, a row each with Edit at its
+// end and Add tool pack over it, both opening one dialog (tpDraw). A pack is
+// looked at before it is added: the dialog fetches its manifest at a commit
+// and shows what it would download and run, and Add keeps exactly that commit.
 const TP_COLS = [{label: "Pack"}, {label: "From"}, {label: "Commit", w: "6.5rem"},
   {label: "Added by", w: "minmax(0,.6fr)"}, {act: true, w: "5rem"}];
-let tpEdit = null;             // "" a new pack's form open, else the name of the pack open
-let tpForm = {url: "", seen: null, error: "", busy: ""};
+let tpEdit = null;             // the dialog's pack: "" for Add tool pack, else the name of the pack in Edit
+// `from` is where Add takes the pack (a repository, a pasted bbtool.json or
+// an uploaded archive of its files); a pack made here edits by the last two.
+let tpForm = {url: "", seen: null, error: "", busy: "", from: "repo", text: "", file: null};
+const TP_BLANK = () => ({url: "", seen: null, error: "", busy: "", from: "repo", text: "", file: null});
 
 // What a pack would install and give a session, from the manifest a look
 // fetched: its downloads are its install steps, its verbs the words each
 // runs, so the person adding it reads both before Add.
+// `offer` is whether Add or Update stands beside it: the plain-http warning
+// is about approving what is shown, so it is said only then.
 // On an update, `was` is the installed pack's (its verbs' words and its
 // install steps): what the new commit changes is said on its line, and a
 // verb it drops is listed as gone, so the approval is of the difference.
-function tpSeen(seen, was){
+function tpSeen(seen, was, offer = true){
   const m = seen.manifest, w = a => `<code>${esc(a.join(" "))}</code>`;
   const same = (a, b) => JSON.stringify(a || null) === JSON.stringify(b || null);
   const mark = (now, then) => !was ? "" : then === undefined ? ` <span class="pill warn">new</span>`
@@ -315,83 +322,203 @@ function tpSeen(seen, was){
   const steps = (m.steps || []).map(w).join(", ") + (was && !same(m.steps || [], was.steps || [])
     ? ` <span class="pill warn">changed</span>${(was.steps || []).length ? ` <span class="sub">was ${(was.steps || []).map(w).join(", ")}</span>` : ""}` : "");
   return `<div class="tpseen">
-    <div class="name">${esc(m.label)} <span class="pill">${esc(m.name)}</span> <span class="sub">at ${esc(seen.commit.slice(0, 12))}</span></div>
+    <div class="name">${esc(m.label)} <span class="pill">${esc(m.name)}</span> <span class="sub">${seen.here
+      ? `as given here, ${seen.nfiles} file${seen.nfiles === 1 ? "" : "s"}` : `at ${esc(seen.commit.slice(0, 12))}`}</span></div>
     ${m.about ? `<div class="sub">${esc(m.about)}</div>` : ""}
-    <div class="sub">Installs by fetching the repository at that commit${steps ? `, then running ${steps}` : ""}${
+    <div class="sub">Installs ${seen.here ? "by copying these files to the node" : "by fetching the repository at that commit"}${steps ? `, then running ${steps}` : ""}${
       m.verify ? `, and checks it with ${w(m.verify)}` : ""}; on ${esc((m.platforms || []).join(", "))}.</div>
     ${verbs}
     ${(m.terms || []).length ? `<div class="sub">Under ${m.terms.map(t => t.url ? `<a href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.label)}</a>` : esc(t.label)).join(", ")}.</div>` : ""}
     ${seen.guidance ? `<div class="sub">Comes with guidance a session reads as <code>bb help tool-${esc(m.name)}</code>.</div>` : ""}
-    ${seen.plain ? `<div class="hint warn">Fetched over plain http: what Add keeps is this commit, checked by its hash, but read what it runs here before you add it.</div>` : ""}
+    ${seen.plain && offer ? `<div class="hint warn">Fetched over plain http: what Add keeps is this commit, checked by its hash, but read what it runs here before you add it.</div>` : ""}
   </div>`;
 }
 
-function tpFormHtml(p){
-  const f = tpForm, fresh = !p, seen = f.seen;
-  const newer = seen && p && seen.commit !== p.pack.commit;
-  return `<div class="ngform tpform">
-    ${fresh ? `<label class="setrow col ctlrow"><span class="lbl">Repository</span><input id="tpUrl" value="${esc(f.url)}"
-      placeholder="https://github.com/owner/repo" aria-label="the pack's repository" autocomplete="off" spellcheck="false"></label>`
-      : `<div class="sub">From <code>${esc(p.pack.url)}</code> at ${esc(p.pack.commit.slice(0, 12))}, added by ${esc(p.pack.by || "an administrator")}${
-        p.pack.at ? ` ${ago(p.pack.at)}` : ""}. Verbs: ${esc((p.pack.verbs || []).join(", "))}.</div>`}
-    ${seen ? tpSeen(seen, p ? p.pack : null) : ""}
-    ${f.error ? `<div class="hint bad">${esc(f.error)}</div>` : ""}
-    ${p && seen && !newer ? `<div class="hint">No newer commit: the repository's head is the one installed.</div>` : ""}
-    <div class="actbar ngformbar">${p ? `<button type="button" class="danger lead" data-tprm="${esc(p.name)}">Remove</button>` : ""}
-      <button type="button" data-tpcancel>Cancel</button>
-      <button type="button"${seen && (fresh || newer) ? "" : " class=\"primary\""} data-tplook${f.busy ? " disabled" : ""}>${
-        f.busy === "look" ? "Looking…" : fresh ? "Look" : "Look for a newer commit"}</button>
-      ${seen && (fresh || newer) ? `<button type="button" class="primary" data-tpadd${f.busy ? " disabled" : ""}>${
-        f.busy === "add" ? "Adding…" : fresh ? "Add" : `Update to ${esc(seen.commit.slice(0, 12))}`}</button>` : ""}</div>
-  </div>`;
+// The dialog Add tool pack and a row's Edit open (the operator, 19 Oct): the
+// repository, Look, what it would install and run, then Add. A pack already
+// here is looked at again as Edit opens, so its foot is Remove, Close and,
+// when the repository has moved on, Update: three short words that sit on
+// one row on a phone.
+// Where a new pack comes from, and a pack made here's own two: its
+// manifest as text, and an archive of its files.
+function tpFromHtml(f, here){
+  const seg = here ? "" : `<div class="field"><label id="tpFromLabel">From</label>
+    <div class="pseg" role="group" aria-labelledby="tpFromLabel">${[["repo", "A repository"], ["paste", "Paste bbtool.json"], ["upload", "Upload files"]]
+      .map(([k, t]) => `<button type="button" data-tpfrom="${k}" class="${f.from === k ? "on" : ""}" aria-pressed="${f.from === k}">${t}</button>`).join("")}</div></div>`;
+  if (f.from === "repo") return seg + `<div class="field">${lbl("tpUrl", "Repository", "a git repository with a bbtool.json at its root: https, ssh, or http for a git host on your network")}
+      <input id="tpUrl" value="${esc(f.url)}" placeholder="https://github.com/owner/repo" autocomplete="off" spellcheck="false"></div>`;
+  const text = `<div class="field">${lbl("tpText", here ? "Its bbtool.json" : "bbtool.json",
+      "the whole pack when its install steps fetch the tool itself; Help's Tool packs says what each field is")}
+      <textarea id="tpText" class="mono" rows="12" spellcheck="false" autocomplete="off"
+        placeholder='{"name": "mytool", "platforms": ["linux/amd64"], "install": {...}, "verbs": {...}}'>${esc(f.text)}</textarea></div>`;
+  const file = `<div class="field">${lbl("tpFile", here ? "Or upload a new version" : "The pack's files",
+      "a zip or tar with bbtool.json at its top and the scripts it runs; a single top-level folder is dropped; up to 8 MB")}
+      <input id="tpFile" type="file" hidden accept=".zip,.tar,.tgz,.tar.gz,.tbz2,.tar.bz2,.txz,.tar.xz,application/zip,application/gzip,application/x-tar">
+      <div class="filepick ctlline"><button type="button" data-tpfile>Choose an archive</button>
+        <span class="dim">${f.file ? esc(f.file.name) : "none picked"}</span></div></div>`;
+  return seg + (here ? text + file : f.from === "paste" ? text : file);
+}
+
+function tpModalHtml(){
+  const p = tpEdit ? (toolchains?.items || []).find(i => i.name === tpEdit && i.pack) : null;
+  const f = tpForm, fresh = !p, seen = f.seen, here = !!p?.pack?.here;
+  const newer = !!(seen && p && !here && seen.commit !== p.pack.commit);
+  const offer = !!(seen && (fresh || newer || here));
+  // Look is Add's first step, Edit's only after a look that failed, and a
+  // pack made here's whenever its text or files are given again.
+  const look = fresh || f.error || here ? `<button type="button" data-tplook${f.busy ? " disabled" : ""}${offer ? "" : ` class="primary"`}>${
+    f.busy === "look" ? "Looking…" : fresh || here ? "Look" : "Look again"}</button>` : "";
+  const add = offer ? `<button type="button" class="primary" data-tpadd${f.busy ? " disabled" : ""}>${
+    f.busy === "add" ? (fresh ? "Adding…" : "Updating…") : fresh ? "Add" : "Update"}</button>` : "";
+  const rm = p ? `<button type="button" class="danger" data-tprm="${esc(p.name)}">Remove</button>` : "";
+  return `<div class="box wide"><h3>${fresh ? "Add tool pack" : `${esc(p.label)}, a tool pack`}</h3>
+    ${p ? `<div class="field"><div class="sub">${here ? "Made here" : `From <code>${esc(p.pack.url)}</code>`} at ${esc(p.pack.commit.slice(0, 12))}, added by ${
+          esc(p.pack.by || "an administrator")}${p.pack.at ? ` ${ago(p.pack.at)}` : ""}. Verbs: ${esc((p.pack.verbs || []).join(", "))}.</div></div>` : ""}
+    ${fresh || here ? tpFromHtml(f, here) : ""}
+    ${seen ? `<div class="field">${tpSeen(seen, p ? p.pack : null, offer)}</div>` : ""}
+    ${f.error ? `<div class="field"><div class="hint bad">${esc(f.error)}</div></div>` : ""}
+    ${p && !here && f.busy === "look" ? `<div class="field"><div class="hint">Looking for a newer commit…</div></div>` : ""}
+    ${p && !here && seen && !newer ? `<div class="field"><div class="hint">No newer commit: the repository's head is the one added.</div></div>` : ""}
+    ${newer ? `<div class="field"><div class="hint">${esc(seen.commit.slice(0, 12))} is newer: Update keeps it, with the changes marked above.</div></div>` : ""}
+    ${dlgFoot(`<button type="button" data-tpcancel>${fresh || offer ? "Cancel" : "Close"}</button>`, `${look}${add}`, rm)}</div>`;
 }
 
 function tpSection(items){
   const packs = (items || []).filter(i => i.pack);
-  const rec = p => `<div class="row ngrec${tpEdit === p.name ? " open" : ""}">${tblLine(TP_COLS, [
-      `${esc(p.label)} <span class="sub">${esc(p.name)}</span>`, `<code>${esc(p.pack.url)}</code>`, esc(p.pack.commit.slice(0, 12)),
-      esc(p.pack.by || ""), tpEdit === p.name ? "" : `<button type="button" data-tpedit="${esc(p.name)}">Edit</button>`])}${
-      tpEdit === p.name ? tpFormHtml(p) : ""}</div>`;
-  const fresh = tpEdit === "" ? `<div class="row ngrec open">${tpFormHtml(null)}</div>` : "";
-  const body = packs.length || fresh ? tblWrap(TP_COLS, fresh + packs.map(rec).join(""), "tprecords")
-    : `<div class="hint">none yet: Add tool pack brings in a toolchain from a repository you choose</div>`;
+  const rec = p => `<div class="row ngrec">${tblLine(TP_COLS, [
+      `${esc(p.label)} <span class="sub">${esc(p.name)}</span>`, p.pack.here ? `<span class="sub">made here</span>` : `<code>${esc(p.pack.url)}</code>`,
+      esc(p.pack.commit.slice(0, 12)),
+      esc(p.pack.by || ""), `<button type="button" data-tpedit="${esc(p.name)}">Edit</button>`])}</div>`;
+  const body = packs.length ? tblWrap(TP_COLS, packs.map(rec).join(""), "tprecords")
+    : `<div class="hint">none yet: Add tool pack brings in a toolchain you choose</div>`;
   return docSection("toolchains", "packs", "Tool packs", packs.length ? `${packs.length} added` : "none added",
-    `<div class="field"><div class="hint">Toolchains you add from a repository with a bbtool.json, not shipped with BuilderBot.${helpIcon(
-      "A pack installs like any toolchain and gives a session bb tool verbs. It is kept at the commit you looked at, and a project's sessions use it only once its settings switch it on.")}</div></div>
-    <div class="field"><div class="addbar ctlrow" data-add="pack"><button type="button" data-tpnew${tpEdit === "" ? " disabled" : ""}>Add tool pack</button></div></div>
+    `<div class="field"><div class="hint">Toolchains you add yourself, for any tool: from a git repository, a pasted bbtool.json or an upload of the pack's files.${helpIcon(
+      "A pack installs like any toolchain and gives a session bb tool verbs. It is kept as the version you looked at, and a project's sessions use it only once its settings switch it on. Help's Tool packs says how to write one for somebody else's tool.")}</div></div>
+    <div class="field"><div class="addbar ctlrow" data-add="pack"><button type="button" data-tpnew>Add tool pack</button></div></div>
     <div class="field">${body}</div>`);
 }
 
+// The section's two doors into the dialog.
 function tpWire(el){
-  const redraw = () => { tcRev++; drawPanes(); };
-  const close = () => { tpEdit = null; tpForm = {url: "", seen: null, error: "", busy: ""}; redraw(); };
-  const url = el.querySelector("#tpUrl");
-  if (url) url.oninput = () => { tpForm.url = url.value; tpForm.seen = null; tpForm.error = ""; };
-  el.querySelectorAll("[data-tpnew]").forEach(b => b.onclick = () => { tpEdit = ""; tpForm = {url: "", seen: null, error: "", busy: ""}; redraw(); });
-  el.querySelectorAll("[data-tpedit]").forEach(b => b.onclick = () => { tpEdit = b.dataset.tpedit; tpForm = {url: "", seen: null, error: "", busy: ""}; redraw(); });
-  el.querySelectorAll("[data-tpcancel]").forEach(b => b.onclick = close);
+  el.querySelectorAll("[data-tpnew]").forEach(b => b.onclick = () => tpOpen(""));
+  el.querySelectorAll("[data-tpedit]").forEach(b => b.onclick = () => tpOpen(b.dataset.tpedit));
+}
+
+function tpOpen(name){
+  tpEdit = name || "";
+  tpForm = TP_BLANK();
+  const here = !!(toolchains?.items || []).find(i => i.name === tpEdit)?.pack?.here;
+  if (here) tpForm.from = "paste";
+  tpDraw(true);
+  if (here) tpSource();
+  else if (tpEdit) tpLook();
+}
+
+// A pack made here opens on its bbtool.json as kept, to change in place.
+async function tpSource(){
+  const name = tpEdit;
+  const j = await (await postJSON("/api/toolpacks", {action: "source", name})).json().catch(() => ({error: "no answer"}));
+  if (tpEdit !== name) return;
+  if (j.error) tpForm.error = j.error; else tpForm.text = j.text;
+  tpDraw();
+}
+
+// Show what the pack holds: a repository fetched at its head (Add's Look,
+// and what Edit does as it opens), or a pack made here from the text or the
+// archive given, checked and held on the controller until Add.
+async function tpLook(){
+  const name = tpEdit, f = tpForm;
+  const pack = name ? (toolchains?.items || []).find(i => i.name === name)?.pack : null;
+  f.busy = "look"; f.error = ""; tpDraw();
+  let body;
+  if (pack && !pack.here) body = {action: "preview", url: pack.url};
+  else if (!pack && f.from === "repo") body = {action: "preview", url: f.url.trim()};
+  else if (f.file){
+    // The archive goes up on its own first, as New project's does, and the
+    // look quotes the id the spool hands back.
+    const u = await fetch("/api/upload-archive?name=" + encodeURIComponent(f.file.name), {method: "POST", body: f.file});
+    const uj = await u.json().catch(() => ({}));
+    if (!u.ok || uj.error){
+      if (tpEdit !== name) return;
+      f.busy = ""; f.error = uj.error || `the upload failed (HTTP ${u.status})`; tpDraw(); return;
+    }
+    body = {action: "preview", archive: uj.id};
+  } else body = {action: "preview", text: f.text};
+  const j = await (await postJSON("/api/toolpacks", body)).json().catch(() => ({error: "no answer"}));
+  if (tpEdit !== name) return;                 // closed, or another opened, meanwhile
+  f.busy = ""; f.seen = j.error ? null : j; f.error = j.error || ""; tpDraw();
+}
+
+function tpClose(){
+  const m = document.getElementById("tpmodal");
+  if (m) m.hidden = true;
+  tpEdit = null;
+}
+
+// Drawn again on each step (looking, what came back, adding), the URL as
+// typed kept in tpForm across the redraws.
+function tpDraw(first){
+  let m = document.getElementById("tpmodal");
+  if (!m){
+    m = document.createElement("div");
+    m.id = "tpmodal"; m.className = "modal"; m.hidden = true;
+    m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true");
+    document.body.appendChild(m);
+    armModal(m);
+  }
+  m.innerHTML = tpModalHtml();
+  m.hidden = false;
+  m.onclick = e => { if (e.target === m) tpClose(); };
+  const url = m.querySelector("#tpUrl");
+  if (url){
+    url.oninput = () => { tpForm.url = url.value; if (tpForm.seen || tpForm.error){ tpForm.seen = null; tpForm.error = ""; tpDraw(); url.focus(); } };
+    url.onkeydown = e => { if (e.key === "Enter") m.querySelector("[data-tplook]")?.click(); };
+    if (first) url.focus();
+  }
+  m.querySelectorAll("[data-tpfrom]").forEach(b => b.onclick = () => {
+    if (tpForm.from === b.dataset.tpfrom) return;
+    Object.assign(tpForm, {from: b.dataset.tpfrom, seen: null, error: ""});
+    tpDraw();
+    m.querySelector("#tpUrl, #tpText")?.focus();
+  });
+  const text = m.querySelector("#tpText");
+  if (text){
+    text.oninput = () => { tpForm.text = text.value; tpForm.file = null;
+      if (tpForm.seen || tpForm.error){ tpForm.seen = null; tpForm.error = ""; tpDraw(); m.querySelector("#tpText")?.focus(); } };
+    if (first && tpForm.from === "paste" && !tpEdit) text.focus();
+  }
+  const file = m.querySelector("#tpFile");
+  m.querySelector("[data-tpfile]")?.addEventListener("click", () => file?.click());
+  if (file) file.onchange = () => { tpForm.file = file.files[0] || null; tpForm.seen = null; tpForm.error = ""; tpDraw(); };
+  m.querySelector("[data-tpcancel]").onclick = tpClose;
   const post = async body => (await postJSON("/api/toolpacks", body)).json().catch(() => ({error: "no answer"}));
   const packUrl = () => tpEdit ? (toolchains?.items || []).find(i => i.name === tpEdit)?.pack?.url || "" : tpForm.url.trim();
-  el.querySelectorAll("[data-tplook]").forEach(b => b.onclick = async () => {
-    tpForm.busy = "look"; tpForm.error = ""; redraw();
-    const j = await post({action: "preview", url: packUrl()});
-    tpForm.busy = ""; tpForm.seen = j.error ? null : j; tpForm.error = j.error || ""; redraw();
-  });
-  el.querySelectorAll("[data-tpadd]").forEach(b => b.onclick = async () => {
-    tpForm.busy = "add"; redraw();
-    const j = await post({action: "add", url: packUrl(), commit: tpForm.seen?.commit || ""});
-    if (j.error){ tpForm.busy = ""; tpForm.error = j.error; redraw(); return; }
-    notify(j.replaced ? `${j.pack.name} updated: where it is installed, uninstall it and install it again to take the new commit`
-                      : `${j.pack.name} added: install it below like any toolchain`);
-    close(); loadToolchains();
-  });
-  el.querySelectorAll("[data-tprm]").forEach(b => b.onclick = async () => {
-    const n = b.dataset.tprm;
-    if (!confirm(`Remove the tool pack ${n}? It leaves the catalog; uninstall it from each node's store first if it is installed.`)) return;
+  const look = m.querySelector("[data-tplook]");
+  if (look) look.onclick = tpLook;
+  const add = m.querySelector("[data-tpadd]");
+  if (add) add.onclick = async () => {
+    tpForm.busy = "add"; tpDraw();
+    const j = await post(tpForm.seen?.staged ? {action: "add", staged: tpForm.seen.staged}
+                                             : {action: "add", url: packUrl(), commit: tpForm.seen?.commit || ""});
+    if (j.error){ tpForm.busy = ""; tpForm.error = j.error; tpDraw(); return; }
+    notify(j.unchanged ? `${j.pack.name}: nothing changed, so it is kept as it was`
+         : j.replaced ? `${j.pack.name} updated: where it is installed, uninstall it and install it again to take the new version`
+         : `${j.pack.name} added: install it below like any toolchain`);
+    tpClose(); loadToolchains();
+  };
+  const rm = m.querySelector("[data-tprm]");
+  if (rm) rm.onclick = async () => {
+    const n = rm.dataset.tprm;
+    // Refused while a node's store holds it (B84), said on the form with
+    // where, before anything is asked: its files would stay there with no
+    // row left to uninstall them from.
+    const at = await post({action: "where", name: n});
+    if (at.error){ tpForm.error = at.error; tpDraw(); return; }
+    if (!confirm(`Remove the tool pack ${n}? It leaves the catalog, and projects that use it lose it.`)) return;
     const j = await post({action: "remove", name: n});
-    if (j.error){ notify(j.error, true); return; }
-    close(); loadToolchains();
-  });
+    if (j.error){ tpForm.error = j.error; tpDraw(); return; }
+    tpClose(); loadToolchains();
+  };
 }
 
 const TC_COLS = [{label: "Toolchain", w: "minmax(0,2fr)"}, {label: "Installed", w: "minmax(0,.6fr)"}, {label: "Latest", w: "6.5rem"},
@@ -459,7 +586,7 @@ function tcDriverRow(m, busy, job){
       <span class="sub">For this machine's ${esc(card)}: CUDA, the hardware video encoder and the emulator's GPU rendering need it. It is this machine's own, not a copy on the store.</span>
       ${sel}
       ${mine ? `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(tcDots)}</span></span>` : tcDriverLine(m)}
-      ${m.newer && !mine ? `<span class="sub upd">update available: ${esc(m.newer)}. Tick it and press Install selected</span>` : ""}
+      ${m.newer && !mine ? `<span class="sub upd">update available: ${esc(m.newer)}. Tick it and press ${tcInstallSaid()}</span>` : ""}
       ${job?.errors?.[TC_DRIVER] && !mine ? `<span class="sub bad">${esc(job.errors[TC_DRIVER])}</span>` : ""}
       ${!m.managed ? `<span class="sub warn">This machine is its owner's, not a BuilderBot sandbox: its driver is installed there by hand.</span>` : ""}
     </span>
@@ -477,7 +604,7 @@ function tcToolkitLine(m){
   switch (m.state){
     case "absent": return `<span class="sub where">not installed: a container here cannot reserve the card${
       m.driver ? "" : ". It needs the driver above: tick both, and the driver goes on first"}</span>`;
-    case "unconfigured": return `<span class="sub warn">installed, but Docker here does not list the nvidia runtime: tick it and press Install selected, which configures Docker again</span>`;
+    case "unconfigured": return `<span class="sub warn">installed, but Docker here does not list the nvidia runtime: tick it and press ${tcInstallSaid()}, which configures Docker again</span>`;
     default: return m.driver_loaded
       ? `<span class="sub where on">installed: a compose file reserves the card with deploy.resources.reservations.devices (driver: nvidia)</span>`
       : `<span class="sub warn">installed; a container sees the card once the driver above is running it</span>`;
@@ -499,7 +626,7 @@ function tcToolkitRow(m, busy, job){
       <label class="nm" for="tcCtkTick">${esc(m.label)}${m.installed ? ` <span class="pill" title="installed">${esc(m.installed.split("-")[0])}</span>` : ""}</label>
       <span class="sub">Lets a container on this machine use the card. From NVIDIA's own package source, which installing adds and removing takes away. Running containers keep running.</span>
       ${mine ? `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(tcDots)}</span></span>` : tcToolkitLine(m)}
-      ${m.newer && !mine ? `<span class="sub upd">update available: ${esc(m.newer.split("-")[0])}. Tick it and press Install selected</span>` : ""}
+      ${m.newer && !mine ? `<span class="sub upd">update available: ${esc(m.newer.split("-")[0])}. Tick it and press ${tcInstallSaid()}</span>` : ""}
       ${job?.errors?.[TC_TOOLKIT] && !mine ? `<span class="sub bad">${esc(job.errors[TC_TOOLKIT])}</span>` : ""}
       ${!m.managed ? `<span class="sub warn">This machine is its owner's, not a BuilderBot sandbox: the toolkit is installed there by hand.</span>` : ""}
     </span>
@@ -530,7 +657,7 @@ function tcClaudeRow(m, busy){
         !m.installed && m.latest ? ` <span class="pill" title="what Install selected would fetch">${esc(m.latest)}</span>` : ""}</label>
       <span class="sub">What a Claude session on this node runs, for the node's session account. Installing or updating it ends the Claude sessions here first; they start again from the project rows.</span>
       ${line}
-      ${m.state === "update" && !mine ? `<span class="sub upd">update available: ${esc(m.latest)}. Tick it and press Install selected</span>` : ""}
+      ${m.state === "update" && !mine ? `<span class="sub upd">update available: ${esc(m.latest)}. Tick it and press ${tcInstallSaid()}</span>` : ""}
       ${m.error && !mine ? `<span class="sub bad">${esc(m.error)}</span>` : ""}
     </span>
     ${m.here && !mine && may ? rmIcon("data-tcclrm", "uninstall Claude Code", {title: "remove Claude Code from this node", why: busy ? "another toolchain operation is running" : ""}) : ""}
@@ -633,6 +760,7 @@ function renderToolchainsInto(i){
       ${clean.length ? `<button type="button" class="danger${busy ? " tcidle" : ""}" data-tcclean${busy ? " disabled" : ""}>Remove</button>` : ""}`));
   // What the store is and where, said on the page's status line under the
   // tiles (the operator, 17 Oct: one order for every page's top).
+  const working = busy && job.action !== "check";
   const storeSaid = onNode
       ? (d.root
           // Nothing here about a shared store. Several nodes pointing at one
@@ -659,11 +787,15 @@ function renderToolchainsInto(i){
     (() => {
       const items = (d.items || []).filter(x => !x.wrong_platform);
       if (!items.length) return "";
-      const due = items.filter(x => x.state === "update").length;
+      // This machine's rows count too (Claude Code, the driver, the
+      // toolkit), as Home and the bell count them.
+      const due = items.filter(x => x.state === "update").length
+        + (onNode ? (d.machine || []).filter(m =>
+          m.name === TC_CLAUDE ? m.state === "update" : !!m.newer).length : 0);
       const need = items.filter(x => (x.pinned_by || []).length && !x.installed).length;
       return statTiles([
         {label: "installed", value: items.filter(x => x.installed).length, sub: `of ${items.length} offered`},
-        {label: "updates due", value: due, tone: due ? "warn" : "", omit: !due && !d.checked},
+        {label: due === 1 ? "update due" : "updates due", value: due, tone: due ? "warn" : "", omit: !due && !d.checked},
         {label: "needed by a project", value: need, tone: need ? "warn" : "", omit: !need},
         // Storage's reading of a size (sgb), TB past ten of them (B834).
         {label: "free", value: typeof d.free_mb === "number" ? sgb(d.free_mb) : "",
@@ -673,9 +805,10 @@ function renderToolchainsInto(i){
     ${
     // The page's status line under its tiles (the operator, 16 and 17 Oct):
     // the store and when its versions were checked, or what is running; and
-    // what the bar's Remove would take, when it is there.
-    headLine(busy ? tcWorking(job, d.items) : `${storeSaid}${d.checked ? ` Versions checked ${ago(d.checked)}.` : ""}`, "", "tcact",
-             {state: busy ? "tcworking" : "", under: clean.length ? `<div class="sub tcclean">Remove takes off the store what no node uses: ${
+    // what the bar's Remove would take, when it is there. A check is said
+    // on its own button, so the line keeps to the store while one runs.
+    headLine(working ? tcWorking(job, d.items) : `${storeSaid}${d.checked ? ` Versions checked ${ago(d.checked)}.` : ""}`, "", "tcact",
+             {state: working ? "tcworking" : "", under: clean.length ? `<div class="sub tcclean">Remove takes off the store what no node uses: ${
                clean.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</div>` : ""})}
     ${(() => {
       // Held recipes whose system libraries this machine lacks (roadmap
@@ -715,9 +848,10 @@ function renderToolchainsInto(i){
   });
   el.querySelectorAll("[data-tc]").forEach(b => b.onclick = () => tcAct(b.dataset.tc));
   const psel = el.querySelector("#tcNodeSel");
-  if (psel) psel.onchange = () => { tcNode = psel.value; toolchains = null; tcTicked.clear(); tcDriverPick = "";
+  // A pick is a history entry (B31), so Back returns to the node before.
+  if (psel) psel.onchange = () => navPush(() => { tcNode = psel.value; toolchains = null; tcTicked.clear(); tcDriverPick = "";
                                     try{ localStorage.setItem("bb.tcnode", tcNode); }catch(e){ /* private */ }
-                                    tcRev++; drawPanes(); loadToolchains(); };
+                                    tcRev++; drawPanes(); loadToolchains(); });
   const sd = el.querySelector("#tcSysdeps");
   if (sd) sd.onclick = () => tcAct("sysdeps");
   el.querySelectorAll("[data-tcsys]").forEach(b => b.onclick = () => tcAct("sysdeps", [b.dataset.tcsys]));
@@ -761,8 +895,10 @@ function renderToolchainsInto(i){
     // Inside a <label>, so the click would otherwise toggle the checkbox on
     // its way past.
     e.preventDefault(); e.stopPropagation();
+    // Asked by the name its row shows: a pack's toolchain's name is the
+    // pack's id (B65).
     const name = b.dataset.rm;
-    if (confirm(`Uninstall ${name}? The files are deleted; installing it again re-downloads them.`))
+    if (confirm(`Uninstall ${b.dataset.rmlabel || name}? The files are deleted; installing it again re-downloads them.`))
       tcAct("remove", [name]);
   });
 
@@ -836,9 +972,18 @@ async function tcAct(action, only){
   // are ghosted anyway. What happens to them afterwards is decided by how it
   // went: installed rows carry their own tick, failed ones let go of it.
   try{
-    const r = await postJSON("/api/toolchains", {action, names, node: tcNode,
-                                                 ...(drv && tcDriverPick ? {driver: tcDriverPick} : {})});
-    const j = await r.json().catch(() => ({}));
+    const body = {action, names, node: tcNode, ...(drv && tcDriverPick ? {driver: tcDriverPick} : {})};
+    let r = await postJSON("/api/toolchains", body);
+    let j = await r.json().catch(() => ({}));
+    // An agreement a toolchain installs under (Google's Android SDK terms,
+    // NVIDIA's CUDA license) is the person's to accept, named, before
+    // anything is fetched: the server says which, and keeps who accepted.
+    if (r.status === 409 && Array.isArray(j.accept) && j.accept.length){
+      if (!confirm(`Installing ${names.join(", ")} accepts ${j.accept.map(t => t.label).join(" and ")}.\n\n${
+            j.accept.map(t => `${t.label}: ${t.url}`).join("\n")}\n\nAccept and install?`)) return;
+      r = await postJSON("/api/toolchains", {...body, accept: j.accept.map(t => t.label)});
+      j = await r.json().catch(() => ({}));
+    }
     // A toolchain that needs another used to be installed without it and fail
     // inside it: android-tools with no jdk, from sdkmanager, naming
     // neither. The catalog says so now, and so does this, rather than an

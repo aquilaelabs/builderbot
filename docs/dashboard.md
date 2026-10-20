@@ -134,8 +134,10 @@ daemon are an administrator's.
 The **About** control beside it is the version, and where the header is too
 narrow for a version string it becomes a **?** rather than a truncated number
 that answers nothing: either way the popup behind it carries the whole stamp,
-and behind one switch, a **getting-started guide** (a user's, or an
-administrator's with the machinery added) and BuilderBot's **changelog**. The
+and behind one switch, a **getting-started guide** and BuilderBot's
+**changelog**. The guide is [start-here.md](start-here.md) itself, read
+through Help's docs, so the two never say different things; its last
+section, for administrators, is left out for anybody else. The
 panel opens itself twice in an account's life: on the guide the first time
 the account signs in, and on the changelog once after every image update,
 with a line under what is new since that account last looked. Closing it is

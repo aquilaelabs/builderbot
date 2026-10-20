@@ -29,6 +29,7 @@ from pathlib import Path
 # import finds nothing.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fields import field  # noqa: E402
+from names import tmux_name  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 
@@ -158,7 +159,7 @@ def load_toolchains(packs=()):
         pk = r.get("pack")
         if isinstance(pk, dict):
             row["pack"] = {"url": str(pk.get("url") or ""), "commit": str(pk.get("commit") or "")[:40],
-                           "by": str(pk.get("by") or ""), "at": int(pk.get("at") or 0),
+                           "by": str(pk.get("by") or ""), "at": int(pk.get("at") or 0), "here": bool(pk.get("here")),
                            "verbs": sorted(str(v) for v in (r.get("verbs") or {}))[:40],
                            # What it runs now, for an update to be read as
                            # what changes: each verb's words, and the
@@ -446,8 +447,14 @@ def human_kb(kb):
 
 def payload():
     items = []
+    # The job as it stood when the rows below are read, taken once: read again
+    # after them, a job that ended while they were read said "done" over rows
+    # read while it was still removing, and the page, seeing nothing running,
+    # stopped asking and kept a toolchain installed that was gone (B13).
     with _tc_lock:
         busy = _tc_job["running"]
+        job = {k: (list(v) if isinstance(v, list) else v)
+               for k, v in _tc_job.items()}
     # Nothing is probed while a job runs. The toolchain being installed has a
     # directory that is filling up, and every probe here reads a non-empty
     # directory as a finished install: a half-written NDK reported itself
@@ -524,9 +531,6 @@ def payload():
                                  and v["installed"] or local.get(p["name"], ""),
                       "latest": v.get("latest", ""),
                       "state": v.get("status", "")})
-    with _tc_lock:
-        job = {k: (list(v) if isinstance(v, list) else v)
-               for k, v in _tc_job.items()}
     return {"root": sdk_root_path(),
             "shared": is_mount(sdk_root_path()),
             "checked": _tc_checked,
@@ -559,6 +563,28 @@ def _job_tail(out, keep=16):
     """The useful end of a command's output, with the frames dropped."""
     lines = [ln.strip() for ln in out.splitlines()]
     return [ln for ln in lines if ln and not _PROGRESS_FRAME.match(ln)][-keep:]
+
+
+# What git says on the way to a fetch: where from, which ref, how far. Not a
+# reason, and a pack's install prints it right before the one that is.
+_GIT_NOISE = re.compile(r"^(\* branch\b|From |remote: |Receiving objects|Resolving deltas|Unpacking objects|hint: )")
+
+
+def _reason(said, last, cap=400):
+    """A failed row's line: the log's last lines (bb's own prefix and git's
+    fetch chatter dropped), then `last`, the verb and its exit. Too long,
+    whole lines go from the front, and the one left that alone is too long
+    keeps its start and loses its end at a word: a cut by characters from
+    the end began mid-word, '3pack · * branch' (B83)."""
+    lines = [re.sub(r"^\[builderbot\]\s*", "", s.strip()) for s in said]
+    parts = [s for s in lines if s and not _GIT_NOISE.match(s)][-4:] + [last]
+    while len(parts) > 2 and len(" · ".join(parts)) > cap:
+        # bb's ERROR is the reason, so the lines around it go first.
+        parts.pop(next((i for i, s in enumerate(parts[:-1]) if not s.startswith("ERROR:")), 0))
+    if len(" · ".join(parts)) > cap and len(parts) == 2:
+        room = max(cap - len(last) - 4, 20)
+        parts[0] = parts[0][:room].rsplit(" ", 1)[0] + "…"
+    return " · ".join(parts)
 
 
 def job_rev():
@@ -646,8 +672,8 @@ def _tc_worker():
                 r = run([BB, "toolchains", "remove", name], timeout=1800, register=_hold_child)
                 if r["code"] != 0:
                     with _tc_lock:
-                        _tc_job["errors"][name] = " · ".join(
-                            _job_tail(r["out"], keep=4) + [f"remove before the install failed (exit {r['code']})"])[-400:]
+                        _tc_job["errors"][name] = _reason(
+                            _job_tail(r["out"], keep=40), f"remove before the install failed (exit {r['code']})")
                         _tc_job["failed"].append(name)
                     continue
         with _tc_lock:
@@ -691,9 +717,8 @@ def _tc_worker():
                 # killed sdkmanager prints nothing at all, and a tail of
                 # progress bars reads exactly like a run that simply stopped.
                 # 137 is the OOM killer, 124 a timeout.
-                said = _job_tail(r["out"], keep=4)
-                _tc_job["errors"][name] = " · ".join(
-                    said + [f"{verb} failed (exit {r['code']})"])[-400:]
+                said = _job_tail(r["out"], keep=40)
+                _tc_job["errors"][name] = _reason(said, f"{verb} failed (exit {r['code']})")
             (_tc_job["done"] if r["code"] == 0 else _tc_job["failed"]).append(name)
         if action in ("install", "remove", "update"):
             _tc_local["key"] = None      # whatever just happened moved a version
@@ -819,7 +844,7 @@ def _node_errors(job_id, failed, verb):
                     log.append(x)
             apt = next((x[3:].strip() for x in log if x.startswith("E: ")), "")
             why = next((x.lstrip("! ") for x in reversed(log) if x.startswith(("!!", "refused:"))), "")
-            out[name] = " · ".join([w for w in (apt or why,) if w] + [f"{verb} failed on the node"])[-400:]
+            out[name] = _reason([w for w in (apt or why,) if w], f"{verb} failed on the node")
             continue
         lines = []
         for ln in parts.get(name) or []:
@@ -833,8 +858,8 @@ def _node_errors(job_id, failed, verb):
             if ln.strip() and not ln.strip().strip("#=O- "):
                 continue
             lines.append(ln)
-        said = _job_tail("\n".join(lines), keep=4) or ([refused] if refused else [])
-        out[name] = " · ".join(said + [f"{verb} failed on the node"])[-400:]
+        said = _job_tail("\n".join(lines), keep=40) or ([refused] if refused else [])
+        out[name] = _reason(said, f"{verb} failed on the node")
     _node_errors_seen[key] = out
     # The newest few jobs' answers: it was kept for every job ever read.
     while len(_node_errors_seen) > 64:
@@ -970,8 +995,28 @@ def attention(project_nodes):
             tools.insert(0, {"name": CLAUDE, "label": "Claude Code",
                              "from": claudecode.installed(n), "to": claudecode.latest()["version"]})
         if tools:
+            live = claude_running(n["id"], project_nodes)
             out.append({"kind": "toolchain", "node": n["name"], "id": n["id"], "tools": tools,
-                        "projects": sorted(p for p, nid in project_nodes.items() if nid == n["id"])})
+                        "sessions": len(live), "projects": sorted(set(live))})
+    return out
+
+
+_OWNER = re.compile(r"^u_[0-9a-f]{8}~")
+
+
+def claude_running(node_id, project_nodes):
+    """The project of each Claude session running on a node now, one entry
+    per session, from its last heartbeat. What an update of Claude Code
+    there ends (B57): the projects bound to the node said 5, 6 or 7 with
+    one session running, or none."""
+    rows = ((nodes.node_sessions() or {}).get(node_id) or ("", []))[1] if nodes else []
+    by_tmux = {tmux_name(p): p for p in project_nodes}
+    out = []
+    for r in rows:
+        base = _OWNER.sub("", str((r or {}).get("name") or ""))
+        if base.startswith("claude-"):
+            stem = base[len("claude-"):]
+            out.append(by_tmux.get(stem, stem))
     return out
 
 
@@ -1658,6 +1703,15 @@ def node_has(n):
     return out
 
 
+def installed_where(name):
+    """The names of the nodes whose store holds `name`, by what each last
+    reported: what a tool pack's removal is refused over (B84), since a pack
+    gone from the catalog leaves no row to uninstall its files from."""
+    if not nodes:
+        return []
+    return [n.get("name") or n["id"] for n in nodes.node_list() if name in node_has(n)]
+
+
 def with_requires(names, have):
     """`names`, with anything they declare a requirement on put in front.
 
@@ -1687,6 +1741,29 @@ def with_requires(names, have):
     for n in names:
         add(n)
     return out, [n for n in out if n not in names]
+
+
+def agreements(names):
+    """The agreements installing `names` accepts, with what they require
+    (android:ndk brings android-tools): [{label, url}], each once. Only a
+    person accepts one, on the page, never a recipe on their behalf."""
+    by = {p["name"]: p for p in TOOLCHAINS}
+    out, seen = [], set()
+
+    def walk(n, depth=0):
+        if n in seen or depth > 4 or n not in by:
+            return
+        seen.add(n)
+        for r in by[n].get("requires") or []:
+            walk(r, depth + 1)
+        for t in by[n].get("terms") or []:
+            if t.get("accept") and t["label"] not in [x["label"] for x in out]:
+                out.append({"label": t["label"], "url": t["url"]})
+
+    # A pinned version (android:ndk;29.0.14206865) is its row's.
+    for n in names or []:
+        walk(str(n).split(";")[0])
+    return out
 
 
 def platform_of(n):

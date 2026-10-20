@@ -372,6 +372,18 @@ for s in segs:
 """
 
 
+def voice(d):
+    """The voice piper speaks with: ljspeech, trained on the public-domain LJ
+    Speech dataset, which the audio toolchain installs; on a node installed
+    before it, whichever voice is there, until it is installed again."""
+    vd = os.path.join(d, "models", "voices")
+    want = os.path.join(vd, "en_US-ljspeech-medium.onnx")
+    if os.path.isfile(want):
+        return want
+    have = sorted(f for f in os.listdir(vd) if f.endswith(".onnx")) if os.path.isdir(vd) else []
+    return os.path.join(vd, have[0]) if have else want
+
+
 def say(text, name, as_ogg):
     d = audio_tc()
     if not text.strip():
@@ -379,8 +391,7 @@ def say(text, name, as_ogg):
     os.makedirs("dist/sound", exist_ok=True)
     stem = name or "say-" + (re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:40] or "speech")
     wav = f"dist/sound/{stem}.wav"
-    r = subprocess.run([os.path.join(d, "bin", "piper"), "-m",
-                        os.path.join(d, "models", "voices", "en_US-lessac-medium.onnx"), "-f", wav],
+    r = subprocess.run([os.path.join(d, "bin", "piper"), "-m", voice(d), "-f", wav],
                        input=text, capture_output=True, text=True)
     if r.returncode != 0 or not os.path.isfile(wav):
         fail("piper could not say it: " + (r.stderr.strip().splitlines() or ["no reason given"])[-1])

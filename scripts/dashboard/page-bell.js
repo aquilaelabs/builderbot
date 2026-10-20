@@ -206,14 +206,16 @@ function logNote(msg, bad){
 function attRow(a){
   if (a.kind === "toolchain"){
     const keys = a.tools.map(t => t.key).filter(Boolean).join(" ");
-    const cc = a.tools.some(t => t.name === "claude-code") && a.projects.length;
+    // The Claude sessions running there now, which an update ends (B57), not
+    // the projects bound to the node.
+    const cc = a.tools.some(t => t.name === "claude-code") && a.sessions > 0;
     const n = a.tools.length;
     return `<div class="bnote att">
       <div class="bt">${n} toolchain update${n === 1 ? "" : "s"} on ${esc(a.node)}</div>
       <div class="bsum">${a.tools.map(t => esc(t.label)).join(", ")}</div>
       ${cc ? `<div class="bwarn">Updating Claude Code ends the Claude sessions there
-        (${a.projects.length} project${a.projects.length === 1 ? "" : "s"})</div>` : ""}
-      <details class="bdetail"${sectAttr("bell:tc:" + a.id)}><summary>versions${cc ? " and projects" : ""}</summary><pre>${
+        (${a.sessions} running)</div>` : ""}
+      <details class="bdetail"${sectAttr("bell:tc:" + a.id)}><summary>versions${cc ? " and sessions" : ""}</summary><pre>${
         a.tools.map(t => `${esc(t.label)}: ${esc(t.from || "?")} → ${t.to === "newer" ? "a newer version" : esc(t.to)}`).join("\n")}${
         cc ? `\n\nsessions there: ${a.projects.map(esc).join(", ")}` : ""}</pre></details>
       <div class="bfoot"><span>on its Toolchains page</span>
@@ -256,7 +258,8 @@ function attRow(a){
   if (a.kind === "nginx"){
     return `<div class="bnote att">
       <div class="bt">nginx update on ${esc(a.node)}</div>
-      <div class="bsum">runs ${esc(a.from)} and ${esc(a.to)} is out</div>
+      <div class="bsum">${a.rebuild ? `runs ${esc(a.from)}; a newer build of that tag is out`
+        : `runs ${esc(a.from)} and ${esc(a.to)} is out`}</div>
       <div class="bfoot"><span>on its nginx page</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bnginx="${esc(a.id)}">nginx page</a></span></div></div>`;
@@ -379,6 +382,12 @@ function drawBell(){
   // What sessions have waiting for approval, per project (roadmap #27):
   // the server's fact like an ask, so it leaves the moment it is answered.
   const waiting = (state?.projects || []).filter(p => p.pending > 0);
+  // Claude sessions sitting on Claude Code's own permission prompt (B52),
+  // which only their terminal can answer: the row opens it.
+  // This account's own: the owner's bare-named session on a shared project
+  // is in a member's list too, and is not asking that member (B104).
+  const asking = (state?.sessions || []).filter(s => s.claude?.state === "asking"
+    && (!state?.tmux_prefix || s.name.startsWith(state.tmux_prefix)));
   // What the nodes need: an agent behind, or from another window. From the
   // poll, never stored here, so a row leaves the moment it stops being true.
   const att = state?.attention || [];
@@ -397,7 +406,7 @@ function drawBell(){
               : fresh.some(n => n.lv === "warn") ? "warn"
               : fresh.length ? "info" : "";
   const dot = bell.querySelector(".dot");
-  const pendingOn = asks.length + waiting.length + invites.length;
+  const pendingOn = asks.length + waiting.length + invites.length + asking.length;
   const attOn = att.some(a => a.window || a.kind === "relocate") || ciRed.length ? "bad" : att.length + syncC.length ? "warn" : "";
   // Something new gone wrong: the bell flashes red twice and settles to the
   // red dot, unlike an ask's amber, which keeps on until it is answered.
@@ -459,7 +468,7 @@ function drawBell(){
         // would put on the page, whole.
         a.kind === "release-edit" && a.detail ? `<details class="bdetail"${sectAttr("bell:detail:" + a.id)}><summary>the new notes</summary><pre>${
             esc(a.detail)}</pre></details>` : ""}
-        <div class="bfoot"><span>${a.asker ? esc(a.asker) + "'s session · " : ""}${askLeft(a)}</span>
+        <div class="bfoot"><span>${a.asker || a.project ? esc(askWho(a)) + " · " : ""}${askLeft(a)}</span>
           <span class="acts"><a href="#" data-bdeny="${a.id}">Deny</a>${
             // A phone's commands come one after another: the second answer
             // lets the rest from this session run without asking (the
@@ -479,6 +488,11 @@ function drawBell(){
     // ...and beside them, what a session has waiting in each project's
     // notebook. One row per project, not per change: the notebook is where
     // the changes are read, so the row's only job is to take you there.
+    ...asking.map(s => `<div class="bnote ask">
+        <div class="btag">asking you in its terminal</div>
+        <div class="bwhy">Claude on ${esc(projLabel(s.name.replace(/^claude-/, "")))}: ${esc(s.claude.task || "waiting for you to answer it")}</div>
+        <div class="bfoot"><span>on ${esc(s.node || "this machine")}</span>
+          <span class="acts"><a href="#" data-bask="${esc(s.name)}">Open it</a></span></div></div>`),
     ...waiting.map(p => `<div class="bnote ask">
         <div class="btag">waiting for your approval</div>
         <div class="bwhy">${p.pending} change${p.pending === 1 ? "" : "s"} from a session in ${esc(projLabel(p.name))}</div>
@@ -535,6 +549,11 @@ function drawBell(){
     notify(j.error || (yes ? (j.owner ? `you own ${projLabel(j.project)} now` : `you are on ${projLabel(j.project)} now`)
                            : `declined ${projLabel(j.project)}`), !!j.error);
     refresh();
+  });
+  panel.querySelectorAll("[data-bask]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    toggleBell(false);
+    openTab({kind: "term", arg: argForSession(a.dataset.bask), label: a.dataset.bask});
   });
   panel.querySelectorAll("[data-bpend]").forEach(a => a.onclick = e => {
     e.preventDefault();
@@ -634,8 +653,7 @@ function wireNeeds(root, after = () => {}){
   root.querySelectorAll("[data-bdocker]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();
-    if (a.dataset.bdocker) dockerNode = a.dataset.bdocker;
-    openDocker();
+    openDockerOn(a.dataset.bdocker || "");
   });
   // ...and an nginx update to the nginx tab on that node.
   root.querySelectorAll("[data-bnginx]").forEach(a => a.onclick = e => {

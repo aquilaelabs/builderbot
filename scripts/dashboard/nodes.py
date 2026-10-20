@@ -234,13 +234,13 @@ def _runner_failed(row, last, applying):
     want = runners_of(row).get(slot) or {}
     if not want.get("want"):
         return None
-    return {"id": last["id"], "slot": slot, "ended": last["ended"], "why": _failed_why(last["id"])}
+    return {"id": last["id"], "slot": slot, "ended": last["ended"], "why": failed_why(last["id"])}
 
 
 _WHY = {}
 
 
-def _failed_why(job_id):
+def failed_why(job_id):
     """What a failed job's log says about why, for one line on a row.
 
     A job that ran a command failed on it, so it is that command's output,
@@ -970,6 +970,14 @@ def enroll_script(principal, req):
     ans = enrollscript.check(req | ({"sessions": False} if ho else {}), again=enrolled)
     if ans.get("error"):
         return ans
+    # No walk on record yet (R48): reaching the controller through WireGuard
+    # and a Tailscale SSH door are dev features until each is proved and
+    # written down. A public hostname and the cloudflared door are in daily
+    # use (the operator, 20 Oct).
+    if (ans["reach"] == "wireguard" or ans.get("door") == "tailscale") \
+            and not (forges and forges.unvetted_ok and forges.unvetted_ok()):
+        return {"error": "reaching the controller through WireGuard, and a Tailscale SSH door, are dev features: "
+                         "turn on Offer dev features under Controller settings to use them"}
     prov = HERE.parent.parent / "nodes" / "provision-linux.sh"
     if not prov.is_file():
         return {"error": "this controller ships no provisioner"}
@@ -3444,6 +3452,15 @@ def job_add(principal, placement, type, spec, project="", source=None):
     return {"ok": True, "job": jid}
 
 
+def exec_out(log):
+    """A waited-on command's output: its job's log without the line the
+    agent opens every job's log with, which says what the job is ("exec")
+    and is the Jobs page's, not the command's. Handed back as it was, it
+    was the first line of every container log read on an agent node
+    (B65)."""
+    return log[len("exec\n"):] if log.startswith("exec\n") else log
+
+
 def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
              sizes=None, project="", forget=False, outputs=None, title="", cwd=""):
     """One command on a node, waited for: queued as an exec job, picked up
@@ -3487,7 +3504,7 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
             if forget:
                 job_forget(r["job"])
             return {"code": j.get("exit_code") if j["state"] == "succeeded" or j.get("exit_code") is not None else 1,
-                    "out": j.get("log") or "", "job": r["job"], "state": j["state"]}
+                    "out": exec_out(j.get("log") or ""), "job": r["job"], "state": j["state"]}
         time.sleep(0.25)
     # Taken back, not left in the queue: a probe nobody is waiting for any
     # more would otherwise run whenever the node's slot freed: an `adb
@@ -4364,6 +4381,8 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
         elif not err.startswith("busy"):
             err = "the agent says other jobs are running: not retried; press Update agent again when they finish"
         err = err[:500]
+    if state == "canceled":
+        err = _stopped_by(job_id, err)
     if late:
         err = ("reported late, after this side called the node lost" + (": " + err if err else ""))[:500]
     cur = _exec("UPDATE jobs SET state = ?, exit_code = ?, ended = ?, step = '', "
@@ -4466,6 +4485,26 @@ def job_refuse(job_id, why):
         _wake.notify_all()
 
 
+def _canceler(principal):
+    """The account a Cancel came from, by name, or "" when no person pressed
+    it (a waiter giving up, the sign-in flow): a job's end says who stopped
+    it rather than "the operator" whoever pressed (B69)."""
+    p = str(principal or "")
+    return p[len("user:"):] if p.startswith("user:") else ""
+
+
+def _stopped_by(job_id, err):
+    """A canceled job's reason with the account that pressed Cancel in it,
+    read from the audit row job_cancel wrote; the runner's own words ("stopped",
+    the agent's "stopped by the operator") are only that it was stopped."""
+    if err not in ("", "stopped", "stopped by the operator"):
+        return err
+    got = _rows("SELECT principal FROM audit WHERE action = 'job-cancel' AND target = ? "
+                "ORDER BY at DESC LIMIT 1", (job_id,))
+    who = _canceler(got[0]["principal"]) if got else ""
+    return f"stopped by {who}" if who else (err or "stopped")
+
+
 def job_cancel(principal, job_id):
     """Stop a job. Queued: it simply ends, canceled. Assigned or running:
     the flag is set and the runner is woken (the agent hears it on its
@@ -4483,8 +4522,11 @@ def job_cancel(principal, job_id):
     # the agent hears the cancel rather than running a job the row calls
     # canceled (the review of 26 Sep).
     if got[0]["state"] == "queued":
-        cur = _exec("UPDATE jobs SET state = 'canceled', ended = ?, error = 'canceled "
-                    "before it started' WHERE id = ? AND state = 'queued'", (int(time.time()), job_id))
+        who = _canceler(principal)
+        cur = _exec("UPDATE jobs SET state = 'canceled', ended = ?, error = ? "
+                    "WHERE id = ? AND state = 'queued'",
+                    (int(time.time()), f"canceled by {who} before it started" if who
+                     else "canceled before it started", job_id))
         if cur.rowcount == 0:
             _exec("UPDATE jobs SET cancel = 1 WHERE id = ?", (job_id,))
     elif not got[0]["cancel"]:

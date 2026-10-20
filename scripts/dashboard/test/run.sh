@@ -61,7 +61,14 @@ KEEPF="${TMPDIR:-/tmp}/bb-suite.keep"
 if [ -z "${BB_TEST_HOLD:-}" ] && [ -z "${BB_TEST_WORKER:-}" ] && [ -z "${BB_TEST_FRESH:-}" ] && [ -f "$KEEPF" ]; then
     # shellcheck source=/dev/null
     . "$KEEPF"
-    if kill -0 "${KEEP_PID:-0}" 2>/dev/null; then
+    # A fixture kept from another tree (a worktree, another session's
+    # checkout) is not this run's: its server is that tree's python, and
+    # copying this tree's page into it would disturb its keeper (B60). Such
+    # a run is an ordinary one, so the keeper's lock holds it like any other.
+    _here_root="$(cd "$HERE/../../.." && pwd)"
+    if kill -0 "${KEEP_PID:-0}" 2>/dev/null && [ -n "${KEEP_ORIGIN:-}" ] && [ "$KEEP_ORIGIN" != "$_here_root" ]; then
+        printf '[dashboard-test] a fixture is kept from %s, not this tree (%s): not attaching to it\n' "$KEEP_ORIGIN" "$_here_root" >&2
+    elif kill -0 "${KEEP_PID:-0}" 2>/dev/null; then
         [ $# -gt 0 ] || { printf '[dashboard-test] ERROR: a fixture is kept (%s): name a suite or a probe to run against it, or bb tests keep stop\n' "$KEEP_URL" >&2; exit 1; }
         # One attached run at a time, as a fresh run is (B240). The keeper
         # holds the harness's lock, so an attached run keeps its own beside
@@ -106,8 +113,9 @@ if [ -z "${BB_TEST_HOLD:-}" ] && [ -z "${BB_TEST_WORKER:-}" ] && [ -z "${BB_TEST
             case "$f" in */_probe-*) rm -f "$f" ;; esac
         done
         exit "$rc"
+    else
+        rm -f "$KEEPF"     # its keeper is gone
     fi
-    rm -f "$KEEPF"
 fi
 # ...and never straight off the projects share. The server serves its own
 # code on every request and the suite reads its files as it goes, and
@@ -1643,8 +1651,8 @@ if [ -n "${BB_TEST_HOLD:-}" ]; then
     fresh_world
     fresh
     KEEP_MINE=1
-    printf 'KEEP_PID=%s\nKEEP_URL=%s\nKEEP_S=%s\nKEEP_HERE=%s\nKEEP_CHROME=%s\nKEEP_SINCE=%s\n' \
-        "$$" "http://127.0.0.1:$PORT/" "$S" "$HERE" "$CHROME" "$(date +%s)" > "$KEEPF"
+    printf 'KEEP_PID=%s\nKEEP_URL=%s\nKEEP_S=%s\nKEEP_HERE=%s\nKEEP_CHROME=%s\nKEEP_SINCE=%s\nKEEP_ORIGIN=%s\n' \
+        "$$" "http://127.0.0.1:$PORT/" "$S" "$HERE" "$CHROME" "$(date +%s)" "${BB_TEST_ORIGIN:-$(cd "$HERE/../../.." && pwd)}" > "$KEEPF"
     log "fixture kept at http://127.0.0.1:$PORT/ (test:test); bb dashboard test SUITE and bb tests probe FILE attach to it; bb tests keep stop ends it"
     while :; do sleep 3600 & wait $! || true; done
 fi

@@ -781,10 +781,15 @@ def manager_view(nid, seen):
         else:
             i["images_behind"] = [b["image"] for b in imagecheck.of(i.get("name", "")).get("behind") or []]
     if seen is not None:
+        was = len(got.get("instances") or []) + len(got.get("containers") or [])
         got["instances"] = [i for i in got.get("instances") or []
                             if i.get("owner") in seen]
         got["containers"] = [c for c in got.get("containers") or []
                              if c.get("owner") in seen]
+        # Whether anything was left out, and nothing about what (B89): an
+        # empty page then says the daemon holds what this account may not
+        # read, rather than that the daemon is empty.
+        got["unseen"] = was > len(got["instances"]) + len(got["containers"])
         # The branches go with them: the Build from picker is an
         # administrator's.
         got["refs"] = {}

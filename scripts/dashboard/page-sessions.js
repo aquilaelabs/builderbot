@@ -112,19 +112,27 @@ function renderSessionsInto(i){
 // while a session was still open on it, and the row knows which it meant.
 async function killSession(name, node = ""){
   const claude = tmuxBase(name).startsWith("claude-");
+  // Named as its row and its tab are, never by its tmux name (B58).
+  const proj = sessionProject(name);
+  const said = claude ? `the Claude session on ${proj ? projLabel(proj) : name}`
+    : `the session "${sessionLabels().get(name) || name}"`;
   if (!confirm(claude
-        ? `End the Claude session "${name}"?\n\nThe transcript is kept and can be `
+        ? `End ${said}?\n\nThe transcript is kept and can be `
           + `resumed later, but the conversation stops now.`
-        : `End the session "${name}"?\n\nAnything running in it is terminated.`)) return;
+        : `End ${said}?\n\nAnything running in it is terminated.`)) return;
   try{
     const j = await endSession(name, node);
     if (j.error){ notify(j.error, true); return; }
     // Its tab, if one is open, is now pointing at nothing.
     const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === name);
     if (t) dropTab(t.id);
-    notify(`ended ${name}`);
+    notify(`ended ${said}`);
   }catch(e){ notify("could not end it: " + e, true); }
-  refresh();
+  await refresh();
+  // Nowhere near another End (B54): with focus left on the list, a keyboard
+  // Enter after the redraw could end a second session.
+  const a = document.activeElement;
+  if (a?.matches?.("[data-k], .consend")) a.blur();
 }
 
 // End a session, no questions asked. killSession is this with the dialog in
@@ -170,6 +178,7 @@ async function liveRefresh(){
   const moved = yours(j.claude_with) !== yours(state.claude_with);
   state.claude_with = j.claude_with || {};
   state.claude_busy = j.claude_busy || {};
+  state.claude_asking = j.claude_asking || {};
   state.claude_where = j.claude_where || {};
   drawProjects(state.projects);
   if (moved) refresh();
@@ -178,6 +187,7 @@ function sessionRows(proj){
   const all = withMe(proj);
   if (!all.length) return "";
   const busy = new Set((state?.claude_busy || {})[proj] || []);
+  const asks = new Set((state?.claude_asking || {})[proj] || []);
   const names = [...all].sort((a, b) => (a === state?.me) - (b === state?.me));
   // The session dot, the same one the session's tab, the phone's Terminal
   // tab and the Sessions card wear (stateDot's rule): working pulses in
@@ -195,12 +205,13 @@ function sessionRows(proj){
   const agrees = where.length && names.every(n => whos.has(n)) && [...whos].every(w => names.includes(w));
   const rows = agrees
     ? [...where].sort((a, b) => (a.who === state?.me) - (b.who === state?.me) || a.node.localeCompare(b.node))
-    : names.map(n => ({who: n, node: "", working: busy.has(n)}));
+    : names.map(n => ({who: n, node: "", working: busy.has(n), asking: asks.has(n)}));
   // What changed since a session started that it does not see until it is
   // started again, said under it with what for (the operator, 12 Oct): a
   // toolchain put on its node's PATH, BuilderBot updated.
-  return rows.map(r => `<div class="sessone"><span class="st ${r.working ? "working" : "waiting"}" title="${
-    r.working ? "working on a prompt" : "waiting for a prompt"}"></span>${esc(r.who)}${
+  // On Claude Code's permission prompt it is asking, whoever's it is (B104).
+  return rows.map(r => `<div class="sessone"><span class="st ${r.asking ? "asking" : r.working ? "working" : "waiting"}" title="${
+    r.asking ? "asking to approve something in its terminal" : r.working ? "working on a prompt" : "waiting for a prompt"}"></span>${esc(r.who)}${
     r.who === state?.me ? " (you)" : ""}${r.node ? ` <span class="dim">(${esc(r.node)})</span>` : ""}</div>${
     (r.behind || []).length ? `<div class="sessbehind">Restart ${r.who === state?.me ? "your session" : "this session"} to use what changed: ${
       esc(r.behind.join("; "))}.</div>` : ""}`).join("");

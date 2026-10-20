@@ -40,6 +40,10 @@ from .base import hello_again, SHARE, log, log_once
 # there; the unit tier holds the two equal).
 SKIP_DIRS = {"node_modules", ".gradle", "__pycache__", ".venv", "venv", ".next", ".cache", ".bb-map",
              ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+# ...and what is out by where it is: Claude Code's worktrees for its own
+# agents, each a checkout whose .git file the controller refuses, so syncing
+# them held the project behind and bb git push with it (B68).
+SKIP_UNDER = (".claude/worktrees",)
 TMP = ".bbsync-"
 MAX_FILE = 512 * 1024 * 1024
 TICK = 1.0
@@ -62,6 +66,8 @@ WT_UNIT = re.compile(r"\.worktrees/([A-Za-z0-9][A-Za-z0-9._-]*)/(u_[0-9a-f]{8})"
 def skipped(rel):
     parts = rel.split("/")
     if any(p in SKIP_DIRS for p in parts[:-1]) or parts[-1] in SKIP_DIRS:
+        return True
+    if any(rel == u or rel.startswith(u + "/") for u in SKIP_UNDER):
         return True
     if parts[-1].startswith(TMP):
         return True

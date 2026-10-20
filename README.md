@@ -17,6 +17,18 @@
   <a href="https://github.com/aquilaelabs/BuilderBot/pkgs/container/builderbot"><img src="https://img.shields.io/badge/image-ghcr.io-2496ed?logo=docker&logoColor=white" alt="container image on GHCR"></a>
 </p>
 
+> [!WARNING]
+> **BuilderBot is early software.** It runs Claude Code sessions that edit,
+> commit, run and push code on your machines, and it is still changing fast.
+> Do not point it at production repositories or at anything you cannot afford
+> to lose: try it on separate repositories made for testing, and keep backups
+> of what it works on.
+>
+> **Check a project's rules before you use it there.** Some open source
+> projects, employers and clients forbid AI coding tools, or contributions
+> written with them. That is their call to make, and BuilderBot does not
+> check it for you.
+
 ## Overview
 
 BuilderBot is one container, the **controller**, and the machines you enroll
@@ -66,19 +78,113 @@ your projects mounted straight in, and to grow from one machine to several.
 
 <table>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/dashboard.png" alt="The dashboard at a desk"></td>
+    <td colspan="2"><img src="docs/screenshots/dashboard.png" alt="Home at a desk: what runs, what needs you, the last jobs and your projects"></td>
   </tr>
   <tr>
-    <td width="50%" align="center"><img src="docs/screenshots/phone-dashboard.png" width="80%" alt="The dashboard on a phone"></td>
-    <td width="50%" align="center"><img src="docs/screenshots/phone-terminal.png" width="80%" alt="A terminal on a phone"></td>
+    <td width="50%"><img src="docs/screenshots/notebook.png" alt="A project's page, on its roadmap"></td>
+    <td width="50%"><img src="docs/screenshots/nodes.png" alt="A node's page: how it is reached, its health and its stores"></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/toolchains.png" alt="The Toolchains page for a node"></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><img src="docs/screenshots/phone-dashboard.png" width="80%" alt="Home on a phone"></td>
+    <td width="50%" align="center"><img src="docs/screenshots/phone-terminal.png" width="80%" alt="A terminal in the dock on a phone"></td>
   </tr>
 </table>
+
+## Quick start
+
+### What you need
+
+- **A server for the controller**: any machine that runs Docker, with
+  Docker Compose. The controller is one container: it runs the dashboard and
+  keeps the record, needs little CPU, and wants a disk for your projects.
+- **At least one node**: a Linux machine or VM where sessions, builds and
+  tests actually run, on **Ubuntu 24.04 or later** or **Rocky Linux 9**,
+  the systems nodes are tested on. A separate VM keeps what Claude runs
+  away from your server.
+- **Your repositories** on GitHub, Gitea or Forgejo, or any git remote over
+  plain git.
+- **A Claude account** for each person who will run Claude sessions. Each
+  signs in to Claude Code themselves, on the node.
+- **Repositories made for trying it** (see the warning above).
+
+### Install the controller
+
+Make the folders it keeps its state in, owned by the user the container
+should run as (`id -u` and `id -g` give yours):
+
+```bash
+mkdir -p /srv/projects /srv/builderbot/{home,config,sdk}
+chown -R 1000:1000 /srv/projects /srv/builderbot
+```
+
+Then save this as `docker-compose.yml`, changing the paths and the IDs to
+match:
+
+```yaml
+services:
+  builderbot:
+    image: ghcr.io/aquilaelabs/builderbot:0.5   # a release line; see Upgrading in docs/install.md
+    container_name: BuilderBot
+    hostname: builderbot
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    environment:
+      PUID: 1000          # the owner of the folders above
+      PGID: 1000
+      TZ: Etc/UTC         # your time zone, e.g. America/Chicago
+      DASHBOARD_PORT: 7680
+    volumes:
+      - /srv/projects:/workspace           # your projects: one folder each
+      - /srv/builderbot/sdk:/sdk           # the controller's own toolchains
+      - /srv/builderbot/home:/home/builder # each account's home
+      - /srv/builderbot/config:/config     # accounts, settings, notebooks, logs
+      - runner-tokens:/config/runner-tokens
+    ports:
+      - "7680:7680"
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "3"}
+
+volumes:
+  runner-tokens:
+```
+
+Start it, and open the dashboard straight away:
+
+```bash
+docker compose up -d
+```
+
+Go to `http://YOUR-SERVER:7680`. The first page asks you to make the owner
+account, so do this before anyone else can reach it. Then:
+
+1. **Your profile** (the gear, then Profile): your name, email and git
+   identity, which your commits carry.
+2. **Enroll a node**: Machines, then Nodes, then **Enroll node**. It gives
+   you one command to run on the node machine, which sets it up and connects
+   it.
+3. **Install Claude Code on the node**: Build, then Toolchains, with that
+   node picked.
+4. **Add a project** on the Projects page (clone one, start an empty one,
+   or upload an archive), and press **Start Claude**. The first time, it walks you
+   through signing in to Claude on that node.
+
+The full checklist, with every option and the Unraid way, is
+**[docs/install.md](docs/install.md)**. Once it is running, the people you
+give accounts to start with **[Start here](docs/start-here.md)**, the
+getting started guide, which is also the About screen's guide in the
+dashboard.
 
 ## Documentation
 
 Everything else, from installing to the full command reference, is in
 **[docs/](docs/README.md)**, which is also the dashboard's Help:
 
+- [Everything it does](docs/features.md), one area at a time
 - [Install](docs/install.md), with the [Unraid walkthrough](docs/unraid.md)
 - [Start here](docs/start-here.md), for an account on somebody else's BuilderBot
 - [How it works](docs/how-it-works.md), the overview, with a doc for each part
@@ -87,6 +193,7 @@ Everything else, from installing to the full command reference, is in
   [toolchains](docs/toolchains.md), [containers](docs/containers.md),
   [machines](docs/machines.md) and [people](docs/people.md)
 - [Reference](docs/reference.md): settings, every `bb` command, Android signing
+- [Data and privacy](docs/privacy.md): what an install keeps and contacts; nothing is sent to us
 - [Architecture](docs/architecture.md) and [Contributing](CONTRIBUTING.md)
 
 ## License

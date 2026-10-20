@@ -127,6 +127,30 @@ ok(await page.$eval('#pNamePreview', el => !el.hidden && /shown as beta-2\b/.tes
 await page.fill('#pName', 'plain');
 ok(await page.$eval('#pNamePreview', el => el.hidden),
    '...and stays quiet when there is nothing to say');
+// A folder a deleted project had is never handed out again, purged or not
+// (R154): the shown name is free, the folder is numbered, and the preview
+// says so before Create rather than leaving the -2 to be found (B63). The
+// list is the dialog's own fetch's; a deleted one is planted in it, since
+// purging a fixture here would take a project other blocks use.
+{
+  const dirs = await page.evaluate(async () => (await (await fetch('/api/pubkeys')).json()).dirs || []);
+  ok(dirs.includes('alpha') && dirs.includes('beta'),
+     `the dialog's fetch lists the folders a new project may not have (${dirs.length})`);
+  await page.evaluate(() => pTakenDirs.add('relic'));
+  await page.fill('#pName', 'relic');
+  ok(await page.$eval('#pNamePreview', el => !el.hidden
+       && /Shown as relic, in the folder relic-2: a deleted project had relic/.test(el.textContent)),
+     '...and a name whose folder a deleted project had says it is shown as itself in the folder Name-2');
+  // ...while a folder a live project is in says which, not that a deleted
+  // project had it (B93).
+  await page.evaluate(() => { state.projects.push({ name: 'held-2', label: 'held' }); pTakenDirs.add('held-2'); });
+  await page.fill('#pName', 'held-2');
+  const heldSaid = await page.$eval('#pNamePreview', el => el.hidden ? '' : el.textContent);
+  await page.evaluate(() => { state.projects = state.projects.filter(p => p.name !== 'held-2'); pTakenDirs.delete('held-2'); });
+  ok(/in the folder held-2-2: held is in the folder held-2/.test(heldSaid) && !/deleted/.test(heldSaid),
+     `...and a live project's folder is named as that project's, not a deleted one's (${heldSaid})`);
+  await page.fill('#pName', 'plain');
+}
 // Put the field back as it was found: a mode switch does not clear it, only
 // reopening does, and the refusal below needs the name genuinely empty or it
 // submits a valid one and closes the dialog out from under everything after.
@@ -1294,6 +1318,28 @@ await page.waitForFunction(() => document.getElementById('tmodal').hidden);
   ok(madeBy.status === 200 && listed.includes('maker-made') && worked.status === 200,
      `an administrator's new project goes on their own list, and they may work on it at once (${
        JSON.stringify(listed)}, ${worked.status}${worked.error ? ': ' + worked.error : ''})`);
+}
+
+// A notebook on a project that is no longer there (a layout saved before
+// the project was deleted) is put away once the project list says so (B40).
+{
+  await page.evaluate(() => { tabs.push({ id: 't9001', kind: 'notebook', arg: 'gone-project', label: 'gone-project' }); drawPanes(); });
+  await refreshUntil(page, () => !tabs.some(t => t.arg === 'gone-project'), { timeout: 15000 });
+  ok(await page.evaluate(() => !tabs.some(t => t.arg === 'gone-project')),
+     'a notebook tab on a project that is gone is put away at the next poll');
+}
+// ...and one on show when its project goes (deleted from its Settings, or
+// elsewhere) gives way to Projects, not to the Profile (B94).
+{
+  const made = await page.evaluate(async () => (await (await postJSON('/api/create', { name: 'gone-front', mode: 'init' })).json()).name);
+  await refreshUntil(page, () => state?.projects?.some(p => p.name === 'gone-front'), { timeout: 15000 });
+  await page.evaluate(() => openNotebook('gone-front', 'settings'));
+  await page.waitForFunction(() => location.hash.startsWith('#/projects/gone-front'), null, { timeout: 10000 });
+  await page.evaluate(n => postJSON('/api/trash', { name: n }), made || 'gone-front');
+  await refreshUntil(page, () => !tabs.some(t => t.arg === 'gone-front'), { timeout: 15000 });
+  const at = await page.waitForFunction(() => /^#\/projects(\/projects)?$/.test(location.hash) && tabOf(panes[0])?.kind === 'projects',
+    null, { timeout: 10000 }).then(() => true, () => false);
+  ok(at, `a notebook on show whose project is deleted lands on Projects (${await page.evaluate(() => location.hash + ' ' + tabOf(panes[0])?.kind)})`);
 }
 
 const errs = page.errors.filter(e => !/status of (400|500)/.test(e));

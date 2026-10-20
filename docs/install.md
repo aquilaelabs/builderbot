@@ -172,9 +172,8 @@ have. Only BuilderBot makes a project: a folder made by hand on the projects
 share is not listed. A project with a problem says so on its card: no git
 repository or the wrong ownership in red.
 
-**The apps for your machines**: the Android app, the VS Code extension and
-the Windows companion are on the **Apps** page, under Build, each with
-Download and how to connect it, fetched by the controller from its own
+**The apps for your machines**: the Android app is on the **Apps** page,
+under Build, with Download and how to connect it, fetched by the controller from its own
 release and kept current there. The devices signed in as you are the last
 section of your **Profile**, under Settings, each with Disconnect. Which are offered is the **Apps** section of
 the Controller settings page, or `/config/seed.json` before the first start
@@ -187,8 +186,44 @@ so click it. Builds seed their layer cache from the previous `:latest`, so a
 scripts-only change is a small pull; the Monday rebuild is uncached on purpose
 and is always the big one. *Run workflow* takes a **Rebuild every layer** box
 for the same effect on demand: leave it off and a manual run is a cheap retry,
-tick it to force a fresh pull of everything. Rollback = point the Repository field at a
-`sha-<commit>` tag. Compose: `docker compose pull && docker compose up -d`.
+tick it to force a fresh pull of everything. To upgrade between releases, and roll
+back, see [Upgrading](#upgrading). Compose: `docker compose pull && docker compose up -d`.
+
+## Upgrading
+
+**Pin a release, not `:latest`.** `:latest` follows the main branch between
+releases. Each release publishes its own image, `ghcr.io/aquilaelabs/builderbot:0.5.0`,
+and `:0.5` for the newest release of that line; pin one of those in your
+compose file or template, and move it on when you choose to upgrade.
+
+**What is supported:**
+
+- From any release to any later release **in the same line** (0.5.0 to
+  0.5.3, say), in one step.
+- To a **new line** (0.6.0) **from the last release of the line before**
+  (the newest 0.5.x). An older install goes there first, then on.
+- **No downgrades.** Going back is restoring the backup the upgrade made,
+  below, with the older image.
+
+**What the controller does for you.** `/config` carries the version of its
+state. On start, a controller moves older state forward, one numbered step
+at a time, after copying `/config` to `/config/backups/before-VERSION` (the
+last three are kept). It refuses to start, saying which release to go
+through, on state older than it can move forward, and it refuses state from
+a newer release rather than reading what it does not understand.
+
+**Nodes and apps follow.** After the controller, update each node's agent
+from its page when the dashboard asks; a node on an agent from before a
+breaking change is held until it is updated, and says so. The Android app
+tells you when it and the controller are too far apart.
+
+**Read the release notes first.** A release that needs anything from you
+(a setting that moved, a node to update) says so under **Upgrading** in its
+notes, and anything removed was marked deprecated a release before.
+
+**Rolling back.** Stop the container, put the image back to the release you
+came from, replace `/config` with `/config/backups/before-VERSION`, and start
+it.
 
 ## Building locally instead of pulling
 

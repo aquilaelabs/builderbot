@@ -21,6 +21,7 @@ the compose runner to jobs.py through configure() here.
 """
 
 import contextlib
+import contextvars
 import json
 import os
 import re
@@ -52,6 +53,24 @@ users = None
 ask_rebuild = None
 say = None
 net_nudge = None
+
+
+# Who a job queued here is asked by (B69): the account that pressed the
+# button, set by request() around act(), so the Jobs page's By column and a
+# Cancel's end name that account rather than "operator" for every container
+# job. What runs with no person behind it (a hook, an Allow's build) keeps
+# the old word.
+_by = contextvars.ContextVar("devactions_by", default="operator")
+
+
+@contextlib.contextmanager
+def acting_as(principal):
+    """Queue and cancel the jobs inside the block as `principal`."""
+    tok = _by.set(principal or "operator")
+    try:
+        yield
+    finally:
+        _by.reset(tok)
 
 
 # One action per INSTANCE at a time. Two clicks on one row are two compose
@@ -230,7 +249,13 @@ def _plan(project, instance, action, extra=None):
     # R208).
     rel = devapp._read_rec(project, instance).get("relocating")
     arriving = isinstance(rel, dict) and rel.get("stage") == "build"
-    rebuild = [build, down] if devapp.missing_env(project, instance) or arriving else [build, down, up]
+    # The registry images it names fetched before the old containers go
+    # (B61): an image that cannot be pulled fails the rebuild while the app
+    # still runs, rather than after the down, which left it down. Only what
+    # the node lacks, so a registry out of reach stops nothing it has.
+    fetch = {"name": "pulling", "argv": base + ["pull", "--ignore-buildable", "--policy", "missing"],
+             "timeout": 1800, "env": ienv}
+    rebuild = [build, fetch, down] if devapp.missing_env(project, instance) or arriving else [build, fetch, down, up]
     # The project's own test command, inside its running instance (roadmap
     # R48): `exec` into the service the project builds, with the command the
     # settings dialog recorded and nothing else, and the caller's arguments
@@ -372,7 +397,7 @@ def _ship_submit(project, instance, target):
     builder = builder or own[0]
     held = {"project": project, "instance": instance, "action": "rebuild", "hold": True,
             "ship": "build", "target": target}
-    r = devapp.queue.job_add("operator", {"node": builder}, "compose", held, project)
+    r = devapp.queue.job_add(_by.get(), {"node": builder}, "compose", held, project)
     if r.get("error"):
         return r
     devapp._bump()
@@ -416,7 +441,8 @@ def ship_next(job, state):
         return
     target = sp.get("target") or devapp._instance_node(project, instance)
     held = {"project": project, "instance": instance, "action": "rebuild", "hold": True, "ship": "run"}
-    r = devapp.queue.job_add("operator", {"node": target}, "compose", held, project)
+    # The second half is asked by whoever asked for the first.
+    r = devapp.queue.job_add(job.get("requested_by") or "operator", {"node": target}, "compose", held, project)
     if r.get("error"):
         _image_file(project, instance).unlink(missing_ok=True)
         _clear_marker(project, instance)
@@ -708,7 +734,7 @@ def _submit(project, instance, action, extra=None, check=None):
     held = {"project": project, "instance": instance, "action": action, "hold": True}
     if fell_over:
         held["fell_over"] = fell_over
-    r = devapp.queue.job_add("operator", {"node": nid}, "compose", held, project)
+    r = devapp.queue.job_add(_by.get(), {"node": nid}, "compose", held, project)
     if r.get("error"):
         return r
     devapp._bump()
@@ -781,7 +807,7 @@ def route_set(project, instance, mode, port=None):
         fport = port or (devapp.route_view(project, instance, state_ports(project, instance)).get("port"))
         if not fport:
             return {"error": "a funnel needs a port, and the instance publishes none"}
-        r = devapp.queue.node_funnel("operator", nid, fport, on=(mode == "funnel"))
+        r = devapp.queue.node_funnel(_by.get(), nid, fport, on=(mode == "funnel"))
         if r.get("error"):
             return r
         job = r.get("job")
@@ -799,9 +825,9 @@ def abort_job(project, instance):
     if j is None:
         return False
     if devapp.runner is not None:
-        devapp.runner.cancel("operator", j["id"])
+        devapp.runner.cancel(_by.get(), j["id"])
     else:
-        devapp.queue.job_cancel("operator", j["id"])
+        devapp.queue.job_cancel(_by.get(), j["id"])
     devapp._bump()
     return True
 
@@ -1014,6 +1040,12 @@ def state(project, instance=devapp.MAIN):
         if nogpu:
             out["problems"].append(nogpu)
         out.update(devapp.wiring(cfg))
+        # Whether that is the wiring or only nothing read: a compose that
+        # could not be resolved this time (a config call timed out under
+        # load) is not a compose that publishes nothing, and the Containers
+        # page's Ports and mounts kept "publishes nothing" over the lines it
+        # had read a moment before (B12).
+        out["wired"] = cfg is not None
         # ...and the ports somebody else is already on. After wiring(), which
         # is what says which ports this instance wants. Its own field rather
         # than a line in `problems`, because the two views that read this
@@ -1070,6 +1102,7 @@ def state(project, instance=devapp.MAIN):
         out["problems"] = []
         out["ports"] = []
         out["mounts"] = []
+        out["wired"] = False
         out["risks_digest"] = ""
         out["risks_ack"] = True
     return out
@@ -1350,6 +1383,16 @@ def _job_rebuild(project, instance, run):
             # Removed from the Docker tab while it was building (B633): the
             # remove took it down, and nothing of it is started again.
             return {"state": "failed", "error": "removed from the Containers page while it was building: the image is built, nothing started"}
+        # What it pulls from a registry, before the old containers go (B61):
+        # an image that cannot be had fails here with the app still up.
+        run.step("pulling")
+        r = devapp._run(devapp._compose(project, instance, "pull", "--ignore-buildable", "--policy", "missing"),
+                        timeout=1800, sink=run.line, hold=run.hold)
+        if run.canceled:
+            return {"state": "canceled", "error": "stopped: the image is built, and what ran before is still up"}
+        if r["code"] != 0:
+            return {"state": "failed", "error": "an image it names could not be pulled, so what ran before is "
+                                               "left running:\n" + r["out"][-400:]}
         run.step("stopping")
         devapp._run(devapp._compose(project, instance, "down", "--remove-orphans"), timeout=180,
                     sink=run.line, hold=run.hold)
@@ -1697,7 +1740,8 @@ def request(project, instance, action, req, *, me, principal, dial="", test_cmd=
         say(project, users.uid_of(me),
             f"{principal[len('user:'):]} ran {action} on "
             f"{project}" + (f" ({instance})" if instance != devapp.MAIN else ""))
-    payload, status = act(project, instance, action, req, test_cmd=test_cmd, gate=not sess)
+    with acting_as(principal):
+        payload, status = act(project, instance, action, req, test_cmd=test_cmd, gate=not sess)
     # An instance made, removed or given to another project changes what
     # a project's sessions may reach on its node (R79).
     if status == 200 and action in ("new", "remove", "owner"):

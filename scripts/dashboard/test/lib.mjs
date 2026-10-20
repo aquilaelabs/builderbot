@@ -49,6 +49,38 @@ export const done = async browser => {
   process.exit(fail ? 1 : 0);
 };
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
+// What in an answer breaks a released app's pin (R79 step 8): a field the
+// pin names gone or of another type, on the answer or on a row. The
+// language is test/device-api.json's: types are string, number, boolean,
+// object, array, null, any or a union like string|null; KEY? is checked
+// only when present, LIST[].FIELD on every row, LIST[] a row's columns by
+// position, and A.B a field of an object. Held by deviceapi.mjs and appapi.mjs.
+const pinKind = v => v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v;
+const pinFits = (v, want) => want === 'any' || want.split('|').includes(pinKind(v));
+export function pinBreaks(body, reads, where){
+  const out = [];
+  for (const [key, want] of Object.entries(reads || {})){
+    const optional = key.endsWith('?');
+    const k = optional ? key.slice(0, -1) : key;
+    const tuple = k.endsWith('[]');
+    const [head, ...rest] = tuple ? [k.slice(0, -2)] : k.split('[].');
+    const top = head.split('.').reduce((o, p) => (o && typeof o === 'object' && p in o ? o[p] : undefined), body);
+    if (top === undefined){ if (!optional && !rest.length) out.push(`${where}: no "${head}"`); continue; }
+    if (tuple){
+      for (const row of top){
+        if (!Array.isArray(row) || row.length < want.length){ out.push(`${where}: a row of ${head} is not ${want.length} long`); break; }
+        const bad = want.findIndex((t, i) => !pinFits(row[i], t));
+        if (bad >= 0){ out.push(`${where}: ${head}[][${bad}] is ${pinKind(row[bad])}, pinned ${want[bad]}`); break; }
+      }
+    } else if (rest.length){
+      for (const row of Array.isArray(top) ? top : []){
+        if (!(rest[0] in row)){ if (!optional) out.push(`${where}: a row of ${head} has no "${rest[0]}"`); break; }
+        if (!pinFits(row[rest[0]], want)){ out.push(`${where}: ${head}[].${rest[0]} is ${pinKind(row[rest[0]])}, pinned ${want}`); break; }
+      }
+    } else if (!pinFits(top, want)) out.push(`${where}: "${head}" is ${pinKind(top)}, pinned ${want}`);
+  }
+  return out;
+}
 // The page's requests have landed and nothing new has been asked for
 // `quiet` ms: what a fixed sleep after opening a tab or a view was standing
 // in for. A sleep of 400ms paid 400ms whether the fetch took 30ms or 300,

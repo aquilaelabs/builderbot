@@ -16,10 +16,16 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 // A card's link, lock, pin and the rest sit behind its menu on the Projects
 // page (R218 step 3): opened first, the way a thumb does.
 const pjMenu = async name => {
-  // An archived card is in the Archived fold at the page's foot: opened first.
+  // An archived card is in the Archived fold at the page's foot: opened
+  // first, and the card brought on screen, as a person scrolls to it. A
+  // floating menu whose button is off screen closes itself (floatFollow),
+  // so a menu opened below the fold by script shut at once (B108).
   await page.evaluate(n => { const c = document.querySelector(`.doc .projtab .pcard[data-row="${CSS.escape(n)}"]`);
     const fold = c?.closest('details.sect');
     if (fold && !fold.open) fold.open = true;
+    c?.scrollIntoView({ block: 'center' }); }, name);
+  await page.waitForTimeout(150);
+  await page.evaluate(n => { const c = document.querySelector(`.doc .projtab .pcard[data-row="${CSS.escape(n)}"]`);
     if (c?.querySelector('.actmenu')?.hidden) c.querySelector('[data-pmore]')?.click(); }, name);
   await page.waitForTimeout(150);
 };await page.goto(URL);
@@ -580,6 +586,35 @@ print(json.dumps(out))
       && getComputedStyle(dot).animationName === getComputedStyle(tab).animationName;
     tab.remove(); return same && !document.querySelector('.sdot');
   }), "the card's dot is drawn by the one rule the session dots share, and no dot of its own is left");
+  // On Claude Code's permission prompt it is asking, amber, as the dock
+  // and Sessions say (B98), not waiting for you.
+  {
+    const asked = await page.evaluate(() => {
+      const nm = myClaude('alpha'), kept = state.sessions;
+      state.sessions = [...(kept || []).filter(s => s.name !== nm), { name: nm, claude: { state: 'asking', task: '' } }];
+      drawProjects(state.projects);
+      const st = document.querySelector('.pgrid .pcard[data-row="alpha"] .pstate');
+      const out = { word: st?.textContent || '', asking: !!st?.querySelector('.st.asking') };
+      state.sessions = kept; drawProjects(state.projects);
+      return out;
+    });
+    ok(/asking you/.test(asked.word) && asked.asking,
+       `a session on its permission prompt reads asking, with the amber dot (${asked.word})`);
+    // B104: another account's session on the prompt reads asking too, by
+    // that person's name and not "asking you", on the card's state and its
+    // session rows.
+    const theirs = await page.evaluate(() => {
+      state.claude_asking = { alpha: ['alice'] }; state.claude_busy = {};
+      drawProjects(state.projects);
+      const st = document.querySelector('.pgrid .pcard[data-row="alpha"] .pstate.other');
+      const out = { word: st?.textContent || '', asking: !!st?.querySelector('.st.asking'),
+                    row: /class="st asking"[^>]*>[^<]*<\/span>alice/.test(sessionRows('alpha')) };
+      state.claude_asking = {}; drawProjects(state.projects);
+      return out;
+    });
+    ok(theirs.word === 'alice asking' && theirs.asking && theirs.row,
+       `another account's session on its permission prompt reads asking, not waiting (${JSON.stringify(theirs)})`);
+  }
   await page.evaluate(() => { state.claude_with = {}; state.claude_busy = {}; drawProjects(state.projects); });
   await page.evaluate(() => liveRefresh());
   ok(/waiting for you|working/.test(await stateWord()),
@@ -834,7 +869,7 @@ const about = await page.$eval('#aboutModal', e => e.textContent);
 ok(about.includes('abc1234def5678901234567890abcdef12345678')
    && about.includes('2026-08-21T19:30Z') && /An update moves it/.test(about),
    '...and About carries the whole commit, the build time and where to look');
-await page.click('#aboutModal >> text=Close');
+await page.click('#aboutClose');
 await page.waitForSelector('#aboutModal', { state: 'hidden' });
 // Escape and the backdrop let a person out too (B229): after an update the
 // popup opens itself over whatever they came to do.
@@ -913,9 +948,37 @@ ok(true, '...and so does a click on the page under it');
   await page.click('#bAbout');
   await page.waitForSelector('#aboutModal:not([hidden])', { timeout: 15000 });
   await page.click('.abswitch [data-ab="guide"]');
+  await page.waitForFunction(() => /As an administrator/.test($('abGuide').textContent), null, { timeout: 15000 });
   ok(await page.$eval('#abGuide', e => !e.hidden && /Your profile/.test(e.textContent) && /As an administrator/.test(e.textContent)),
      '...and About opens on the guide: the administrator\'s, for an owner');
+  // The guide is docs/start-here.md, so About and Help cannot drift apart;
+  // a plain account's leaves out the administrator's section alone.
+  const guide = await page.evaluate(async () => {
+    const doc = await (await fetch('/api/help?doc=start-here')).json();
+    const plain = abGuideText(doc.text, false);
+    return { heads: [...document.querySelectorAll('#abGuide h3')].map(h => h.textContent),
+             docHeads: (doc.text.match(/^## .+$/gm) || []).map(h => h.slice(3)),
+             plainAdmin: /As an administrator/.test(plain), plainLast: /Two habits worth having/.test(plain) };
+  });
+  ok(guide.heads.join('|') === guide.docHeads.join('|') && !guide.plainAdmin && guide.plainLast,
+     `About's guide is docs/start-here.md, section for section, and a plain account's leaves out As an administrator only (${guide.heads.join(', ')})`);
+  // B110: a link to a doc reads as its title, not its file name; a heading
+  // starts where the text under it starts; and the guide has the box, with
+  // the build lines on the changelog's page rather than under it.
+  const look = await page.evaluate(() => {
+    const g = $('abGuide'), h = g.querySelector('h3'), p = h.nextElementSibling;
+    const box = document.querySelector('#aboutModal > .box').getBoundingClientRect();
+    return { links: [...g.querySelectorAll('a.wklink')].map(a => a.textContent),
+             indent: Math.round(h.getBoundingClientRect().left - p.getBoundingClientRect().left),
+             caps: getComputedStyle(h).textTransform,
+             share: Math.round(100 * g.getBoundingClientRect().height / box.height),
+             build: !$('abBuild').hidden };
+  });
+  ok(look.links.length && look.links.every(t => !/\.md$/.test(t)) && look.links.includes('How BuilderBot works')
+     && look.indent === 0 && look.caps === 'none' && look.share >= 65 && !look.build,
+     `the guide's links read as the docs' titles, its headings sit flush with their text, and it fills the box (${JSON.stringify(look)})`);
   await page.click('.abswitch [data-ab="log"]');
+  ok(await page.$eval('#abBuild', e => !e.hidden), '...and the build lines are under the changelog');
   // Whatever the top section is: Unreleased while entries are accumulating,
   // a dated number the moment somebody bumps. Asserted on the SHAPE (a
   // heading and at least one line under it) rather than on the wording of
@@ -1258,6 +1321,18 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
   await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
   const offered = await page.$$eval('.doc .projtab .askline datalist option', os => os.map(o => o.value));
+  // The field and its Cancel and Save on one line inside the card, at a
+  // desk and on a phone: Save had dropped under Cancel.
+  for (const w of [1280, 960]){
+    await page.setViewportSize({ width: w, height: 800 });
+    const line = await page.$eval('.doc .projtab .askline .askrow', r => {
+      const card = r.closest('.pcard').getBoundingClientRect();
+      const boxes = [...r.children].filter(e => e.offsetParent).map(e => e.getBoundingClientRect());
+      return { tops: new Set(boxes.map(b => Math.round(b.top))).size, inside: boxes.every(b => b.right <= card.right + 1) };
+    });
+    ok(line.tops === 1 && line.inside, `a card's Group ask is one line at ${w}: its field, Cancel and Save, inside the card (${JSON.stringify(line)})`);
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
   await page.click('.doc .projtab .askline [data-askno]');
   // The pencil beside the group's name renames it in a box under the
   // heading, for every project in it (R273).
@@ -1875,7 +1950,18 @@ ok(true, '...and none takes it off again');
 // Back to the projects tab, which the notebook pushed out of the pane.
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
-await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)
+// B82: alpha's page was open a moment ago, and its card's Settings still
+// goes there, to the Settings view, rather than turning the notebook behind
+// the Projects page.
+await pjMenu('alpha');
+await page.click('.doc .projtab .pcard[data-row="alpha"] [data-rn]');
+const toSettings = await page.waitForSelector('.nb .nbview[data-view="settings"]:not([hidden]) .nbsettings #rnName', { timeout: 10000 })
+  .then(() => true, () => false);
+ok(toSettings && !(await page.evaluate(() => !!document.querySelector('.doc.on .projtab'))),
+   `a card's Settings goes to the project's Settings view after its page was opened once (${await page.evaluate(() => location.hash)})`);
+await page.evaluate(() => openProjectsTab());
+await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
+await page.evaluate(n => renameProject(n), 'alpha');  // the settings form (the row's gear went in R119 step 3)
 await page.waitForSelector('#rnmodal:not([hidden])');
 await page.click('#rnCancel');
 
@@ -1968,6 +2054,11 @@ ok(/Archived/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
    '...and says which of the two reasons it is');
 await page.click('#rnCancel');
 await pjMenu('gamma');
+console.log('DEBUG108', JSON.stringify(await page.evaluate(() => { const c = document.querySelector('.doc .projtab .pcard[data-row="gamma"]');
+  const k = document.querySelector('.doc .projtab [data-k="gamma"]'); const r = k?.getBoundingClientRect();
+  return { card: !!c, fold: c?.closest('details.sect')?.open, menuHidden: c?.querySelector('.actmenu')?.hidden,
+    kIn: !!k, kRect: r && [r.x, r.y, r.width, r.height], kDisp: k && getComputedStyle(k).display, kVis: k && getComputedStyle(k).visibility,
+    rn: !document.getElementById('rnmodal')?.hidden, docOn: document.querySelector('.pane .doc.on')?.className, hash: location.hash }; })));
 await page.click(`.doc .projtab [data-k="gamma"]`);
 await page.waitForFunction(() => !(state?.projects || [])
   .some(p => p.name === 'gamma' && p.locked), { timeout: 15000 });

@@ -59,9 +59,7 @@ agent, `scripts/agent/` (the `builderbot_agent` package and its entry,
 shipped as one zip that python runs as it would a script), which dials into the controller
 (`channel.py` on that side: enroll, hello, work, result) and needs no port
 of its own; the controller keeps the registry and the job queue in
-`nodes.py`. `nodes/provision-linux.sh` makes a Linux machine a node,
-`nodes/provision-macos.sh` a Mac (a dev feature, offered only with Offer dev
-features on), `nodes/bb-session` is the root helper
+`nodes.py`. `nodes/provision-linux.sh` makes a Linux machine a node, `nodes/bb-session` is the root helper
 that gives a session its own view of its project. The design record is
 `docs/nodes.md`; the walkthroughs `docs/sandbox-vm.md` and `docs/unraid.md`.
 

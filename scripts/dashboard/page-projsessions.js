@@ -13,6 +13,9 @@
 "use strict";
 
 async function rnSessionsLoad(name){
+  // Said from the row, not asked for and refused (B89).
+  const no = rnSettingsWhy(name);
+  if (no){ if (rnFor === name && rnMode !== "git") rnWhyOff($("rnSessField"), $("rnSessList"), no); return; }
   let j;
   try{
     j = await (await fetch("/api/project-sessions?project=" + encodeURIComponent(name))).json();

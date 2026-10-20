@@ -39,6 +39,7 @@ plugins = None            # plugins.py: each account's Claude plugins
 reports = None            # reports.py: problems with BuilderBot, from any project's session
 users = None              # the account store, for names
 log_dir = None            # () -> Path of the controller's logs
+state_dir = None          # () -> Path of /config, for its state version
 IMAGE_LOG = Path(os.environ.get("BB_IMAGE_LOG", "/config/image-log.tsv"))
 
 SECTIONS = ("controller", "images", "settings", "doctor", "nodes", "plugins", "jobs", "errors", "audit",
@@ -98,7 +99,21 @@ def controller():
     return {"version": st.get("version") or "", "rev": st.get("rev", "")[:12],
             "built": st.get("built") or "", "uptime": uptime(),
             "agent_shipped": (nodes.agent_file() or {}).get("version", ""),
-            "bundle": (nodes.bundle_digest() or "")[:16], "git": _git()}
+            "bundle": (nodes.bundle_digest() or "")[:16], "git": _git(), **_state()}
+
+
+def _state():
+    """The /config state version (stateversion.py): what the upgrade check
+    reads first, and why an upgrade is held when one is."""
+    if not state_dir:
+        return {}
+    try:
+        import stateversion
+        n, by = stateversion.read(state_dir())
+        return {"state": n, "state_by": by, "state_current": stateversion.current(),
+                "state_held": stateversion.HELD}
+    except Exception as e:                       # noqa: BLE001 (a report never fails on one section)
+        return {"state_error": str(e)[:200]}
 
 
 def images(n=8):

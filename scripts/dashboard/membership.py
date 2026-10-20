@@ -33,6 +33,7 @@ import threading
 import time
 from pathlib import Path
 
+import roles
 import users
 
 STATE = None
@@ -134,8 +135,10 @@ def member_refusal(me, project, joining=False):
     if joining and (me or {}).get("role") == "owner":
         return ""
     who = _name_of(owner_of(project)) or "its owner"
-    return (f"{project} is invite only: {who} invites people to it, "
-            "and an administrator joins by accepting one")
+    if invite_only(project):
+        return (f"{project} is invite only: {who} invites people to it, "
+                "and an administrator joins by accepting one")
+    return f"only {who} or an administrator changes who is on {project}"
 
 
 def on_create(project, account):
@@ -174,6 +177,52 @@ def forget_account(uid):
             _write("project-owners.json", d)
 
 
+def forget_project(project, live=()):
+    """A project that will never be listed again (a create that never took,
+    one deleted for good): its owner, its invitations, every account's roles
+    on it and its PROJECT_owner role go (B95). Left, the Profile and the
+    Roles page went on naming an owner of a clone that had failed and of
+    one purged, two of them under one label. `live` is every live
+    project's directory: a role name is cut to a length, so one another
+    live project's owner role shares is kept."""
+    project = str(project or "")
+    if not project:
+        return
+    with _lock:
+        d = _owners()
+        if d["projects"].pop(project, None) is not None:
+            _write("project-owners.json", d)
+        i = _invites()
+        if i["projects"].pop(project, None) is not None:
+            _write("invites.json", i)
+    users.forget_project(project)
+    name = roles.owner_role_name(project)
+    if not any(roles.owner_role_name(p) == name for p in live if p != project):
+        roles.remove(name)
+        users.forget_role(name)
+
+
+def prune_gone(registry):
+    """Every project's owner, owner role and account entries put away where
+    the project is gone for good or was never made (no record, or purged):
+    what forget_project does at the time, for what happened before it did
+    (B95). A trashed project keeps them, for Put back. How many went."""
+    recs = {k: (registry.get(k) or {}).get("state") for k in registry.labels()}
+    if not recs:
+        return 0                  # no record read at all is no reason to drop anything
+    live = [k for k, st in recs.items() if st == "live"]
+    gone = {p for p in _owners()["projects"] if recs.get(p) in (None, "purged")}
+    for n, r in roles.all_roles().items():
+        note = str(r.get("note") or "")
+        if n.endswith("_owner") and note.startswith("the owner of "):
+            p = note[len("the owner of "):]
+            if recs.get(p) in (None, "purged") and roles.owner_role_name(p) == n:
+                gone.add(p)
+    for p in sorted(gone):
+        forget_project(p, live=live)
+    return len(gone)
+
+
 def members(project):
     """The accounts this project is on, by name, BuilderBot's owner first."""
     out = []
@@ -192,10 +241,11 @@ def view(me, project):
     rows = [r for r in every if r.get("kind") != "owner"]
     offer = next((r for r in every if r.get("kind") == "owner"), None)
     manage = may_manage(me, project)
+    invite = manage or (users.is_admin(me) and not invite_only(project))
     on = set(members(project))
     return {"project": project, "owner": _name_of(o), "invite_only": invite_only(project),
             "may_manage": manage,
-            "may_invite": manage or (users.is_admin(me) and not invite_only(project)),
+            "may_invite": invite,
             "members": sorted(on),
             # Ownership offered and not yet accepted (the project's owner
             # hands it on; BuilderBot's owner moves it at once).
@@ -204,10 +254,12 @@ def view(me, project):
             "invites": [
                 {"id": r["id"], "name": _name_of(r["uid"]), "by": _name_of(r.get("by") or ""),
                  "at": r.get("at", 0), "role": r.get("role") or ""} for r in rows],
-            # Who could be invited or made owner: every account, named.
-            "accounts": sorted(u.get("name") or "" for u in users.all_users()),
+            # Who could be invited or made owner: every account, named, and
+            # only to somebody who may invite or manage (B21); a member has
+            # no use for the controller's whole list of accounts.
+            "accounts": sorted(u.get("name") or "" for u in users.all_users()) if invite else [],
             # The roles an invitation may offer: those on a project (R155).
-            "roles": sorted(n for n, r in users.roles.all_roles().items()
+            "roles": sorted(n for n, r in roles.all_roles().items()
                             if r.get("scope") == "projects" and not n.endswith("_owner"))}
 
 
@@ -261,7 +313,7 @@ def invite(me, project, name, role=""):
     u = users.get(name)
     if not u or not u.get("uid"):
         return {"error": f"no account called {name}"}, 400
-    r = users.roles.get(role) if role else None
+    r = roles.get(role) if role else None
     if not r or r.get("scope") != "projects":
         return {"error": "pick the role they are invited as: a role on a project"}, 400
     if name in members(project):

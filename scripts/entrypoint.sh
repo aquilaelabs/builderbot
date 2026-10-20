@@ -504,6 +504,12 @@ main() {
     # hint file" into "the container does not start". What reads the marker
     # falls back to the container's age when it is missing.
     rm -f "$BOOT_READY_FILE" 2>/dev/null || true
+    # /config's state version, before anything writes to it (R79): a volume
+    # a newer build wrote, or one older than this build migrates from, stops
+    # the container here with the one sentence saying what to do, and the
+    # logs it would rotate are left as they are. The dashboard asks again.
+    python3 /opt/builderbot/scripts/dashboard/stateversion.py check "${DASHBOARD_STATE:-/config}" \
+        || die "/config is not one this build may start on; nothing was changed"
     setup_logging
     banner
 

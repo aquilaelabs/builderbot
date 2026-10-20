@@ -80,6 +80,16 @@ const nd = page.dialogs.length;
 await btn('claude-alpha').click();
 await page.waitForFunction(() => !document.querySelector('[data-go="claude-alpha"]'), { timeout: 15000 });
 ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Claude'), 'End asked first, then ended the session');
+// B58: by the project's name, as its row is, never the tmux name.
+const alphaLabel = await page.evaluate(() => projLabel('alpha'));
+ok(page.dialogs[nd].includes(`Claude session on ${alphaLabel}?`) && !page.dialogs[nd].includes('claude-alpha'),
+   `...the question names the project, not the tmux session (${page.dialogs[nd].split('\n')[0]})`);
+// B54: focus is not left on another row's End, where a keyboard Enter would
+// end a second session.
+await sleep(300);
+const fo = await page.evaluate(() => { const a = document.activeElement;
+  return a?.matches?.('[data-k]') ? a.dataset.k : ''; });
+ok(!fo, `after End, focus is on no other row's End (${fo || 'none'})`);
 
 // The session is gone; a tab still pointing at it takes a Resume's argument
 // so the transcript id reaches the terminal, and the frame is rebuilt for it.
@@ -200,8 +210,10 @@ await page.waitForFunction(() => document.getElementById('anaHist').hidden,
 // the findings tab used to carry, now the notebook's.
 await layoutSettled(l => l.tabs.some(t => t.kind === 'notebook'));
 await page.reload();
-await page.waitForFunction(() => document.querySelector('.pane .nb') !== null,
-                           { timeout: 30000 });
+// The tab itself, not only its body: the page can draw a notebook before
+// the restored tab list is in place, and the line below reads the list.
+await page.waitForFunction(() => document.querySelector('.pane .nb') !== null
+                                 && tabs.some(t => t.kind === 'notebook'), null, { timeout: 30000 });
 ok(true, 'a notebook tab restored from the layout loads itself');
 // The notebook was the page on show: Sessions in front again for the rest.
 await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'notebook').id));

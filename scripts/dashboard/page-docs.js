@@ -339,7 +339,10 @@ function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpt
 // page answers at, so a press goes there as the rail does and Back returns.
 const PAGE_AT = {nodes: "#/machines/nodes", docker: "#/containers", jobs: "#/jobs", toolchains: "#/build/toolchains",
   users: "#/people/users", roles: "#/people/roles", apps: "#/build/apps"};
+// A page this account may not open is its words and no link (B114): the
+// address of one a grant forbids landed on the group's first page instead.
 function pageLink(page, words, hash = PAGE_AT[page]){
+  if (typeof railAllows === "function" && !railAllows(page)) return esc(words);
   return `<a href="${esc(hash || "#")}" class="pagelink">${esc(words)}</a>`;
 }
 // A table on its way: its real head over rows whose cells shimmer, each as
@@ -1159,15 +1162,16 @@ function rmIcon(attr, label, {title = "", why = ""} = {}){
 // storage, the emulator and toolchains each said it their own way, two
 // with a link and two without). `what` says what needs the node.
 function noNodeYet(what, cls = ""){
-  return `<div class="empty${cls ? " " + cls : ""}">No node yet: ${what}; enroll one on the ${pageLink("nodes", "Nodes page")}.</div>`;
+  return `<div class="empty${cls ? " " + cls : ""}">No node yet: ${what}; enroll one on the ${pageLink("nodes", "Nodes page")} under Machines.</div>`;
 }
 
 // A row of chips narrowing a list: All first, then one per group with its
 // count, the one in force wearing `.on`. A chip is a view, never a setting:
 // the caller keeps which is on for the page's life and nothing is saved.
-// `groups` is [{key, label, count}], `on` the key in force ("" for All).
-function chipBar(groups, on, attr){
-  const chips = chipButtons(groups, on, attr);
+// `groups` is [{key, label, count}], `on` the key in force ("" for All),
+// `all` All's count where the groups overlap (chipButtons).
+function chipBar(groups, on, attr, all){
+  const chips = chipButtons(groups, on, attr, all);
   return chips ? `<div class="field"><div class="chips">${chips}</div></div>` : "";
 }
 // The chips alone, for a band that holds more than them (a list's search

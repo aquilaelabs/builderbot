@@ -5,7 +5,7 @@ owns and applies live; **Nodes**, every machine work runs on; and
 **Storage**, what a node's disks hold. **Jobs**, the queue of work placed on
 the nodes, is a page of its own on the rail. This doc covers enrolling and
 running nodes, their stores and their network, the controller's settings and
-logs, the jobs, and a Mac as a node. The design behind nodes is
+logs, and the jobs. The design behind nodes is
 [nodes.md](nodes.md); the sandbox VM a node usually is,
 [sandbox-vm.md](sandbox-vm.md).
 
@@ -57,7 +57,7 @@ the machine's own disk (toolchains, caches, artifacts, dev instance data, the
 synced project copies, `/var/lib/builderbot`); what was configured from the
 dashboard after enrolling (the mounts and their fstab lines, the runners'
 units, the GPU display); and, ticked for a hosting node, what it was given
-as a host (cloudflared with its token, Tailscale's login, the port 22 rule,
+as a host (cloudflared with its token, the port 22 rule,
 the nginx container). Unticked, those stay, so the machine can be enrolled
 again, here or on another controller, with its stores and mounts as they
 were. What the provisioner installed for the machine itself (docker, the
@@ -309,16 +309,6 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
 The page says plainly what still comes from the environment and why (the
 placement rule and the unhardwiring are docs/nodes.md §13 and §11).
 
-One switch in Debug settings, *Offer dev features*, decides which product
-this dashboard is: alpha is what has been run for real (GitHub and Gitea
-among git hosts, Unraid among the VM sandbox methods, Debian's and RHEL's
-families for the provisioner), dev is the rest, written to each product's
-documented shape and never run. Off, only alpha is in the pickers and a dev
-entry asked for by name is refused with the sentence that names the switch;
-on, dev appears tagged *(dev)* and the header says *dev*, so the two
-dashboards are never confused. Each catalog entry carries the evidence that
-vetted it (`forges.py`, `vmtemplate.py`, the provisioner's family list), and
-an entry crosses over when a lab suite or a real run proves it.
 
 **Reset BuilderBot** starts the controller over at the setup page: accounts,
 node enrollments, project settings, git tokens, the notebook, memories and
@@ -331,6 +321,35 @@ running cannot be ticked until they are ended. It asks for the word `reset`
 typed, waits for each node it un-enrolls to report, and the dashboard
 re-executes itself. Projects are deleted from the Projects page, one at a
 time.
+
+## Upgrades and /config
+
+`/config` carries one number, its state, in `/config/state.json`: the newest
+of the controller's numbered migrations that has run on it, and the build
+that ran it. Every start reads it before anything is written, first in the
+entrypoint and again in the dashboard:
+
+- **The same state**: the controller starts, and nothing is copied.
+- **An older state this build migrates from**: `/config` is copied to
+  `/config/backups/before-VERSION` (VERSION being the build about to
+  migrate it), then each migration past the stamp runs once, in order, and
+  the stamp moves with each. The newest three copies are kept. A copy leaves
+  out what grows and is rebuilt (the logs, the job and project snapshots,
+  images in transit, the relay and Git view repositories, the apps fetched
+  from a release, earlier copies and a Reset's moved-aside state) and keeps
+  every record, the database, the signing keys, the git credentials and the
+  wikis. A migration that fails is said in the log and runs again at the
+  next start; the controller starts either way.
+- **An older state than this build migrates from**: the container stops,
+  saying which release to start on it first.
+- **A newer state** (a rollback past an upgrade): the container stops, saying
+  that downgrades are not supported. Start the newer build again, or stop
+  the container and put the copy back: the contents of
+  `/config/backups/before-VERSION` in place of the rest of `/config`.
+
+A fresh `/config` is stamped with this build's state at the first start.
+Which upgrades are supported, and how to roll one back, is
+[install.md](install.md#upgrading).
 
 ## Logs
 
@@ -410,37 +429,3 @@ a grant of their own. The log is the only copy:
 a node buffers it and posts it here, and keeps nothing. `/api/v1/healthz` answers without a credential with
 the queue's counts, and `/metrics` answers with one in Prometheus text.
 
-## A Mac as a node
-
-Enrolling a Mac is a dev feature: Enroll node offers it, tagged *(dev)*, and
-the controller serves `provision-macos.sh`, only while *Offer dev features*
-is on, since the Mac path has not been proven end to end; a node that is
-already a Mac keeps working either way.
-
-`nodes/provision-macos.sh` enrolls a Mac as a **guest** node (bare, it prints
-its help; the command to run is the one **Enroll node** gives you): one
-directory
-(`~/.builderbot`) and one launchd agent that runs as you at login, no root,
-nothing in `/etc`, and `--remove` takes exactly that away. It is written for
-the bash macOS ships, so it is its own file rather than a branch of the
-Linux provisioner. `--check` runs only the pre-flight: the command line
-tools, python3, Homebrew, Xcode, room, and whether the controller answers.
-
-What a Mac node is for is what only a Mac builds: iOS, macOS, the Apple
-half of a Flutter app. `--toolchains /Volumes/SDK` points its toolchain store at
-the same share the Linux nodes use, mounted over SMB; its toolchains land under
-its own directory in it, named by its node id, and nobody else's are touched. The
-Toolchains page shows the node as a Mac and offers what the catalog packages for
-`darwin`: the JDK, Node, Go and Flutter resolve their macOS downloads
-through the same recipes, and `xcodes` installs and switches Xcode versions
-from Apple's own downloads (Xcode itself is Apple's to serve and needs an
-Apple ID once). The agent's package manager there is Homebrew, its service
-launchd; the Nodes page offers no Storage or Network, because a Mac's mounts
-and address are its owner's, and asks for no root. Sessions on the Mac
-itself need a `/workspace` the agent can keep a synced copy in, which on
-macOS is one line in `/etc/synthetic.conf`, and are not set up by the
-script.
-
-Untested on a real Mac yet: the script and the agent's macOS path are
-written against Apple's documentation and the agent's own tests, and the
-first enrollment is the proof.

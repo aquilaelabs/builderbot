@@ -38,7 +38,10 @@ function drawDoctor(){
   paint(el,
     `<div class="probs">${probs.map(c =>
        `<div class="sub ${c.level === "FAIL" ? "bad" : "warn"}" title="${esc(tip(c))}">${esc(c.text)}${
-          c.detail ? `<span class="why">${esc(c.detail)}</span>` : ""}</div>`
+          c.detail ? `<span class="why">${esc(c.detail)}</span>` : ""}${
+          // Where the fix is, when the server knows (B71): a link, which
+          // closes the panel as any press elsewhere does.
+          c.href ? `<a class="pagelink" href="${esc(c.href)}">${esc(c.act || "Open")}</a>` : ""}</div>`
      ).join("")}</div>` +
     `<div class="chips">${
        fine.map(c => `<span class="pill ok" title="${esc(tip(c))}">${esc(c.text)}</span>`).join("") +

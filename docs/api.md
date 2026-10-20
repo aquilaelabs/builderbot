@@ -11,7 +11,7 @@ The companion app's own contract is `android/api-surface.json`.
 | Method | Path | Match | Handler | What it does | Refuses on |
 |---|---|---|---|---|---|
 | GET | `/api/revs` | prefix | `_get_revs` | GET /api/revs. |  |
-| GET | `/api/live` | exact | `_get_live` | GET /api/live: who has a Claude session on each project and which of them are working, the two maps the status payload also carries, alone and cheap. |  |
+| GET | `/api/live` | exact | `_get_live` | GET /api/live: who has a Claude session on each project this account sees, which of them are working and which asking, the maps the status payload also carries (projsessions.maps), alone and cheap. |  |
 | GET | `/api/trace` | prefix | `_get_trace` | GET /api/trace?since=T: what this server was asked since T, grouped by endpoint (R75 step 4). |  |
 | GET | `/api/status` | prefix | `_get_status` | GET /api/status. |  |
 | GET | `/api/reset` | exact | `_get_reset` | GET /api/reset: how a Reset that un-enrolls its nodes first is getting on: each node, done or why not, and the error that stopped it. | refused: controller-read |
@@ -111,7 +111,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/roles` | prefix | `_roles` | POST /api/roles: assign (an account's Everywhere roles and its roles on each project, as far as the asker may, R152 and R155), set (make or change a role: its scope, its areas and note) or remove one; owner and admin are | refused: admin |
 | POST | `/api/users` | prefix | `_users` | The Users page's verbs. | refused: admin |
 | POST | `/api/toolchains` | prefix | `_toolchains` | Queue installs or removals of the toolchains the Tools card offers: an administrator's, and toolchains.verb says what each action does with which names. |  |
-| POST | `/api/toolpacks` | exact | `_toolpacks` | POST /api/toolpacks: look at a tool pack by its repository's address, add it at the commit that was shown, or remove it (R77). | refused: admin |
+| POST | `/api/toolpacks` | exact | `_toolpacks` | POST /api/toolpacks: look at a tool pack by its repository's address, or at one made here from a pasted manifest or an uploaded archive (/api/upload-archive's id); add it as it was shown; read a pack made here's manifest | refused: admin |
 | POST | `/api/emulator` | prefix | `_emulator` | Add system images to a node, or remove one: a job there, against its toolchain store. | refused: toolchains-write |
 | POST | `/api/logs` | prefix | `_logs` | The log policy, and the two things that can be done to the pile: logs.verb. | refused: controller |
 | POST | `/api/idle` | prefix | `_idle` | The idle rule for Claude sessions (idle.py): minutes, 0 for never. | refused: controller |
@@ -122,7 +122,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/global-rules` | prefix | `_global_rules` | The rules that apply to EVERY project (R63): rules.global_verb. | refused: controller |
 | POST | `/api/pending` | prefix | `_pending` | Approve or deny what a session has waiting (roadmap #27): pending.verb. | refused: pending |
 | POST | `/api/memory` | prefix | `_memory` | Edit, create or delete one of this project's memories, rewrite their index, or read the history: memory.verb, behind the gates here. |  |
-| POST | `/api/prefs` | prefix | `_prefs_post` | POST /api/prefs: a project's settings dialog, saved by prefs.dialog_save behind the gates here. | refused: node, refused: nodes-write, refused: debug, refused: docker-write |
+| POST | `/api/prefs` | prefix | `_prefs_post` | POST /api/prefs: a project's settings dialog, saved by prefs.dialog_save behind the gates here. | refused: node, refused: nodes-write, refused: debug, refused: docker-write, refused: settings |
 | POST | `/api/brief` | prefix | `_brief` | POST /api/brief: the first Claude press's Build it and Start without it, and a session's take as it starts: brief.verb, behind the gates here. |  |
 | POST | `/api/design` | prefix | `_design` | POST /api/design: a Design section's Save of the language and the pages, and the file written into the tree: design.verb, for an account that works on the project. |  |
 | POST | `/api/wiki` | exact | `_wiki` | POST /api/wiki: a page saved, removed or renamed, and the wiki pushed to or pulled from the forge's (wiki.verb), for an account that works on the project. |  |

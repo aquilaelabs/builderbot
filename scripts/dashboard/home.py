@@ -100,6 +100,9 @@ def _jobs(rows, names):
             "waiting": sum(1 for j in rows if j.get("state") == "queued"),
             "failed_today": sum(1 for j in rows if j.get("state") == "failed"
                                 and (j.get("ended") or j.get("queued") or 0) >= since),
+            # Where today began, so the Jobs page's Failed today lists the
+            # jobs this count counted, by this container's day (B113).
+            "today": int(since),
             "last": [{k: j.get(k) for k in keep} for j in last],
             "nodes": {k: v for k, v in (names or {}).items() if any(j.get("node") == k for j in last)}}
 

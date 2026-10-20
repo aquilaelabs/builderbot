@@ -118,8 +118,13 @@ function drawPendingModal(j){
   // and a blank hint were three bands of chrome around one sentence.
   $("pendAllF").hidden = $("pendListF").hidden = !rows.length;
   $("pendHintF").hidden = !rows.length && !$("pendHint").textContent;
-  $("pendApprove").disabled = $("pendDeny").disabled = !rows.length;
+  // A role that reads the project and does not write it (B101): Approve
+  // and Deny dead, the reason over the foot, in red.
+  const ro = projWriteWhy(pendFor);
+  $("pendApprove").disabled = $("pendDeny").disabled = !rows.length || !!ro;
   $("pendApprove").hidden = $("pendDeny").hidden = !rows.length;
+  $("pendWhy").textContent = rows.length ? ro : "";
+  $("pendWhyF").hidden = !rows.length || !ro;
   const NAMES = {roadmap: "Roadmap", bugs: "Bugs", rules: "Rules", settings: "Build and test", design: "Design", wiki: "Wiki"};
   const tag = r => r.kind === "roadmap" && r.number != null ? `R${r.number}`
              : r.kind === "bugs" && r.number != null ? `B${r.number}`
@@ -170,7 +175,7 @@ function drawPendingModal(j){
     const on = boxes().filter(b => b.checked).length;
     $("pendAllBox").checked = on > 0 && on === boxes().length;
     $("pendAllBox").indeterminate = on > 0 && on < boxes().length;
-    $("pendApprove").disabled = $("pendDeny").disabled = !on;
+    $("pendApprove").disabled = $("pendDeny").disabled = !on || !!ro;
   };
   $("pendAllBox").onchange = () => { boxes().forEach(b => { b.checked = $("pendAllBox").checked; }); sync(); };
   boxes().forEach(b => b.onchange = () => {

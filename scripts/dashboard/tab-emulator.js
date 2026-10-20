@@ -242,9 +242,10 @@ function renderEmulatorInto(i){
   // Its sections stand open at a desk and take turns on a phone.
   wireSections(el);
   const sel = el.querySelector("#emuNodeSel");
-  if (sel) sel.onchange = () => { emuNode = sel.value; emu = null; emuTicked.clear();
+  // A pick is a history entry (B31), so Back returns to the node before.
+  if (sel) sel.onchange = () => navPush(() => { emuNode = sel.value; emu = null; emuTicked.clear();
                                   try{ localStorage.setItem("bb.emunode", emuNode); }catch(e){ /* private */ }
-                                  emuRev++; drawPanes(); loadEmulator(); };
+                                  emuRev++; drawPanes(); loadEmulator(); });
 
   const toTc = el.querySelector("#emuToTc");
   if (toTc) toTc.onclick = e => { e.preventDefault(); tcNode = emuNode; openToolchains(); };

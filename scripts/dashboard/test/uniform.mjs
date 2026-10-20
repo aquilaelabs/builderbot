@@ -693,6 +693,18 @@ async function glance(){
       if (!dt || !dd) continue;
       if (!/monospace|Mono|Menlo|Consolas/i.test(getComputedStyle(dd).fontFamily)) bad.push('a fact value not in mono');
       if (px(getComputedStyle(dt).fontSize) > px(getComputedStyle(dd).fontSize)) bad.push('a fact label larger than its value');
+      // A column's values start at one line, whatever their labels' length
+      // (B76): one x per column of the grid, counted from the facts' own boxes.
+      if (CSS.supports('grid-template-columns', 'subgrid')){
+        const cols = new Map();
+        for (const f of dl.querySelectorAll(':scope > .fact')){
+          const v = f.querySelector('dd');
+          if (!v || !f.offsetHeight) continue;
+          const col = Math.round(f.getBoundingClientRect().left);
+          (cols.get(col) || cols.set(col, new Set()).get(col)).add(Math.round(v.getBoundingClientRect().left));
+        }
+        for (const xs of cols.values()) if (xs.size > 1) bad.push(`a facts grid whose values start at ${[...xs].join('/')}`);
+      }
     }
     // A table (R218 step 8): each row's cells start where the header's do,
     // and the header is in the note voice under the cells' size.
@@ -1498,7 +1510,7 @@ for (const kind of kinds){
   await page.click('#bAbout');
   await page.waitForSelector('#aboutModal:not([hidden])');
   const left = await animatedDuring(page, async () => {
-    await page.click('#aboutModal >> text=Close');
+    await page.click('#aboutClose');
     await page.waitForSelector('#aboutModal', { state: 'hidden' });
   });
   ok(left.some(k => /aboutModal/.test(k)),

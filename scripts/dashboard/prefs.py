@@ -916,6 +916,41 @@ def configure_dialog(**parts):
     globals().update(parts)
 
 
+# The dialog's fields that are the asking account's own on the project, not
+# the project's: anybody on it sets these for themselves.
+YOURS = ("model", "effort", "git_name", "git_email", "reply", "asks")
+
+
+def project_changes(name, req):
+    """The fields of a settings save that would change the PROJECT's own
+    settings (B19): the asker's own (YOURS) left out, and a field sent with
+    the value it already has, as the dialog sends the node beside a commit
+    name (B488), not counted."""
+    cur = get(name) or {}
+    out = []
+    for k, v in req.items():
+        if k in YOURS or k in ("project", "restart"):
+            continue
+        if k not in cur:
+            # A field the record does not keep under that name (diag,
+            # log_from and the like are kept; anything else is a change).
+            out.append(k)
+            continue
+        c = cur[k]
+        if isinstance(c, list):
+            got = v if isinstance(v, list) else [x.strip() for x in str(v or "").split(",")]
+            same = sorted(str(x) for x in got if str(x)) == sorted(str(x) for x in c)
+        elif isinstance(c, dict):
+            same = isinstance(v, dict) and {kk: v.get(kk, c[kk]) for kk in c} == c
+        elif isinstance(c, bool):
+            same = bool(v) == c
+        else:
+            same = str(v if v is not None else "") == str(c if c is not None else "")
+        if not same:
+            out.append(k)
+    return out
+
+
 def dialog_save(name, req, uid):
     """A project's settings dialog saved, once server.py has let this person
     at the project, its node and its container dial: the project's own
@@ -955,7 +990,7 @@ def dialog_save(name, req, uid):
     # here carry. Same dialog, same request, different store, because two
     # people on one project are two authors on two models and neither
     # should be able to change the other's (17 Sep).
-    mine = {k: req[k] for k in ("model", "effort", "git_name", "git_email", "reply", "asks") if k in req}
+    mine = {k: req[k] for k in YOURS if k in req}
     if mine and not r.get("error"):
         r = dict(r) | {"yours": set_for_user(uid, name, mine)}
     # The restart is asked for by the dialog, which is where the

@@ -98,13 +98,17 @@ function nbAnalysisView({$, nb, project}){
         ? `<div class="cbbar" role="img" aria-label="${esc(code.map(l => `${l.name} ${l.pct}%`).join(", "))}">${
             code.map(l => `<span style="width:${l.pct}%;background:${langColor(l.name)}" title="${esc(l.name)} ${l.pct}%"></span>`).join("")}</div>
            <div class="cblegend">${code.map(l => `<span><span class="dot" style="background:${langColor(l.name)}"></span>${esc(l.name)} <b>${l.pct}%</b><span class="n">${nfmt(l.lines)} lines in ${nfmt(l.files)}</span></span>`).join("")}</div>`
-        : `<div class="hint">no code among the tracked files yet</div>`;
+        : "";
       const sk = d.skipped || {};
       const skipped = [sk.binary ? `${sk.binary} binar${sk.binary === 1 ? "y" : "ies"}` : "",
                        sk.vendored ? `${sk.vendored} vendored or minified` : "",
                        sk.large ? `${sk.large} over 4MB` : ""].filter(Boolean);
-      body = `<div class="hint">${nfmt(d.code_lines)} lines of code in ${nfmt(d.code_files)} file${d.code_files === 1 ? "" : "s"}, tracked by git${
-          d.commit ? ` at <code>${esc(d.commit.slice(0, 7))}</code>` : ""}. Nothing untracked or ignored is counted: build output, dist/, a stray archive.</div>
+      // The head's totals first, then how much of them is code, so the two
+      // read as one count.
+      const plural = (n, w) => `${nfmt(n)} ${w}${n === 1 ? "" : "s"}`;
+      body = `<div class="hint">${plural(d.files, "file")} and ${plural(d.lines, "line")} tracked by git${
+          d.commit ? ` at <code>${esc(d.commit.slice(0, 7))}</code>` : ""}: ${d.code_lines
+          ? `${plural(d.code_lines, "line")} of code in ${plural(d.code_files, "file")}` : "no code yet"}. Nothing untracked or ignored is counted: build output, dist/, a stray archive.</div>
         ${bar}
         ${rest.length ? `<div class="hint cbfoot">Counted, not in the bar: ${rest.map(l => `${esc(l.name)} ${nfmt(l.lines)} line${l.lines === 1 ? "" : "s"}`).join(", ")}.${
           skipped.length ? ` Skipped: ${skipped.join(", ")}.` : ""}</div>`

@@ -1016,7 +1016,17 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .about>*{flex:none}
 .about>.abpage{flex:0 1 auto;min-height:0}
 .abpage{overflow:auto;padding-right:4px}
-.abpage h4{margin:12px 0 4px;font:var(--f-ui);font-weight:600}
+/* A guide's heading is the text's, not the dialog's: .modal h3 (the title
+   band's inset, rule and capitals) reached into it and set every heading
+   in from the paragraph under it (B110). */
+.about .abpage :is(h2,h3,h4){margin:12px 0 4px;padding:0;border:0;font:var(--f-ui);font-weight:600;
+  text-transform:none;letter-spacing:normal;position:static;background:none}
+/* The guide is read, so it has the box: the box stands at its full height
+   and the page takes everything the title, the switch and the foot leave;
+   the build lines are the changelog's (what is running is what changed),
+   so they are not under the guide halving it (B110). */
+#aboutModal .box.prose{height:90vh}
+.modal .box.prose>.about,.about>.abpage{flex:1 1 auto}
 .abpage p,.abpage li{font:var(--f-ui);color:var(--ink);line-height:1.5}
 .abpage ul{margin:4px 0 8px 18px;padding:0}
 .abpage .dim{color:var(--dim)}
@@ -1132,6 +1142,7 @@ body.firstrun #panes{display:none}
 .hproj .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);font:var(--f-ui)}
 .hproj .pnote{font:var(--f-ui)} .hproj .pnote.bad{color:var(--bad)} .hproj .pnote.warn{color:var(--warn)} .hproj .pnote.dim{color:var(--dim)}
 .jbrow.focus{box-shadow:inset 3px 0 var(--accent)}
+.hcard.focus{border-color:var(--accent);transition:border-color .2s}
 /* A job's line opens it (rows-you-open, R218 step 25): pressed like a
    list's row, with the lists' own hover. */
 .jbrow > .jbopen{cursor:pointer}
@@ -1860,6 +1871,9 @@ select:focus{outline-offset:-2px}
 /* File access (R151): one row per account, its name and its access. */
 #rnFtp .logdays{flex-wrap:nowrap}
 #rnFtp .logdays input[type=number]{width:7em;flex:0 0 auto;text-align:center}
+/* A number and its unit on one line, every such row in the settings: the
+   notebook's field width (100%) put "days" on a line under its box. */
+:is(.nb,.modal) .logdays>input[type=number]{width:7em;flex:0 0 auto;text-align:center}
 .rnftppeople{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 /* Also reaches: an address per row, its nodes ticked beside it, and its bin. */
 #rnReachRows{display:flex;flex-direction:column;gap:6px}
@@ -2075,8 +2089,12 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 /* An ask in a card (Group) sits on the card's own inset, not a band's. */
 .pcard .askline{padding:6px 0 2px}
 /* An ask box's field takes the row, its two buttons after it, wherever the
-   box is drawn (a card's Group, a group's rename): the box is one thing. */
-.askline .askrow input{flex:1 1 auto;min-width:0}
+   box is drawn (a card's Group, a group's rename): the box is one thing, on
+   one line. The field starts at a control's width, so a wrapping bar sent
+   Save under Cancel in a card before the field gave up any of it. */
+.askline .askrow{flex-wrap:nowrap}
+.askline .askrow input{flex:1 1 auto;min-width:0;width:auto}
+.askline .askrow>button{flex:none}
 /* A finger, not a pointer: the small controls that measured under 32px in the
    polish tour (18 Sep, 344 to 840px wide) grow to a thumb's size on a touch
    screen, and a desktop keeps its tighter strip. The bell stays bare (see its
@@ -2191,6 +2209,10 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .grow .gsub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:var(--f-row)}
 .grow .gsub .pill{margin-right:4px}
 .grow .gmeta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:var(--f-note);color:var(--dim)}
+/* A lane's color: nb-git.js builds the name as gl${lane % 5}, so no file
+   holds .gl0 whole (R60 took these for dead, B79). */
+.gl0{stroke:var(--accent)} .gl1{stroke:var(--note)} .gl2{stroke:var(--warn)}
+.gl3{stroke:var(--bad)} .gl4{stroke:var(--dim)}
 .glines path{fill:none;stroke-width:2;opacity:.8}
 .glines .gn{fill:var(--panel);stroke-width:2}
 .glines .gn.on{fill:var(--ink)}
@@ -2332,6 +2354,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    place: never at the foot, where a phone scrolls past the list to find it. */
 .addbar,.roadmapadd{display:flex;gap:var(--field-gap);align-items:center}
 .addbar button{flex:0 0 auto;min-height:var(--tap)}
+/* Several pickers before the button (the Design view's platform, template
+   and copy) wrap on a phone rather than each shrinking past its words. */
+.addbar{flex-wrap:wrap}
 /* The Docker manager's top band: New container at the left, when the images
    were checked and Check for updates at the right, one line. An action
    bar's state takes a line of its own, which broke this band into three. */
@@ -2364,6 +2389,12 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* A group's steps sit under its title, indented and hairlined, so the shape
    of "these go in this order" is visible without reading them. */
 .roadmap.step{padding:5px 0 5px 26px;border-top:1px dashed var(--btn)}
+/* A step's send button lines up under its item's, which sits in the
+   summary's inset, rather than on the card's edge. */
+.fx details.grp .roadmap.step{padding-right:var(--row-x)}
+/* What is under a row's words (done Oct 19, in 0.5.0) is a row's sub line,
+   in the data voice, not the summary's bold body text. */
+.roadmap .sub{color:var(--dim);font:var(--f-data);overflow-wrap:anywhere}
 /* The log. One line per change, newest first, and deliberately plain: it is
    read when something is not where it was left, which is a moment for facts
    and not for decoration. */
@@ -2437,14 +2468,14 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* A step is one of these, not a smaller kind of one: it was 12.5 against the
    item's 13, which reads as a rendering accident rather than a hierarchy.
    What makes it secondary is its indent and its number, not half a pixel. */
-/* Struck through means *sent*, not done. It stays where it was: the order is
-   the record, so that a step that was handed over and quietly not carried out
-   is still there to send again. */
-.roadmap.sent .txt{color:var(--dim);text-decoration:line-through}
-/* Done is a session's mark, not the dashboard's: struck the same way, because
-   it needs no sending either, but the number becomes a tick so the two are
-   not confused: a line that went and a line that is finished are different
-   claims, and only the second one comes from whoever did the work. */
+/* Sent is dim, not struck: it is still open, counted to send and sendable
+   again, so it stays where it was, the order being the record, and a step
+   that was handed over and quietly not carried out is still there to send
+   again (B55). */
+.roadmap.sent .txt{color:var(--dim)}
+/* Done is a session's mark, not the dashboard's: struck, and the number
+   becomes a tick, because a line that went and a line that is finished are
+   different claims, and only the second one comes from whoever did the work. */
 .roadmap.done .txt{color:var(--dim);text-decoration:line-through}
 .roadmap .n.tick{color:var(--accent)}
 /* Shelved: parked, at the bottom, and visibly not asking for anything. Dark
@@ -2612,11 +2643,16 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   border-radius:var(--r-small);overflow-x:auto;white-space:pre}
 .wkpage pre code{background:none;padding:0}
 .wkpage table{border-collapse:collapse;display:block;overflow-x:auto;font-family:system-ui,sans-serif;font-size:.92em}
-.wkpage th,.wkpage td{border:var(--hair) solid var(--line);padding:5px 9px;text-align:left;vertical-align:top}
+/* A cell breaks between words, never inside one (B78: 'Playwrig ht', 'Pyth on'):
+   the page's overflow-wrap:anywhere let a column shrink below its longest
+   word; break-word only breaks a word wider than the whole table can be. */
+.wkpage th,.wkpage td{border:var(--hair) solid var(--line);padding:5px 9px;text-align:left;vertical-align:top;overflow-wrap:break-word}
 .wkpage th{background:var(--panel)}
 .wkpage hr{border:0;border-top:var(--hair) solid var(--line);margin:16px 0}
 .wkpage a,.wknav a,.wktoc a,.wkfooter a{color:var(--note);text-decoration:none}
 .wkpage a:hover,.wknav a:hover,.wktoc a:hover{text-decoration:underline}
+/* A link to a page the wiki does not have: the encyclopedia's red link. */
+.wkpage a.wkmissing,.wknav a.wkmissing,.wkfooter a.wkmissing{color:var(--bad);text-decoration:underline dotted}
 .wkfooter{border-top:var(--hair) solid var(--line);margin-top:20px;padding-top:8px;color:var(--dim);font:var(--f-note)}
 .wkarticle .wkText,.wkadd .wkText{min-height:22em;font-family:var(--mono);width:100%;box-sizing:border-box}
 .wklogrow{padding:3px 0;font:var(--f-note)}
@@ -2650,7 +2686,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    from the language, which is the one place a hex is data and not chrome. */
 .dsrow{display:flex;flex-wrap:wrap;gap:var(--field-gap);align-items:flex-end}
 .dsctl{display:flex;flex-direction:column;gap:var(--label-gap);flex:0 1 auto;min-width:0}
-.dsctl select{width:auto;min-width:9em}
+.dsctl select{width:auto;min-width:9em;max-width:100%}
 .dsctl input[type=number]{width:5.5em}
 /* The row's prose field grows, but only to the width the other tabs give a
    field (the Profile's, the settings'), so what follows it stays beside it
@@ -2681,6 +2717,8 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .dslayers .dslayer .t b{font-weight:600}
 .dslayers .dslayer .t span{color:var(--dim)}
 .dslayers .dslayer button.ic{flex:0 0 auto}
+/* An empty list's line sits where a layer's would, at a layer's inset. */
+.dslayers>.hint{display:flex;align-items:center;min-height:var(--tap);padding:0 10px;margin:0}
 /* The theme the section's pulldown shows: fields like any
    tab's, not a box of their own (the operator, 28 Sep). */
 .dstheme{display:flex;flex-direction:column;gap:var(--field-gap)}
@@ -3276,7 +3314,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    (the operator, 17 Oct). */
 button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;align-items:center;justify-content:center}
 /* Search in the top bar: a field that jumps, its rows under it. */
-.jump{position:relative;flex:0 1 280px;min-width:0}
+.jump{position:relative;flex:0 1 360px;min-width:0}
 .jump input{width:100%;min-height:32px;padding:4px 10px;background:var(--sunk);color:var(--ink);font:var(--f-data)}
 .jump input::placeholder{color:var(--dim)}
 @media(max-width:1000px){ .jump{flex:0 1 150px} .meta.host{display:none} }
@@ -3288,6 +3326,7 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
   background:transparent;color:var(--ink);font:var(--f-ui);text-align:left;min-height:var(--tap)}
 .jrow.on,.jrow:hover{background:var(--btn-hi)}
 .jrow .jw{color:var(--dim);font:var(--f-note);white-space:nowrap}
+.jnone{padding:8px 10px;color:var(--dim);font:var(--f-ui);overflow-wrap:anywhere}
 /* On a phone the field takes the width between the brand and the buttons:
    the spacer beside it grew too and took half (the operator, 18 Oct: the
    hint cut off beside a blank gap). */
@@ -3426,6 +3465,15 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px var(--row-x);margin:4px 0 0}
 @media(max-width:900px){ .facts{grid-template-columns:minmax(0,1fr)} }
 .facts .fact{display:grid;grid-template-columns:minmax(5.5rem,auto) minmax(0,1fr);gap:0 8px;align-items:baseline;min-width:0}
+/* Every value of a grid's column starts at one line, whatever its label's
+   length (B76: on a phone each value began where its own label ended, two
+   ragged columns): the labels share one track per column through subgrid. */
+@supports (grid-template-columns:subgrid){
+  .facts{grid-template-columns:repeat(2,minmax(5.5rem,max-content) minmax(0,1fr));column-gap:8px}
+  @media(max-width:900px){ .facts{grid-template-columns:minmax(5.5rem,max-content) minmax(0,1fr)} }
+  .facts .fact{grid-column:span 2;grid-template-columns:subgrid}
+  .facts .fact > dd{padding-right:calc(var(--row-x) - 8px)}
+}
 .facts dt{font:var(--f-note);color:var(--dim);margin:0;white-space:nowrap}
 .facts dd{font:var(--f-data);color:var(--ink);margin:0;min-width:0;overflow-wrap:anywhere}
 .facts dd code{font:inherit}
@@ -3440,7 +3488,10 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .tbl .thead,.tbl .tline{display:grid;grid-template-columns:var(--tcols);column-gap:var(--row-x);align-items:center;min-width:0}
 .tbl .thead{padding:var(--label-gap) var(--row-x);font:var(--f-note);color:var(--dim);border-bottom:var(--hair) solid var(--line)}
 .tbl .th,.tbl .td{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tbl .td.lead{white-space:normal;overflow-wrap:anywhere;font-weight:600}
+/* A lead cell wraps between words and breaks one only when it is longer
+   than its column: anywhere cut 'nginx-bb-dev-sandbox' mid-word in a column
+   that had room for it on the next line (B112). */
+.tbl .td.lead{white-space:normal;overflow-wrap:break-word;font-weight:600}
 .tbl .th.num,.tbl .td.num{text-align:right;font-variant-numeric:tabular-nums}
 .tbl .td{font:var(--f-data);color:var(--dim)}
 .tbl .td.lead{font:var(--f-ui);font-weight:600;color:var(--ink)}
@@ -3499,6 +3550,8 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    A row the band leaves out wears .off, so paging counts only what is shown. */
 .lfilter{display:flex;align-items:center;gap:var(--field-gap);flex-wrap:wrap}
 .lfilter .chips{flex:1 1 auto;min-width:0}
+/* With no chips to draw (one kind of row), the search starts the band. */
+.lfilter .chips:empty{display:none}
 .lfilter input[type=search]{flex:0 1 16rem;min-width:10rem}
 /* A band's order (Sort on Bugs) keeps its label beside its menu. */
 .lfilter .lsort{display:flex;align-items:center;gap:6px;flex:0 0 auto}
@@ -3941,7 +3994,9 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    apart): a new surface's row is capped by wearing the class. Beside it,
    the shared parts that size their own contents: an action bar, the
    settings grid, a menu (a surface of its own whose fields run its width),
-   and .ctlown for a box that sizes its own (a reason box). The union of a
+   .ctlown for a box that sizes its own (a reason box), and the Design
+   view's .dsrow, whose pickers stop at their own labeled column (capped at
+   88% of it, a theme's name was cut on a desk). The union of a
    row's controls is what uniform.mjs measures, against the surface holding
    it. Terminals and logs are not controls and are not here. */
 :is(.doctab,.nb) .ctlrow{
@@ -4022,8 +4077,12 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    of the edge as every control does. */
 @media(max-width:440px){
   .doctab .field.docbarrow.dmpick>input{order:9;flex:0 1 100%;max-width:88%}
+  /* The picker is what gives up width on the line above it, from a zero
+     basis, so a long node name never puts Check and New under it. */
+  .doctab .field.docbarrow.dmpick>label.pick{flex:1 1 0;min-width:0;max-width:none}
+  .doctab .field.docbarrow.dmpick>label.pick>select:not([multiple]):not([size]){width:100%;text-overflow:ellipsis}
 }
-:is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.ctlrow,.ctlown,.actbar,.setgrid,.actmenu) *){
+:is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.ctlrow,.ctlown,.actbar,.setgrid,.actmenu,.dsrow) *){
   max-width:min(var(--ctl-w),88%)}
 /* ...and the controls on a row line up at the bottom of their boxes.
    A row mixes fields that carry a label above them (`.setrow.col`) with
@@ -4093,12 +4152,13 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
      own size and sit at the right, as on a desktop. */
   .actbar button,.actbar select{flex:0 0 auto}
   /* ...except a FULL bar, four buttons SHOWING or more (a hidden one does
-     not count, and More counts as one): those share the width rather than each taking its text's, so
-     the last is never pushed to a line of its own (the phone rule
+     not count, and More counts as one): those share the width, each from
+     its own text's so a long name is not cut to an equal share (B43:
+     'Send to Clau' at 360), and the last is never pushed to a line of its own (the phone rule
      both-sizes: at 344px four did not fit; R210: More sat alone under Up,
      Down, Update and Rebuild). */
   .actbar:is(:has(> :nth-child(4 of button:not([hidden]))),:has(> :nth-child(3 of button:not([hidden])) ~ .more)){gap:6px}
-  .actbar:is(:has(> :nth-child(4 of button:not([hidden]))),:has(> :nth-child(3 of button:not([hidden])) ~ .more)) > :is(button,.more){flex:1 1 0;min-width:0;padding-left:5px;padding-right:5px}
+  .actbar:is(:has(> :nth-child(4 of button:not([hidden]))),:has(> :nth-child(3 of button:not([hidden])) ~ .more)) > :is(button,.more){flex:1 1 auto;min-width:0;padding-left:5px;padding-right:5px}
   .actbar:is(:has(> :nth-child(4 of button:not([hidden]))),:has(> :nth-child(3 of button:not([hidden])) ~ .more)) > .more > button{width:100%;padding-left:5px;padding-right:5px}
 }
 /* The row whose More menu is open stacks above the rows after it: a dimmed
@@ -4223,12 +4283,8 @@ button[aria-busy="true"]{opacity:.75}
   .ndmount select,.ndmount input:not([type=checkbox]),.ndmount .ndmstate{grid-column:1 / -1}
   .ndmount .ndcap{grid-column:1} .ndmount .eye{grid-column:2;justify-self:end}
 }
-/* The Jobs tab: the filter is one checkbox in the bar, skinned like a
-   capability toggle; the reason a job ended badly is a warn line; the log
-   is the manager's compose log, same box. */
-.jbfilter{display:inline-flex;gap:6px;align-items:center;font:var(--f-ui);
-  color:var(--ink)}
-.jbfilter input{width:15px;height:15px;flex:0 0 auto}
+/* The Jobs tab: it is narrowed by chips (B74); the reason a job ended
+   badly is a warn line; the log is the manager's compose log, same box. */
 .jberr.warn{color:var(--warn)}
 /* The notebook's Analysis list is a full-bleed band: its rows and its filter
    bar carry the inset themselves, exactly as they do in the tab, so a finding
@@ -4284,6 +4340,9 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
   margin-right:6px;vertical-align:baseline}
 .st.working{background:var(--warn);animation:pulse 1.6s ease-in-out infinite}
 .st.waiting{background:var(--accent)}
+/* On Claude Code's own permission prompt (B52): the warn color, steady, so it
+   reads apart from working's pulse and from waiting's accent. */
+.st.asking{background:var(--warn)}
 /* What is live glows, softly, in its own color (R218 step 7): a session
    working or waiting, a running job, a running container. One glow, small
    and under half its color, so it reads as lit rather than as a highlight. */
@@ -4321,6 +4380,10 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
    phone never shows. */
 .doctor .probs .why{display:block;color:var(--dim);font:var(--f-note);white-space:pre-line;
   overflow-wrap:anywhere;margin-top:2px}
+/* ...and where it is fixed, when the server knows (B71): a link on its own
+   line, a thumb's height on a phone. */
+.doctor .probs .pagelink{display:inline-flex;align-items:center;min-height:32px;color:var(--accent);font:var(--f-ui)}
+@media (pointer:coarse){.doctor .probs .pagelink{min-height:44px}}
 /* A long check wraps rather than ending in an ellipsis: with no tooltips
    (11 Oct) a cut chip says nothing of the rest. A chip of two lines takes the
    control's corners, where a pill's round ends would bulge. */
@@ -5034,6 +5097,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           title="reorder; the send controls come back after"
           >Reorder</button>
       </div>
+      <div class="notice bad deadwhy" id="roadmapWhy" hidden></div>
       <div class="roadmapadd ctlrow" id="roadmapForm" hidden>
         <textarea id="roadmapText" class="proseline" rows="1" maxlength="500"
                placeholder="something for the roadmap"></textarea>
@@ -5251,6 +5315,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" data-gitact="pull" title="fast-forward this branch to its upstream">Pull</button>
         <button type="button" data-gitact="push" class="primary" title="send this branch up, with the project's credentials">Push</button>
       </div>
+      <div class="field" id="gitWhyF" hidden><div class="notice bad deadwhy" id="gitWhy"></div></div>
       <div id="gitBody" data-skel="git"></div>
       <!-- A branch against main, its own page (R269 step 2): drawn in
            place of the sections above while the address names it. -->
@@ -5266,6 +5331,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="field nbhead vbar"><span id="dsHint" data-skel="word">loading…</span><span class="sp"></span>
         <button type="button" id="dsWrite"
           title="write docs/design-language.md into the project from what is saved here; a session commits it with the work">Write the file</button></div>
+      <!-- Why Write the file and every control below are dead (B101). -->
+      <div class="field" id="dsWhyF" hidden><div class="notice bad deadwhy" id="dsWhy"></div></div>
       <!-- Add page is the Pages section's own (the operator, 29 Sep):
            nb-design.js draws it at the top of that section. -->
       <div id="dsBody" data-skel="design"></div>
@@ -5400,15 +5467,17 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       </div>
       <div class="abpage" id="abGuide" hidden></div>
       <div class="abpage ablog" id="abLog" hidden></div>
-      <div class="aline"><span>version</span><code id="aVer"></code></div>
-      <div class="aline"><span>image commit</span><code id="aRev"></code></div>
-      <div class="aline"><span>built</span><code id="aBuilt"></code></div>
-      <div class="aline"><span>host</span><code id="aHost"></code></div>
-      <div class="aline"><span>up</span><code id="aUp"></code></div>
-      <p class="hint">The build this BuilderBot is running. An update moves it
-        to the newest one.</p>
-      <p class="hint">BuilderBot is licensed under the
-        <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">Apache License 2.0</a>.</p>
+      <div id="abBuild" hidden>
+        <div class="aline"><span>version</span><code id="aVer"></code></div>
+        <div class="aline"><span>image commit</span><code id="aRev"></code></div>
+        <div class="aline"><span>built</span><code id="aBuilt"></code></div>
+        <div class="aline"><span>host</span><code id="aHost"></code></div>
+        <div class="aline"><span>up</span><code id="aUp"></code></div>
+        <p class="hint">The build this BuilderBot is running. An update moves it
+          to the newest one.</p>
+        <p class="hint">BuilderBot is licensed under the
+          <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">Apache License 2.0</a>.</p>
+      </div>
     </div>
     <div class="foot"><span class="sp"></span>
       <button type="button" id="aboutClose">Close</button>
@@ -5808,6 +5877,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         title="move it to .trash; everything is kept">Delete project…</button>
       <button id="rnUnlink" class="danger" hidden>Unlink</button>
     </div>
+    <!-- Why Delete project is dead for this account (B86), under it. -->
+    <div class="notice bad deadwhy" id="rnDeleteWhy" hidden></div>
   </div>
 </div>
 
@@ -5996,6 +6067,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     </div>
     <div class="field" id="pendListF"><div id="pendList"></div></div>
     <div class="field"><div id="pendEmpty" hidden>Nothing is waiting here.</div></div>
+    <!-- Why Approve and Deny are dead for this account (B101). -->
+    <div class="field" id="pendWhyF" hidden><div class="notice bad deadwhy" id="pendWhy"></div></div>
     <div class="foot">
       <button id="pendApprove" class="primary">Approve</button>
       <button id="pendDeny" class="danger">Deny</button>
@@ -6851,7 +6924,8 @@ document.addEventListener("keydown", e => {
 $("bDocDot").onclick = e => { e.stopPropagation(); headerOnly("doctor"); toggleDoctor(); };
 document.addEventListener("click", e => {
   if (docShown && e.target.isConnected
-      && !$("docPanel").contains(e.target) && !$("bDocDot").contains(e.target))
+      && (!$("docPanel").contains(e.target) || e.target.closest("#docPanel a[href]"))
+      && !$("bDocDot").contains(e.target))
     toggleDoctor(false);
 });
 document.addEventListener("keydown", e => {
@@ -7154,7 +7228,11 @@ document.addEventListener("keydown", e => {
 // stale from the first Up, with a Refresh button as the only way back, which
 // is a page that tells you what used to be running.
 onRev("devapp", () => {
-  if (shown("docker")){ dockerList = null; dockerRev++; loadDocker(); }
+  if (shown("docker")){ dmJobSettle(); dockerList = null; dockerRev++; loadDocker(); }
+  // ...and the nginx page, whose state line is its container's: a Save's
+  // rebuild ending moves this and nothing of nginx's own, and the line
+  // said "deployed, down" over a container long since up again (B65).
+  if (shown("nginx")) loadNginx();
 });
 // ...and a node's containers changing outside BuilderBot (one crashed, a
 // shell or a session ran docker): read again in place, the rows kept on

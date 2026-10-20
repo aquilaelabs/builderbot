@@ -85,10 +85,6 @@ KEYS = {
     "apps_android": {"default": True, "kind": "bool", "applied": "now"},
     "apps_vscode": {"default": True, "kind": "bool", "applied": "now"},
     "apps_companion": {"default": True, "kind": "bool", "applied": "now"},
-    # ...and a token that may read the releases, for as long as BuilderBot's
-    # repository is private: GitHub answers a private repository's releases
-    # 404 to anybody without one. A secret, never shown back.
-    "apps_token": {"default": "", "kind": "secret", "applied": "now"},
 }
 
 

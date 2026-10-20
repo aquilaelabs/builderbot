@@ -115,6 +115,23 @@ async function phFetch(body, probe){
   drawBell();          // the same asks, in the header
 }
 
+// Why Connect or Pair cannot be pressed, said under its row in red (B114:
+// both sat dead with the reason only in a tooltip, which a phone never
+// shows): whose the phone is or that the node is away, else what is still
+// to be typed. "" when the press is ready.
+function phWhy(which, offWhy){
+  if (offWhy) return offWhy;
+  const need = [!phIp.trim() && "the phone's IP address",
+                which === "connect" ? !phConnPort.trim() && "its port" : !phPort.trim() && "the pairing port",
+                which === "pair" && !phCode.trim() && "the pairing code"].filter(Boolean);
+  return need.length ? `${which === "connect" ? "Connect" : "Pair"} needs ${
+    need.length > 1 ? need.slice(0, -1).join(", ") + " and " + need.at(-1) : need[0]}` : "";
+}
+const phWhyLine = (which, offWhy) => {
+  const why = phWhy(which, offWhy);
+  return `<div class="sub bad phwhy" data-phwhy="${which}"${why ? "" : " hidden"}>${why}</div>`;
+};
+
 // The section's body for one node: its phone, connecting and pairing, the
 // lease, the phones it remembers, and what a session waits on. `n` is that
 // node's row in the phone answer (ph.nodes).
@@ -131,6 +148,7 @@ function phonePanel(n){
   const off = held || !n.live || !mayPhone();
   const offWhy = held ? `connected by ${esc(n.owner.name)}: only they can change it`
     : !n.live ? "the node is not dialing in"
+    : !mayPhone() ? "this account may not drive the phone"
     : "";
   // A word and an animated ellipsis, never a bar: nothing here knows a
   // percentage, and inventing one would be a lie about progress.
@@ -167,6 +185,7 @@ function phonePanel(n){
        <span class="acts"><button type="button" id="phConnect" class="primary"${off ? ' data-off="1"' : ""}${
          off || !phIp.trim() || !phConnPort.trim() ? " disabled" : ""} title="${offWhy}"
          >${dev ? "Reconnect" : "Connect"}</button></span>
+       ${phWhyLine("connect", offWhy)}
        ${ph.you && phIp === ph.you
          ? `<div class="sub">this device; you are reading this on it</div>`
          // The hint under the control it is about (R218 step 23).
@@ -185,6 +204,7 @@ function phonePanel(n){
        </div>
        <span class="acts"><button type="button" id="phPair"${off ? ' data-off="1"' : ""}${
          off || !phIp.trim() || !phPort.trim() || !phCode.trim() ? " disabled" : ""} title="${offWhy}">Pair</button></span>
+       ${phWhyLine("pair", offWhy)}
        <div class="sub">${ph.you && phIp === ph.you
          ? `<b class="warn">You are reading this on the phone you are pairing.</b>
             Pair from another device: Android closes the pairing dialog when you leave it.`
@@ -293,7 +313,8 @@ function phonePanel(n){
 function wirePhoneTab(root){
   const $$ = id => root.querySelector("#" + id);
   const pick = $$("phPick");
-  if (pick) pick.onchange = () => { phNode = pick.value; phIp = ""; phFetch(null, true); };
+  // A pick is a history entry (B31), so Back returns to the node before.
+  if (pick) pick.onchange = () => navPush(() => { phNode = pick.value; phIp = ""; phFetch(null, true); });
   const rf = $$("phRefresh");
   // Refresh says so on the button itself, like every other tab's (the
   // operator, 13 Oct); the pill is for what the phone is being asked to do.
@@ -308,6 +329,13 @@ function wirePhoneTab(root){
     set($$("phConnect"), phIp.trim() && phConnPort.trim());
     set($$("phPair"), phIp.trim() && phPort.trim() && phCode.trim());
     root.querySelectorAll("[data-kconnect]").forEach(b => set(b, phConnPort.trim()));
+    // ...and the reason under each row follows what is typed.
+    root.querySelectorAll("[data-phwhy]").forEach(el => {
+      const b = $$(el.dataset.phwhy === "connect" ? "phConnect" : "phPair");
+      if (b?.dataset.off === "1") return;
+      const why = phWhy(el.dataset.phwhy, "");
+      el.textContent = why; el.hidden = !why;
+    });
     const say = root.querySelector(".phknownsay");
     if (say) say.hidden = !!phConnPort.trim();
   };

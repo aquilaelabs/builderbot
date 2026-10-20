@@ -10,8 +10,9 @@ the next free directory (Name-2, Name-3), and the name shown stays Name. So
 a restore always fits back where it was, a new project never inherits an old
 one's notebook or containers, and a rename is the shown name alone.
 
-projects.json: {"next": N, "projects": {dir: {"id", "name", "state", "at"}}},
-state being live, trashed or purged. Only BuilderBot makes a project: a
+projects.json: {"next": N, "projects": {dir: {"id", "name", "state", "at",
+"moved"}}}, state being live, trashed or purged, and moved when it last
+changed (the trash's "deleted 2 min ago"). Only BuilderBot makes a project: a
 folder made by hand on the share is not one. On the first run every folder
 already there is recorded, which is the whole migration.
 """
@@ -194,13 +195,23 @@ def unique_name(name, but=None):
     return cand
 
 
+def taken_dirs():
+    """Every directory a new project may not have, lowercased: each record,
+    purged ones too (their notebook, settings, containers and transcripts
+    are kept under it, and a new project would inherit them), and anything
+    on disk. The New project dialog reads it to say before Create when the
+    folder will be numbered (B63)."""
+    with _lock:
+        ps = _load()["projects"]
+        live, gone = _on_disk()
+        return sorted({k.lower() for k in ps} | {k.lower() for k in live | gone})
+
+
 def new_dir(base):
     """A directory nothing has ever had: `base`, else base-2, base-3. Every
     record counts, purged ones too, and so does anything on disk."""
     with _lock:
-        ps = _load()["projects"]
-        live, gone = _on_disk()
-        taken = {k.lower() for k in ps} | {k.lower() for k in live | gone}
+        taken = set(taken_dirs())
         cand, n = base, 2
         while cand.lower() in taken:
             cand = f"{base}-{n}"
@@ -220,6 +231,25 @@ def claim(dirname, name):
             r.update(name=shown, state="live")
         _save(d)
         return dict(r)
+
+
+def forget(dirname):
+    """A create that never took (a clone that failed, an archive refused,
+    git init failing): its record goes, so its folder is free again and the
+    next try with the name lands in it rather than in NAME-2 (B93). Only a
+    record whose folder is not there: nothing was ever kept under it."""
+    with _lock:
+        d = _load()
+        if dirname in d["projects"] and not (WORKSPACE / dirname).exists():
+            d["projects"].pop(dirname)
+            _save(d)
+            return True
+        return False
+
+
+def live_dirs():
+    """Every live project's directory."""
+    return sorted(k for k, r in _load()["projects"].items() if r.get("state") == "live")
 
 
 def set_name(dirname, name):
@@ -252,6 +282,7 @@ def mark(dirname, state):
         if state == "live" and r.get("state") != "live":
             r["name"] = unique_name(str(r.get("name") or dirname), but=dirname)
         r["state"] = state
+        r["moved"] = int(time.time())
         _save(d)
         return dict(r)
 

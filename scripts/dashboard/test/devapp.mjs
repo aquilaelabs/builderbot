@@ -983,6 +983,20 @@ ok(await page.evaluate(() => [
      jobWhy(''),
    ].join(' | ')) === 'creating network: pool overlaps | build failed; the tail of its output is below | ',
    'a failed job is summarized by its reason, not by the label above it');
+// ...in the bad tone, even while the container it meant to replace still
+// runs (B96: a failed Rebuild read in the success green).
+{
+  const tone = await page.evaluate(() => {
+    const d = Object.assign({}, (dockerList?.instances || []).find(i => i.project === 'ep.silon'), { running: true, containers: 1 });
+    const job = { project: d.project, instance: d.instance, running: false, state: 'failed',
+                  error: 'Error response from daemon: manifest for nginx:walk-typo-404 not found (exit 1)' };
+    const box = document.createElement('div'); box.innerHTML = dmRowsHtml([d], job, false);
+    const s = box.querySelector('.dmstate');
+    return { text: s?.textContent || '', bad: !!s?.classList.contains('bad'), ok: !!s?.classList.contains('ok') };
+  });
+  ok(/not found/.test(tone.text) && tone.bad && !tone.ok,
+     `a failed job on a running container's row says why, in the bad tone (${JSON.stringify(tone)})`);
+}
 // Rebuild has to wake for the retry. A build records itself before the up
 // that follows it, so a failed up left the row insisting the build was
 // current: true, and not what somebody looking at a red row wants offered.
@@ -1667,7 +1681,7 @@ r = a._job_rebuild('alpha', 'main', run)
 print(json.dumps({'phases': phases, 'steps': run.steps, 'result': r}))
 `], { encoding: 'utf8' });
 const AB = JSON.parse(ab.trim().split('\n').pop());
-ok(!AB.phases.includes('up') && AB.steps.join() === 'building,stopping',
+ok(!AB.phases.includes('up') && AB.steps.join() === 'building,pulling,stopping',
    'an abort during the stopping step stops there, rather than starting it anyway');
 ok(AB.result.state === 'canceled' && /stopped/.test(AB.result.error),
    '...and the result says so, which it was already saying with the thing running');
@@ -2061,6 +2075,25 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
   ok(await page.waitForFunction(sel => document.querySelectorAll(sel + ' .sect .wire .wgrp').length === 2, DM, { timeout: 15000 })
        .then(() => true, () => false),
      '...and an open Ports and mounts keeps its lines when the list redraws');
+  // ...and keeps them when the read behind the redraw could not resolve the
+  // compose (B12: under a loaded gate the config call ran out, the answer
+  // said no ports and no mounts, and the fold said it publishes nothing).
+  {
+    const route = '**/api/devapp';
+    await page.route(route, async r => {
+      const body = r.request().postDataJSON?.() || {};
+      if (body.action !== 'state') return r.fallback();
+      const real = await r.fetch();
+      const j = await real.json();
+      j.state = { ...(j.state || {}), ports: [], mounts: [], wired: false };
+      await r.fulfill({ response: real, json: j });
+    });
+    await page.evaluate(() => { dockerRev++; drawPanes(); });
+    await page.waitForTimeout(1500);
+    const kept = await page.$$eval(`${DM} .sect .wire`, ws => ws.map(w => w.querySelectorAll('.wgrp').length + ':' + /publishes nothing/.test(w.textContent)));
+    await page.unroute(route);
+    ok(kept.includes('2:false'), `...and keeps them when a read could not resolve the compose, never "publishes nothing" (${kept.join(' ')})`);
+  }
   // Its services a table in the card (the operator's concept, 17 Oct): each
   // its own line, its ports in their column.
   const svcs = await page.$$eval(`${DM} .dmsvctbl .tline`, ls => ls.map(l => ({
@@ -2429,6 +2462,27 @@ ok(dead.off.every(Boolean),
    '...grayed, every one of them, so an inert row looks inert before you press');
 ok(dead.pills.length > 0 && dead.pills.every(t => /state unknown/.test(t)),
    '...saying the state is unknown rather than reporting one nobody asked for');
+// ...except on a row whose own job is running, which knows what it is doing
+// (B65: a Rebuild read "state unknown" over its own "stopping"); and a job
+// the queue says has ended is said on its row at once, not when the whole
+// listing has been read again (it kept "stopping..." and Abort for seconds).
+{
+  const got = await page.evaluate(async () => {
+    const d = (dockerList?.instances || [])[0], was = dockerList.job, realFetch = window.fetch;
+    const job = { id: 'j_settle', running: true, project: d.project, instance: d.instance, action: 'rebuild', step: 'stopping' };
+    dockerList.job = job;
+    const pill = (dmRowsHtml([d], dockerJob(), true).match(/class="pill stat dmpill[^"]*">([^<]*)/) || [])[1];
+    window.fetch = async (u, o) => /\/api\/v1\/jobs\?id=j_settle/.test(String(u))
+      ? new Response(JSON.stringify({ id: 'j_settle', state: 'failed', error: 'up failed:\nport taken' }), { headers: { 'Content-Type': 'application/json' } })
+      : realFetch(u, o);
+    try{ await dmJobSettle(); }finally{ window.fetch = realFetch; }
+    const after = { running: job.running, error: job.error, shown: dockerJob() === job };
+    dockerList.job = was;
+    return { pill, after };
+  });
+  ok(got.pill === 'rebuilding' && got.after.running === false && /port taken/.test(got.after.error) && got.after.shown,
+     `a blind row with its own job running says what the job does, and an ended job is said at once (${got.pill}; ${JSON.stringify(got.after)})`);
+}
 ok(await page.$$eval('.dmtab .row[data-inst] .dmpill,.dmtab .row[data-inst] .actbar .state',
                      es => es.every(e => !e.classList.contains('ok'))),
    '...and nothing shows as running: green is a claim about a daemon that is not answering');
@@ -3181,6 +3235,27 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
   });
   ok(!narrow.fold, `on a phone the row's detail and its Project picker are on the row, no fold (${JSON.stringify(narrow)})`);
   ok(!narrow.sideways && narrow.actsVisible, '...nothing scrolls sideways, and the row keeps its buttons');
+  // At 360 and 344 the bar's controls stay on one line under a long node
+  // name, the picker giving up width, and the running tile's words fit (B29).
+  for (const w of [360, 344]){
+    await page.setViewportSize({ width: w, height: 780 });
+    await page.evaluate(() => { dockerRev++; drawPanes(); });
+    await page.waitForSelector('.dmtab .dmpick select', { timeout: 15000 });
+    const bar = await page.evaluate(() => {
+      const b = document.querySelector('.pane .doc.on .docbarrow.dmpick');
+      const sel = b.querySelector('label.pick select');
+      sel.options[sel.selectedIndex].textContent = 'bb-dev-sandbox-with-a-long-name';
+      const top = e => Math.round(e.getBoundingClientRect().top);
+      const tops = [sel.closest('label'), b.querySelector('.pseg'), ...b.querySelectorAll('.actbar > button')]
+        .filter(e => e && e.offsetHeight).map(top);
+      const tile = [...document.querySelectorAll('.pane .doc.on .tiles .tile .ts')][0];
+      return { tops, right: Math.max(...[...b.querySelectorAll('button, select')].map(e => e.getBoundingClientRect().right)),
+               tileLines: tile ? (() => { const r = document.createRange(); r.selectNodeContents(tile);
+                 return new Set([...r.getClientRects()].map(x => Math.round(x.top))).size; })() : 1 };
+    });
+    ok(new Set(bar.tops).size === 1 && bar.right <= w && bar.tileLines <= 1,
+       `at ${w}px the Containers bar keeps its picker, views, Check and New on one line, and the tile on one line (${JSON.stringify(bar)})`);
+  }
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
 }
@@ -4845,6 +4920,47 @@ print(json.dumps({'bad': bool(bad.get('error')), 'good': bool(good.get('ok')), '
   ok(!two.go && two.node === ids.spare && !two.disabled && two.options.slice().sort().join() === [ids.spare, ids.sandbox].sort().join()
      && /One of ep\.silon's nodes/.test(two.hint),
      `...and Send offers exactly its nodes, primary picked (${two.options.length} offered, ${two.node} picked)`);
+  // Create opens the Containers page on the node the container goes to, not
+  // the one it last showed (B62). The new and the build are stubbed: what is
+  // asked is where the page lands, and spare has no daemon to build on.
+  {
+    const landed = await page.evaluate(async ([spare, sandbox]) => {
+      dockerNode = sandbox;
+      const realFetch = window.fetch, realAct = dmAction;
+      window.fetch = async (u, o) => /\/api\/devapp/.test(String(u)) && /"action":"new"/.test(o?.body || '')
+        ? new Response(JSON.stringify({ ok: true, instance: 'landed' }), { headers: { 'Content-Type': 'application/json' } })
+        : realFetch(u, o);
+      let built = null;
+      dmAction = async (p, i, act) => { built = `${p}|${i}|${act}`; };
+      try{
+        openSendToDocker('ep.silon');
+        $('dnNode').value = spare;
+        await dnSubmit();
+      }finally{ window.fetch = realFetch; dmAction = realAct; }
+      const out = { node: dockerNode, arg: dockerTab()?.arg, built };
+      openDockerOn(sandbox);
+      return out;
+    }, [ids.spare, ids.sandbox]);
+    ok(landed.node === ids.spare && landed.arg === ids.spare && landed.built === 'ep.silon|landed|rebuild',
+       `Create opens the Containers page on the node the container went to (${landed.node}, tab ${landed.arg}, ${landed.built})`);
+  }
+  // A project is named as it is shown, never by its directory, which a name
+  // reused after a delete has numbered (B64): the dialog's node line, and
+  // what a confirm calls a container with no row yet. Planted and read in
+  // one evaluate, so a poll cannot put the label back between.
+  {
+    const said = await page.evaluate(() => {
+      const row = (state.projects || []).find(p => p.name === 'ep.silon'), was = row.label;
+      row.label = 'epsilon-shown';
+      try{
+        openSendToDocker('ep.silon');
+        return { hint: $('dnNodeHint').textContent, called: dmCalled('ep.silon', 'nosuch') };
+      }finally{ closeSendToDocker(); row.label = was; }
+    });
+    ok(/One of epsilon-shown's nodes/.test(said.hint) && !/ep\.silon/.test(said.hint)
+       && said.called === 'epsilon-shown/nosuch',
+       `the Send dialog and the confirms name the project as it is shown (${said.hint.slice(0, 40)}; ${said.called})`);
+  }
   const off = await post('/api/devapp', { project: 'ep.silon', action: 'new', instance: 'elsewhere', node: 'n_notanode' });
   ok(/ep\.silon works on spare, sandbox, and a container for it anywhere else/.test(off.error || ''),
      `a node outside the set is refused, naming the set (${String(off.error).slice(0, 70)})`);

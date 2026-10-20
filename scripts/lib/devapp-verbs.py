@@ -158,7 +158,7 @@ def rebuild():
         # build, and from there this is the same poll as any other rebuild.
         rid = r["id"]
         print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}), waiting up "
-              "to 15 minutes for Allow on the dashboard's Containers page or bell", file=sys.stderr)
+              "to 15 minutes for Approve on the dashboard's Containers page or bell", file=sys.stderr)
         o = waits.outcome(auth, rid, "the rebuild was not allowed")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'the rebuild would not start'}")
@@ -282,7 +282,7 @@ def new():
     name = r.get("name") or inst
     if r.get("id"):
         print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}) to send it to "
-              f"Docker as {name}, waiting up to 15 minutes for Allow on the dashboard's Containers page "
+              f"Docker as {name}, waiting up to 15 minutes for Approve on the dashboard's Containers page "
               "or bell", file=sys.stderr)
         o = waits.outcome(auth, r["id"], "it was not allowed")
         if o.get("code"):
@@ -339,6 +339,31 @@ def test():
     sys.exit("[builderbot] ERROR: the tests are still going after an hour; the job is on the Jobs page")
 
 
+
+def follow_remove(jid, forgot=False, allowed=False):
+    """A remove's down is a job, and the answer only says it was queued:
+    followed to its end, so a down that failed (a compose file gone from the
+    tree: "empty compose file") is said as a failure with the container still
+    up, never as removed (B755, report #111), whether it ran at once or after
+    an Allow."""
+    auth = os.environ["BB_DEV_AUTH"]
+    for _ in range(300 if jid else 0):
+        j = bbapi.call(f"/api/v1/jobs?id={jid}", auth=auth)
+        if j.get("error") and "state" not in j:
+            sys.exit(f"[builderbot] ERROR: {j['error']}")
+        if j.get("state") in ("failed", "canceled"):
+            sys.exit(f"[builderbot] ERROR: not removed, and it is still in the manager: "
+                     f"{j.get('error') or j['state']} (bb jobs {jid} is its log)")
+        if j.get("state") == "succeeded":
+            break
+        time.sleep(1)
+    else:
+        if jid:
+            sys.exit(f"[builderbot] ERROR: the remove is still going after five minutes ({jid} on the Jobs page)")
+    print(("[builderbot] allowed, and removed" if allowed else "[builderbot] removed")
+          + (": its daemon did not answer, so the row is gone and whatever ran there still runs" if forgot
+             else "; its env and data stay for a remake"))
+
 def edit():
     proj, auth = os.environ["BB_DEV_PROJECT"], os.environ["BB_DEV_AUTH"]
     verb, setting = os.environ["BB_DEV_VERB"], os.environ.get("BB_DEV_SET") == "1"
@@ -368,34 +393,20 @@ def edit():
         # On ask: Allow removes it, or writes the env and builds nothing,
         # since the card said env set and the rebuild is the next ask.
         print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}), waiting up "
-              "to 15 minutes for Allow on the dashboard's Containers page or bell", file=sys.stderr)
+              "to 15 minutes for Approve on the dashboard's Containers page or bell", file=sys.stderr)
         o = waits.outcome(auth, r["id"], "it was not allowed")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it would not start'}")
-        print("[builderbot] allowed, and removed: its env and data stay for a remake" if verb == "remove"
-              else "[builderbot] allowed, and its env is saved; bb devapp rebuild applies it")
+        if verb == "remove":
+            # Allow queued the down as a job, whose id is the outcome's
+            # words: followed like the direct remove's (B15, report #111).
+            out = str(o.get("out") or "")
+            follow_remove(out if out.startswith("j_") else "", allowed=True)
+        else:
+            print("[builderbot] allowed, and its env is saved; bb devapp rebuild applies it")
         raise SystemExit(0)
     if verb == "remove":
-        # The down is a job, and the answer only says it was queued: followed
-        # to its end, so a down that failed (a compose file gone from the
-        # tree: "empty compose file") is said as a failure with the container
-        # still up, never as removed (B755, report #111).
-        jid = r.get("job") or ""
-        for _ in range(300 if jid else 0):
-            j = bbapi.call(f"/api/v1/jobs?id={jid}", auth=auth)
-            if j.get("error") and "state" not in j:
-                sys.exit(f"[builderbot] ERROR: {j['error']}")
-            if j.get("state") in ("failed", "canceled"):
-                sys.exit(f"[builderbot] ERROR: not removed, and it is still in the manager: "
-                         f"{j.get('error') or j['state']} (bb jobs {jid} is its log)")
-            if j.get("state") == "succeeded":
-                break
-            time.sleep(1)
-        else:
-            if jid:
-                sys.exit(f"[builderbot] ERROR: the remove is still going after five minutes ({jid} on the Jobs page)")
-        print("[builderbot] removed" + (": its daemon did not answer, so the row is gone and whatever "
-                                        "ran there still runs" if r.get("forgot") else "; its env and data stay for a remake"))
+        follow_remove(r.get("job") or "", forgot=bool(r.get("forgot")))
     else:
         print("[builderbot] its env is saved; bb devapp rebuild applies it")
 
@@ -464,7 +475,7 @@ def ctl():
         raise SystemExit(0)
     if r.get("id"):
         print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{r['id']}), waiting up "
-              "to 15 minutes for Allow on the dashboard's Containers page or bell", file=sys.stderr)
+              "to 15 minutes for Approve on the dashboard's Containers page or bell", file=sys.stderr)
         o = waits.outcome(auth, r["id"], "it was not allowed")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it did not happen'}")

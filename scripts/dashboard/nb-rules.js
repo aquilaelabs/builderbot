@@ -67,6 +67,9 @@ function nbRulesView({$, nb, project}){
   function globalRules(gs){
     const may = !!nb.ruleData?.may_global;
     if (!gs.length && !may) return "";
+    // Switching one off here is a change to the project (B86): dead, with
+    // the reason said once under Add a rule above.
+    const ro = projWriteWhy(project);
     const off = offHere();
     const cond = ruleCond;
     const ed = nb.globalEditing;
@@ -94,7 +97,7 @@ function nbRulesView({$, nb, project}){
             <div class="bfield"><label>rule</label><div class="bval">${esc(g.text || "")}</div></div>${
             (g.paths || []).length ? `<div class="bfield rltrig"><label>files</label><div class="bval">${esc(g.paths.join(", "))}</div></div>` : ""}${
             (g.words || []).length ? `<div class="bfield rltrig"><label>words</label><div class="bval">${esc(g.words.join(", "))}</div></div>` : ""}
-            <div class="bfield"><label class="ndcap"><input type="checkbox" class="grHere"${here ? " checked" : ""}${g.disabled ? " disabled" : ""}> On for this project</label>${
+            <div class="bfield"><label class="ndcap"><input type="checkbox" class="grHere"${here ? " checked" : ""}${g.disabled || ro ? " disabled" : ""}> On for this project</label>${
               g.disabled ? `<div class="sub">An administrator has turned it off for every project.</div>` : ""}</div>
             <div class="actbar macts"><span class="state">${g.builtin ? "shipped with BuilderBot" : "an administrator's"}${here ? "" : " · Save applies the switch"}</span>${
               may ? (g.builtin
@@ -163,9 +166,12 @@ function nbRulesView({$, nb, project}){
     // anybody can answer without knowing what it is charged for, and the
     // charge is on every session started in this project, forever.
     const chars = ruleDirty() ? null : d.chars;
+    // A role that reads the project and does not write it (B86): Add a
+    // rule dead with the reason under it, and no Edit or Remove on a row.
+    const ro = projWriteWhy(project);
     const body = `
       <div class="hint">How you want this project worked on. A session reads these at the start and cannot change yours.</div>
-      <div class="addbar ctlrow" data-add="rule"><button type="button" id="rlAdd">Add a rule</button></div>
+      <div class="addbar ctlrow" data-add="rule"><button type="button" id="rlAdd"${ro ? " disabled" : ""}>Add a rule</button></div>${deadWhy(ro)}
       <div class="field" id="rlList">${rows.map((r, i) => `
         <details class="bug chev rulerow${nb.ruleEditing.has(i) ? " editing" : ""}" data-i="${i}"${
             nb.ruleEditing.has(i) || nb.ruleOpen.has(i) ? " open" : ""}>
@@ -230,9 +236,9 @@ function nbRulesView({$, nb, project}){
             ${(r.refuse || []).length ? `<div class="bfield rlframe"><label>refuses</label><div class="bval">${esc(r.refuse.join(", "))} <span class="dim">· a session's command that starts with one is refused</span></div></div>` : ""}
             ${r.replaces ? `<div class="bfield rlframe"><label>in place of</label><div class="bval">the global rule ${esc(r.replaces)}, which sessions here no longer read</div></div>` : ""}
             <div class="actbar macts">
-              <span class="state">${ruleWhen(r)}</span>
+              <span class="state">${ruleWhen(r)}</span>${ro ? "" : `
               <button type="button" class="rlEdit">Edit</button>
-              <button type="button" class="danger rlRm">Remove</button>
+              <button type="button" class="danger rlRm">Remove</button>`}
             </div>`}
           </div>
         </details>`).join("")}</div>
@@ -295,7 +301,8 @@ function nbRulesView({$, nb, project}){
       if (repl) repl.onchange = () => ruleField(i, "replaces", repl.value);
       // Removing a row shifts every index above it; the set is rebuilt from
       // the rows that stay so an open editor does not jump to its neighbor.
-      row.querySelector(".rlRm").onclick = () => {
+      const rm = row.querySelector(".rlRm");
+      if (rm) rm.onclick = () => {
         const shift = s => new Set([...s].filter(j => j !== i).map(j => (j > i ? j - 1 : j)));
         nb.ruleEditing = shift(nb.ruleEditing); nb.ruleOpen = shift(nb.ruleOpen);
         nb.ruleWas = new Map([...nb.ruleWas].filter(([j]) => j !== i).map(([j, v]) => [j > i ? j - 1 : j, v]));

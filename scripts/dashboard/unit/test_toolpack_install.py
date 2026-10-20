@@ -25,6 +25,8 @@ def git(*a, cwd):
 
 
 class Install(unittest.TestCase):
+    MODE = 0o755
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -33,7 +35,7 @@ class Install(unittest.TestCase):
         os.makedirs(os.path.join(pack, "bin"))
         with open(os.path.join(pack, "bin", "hexkit"), "w") as f:
             f.write("#!/bin/sh\necho \"hexkit 1.0\"; for a in \"$@\"; do echo \"arg[$a]\"; done\n")
-        os.chmod(os.path.join(pack, "bin", "hexkit"), 0o755)
+        os.chmod(os.path.join(pack, "bin", "hexkit"), self.MODE)
         with open(os.path.join(pack, "install.sh"), "w") as f:
             f.write("#!/bin/sh\necho fetched > \"$(dirname \"$0\")/payload.txt\"\n")
         with open(os.path.join(pack, "bbtool.json"), "w") as f:
@@ -102,7 +104,77 @@ class Install(unittest.TestCase):
         r = self.bb("tool", "hexkit", "dump", "x")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("hexkit is switched off for this project", r.stderr)
+        self.assertIn("bb tool hexkit dump ...   (switched off for this project", self.bb("tool").stdout,
+                      "the listing says so too")
 
+
+class NotExecutable(Install):
+    """B83: the tool committed without its executable bit, as a file added
+    through Gitea's or GitHub's web editor is. Every install failed
+    'Permission denied'; the install marks what the pack runs executable,
+    so the whole of the test above passes on it too."""
+    MODE = 0o644
+
+    def test_the_install_marks_the_tool_executable(self):
+        r = self.bb("toolchains", "install", "hexkit")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("marking bin/hexkit executable", r.stdout + r.stderr)
+        d = [os.path.join(self.store, x, "hexkit") for x in os.listdir(self.store)
+             if os.path.isdir(os.path.join(self.store, x, "hexkit"))][0]
+        self.assertTrue(os.access(os.path.join(d, "bin", "hexkit"), os.X_OK))
+
+
+class MadeHere(unittest.TestCase):
+    """A pack made on the controller (an upload, no repository of its own)
+    installs from the git bundle that travels beside toolpacks.json, at the
+    commit made here, with the same pinned fetch as one from a repository."""
+
+    def test_installs_from_the_bundle(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        t = tmp.name
+        files = {"bin/hexkit": "#!/bin/sh\necho \"hexkit here\"; for a in \"$@\"; do echo \"arg[$a]\"; done\n",
+                 "bbtool.json": json.dumps({"name": "hexkit", "platforms": ["linux/amd64", "linux/arm64"],
+                                            "install": {"verify": ["{dir}/bin/hexkit"]},
+                                            "layout": {"bin": ["bin"], "tool": "bin/hexkit"},
+                                            "verbs": {"dump": {"run": ["{dir}/bin/hexkit", "{args}"]}}})}
+
+        def unpack(aid, dest):
+            for rel, body in files.items():
+                os.makedirs(os.path.join(dest, os.path.dirname(rel)), exist_ok=True)
+                with open(os.path.join(dest, rel), "w") as f:
+                    f.write(body)
+            return {"files": len(files)}
+        toolpacks.configure(state=t, write_json=statefile.write_json, unpack=unpack)
+        seen = toolpacks.stage(archive="0" * 16)
+        r = toolpacks.add_staged(seen["staged"], "operator")
+        self.assertTrue(r.get("ok"), r)
+        b = os.path.join(t, "bundle")
+        shutil.copytree(os.path.join(REPO, "scripts", "lib"), os.path.join(b, "scripts", "lib"))
+        shutil.copy(os.path.join(REPO, "scripts", "bb"), os.path.join(b, "scripts", "bb"))
+        os.makedirs(os.path.join(b, "config"))
+        shutil.copy(os.path.join(REPO, "config", "toolchains.json"), os.path.join(b, "config"))
+        with open(os.path.join(b, "config", "toolpacks.json"), "w") as f:
+            f.write(toolpacks.catalog_json())
+        for arc, src in toolpacks.hosted_files():
+            os.makedirs(os.path.dirname(os.path.join(b, arc)), exist_ok=True)
+            shutil.copy(src, os.path.join(b, arc))
+        store = os.path.join(t, "store")
+        os.makedirs(store)
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        env["SDK_ROOT"] = store
+
+        def bb(*a):
+            return subprocess.run(["bash", os.path.join(b, "scripts", "bb"), *a], capture_output=True, text=True,
+                                  env=env, timeout=120, check=False)
+        r = bb("toolchains", "install", "hexkit")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        d = [os.path.join(store, x, "hexkit") for x in os.listdir(store)
+             if os.path.isdir(os.path.join(store, x, "hexkit"))][0]
+        self.assertEqual(git("rev-parse", "HEAD", cwd=d), toolpacks.packs()["hexkit"]["commit"])
+        r = bb("tool", "hexkit", "dump", "a b")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("hexkit here\narg[a b]", r.stdout)
 
 if __name__ == "__main__":
     unittest.main()

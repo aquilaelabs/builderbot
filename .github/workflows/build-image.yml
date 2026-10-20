@@ -19,6 +19,10 @@ name: build image
 on:
   push:
     branches: ["main"]
+    # A release's tag (v0.5.0) publishes that release's own image, :0.5.0 and
+    # :0.5, so an install can pin a release and roll back to the one before
+    # (docs/install.md#upgrading). Path filters do not apply to a tag push.
+    tags: ["v*"]
     paths:
       - "Dockerfile"
       - ".dockerignore"
@@ -149,6 +153,8 @@ jobs:
             type=ref,event=pr
             type=sha,format=short
             type=schedule,pattern={{date 'YYYYMMDD'}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
 
       # What the image will say it is when someone asks it from the inside.
       # The commit is the one being built; the time is this build's, not the

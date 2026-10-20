@@ -53,6 +53,9 @@ _bundle = {}
 # the server: the bundle carries them as config/toolpacks.json beside the
 # shipped catalog, which is how a node installs a pack by name.
 packs_json = None
+# ...and the packs made on the controller, each a git bundle carried as
+# config/toolpacks/NAME.bundle (toolpacks.hosted_files): [(arcname, path)].
+packs_files = None
 
 
 def configure(*, workspace, state):
@@ -330,6 +333,8 @@ def bundle():
         elif p.is_file():
             stamp.append(int(p.stat().st_mtime_ns))
     packs = packs_json() if packs_json else ""
+    hosted = packs_files() if packs_files else []
+    stamp.extend(int(p.stat().st_mtime_ns) for _, p in hosted)
     key = hash((tuple(stamp), packs))
     if _bundle.get("key") != key:
         import io
@@ -350,6 +355,13 @@ def bundle():
                 ti = tarfile.TarInfo("config/toolpacks.json")
                 ti.size, ti.mode, ti.mtime = len(data), 0o644, int(time.time())
                 tar.addfile(ti, io.BytesIO(data))
+            for arc, f in hosted:
+                ti = tar.gettarinfo(str(f), arcname=arc)
+                ti.uid = ti.gid = 0
+                ti.uname = ti.gname = ""
+                ti.mode = 0o644
+                with open(f, "rb") as fh:
+                    tar.addfile(ti, fh)
         body = buf.getvalue()
         _bundle.update(key=key, body=body,
                        digest="sha256:" + hashlib.sha256(body).hexdigest())

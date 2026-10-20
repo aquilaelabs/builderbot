@@ -38,6 +38,17 @@ await page.evaluate(() => openToolchains());
 await page.waitForSelector('.doc .tctab #tcNodeSel', { timeout: 20000 });
 ok(await page.$$eval('.doc #tcNodeSel option', os => !os.some(o => o.value === 'local')),
    'the Tools tab opens on a node and never offers this container');
+// ...nor does an address that names it: #/build/toolchains/local opens on a
+// node, its store under its own name (B25).
+{
+  await page.evaluate(() => { openRoute('#/build/toolchains/local'); });
+  await page.waitForFunction(() => tcNode && tcNode !== 'local' && toolchains?.name
+    && document.querySelector('.doc.on #tcNodeSel')?.value === tcNode, null, { timeout: 20000 });
+  ok(await page.waitForFunction(() => location.hash === '#/build/toolchains/' + encodeURIComponent(tcNode),
+       null, { timeout: 10000 }).then(() => true, () => false),
+     `an address naming "local" shows the picked node's store, and the address names that node (${
+       await page.evaluate(() => location.hash)})`);
+}
 await page.evaluate(() => { nodesList = []; tcNode = ''; toolchains = null; loadToolchains(); });
 await page.waitForSelector('.doc .tctab .tcnone', { timeout: 20000 });
 ok(await page.evaluate(() => !document.querySelector('.doc .tc') && !document.querySelector('#tcNodeSel')),
@@ -139,7 +150,7 @@ ok(pw?.layout?.env?.NODE_PATH === 'node_modules' && /npm install/.test(pw?.sourc
     name: r.querySelector('input')?.value, text: r.querySelector('.tcterms')?.textContent || '',
     google: !!r.querySelector('.tcterms a[href*="developer.android.com/studio/terms"]') })));
   const android = terms.filter(t => /^android/.test(t.name));
-  ok(android.length && android.every(t => t.google && /Installing it accepts Google's Android SDK terms/.test(t.text)),
+  ok(android.length && android.every(t => t.google && /Installing it asks you to accept Google's Android SDK terms/.test(t.text)),
      `each Android row says Install accepts Google's Android SDK terms, linked (${android.length} rows)`);
   const bare = terms.filter(t => !t.text);
   ok(!bare.length, `...and every other row names its terms (${bare.map(t => t.name).join(', ') || 'none without'})`);
@@ -486,12 +497,14 @@ const checking = await page.evaluate(() => {
   toolchains.job.action = 'check'; toolchains.job.running = true;
   tcRev++; drawPanes();
   const t = document.querySelector('.doc [data-tc="check"]').textContent;
+  const line = document.querySelector('.doc .tcact .state')?.textContent || '';
   [toolchains.job.action, toolchains.job.running] = was;
   tcRev++; drawPanes(); clearTimeout(tcPoll);
-  return t;
+  return { t, line };
 });
-ok(/^Checking for updates/.test(checking),
-   `...and the check button says what it is doing (${checking.trim()})`);
+ok(/^Checking for updates/.test(checking.t) && !/Checking/.test(checking.line),
+   `...and the check button says what it is doing, once: the status line keeps to the store (B31) (${
+     checking.t.trim()} | ${checking.line.trim().slice(0, 60)})`);
 await page.evaluate(() => { toolchains.job.running = false; tcRev++; drawPanes(); });
 ok(await page.$$eval('.doc [data-rm]', bs => bs.every(b => !b.disabled))
    && await page.$$eval('.doc .tc input:not(:disabled)', is => is.length > 0),
@@ -505,14 +518,16 @@ ok(await page.$$eval('.doc [data-rm]', bs => bs.every(b => !b.disabled))
 // waited for, and the click is made again while no confirmation has come.
 await page.waitForFunction(() => toolchains?.job && !toolchains.job.running
   && !toolchains.sizing && !tcSizeTimer, { timeout: 30000 });
+const emuLabel = await page.$eval('.doc .tc:has([data-rm="android:emulator"]) .nm', e => e.textContent.trim()).catch(() => '');
 const nd = page.dialogs.length;
 let presses = 0;
 while (page.dialogs.length === nd && presses < 3){
   presses++;
   await page.click('.doc [data-rm="android:emulator"]');
 }
-ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Uninstall android:emulator'),
-   `uninstalling asks first (${presses} press(es): ${page.dialogs.slice(nd).join(' | ') || 'nothing asked'})`);
+// ...by the name its row shows, not its id (B65: a pack's read as its id).
+ok(page.dialogs.length === nd + 1 && !!emuLabel && page.dialogs[nd].includes(`Uninstall ${emuLabel}?`),
+   `uninstalling asks first, naming it as its row does (${presses} press(es): ${page.dialogs.slice(nd).join(' | ') || 'nothing asked'}; ${emuLabel})`);
 // The job, not just the count: a row being removed has no path line at all,
 // so "one installed path" is briefly true mid-removal, and everything after
 // this reads paths. On this runner that race is the difference between green
@@ -877,6 +892,31 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   });
   ok(/Remove takes off the store what no node uses: n_0ldd0ne1 \(gone's, a node since retired/.test(seen.clean) && seen.rm,
      `a retired node's directory on the store is offered with Remove (R196) (${seen.clean.slice(0, 60)})`);
+  // The updates-due tile counts This machine's rows as Home and the bell do (B24).
+  const due = await page.evaluate(() => {
+    const was = { tcNode, toolchains };
+    toolchains = { node: 'n_shared', name: 'sandbox', live: true, root: '/mnt/store/x', checked: 1,
+                   items: [{ name: 'jdk', label: 'JDK', installed: '17', latest: '21', state: 'update', terms: [] },
+                           { name: 'android:emulator', label: 'Android Emulator', installed: true, version: 'present',
+                             latest: '', state: 'current', terms: [] },
+                           { name: 'gradle', label: 'Gradle', installed: '9', latest: '9', state: 'current', terms: [] }],
+                   machine: [{ name: 'claude-code', label: 'Claude Code', here: true, installed: '2.1.302',
+                               latest: '2.1.303', state: 'update' }],
+                   job: { running: false } };
+    tcNode = 'n_shared'; tcRev++; drawPanes();
+    const tile = [...document.querySelectorAll('.tctab .tiles .tile')]
+      .find(t => t.querySelector('.tl')?.textContent.trim() === 'updates due');
+    const v = tile?.querySelector('.tv')?.textContent.trim();
+    const emu = [...document.querySelectorAll('.tctab label.tc')].find(r => /Android Emulator/.test(r.textContent));
+    const emuSaid = emu?.querySelector('.where')?.textContent.trim() || '';
+    const hint = document.querySelector('.tctab .tcdrv .upd')?.innerHTML || '';
+    tcNode = was.tcNode; toolchains = was.toolchains; tcRev++; drawPanes();
+    return { v, emuSaid, hint };
+  });
+  ok(due.v === '2', `the updates-due tile counts Claude Code under This machine beside the store's rows (${due.v})`);
+  ok(due.emuSaid === 'installed', `a tool the census calls "present" reads installed (B31) (${due.emuSaid})`);
+  ok(/press Install<span class="lng"> selected<\/span>/.test(due.hint),
+     `a row's hint names Install as the bar's button says it at each width (B31) (${due.hint.slice(-80)})`);
 }
 
 // ---- the versions a project pins are rows on its node's tab (B712) --------
@@ -919,9 +959,14 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
      `...and the tab draws them as rows with a tick, like any toolchain (${drawn.join(', ')})`);
   // Ticked and installed like any row: the versioned id is a name the node's
   // tab drew, so the handler takes it, where a name off any tab is refused.
-  const queued = await api('/api/toolchains', { action: 'install', names: ['android:ndk;29.0.14206865'], node: sb.id });
+  // Google's terms are a person's to accept, named, before anything installs
+  // under them; a pinned version is its row's, and the server keeps who did.
+  const unasked = await api('/api/toolchains', { action: 'install', names: ['android:ndk;29.0.14206865'], node: sb.id });
+  ok(/accepts Google's Android SDK terms/.test(unasked.error || '') && unasked.accept?.[0]?.url,
+     `an install under an agreement is refused until it is accepted, naming it with its link (${unasked.error})`);
+  const queued = await api('/api/toolchains', { action: 'install', names: ['android:ndk;29.0.14206865'], node: sb.id, accept: ["Google's Android SDK terms"] });
   ok(queued.ok && /^j_/.test(queued.job || ''), `Install takes a pinned version by its id (${queued.job || queued.error})`);
-  const stray = await api('/api/toolchains', { action: 'install', names: ['android:ndk;1.2.3'], node: sb.id });
+  const stray = await api('/api/toolchains', { action: 'install', names: ['android:ndk;1.2.3'], node: sb.id, accept: ["Google's Android SDK terms"] });
   ok(/nothing selected/.test(stray.error || ''), `...and a version nobody pins is still refused (${stray.error})`);
   await api('/api/toolchains', { action: 'abort', node: sb.id });
   rmSync(`${DIR}/ws/alpha/app`, { recursive: true, force: true });
@@ -936,7 +981,7 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
 // the harness lets the server fetch (BB_TOOLPACKS_FILE_URLS).
 {
   const { execFileSync } = await import('node:child_process');
-  const { mkdirSync, writeFileSync } = await import('node:fs');
+  const { mkdirSync, writeFileSync, rmSync } = await import('node:fs');
   const api = (path, body) => page.evaluate(async ([p, b]) => (await (await fetch(p, b ? { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) } : {})).json()), [path, body]);
   const repo = `${DIR}/packrepo`;
@@ -953,14 +998,14 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   await page.evaluate(() => { tcRev++; drawPanes(); });
   await page.waitForSelector('.doc.on [data-tpnew]', { timeout: 15000 });
   await page.click('.doc.on [data-tpnew]');
-  await page.fill('.doc.on #tpUrl', `file://${repo}`);
-  await page.click('.doc.on [data-tplook]');
-  await page.waitForSelector('.doc.on .tpseen', { timeout: 20000 });
-  const seen = await page.$eval('.doc.on .tpseen', e => e.textContent.replace(/\s+/g, ' '));
+  await page.fill('#tpmodal #tpUrl', `file://${repo}`);
+  await page.click('#tpmodal [data-tplook]');
+  await page.waitForSelector('#tpmodal .tpseen', { timeout: 20000 });
+  const seen = await page.$eval('#tpmodal .tpseen', e => e.textContent.replace(/\s+/g, ' '));
   ok(/Hex kit hexkit at [0-9a-f]{12}/.test(seen) && /bb tool hexkit dump FILE runs \{dir\}\/bin\/hexkit dump \{args\}/.test(seen)
      && /bb help tool-hexkit/.test(seen),
      `Look shows the pack at its commit, each verb's words and its guidance before Add (${seen.slice(0, 160)})`);
-  await page.click('.doc.on [data-tpadd]');
+  await page.click('#tpmodal [data-tpadd]');
   await page.waitForFunction(() => (toolchains?.items || []).some(i => i.name === 'hexkit' && i.pack), null, { timeout: 20000 });
   const row = await page.evaluate(() => (toolchains.items || []).find(i => i.name === 'hexkit'));
   ok(row.pack.commit === commit && row.pack.verbs.join() === 'dump' && row.pack.by,
@@ -990,21 +1035,118 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
              strings: { about: 'Its strings.', usage: 'FILE', run: ['{dir}/bin/hexkit', 'strings', '{args}'] } } }));
   g('commit', '-qam', 'later');
   const newer = g('rev-parse', 'HEAD');
+  // Edit looks for a newer commit as it opens: no press of Look.
   await page.click('.doc.on [data-tpedit="hexkit"]');
-  await page.click('.doc.on [data-tplook]');
-  await page.waitForSelector('.doc.on .tpseen', { timeout: 20000 });
-  const diff = await page.$eval('.doc.on .tpseen', e => e.textContent.replace(/\s+/g, ' '));
+  await page.waitForSelector('#tpmodal .tpseen', { timeout: 20000 });
+  const diff = await page.$eval('#tpmodal .tpseen', e => e.textContent.replace(/\s+/g, ' '));
   ok(/dump --wide \{args\} changed was \{dir\}\/bin\/hexkit dump \{args\}/.test(diff) && /strings FILE runs .* new/.test(diff),
-     `Look for a newer commit says what the commit changes: a changed verb with what it was, a new one marked (${diff.slice(0, 200)})`);
-  await page.click('.doc.on [data-tpadd]');
+     `Edit says what a newer commit changes: a changed verb with what it was, a new one marked (${diff.slice(0, 200)})`);
+  await page.click('#tpmodal [data-tpadd]');
   await page.waitForFunction(c => (toolchains?.items || []).find(i => i.name === 'hexkit')?.pack?.commit === c, newer, { timeout: 20000 });
   ok(true, '...and Update keeps the pack at the newer commit');
   const bad = await api('/api/toolpacks', { action: 'preview', url: `file://${DIR}/nowhere` });
   ok(/could not fetch/.test(bad.error || ''), `a repository that is not there is said so (${bad.error})`);
+  // B84: installed on a node, Remove is refused on the form, saying where,
+  // before anything is asked: its files would stay in that store with no row
+  // left to uninstall them from, and the pack added back would read installed.
+  const sb = (await api('/api/v1/nodes')).nodes.find(n => n.name === 'sandbox');
+  await api('/api/prefs', { project: 'alpha', packs_on: 'hexkit' });
+  writeFileSync(`${DIR}/sandboxdata/census-extra.json`, JSON.stringify({ store_dirs: { top: ['hexkit'], android: [] } }));
+  const heldBy = async want => {
+    for (let i = 0; i < 60; i++){
+      const t = await api(`/api/toolchains?node=${sb.id}`);
+      if (!!(t.items || []).find(r => r.name === 'hexkit')?.installed === want) return true;
+      await new Promise(r => setTimeout(r, 500));
+    }
+    return false;
+  };
+  ok(await heldBy(true), 'the sandbox node reports the pack in its store');
+  page.dialogs = [];
   await page.click('.doc.on [data-tpedit="hexkit"]');
-  await page.click('.doc.on [data-tprm="hexkit"]');
+  // Edit looks for a newer commit as it opens; its answer redraws the form.
+  await page.waitForFunction(() => !tpForm.busy, null, { timeout: 20000 });
+  await page.click('#tpmodal [data-tprm="hexkit"]');
+  await page.waitForSelector('#tpmodal .hint.bad', { timeout: 15000 });
+  const refused = await page.$eval('#tpmodal .hint.bad', e => e.textContent);
+  const kept = await api('/api/toolpacks', { action: 'remove', name: 'hexkit' });
+  const still = ((await api(`/api/toolchains?node=${sb.id}`)).items || []).some(i => i.name === 'hexkit');
+  ok(/hexkit is installed on sandbox: uninstall it there first/.test(refused) && !page.dialogs.length
+     && still && /installed on sandbox/.test(kept.error || ''),
+     `Remove is refused while a node holds the pack, saying where, with nothing asked, and the route refuses it too (${refused})`);
+  rmSync(`${DIR}/sandboxdata/census-extra.json`, { force: true });
+  ok(await heldBy(false), '...and once that store no longer holds it...');
+  await page.click('#tpmodal [data-tprm="hexkit"]');
   await page.waitForFunction(() => !(toolchains?.items || []).some(i => i.name === 'hexkit'), null, { timeout: 20000 });
-  ok(true, '...and Remove takes it out of the catalog');
+  ok(true, '...Remove takes it out of the catalog');
+  // B85: a project that had ticked it opens its Toolchains group unchanged:
+  // the saved list still names the pack, which the form cannot draw.
+  await page.evaluate(() => renameProject('alpha', 'all'));
+  await page.waitForFunction(() => rnToolsList !== null, null, { timeout: 20000 });
+  const group = await page.evaluate(() => ({ dirty: !document.querySelector('.rnbar[data-rnbar="tools"] [data-rnsave]')?.disabled,
+    said: document.querySelector('.rnbar[data-rnbar="tools"]')?.textContent.replace(/\s+/g, ' ').trim() || '' }));
+  ok(!group.dirty && !/changed/.test(group.said),
+     `...and a project that used it opens its Toolchains group with nothing unsaved (${JSON.stringify(group)})`);
+  await page.evaluate(() => closeRename());
+  await api('/api/prefs', { project: 'alpha', packs_on: '' });
+
+  // A pack made here, with no repository of its own: a pasted bbtool.json,
+  // looked at, added, edited in place as a new version, and an upload of
+  // the pack's files. Each is kept as a commit on the controller.
+  const pasted = { name: 'wordy', label: 'Wordy', about: 'Counts words.', platforms: ['linux/amd64', 'linux/arm64'],
+    install: { steps: [['sh', '-c', 'mkdir -p "$1/bin"', 'x', '{dir}']] },
+    verbs: { count: { about: 'Words in a file.', usage: 'FILE', run: ['{dir}/bin/wordy', '{args}'] } } };
+  await page.click('.doc.on [data-tpnew]');
+  await page.click('#tpmodal [data-tpfrom="paste"]');
+  await page.fill('#tpText', JSON.stringify(pasted, null, 1));
+  await page.click('#tpmodal [data-tplook]');
+  await page.waitForSelector('#tpmodal .tpseen', { timeout: 20000 });
+  const pseen = await page.$eval('#tpmodal .tpseen', e => e.textContent.replace(/\s+/g, ' '));
+  ok(/Wordy wordy as given here, 1 file/.test(pseen) && /Installs by copying these files to the node/.test(pseen)
+     && /bb tool wordy count FILE runs \{dir\}\/bin\/wordy \{args\}/.test(pseen),
+     `a pasted bbtool.json is looked at like a repository's: what it installs and what each verb runs (${pseen.slice(0, 160)})`);
+  await page.click('#tpmodal [data-tpadd]');
+  await page.waitForFunction(() => (toolchains?.items || []).find(i => i.name === 'wordy')?.pack?.here, null, { timeout: 20000 });
+  const prow = await page.$eval('.doc.on .tprecords', e => e.textContent.replace(/\s+/g, ' '));
+  ok(/Wordy\s*wordy\s*made here/.test(prow), `...Add keeps it, its row saying it was made here (${prow.slice(0, 160)})`);
+  const first = await page.evaluate(() => toolchains.items.find(i => i.name === 'wordy').pack.commit);
+  // Edit opens on its bbtool.json as kept; a change is a new version.
+  await page.click('.doc.on [data-tpedit="wordy"]');
+  await page.waitForFunction(() => /"Wordy"/.test(document.getElementById('tpText')?.value || ''), null, { timeout: 20000 });
+  await page.fill('#tpText', JSON.stringify({ ...pasted, label: 'Wordy two' }));
+  await page.click('#tpmodal [data-tplook]');
+  await page.waitForSelector('#tpmodal [data-tpadd]', { timeout: 20000 });
+  ok(await page.$eval('#tpmodal [data-tpadd]', e => e.textContent) === 'Update',
+     '...Edit opens on its bbtool.json, and a changed one is offered as an Update');
+  await page.click('#tpmodal [data-tpadd]');
+  await page.waitForFunction(c => { const p = (toolchains?.items || []).find(i => i.name === 'wordy');
+    return p && p.label === 'Wordy two' && p.pack.commit !== c; }, first, { timeout: 20000 });
+  ok(true, '...and Update keeps it as a new commit made here');
+  // An upload of the pack's files, a tarball with one top folder.
+  const up = `${DIR}/uppack/stamp`;
+  mkdirSync(`${up}/bin`, { recursive: true });
+  writeFileSync(`${up}/bin/stamp`, '#!/bin/sh\ndate\n', { mode: 0o755 });
+  writeFileSync(`${up}/GUIDE.md`, 'Stamp what you build.');
+  writeFileSync(`${up}/bbtool.json`, JSON.stringify({ name: 'stamp', platforms: ['linux/amd64', 'linux/arm64'],
+    layout: { bin: ['bin'], tool: 'bin/stamp' }, verbs: { now: { run: ['{dir}/bin/stamp'] } }, guidance: 'GUIDE.md' }));
+  execFileSync('tar', ['-czf', `${DIR}/uppack.tgz`, '-C', `${DIR}/uppack`, 'stamp']);
+  await page.click('.doc.on [data-tpnew]');
+  await page.click('#tpmodal [data-tpfrom="upload"]');
+  await page.setInputFiles('#tpFile', `${DIR}/uppack.tgz`);
+  await page.click('#tpmodal [data-tplook]');
+  await page.waitForSelector('#tpmodal .tpseen', { timeout: 20000 });
+  const useen = await page.$eval('#tpmodal .tpseen', e => e.textContent.replace(/\s+/g, ' '));
+  ok(/as given here, 3 files/.test(useen) && /bb help tool-stamp/.test(useen),
+     `an uploaded archive of the pack's files is looked at the same way, its guidance with it (${useen.slice(0, 160)})`);
+  await page.click('#tpmodal [data-tpadd]');
+  await page.waitForFunction(() => (toolchains?.items || []).find(i => i.name === 'stamp')?.pack?.here, null, { timeout: 20000 });
+  ok(true, '...and Add keeps it made here');
+  for (const n of ['wordy', 'stamp']){
+    page.dialogs = [];
+    await page.click(`.doc.on [data-tpedit="${n}"]`);
+    await page.click(`#tpmodal [data-tprm="${n}"]`);
+    await page.waitForFunction(x => !(toolchains?.items || []).some(i => i.name === x), n, { timeout: 20000 });
+  }
+  ok(true, 'a pack made here is removed like any other');
 }
 
 await done(browser);

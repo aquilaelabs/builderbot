@@ -70,7 +70,9 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             ? `<div class="hint">Builds run on <b>${esc(b.name)}</b>${b.tools?.length
                 ? `; it carries ${b.tools.map(esc).join(", ")}`
                 : "; it reports no toolchains yet, so a compile will not find one"}.
-               Add to it from the Tools tab.</div>`
+               ${railAllows("toolchains") ? `Add to it from the ${pageLink("toolchains", "Toolchains page")}.`
+                 // Not offered a page their grants keep them from (B114).
+                 : "An account that may open the Toolchains page adds to it there."}</div>`
             : `<div class="hint">No node: nothing can be compiled for this project here.
                ${esc(b.why || "")}</div>`,
           {cls: b.node ? (b.gap ? "bad" : "") : "warn"});
@@ -136,7 +138,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
         <span class="grow">${esc(job.what)}${job.error ? `: ${esc(job.error)}`
           : `: temporary, gone when Firefox restarts; changes do <b>not</b>
           push themselves, so rebuild the .xpi and push again.`}</span>
-        ${job.running ? `<button type="button" id="artStop">Stop</button>` : ""}
+        ${job.running && !projWriteWhy(project) ? `<button type="button" id="artStop">Stop</button>` : ""}
       </div>` : "";
     const instHtml = inst.running || inst.state === "failed" ? `
       <div class="artrow job">
@@ -158,9 +160,13 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // did not fold, and a long list pushed Captures off the screen. The dev
     // instance is its own; the files are the one a person opens this view
     // for, so the one left open when nobody has chosen.
+    // A role that reads the project and does not write it (B101): no
+    // Install, Push, Remove or pin on a file, no Sign without Releases and versions
+    // Write, and why said once over the list.
+    const ro = projWriteWhy(project), relWhy = projReleaseWhy(project);
     const filesBody = !rows.length
       ? `<div class="hint">Nothing in <b>dist/</b> yet: a build copies what it keeps there.</div>`
-      : devNote + jobHtml + instHtml + rows.map((a, i) => `
+      : deadWhy(ro) + devNote + jobHtml + instHtml + rows.map((a, i) => `
         <div class="artrow">
           <span class="grow">
             <span class="top"><span class="pill">${esc(a.kind)}</span>
@@ -191,32 +197,32 @@ function nbArtifactsView({$, nb, project, root, sheet}){
               <span class="artfp">SHA-256 ${esc(a.prov.signed.cert.match(/../g).join(":"))}
                 <button type="button" class="link" data-artfp="${i}" title="the fingerprint as F-Droid's AllowedAPKSigningKeys takes it: lowercase, no colons">Copy for F-Droid</button></span>` : ""}</span>
           <span class="acts">
-            ${a.kind === "apk" ? `<button type="button" data-artinstall="${i}"${
+            ${a.kind === "apk" && !ro ? `<button type="button" data-artinstall="${i}"${
                 inst.running || phoneWhy ? " disabled" : ""} title="${
                 phoneWhy ? esc(phoneWhy)
                 : inst.running ? "one install at a time"
                 : "install it on the phone, replacing any copy already there"
                 }">Install</button>` : ""}
-            ${a.kind === "xpi" ? `<button type="button" data-artpush="${i}"${
+            ${a.kind === "xpi" && !ro ? `<button type="button" data-artpush="${i}"${
                 job.running || phoneWhy || !art.webext ? " disabled" : ""} title="${
                 phoneWhy ? esc(phoneWhy)
                 : !art.webext ? `web-ext is not on ${esc(art.node_name || "the node")}: install it there first`
                 : job.running ? "one push at a time"
                 : "install it on the phone, temporarily"}">Push</button>` : ""}
-            ${(a.kind === "apk" || a.kind === "aab") && !/-signed\.(apk|aab)$/.test(a.name)
+            ${(a.kind === "apk" || a.kind === "aab") && !relWhy && !/-signed\.(apk|aab)$/.test(a.name)
               ? (art.sign_routes || []).map(r => `<button type="button" data-artsign="${i}" data-route="${r}"
                 title="sign it on the project's node with its ${r === "play" ? "Play upload key" : "sideload signing key"}; it arrives beside it as -signed">Sign${
                   (art.sign_routes || []).length > 1 ? (r === "play" ? " for Play" : " to sideload") : ""}</button>`).join("") : ""}
             ${a.view ? `<button type="button" data-artview="${i}"
                 title="read it here, without downloading it">View</button>` : ""}
-            ${a.unversioned ? `<button type="button" class="danger" data-artunnamed="${i}"
+            ${a.unversioned && !ro ? `<button type="button" class="danger" data-artunnamed="${i}"
                 title="remove it from dist/ now, for everybody">Remove</button>` : ""}
             <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
-              }&path=${encodeURIComponent(a.path)}" download>Download</a>
+              }&path=${encodeURIComponent(a.path)}" download>Download</a>${ro ? "" : `
             <button type="button" class="eye pin${a.pinned ? " on" : ""}" data-artpin="${i}"
               aria-label="${a.pinned ? "unpin" : "pin"}" title="${a.pinned
                 ? "unpin: it goes like any other build when newer ones arrive"
-                : "pin: keep it, whatever builds come after it"}">${TACK}</button>
+                : "pin: keep it, whatever builds come after it"}">${TACK}</button>`}
           </span>
         </div>`).join("");
     list.innerHTML = (devHtml ? docSection("artifacts", "dev", "Docker",
@@ -252,7 +258,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
           <span class="acts">
             <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
               }&path=${encodeURIComponent(c.path)}" download>Download</a>
-            <button type="button" data-artcap="${i}" title="remove it from dist/ now, for everybody">Remove</button>
+            ${projWriteWhy(project) ? "" : `<button type="button" data-artcap="${i}" title="remove it from dist/ now, for everybody">Remove</button>`}
           </span>
         </div>`).join(""));
       wireSections(capBox);
@@ -462,6 +468,18 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       verSection(v) + nb.sectBar(`artifacts:version${v.component ? ":" + v.component : ""}`),
       {cls: v.target ? "" : "warn"})).join("");
     wireSections(box);
+    // A role without Releases and versions Write on the project (B101): every control
+    // that moves or releases the version dead, the reason under its row;
+    // without Projects Write, Send to Claude too.
+    {
+      const relWhy = projReleaseWhy(project), ro = projWriteWhy(project);
+      if (relWhy || ro){
+        box.querySelectorAll("[data-verbump],[data-verrelease],[data-verunbump],[data-verinit],[data-veradd],#verPolicy,.vstart,.vdir")
+          .forEach(x => { if (relWhy) x.disabled = true; });
+        if (ro) box.querySelectorAll("[data-verask]").forEach(x => { x.disabled = true; });
+        box.querySelectorAll(".verbtns, details.veradd .verinit").forEach(bar => bar.insertAdjacentHTML("afterend", deadWhy(relWhy || ro)));
+      }
+    }
     // Releasing: outward-facing, and the one thing on this tab other people
     // fetch. Confirmed by name, because a pushed tag is not taken back from
     // here, or anywhere, without thinking about who has it.
@@ -595,7 +613,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
                </div>`).join("")
              : `<div class="empty">nothing unreleased here yet</div>`}
              <div class="actbar"><span class="state" id="clState"></span>
-               <button type="button" class="primary" id="clSave">Save</button></div>
+               <button type="button" class="primary" id="clSave"${projWriteWhy(project) ? " disabled" : ""}>Save</button></div>${
+             deadWhy(projWriteWhy(project))}
            </div>
            ${dated ? `<div class="verlogpane">${clLinks(dated)}</div>` : ""}`;
         wire();

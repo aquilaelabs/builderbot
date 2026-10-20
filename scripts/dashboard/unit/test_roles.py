@@ -84,11 +84,50 @@ class Model(unittest.TestCase):
         import users
         name = roles.ensure_owner_role("alpha")
         u = {"name": "o", "role": "user", "roles": [], "projects": ["alpha"], "project_roles": {"alpha": [name]}}
-        with mock.patch.object(users, "get", lambda n: u):
+        import registry
+        with mock.patch.object(users, "get", lambda n: u), mock.patch.object(registry, "FILE", None):
             got = users.what_may("o")
         self.assertEqual(got["roles"], ["Owner of alpha"])
         self.assertIn(["Projects", "Write"], got["may"])
         self.assertNotIn("Nodes", [a for a, _ in got["may"]])
+
+    def test_a_project_gone_is_not_said(self):
+        # B75: Owner of a project in the bin, or purged, is neither listed
+        # nor counted toward what the account may do; the grant is kept.
+        import registry
+        import users
+        live, gone, binned = (roles.ensure_owner_role(p) for p in ("alpha", "beta", "gamma"))
+        roles.set_role("peek", scope="projects", perms={"projects": "read", "containers": "write"})
+        u = {"name": "o", "role": "user", "roles": [], "projects": ["alpha", "beta", "gamma"],
+             "project_roles": {"alpha": [live], "beta": [gone, "peek"], "gamma": [binned]}}
+        with mock.patch.object(users, "get", lambda n: u), mock.patch.object(registry, "FILE", "x"), \
+                mock.patch.object(registry, "is_project", lambda p: p == "alpha"), \
+                mock.patch.object(registry, "label", str):
+            got = users.what_may("o")
+        self.assertEqual(got["roles"], ["Owner of alpha"])
+        self.assertEqual(sorted(u["project_roles"]), ["alpha", "beta", "gamma"], "the grants are kept")
+        roles.set_role("alpha_owner", scope="projects", perms={"projects": "read"})
+        with mock.patch.object(users, "get", lambda n: u), mock.patch.object(registry, "FILE", "x"), \
+                mock.patch.object(registry, "is_project", lambda p: p == "alpha"), \
+                mock.patch.object(registry, "label", str):
+            got = users.what_may("o")
+        self.assertEqual(got["may"], [["Projects", "Read"]], "a gone project's grant adds nothing")
+
+    def test_an_owner_role_is_named_by_the_project_s_shown_name(self):
+        # B102: a project whose folder is not its name (syncwalk-mv1bm36p,
+        # shown as syncwalk) is owned, and held on, by the name shown.
+        import registry
+        import users
+        name = roles.ensure_owner_role("syncwalk-mv1bm36p")
+        roles.set_role("peek", scope="projects", perms={"projects": "read"})
+        u = {"name": "o", "role": "user", "roles": [], "projects": ["syncwalk-mv1bm36p"],
+             "project_roles": {"syncwalk-mv1bm36p": [name, "peek"]}}
+        with mock.patch.object(users, "get", lambda n: u), mock.patch.object(registry, "FILE", "x"), \
+                mock.patch.object(registry, "is_project", lambda p: True), \
+                mock.patch.object(registry, "label", lambda p: {"syncwalk-mv1bm36p": "syncwalk"}.get(p, p)):
+            self.assertEqual(roles.label(name), "Owner of syncwalk")
+            got = users.what_may("o")
+        self.assertEqual(got["roles"], ["peek on syncwalk", "Owner of syncwalk"])
 
     def test_an_owner_role_is_every_project_area_and_can_be_cut_back(self):
         name = roles.ensure_owner_role("alpha")
@@ -283,6 +322,26 @@ class R155(unittest.TestCase):
         r, st = self.users.assign(boss, "ann", ["ops"], {"alpha": ["dev"], "beta": [], "gamma": []})
         self.assertEqual(st, 200, r)
         self.assertEqual(self.users.get("ann")["projects"], ["alpha"], "on a project is holding a role there")
+
+    def test_accounts_write_through_a_role_gives_roles_but_not_admin(self):
+        # B66: Accounts and roles Write held through a role of one's own
+        # gives roles as the administrator does; the built-in admin stays
+        # an administrator's.
+        roles.set_role("hr", "global", {"accounts": "write"})
+        with self.users._lock:
+            d = self.users.load()
+            d["users"]["hal"] = {"uid": "u_5", "role": "user", "projects": [], "roles": ["hr"]}
+            d["users"]["adm"] = {"uid": "u_6", "role": "admin", "projects": []}
+            self.users._save(d)
+        hal = self.users.get("hal")
+        self.assertTrue(self.users.assignable(hal)["admin"])
+        r, st = self.users.assign(hal, "ann", ["ops"], {"alpha": ["dev"]})
+        self.assertEqual(st, 200, r)
+        r, st = self.users.assign(hal, "ann", ["admin"], None)
+        self.assertEqual(st, 403, r)
+        r, st = self.users.assign(hal, "adm", [], None)
+        self.assertEqual(st, 403, r)
+        self.assertEqual(self.users.get("adm")["role"], "admin")
 
 
 class SessionAndAccount(unittest.TestCase):

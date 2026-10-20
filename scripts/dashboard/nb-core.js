@@ -323,11 +323,38 @@ function makeNotebook(project){
   // The bar, drawn by whichever view draws the section; dead rather than
   // absent while there is nothing to save, so it does not move under a thumb.
   function sectBar(key){
-    const n = nb.stagers[key]?.count() || 0;
+    // Drawn as syncSave would leave it, its words and its dead buttons with
+    // it (B2): a view whose draw did not call syncSave after (the rules')
+    // left the bar untitled until whatever synced next, and that wrote two
+    // titles into a status read that brought nothing.
+    const b = barSays(key);
     // In a field band, as every line of a section's body is (a-dialog/layout):
     // bare, it sat beside the last row it followed rather than under it.
-    return `<div class="field">${saveBar({save: `data-ssave="${esc(key)}"`, revert: `data-srevert="${esc(key)}"`, dead: !n,
-      cls: "sectbar", attrs: `data-bar="${esc(key)}"`})}</div>`;
+    return `<div class="field"${key === "roadmap" && b.hide ? " hidden" : ""}>${saveBar({
+      save: `data-ssave="${esc(key)}" title="${esc(b.saveTitle)}"${b.saveDead ? " disabled" : ""}`,
+      revert: `data-srevert="${esc(key)}" title="${esc(b.rvTitle)}"${b.rvDead ? " disabled" : ""}`,
+      state: esc(b.state), cls: "sectbar", attrs: `data-bar="${esc(key)}"`})}</div>`;
+  }
+  // What a section's bar says and which of its buttons are dead, the one
+  // answer sectBar draws and syncSave keeps.
+  function barSays(key){
+    const st = nb.stagers[key], n = st?.count() || 0, held = nbHeld();
+    return {
+      hide: !(n > 0 || sectDirty(key) || nb.roadmapOrdering),
+      saveDead: !sectDirty(key) || (key === "roadmap" && held),
+      rvDead: !n,
+      rvTitle: n ? `throw away ${st.what()}: it goes back to what is on disk` : "nothing unsaved here to throw away",
+      saveTitle: key === "roadmap" && held
+        ? (nb.roadmapBatch ? "a session is part-way through changing this list"
+                           : "a session changed this list: reload it before saving over it")
+        : "save this section; a session running here hears about it on its next prompt",
+      // A panel holding unsaved work stops re-reading, since a redraw would
+      // eat the typing (B199); said where the Save is, once something here
+      // has moved under it. A Save lit with nothing staged is the change no
+      // session has been told about yet, which says so rather than sitting
+      // there unexplained.
+      state: n && nb.movedUnder ? "this has changed since you loaded it: Save will ask which version wins"
+        : n ? `${n} unsaved` : sectDirty(key) ? "changed, not told to the session yet" : ""};
   }
   // A section holding unsaved work, or a change no session has been told
   // about yet, which the roadmap's and the memories' Saves settle.
@@ -342,32 +369,21 @@ function makeNotebook(project){
     // after one finishes; that is the list's own business, so it holds only
     // the roadmap's Save. Reverting is allowed either way: throwing away your
     // own unsaved work never depends on what anybody else is doing.
-    const held = nbHeld();
     if (![...Object.keys(nb.stagers)].some(k => nb.stagers[k].count() > 0)) nb.movedUnder = false;
     root.querySelectorAll(".sectbar[data-bar]").forEach(bar => {
       const key = bar.dataset.bar, st = nb.stagers[key];
       const save = bar.querySelector("[data-ssave]"), rv = bar.querySelector("[data-srevert]");
       if (!st || !save || !rv || save.getAttribute("aria-busy")) return;
-      const n = st.count();
+      const b = barSays(key);
       // The Roadmap's bar is the one that sat dead most of the time (R224):
       // it appears with a reorder or an edit staged, and goes with the Save.
       // The rest stay, dead, so they do not move under a thumb.
-      if (key === "roadmap") setHidden(bar.closest(".field"), !(n > 0 || sectDirty(key) || nb.roadmapOrdering));
-      setDisabled(save, !sectDirty(key) || (key === "roadmap" && held));
-      setDisabled(rv, !n);
-      setTitle(rv, n ? `throw away ${st.what()}: it goes back to what is on disk` : "nothing unsaved here to throw away");
-      setTitle(save, key === "roadmap" && held
-        ? (nb.roadmapBatch ? "a session is part-way through changing this list"
-                           : "a session changed this list: reload it before saving over it")
-        : "save this section; a session running here hears about it on its next prompt");
-      // A panel holding unsaved work stops re-reading, since a redraw would
-      // eat the typing (B199); said where the Save is, once something here
-      // has moved under it.
-      const state = bar.querySelector(".state");
-      // ...and a Save lit with nothing staged is the change no session has
-      // been told about yet, which says so rather than sitting there unexplained.
-      setText(state, n && nb.movedUnder ? "this has changed since you loaded it: Save will ask which version wins"
-        : n ? `${n} unsaved` : sectDirty(key) ? "changed, not told to the session yet" : "");
+      if (key === "roadmap") setHidden(bar.closest(".field"), b.hide);
+      setDisabled(save, b.saveDead);
+      setDisabled(rv, b.rvDead);
+      setTitle(rv, b.rvTitle);
+      setTitle(save, b.saveTitle);
+      setText(bar.querySelector(".state"), b.state);
     });
   }
 
@@ -387,6 +403,10 @@ function makeNotebook(project){
 
   async function beat(leave, keepalive){
     if (!nb.memProj) return;
+    // Not for a project this account no longer has (deleted, or taken off
+    // it): the server answers that with a 400 on every poll (B65), and
+    // there is no one there to say anything to.
+    if (state && !(state.projects || []).some(p => p.name === nb.memProj)) return;
     try{
       const r = await fetch("/api/presence", {method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -882,8 +902,16 @@ function projectState(p){
   // Yours first, then everybody else's with a session here, each with its
   // own dot (the operator, 16 Oct: a card that does not say who else is
   // working in the project hides the one thing worth knowing first).
-  const me = mine ? (busy.has(state?.me) ? one("working", "working") : one("waiting", "waiting for you")) : "";
-  const them = othersOn(name).map(n => one(busy.has(n) ? "working" : "waiting", `${n}${busy.has(n) ? " working" : "'s session"}`, " other")).join("");
+  // On Claude Code's permission prompt it is asking, in amber, as the dock
+  // and Sessions say it (B98), not waiting.
+  const asking = mine && claudeOf(myClaude(name))?.state === "asking";
+  const me = mine ? (asking ? one("asking", "asking you") : busy.has(state?.me) ? one("working", "working")
+    : one("waiting", "waiting for you")) : "";
+  // Another account's session on the prompt reads asking too (B104), but
+  // not "asking you": only that person's terminal answers it.
+  const asks = new Set((state?.claude_asking || {})[tmuxName(name)] || (state?.claude_asking || {})[name] || []);
+  const them = othersOn(name).map(n => asks.has(n) ? one("asking", `${n} asking`, " other")
+    : one(busy.has(n) ? "working" : "waiting", `${n}${busy.has(n) ? " working" : "'s session"}`, " other")).join("");
   return me || them ? `<span class="pstates">${me}${them}</span>` : one("", "no session");
 }
 // The one notice a project carries (why nobody can start here, the agent
@@ -894,16 +922,40 @@ function projectNote(p){
   // end by itself (B826: a copy going up was said in red and the missing
   // Claude Code that really held it was never said); a wait alone is dim.
   const held = p.held && !state?.mapping?.[p.name]?.running ? p.held : "";
+  // Not this account's to change comes first (B88): no node coming back
+  // or map finishing would let it start a session here, and somebody else
+  // working in it is no answer to why this account cannot.
+  const perm = p.locked ? "" : writeWhy(p);
+  if (perm) return `<div class="pnote bad">${esc(perm)}</div>`;
   const said = held || p.session_why;
-  return said && !p.locked && !here
-    ? `<div class="pnote ${!held && p.session_waiting ? "dim" : "bad"}">${esc(said)}</div>` : "";
+  if (said && !p.locked && !here)
+    return `<div class="pnote ${!held && p.session_waiting ? "dim" : "bad"}">${esc(said)}</div>`;
+  // ...and otherwise why Start Claude is dead, whatever made it so (B88):
+  // a role that only reads the project, a Profile with no commit author.
+  // An archived one says so by its mark, and is left out; others working
+  // here do not make the button live for this account, so it is said too.
+  const dead = p.locked ? "" : claudeDeadWhy(p);
+  return dead ? `<div class="pnote bad">${esc(dead)}</div>` : "";
+}
+// Why Start Claude is dead on this project, or "" when it is live: the one
+// answer the button, its description and the line under it all read.
+function claudeDeadWhy(p){
+  const mine = liveSessions().has(myClaude(p.name));
+  if (p.locked) return "archived; you run this one. Unarchive, in its menu, lets Claude back in";
+  if (notMine(p)) return NOT_MINE_WHY;
+  // A Claude session is work on the project (B86): Projects Write.
+  if (p.write_why) return p.write_why;
+  if (heldWhy(p)) return heldWhy(p);
+  if (!p.session_at && p.session_why && !mine) return p.session_why;
+  if (p.node_removed && !mine) return p.session_why || "its node was removed: pick another in its settings";
+  return "";
 }
 // The two actions a project page and its card show, and the rest behind
 // one menu (R238: nine look-alike icons on a row were one too many). Its
 // data-* names are wireProjectRows', which serves them.
 function projectActions(p, extra = ""){
   const name = p.name, mine = liveSessions().has(myClaude(name));
-  const dead = p.locked || notMine(p) || (!p.session_at && !!p.session_why && !mine) || (p.node_removed && !mine) || heldWhy(p);
+  const dead = claudeDeadWhy(p);
   const menu = [
     p.git_ok && !isBroken(p)
       ? `<button type="button" data-l="${esc(name)}"${state?.can?.["git-auth"] === false ? " disabled" : ""}>${
@@ -929,9 +981,7 @@ function projectActions(p, extra = ""){
   // What a press does, or why it is dead, in the button's own words: a
   // screen reader hears it, and a press on a dead one is told.
   const live = liveSessions();
-  const say = notMine(p) ? NOT_MINE_WHY
-    : p.locked ? "archived; you run this one. Unarchive, in its menu, lets Claude back in"
-    : heldWhy(p) ? heldWhy(p)
+  const say = dead ? dead
     : p.session_why ? p.session_why
     : othersOn(name).length ? `${othersOn(name).join(", ")} also working here, in a checkout of their own: start yours`
     : p.session_node && !claudeOn(p.session_node) && !live.has(myClaude(name))
@@ -964,11 +1014,17 @@ function projectHeader(t){
 function wireProjectHeader(bar){
   wireProjectRows(bar);
   // On the project's own page its menu's Settings is the notebook's Settings
-  // view (R259: the view strip carries no tab for it), not the dialog.
+  // view (R259: the view strip carries no tab for it), not the dialog. Only
+  // there: a card on the Projects page keeps wireProjectRows' Settings, which
+  // goes to the page (B82: this one turned the notebook in the background).
   bar.querySelectorAll("[data-rn]").forEach(b => b.onclick = () => {
     const n = getNotebook(b.dataset.rn);
     if (n) n.view("settings"); else openProjectSettings(b.dataset.rn);
   });
+  wireProjectMenu(bar);
+}
+// A project's ⋯, on its header and on its card alike.
+function wireProjectMenu(bar){
   bar.querySelectorAll("[data-pmore]").forEach(b => b.onclick = e => {
     e.stopPropagation();
     const m = b.nextElementSibling, open = m.hidden;

@@ -41,6 +41,25 @@ ok(await page.evaluate(() => tabOf(panes[0])?.kind === 'home' && location.hash =
      `...the machines' and the queue's numbers are /api/home's (${by.nodes.value} of ${h.nodes?.enrolled} nodes, ${by.jobs.value} jobs running)`);
   ok(Array.isArray(h.jobs.last) && h.jobs.last.length <= 10 && typeof h.jobs.failed_today === 'number',
      `...which carries the last ten jobs and the ones failed today (${h.jobs.last.length} rows, ${h.jobs.failed_today} failed)`);
+  // B59: the sessions tile is the number the Sessions page it opens counts.
+  const listed = await page.evaluate(() => (state?.sessions || []).length);
+  ok(by.sessions.value === String(listed) && listed > 0,
+     `...and sessions open is what the Sessions page lists, terminals included (${by.sessions.value} of ${listed})`);
+}
+
+// ---- updates due counts each thing behind once (B28) ------------------------
+{
+  const n = await page.evaluate(() => {
+    const was = state.attention;
+    state.attention = [
+      {kind: 'toolchain', tools: [{name: 'a'}, {name: 'b'}]},
+      {kind: 'image', containers: [{name: 'c1'}, {name: 'c2'}, {name: 'c3'}]},
+      {kind: 'nginx'}, {kind: 'agent'}, {kind: 'relocate'}];
+    const got = homeUpdates();
+    state.attention = was;
+    return got;
+  });
+  ok(n === 7, `updates due is two toolchains, three containers, nginx and an agent, and no move (${n})`);
 }
 
 // ---- a job that fails shows on Home by itself, through the jobs token ----------
@@ -52,6 +71,8 @@ ok(await page.evaluate(() => tabOf(panes[0])?.kind === 'home' && location.hash =
   ok(await page.$eval('.doc.on .hometiles [data-htile="jobs"]', t => !t.classList.contains('bad')
        && /failed today/.test(t.querySelector('.ts.bad')?.textContent || '')),
      '...and the jobs tile says how many failed today, the line in the bad tone rather than the count running');
+  ok(await page.$eval('.doc.on .hometiles [data-htile="jobs"]', t => t.getAttribute('href')) === '#/jobs/failed-today',
+     '...and opens the Jobs page narrowed to the ones failed today (B74, B113)');
   await page.click(`.doc.on [data-hjob="${q.job}"]`);
   await page.waitForFunction(id => tabOf(panes[0])?.kind === 'jobs'
     && document.querySelector(`.jbrow[data-job="${id}"].focus .jblog`), q.job, { timeout: 15000 });
@@ -72,6 +93,17 @@ ok(await page.evaluate(() => tabOf(panes[0])?.kind === 'home' && location.hash =
   ok(true, '...and the containers tile the Containers page');
   await page.click('#rail [data-rail="home"]');
   await page.waitForSelector('.doc.on .homegrid', { timeout: 15000 });
+  // Updates due are every node's toolchains, images, nginx and agents, which
+  // one node's Toolchains page never held: the tile brings Home's own
+  // Attention card into view, where they are listed (B73).
+  ok(await page.$eval('.doc.on .hometiles [data-htile="updates"]', t => t.getAttribute('href')) === '#/home',
+     'the updates tile is a link to Home itself, not one node\'s Toolchains page');
+  await page.click('.doc.on .hometiles [data-htile="updates"]');
+  const marked = await page.waitForFunction(() => tabOf(panes[0])?.kind === 'home'
+    && document.querySelector('.doc.on .hattn.focus'), null, { timeout: 5000 }).then(() => true, () => false);
+  ok(marked, '...and a press marks the Attention card where the updates are listed');
+  ok(await page.evaluate(() => homeTiles().find(t => t.key === 'updates').label === (homeUpdates() === 1 ? 'update due' : 'updates due')),
+     '...its label in the singular for one');
 }
 
 // ---- Attention is the bell's rows, and the pinned projects are at a glance ----
@@ -109,6 +141,32 @@ ok(await page.evaluate(() => tabOf(panes[0])?.kind === 'home' && location.hash =
   await page.click('.doc.on .hglance [data-hproj="alpha"]');
   await page.waitForFunction(() => tabOf(panes[0])?.kind === 'notebook' && tabOf(panes[0])?.arg === 'alpha', null, { timeout: 15000 });
   ok(true, '...and its name opens the project\'s page');
+  await page.click('#rail [data-rail="home"]');
+  await page.waitForSelector('.doc.on .homegrid', { timeout: 15000 });
+}
+
+// ---- the top bar's search (B72) ------------------------------------------------
+{
+  ok(await page.$eval('#jump', i => i.placeholder) === 'jump to a page, project, container or node',
+     'at 1280 the search\'s whole hint is shown, not cut mid-word');
+  await page.fill('#jump', 'zzzz');
+  await page.waitForSelector('#jumpList:not([hidden]) .jnone', { timeout: 5000 });
+  ok(/nothing matches/.test(await page.$eval('#jumpList .jnone', e => e.textContent)),
+     'a search that matches nothing says so');
+  await page.fill('#jump', 'a');
+  await page.waitForSelector('#jumpList:not([hidden]) .jrow', { timeout: 5000 });
+  const n = await page.$$eval('#jumpList .jrow', rs => rs.length);
+  await page.keyboard.press('ArrowDown');
+  const marked = await page.$$eval('#jumpList .jrow', rs => rs.findIndex(r => r.classList.contains('on')));
+  await page.keyboard.press('ArrowUp');
+  const back = await page.$$eval('#jumpList .jrow', rs => rs.findIndex(r => r.classList.contains('on')));
+  ok(n > 1 && marked === 1 && back === 0, `ArrowDown marks the second row and ArrowUp the first again (${n} rows; ${marked}, ${back})`);
+  await page.keyboard.press('ArrowDown');
+  const want = await page.$eval('#jumpList .jrow.on .jl', e => e.textContent);
+  await page.keyboard.press('Enter');
+  await sleep(400);
+  ok(await page.$eval('#jumpList', l => l.hidden) && await page.$eval('#jump', i => i.value) === '',
+     `...and Enter opens the marked row (${want})`);
   await page.click('#rail [data-rail="home"]');
   await page.waitForSelector('.doc.on .homegrid', { timeout: 15000 });
 }

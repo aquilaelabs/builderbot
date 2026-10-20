@@ -176,9 +176,9 @@ function nbBugsView({$, nb, project}){
   }
 
   function drawBugAdd(){
-    const box = $("bugAdd");
+    const box = $("bugAdd"), ro = projWriteWhy(project);
     box.innerHTML = `<div class="addbar ctlrow" data-add="bug">
-      <button type="button">Report a bug</button></div>`;
+      <button type="button"${ro ? " disabled" : ""}>Report a bug</button></div>${deadWhy(ro)}`;
     // The same fold the memory writer opens with: the two are the same control
     // on two views of one notebook, and one of them appearing whole while the
     // other unrolled was the kind of difference you cannot unsee.
@@ -239,6 +239,9 @@ function nbBugsView({$, nb, project}){
     // for each press of a chip (the operator, 17 Oct).
     const vis = rows.filter(shown);
     const lim = pageLimit(list, "bugList", vis.length);
+    // A role that reads the project and does not write it (B86): a report
+    // carries no verbs, and Report a bug says why above the list.
+    const ro = projWriteWhy(project);
     list.innerHTML = vis.slice(0, lim).map(b => `
       <details class="bug chev" data-id="${b.id}"${held.has(String(b.id)) ? " open" : ""}>
         <summary>
@@ -252,7 +255,7 @@ function nbBugsView({$, nb, project}){
           ${["area", "repro", "expected", "actual", "notes"].map(k => b[k]
             ? `<div class="bfield"><label>${k}</label><div class="bval">${esc(b[k])}</div></div>` : "").join("")}
           ${bugFacts(b, nb.bugReleases, STATUS_WORDS, (nb.bugs.changelog || {})["B" + b.id])}
-          <div class="actbar macts">
+          ${ro ? "" : `<div class="actbar macts">
             <span class="sp"></span>
             <button type="button" class="bSend"${b.status === "open" ? "" : " disabled"}
               title="${b.status === "open"
@@ -273,7 +276,7 @@ function nbBugsView({$, nb, project}){
                  <!-- Last, because it is the one that cannot be undone. -->
                  <button type="button" class="danger bRm"
                    title="for a report that should not exist: mis-filed, a duplicate, the wrong project">Remove</button>`}
-          </div>
+          </div>`}
         </div>
       </details>`).join("")
       // What the tracker is for, as its empty state (R119 step 4).

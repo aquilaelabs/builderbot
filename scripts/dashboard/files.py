@@ -28,8 +28,29 @@ import time
 from collections import deque
 from pathlib import Path
 
-# The API's version, which the extension compares with its own (vscode/lib/client.js).
+# The API's version (R79 step 8): the extension says the one it speaks in
+# X-BB-Api and which release it is in X-BB-App ("vscode/0.1.0"); the
+# projects answer says API and API_MIN, and one older than API_MIN is
+# refused with the way to update. API moves with a change an older extension
+# would misread; API_MIN with the removal of what it superseded, never before
+# the release after the extension was changed (test/device-api.json pins
+# what it reads).
 API = 1
+API_MIN = 1
+
+
+def api_refused(said, app=""):
+    """Why an editor speaking Files API `said` is refused, or "". None said
+    is 1, the API before the extension said one."""
+    try:
+        n = int(said or 1)
+    except (TypeError, ValueError):
+        n = 0
+    if n >= API_MIN:
+        return ""
+    who = " ".join(str(app or "").split())[:60] or "this extension"
+    return (f"{who} speaks the Files API {n} and the controller needs {API_MIN} or newer: "
+            "update the extension from the controller's dist/")
 WORKSPACE = None
 audit = None              # (principal, action, target, params) -> the audit row
 

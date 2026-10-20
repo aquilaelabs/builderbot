@@ -355,6 +355,14 @@ await page.waitForFunction(() => document.querySelectorAll('#roadmapList .roadma
   const first = await page.$eval('#roadmapList details.grp:has(.roadmap[data-step="1"])', d => ({ open: d.open, steps: d.querySelectorAll('.roadmap[data-step]:not([data-step="-1"])').length,
     shown: [...d.querySelectorAll('.roadmap[data-step]:not([data-step="-1"])')].some(r => r.checkVisibility()) }));
   ok(!first.open && !first.shown, `a group starts folded, its steps out of sight (${JSON.stringify(first)})`);
+  // A step's send lines up under its item's, off the card's edge (B51).
+  const goes = await page.$eval('#roadmapList details.grp:has(.roadmap[data-step="1"])', d => {
+    d.open = true;
+    const r = [...d.querySelectorAll('.roadmap')].map(x => x.querySelector('.go')?.getBoundingClientRect().right).filter(Boolean);
+    d.open = false;
+    return r.map(Math.round);
+  });
+  ok(goes.length > 1 && goes.every(x => Math.abs(x - goes[0]) <= 1), `a step's send is under its item's (${goes.join(', ')})`);
   // The send is the Claude mark among the row's own buttons on the right,
   // the caret is where the arrow was, and the words open the fold (the
   // pencil rewords a group).
@@ -386,6 +394,9 @@ await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(id => document.querySelector(
   `#roadmapList .roadmap[data-id="${id}"][data-step="0"]`)?.classList.contains('sent'),
   s1.id, { timeout: 15000 });
+ok(await page.$eval(`#roadmapList .roadmap[data-id="${s1.id}"][data-step="0"] .txt`,
+   e => getComputedStyle(e).textDecorationLine) === 'none',
+   'a sent step is dim, not struck through: it is still open (B55)');
 items = await open();
 ok(items.find(i => i.text === 'then re-measure it').can,
    'sending the first opens the second, and only then');
@@ -736,8 +747,10 @@ ok(log.every(e => /^(claude|you)( · \S+)?$/.test(e.by)),
 // of them apart, and a session carries its account's because a session has
 // an author too. The audit on the Nodes tab has done this since accounts
 // existed, and the notebook's four logs had not.
-ok(log.some(e => e.by === 'you · test') && log.some(e => e.by === 'claude · test'),
-   '...naming the account behind it, for a person and for a session alike');
+// This account's own is "you" and "claude", said once (B51: "you · stencil"
+// named one person twice); another account's carries its name.
+ok(log.some(e => e.by === 'you') && log.some(e => e.by === 'claude') && !log.some(e => /· test$/.test(e.by)),
+   '...this account\'s own said once, as you and claude');
 ok(log.some(e => e.act === 'reworded'
                  && /rework the picker, properly/.test(e.what)
                  && e.was === 'rework the picker'),
@@ -1022,6 +1035,11 @@ ok(await page.$eval(`.nb #roadmapDoneList .grp.done[data-done="${finId}"] .txt`,
    'Finished shows the ticked-off item, struck through, with no arrow');
 ok(await page.evaluate(() => !!(document.querySelector('.nb #roadmapList').compareDocumentPosition(document.querySelector('.nb #roadmapDoneList')) & Node.DOCUMENT_POSITION_FOLLOWING)),
    '...below the live and shelved ones');
+// Its "done" line is the row's sub line in the data voice, not the summary's
+// bold body text (B51).
+ok(await page.$eval(`.nb #roadmapDoneList .grp.done[data-done="${finId}"] > summary .sub`, s =>
+     Number(getComputedStyle(s).fontWeight) < 600 && getComputedStyle(s).color !== getComputedStyle(s.closest('summary')).color),
+   '...its done line dim and not bold');
 // A finished item is a fold like an open one, with Reopen where no release
 // has shipped it (R254 step 2).
 await page.click(`.nb #roadmapDoneList .grp.done[data-done="${finId}"] > summary`);

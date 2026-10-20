@@ -102,26 +102,29 @@ sdkmgr() {
 # The android SDK licenses, once per toolchain store root.
 #
 # sdkmanager installs nothing into a root whose licenses have not been
-# accepted, and the refusal names the package rather than the license: "The
-# following packages can not be installed since their licenses or those of
-# the packages they depend on were not accepted". This image accepts them at
-# build time (Dockerfile) into the image's own <sdk>/licenses, which is why
-# nothing here ever had to. A node's toolchain store is a DIFFERENT root, and
-# nothing had ever accepted them there, so an android:* install on a node
-# failed at this second hurdle immediately after the SDK-root one.
+# accepted, and the refusal names the package rather than the license. They
+# are Google's terms, and a person accepts them: the Toolchains page names
+# them, links them and asks before it queues the install, and the server
+# keeps who accepted. The job that page queues then records that acceptance
+# here, in the store, the way sdkmanager keeps it.
+#
+# Never a session's to accept: a Claude session that runs `bb toolchains
+# install android:...` on a store nobody has accepted the terms for is
+# refused, and sent to the page, rather than accepting them for a person.
 #
 # Skipped when the directory is there: accepting is a JVM start, and a store
 # that has been through this once does not need it again. If Google ships a
-# new license the install refuses with the message above, which at least
+# new license the install refuses with sdkmanager's message, which at least
 # names what to do.
 sdk_android_licenses() {
     local root; root="${ANDROID_HOME:-$(sdk_dir android)}"
     [ ! -d "$root/licenses" ] || return 0
-    log "accepting the android SDK licenses for ${root}, once per store"
+    [ -z "${CLAUDECODE:-}" ] \
+        || die "the Android SDK installs under Google's terms, which a person accepts: install it from the Toolchains page, which asks"
+    log "recording the android SDK licenses accepted on the Toolchains page, for ${root}"
     mkdir -p "$root"
     # `yes` dies of SIGPIPE when sdkmanager stops reading. Expected, not a
-    # failure; hence the || true inside the pipeline's first stage, the same
-    # shape the Dockerfile uses.
+    # failure; hence the || true inside the pipeline's first stage.
     (yes || true) | sdkmanager "$(sdk_root_flag)" --licenses >/dev/null 2>&1 || true
 }
 
@@ -1263,6 +1266,7 @@ sdk_install_git() {
         "${g[@]}" checkout -q --detach FETCH_HEAD
         [ "$("${g[@]}" rev-parse HEAD)" = "$commit" ] \
             || die "${what}: ${url} answered $("${g[@]}" rev-parse --short HEAD) where ${commit:0:12} was approved"
+        sdk_mark_exec "$what" "$d"
     else
         log "cloning ${what} (${branch:-default}) into ${d}"
         # --progress: git prints none unless stderr is a terminal, and this runs
@@ -1288,7 +1292,27 @@ sdk_install_git() {
     # A repository that installs more than itself (a tool pack's install
     # steps fetching its binaries) runs them as the script kind does.
     sdk_install_steps "$what" "$d"
+    [ -z "$commit" ] || sdk_mark_exec "$what" "$d"
     sdk_install_verify "$what" "$d" ""
+}
+
+# The programs a tool pack runs by path, marked executable (B83): what its
+# verbs, steps and verify name and what is in its bin directories
+# (toolpacks.recipe lists them). A file committed through a forge's web
+# editor carries no executable bit, and every run of it was 'Permission
+# denied'. Run after the checkout and again after the steps, which may have
+# downloaded into bin/. A path the pack does not have yet is passed over.
+sdk_mark_exec() {
+    local what="$1" d="$2" p
+    local -a files dirs
+    sdk_meta_into files argv "$what" source.exec "dir=$d"
+    sdk_meta_into dirs argv "$what" source.exec_dirs "dir=$d"
+    for p in "${files[@]}"; do
+        [ ! -f "$p" ] || [ -x "$p" ] || { log "marking ${p#"$d"/} executable"; chmod a+x "$p"; }
+    done
+    for p in "${dirs[@]}"; do
+        [ ! -d "$p" ] || find "$p" -maxdepth 1 -type f ! -perm -u+x -exec chmod a+x {} +
+    done
 }
 
 # Something already in the image, pointed at the install directory.

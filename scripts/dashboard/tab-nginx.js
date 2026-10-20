@@ -36,14 +36,23 @@ function openNginxTab(node){
   openTab({kind: "nginx", arg: "__nginx", label: "nginx"});
 }
 
+// Which read is the newest asked: a read started before a Save and slowed by
+// a node's daemon landed after the Save's own and put the old port and the
+// plain "deployed" back for seconds (B99, B65). A read older than the last
+// one drawn is dropped.
+let nginxAsked = 0, nginxDrawn = 0;
 async function loadNginx(){
+  const asked = ++nginxAsked;
   try{
     const j = await (await bootFetch("/api/nginx")).json();
+    if (asked < nginxDrawn) return;
+    nginxDrawn = asked;
     nginxErr = j.error || "";
     nginxList = j.nodes || [];
     nginxLatest = j.latest || {};
     nginxHostnames = j.hostnames || [];
   }catch(e){
+    if (asked < nginxDrawn) return;
     nginxErr = String(e);
     nginxList = nginxList || [];
   }
@@ -81,6 +90,20 @@ async function nginxAct(body){
   // the pull-downs hold it the moment the answer lands rather than after
   // the whole tab is read again (every node's daemon, B721).
   if (Array.isArray(j.hostnames)) nginxHostnames = j.hostnames;
+  // What was saved is what the row says at once, and a rebuild it started
+  // says so on the pill, before the tab is read again: the read waits on
+  // the node's daemon, and the row went on showing the old port (B99).
+  // A pair pasted or taken off is the read's to say (its names and dates are
+  // the server's), so that Save waits for it as before.
+  const n = !j.error && body.node && body.action === "save" && !body.cert && !body.drop_cert
+    && (nginxList || []).find(x => x.node === body.node);
+  if (n){
+    n.routes = Array.isArray(j.routes) ? j.routes : (body.routes || []).map(r => ({...r}));
+    if (j.job) n.state = {...(n.state || {}), job: {...(n.state?.job || {}), id: j.job, running: true}};
+    nginxRev++;
+    loadNginx();
+    return j;
+  }
   await loadNginx();
   return j;
 }
@@ -259,27 +282,35 @@ function nginxBody(n){
   if (!n.deployed) return nginxUndeployed(n);
   const d = nginxDraftOf(n);
   const count = (n.routes || []).length;
-  const pill = n.state?.running === false ? `<span class="pill warn">deployed, down</span>`
+  // Down only when nothing is bringing it back: a Save rebuilds it, and the
+  // read right after one caught it between down and up and said "down"
+  // while the build was on its way to running it (B65).
+  const pill = n.state?.job?.running ? `<span class="pill">deployed, rebuilding</span>`
+    : n.state?.running === false ? `<span class="pill warn">deployed, down</span>`
     : `<span class="pill ok">deployed</span>`;
   const sub = `nginx-${esc(n.container.replace(/^nginx-/, ""))} on the ${pageLink("docker", "Containers page")}, ${count} route${count === 1 ? "" : "s"}${n.host_only ? "; a hosting-only node" : ""}`;
   // The image it is pinned to, the newest line, and Update when behind
   // (R192): its own action bar, since Check now and Update are two verbs.
   const im = n.image || {}, lt = nginxLatest || {};
   const pinned = `nginx:${im.tag || "?"}${im.digest ? ` (${im.digest.slice(7, 19)})` : ", not pinned to a digest yet"}`;
-  const news = n.behind ? `nginx:${n.behind} is out: Update pins it and rebuilds`
+  // A newer build of the tag it already runs is said as that, not as the
+  // same tag named twice.
+  const rebuild = !!n.behind && n.behind === im.tag;
+  const out = rebuild ? `a newer build of nginx:${n.behind}` : `nginx:${n.behind}`;
+  const news = n.behind ? `${out} is out: Update pins it and rebuilds`
     : lt.digest ? "the newest line the registry lists" : "no check has read the registry yet";
   const checked = lt.at ? `checked ${ago(lt.at)}` : "never checked";
   // Four sections (R218 step 29): each says its state in its head, opens
   // on one short line with the rest behind its ?, and saves what it writes
   // under itself; Remove stands apart at the page's foot.
   const pairs = Object.values(n.certs || {}).filter(c => c?.set).length;
-  const image = ngSect("image", n.behind ? `nginx:${n.behind} is out` : `nginx:${im.tag || "?"}`,
+  const image = ngSect("image", n.behind ? (rebuild ? "a newer build is out" : `${out} is out`) : `nginx:${im.tag || "?"}`,
     `<div class="field">
       <div class="sub ngimage">${esc(pinned)}</div>
       <div class="hint${n.behind ? " warn" : ""}">${esc(news)}.${helpIcon("The registry is read once a week by itself; a node is pinned to a digest when it is deployed or updated, so a Save never moves it.")}</div>
       <div class="actbar ngimgbar"><span class="state">${esc(checked)}${lt.error ? ` · ${esc(lt.error)}` : ""}</span><span class="sp"></span>
         <button type="button" data-ngcheck>Check now</button>
-        ${n.behind ? `<button type="button" class="primary" data-ngupdate>Update to ${esc(n.behind)}</button>` : ""}</div>
+        ${n.behind ? `<button type="button" class="primary" data-ngupdate>${rebuild ? "Update to the newer build" : `Update to ${esc(n.behind)}`}</button>` : ""}</div>
     </div>`, {cls: n.behind ? "warn" : ""});
   const clash = (n.clash || []).length
     ? `<div class="field"><div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div></div>` : "";
@@ -383,9 +414,10 @@ function nginxReadDraft(sect, n){
 
 function wireNginxTab(root){
   const psel = root.querySelector("#ngNodeSel");
-  if (psel) psel.onchange = () => { nginxNode = psel.value;
+  // A pick is a history entry (B31), so Back returns to the node before.
+  if (psel) psel.onchange = () => navPush(() => { nginxNode = psel.value;
                                     try{ localStorage.setItem("bb.ngnode", nginxNode); }catch(e){ /* private */ }
-                                    nginxRedraw(); };
+                                    nginxRedraw(); });
   const sect = root.querySelector("[data-ngnode]");
   if (!sect) return;
   const nid = sect.dataset.ngnode;
@@ -533,7 +565,7 @@ function wireNginxTab(root){
   };
   const upd = sect.querySelector("[data-ngupdate]");
   if (upd) upd.onclick = async e => {
-    if (!confirm(`Update nginx on ${n.name} to nginx:${n.behind}?\n\nIt is rebuilt with the new image, so its sites are down while the node pulls it.`)) return;
+    if (!confirm(`Update nginx on ${n.name} to ${n.behind === n.image?.tag ? "the newer build of " : ""}nginx:${n.behind}?\n\nIt is rebuilt with the new image, so its sites are down while the node pulls it.`)) return;
     nginxReadDraft(sect, n);
     busy(e.target, "Updating");
     await nginxAct({action: "update", node: nid});

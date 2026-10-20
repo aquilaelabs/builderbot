@@ -69,6 +69,24 @@ class Wiki(unittest.TestCase):
         self.assertEqual([x["name"] for x in wiki.pages("app")], ["Home"])
         self.assertGreaterEqual(len(wiki.history("app")), 4)
 
+    def test_a_rename_moves_the_links_to_it(self):
+        """B46: every link to a renamed page follows it, in the same commit,
+        and a link to another page or a forge address is left alone."""
+        wiki.save("app", "Second Page", "see [[Second Page]] itself\n", who=ME)
+        wiki.save("app", "Home", "[[Second Page]], [[the second|Second-Page]], [two](Second-Page.md),\n"
+                  "[[Other]], [out](https://x.invalid/Second-Page)\n", who=ME)
+        wiki.save("app", "Other", "nothing here\n", who=ME)
+        n = len(wiki.history("app"))
+        r = wiki.rename("app", "Second Page", "Page Two", who=ME)
+        self.assertEqual((r["name"], r["relinked"]), ("Page-Two", 2))
+        self.assertEqual(wiki.page("app", "Home")["text"],
+                         "[[Page Two]], [[the second|Page Two]], [two](Page-Two.md),\n"
+                         "[[Other]], [out](https://x.invalid/Second-Page)\n")
+        self.assertEqual(wiki.page("app", "Page Two")["text"], "see [[Page Two]] itself\n")
+        self.assertEqual(wiki.page("app", "Other")["text"], "nothing here\n")
+        self.assertEqual(len(wiki.history("app")), n + 1, "one commit")
+        self.assertIn("its links in 2 pages", wiki.history("app")[0]["what"])
+
     def test_export_is_a_zip_of_the_pages(self):
         with self.assertRaises(wiki.Refused):
             wiki.export_zip("app")

@@ -23,6 +23,8 @@ class Apps(unittest.TestCase):
             Path(path).write_text(json.dumps(data))
         apps.configure(state=self.tmp, version=lambda: "0.7.0-dev.12+abc", setting=self.settings.get,
                        write_json=write)
+        self.dev = True
+        apps.unvetted_ok = lambda: self.dev
 
     def release(self, tag, files, bad=()):
         rel = self.tmp / "rel"
@@ -59,6 +61,22 @@ class Apps(unittest.TestCase):
         self.assertTrue(apps.path("android", "builderbot-app-0.7.0.apk"))
         self.assertIsNone(apps.path("android", "../index.json"))
         self.assertIsNone(apps.path("companion", "builderbot-companion-0.7.0.pyz"))
+
+    def test_the_companion_and_the_extension_are_dev_features(self):
+        # The operator, 20 Oct: offered, fetched and served only with Offer
+        # dev features on; the Android app is not one.
+        rel = self.release("v0.7.0", ["builderbot-app-0.7.0.apk", "builderbot-vscode-0.7.0.vsix",
+                                      "builderbot-companion-0.7.0.exe"])
+        (self.tmp / "releases.json").write_text(json.dumps([rel]))
+        apps.RELEASES_URL = f"file://{self.tmp / 'releases.json'}"
+        apps.check()
+        self.assertTrue(apps.path("vscode", "builderbot-vscode-0.7.0.vsix"))
+        self.dev = False
+        self.assertEqual([a["name"] for a in apps.view()["apps"]], ["android"])
+        self.assertFalse(apps.offered("vscode") or apps.offered("companion"))
+        self.assertIsNone(apps.path("vscode", "builderbot-vscode-0.7.0.vsix"))
+        self.assertIsNone(apps.path("companion", "builderbot-companion-0.7.0.exe"))
+        self.assertTrue(apps.path("android", "builderbot-app-0.7.0.apk"))
 
     def test_the_seed_is_read_once_and_put_aside(self):
         (self.tmp / "seed.json").write_text(json.dumps({"version": 1, "apps": ["companion"]}))

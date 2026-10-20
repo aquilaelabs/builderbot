@@ -69,6 +69,11 @@ TTYD_RO_PORT = int(os.environ.get("DASHBOARD_TTYD_RO_PORT", str(TTYD_PORT + 1)))
 # challenge is precisely what made browsers pop their own dialog.
 SESSION_DAYS = 30
 STATE = Path(os.environ.get("DASHBOARD_STATE", "/config"))
+# Before anything below writes to it: a /config newer than this build, or
+# older than it migrates from, is refused here in one sentence, a fresh one
+# is stamped, and one about to migrate is copied first (stateversion.py).
+import stateversion                                              # noqa: E402
+stateversion.gate(STATE)
 
 
 def _session_secret():
@@ -170,9 +175,9 @@ SETUP_FIELDS = """  <p class="note">Nobody owns this container yet. The first ac
   <button type="submit">Create the owner</button>"""
 
 LOGIN_FIELDS = """  <!--ERR-->
-  <input type="hidden" name="next" value="/">
+  <input type="hidden" name="next" value="<!--NEXT-->">
   <label for="u">Username</label>
-  <input id="u" name="username" autocomplete="username" autocapitalize="none" required>
+  <input id="u" name="username" value="<!--NAME-->" autocomplete="username" autocapitalize="none" required>
   <label for="p">Password</label>
   <input id="p" name="password" type="password" autocomplete="current-password" required>
   <button type="submit">Sign in</button>"""
@@ -301,6 +306,7 @@ LOGIN_HTML = """<!doctype html>
   const n = new URLSearchParams(location.search).get("next");
   const f = document.querySelector('[name=next]');
   if (f && n && n.startsWith("/") && !n.startsWith("//")) f.value = n;
+  if (document.getElementById("u")?.value) document.getElementById("p")?.focus();
 </script>
 </body></html>
 """
@@ -1147,6 +1153,24 @@ def _project_columns(who, facts):
                     "git_ready": _row_git_ready(base_git, mine_prefs.get(d.name))
                                  if users.uid_of(who) else True,
                     "push_how": projects.push_how(d.name),
+                    # Whether its settings are this account's to change (B19):
+                    # the page locks them, with the reason, where not.
+                    "may_settings": not users.may(who, "settings", d.name) if who else True,
+                    # ...and the reason where not, which the Snapshots and
+                    # Running sessions sections say without asking for what
+                    # they would only be refused (B89).
+                    "settings_why": users.may(who, "settings", d.name) if who else "",
+                    # ...and why its notebook, its tree and the project itself
+                    # are not this account's to change, or "" (B86): a role
+                    # that gives Projects Read alone sees the page with every
+                    # writing control dead and this said under it, rather
+                    # than each refused only at the press.
+                    "write_why": users.may(who, "write", d.name) if who else "",
+                    "trash_why": users.may(who, "trash", d.name) if who else "",
+                    # ...and why its version is not this account's to move or
+                    # release (Releases and versions Write), for the
+                    # Artifacts view's bumps, Release and Set (B101).
+                    "release_why": users.may(who, "version", d.name) if who else "",
                     # Whether this project has a compose file, which is the
                     # same question as "could its tests run in a container of
                     # its own": the settings dialog offers that choice only
@@ -1425,6 +1449,38 @@ def gpu_container_why(project, node_id):
     return toolchains.container_why(n)
 
 
+# Sessions sitting on Claude Code's own permission prompt (B52), set by the
+# session's Notification hook (hooks.py "asking") under its account and its
+# tmux name. The pane title cannot say it: a prompt reads as waiting, like a
+# session with nothing to do. Gone once it works again, its turn ends or it
+# is sent a prompt; "working" counts only a few seconds after the mark,
+# since the title can still carry the spinner as the prompt appears.
+ASKING = {}
+ASKING_SETTLE = 4
+
+
+def asking_set(project, uid, text=""):
+    ASKING[(uid, tmux_name(claude_session(project)))] = {"at": time.time(), "text": str(text or "")[:300]}
+
+
+def asking_clear(project, uid):
+    ASKING.pop((uid, tmux_name(claude_session(project))), None)
+
+
+def session_state(uid, name, title):
+    """(state, task) for a Claude session: claude_state's, or "asking" while
+    it waits on its permission prompt, the prompt's words as the task."""
+    state, task = claude_state(title)
+    k = (uid, tmux_base(name))
+    a = ASKING.get(k)
+    if a:
+        if state == "working" and time.time() - a["at"] > ASKING_SETTLE:
+            ASKING.pop(k, None)
+        else:
+            return "asking", a["text"] or "waiting for you to answer it in its terminal"
+    return state, task
+
+
 def claude_state(title):
     """(state, task) for a Claude pane title: "working" or "waiting"."""
     working = title.startswith(SPINNER_GLYPHS)
@@ -1546,7 +1602,7 @@ def session_target(project, claude=False, node="", uid=""):
                # The row says it whole, the fact and then what to do about
                # it (no tooltip carries a second half any more).
                "why": "no node to run a Claude session on: pick one in the project's settings, or enroll "
-                      "one on the Nodes page"} if claude \
+                      "one on the Nodes page under Machines"} if claude \
         else {"where": "local"}
     if not nid or NODES_OK:
         return no_node
@@ -1724,6 +1780,58 @@ def account_names():
     return {u.get("uid"): n for n, u in users.load()["users"].items() if u.get("uid")}
 
 
+# What ttyd's page lacks on a phone (B53): it carries no viewport meta and
+# says nothing about text size, so a phone's browser may boost the font of a
+# page it takes for a desktop one, and the terminal drew at about twice its
+# size with each line's right half cut off. Said once at the top of <head>.
+#
+# The script is B91, what was really drawing the letters two and three times
+# too large: xterm's WebGL renderer sizes its canvas from a ResizeObserver's
+# device-pixel-content-box while it draws each glyph at devicePixelRatio, and
+# where the two disagree (Chromium's device emulation, which Playwright's
+# phone contexts and a desktop's device toolbar use, scales the ratio but not
+# that box) the canvas holds a third of the grid and shows its top-left
+# corner. Where the box does not match the content box times the ratio, it
+# is answered with that product, so the canvas and the glyphs agree; a phone
+# whose box already matches is handed its own exact one unchanged.
+_TTYD_DPR = (b'<script>(function(){var P=window.ResizeObserverEntry&&ResizeObserverEntry.prototype,'
+             b'd=P&&Object.getOwnPropertyDescriptor(P,"devicePixelContentBoxSize");'
+             b'if(!d||!d.get)return;'
+             b'Object.defineProperty(P,"devicePixelContentBoxSize",{configurable:true,enumerable:true,'
+             b'get:function(){var s=d.get.call(this),c=this.contentBoxSize,r=window.devicePixelRatio||1;'
+             b'if(!s||!s[0]||!c||!c[0])return s;'
+             b'var w=c[0].inlineSize*r,h=c[0].blockSize*r;'
+             b'if(Math.abs(s[0].inlineSize-w)<=2&&Math.abs(s[0].blockSize-h)<=2)return s;'
+             b'return[{inlineSize:Math.round(w),blockSize:Math.round(h)}];}});})();</script>')
+_TTYD_HEAD = (b'<meta name="viewport" content="width=device-width, initial-scale=1">'
+              b'<style>html{-webkit-text-size-adjust:100%;text-size-adjust:100%}</style>'
+              + _TTYD_DPR)
+
+
+def _ttyd_page(raw):
+    """ttyd's answer for its page, as (status line, headers, body) with the
+    phone's lines added to the body's <head>; None for anything else (an
+    error, a compressed or chunked body, a page with no <head>), which is
+    relayed as it came."""
+    head, sep, body = raw.partition(b"\r\n\r\n")
+    if not sep:
+        return None
+    status, *lines = head.decode("latin-1").split("\r\n")
+    hdrs = [tuple(x.strip() for x in ln.split(":", 1)) for ln in lines if ":" in ln]
+    keys = {k.lower(): v for k, v in hdrs}
+    if (" 200 " not in status + " " or "content-encoding" in keys
+            or "transfer-encoding" in keys
+            or not keys.get("content-type", "").startswith("text/html")):
+        return None
+    at = body.find(b"<head>")
+    if at < 0 or _TTYD_HEAD in body:
+        return None
+    at += len(b"<head>")
+    body = body[:at] + _TTYD_HEAD + body[at:]
+    keep = [(k, v) for k, v in hdrs if k.lower() not in ("content-length", "connection")]
+    return status, keep, body
+
+
 def _term_arg(rest):
     """The `arg` a /term request carries, with any owner stamp a browser sent
     taken off. "" when there is none."""
@@ -1829,7 +1937,8 @@ def tmux_sessions():
             # By the unprefixed name, the way node rows are read, so another
             # account's session here says whether it is working too.
             if tmux_base(name).startswith("claude-"):
-                state, task = claude_state(info.get("title", ""))
+                uid = tmux_owner(name) or (users.uid_of(users.get(users.owner_name() or "")) if users.owner_name() else "")
+                state, task = session_state(uid, name, info.get("title", ""))
                 row["claude"] = {"state": state, "task": task}
             rows.append(row)
     return rows
@@ -1914,7 +2023,11 @@ def node_tmux_sessions():
                    "attached": bool(s.get("attached")), "cwd": s.get("cwd", ""),
                    "created": int(s.get("created") or 0)}
             if tmux_base(real).startswith("claude-"):
-                state, task = claude_state(s.get("title", ""))
+                state, task = session_state(who, real, s.get("title", ""))
+                # What it was last asked over the title, which Claude names
+                # from the first turn and keeps (B59).
+                task = projsessions.latest_task(who, tmux_base(real)[len("claude-"):],
+                                                row["created"]) or task
                 row["claude"] = {"state": state, "task": task}
             rows.append(row)
     return rows
@@ -2176,7 +2289,9 @@ def uptime():
 # and field the app reads and carries the same number, test/appapi.mjs
 # holds the running server to that file, and the app compares this against
 # its own TARGET_API to say when it is behind. A change to a path or a
-# field listed there bumps all three together: the app, the file, this.
+# field listed there bumps all three together: the app, the file, this; a
+# field is removed only in the release after a released app stopped
+# reading it, with a changelog line (R79 step 8).
 APP_API = 9
 # How long the app's live connection is held before an empty answer (R125):
 # under the app's 60 s read timeout, and long enough to cost little.
@@ -2703,7 +2818,8 @@ toolchains.configure(run=run, write_json=write_json, state=STATE,
 # /config, and carried to the nodes in the bundle beside the shipped one.
 import toolpacks                                                   # noqa: E402
 
-toolpacks.configure(state=STATE, write_json=write_json)
+toolpacks.configure(state=STATE, write_json=write_json,
+                    unpack=lambda aid, dest: projects.unpack_archive(aid, dest))
 toolchains.packs_rows = toolpacks.recipes
 toolchains.refresh_packs()
 # The Android system images on each node's store, behind the Emulator tab:
@@ -2898,18 +3014,6 @@ import busy                                                      # noqa: E402
 membership.configure(state=STATE, write_json=write_json)
 roles.configure(state=STATE, write_json=write_json)
 registry.configure(state=STATE, workspace=WORKSPACE, write_json=write_json)
-# Roles as areas (R152), once: an account on `user` carries no role, and each
-# project's owner holds PROJECT_owner on it. Marked done in the accounts store.
-try:
-    users.migrate_r152({p: (r or {}).get("owner") or "" for p, r in membership._owners()["projects"].items()})
-except Exception as e:                                                # noqa: BLE001
-    print(f"[dashboard] roles migration (R152) skipped: {type(e).__name__}: {e}", flush=True)
-# ...and a role on a project given on the project alone (R155), once.
-try:
-    registry.sync()
-    users.migrate_r155()
-except Exception as e:                                                # noqa: BLE001
-    print(f"[dashboard] roles migration (R155) skipped: {type(e).__name__}: {e}", flush=True)
 gitview.configure(workspace=WORKSPACE,
                   worktrees=WORKTREES,
                   tell=notify.tell, tmux_name=tmux_name, state=STATE,
@@ -2931,6 +3035,7 @@ import paths                                                     # noqa: E402
 paths.configure(state=STATE, workspace=WORKSPACE)
 workspace.configure(workspace=WORKSPACE, state=STATE)
 workspace.packs_json = toolpacks.catalog_json
+workspace.packs_files = toolpacks.hosted_files
 
 
 def no_node_advice(name):
@@ -3464,6 +3569,8 @@ projsessions.BEHIND = session_behind
 # create paths, and the one thing a Claude session on a new project waits for.
 mapping.configure(workspace=WORKSPACE,
                   codemap=Path(__file__).resolve().parent.parent / "lib" / "codemap.py")
+# Every project's .bb-map/ out of its git, once, beside the start.
+threading.Thread(target=mapping.exclude_all, daemon=True).start()
 projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
                    project_name=PROJECT_NAME,
@@ -3480,6 +3587,10 @@ projects.take_on = users.take_on
 projects.set_prefs = lambda name, **kw: prefs.set_prefs(name, workspace=WORKSPACE, **kw)
 projects.live_sessions = tmux_sessions
 projects.brief_writer = brief.write
+# A create that never took, and a project deleted for good, leave no owner,
+# owner role or account entry behind (B93, B95); the first its settings too.
+projects.purged = lambda name: membership.forget_project(name, live=registry.live_dirs())
+projects.unmade = lambda name: (prefs.forget(name), projects.purged(name))
 
 # ---- a node's git, relayed --------------------------------------------------
 # Push, fetch, pull and ls-remote from a session on a node, done in a
@@ -3526,7 +3637,8 @@ gitview.OKAY = pushscan.okay
 import hooks                                                     # noqa: E402
 
 hooks.configure(users=users, rules=rules, preamble=preamble, overlap=overlap, chat=chat, roadmap=roadmap, pending=pending,
-                turns=turns, nodes=nodes, seen_note=session_seen_note, turn_scope=turn_scope)
+                turns=turns, nodes=nodes, seen_note=session_seen_note, turn_scope=turn_scope,
+                asking_set=asking_set, asking_clear=asking_clear, asked=projsessions.asked)
 
 
 # Written by entrypoint.sh once every startup hook has finished. Named here as
@@ -3680,7 +3792,11 @@ def client_gone(sock):
 # ---- bb doctor, cached for the Doctor card: doctor.py ----------------------
 import doctor                                                    # noqa: E402
 
-doctor.configure(run=run, wait_for_boot=lambda: (wait_for_boot(), wait_for_nodes()))
+doctor.configure(run=run, wait_for_boot=lambda: (wait_for_boot(), wait_for_nodes()),
+                 runner_named=lambda nid, slot: (
+                     (nodes.node(nid) or {}).get("name") or "",
+                     re.sub(r"^[a-z]+://[^/]+/|\.git$|/$", "",
+                            ((nodes.runners_of(nodes.node(nid) or {}).get(slot) or {}).get("url") or ""))))
 # A node dialing in after silence re-asks the doctor now rather than in up
 # to half an hour: after a reboot the card kept saying no node could run a
 # session long after they were all back (the operator, 25 Sep).
@@ -3765,7 +3881,7 @@ reports.node_name = lambda p: ((nodes.node(prefs.get(p)["node"]) or {}).get("nam
 reports.audit = db.audit
 diag.configure(image_stamp=image_stamp, uptime=uptime, doctor_payload=doctor.payload,
                settings=settings, nodes=nodes, db=db, log_dir=logs.log_dir,
-               plugins=plugins, users=users, reports=reports)
+               plugins=plugins, users=users, reports=reports, state_dir=lambda: STATE)
 # A person's devices (R272): their tokens, and the door their apps sync a
 # project through as a node does (wssync), as far as the editor's door lets
 # that person (ftp.access_for).
@@ -3779,8 +3895,8 @@ profiletab.configure(devices=devices)
 # Settings page's, set first by the seed file (step 4).
 import apps                                                      # noqa: E402
 apps.configure(state=STATE, version=lambda: image_stamp().get("version") or "",
-               setting=settings.get, write_json=write_json, audit=db.audit,
-               token=lambda: settings.secret("apps_token"))
+               setting=settings.get, write_json=write_json, audit=db.audit)
+apps.unvetted_ok = channel.unvetted_ok      # the Windows companion and the VS Code extension are dev features
 devices.configure_apps(apps)
 
 # A person's PC lent to a project (R270 step 6): the companion lends a
@@ -4008,7 +4124,8 @@ def _snapshot(who):
     # bare (node_tmux_sessions), and by the bare name they read as unowned,
     # so every account on that project listed the owner's Claude as its own.
     with timing.timed("status:sessions"):
-        sessions = [s for s in tmux_sessions() + node_tmux_sessions()
+        every = tmux_sessions() + node_tmux_sessions()
+        sessions = [s for s in every
                     if _session_visible(s.get("node_name") or s["name"], mine, seen, users.sees_all(who))]
     with timing.timed("status:signin"):
         login = signin.state(mine)
@@ -4153,6 +4270,9 @@ def _snapshot(who):
                # ...and what other projects a session may read: the owner's
                # alone (the operator, 6 Oct), whatever the grants say.
                | {"reads": (who or {}).get("role") == "owner"},
+        # ...and, for the page-wide ones a bar offers, the server's own
+        # refusal, which is said under the dead control (B87).
+        "can_why": {name: users.may(who, name) for name in ("create", "trash")},
         # Each area's level anywhere (R152 step 3), so the page hides a tab
         # whose area this account may not read: "", read or write.
         "areas": {a: ("write" if users.is_admin(who or {}) or (who or {}).get("session")
@@ -4167,13 +4287,13 @@ def _snapshot(who):
         # in a worktree of their own, so this is a list and it is information
         # rather than a refusal: the row says who is here and nothing is
         # grayed for it. The page decides how to word "you and alice".
-        "claude_with": projsessions.with_(sessions),
-        # ...and which of them are working on a prompt right now, for the
-        # dot beside each name (the operator, 24 Sep).
-        "claude_busy": projsessions.busy(sessions),
-        # ...and the same, one row per account per node, for the project
-        # row's list: which machine each session is on.
-        "claude_where": projsessions.where(sessions),
+        # claude_with; which of them are working on a prompt right now, for
+        # the dot beside each name (the operator, 24 Sep), claude_busy; which
+        # are on Claude Code's permission prompt, claude_asking (B104); and
+        # one row per account per node, claude_where, for the project row's
+        # list: which machine each session is on. Every account's sessions
+        # on the projects this account sees, as /api/live gives them.
+        **projsessions.maps(every, seen),
         # This account's own name, so the row can say "you and alice" rather
         # than reading your own name back at you.
         "me": (who or {}).get("name", ""),
@@ -4512,7 +4632,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-    def _login_page(self, error="", setup=False):
+    def _login_page(self, error="", setup=False, name="", nxt="/"):
         """The sign-in card, or the first-run card when nobody owns this box.
 
         One template: the difference between them is three fields and the
@@ -4525,7 +4645,11 @@ class Handler(BaseHTTPRequestHandler):
                 .replace("<!--SAID-->", "Make the first account" if setup else "Sign in to continue")
                 .replace("<!--ACTION-->", "/setup" if setup else "/login")
                 .replace("<!--FIELDS-->", SETUP_FIELDS if setup else LOGIN_FIELDS)
-                .replace("<!--ERR-->", err)).encode()
+                .replace("<!--ERR-->", err)
+                # What was typed comes back with a refusal: a wrong password
+                # keeps the username and where it was going (B38).
+                .replace("<!--NAME-->", html_escape(name, quote=True))
+                .replace("<!--NEXT-->", html_escape(nxt or "/", quote=True))).encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
@@ -4586,7 +4710,9 @@ class Handler(BaseHTTPRequestHandler):
             # not say which half was wrong for the same reason the store
             # checks name and password together.
             time.sleep(0.5)
-            return self._login_page("Wrong username or password.")
+            return self._login_page("Wrong username or password.",
+                                    name=form.get("username", [""])[0][:200],
+                                    nxt=form.get("next", ["/"])[0][:2000])
         users.touch(u["name"])
         nxt = form.get("next", ["/"])[0]
         if not nxt.startswith("/") or nxt.startswith("//"):
@@ -4694,7 +4820,7 @@ class Handler(BaseHTTPRequestHandler):
             return ""
         label = next((a[1] for a in roles.AREAS if a[0] == area), area)
         return (f"your roles give no {label} Read" + (f" on {project}" if project else "")
-                + ": a role that holds it is picked in their settings on the Users page")
+                + ": an administrator gives a role that holds it")
 
     def _term_refused(self, rest, me=None):
         """A sentence when this account may not have the terminal it is asking
@@ -4976,9 +5102,15 @@ class Handler(BaseHTTPRequestHandler):
         # writes are not. Blocking with no deadline is what a splice wants.
         up.settimeout(None)
         ws = "upgrade" in self.headers.get("Connection", "").lower()
+        # The terminal's page itself is asked for plain and read whole, so the
+        # phone's lines can go into it (B53); everything else is spliced.
+        page = (not ws and self.command == "GET"
+                and urllib.parse.urlsplit(rest).path == "/")
         lines = [f"{self.command} {rest} HTTP/1.1"]
         for k, v in self.headers.items():
             if k.lower() in ("authorization", "cookie", "connection", "keep-alive"):
+                continue
+            if page and k.lower() == "accept-encoding":
                 continue
             lines.append(f"{k}: {v}")
         lines.append("Connection: " + (self.headers.get("Connection", "Upgrade")
@@ -4994,6 +5126,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             up.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
             self.wfile.flush()
+            if page:
+                return self._term_page(up, down)
             sel.register(up, selectors.EVENT_READ, down)
             sel.register(down, selectors.EVENT_READ, up)
             while True:
@@ -5007,6 +5141,28 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             sel.close()
             up.close()
+
+    def _term_page(self, up, down):
+        """ttyd's page, read whole (it closes after one answer) and sent on
+        with the phone's lines in its head, compressed here when the browser
+        takes it since ttyd was asked for it plain."""
+        up.settimeout(30)
+        raw = b""
+        while True:
+            data = up.recv(65536)
+            if not data:
+                break
+            raw += data
+        fixed = _ttyd_page(raw)
+        if fixed is None:
+            return down.sendall(raw)
+        status, hdrs, body = fixed
+        body, zipped = self._gzip(body)
+        out = [status] + [f"{k}: {v}" for k, v in hdrs]
+        if zipped:
+            out.append("Content-Encoding: gzip")
+        out += [f"Content-Length: {len(body)}", "Connection: close"]
+        return down.sendall(("\r\n".join(out) + "\r\n\r\n").encode("latin-1") + body)
 
     def _static(self, rel, ctype):
         """A file that IS the app (index.html and the tab scripts), served so
@@ -5280,13 +5436,13 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(snapshot(self._who()))
 
     def _get_live(self):
-        """GET /api/live: who has a Claude session on each project and which
-        of them are working, the two maps the status payload also carries,
-        alone and cheap. Fetched when the revs token `live` moves."""
-        sessions = tmux_sessions() + node_tmux_sessions()
-        return self._json({"claude_with": projsessions.with_(sessions),
-                           "claude_busy": projsessions.busy(sessions),
-                           "claude_where": projsessions.where(sessions)})
+        """GET /api/live: who has a Claude session on each project this
+        account sees, which of them are working and which asking, the maps
+        the status payload also carries (projsessions.maps), alone and
+        cheap. Fetched when the revs token `live` moves."""
+        who = self._who()
+        return self._json(projsessions.maps(tmux_sessions() + node_tmux_sessions(),
+                                            None if users.sees_all(who) else (who or {}).get("projects") or []))
 
     def _get_findings(self):
         """GET /api/findings: findings.view, scoped to the projects this
@@ -5544,10 +5700,14 @@ class Handler(BaseHTTPRequestHandler):
         to give those (users.assignable)."""
         me = self._who() or {}
         can = users.assignable(me)
-        if not can["admin"] and not can["projects"]:
-            return self._json({"error": "the Roles page is an administrator's, or a project owner's "
-                                        "for their own projects"}, 403)
-        scope = None if can["admin"] else set(can["projects"])
+        # Accounts and roles Read with nothing to give sees the whole of it,
+        # to read: the page draws it without a control (B34).
+        readonly = not can["admin"] and not can["projects"] and not me.get("session") \
+            and not self._area_read_why("accounts", me=me)
+        if not can["admin"] and not can["projects"] and not readonly:
+            return self._json({"error": "the Roles page is an administrator's, a project owner's "
+                                        "for their own projects, or for reading, Accounts and roles Read's"}, 403)
+        scope = None if can["admin"] or readonly else set(can["projects"])
         people = []
         for u in users.all_users():
             full = users.get(u["name"]) or {}
@@ -5557,7 +5717,8 @@ class Handler(BaseHTTPRequestHandler):
                 pr = {p: r for p, r in pr.items() if p in scope}
                 on = [p for p in on if p in scope]
             people.append({"name": u["name"], "uid": u["uid"], "role": u["role"],
-                           "roles": [r for r in roles.roles_of(full) if r not in ("user",)] if can["admin"] else [],
+                           "roles": [r for r in roles.roles_of(full) if r not in ("user",)]
+                           if can["admin"] or readonly else [],
                            "project_roles": pr, "projects": on})
         all_projects = project_names(me) if scope is None else sorted(scope)
         rs = roles.all_roles()
@@ -5566,12 +5727,21 @@ class Handler(BaseHTTPRequestHandler):
         # A project's owner role is named after its directory; the tab says
         # whose it is by the name the project is shown under (R154).
         owners_of = {roles.owner_role_name(d): d for d in registry.labels()}
+        # One whose project is not live (in the trash) is not listed: it is
+        # kept for Put back, and listed it was counted as a project's owner
+        # and could share a label with the live one shown under that name
+        # (B95). A role of the same cut name a live project holds wins.
+        for d in registry.live_dirs():
+            owners_of[roles.owner_role_name(d)] = d
+        rs = {n: r for n, r in rs.items()
+              if n not in owners_of or (registry.get(owners_of[n]) or {}).get("state") == "live"}
         # ...and which project it is for, so the People section offers it
         # under that project alone (B726).
         rs = {n: (dict(r, label=f"owner of {registry.label(owners_of[n])}", project=owners_of[n]) if n in owners_of else r)
               for n, r in rs.items()}
         return self._json({"roles": rs, "areas": [list(a) for a in roles.AREAS], "people": people,
-                           "projects": all_projects, "admin": can["admin"], "me": me.get("name") or "",
+                           "projects": all_projects, "admin": can["admin"], "readonly": readonly,
+                           "me": me.get("name") or "",
                            "owner": users.owner_name() or "", "node_areas": sorted(roles.NODE_AREAS),
                            # What an area's row opens on (R260): the nodes for
                            # a node area, each runner (NODE_ID/SLOT) for the
@@ -5996,9 +6166,12 @@ class Handler(BaseHTTPRequestHandler):
         # list of hosts, and it is drawn once from one answer. `hosts` is
         # what the operator has already said their own servers run, so the
         # clone form knows not to ask a question it has the answer to.
+        # ...and the directories a new project may not have, so the name
+        # field can say before Create when its folder will be numbered (B63).
         return self._json({"keys": agent_keys(), "pat": gh_authed(),
                            "forges": forges.catalog(),
-                           "hosts": forges.known()})
+                           "hosts": forges.known(),
+                           "dirs": registry.taken_dirs()})
 
     def _read_json(self):
         """The body, once. Read here rather than in each handler: doing it
@@ -6265,6 +6438,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         held = (("node" in req or "nodes" in req) and prefs.node_changed(name, req)) \
             or (req.get("reads") is not None and prefs.reads_changed(name, req.get("reads")))
+        # Then the rest: the project's own settings are the Project settings area's to
+        # write (B19, the operator: Settings Write only); what is the asker's
+        # own here (prefs.YOURS) is anybody's on the project, and a field
+        # sent with the value it has is no change.
+        if prefs.project_changes(name, req) and self._refused("settings", name):
+            return None
         got = prefs.dialog_save(name, req, users.uid_of(self._who()))
         if reach and not got[0].get("error"):
             net_nudge()
@@ -6596,7 +6775,8 @@ class Handler(BaseHTTPRequestHandler):
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         # An app from before a break in the door is told so, whatever it
         # asked; except where it asks what to update to.
-        if (why := devices.door_refused(self.headers.get("X-BB-Door"))) and verb not in ("apps", "app-file"):
+        if ((why := devices.door_refused(self.headers.get("X-BB-Door"), self.headers.get("X-BB-App")))
+                and verb not in ("apps", "app-file")):
             return self._json({"error": why, "update": True}, 426)
         if verb == "signin":
             if self.command != "POST":
@@ -7902,7 +8082,11 @@ class Handler(BaseHTTPRequestHandler):
                                                    only=req.get("only") if isinstance(req.get("only"), dict) else {}))
             return self._result(roles.set_role(field(req, "name"), grants=req.get("grants"), note=field(req, "note")))
         if act == "remove":
-            return self._result(roles.remove(field(req, "name")))
+            r = roles.remove(field(req, "name"))
+            if r.get("ok"):
+                # ...and off every account that held it (B20).
+                r["held_by"] = users.forget_role(r["name"])
+            return self._result(r)
         return self._json({"error": "unknown action"}, 400)
 
     def _toolchains(self, req):
@@ -7913,27 +8097,55 @@ class Handler(BaseHTTPRequestHandler):
         # everywhere, a role of your own where it says.
         if (why := users.may_node(self._who(), "toolchains-write", field(req, "node"))):
             return self._json({"error": why}, 403)
+        # An agreement (Google's Android SDK terms, NVIDIA's CUDA license) is
+        # a person's to accept, by name, before anything installs under it;
+        # the page asks, and the acceptance is on the record.
+        if req.get("action") == "install":
+            need = toolchains.agreements(req.get("names") or [])
+            given = req.get("accept") if isinstance(req.get("accept"), list) else []
+            if (missing := [t for t in need if t["label"] not in given]):
+                return self._json({"error": "installing this accepts " + " and ".join(t["label"] for t in missing)
+                                            + ": accept it on the Toolchains page first",
+                                   "accept": missing}, 409)
+            if need:
+                db.audit(self._principal(), "terms-accepted", ",".join(map(str, req.get("names") or []))[:200],
+                         {"terms": [t["label"] for t in need], "node": field(req, "node")})
         return self._json(*toolchains.verb(req.get("action"), req, self._principal()))
 
     def _toolpacks(self, req):
         """POST /api/toolpacks: look at a tool pack by its repository's
-        address, add it at the commit that was shown, or remove it (R77).
+        address, or at one made here from a pasted manifest or an uploaded
+        archive (/api/upload-archive's id); add it as it was shown; read a
+        pack made here's manifest back for Edit; or remove it (R77).
         An administrator's, since a pack joins every node's catalog."""
         if self._refused("admin"):
             return None
         action = req.get("action")
         shipped = {r["name"] for r in toolchains.load_toolchains()}
-        if action == "preview":
+        by = (self._who() or {}).get("name") or ""
+        if action == "preview" and ("text" in req or field(req, "archive")):
+            r = toolpacks.stage(req.get("text") if isinstance(req.get("text"), str) else None,
+                                field(req, "archive"), shipped)
+        elif action == "preview":
             r = toolpacks.fetch(field(req, "url"), shipped=shipped)
+        elif action == "add" and field(req, "staged"):
+            r = toolpacks.add_staged(field(req, "staged"), by, shipped)
         elif action == "add":
-            r = toolpacks.add(field(req, "url"), field(req, "commit"), (self._who() or {}).get("name") or "", shipped)
+            r = toolpacks.add(field(req, "url"), field(req, "commit"), by, shipped)
+        elif action == "source":
+            r = toolpacks.source(field(req, "name"))
+        elif action == "where":
+            # Asked before Remove's confirm: refused here, saying where, while
+            # a node's store holds it (B84).
+            w = toolchains.installed_where(field(req, "name"))
+            r = toolpacks.where_said(field(req, "name"), w) if w else {"installed": []}
         elif action == "remove":
-            r = toolpacks.remove(field(req, "name"))
+            r = toolpacks.remove(field(req, "name"), toolchains.installed_where(field(req, "name")))
         else:
-            return self._json({"error": "a tool pack is previewed, added or removed"}, 400)
+            return self._json({"error": "a tool pack is previewed, added, read or removed"}, 400)
         if r.get("error"):
             return self._json(r, 400)
-        if action != "preview":
+        if action not in ("preview", "source"):
             toolchains.refresh_packs()
         return self._json(r)
 
@@ -7970,7 +8182,9 @@ class Handler(BaseHTTPRequestHandler):
                                         "`bb changelog add`, and corrects one with "
                                         "`edit`, `merge`, `split` or `rm`"}, 403)
         name = req.get("project", "")
-        if self._not_project(name):
+        # A role that reads the project does not rearrange its changelog
+        # either (B101): the Save was live for it, and went through.
+        if self._not_project(name) or self._readonly(name):
             return
         if (bad := projects.locked_out(name)):
             return self._json(bad, 409)
@@ -8066,6 +8280,8 @@ class Handler(BaseHTTPRequestHandler):
         if me.get("session"):
             return self._json({"error": "a session has its project's tree already: this is a "
                                         "person's editor's"}, 403)
+        if why := files.api_refused(self.headers.get("X-BB-Api"), self.headers.get("X-BB-App")):
+            return self._json({"error": why, "update": True}, 426)
         if field(req, "action") == "projects":
             # The ones this account may open, each with its access: asked
             # project by project through the same gate as every call after.
@@ -8074,7 +8290,7 @@ class Handler(BaseHTTPRequestHandler):
                 a, _ = ftp.access_for(me, name, "editor")
                 if a:
                     mine.append({"name": name, "access": a})
-            return self._json({"api": files.API, "projects": mine})
+            return self._json({"api": files.API, "api_min": files.API_MIN, "projects": mine})
         project = field(req, "project")
         if self._not_project(project):
             return None
@@ -8224,6 +8440,9 @@ class Handler(BaseHTTPRequestHandler):
                                      host=field(req, "host"))
         elif act == "save":
             r = nginxproxy.save_routes(nid, req.get("routes"))
+            # The routes as kept go back with the answer, so the row says
+            # the saved port at once rather than after a read (B99).
+            kept = {"routes": r["routes"]} if isinstance(r.get("routes"), list) else {}
             # The certificate pasted is the node's default, or one
             # hostname's own when cert_for names it (R175).
             saved = {}
@@ -8237,7 +8456,7 @@ class Handler(BaseHTTPRequestHandler):
             if not r.get("error") and drop:
                 r = nginxproxy.drop_cert(nid, drop if isinstance(drop, str) else field(req, "cert_for"))
             if not r.get("error"):
-                r = nginxproxy.apply(nid, containers, devactions, devapp) | saved
+                r = nginxproxy.apply(nid, containers, devactions, devapp) | saved | kept
         elif act == "remove":
             r = nginxproxy.remove(nid, devactions, devapp)
         elif act == "check":
@@ -8710,17 +8929,17 @@ def main():
               "you to make the owner. Do it now: until you do, whoever "
               "reaches this port can.", flush=True)
     layout.prune_claude_tabs()
-    # The owner takes projects on like everybody (R135): a record that
-    # carried "*" gets the projects that exist now, so nothing they were on
-    # is lost. Here, once every module is configured: at import it ran
-    # before project_list could answer, failed, and the dev instance's
-    # owner kept "*" (B496).
+    # The JSON stores' numbered migrations past /config's stamp (R79), here,
+    # once every module is configured: one needs project_list to answer,
+    # which at import it could not (B496). The gate at the top took the copy.
+    stateversion.migrate(STATE, {"state": STATE, "project_names": lambda: project_names(users.ALL)})
+    # ...and, on every start, the owner roles of projects that are gone for
+    # good or never were (a clone that failed before B95, a folder purged by
+    # hand), once the migrations have given the ones they give.
     try:
-        moved = users.migrate_star(project_names(users.ALL))
-        if moved:
-            print(f"dashboard: {moved} account(s) moved from every project to the ones that exist (R135)", flush=True)
-    except Exception as e:  # noqa: BLE001 (a migration never keeps the dashboard from starting)
-        print(f"dashboard: the owner's project list was not migrated (R135): {e}", flush=True)
+        membership.prune_gone(registry)
+    except Exception as e:                                            # noqa: BLE001
+        print(f"[dashboard] owner roles of gone projects not pruned: {type(e).__name__}: {e}", flush=True)
     # Daemons: these loops must die with the server, not hold it open.
     doctor.start()
     idle.start()

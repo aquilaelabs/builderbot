@@ -1155,14 +1155,12 @@ A notebook view opens on its first section (the operator, 7 Oct). On a
 phone one section is open at a time: opening one closes its siblings, a
 section's own folds (a page's rules inside Pages) taking turns among
 themselves without closing it, and a draw that finds several open keeps the
-one last opened in this visit; a view or a page opened anew opens on its first. On a desktop no section at a page's level folds (the operator, 18 Oct): each stands open, its head with no triangle and nothing to press, but for a fold on purpose (data-fold: the Projects page's Archived, a read made when opened, the Design view's Pages and Themes, what a session is sent). Every section's head is one height and shade: 46px, on --head-bg, the ink a step into the panel, as Home's cards and the Containers project band are.
+one last opened in this visit; a view or a page opened anew opens on its first. On a desktop no section at a page's level folds (the operator, 18 Oct): each stands open, its head with no triangle and nothing to press, but for a fold on purpose (data-fold: the Projects page's Archived, a read made when opened, what a session is sent). Every section's head is one height and shade: 46px, on --head-bg, the ink a step into the panel, as Home's cards and the Containers project band are.
 
-The Design view is two folds under its head row: Pages and Themes, in
-that order, both closed on a new tab so the view opens short, and each
-showing one entry at a time, chosen on a pulldown at the fold's top: every
+The Design view is two sections under its head row: Pages and Themes, in that order, each standing open like every other section (the operator, 19 Oct), and each showing one entry at a time, chosen on a pulldown at the section's top: every
 page and every theme at once was the whole view scrolled past (the
 operator, 28 Sep). The one shown is fields like any tab's, never a box of
-its own. Adding is inside the fold it adds to (the operator, 30 Sep): Add
+its own. Adding is inside the section it adds to (the operator, 30 Sep): Add
 page, with its platform, its template and a page here to copy, is the first
 band inside Pages; Add theme, from blank, a preset or a copy of a theme, the
 first inside Themes; blank is the default of both, and what is added is
@@ -1497,7 +1495,7 @@ Layout of a notebook: Design on a desktop frame (12 columns by 14 rows: the fram
   14. List (rows of like things): Colors: each a name, a hex chip and what it is for, added and cut one by one, across the middle, row 13 of 14, inside block 10 (List: Themes)
   15. Footer (the band at the foot): Save and Revert: what was changed is a draft until Save, across the bottom, row 14 of 14
 Notes:
-  Two folds, Pages and Themes, both closed on a new tab, each showing one entry on its pulldown. The design language is each theme's: the first theme is the default and its type, corners, space, motion, families and rules are the design's; another theme's hold for it alone. A page keeps rules of its own under its board. Adding is inside the fold it adds to: a new page from a platform and a template (Blank, App shell, Dashboard, Landing page, List and detail, Settings for a desktop frame; Mobile app and Mobile feed for a phone's), or a copy of a page here (blocks, layouts, rules and notes), and a new theme blank, from a preset or as a copy of a theme (colors, choices and rules); blank is the default. The board is the width of the view with the layers list beside it, top layer first; a later layer draws over an earlier one, and a block can be inside another, drawn over it and kept within it however either moves, so a card sits in a list and a pill in a bar. The view is passive: no prompt, no Copy, nothing sent to a session; a session reads the design through bb design show and the rules that reach it.
+  Two sections, Pages and Themes, each standing open like every other section, each showing one entry on its pulldown. The design language is each theme's: the first theme is the default and its type, corners, space, motion, families and rules are the design's; another theme's hold for it alone. A page keeps rules of its own under its board. Adding is inside the section it adds to: a new page from a platform and a template (Blank, App shell, Dashboard, Landing page, List and detail, Settings for a desktop frame; Mobile app and Mobile feed for a phone's), or a copy of a page here (blocks, layouts, rules and notes), and a new theme blank, from a preset or as a copy of a theme (colors, choices and rules); blank is the default. The board is the width of the view with the layers list beside it, top layer first; a later layer draws over an earlier one, and a block can be inside another, drawn over it and kept within it however either moves, so a card sits in a list and a pill in a bar. The view is passive: no prompt, no Copy, nothing sent to a session; a session reads the design through bb design show and the rules that reach it.
 
 ### a notebook: Roadmap (Web app)
 

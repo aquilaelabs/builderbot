@@ -288,6 +288,28 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   await beat([]);
 }
 
+// ---- a session on Claude Code's own permission prompt (B52) -----------------
+// Its pane title reads as waiting, like an idle one; the Notification hook
+// (bb-gate --asking, fed Claude Code's JSON) marks it asking, with Claude's
+// words, until its turn ends.
+{
+  const name = `${uids[0]}~claude-alpha`;
+  await beat([{ name, title: '✳ Refactor the parser' }]);
+  const rowOf = async () => ((await call('/api/status')).sessions || [])
+    .find(s => s.node_name === name || s.name === name)?.claude || {};
+  const before = await rowOf();
+  const said = execFileSync('python3', [join(HERE, 'bb-gate'), '--asking', 'alpha', uids[0]],
+    { encoding: 'utf8', input: JSON.stringify({ hook_event_name: 'Notification', message: 'Claude needs your permission to use Bash' }),
+      env: { ...process.env, BB_CONTROLLER: base, BB_TOKEN: toks[0], BB_ACCOUNT_UID: uids[0], BUILDERBOT_ROLE: 'node' } });
+  const asking = await rowOf();
+  await hook(0, 'turn-done');
+  const after = await rowOf();
+  ok(before.state === 'waiting' && said.trim() === '' && asking.state === 'asking'
+     && /needs your permission to use Bash/.test(asking.task || '') && after.state === 'waiting',
+     `a session on its permission prompt reads as asking, with Claude's words, until its turn ends (${before.state}, ${asking.state}: ${asking.task}, ${after.state})`);
+  await beat([]);
+}
+
 // ---- bb-gate, the hook itself ----------------------------------------------
 // The limit at one and somebody working: the prompt waits, and is refused
 // with a sentence when its wait runs out; given a longer wait, it goes the

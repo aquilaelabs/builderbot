@@ -93,9 +93,12 @@ function renderSettingsInto(i){
   const sect = (key, title, status, html, opts = {}) =>
     docSection("settings", key, title, status, html.replace(/<h4>[^<]*<\/h4>\s*/, ""), opts);
   const groups = settingsSections();
+  // The logs are an administrator's: a poll that has landed without them
+  // means this account has no Logs section, not one still on its way (B38).
+  const logs = logSection();
   d.list.innerHTML = `<div class="sectjump" data-sects></div>
-    ${sect("logs", "Logs", "", `<div class="row stack2" data-group="Logs"><div class="grow">${withRevert(logSection(), "logs")
-        || `<div class="sub">log settings arrive with the first poll…</div>`}</div></div>`)}
+    ${logs || !state ? sect("logs", "Logs", "", `<div class="row stack2" data-group="Logs"><div class="grow">${withRevert(logs, "logs")
+        || `<div class="sub">log settings arrive with the first poll…</div>`}</div></div>`) : ""}
     ${reportsSection() ? sect("reports", "BuilderBot bug reports", reportsCount === null ? "" : reportsCount ? `${reportsCount} report${reportsCount === 1 ? "" : "s"}` : "none", reportsSection()) : ""}
     ${sect("idle", "Claude sessions", idle === undefined ? "" : idle ? `${idle} min` : "never",
            `<div class="row stack2" data-group="Claude sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
@@ -207,16 +210,15 @@ const SETTING_GROUPS = [
   // against its sha256 and offered on the Apps page (under Build); Look now asks the
   // release again rather than waiting for the daily look.
   {key: "apps", title: "Apps", intro: appsIntro, status: appsStatus,
-   heading: s => `${["apps_android", "apps_vscode", "apps_companion"].filter(k => s?.settings?.[k]?.value).length} offered`,
+   heading: s => `${["apps_android", ...(s?.settings?.offer_unvetted?.value ? ["apps_vscode", "apps_companion"] : [])]
+     .filter(k => s?.settings?.[k]?.value).length} offered`,
    fields: [
     {key: "apps_android", label: "Android app", type: "bool",
      hint: "The notebook, the bell and your sessions on a phone, and the phone lent to a project."},
-    {key: "apps_vscode", label: "VS Code extension", type: "bool",
+    {key: "apps_vscode", label: "VS Code extension", type: "bool", dev: true,
      hint: "A project's files and terminal in VS Code."},
-    {key: "apps_companion", label: "Windows companion", type: "bool",
-     hint: "A folder on a Windows PC kept in step with a project, for a tool that only runs there."},
-    {key: "apps_token", label: "GitHub token for the releases (optional)", type: "secret",
-     hint: "Only while BuilderBot's repository is private: a token that may read its releases. GitHub answers 404 without one."}]},
+    {key: "apps_companion", label: "Windows companion", type: "bool", dev: true,
+     hint: "A folder on a Windows PC kept in step with a project, for a tool that only runs there."}]},
   // The home tunnel the controller runs itself (R176): the public hostname
   // a node off the LAN dials, the tunnel's token, and an API token that
   // writes the hostname's record and the tunnel's rules rather than having
@@ -504,7 +506,7 @@ function settingsSections(){
       <div class="grow">
         <div class="logset">
           ${g.intro ? g.intro(s) : ""}
-          ${g.fields.map(field).join("")}${fold}
+          ${g.fields.filter(f => !f.dev || s.settings.offer_unvetted?.value).map(field).join("")}${fold}
           <div class="actbar">
             <span class="state">${g.status ? g.status(s) : "applies at once"}</span>
             <button type="button" class="setApply" title="save">Apply</button>

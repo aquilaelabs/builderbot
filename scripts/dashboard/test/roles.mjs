@@ -198,12 +198,131 @@ for (const who of CAST) {
     const r = tabProject({ kind: 'term', arg: 'shell' }) || '-';
     state.sessions = was; return r; });
   ok(moved === 'alpha', `...and the workspace's shell, gone into alpha, wears alpha's (${moved})`);
+  // ...and is labeled with the name alpha is shown under, not its directory,
+  // which a name reused after a delete has numbered (B64): the tab, its row
+  // and the confirm that ends it all read the label. Planted and read in
+  // one evaluate, so a poll cannot land between.
+  const shown = await owner.page.evaluate(() => {
+    const was = state.sessions, row = (state.projects || []).find(p => p.name === 'alpha'), lbl = row?.label;
+    state.sessions = [...(was || []), { name: sessionOf('shell'), cwd: '/workspace/alpha' }];
+    if (row) row.label = 'alpha-shown';
+    const r = [sessionLabels().get(sessionOf('shell')) || '-', tabLabel({ kind: 'term', arg: 'shell', label: '' })];
+    state.sessions = was; if (row) row.label = lbl;
+    return r.join(' | '); });
+  ok(shown === 'sh: alpha-shown | sh: alpha-shown',
+     `...and its label names the project as it is shown, not its directory (${shown})`);
   await Promise.all([owner, user1, user2].map(p => refreshUntil(p.page,
     () => ((state.projects || []).find(p => p.name === 'alpha')?.yours?.model || '') === 'sonnet',
     { timeout: 20000 }).catch(() => {})));
   const models = await Promise.all([owner, user1, user2].map(p => p.page.evaluate(() =>
     (state.projects || []).find(p => p.name === 'alpha')?.yours?.model || '')));
   ok(models.every(m => m === 'sonnet'), `each person's own model on alpha is their own setting (${models.join(', ')})`);
+}
+
+// ---- found walking the dev pair (19 Oct) ----------------------------------------------
+// B19: a member whose role reads Project settings and does not write them
+// (lib.mjs MEMBER) is refused the project's own settings, and keeps what is
+// their own there; the page is told, to lock them with the reason.
+// B21: such a member is not handed every account name by the People view.
+// B20: a role removed is taken off every account that held it, so a role
+// made later under its name gives them nothing.
+{
+  const u2 = await pageFor(CAST.find(c => c.name === 'w.user2'));
+  const own = await api(u2, '/api/prefs', { project: 'alpha', capture_days: 9 });
+  ok(own.status === 403, `a member without Project settings is refused a project setting (${own.status} ${own.error || ''})`);
+  const mine = await api(u2, '/api/prefs', { project: 'alpha', reply: 'short' });
+  ok(mine.status === 200, `...and still sets what is their own on it (${mine.status} ${mine.error || ''})`);
+  const row = await u2.evaluate(() => (state.projects || []).find(p => p.name === 'alpha')?.may_settings);
+  ok(row === false, `...and the page is told the project's settings are not theirs to change (${row})`);
+  const view = await api(u2, '/api/members', { action: 'view', project: 'alpha' });
+  ok(view.status === 200 && Array.isArray(view.accounts) && view.accounts.length === 0 && view.may_invite === false,
+     `a member who may not invite is not handed every account's name (${(view.accounts || []).length} named)`);
+  await u2.close();
+  const owner = await pageFor(CAST[0]);
+  const made = await api(owner, '/api/roles', { action: 'set', name: 'walk-g', scope: 'global', perms: { jobs: 'read' } });
+  await api(owner, '/api/roles', { action: 'assign', name: 'w.user3', roles: ['walk-g'] });
+  const held = () => usersPy('d = u.load(); print(json.dumps(d["users"]["w.user3"].get("roles") or []))');
+  const before = JSON.parse(held());
+  const gone = await api(owner, '/api/roles', { action: 'remove', name: 'walk-g' });
+  const after = JSON.parse(held());
+  ok(made.status === 200 && before.includes('walk-g') && gone.status === 200 && !after.includes('walk-g') && gone.held_by === 1,
+     `a role removed is taken off the account that held it (${before.join()} then ${after.join() || 'none'}, ${gone.held_by} held it)`);
+  await owner.close();
+}
+
+// ---- Accounts and roles Read alone (B34), and a plain account by link (B38)
+// Read sees Users and Roles to read: every field dead, no Add, Save or
+// Remove, and the reason said on the page; the Roles page is not refused.
+// A plain account sent to either by link is told it may not, with no count
+// and no Add.
+{
+  const [owner, , , , , user3] = CAST;
+  const who = { name: 'w.acctread', pw: 'pw-w.acctread-1', role: 'user', projects: [] };
+  make(who.name, 'user', []);
+  const set = await api(owner.page, '/api/roles', { action: 'set', name: 'acct-reader', scope: 'global', perms: { accounts: 'read' } });
+  const giv = await api(owner.page, '/api/roles', { action: 'assign', name: who.name, roles: ['acct-reader'], project_roles: {} });
+  ok(set.status === 200 && giv.status === 200,
+     `an Everywhere role with Accounts and roles Read is given to ${who.name} (${set.status}, ${giv.status}${giv.error ? ': ' + giv.error : ''})`);
+  const page = await pageFor(who);
+  {
+    const rd = await api(page, '/api/roles');
+    const mine = await api(owner.page, '/api/roles');
+    ok(rd.status === 200 && rd.readonly === true,
+       `...who reads /api/roles, to read (${rd.status}${rd.error ? ': ' + rd.error : ''}; holds ${JSON.stringify((mine.people || []).find(p => p.name === who.name)?.roles)})`);
+  }
+  await page.evaluate(() => openUsersTab());
+  await page.waitForSelector('.userstab [data-upick="w.user1"]', { timeout: 15000 });
+  await page.click('.userstab [data-upick="w.user1"]');
+  await page.waitForSelector('.userstab #ueAccess .setrow', { timeout: 15000 }).catch(() => {});
+  const u = await page.evaluate(() => ({
+    add: !!document.querySelector('.userstab #uAddOpen'), save: !!document.querySelector('.userstab #ueSave'),
+    remove: !!document.querySelector('.userstab #ueRemove'),
+    live: [...document.querySelectorAll('.userstab .rdetail input, .userstab .rdetail select, .userstab .rdetail [data-rprojoff]')].filter(i => !i.disabled).length,
+    why: document.querySelector('.userstab #ueWhyRo')?.textContent || '',
+    access: document.querySelector('.userstab #ueAccess')?.textContent.replace(/\s+/g, ' ') || '' }));
+  ok(!u.add && !u.save && !u.remove && u.live === 0 && /Read, not Write/.test(u.why) && !/not yours to give/.test(u.access),
+     `Users with Read: no Add, Save or Remove, every field dead, the reason on the page, its roles shown (${JSON.stringify({ ...u, access: u.access.slice(0, 60) })})`);
+  await page.evaluate(() => openRolesTab());
+  await page.waitForSelector('.rolestab [data-rpick]', { timeout: 15000 }).catch(() => {});
+  const r = await page.evaluate(() => ({ bad: document.querySelector('.rolestab .row.bad')?.textContent || '',
+    save: !!document.querySelector('.rolestab #rolesSave'), add: !!document.querySelector('.rolestab #rolesNewOpen') }));
+  ok(!r.bad && !r.save && !r.add, `...and the Roles page to read, not refused (${JSON.stringify(r)})`);
+  ok(page.errors.length === 0, `[${who.name}] no console errors${page.errors.length ? ': ' + page.errors.slice(0, 2).join(' | ') : ''}`);
+
+  // B35: the only roles on a project being other projects' owner roles, the
+  // picker is not drawn empty: the line naming the Roles page is.
+  const b35 = await owner.page.evaluate(() => {
+    const was = [rolesData, rolesWho, rolesPeopleDraft];
+    rolesData = { roles: { own_beta: { name: 'own_beta', scope: 'projects', project: 'beta', perms: {} } }, areas: [],
+                  people: [{ name: 'x', role: 'user', roles: [], project_roles: { beta: ['own_beta'] } }],
+                  projects: ['alpha', 'beta'], admin: true };
+    rolesWho = ''; rolesPeopleDraft = null;
+    const html = rolesAccessFields('x');
+    [rolesData, rolesWho, rolesPeopleDraft] = was;
+    return html;
+  });
+  ok(/No role on a project yet/.test(b35) && !/rolesAddOn/.test(b35),
+     'with only another project\'s owner role, Add to project is not drawn dead: the way to a role is named (B35)');
+
+  // B38: a plain account by link.
+  await user3.page.evaluate(() => { usersList = null; usersErr = ''; openUsersTab(); });
+  await user3.page.waitForSelector('.userstab .row.bad', { timeout: 15000 });
+  const p = await user3.page.evaluate(() => ({ add: !!document.querySelector('.userstab #uAddOpen'),
+    bar: document.querySelector('.pane .doc.on .docbar, .userstab')?.textContent || '',
+    bad: document.querySelector('.userstab .row.bad')?.textContent || '' }));
+  ok(!p.add && !/0 people/.test(p.bar) && !/Users page/.test(p.bad),
+     `a plain account sent to Users by link is told why, with no count, no Add, and no pointer at the page it cannot use (${p.bad.trim().slice(0, 90)})`);
+
+  // ...and to a project not theirs by link: not a notebook loading forever.
+  const seen = await user3.page.evaluate(() => (state.projects || []).map(p => p.name));
+  const notTheirs = ALL.find(n => !seen.includes(n)) || 'no-such-project';
+  await user3.page.goto(URL.replace(/\/$/, '') + '/#/projects/' + notTheirs);
+  await ready(user3.page); await sleep(3000);
+  const nb = await user3.page.evaluate(p => ({ project: p, hash: location.hash, kind: tabOf(panes[0])?.kind || '',
+    arg: tabOf(panes[0])?.arg || '', loading: !!document.querySelector('#pane0 .loading, #pane0 .skboot'),
+    mem: !!document.querySelector(`#pane0 [data-project="${p}"]`) }), notTheirs);
+  ok(!nb.loading && !nb.mem && nb.arg !== notTheirs,
+     `a plain account sent to a project not theirs by link is not left on a notebook loading forever (${JSON.stringify(nb)})`);
 }
 
 await done(browser);

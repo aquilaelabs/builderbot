@@ -242,5 +242,42 @@ def channels():
     sys.exit(1 if bad else 0)
 
 
+# What a release has run on somebody's /config (R79): the database's schema
+# files and the JSON stores' migrations. An install that ran one never runs
+# it again, so an edit reaches only the installs that had not, and the two
+# kinds then differ in a way no later migration can know about.
+SHIPPED = ("scripts/dashboard/migrations", "scripts/dashboard/statemigrations")
+
+
+def shipped():
+    """Every migration present at the newest release tag (v*) is in the tree
+    byte-for-byte. No tag yet, nothing shipped: it passes, and says so."""
+    import subprocess
+
+    def git(*a):
+        return subprocess.run(["git", *a], capture_output=True, check=False)
+    tags = git("tag", "-l", "v[0-9]*", "--sort=-v:refname").stdout.decode().split()
+    if not tags:
+        print("  [ok]   no release tag yet, so no migration has shipped")
+        sys.exit(0)
+    tag, bad = tags[0], []
+    names = git("ls-tree", "-r", "--name-only", tag, "--", *SHIPPED).stdout.decode().split("\n")
+    for path in filter(None, names):
+        then = git("show", f"{tag}:{path}").stdout
+        try:
+            now = pathlib.Path(path).read_bytes()
+        except OSError:
+            bad.append(f"{path} shipped in {tag} and is gone")
+            continue
+        if now != then:
+            bad.append(f"{path} shipped in {tag} and has changed: a shipped migration is never edited; "
+                       "put the change in a new one")
+    for b in bad:
+        print(f"  [FAIL] {b}")
+    if not bad:
+        print(f"  [ok]   every migration shipped in {tag} is unchanged")
+    sys.exit(1 if bad else 0)
+
+
 {"runner": runner, "xml": xml_, "settings": settings, "layout": layout, "hosted": hosted,
- "channels": channels}[verb]()
+ "channels": channels, "shipped": shipped}[verb]()

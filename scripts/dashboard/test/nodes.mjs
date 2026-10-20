@@ -1555,9 +1555,25 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   await page.waitForSelector('.tctab #tcNodeSel', { timeout: 15000 });
   ok(await page.$$eval('.tctab #tcNodeSel option', os => os.length > 0 && !os.some(o => o.value === 'local')),
      'the Tools tab picks among nodes and never offers this container (roadmap #26)');
+  const tcBefore = await page.evaluate(() => tcNode);
   await page.selectOption('.tctab #tcNodeSel', minted.id);
   await page.waitForFunction(() => /on shed/.test(document.querySelector('.tctab .tcact .state')?.textContent || ''),
                              null, { timeout: 15000 });
+  // A pick is a history entry (B31): Back returns to the node before, on
+  // this page, and Forward to the one picked.
+  if (tcBefore && tcBefore !== minted.id){
+    const tcHash = id => '#/build/toolchains/' + encodeURIComponent(id);
+    const atPick = await page.evaluate(() => location.hash);
+    await page.goBack();
+    const back = await page.waitForFunction(([id, h]) => tcNode === id && location.hash === h
+        && document.querySelector('.doc.on #tcNodeSel')?.value === id, [tcBefore, tcHash(tcBefore)], { timeout: 10000 })
+      .then(() => true, () => false);
+    ok(atPick === tcHash(minted.id) && back,
+       `picking a node pushes its address, and Back returns to the node before on Toolchains (${atPick} then ${await page.evaluate(() => location.hash)})`);
+    await page.goForward();
+    await page.waitForFunction(id => tcNode === id
+      && /on shed/.test(document.querySelector('.tctab .tcact .state')?.textContent || ''), minted.id, { timeout: 15000 });
+  }
   const tools = await page.$$eval('.tctab .tc', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
   ok(tools.some(t => /6655482e/.test(t)) && tools.some(t => /29\.0\.14206865/.test(t))
      && !tools.some(t => /3\.24\.0/.test(t)),
@@ -1773,7 +1789,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     // this, android-tools with no jdk failed inside sdkmanager with a
     // message naming neither Java nor the toolchain that supplies it.
     const dep = await napi('/api/toolchains', { action: 'install',
-                                              names: ['android-tools'], node: minted.id });
+                                              names: ['android-tools'], node: minted.id, accept: ["Google's Android SDK terms"] });
     const depjob = dep.job ? await napi(`/api/v1/jobs?id=${dep.job}`) : null;
     ok(depjob && JSON.stringify(depjob.spec.names) === JSON.stringify(['jdk', 'android-tools'])
        && JSON.stringify(dep.added) === JSON.stringify(['jdk']),
@@ -1792,7 +1808,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
         store_dirs: { top: ['jdk'], android: ['cmdline-tools'] } },
         version: shipped.version, digest: shipped.digest }) });
     const hollow = await napi('/api/toolchains', { action: 'install',
-                                                 names: ['android:ndk'], node: minted.id });
+                                                 names: ['android:ndk'], node: minted.id, accept: ["Google's Android SDK terms"] });
     const hj = hollow.job ? await napi(`/api/v1/jobs?id=${hollow.job}`) : null;
     ok(hj && (hj.spec.names || []).includes('android-tools'),
        `an empty cmdline-tools directory does not count as android-tools (${
@@ -1979,7 +1995,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     await page.evaluate(() => { const t = tabs.find(t => t.kind === 'emulator'); if (t) dropTab(t.id); });
   }
 
-  const gate = await napi('/api/toolchains', { action: 'install', names: ['android:platform-tools'], node: 'local' });
+  const gate = await napi('/api/toolchains', { action: 'install', names: ['android:platform-tools'], node: 'local', accept: ["Google's Android SDK terms"] });
   ok(gate.ok !== undefined || gate.error, '(local installs still go through the installer here)');
 
   // ---- the project's nodes, in its settings dialog (phase 6) --------------
@@ -2047,6 +2063,13 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   ok(await page.$eval(`${ROW} .ndconfstate`, e => /1 change to apply.*\/mnt\/new/.test(e.textContent)),
      `...and says how many changes are waiting and what they are (${
        await page.$eval(`${ROW} .ndconfstate`, e => e.textContent.trim().slice(0, 90))})`);
+  // ...under Storage alone: Network's line beside its dead Apply says nothing of a mount (B23).
+  {
+    const netSaid = await page.$eval(`${ROW} [data-napply="network"]`,
+      b => b.closest('.actbar')?.querySelector('.ndconfstate')?.textContent.trim() || '');
+    ok(!/to apply|\/mnt\/new/.test(netSaid) && /matches/.test(netSaid),
+       `Network's state line keeps to the network while a storage change waits (${netSaid.slice(0, 90)})`);
+  }
 
   // ---- locked to the console: the dashboard applies nothing ------------------
   // The lock is the operator saying this machine's fstab, address and root
@@ -2533,6 +2556,23 @@ await page.evaluate(async () => {
     'PublicKey = cHVibGlja2V5cHVibGlja2V5cHVibGlja2V5cHViMDA=', 'AllowedIPs = 0.0.0.0/0',
     'Endpoint = home.example.net:51820', ''].join('\n');
   const rows = async () => (await page.evaluate(async () => { await loadNodes(); return nodesList.length; }));
+  // WireGuard and the Tailscale door have no walk on record (R48): with dev
+  // features off they are not offered, and the server refuses them.
+  const devSet = v => page.evaluate(async on => { await fetch('/api/settings', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ set: { offer_unvetted: on } }) });
+    await refresh(); }, v);
+  await devSet(false);
+  await page.click('.nodestab #ndEnroll');
+  await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
+  const offeredOff = await page.evaluate(() => ({ reach: [...$('ndEnReach').options].map(o => o.value),
+    door: [...$('ndEnDoor').options].map(o => o.value) }));
+  const refusedOff = await page.evaluate(wg => nodeAct({ action: 'enroll', script: true, name: 'wgoff', reach: 'wireguard',
+    controller: location.origin, wg_conf: wg }), WG);
+  ok(offeredOff.reach.join() === 'lan,public' && offeredOff.door.join() === ',cloudflared'
+     && /WireGuard, and a Tailscale SSH door, are dev features/.test(refusedOff.error || ''),
+     `with dev features off, Enroll node offers the LAN, a public hostname and the cloudflared door, and the server refuses WireGuard and Tailscale (${JSON.stringify(offeredOff)}; ${refusedOff.error})`);
+  await page.click('#ndBody #ndEnCancel');
+  await devSet(true);
   await page.click('.nodestab #ndEnroll');
   await page.waitForSelector('#ndBody #ndEnReach', { timeout: 10000 });
   ok(await page.$eval('#ndBody #ndEnWgRow', r => r.hidden) && await page.$eval('#ndBody #ndEnCtl', i => i.value) === new globalThis.URL(URL).origin,
@@ -2692,6 +2732,8 @@ await page.evaluate(async () => {
      `...and the pending row knows the door (${JSON.stringify(row3?.config?.door)})`);
   await page.click('#ndBody #ndTokDone');
   if (row3) await page.evaluate(id => nodeAct({ action: 'retire', id }), row3.id);
+  // Off again, for what follows: dev features were on for WireGuard above.
+  await devSet(false);
 }
 
 // What is offered (roadmap R54, step 6): with unvetted features off the
@@ -2702,6 +2744,8 @@ await page.evaluate(async () => {
   const probe = await page.evaluate(() => nodeAct({ action: 'vm-xml', name: 'probe' }));
   ok((probe.catalog || []).map(h => h.id).join() === 'unraid' && !probe.catalog[0].dev,
      `with unvetted features off the generator offers Unraid alone (${(probe.catalog || []).map(h => h.id).join(', ')})`);
+  await page.evaluate(async () => { await fetch('/api/settings', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ set: { offer_unvetted: false } }) }); });
   const no = await page.evaluate(() => nodeAct({ action: 'vm-xml', name: 'probe', hv: 'proxmox' }));
   ok(/Proxmox VE is dev, not yet vetted/.test(no.error || '') && /Offer dev features/.test(no.error || ''),
      `...and refuses another, naming the switch (${no.error})`);
@@ -3365,6 +3409,11 @@ ok(page.errors.length === 0,
   ok(/2 toolchain updates on clbox/.test(tcBell) && /Claude Code, Go/.test(tcBell)
      && /Claude Code: 1\.0\.0 → 1\.2\.0/.test(tcBell) && /Go: 1\.27\.0 → 1\.28\.0/.test(tcBell),
      `the bell says it in a line, every toolchain behind on the node in one row, the versions under its fold (${tcBell.slice(0, 160)})`);
+  // B57: what the update ends is the Claude sessions running there, counted,
+  // not the projects bound to the node.
+  const ends = /ends the Claude sessions there \((\d+) running\)/.exec(tcBell);
+  ok(typeof row.sessions === 'number' && (row.sessions ? ends && +ends[1] === row.sessions : !ends && !/ends the Claude/.test(tcBell)),
+     `...and its warning counts the Claude sessions running there (${row.sessions}: ${ends?.[0] || 'none said'})`);
   // Dismiss puts that version away for this account (bellseen.py, R144),
   // with the drawer left open; Show again brings it back.
   await page.click(`#bellPanel [data-bdismiss]`);

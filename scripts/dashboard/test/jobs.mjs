@@ -148,6 +148,11 @@ await ready(page);
   const jtiles = await page.$$eval('.jobstab .tiles .tile .tl', ls => ls.map(l => l.textContent.trim()));
   ok(jtiles.includes('running') && jtiles.includes('succeeded'),
      `the Jobs page opens on tiles of what runs and what finished (${jtiles.join(', ')})`);
+  // By names an account without its prefix, and a job BuilderBot asked for in words (B31).
+  const by = await page.evaluate(() => [jobBy({ requested_by: 'user:alice' }),
+    jobBy({ requested_by: 'system:auto-update' })]);
+  ok(by[0] === 'alice' && by[1] === 'automatic update',
+     `By says who asked in words, never system:auto-update (${by.join(' | ')})`);
   const rows = (await page.$$eval('.jobstab .jbrow', rs => rs.map(r => ({
     id: r.dataset.job, state: r.dataset.state, text: r.textContent.replace(/\s+/g, ' '),
     node: r.querySelector('.td[data-th="Node"]')?.textContent.trim() }))))
@@ -214,13 +219,65 @@ await ready(page);
                              { timeout: 15000 });
   ok(true, 'Cancel on the row stops it, and the row follows the revision to canceled');
 
-  // the filter
-  await page.click('#jbActive');
-  await page.waitForSelector('.jobstab .empty', { timeout: 10000 });
-  const empty = await page.$eval('.jobstab .empty', e => e.textContent);
-  ok(/nothing is running or waiting/.test(empty), 'the active-only filter says so when nothing is');
-  await page.click('#jbActive');
-  await page.waitForSelector('.jobstab .jbrow', { timeout: 10000 });
+  // The chips (B74): one per way a job stands, Failed among them, each
+  // narrowing the list to its own; the address says which.
+  await page.waitForSelector('.jobstab [data-jbshow="failed"]', { timeout: 10000 });
+  await page.click('.jobstab [data-jbshow="failed"]');
+  await page.waitForFunction(() => location.hash === '#/jobs/failed'
+    && document.querySelector('.jobstab [data-jbshow="failed"].on'), null, { timeout: 10000 });
+  const states = await page.$$eval('.jobstab .jbrow', rs => [...new Set(rs.map(r => r.dataset.state))]);
+  ok(states.length === 1 && states[0] === 'failed',
+     `the Failed chip lists the failed jobs alone, at #/jobs/failed (${states.join(', ')})`);
+  await page.click('.jobstab [data-jbshow=""]');
+  await page.waitForFunction(() => location.hash === '#/jobs'
+    && new Set([...document.querySelectorAll('.jobstab .jbrow')].map(r => r.dataset.state)).size > 1, null, { timeout: 10000 });
+  ok(true, '...and All puts every job back');
+  // An address naming the chip opens the page on it: Home's "failed today".
+  await page.evaluate(() => { location.hash = '#/jobs/failed'; });
+  await page.waitForFunction(() => document.querySelector('.jobstab [data-jbshow="failed"].on'), null, { timeout: 10000 });
+  ok(true, '#/jobs/failed opens the page narrowed to the failed jobs');
+  // B113: Home's "N failed today" opens on what it counted, not on every
+  // failure: a failure from yesterday is under Failed and not here.
+  await page.evaluate(() => {
+    const y = { id: 'j_yesterday', type: 'exec', state: 'failed', queued: jobsToday() - 7200, ended: jobsToday() - 3600, spec: {} };
+    if (!jobsList.some(j => j.id === y.id)) jobsList.push(y);
+    jobsRev++;
+    location.hash = '#/jobs/failed-today';
+  });
+  await page.waitForFunction(() => document.querySelector('.jobstab [data-jbshow="failed-today"].on'), null, { timeout: 10000 });
+  const today = await page.evaluate(() => ({
+    rows: [...document.querySelectorAll('.jobstab .jbrow')].map(r => [r.dataset.job, r.dataset.state]),
+    chip: document.querySelector('.jobstab [data-jbshow="failed-today"] .pill')?.textContent,
+    failed: document.querySelector('.jobstab [data-jbshow="failed"] .pill')?.textContent }));
+  ok(today.rows.length && today.rows.every(([id, s]) => s === 'failed' && id !== 'j_yesterday')
+     && Number(today.chip) === today.rows.length && Number(today.failed) === today.rows.length + 1,
+     `#/jobs/failed-today lists today's failures alone, under a chip whose count is the rows shown (${JSON.stringify(today)})`);
+  await page.evaluate(() => { jobsList = jobsList.filter(j => j.id !== 'j_yesterday'); jobsRev++; jobsShowSet(''); drawPanes(); shellSync(); });
+
+  // A kind with no command of its own says what it did, where a storage
+  // walk read as a bare "exec" (B70).
+  const titles = await page.evaluate(() => ['storage', 'claude-update', 'claude-login']
+    .map(type => jobTitle({ type, spec: { timeout: 900 } })));
+  ok(titles.every(t => !/exec/.test(t)) && titles[0] === 'measure the disks',
+     `a storage job's row is titled what it did, not "exec" (${titles.join(' | ')})`);
+  // B112: a tell names the session by its project, not by its tmux name.
+  const tell = await page.evaluate(() => [
+    jobTitle({ type: 'tell', spec: { session: 'u_525cbd90~claude-hello', text: 'Polish the header' } }),
+    jobTitle({ type: 'tell', spec: { session: 'claude-hello', text: 'go' } })]);
+  ok(tell.every(t => /^tell Claude on hello: "/.test(t) && !/u_525cbd90|claude-hello/.test(t)),
+     `a tell job names the session as Claude on its project (${tell.join(' | ')})`);
+  // ...and at 1280 the table gives its room to the Job column: no word is
+  // cut, Node and By are whole, and no blank band is left at the right.
+  const cols = await page.evaluate(() => {
+    const line = document.querySelector('.jobstab .jbtbl .jbrow .tline');
+    const cell = th => line.querySelector(th ? `.td[data-th="${th}"]` : '.td.lead');
+    const cut = ['Node', 'By'].filter(th => { const c = cell(th); return c.scrollWidth > c.clientWidth + 1; });
+    const act = line.querySelector('.td.act').getBoundingClientRect().width;
+    return { job: Math.round(cell('').getBoundingClientRect().width), cut, act: Math.round(act),
+             wrap: getComputedStyle(cell('')).overflowWrap };
+  });
+  ok(cols.job >= 220 && !cols.cut.length && cols.act <= 100 && cols.wrap === 'break-word',
+     `the Job column has the room, Node and By are whole and the buttons' column is one button wide (${JSON.stringify(cols)})`);
 }
 
 // bb jobs reads the same listing the tab does, through the API as the

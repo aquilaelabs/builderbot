@@ -124,6 +124,8 @@ scripts/
     storage.py                   the Storage page's answer (R169): the nodes an account holds the area on, each project's folders where it may see the project, the rest as one line
     tunnel.py                    the home tunnel the controller runs itself (R176): cloudflared as its child from the settings, and the hostname's record and rules through Cloudflare's API
     statefile.py                 writing a state file, and holding it while you read-modify-write one
+    stateversion.py              /config's state version: the start's refusal of a newer or too old one, the copy before a migration, the JSON stores' migrations run
+    statemigrations/             numbered migrations for the JSON stores (NNNN_name.py, run(ctx)), each run once as the state moves, never edited once shipped
     toolchains.py                everything behind the Toolchains page: catalog, sizes, the job worker
     toolpacks.py                 the tool packs a person adds (docs/tool-packs.md): a repository's bbtool.json, pinned to a commit, as catalog rows
     emulator.py                  everything behind the Emulator page: a node's Android system images
@@ -215,7 +217,7 @@ scripts/
                                  what a run measured it costing
     notify.py                    getting a line into a running Claude session, and knowing it landed
     signin.py                    the Claude sign-in and sign-out on one node, as jobs there
-    test/                        its Playwright suite: `bb dashboard test`, isolated
+    test/                        its Playwright suite: `bb dashboard test`, isolated; device-api.json in it pins what the released companion and VS Code extension read from the controller, each field's type, and deviceapi.mjs drives it (R79)
     unit/                        its python unit tier: `bb tests unit`, the modules' rules without a server or a browser, run first by preflight (agentpkg.py loads the node agent for it)
   agent/builderbot-agent.py      the node agent's entry: runs the package beside it, and is the __main__.py of the zip a node runs
   agent/builderbot_agent/        the node agent, stdlib only, shipped to nodes by the dashboard as one zip
@@ -243,7 +245,7 @@ scripts/
     cli.py                       enroll, run, status, sample
     coverage.py                  function coverage under bb tests coverage only
   agent/ruff.toml                the linter's settings for the agent, pinned to the python a Rocky node carries
-android/                         the companion app: api-surface.json is its contract with the dashboard, app/ the Kotlin
+android/                         the companion app: api-surface.json is its contract with the dashboard, each field's type pinned, app/ the Kotlin
 vscode/                          BuilderBot for VS Code (R159): plain JavaScript, no build step and no dependencies
   package.json                   the extension's manifest: its commands, its settings, and builderbotApi, the Files API it speaks
   extension.js                   the builderbot: file system, the sign-in, open project, search and the session's terminal
@@ -263,7 +265,7 @@ windows/                         the Windows companion app (R270): a person's ma
   bbcompanion/update.py          kept current by its controller: what it holds asked at start and daily, a newer copy checked and swapped in at the next start
   bbcompanion/app.py             the window: sign in, the projects and each one's state, Add, Remove, Open folder, Conflicts
 nodes/bb-session                    the root helper that runs a session in a view of its own project; the agent installs it
-nodes/provision-macos.sh            enrolls a Mac as a guest node (a dev feature, behind Offer dev features): one directory, one launchd agent, no root; --remove takes it away
+nodes/provision-macos.sh            a provisioner for macOS, not offered by default takes it away
 nodes/provision-linux.sh                  turns a Linux machine into a node (the Docker sandbox, the stores, the session half) and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
 nodes/families/                           the provisioner's family files, one per package family (deb, rhel, arch, suse, alpine, void, gentoo): package names and verbs, where docker comes from; the enroll script carries the picked system's beside the core
 nodes/unraid-vm.xml             the node as an Unraid VM: one file for every distribution; only the installer ISO line changes
@@ -285,6 +287,7 @@ test/nettest/probe.sh            the probe itself: DNS, the internet, the contro
 test/nettest/.env.example        the two addresses it needs: the controller's and the node's
 tools/american-spelling.sh       the house rule spelling's check: no British spelling on a line this branch adds
 tools/no-net-growth.sh           the everything-files against their ceilings in tools/ratchet.txt (R77)
+tools/upgrade-snapshot.py        a lived-in /config made by this tree's controller through its API, written to scripts/dashboard/test/upgrade/VERSION/ for the upgrade suite; a release runs it
 tools/vscode-vsix.py             packages vscode/ as a .vsix with python's zipfile, BuilderBot's version inside (R159)
 tools/companion-build.py         builds the Windows companion as one .pyz with the four agent modules its sync is (R270)
 tools/ratchet.txt                those ceilings, one per file
@@ -310,6 +313,8 @@ docs/containers.md               the Containers page and nginx: dev instances, h
 docs/machines.md                 Controller settings, Nodes, Storage, the logs, the Jobs page, a Mac as a node
 docs/people.md                   the first account, Users and Roles, owners and invitations, the chat, your Profile
 docs/bb-command.md               the bb verbs with more behind them: the test harness, the code map, capture, sound and documents
+docs/privacy.md                  data and privacy: what an install keeps, what it contacts, how to remove it
+docs/features.md                 everything BuilderBot does, by area, linked from each release's notes
 docs/companion-app.md            the companion app for an Android phone: pairing, its lock, notifications, how it is built
 docs/decisions.md                the design decisions, with their dates and reasons
 docs/layout.md                   this list, held to the tree by bb lint

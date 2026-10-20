@@ -107,6 +107,20 @@ const myTmux = s => (state?.tmux_prefix || "") + s;
 const notMine = p => p.mine === false;
 const NOT_MINE_WHY = "read-only: you hold no role on this project; its owner or an "
   + "administrator gives you one to work on it";
+// Why this account may not change a project, or "" (B86): not taken on, or
+// a role that gives Projects Read and not Write, as the server words it on
+// the row (write_why). Every writing control on the project's page is dead
+// on it, with this under it in red; the server refuses the same.
+const writeWhy = p => !p ? "" : notMine(p) ? NOT_MINE_WHY : (p.write_why || "");
+const projWriteWhy = name => writeWhy((state?.projects || []).find(p => p.name === name));
+// ...and why its version is not this account's to move or release, or ""
+// (B101): Releases and versions Write, which Projects Write does not carry.
+const projReleaseWhy = name => {
+  const p = (state?.projects || []).find(x => x.name === name);
+  return !p ? "" : notMine(p) ? NOT_MINE_WHY : (p.release_why || "");
+};
+// The reason under a dead control, in the notice voice: one line, red.
+const deadWhy = why => why ? `<div class="notice bad deadwhy">${esc(why)}</div>` : "";
 // May this account have a shell at all (roadmap #27)? An account without one
 // gets its Claude session as a read-only console: the proxy relays it to a
 // ttyd started without --writable and refuses any argument that is not a
@@ -158,8 +172,8 @@ const claudeOf = name =>
   (state?.sessions || []).find(s => s.name === name)?.claude || null;
 
 const stateDot = c => c
-  ? `<span class="st ${c.state}" title="${c.state === "working"
-      ? "working" : "waiting for you"}"></span>` : "";
+  ? `<span class="st ${c.state}" title="${c.state === "working" ? "working"
+      : c.state === "asking" ? "asking you to approve something in its terminal" : "waiting for you"}"></span>` : "";
 
 // ---- times and sizes ----------------------------------------------------
 

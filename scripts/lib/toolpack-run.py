@@ -26,8 +26,12 @@ if name == "--list":
     packs = [p for p in sdkmeta.catalog() if p.get("pack")]
     if packs:
         print("\n  tool packs added here (bb tool PACK lists a pack's verbs):")
+    off = set(os.environ.get("BB_TOOLCHAINS_OFF", "").split())
     for p in packs:
-        print(f"  bb tool {p['name']} {'|'.join(sorted(p.get('verbs') or {}))} ...")
+        # One this project's settings switch off is said so here, where a
+        # session looks first, not only when it is run.
+        print(f"  bb tool {p['name']} {'|'.join(sorted(p.get('verbs') or {}))} ..."
+              + ("   (switched off for this project: its settings' Toolchains group turns it on)" if p["name"] in off else ""))
     raise SystemExit(0)
 row = next((p for p in sdkmeta.catalog() if p.get("name") == name), None)
 if not row or not row.get("pack"):

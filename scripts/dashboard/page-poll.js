@@ -68,6 +68,12 @@ function reapDeadTerminals(){
 
 let refreshBusy = false;     // a poll is out
 let refreshAgain = false;    // ...and somebody asked for another while it was
+// ...and who is waiting on that other one: an `await refresh()` asked while a
+// poll was out resolved at once, on the state from before, so a project's
+// settings Save read "what is saved now" from a poll sent before somebody
+// else's save and wrote over it unseen (B100). It resolves when the read
+// asked for has landed.
+let refreshWaiters = [];
 // How many action answers applyNow has adopted: a poll sent before the last
 // of them was read before that action, so its reply is older than the rows
 // on screen (B294).
@@ -88,7 +94,7 @@ async function refresh(){
   // Asked while one is out, the request is remembered rather than dropped:
   // an explicit refresh after an action has to land, or the page shows the
   // state from before the thing the operator just did.
-  if (refreshBusy){ refreshAgain = true; return; }
+  if (refreshBusy){ refreshAgain = true; return new Promise(r => refreshWaiters.push(r)); }
   refreshBusy = true;
   const adoptedBefore = adoptSeq;
   let fetched = false;     // the container answered; what failed is this page
@@ -117,6 +123,7 @@ async function refresh(){
     if (state.boot && bootSeen && state.boot !== bootSeen){ location.reload(); return; }
     welcomeOnce();
     fetched = true;
+    dropGoneNotebooks();
     // The bell reads what sessions have waiting for approval off this
     // payload (roadmap #27), so it is drawn from here as well as from the
     // phone and the page's own notes: a row that appeared with the poll
@@ -242,7 +249,12 @@ async function refresh(){
       });
   }finally{
     refreshBusy = false;
-    if (refreshAgain){ refreshAgain = false; refresh(); }
+    if (refreshAgain){
+      refreshAgain = false;
+      const waiting = refreshWaiters;
+      refreshWaiters = [];
+      Promise.resolve(refresh()).finally(() => waiting.forEach(r => r()));
+    }
     else statusLater();
   }
 }
@@ -273,6 +285,21 @@ let pollFails = 0;
 // has to close by hand. After that first answer a tab stays put: taking one
 // out from under somebody mid-read, because a report went stale while they
 // were looking at it, would be worse than the empty state it would leave.
+// A notebook on a project that is no longer there (deleted, or never this
+// account's) is put away once the project list has said so (B40): restored
+// from the saved layout, it opened on red "not a project" lines and seven
+// refused requests on every load.
+// One that was on show gives way to Projects, where the project was, not to
+// whichever page the fallback found (B94: deleted from its Settings, the page
+// landed on the Profile).
+function dropGoneNotebooks(){
+  const have = new Set((state?.projects || []).map(p => p.name));
+  const front = tabOf(panes[0]);
+  const gone = tabs.filter(t => t.kind === "notebook" && t.arg && !have.has(t.arg));
+  gone.forEach(t => hideTab(t.id));
+  if (front && gone.includes(front) && !tabOf(front.id)){ railWant = "projects"; openProjectsTab(); }
+}
+
 let findingsGated = false;
 function gateFindings(){
   const off = findingsOff();

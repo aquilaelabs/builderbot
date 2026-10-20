@@ -14,14 +14,24 @@ What a pack becomes is one catalog row (recipe()), shipped to the nodes in the
 bundle beside config/toolchains.json, so it installs, checks and removes the
 way every toolchain does, into the store, read-only to sessions.
 
-    configure(state=, write_json=)
+A pack may also be made here, with no repository of its own: a pasted
+bbtool.json, or an uploaded zip or tarball of the pack's files. The
+controller keeps it as a repository of its own (/config/toolpacks/NAME.git),
+each approved version a commit there, so it is pinned, compared and approved
+the same way; the nodes take it as a git bundle that travels in the bundle
+beside config/toolpacks.json, and install it with the same pinned fetch.
+
+    configure(state=, write_json=, unpack=)
     validate(manifest)          (clean, [errors])
     fetch(url, commit="")       the repository at a commit: {commit, manifest, guidance} or {error}
-    preview(url) / add(url, commit, by) / remove(name) / packs() / recipes()
+    stage(text=, archive=)      a pack made here, checked and held for Add: {staged, manifest, ...}
+    add(url, commit, by) / add_staged(staged, by) / remove(name) / source(name)
+    packs() / recipes() / hosted_files()
 """
 import json
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import tempfile
@@ -49,10 +59,23 @@ MANIFEST_MAX = 64 * 1024
 # fetch altered on the way is refused rather than installed.
 URL = re.compile(r"^(https://|http://|git@|ssh://)[A-Za-z0-9._~:/@+-]{3,300}$")
 FETCH_TIMEOUT = 120
+# A pack made here: its address in the record, and where it is kept. It
+# travels to every node in the bundle, so it is held small: a pack made
+# here carries scripts and a manifest, and fetches anything big as it
+# installs.
+HERE = "here:"
+HOSTED = None
+unpack = None                 # projects.unpack_archive, handed over by configure()
+HOSTED_MAX = 8 << 20
+HOSTED_FILES = 2000
+STAGE_TTL = 30 * 60
+STAGE_ID = re.compile(r"^[0-9a-f]{16}$")
+AUTHOR = ("-c", "user.name=BuilderBot", "-c", "user.email=builderbot@localhost")
 
 
-def configure(*, state, write_json):
-    globals().update(FILE=Path(state) / "toolpacks.json", write_json=write_json)
+def configure(*, state, write_json, unpack=None):
+    globals().update(FILE=Path(state) / "toolpacks.json", write_json=write_json,
+                     HOSTED=Path(state) / "toolpacks", unpack=unpack)
 
 
 def _load():
@@ -96,7 +119,10 @@ def validate(m, shipped=()):
            "about": str(m.get("about") or "")[:400]}
     plats = m.get("platforms") or []
     if not isinstance(plats, list) or not plats or not all(isinstance(p, str) and PLATFORM.fullmatch(p) for p in plats):
-        errors.append("platforms lists where it works, e.g. [\"linux/amd64\", \"linux/arm64\"]")
+        # The wildcard named too, in the form the rule takes (B111): a bare
+        # "*" is refused, since a platform is matched as os/arch on a node.
+        errors.append("platforms lists where it works as os/arch, e.g. [\"linux/amd64\", \"linux/arm64\"], "
+                      "or linux/* or darwin/* for any architecture of that system")
     out["platforms"] = [p for p in plats if isinstance(p, str)] if isinstance(plats, list) else []
     terms = m.get("terms") or []
     if not isinstance(terms, list) or not all(isinstance(t, dict) and t.get("label") for t in terms):
@@ -212,28 +238,194 @@ def fetch(url, commit="", shipped=()):
             if r.returncode != 0:
                 return None
             return r.stdout[:cap + 1]
-        raw = read(MANIFEST, MANIFEST_MAX)
-        if raw is None:
-            return {"error": f"{url} has no {MANIFEST} at its root"}
-        if len(raw) > MANIFEST_MAX:
-            return {"error": f"{MANIFEST} is over {MANIFEST_MAX // 1024} KB"}
-        try:
-            m = json.loads(raw.decode("utf-8"))
-        except (ValueError, UnicodeDecodeError) as e:
-            return {"error": f"{MANIFEST} is not JSON: {e}"}
-        clean, errors = validate(m, shipped)
-        if errors:
-            return {"error": f"{MANIFEST} needs fixing: " + "; ".join(errors), "errors": errors, "commit": got}
-        guidance = ""
-        if clean["guidance_file"]:
-            g = read(clean["guidance_file"], GUIDANCE_MAX)
-            if g is None:
-                return {"error": f"{MANIFEST} names {clean['guidance_file']} as its guidance, and it is not there"}
-            guidance = g[:GUIDANCE_MAX].decode("utf-8", "replace")
-        return {"commit": got, "manifest": clean, "guidance": guidance,
-                "plain": url.startswith("http://")}
+        got_m = _examine(read, shipped, f"{url} has no {MANIFEST} at its root")
+        if got_m.get("error"):
+            return {**got_m, "commit": got} if got_m.get("errors") else got_m
+        return {"commit": got, **got_m, "plain": url.startswith("http://")}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _examine(read, shipped, missing):
+    """The manifest and guidance a pack's files hold, read through `read(rel,
+    cap)`: {manifest, guidance} validated, or {error}. One reading for a
+    repository and a pack made here."""
+    raw = read(MANIFEST, MANIFEST_MAX)
+    if raw is None:
+        return {"error": missing}
+    if len(raw) > MANIFEST_MAX:
+        return {"error": f"{MANIFEST} is over {MANIFEST_MAX // 1024} KB"}
+    try:
+        m = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as e:
+        return {"error": f"{MANIFEST} is not JSON: {e}"}
+    clean, errors = validate(m, shipped)
+    if errors:
+        return {"error": f"{MANIFEST} needs fixing: " + "; ".join(errors), "errors": errors}
+    guidance = ""
+    if clean["guidance_file"]:
+        g = read(clean["guidance_file"], GUIDANCE_MAX)
+        if g is None:
+            return {"error": f"{MANIFEST} names {clean['guidance_file']} as its guidance, and it is not there"}
+        guidance = g[:GUIDANCE_MAX].decode("utf-8", "replace")
+    return {"manifest": clean, "guidance": guidance}
+
+
+# ---- a pack made here ------------------------------------------------------
+
+def _staging():
+    return HOSTED / "staging"
+
+
+def _sweep_staging():
+    now = time.time()
+    for d in _staging().iterdir() if _staging().is_dir() else []:
+        try:
+            if now - d.stat().st_mtime > STAGE_TTL:
+                shutil.rmtree(d, ignore_errors=True)
+        except OSError:
+            pass
+
+
+def _files_in(d):
+    """Every file under `d` as a relative path, .git left out."""
+    return sorted(str(f.relative_to(d)) for f in d.rglob("*")
+                  if f.is_file() and ".git" not in f.relative_to(d).parts)
+
+
+def _read_in(d):
+    def read(rel, cap):
+        if not REL.fullmatch(rel):
+            return None
+        f = d / rel
+        try:
+            with open(f, "rb") as fh:
+                return fh.read(cap + 1)
+        except OSError:
+            return None
+    return read
+
+
+def stage(text=None, archive="", shipped=()):
+    """A pack made here, from a pasted manifest or an uploaded archive (the
+    New project dialog's upload, spooled by projects.spool_archive): its
+    files checked and held for Add, as {staged, manifest, guidance, files},
+    or {error}. Nothing is kept as a pack until somebody presses Add."""
+    _staging().mkdir(parents=True, exist_ok=True)
+    _sweep_staging()
+    tok = secrets.token_hex(8)
+    d = _staging() / tok
+    d.mkdir()
+    out = _stage_into(d, text, archive, shipped)
+    if out.get("error"):
+        shutil.rmtree(d, ignore_errors=True)
+        return out
+    return {**out, "staged": tok}
+
+
+def _stage_into(d, text, archive, shipped):
+    """The files of a pack made here, put in `d` and checked."""
+    if archive:
+        if not unpack:
+            return {"error": "uploads are not open here"}
+        got = unpack(archive, d)
+        if got.get("error"):
+            return {"error": got["error"]}
+        # A repository's own history is not the pack's: what is kept is
+        # this version's files, as a commit made here.
+        shutil.rmtree(d / ".git", ignore_errors=True)
+        where = "the upload"
+    else:
+        raw = str(text or "")
+        if not raw.strip():
+            return {"error": f"paste a {MANIFEST}, or upload the pack's files"}
+        if len(raw.encode("utf-8")) > MANIFEST_MAX:
+            return {"error": f"{MANIFEST} is over {MANIFEST_MAX // 1024} KB"}
+        (d / MANIFEST).write_text(raw, encoding="utf-8")
+        where = "what was pasted"
+    files = _files_in(d)
+    size = sum((d / f).stat().st_size for f in files)
+    if len(files) > HOSTED_FILES or size > HOSTED_MAX:
+        return {"error": f"a pack made here is at most {HOSTED_MAX >> 20} MB in {HOSTED_FILES} files, "
+                         "since every node carries it; fetch what is bigger in its install steps"}
+    got = _examine(_read_in(d), shipped, f"{where} has no {MANIFEST} at its top")
+    if got.get("error"):
+        return got
+    return {**got, "files": files[:200], "nfiles": len(files), "here": True}
+
+
+def _git_here(name, *args, work=None):
+    repo = HOSTED / f"{name}.git"
+    pre = ["--git-dir", str(repo)] + (["--work-tree", str(work)] if work else [])
+    return _git([*AUTHOR, *pre, *args])
+
+
+def add_staged(staged, by, shipped=()):
+    """Keep a pack made here, as the version that was looked at: committed
+    to its repository on this controller, its bundle written for the nodes.
+    A pack of the same name made here is updated; one from a repository is
+    not replaced by it."""
+    if not STAGE_ID.fullmatch(str(staged or "")) or not (_staging() / staged).is_dir():
+        return {"error": "that upload has gone (they are kept for thirty minutes); paste or upload it again"}
+    d = _staging() / staged
+    try:
+        got = _examine(_read_in(d), shipped, f"no {MANIFEST} at the top")
+        if got.get("error"):
+            return got
+        m = got["manifest"]
+        name = m["name"]
+        with _lock:
+            data = _load()
+            was = data["packs"].get(name)
+            if was and not was.get("hosted"):
+                return {"error": f"a pack called {name} is already here from {was.get('url')}; remove it first"}
+            repo = HOSTED / f"{name}.git"
+            if not repo.is_dir():
+                r = _git(["init", "-q", "--bare", "-b", "main", str(repo)])
+                if r.returncode != 0:
+                    return {"error": f"could not make {name}'s repository: {(r.stderr or '').strip()}"}
+            had = _git_here(name, "rev-parse", "-q", "--verify", "refs/heads/main").stdout.strip()
+            for args in (["read-tree", "--empty"], ["add", "-A", "."]):
+                r = _git_here(name, *args, work=d)
+                if r.returncode != 0:
+                    return {"error": f"could not keep {name}: {(r.stderr or '').strip()}"}
+            same = had and _git_here(name, "diff", "--cached", "--quiet", had, work=d).returncode == 0
+            if not same:
+                r = _git_here(name, "commit", "-q", "-m", f"{name}, as {by or 'an administrator'} approved it",
+                              work=d)
+                if r.returncode != 0:
+                    return {"error": f"could not keep {name}: {(r.stderr or r.stdout or '').strip()}"}
+            commit = _git_here(name, "rev-parse", "refs/heads/main").stdout.strip()
+            r = _git_here(name, "bundle", "create", "-q", str(HOSTED / f"{name}.bundle"), "main")
+            if r.returncode != 0:
+                return {"error": f"could not write {name}'s bundle: {(r.stderr or '').strip()}"}
+            rec = {"name": name, "url": HERE + name, "hosted": True, "commit": commit, "manifest": m,
+                   "guidance": got["guidance"], "by": str(by or ""), "at": int(time.time())}
+            data["packs"][name] = rec
+            write_json(FILE, data)
+        return {"ok": True, "pack": rec, "replaced": bool(was), "unchanged": bool(same)}
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def source(name):
+    """A pack made here, as its bbtool.json reads at the kept version: what
+    Edit puts in the paste field. {text} or {error}."""
+    rec = packs().get(str(name or ""))
+    if not rec or not rec.get("hosted"):
+        return {"error": f"{name} is not a pack made here"}
+    r = _git_here(rec["name"], "show", f"{rec['commit']}:{MANIFEST}")
+    if r.returncode != 0:
+        return {"error": f"{name}'s {MANIFEST} could not be read"}
+    return {"text": r.stdout}
+
+
+def hosted_files():
+    """The packs made here as the bundle carries them, (path in the bundle,
+    file here), beside config/toolpacks.json."""
+    return [(f"config/toolpacks/{n}.bundle", HOSTED / f"{n}.bundle")
+            for n, r in sorted(packs().items())
+            if r.get("hosted") and (HOSTED / f"{n}.bundle").is_file()]
 
 
 def packs():
@@ -261,13 +453,29 @@ def add(url, commit, by, shipped=()):
     return {"ok": True, "pack": rec, "replaced": bool(was)}
 
 
-def remove(name):
+def where_said(name, where):
+    """The refusal for removing a pack still installed (B84): its files
+    would stay in those stores with no row left to uninstall them from, and
+    a pack added back would read as installed with no install run."""
+    return {"error": f"{name} is installed on {', '.join(where)}: uninstall it there first "
+                     f"(pick that node on the Toolchains page and press the uninstall on its row), "
+                     f"then remove the pack", "installed": list(where)}
+
+
+def remove(name, where=()):
+    """Take a pack out of the catalog; refused while `where` (the nodes that
+    hold it) names any."""
+    if where:
+        return where_said(name, where)
     with _lock:
         d = _load()
         if name not in d["packs"]:
             return {"error": f"no tool pack called {name}"}
-        del d["packs"][name]
+        rec = d["packs"].pop(name)
         write_json(FILE, d)
+        if rec.get("hosted") and HOSTED and NAME.fullmatch(name):
+            shutil.rmtree(HOSTED / f"{name}.git", ignore_errors=True)
+            (HOSTED / f"{name}.bundle").unlink(missing_ok=True)
     return {"ok": True}
 
 
@@ -276,16 +484,32 @@ def recipe(rec):
     source the pack's repository cloned at the approved commit, then its
     install steps, then its verify. `pack` marks it as added, not shipped."""
     m = rec["manifest"]
-    src = {"kind": "git", "url": rec["url"], "commit": rec["commit"], "fresh_only": True}
+    # A pack made here is fetched from the bundle beside the catalog on the
+    # node (sdkmeta.packs_at makes the path whole there).
+    url = f"bundle:toolpacks/{m['name']}.bundle" if rec.get("hosted") else rec["url"]
+    src = {"kind": "git", "url": url, "commit": rec["commit"], "fresh_only": True}
     if m["steps"]:
         src["then"] = [{"run": s} for s in m["steps"]]
     if m.get("verify"):
         src["verify"] = m["verify"]
-    row = {"name": m["name"], "label": m["label"], "probe": m["name"], "about": m["about"],
+    # What the install marks executable (B83): a file committed through a
+    # forge's web editor has no executable bit, and every run of it was
+    # 'Permission denied'. The programs the verbs, the steps and verify run
+    # by path, the layout's tool, and whatever is in its bin directories.
+    progs = [w[0] for w in [*(v["run"] for v in m["verbs"].values()), *m["steps"], m.get("verify") or [""]]
+             if w and w[0].startswith("{dir}/")]
+    tool = m["layout"].get("tool")
+    if tool and tool != MANIFEST:
+        progs.append("{dir}/" + tool)
+    src["exec"] = sorted(set(progs))
+    src["exec_dirs"] = ["{dir}/" + b for b in m["layout"].get("bin") or []]
+    # about is optional in a manifest, and a catalog row without one is not
+    # drawn (B106): the label stands in for it.
+    row = {"name": m["name"], "label": m["label"], "probe": m["name"], "about": m["about"] or m["label"],
            "platforms": m["platforms"], "layout": m["layout"], "source": src, "terms": m["terms"],
            "verbs": m["verbs"],
            "pack": {"url": rec["url"], "commit": rec["commit"], "by": rec.get("by", ""), "at": rec.get("at", 0),
-                    "guidance": rec.get("guidance", "")}}
+                    "guidance": rec.get("guidance", ""), "here": bool(rec.get("hosted"))}}
     if m.get("system"):
         row["system"] = m["system"]
     return row

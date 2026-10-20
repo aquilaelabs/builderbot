@@ -46,10 +46,12 @@ APPS = {
     "android": {"title": "Android app", "setting": "apps_android",
                 "does": "The notebook, the bell and your sessions on a phone, and the phone lent to a project.",
                 "files": [("builderbot-app-", ".apk")]},
-    "vscode": {"title": "VS Code extension", "setting": "apps_vscode",
+    # dev: offered only with Offer dev features on, until walked on a real
+    # Windows PC and a real VS Code (the operator, 20 Oct).
+    "vscode": {"title": "VS Code extension", "setting": "apps_vscode", "dev": True,
                "does": "A project's files and its terminal in VS Code, opened from the controller.",
                "files": [("builderbot-vscode-", ".vsix")]},
-    "companion": {"title": "Windows companion", "setting": "apps_companion",
+    "companion": {"title": "Windows companion", "setting": "apps_companion", "dev": True,
                   "does": "A folder on a Windows PC kept in step with a project both ways, for a tool that only runs there.",
                   "files": [("builderbot-companion-", ".exe"), ("builderbot-companion-", ".pyz")]},
 }
@@ -78,20 +80,21 @@ _lock = threading.Lock()
 _state = {"checking": False}
 
 
-def _token():
-    return ""
-
-
-def configure(*, state, version, setting, write_json, audit=None, token=None):
+def configure(*, state, version, setting, write_json, audit=None):
     globals().update(DIR=Path(state) / "apps", SEED=Path(state) / "seed.json", _version=version,
                      _setting=setting, write_json=write_json, audit=audit)
-    if token:
-        globals()["_token"] = token
     globals()["INDEX"] = DIR / "index.json"
 
 
+# Whether dev features are offered (settings' offer_unvetted), set by server.py.
+unvetted_ok = lambda: False  # noqa: E731
+
+
 def offered(name):
-    return bool(_setting(APPS[name]["setting"]))
+    """On in Settings, and for a dev app, dev features on too: neither
+    fetched, listed nor served otherwise."""
+    a = APPS[name]
+    return bool(_setting(a["setting"])) and (not a.get("dev") or bool(unvetted_ok()))
 
 
 def _index():
@@ -118,6 +121,8 @@ def view():
     out = []
     for name, a in APPS.items():
         h = held.get(name) or {}
+        if a.get("dev") and not unvetted_ok():
+            continue
         out.append({"name": name, "title": a["title"], "does": a["does"], "offered": offered(name),
                     "version": h.get("version", ""),
                     "files": [{"file": f["file"], "sha256": f["sha256"], "size": f["size"],
@@ -131,7 +136,7 @@ def view():
 def path(name, file):
     """A held file's path, or None: only a name the index holds, so a
     request can never name anything else under /config."""
-    if name not in APPS or not SAFE.match(str(file or "")):
+    if name not in APPS or not SAFE.match(str(file or "")) or not offered(name):
         return None
     for f in ((_index().get("apps") or {}).get(name) or {}).get("files") or []:
         if f.get("file") == file:
@@ -141,32 +146,14 @@ def path(name, file):
 
 
 def _get(url, limit=MAX_BYTES, accept="application/octet-stream, application/json"):
-    headers = {"Accept": accept, "User-Agent": "builderbot-apps"}
-    # The token only to GitHub's API, where a private repository's releases
-    # and their files are read with it; never to wherever a file redirects.
-    if _token() and url.startswith("https://api.github.com/"):
-        headers["Authorization"] = "Bearer " + _token()
-    req = urllib.request.Request(url, headers=headers)
-    with _OPENER.open(req, timeout=TIMEOUT) as r:                   # noqa: S310 (our releases, or a test's file)
+    # No credential: the apps come from BuilderBot's public releases alone
+    # (the operator, 20 Oct), so a controller holds no GitHub token for them.
+    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "builderbot-apps"})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:                   # noqa: S310 (our releases, or a test's file)
         body = r.read(limit + 1)
     if len(body) > limit:
         raise ValueError(f"more than {limit >> 20} MB")
     return body
-
-
-class _NoTokenAway(urllib.request.HTTPRedirectHandler):
-    """A redirect to another host goes without the token: GitHub sends a
-    file to signed storage, which refuses a request carrying both."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        new = super().redirect_request(req, fp, code, msg, headers, newurl)
-        if new is not None and urllib.parse.urlsplit(newurl).hostname != urllib.parse.urlsplit(req.full_url).hostname:
-            new.headers.pop("Authorization", None)
-            new.unredirected_hdrs.pop("Authorization", None)
-        return new
-
-
-_OPENER = urllib.request.build_opener(_NoTokenAway)
 
 
 def _pick(releases, want):
@@ -200,9 +187,8 @@ def check():
             err = "no published release to take the apps from"
     except (OSError, ValueError) as e:
         err = f"the releases did not answer: {e}"
-        if "404" in str(e) and not _token():
-            err += (" (a private repository answers 404 to anybody without a token: an administrator adds one "
-                    "under Apps on the Controller page)")
+        if "404" in str(e):
+            err += " (the apps come from BuilderBot's public releases, and its repository is not public yet)"
     DIR.mkdir(parents=True, exist_ok=True)
     for name, a in APPS.items():
         if not offered(name):
@@ -269,10 +255,8 @@ def _keep(name, asset, sha_asset, was):
 
 
 def _where(asset):
-    """Where a release's file is read from: its API address with the token
-    (the one way into a private repository's files), else its download
-    link."""
-    return asset["url"] if _token() and asset.get("url") else asset["browser_download_url"]
+    """Where a release's file is read from: its public download link."""
+    return asset["browser_download_url"]
 
 
 def check_now():

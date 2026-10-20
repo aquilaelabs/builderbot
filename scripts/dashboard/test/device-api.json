@@ -1,0 +1,93 @@
+{
+  "_": [
+    "What each released app reads from its controller, pinned (R79 step 8): per app, every",
+    "endpoint it calls, the method, the request fields it sends, and the response fields it reads",
+    "with their types. test/deviceapi.mjs drives each endpoint on this tree's controller and fails",
+    "when one is gone or a pinned field is missing or changes type; the Android app's own surface is",
+    "android/api-surface.json, held the same way by test/appapi.mjs. Adding a field or an endpoint",
+    "is always allowed. A field or endpoint may be removed only in the release after the apps that",
+    "read it were changed to stop reading it, and the pin is updated in the same change as that",
+    "removal, with a changelog line saying which app releases it leaves behind.",
+    "Types: string, number, boolean, object, array, null, any, or a union like string|null. A key",
+    "ending in ? is checked only when the answer carries it; a[].b is b on every row of a; a[] is",
+    "the positional types of every row of a, a row that is a list."
+  ],
+  "apps": {
+    "android": {
+      "contract": "android/api-surface.json",
+      "suite": "appapi.mjs",
+      "says": {"User-Agent": "BuilderBot-app/VERSION api/TARGET_API"},
+      "handshake": "GET /api/meta answers api (server.py APP_API); the app says plainly when that is older or newer than its TARGET_API"
+    },
+    "companion": {
+      "source": "windows/bbcompanion, with the agent's sync (scripts/agent/builderbot_agent/wssync.py) on the device door",
+      "says": {"Authorization": "Bearer bbd_...", "X-BB-Door": "the door it speaks (devices.DOOR)",
+               "X-BB-App": "companion/VERSION"},
+      "handshake": "the controller refuses a door older than devices.DOOR_MIN with 426 and the way to update; its projects and apps answers say door and door_min, and the app says plainly when the controller's door is older than its NEEDS_DOOR",
+      "endpoints": [
+        {"method": "POST", "path": "/api/v1/device/signin",
+         "sends": {"username": "string", "password": "string", "name": "string", "kind": "string"},
+         "reads": {"token": "string", "device": "object", "device.id": "string", "account": "string", "error?": "string"}},
+        {"method": "POST", "path": "/api/v1/device/projects", "sends": {},
+         "reads": {"door": "number", "door_min": "number", "projects": "array",
+                   "projects[].project": "string", "projects[].access": "string", "projects[].rev": "number"}},
+        {"method": "POST", "path": "/api/v1/device/apps", "sends": {},
+         "reads": {"door": "number", "door_min": "number", "version": "string", "apps": "array",
+                   "apps[].name": "string", "apps[].version": "string", "apps[].files": "array"}},
+        {"method": "GET", "path": "/api/v1/device/app-file?app=&file=", "binary": true,
+         "absent": "this controller holds no such app file"},
+        {"method": "POST", "path": "/api/v1/device/sync", "sends": {"action": "state", "project": "string"},
+         "reads": {"rev": "number", "files": "array",
+                   "files[]": ["string", "string", "number", "number", "string|null", "any"]}},
+        {"method": "POST", "path": "/api/v1/device/sync", "sends": {"action": "since", "project": "string", "rev": "number", "wait": "number"},
+         "reads": {"rev": "number", "changes": "array", "reset?": "boolean",
+                   "changes[]": ["string", "string", "number", "number", "string|null", "any"]}},
+        {"method": "GET", "path": "/api/v1/device/sync-file?project=&path=", "binary": true},
+        {"method": "GET", "path": "/api/v1/device/sync-tar?project=", "binary": true},
+        {"method": "POST", "path": "/api/v1/device/sync-put?project=&path=&base=", "sends": "the file's bytes; gone=1, link= or mode= in the query",
+         "reads": {"error?": "string", "conflict?": "boolean", "kept_as?": "string", "sha?": "string", "link?": "string|null"}},
+        {"method": "POST", "path": "/api/v1/device/pc-work", "sends": {"projects": "object", "wait": "number"},
+         "reads": {"work": "array", "work[].id": "string", "work[].project": "string", "work[].verb": "string",
+                   "work[].mode": "string", "work[].args": "object", "work[].why": "string"}},
+        {"method": "POST", "path": "/api/v1/device/pc-result", "sends": {"id": "string", "ok": "boolean", "text": "string", "picture?": "string"},
+         "reads": {}}
+      ]
+    },
+    "vscode": {
+      "source": "vscode/extension.js and vscode/lib/client.js",
+      "says": {"Cookie": "bb_session from /login", "X-BB-Api": "the Files API it speaks (files.API)",
+               "X-BB-App": "vscode/VERSION"},
+      "handshake": "the controller refuses a Files API older than files.API_MIN with 426 and the way to update; its projects answer says api and api_min, and the extension says plainly when the controller's api is older than its own",
+      "endpoints": [
+        {"method": "POST", "path": "/login", "form": {"username": "string", "password": "string", "next": "string"},
+         "answer": "303 with Set-Cookie bb_session"},
+        {"method": "POST", "path": "/api/v1/files", "sends": {"action": "projects"},
+         "reads": {"api": "number", "api_min": "number", "projects": "array",
+                   "projects[].name": "string", "projects[].access": "string"}},
+        {"method": "POST", "path": "/api/v1/files", "sends": {"action": "stat", "project": "string", "path": "string"},
+         "reads": {"type": "string", "size": "number", "mtime": "number", "ctime": "number", "readonly?": "boolean"}},
+        {"method": "POST", "path": "/api/v1/files", "sends": {"action": "list", "project": "string", "path": "string"},
+         "reads": {"entries": "array", "entries[]": ["string", "string"]}},
+        {"method": "POST", "path": "/api/v1/files", "sends": {"action": "read", "project": "string", "path": "string"},
+         "reads": {"data": "string", "mtime": "number"}},
+        {"method": "POST", "path": "/api/v1/files",
+         "sends": {"action": "write", "project": "string", "path": "string", "data": "string", "create": "boolean", "overwrite": "boolean", "mtime?": "number"},
+         "reads": {"mtime": "number"}},
+        {"method": "POST", "path": "/api/v1/files", "sends": {"action": "mkdir", "project": "string", "path": "string"}, "reads": {}},
+        {"method": "POST", "path": "/api/v1/files",
+         "sends": {"action": "rename", "project": "string", "path": "string", "to": "string", "overwrite": "boolean"}, "reads": {}},
+        {"method": "POST", "path": "/api/v1/files",
+         "sends": {"action": "delete", "project": "string", "path": "string", "recursive": "boolean"}, "reads": {}},
+        {"method": "POST", "path": "/api/v1/files", "sends": {"action": "search", "project": "string", "path": "string", "query": "string"},
+         "reads": {"matches": "array", "complete": "boolean", "matches[].path": "string", "matches[].line": "number",
+                   "matches[].col": "number", "matches[].len": "number", "matches[].text": "string"}},
+        {"method": "POST", "path": "/api/v1/files",
+         "sends": {"action": "changes", "project": "string", "path": "string", "since": "number", "wait": "number"},
+         "reads": {"rev": "number", "changes": "array", "reset?": "boolean",
+                   "changes[].path": "string", "changes[].type": "string"}},
+        {"method": "GET", "path": "/term/token?arg=", "reads": {"token": "string"}, "needs": "a ttyd, which test/editor.mjs starts and drives"},
+        {"method": "GET", "path": "/term/ws?arg=", "upgrade": "tty", "needs": "a ttyd, which test/editor.mjs starts and drives"}
+      ]
+    }
+  }
+}

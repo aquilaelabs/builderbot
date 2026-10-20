@@ -230,7 +230,7 @@ bb devapp rebuild [--why "..."]
                    over: Claude may: Run its container, in its settings dialog and
                    the new-project dialog, reads deny (the default, refused with the
                    sentence that names it), ask (the reason goes to a person and the
-                   command waits for Allow) or auto. Up, Down and a container of
+                   command waits for Approve) or auto. Up, Down and a container of
                    any other shape stay the operator's. The build sees BB_BUILD_REV,
                    BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
                    interpolate them; its other options are the compose file's own
@@ -249,13 +249,13 @@ bb devapp new [NAME] [--branch REF] [--compose FILE] [--override FILE] [--node N
                    puts it on a hosting node ticked under the project's Also
                    works on (marked Hosting only): built on the project's own
                    node and shipped there. On ask, one request carries all of it and
-                   Allow makes and builds it
+                   Approve makes and builds it
 bb devapp remove [--why "..."]
                    take the container out of the manager, under the same setting;
                    its env and data stay for a remake, as the row's Remove leaves them
 bb devapp env [set FILE|-] [--why "..."]
                    print the container's env, or replace it, under the same setting;
-                   on ask, Allow writes it and builds nothing, since the card said
+                   on ask, Approve writes it and builds nothing, since the card said
                    env set, and the rebuild is the next ask.
                    BuilderBot keeps it per container, never as a file in the project,
                    and points a compose line `env_file: .env` at it when it runs
@@ -427,7 +427,7 @@ bb phone run --why "..." -- adb args...
                    handset itself
 bb phone lease     whether the phone is lent to this project, for how long, and
                    which of its apps the lease covers. While lent, each of
-                   these asks the phone's owner and runs on their Allow
+                   these asks the phone's owner and runs on their Approve
                    (--why "..." is the sentence they read), or at once
                    once they allowed this session's commands:
 bb phone install dist/APP.apk   install one of this project's builds; its
@@ -444,7 +444,7 @@ bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--hand NAME] [--s
                    text "..." | key back|enter|del|tab|space|up|down|left|right
                    only while a lease app is in front or is the keyboard;
                    --any-app asks the owner for that one touch on whatever is
-                   in front (another project's keyboard), and Allow for this
+                   in front (another project's keyboard), and Approve for this
                    session does not cover it; bb phone ui prints the screen's
                    layout under the same rule
 bb container       what container asks are waiting on an administrator
@@ -452,7 +452,7 @@ bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NOD
                    a container built from a compose file the session wrote,
                    under the project's *Claude may: Run its container*: refused
                    at deny, asked at ask (an administrator reads the file on
-                   the bell, and Allow registers it through the Containers page's own
+                   the bell, and Approve registers it through the Containers page's own
                    New container path and starts its build), and at auto made
                    at once when it is this project's own on its own node; one
                    for another project or another node is always asked. A
@@ -603,10 +603,9 @@ bb toolchains             SDKs kept outside the image: status, check, install X,
 
 ## The apps a person installs
 
-The Android app, the VS Code extension and the Windows companion are built
-for every release and attached to it, each with a `.sha256` file beside it.
-A controller offers the ones ticked under **Apps** on its Controller
-settings page: a while after it starts and once a day it fetches each from
+The apps are built for every release and attached to it, each with a
+`.sha256` file beside it. A controller offers the ones ticked
+under **Apps** on its Controller settings page: a while after it starts and once a day it fetches each from
 the release matching its own version (the newest release when none does,
 and the section says so), keeps it only if it matches its sha256, and
 serves it from `/config/apps`. A switch moved, or **Look now**, looks at
@@ -616,12 +615,19 @@ once.
 |---|---|
 | Build, Apps | each offered app with its version, **Download**, and how to connect it |
 | Settings, Profile | the devices signed in as you, with **Disconnect** |
-| `GET /apps/NAME/FILE` | one file the controller holds (`android`, `vscode`, `companion`), for anybody signed in |
+| `GET /apps/NAME/FILE` | one file the controller holds (`android`), for anybody signed in |
 | `GET /api/apps` | what is offered and held: each app's files, their sha256 and size, the release, when it last looked |
 | `POST /api/v1/device/apps` | the same for a device's app (its own token), to update itself from; `GET /api/v1/device/app-file?app=NAME&file=FILE` fetches one |
 
-A device's app sends the door it speaks as `X-BB-Door` (none means 1); one
-from before the controller's window is answered 426 with the way to update.
+A device's app sends the door it speaks as `X-BB-Door` (none means 1) and
+which app and release it is as `X-BB-App`; one from
+before the controller's window is answered 426 with the way to update, by
+name. The device door's `projects` and `apps` answers say the controller's
+`door` and `door_min`, so an app newer than its controller says so plainly.
+What each released app reads is pinned with its types (the Android app's
+in `android/api-surface.json`): a field may be added at any time, and removed
+only in the release after the apps that read it stopped, with the pin moved
+in the same change and a changelog line.
 
 ### The seed file
 

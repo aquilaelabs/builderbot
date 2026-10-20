@@ -6,7 +6,7 @@
 // identity landing in the repo's own config through /api/prefs and coming out
 // of bb settings, and bb_setting (the boot scripts' read) run as bash
 // against the same file.
-import { launch, newPage, ok, done, ready, saveDialog, sectSave, rnSect, splitPick, refreshUntil, openFold, URL, DIR, unfold } from './lib.mjs';
+import { launch, newPage, ok, done, ready, saveDialog, sectSave, rnSect, splitPick, refreshUntil, openFold, URL, DIR, unfold, sleep } from './lib.mjs';
 import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -502,12 +502,31 @@ ok(elsewhere.git_name === 'T. Person',
     await refreshUntil(page, () => !(state?.projects || []).find(p => p.name === 'alpha')?.prefs?.build, { timeout: 20000 });
     await page.evaluate(() => { settingsOut(); openProjectSettings('alpha'); });
     await page.waitForSelector('.nbsettings .snav [data-spick="build"]', { timeout: 15000 });
+    // A status read already out, answered before the save below and landing
+    // only after Save is pressed, as a loaded box has them (B100): the Save
+    // read "what is saved now" from it, and wrote over the other save
+    // unseen. Held here, so the order is the one the gate met by chance.
+    let release, read = false, caught = false;
+    const held = new Promise(r => { release = r; });
+    await page.route('**/api/status', async r => {
+      if (caught) return r.fallback();
+      caught = true;
+      const before = await r.fetch();
+      read = true;
+      await held;
+      await r.fulfill({ response: before });
+    });
+    await page.evaluate(() => { refresh(); });
+    for (let i = 0; i < 300 && !read; i++) await sleep(100);
     // Elsewhere, after this window opened: the color (another section) and
     // the build command (this one), as a session or another window would.
     await post('/api/prefs', { project: 'alpha', color: 'teal', build: 'make theirs' });
     await rnSect(page, 'build');
     await page.fill('#rnBuildCmd', 'make mine');
+    setTimeout(release, 1500);
     const first = await sectSave(page, 'build');
+    await page.unroute('**/api/status');
+    ok(read, 'a status read sent before the other save was out when Save was pressed');
     const kept = await page.evaluate(() => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.build);
     ok(/Build changed since these settings were opened/.test(first) && kept === 'make theirs',
        `a field saved elsewhere since the settings opened is not written over unseen: the save is refused, naming it (${first.slice(0, 90)}; saved: ${kept})`);
@@ -552,6 +571,25 @@ ok(elsewhere.git_name === 'T. Person',
   await page.evaluate(() => { document.querySelectorAll('.modal:not(.inline)').forEach(m => { m.hidden = true; }); openProjectSettings('alpha'); });
   await page.waitForSelector('#rnSnapDays', { state: 'attached', timeout: 15000 });
   ok(await page.$eval('#rnSnapDays', i => i.value) === '14', 'a project keeps 14 days of snapshots unless set otherwise');
+  // Each number beside its unit, not over it (B51: "days" on a line under
+  // its box), at a desk and on a phone.
+  {
+    await rnSect(page, 'rn:build');
+    await openFold(page, 'details.sect[data-sect="rn:build"]');
+    const was = page.viewportSize(), apart = [];
+    for (const width of [1280, 393]){
+      await page.setViewportSize({ width, height: 900 });
+      await page.waitForTimeout(200);
+      apart.push(...(await page.$$eval('#rnCaptureDays, #rnSnapDays, #rnDevKeep', is => is.map(i => {
+        const a = i.getBoundingClientRect(), b = i.nextElementSibling.getBoundingClientRect();
+        // On the box's line (the row lines up at the bottom) and after it.
+        return b.top < a.bottom && b.bottom > a.top && b.left >= a.right ? ''
+          : `${i.id} ${[a.left, a.top, a.width, b.left, b.top].map(Math.round).join('/')} in ${i.closest('.modal, .nb')?.className.split(' ')[0]} ${i.checkVisibility()}`;
+      }).filter(Boolean))).map(x => `${width} ${x}`));
+    }
+    await page.setViewportSize(was);
+    ok(apart.length === 0, `Build and test's numbers each have their unit beside them (${apart.join(', ') || 'all beside'})`);
+  }
   writeFileSync(`${DIR}/ws/alpha/snapped.txt`, 'as it was\n');
   const took = await post('/api/snapshots', { project: 'alpha', action: 'take' });
   ok(took.status === 200 && took.body.files > 0, `Take one now snapshots the tree (${took.body.files} files)`);
@@ -613,6 +651,25 @@ ok(elsewhere.git_name === 'T. Person',
                              `${DIR}/state/gitview`, { timeout: 20000 });
   ok(back.status === 200 && existsSync(`${DIR}/state/gitview/marker/f`),
      '...and an empty path puts it back at its default, with what is there');
+}
+
+// ---- Profile's What you may do on a phone (B76) -------------------------------
+// One column of facts, every value starting at one line: each began where
+// its own label ended, two ragged columns.
+{
+  const phone = await newPage(browser, { viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true });
+  await phone.goto(URL);
+  await ready(phone);
+  await phone.evaluate(() => openProfileTab());
+  await phone.waitForSelector('.profiletab [data-spick="may"]', { timeout: 15000 });
+  await phone.click('.profiletab [data-spick="may"]');
+  await phone.waitForSelector('.profiletab dl.facts dd', { timeout: 10000 });
+  const xs = await phone.$$eval('.profiletab dl.facts .fact dd', ds => [...new Set(ds.filter(d => d.offsetHeight)
+    .map(d => Math.round(d.getBoundingClientRect().left)))]);
+  const over = await phone.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  if (process.env.BB_SHOT_DIR) await phone.screenshot({ path: `${process.env.BB_SHOT_DIR}/profile-may-360.png` });
+  ok(xs.length === 1 && over <= 0, `on a phone What you may do lines its values up in one column (starts at ${xs.join('/')})`);
+  await phone.close();
 }
 
 await done(browser);

@@ -1249,10 +1249,18 @@ def what_may(name):
     names a person reads (and where each holds), and the areas they add up
     to with the best level held anywhere, in the Roles page's order."""
     rec = get(name) or {}
+    # The projects that are projects now (B75): a grant on one in the bin or
+    # purged is kept, for a restore to bring back, and is not said, nor
+    # counted toward what the account may do.
+    import registry
+    live = registry.is_project if registry.FILE is not None else (lambda _p: True)
+    pr = {p: rs for p, rs in (rec.get("project_roles") or {}).items() if live(p)}
+    rec = dict(rec, project_roles=pr)
     held = [roles.label(r) for r in roles.roles_of(rec) if r != "user"]
-    for proj, names in sorted((rec.get("project_roles") or {}).items()):
-        held += [f"{roles.label(r)} on {proj}" for r in names if roles.label(r) != f"Owner of {proj}"]
-        held += [roles.label(r) for r in names if roles.label(r) == f"Owner of {proj}"]
+    for proj, names in sorted(pr.items()):
+        own = roles.owner_role_name(proj)
+        held += [f"{roles.label(r)} on {roles.shown(proj)}" for r in names if r != own]
+        held += [roles.label(r) for r in names if r == own]
     got = roles.summary(rec)
     return {"roles": held,
             "may": [[label, "Write" if got[key] == "write" else "Read"]
@@ -1286,7 +1294,10 @@ def assignable(me):
     import membership
     if not me or me.get("session"):
         return {"admin": False, "projects": []}
-    if is_admin(me):
+    # Accounts and roles Write through a role of one's own is the
+    # administrator's top section too (B66); assign keeps the built-in admin
+    # itself an administrator's.
+    if is_admin(me) or not may(me, "admin"):
         return {"admin": True, "projects": None}
     mine = uid_of(me)
     owned = sorted(p for p, r in membership._owners()["projects"].items()
@@ -1312,6 +1323,10 @@ def assign(me, name, global_roles=None, project_roles=None):
         # The owner's account is nobody's but the owner's to change (R152 (a)).
         if u.get("role") == "owner" and (me or {}).get("role") != "owner":
             return {"error": "the owner's roles and projects are the owner's alone"}, 403
+        # ...and the built-in admin an administrator's, given or taken (B66).
+        if not is_admin(me) and (u.get("role") == "admin"
+                                 or "admin" in [str(r) for r in global_roles or []]):
+            return {"error": "the admin role and an administrator's account are an administrator's to change"}, 403
         if global_roles is not None:
             if not can["admin"]:
                 return {"error": "Everywhere roles are an administrator's to give"}, 403
@@ -1355,3 +1370,52 @@ def assign(me, name, global_roles=None, project_roles=None):
         _save(d)
         out = {k: u.get(k) for k in ("role", "roles", "projects", "project_roles")}
     return {"ok": True, "name": name, **out}, 200
+
+
+def forget_project(project):
+    """A project that is gone for good off every account: its list and the
+    roles held on it (membership.forget_project, B95)."""
+    project = str(project or "")
+    with _lock:
+        d = load()
+        changed = False
+        for u in d["users"].values():
+            have = list(u.get("projects") or [])
+            if project in have:
+                u["projects"] = [p for p in have if p != project]
+                changed = True
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            if project in pr:
+                pr.pop(project)
+                u["project_roles"] = pr
+                changed = True
+        if changed:
+            _save(d)
+
+
+def forget_role(name):
+    """A removed role taken off every account that held it, everywhere and
+    on each project (B20): left on them, a role made later under the same
+    name would hand them its access without anybody giving it. How many
+    accounts held it."""
+    n = 0
+    with _lock:
+        d = load()
+        for u in d["users"].values():
+            held = False
+            if name in (u.get("roles") or []):
+                u["roles"] = [r for r in u["roles"] if r != name]
+                held = True
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            for proj in list(pr):
+                if name in (pr[proj] or []):
+                    pr[proj] = [r for r in pr[proj] if r != name]
+                    held = True
+                    if not pr[proj]:
+                        pr.pop(proj)
+            if held:
+                u["project_roles"] = pr
+                n += 1
+        if n:
+            _save(d)
+    return n

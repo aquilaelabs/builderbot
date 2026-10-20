@@ -94,6 +94,10 @@ function nbGitView({$, nb, project}){
   // The project directory is the owner's working tree (B236): anybody else
   // sees whose it is, a plain account gets nothing that changes it, and an
   // administrator is asked by the server first.
+  // Nothing here changes the tree, the branches or what a session may push
+  // while the project is archived, or for a role that reads it and does
+  // not write it (B86), which the view then says under Fetch and Push.
+  const shut = () => !!(state?.projects || []).find(p => p.name === project)?.locked || !!projWriteWhy(project);
   const treeOf = () => {
     const owner = git?.owner || "", notMine = !!owner && owner !== state?.me;
     return {owner, notMine, barred: notMine && !state?.admin};
@@ -141,10 +145,16 @@ function nbGitView({$, nb, project}){
           ? `pull first: ${git.host?.name || "the remote"} has ${st.behind} commit${st.behind === 1 ? "" : "s"} this branch does not, and this branch has ${st.ahead} to push (${st.upstream})`
           : `${git.host?.name || "the remote"}, ${st.upstream}${st.ahead ? ` · ${st.ahead} to push` : ""}${st.behind ? ` · ${st.behind} to pull` : ""}`)
         : "no upstream yet: Push sets one";
-      net.querySelector('[data-gitact="push"]').disabled = !git.push;
-      net.querySelector('[data-gitact="pull"]').disabled = !st.upstream;
+      const ro = projWriteWhy(project);
+      net.querySelector('[data-gitact="fetch"]').disabled = !!ro;
+      net.querySelector('[data-gitact="push"]').disabled = !git.push || !!ro;
+      net.querySelector('[data-gitact="pull"]').disabled = !st.upstream || !!ro;
       net.querySelector('[data-gitact="pull"]').hidden = tree.barred;
     }
+    // Why none of it is this account's, under the bar (or alone where there
+    // is no remote), once for every verb the view leaves out.
+    const why = $("gitWhy"), ro = projWriteWhy(project);
+    if (why){ setText(why, ro); setHidden($("gitWhyF"), !ro || !!(state?.projects || []).find(p => p.name === project)?.locked); }
     drawGit();
   }
 
@@ -191,13 +201,16 @@ function nbGitView({$, nb, project}){
     if (!ci.at && !ci.workflows && !git.remote) return "";
     const fs = ci.findings || [];
     const red = fs.some(f => f.sev === "bad");
-    const status = !ci.at ? "not looked at yet" : red ? "failing" : fs.length ? `${fs.length} to look at` : "nothing drifting";
-    const cls = red ? "bad" : fs.length ? "note" : ci.at ? "ok" : "";
+    // A look that found no workflow says so, not "nothing drifting" in
+    // green: there is no CI to drift (B81).
+    const none = !!ci.at && !ci.workflows && !fs.length && !ci.run?.id;
+    const status = !ci.at ? "not looked at yet" : red ? "failing" : fs.length ? `${fs.length} to look at` : none ? "no workflows" : "nothing drifting";
+    const cls = red ? "bad" : fs.length ? "note" : ci.at && !none ? "ok" : "";
     const word = {run: "Check", label: "Runner", action: "Action", notice: "GitHub says"};
     // A moving label and an action a major behind carry their fix (R117
     // step 4): Fix writes that one line into the working tree, uncommitted,
     // for Changes to show; nothing is committed or pushed by the press.
-    const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+    const locked = shut();
     const mayFix = !locked && !treeOf().barred;
     const rows = fs.map(f => `<div class="actbar"><span class="state ${f.sev === "bad" ? "bad" : f.sev === "warn" ? "warn" : ""}">${
         esc(word[f.kind] || f.kind)}: ${esc(f.text)} <code>${esc(f.where || "")}</code></span>${
@@ -205,7 +218,7 @@ function nbGitView({$, nb, project}){
           title="write ${esc(f.fix.to)} on that line, in the working tree; you commit it">Fix</button>` : ""}</div>`).join("");
     const run = ci.run?.id ? ` The newest run on ${esc(ci.run.branch)} ${esc(ci.run.ended || "ended " + ci.run.conclusion)}.` : "";
     const body = `<div class="sub dim">${ci.at ? `Looked ${esc(ago(ci.at))}${ci.repo ? ` at ${esc(ci.repo)} on GitHub` : ""}.${run}` :
-        "Not looked at yet."} Looked at once a day and when the project is linked; a session reads a run with bb ci-log.</div>${
+        "Not looked at yet."}${none ? " The tree has no workflow in .github/workflows, .gitea/workflows or .forgejo/workflows, so there is no CI here to watch." : ""} Looked at once a day and when the project is linked; a session reads a run with bb ci-log.</div>${
       ci.error ? `<div class="sub bad">${esc(ci.error)}</div>` : ""}${rows}
       <div class="actbar"><button type="button" id="gitCiLook">Look now</button></div>`;
     return docSection("git", "ci", "CI", status, body, {cls, open: red, loud: red});
@@ -240,7 +253,7 @@ function nbGitView({$, nb, project}){
     drawPicker();
     const st = git.status || {}, files = st.files || [], commits = git.commits || [];
     const local = (git.branches || []).filter(b => !b.remote), remote = (git.branches || []).filter(b => b.remote);
-    const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+    const locked = shut();
     const tree = treeOf();
     const fileKey = f => `${f.state}|${f.staged ? 1 : 0}|${f.at || ""}`;
     const fileRows = files.map(f => `<details class="sect gfile" data-path="${esc(f.path)}" data-key="${esc(fileKey(f))}"${
@@ -338,10 +351,14 @@ function nbGitView({$, nb, project}){
       : [!b.remote && b.name !== main && b.main_ahead ? `<button type="button" data-gitcmp="${esc(b.name)}">Compare with ${esc(main)}</button>` : "",
          b.name === main ? (b.head || barred(here_) ? "" : `<button type="button" data-gitmerge="${esc(main)}"${whoAttr(here_)}
             title="bring ${esc(main)} into ${esc(st.branch || "this branch")}, here, so this branch is up to date with it">Merge ${esc(main)} into here</button>`)
-           : !barred(b) && (b.main_ahead || st.branch !== main) && !(b.head && st.branch === main) ? `<button type="button" data-gitmerge="${esc(b.name)}" data-gitinto="${esc(main)}"${whoAttr(b)}
+           : !barred(b) && b.main_ahead ? `<button type="button" data-gitmerge="${esc(b.name)}" data-gitinto="${esc(main)}"${whoAttr(b)}
             title="merge ${esc(b.name)} into ${esc(main)}; push ${esc(main)} afterwards">Merge into ${esc(main)}</button>` : "",
          b.head || barred(b) || tree.barred ? "" : `<button type="button" data-gitswitch="${esc(b.name)}" title="put the tree on this branch">Switch to it</button>`,
-         ...(b.name === main ? [] : [...(barred(b) ? [] : [["merge", `Ask Claude to merge it into ${esc(main)}`], ["rebase", `Ask Claude to rebase it onto ${esc(main)}`]]),
+         // A branch with nothing of its own (0 ahead of main) has nothing to
+         // merge or review, and one that is not also behind nothing to
+         // rebase (B80).
+         ...(b.name === main || !b.main_ahead ? [] : [...(barred(b) ? [] : [["merge", `Ask Claude to merge it into ${esc(main)}`],
+              ...(b.main_behind ? [["rebase", `Ask Claude to rebase it onto ${esc(main)}`]] : [])]),
               ["review", "Ask Claude to review it"]].map(([k, w]) => `<button type="button" data-gitaskbranch="${esc(b.name)}" data-gitaskkind="${k}"${
               k === "review" ? "" : whoAttr(b)} title="hand this branch to the project's Claude session with this ask">${w}</button>`)),
          b.head || b.name === main || barred(b) ? "" : `<button type="button" class="danger"
@@ -522,7 +539,7 @@ function nbGitView({$, nb, project}){
     if (!box || !git || git.error) return;
     const st = git.status || {}, cur = st.branch || "";
     const local = (git.branches || []).filter(b => !b.remote);
-    const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+    const locked = shut();
     const still = locked || treeOf().barred || !cur;
     box.hidden = !cur;
     const label = `<span class="gbpickic" aria-hidden="true">${BRANCH_ICON}</span><span class="gbpickname">${esc(cur)}</span>`;
@@ -658,7 +675,7 @@ function nbGitView({$, nb, project}){
     const s_ = n => n === 1 ? "" : "s";
     const commits = j.commits || [], files = j.files || [];
     const added = files.reduce((n, f) => n + (f.added || 0), 0), removed = files.reduce((n, f) => n + (f.removed || 0), 0);
-    const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+    const locked = shut();
     const theirs = !!b.who && b.who !== state?.me, barred = theirs && !state?.admin;
     // The commits as the history draws them, newest first; the files as a
     // list with their counts, then each one's diff.
@@ -714,7 +731,7 @@ function nbGitView({$, nb, project}){
         ${c.message.includes("\n") ? `<pre class="gmsg">${esc(c.message.split("\n").slice(1).join("\n").trim())}</pre>` : ""}
         <div class="sub">${c.files.length} file${c.files.length === 1 ? "" : "s"}: ${c.files.map(f =>
           `<code>${esc(f.path)}</code>${f.added != null ? ` <span class="gadd">+${f.added}</span> <span class="gdel">−${f.removed}</span>` : ""}`).join(", ")}</div>
-        ${(state?.projects || []).find(p => p.name === project)?.locked ? "" : `<div class="actbar">
+        ${shut() ? "" : `<div class="actbar">
           ${treeOf().barred ? "" : `<span class="state">revert makes a new commit undoing this one; a branch starts from it</span>`}
           <select data-gitaskkind aria-label="what to ask"><option value="review">review</option>
             <option value="explain">explain</option><option value="revert">revert</option></select>

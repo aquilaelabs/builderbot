@@ -61,7 +61,7 @@ def run():
               file=sys.stderr)
     else:
         print(f"[builderbot] asked {r.get('to') or 'the operator'} (#{rid}), waiting up to 15 minutes "
-              "for Allow in the bell, or the Phone page", file=sys.stderr)
+              "for Approve in the bell, or the Phone page", file=sys.stderr)
     # Polled rather than pushed: this is a shell command waiting on a person, and
     # a person is slow in a way no callback improves.
     o = waits.outcome(os.environ["BB_PHONE_AUTH"], rid, "the operator said no")
@@ -87,7 +87,7 @@ def use(op, args=None, quiet=False):
                   "to the phone", file=sys.stderr)
         else:
             print(f"[builderbot] asked {r.get('to') or 'its owner'} (#{r['asked']}), waiting up to 15 minutes "
-                  "for Allow in their bell", file=sys.stderr)
+                  "for Approve in their bell", file=sys.stderr)
         o = waits.outcome(os.environ["BB_PHONE_AUTH"], r["asked"], f"{r.get('to') or 'its owner'} said no")
         try:
             r = json.loads(o.get("out") or "{}")

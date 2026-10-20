@@ -8,7 +8,7 @@
 // answer. Plain JavaScript and Node's own modules, so there is nothing to
 // build or install beside it.
 const vscode = require('vscode');
-const { API, Client, Refused, signIn } = require('./lib/client');
+const { Client, Refused, signIn } = require('./lib/client');
 const { Ttyd } = require('./lib/ttyd');
 
 const SCHEME = 'builderbot';
@@ -168,11 +168,10 @@ function say(e) {
 
 async function pickProject(context, why) {
   const c = await connect(context);
-  const { api, projects } = await c.projects();
-  if (api !== API) {
-    vscode.window.showWarningMessage(`BuilderBot's Files API is version ${api} and this extension speaks ${API}: `
-      + 'update the extension from the controller\'s dist/.');
-  }
+  // Too new for its controller, said plainly; too old, the controller
+  // refused the call above with its own words (426), which say() shows.
+  const { projects, tooOld } = await c.projects();
+  if (tooOld) vscode.window.showWarningMessage(tooOld);
   if (!projects.length) {
     throw new Error('no project here is open to you in an editor. Its settings (File access) say who may, '
       + 'and whether opening it in an editor is on.');

@@ -444,7 +444,17 @@ class Sync(unittest.TestCase):
 
     def test_both_sides_skip_the_same_things(self):
         self.assertEqual(node_sync.SKIP_DIRS, ctl_sync.SKIP_DIRS)
+        self.assertEqual(node_sync.SKIP_UNDER, ctl_sync.SKIP_UNDER)
         self.assertEqual(node_sync.MAX_FILE, ctl_sync.MAX_FILE)
+
+    def test_claude_codes_worktrees_are_not_synced(self):
+        # B68: an agent's worktree under .claude/worktrees has a .git file
+        # the controller refuses, which held the whole project behind.
+        for side in (node_sync, ctl_sync):
+            self.assertTrue(side.skipped(".claude/worktrees/agent-1/.git"))
+            self.assertTrue(side.skipped(".claude/worktrees/agent-1/_"), "the walk prunes the directory")
+            self.assertFalse(side.skipped(".claude/settings.json"))
+            self.assertFalse(side.skipped("src/.claude/worktreesx/a"))
 
 
 if __name__ == "__main__":

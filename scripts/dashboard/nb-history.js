@@ -50,6 +50,13 @@ function nbHistoryView({$, nb, project}){
     const v = shippedIn(e.at || 0, rel);
     return `<div class="hday">${esc(day)}${v === null ? " · unreleased" : v ? ` · in ${esc(v)}` : ""}</div>`;
   };
+  // Who did it, in one word or name: a person is "you" when it is this
+  // account and their name when it is another's, and a session is
+  // "claude", with its account's name when that is not this one's. "you ·
+  // stencil" said a person twice.
+  const whoSays = e => e.by === "claude"
+    ? `claude${e.who && e.who !== state?.me ? ` · ${e.who}` : ""}`
+    : e.who && e.who !== state?.me ? e.who : (e.by || "");
   const idLink = id => `<a href="#" class="hid" data-hid="${esc(id)}" title="open ${esc(id)}">${esc(id)}</a>`;
   const wireIds = pane => pane.querySelectorAll("[data-hid]").forEach(a => a.onclick = e => {
     e.preventDefault(); nb.closeSheet(); getNotebook(project).find(a.dataset.hid); });
@@ -79,11 +86,7 @@ function nbHistoryView({$, nb, project}){
           e.was ? ` <span class="was">${esc(e.was)}</span>` : ""}${
           e.act === "moved" ? ` <span class="was" style="text-decoration:none">(place ${esc(String(e.from))} to ${esc(String(e.to))})</span>` : ""}${
           e.steps ? ` <span class="was" style="text-decoration:none">(${e.steps} steps)</span>` : ""}
-        <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}${
-          // Which person. "you" and "claude" say a person or a session; the
-          // name says which of two people, and a session carries its
-          // account's because a session has an author too.
-          e.who ? ` · ${esc(e.who)}` : ""}${
+        <span class="who${e.by === "you" ? " you" : ""}">${esc(whoSays(e))}${
           e.approved ? ", approved by you" : ""}</span>${
           e.why ? `<span class="note">why: ${esc(e.why)}</span>` : ""}${
           // A dropped item comes back from here, as it was: the log carries
@@ -184,8 +187,7 @@ function nbHistoryView({$, nb, project}){
             <span class="when">${esc(stamp(e.at || 0))}</span>
             <span class="tag act ${LOG_ACTS[e.act] || ""}">${esc(LOG_WORDS[e.act] || e.act || "changed")}</span>
             <span class="what">${e.id != null ? `${letter ? idLink(letter + e.id) : esc(String(e.id))} · ` : ""}${esc(e.text || "")}
-              <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}${
-              e.who ? ` · ${esc(e.who)}` : ""}${
+              <span class="who${e.by === "you" ? " you" : ""}">${esc(whoSays(e))}${
               e.approved ? ", approved by you" : ""}</span>${
               e.note ? `<span class="note">${esc(e.note)}</span>` : ""}</span>
           </div>`).join("");

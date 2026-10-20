@@ -453,9 +453,7 @@ controller's port and nothing else, and the LAN opens the session ports
 back), because root on the node could undo anything done there; the dialog
 gives the router's rules. The controller holds up its half: a node's tunnel
 address is answered on `/api/v1/agent/*` and refused everything else, by the
-socket's own address. "Just a token" is the old commands; a Mac's are among
-them only while Offer dev features is on in Settings, since a macOS node is a
-dev feature and not offered otherwise.
+socket's own address. "Just a token" is the old commands.
 
 **mTLS is a later layer, not a redesign**: the pinned-cert enrollment above is
 where a private CA slots in when a security review asks for it: same

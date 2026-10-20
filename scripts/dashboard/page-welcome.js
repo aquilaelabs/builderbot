@@ -9,59 +9,58 @@
 
 "use strict";
 
-const GUIDE_USER = `
-  <h4>What this is</h4>
-  <p>A Claude Code workstation in a browser. A project is a repository, kept
-  and built on a node; a Claude session works on it, and the project's page
-  is where you and Claude keep the plan.</p>
-  <h4>Finding your way</h4>
-  <ul>
-    <li><b>The rail</b>, down the left edge: Home, Projects, Build,
-      Containers, Machines, Sessions, Jobs and the rest, each a page. On a
-      phone it is the bar at the foot, in the same order: Home, Projects,
-      Build, Containers, and More for the others.</li>
-    <li><b>The search</b> at the top jumps to a page, a project, a container or
-      a node by name.</li>
-    <li><b>The dock</b> at the foot of every page holds the chat and your
-      terminals; a tab pulls it up, and on a phone it is a sheet.</li>
-    <li><b>The bell</b> holds what needs your answer, and <b>the dot</b> beside
-      it is the doctor's verdict on this controller.</li>
-  </ul>
-  <h4>Start here</h4>
-  <ul>
-    <li><b>Your profile</b>, in the gear: your name and email, which your commits
-      carry. No Claude session starts without them.</li>
-    <li><b>A project</b>: Start Claude opens a session, Shell a terminal, and its
-      name opens its page: Overview, Plan (Roadmap, Bugs), Code (Git, Tests,
-      Analysis), Ship (Artifacts, Docker) and Docs (Wiki, Design).</li>
-    <li><b>Claude Code</b> runs on a node: the first Start Claude takes you to
-      its sign-in there.</li>
-  </ul>
-  <h4>When something says no</h4>
-  <p>A refusal names the way out, so read it rather than retry.</p>
-  <h4>Something is wrong</h4>
-  <p>File it on the project's Bugs: what you pressed and what it said back.
-  Sessions read the same tracker.</p>`;
-const GUIDE_ADMIN = GUIDE_USER + `
-  <h4>As an administrator</h4>
-  <ul>
-    <li><b>Machines</b>: the nodes where builds, tests, CI, the emulator and
-      sessions run, and what their disks hold. Enroll node gives you the
-      script to run on a machine.</li>
-    <li><b>Build</b>: what each node builds with (Toolchains), its emulator, a
-      phone lent to it, and its CI runner.</li>
-    <li><b>People</b>: accounts, roles and which projects each sees.</li>
-    <li><b>Settings</b>: this controller's, each waiting for its Apply; and a
-      project's own, from its page.</li>
-  </ul>`;
+// The guide is docs/start-here.md, read through the Help page's docs: one
+// text for both, so the two cannot say different things. Its "As an
+// administrator" section is left out for an account that is not one.
+const AB_GUIDE_DOC = "start-here";
+const AB_ADMIN_HEAD = "## As an administrator";
+let abGuideDoc = null;       // {text} | {error}, read once
+let abGuideTitles = {};      // doc name -> title, from the Help listing
+
+function abGuideText(text, admin){
+  let t = wikiUntitled(String(text || ""));
+  if (!admin){
+    const at = t.indexOf("\n" + AB_ADMIN_HEAD);
+    if (at >= 0){
+      const next = t.indexOf("\n## ", at + 1 + AB_ADMIN_HEAD.length);
+      t = t.slice(0, at) + (next >= 0 ? t.slice(next) : "\n");
+    }
+  }
+  // A link to a file outside the docs (../CONTRIBUTING.md) has nothing to
+  // open here, so it is its words, as on the Help page.
+  return t.replace(/\[([^\]]*)\]\((?!https?:)([^)#]*\/[^)]*)\)/g, "$1");
+}
+
+async function abLoadGuide(){
+  const el = $("abGuide");
+  if (!abGuideDoc){
+    el.innerHTML = skel("lines", 8);
+    try{
+      const [doc, index] = await Promise.all([fetch("/api/help?doc=" + AB_GUIDE_DOC), fetch("/api/help")]
+        .map(p => p.then(r => r.json())));
+      abGuideDoc = doc;
+      if (!index.error) abGuideTitles = helpTitles(index);
+    }
+    catch(e){ abGuideDoc = {error: "the guide could not be read: " + e}; }
+  }
+  if (abPage !== "guide") return;
+  if (abGuideDoc.error){ el.innerHTML = `<p class="hint bad">${esc(abGuideDoc.error)}</p>`; return; }
+  el.innerHTML = wikiMarkdown(abGuideText(abGuideDoc.text, state?.can?.admin !== false), abGuideTitles);
+  // A link to another doc opens it on the Help page.
+  el.querySelectorAll("a.wklink[data-page]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    closeAbout();
+    location.hash = "#/help/" + encodeURIComponent(a.dataset.page.replace(/\.md$/, ""));
+  });
+}
 let abPage = "guide", abLogLoaded = false;
 function abShow(which){
   abPage = which;
   document.querySelectorAll(".abswitch button").forEach(b => b.classList.toggle("on", b.dataset.ab === which));
   $("abGuide").hidden = which !== "guide";
   $("abLog").hidden = which !== "log";
-  if (which === "guide")
-    $("abGuide").innerHTML = state?.can?.admin === false ? GUIDE_USER : GUIDE_ADMIN;
+  $("abBuild").hidden = which !== "log";
+  if (which === "guide") abLoadGuide();
   if (which === "log" && !abLogLoaded) abLoadLog();
 }
 async function abLoadLog(){

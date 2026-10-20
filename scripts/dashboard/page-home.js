@@ -53,12 +53,14 @@ async function loadHome(light = false){
   if (homeAgain){ const whole = homeAgain === "whole"; homeAgain = null; loadHome(!whole); }
 }
 
-// The updates due across the install: each toolchain behind on a node, an
-// image or nginx behind, an agent behind. A move (relocate) is not an
-// update, and a CI run has its own tile.
+// The updates due across the install, each thing behind counted once: each
+// toolchain behind on a node, each container with a newer image, nginx
+// behind, an agent behind. A move (relocate) is not an update, and a CI run
+// has its own tile.
 function homeUpdates(){
   return (state?.attention || []).reduce((n, a) =>
-    a.kind === "relocate" ? n : n + (a.kind === "toolchain" ? (a.tools || []).length || 1 : 1), 0);
+    a.kind === "relocate" ? n : n + (a.kind === "toolchain" ? (a.tools || []).length || 1
+      : a.kind === "image" ? (a.containers || []).length || 1 : 1), 0);
 }
 
 // The tiles, each one a press into its page (the home rule: unlike a tab's
@@ -66,7 +68,11 @@ function homeUpdates(){
 // machine it may not read) is not drawn.
 function homeTiles(){
   const h = homeData || {};
-  const sessions = Object.values(state?.claude_where || {}).reduce((n, rows) => n + rows.length, 0);
+  // What the Sessions page lists and counts, so the tile and the page it
+  // opens say one number (B59): every session of this account's, Claude's
+  // and the terminals.
+  const ss = state?.sessions || [];
+  const sessions = ss.length, claudes = ss.filter(s => tmuxBase(s.name).startsWith("claude-")).length;
   const updates = homeUpdates(), red = (state?.ci_red || []).length;
   const jobs = h.jobs || {};
   const c = h.containers;
@@ -82,8 +88,8 @@ function homeTiles(){
     {key: "jobs", label: "jobs running", value: jobs.running ?? "–",
      sub: jobs.failed_today ? `${jobs.failed_today} failed today` : jobs.waiting ? `${jobs.waiting} waiting` : "none failed today",
      subTone: jobs.failed_today ? "bad" : ""},
-    {key: "sessions", label: "sessions open", value: sessions},
-    {key: "updates", label: "updates due", value: updates, tone: updates ? "warn" : ""},
+    {key: "sessions", label: "sessions open", value: sessions, sub: claudes ? `${claudes} of them Claude` : ""},
+    {key: "updates", label: updates === 1 ? "update due" : "updates due", value: updates, tone: updates ? "warn" : ""},
     {key: "ci", label: "CI red", value: red, tone: red ? "bad" : "", sub: red === 1 ? projLabel(state.ci_red[0].project) : ""},
   ].filter(Boolean);
 }
@@ -93,7 +99,15 @@ function homeTiles(){
 // is a panel, with no address, and opens it on the press.
 function homeHref(key){
   const c = (state?.ci_red || [])[0];
-  return {nodes: "#/machines/nodes", containers: "#/containers", jobs: "#/jobs", updates: "#/build/toolchains",
+  // The jobs tile says what failed today when anything did, and opens the
+  // Jobs page narrowed to those, the number pressed the number listed (B74,
+  // B113: it opened on every failed job, yesterday's too).
+  const failed = homeData?.jobs?.failed_today;
+  return {nodes: "#/machines/nodes", containers: "#/containers", jobs: failed ? "#/jobs/failed-today" : "#/jobs",
+          // The updates due are toolchains, images, nginx and agents on every
+          // node, which one node's Toolchains page never held: they are listed
+          // on Home's own Attention card, so the tile brings that into view (B73).
+          updates: "#/home",
           ci: c ? `#/projects/${encodeURIComponent(c.project)}/git` : "#/projects", sessions: "#"}[key] || "#";
 }
 function homeTilesHtml(tiles){
@@ -172,13 +186,23 @@ function homeStartHtml(){
 function homeCards(jobs){
   const needs = needsRows(), hidden = state?.bell_hidden || 0;
   return `${homeStartHtml()}<div class="field"><div class="homegrid">
-        <section class="hcard"><h3>Attention</h3>${needs.length ? needs.join("")
+        <section class="hcard hattn"><h3>Attention</h3>${needs.length ? needs.join("")
           : `<div class="empty">nothing needs attention</div>`}${hidden
           ? `<div class="bfootbar"><span>${hidden} update${hidden === 1 ? "" : "s"} dismissed</span>
               <button type="button" data-brestore>Show again</button></div>` : ""}</section>
         <section class="hcard"><h3>Last jobs</h3>${jobs}</section>
       </div></div>
       <div class="field"><section class="hsect"><h3>Projects at a glance</h3>${homeGlanceHtml()}</section></div>`;
+}
+
+// The Attention card brought into view and marked a moment: where the
+// updates due tile's number is listed (B73).
+function homeAttention(root){
+  const card = root.querySelector(".hattn");
+  if (!card) return;
+  card.scrollIntoView({block: "nearest", behavior: "smooth"});
+  card.classList.add("focus");
+  setTimeout(() => card.classList.remove("focus"), 1600);
 }
 
 function renderHomeInto(i){
@@ -202,6 +226,7 @@ function renderHomeInto(i){
     + homeTilesHtml(homeTiles()) + homeCards(homeJobsHtml()))) return;
   const root = d.list;
   root.querySelectorAll('[data-htile="sessions"]').forEach(a => a.onclick = e => { e.preventDefault(); railGo("sessions"); });
+  root.querySelectorAll('[data-htile="updates"]').forEach(a => a.onclick = e => { e.preventDefault(); homeAttention(root); });
   // The CI tile's address opens the Git view; its CI section opens with it.
   root.querySelectorAll('[data-htile="ci"]').forEach(a => a.onclick = () => { sectOpen["git:ci"] = true; });
   root.querySelectorAll("[data-hjob]").forEach(b => b.onclick = () => openJob(b.dataset.hjob));

@@ -155,6 +155,14 @@ const graph = await page.$eval(`${NB} .gitgraph`, g => ({
   edges: g.querySelectorAll('path').length, lanes: parseInt(getComputedStyle(g).getPropertyValue('--glanes')) }));
 ok(graph.rows >= 4 && graph.nodes === graph.rows && graph.edges >= graph.rows - 1 && graph.lanes >= 2,
    `History is a graph: a node per commit, edges to parents, and a second lane for the branch (${JSON.stringify(graph)})`);
+// ...and one anybody can see: each lane's line and dot take their color from
+// a class built as gl${lane % 5}, which a sweep for unused CSS once removed (B79).
+const inked = await page.$eval(`${NB} .gitgraph`, g => {
+  const strokes = [...g.querySelectorAll('path, circle')].map(e => getComputedStyle(e).stroke);
+  return { strokes: new Set(strokes).size, bare: strokes.filter(s => !s || s === 'none').length };
+});
+ok(inked.bare === 0 && inked.strokes >= 2,
+   `...drawn: every line and dot has a stroke, a color per lane (${JSON.stringify(inked)})`);
 await page.click(`${NB} .grow[data-sha="${merge.sha}"]`);
 await page.waitForSelector(`${NB} #gitDetail .gcommit`, { timeout: 10000 });
 ok(await page.$eval(`${NB} #gitDetail`, e => /Merge feature/.test(e.textContent) && /merge/.test(e.textContent)),
@@ -686,6 +694,18 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
      && /not yet in/.test(grouped.words) && !/level with/.test(grouped.words)
      && grouped.oneLine && grouped.shown.every(k => k === 'active'),
      `branches are a table a line a branch, Active chosen until another chip is pressed: work not yet in main offers Merge into main, branches already in main are one Delete, and a remote row mirroring a local branch is not repeated (${JSON.stringify(grouped).slice(0, 240)})`);
+  // B80: a branch with nothing of its own (level with main) has nothing to
+  // merge, rebase or review, so its ⋯ offers none of it.
+  git('branch', 'level-b80', main);
+  // A branch made beside the tree moves no HEAD log, so the view reads again
+  // when it is opened, as a person would.
+  await page.evaluate(() => getNotebook('beta').view('git'));
+  await page.waitForSelector('.nb .nbview[data-view="git"] .gbranch[data-branch="level-b80"]', { state: 'attached', timeout: 15000 });
+  const level = await page.$eval('.nb .nbview[data-view="git"] .gbranch[data-branch="level-b80"]', r => ({
+    merge: !!r.querySelector('[data-gitmerge]'), asks: [...r.querySelectorAll('[data-gitaskkind]')].map(o => o.dataset.gitaskkind) }));
+  ok(!level.merge && !level.asks.length && grouped.into,
+     `...and a branch level with ${main} offers neither Merge into ${main} nor an ask of Claude, while old-work keeps Merge (${JSON.stringify(level)})`);
+  git('branch', '-D', 'level-b80');
   // The chips narrow the table in place, and the search beside them by name.
   await page.click('.nb .nbview[data-view="git"] [data-gbchip="remote"]');
   await page.waitForFunction(() => [...document.querySelectorAll('.nb .nbview[data-view="git"] .gbranch:not([hidden])')].every(r => r.dataset.kind === 'remote'), null, { timeout: 5000 });
@@ -1247,7 +1267,9 @@ ok(strip.groups.n === 5 && strip.groups.rows === 1 && strip.groups.inside && str
   });
   ok(/test's working tree/.test(peerTreeView.hint) && peerTreeView.writes === 0 && peerTreeView.note,
      `...and its view says whose working tree it is and offers nothing that changes it (${JSON.stringify(peerTreeView)})`);
-  ok(peerRow.acts === 0 && peerRow.asks.join() === 'review' && /only w\.dev merges it/.test(peerRow.text),
+  // Review at most: the merge above put the branch in main, and a branch with
+  // nothing of its own has nothing to review either (B80).
+  ok(peerRow.acts === 0 && peerRow.asks.every(k => k === 'review') && /only w\.dev merges it/.test(peerRow.text),
      `...while a plain account's row offers none of it and says whose it is (${JSON.stringify({ acts: peerRow.acts, asks: peerRow.asks })})`);
   await peerPage.close();
   // B236: the project directory is the owner's working tree. A plain
@@ -1366,7 +1388,7 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
 // ---- the CI watch (R117) ------------------------------------------------------
 // What the daily look found, planted where ciwatch keeps it: a CI section on
 // the Git view saying it in rows, a bell row while main is red, and Look now
-// replacing it with a fresh look (beta has no workflows: nothing drifting).
+// replacing it with a fresh look (beta has no workflows, and it says so).
 {
   mkdirSync(`${DIR}/state/ciwatch`, { recursive: true });
   writeFileSync(`${DIR}/state/ciwatch/beta.json`, JSON.stringify({
@@ -1430,10 +1452,15 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
     rmSync(`${DIR}/ws/beta/.github`, { recursive: true, force: true });
   }
   await page.click(`${NB} #gitCiLook`);
-  await page.waitForFunction(sel => document.querySelector(sel)?.textContent === 'nothing drifting',
+  await page.waitForFunction(sel => document.querySelector(sel)?.textContent === 'no workflows',
                              `${NB} details.sect[data-sect="git:ci"] .sst`, { timeout: 20000 });
   const fresh = JSON.parse(readFileSync(`${DIR}/state/ciwatch/beta.json`, 'utf8'));
-  ok(fresh.findings.length === 0 && fresh.workflows === 0, 'Look now looks again and keeps it: beta has no workflows, so nothing drifts');
+  ok(fresh.findings.length === 0 && fresh.workflows === 0, 'Look now looks again and keeps it: beta has no workflows');
+  // B81: and the section says that, not "nothing drifting" in green.
+  const bare = await page.$eval(`${NB} details.sect[data-sect="git:ci"]`, d => ({
+    ok: d.querySelector('.sst').classList.contains('ok'), said: d.querySelector('.body .sub').textContent }));
+  ok(!bare.ok && /no workflow in \.github\/workflows/.test(bare.said),
+     `...and the section says there is no CI and where it looked, not "nothing drifting" in green (${bare.said})`);
   await page.evaluate(() => refresh());
   await page.waitForFunction(() => !(state?.ci_red || []).length, null, { timeout: 15000 });
   ok(true, '...and the bell row leaves with the red run');

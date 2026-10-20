@@ -124,8 +124,9 @@ ok(noneR.status === 400 && /there is no project called nosuch/.test(noneR.error 
   await api('/api/rename', { name: 'beta', to: 'beta' });
   ok(rn.status === 200 && byLabel.status === 200 && !byLabel.error,
      `bb -p with the name beta is shown under answers for beta (${rn.status} ${byLabel.status} ${(byLabel.error || '').slice(0, 60)})`);
-  ok(addL.status === 403 && /beta is read-only from a session on alpha/.test(addL.error || ''),
-     `...and is held to beta's reads like its directory is (${addL.error})`);
+  // ...and said by the name it is shown under, not its directory (B58).
+  ok(addL.status === 403 && /^beta-shown is read-only from a session on alpha/.test(addL.error || ''),
+     `...and is held to beta's reads like its directory is, by its shown name (${addL.error})`);
 }
 
 // ---- the grant carries the reads, for the view and the walls ---------------------------

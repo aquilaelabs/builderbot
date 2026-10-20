@@ -298,6 +298,7 @@ class Image(unittest.TestCase):
                          [("nginx", "vps", "n1", "sha256:" + "f" * 64)], "the bell's row, for the deployed one alone")
         self.assertIn("1.29-alpine (" + "b" * 12 + ")", rows[0]["from"])
         self.assertIn("1.29-alpine (" + "f" * 12 + ")", rows[0]["to"])
+        self.assertTrue(rows[0]["rebuild"], "the same tag built again is said as a newer build (B27)")
         self.assertEqual(npx.behind_named("nginx-box"), "1.29-alpine", "the Docker row's flag, by the container's name")
         self.assertEqual(npx.behind_named("radarr"), "", "...and nothing for another row")
         # A registry that does not answer keeps the last answer and says why.

@@ -16,7 +16,7 @@
 // inline code, links and [[wiki links]]. Everything is escaped first and
 // only these shapes are put back, so a page can carry no markup of its own
 // into the dashboard; a link is followed only to http(s) or another page.
-function wikiMarkdown(src){
+function wikiMarkdown(src, titles){
   const lines = String(src || "").replace(/\r\n?/g, "\n").split("\n");
   const out = [];
   const inline = s => {
@@ -30,7 +30,12 @@ function wikiMarkdown(src){
     t = t.replace(/!?\[([^\]]*)\]\(([^)\s]+)\)/g, (m, text, url) => {
       if (/^https?:\/\//i.test(url)) return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text || url}</a>`;
       const pageName = url.replace(/\.md$/i, "").replace(/^\.\//, "");
-      return /^[^:/]+$/.test(pageName) ? `<a href="#" class="wklink" data-page="${pageName}">${text || pageName}</a>` : m;
+      // A link whose words are its own file name ([how-it-works.md](...))
+      // reads as the page's title where the caller knows it (B110): a file
+      // name is the source's spelling, not what a reader looks for.
+      const doc = pageName.replace(/#.*$/, ""), file = url.replace(/^\.\//, "").replace(/#.*$/, "");
+      const words = titles?.[doc] && (!text || text === file || text === url) ? esc(titles[doc]) : text || pageName;
+      return /^[^:/]+$/.test(pageName) ? `<a href="#" class="wklink" data-page="${pageName}">${words}</a>` : m;
     });
     t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/__([^_]+)__/g, "<strong>$1</strong>")
          .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>").replace(/(^|\W)_([^_\s][^_]*)_(?=\W|$)/g, "$1<em>$2</em>")
@@ -60,7 +65,7 @@ function wikiMarkdown(src){
     } else if (/^\s*>/.test(l)){
       const body = [];
       for (; i < lines.length && /^\s*>/.test(lines[i]); i++) body.push(lines[i].replace(/^\s*>\s?/, ""));
-      out.push(`<blockquote>${wikiMarkdown(body.join("\n"))}</blockquote>`);
+      out.push(`<blockquote>${wikiMarkdown(body.join("\n"), titles)}</blockquote>`);
     } else if (/^\s*([-*+]|\d+[.)])\s+/.test(l)){
       const ordered = /^\s*\d/.test(l), items = [];
       // An item's wrapped lines, indented under it, are the item's own.
@@ -74,7 +79,9 @@ function wikiMarkdown(src){
     } else if (/\|/.test(l) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])){
       const head = cells(l), rows = [];
       for (i += 2; i < lines.length && /\|/.test(lines[i]) && lines[i].trim(); i++) rows.push(cells(lines[i]));
-      out.push(`<table><thead><tr>${head.map(c => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>${
+      // A head with nothing in it (| | |, a table of label and value) is no
+      // head: drawn, it was a blank first row (B78).
+      out.push(`<table>${head.some(c => c.trim()) ? `<thead><tr>${head.map(c => `<th>${inline(c)}</th>`).join("")}</tr></thead>` : ""}<tbody>${
         rows.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
     } else if (!l.trim()){
       i++;
@@ -242,13 +249,18 @@ function nbWikiView({$, nb, project}){
     $("wkHint").textContent = d.error ? "wiki: " + d.error : `${n} page${n === 1 ? "" : "s"}`;
     $("wkExport").disabled = !pages().length;
     $("wkPull").hidden = $("wkPush").hidden = !rem?.label;
-    $("wkNetState").textContent = rem?.label ? `${rem.label}'s wiki` : "no remote: Export is how it leaves";
-    $("wkPush").disabled = !rem?.auth || !pages().length;
+    // An empty wiki is its empty state, not a fault: the bar's own line
+    // says its buttons wait for a page, in the bar's voice, not in red.
+    $("wkNetState").textContent = (rem?.label ? `${rem.label}'s wiki` : "no remote: Export is how it leaves")
+      + (pages().length ? "" : rem?.label ? "; Export and Push wait for a page" : "; it waits for a page");
+    // A role that reads the project and does not write it (B101): Pull and
+    // Push dead, and that is the reason said under them.
+    const ro = projWriteWhy(project);
+    $("wkPull").disabled = !!ro;
+    $("wkPush").disabled = !!ro || !rem?.auth || !pages().length;
     // Why Push is dead, on the row and not in a tooltip (the operator, 23
     // Sep): a phone has no hover.
-    const why = !pages().length
-      ? (rem?.label ? "Export and Push have nothing to send until there is a page." : "Export has nothing to send until there is a page.")
-      : rem?.label && !rem.auth
+    const why = ro && rem?.label ? ro : pages().length && rem?.label && !rem.auth
       ? `Push needs the project's push rights on ${rem.label}: grant them in the project's remote dialog. Pull works without them for a public wiki.` : "";
     $("wkWhy").textContent = why;
     $("wkWhy").hidden = !why;
@@ -269,13 +281,16 @@ function nbWikiView({$, nb, project}){
     if (!meta) return `<article class="wkarticle"><div class="hint">No pages yet. Start with Home, the page a wiki opens on; a session adds pages with bb wiki save${
       nb.wkData?.gate === "deny" ? ", though this project's Claude may: Write the wiki is deny" : ""}.</div></article>`;
     const pg = nb.wkPages[meta.name];
-    const editing = nb.wkEdit && nb.wkEdit.name === meta.name;
+    // A reader (B101) gets no Edit, Rename or Remove on a page: New page,
+    // dead above, says why.
+    const ro = projWriteWhy(project);
+    const editing = !ro && nb.wkEdit && nb.wkEdit.name === meta.name;
     const tabs = `<div class="wktabs" role="tablist">
-        <button type="button" class="wktab${editing ? "" : " on"}" id="wkRead" role="tab" aria-selected="${!editing}">Read</button>
+        <button type="button" class="wktab${editing ? "" : " on"}" id="wkRead" role="tab" aria-selected="${!editing}">Read</button>${ro ? "" : `
         <button type="button" class="wktab${editing ? " on" : ""}" id="wkEditTab" role="tab" aria-selected="${!!editing}"${pg && !pg.error ? "" : " disabled"}>Edit</button>
         <span class="sp"></span>
         <button type="button" class="wktab" id="wkRename">Rename</button>
-        <button type="button" class="wktab danger" id="wkRm">Remove</button></div>`;
+        <button type="button" class="wktab danger" id="wkRm">Remove</button>`}</div>`;
     let body;
     if (editing){
       body = `${lbl("wkText", "Markdown", "GitHub's wiki Markdown: [[Another page]] links to a page here")}
@@ -306,7 +321,8 @@ function nbWikiView({$, nb, project}){
     const d = nb.wkData;
     if (!d){ box.innerHTML = ""; return; }
     if (d.error){ box.innerHTML = `<div class="field"><div class="hint bad">${esc(d.error)}</div></div>`; return; }
-    const a = nb.wkAdding;
+    const ro = projWriteWhy(project);
+    const a = ro ? null : nb.wkAdding;
     const add = a
       ? `<div class="field wkadd">${lbl("wkNewName", "Page name", "Home is the page a wiki opens on; _Sidebar and _Footer frame every page")}
           <input id="wkNewName" maxlength="200" autocomplete="off" placeholder="${articles().length ? "Getting started" : "Home"}" value="${esc(a.name)}">
@@ -315,7 +331,8 @@ function nbWikiView({$, nb, project}){
           <div class="actbar macts"><span class="state">Create writes the page now</span>
             <button type="button" class="stop" id="wkNewCancel">Cancel</button>
             <button type="button" class="primary" id="wkNewSave">Create</button></div></div>`
-      : `<div class="field"><div class="addbar ctlrow" data-add="wiki"><button type="button" id="wkNew">New page</button></div></div>`;
+      : `<div class="field"><div class="addbar ctlrow" data-add="wiki"><button type="button" id="wkNew"${
+          ro ? " disabled" : ""}>New page</button></div>${deadWhy(ro)}</div>`;
     const log = !nb.wkLog ? "" : `<div class="field wklog">${(d.history || []).length
         ? (d.history || []).map(h => `<div class="wklogrow"><span class="mono">${esc(h.commit)}</span> ${esc(h.what)} <span class="dim">· ${esc(h.by)} · ${esc(ago(h.at))}</span></div>`).join("")
         : `<span class="dim">nothing yet</span>`}</div>`;
@@ -341,7 +358,12 @@ function nbWikiView({$, nb, project}){
     const on = (id, fn) => { const b = box.querySelector("#" + id); if (b) b.onclick = fn; };
     const name = nb.wkCur;
     // A [[link]], the nav's and the sidebar's: that page, in place.
-    box.querySelectorAll(".wklink").forEach(a => a.onclick = ev => { ev.preventDefault(); go(a.dataset.page); });
+    // A link to a page the wiki does not have is drawn as one, the way an
+    // encyclopedia draws a red link: pressed, it says New page makes it.
+    box.querySelectorAll(".wklink").forEach(a => {
+      a.classList.toggle("wkmissing", !!nb.wkData && !byName(a.dataset.page));
+      a.onclick = ev => { ev.preventDefault(); go(a.dataset.page); };
+    });
     box.querySelectorAll("[data-anchor]").forEach(a => a.onclick = ev => { ev.preventDefault(); wikiScroll(box, a.dataset.anchor); });
     const pick = box.querySelector("#wkPick");
     if (pick) pick.onchange = () => go(pick.value);
@@ -371,7 +393,9 @@ function nbWikiView({$, nb, project}){
         : prompt("Rename the page to:", byName(name)?.title || name);
       if (!to || !to.trim()) return;
       const j = await post({action: "rename", name, to});
-      if (j){ nb.wkCur = j.name; loadWiki(); }
+      if (!j) return;
+      if (j.relinked) notify(`Renamed; the links to it on ${j.relinked} page${j.relinked === 1 ? "" : "s"} now use its new name`);
+      nb.wkCur = j.name; loadWiki();
     });
     on("wkNew", () => {
       nb.wkAdding = {name: articles().length ? "" : "Home", text: ""};

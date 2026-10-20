@@ -83,5 +83,42 @@ class Update(unittest.TestCase):
         self.assertIn("checkout", got["said"])
 
 
+class Handshake(unittest.TestCase):
+    """R79 step 8: the app says which door and release it is on every call,
+    and says plainly when its controller's door is older than it needs."""
+
+    def test_every_call_says_the_door_and_the_release(self):
+        with mock.patch.object(update, "version", lambda: "1.2.3"):
+            self.assertEqual(update.headers(), {"X-BB-Door": str(update.DOOR), "X-BB-App": "companion/1.2.3"})
+
+    def test_a_controller_that_says_no_door_speaks_the_first(self):
+        self.assertEqual(update.controller_too_old({"projects": []}), "")
+        self.assertEqual(update.controller_too_old({"door": update.NEEDS_DOOR}), "")
+
+    def test_a_controller_older_than_this_app_is_said_plainly(self):
+        with mock.patch.object(update, "NEEDS_DOOR", 3):
+            said = update.controller_too_old({"door": 2})
+            self.assertIn("speaks door 2", said)
+            self.assertIn("update BuilderBot on the controller", said)
+            self.assertIn("speaks door 1", update.controller_too_old({}))
+        self.assertIn("speaks door 0", update.controller_too_old({"door": 0}))
+
+    def test_the_sync_is_told_nothing_while_the_controller_is_too_old(self):
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "agent"))
+        from bbcompanion import core
+
+        door = core.DeviceDoor("http://127.0.0.1:9", "bbd_x", picked={"alpha": "/tmp/alpha"})
+        self.assertEqual(door.ctl.headers["X-BB-App"].split("/")[0], "companion")
+        answer = {"door": 1, "projects": [{"project": "alpha", "access": "rw", "rev": 4}]}
+        with mock.patch.object(door.ctl, "call", lambda *a, **k: (200, answer)), \
+                mock.patch.object(update, "NEEDS_DOOR", 2):
+            st, r = door.call("sync", {"action": "projects"})
+        self.assertEqual(st, 409)
+        self.assertIn("needs 2 or newer", door.error)
+        with mock.patch.object(door.ctl, "call", lambda *a, **k: (200, answer)):
+            st, r = door.call("sync", {"action": "projects"})
+        self.assertEqual((st, r["projects"], door.error), (200, {"alpha": 4}, ""))
+
+
 if __name__ == "__main__":
     unittest.main()

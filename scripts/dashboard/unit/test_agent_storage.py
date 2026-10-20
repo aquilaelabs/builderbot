@@ -55,6 +55,12 @@ class Storage(unittest.TestCase):
         self.assertEqual(len({f["path"] for f in fss}), len(fss))
         self.assertEqual(agent.storage.fs_of("/x/y", [{"path": "/"}, {"path": "/x"}]), "/x")
 
+    def test_a_path_where_a_filesystem_is_also_mounted_is_on_that_filesystem(self):
+        fss = [{"path": "/", "also": []}, {"path": "/mnt/a", "also": ["/mnt/packages"]}]
+        self.assertEqual(agent.storage.fs_of("/mnt/packages/sdk", fss), "/mnt/a")
+        self.assertEqual(agent.storage.fs_of("/mnt/packages", fss), "/mnt/a")
+        self.assertEqual(agent.storage.fs_of("/mnt/other", fss), "/")
+
     def test_dockers_sizes_are_read_from_its_words(self):
         s = agent.storage._size_mb
         self.assertEqual((s("1.5GB"), s("300MB (12%)"), s("0B"), s("12kB"), s("")), (1500, 300, 0, 0, 0))

@@ -113,6 +113,18 @@ await page.waitForSelector(`${sect} [data-ngremove]`, { timeout: 15000 });
 ok(await page.$eval(sect, s => /deployed/.test(s.querySelector('.toolstate .pill').textContent) && /1 route/.test(s.querySelector('.toolstate .sub').textContent)
      && s.querySelector('[data-ngremove]') && !document.querySelector('.nginxtab [data-ngdeploy]')),
    '...and the state row now says so, with Remove in place of Deploy');
+// A Save rebuilds it, and a read between its down and its up said "deployed,
+// down" over a container on its way back (B65): while its job runs the
+// line says rebuilding, and down only when nothing is bringing it back.
+{
+  const pills = await page.evaluate(id => {
+    const n = (nginxList || []).find(x => x.node === id);
+    const pill = st => (nginxBody({ ...n, state: st }).match(/<span class="pill[^"]*">([^<]*)<\/span>/) || [])[1];
+    return [pill({ running: false, job: { running: true } }), pill({ running: false, job: null }), pill({ running: true })];
+  }, sandbox.node);
+  ok(pills.join(' | ') === 'deployed, rebuilding | deployed, down | deployed',
+     `the state line says rebuilding while its job runs, and down only when nothing is bringing it back (${pills.join(' | ')})`);
+}
 ok(/already on the Containers page/.test((await api('/api/nginx', { action: 'deploy', node: sandbox.node })).error || ''),
    'a second Deploy is refused');
 // The deployed page in sections (R218 step 29): Hostnames, Routes,
@@ -186,7 +198,24 @@ ok(await page.$eval(`${sect} .ngrec[data-i="1"]`, r => /8081/.test(r.textContent
 await page.click(`${sect} [data-ngedit="1"]`);
 await page.waitForSelector(`${sect} .ngform`, { timeout: 5000 });
 await page.fill(`${sect} .ngform [data-ng="port"]`, '8083');
-await page.click(`${sect} .ngform [data-ngsave]`);
+// The tab's reads held back, as a node's slow daemon holds them: the row
+// says the saved port, and the pill the rebuild the Save started, the
+// moment the Save answers, not when the read lands (B99, B65).
+{
+  const slow = async r => { if (r.request().method() === 'GET') await new Promise(f => setTimeout(f, 4000)); await r.continue().catch(() => {}); };
+  await page.route('**/api/nginx', slow);
+  await page.click(`${sect} .ngform [data-ngsave]`);
+  const quick = await page.waitForFunction(s => !document.querySelector(s + ' .ngform')
+      && /8083/.test(document.querySelector(s + ' .ngrec[data-i="1"]')?.textContent || ''), sect, { timeout: 3000 })
+    .then(() => true, () => false);
+  const said = await page.$eval(sect, s => s.querySelector('.toolstate .pill')?.textContent || '');
+  ok(quick && /rebuilding/.test(said),
+     `a route's Save shows the saved port and "deployed, rebuilding" at once, before the tab is read again (${quick}, ${said})`);
+  // Unrouted only once the held reads have gone on, or unroute answers
+  // them itself and the handler's continue finds them handled.
+  await page.waitForTimeout(4500);
+  await page.unroute('**/api/nginx', slow);
+}
 await page.waitForFunction(id => (nginxList || []).find(n => n.node === id)?.routes?.some(r => r.port === 8083), sandbox.node, { timeout: 15000 });
 ok((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).routes.map(r => r.port).join() === '8080,8083',
    '...and its Save writes that one route, the other kept');
@@ -293,6 +322,21 @@ ok(/image: nginx:1\.29-alpine@sha256:b{64}/.test(pinned.compose || '')
    && !(await page.$(`${sect} [data-ngupdate]`)),
    'Update pins the digest into the compose file and rebuilds, and the node is not behind any more');
 ok((await api('/api/nginx', { action: 'update', node: sandbox.node })).same === true, 'a second Update has nothing to move to and says so');
+// The same tag built again upstream is a newer build, not the tag named twice (B27).
+{
+  const tags = d => writeFileSync(`${DIR}/nginx-tags.json`, JSON.stringify({ results: [
+    { name: '1.29-alpine', digest: 'sha256:' + d.repeat(64) }] }));
+  tags('f');
+  await page.click(`${sect} [data-ngcheck]`);
+  await page.waitForSelector(`${sect} [data-ngupdate]`, { timeout: 10000 });
+  const said = await page.$eval(sect, s => ({ btn: s.querySelector('[data-ngupdate]').textContent.trim(),
+    hint: s.querySelector('.ngimgbar').previousElementSibling.textContent }));
+  ok(said.btn === 'Update to the newer build' && /a newer build of nginx:1\.29-alpine is out/.test(said.hint),
+     `a rebuilt tag is said as a newer build of it (${said.btn} | ${said.hint.trim().slice(0, 60)})`);
+  tags('b');
+  await page.click(`${sect} [data-ngcheck]`);
+  await page.waitForFunction(s => !document.querySelector(s + ' [data-ngupdate]'), sect, { timeout: 10000 });
+}
 // Its rebuild is a job of the instance, and a compose verb is refused while
 // one runs (_submit): the Save and the Remove below wait for quiet.
 const quiet = async () => until(async () => ((await api('/api/v1/jobs?active=1')).jobs || []).some(j => j.project === 'nginx-sandbox') ? null : true, 90000, 500);

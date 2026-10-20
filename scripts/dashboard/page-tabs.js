@@ -33,7 +33,9 @@ function sessionLabels(){
            // A container's shell (R218 step 4) by the container, not by a
            // directory on the host it says nothing about.
            : b.startsWith("ctr-") ? "in " + b.slice(4)
-           : s.cwd ? "sh: " + baseOf(s.cwd)
+           // A project's directory by the name it is shown under (B64):
+           // one reused after a delete is numbered on disk, not on screen.
+           : s.cwd ? "sh: " + projLabel(baseOf(s.cwd))
            : "sh: " + s.name; };
   const total = {};
   list.forEach(s => { const l = of(s); total[l] = (total[l] || 0) + 1; });

@@ -7,6 +7,7 @@
                                        # UserPromptSubmit: wait for a turn on the node
     bb-gate --turn-done PROJECT SESSION
                                        # Stop: the turn is over
+    bb-gate --asking PROJECT SESSION   # Notification (permission_prompt): it waits on a person
 
 A session keeps running through a container update: it lives in tmux on the
 controller, or on a node that never restarted at all. So the environment it
@@ -166,6 +167,19 @@ def main():
     if args[:1] == ["--turn-done"]:
         if args[1:2] and bbapi is not None:
             bbapi.request("/api/v1/hook", {"kind": "turn-done"},
+                          auth="Bearer " + token(args[1]), timeout=10)
+        return 0
+    if args[:1] == ["--asking"]:
+        # Claude Code is waiting on its own permission prompt (B52): said to
+        # the controller, so the dock and the bell show the session needs
+        # somebody, which its pane title cannot. Claude Code's own words ride
+        # along, read from the hook's JSON on stdin.
+        if args[1:2] and bbapi is not None:
+            try:
+                said = str((json.load(sys.stdin) or {}).get("message") or "")[:300]
+            except (ValueError, OSError, AttributeError):
+                said = ""
+            bbapi.request("/api/v1/hook", {"kind": "asking", "text": said},
                           auth="Bearer " + token(args[1]), timeout=10)
         return 0
     if args[:1] == ["--prompt"]:

@@ -143,6 +143,28 @@ function rnFillPrefs(p){
   rnFillReads();
   rnFillDebug();
   rnLoadTools(p);
+  rnLockSettings(p);
+}
+
+// The project's own sections, read only for an account whose roles do not
+// hold Project settings (B19): every control in them dead, and why said on
+// each in red, not in a tooltip. Just for you stays live, being the
+// account's own; Snapshots and Running sessions say their own reasons.
+const RN_LOCKED_SAID = "Read only for you: changing these needs a role that holds Project settings on this project.";
+function rnLockSettings(p){
+  const locked = p?.may_settings === false;
+  document.querySelectorAll("details.rngroup").forEach(d => {
+    const k = (d.dataset.sect || "").replace(/^rn:/, "");
+    if (["yours", "snapshots", "sessions"].includes(k)) return;
+    const body = d.querySelector(":scope > .body");
+    if (!body) return;
+    body.querySelector(":scope > .rnlocked")?.remove();
+    body.querySelectorAll("input, select, textarea, button").forEach(c => {
+      if (locked && !c.disabled){ c.disabled = true; c.dataset.rnlock = "1"; }
+      else if (!locked && c.dataset.rnlock){ c.disabled = false; delete c.dataset.rnlock; }
+    });
+    if (locked) body.insertAdjacentHTML("afterbegin", `<div class="field rnlocked"><div class="hint bad">${esc(RN_LOCKED_SAID)}</div></div>`);
+  });
 }
 
 // The project's node: every node but this container, because local can
@@ -378,6 +400,17 @@ function rnFillTools(){
   box.querySelectorAll("input").forEach(i => i.onchange = () => rnBars());
 }
 
+// A list setting read off the Toolchains rows, in its saved order. A saved
+// name with no row (a pack since removed, a toolchain gone from the node)
+// stays as saved: the form cannot draw it, and not drawing it is no change
+// (B85: the group opened marked unsaved). A drawn one stays while its row
+// still says so, and one newly said goes on the end.
+function rnRowsList(saved, inputs, says){
+  const rows = [...inputs], drawn = new Set(rows.map(i => i.value)), now = rows.filter(says).map(i => i.value);
+  const was = saved.split(",").filter(Boolean);
+  return [...was.filter(n => !drawn.has(n) || now.includes(n)), ...now.filter(n => !was.includes(n))].join(",");
+}
+
 function rnFillReads(){
   const box = $("rnReads"), wrap = $("rnReadsField");
   if (!box) return;
@@ -536,7 +569,7 @@ function settingsInto(name, host){
 // beside the one picked; on a phone the list, then the section with Back.
 // The dialog (the Git view's remote door) keeps them open under a jump bar.
 const RN_LIST = {
-  project: "name and color", people: "owner, who is on it, invitations",
+  project: "the name it is shown under", people: "owner, who is on it, invitations",
   claude: "what its sessions do on their own, ask about, or may not",
   yours: "your replies, questions and commit name here",
   repo: "how it pushes and pulls", runs: "where it builds, tests and runs",
@@ -630,6 +663,12 @@ function renameProject(name, mode = "all"){
   unbusy($("rnUnlink"), `Unlink from ${p?.forge_name || "its remote"}`);
   // The bin, on the gear's door only: the chain's is about the remote.
   $("rnDelete").hidden = git || !p;
+  // ...dead, with why under it, for an account whose roles do not give
+  // deleting it (B86): the server's own refusal, read off the row.
+  const delWhy = p?.trash_why || "";
+  $("rnDelete").disabled = !!delWhy;
+  setText($("rnDeleteWhy"), delWhy);
+  setHidden($("rnDeleteWhy"), git || !p || !delWhy);
   $("rnKeyOut").hidden = true; $("rnKeyPaste").hidden = true; $("rnKeyPaste").value = "";
   rnLoadAuth(name);
   rnLoadSigning(name);
@@ -874,6 +913,9 @@ const RN_SIGN = [
 let rnSignKeys = null, rnSignTool = false, rnSignDraft = {}, rnSignMap = {}, rnSignMapDraft = {}, rnSignNew = [],
     rnSignBackup = false, rnSignLocked = false, rnSignMayLock = false, rnSignLockOpen = false, rnSignPw = {};
 
+// Why this account may not read or change the project's settings, sessions
+// and snapshots, from its row, or "" (B89).
+const rnSettingsWhy = name => (state?.projects || []).find(p => p.name === name)?.settings_why || "";
 // A section this account may not use, shown with why under it in red, the
 // server's own words naming the area and level that would open it (R255
 // step 4), not hidden as if there were nothing there.
@@ -911,6 +953,10 @@ let rnSnap = null;
 function rnLoadSnapshots(name, keep = false){
   if (!keep){ rnSnap = null; $("rnSnapField").hidden = true; }
   if (rnMode === "git") return;
+  // Not asked for where the row already says it would be refused (B89): the
+  // reason is said under the section, without a 403 in the console.
+  const no = rnSettingsWhy(name);
+  if (no){ rnWhyOff($("rnSnapField"), $("rnSnapRows"), no); return; }
   fetch("/api/snapshots?project=" + encodeURIComponent(name))
     .then(r => r.json())
     .then(j => {
@@ -1468,9 +1514,9 @@ function rnEnc(){
           // The rows are drawn once the node's toolchains have arrived;
           // until then the saved values stand, so an open is no change.
           tc_off: rnToolsList === null ? rnPrefWas.tc_off
-            : [...$("rnTools").querySelectorAll("input[data-shipped]:not(:checked)")].map(i => i.value).join(","),
+            : rnRowsList(rnPrefWas.tc_off, $("rnTools").querySelectorAll("input[data-shipped]"), i => !i.checked),
           packs_on: rnToolsList === null ? rnPrefWas.packs_on
-            : [...$("rnTools").querySelectorAll("input[data-pack]:checked")].map(i => i.value).join(","),
+            : rnRowsList(rnPrefWas.packs_on, $("rnTools").querySelectorAll("input[data-pack]"), i => i.checked),
           sees: $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean).join(", "),
           reaches: JSON.stringify(rnReachNow()),
           debug: dbg ? rnDebugKey(dbg.diag, dbg.log_from) : rnPrefWas.debug,
