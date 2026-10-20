@@ -302,7 +302,7 @@ LOGIN_HTML = """<!doctype html>
   </div>
   <!--FIELDS-->
 </form>
-<script>
+<script data-cfasync="false">
   const n = new URLSearchParams(location.search).get("next");
   const f = document.querySelector('[name=next]');
   if (f && n && n.startsWith("/") && !n.startsWith("//")) f.value = n;
@@ -2401,6 +2401,10 @@ def _versioned_page(raw, tag):
         parts.append(v)
         return b'<script src="' + m.group(1) + b"?v=" + v.encode() + b'">'
     out = _SCRIPT_TAG.sub(named, raw)
+    # Every script runs as written, in order: Cloudflare's Rocket Loader
+    # defers the ones that do not say so, and the page then met its own
+    # names before they were defined (a ReferenceError, B138).
+    out = out.replace(b"<script", b'<script data-cfasync="false"')
     return out, 'W/"' + hashlib.sha256("|".join(parts).encode()).hexdigest()[:24] + '"'
 
 
@@ -5313,13 +5317,18 @@ class Handler(BaseHTTPRequestHandler):
             return False
         host = self.headers.get("Host", "")
         own = settings.get("tunnel_host") if not NODES_OK else ""
-        why = nodes.tunnel_refuses(self.client_address[0] if self.client_address else "",
-                                   self.path.partition("?")[0], host=host,
-                                   # Cloudflare's own mark; other tunnels are known by the
-                                   # hostname, and the controller's own public hostname (R176)
-                                   # is one whatever rule the tunnel carries, so a rule left
-                                   # wide reaches no page (bb.neat.fish answered its login, 11 Oct).
-                                   edge="Cf-Ray" in self.headers
+        peer = self.client_address[0] if self.client_address else ""
+        why = nodes.tunnel_refuses(peer, self.path.partition("?")[0], host=host,
+                                   # Cloudflare's own mark on what came through the
+                                   # controller's own tunnel, whose cloudflared asks this
+                                   # machine's loopback: every request Cloudflare proxies
+                                   # carries Cf-Ray, so a dashboard simply put behind
+                                   # Cloudflare under its own name was refused everything
+                                   # but the agents' API (B137). Other tunnels are known by
+                                   # the hostname, and the controller's own public hostname
+                                   # (R176) is one whatever rule the tunnel carries, so a rule
+                                   # left wide reaches no page (bb.neat.fish, 11 Oct).
+                                   edge=nodes.own_tunnel_edge("Cf-Ray" in self.headers, peer)
                                         or bool(own and host.lower().rsplit(":", 1)[0] == own))
         if why:
             self._safely(lambda: self._json({"error": why}, 403))

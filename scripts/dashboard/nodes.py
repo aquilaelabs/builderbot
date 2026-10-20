@@ -2046,6 +2046,15 @@ def tunnel_host(n):
     return h if re.fullmatch(r"[a-z0-9.-]{1,253}", h) else ""
 
 
+def own_tunnel_edge(has_ray, peer):
+    """Whether a request came through the controller's own Cloudflare tunnel
+    (R176): Cloudflare's Cf-Ray, from this machine's loopback, which is where
+    the controller's cloudflared asks. Cf-Ray alone is every request
+    Cloudflare proxies, a dashboard put behind it under its own name too
+    (B137)."""
+    return bool(has_ray) and str(peer or "") in ("127.0.0.1", "::1")
+
+
 def tunnel_refuses(addr, path, host="", edge=False):
     """Why a request from `addr` for `path` is refused, or "": a node that
     reaches the controller through a tunnel is answered on the agent's own
