@@ -112,6 +112,14 @@ ref and nowhere else; `bb ci-log` reads a run's output.
   read carries a format it checks (`.bb-map/map3.json`,
   `.bb-map/coverage.json`); `AGENT_VERSION` moves by hand with any change to
   the agent, and `bb lint` fails when it did not.
+- **/config's state.** `scripts/dashboard/stateversion.py` stamps
+  `/config/state.json` with the newest file in `statemigrations/`, and a
+  start refuses a `/config` newer than the build or older than
+  `SUPPORTED_FROM`. A change to what a released install stores adds the
+  next numbered migration; a shipped one is never edited (`bb lint`). A
+  release commits its `/config` snapshot with `tools/upgrade-snapshot.py`,
+  which `test/upgrade.mjs` starts every later build on, and `bb version
+  release` refuses a version without one.
 - **The dashboard is dependency-free.** `server.py` is stdlib-only and holds
   the routes, the transport and the gates; each handler checks who may ask
   and makes one call into the feature's module beside it, which answers

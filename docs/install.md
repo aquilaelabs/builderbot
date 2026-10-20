@@ -188,7 +188,9 @@ scripts-only change is a small pull; the Monday rebuild is uncached on purpose
 and is always the big one. *Run workflow* takes a **Rebuild every layer** box
 for the same effect on demand: leave it off and a manual run is a cheap retry,
 tick it to force a fresh pull of everything. Rollback = point the Repository field at a
-`sha-<commit>` tag. Compose: `docker compose pull && docker compose up -d`.
+`sha-<commit>` tag; a build older than the `/config` it finds refuses to start, and
+[machines.md](machines.md#upgrades-and-config) says what each start does with it.
+Compose: `docker compose pull && docker compose up -d`.
 
 ## Building locally instead of pulling
 

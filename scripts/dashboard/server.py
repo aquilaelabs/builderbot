@@ -69,6 +69,11 @@ TTYD_RO_PORT = int(os.environ.get("DASHBOARD_TTYD_RO_PORT", str(TTYD_PORT + 1)))
 # challenge is precisely what made browsers pop their own dialog.
 SESSION_DAYS = 30
 STATE = Path(os.environ.get("DASHBOARD_STATE", "/config"))
+# Before anything below writes to it: a /config newer than this build, or
+# older than it migrates from, is refused here in one sentence, a fresh one
+# is stamped, and one about to migrate is copied first (stateversion.py).
+import stateversion                                              # noqa: E402
+stateversion.gate(STATE)
 
 
 def _session_secret():
@@ -3003,24 +3008,6 @@ import busy                                                      # noqa: E402
 membership.configure(state=STATE, write_json=write_json)
 roles.configure(state=STATE, write_json=write_json)
 registry.configure(state=STATE, workspace=WORKSPACE, write_json=write_json)
-# Roles as areas (R152), once: an account on `user` carries no role, and each
-# project's owner holds PROJECT_owner on it. Marked done in the accounts store.
-try:
-    users.migrate_r152({p: (r or {}).get("owner") or "" for p, r in membership._owners()["projects"].items()})
-except Exception as e:                                                # noqa: BLE001
-    print(f"[dashboard] roles migration (R152) skipped: {type(e).__name__}: {e}", flush=True)
-# ...and a role on a project given on the project alone (R155), once.
-try:
-    registry.sync()
-    users.migrate_r155()
-except Exception as e:                                                # noqa: BLE001
-    print(f"[dashboard] roles migration (R155) skipped: {type(e).__name__}: {e}", flush=True)
-# ...and, on every start, the owner roles of projects that are gone for good
-# or never were (a clone that failed before B95, a folder purged by hand).
-try:
-    membership.prune_gone(registry)
-except Exception as e:                                                # noqa: BLE001
-    print(f"[dashboard] owner roles of gone projects not pruned: {type(e).__name__}: {e}", flush=True)
 gitview.configure(workspace=WORKSPACE,
                   worktrees=WORKTREES,
                   tell=notify.tell, tmux_name=tmux_name, state=STATE,
@@ -3194,11 +3181,6 @@ if not settings.debug_available():
             print("dashboard: DEBUG_MODE is not 1, so every debug and dev option was turned off", flush=True)
     except Exception as e:                                # noqa: BLE001 (a start must not fail on this)
         print(f"dashboard: debug options not reset: {e}", flush=True)
-try:
-    if (gone := settings.retire()):
-        print(f"dashboard: retired settings cleared: {', '.join(gone)}", flush=True)
-except Exception as e:                                    # noqa: BLE001 (a start must not fail on this)
-    print(f"dashboard: retired settings not cleared: {e}", flush=True)
 # The briefing reads a project's own settings for its "While tests run"
 # section (what a change asked for during a run does); prefs is imported
 # after preamble is configured, so it is handed over here.
@@ -8934,17 +8916,17 @@ def main():
               "you to make the owner. Do it now: until you do, whoever "
               "reaches this port can.", flush=True)
     layout.prune_claude_tabs()
-    # The owner takes projects on like everybody (R135): a record that
-    # carried "*" gets the projects that exist now, so nothing they were on
-    # is lost. Here, once every module is configured: at import it ran
-    # before project_list could answer, failed, and the dev instance's
-    # owner kept "*" (B496).
+    # The JSON stores' numbered migrations past /config's stamp (R79), here,
+    # once every module is configured: one needs project_list to answer,
+    # which at import it could not (B496). The gate at the top took the copy.
+    stateversion.migrate(STATE, {"state": STATE, "project_names": lambda: project_names(users.ALL)})
+    # ...and, on every start, the owner roles of projects that are gone for
+    # good or never were (a clone that failed before B95, a folder purged by
+    # hand), once the migrations have given the ones they give.
     try:
-        moved = users.migrate_star(project_names(users.ALL))
-        if moved:
-            print(f"dashboard: {moved} account(s) moved from every project to the ones that exist (R135)", flush=True)
-    except Exception as e:  # noqa: BLE001 (a migration never keeps the dashboard from starting)
-        print(f"dashboard: the owner's project list was not migrated (R135): {e}", flush=True)
+        membership.prune_gone(registry)
+    except Exception as e:                                            # noqa: BLE001
+        print(f"[dashboard] owner roles of gone projects not pruned: {type(e).__name__}: {e}", flush=True)
     # Daemons: these loops must die with the server, not hold it open.
     doctor.start()
     idle.start()
