@@ -171,6 +171,32 @@ class Migrate(unittest.TestCase):
             self.assertIn("disk full", sv.HELD)
             self.assertEqual(sv.migrate(self.state, {"ran": []}), [])
         self.assertEqual(sv.read(self.state), (None, ""))
+        # B109: said where bb doctor reads it, and cleared once nothing is held.
+        self.assertIn("disk full", (self.state / sv.HELD_FILE).read_text())
+        with mock.patch.object(sv, "HELD", ""), redirect_stdout(io.StringIO()):
+            sv.gate(self.state, "0.6.0")
+        self.assertFalse((self.state / sv.HELD_FILE).exists())
+
+    @unittest.skipIf(os.geteuid() == 0, "root reads everything")
+    def test_what_it_cannot_read_does_not_hold_the_upgrade(self):
+        # B109: the root-only runner-tokens volume stopped every upgrade.
+        (self.state / "users.json").write_text('{"users": {}}')
+        (self.state / "wiki" / "alpha").mkdir(parents=True)
+        rt = self.state / "runner-tokens"
+        rt.mkdir()
+        (rt / "n_1").write_text("secret")
+        rt.chmod(0)
+        secret = self.state / "wiki" / "alpha" / "hidden.md"
+        secret.write_text("no")
+        secret.chmod(0)
+        self.addCleanup(rt.chmod, 0o700)
+        with redirect_stdout(io.StringIO()) as out:
+            sv.gate(self.state, "0.5.0")
+        dest = self.state / "backups" / "before-0.5.0"
+        self.assertTrue((dest / "users.json").is_file(), out.getvalue())
+        self.assertFalse((dest / "runner-tokens").exists(), "its own volume, not copied")
+        self.assertIn("wiki/alpha/hidden.md", (dest / "NOT-COPIED.txt").read_text())
+        self.assertEqual(sv.HELD, "")
 
 
 class First(unittest.TestCase):

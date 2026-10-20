@@ -67,12 +67,27 @@ THROUGH = {}
 # from a release, the copies themselves, a Reset's moved-aside state, and
 # lock and temporary files. The JSON records, the database, the signing keys,
 # the git credentials and the wiki are all kept.
+# runner-tokens is a Docker volume of its own, root-only by design and kept
+# across an update by Docker, which this copy (made as the dashboard's
+# account) could not read anyway (B109).
 SKIP = {BACKUPS, "logs", "snapshots", "project-snapshots", "images", "gitrelay",
-        "gitview", "apps", "ci-logs"}
+        "gitview", "apps", "ci-logs", "runner-tokens", "state-held"}
 SKIP_GLOBS = (".reset-*", "*.lock", "*.tmp")
 
-# Why this start migrates nothing, when the copy before it failed.
+# Why this start migrates nothing, when the copy before it failed; written
+# to /config/state-held too, which bb doctor says in red (B109).
 HELD = ""
+HELD_FILE = "state-held"
+
+
+def _held(state, why):
+    """Say why the state is held, or clear it once nothing is."""
+    f = Path(state) / HELD_FILE
+    with contextlib.suppress(OSError):
+        if why:
+            f.write_text(why + "\n")
+        else:
+            f.unlink(missing_ok=True)
 
 # A /config holding any of these has been used: one without state.json is
 # state 0, not a fresh install.
@@ -182,9 +197,11 @@ def gate(state, version=None):
             # is, and the next one tries the copy again.
             globals()["HELD"] = f"the copy of /config before migrating could not be made ({e})"
             print(f"dashboard: /config is at state {n} and stays there: {HELD}", flush=True)
+            _held(state, f"/config is at state {n} and was not upgraded: {HELD}")
             return n
         print(f"dashboard: /config is at state {n} and this build at {current()}: "
               f"copied to {dest} before migrating", flush=True)
+    _held(state, "")
     return n
 
 
@@ -204,18 +221,37 @@ def backup(state, version=None):
     tmp = root / f".{name}.partial"
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
+    # What this account cannot read (a root-only file an operator put here)
+    # is left out and named, rather than holding the whole upgrade (B109).
+    unread = []
+
+    def copy(src, dst, *, follow_symlinks=False):
+        try:
+            return shutil.copy2(src, dst, follow_symlinks=follow_symlinks)
+        except PermissionError:
+            unread.append(os.path.relpath(src, state))
+            return dst
     for p in sorted(state.iterdir()):
         if _skipped(p.name):
             continue
-        if p.is_file() and p.suffix == ".db":
-            _copy_db(p, tmp / p.name)
-        elif p.name.endswith((".db-wal", ".db-shm")):
-            continue          # folded into the .db's own copy
-        elif p.is_dir() and not p.is_symlink():
-            shutil.copytree(p, tmp / p.name, symlinks=True,
-                            ignore=lambda _d, names: [x for x in names if _skipped(x, inner=True)])
-        else:
-            shutil.copy2(p, tmp / p.name, follow_symlinks=False)
+        try:
+            if p.is_file() and p.suffix == ".db":
+                _copy_db(p, tmp / p.name)
+            elif p.name.endswith((".db-wal", ".db-shm")):
+                continue          # folded into the .db's own copy
+            elif p.is_dir() and not p.is_symlink():
+                shutil.copytree(p, tmp / p.name, symlinks=True, copy_function=copy,
+                                ignore=lambda _d, names: [x for x in names if _skipped(x, inner=True)])
+            else:
+                copy(p, tmp / p.name)
+        except (PermissionError, shutil.Error):
+            # copytree gathers what it could not copy into one Error.
+            unread.append(p.name)
+    if unread:
+        (tmp / "NOT-COPIED.txt").write_text("Left out of this copy, unreadable to the dashboard's account:\n"
+                                           + "".join(f"  {u}\n" for u in unread))
+        print(f"dashboard: the copy of /config left out what it could not read: {', '.join(unread[:10])}",
+              flush=True)
     os.replace(tmp, dest)
     os.chmod(dest, 0o700)         # it holds the password hashes and the git credentials
     for old in sorted((d for d in root.glob("before-*") if d.is_dir()),

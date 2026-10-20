@@ -5271,6 +5271,12 @@ cmd_doctor() {
         check "workspace writable"    test -w "$WORKSPACE"
     fi
     check "home writable"             test -w "$HOME"
+    # An upgrade the controller could not make (stateversion.py writes why,
+    # and clears it once nothing is held): said here, where the header's
+    # doctor dot shows it, not only in the log (B109).
+    if ! on_node && [ -s "${DASHBOARD_STATE:-/config}/state-held" ]; then
+        check "$(head -c 400 "${DASHBOARD_STATE:-/config}/state-held" | tr '\n' ' ')" false
+    fi
     # git's floor, said out loud because the two machines run different ones:
     # the image is built on one Ubuntu and a node is provisioned on whatever
     # its owner has, so the controller and a node have differed by a whole
