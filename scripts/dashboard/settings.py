@@ -115,25 +115,6 @@ def reset_debug():
     return bool(on)
 
 
-# Settings that no longer exist, cleared off disk at start: apps_token was
-# a GitHub token for the apps' releases while the repository was private,
-# and the apps are fetched from public releases alone now (the operator,
-# 20 Oct), so a token saved then is not left lying in /config.
-RETIRED = ("apps_token",)
-
-
-def retire():
-    """Drop every retired setting still on disk. Which were there."""
-    with _lock:
-        d = load()
-        gone = [k for k in RETIRED if k in d]
-        for k in gone:
-            d.pop(k)
-        if gone:
-            write_json(FILE, d)
-    return gone
-
-
 def configure(*, write_json, state):
     globals().update(write_json=write_json)
     globals()["FILE"] = Path(state) / "settings.json"

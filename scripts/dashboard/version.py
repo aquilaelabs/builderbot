@@ -704,7 +704,25 @@ def release_plan(project, comp=""):
     if (_git(project, "status", "--porcelain") or "").strip():
         return {"error": "there are uncommitted changes in the project directory: commit or "
                          "discard them first, so the tag marks what is actually in the commit"}
+    if why := no_upgrade_snapshot(project, comp, tgt):
+        return {"error": why}
     return {"tag": name, "sha": sha, "target": tgt}
+
+
+# A tree that keeps a /config snapshot per release (BuilderBot's own, R79)
+# releases only a version it has one for: the upgrade suite starts every
+# later build on each release's snapshot, and a release without one is an
+# install nothing proves the next build can read.
+UPGRADE_SNAPSHOTS = "scripts/dashboard/test/upgrade"
+
+
+def no_upgrade_snapshot(project, comp, tgt):
+    """Why `tgt` may not be released for want of its snapshot, or ""."""
+    d = root(project) / UPGRADE_SNAPSHOTS
+    if comp or not d.is_dir() or (d / str(tgt) / "manifest.json").is_file():
+        return ""
+    return (f"{tgt} has no /config snapshot in {UPGRADE_SNAPSHOTS}/{tgt}/: run tools/upgrade-snapshot.py, "
+            f"commit what it writes, then release")
 
 
 def release(project, comp="", env=None, may_push=True, push=True):
@@ -755,6 +773,8 @@ def release(project, comp="", env=None, may_push=True, push=True):
     if (_git(project, "status", "--porcelain") or "").strip():
         return {"error": "there are uncommitted changes: commit or discard them "
                          "first, so the tag marks what is actually in the commit"}
+    if why := no_upgrade_snapshot(project, comp, tgt):
+        return {"error": why}
     # The commit that SHIPS is not always the commit you are standing on.
     #
     # Work lands through a pull request, so what CI builds and the box runs is

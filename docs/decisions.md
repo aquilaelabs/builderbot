@@ -504,3 +504,27 @@ is a fixed table of verbs set up on the PC by its person (the editor, the
 game, a build, a log, a picture, the editor's local interface), each under
 the project's Claude may: Use a lent PC, deny by default; a session names a
 verb and never sends a command string to somebody's own machine.
+
+## Upgrades held in code
+
+**One state version for /config, numbered migrations for the JSON stores,
+a snapshot per release booted by every later build, and lint over what has
+shipped (20 Oct 2026, R79).** The operator's ask, before the first release:
+keep older installs from being broken by newer versions, held where no
+contributor, pull request or session can miss it, rather than in a notebook
+rule that only a briefed session reads. The SQLite store already had its
+numbered migrations; the JSON stores beside it had one-off migrators run at
+every start (R135's "*", R152's roles, R155's project roles, a retired
+setting), each guarding itself with a flag of its own. They are migration
+0001 now, run once on a /config from before the stamp, and anything later
+is a new numbered file. A /config newer than the build is refused rather
+than read, because a build cannot know what a later one changed; the copy
+taken before every move is what a rollback restores. The copy leaves out
+what grows and is rebuilt, so that keeping three is cheap enough to never
+skip. The oldest state a build migrates from is a constant in
+stateversion.py, 0 for 0.5.0 (every install before it), moved by the
+release that drops one. Each release commits a lived-in /config made by its
+own controller through its own API (tools/upgrade-snapshot.py), and the
+upgrade suite starts this tree on every supported one, so a change that
+loses an account or a notebook entry on upgrade fails a test, not an
+install; `bb version release` refuses a version that has none.

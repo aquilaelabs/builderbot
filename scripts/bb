@@ -4259,6 +4259,18 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
         python3 "$BB_LIB/lint-checks.py" layout || rc=1
     fi
 
+    # What a release has run on an install's /config is never edited (R79):
+    # every migration at the newest v* tag, byte-for-byte.
+    if [ -d scripts/dashboard/migrations ] && [ -d scripts/dashboard/statemigrations ]; then
+        section "shipped migrations (unchanged since the newest release tag)"
+        if grep -qF '"shipped": shipped' "$BB_LIB/lint-checks.py"; then
+            python3 "$BB_LIB/lint-checks.py" shipped || rc=1
+        else
+            echo "  [skip] this bb's lint-checks.py predates the check: bash scripts/bb lint runs the tree's"
+            skipped=1
+        fi
+    fi
+
     # The instruction channels, each saying its own (R202): CLAUDE.md the
     # tree, the briefing the machine, the shipped rules the obligations, and
     # no history in what a session is handed.

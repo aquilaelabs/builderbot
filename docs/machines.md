@@ -332,6 +332,35 @@ typed, waits for each node it un-enrolls to report, and the dashboard
 re-executes itself. Projects are deleted from the Projects page, one at a
 time.
 
+## Upgrades and /config
+
+`/config` carries one number, its state, in `/config/state.json`: the newest
+of the controller's numbered migrations that has run on it, and the build
+that ran it. Every start reads it before anything is written, first in the
+entrypoint and again in the dashboard:
+
+- **The same state**: the controller starts, and nothing is copied.
+- **An older state this build migrates from**: `/config` is copied to
+  `/config/backups/before-VERSION` (VERSION being the build about to
+  migrate it), then each migration past the stamp runs once, in order, and
+  the stamp moves with each. The newest three copies are kept. A copy leaves
+  out what grows and is rebuilt (the logs, the job and project snapshots,
+  images in transit, the relay and Git view repositories, the apps fetched
+  from a release, earlier copies and a Reset's moved-aside state) and keeps
+  every record, the database, the signing keys, the git credentials and the
+  wikis. A migration that fails is said in the log and runs again at the
+  next start; the controller starts either way.
+- **An older state than this build migrates from**: the container stops,
+  saying which release to start on it first.
+- **A newer state** (a rollback past an upgrade): the container stops, saying
+  that downgrades are not supported. Start the newer build again, or stop
+  the container and put the copy back: the contents of
+  `/config/backups/before-VERSION` in place of the rest of `/config`.
+
+A fresh `/config` is stamped with this build's state at the first start.
+Which upgrades are supported, and how to roll one back, is
+[install.md](install.md#upgrading).
+
 ## Logs
 
 **One file per container start, per stream.** All four rotate together on
