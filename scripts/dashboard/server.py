@@ -8378,6 +8378,9 @@ class Handler(BaseHTTPRequestHandler):
                                      host=field(req, "host"))
         elif act == "save":
             r = nginxproxy.save_routes(nid, req.get("routes"))
+            # The routes as kept go back with the answer, so the row says
+            # the saved port at once rather than after a read (B99).
+            kept = {"routes": r["routes"]} if isinstance(r.get("routes"), list) else {}
             # The certificate pasted is the node's default, or one
             # hostname's own when cert_for names it (R175).
             saved = {}
@@ -8391,7 +8394,7 @@ class Handler(BaseHTTPRequestHandler):
             if not r.get("error") and drop:
                 r = nginxproxy.drop_cert(nid, drop if isinstance(drop, str) else field(req, "cert_for"))
             if not r.get("error"):
-                r = nginxproxy.apply(nid, containers, devactions, devapp) | saved
+                r = nginxproxy.apply(nid, containers, devactions, devapp) | saved | kept
         elif act == "remove":
             r = nginxproxy.remove(nid, devactions, devapp)
         elif act == "check":
