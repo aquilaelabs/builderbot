@@ -209,7 +209,7 @@ const SETTING_GROUPS = [
   // one on is fetched from the release matching this controller, checked
   // against its sha256 and offered on the Apps page (under Build); Look now asks the
   // release again rather than waiting for the daily look.
-  {key: "apps", title: "Apps", intro: appsIntro, status: appsStatus,
+  {key: "apps", title: "Apps", off: "apps", intro: appsIntro, status: appsStatus,
    heading: s => `${["apps_android", ...(s?.settings?.offer_unvetted?.value ? ["apps_vscode", "apps_companion"] : [])]
      .filter(k => s?.settings?.[k]?.value).length} offered`,
    fields: [
@@ -226,7 +226,7 @@ const SETTING_GROUPS = [
   // Named for what it is for, not for its field (the operator, 13 Oct):
   // "Public hostname" read as a node's or a route's, and those are on the
   // node's row and the nginx tab.
-  {key: "tunnel", title: "Reach from outside", status: tunnelStatus, intro: tunnelSteps,
+  {key: "tunnel", title: "Reach from outside", off: "tunnel", status: tunnelStatus, intro: tunnelSteps,
    heading: s => !s?.tunnel ? "" : s.tunnel.connected ? "connected" : s.tunnel.configured ? (s.tunnel.running ? "starting" : "stopped") : "off",
    headingCls: s => s?.tunnel?.connected ? "ok" : "",
    fields: [
@@ -466,7 +466,14 @@ function settingsSections(){
   // the page does not show it at all (the operator, 6 Oct).
   // The Debugging group only on a controller started with DEBUG_MODE=1
   // (settings.debug_available): without it there is nothing to turn on.
-  return SETTING_GROUPS.filter(g => !g.debug || (state?.can?.debug !== false && state?.settings?.debug_available)).map(g => {
+  // What this install switched off from its environment (R81), listed first
+  // when there is any: set where the container starts, so nothing here
+  // turns it back on.
+  const offs = Object.values(state?.off || {});
+  const offSect = offs.length ? [{key: "off", title: "Switched off", status: String(offs.length), cls: "",
+    html: `<div class="row stack2"><div class="grow"><div class="sub">Set where this container starts (FEATURES_OFF), so nothing here turns them back on.</div>${
+      offs.map(w => `<div class="setrow">${esc(w)}</div>`).join("")}</div></div>`}] : [];
+  return offSect.concat(SETTING_GROUPS.filter(g => !g.debug || (state?.can?.debug !== false && state?.settings?.debug_available)).map(g => {
     const field = f => {
             const v = s.settings[f.key]?.value;
             const id = "set_" + f.key;
@@ -501,6 +508,10 @@ function settingsSections(){
             title="${debugOn ? "the settings kept behind debug mode"
                              : "turn Debug mode on and Apply first: these are its settings"}"
             >Debug settings</button></div>`;
+    // A group whose feature this install switched off (R81): its sentence
+    // in place of its fields, which nothing could apply.
+    if (g.off && featureOff(g.off)) return {key: g.key, title: g.title, status: "off", cls: "",
+      html: `<div class="row stack2" data-group="${esc(g.title)}"><div class="grow">${deadWhy(featureOff(g.off))}</div></div>`};
     return {key: g.key, title: g.title, status: g.heading ? g.heading(s) : "", cls: g.headingCls ? g.headingCls(s) : "",
       html: `<div class="row stack2" data-group="${esc(g.title)}">
       <div class="grow">
@@ -514,7 +525,7 @@ function settingsSections(){
         </div>
       </div>
     </div>`};
-  });
+  }));
 }
 
 function wireSettingsSections(el){

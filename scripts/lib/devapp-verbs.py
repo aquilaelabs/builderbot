@@ -54,7 +54,9 @@ def status():
     if st.get("built_rev"):
         print(f"  {'built from':<12} {built_from(st)}")
     elif st.get("needs_build"):
-        print(f"  {'built from':<12} nothing here yet")
+        # Said what it waits for (B127): an ask on the bell, or a rebuild.
+        print(f"  {'built from':<12} nothing here yet: its first build is an Approve on the bell, "
+              "or bb devapp rebuild")
     if st.get("running"):
         _answers_at(st.get("name") or "")
     miss = st.get("missing_env") or []
@@ -159,7 +161,8 @@ def rebuild():
         rid = r["id"]
         print(f"[builderbot] asked {r.get('to') or 'the administrators'} (#{rid}), waiting up "
               "to 15 minutes for Approve on the dashboard's Containers page or bell", file=sys.stderr)
-        o = waits.outcome(auth, rid, "the rebuild was not allowed")
+        o = waits.outcome(auth, rid, "the rebuild was not allowed",
+                          "the ask stays on the bell, and Approve there still builds it")
         if o.get("code"):
             sys.exit(f"[builderbot] ERROR: {o.get('out') or 'the rebuild would not start'}")
         r = {"job": o.get("out")}

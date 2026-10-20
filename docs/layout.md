@@ -85,11 +85,12 @@ scripts/
   lib/tests-verdict.py           what went wrong, from a run's log (bb tests last, the end of a run)
   lib/preamble-verbs.py          `bb preamble`
   lib/findings-verbs.py          `bb findings history` and `bb findings sample`
-  lib/settings-verbs.py          `bb settings`: show, and set for build, test and outputs
+  lib/settings-verbs.py          `bb settings`: show, set for build, test and outputs, and node from a controller shell
+  lib/projects-adopt.py          `bb projects adopt`: a folder already under the share made a project
   lib/sign-verbs.py              `bb sign`: a build signed on the node with one of the project's keys, and its keys and mapping
   lib/busy-verbs.py              `bb node busy` and `bb node wait-quiet`: how busy this node is before a measurement
-  lib/users-verbs.py             `bb users`: list, passwd, add, token
-  lib/nodes-verbs.py             `bb nodes` and `bb ci-labels`
+  lib/users-verbs.py             `bb users`: list, claim, passwd, add, token
+  lib/nodes-verbs.py             `bb nodes` (and enroll-token) and `bb ci-labels`
   lib/jobs-verbs.py              `bb jobs`
   lib/work-verbs.py              `bb work`
   lib/version-verbs.py           `bb version`

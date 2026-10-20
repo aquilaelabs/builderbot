@@ -18,11 +18,12 @@ import time
 import bbapi
 
 
-def outcome(auth, rid, denied):
+def outcome(auth, rid, denied, unanswered=""):
     """What became of ask #rid, once a second for up to fifteen minutes: the
     outcome once it is done. A refusal from the API ends the verb with its
     sentence, a No with `denied` (the verb's own words), and silence with the
-    quarter hour's."""
+    quarter hour's, and `unanswered` where the verb can say what still
+    happens (B127: a build the ask still starts once allowed)."""
     for _ in range(900):
         time.sleep(1)
         o = bbapi.call("/api/phone", {"action": "outcome", "id": rid}, auth=auth)
@@ -32,7 +33,7 @@ def outcome(auth, rid, denied):
             sys.exit(f"[builderbot] {denied}")
         if o["state"] == "done":
             return o
-    sys.exit("[builderbot] nobody answered within fifteen minutes")
+    sys.exit("[builderbot] nobody answered within fifteen minutes" + (f": {unanswered}" if unanswered else ""))
 
 
 def follow(auth, jid):

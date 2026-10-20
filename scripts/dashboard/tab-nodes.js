@@ -180,6 +180,18 @@ function nodeSound(n){
     : "none: no sound card and no sound server";
   return `<div class="actbar ndsound"><span class="state ${card && s.server ? "ok" : ""}">sound: ${esc(word)}</span></div>`;
 }
+// Whether this node reaches the internet (R82), said only when it does not:
+// a toolchain, an image or a system image is a download, and each install
+// here refuses with this before it starts.
+function nodeInternet(n){
+  if (n.kind !== "agent") return "";
+  // A store mounted noexec: nothing in it runs, the bb bundle and every
+  // terminal from it included, which closed at once with nothing saying why.
+  const noexec = n.reported?.store_noexec === true
+    ? `<div class="actbar ndnoexec"><span class="state bad">the toolchain store is mounted noexec: bb and every terminal here cannot run until it is remounted with exec</span></div>` : "";
+  if (n.reported?.internet !== false) return noexec;
+  return noexec + `<div class="actbar ndnet"><span class="state warn">no internet: toolchains, images and updates cannot download here</span></div>`;
+}
 // What this node's NVIDIA card is for (R102): two switches and one Apply.
 // The emulator renders on it or does not, which is the headless X server
 // the display needs; and sessions and jobs may compute on it or not, which
@@ -1328,9 +1340,18 @@ function nodeCharts(n){
 const ND_SECTS = [["health", "Health"], ["projects", "Projects"], ["sessions", "Sessions"], ["gpu", "GPU"],
                   ["claude", "Claude Code"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
 function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
+// Why Create sandbox VM and Enroll node are dead, when this install switched
+// enrolling off (R81): under the bar, since a reason in a tooltip is nothing
+// on a phone.
+function ndOffLine(){
+  const why = featureOff("enroll");
+  return why ? `<div class="field">${deadWhy(why)}</div>` : "";
+}
 // The bar: the node switcher, Create sandbox VM, and Enroll node.
 function ndBar(live){
-  const g = !live, dead = g ? " disabled" : "";
+  // Enrolling switched off on this install (R81): both dead, the reason on
+  // the page under the bar (ndOffLine).
+  const g = !live, dead = g || featureOff("enroll") ? " disabled" : "";
   return nodeBar(nodePick("ndPick", g ? null : live.map(x => ({id: x.id, name: x.name, live: x.live})), nodesPick),
     `<button type="button"${g ? "" : ` id="ndVm"`}${dead}>${barSaid("Create sandbox VM", "New VM")}</button>
       <button type="button" class="primary"${g ? "" : ` id="ndEnroll"`}${dead}>${barSaid("Enroll node", "Enroll")}</button>`);
@@ -1487,6 +1508,7 @@ function renderNodesInto(i){
         ${nodeGit(n)}
         ${nodeGpu(n)}
         ${nodeSound(n)}
+        ${nodeInternet(n)}
         ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}</div>`,
       {cls: n.kind === "agent" && n.live ? "ok" : "", open: true});
     // Every live agent node gets the plane: the runner needs no stamp. What
@@ -1525,7 +1547,7 @@ function renderNodesInto(i){
   // Enrolling is a dialog now (#ndmodal), not two panels appended here; see
   // the markup's comment. Which means a poll landing while it is open cannot
   // take the name being typed with it, because this list is not where it is.
-  d.list.innerHTML = rows + none
+  d.list.innerHTML = ndOffLine() + rows + none
     + (!nodesList.length ? `<div class="empty">The node list could not be read.</div>` : "");
   wireNodesTab(d.el);
   nodesReadOnly(d.el);
@@ -1612,6 +1634,12 @@ function renderRunnerInto(i){
     : noNodeYet("a runner is added to a node");
   if (n) wireNodeConf(d.list.querySelector(".ndrow"), n.id);
   d.list.querySelectorAll(".ndrunro button").forEach(b => { b.disabled = true; });
+  // CI runners switched off on this install (R81): every control here dead,
+  // the sentence above them.
+  if (featureOff("runner")){
+    d.list.querySelectorAll("button, input, select").forEach(b => { b.disabled = true; });
+    d.list.insertAdjacentHTML("afterbegin", `<div class="field">${deadWhy(featureOff("runner"))}</div>`);
+  }
   d.list.querySelectorAll("[data-runnode]").forEach(r => r.onclick = () => { runnerNode = r.dataset.runnode; nodesRev++; drawPanes(); });
   const pick = d.el.querySelector("#rnrPick");
   // A pick is a history entry (B31), so Back returns to the node before.
@@ -1623,7 +1651,7 @@ function renderRunnerInto(i){
 // while the add band is open it is the band's to finish or cancel.
 function runnerAddBtn(n, c){
   if (!n || c.addRunner) return "";
-  return `<button type="button" class="primary" data-nrunnershow ${n.applying || nodeStale(n) || n.runner_new === false || nodeMay(n) !== "write" ? "disabled" : ""}
+  return `<button type="button" class="primary" data-nrunnershow ${n.applying || nodeStale(n) || n.runner_new === false || nodeMay(n) !== "write" || featureOff("runner") ? "disabled" : ""}
     title="a runner for another git host, or this one's under another address">Add runner</button>`;
 }
 

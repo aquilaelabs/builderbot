@@ -78,6 +78,26 @@ ok(!/SECRET REASONING/.test(got.text), "Claude's private reasoning is not in it"
 ok(!/SIDECHAIN WORDS/.test(got.text), 'a subagent side chain is not in it');
 ok(!/not a turn/.test(got.text), 'a summary line is not in it');
 
+// Read here (R83): the same conversation as turns in a dialog, Claude's
+// commands folded under its turn with what each answered.
+await page.click('.profiletab .cvlogs .artrow [data-cvread="conv-one-2026"]');
+await page.waitForSelector('#cvModal:not([hidden]) .cvturn', { timeout: 15000 });
+const read = await page.evaluate(() => ({
+  turns: [...document.querySelectorAll('#cvBody .cvturn')].map(t => ({
+    who: t.querySelector('.cvwho')?.textContent || '', text: t.querySelector('.cvtext')?.textContent || '',
+    tools: [...t.querySelectorAll('details.cvtool')].map(d => ({ call: d.querySelector('summary').textContent,
+      result: d.querySelector('pre').textContent, err: d.classList.contains('err'), open: d.open })) })),
+  title: document.getElementById('cvTitle').textContent }));
+const toolsAll = read.turns.flatMap(t => t.tools);
+ok(read.title === 'Conversation on alpha' && read.turns.some(t => /^You/.test(t.who) && /Please tick the roadmap item off/.test(t.text))
+   && read.turns.some(t => /^System/.test(t.who) && /Stop hook feedback/.test(t.text)),
+   `Read opens the conversation as turns, yours, Claude's and the system's (${read.turns.map(t => t.who.split(' ')[0]).join(',')})`);
+ok(toolsAll.some(c => c.call === '$ bb roadmap show R4' && /R4  The thing to do/.test(c.result) && !c.open)
+   && toolsAll.some(c => /^Read: \/workspace\/alpha\/README\.md/.test(c.call) && c.err),
+   `...Claude's commands folded under its turn, each with what it answered, a failed one marked (${toolsAll.map(c => c.call).join(' | ').slice(0, 120)})`);
+ok(!read.turns.some(t => /SECRET REASONING|SIDECHAIN WORDS/.test(t.text)), "...and neither Claude's reasoning nor a side chain is in it");
+await page.click('#cvClose');
+
 const tokyo = await page.evaluate(async () => (await fetch('/api/transcript?project=alpha&id=conv-one-2026&tz=Asia/Tokyo')).text());
 ok(/You \(2026-09-28 19:15\):/.test(tokyo), 'the stamps follow the zone the link names');
 const nozone = await page.evaluate(async () => (await fetch('/api/transcript?project=alpha&id=conv-one-2026&tz=Mars%2FOlympus')).status);

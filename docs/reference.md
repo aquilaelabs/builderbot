@@ -19,6 +19,8 @@ runner's token is typed on the CI runner page.
 | `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
 | `TZ` | `Etc/UTC` | The container's clock, for its log lines. Optional: the dashboard shows times in each browser's own zone, or the one picked under the gear in the header |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
+| `FEATURES_OFF` | *(empty)* | Features switched off for the whole install, comma-separated: `tunnel`, `ftp`, `phone`, `devices`, `apps`, `image-updates`, `runner`, `enroll`, `shell` (a terminal on the controller itself; a node's stay). Each one's controls are drawn dead with the sentence below under them, its requests are refused, and Settings lists them |
+| `FEATURES_OFF_WHY` | *(empty)* | The sentence a switched-off feature shows; "switched off on this install" when empty |
 | `SCANNER_REPORTS_PATH` | `/mnt/user/appdata/scanners/reports` | the directory a scanner on the host writes SARIF into, mounted read-only at `/reports` and read by `bb findings` and the Analysis view; empty where no scanner runs |
 | `BUILDERBOT_PULL` | `missing` | BuilderBot's own dev instance only: compose's pull policy, `build` to build this checkout (with `BUILDERBOT_TAG=dev`) |
 
@@ -195,14 +197,25 @@ bb nodes           the machines enrolled as nodes, each with the agent it runs,
                    read-only in a terminal; the Nodes page is where they are edited
 bb nodes show NAME one of them in full, by name or id: its agent against the one
                    this controller ships, and what Update agent would fix
+bb nodes enroll-token NAME [--user U]
+                   a new node's enrollment token, printed once, from a shell on
+                   the controller: Enroll node's Just a token, for a scripted setup
+bb projects adopt FOLDER [--name NAME]
+                   a folder already under the projects share made a project, as
+                   if BuilderBot had made it, from a shell on the controller: a
+                   folder made by hand is not one until this says so
 bb settings        this project's settings as the dashboard has them: node,
                    model, effort, build and test commands, lock. On a node
                    it is relayed from the controller, and it is what bb-tty
                    and bb build read there. `set build|test|outputs VALUE`
                    is the one write: a session fills a field in for the
-                   operator, under the project's gate (below).
+                   operator, under the project's gate (below). `node NODE`,
+                   from a shell on the controller, sets the project's node as
+                   its Settings page does, for a scripted setup.
 bb users           the dashboard's accounts. `passwd NAME` resets one from a
-                   shell, which is the way back when the owner is locked out
+                   shell, which is the way back when the owner is locked out;
+                   `claim NAME` makes the owner of a new install, as its first
+                   page does, for a setup scripted from a shell
 bb work            who else is working this project, and which files two of
                    you have uncommitted at once: read-only
 bb jobs [-n N | ID]    the recent jobs: state, node, what ran, how it ended,
@@ -234,8 +247,9 @@ bb devapp rebuild [--why "..."]
                    command waits for Approve) or auto. Up, Down and a container of
                    any other shape stay the operator's. The build sees BB_BUILD_REV,
                    BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
-                   interpolate them, and BB_BUILD_TAG, the version as an image tag
-                   can carry it; its other options are the compose file's own
+                   interpolate them, BB_BUILD_TAG, the version as an image tag
+                   can carry it, and BB_DOCKER_GID, the node's docker group; its
+                   other options are the compose file's own
 bb devapp new [NAME] [--branch REF] [--compose FILE] [--override FILE] [--node NODE] [--env FILE] [--why "..."]
                    send the project to Docker, as the Artifacts view's Send to Docker
                    manager does, under the same setting: a container made from its

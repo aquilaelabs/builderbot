@@ -145,8 +145,10 @@ function phonePanel(n){
   // anybody has to go and read. The node's remembered IP is the fallback.
   if (!phIp) phIp = ph.you || n?.ip || "";
   const held = n && n.owner && !n.mine;   // somebody else's connection
-  const off = held || !n.live || !mayPhone();
-  const offWhy = held ? `connected by ${esc(n.owner.name)}: only they can change it`
+  // ...or this install switched pairing a phone off (R81).
+  const off = held || !n.live || !mayPhone() || !!featureOff("phone");
+  const offWhy = featureOff("phone") ? esc(featureOff("phone"))
+    : held ? `connected by ${esc(n.owner.name)}: only they can change it`
     : !n.live ? "the node is not dialing in"
     : !mayPhone() ? "this account may not drive the phone"
     : "";

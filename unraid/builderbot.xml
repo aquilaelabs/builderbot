@@ -71,6 +71,8 @@ NOTES
   <!-- ===================== web dashboard ===================== -->
   <Config Name="Dashboard port" Target="7680" Default="7680" Mode="tcp" Description="Web UI for the dashboard page." Type="Port" Display="always" Required="false" Mask="false">7680</Config>
   <Config Name="DASHBOARD_PORT" Target="DASHBOARD_PORT" Default="7680" Mode="" Description="Must match the Dashboard port mapping above." Type="Variable" Display="advanced" Required="false" Mask="false">7680</Config>
+  <Config Name="FEATURES_OFF" Target="FEATURES_OFF" Default="" Mode="" Description="Optional: features switched off for this install, comma-separated from tunnel, ftp, phone, devices, apps, image-updates, runner, enroll, shell. Empty leaves everything on." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="FEATURES_OFF_WHY" Target="FEATURES_OFF_WHY" Default="" Mode="" Description="Optional: the sentence each switched-off control shows." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
 
   <!-- ===================== publishing ===================== -->
 

@@ -21,6 +21,8 @@ function openAppsTab(){
 // What the controller offers and holds (apps.view), for this page and the
 // Controller page's Apps section.
 async function loadApps(){
+  // Switched off on this install (R81): the route refuses, so it is not asked.
+  if (featureOff("apps")){ devAppsRev++; return; }
   try{
     const r = await bootFetch("/api/apps");
     const j = await r.json();
@@ -66,6 +68,13 @@ function appsSection(body, count){
 function renderAppsInto(i){
   const d = docSurface(i, "apps");
   if (!d) return;
+  // The apps' downloads switched off on this install (R81): its sentence,
+  // and nothing asked of a route that would refuse.
+  if (featureOff("apps")){
+    d.setBar("");
+    d.list.innerHTML = appsSection(`<div class="field">${deadWhy(featureOff("apps"))}</div>`, "");
+    return;
+  }
   if (!devApps){
     d.setBar(`<span class="barfacts">${skv(14)}</span>`);
     d.list.innerHTML = skTpl(appsSection(skRows(3), ""));

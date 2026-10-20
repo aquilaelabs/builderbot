@@ -82,8 +82,8 @@ function drawSetup(){
       ? `<p><b>${nodeName}</b> is enrolled and answering.</p>`
       : s.waiting
       ? `<p>Waiting for <b>${esc(s.waiting.name)}</b> to dial in: run its enroll script on the machine. This turns to done by itself.</p>`
-      : `<p>A sandbox VM made for it, or a machine you already have, on this network or reached over the internet.</p>`,
-      s.node ? "" : `<button type="button" data-setvm>Create sandbox VM</button><button type="button" class="primary" data-setenroll>Enroll node</button>`)}
+      : `<p>A sandbox VM made for it, or a machine you already have, on this network or reached over the internet.</p>${deadWhy(featureOff("enroll"))}`,
+      s.node ? "" : `<button type="button" data-setvm${featureOff("enroll") ? " disabled" : ""}>Create sandbox VM</button><button type="button" class="primary" data-setenroll${featureOff("enroll") ? " disabled" : ""}>Enroll node</button>`)}
     ${card(2, "Your name and email", s.git, false, s.git
       ? `<p>Your commits carry them. Your profile, in the gear, changes them.</p>`
       : `<p>Every commit carries an author, and no Claude session starts without one.</p>

@@ -476,6 +476,13 @@ run_hooks() {
                     continue
                     ;;
             esac
+            # A root hook needs root: started as another user they ran
+            # anyway and failed, while the start said root hooks were
+            # skipped (diag report #120). Now skipped, as said.
+            if [ "$(id -u)" -ne 0 ] && [[ "$script" == *.root.sh ]]; then
+                log "skipping $name (needs root, and this container is not)"
+                continue
+            fi
             chmod +x "$script" 2>/dev/null || true
             started=$SECONDS
             if [ "$(id -u)" -ne 0 ]; then

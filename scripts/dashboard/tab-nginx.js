@@ -132,7 +132,7 @@ function nginxCertPick(n, r){
   const auto = nginxResolve(n, r.host);
   const pick = r.tls === false ? "none" : (keys.includes(r.cert) ? r.cert : "");
   return `<select data-ng="cert" aria-label="the certificate this route serves 443 with">
-    ${optionList([["none", "80 only"], ["", `443, ${auto ? `${auto}'s pair` : "no pair covers it yet"}`],
+    ${optionList([["none", "80 only"], ["", `443, ${auto ? `whichever pair covers it (now ${auto}'s)` : "no pair covers it yet"}`],
                   ...keys.map(k => [k, `443, ${k}'s pair`])], pick)}
   </select>`;
 }
@@ -449,7 +449,7 @@ function wireNginxTab(root){
     sect.querySelectorAll(".ngform").forEach(row => {
       const host = row.querySelector('[data-ng="host"]')?.value || "";
       const auto = row.querySelector('[data-ng="cert"] option[value=""]');
-      if (auto){ const k = nginxResolve(n, host.trim().toLowerCase()); auto.textContent = `443, ${k ? `${k}'s pair` : "no pair covers it yet"}`; }
+      if (auto){ const k = nginxResolve(n, host.trim().toLowerCase()); auto.textContent = `443, ${k ? `whichever pair covers it (now ${k}'s)` : "no pair covers it yet"}`; }
     });
     nginxReadDraft(sect, n);
     // A route's Save wants a hostname and a port.

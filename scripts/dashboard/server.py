@@ -302,7 +302,7 @@ LOGIN_HTML = """<!doctype html>
   </div>
   <!--FIELDS-->
 </form>
-<script>
+<script data-cfasync="false">
   const n = new URLSearchParams(location.search).get("next");
   const f = document.querySelector('[name=next]');
   if (f && n && n.startsWith("/") && !n.startsWith("//")) f.value = n;
@@ -2401,6 +2401,10 @@ def _versioned_page(raw, tag):
         parts.append(v)
         return b'<script src="' + m.group(1) + b"?v=" + v.encode() + b'">'
     out = _SCRIPT_TAG.sub(named, raw)
+    # Every script runs as written, in order: Cloudflare's Rocket Loader
+    # defers the ones that do not say so, and the page then met its own
+    # names before they were defined (a ReferenceError, B138).
+    out = out.replace(b"<script", b'<script data-cfasync="false"')
     return out, 'W/"' + hashlib.sha256("|".join(parts).encode()).hexdigest()[:24] + '"'
 
 
@@ -3407,7 +3411,8 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  runner=jobs if not NODES_OK else None,
                  project_node=lambda p: prefs.get(p)["node"],
                  project_nodes=lambda p: prefs.get(p)["nodes"],
-                 node_paths=nodes.node_paths if not NODES_OK else None)
+                 node_paths=nodes.node_paths if not NODES_OK else None,
+                 node_reported=(lambda nid: (nodes.node(nid) or {}).get("reported") or {}) if not NODES_OK else None)
 # The layer on top of it: the compose runner is its, so it is the one that
 # hands jobs.py the function.
 devactions.configure(runner=jobs if not NODES_OK else None)
@@ -3543,6 +3548,7 @@ version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
 changelog.component_dir = version._sub
 # Release's forge half (R123; Gitea and GitLab, R124): the release beside a pushed tag.
 import forgerelease                                              # noqa: E402
+import featuresoff                                               # noqa: E402
 forgerelease.configure(state=STATE, workspace=WORKSPACE, write_json_fn=write_json)
 version.configure_verbs(PANEL=version_payload, GIT_ENV=users.git_env, CREDS_ENV=projects._git_env,
                         MAY_PUSH=projects.may_push, SESSIONS=sessions_anywhere,
@@ -4224,6 +4230,9 @@ def _snapshot(who):
         "max_tabs": layout.max_tabs(),
         # Everything the Settings tab edits, with where each value came from.
         "settings": _timed("status:settings", lambda: settings.payload() | {"tunnel": tunnel.status()}),
+        # The features this install switched off (R81), {feature: why}: each
+        # draws its controls dead with the sentence under them.
+        "off": featuresoff.sentences(),
         # ...and where the controller keeps what grows, an administrator's.
         "paths": _timed("status:paths", lambda: {} if users.may(who, "admin") else paths.view()),
         # The command list is built from the table above rather than spelled out
@@ -5076,6 +5085,10 @@ class Handler(BaseHTTPRequestHandler):
                            uid=users.uid_of(self._who() or {}) or "")
         if target["where"] == "refused":
             return self._term_notice(target["why"], 503)
+        # A terminal on the controller itself, switched off for this install
+        # (R81): what a node runs is the node's, and stays.
+        if target["where"] != "node" and (why := featuresoff.sentences().get("shell")):
+            return self._term_notice(why, 403)
         rest = self._scoped_arg(self.path[len("/term"):], node=target["where"] == "node")
         if not rest or rest.startswith("?"):
             # ttyd's client resolves "token" and "ws" against the page URL,
@@ -5304,13 +5317,18 @@ class Handler(BaseHTTPRequestHandler):
             return False
         host = self.headers.get("Host", "")
         own = settings.get("tunnel_host") if not NODES_OK else ""
-        why = nodes.tunnel_refuses(self.client_address[0] if self.client_address else "",
-                                   self.path.partition("?")[0], host=host,
-                                   # Cloudflare's own mark; other tunnels are known by the
-                                   # hostname, and the controller's own public hostname (R176)
-                                   # is one whatever rule the tunnel carries, so a rule left
-                                   # wide reaches no page (bb.neat.fish answered its login, 11 Oct).
-                                   edge="Cf-Ray" in self.headers
+        peer = self.client_address[0] if self.client_address else ""
+        why = nodes.tunnel_refuses(peer, self.path.partition("?")[0], host=host,
+                                   # Cloudflare's own mark on what came through the
+                                   # controller's own tunnel, whose cloudflared asks this
+                                   # machine's loopback: every request Cloudflare proxies
+                                   # carries Cf-Ray, so a dashboard simply put behind
+                                   # Cloudflare under its own name was refused everything
+                                   # but the agents' API (B137). Other tunnels are known by
+                                   # the hostname, and the controller's own public hostname
+                                   # (R176) is one whatever rule the tunnel carries, so a rule
+                                   # left wide reaches no page (bb.neat.fish, 11 Oct).
+                                   edge=nodes.own_tunnel_edge("Cf-Ray" in self.headers, peer)
                                         or bool(own and host.lower().rsplit(":", 1)[0] == own))
         if why:
             self._safely(lambda: self._json({"error": why}, 403))
@@ -5397,6 +5415,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "public, max-age=86400")
             self.end_headers()
             return self.wfile.write(body)
+        # A feature this install switched off (R81) answers its sentence.
+        if why := featuresoff.refused("GET", path):
+            return self._json({"error": why, "off": True}, 403)
         for how, route, name in GET_ROUTES:
             if (self.path == route) if how == "exact" else self.path.startswith(route):
                 return getattr(self, name)()
@@ -6232,6 +6253,10 @@ class Handler(BaseHTTPRequestHandler):
             return None
 
         path = self.path.split("?")[0]
+        # A feature this install switched off (R81): refused here, whatever
+        # drew the button, with the install's own sentence.
+        if why := featuresoff.refused("POST", path, req):
+            return self._json({"error": why, "off": True}, 403)
         # Door 2, at the one funnel every mutation passes: when, who, what,
         # on what, with a parameter digest, never the parameters, which
         # carry tokens and env text. The principal is the signed-in account
@@ -6782,6 +6807,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "the store did not open: " + NODES_OK}, 500)
         verb = self.path.split("?")[0][len("/api/v1/device/"):]
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        if why := featuresoff.refused(self.command, "/api/v1/device/" + verb):
+            return self._json({"error": why, "off": True}, 403)
         # An app from before a break in the door is told so, whatever it
         # asked; except where it asks what to update to.
         if ((why := devices.door_refused(self.headers.get("X-BB-Door"), self.headers.get("X-BB-App")))
@@ -7892,7 +7919,8 @@ class Handler(BaseHTTPRequestHandler):
         account's own conversations with Claude on that project as a text
         file, every command and answer in it (transcripts.render); as JSON
         with as=json, which is what `bb transcripts show` reads, and only its
-        newest MB with tail=MB. Anybody
+        newest MB with tail=MB; as turns with as=turns, the dashboard's
+        reader's (the newest 32 MB unless tail says). Anybody
         signed in, their own only, a session included on its own project
         and on one its project reads: the file is looked for under the
         account's own transcripts directory and nowhere else, so another
@@ -7925,6 +7953,10 @@ class Handler(BaseHTTPRequestHandler):
             tail = max(0, int(q.get("tail", ["0"])[0])) * 1024 * 1024
         except ValueError:
             tail = 0
+        # The dashboard's reader (R83): turns, the newest part of a long one.
+        if q.get("as", [""])[0] == "turns":
+            return self._json(*transcripts.turns(uid, name, q.get("id", [""])[0],
+                                                 transcripts.zone(q.get("tz", [""])[0]), tail=tail or 32 * 1024 * 1024))
         text, fname = transcripts.render(uid, name, q.get("id", [""])[0],
                                          transcripts.zone(q.get("tz", [""])[0]), tail=tail)
         if text is None:
@@ -8960,20 +8992,22 @@ def main():
             print(f"dashboard: seed.json applied: {seeded}", flush=True)
     except Exception as e:  # noqa: BLE001 (a seed never keeps the dashboard from starting)
         print(f"dashboard: seed.json not applied: {e}", flush=True)
-    apps.start()              # the apps from this controller's release, a while after the start, then daily
+    if "apps" not in featuresoff.off():
+        apps.start()          # the apps from this controller's release, a while after the start, then daily
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
     threading.Thread(target=log_sweep_loop, name="log-sweep", daemon=True).start()
     artifacts.start()         # every project's dist/ to its newest builds, every few minutes
     ciwatch.start()           # a project's CI, once a day (R117)
-    tunnel.apply()            # the home tunnel, where the settings say so (R176)
+    if "tunnel" not in featuresoff.off():
+        tunnel.apply()        # the home tunnel, where the settings say so (R176)
     if toolchains.AUTOCHECK:
         threading.Thread(target=toolchains.versions_loop, daemon=True).start()
     # The copies the nodes hold, looked at here on a timer and announced when
     # they moved, so a node need not keep asking (B643).
     threading.Thread(target=wssync.look_loop, name="sync-look", daemon=True).start()
-    if imagecheck.AUTOCHECK:          # every container's registry images, weekly (R195)
+    if imagecheck.AUTOCHECK and "image-updates" not in featuresoff.off():  # every container's registry images, weekly (R195)
         threading.Thread(target=imagecheck.check_loop, name="image-check", daemon=True).start()
-    if nginxproxy.AUTOCHECK:          # the nginx image against the registry, weekly (R192)
+    if nginxproxy.AUTOCHECK and "image-updates" not in featuresoff.off():  # the nginx image, weekly (R192)
         threading.Thread(target=nginxproxy.check_loop, name="nginx-check", daemon=True).start()
     Server(("0.0.0.0", PORT), Handler).serve_forever()
 

@@ -24,7 +24,7 @@ from .base import (
     _probe_died,
     _run,
 )
-from .stores import _stores, store_dirs
+from .stores import _stores, noexec, store_dirs, tc_root
 from .backends import _have, net_backend, pkg_backend
 from .toolchains import _toolchains, sdk_images, sdk_versions, sysdeps_now
 from .gpu import (
@@ -137,6 +137,46 @@ def machine_now():
     return ""
 
 
+def _store_ro(state):
+    """True when this node's toolchain directory is there and it cannot write it."""
+    root = tc_root(state)
+    return bool(root) and os.path.isdir(root) and not os.access(root, os.W_OK)
+
+
+# The internet, asked at most every ten minutes: a machine with none spent
+# a timeout on it at every check-in otherwise.
+_NET = {"at": 0.0, "ok": None}
+NET_EVERY = 600
+NET_HOSTS = ("github.com", "dl.google.com")
+
+
+def _internet():
+    """True when this machine reaches the internet, False when it does not."""
+    import socket
+    import time
+    if _NET["ok"] is not None and time.time() - _NET["at"] < NET_EVERY:
+        return _NET["ok"]
+    ok = False
+    for host in NET_HOSTS:
+        try:
+            socket.create_connection((host, 443), timeout=4).close()
+            ok = True
+            break
+        except OSError:
+            continue
+    _NET.update(at=time.time(), ok=ok)
+    return ok
+
+
+def _docker_gid():
+    """The docker group's id here, or None where there is no such group."""
+    import grp
+    try:
+        return grp.getgrnam("docker").gr_gid
+    except KeyError:
+        return None
+
+
 def _docker_ip():
     """127.0.0.1 where published ports stay on the node: both docker's `ip`
     (the default bridge) and the networks' default bind (every network
@@ -189,6 +229,19 @@ def census(state):
         # R190): "127.0.0.1" where they stay on the node, "" where docker's
         # own default (every address) holds.
         "docker_ip": _docker_ip(),
+        # The docker group's id (R86), for a compose that runs something as
+        # a member of it: a session cannot stat the socket for it, since
+        # its /var/run/docker.sock is a stand-in that reads root's.
+        "docker_gid": _docker_gid(),
+        # Whether this machine reaches the internet (R82), for the row to
+        # say before a toolchain install finds out the long way.
+        "internet": _internet(),
+        # A toolchain store this node holds but cannot write (R85), so the
+        # Toolchains page holds Install with the reason before a job fails.
+        "store_ro": _store_ro(state),
+        # ...or mounted noexec, so the bb bundle and every terminal from it
+        # cannot run: the page says why, which the closing terminals do not.
+        "store_noexec": bool(tc_root(state)) and noexec(tc_root(state)),
         "gpu": gpu.splitlines()[0][:80] if gpu else "",
         "gpu_card": _gpu_card(),
         "gpu_driver": _gpu_driver(),

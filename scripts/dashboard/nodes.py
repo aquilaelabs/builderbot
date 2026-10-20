@@ -1205,6 +1205,16 @@ def _census(c):
                          for k, v in list(tc.items())[:16]}
     # The address docker binds published ports to by default (R190).
     out["docker_ip"] = str(c.get("docker_ip") or "")[:40]
+    # ...and its docker group's id (R86), passed to a compose as BB_DOCKER_GID.
+    g = c.get("docker_gid")
+    out["docker_gid"] = g if isinstance(g, int) and not isinstance(g, bool) and 0 <= g < 2**31 else None
+    # ...and whether it reaches the internet (R82); None from an agent that
+    # does not say.
+    out["internet"] = c.get("internet") if isinstance(c.get("internet"), bool) else None
+    # ...and whether its toolchain store is read-only to it (R85).
+    out["store_ro"] = c.get("store_ro") is True
+    # ...and whether it is mounted noexec, which stops every terminal there.
+    out["store_noexec"] = c.get("store_noexec") is True
     # The configuration plane's reported half (docs/nodes.md §12): whether
     # the node was provisioned as a sandbox (bb-sandbox is there: the stamp
     # system jobs are gated on), what it mounts as bb-sandbox reads it, and
@@ -2034,6 +2044,15 @@ def tunnel_host(n):
     t = (n.get("config") or {}).get("tunnel") or {}
     h = str(t.get("host") or "").lower() if t.get("kind") == "public" else ""
     return h if re.fullmatch(r"[a-z0-9.-]{1,253}", h) else ""
+
+
+def own_tunnel_edge(has_ray, peer):
+    """Whether a request came through the controller's own Cloudflare tunnel
+    (R176): Cloudflare's Cf-Ray, from this machine's loopback, which is where
+    the controller's cloudflared asks. Cf-Ray alone is every request
+    Cloudflare proxies, a dashboard put behind it under its own name too
+    (B137)."""
+    return bool(has_ray) and str(peer or "") in ("127.0.0.1", "::1")
 
 
 def tunnel_refuses(addr, path, host="", edge=False):

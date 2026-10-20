@@ -1025,7 +1025,17 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
    and the page takes everything the title, the switch and the foot leave;
    the build lines are the changelog's (what is running is what changed),
    so they are not under the guide halving it (B110). */
-#aboutModal .box.prose{height:90vh}
+#aboutModal .box.prose,#cvModal .box.prose{height:90vh}
+/* A conversation's turns (R83): who and when over the words, and Claude's
+   commands folded under its turn, each opening onto what it answered. */
+.cvturn{margin:0 0 14px}
+.cvturn .cvwho{font:var(--f-data);color:var(--dim);margin-bottom:2px}
+.cvturn .cvtext{white-space:pre-wrap;font:var(--f-ui);color:var(--ink);line-height:1.5;overflow-wrap:anywhere}
+.cvturn.you .cvwho{color:var(--accent)}
+.cvtool{margin:4px 0 0}
+.cvtool>summary{font:var(--f-data);color:var(--dim);cursor:pointer;overflow-wrap:anywhere}
+.cvtool.err>summary{color:var(--bad)}
+.cvtool pre{white-space:pre-wrap;overflow-wrap:anywhere;font:var(--f-data);color:var(--ink);margin:4px 0 0;max-height:40vh;overflow:auto}
 .modal .box.prose>.about,.about>.abpage{flex:1 1 auto}
 .abpage p,.abpage li{font:var(--f-ui);color:var(--ink);line-height:1.5}
 .abpage ul{margin:4px 0 8px 18px;padding:0}
@@ -5448,6 +5458,17 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     <div class="foot"><span class="sp"></span>
       <button type="button" id="outCancel">Cancel</button>
       <button type="button" class="primary" id="outGo">Sign out</button></div>
+  </div>
+</div>
+<!-- A conversation with Claude, read here rather than downloaded (R83): its
+     turns, and under each of Claude's the commands it ran, folded, with what
+     each answered. -->
+<div id="cvModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="cvTitle">
+  <div class="box wide prose">
+    <h3 id="cvTitle">Conversation</h3>
+    <div class="field about"><div class="abpage cvread" id="cvBody"></div></div>
+    <div class="foot"><span class="dim" id="cvNote"></span><span class="sp"></span>
+      <button type="button" id="cvClose">Close</button></div>
   </div>
 </div>
 <div id="aboutModal" class="modal" hidden role="dialog" aria-modal="true"

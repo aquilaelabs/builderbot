@@ -2524,7 +2524,7 @@ function dmBar(b){
         placeholder="${isPhone() ? "search" : "name, image, port or project"}" autocomplete="off" aria-label="narrow the containers: name, image, port or project" value="${esc(dmSearch)}"${dead}><span class="sp"></span>
       ${dmViewSeg(dead)}
       ${mayDocker() ? `<span class="actbar">${
-      b?.blind ? "" : `<button type="button"${ghost ? "" : ` id="bDockerCheck"`}${dead}>${barSaid("Check for updates", "Check")}</button>`}${
+      b?.blind ? "" : `<button type="button"${ghost ? "" : ` id="bDockerCheck"`}${dead || (featureOff("image-updates") ? " disabled" : "")}>${barSaid("Check for updates", "Check")}</button>`}${
       `<button type="button"${ghost ? "" : ` id="bDockerNew"`} class="primary"${dead}>${barSaid("New container", "New")}</button>`}</span>` : ""}</div>`;
 }
 // Cards or a list, this browser's choice: the page's and a notebook's
@@ -2578,6 +2578,9 @@ function dmImagesSection(){
 // ...and the status line under them: when the images were checked.
 function dmStatus(d){
   if (!mayDocker()) return "";
+  // Image updates switched off on this install (R81): its sentence where
+  // the line says when they were checked.
+  if (featureOff("image-updates")) return `<div class="field">${deadWhy(featureOff("image-updates"))}</div>`;
   return headLine(!d ? `images checked ${skv(4)}` : d.images_at ? `images checked ${esc(ago(d.images_at))}` : "images not checked yet",
     "", "dmimgbar");
 }

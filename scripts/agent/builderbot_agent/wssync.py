@@ -58,6 +58,24 @@ MOUNTED = ("something is mounted at /workspace, where this node's synced copy go
            "unmount it on the machine")
 
 
+def foreign_mount(path, mounts="/proc/self/mounts"):
+    """True when something not this machine's own is mounted at `path`: a
+    share left in fstab, which a copy could write through onto somebody
+    else's files. A tmpfs is memory and never anybody else's, so a container
+    node's own /workspace in tmpfs is the node's (diag report #121: it was
+    held as mounted, and never synced)."""
+    if not os.path.ismount(path):
+        return False
+    real = os.path.realpath(path)
+    with contextlib.suppress(OSError):
+        with open(mounts) as f:
+            for line in reversed(f.read().splitlines()):
+                bits = line.split()
+                if len(bits) > 2 and bits[1].replace("\\040", " ") == real:
+                    return bits[2] != "tmpfs"
+    return True
+
+
 # A second account's worktree of a project (B615): a unit of its own,
 # named for where it lives under the projects root, as the controller names it.
 WT_UNIT = re.compile(r"\.worktrees/([A-Za-z0-9][A-Za-z0-9._-]*)/(u_[0-9a-f]{8})")
@@ -386,7 +404,7 @@ class WorkspaceSync:
             if self.mode == "off" and self.clean_ask and self.clean_ask != (self.done() or {}).get("token"):
                 self.clean(self.clean_ask)
             return
-        if os.path.ismount(self.root):
+        if foreign_mount(self.root):
             # Something mounted where the copy goes (a share left in fstab
             # from before R163): copying now could write onto somebody
             # else's files through it. Held and said, and started once it
@@ -441,7 +459,7 @@ class WorkspaceSync:
         Only ever in mode off, and never through a mount: with the projects
         share at /workspace these would be the controller's own trees."""
         freed, err = 0, ""
-        if os.path.ismount(self.root):
+        if foreign_mount(self.root):
             err = "something is mounted at /workspace, so nothing there is this node's to remove"
         else:
             rd = self.record_dir()
