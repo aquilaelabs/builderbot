@@ -236,7 +236,23 @@ await ready(page);
   await page.evaluate(() => { location.hash = '#/jobs/failed'; });
   await page.waitForFunction(() => document.querySelector('.jobstab [data-jbshow="failed"].on'), null, { timeout: 10000 });
   ok(true, '#/jobs/failed opens the page narrowed to the failed jobs');
-  await page.evaluate(() => { jobsShowSet(''); drawPanes(); shellSync(); });
+  // B113: Home's "N failed today" opens on what it counted, not on every
+  // failure: a failure from yesterday is under Failed and not here.
+  await page.evaluate(() => {
+    const y = { id: 'j_yesterday', type: 'exec', state: 'failed', queued: jobsToday() - 7200, ended: jobsToday() - 3600, spec: {} };
+    if (!jobsList.some(j => j.id === y.id)) jobsList.push(y);
+    jobsRev++;
+    location.hash = '#/jobs/failed-today';
+  });
+  await page.waitForFunction(() => document.querySelector('.jobstab [data-jbshow="failed-today"].on'), null, { timeout: 10000 });
+  const today = await page.evaluate(() => ({
+    rows: [...document.querySelectorAll('.jobstab .jbrow')].map(r => [r.dataset.job, r.dataset.state]),
+    chip: document.querySelector('.jobstab [data-jbshow="failed-today"] .pill')?.textContent,
+    failed: document.querySelector('.jobstab [data-jbshow="failed"] .pill')?.textContent }));
+  ok(today.rows.length && today.rows.every(([id, s]) => s === 'failed' && id !== 'j_yesterday')
+     && Number(today.chip) === today.rows.length && Number(today.failed) === today.rows.length + 1,
+     `#/jobs/failed-today lists today's failures alone, under a chip whose count is the rows shown (${JSON.stringify(today)})`);
+  await page.evaluate(() => { jobsList = jobsList.filter(j => j.id !== 'j_yesterday'); jobsRev++; jobsShowSet(''); drawPanes(); shellSync(); });
 
   // A kind with no command of its own says what it did, where a storage
   // walk read as a bare "exec" (B70).

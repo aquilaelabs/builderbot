@@ -18,7 +18,7 @@ let jobsRev = 0;                 // bumped when it changes, so panes repaint
 let jobsErr = "";
 // The chip in force: "" for every job, else a state group's key (JOB_GROUPS).
 // A view, never a setting: kept for the page's life, nothing saved; Home's
-// "failed today" opens the page on "failed" by its address (B74).
+// "failed today" opens the page on "failed-today" by its address (B74, B113).
 let jobsShow = "";
 const jobsOpen = new Set();      // ids whose log is unfolded
 const jobsLogs = {};             // id -> the log fetched for an unfolded row
@@ -159,14 +159,25 @@ const JOB_GROUPS = [
   {key: "canceled", label: "Canceled", is: j => j.state === "canceled"},
   {key: "succeeded", label: "Succeeded", is: j => j.state === "succeeded"},
 ];
+// Home's "N failed today" opens the list on what it counted (B113): the
+// failed jobs that ended since today began by the controller's day (Home's
+// answer says when; this browser's midnight until it has). Not one of the
+// groups that partition the list, so a chip of its own after them.
+function jobsToday(){
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  return (typeof homeData !== "undefined" && homeData?.jobs?.today) || d.getTime() / 1000;
+}
+const JOB_TODAY = {key: "failed-today", label: "Failed today",
+                   is: j => j.state === "failed" && (j.ended || j.queued || 0) >= jobsToday()};
+const JOB_VIEWS = [...JOB_GROUPS, JOB_TODAY];
 function jobsShown(list){
-  const g = JOB_GROUPS.find(x => x.key === jobsShow);
+  const g = JOB_VIEWS.find(x => x.key === jobsShow);
   return g ? list.filter(g.is) : list;
 }
 // The page's address names the chip a link opens it on (#/jobs/failed), the
 // way a node page's names its node.
 function jobsShowSet(v){
-  jobsShow = JOB_GROUPS.some(g => g.key === v) ? v : "";
+  jobsShow = JOB_VIEWS.some(g => g.key === v) ? v : "";
 }
 
 // Who asked: every job has an asker, so it is a column and not a line
@@ -265,11 +276,13 @@ function renderJobsInto(i){
   // Narrowed by how a job stands (B74): a chip per state group with jobs
   // in it, under the tiles; the one a link named stays on even when its
   // group is empty, so the list says so rather than showing everything.
-  const chips = chipBar(JOB_GROUPS.map(g => ({key: g.key, label: g.label, count: count(g.is)})), jobsShow, "data-jbshow");
-  const said = JOB_GROUPS.find(g => g.key === jobsShow);
+  // Failed today is inside Failed, so All is the list's length, not a sum.
+  const chips = chipBar(JOB_VIEWS.map(g => ({key: g.key, label: g.label, count: count(g.is)})), jobsShow, "data-jbshow",
+                        jobsList.length);
+  const said = JOB_VIEWS.find(g => g.key === jobsShow);
   d.list.innerHTML = tiles + chips + jobsSection(shown.length ? tblWrap(JOB_COLS, rows, "jbtbl")
     : `<div class="empty">${said ? (said.key === "live" ? "nothing is running or waiting"
-                                     : `nothing ${said.key} among the last ${jobsList.length} jobs`)
+                                     : `nothing ${said.key === JOB_TODAY.key ? "failed today" : said.key} among the last ${jobsList.length} jobs`)
                                    + ` <button type="button" data-jbshow="">Show every job</button>`
                                  : "no jobs yet: a compose action, an exec on a node, or an agent update will appear here"}</div>`,
     shown.length ? `${shown.length}` : "none");
