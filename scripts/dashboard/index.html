@@ -2613,7 +2613,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   border-radius:var(--r-small);overflow-x:auto;white-space:pre}
 .wkpage pre code{background:none;padding:0}
 .wkpage table{border-collapse:collapse;display:block;overflow-x:auto;font-family:system-ui,sans-serif;font-size:.92em}
-.wkpage th,.wkpage td{border:var(--hair) solid var(--line);padding:5px 9px;text-align:left;vertical-align:top}
+/* A cell breaks between words, never inside one (B78: 'Playwrig ht', 'Pyth on'):
+   the page's overflow-wrap:anywhere let a column shrink below its longest
+   word; break-word only breaks a word wider than the whole table can be. */
+.wkpage th,.wkpage td{border:var(--hair) solid var(--line);padding:5px 9px;text-align:left;vertical-align:top;overflow-wrap:break-word}
 .wkpage th{background:var(--panel)}
 .wkpage hr{border:0;border-top:var(--hair) solid var(--line);margin:16px 0}
 .wkpage a,.wknav a,.wktoc a,.wkfooter a{color:var(--note);text-decoration:none}
