@@ -78,11 +78,18 @@ your projects mounted straight in, and to grow from one machine to several.
 
 <table>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/dashboard.png" alt="The dashboard at a desk"></td>
+    <td colspan="2"><img src="docs/screenshots/dashboard.png" alt="Home at a desk: what runs, what needs you, the last jobs and your projects"></td>
   </tr>
   <tr>
-    <td width="50%" align="center"><img src="docs/screenshots/phone-dashboard.png" width="80%" alt="The dashboard on a phone"></td>
-    <td width="50%" align="center"><img src="docs/screenshots/phone-terminal.png" width="80%" alt="A terminal on a phone"></td>
+    <td width="50%"><img src="docs/screenshots/notebook.png" alt="A project's page, on its roadmap"></td>
+    <td width="50%"><img src="docs/screenshots/nodes.png" alt="A node's page: how it is reached, its health and its stores"></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/toolchains.png" alt="The Toolchains page for a node"></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><img src="docs/screenshots/phone-dashboard.png" width="80%" alt="Home on a phone"></td>
+    <td width="50%" align="center"><img src="docs/screenshots/phone-terminal.png" width="80%" alt="A terminal in the dock on a phone"></td>
   </tr>
 </table>
 

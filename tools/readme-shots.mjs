@@ -59,31 +59,60 @@ const open = async (opts, view) => {
   // Nothing of the account's is changed by taking its picture.
   await page.route(/\/api\/(layout|cards|users|presence)(\?|$)/, r => r.request().method() === 'POST' ? r.abort() : r.continue());
   await page.route(/\/api\/status(\?|$)/, async r => {
-    const res = await r.fetch(), j = await res.json();
-    if (SHOW) j.projects = (j.projects || []).filter(p => SHOW.includes(p.name));
-    const sh = (j.layout?.tabs || []).find(t => t.kind === 'term' && /^sh:\d+:$/.test(t.arg));
-    if (j.layout) j.layout = { ...j.layout, tabs: sh ? [sh] : [], panes: [sh ? sh.id : null, null], active: 0 };
-    await r.fulfill({ response: res, json: j });
+    // A read still out when its shot's page is closed has no response left
+    // to read or fulfill: that is the page going, not a failure.
+    try {
+      const res = await r.fetch(), j = await res.json();
+      if (SHOW) j.projects = (j.projects || []).filter(p => SHOW.includes(p.name));
+      // A lived-in instance's bell is long: two rows say what it is for.
+      if (Array.isArray(j.attention)) j.attention = j.attention.slice(0, 2);
+      const sh = (j.layout?.tabs || []).find(t => t.kind === 'term' && /^sh:\d+:$/.test(t.arg));
+      if (j.layout) j.layout = { ...j.layout, tabs: sh ? [sh] : [], panes: [sh ? sh.id : null, null], active: 0 };
+      await r.fulfill({ response: res, json: j });
+    } catch (e) {
+      if (!page.isClosed() && !/disposed|closed/i.test(String(e?.message || e))) throw e;
+    }
+  });
+  // Home's last jobs: the ones that went through, on the projects shown, so
+  // a walk's leftovers on a test instance are not the front page's picture.
+  await page.route(/\/api\/home(\?|$)/, async r => {
+    try {
+      const res = await r.fetch(), j = await res.json();
+      if (j.jobs){
+        j.jobs.last = (j.jobs.last || []).filter(x => x.state === 'succeeded' && (!x.project || !SHOW || SHOW.includes(x.project))
+                                                    && x.type !== 'exec').slice(0, 6);
+        j.jobs.failed_today = 0;
+      }
+      await r.fulfill({ response: res, json: j });
+    } catch (e) {
+      if (!page.isClosed() && !/disposed|closed/i.test(String(e?.message || e))) throw e;
+    }
   });
   await page.goto(BASE + '/login');
   await page.fill('#u', USER); await page.fill('#p', PASS);
   await Promise.all([page.waitForNavigation(), page.click('button[type=submit]')]);
   await page.waitForFunction(() => typeof state !== 'undefined' && state && !document.body.classList.contains('booting'), null, { timeout: 30000 });
   for (let i = 0; i < 3; i++){ const c = await page.$('.modal:not([hidden]) button:has-text("Close")'); if (!c) break; await c.click(); await page.waitForTimeout(300); }
-  if (view) await page.evaluate(v => setView(v), view);
+  // A phone has one page area and the dock under it: Home is what it opens
+  // on, and a terminal is the dock pulled up.
+  if (view === 'terminal') await page.evaluate(() => {
+    if (!tabs.some(t => t.kind === 'term')) newShell('');
+    dockToggle(true);
+  });
   return { ctx, page };
 };
 // The shell tab in front, its scrollback cleared and one plain command run,
 // so the picture is a terminal at work and not a page of old prompts.
-const shell = async (page, tidy, touch) => {
+const shell = async (page, tidy) => {
   const t = await page.$('.tab:has-text("sh: ")');
   if (t && await t.isVisible()) await t.click();
   await page.waitForTimeout(3500);
-  const pane = await page.$('.pane:not(.hidden) iframe, .pane:not(.hidden) .stack');
-  const box = pane && await pane.boundingBox();
-  if (box && tidy){
-    if (touch) await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
-    else await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  // The terminal's own input, inside its frame: a click on the frame's box
+  // does not reach xterm's textarea, so the keys went nowhere.
+  const term = page.frames().find(f => /\/term\//.test(f.url()));
+  const input = term && term.locator('.xterm-helper-textarea').first();
+  if (input && tidy && await input.count()){
+    await input.focus();
     await page.keyboard.type('clear', { delay: 20 }); await page.keyboard.press('Enter');
     await page.waitForTimeout(600);
     await page.keyboard.type(tidy, { delay: 15 }); await page.keyboard.press('Enter');
@@ -96,14 +125,16 @@ const tab = async (page, open, settle = 4000) => {
   await page.waitForTimeout(settle);
 };
 const shoot = async (page, file) => {
+  await page.evaluate(() => { document.querySelectorAll('.doc, .pane').forEach(e => { e.scrollTop = 0; }); window.scrollTo(0, 0); });
+  await page.waitForTimeout(300);
   const left = await scrub(page);
   if (left.length) throw new Error('an address is still on the page: ' + left.join(', '));
   await page.screenshot({ path: `${OUT}/${file}` });
   console.log(file, 'theme:', await page.evaluate(() => document.documentElement.dataset.theme || '(default)'), 'addresses left: 0');
 };
 const desk = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 };
-{ const { ctx, page } = await open({ viewport: { width: 1440, height: 1180 }, deviceScaleFactor: 1 });
-  await shell(page, 'git -C /workspace/hello log --oneline --no-decorate -5 && ls /workspace/hello'); await shoot(page, 'dashboard.png'); await ctx.close(); }
+{ const { ctx, page } = await open({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+  await page.waitForTimeout(3000); await shoot(page, 'dashboard.png'); await ctx.close(); }
 { const { ctx, page } = await open(desk);
   const name = process.env.README_SHOT_PROJECT || await page.evaluate(() => (state.projects || [])[0]?.name);
   await tab(page, `openNotebook(${JSON.stringify(name)}, ${JSON.stringify(process.env.README_SHOT_VIEW || "roadmap")})`); await shoot(page, 'notebook.png'); await ctx.close(); }
@@ -114,5 +145,5 @@ const desk = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 };
 { const { ctx, page } = await open({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, 'dash');
   await page.waitForTimeout(1200); await shoot(page, 'phone-dashboard.png'); await ctx.close(); }
 { const { ctx, page } = await open({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true }, 'terminal');
-  await shell(page, 'ls /workspace/droid', true); await shoot(page, 'phone-terminal.png'); await ctx.close(); }
+  await shell(page, 'ls /workspace/droid'); await shoot(page, 'phone-terminal.png'); await ctx.close(); }
 await browser.close();
