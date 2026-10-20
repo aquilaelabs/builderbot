@@ -252,8 +252,12 @@ references `${BB_DEV_DATA}/...` gets its volumes on the cache drive by
 convention, in a per-instance directory the VM makes itself, so that share is
 mounted over there and needs no mount here at all. By the same convention a
 build sees `BB_BUILD_REV`, `BB_BUILD_AT` and `BB_BUILD_VERSION`: the commit
-it is from, when, and the project's version in file form, for a compose whose
-build args want a stamp (BuilderBot's own passes them to its Dockerfile). BuilderBot itself gets the
+it is from, when, and the project's version, for a compose whose build args
+want a stamp (BuilderBot's own passes them to its Dockerfile). An image tag
+takes `BB_BUILD_TAG`, the same version with no `+`, which a tag cannot carry.
+Every step of a rebuild (the pull, the stop, the start) reads the compose
+file with the same variables, so an image named by `${BB_BUILD_REV}` is the
+one pulled and started. BuilderBot itself gets the
 row too, as a second container on another machine, never the one you are
 using; expect
 `up` to refuse while the real one holds the same host ports, which is the env

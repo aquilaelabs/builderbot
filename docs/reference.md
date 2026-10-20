@@ -234,7 +234,8 @@ bb devapp rebuild [--why "..."]
                    command waits for Approve) or auto. Up, Down and a container of
                    any other shape stay the operator's. The build sees BB_BUILD_REV,
                    BB_BUILD_AT and BB_BUILD_VERSION, for a compose whose build.args
-                   interpolate them; its other options are the compose file's own
+                   interpolate them, and BB_BUILD_TAG, the version as an image tag
+                   can carry it; its other options are the compose file's own
 bb devapp new [NAME] [--branch REF] [--compose FILE] [--override FILE] [--node NODE] [--env FILE] [--why "..."]
                    send the project to Docker, as the Artifacts view's Send to Docker
                    manager does, under the same setting: a container made from its

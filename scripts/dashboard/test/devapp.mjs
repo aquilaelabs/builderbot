@@ -1686,6 +1686,29 @@ ok(!AB.phases.includes('up') && AB.steps.join() === 'building,pulling,stopping',
 ok(AB.result.state === 'canceled' && /stopped/.test(AB.result.error),
    '...and the result says so, which it was already saying with the thing running');
 
+// Every step of a rebuild on a node reads the compose file with the build's
+// variables: the pull ran without them, so a file naming its images by
+// ${BB_BUILD_REV} pulled :dev, which no registry has (the demo, 20 Oct).
+const bp = execFileSync('python3', ['-c', `
+import importlib.util, json, tempfile, sys
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+sys.modules['devapp'] = m
+spec = importlib.util.spec_from_file_location('devactions', ${
+  JSON.stringify(new globalThis.URL('../devactions.py', import.meta.url).pathname)})
+a = importlib.util.module_from_spec(spec); spec.loader.exec_module(a)
+m.configure(workspace='/tmp', state=tempfile.mkdtemp(), write_json=lambda p, o: None)
+m.missing_env = lambda *a, **k: []
+m._load = lambda: {'alpha': {'main': {}}}
+m._build_env = lambda *a, **k: {'BB_BUILD_REV': 'abc', 'BB_BUILD_TAG': '1.0.0-dev.1-abc'}
+m._dev_data_env = lambda *a, **k: {}
+print(json.dumps([[s['name'], 'BB_BUILD_REV' in (s.get('env') or {})] for s in a._plan('alpha', 'main', 'rebuild')]))
+`], { encoding: 'utf8' });
+const BP = JSON.parse(bp.trim().split('\n').pop());
+ok(BP.length === 4 && BP.every(([, has]) => has),
+   `every step of a rebuild on a node has the build's variables, the pull among them (${JSON.stringify(BP)})`);
+
 // The tail is a display, not a transcript. Compose with no terminal writes a
 // new line per progress tick instead of rewriting one, so a single layer of a
 // single image arrives as dozens of near-identical lines, enough to push
