@@ -49,6 +49,40 @@ ok(await page.evaluate(() => railGroups().some(g => g.key === 'build' && g.tools
    'the rail opens a Phone page, its Node picker listing the node that carries adb');
 ok(!(await page.$('details.sect[data-sect="nodes:phone"]')),
    '...and the Nodes page carries no Phone section of its own');
+// B114: a dead Connect or Pair says why under its row, in red, and the
+// reason follows what is typed; it was a tooltip, which a phone never shows.
+{
+  await page.evaluate(() => { phIp = ''; phConnPort = ''; phPort = ''; phCode = ''; phRev++; drawPanes(); });
+  await page.waitForSelector('.doc.on [data-phwhy="connect"]:not([hidden])', { timeout: 10000 });
+  const why = () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.doc.on [data-phwhy]')]
+    .map(e => [e.dataset.phwhy, e.hidden ? '' : e.textContent])));
+  const before = await why();
+  const dead = await page.evaluate(() => [$('phConnect').disabled, $('phPair').disabled]);
+  await page.fill('.doc.on #phIp', '192.168.9.9');
+  await page.fill('.doc.on #phConnPort', '5555');
+  const after = await why();
+  ok(dead.every(Boolean) && /Connect needs the phone's IP address and its port/.test(before.connect)
+     && /Pair needs .*pairing code/.test(before.pair)
+     && after.connect === '' && /Pair needs the pairing port and the pairing code/.test(after.pair)
+     && await page.$eval('.doc.on [data-phwhy="connect"]', e => e.classList.contains('bad')),
+     `Connect and Pair say under their rows what they still need, and the line goes as it is typed (${JSON.stringify({ before, after })})`);
+  await page.evaluate(() => { phIp = ''; phConnPort = ''; phRev++; drawPanes(); });
+}
+// ...and a link to a page this account's grants keep it from is its words,
+// not an address that lands on another page of the group.
+{
+  const link = await page.evaluate(() => {
+    const was = state.areas;
+    state.areas = { ...(was || {}), toolchains: '' };
+    const off = pageLink('toolchains', 'Toolchains page');
+    state.areas = { ...(was || {}), toolchains: 'write' };
+    const on = pageLink('toolchains', 'Toolchains page');
+    state.areas = was;
+    return { off, on };
+  });
+  ok(link.off === 'Toolchains page' && /href="#\/build\/toolchains"/.test(link.on),
+     `a page link is a link only where the account may open the page (${JSON.stringify(link)})`);
+}
 
 // ---- what the server refuses ----------------------------------------------
 for (const [what, body] of [

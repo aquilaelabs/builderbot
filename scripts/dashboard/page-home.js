@@ -100,9 +100,10 @@ function homeTiles(){
 function homeHref(key){
   const c = (state?.ci_red || [])[0];
   // The jobs tile says what failed today when anything did, and opens the
-  // Jobs page narrowed to the failed ones (B74).
+  // Jobs page narrowed to those, the number pressed the number listed (B74,
+  // B113: it opened on every failed job, yesterday's too).
   const failed = homeData?.jobs?.failed_today;
-  return {nodes: "#/machines/nodes", containers: "#/containers", jobs: failed ? "#/jobs/failed" : "#/jobs",
+  return {nodes: "#/machines/nodes", containers: "#/containers", jobs: failed ? "#/jobs/failed-today" : "#/jobs",
           // The updates due are toolchains, images, nginx and agents on every
           // node, which one node's Toolchains page never held: they are listed
           // on Home's own Attention card, so the tile brings that into view (B73).

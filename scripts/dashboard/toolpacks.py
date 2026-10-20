@@ -119,7 +119,10 @@ def validate(m, shipped=()):
            "about": str(m.get("about") or "")[:400]}
     plats = m.get("platforms") or []
     if not isinstance(plats, list) or not plats or not all(isinstance(p, str) and PLATFORM.fullmatch(p) for p in plats):
-        errors.append("platforms lists where it works, e.g. [\"linux/amd64\", \"linux/arm64\"]")
+        # The wildcard named too, in the form the rule takes (B111): a bare
+        # "*" is refused, since a platform is matched as os/arch on a node.
+        errors.append("platforms lists where it works as os/arch, e.g. [\"linux/amd64\", \"linux/arm64\"], "
+                      "or linux/* or darwin/* for any architecture of that system")
     out["platforms"] = [p for p in plats if isinstance(p, str)] if isinstance(plats, list) else []
     terms = m.get("terms") or []
     if not isinstance(terms, list) or not all(isinstance(t, dict) and t.get("label") for t in terms):

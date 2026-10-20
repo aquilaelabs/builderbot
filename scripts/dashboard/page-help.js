@@ -47,6 +47,15 @@ function helpNames(){
   return helpIndex ? [helpIndex.home, ...helpIndex.groups.flatMap(g => g.docs.map(d => d.name))] : [];
 }
 
+// Each doc's title by its name, from a listing: what a link that names a
+// doc by its file name reads as (B110).
+function helpTitles(index){
+  if (!index) return {};
+  const t = {[index.home]: index.title};
+  for (const g of index.groups || []) for (const d of g.docs || []) t[d.name] = d.title;
+  return t;
+}
+
 // To a doc, at a section of it when one is named; a navigation, so the
 // address is pushed and Back comes back here.
 function helpGo(name, anchor = ""){
@@ -84,7 +93,7 @@ function helpArticle(){
   // the docs (../CONTRIBUTING.md, a script in the tree) has nothing here to
   // open, so it is its words, not its Markdown.
   const text = wikiUntitled(doc.text).replace(/\[([^\]]*)\]\((?!https?:)([^)#]*\/[^)]*)\)/g, "$1");
-  return wikiArticle({name: doc.name, title: doc.title, body: `${wikiContents(text)}<div class="wkpage">${wikiMarkdown(text)}</div>`,
+  return wikiArticle({name: doc.name, title: doc.title, body: `${wikiContents(text)}<div class="wkpage">${wikiMarkdown(text, helpTitles(helpIndex))}</div>`,
     meta: `${meta?.blurb ? `${esc(meta.blurb)} · ` : ""}<span class="mono">docs/${esc(doc.name)}.md</span>`});
 }
 

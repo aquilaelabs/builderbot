@@ -962,7 +962,23 @@ ok(true, '...and so does a click on the page under it');
   });
   ok(guide.heads.join('|') === guide.docHeads.join('|') && !guide.plainAdmin && guide.plainLast,
      `About's guide is docs/start-here.md, section for section, and a plain account's leaves out As an administrator only (${guide.heads.join(', ')})`);
+  // B110: a link to a doc reads as its title, not its file name; a heading
+  // starts where the text under it starts; and the guide has the box, with
+  // the build lines on the changelog's page rather than under it.
+  const look = await page.evaluate(() => {
+    const g = $('abGuide'), h = g.querySelector('h3'), p = h.nextElementSibling;
+    const box = document.querySelector('#aboutModal > .box').getBoundingClientRect();
+    return { links: [...g.querySelectorAll('a.wklink')].map(a => a.textContent),
+             indent: Math.round(h.getBoundingClientRect().left - p.getBoundingClientRect().left),
+             caps: getComputedStyle(h).textTransform,
+             share: Math.round(100 * g.getBoundingClientRect().height / box.height),
+             build: !$('abBuild').hidden };
+  });
+  ok(look.links.length && look.links.every(t => !/\.md$/.test(t)) && look.links.includes('How BuilderBot works')
+     && look.indent === 0 && look.caps === 'none' && look.share >= 65 && !look.build,
+     `the guide's links read as the docs' titles, its headings sit flush with their text, and it fills the box (${JSON.stringify(look)})`);
   await page.click('.abswitch [data-ab="log"]');
+  ok(await page.$eval('#abBuild', e => !e.hidden), '...and the build lines are under the changelog');
   // Whatever the top section is: Unreleased while entries are accumulating,
   // a dated number the moment somebody bumps. Asserted on the SHAPE (a
   // heading and at least one line under it) rather than on the wording of

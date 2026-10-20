@@ -1016,7 +1016,17 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .about>*{flex:none}
 .about>.abpage{flex:0 1 auto;min-height:0}
 .abpage{overflow:auto;padding-right:4px}
-.abpage :is(h2,h3,h4){margin:12px 0 4px;font:var(--f-ui);font-weight:600}
+/* A guide's heading is the text's, not the dialog's: .modal h3 (the title
+   band's inset, rule and capitals) reached into it and set every heading
+   in from the paragraph under it (B110). */
+.about .abpage :is(h2,h3,h4){margin:12px 0 4px;padding:0;border:0;font:var(--f-ui);font-weight:600;
+  text-transform:none;letter-spacing:normal;position:static;background:none}
+/* The guide is read, so it has the box: the box stands at its full height
+   and the page takes everything the title, the switch and the foot leave;
+   the build lines are the changelog's (what is running is what changed),
+   so they are not under the guide halving it (B110). */
+#aboutModal .box.prose{height:90vh}
+.modal .box.prose>.about,.about>.abpage{flex:1 1 auto}
 .abpage p,.abpage li{font:var(--f-ui);color:var(--ink);line-height:1.5}
 .abpage ul{margin:4px 0 8px 18px;padding:0}
 .abpage .dim{color:var(--dim)}
@@ -3478,7 +3488,10 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .tbl .thead,.tbl .tline{display:grid;grid-template-columns:var(--tcols);column-gap:var(--row-x);align-items:center;min-width:0}
 .tbl .thead{padding:var(--label-gap) var(--row-x);font:var(--f-note);color:var(--dim);border-bottom:var(--hair) solid var(--line)}
 .tbl .th,.tbl .td{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tbl .td.lead{white-space:normal;overflow-wrap:anywhere;font-weight:600}
+/* A lead cell wraps between words and breaks one only when it is longer
+   than its column: anywhere cut 'nginx-bb-dev-sandbox' mid-word in a column
+   that had room for it on the next line (B112). */
+.tbl .td.lead{white-space:normal;overflow-wrap:break-word;font-weight:600}
 .tbl .th.num,.tbl .td.num{text-align:right;font-variant-numeric:tabular-nums}
 .tbl .td{font:var(--f-data);color:var(--dim)}
 .tbl .td.lead{font:var(--f-ui);font-weight:600;color:var(--ink)}
@@ -5454,15 +5467,17 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       </div>
       <div class="abpage" id="abGuide" hidden></div>
       <div class="abpage ablog" id="abLog" hidden></div>
-      <div class="aline"><span>version</span><code id="aVer"></code></div>
-      <div class="aline"><span>image commit</span><code id="aRev"></code></div>
-      <div class="aline"><span>built</span><code id="aBuilt"></code></div>
-      <div class="aline"><span>host</span><code id="aHost"></code></div>
-      <div class="aline"><span>up</span><code id="aUp"></code></div>
-      <p class="hint">The build this BuilderBot is running. An update moves it
-        to the newest one.</p>
-      <p class="hint">BuilderBot is licensed under the
-        <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">Apache License 2.0</a>.</p>
+      <div id="abBuild" hidden>
+        <div class="aline"><span>version</span><code id="aVer"></code></div>
+        <div class="aline"><span>image commit</span><code id="aRev"></code></div>
+        <div class="aline"><span>built</span><code id="aBuilt"></code></div>
+        <div class="aline"><span>host</span><code id="aHost"></code></div>
+        <div class="aline"><span>up</span><code id="aUp"></code></div>
+        <p class="hint">The build this BuilderBot is running. An update moves it
+          to the newest one.</p>
+        <p class="hint">BuilderBot is licensed under the
+          <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">Apache License 2.0</a>.</p>
+      </div>
     </div>
     <div class="foot"><span class="sp"></span>
       <button type="button" id="aboutClose">Close</button>

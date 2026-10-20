@@ -68,6 +68,8 @@ class Home(unittest.TestCase):
         got, code = home.read(rows, {}, False)
         self.assertEqual(code, 200)
         self.assertEqual((got["jobs"]["running"], got["jobs"]["failed_today"]), (1, 1))
+        # B113: where today began, so the Jobs page lists what was counted.
+        self.assertTrue(now - 86400 < got["jobs"]["today"] <= now)
         self.assertEqual(len(got["jobs"]["last"]), 10)
         self.assertIsNone(got["nodes"], "an account that does not count the machines is told nothing of them")
 
