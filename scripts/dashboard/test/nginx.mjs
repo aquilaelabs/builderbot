@@ -27,7 +27,7 @@ const api = async (path, body) => (await fetch(base + path, body === undefined
 
 // A tab of its own under Containers on the rail, beside the containers
 // (the operator, 18 Oct), for an account that reads the Nodes tab.
-ok(await page.evaluate(() => railGroups().some(g => g.key === 'containers' && g.tools.map(([k]) => k).join() === 'docker,nginx')
+ok(await page.evaluate(() => railGroups().some(g => g.key === 'containers' && g.tools.map(([k]) => k).join() === 'docker,vms,nginx')
                               && !railGroups().some(g => g.key === 'machines' && g.tools.some(([k]) => k === 'nginx')) && railAllows('nginx')),
    'the rail offers nginx under Containers, beside the containers, and not under Machines');
 await page.evaluate(() => openNginxTab());

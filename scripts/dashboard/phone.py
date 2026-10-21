@@ -1190,8 +1190,9 @@ def ask_vm(why, project, req, asker_name=""):
         return {"error": "say what the VM is for: the administrator is answering a question you are asking them"}
     action = str(req.get("action") or "")
     name = str(req.get("name") or "")
-    shown = (["vm", "new", name, "--os", str(req.get("os") or ""), "--vcpus", str(req.get("vcpus") or ""),
-              "--mem", str(req.get("mem_mb") or ""), "--disk", str(req.get("disk_gb") or "")]
+    flags = [(f, str(req.get(k))) for f, k in (("--os", "os"), ("--vcpus", "vcpus"), ("--mem-mb", "mem_mb"),
+                                                 ("--disk-gb", "disk_gb")) if req.get(k) not in (None, "")]
+    shown = (["vm", "new", name] + [x for pair in flags for x in pair]
              if action == "new" else ["vm", action, name] + ([str(req.get("snapshot"))] if req.get("snapshot") else []))
     keep = {k: req.get(k) for k in ("action", "name", "os", "vcpus", "mem_mb", "disk_gb", "keys", "user", "node",
                                      "snapshot", "note", "force", "node_agent", "ctl") if req.get(k) not in (None, "")}
