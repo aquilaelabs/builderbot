@@ -30,13 +30,13 @@ def run():
 
     # A file under /tmp: on a sandbox node a session's /tmp is its own view
     # (bb-session), and the root command runs outside it, so the file is not
-    # there and the command failed with a bare exit code (B253). Said before
-    # the ask, since the person allowing it cannot see it either.
+    # there and the command failed with a bare exit code (B253). Refused
+    # before the ask, since an approval spent on it could only fail (B159).
     for a in sys.argv[2:]:
         if a.startswith(("/tmp/", "/var/tmp/", "/dev/shm/")) and os.path.exists(a):
-            print(f"[builderbot] note: {a} is under a directory that is this session's own view on a "
-                  "sandbox node; the root command runs outside it and will not find the file there. "
-                  "A path under the project tree is seen by both.", file=sys.stderr)
+            sys.exit(f"[builderbot] ERROR: {a} is under a directory that is this session's own view; "
+                     "the root command runs outside it and would not find the file there, so nobody was "
+                     "asked. A path under the project tree is seen by both.")
     r = post({"action": "ask", "kind": "root", "why": os.environ["BB_PHONE_WHY"], "cmd": sys.argv[2:],
               "project": os.environ.get("BB_PHONE_PROJECT", ""),
               # A node the project hosts containers on, when named (--node).
