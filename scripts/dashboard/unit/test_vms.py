@@ -180,10 +180,14 @@ class Controller(unittest.TestCase):
         before = vms.rev()
         a = vms.present("web/db", "screen", "Ada")
         b = vms.present("web/db", "screen", "Ben")
-        c = vms.present("web/db", "console", "Ada")
+        c = vms.present("web/db", "console", "Ada", "u_ada")
         self.assertNotEqual(vms.rev(), before, "the page re-reads when somebody comes or goes")
         row = [v for v in vms.view() if v["name"] == "db"][0]
         self.assertEqual(row["on"], {"screen": ["Ada", "Ben"], "console": ["Ada"]})
+        self.assertEqual(vms.holders("web/db", "console", but="u_ada"), [])
+        self.assertFalse(vms.may_take("u_ben", "web/db"))
+        vms.take("u_ben", "web/db")
+        self.assertTrue(vms.may_take("u_ben", "web/db"), "a take-over is good for its minute")
         for t in (a, b, c):
             vms.gone(t)
         self.assertEqual([v for v in vms.view() if v["name"] == "db"][0]["on"], {})

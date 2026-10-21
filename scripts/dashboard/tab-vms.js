@@ -169,10 +169,18 @@ function wireVms(el){
   el.querySelectorAll("[data-vm-key]").forEach(row => {
     const v = (vmsData?.vms || []).find(x => x.key === row.dataset.vmKey);
     if (!v) return;
-    row.querySelectorAll("[data-vmcon]").forEach(b => b.onclick = () => {
-      // One at a time: opening it takes it from whoever has it.
+    row.querySelectorAll("[data-vmcon]").forEach(b => b.onclick = async () => {
+      // One person's at a time (the operator, 21 Oct): somebody else's is
+      // refused, but for the project's owner and the administrators, who
+      // may take it over, asked first, and the person is told.
       const held = (v.on?.console || []).filter(w => w !== (state?.me?.name || ""));
-      if (held.length && !confirm(`${andList(held)} ${held.length > 1 ? "have" : "has"} ${v.name}'s Console open.\n\nA console is one person's at a time: opening yours takes it from them. Its Screen can be shared instead.`)) return;
+      if (held.length){
+        if (!vmsData?.take?.[v.project])
+          return notify(`${andList(held)} ${held.length > 1 ? "have" : "has"} ${v.name}'s Console open: it is one person's at a time. Its Screen can be shared, or ask them.`, true);
+        if (!confirm(`Take ${v.name}'s Console from ${andList(held)}?\n\nA console is one person's at a time: theirs ends, and they are told you took it. Its Screen can be shared instead.`)) return;
+        const j = await (await postJSON("/api/vms", {action: "console-take", project: v.project, name: v.name})).json();
+        if (j.error) return notify(j.error, true);
+      }
       openTab({kind: "term", arg: `vm:${v.project}:${v.name}`, label: `console ${v.name}`});
     });
     row.querySelectorAll("[data-vmscreen]").forEach(b => b.onclick = () =>

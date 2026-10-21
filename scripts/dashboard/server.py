@@ -5241,7 +5241,8 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True
         down = self.connection
         # On its row while it lasts: who else has the Screen (the operator, 21 Oct).
-        here = vms.present(f"{project}/{name}", "screen", (self._who() or {}).get("name") or self._principal())
+        here = vms.present(f"{project}/{name}", "screen", (self._who() or {}).get("name") or self._principal(),
+                           users.uid_of(self._who() or {}) or "")
         try:
             up.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
             self.wfile.flush()
@@ -5309,6 +5310,16 @@ class Handler(BaseHTTPRequestHandler):
                            uid=users.uid_of(self._who() or {}) or "")
         if target["where"] == "refused":
             return self._term_notice(target["why"], 503)
+        # A VM's Console is one person's at a time (the operator, 21 Oct):
+        # anybody else is refused while it is held, unless the project's
+        # owner or an administrator took it over a moment ago.
+        if vmm:
+            vkey, my_uid = f"{vmm.group(1)}/{vmm.group(2)}", users.uid_of(self._who() or {}) or ""
+            held = vms.holders(vkey, "console", but=my_uid)
+            if held and not vms.may_take(my_uid, vkey):
+                return self._term_notice(f"{', '.join(w for _, w in held)} has {vmm.group(2)}'s Console open, and it is "
+                                         "one person's at a time. Its Screen can be shared, or ask them; the "
+                                         "project's owner or an administrator can take it over.", 409)
         # A terminal on the controller itself, switched off for this install
         # (R81): what a node runs is the node's, and stays.
         if target["where"] != "node" and (why := featuresoff.sentences().get("shell")):
@@ -5381,7 +5392,8 @@ class Handler(BaseHTTPRequestHandler):
             # next person to open it is warned (the operator, 21 Oct).
             if vmm and ws:
                 console_on = vms.present(f"{vmm.group(1)}/{vmm.group(2)}", "console",
-                                         (self._who() or {}).get("name") or self._principal())
+                                         (self._who() or {}).get("name") or self._principal(),
+                                         users.uid_of(self._who() or {}) or "")
             # Maintenance mode switched on while this terminal is open ends it
             # for anybody but the owner: the sign-in was checked when it
             # connected, and a relay runs until a side hangs up.
@@ -6177,7 +6189,12 @@ class Handler(BaseHTTPRequestHandler):
         # Which of them it may change, for the page's buttons: the server
         # refuses the rest whatever is pressed.
         can = {p: "write" if sess or roles.level_of(me, "vms", p) == "write" else "read" for p in seen}
-        return self._json(vms.payload(seen) | {"can": can})
+        # ...and on which it may take a Console from whoever has it: the
+        # project's owner's and the administrators' (the operator, 21 Oct).
+        uid = users.uid_of(me) or ""
+        take = {p: not sess and can[p] == "write" and (users.is_admin(me) or (uid and membership.owner_of(p) == uid))
+                for p in seen}
+        return self._json(vms.payload(seen) | {"can": can, "take": take})
 
     def _vms(self, req):
         """POST /api/vms (R91): new, start, stop, restart, remove, snapshot,
@@ -6188,7 +6205,7 @@ class Handler(BaseHTTPRequestHandler):
         sess = me.get("session") or ""
         project = field(req, "project") or sess
         action = field(req, "action")
-        if action not in ("new", "iso-add", "iso-rm") + vms.ACTIONS:
+        if action not in ("new", "iso-add", "iso-rm", "console-take") + vms.ACTIONS:
             return self._json({"error": f"no such VM action: {action}"}, 400)
         # An installer's ISO onto a node, or off it (R99): a person's, since
         # what it fetches is a whole system to install by hand.
@@ -6224,7 +6241,26 @@ class Handler(BaseHTTPRequestHandler):
         why = self._not_on_list(me, project)
         if why:
             return self._json({"error": why}, 403)
+        if action == "console-take":
+            return self._console_take(me, project, field(req, "name"))
         return self._result(_vm_do(self._principal(), project, req, False))
+
+    def _console_take(self, me, project, name):
+        """A VM's Console taken from whoever has it, by the project's owner or
+        an administrator: a minute's grant the console proxy honors, and a
+        notice to each person it is taken from."""
+        uid = users.uid_of(me) or ""
+        if not (users.is_admin(me) or (uid and membership.owner_of(project) == uid)):
+            return self._json({"error": "taking a VM's Console from whoever has it is the project's owner's or an "
+                                        "administrator's; its Screen can be shared instead"}, 403)
+        key = f"{project}/{name}"
+        vms.take(uid, key)
+        by = me.get("name") or self._principal()
+        for huid, _ in vms.holders(key, "console", but=uid):
+            if huid:
+                notices.act(huid, {"action": "add", "level": "warn",
+                                   "text": f"{by} took {name}'s Console in {project} from you"})
+        return self._json({"ok": True})
 
     def _get_project_job(self):
         """GET /api/project-job."""

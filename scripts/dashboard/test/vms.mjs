@@ -169,6 +169,11 @@ const reaped = await page.evaluate(async () => {
   return !tabs.some(t => t.id === 'vmc-gone');
 });
 ok(reaped, 'a console tab whose VM is gone leaves the dock once the records are read');
+// A Console taken over: the owner's or an administrator's (the operator,
+// 21 Oct), said in the page's data as which projects it may happen on.
+const take = await call('/api/vms', { action: 'console-take', project: 'alpha', name: 'db' });
+ok(take.ok && (await call('/api/vms')).take?.alpha === true, `the owner may take a VM's Console over (${JSON.stringify(take)})`);
+
 // From an installer (R99): an ISO on the node is offered under From, and
 // picking it trades the key and the node box for the firmware.
 await agent('hello', { census: { ...CENSUS, vms: [], vm_isos: [{ name: 'ubuntu-26.04-live-server-amd64.iso', mb: 3100 }] },

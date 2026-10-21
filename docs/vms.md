@@ -111,7 +111,9 @@ A screen password set at New VM is asked for when it opens.
 A Screen is shared: several people can have it open at once, all on one
 keyboard and mouse. A Console is one person's at a time, and opening it
 takes it from whoever had it. The VM's row says who is on its Screen and who
-has its Console, and Console asks first when somebody else has it.
+has its Console. While somebody has the Console, anybody else is refused
+it; the project's owner and the administrators may take it over, asked
+first, and the person it is taken from is told who took it.
 
 ## From an installer
 

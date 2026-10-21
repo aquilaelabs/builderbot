@@ -170,17 +170,37 @@ def nets_on(nid):
 # memory while each websocket lasts, for the row's warning. A Screen is
 # shared (VNC, several people at once, one keyboard); a Console is one at a
 # time, a second taking it from the first.
-_on = {}                        # token -> (vm key, "screen"|"console", who)
+_on = {}                        # token -> (vm key, "screen"|"console", who, their uid)
 _on_lock = threading.Lock()
+# A Console taken over by the project's owner or an administrator: (uid,
+# vm key) -> until when the proxy lets them past whoever has it.
+_takes = {}
+TAKE_S = 60
 
 
-def present(key, kind, who):
+def present(key, kind, who, uid=""):
     """Someone opened a VM's Screen or Console: a token for gone()."""
     tok = object()
     with _on_lock:
-        _on[tok] = (key, kind, str(who or "somebody")[:60])
+        _on[tok] = (key, kind, str(who or "somebody")[:60], str(uid or ""))
     _rev[0] += 1
     return tok
+
+
+def holders(key, kind, but=""):
+    """[(uid, name)] with a VM's Screen or Console open, but `but`'s own."""
+    with _on_lock:
+        return sorted({(u, w) for v, k, w, u in _on.values() if v == key and k == kind and u != but})
+
+
+def take(uid, key):
+    """The owner's or an administrator's take-over of a Console, good for a
+    minute: the page opens the Console under it."""
+    _takes[(str(uid), key)] = time.time() + TAKE_S
+
+
+def may_take(uid, key):
+    return _takes.get((str(uid), key), 0) > time.time()
 
 
 def gone(tok):
@@ -192,7 +212,7 @@ def gone(tok):
 def on(key):
     """{"screen": [who...], "console": [who...]} for one VM, each once."""
     with _on_lock:
-        rows = [(k, w) for v, k, w in _on.values() if v == key]
+        rows = [(k, w) for v, k, w, _ in _on.values() if v == key]
     return {k: sorted({w for kk, w in rows if kk == k}) for k in ("screen", "console") if any(kk == k for kk, _ in rows)}
 
 
