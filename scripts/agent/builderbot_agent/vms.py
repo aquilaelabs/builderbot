@@ -777,7 +777,15 @@ class VmsMixin:
         raw = m.group(2).strip()
         new = os.path.join(VM_DIR, "disks", name + "_VARS.qcow2")
         if self._vm_run(job, ["qemu-img", "convert", "-f", "raw", "-O", "qcow2", raw, new], who, say=False) != 0:
-            return False
+            # libvirt hands the raw file to its own account, which the jobs
+            # account cannot read: fresh variables from the firmware's own
+            # template then, which a cloud image boots from as before
+            # (its disk's fallback loader) and an installed system may want
+            # its boot entry set again in the firmware's menu.
+            fw = ovmf()
+            if not fw or self._vm_run(job, ["qemu-img", "convert", "-f", "raw", "-O", "qcow2", fw[1], new], who) != 0:
+                return False
+            job.say("its UEFI settings start fresh from the firmware's defaults: the old file was libvirt's to read\n")
         fixed = xml.replace(m.group(0), f"<nvram format='qcow2'>{escape(new)}</nvram>")
         path = os.path.join(VM_DIR, "disks", name + ".xml")
         with open(path, "w") as f:

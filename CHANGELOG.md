@@ -5,6 +5,7 @@
 ### Fixed
 
 - A snapshot of a VM that boots by UEFI (Debian 13, an installer VM set to UEFI) works, where it failed; one made in 0.6.0 takes its first snapshot once it has been stopped (587f511)
+- An empty Containers or VMs page's tour shows an example row on a phone as well, where its step ringed the empty notice (c349a34)
 
 ## 0.6.0: 2026-10-21
 
