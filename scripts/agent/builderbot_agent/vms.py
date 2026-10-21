@@ -494,6 +494,12 @@ class VmsMixin:
         if enroll and not lan:
             job.say("refused: this machine has no default route to put a node VM on the LAN by\n")
             return "failed", 69
+        # Wi-Fi carries one machine's address, not a guest's beside it: a node
+        # VM on it would never get one.
+        if lan and os.path.isdir(f"/sys/class/net/{lan}/wireless"):
+            job.say(f"refused: {lan} is Wi-Fi, which will not carry a second machine's address; a node VM needs "
+                    "this machine on a wired network (Ethernet, a bond or a bridge)\n")
+            return "failed", 69
         if not lan and not self._vm_network(job, spec, who):
             return "failed", 69
         ddir = os.path.join(VM_DIR, "disks")
