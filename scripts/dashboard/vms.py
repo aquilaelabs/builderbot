@@ -8,7 +8,7 @@ doing now (running, its address, its snapshots) is the node's census, laid
 over the record when the page or a session reads it, so nothing here polls.
 
 The OS is picked from config/vm-images.json by a name a person or a session
-says ("debian", "ubuntu 24.04", "rocky-10"); one with a licence to accept is
+says ("debian", "ubuntu 24.04", "rocky-10"); one with a license to accept is
 a person's to make, never a session's. Each project has a network of its own
 on each node, a /24 out of VM_NET, given once and kept.
 """
@@ -43,12 +43,27 @@ node_list = None
 job_add = None
 audit = None
 prefs_get = None
+nodes_rev = None
 _lock = threading.Lock()
+_rev = [0]
+_seen = {"nodes": None, "sig": 0}
 
 
-def configure(*, state, write_json, node, node_list, job_add, audit, prefs_get):
+def configure(*, state, write_json, node, node_list, job_add, audit, prefs_get, nodes_rev=lambda: 0):
     globals().update(STATE=Path(state), write_json=write_json, node=node, node_list=node_list,
-                     job_add=job_add, audit=audit, prefs_get=prefs_get)
+                     job_add=job_add, audit=audit, prefs_get=prefs_get, nodes_rev=nodes_rev)
+
+
+def rev():
+    """Moves when a record is written or a node's census says something new
+    of its VMs: read again only when the nodes' own revision has moved, so
+    the poll that carries this costs nothing between hellos."""
+    nr = nodes_rev()
+    if nr != _seen["nodes"]:
+        _seen["nodes"] = nr
+        _seen["sig"] = hash(json.dumps([(n["id"], (n.get("reported") or {}).get("vms")) for n in node_list()],
+                                       sort_keys=True, default=str))
+    return f"{_rev[0]}.{_seen['sig'] & 0xffffff:x}"
 
 
 def _file():
@@ -67,6 +82,7 @@ def _load():
 
 def _save(d):
     write_json(_file(), d)
+    _rev[0] += 1
 
 
 def catalog():

@@ -117,6 +117,12 @@ const DRIVERS = {
     open: () => page.evaluate(() => openNginxTab()),
     readyWhen: '.nginxtab [data-ngnode], .nginxtab .empty',
   },
+  vms: {
+    // A card per project with VMs, or the empty band where there is none
+    // or no node has VM host (R91).
+    open: () => page.evaluate(() => openVmsTab()),
+    readyWhen: '.vmtab [data-vm-key], .vmtab .empty',
+  },
   users: {
     // There is always at least one row: the owner, seeded on the first boot,
     // which cannot be deleted and so cannot be absent.

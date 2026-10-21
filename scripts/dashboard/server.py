@@ -3466,7 +3466,7 @@ imagecheck.configure(state=STATE, write_json=write_json, devapp_module=devapp)
 import vms                                                       # noqa: E402
 
 vms.configure(state=STATE, write_json=write_json, node=nodes.node, node_list=nodes.node_list,
-              job_add=nodes.job_add, audit=db.audit, prefs_get=prefs.get)
+              job_add=nodes.job_add, audit=db.audit, prefs_get=prefs.get, nodes_rev=nodes.rev)
 nodes.on_done("vm", vms.vm_done)
 phone.vm_runner = lambda project, req, by: _vm_do(f"session:{project} (allowed by {by})", project, req, True)
 
@@ -4063,6 +4063,8 @@ def revisions(who=None, projects=None):
         # The nginx tab's record and hostnames (B714): a route written from
         # a Docker row, bb or another browser.
         "nginx": nginxproxy.rev(),
+        # The VMs page (R91): a record written, or a node's census of them.
+        "vms": vms.rev(),
         "jobs": 0 if NODES_OK else nodes.jobs_rev(),
         # Who has a session where, and whether it is working: the project
         # rows fetch /api/live when this moves.
@@ -4313,7 +4315,7 @@ def _snapshot(who):
         "emulator": {"ready": False, "why": "the node store did not open"} if NODES_OK
                     else emulator.ready(),
         "can": {name: not users.may(who, name) for name in
-                ("terminal", "docker-write", "toolchains-write", "git-auth", "admin",
+                ("terminal", "docker-write", "vms-write", "toolchains-write", "git-auth", "admin",
                  # The CI runner tab, a job run and a project's node, by
                  # grant (R137 step 3): the Tools card hides CI runner on it.
                  "runner", "jobs", "node",
@@ -6005,7 +6007,10 @@ class Handler(BaseHTTPRequestHandler):
             seen = {sess}
         else:
             seen = {p for p in project_names(me) if roles.level_of(me, "vms", p)}
-        return self._json(vms.payload(seen))
+        # Which of them it may change, for the page's buttons: the server
+        # refuses the rest whatever is pressed.
+        can = {p: "write" if sess or roles.level_of(me, "vms", p) == "write" else "read" for p in seen}
+        return self._json(vms.payload(seen) | {"can": can})
 
     def _vms(self, req):
         """POST /api/vms (R91): new, start, stop, restart, remove, snapshot,

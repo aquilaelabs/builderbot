@@ -1,5 +1,5 @@
 {
-  "about": "The operating systems a VM is made from (R91 step 9): each a publisher's cloud image, fetched once per node and checked against the checksum file the publisher posts beside it, with cloud-init making one account with the keys given. An entry marked person is one with a licence to accept or a key to enter: a session never makes it, and the page's New dialog says it is a person's to make on a VM of their own.",
+  "about": "The operating systems a VM is made from (R91 step 9): each a publisher's cloud image, fetched once per node and checked against the checksum file the publisher posts beside it, with cloud-init making one account with the keys given. An entry marked person is one with a license to accept or a key to enter: a session never makes it, and the page's New dialog says it is a person's to make on a VM of their own.",
   "images": [
     {"id": "ubuntu-26.04", "name": "Ubuntu 26.04 LTS", "family": "ubuntu", "aliases": ["ubuntu", "ubuntu-lts", "resolute"],
      "arch": {"x86_64": {"url": "https://cloud-images.ubuntu.com/releases/resolute/release/ubuntu-26.04-server-cloudimg-amd64.img",
@@ -36,8 +36,8 @@
      "arch": {"x86_64": {"url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/cloud/generic_alpine-3.24.1-x86_64-bios-cloudinit-r0.qcow2",
                          "sums": "https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/cloud/generic_alpine-3.24.1-x86_64-bios-cloudinit-r0.qcow2.sha512"}}},
     {"id": "windows-11", "name": "Windows 11", "family": "windows", "aliases": ["windows", "win11"], "person": true,
-     "why": "Windows has a licence to accept and a product key to enter, which are a person's to do, never a session's"},
+     "why": "Windows has a license to accept and a product key to enter, which are a person's to do, never a session's"},
     {"id": "macos", "name": "macOS", "family": "macos", "aliases": ["mac", "osx"], "person": true,
-     "why": "macOS is licensed to run only on Apple hardware, and its installer has a licence to accept: not a VM BuilderBot makes"}
+     "why": "macOS is licensed to run only on Apple hardware, and its installer has a license to accept: not a VM BuilderBot makes"}
   ]
 }
