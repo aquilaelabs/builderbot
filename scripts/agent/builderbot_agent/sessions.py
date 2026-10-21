@@ -261,7 +261,7 @@ class SessionsMixin:
         self.session_bound = bind
         logf = os.path.join((self.state.get("stores") or {}).get("data") or "/tmp", "ttyd.log")
         base = [TTYD_BIN, "--interface", bind, "--url-arg", "--max-clients", "16",
-                "-t", "reconnect=5"]
+                "-t", "reconnect=5", "-t", "disableLeaveAlert=true"]
         self.session_stale = ""
         try:
             out = open(logf, "ab")

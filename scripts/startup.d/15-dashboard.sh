@@ -130,7 +130,9 @@ log "dashboard: http://<host>:${PORT}  (terminals proxied at /term; ttyd binds 1
 # it heals a desktop blip on its own. It does NOT cover a phone, whose browser
 # freezes the page's timers while it is backgrounded so the reconnect never
 # fires; the dashboard reloads the terminal iframe on return for that
-# (reattaching tmux, losslessly).
+# (reattaching tmux, losslessly). `disableLeaveAlert` keeps ttyd's client from
+# asking whether to leave the page on that reload, or on any other: a
+# session lives in tmux, so leaving loses nothing (B189).
 #
 # Loopback only, and no --credential: the browser reaches terminals through
 # the dashboard's /term proxy on the dashboard's own port, which enforces the
@@ -144,7 +146,7 @@ listening "$TTYD_PORT" || \
 nohup ttyd --port "$TTYD_PORT" --interface 127.0.0.1 \
         --url-arg --writable \
         --max-clients 16 \
-        -t reconnect=5 \
+        -t reconnect=5 -t disableLeaveAlert=true \
         "$DASH/bb-tty" \
     >> "$(bb_log_dir)/ttyd.log" 2>&1 &
 
@@ -157,7 +159,7 @@ listening "$TTYD_RO_PORT" || \
 nohup ttyd --port "$TTYD_RO_PORT" --interface 127.0.0.1 \
         --url-arg \
         --max-clients 16 \
-        -t reconnect=5 \
+        -t reconnect=5 -t disableLeaveAlert=true \
         "$DASH/bb-tty" \
     >> "$(bb_log_dir)/ttyd.log" 2>&1 &
 
