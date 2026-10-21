@@ -280,6 +280,17 @@ class ConfigPlaneMixin:
         copy and gets none."""
         if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN):
             return
+        # The bundle fetched first (B163): nothing else in a system job does,
+        # so root's copy was whatever some other job or a session had last
+        # pulled, and a job pressed right after a controller update ran the
+        # helper from before it. A fetch of an unchanged bundle is one
+        # download checked by digest.
+        if tc_root(self.state):
+            try:
+                who = self.as_user({}, self.state.get("user") or "")
+            except RuntimeError:
+                who = {}
+            self.bundle(job, who)
         # From root's own copy, never the store's: the store is the job
         # account's to write.
         src = os.path.join(TOOLS_DIR, "current", "nodes", "provision-linux.sh")

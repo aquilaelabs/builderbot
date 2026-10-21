@@ -114,5 +114,27 @@ class Agent(unittest.TestCase):
         self.assertEqual(ran, [["feature", "remove", "vmhost"]])
 
 
+class HelperFresh(unittest.TestCase):
+    """B163: a system job fetches the bundle before it compares bb-sandbox
+    with the bundle's copy, so a job pressed right after a controller update
+    does not run the helper from before it."""
+    def test_the_bundle_is_fetched_first(self):
+        import agentpkg
+        agent = agentpkg.load("builderbot_agent_fresh")
+        cp = sys.modules[agent.Agent.__module__.rsplit(".", 1)[0] + ".configplane"]
+        a = object.__new__(agent.Agent)
+        a.state = {"user": "bb", "stores": {"toolchains": "/nowhere"}}
+        fetched = []
+        a.bundle = lambda job, who: fetched.append(who) or ""
+        a.as_user = lambda env, user: {"user": user}
+        was = (cp.os.geteuid, cp.os.path.isfile, cp.tc_root)
+        cp.os.geteuid, cp.os.path.isfile, cp.tc_root = (lambda: 0), (lambda p: p == cp.SANDBOX_BIN), (lambda st: "/nowhere")
+        try:
+            a.refresh_sandbox_tool(None)
+        finally:
+            cp.os.geteuid, cp.os.path.isfile, cp.tc_root = was
+        self.assertEqual(fetched, [{"user": "bb"}])
+
+
 if __name__ == "__main__":
     unittest.main()
