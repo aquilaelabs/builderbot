@@ -2008,10 +2008,11 @@ def node_runner(principal, node_id, slot, want, labels=None, token=False):
 
 def tunnel_addr(n):
     """A node's address in the tunnel it reaches the controller through,
-    '' for one on the LAN: what it reports, else what its enroll script was
-    made with (R161)."""
-    t = ((n.get("reported") or {}).get("tunnel") or {}).get("addr") \
-        or ((n.get("config") or {}).get("tunnel") or {}).get("addr") or ""
+    '' for one on the LAN: what its enroll script was made with (R161).
+    Never what the node reports: every address here is refused all but the
+    agent's API, and a node that named loopback would lock out every bb
+    call (R92)."""
+    t = ((n.get("config") or {}).get("tunnel") or {}).get("addr") or ""
     return t if re.fullmatch(r"[0-9.]{7,15}", t) else ""
 
 

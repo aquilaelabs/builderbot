@@ -290,12 +290,14 @@ class TunnelGate(unittest.TestCase):
     def test_any_other_address_is_not_this_gate_s(self):
         self.assertEqual(nodes.tunnel_refuses("192.168.1.20", "/api/status"), "")
 
-    def test_the_address_comes_from_the_report_or_the_script(self):
+    def test_the_address_comes_from_the_script_never_the_report(self):
         self.assertEqual(nodes.tunnel_addr({"config": {"tunnel": {"addr": "10.6.0.5"}}}), "10.6.0.5")
-        self.assertEqual(nodes.tunnel_addr({"reported": {"tunnel": {"addr": "10.6.0.9"}},
-                                            "config": {"tunnel": {"addr": "10.6.0.5"}}}), "10.6.0.9")
+        self.assertEqual(nodes.tunnel_addr({"reported": {"tunnel": {"addr": "127.0.0.1"}},
+                                            "config": {"tunnel": {"addr": "10.6.0.5"}}}), "10.6.0.5")
+        self.assertEqual(nodes.tunnel_addr({"reported": {"tunnel": {"addr": "127.0.0.1"}}}), "", "R92")
         self.assertEqual(nodes.tunnel_addr({"config": {"tunnel": {"addr": "not; an address"}}}), "")
 
 
 if __name__ == "__main__":
     unittest.main()
+
