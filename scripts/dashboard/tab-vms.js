@@ -158,7 +158,7 @@ function wireVms(el){
 // ---- New VM, a dialog ----------------------------------------------------
 // The Containers page's New's shape: what it is, where, and the one filled
 // button; the OS from the catalog, a person's OS (Windows) said as theirs.
-function openNewVm(){
+function openNewVm(forProject = ""){
   let m = document.getElementById("vmnewmodal");
   if (!m){
     m = document.createElement("div");
@@ -173,7 +173,7 @@ function openNewVm(){
   m.innerHTML = `<div class="box"><h3>New VM</h3>
     <div class="prefrow ctlrow">
       <div class="setrow col ctlrow">${lbl("vmName", "Name")}<input id="vmName" maxlength="31" autocomplete="off" spellcheck="false" placeholder="db"></div>
-      <div class="setrow col ctlrow">${lbl("vmProject", "Project")}<select id="vmProject">${optionList(projects.map(p => [p, projLabel(p)]))}</select></div>
+      <div class="setrow col ctlrow">${lbl("vmProject", "Project")}<select id="vmProject">${optionList(projects.map(p => [p, projLabel(p)]), forProject)}</select></div>
     </div>
     <div class="prefrow ctlrow">
       <div class="setrow col ctlrow">${lbl("vmOs", "OS", "a publisher's cloud image, checked against its checksums; Windows and macOS have a license to accept, so BuilderBot does not make them")}

@@ -5094,6 +5094,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" data-v="analysis" data-in="code">Analysis</button>
         <button type="button" data-v="artifacts" data-in="ship">Artifacts</button>
         <button type="button" data-v="docker" data-in="ship">Docker</button>
+        <button type="button" data-v="vms" data-in="ship">VMs</button>
         <button type="button" data-v="wiki" data-in="docs">Wiki</button>
         <button type="button" data-v="design" data-in="docs">Design</button>
         <button type="button" data-v="settings" data-in="overview">Settings</button>
@@ -5332,6 +5333,13 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          to it (the operator, 19 Oct): its tiles, when the images were
          checked, and its card, read from the project's node, which is where
          its work runs. -->
+    <!-- This project's VMs as the VMs page draws them, scoped to it (R96, the
+         operator, 21 Oct): its card, with New VM and the VMs page in its head. -->
+    <div class="nbview vmtab" data-view="vms" hidden>
+      <div class="field nbhead vbar"><span id="nvHint" data-skel="word">loading…</span><span class="sp"></span>
+        <span class="actbar"><button type="button" id="nvNew" hidden>New VM</button><button type="button" id="nvOpen">VMs<span class="lng"> page</span></button></span></div>
+      <div id="nvList" data-skel="rows"></div>
+    </div>
     <div class="nbview dkview" data-view="docker" hidden>
       <div class="field nbhead vbar"><span id="dkHint" data-skel="word">loading…</span><span class="sp"></span>
         <span id="dkSeg"></span><span class="actbar"><button type="button" id="dkCheck" hidden>Check<span class="lng"> for updates</span></button><button type="button" id="dkOpen">Containers<span class="lng"> page</span></button></span></div>
