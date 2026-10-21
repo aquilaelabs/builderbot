@@ -511,11 +511,12 @@ function nodeFeaturesSection(n){
   const fe = n.reported?.features;
   const job = n.applying?.what === "feature" ? n.applying : null;
   const failed = n.last_apply?.what === "feature" && n.last_apply.state === "failed" ? n.last_apply : null;
-  // A job that ended after the census the row draws (B162): the machine has
-  // changed and has not said so yet, so its row waits for the next report
-  // rather than offering the press that was just made.
+  // A job that ended after the census the row draws, or in its second (B162):
+  // the machine has changed and has not said so yet, so its row waits for the
+  // report the agent sends after every feature job rather than offering the
+  // press that was just made.
   const ahead = n.last_apply?.what === "feature" && n.last_apply.state === "succeeded"
-    && (n.last_apply.ended || 0) > (n.reported?.at || 0) ? n.last_apply.feature : "";
+    && (n.last_apply.ended || 0) >= (n.reported?.at || 0) ? n.last_apply.feature : "";
   const why = !fe ? (n.reported ? "Its agent does not report its features yet: Update agent above." : "")
     : !n.reported?.administers ? "This node's agent is not root on a managed machine, so its features are set on the machine itself."
     : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";

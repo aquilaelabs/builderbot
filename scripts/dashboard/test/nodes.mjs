@@ -1539,7 +1539,15 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
       const inst = await featJob();
       ok(inst?.spec?.config?.id === 'vmhost' && inst.spec.config.op === 'install',
          `...and Install queues the feature system job (${JSON.stringify(inst?.spec)})`);
-      if (inst) await napi('/api/v1/jobs', { action: 'cancel', id: inst.id });
+      // The agent takes it and it succeeds: until the census after it, the
+      // row waits rather than offering Install again (B162).
+      const took = await (await agent('work', { running: [], wait: 0 })).json();
+      await agent('result', { job: took.id, state: 'succeeded', exit: 0 });
+      await page.evaluate(async () => { await refresh(); await loadNodes(); });
+      await page.waitForFunction(sel => /reporting back/.test(document.querySelector(sel)?.textContent || ''), VM, { timeout: 10000 }).catch(() => {});
+      const waiting = await page.$eval(VM, e => ({ text: e.textContent.replace(/\s+/g, ' '), live: !!e.querySelector('[data-nd="feature"]') }));
+      ok(took?.id === inst?.id && /Done, the node is reporting back/.test(waiting.text) && !waiting.live,
+         `...and once it has succeeded the row waits for the node's next report, with nothing to press (${waiting.text.slice(-60)})`);
       await hello({ ...CENSUS, features: feats({ kvm: false }) });
       await page.evaluate(async () => { await refresh(); await loadNodes(); });
       await page.waitForFunction(sel => /host-passthrough/.test(document.querySelector(sel)?.textContent || ''), VM, { timeout: 10000 });
