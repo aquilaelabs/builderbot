@@ -1521,6 +1521,38 @@ _ARG_CTR = re.compile(r"^ctr:([A-Za-z0-9][A-Za-z0-9._-]*):([A-Za-z0-9][A-Za-z0-9
                       r"([A-Za-z0-9][A-Za-z0-9_.-]*)$")
 
 
+# `vm:PROJECT:NAME`: a VM's serial console (R91), opened on its node's
+# container terminal server, as the jobs account, with virsh console.
+_ARG_VM = re.compile(r"^vm:([A-Za-z0-9][A-Za-z0-9._-]*):([a-z0-9][a-z0-9-]{0,30})$")
+
+
+def vm_target(project, name):
+    """Where a VM's console opens: its node's container terminal server,
+    which runs as the jobs account the VM was made by. A refusal says why,
+    in ctr_target's words."""
+    rec = next((v for v in vms.view({project}) if v.get("name") == name), None)
+    if not rec:
+        return {"where": "refused", "name": name, "why": f"{project} has no VM called {name}"}
+    if rec.get("state") != "running":
+        return {"where": "refused", "name": name, "why": f"{name} is {rec.get('state')}, and a console opens on a running VM"}
+    nid = rec["node"]
+    n = nodes.node(nid) if not NODES_OK else None
+    if not n:
+        return {"where": "refused", "name": name, "why": f"{name}'s node is not on record here"}
+    nm = n.get("name") or nid
+    se = (n.get("reported") or {}).get("session")
+    if n.get("state") != "online" or n.get("live") is False:
+        why = f"{nm}, where {name} runs, is not answering now"
+    elif not isinstance(se, dict) or not se.get("ctr_port"):
+        why = (f"{nm} cannot open a console: {se['ctr_why']}" if isinstance(se, dict) and se.get("ctr_why")
+               else f"{nm} has not started its container terminal yet; try again in a minute")
+    else:
+        return {"where": "node", "id": nid, "name": nm, "host": nodes.route_host(nid),
+                "port": int(se["ctr_port"]), "ro_port": int(se["ctr_port"]),
+                "boot": str(se.get("boot") or ""), "domain": rec["domain"]}
+    return {"where": "refused", "name": nm, "why": why}
+
+
 def _ctr_owner(name, instance):
     """The project a container's terminal is for: the one its instance
     belongs to (devapp.owner_of), "" for nobody's."""
@@ -1533,6 +1565,9 @@ def _arg_project(arg):
     m = _ARG_CTR.match(arg or "")
     if m:
         return _ctr_owner(m.group(1), m.group(2))
+    m = _ARG_VM.match(arg or "")
+    if m:
+        return m.group(1)
     if arg.startswith("claude:"):
         return arg[len("claude:"):].split(":")[0]
     if arg.startswith("shell:"):
@@ -4936,12 +4971,35 @@ class Handler(BaseHTTPRequestHandler):
         arg = _term_arg(rest)
         if arg.startswith("ctr:"):
             return self._ctr_refused(arg, me)
+        if arg.startswith("vm:"):
+            return self._vm_con_refused(arg, me)
         if arg.startswith("claude:"):
             project = arg[len("claude:"):].split(":")[0]
             # Terminal Read is the shielded Claude console; without it there
             # is no terminal on the project at all (R152 (e)).
             return users.may(me, "claude", project) or self._area_read_why("terminal", project, me)
         return users.may(me, "terminal")
+
+    def _vm_con_refused(self, arg, me):
+        """A sentence when this account may not open the console of the VM a
+        vm: argument names, "" when it may (R91): a person with a shell and
+        VMs Write on its project, or an administrator; an administrator alone
+        when the project's Make VMs is deny; the VM running now."""
+        m = _ARG_VM.match(arg)
+        if not m:
+            return "not a VM's console: vm:PROJECT:NAME"
+        project, name = m.groups()
+        no_shell = users.may(me, "terminal")
+        if no_shell:
+            return no_shell
+        if not users.is_admin(me):
+            why = users.may(me, "vms-write", project)
+            if why:
+                return why
+            if (prefs.get(project) or {}).get("makevms") == "deny":
+                return f"{project}'s Make VMs is deny, so its VMs' consoles are an administrator's"
+        t = vm_target(project, name)
+        return t["why"] if t["where"] == "refused" else ""
 
     def _ctr_refused(self, arg, me):
         """A sentence when this account may not open a shell in the container
@@ -5149,7 +5207,8 @@ class Handler(BaseHTTPRequestHandler):
         arg0 = _term_arg(rest0)
         # ...and a container's shell is where its container is (R218 step 4).
         ctr = _ARG_CTR.match(arg0)
-        target = ctr_target(ctr.group(1), ctr.group(2)) if ctr else \
+        vmm = _ARG_VM.match(arg0)
+        target = ctr_target(ctr.group(1), ctr.group(2)) if ctr else vm_target(*vmm.groups()) if vmm else \
             session_target(_arg_project(arg0),
                            claude=arg0.startswith("claude:"),
                            node=_arg_node(arg0),
@@ -6808,7 +6867,11 @@ class Handler(BaseHTTPRequestHandler):
                            # The container a ctr: terminal goes into, checked
                            # above against its instance's running ones: what
                            # bb-tty execs into, never the URL's word for it.
-                           "ctr": (_ARG_CTR.match(arg).group(3) if _ARG_CTR.match(arg) else "")})
+                           "ctr": (_ARG_CTR.match(arg).group(3) if _ARG_CTR.match(arg) else ""),
+                           # ...and the VM a vm: console opens (R91): its libvirt
+                           # name from the record, never the URL's word for it.
+                           "vm": (vm_target(*_ARG_VM.match(arg).groups()).get("domain", "")
+                                  if _ARG_VM.match(arg) else "")})
 
     def _hook(self, req):
         """What a session's hooks have to say, from a NODE (roadmap #24):

@@ -156,6 +156,8 @@ function sessionOf(arg){
   if (arg.startsWith("shell:"))  return myTmux(tmuxName("shell-"  + arg.slice(6)));
   // ctr:NAME:INSTANCE:CONTAINER, named by its container (bb-tty's ctr-).
   if (arg.startsWith("ctr:"))    return myTmux(tmuxName("ctr-" + arg.split(":")[3]));
+  // vm:PROJECT:NAME, a VM's console (R91), named by its domain (bb-tty's vm-).
+  if (arg.startsWith("vm:"))     return myTmux(tmuxName("vm-bbvm-" + arg.split(":")[1].toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) + "-" + arg.split(":")[2]));
   return arg;
 }
 // The project a session name was made from, when it is one we know: the
