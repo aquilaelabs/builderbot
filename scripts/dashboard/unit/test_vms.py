@@ -103,6 +103,24 @@ class Controller(unittest.TestCase):
         self.assertEqual(vms._load()["vms"], {})
 
 
+class Shipped(unittest.TestCase):
+    """Every file under config/ the dashboard's modules read beside
+    themselves is copied into the image: the catalog read empty on the dev
+    instance because the Dockerfile left it out (B164)."""
+    def test_every_config_file_read_is_in_the_image(self):
+        import re as _re
+        root = os.path.join(HERE, "..", "..", "..")
+        docker = open(os.path.join(root, "Dockerfile"), encoding="utf-8").read()
+        read = set()
+        dash = os.path.join(root, "scripts", "dashboard")
+        for f in os.listdir(dash):
+            if f.endswith(".py"):
+                read |= set(_re.findall(r'"config"\s*/\s*"([\w.-]+\.json)"', open(os.path.join(dash, f), encoding="utf-8").read()))
+        self.assertIn("vm-images.json", read)
+        missing = [f for f in sorted(read) if f"COPY config/{f} " not in docker]
+        self.assertEqual(missing, [], "read from config/ and not copied into the image")
+
+
 class Agent(unittest.TestCase):
     def setUp(self):
         import agentpkg

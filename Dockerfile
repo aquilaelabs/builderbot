@@ -295,6 +295,8 @@ COPY config/templates/ /opt/builderbot/templates/
 # here as it is in a checkout, which is what lets `bb dashboard dev` and the
 # tests read it.
 COPY config/toolchains.json /opt/builderbot/config/toolchains.json
+# The operating systems a VM is made from (R91), read by vms.py the same way.
+COPY config/vm-images.json /opt/builderbot/config/vm-images.json
 # What a sandbox VM is made from, one per hypervisor, which the Nodes tab
 # renders with an identity per VM (vmtemplate.py). Two levels above
 # server.py, where a checkout keeps them too.
