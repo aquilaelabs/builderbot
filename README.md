@@ -54,7 +54,9 @@ your projects mounted straight in, and to grow from one machine to several.
 - **A page per project.** Its overview and house rules, roadmap, bug
   tracker, git, tests, static analysis, artifacts, containers, VMs, wiki and
   design, shared between you and every session that works there.
-- **Nodes that do the work.** Enroll a Linux machine or VM with one script.
+- **Nodes that do the work.** Enroll a Linux machine or VM with one script:
+  Ubuntu, Debian, Fedora, Rocky Linux, AlmaLinux, CentOS Stream, Arch Linux or
+  openSUSE, each walked end to end on a real machine.
   Each node carries its own toolchains (JDK, Android SDK, Flutter, Node,
   Python, Playwright and more), installed and updated from the Toolchains page
   and kept on a store that survives the machine being rebuilt. A node's
@@ -73,15 +75,18 @@ your projects mounted straight in, and to grow from one machine to several.
   it in one press if it is ever taken over.
 - **Virtual machines.** A project's VMs on any node with KVM, made from
   Ubuntu, Debian, Fedora, Rocky, Alma, CentOS, Arch, openSUSE, Gentoo or
-  Alpine, each on its own network, with
-  snapshots to go back to and a console in the dock. Ask a Claude session for
-  "a Debian 12 VM with 4 GB" and it makes one, where the project allows it;
-  a VM can even enroll itself as another node.
+  Alpine, or from an installer's ISO you install yourself (Windows
+  included), each on its own network, with snapshots to go back to, more
+  disks when it needs them, and its screen and console in the dock, shared
+  with whoever else is on it. Ask a Claude session for "a Debian 12 VM with
+  4 GB" and it makes one, where the project allows it; a VM can even enroll
+  itself as another node.
 - **People and permissions.** Accounts with roles, per-project access, and a
   dial for everything a session may do on its own (file bugs, add rules, run
   its container, sign a release): allowed, asked of a person, or refused.
 - **A tour of each page** the first time you open it, which you can skip
-  once for every page and bring back from About or your Profile.
+  once for every page and bring back from About or your Profile. About's
+  Credits name the open-source work BuilderBot is built on.
 - **Logs you can read.** Every job's output, each node's own logs and the
   controller's diagnostics, kept for as long as the log policy says and
   readable by a session that has been granted them.
@@ -106,6 +111,9 @@ your projects mounted straight in, and to grow from one machine to several.
   <tr>
     <td width="50%"><img src="docs/screenshots/features.png" alt="A node's Features section: VM host, Claude sessions, the SSH door and the rest, each with how it installs"></td>
     <td width="50%"><img src="docs/screenshots/tour.png" alt="The first-use tour on Home, its card beside the rail it is about"></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/vm-screen.png" alt="A VM's screen in the dock: its installer, keyboard and mouse, beside its row on the VMs page"></td>
   </tr>
   <tr>
     <td width="50%" align="center"><img src="docs/screenshots/phone-dashboard.png" width="80%" alt="Home on a phone"></td>
