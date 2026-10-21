@@ -68,10 +68,15 @@ def vms_now():
             info[k.strip().lower()] = v.strip()
         ip = ""
         if info.get("state") == "running":
-            for line in _run(VIRSH + ["domifaddr", name, "--source", "lease"], timeout=10).splitlines():
-                m = re.search(r"ipv4\s+([0-9.]+)/", line)
-                if m:
-                    ip = m.group(1)
+            # Its project's network's lease, else what its guest agent says
+            # (a VM on the LAN, R100), the loopback aside.
+            for src in ("lease", "agent"):
+                for line in _run(VIRSH + ["domifaddr", name, "--source", src], timeout=10).splitlines():
+                    m = re.search(r"ipv4\s+([0-9.]+)/", line)
+                    if m and not m.group(1).startswith("127."):
+                        ip = m.group(1)
+                        break
+                if ip:
                     break
         snaps = [s for s in _run(VIRSH + ["snapshot-list", name, "--name"], timeout=10).split() if SNAP_RE.fullmatch(s)]
         mem = re.match(r"(\d+)", info.get("max memory", ""))
@@ -218,6 +223,13 @@ def user_data(hostname, user, keys, enroll=""):
     # ...and Alpine's sshd turns a key away for an account whose password is
     # locked (!), which cloud-init leaves; no password (*) lets the key in.
     bash += f'; if command -v apk >/dev/null; then sed -i "s/^{user}:!/{user}:*/" /etc/shadow; fi'
+    # ...and QEMU's guest agent, which says a VM's address when it is on the
+    # LAN (R100), where the LAN's DHCP gives it and libvirt keeps no lease.
+    bash += ("; command -v qemu-ga >/dev/null || { apk add --no-cache qemu-guest-agent || "
+             "{ apt-get update -qq && apt-get install -y -qq qemu-guest-agent; } || dnf install -y -q qemu-guest-agent || "
+             "zypper -n -q in qemu-guest-agent || pacman -S --noconfirm qemu-guest-agent; } >/dev/null 2>&1; "
+             "{ systemctl enable --now qemu-guest-agent || { rc-update add qemu-guest-agent && rc-service qemu-guest-agent start; }; } "
+             ">/dev/null 2>&1 || true")
     if enroll:
         import base64
         lines += ["write_files:", "  - path: /root/bb-enroll.sh", "    permissions: '0700'", "    encoding: b64",
