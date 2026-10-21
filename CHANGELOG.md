@@ -14,7 +14,7 @@
 
 ### Fixed
 
-- Enrolling a new Linux node works again: since the provisioner was split into one file per system, it stopped right after installing Docker with 'svc_enable: command not found', and a VM's guest agent was never installed. (0a47845)
+- Enrolling a new Linux node works again: since the provisioner was split into one file per system, it stopped right after installing Docker with 'svc_enable: command not found', and a VM's guest agent was never installed. (2a64240)
 - On a phone, a node that is not a sandbox says where its storage and network are managed with room around it, no longer pressed against the next section's heading (18b971e1)
 - Opening the nginx page from a link for a node that enrolled since the page last loaded shows that node, not the first one. (66bbe80)
 - A system job right after a controller update runs the node's newest root helper, not whichever one another job last fetched. (11e99d0)
