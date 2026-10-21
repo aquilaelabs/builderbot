@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.4: 2026-10-21
 
 ### Added
 
@@ -10,7 +10,7 @@
 
 ### Changed
 
-- A button an account's roles do not give is left off the page, where it was drawn dead with a red line naming the role it lacks; a reason a control is off is no longer red: a feature the install switched off says so in yellow, and why a project cannot start a session is muted (444b8fc)
+- A button an account's roles do not give is left off the page, where it was drawn dead with a red line naming the role it lacks; a reason a control is off is no longer red: a feature the install switched off says so in yellow, and why a project cannot start a session is muted (a644363)
 
 ### Fixed
 
