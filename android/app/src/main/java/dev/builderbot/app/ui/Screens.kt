@@ -344,7 +344,7 @@ fun ApprovalsScreen(store: Store) {
         }
         val asks = ph.value?.arr("asks") ?: emptyList()
         if (ph.error != null) item { Problem(ph.error) }
-        item { Section("Waiting for your answer") { if (asks.isEmpty()) Dim("nothing: a session asking for your phone, for root on a node, for a rebuild, for a container or to sign a build appears here") } }
+        item { Section("Waiting for your answer") { if (asks.isEmpty()) Dim("nothing: a session asking for your phone, for root on a node, for a rebuild, for a container, for a VM or to sign a build appears here") } }
         items(asks) { a ->
             val kind = a.str("kind")
             Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp), bar = if (kind == "root") Bad else Warn) {
