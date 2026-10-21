@@ -59,10 +59,61 @@ function abShow(which){
   document.querySelectorAll(".abswitch button").forEach(b => b.classList.toggle("on", b.dataset.ab === which));
   $("abGuide").hidden = which !== "guide";
   $("abLog").hidden = which !== "log";
+  $("abCredits").hidden = which !== "credits";
   $("abBuild").hidden = which !== "log";
+  if (which === "credits") abDrawCredits();
   if (which === "guide") abLoadGuide();
   if (which === "log" && !abLogLoaded) abLoadLog();
 }
+// ---- Credits: what BuilderBot is built on --------------------------------
+// The open-source work this install carries or runs, each with what it does
+// here and its license; kept beside the Dockerfile and the provisioner that
+// put them there, which a change to either updates.
+const AB_CREDITS = [
+  ["In the controller's image", [
+    ["ttyd and xterm.js", "every terminal in the dock", "MIT", "https://github.com/tsl0922/ttyd"],
+    ["noVNC and pako", "a VM's Screen in the dock", "MPL-2.0, MIT", "https://github.com/novnc/noVNC"],
+    ["Python", "the dashboard's server and the node agent", "PSF-2.0", "https://www.python.org/"],
+    ["Node.js", "the page's tests and the projects' JavaScript", "MIT", "https://nodejs.org/"],
+    ["Playwright", "the browser that tests the page and takes its pictures", "Apache-2.0", "https://playwright.dev/"],
+    ["Docker CLI, Compose and Buildx", "a project's containers, on its node's Docker", "Apache-2.0", "https://www.docker.com/"],
+    ["cloudflared", "the controller's own tunnel from home", "Apache-2.0", "https://github.com/cloudflare/cloudflared"],
+    ["Git and Git LFS", "every project's history", "GPL-2.0, MIT", "https://git-scm.com/"],
+    ["GitHub CLI", "pull requests and CI logs", "MIT", "https://cli.github.com/"],
+    ["tmux", "the sessions that outlive a closed tab", "ISC", "https://github.com/tmux/tmux"],
+    ["SQLite", "the controller's record of nodes and jobs", "public domain", "https://sqlite.org/"],
+    ["ShellCheck, hadolint, actionlint, Ruff and yq", "bb lint", "GPL-3.0, GPL-3.0, MIT, MIT, MIT", "https://www.shellcheck.net/"],
+    ["uv and mise", "Python and the toolchains' versions", "MIT or Apache-2.0, MIT", "https://github.com/astral-sh/uv"],
+    ["ripgrep, fd and fzf", "finding things in a tree", "MIT", "https://github.com/BurntSushi/ripgrep"],
+    ["FFmpeg and ImageMagick", "the screen recordings and pictures bb capture makes", "LGPL-2.1+, ImageMagick", "https://ffmpeg.org/"],
+    ["Ubuntu", "the image's base", "various, free", "https://ubuntu.com/"],
+  ]],
+  ["On a node", [
+    ["Claude Code", "what a Claude session runs, by Anthropic", "Anthropic's terms", "https://www.anthropic.com/claude-code"],
+    ["Docker Engine", "a project's containers and nginx", "Apache-2.0", "https://www.docker.com/"],
+    ["QEMU, KVM and libvirt", "the VMs", "GPL-2.0, LGPL-2.1+", "https://libvirt.org/"],
+    ["EDK II (OVMF)", "a VM's UEFI firmware", "BSD-2-Clause-Patent", "https://github.com/tianocore/edk2"],
+    ["cloud-init", "a cloud image's first boot", "Apache-2.0 or GPL-3.0", "https://cloud-init.io/"],
+    ["nftables", "the session, hosting and VM firewalls", "GPL-2.0", "https://netfilter.org/projects/nftables/"],
+    ["nginx", "a node's hostnames and certificates", "BSD-2-Clause", "https://nginx.org/"],
+    ["Tailscale", "the SSH door, where a node uses it", "BSD-3-Clause", "https://tailscale.com/"],
+  ]],
+  ["Where a VM comes from", [
+    ["Ubuntu, Debian, Fedora, Rocky Linux, AlmaLinux, CentOS Stream, Arch Linux, openSUSE, Gentoo and Alpine",
+     "the cloud images New VM offers, each from its publisher and checked against its checksums", "each its own", ""],
+  ]],
+];
+function abDrawCredits(){
+  const el = $("abCredits");
+  if (el.dataset.drawn) return;
+  el.dataset.drawn = "1";
+  const cols = [{label: "What"}, {label: "Here for"}, {label: "License"}];
+  el.innerHTML = `<p>BuilderBot is built on other people's open work. Thank you to everyone behind it.</p>${
+    AB_CREDITS.map(([head, rows]) => `<h4>${esc(head)}</h4>${tblWrap(cols, rows.map(([name, what, lic, url]) =>
+      tblLine(cols, [url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(name)}</a>` : esc(name), esc(what), esc(lic)])).join(""), "abcred")}`).join("")}
+    <p class="dim">The Android app is built with Kotlin and Jetpack Compose (Apache-2.0). BuilderBot itself is Apache-2.0.</p>`;
+}
+
 async function abLoadLog(){
   const el = $("abLog");
   el.innerHTML = `${skel("lines")}`;
