@@ -53,10 +53,11 @@ _seen = {"nodes": None, "sig": 0}
 
 
 def configure(*, state, write_json, node, node_list, job_add, audit, prefs_get, nodes_rev=lambda: 0,
-              enroll_script=None, node_retire=None, node_mark=None):
+              enroll_script=None, node_retire=None, node_mark=None, node_discard=None):
     globals().update(STATE=Path(state), write_json=write_json, node=node, node_list=node_list,
                      job_add=job_add, audit=audit, prefs_get=prefs_get, nodes_rev=nodes_rev,
-                     enroll_script=enroll_script, node_retire=node_retire, node_mark=node_mark)
+                     enroll_script=enroll_script, node_retire=node_retire, node_mark=node_mark,
+                     node_discard=node_discard)
 
 
 def rev():
@@ -291,6 +292,12 @@ def create(principal, project, req, nodes_allowed, session=False):
     if not src:
         return {"error": f"{img['name']} has no image for {arch}, which {pick['name']} is"}
     key = f"{project}/{name}"
+    # What refuses it, asked before a node row is made for it below: a
+    # refusal after that left a waiting row behind, which then refused the
+    # next try by its name.
+    why = _refused(project, key, name, pick["id"], size)
+    if why:
+        return {"error": why}
     # Made a node as well (step 14): Enroll node's own script, for the
     # catalog's system, run by cloud-init at first boot, so the VM appears
     # on the Nodes page enrolled. `ctl` is the address the asker reached
@@ -309,15 +316,13 @@ def create(principal, project, req, nodes_allowed, session=False):
             return {"error": f"it cannot be made a node: {enroll['error']}"}
     with _lock:
         d = _load()
-        if key in d["vms"]:
-            return {"error": f"{project} has a VM called {name} already"}
-        why = check_caps(d, project, pick["id"], size)
+        why = _refused(project, key, name, pick["id"], size, d)
         if why:
+            # ...and its row taken off again when something got in between.
+            if enroll and node_discard:
+                node_discard(principal, enroll["id"])
             return {"error": why}
-        try:
-            subnet = _subnet(d, project, pick["id"])
-        except RuntimeError as e:
-            return {"error": str(e)}
+        subnet = _subnet(d, project, pick["id"])
         dom = domain(project, name)
         spec = {"action": "create", "domain": dom, "project": project, "user": user, "keys": keys, **size,
                 # Named by its subnet's place in VM_NET, which is the
@@ -334,6 +339,8 @@ def create(principal, project, req, nodes_allowed, session=False):
             spec["enroll"] = enroll["script"]
         r = job_add(principal, {"node": pick["id"]}, "vm", spec, project)
         if r.get("error"):
+            if enroll and node_discard:
+                node_discard(principal, enroll["id"])
             return r
         d["vms"][key] = {"project": project, "name": name, "node": pick["id"], "domain": dom, "os": img["id"],
                          "os_name": img["name"], "user": user, **size, "by": principal, "at": int(time.time()),
@@ -344,6 +351,22 @@ def create(principal, project, req, nodes_allowed, session=False):
         node_mark(enroll["id"], pick["id"])
     audit(principal, "vm-new", key, {"node": pick["id"], "os": img["id"], **size, "job": r["job"]})
     return {"ok": True, "key": key, "job": r["job"], "node": pick["name"], "domain": dom}
+
+
+def _refused(project, key, name, node_id, size, d=None):
+    """Why a new VM may not be made, or "": its name taken, a cap, or no
+    room for the project's network."""
+    d = d if d is not None else _load()
+    if key in d["vms"]:
+        return f"{project} has a VM called {name} already"
+    why = check_caps(d, project, node_id, size)
+    if why:
+        return why
+    try:
+        _subnet(d, project, node_id)
+    except RuntimeError as e:
+        return str(e)
+    return ""
 
 
 def act(principal, project, name, action, req=None):

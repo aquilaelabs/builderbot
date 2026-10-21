@@ -3506,7 +3506,7 @@ vms.configure(state=STATE, write_json=write_json, node=nodes.node, node_list=nod
               job_add=nodes.job_add, audit=db.audit, prefs_get=prefs.get, nodes_rev=nodes.rev,
               enroll_script=nodes.enroll_script,
               node_retire=lambda by, nid: nodes.node_state(by, nid, "retired"),
-              node_mark=nodes.node_vm_of)
+              node_mark=nodes.node_vm_of, node_discard=nodes.node_discard)
 nodes.on_done("vm", vms.vm_done)
 phone.vm_runner = lambda project, req, by: _vm_do(f"session:{project} (allowed by {by})", project, req, True)
 

@@ -100,6 +100,28 @@ class Controller(unittest.TestCase):
         finally:
             vms.enroll_script = vms.node_retire = vms.node_mark = None
 
+    def test_a_vm_refused_makes_no_node_row_to_stand_in_the_way(self):
+        # A create past the cap minted the node's enroll row first, and the
+        # next try was refused by that row's name (R97's walk, 21 Oct).
+        made, dropped = [], []
+        vms.enroll_script = lambda by, req: made.append(req) or {"id": "n_vm", "script": "#!/usr/bin/env bash\n# BuilderBot: enroll x"}
+        vms.node_discard = lambda by, nid: dropped.append(nid)
+        try:
+            self.f.caps = dict(self.f.caps, count=1)
+            self.new()
+            self.assertIn("may hold 1 VMs", self.new(name="b", node_agent=True)["error"])
+            self.assertEqual(made, [])
+            # ...and one refused by the node after its row was made takes it off.
+            self.f.caps = dict(self.f.caps, count=4)
+            self.f.job_add = lambda *a, **k: {"error": "the node is offline"}
+            vms.configure(state=vms.STATE, write_json=vms.write_json, node=vms.node, node_list=vms.node_list,
+                          job_add=self.f.job_add, audit=vms.audit, prefs_get=vms.prefs_get,
+                          enroll_script=vms.enroll_script, node_discard=vms.node_discard)
+            self.assertIn("offline", self.new(name="c", node_agent=True)["error"])
+            self.assertEqual(dropped, ["n_vm"])
+        finally:
+            vms.enroll_script = vms.node_discard = None
+
     def test_no_key_no_node_no_vm(self):
         self.assertIn("ssh public key", vms.create("user:test", "web", {"name": "a", "os": "debian"}, ["n1"])["error"])
         self.assertIn("no node web works on", vms.create("user:test", "web", {"name": "a", "os": "debian",
