@@ -123,7 +123,9 @@ def update_done(job, state):
     if (job.get("spec") or full.get("spec") or {}).get("action") == "remove":
         nodes.reported_set(job["node"], "session", "claude", "")
         return None
-    m = re.search(r"Claude Code (\S+) is what a session here runs now", full.get("log") or "")
+    # The agent writes the version as `claude --version` prints it, its own
+    # "(Claude Code)" included (B167): matched with or without it.
+    m = re.search(r"Claude Code (\d[\w.+-]*)(?: \(Claude Code\))? is what a session here runs now", full.get("log") or "")
     if m:
         nodes.reported_set(job["node"], "session", "claude", m.group(1) + " (Claude Code)")
     return None
