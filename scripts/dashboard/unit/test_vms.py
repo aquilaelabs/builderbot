@@ -62,6 +62,13 @@ class Controller(unittest.TestCase):
         self.assertIn("administrator", vms.hardware({"hw": dev}, "web", "n1", False, 2048)[1])
         self.assertEqual(vms.hardware({"hw": dev}, "web", "n1", True, 2048)[0]["devices"], dev["devices"])
         self.assertIn("administrator", vms.vbios("user:test", {"node": "n1", "addr": "0000:01:00.0"}, False)["error"])
+        import base64
+        self.f.nodes["n1"]["reported"]["features"]["vmhost"]["installed"] = True
+        self.assertIn("not a vBIOS", vms.vbios("user:test", {"node": "n1", "addr": "0000:01:00.0",
+                                                            "rom": base64.b64encode(b"MZ" + b"\0" * 4000).decode()}, True).get("error", ""))
+        ok = vms.vbios("user:test", {"node": "n1", "addr": "0000:01:00.0", "rom": base64.b64encode(b"\x55\xaa" + b"\0" * 4000).decode()}, True)
+        self.assertTrue(ok.get("ok"), ok)
+        self.assertTrue(self.f.jobs[-1][2]["rom"])
         r = self.new(hw={"cpuset": [0, 1], "net": "lan"}, autostart=True)
         self.assertTrue(r.get("ok"), r)
         spec = self.f.jobs[-1][2]

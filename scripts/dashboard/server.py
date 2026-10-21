@@ -343,7 +343,8 @@ MAX_BODY = 64 * 1024
 # ...and a file saved from a person's editor (R159): files.MAX_READ as base64.
 MAX_BODY_FOR = {"/api/design": 4 * 1024 * 1024, "/api/wiki": 1024 * 1024,
                 "/api/v1/files": 28 * 1024 * 1024,
-                "/api/v1/agent/log": 512 * 1024}
+                "/api/v1/agent/log": 512 * 1024,
+                "/api/vms": 3 * 1024 * 1024}   # a GPU's .rom given on the VMs page (R100)
 
 # One field out of a request body, read the one way here and in every
 # module a handler calls into (fields.py).

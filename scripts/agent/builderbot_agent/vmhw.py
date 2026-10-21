@@ -7,6 +7,7 @@ on a stopped VM alike, so the two can never disagree. Everything in it is
 checked against its shape here before it reaches the XML; who may ask for
 what (a passthrough is an administrator's) is the controller's to decide.
 """
+import base64
 import glob
 import os
 import re
@@ -254,6 +255,25 @@ def read(xml):
                                                                          (("domain", 4), ("bus", 2), ("slot", 2), ("function", 1)))})
     out["devices"] = devs
     return out
+
+
+def vbios_keep(addr, b64, out_dir, say):
+    """A .rom given for the card at `addr` instead of dumped, kept where a
+    dump would be, so its VM's hostdev carries it. Returns its name or "".
+    """
+    try:
+        data = base64.b64decode(b64, validate=True)
+    except ValueError:
+        data = b""
+    if not PCI_RE.fullmatch(addr) or not 2_000 <= len(data) <= 2 * 1024 * 1024 or data[:2] != b"\x55\xaa":
+        say("refused: not a vBIOS for a PCI address (an option ROM starts 55 AA and is 2 KB to 2 MB)\n")
+        return ""
+    os.makedirs(out_dir, exist_ok=True)
+    name = rom_name(addr)
+    with open(os.path.join(out_dir, name), "wb") as f:
+        f.write(data)
+    say(f"{name}: {len(data) // 1024} KB, given on the VMs page\n")
+    return name
 
 
 def vbios_dump(addr, out_dir, say, sys_root="/sys"):

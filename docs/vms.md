@@ -163,7 +163,10 @@ says what it was given.
 - **Dump vBIOS**, beside a GPU: reads the card's ROM on the node as root
   and keeps it, so passing it through hands the VM a clean copy, which
   some cards need before a VM will start with them. A card that reads
-  short is woken by a moment in a throwaway VM and read again.
+  short is woken by a moment in a throwaway VM and read again. **Give a
+  .rom…** keeps one from the card's maker, or from a collection of them,
+  instead. libvirt hands a passed-through PCI device to vfio-pci when its VM
+  starts and gives it back when it stops.
 
 **Starts with its host**, on the row and at New VM, starts the VM whenever
 its node boots; a VM made a node always does.

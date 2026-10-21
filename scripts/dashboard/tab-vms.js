@@ -397,7 +397,8 @@ function vmHwFields(host, hw, admin){
     ...(host?.hw?.pci || []).map(p => `<label class="ndcap"><input type="checkbox" data-pci="${esc(p.addr)}"${
       (hw?.devices || []).some(d => d.type === "pci" && d.addr === p.addr) ? " checked" : ""}${host?.hw?.iommu ? "" : " disabled"}> PCI ${esc(p.addr)} (${
       esc(p.class.startsWith("0x03") ? "display" : p.class.startsWith("0x04") ? "sound" : p.class.startsWith("0x0c03") ? "USB controller" : p.class.startsWith("0x02") ? "network" : "storage")}, ${esc(p.driver || "no driver")}, group ${esc(p.group)})${
-      p.class.startsWith("0x0300") ? ` <button type="button" data-vbios="${esc(p.addr)}" title="read this card's vBIOS, which passing a GPU through may need">Dump vBIOS</button>` : ""}</label>`)] : [];
+      p.class.startsWith("0x0300") ? ` <button type="button" data-vbios="${esc(p.addr)}" title="read this card's vBIOS, which passing a GPU through may need">Dump vBIOS</button>
+        <button type="button" data-vbiosgive="${esc(p.addr)}" title="the card maker's .rom, or one from a collection, used instead of a dump">Give a .rom…</button>` : ""}</label>`)] : [];
   return `<div class="field">${lbl("vmHwCpus", "CPU threads", "pin its vCPUs to these host threads, each core's pair together; none ticked leaves the host to schedule it")}
       <div class="vmcpus" id="vmHwCpus">${cpus || `<span class="sub">the node has not said its CPUs yet</span>`}</div>
       <label class="ndcap"><input type="checkbox" id="vmHwShareCpus"> Share them with another VM pinned there</label></div>
@@ -433,6 +434,22 @@ function vmHwWire(root, nodeId, project){
     b.disabled = false; b.textContent = "Dump vBIOS";
     notify(j.error || `reading ${b.dataset.vbios}'s vBIOS on the node; the job says how it went`, !!j.error);
   }); });
+  root.querySelectorAll("[data-vbiosgive]").forEach(b => b.onclick = e => {
+    e.preventDefault();
+    const pick = document.createElement("input");
+    pick.type = "file"; pick.accept = ".rom,.bin";
+    pick.onchange = () => pressing(b, async () => {
+      const f = pick.files[0];
+      if (!f) return;
+      if (f.size > 2 * 1024 * 1024) return notify("a vBIOS is 2 MB at most", true);
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode(...bytes.subarray(i, i + 32768));
+      const j = await (await postJSON("/api/vms", {action: "vbios", project, node: nodeId, addr: b.dataset.vbiosgive, rom: btoa(bin)})).json();
+      notify(j.error || `${f.name}: kept on the node for ${b.dataset.vbiosgive}`, !!j.error);
+    });
+    pick.click();
+  });
 }
 function openVmHardware(v){
   let m = document.getElementById("vmhwmodal");

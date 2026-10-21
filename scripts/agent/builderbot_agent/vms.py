@@ -734,7 +734,12 @@ class VmsMixin:
         return "succeeded", 0
 
     def _vm_vbios(self, job, spec, name, who):
-        """A GPU's vBIOS dumped through sysfs, as root (R100)."""
+        """A GPU's vBIOS dumped through sysfs, as root, or a .rom given on
+        the VMs page kept in its place (R100)."""
+        if spec.get("rom"):
+            got = vmhw.vbios_keep(str(spec.get("addr") or ""), str(spec["rom"]),
+                                  os.path.join(VM_DIR, vmhw.VBIOS_DIR), job.say)
+            return ("succeeded", 0) if got else ("failed", 70)
         if os.geteuid() != 0:
             job.say("refused: dumping a vBIOS is root's, and this agent is not\n")
             return "failed", 77

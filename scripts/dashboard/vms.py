@@ -12,6 +12,7 @@ says ("debian", "ubuntu 24.04", "rocky-10"); one with a license to accept is
 a person's to make, never a session's. Each project has a network of its own
 on each node, a /24 out of VM_NET, given once and kept.
 """
+import base64
 import difflib
 import ipaddress
 import json
@@ -630,8 +631,18 @@ def vbios(principal, req, admin):
     addr = str(req.get("addr") or "")
     if not re.fullmatch(r"[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]", addr):
         return {"error": f"not a PCI address: {addr}"}
-    r = job_add(principal, {"node": pick["id"]}, "vm", {"action": "vbios", "domain": "bbvm-iso", "addr": addr,
-                                                          "timeout": 300}, "")
+    spec = {"action": "vbios", "domain": "bbvm-iso", "addr": addr, "timeout": 300}
+    if req.get("rom"):
+        # A .rom given instead of dumped: the card maker's, or one from a
+        # collection, checked to be an option ROM before its node keeps it.
+        try:
+            rom = base64.b64decode(str(req["rom"]), validate=True)
+        except ValueError:
+            return {"error": "the .rom did not arrive whole"}
+        if not 2_000 <= len(rom) <= 2 * 1024 * 1024 or rom[:2] != b"\x55\xaa":
+            return {"error": "that is not a vBIOS: an option ROM starts 55 AA and is 2 KB to 2 MB"}
+        spec["rom"] = base64.b64encode(rom).decode()
+    r = job_add(principal, {"node": pick["id"]}, "vm", spec, "")
     if r.get("error"):
         return r
     audit(principal, "vm-vbios", f"{pick['name']}/{addr}", {"job": r["job"]})
