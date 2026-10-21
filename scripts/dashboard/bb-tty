@@ -398,25 +398,12 @@ in_view() {
     # trees read-only, and repeated words keep the launcher line respawnable.
     local reads=() r
     for r in ${BB_READS:-}; do reads+=(--reads "$r"); done
-    # ...and the places it is shown, one --sees each, for a helper that
-    # takes them: one from before the setting would refuse the word and
-    # start no session at all, so it is asked first.
-    if [ -n "${BB_SEES:-}" ] && "$SESSION_BIN" plan --project "$proj" --account "${account:-}" \
-            --home "$HOME" --cwd "$dir" --sees /nowhere-a-node-has >/dev/null 2>&1; then
-        for r in ${BB_SEES:-}; do reads+=(--sees "$r"); done
-    fi
-    # ...and the toolchains it may not use left out of its view of the store
-    # (R77), for a helper that takes the word (asked first, as above).
-    if [ -n "${BB_TOOLCHAINS_OFF:-}" ] && "$SESSION_BIN" plan --project "$proj" --account "${account:-}" \
-            --home "$HOME" --cwd "$dir" --off none >/dev/null 2>&1; then
-        for r in ${BB_TOOLCHAINS_OFF:-}; do reads+=(--off "$r"); done
-    fi
-    # ...and the card's compute device covered where it is not this
-    # session's, for a helper that takes the word (asked first, as above).
-    if [ "${BB_GPU:-on}" != on ] && "$SESSION_BIN" plan --project "$proj" --account "${account:-}" \
-            --home "$HOME" --cwd "$dir" --cuda off >/dev/null 2>&1; then
-        reads+=(--cuda off)
-    fi
+    # ...and the places it is shown, one --sees each,
+    for r in ${BB_SEES:-}; do reads+=(--sees "$r"); done
+    # ...the toolchains it may not use left out of its view of the store (R77),
+    for r in ${BB_TOOLCHAINS_OFF:-}; do reads+=(--off "$r"); done
+    # ...and the card's compute device covered where it is not this session's.
+    [ "${BB_GPU:-on}" = on ] || reads+=(--cuda off)
     why="$("$SESSION_BIN" plan --project "$proj" --account "${account:-}" --home "$HOME" \
                --cwd "$dir" "${reads[@]}" 2>&1 >/dev/null)" \
         || bad "This node keeps each session to its own project, and could not for this one:" "$why"

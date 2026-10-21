@@ -522,8 +522,8 @@ function nodeFeaturesSection(n){
     // ...for a few minutes at most: past that the machine has been changed
     // since by something else, and the row says what it reports.
     && Date.now() / 1000 - (la.ended || 0) < 300 ? la.feature : "";
-  const why = !fe ? (n.reported ? "Its agent does not report its features yet: Update agent above." : "")
-    : !n.reported?.administers ? "This node's agent is not root on a managed machine, so its features are set on the machine itself."
+  const why = !n.reported ? ""
+    : !n.reported.administers ? "This node's agent is not root on a managed machine, so its features are set on the machine itself."
     : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
   const row = (fid, title, has, about, cant) => {
     const mine = job?.feature === fid;

@@ -118,7 +118,6 @@ scripts/
     bb-prompt-relay              a node session's prompts and answers, back to the controller
     bb-work-note                 what a session is changing, for the overlap warning, and the named rules its file raises
     bb-rule-hook                 refuses a shell call a rule refuses, hands a definition grep the map's answer, and says the named rules again after a summary (R200)
-    bb-keep-login                a hook that does nothing, for sessions an earlier build of this window started with it
     users.py                     who may sign in, and what they are allowed to see (docs/users.md)
     roles.py                     roles and permissions (R137): a grant is a capability on a scope, a role a named set of them, in roles.json; the gate (users.may) reads them
     prefs.py                     which model and effort a project's Claude session runs on

@@ -1222,23 +1222,21 @@ def _census(c):
     # ...and its docker group's id (R86), passed to a compose as BB_DOCKER_GID.
     g = c.get("docker_gid")
     out["docker_gid"] = g if isinstance(g, int) and not isinstance(g, bool) and 0 <= g < 2**31 else None
-    # ...and whether it reaches the internet (R82); None from an agent that
-    # does not say.
+    # ...and whether it reaches the internet (R82); None where the report's
+    # answer is not one.
     out["internet"] = c.get("internet") if isinstance(c.get("internet"), bool) else None
     # ...and whether its toolchain store is read-only to it (R85).
     out["store_ro"] = c.get("store_ro") is True
     # ...and whether it is mounted noexec, which stops every terminal there.
     out["store_noexec"] = c.get("store_noexec") is True
-    # The features bb-sandbox installs and removes (R91): absent from an
-    # agent that does not report them, so the Features section can say the
-    # agent is behind rather than that nothing is installed.
-    fe = c.get("features") if isinstance(c.get("features"), dict) else None
-    if fe is not None:
-        vm = fe.get("vmhost") if isinstance(fe.get("vmhost"), dict) else {}
-        fw = fe.get("firewall") if isinstance(fe.get("firewall"), dict) else {}
-        out["features"] = {"vmhost": {"installed": vm.get("installed") is True, "kvm": vm.get("kvm") is True,
-                                      "libvirt": re.sub(r"[^0-9.]", "", str(vm.get("libvirt") or ""))[:20]},
-                           "firewall": {"installed": fw.get("installed") is True}}
+    # The features bb-sandbox installs and removes (R91), each not installed
+    # where the report says nothing usable of it.
+    fe = c.get("features") if isinstance(c.get("features"), dict) else {}
+    vm = fe.get("vmhost") if isinstance(fe.get("vmhost"), dict) else {}
+    fw = fe.get("firewall") if isinstance(fe.get("firewall"), dict) else {}
+    out["features"] = {"vmhost": {"installed": vm.get("installed") is True, "kvm": vm.get("kvm") is True,
+                                  "libvirt": re.sub(r"[^0-9.]", "", str(vm.get("libvirt") or ""))[:20]},
+                       "firewall": {"installed": fw.get("installed") is True}}
     # ...and the VMs it runs (R91), each as libvirt says, with the room their
     # disks have: whitelisted field by field like the rest.
     if isinstance(c.get("vms"), list):
@@ -1443,8 +1441,8 @@ def _census(c):
             # a session THERE (bb-tty compares against the machine it runs
             # on); the row hands it to the page per project.
             "boot": re.sub(r"[^0-9.]", "", str(se.get("boot") or ""))[:40],
-            # Seconds since the machine booted, from an agent that reports
-            # it. Finite: json.loads takes Infinity and NaN, and int() of either
+            # Seconds since the machine booted. Finite: json.loads takes
+            # Infinity and NaN, and int() of either
             # raised, failing the node's whole hello (B180).
             "up_s": max(-1, int(se["up_s"])) if isinstance(se.get("up_s"), (int, float))
                     and math.isfinite(se["up_s"]) else None}
@@ -2522,9 +2520,7 @@ def node_feature(principal, node_id, fid, op):
     if n.get("kind") != "agent" or not rep.get("administers"):
         return {"error": f"{n['name']} was not provisioned as a managed node with its agent as root, so {name} cannot be "
                          "installed or removed from here"}
-    fe = rep.get("features")
-    if not isinstance(fe, dict):
-        return {"error": f"{n['name']}'s agent does not report its features yet: update the agent first"}
+    fe = rep.get("features") or {}
     why = node_locked(n)
     if why:
         return {"error": why}

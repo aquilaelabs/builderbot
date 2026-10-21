@@ -58,7 +58,7 @@ file is read only after the drop, as the session.
         the session, inside the view; through sudo
     bb-session check-net
         exit 0 when this helper can give a session a network of its own; root
-        only. Its own verb, so an agent asking an older helper hears no.
+        only.
 """
 import contextlib
 import ctypes
@@ -129,8 +129,7 @@ def conf():
          "STATE_DIR": "/var/lib/builderbot",
          # The scoped toolchain store, whose .bb bundle is the bb and bb-tty a
          # session and the agent run. Empty until the agent writes it, and then
-         # the bundle is read-only in the view (B157); empty here just leaves
-         # it as it was, which an older agent's conf does.
+         # the bundle is read-only in the view (B157).
          "TOOLCHAINS_STORE": "",
          # The session network (R79): "on" only where the agent has set it
          # up, and the range sessions are addressed from.

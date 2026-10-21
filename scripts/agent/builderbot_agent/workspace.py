@@ -6,7 +6,6 @@ import os
 import re
 import shutil
 import tarfile
-import time
 from .base import ROOT_TOOLS, TOOLS_DIR, log
 from .stores import tc_root
 
@@ -247,14 +246,11 @@ class WorkspaceMixin:
         together.
 
         What has to survive: the newest, which the ttyds run and `current`
-        names; the three newest, which versions() probes for an SDK
-        inventory; and, for a while, whatever an already-open shell has on
-        its PATH. That last one is why there is an age floor and not a bare
-        count: a session started after `current` went on PATH holds no
-        digest at all, so the floor is a grace period for the shells that
-        predate it rather than a permanent requirement.
+        names, and the three newest, which versions() probes for an SDK
+        inventory. A shell holds `current` on its PATH, never a digest, so
+        nothing older is run again.
         """
-        keep_n, floor = 5, time.time() - 48 * 3600
+        keep_n = 5
         try:
             names = [d for d in os.listdir(bbdir) if len(d) == 16
                      and all(c in "0123456789abcdef" for c in d)]
@@ -265,7 +261,7 @@ class WorkspaceMixin:
             return
         for d in dirs[keep_n:]:
             with contextlib.suppress(OSError):
-                if d != keep and os.path.getmtime(d) < floor:
+                if d != keep:
                     shutil.rmtree(d)
 
     def artifact_dir(self, project, who=None, make=True):

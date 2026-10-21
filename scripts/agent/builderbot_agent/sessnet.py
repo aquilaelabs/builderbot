@@ -176,8 +176,6 @@ def sessnet_can():
         return False, f"bb-session did not run: {e}"[:200]
     if r.returncode:
         said = (r.stderr or r.stdout).strip()
-        if "takes check" in said and "check-net" not in said:
-            return False, "the bb-session here is older than this setting; the next bundle brings it"
         return False, (said or "bb-session check-net failed")[:200]
     if not _have(NFT_BIN):
         return False, "nftables (nft) is not installed here"
