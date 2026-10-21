@@ -72,7 +72,8 @@ your projects mounted straight in, and to grow from one machine to several.
   public box can take in only 80 and 443, and Lock down stops it and revokes
   it in one press if it is ever taken over.
 - **Virtual machines.** A project's VMs on any node with KVM, made from
-  Ubuntu, Debian, Fedora, Rocky or Alpine, each on its own network, with
+  Ubuntu, Debian, Fedora, Rocky, Alma, CentOS, Arch, openSUSE, Gentoo or
+  Alpine, each on its own network, with
   snapshots to go back to and a console in the dock. Ask a Claude session for
   "a Debian 12 VM with 4 GB" and it makes one, where the project allows it;
   a VM can even enroll itself as another node.

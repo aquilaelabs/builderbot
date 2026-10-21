@@ -25,9 +25,11 @@ off exactly the packages its install added.
 ## What a VM is made from
 
 An OS from `config/vm-images.json`, asked for by name in any of the ways a
-person says it (`debian`, `Debian 12`, `ubuntu-24.04`, `noble`, `rocky`):
-Ubuntu 26.04 and 24.04, Debian 13 and 12, Fedora 44, Rocky Linux 10 and 9,
-Alpine 3.24. Each is its publisher's cloud image, downloaded once per node
+person says it (`debian`, `Debian 12`, `ubuntu-24.04`, `noble`, `rocky`,
+`leap 16`): Ubuntu 26.04 and 24.04, Debian 13 and 12, Fedora 44, Rocky Linux
+10 and 9, AlmaLinux 9, CentOS Stream 9, Arch, openSUSE Leap 16 and
+Tumbleweed, Gentoo, Alpine 3.24. Gentoo's image is a dated build, which the
+catalog moves on by hand. Each is its publisher's cloud image, downloaded once per node
 and checked against the checksum file the publisher posts beside it before
 it is kept. cloud-init makes one account (`builder`, sudo without a password)
 that lets in the ssh keys given and no password. `bb vm os` lists them.

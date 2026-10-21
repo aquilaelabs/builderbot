@@ -44,7 +44,9 @@ class Controller(unittest.TestCase):
 
     def test_the_os_is_found_however_it_is_said(self):
         for said, want in (("Debian 12", "debian-12"), ("debian", "debian-13"), ("ubuntu-24.04", "ubuntu-24.04"),
-                           ("rocky", "rocky-10"), ("Ubuntu 26.04 LTS", "ubuntu-26.04"), ("noble", "ubuntu-24.04")):
+                           ("rocky", "rocky-10"), ("Ubuntu 26.04 LTS", "ubuntu-26.04"), ("noble", "ubuntu-24.04"),
+                           ("AlmaLinux 9", "almalinux-9"), ("centos stream", "centos-9"), ("arch", "arch-latest"),
+                           ("leap 16", "opensuse-16.0"), ("tumbleweed", "opensuse-tumbleweed"), ("gentoo", "gentoo-latest")):
             self.assertEqual((vms.find_os(said)[0] or {}).get("id"), want, said)
         img, why = vms.find_os("debain 13")
         self.assertIsNone(img)

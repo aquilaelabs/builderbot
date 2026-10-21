@@ -63,7 +63,7 @@ const TOUR_STEPS = {
     {at: TOUR_FIRST, say: "A project's card: each container with its state, where it answers, and its buttons. The menu holds the rest, Remove last."},
   ],
   vms: [
-    {say: "VMs: a project's virtual machines on the nodes with VM host installed, made from Ubuntu, Debian, Fedora, Rocky or Alpine."},
+    {say: "VMs: a project's virtual machines on the nodes with VM host installed, made from the cloud images of a dozen Linux systems."},
     {at: TOUR_BAR, say: "New VM is here. A Claude session can make one too, with bb vm new, where the project's Make VMs setting allows it."},
     {at: TOUR_FIRST, say: "Each VM says its state and how to ssh in. Snapshot keeps its state under a name, and Revert goes back to it."},
   ],

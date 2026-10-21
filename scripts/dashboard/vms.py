@@ -111,7 +111,9 @@ def find_os(said):
     if m:
         fam, ver = m.group(1), m.group(2) or ""
         for img in catalog():
-            if img.get("family") == fam and (not ver or img["id"].split("-", 1)[1].startswith(ver)):
+            # The family by its own name or by an alias ("leap 16").
+            if (img.get("family") == fam or fam in img.get("aliases", ())) \
+                    and (not ver or img["id"].split("-", 1)[1].startswith(ver)):
                 return img, ""
     near = difflib.get_close_matches(want, [i["id"] for i in catalog()], n=3, cutoff=0.4)
     return None, (f"no OS called {said} in the catalog" + (f"; the nearest: {', '.join(near)}" if near else "")
@@ -296,7 +298,8 @@ def create(principal, project, req, nodes_allowed, session=False):
     enroll = None
     if req.get("node_agent") is True:
         sysid = {"ubuntu": "ubuntu", "debian": "debian", "rocky": "rocky", "fedora": "fedora",
-                 "alpine": "alpine"}.get(img.get("family") or "")
+                 "alpine": "alpine", "almalinux": "almalinux", "centos": "centos", "arch": "arch",
+                 "opensuse": "opensuse", "gentoo": "gentoo"}.get(img.get("family") or "")
         if not sysid or enroll_script is None:
             return {"error": f"{img['name']} has no enroll script BuilderBot makes, so it cannot be made a node"}
         enroll = enroll_script(principal, {"name": f"{project}-{name}", "controller": str(req.get("ctl") or ""),

@@ -4,6 +4,7 @@
 
 ### Added
 
+- A VM can be made from AlmaLinux 9, CentOS Stream 9, Arch, openSUSE Leap 16 or Tumbleweed, or Gentoo, and made a node like the others; a system is found by any of its names with a version (leap 16)
 - A short tour of each page the first time you open it, pointing at its parts one step at a time, with Skip tour and a box to skip it on every page; Show the tours again, in About and on Profile, brings them back. (310b392)
 - Lock down on a hosting-only node's page, for a box that may have been taken over: one press stops every container there and its nginx, keeps them from starting at a boot, shuts its SSH door, and removes the node with its credential revoked, within five minutes even if the box never answers (edb13701)
 - A VMs page in the Containers group: make, start, stop, snapshot, revert and remove a project's virtual machines on any node with VM host installed, from Ubuntu, Debian, Fedora, Rocky or Alpine images, each with its own network that reaches the internet and the controller but not your LAN. A project's Claude sessions can do the same with bb vm under a new Make VMs setting (deny by default), ask for an OS in words, and make a VM a node of its own. (8ba0d8e)
