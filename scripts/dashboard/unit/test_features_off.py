@@ -24,7 +24,7 @@ class FeaturesOff(unittest.TestCase):
         self.assertEqual(m.refused("POST", "/api/v1/nodes", {"action": "add"}), "")
 
     def test_each_feature_takes_its_requests(self):
-        m = self.load("tunnel,ftp,phone,devices,apps,image-updates,runner,enroll", "a classroom install")
+        m = self.load("tunnel,ftp,phone,devices,apps,image-updates,runner,enroll,vms", "a classroom install")
         cases = [
             ("POST", "/api/settings", {"set": {"tunnel_host": "x"}}, "tunnel"),
             ("POST", "/api/settings", {"set": {"apps_android": False}}, "apps"),
@@ -37,6 +37,8 @@ class FeaturesOff(unittest.TestCase):
             ("POST", "/api/devapp", {"action": "update"}, "image-updates"),
             ("POST", "/api/v1/nodes", {"action": "runner-token"}, "runner"),
             ("POST", "/api/v1/nodes", {"action": "add"}, "enroll"),
+            ("POST", "/api/vms", {"action": "new"}, "vms"),
+            ("POST", "/api/v1/nodes", {"action": "feature", "feature": "vmhost", "op": "install"}, "vms"),
         ]
         for method, path, req, feat in cases:
             why = m.refused(method, path, req)
@@ -73,9 +75,9 @@ class Banner(unittest.TestCase):
         self.assertEqual(self.band(), "")
 
     def test_the_text_escaped_with_its_link(self):
-        got = self.band(BANNER_TEXT="A <b>shared</b> install", BANNER_LINK="/demo/about", BANNER_LINK_LABEL="about it")
+        got = self.band(BANNER_TEXT="A <b>shared</b> install", BANNER_LINK="/about", BANNER_LINK_LABEL="about it")
         self.assertEqual(got, '<div class="banner" id="banner" role="status">A &lt;b&gt;shared&lt;/b&gt; install'
-                              ' <a href="/demo/about">about it</a></div>')
+                              ' <a href="/about">about it</a></div>')
 
     def test_a_link_that_is_not_http_or_a_path_is_dropped(self):
         got = self.band(BANNER_TEXT="hi", BANNER_LINK="javascript:alert(1)")

@@ -314,7 +314,7 @@ def daemon_json_with_ip(text, on):
         return None
     # Two keys: `ip` is the default bridge's, and every network compose makes
     # is a user-defined one, which takes its bind address from
-    # default-network-opts instead (draconis, 11 Oct: with `ip` alone,
+    # default-network-opts instead (a hosting node, 11 Oct: with `ip` alone,
     # aquilaeLabs's 8380 and 8381 answered from the internet).
     want = "127.0.0.1" if on else None
     before = json.dumps(d, sort_keys=True)

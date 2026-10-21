@@ -2608,7 +2608,7 @@ def _build_env(project, instance=MAIN):
            if instance else "")
     # A container with no project tree behind it (nginx's, one made with
     # bb container new) has no commit to stamp: asked anyway, git said
-    # "cannot change to /workspace/nginx-draconis" in the log on every
+    # "cannot change to /workspace/nginx-NODE" in the log on every
     # update (12 Oct), as _head and _dirty already knew not to.
     tree = (WORKSPACE / project).is_dir()
     r = (_run(["git", "-C", str(WORKSPACE / project), "rev-parse", ref or "HEAD"], timeout=10)

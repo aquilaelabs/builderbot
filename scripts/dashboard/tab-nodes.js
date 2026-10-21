@@ -486,7 +486,7 @@ function nodeSyncRow(n){
 // script set up while it has not reported yet; the switch is a system job,
 // and the line says the ssh command to use.
 // What a PC needs to come in through a cloudflared door (R179, the
-// operator's own way in to draconis, 11 Oct): an ~/.ssh/config block named
+// operator's own way in to a hosting node, 11 Oct): an ~/.ssh/config block named
 // for the node, so every server keeps its own name and its own saved
 // password rather than all of them being localhost:22, and `ssh NAME`.
 // MobaXterm's own SSH sessions read no ssh config, so it is said how it

@@ -286,7 +286,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             # hello rather than only when it moves: apply_ports_local writes
             # and restarts docker only when daemon.json differs, and an agent
             # that learned a second key (B666) met a switch already on and
-            # never wrote it (draconis, 11 Oct).
+            # never wrote it (a hosting node, 11 Oct).
             # The journal kept across boots on a managed node (R185).
             self.keep_journal()
             # ...and the files the node writes itself kept to their size.

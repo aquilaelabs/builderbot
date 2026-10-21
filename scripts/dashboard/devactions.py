@@ -513,7 +513,7 @@ def image_path(nid, q):
     sp = (j or {}).get("spec") or {}
     # Assigned as well as running: the fetch is the run half's first step,
     # and on a public node it reached here before the agent's first log post
-    # had marked the job running, so draconis was answered 403 (B648).
+    # had marked the job running, so the node was answered 403 (B648).
     if not j or j.get("node") != nid or j.get("state") not in ("assigned", "running") or sp.get("ship") != "run":
         return None, ({"error": "no image is being loaded by that job on this node"}, 403)
     p = _image_file(sp.get("project", ""), sp.get("instance") or devapp.MAIN)

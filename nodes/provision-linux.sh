@@ -1045,7 +1045,7 @@ fi
 
 # The journal kept across boots (R185): a fresh VPS keeps it in memory only,
 # so after a crash `bb logs --node NAME --crash` met "No journal boot entry
-# found for the specified boot (-1)" on draconis (11 Oct). A drop-in rather
+# found for the specified boot (-1)" on a hosting node (11 Oct). A drop-in rather
 # than an edit of journald.conf, so the distribution's own file is left as it
 # was; journald restarted only when the drop-in is new.
 keep_journal() {

@@ -3466,7 +3466,7 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  # A hosting-only node has no docker address here: the controller
                  # holds no key to a VPS, and every `docker compose config` and
                  # data-directory mkdir addressed at it waited out a 30s ssh
-                 # timeout, twice per nginx Save on draconis, holding the server
+                 # timeout, twice per nginx Save on a hosting node, holding the server
                  # with it (R85 step 1, the operator, 11 Oct). With no address
                  # the config check runs the compose plugin here, which parses
                  # without a daemon, and the directory is the agent's to make.

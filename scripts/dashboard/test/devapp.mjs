@@ -2277,7 +2277,7 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
   // containers' shells to an administrator.
   const why = await page.evaluate(() => {
     const keepN = nodesList, keepL = dockerList, keepA = state.admin;
-    nodesList = [{ id: 'n_host', name: 'draconis', config: { host_only: true } }];
+    nodesList = [{ id: 'n_host', name: 'hostbox', config: { host_only: true } }];
     dockerList = { ...(dockerList || {}), node: 'n_host' };
     const host = dmShellWhy({ project: 'ep.silon', instance: 'main' });
     nodesList = keepN; dockerList = keepL;
@@ -2288,7 +2288,7 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
     p.prefs.devbuild = keepB; state.admin = keepA;
     return { host, deny, admin };
   });
-  ok(/draconis hosts containers only/.test(why.host) && /Run its container is Deny/.test(why.deny) && why.admin === '',
+  ok(/hostbox hosts containers only/.test(why.host) && /Run its container is Deny/.test(why.deny) && why.admin === '',
      `a dead Shell says why: a hosting-only node, or Deny for anybody but an administrator (${JSON.stringify(why)})`);
   rmSync(`${ST}/ep-silon.svcs`, { force: true });
   if (!wasUp) rmSync(`${ST}/ep-silon.up`, { force: true });

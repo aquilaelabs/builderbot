@@ -57,12 +57,13 @@ def accounts():
     # --seen (B135): the account starts having read the guide and this
     # image's changelog, for one a script makes for somebody it shows the
     # dashboard to already (a seeded teammate, a classroom's accounts), where
-    # the welcome window opened over everything at the first sign-in.
+    # the welcome window opened over everything at the first sign-in. The
+    # first-use tour (R94) is off for it too, for the same reason.
     seen = "--seen" in rest
 
     def mark_seen():
         if seen:
-            users.prefs_set(name, {"welcome_seen": True,
+            users.prefs_set(name, {"welcome_seen": True, "tour_off": True,
                                    "image_seen": os.environ.get("BB_IMAGE_REV", "").strip()[:40]})
     # The owner, as the first-run page makes it (R84): for a setup scripted
     # from a shell rather than clicked through. Refused once there is one.

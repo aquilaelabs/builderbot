@@ -108,7 +108,7 @@ function vmBar(ghost){
   const any = !ghost && Object.values(vmsData?.can || {}).includes("write");
   return `<div class="field docbarrow dmpick"><input${ghost ? "" : ` id="vmSearch"`} type="search"
       placeholder="${isPhone() ? "search" : "name, OS, node or project"}" autocomplete="off" aria-label="narrow the VMs: name, OS, node or project" value="${esc(vmsSearch)}"${dead}><span class="sp"></span>${
-      any || ghost ? `<span class="actbar"><button type="button"${ghost ? "" : ` id="bVmNew"`} class="primary"${
+      (any || ghost) && !featureOff("vms") ? `<span class="actbar"><button type="button"${ghost ? "" : ` id="bVmNew"`} class="primary"${
         dead || !(vmsData?.hosts || []).length ? " disabled" : ""}>${barSaid("New VM", "New")}</button></span>` : ""}</div>`;
 }
 
@@ -126,7 +126,11 @@ function renderVmsInto(i){
   const rows = (vmsData.vms || []).filter(v => !q || [v.name, v.os, v.os_name, v.node_name, projLabel(v.project), v.ip]
     .some(s => String(s || "").toLowerCase().includes(q)));
   const hosts = vmsData.hosts || [];
-  const empty = vmsErr ? `<div class="hint bad">${esc(vmsErr)}</div>`
+  // Switched off on this install (FEATURES_OFF=vms): said where the list
+  // would be, and New VM goes with it.
+  const off = featureOff("vms");
+  const empty = off ? `<div class="field">${deadWhy(off)}</div>`
+    : vmsErr ? `<div class="hint bad">${esc(vmsErr)}</div>`
     : !hosts.length ? `<div class="empty vmnone">No node has VM host yet: its Features section on the ${pageLink("nodes", "Nodes page")} installs it, where the machine has /dev/kvm.</div>`
     : !(vmsData.vms || []).length ? `<div class="empty vmnone">No VM yet. ${Object.values(vmsData.can || {}).includes("write")
         ? "Press <b>New VM</b>, or ask Claude in a session for one: <code>bb vm new NAME --os debian</code>."
