@@ -81,6 +81,16 @@ as a VM on its host, and is retired with its credential revoked when the VM
 is removed. A session's is always an administrator's to allow, whatever the
 dial says: adding a node is theirs.
 
+A VM made a node is not on its project's network. It joins the LAN through
+the host's own interface (macvtap) and takes an address from the LAN's DHCP
+like any other machine, because the controller reaches a node at its address
+(its sessions' terminals, its Docker over SSH), which a project network
+behind the host's NAT does not give it. Its firewall is the one the
+provisioner makes on every node, and the VMs page shows the address its
+agent dials in from. A macvtap guest cannot talk to its own host, so a
+controller that runs on the VM host itself does not reach it: put node VMs on
+another machine than the controller's.
+
 ## Console
 
 **Console** on a running VM's row opens its serial console in the dock,

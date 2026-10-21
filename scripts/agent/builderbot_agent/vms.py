@@ -138,6 +138,20 @@ def vmnet_keep(ctl, lan=False, now=0.0, nft="nft"):
     return ""
 
 
+def lan_iface():
+    """The interface the host's default route leaves by, "" without one: where
+    a VM made a node joins the LAN."""
+    try:
+        with open("/proc/net/route") as f:
+            for line in f.read().splitlines()[1:]:
+                p = line.split()
+                if len(p) > 3 and p[1] == "00000000" and int(p[3], 16) & 2 and re.fullmatch(r"[A-Za-z0-9_.-]{1,15}", p[0]):
+                    return p[0]
+    except (OSError, ValueError):
+        pass
+    return ""
+
+
 def vm_pool():
     """Room where the VMs' disks go, for the census and the page."""
     try:
@@ -196,12 +210,17 @@ def ovmf():
     return next((p for p in OVMF_PAIRS if os.path.isfile(p[0]) and os.path.isfile(p[1])), None)
 
 
-def domain_xml(name, project, vcpus, mem_mb, disk, seed, network, boot="bios", fw=None, nvram=""):
+def domain_xml(name, project, vcpus, mem_mb, disk, seed, network, boot="bios", fw=None, nvram="", lan=""):
     """The domain, from a fixed shape: KVM, the host's CPU, virtio disk and
     network on the project's own network, the seed as a cdrom, a serial
     console and no graphics, and BuilderBot's marker in <metadata>. `boot`
     uefi is the q35 machine on the firmware VM host installs (OVMF), with
-    Secure Boot off, for an image whose kernel will not start under BIOS."""
+    Secure Boot off, for an image whose kernel will not start under BIOS.
+    `lan`, the host's interface, puts it on the LAN instead (macvtap), as a
+    VM made a node is: the controller reaches a node at its own address,
+    which a project network behind the host's NAT does not have."""
+    nic = (f"<interface type='direct'><source dev={quoteattr(lan)} mode='bridge'/><model type='virtio'/></interface>"
+           if lan else f"<interface type='network'><source network={quoteattr(network)}/><model type='virtio'/></interface>")
     arch = escape(os.uname().machine)
     os_el = (f"<os><type arch='{arch}' machine='q35'>hvm</type>"
              f"<loader readonly='yes' type='pflash'>{escape(fw[0])}</loader>"
@@ -219,7 +238,7 @@ def domain_xml(name, project, vcpus, mem_mb, disk, seed, network, boot="bios", f
   <devices>
     <disk type='file' device='disk'><driver name='qemu' type='qcow2'/><source file={quoteattr(disk)}/><target dev='vda' bus='virtio'/></disk>
     <disk type='file' device='cdrom'><driver name='qemu' type='raw'/><source file={quoteattr(seed)}/><target dev='sda' bus='sata'/><readonly/></disk>
-    <interface type='network'><source network={quoteattr(network)}/><model type='virtio'/></interface>
+    {nic}
     <serial type='pty'><target port='0'/></serial>
     <console type='pty'><target type='serial' port='0'/></console>
     <channel type='unix'><target type='virtio' name='org.qemu.guest_agent.0'/></channel>
@@ -408,7 +427,14 @@ class VmsMixin:
         base = self._vm_image(job, spec, who)
         if not base:
             return "failed", 69
-        if not self._vm_network(job, spec, who):
+        enroll = str(spec.get("enroll") or "")
+        # Made a node: on the LAN as its own machine, where the controller
+        # reaches it; every other VM on its project's network.
+        lan = lan_iface() if enroll else ""
+        if enroll and not lan:
+            job.say("refused: this machine has no default route to put a node VM on the LAN by\n")
+            return "failed", 69
+        if not lan and not self._vm_network(job, spec, who):
             return "failed", 69
         ddir = os.path.join(VM_DIR, "disks")
         self.own_dir(ddir, who)
@@ -418,12 +444,11 @@ class VmsMixin:
                         who, say=False) != 0:
             return "failed", 70
         hostname = name.removeprefix("bbvm-")[:63]
-        enroll = str(spec.get("enroll") or "")
         if enroll and (not enroll.startswith(ENROLL_HEAD) or len(enroll) > 4_000_000):
             job.say("refused: what came to enroll the VM as a node is not the controller's enroll script\n")
             return "failed", 64
         if enroll:
-            job.say("it enrolls as a node at its first boot\n")
+            job.say(f"it joins the LAN on {lan} as its own machine and enrolls as a node at its first boot\n")
         if not self._vm_seed(job, seed, hostname, user, keys, who, enroll):
             return "failed", 70
         xml = os.path.join(ddir, name + ".xml")
@@ -434,7 +459,7 @@ class VmsMixin:
             return "failed", 69
         with open(xml, "w") as f:
             f.write(domain_xml(name, project, vcpus, mem, disk, seed, str(spec["network"]), boot, fw,
-                               os.path.join(ddir, name + "_VARS.fd")))
+                               os.path.join(ddir, name + "_VARS.fd"), lan))
         job.step("starting it")
         if self._vm_run(job, VIRSH + ["define", xml], who) != 0:
             return "failed", 70

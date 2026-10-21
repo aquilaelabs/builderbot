@@ -180,6 +180,16 @@ def view(projects=None):
             snaps = list(live.get("snapshots") or [])
             snaps += [x for x in rec.get("snaps") or [] if x not in snaps]
             row.update(state=live.get("state") or "unknown", ip=live.get("ip") or "", snapshots=snaps)
+            # A node VM is on the LAN, where the host sees no lease of its:
+            # its address is the one its agent dials in from.
+            if rec.get("node_id") and not row["ip"]:
+                vn = nodes.get(rec["node_id"]) or {}
+                row["ip"] = (vn.get("agent") or {}).get("addr") or ""
+        elif rec.get("state") == "made" and time.time() - rec.get("made_at", 0) < 180:
+            # Made a moment ago and not in the node's report yet: its record's
+            # "made", which the page reads as starting, not missing, which it
+            # read for one poll (R97's walk).
+            pass
         elif rec.get("state") not in ("making", "failed", "removing"):
             # Made, and the node's last report does not list it: not there.
             row.update(state="missing" if (n or {}).get("reported", {}).get("vms") is not None else "unknown")
@@ -430,6 +440,7 @@ def vm_done(job, state):
                 node_retire(f"vm:{key}", gone["node_id"])
         elif spec.get("action") == "create":
             rec["state"] = "made" if ok else "failed"
+            rec["made_at"] = int(time.time())
             rec["error"] = "" if ok else (job.get("error") or f"its create job {state}; the job's log says why")[:300]
         elif ok and spec.get("action") in ("snapshot", "snapshot-rm"):
             # What its own jobs did, kept until the node's next report says

@@ -257,6 +257,12 @@ class Agent(unittest.TestCase):
         self.assertIn("machine='q35'", u)
         self.assertNotIn("<loader", x)
         self.assertNotIn("<graphics", x)
+        # A VM made a node is on the LAN by the host's own interface, where
+        # the controller reaches it (R97's walk: behind the NAT it was not).
+        self.assertIn("<source network='bbvm-n00'/>", x.replace('"', "'"))
+        n = self.av.domain_xml("bbvm-web-db", "web", 2, 2048, "/v/d.qcow2", "/v/s.iso", "bbvm-n00", lan="enp1s0")
+        self.assertIn("<interface type='direct'><source dev='enp1s0' mode='bridge'/>", n.replace('"', "'"))
+        self.assertNotIn("bbvm-n00", n)
         ud = self.av.user_data("db", "builder", [KEY])
         self.assertIn("ssh_pwauth: false", ud)
         self.assertNotIn("runcmd", ud)
