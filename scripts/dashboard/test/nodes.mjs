@@ -1516,6 +1516,45 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     await page.waitForFunction(sel => /SSH door\s*cloudflared at ssh-shed\.example\.com, shut/.test(document.querySelector(sel + ' .ndsessfacts')?.textContent.replace(/\s+/g, ' ') || ''), ROW, { timeout: 10000 });
     ok(await page.$eval(`${ROW} .nddoor`, e => /Open the door/.test(e.textContent) && !e.querySelector('.ndcmd')),
        '...and reported shut, the row offers Open the door and no command');
+    // The Features section (R91): each feature bb-sandbox installs, with
+    // Install or Uninstall as the machine reports it, a system job each; a
+    // machine with no /dev/kvm says why instead of offering VM host, and the
+    // firewall is offered only on a hosting-only node.
+    {
+      const feats = (vm, fw = false) => ({ vmhost: { installed: false, kvm: true, libvirt: '10.0.0', ...vm }, firewall: { installed: fw } });
+      const featJob = async op => { for (let i = 0; i < 40; i++){
+        const j = ((await napi('/api/v1/jobs?active=1')).jobs || []).find(x => x.type === 'system' && x.spec?.apply === 'feature');
+        if (j) return j;
+        await sleep(250);
+      } return null; };
+      const VM = `${ROW} .ndfeat[data-feat="vmhost"]`;
+      await hello({ ...CENSUS, features: feats({}) });
+      await page.evaluate(async () => { await refresh(); await loadNodes(); });
+      await page.waitForSelector(`${VM} [data-nd="feature"]`, { timeout: 10000 });
+      const before = await page.$eval(`${ROW} [data-sect="nodes:features"]`, e => ({ text: e.textContent.replace(/\s+/g, ' '),
+        btn: e.querySelector('.ndfeat[data-feat="vmhost"] [data-nd="feature"]').textContent, fw: !!e.querySelector('.ndfeat[data-feat="firewall"]') }));
+      ok(/VM host ?not installed/.test(before.text) && /libvirt 10\.0\.0/.test(before.text) && before.btn === 'Install' && !before.fw,
+         `a managed node's Features section offers VM host with Install, and no firewall on a node that is not hosting only (${before.text.slice(0, 120)})`);
+      await page.click(`${VM} [data-nd="feature"]`);
+      const inst = await featJob();
+      ok(inst?.spec?.config?.id === 'vmhost' && inst.spec.config.op === 'install',
+         `...and Install queues the feature system job (${JSON.stringify(inst?.spec)})`);
+      if (inst) await napi('/api/v1/jobs', { action: 'cancel', id: inst.id });
+      await hello({ ...CENSUS, features: feats({ kvm: false }) });
+      await page.evaluate(async () => { await refresh(); await loadNodes(); });
+      await page.waitForFunction(sel => /host-passthrough/.test(document.querySelector(sel)?.textContent || ''), VM, { timeout: 10000 });
+      ok(!(await page.$(`${VM} [data-nd="feature"]`)),
+         '...a machine with no /dev/kvm says why on the row and offers no Install');
+      await hello({ ...CENSUS, features: feats({ installed: true }) });
+      await page.evaluate(async () => { await refresh(); await loadNodes(); });
+      await page.waitForFunction(sel => document.querySelector(sel + ' [data-nd="feature"]')?.textContent === 'Uninstall', VM, { timeout: 10000 });
+      page.dialogs.length = 0;
+      await page.click(`${VM} [data-nd="feature"]`);
+      const rm = await featJob();
+      ok(page.dialogs.length === 1 && /Uninstall VM host from shed/.test(page.dialogs[0]) && rm?.spec?.config?.op === 'remove',
+         `...and installed, Uninstall asks, then queues the remove (${JSON.stringify(rm?.spec?.config)})`);
+      if (rm) await napi('/api/v1/jobs', { action: 'cancel', id: rm.id });
+    }
     await hello(CENSUS);
     // Enroll script on the row (R177): a new script for this node, bound
     // to the machine it reported, with no secret in it; run on another

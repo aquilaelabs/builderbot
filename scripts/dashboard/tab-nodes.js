@@ -502,6 +502,40 @@ Host ${esc(alias)}
       <div class="sub">Then <code>ssh ${esc(alias)}</code>. In MobaXterm, whose own SSH sessions read no ssh config, make a Shell session that runs <code>ssh ${esc(alias)}</code>, or type it in its local terminal.</div>`;
 }
 
+// What the node has beyond the base (R91): each feature bb-sandbox installs
+// and removes, with Install or Uninstall on its row, the same install the
+// enroll script's tick ran. A row that cannot be pressed says why under it,
+// muted; the firewall is a hosting-only node's alone.
+function nodeFeaturesSection(n){
+  if (n.kind !== "agent") return "";
+  const fe = n.reported?.features;
+  const job = n.applying?.what === "feature" ? n.applying : null;
+  const failed = n.last_apply?.what === "feature" && n.last_apply.state === "failed" ? n.last_apply : null;
+  const why = !fe ? (n.reported ? "Its agent does not report its features yet: Update agent above." : "")
+    : !n.reported?.administers ? "This node's agent is not root on a managed machine, so its features are set on the machine itself."
+    : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const row = (fid, title, has, about, cant) => {
+    const mine = job?.feature === fid;
+    const btn = why || cant || (job && !mine) ? ""
+      : `<button type="button" data-nd="feature" data-feature="${fid}" data-op="${has ? "remove" : "install"}"${mine ? " disabled" : ""}>${
+          mine ? (job.op === "remove" ? "Uninstalling…" : "Installing…") : has ? "Uninstall" : "Install"}</button>`;
+    const fail = failed?.feature === fid ? `<div class="sub bad">The last try failed${failed.error ? `: ${esc(failed.error)}` : ""}; its job's log says more.</div>` : "";
+    return `<div class="row ndfeat" data-feat="${fid}"><div class="grow">
+        <div class="name">${esc(title)} <span class="pill${has ? " ok" : ""}">${has ? "installed" : "not installed"}</span></div>
+        <div class="sub">${about}</div>${cant ? `<div class="sub dim">${cant}</div>` : ""}${fail}</div>${btn}</div>`;
+  };
+  const vm = fe?.vmhost || {};
+  const rows = [row("vmhost", "VM host", !!vm.installed,
+      `Runs virtual machines here with KVM through libvirt${vm.libvirt ? ` (libvirt ${esc(vm.libvirt)})` : ""}, as the jobs account and never a session.`,
+      fe && !vm.kvm && !vm.installed ? "No /dev/kvm here, so a VM would run in software. On a VM, its host passes virtualization through: CPU mode host-passthrough and nested KVM on." : "")];
+  if (n.config?.host_only)
+    rows.push(row("firewall", "Hosting firewall", !!fe?.firewall?.installed,
+      "Takes in only 80 and 443, a port a container publishes included; port 22 as the SSH door leaves it.", ""));
+  const have = rows.length && fe ? [fe.vmhost?.installed, n.config?.host_only && fe.firewall?.installed].filter(Boolean).length : 0;
+  return docSection("nodes", "features", ndTitle("features"), fe ? (have ? `${have} installed` : "none installed") : "",
+    `${why ? `<div class="sub dim ndfeatwhy">${why}</div>` : ""}${rows.join("")}`);
+}
+
 // How the node reaches the controller, chosen in Enroll node and kept on
 // its record (the operator, 13 Oct: what is the node's reads on its row;
 // the controller's own tunnel stays in Settings). Read-only: changing it
@@ -1344,7 +1378,7 @@ function nodeCharts(n){
 // is a change to both; given null, each draws the placeholder's.
 // A node's sections, in their order, by the titles they are drawn under.
 const ND_SECTS = [["health", "Health"], ["projects", "Projects"], ["sessions", "Sessions"], ["gpu", "GPU"],
-                  ["claude", "Claude Code"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
+                  ["features", "Features"], ["claude", "Claude Code"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
 function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
 // Why Create sandbox VM and Enroll node are dead, when this install switched
 // enrolling off (R81): under the bar, since a reason in a tooltip is nothing
@@ -1536,6 +1570,7 @@ function renderNodesInto(i){
         ${n.kind === "agent" && !pending ? nodeProjectsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
+        ${n.kind === "agent" && !pending ? nodeFeaturesSection(n) : ""}
         ${n.kind === "agent" && !pending && !n.config?.host_only ? nodeClaudeSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
@@ -1772,6 +1807,8 @@ function ndDialogs(){
           <input id="ndEnDoorSecret" type="password" autocomplete="off" spellcheck="false"></div>
         <label class="ndcap" id="ndEnDoorCloseRow" hidden><input type="checkbox" id="ndEnDoorClose"> Close port 22 to the internet once the door is up</label>
         <div class="hint" id="ndEnDoorHint" hidden>Who gets to the door is the tunnel's own say (Cloudflare Access${dev ? ", or the tailnet's ACLs" : ""}); the machine's keys decide after that. Leave port 22 open until you have come in through the door once.</div>
+        <label class="ndcap"><input type="checkbox" id="ndEnVm"> VM host: run virtual machines on it</label>
+        <div class="hint" id="ndEnVmHint" hidden>KVM through libvirt, installed once it has enrolled. It needs /dev/kvm: on a VM, its host passes virtualization through (CPU mode host-passthrough). Its Features section on this page installs and removes it later too.</div>
         <label class="ndcap"><input type="checkbox" id="ndEnNginx"> Put nginx on it once it is enrolled</label>
         <div class="hint" id="ndEnNginxHint" hidden>BuilderBot's own reverse proxy, deployed the moment the node enrolls, with the routes and certificate the nginx page holds for it (set them there first or after).</div>
       </div>
@@ -1826,6 +1863,7 @@ function ndDialogs(){
       if (host.checked) sess.checked = false;
     };
     $b("#ndEnFw").onchange = showHost;
+    $b("#ndEnVm").onchange = () => { $b("#ndEnVmHint").hidden = !$b("#ndEnVm").checked; };
     const ngx = $b("#ndEnNginx");
     ngx.onchange = () => { $b("#ndEnNginxHint").hidden = !ngx.checked; };
     const door = $b("#ndEnDoor");
@@ -1874,7 +1912,7 @@ function ndDialogs(){
     // What was typed comes back after a refusal: a redraw to its defaults
     // lost the name and the account on every one (B331's shape).
     const keep = () => ({"#ndEnName": $b("#ndEnName").value, "#ndEnUser": $b("#ndEnUser").value, "#ndEnSystem": $b("#ndEnSystem")?.value,
-      "#ndEnSess": $b("#ndEnSess").checked, "#ndEnHost": $b("#ndEnHost").checked, "#ndEnFw": $b("#ndEnFw").checked, "#ndEnNginx": ngx.checked,
+      "#ndEnSess": $b("#ndEnSess").checked, "#ndEnHost": $b("#ndEnHost").checked, "#ndEnFw": $b("#ndEnFw").checked, "#ndEnVm": $b("#ndEnVm").checked, "#ndEnNginx": ngx.checked,
       "#ndEnDoor": door.value, "#ndEnDoorHost": $b("#ndEnDoorHost").value, "#ndEnDoorClose": $b("#ndEnDoorClose").checked,
       "#ndEnReach": reach.value, "#ndEnCtl": $b("#ndEnCtl").value,
       "#ndEnWgText": $b("#ndEnWgText").value});
@@ -1890,6 +1928,7 @@ function ndDialogs(){
         sessions: $b("#ndEnSess").checked && !$b("#ndEnHost").checked, reach: reach.value,
         host_only: $b("#ndEnHost").checked, nginx: ngx.checked,
         firewall: $b("#ndEnHost").checked && $b("#ndEnFw").checked,
+        features: $b("#ndEnVm").checked ? ["vmhost"] : [],
         door: door.value, door_host: $b("#ndEnDoorHost").value.trim(),
         door_secret: $b("#ndEnDoorSecret").value.trim(), door_close22: $b("#ndEnDoorClose").checked,
         controller: $b("#ndEnCtl").value.trim(),
@@ -2221,6 +2260,12 @@ function wireNodesTab(root){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
         if (!confirm(`Shut the SSH door on ${name}?\n\nNothing reaches its port 22 through the tunnel until it is opened again from here.`)) return;
       }
+      if (act === "feature" && b.dataset.op === "remove"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        if (!confirm(b.dataset.feature === "vmhost"
+              ? `Uninstall VM host from ${name}?\n\nThe packages BuilderBot added for it come off; what the machine had before stays. It is refused while any VM is still there.`
+              : `Turn the hosting firewall off on ${name}?\n\nEvery port this box and its containers publish is reachable from the internet again.`)) return;
+      }
       if (act === "cache-clear"
           && !confirm("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "
@@ -2232,7 +2277,8 @@ function wireNodesTab(root){
                retire: "Removing", discard: "Discarding", uninstall: "Uninstalling", lockdown: "Locking down", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
                paths: "Saving", "check-paths": "Checking", "to-sync": "Moving",
                "sync-stop": "Stopping", "sync-resume": "Resuming", "sync-clean": "Cleaning",
-               rename: "Renaming", turns: "Saving"}[act] || "Working");
+               rename: "Renaming", turns: "Saving",
+               feature: b.dataset.op === "remove" ? "Uninstalling" : "Installing"}[act] || "Working");
       if (act === "update-agent"){
         nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});
@@ -2363,7 +2409,8 @@ function wireNodesTab(root){
         return;
       }
       // The door's press says which way (R174); every other verb is its name.
-      await nodeAct({action: act, id, ...(act === "door" ? {on: b.dataset.on === "1"} : {})});
+      await nodeAct({action: act, id, ...(act === "door" ? {on: b.dataset.on === "1"} : {}),
+                     ...(act === "feature" ? {feature: b.dataset.feature, op: b.dataset.op} : {})});
     }));
     wireNodeConf(box, id);
     const pi = box.querySelector('.ndpaths [data-k="paths"]');

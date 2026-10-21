@@ -205,6 +205,12 @@ class HostingFirewall(unittest.TestCase):
         s = es.build(ans, name="vps", user="bb", token="bbe_x", expires=0, provisioner=b"x")
         return next(x for x in s.splitlines() if x.startswith('bash "$dir/provision-linux.sh"'))
 
+    def test_a_feature_ticked_rides_as_its_flag(self):
+        base = {"reach": "lan", "controller": "http://192.168.1.16:7680"}
+        self.assertIn("--feature 'vmhost'", self.run_line(es.check(base | {"features": ["vmhost"]})))
+        self.assertNotIn("--feature", self.run_line(es.check(base)))
+        self.assertIn("no such feature", es.check(base | {"features": ["warpdrive"]})["error"])
+
     def test_it_rides_only_with_no_sessions(self):
         pub = es.check({"reach": "public", "controller": "https://bb.example.com", "firewall": True})
         self.assertTrue(pub["firewall"])
@@ -223,7 +229,7 @@ class HostingFirewall(unittest.TestCase):
 
     def test_the_rules_hold_docker_s_ports_too(self):
         text = open(self.PROV, encoding="utf-8").read()
-        m = re.search(r"^    cat > /etc/builderbot/hosting-fw\.nft <<NFT\n(.*?)^NFT$", text, re.S | re.M)
+        m = re.search(r"^ *cat > /etc/builderbot/hosting-fw\.nft <<NFT\n(.*?)^NFT$", text, re.S | re.M)
         rules = m.group(1)
         self.assertIn("hook input priority -5; policy drop;", rules)
         self.assertIn("tcp dport { 80, 443 } accept", rules)

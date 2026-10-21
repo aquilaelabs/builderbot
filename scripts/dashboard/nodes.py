@@ -142,7 +142,10 @@ def _node_list(all=False):
             # uninstall in flight" off the type alone and never graying.
             entry["apply"] = sp.get("apply", "")
             busy[j["node"]] = {"id": j["id"], "what": sp.get("apply", ""),
-                               "slot": str((sp.get("config") or {}).get("slot") or "")}
+                               "slot": str((sp.get("config") or {}).get("slot") or ""),
+                               # Which feature and which way (R91), for its row.
+                               "feature": str((sp.get("config") or {}).get("id") or "") if sp.get("apply") == "feature" else "",
+                               "op": str((sp.get("config") or {}).get("op") or "") if sp.get("apply") == "feature" else ""}
         except (ValueError, AttributeError):
             busy[j["node"]] = {"id": j["id"], "what": ""}
     # ...and the last system job that FINISHED on each, which is the only
@@ -172,7 +175,8 @@ def _node_list(all=False):
             continue
         done[j["node"]] = {"id": j["id"], "what": spec.get("apply", ""),
                            "state": j["state"], "error": (j["error"] or "")[:200],
-                           "ended": j["ended"], "cfg": spec.get("config")}
+                           "ended": j["ended"], "cfg": spec.get("config"),
+                           "feature": str((spec.get("config") or {}).get("id") or "") if spec.get("apply") == "feature" else ""}
     for r in rows:
         r["applying"] = busy.get(r["id"])
         r["jobs"] = inflight.get(r["id"], [])
@@ -1224,6 +1228,16 @@ def _census(c):
     out["store_ro"] = c.get("store_ro") is True
     # ...and whether it is mounted noexec, which stops every terminal there.
     out["store_noexec"] = c.get("store_noexec") is True
+    # The features bb-sandbox installs and removes (R91): absent from an
+    # agent that does not report them, so the Features section can say the
+    # agent is behind rather than that nothing is installed.
+    fe = c.get("features") if isinstance(c.get("features"), dict) else None
+    if fe is not None:
+        vm = fe.get("vmhost") if isinstance(fe.get("vmhost"), dict) else {}
+        fw = fe.get("firewall") if isinstance(fe.get("firewall"), dict) else {}
+        out["features"] = {"vmhost": {"installed": vm.get("installed") is True, "kvm": vm.get("kvm") is True,
+                                      "libvirt": re.sub(r"[^0-9.]", "", str(vm.get("libvirt") or ""))[:20]},
+                           "firewall": {"installed": fw.get("installed") is True}}
     # The configuration plane's reported half (docs/nodes.md §12): whether
     # the node was provisioned as a sandbox (bb-sandbox is there: the stamp
     # system jobs are gated on), what it mounts as bb-sandbox reads it, and
@@ -2440,6 +2454,51 @@ def lockdown_over(n):
     """Whether a node was locked down and its grace has run out."""
     at = ((n.get("config") or {}).get("lockdown") or {}).get("at") or 0
     return bool(at) and n.get("state") != "retired" and time.time() - at > LOCKDOWN_GRACE_S
+
+
+# The features a node's Features section installs and removes (R91), as
+# bb-sandbox's FEATURE_IDS and the agent's census name them.
+FEATURES = ("vmhost", "firewall")
+FEATURE_NAMES = {"vmhost": "VM host", "firewall": "the hosting firewall"}
+
+
+def node_feature(principal, node_id, fid, op):
+    """Install or remove one of a node's features (R91): a system job the
+    agent answers with bb-sandbox's own feature install, the one the enroll
+    script's flag ran, so a feature not picked at enrollment is added from
+    the node's page afterwards. Refused here with the reason the page
+    shows, before a job could only fail."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if fid not in FEATURES or op not in ("install", "remove"):
+        return {"error": f"no such feature verb: {op} {fid}"}
+    name = FEATURE_NAMES[fid]
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']} was not provisioned as a managed node with its agent as root, so {name} cannot be "
+                         "installed or removed from here"}
+    fe = rep.get("features")
+    if not isinstance(fe, dict):
+        return {"error": f"{n['name']}'s agent does not report its features yet: update the agent first"}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    if op == "install" and fid == "vmhost" and not (fe.get("vmhost") or {}).get("kvm"):
+        return {"error": f"{n['name']} has no /dev/kvm, so VMs would run in software, tens of times slower: on a VM, "
+                         "its host passes virtualization through (CPU mode host-passthrough, nested KVM on)"}
+    if op == "install" and fid == "firewall" and not (n.get("config") or {}).get("host_only"):
+        return {"error": "the hosting firewall is for a hosting-only node: it would shut the ports the controller "
+                         "reaches sessions on"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "feature", "config": {"id": fid, "op": op}, "timeout": 1800})
+    if r.get("ok"):
+        audit(principal, "node-feature", node_id, {"job": r["job"], "id": fid, "op": op})
+    return r
 
 
 def node_lockdown(principal, node_id):
@@ -5198,6 +5257,7 @@ def verb(principal, req):
              "host-only": host_on, "host-off": host_off,
              "door": lambda: node_door(principal, nid, req.get("on")),
              "lockdown": lambda: node_lockdown(principal, nid),
+             "feature": lambda: node_feature(principal, nid, field(req, "feature"), field(req, "op")),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,
              "storage": lambda: node_storage_measure(principal, nid),

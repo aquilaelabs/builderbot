@@ -1184,6 +1184,24 @@ box's own bridges but on 80 and 443: a compose that publishes
 container. Going out is left alone, since the box pulls images, renews
 certificates and dials the controller. Uninstall's `--doors` takes it away.
 
+**Features (R91).** What a node has beyond the base is a list of features,
+each an install and a remove in `bb-sandbox feature install|remove|state
+ID`, the node's own root helper: Enroll node's ticks hand the provisioner
+`--feature ID` (and `--firewall`, which is `--feature firewall`), which runs
+that install once the node has enrolled, and the node's Features section on
+the Nodes page runs the same one later as a `feature` system job
+(`node_feature`), so the two ways cannot drift. A marker in
+`/etc/builderbot/features` says BuilderBot installed it and lists the
+packages it added, so a remove takes those and leaves what the machine had
+before. The census reports each (`features`), and the section reads that.
+**VM host** is KVM through libvirt, run by the jobs account in the libvirt
+group and never by a session; it needs `/dev/kvm`, which a node that is
+itself a VM has only when its host passes virtualization through (CPU mode
+host-passthrough, nested KVM on), and without it the row says so rather
+than offering a software-emulated VM. Its remove is refused while any VM is
+there. The firewall above is the second feature, a hosting-only node's
+alone.
+
 **Which projects a container may go under.** The project pickers on Send,
 on a row's Project and Built from, and the project a Send, copy or move is
 made from, are the asker's own list of projects, for an administrator and

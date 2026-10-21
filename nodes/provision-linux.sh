@@ -69,8 +69,10 @@ REACH=""
 DOOR=""; DOOR_HOST=""; DOOR_SECRET=""; DOOR_CLOSE22=0
 # --firewall: a hosting-only box takes in 80 and 443 and nothing else
 # (R93), its containers' published ports included; port 22 as the door
-# leaves it.
+# leaves it. --feature ID (R91): one of bb-sandbox's features installed
+# once the node is enrolled; --firewall is --feature firewall.
 FIREWALL=0
+declare -a FEATURES_WANT=()
 # --machine HASH: the script was made for a node that enrolled from one
 # machine (R177), and runs on that one alone.
 MACHINE=""
@@ -184,6 +186,12 @@ it, which is a paste rather than a questionnaire.
                        too), and port 22 unless a door closed it. Going
                        out is left alone: the box pulls images, renews
                        certificates and dials the controller.
+  --feature vmhost     a VM host: KVM through libvirt, for the VMs page
+                       (needs /dev/kvm; on a VM, its host passes
+                       virtualization through). Each feature is bb-sandbox
+                       feature install ID, run once the node has enrolled,
+                       and its Features section on the Nodes page installs
+                       and removes it later.
   --data PATH          the four stores, all defaulting under
   --toolchains PATH      /var/lib/builderbot/: a job's working tree and AVDs,
   --cache PATH         the toolchains installed on this node, the build
@@ -249,7 +257,8 @@ while [ $# -gt 0 ]; do
         --door-host) DOOR_HOST="$2"; shift 2 ;;
         --door-secret) DOOR_SECRET="$2"; shift 2 ;;
         --door-close22) DOOR_CLOSE22=1; shift ;;
-        --firewall) FIREWALL=1; shift ;;
+        --firewall) FIREWALL=1; FEATURES_WANT+=(firewall); shift ;;
+        --feature) FEATURES_WANT+=("$2"); shift 2 ;;
         --machine) MACHINE="$2"; shift 2 ;;
         --data)  STORE_DATA="$2"; STORE_DATA_SET=1; shift 2 ;;
         --toolchains) STORE_TOOLCHAINS="$2"; STORE_TOOLCHAINS_SET=1; shift 2 ;;
@@ -286,6 +295,10 @@ if [ -n "$REACH" ]; then
     [ -n "$CONTROLLER" ] || { echo "--reach goes with --controller and --token" >&2; exit 1; }
     case "$CONTROLLER" in https://*) ;; *) echo "through a public hostname the controller is an https hostname, not ${CONTROLLER}" >&2; exit 1 ;; esac
 fi
+for f in "${FEATURES_WANT[@]}"; do
+    case "$f" in vmhost|firewall) ;; *) echo "--feature takes vmhost or firewall, not ${f}" >&2; exit 1 ;; esac
+    [ "${GUEST:-0}" != 1 ] || { echo "--feature ${f} needs root, and a guest node runs without it" >&2; exit 1; }
+done
 if [ "$FIREWALL" = 1 ]; then
     [ "${GUEST:-0}" != 1 ] || { echo "--firewall needs root, and a guest node runs without it" >&2; exit 1; }
     [ "$SESSION_NAME" = none ] || { echo "--firewall is for a hosting-only node (--session-user none): it would shut the session ports the controller reaches" >&2; exit 1; }
@@ -2450,6 +2463,184 @@ cmd_gpu_container() {
     esac
 }
 
+# --- features (R91) ---------------------------------------------------------
+# What a node has beyond the base, each an install and a remove, run by the
+# provisioner's flag at enrollment and by the agent's `feature` system job
+# from the Nodes page: one copy, so the two ways cannot drift. A marker
+# under /etc/builderbot/features says BuilderBot put it there, and lists the
+# packages it added, so a remove takes those and leaves what the machine
+# had before.
+FEATURES_DIR=/etc/builderbot/features
+os_family() {
+    local ids
+    ids="$(. /etc/os-release 2>/dev/null; printf ' %s %s ' "${ID:-}" "${ID_LIKE:-}")"
+    case "$ids" in
+        *" debian "*|*" ubuntu "*) echo deb ;;
+        *" rhel "*|*" fedora "*|*" centos "*|*" rocky "*|*" almalinux "*) echo rhel ;;
+        *) echo "" ;;
+    esac
+}
+# The packages a feature needs here that are not installed yet, by family.
+pkgs_missing() {
+    local fam="$1"; shift
+    local p
+    for p in "$@"; do
+        case "$fam" in
+            deb) dpkg-query -W -f='${db:Status-Abbrev}' "$p" 2>/dev/null | grep -q '^ii' || printf '%s ' "$p" ;;
+            rhel) rpm -q "$p" >/dev/null 2>&1 || printf '%s ' "$p" ;;
+        esac
+    done
+}
+pkgs_add() {
+    local fam="$1"; shift
+    [ $# -gt 0 ] || return 0
+    case "$fam" in
+        deb) export DEBIAN_FRONTEND=noninteractive; apt_get update -qq; apt_get install -y -qq --no-install-recommends "$@" ;;
+        rhel) dnf install -y -q "$@" ;;
+    esac
+}
+pkgs_drop() {
+    local fam="$1"; shift
+    [ $# -gt 0 ] || return 0
+    case "$fam" in
+        deb) export DEBIAN_FRONTEND=noninteractive; apt_get purge -y -qq "$@"; apt_get autoremove -y -qq ;;
+        rhel) dnf remove -y -q "$@" ;;
+    esac
+}
+vmhost_pkgs() {
+    case "$1:$(uname -m)" in
+        deb:x86_64)  echo "qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils" ;;
+        deb:aarch64) echo "qemu-system-arm qemu-efi-aarch64 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils" ;;
+        rhel:*)      echo "qemu-kvm qemu-img libvirt-daemon-kvm libvirt-client" ;;
+    esac
+}
+feature_vmhost() {
+    local fam pkgs added n
+    fam="$(os_family)"
+    case "$1" in
+        state) [ -f "$FEATURES_DIR/vmhost" ] && echo installed || echo absent ;;
+        install)
+            # No /dev/kvm is a machine that cannot run a VM at speed: a VM
+            # whose host does not pass virtualization through, or a box with
+            # it off in the firmware. Said, not emulated (tens of times slower).
+            [ -e /dev/kvm ] || die "no /dev/kvm here, so VMs would run in software, tens of times slower. On a VM, its host must pass virtualization through: CPU mode host-passthrough (Unraid: CPU Mode Host Passthrough; Proxmox: CPU type host) and nested KVM on in the host's kvm_intel or kvm_amd. On a machine of its own, turn VT-x or AMD-V on in its firmware"
+            [ -n "$fam" ] || die "VM host is installed on the Debian and RHEL families; this machine is neither"
+            pkgs="$(vmhost_pkgs "$fam")"
+            [ -n "$pkgs" ] || die "no VM host packages for $(uname -m) on this family"
+            # shellcheck disable=SC2086
+            added="$(pkgs_missing "$fam" $pkgs)"
+            say "VM host: KVM through libvirt"
+            # shellcheck disable=SC2086
+            pkgs_add "$fam" $added || die "the packages did not install; the output above says why"
+            have systemctl && { systemctl enable --now libvirtd >/dev/null 2>&1 || systemctl enable --now virtqemud.socket >/dev/null 2>&1 || true; }
+            getent group libvirt >/dev/null 2>&1 && id -u "$DOCKER_USER" >/dev/null 2>&1 && usermod -aG libvirt "$DOCKER_USER"
+            install -d -m 0755 "$FEATURES_DIR"
+            printf 'packages=%s\n' "$added" > "$FEATURES_DIR/vmhost"
+            say "VM host installed${added:+ (added: ${added% })}; ${DOCKER_USER} runs the VMs, and no session can" ;;
+        remove)
+            [ -f "$FEATURES_DIR/vmhost" ] || { say "VM host was not installed by BuilderBot here; nothing to remove"; return 0; }
+            if have virsh; then
+                n="$(virsh -c qemu:///system list --all --name 2>/dev/null | grep -c . || true)"
+                [ "${n:-0}" -eq 0 ] || die "${n} VM(s) are on this machine: remove them first, then VM host"
+            fi
+            say "taking VM host off"
+            getent group libvirt >/dev/null 2>&1 && gpasswd -d "$DOCKER_USER" libvirt >/dev/null 2>&1 || true
+            added="$(sed -n 's/^packages=//p' "$FEATURES_DIR/vmhost")"
+            # shellcheck disable=SC2086
+            [ -z "${added// /}" ] || pkgs_drop "$fam" $added || warn "the packages did not all come off; the output above says why"
+            rm -f "$FEATURES_DIR/vmhost"
+            say "VM host removed${added:+ (removed: ${added% })}; what was here before it stays" ;;
+    esac
+}
+# The hosting-only box closed on itself (R93): 80 and 443 in, and port 22
+# as the door left it. Docker's published ports are DNAT'd in prerouting
+# and never reach the input hook, so a compose that publishes 0.0.0.0:5432
+# was open to the world whatever the input rules said: the forward chain
+# drops any DNAT'd connection from outside the box's own bridges but on 80
+# and 443. Its own table, as the door's is, re-applied at boot.
+feature_firewall() {
+    local ssh_rule su
+    case "$1" in
+        state) [ -f /etc/builderbot/hosting-fw.nft ] && echo installed || echo absent ;;
+        install)
+            su="$(python3 -c 'import json; print(json.load(open("/etc/builderbot/node.json")).get("session_user", ""))' 2>/dev/null || true)"
+            [ -z "$su" ] || die "the firewall is for a hosting-only node: it would shut the session ports the controller reaches ${su}'s sessions on"
+            have nft || pkgs_add "$(os_family)" nftables || true
+            have nft || die "nft is not here and could not be installed"
+            say "firewall: only 80 and 443 come in"
+            ssh_rule="tcp dport 22 accept"
+            if nft list table inet builderbot_door >/dev/null 2>&1; then
+                ssh_rule="tcp dport 22 ip saddr 100.64.0.0/10 accept"
+                printf '   port 22: through the door only, as it was closed\n'
+            else
+                printf '   port 22: open, as no door closed it\n'
+            fi
+            install -d -m 0755 /etc/builderbot
+            cat > /etc/builderbot/hosting-fw.nft <<NFT
+# Written by bb-sandbox feature install firewall: 80 and 443 in, and port 22 as the door left it.
+table inet builderbot_hosting
+delete table inet builderbot_hosting
+table inet builderbot_hosting {
+    chain input {
+        type filter hook input priority -5; policy drop;
+        iifname "lo" accept
+        ct state established,related accept
+        ct state invalid drop
+        meta l4proto { icmp, ipv6-icmp } accept
+        udp sport 67 udp dport 68 accept
+        udp sport 547 udp dport 546 accept
+        iifname "docker0" accept
+        iifname "br-*" accept
+        iifname "tailscale0" accept
+        udp dport 41641 accept
+        tcp dport { 80, 443 } accept
+        udp dport 443 accept
+        ${ssh_rule}
+    }
+    chain forward {
+        type filter hook forward priority -5; policy accept;
+        ct state established,related accept
+        iifname { "lo", "docker0" } accept
+        iifname "br-*" accept
+        ct status dnat meta l4proto tcp ct original proto-dst { 80, 443 } accept
+        ct status dnat meta l4proto udp ct original proto-dst 443 accept
+        ct status dnat drop
+    }
+}
+NFT
+            nft -f /etc/builderbot/hosting-fw.nft || { rm -f /etc/builderbot/hosting-fw.nft; die "nft could not apply the firewall, so this box takes in what it did before"; }
+            if have systemctl; then
+                cat > /etc/systemd/system/builderbot-hosting-fw.service <<UNIT
+[Unit]
+Description=BuilderBot: a hosting-only box takes in 80 and 443
+After=network-pre.target
+Before=docker.service
+[Service]
+Type=oneshot
+ExecStart=$(command -v nft) -f /etc/builderbot/hosting-fw.nft
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+UNIT
+                systemctl daemon-reload >/dev/null 2>&1 || true
+                systemctl enable builderbot-hosting-fw >/dev/null 2>&1 || true
+            fi
+            say "firewall on: a container that publishes another port is not reached from outside; nginx in front of it is the way" ;;
+        remove)
+            have systemctl && { systemctl disable --now builderbot-hosting-fw >/dev/null 2>&1 || true; rm -f /etc/systemd/system/builderbot-hosting-fw.service; systemctl daemon-reload >/dev/null 2>&1 || true; }
+            have nft && nft delete table inet builderbot_hosting >/dev/null 2>&1 || true
+            rm -f /etc/builderbot/hosting-fw.nft
+            say "firewall off: this box takes in what its other rules allow" ;;
+    esac
+}
+FEATURE_IDS="vmhost firewall"
+cmd_feature() {
+    local op="${1-}" id="${2-}"
+    case "$op" in install|remove|state) ;; *) die "usage: bb-sandbox feature install|remove|state ID (one of: ${FEATURE_IDS})" ;; esac
+    case " $FEATURE_IDS " in *" $id "*) ;; *) die "no such feature: ${id:-none named}; one of: ${FEATURE_IDS}" ;; esac
+    "feature_${id}" "$op"
+}
+
 case "${1-}" in
     # The menu only when asked for by name, and only at a terminal (the
     # operator, 11 Oct): a bare bb-sandbox reached from a run of the enroll
@@ -2476,6 +2667,7 @@ case "${1-}" in
     readonly)    shift; cmd_readonly "${1-}" "${2-on}" ;;
     settings)    cmd_settings ;;
     sdk)         shift; cmd_sdk "$@" ;;
+    feature)     shift; cmd_feature "${1-}" "${2-}" ;;
     -h|--help|help)
         sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
     *) die "unknown command: $1. Try: bb-sandbox --help" ;;
@@ -2732,81 +2924,15 @@ PY
     svc_active builderbot-agent || svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run" "$AGENT_KILLMODE"
 fi
 
-# --- a hosting-only box closed on itself (R93) ------------------------------
-# What comes in is 80 and 443 for nginx, and port 22 as the door left it;
-# what goes out is left alone. Docker's published ports are DNAT'd in
-# prerouting and never reach the input hook, so a compose that publishes
-# 0.0.0.0:5432 was open to the world whatever the input rules said: the
-# forward chain drops any DNAT'd connection from outside the box's own
-# bridges but on 80 and 443. Its own table, as the door's is, re-applied at
-# boot; after the enrollment, so a run that cannot enroll leaves the
-# machine as it found it.
-if [ "$FIREWALL" = 1 ]; then
-    say "firewall: only 80 and 443 come in"
-    # shellcheck disable=SC2046
-    command -v nft >/dev/null 2>&1 || pkg $(pkg_names nft) >/dev/null 2>&1 || true
-    ssh_rule="tcp dport 22 accept"
-    if nft list table inet builderbot_door >/dev/null 2>&1; then
-        ssh_rule="tcp dport 22 ip saddr 100.64.0.0/10 accept"
-        printf '   port 22: through the door only, as it was closed\n'
-    else
-        printf '   port 22: open, as no door closed it\n'
-    fi
-    install -d -m 0755 /etc/builderbot
-    cat > /etc/builderbot/hosting-fw.nft <<NFT
-# Written by BuilderBot's provision-linux.sh --firewall: 80 and 443 in, and port 22 as the door left it.
-table inet builderbot_hosting
-delete table inet builderbot_hosting
-table inet builderbot_hosting {
-    chain input {
-        type filter hook input priority -5; policy drop;
-        iifname "lo" accept
-        ct state established,related accept
-        ct state invalid drop
-        meta l4proto { icmp, ipv6-icmp } accept
-        udp sport 67 udp dport 68 accept
-        udp sport 547 udp dport 546 accept
-        iifname "docker0" accept
-        iifname "br-*" accept
-        iifname "tailscale0" accept
-        udp dport 41641 accept
-        tcp dport { 80, 443 } accept
-        udp dport 443 accept
-        ${ssh_rule}
-    }
-    chain forward {
-        type filter hook forward priority -5; policy accept;
-        ct state established,related accept
-        iifname { "lo", "docker0" } accept
-        iifname "br-*" accept
-        ct status dnat meta l4proto tcp ct original proto-dst { 80, 443 } accept
-        ct status dnat meta l4proto udp ct original proto-dst 443 accept
-        ct status dnat drop
-    }
-}
-NFT
-    if nft -f /etc/builderbot/hosting-fw.nft 2>/dev/null; then
-        if [ "$INIT" = systemd ]; then
-            cat > /etc/systemd/system/builderbot-hosting-fw.service <<UNIT
-[Unit]
-Description=BuilderBot: a hosting-only box takes in 80 and 443
-After=network-pre.target
-Before=docker.service
-[Service]
-Type=oneshot
-ExecStart=$(command -v nft) -f /etc/builderbot/hosting-fw.nft
-RemainAfterExit=yes
-[Install]
-WantedBy=multi-user.target
-UNIT
-            systemctl daemon-reload >/dev/null 2>&1 || true
-            systemctl enable builderbot-hosting-fw >/dev/null 2>&1 || true
-        fi
-        printf '   a container that publishes another port is not reached from outside; nginx in front of it is the way\n'
-    else
-        warn "nft could not apply the hosting firewall, so this box takes in what it did before"
-    fi
-fi
+# --- the features asked for (R91) -------------------------------------------
+# Each through bb-sandbox's own install, the one the Nodes page's Features
+# section runs later: after the enrollment, so a run that cannot enroll
+# leaves the machine as it found it, and a feature that cannot go on here
+# (no /dev/kvm for a VM host) is said without failing the enrollment.
+for f in "${FEATURES_WANT[@]}"; do
+    /usr/local/sbin/bb-sandbox feature install "$f" \
+        || warn "${f} did not install; the node is enrolled without it, and its Features section on the Nodes page can try again"
+done
 
 # --- the session ports, to the controller only (roadmap #24, phase 10b) ----
 # The agent binds ttyd on this machine's LAN address so the controller's

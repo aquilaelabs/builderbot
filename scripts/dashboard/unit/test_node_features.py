@@ -1,0 +1,118 @@
+"""A node's features (R91): bb-sandbox's feature command checks its verb and
+id before it touches the machine, the controller queues the install as a
+system job and refuses what could only fail with the reason the Features
+section shows, and the agent hands bb-sandbox nothing outside its table."""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, ".."))
+import nodes  # noqa: E402
+
+PROVISIONER = os.path.join(HERE, "..", "..", "..", "nodes", "provision-linux.sh")
+CENSUS = {"cpu": 2, "mem_mb": 4096, "arch": "x86_64", "system": "linux", "administers": True, "sandbox": True,
+          "features": {"vmhost": {"installed": False, "kvm": True, "libvirt": "10.0.0"},
+                       "firewall": {"installed": False}}}
+
+
+class Helper(unittest.TestCase):
+    """bb-sandbox feature, run as the bash it is, with id standing in for
+    root: an unknown verb or feature is refused by name before anything."""
+    def setUp(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        with open(PROVISIONER, encoding="utf-8") as f:
+            m = re.search(r"^cat > \"\$BBSANDBOX_TMP\" <<'BBSANDBOX'\n(.*?)^BBSANDBOX$", f.read(), re.S | re.M)
+        self.helper = os.path.join(d, "bb-sandbox")
+        with open(self.helper, "w", encoding="utf-8") as f:
+            f.write(m.group(1))
+        os.mkdir(os.path.join(d, "bin"))
+        with open(os.path.join(d, "bin", "id"), "w") as f:
+            f.write("#!/bin/sh\necho 0\n")
+        os.chmod(os.path.join(d, "bin", "id"), 0o755)
+        self.env = os.environ | {"PATH": f"{d}/bin:{os.environ['PATH']}"}
+
+    def run_helper(self, *args):
+        return subprocess.run(["bash", self.helper, "feature", *args], capture_output=True, text=True,
+                              timeout=30, env=self.env)
+
+    def test_an_unknown_feature_or_verb_is_refused_by_name(self):
+        r = self.run_helper("install", "warpdrive")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("no such feature: warpdrive; one of: vmhost firewall", r.stderr)
+        r = self.run_helper("explode", "vmhost")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("usage: bb-sandbox feature install|remove|state", r.stderr)
+
+    def test_state_reads_the_marker(self):
+        r = self.run_helper("state", "vmhost")
+        self.assertEqual((r.returncode, r.stdout.strip()),
+                         (0, "installed" if os.path.exists("/etc/builderbot/features/vmhost") else "absent"))
+
+
+class Controller(unittest.TestCase):
+    def setUp(self):
+        nodes.configure(state=tempfile.mkdtemp())
+        mint = nodes.enroll_mint("user:test", "box")
+        self.nid = mint["id"]
+        nodes.enroll(nodes.authenticate(mint["token"]), dict(CENSUS), "203.0.113.5", user="bb")
+
+    def census(self, **features):
+        c = json.loads(json.dumps(CENSUS))
+        for k, v in features.items():
+            c["features"][k].update(v)
+        rep = dict(nodes.node(self.nid).get("reported") or {}, features=c["features"])
+        nodes._exec("UPDATE nodes SET reported = ? WHERE id = ?", (json.dumps(rep), self.nid))
+
+    def test_an_install_is_a_system_job_with_its_feature(self):
+        r = nodes.node_feature("user:test", self.nid, "vmhost", "install")
+        self.assertTrue(r.get("job"), r)
+        got = nodes.job_next(self.nid, 0)
+        self.assertEqual((got or {}).get("spec", {}).get("apply"), "feature")
+        self.assertEqual(got["spec"]["config"], {"id": "vmhost", "op": "install"})
+        self.assertIn("one at a time", nodes.node_feature("user:test", self.nid, "vmhost", "install").get("error", ""))
+
+    def test_no_kvm_is_refused_with_the_host_setting(self):
+        self.census(vmhost={"kvm": False})
+        self.assertIn("host-passthrough", nodes.node_feature("user:test", self.nid, "vmhost", "install").get("error", ""))
+
+    def test_the_firewall_is_a_hosting_only_node_s(self):
+        self.assertIn("hosting-only", nodes.node_feature("user:test", self.nid, "firewall", "install").get("error", ""))
+
+    def test_an_agent_that_does_not_report_features_is_told_to_update(self):
+        rep = dict(nodes.node(self.nid).get("reported") or {})
+        rep.pop("features", None)
+        nodes._exec("UPDATE nodes SET reported = ? WHERE id = ?", (json.dumps(rep), self.nid))
+        self.assertIn("update the agent", nodes.node_feature("user:test", self.nid, "vmhost", "install").get("error", ""))
+
+    def test_an_unknown_one_is_refused(self):
+        self.assertIn("no such feature", nodes.node_feature("user:test", self.nid, "warpdrive", "install").get("error", ""))
+
+
+class Agent(unittest.TestCase):
+    def test_only_the_table_reaches_bb_sandbox(self):
+        import agentpkg
+        agent = agentpkg.load("builderbot_agent_features")
+        a = object.__new__(agent.Agent)
+        a.state = {}
+        ran = []
+        a._sh = lambda job, argv, **kw: ran.append(argv[1:]) or 0
+        a.hello_again = lambda why: None
+
+        class Job:
+            def say(self, x):
+                pass
+        self.assertEqual(a._apply_feature(Job(), {"id": "vmhost; rm -rf /", "op": "install"}), ("failed", 64))
+        self.assertEqual(a._apply_feature(Job(), {"id": "vmhost", "op": "purge"}), ("failed", 64))
+        self.assertEqual(a._apply_feature(Job(), {"id": "vmhost", "op": "remove"}), ("succeeded", 0))
+        self.assertEqual(ran, [["feature", "remove", "vmhost"]])
+
+
+if __name__ == "__main__":
+    unittest.main()

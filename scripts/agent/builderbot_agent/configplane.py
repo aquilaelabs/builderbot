@@ -35,7 +35,7 @@ from .backends import net_backend
 from .toolchains import extract_sandbox_tool
 from .sessnet import session_conf, session_sudoers
 from .runners import runner_dirs, runner_slot
-from .census import _os_release, export_gaps, mounts_now, network_now, services_now
+from .census import FEATURES, _os_release, export_gaps, mounts_now, network_now, services_now
 from .jobs import Job, pump
 
 
@@ -65,7 +65,7 @@ class ConfigPlaneMixin:
         # tarball and a funnel only tailscale, and a container node (this
         # image in the node role) or a guest machine has neither the stamp
         # nor any reason to be refused either of those.
-        if what in ("storage", "network", "root", "gpu", "gpu-off") and not os.access(SANDBOX_BIN, os.X_OK):
+        if what in ("storage", "network", "root", "gpu", "gpu-off", "feature") and not os.access(SANDBOX_BIN, os.X_OK):
             job.say(f"refused: {what} edits this machine's own configuration, and this node "
                     f"was not provisioned as a BuilderBot sandbox ({SANDBOX_BIN} is not here)\n")
             return "failed", 77
@@ -90,6 +90,8 @@ class ConfigPlaneMixin:
             return self._apply_door(job, cfg)
         if what == "lockdown":
             return self._apply_lockdown(job)
+        if what == "feature":
+            return self._apply_feature(job, cfg)
         if what == "gpu-off":
             # The emulator off the card (R102): the display's unit stopped,
             # the driver left alone; then a hello, as the set-up sends.
@@ -193,6 +195,19 @@ class ConfigPlaneMixin:
             return "failed", code
         job.say(f"the door is {'open' if on else 'shut'}: {kind}{' at ' + d['host'] if d.get('host') else ''}\n")
         return "succeeded", 0
+
+    def _apply_feature(self, job, cfg):
+        """A feature installed or removed (R91): bb-sandbox's own feature
+        install, the one the provisioner's flag runs at enrollment, so the
+        two ways cannot drift. The id and the verb are checked against the
+        helper's table here as well, so nothing else reaches its argv."""
+        fid, op = str(cfg.get("id") or ""), str(cfg.get("op") or "")
+        if fid not in FEATURES or op not in ("install", "remove"):
+            job.say(f"refused: {op or 'no verb'} {fid or 'no feature'} is not a feature verb (one of {', '.join(FEATURES)})\n")
+            return "failed", 64
+        rc = self._sh(job, [SANDBOX_BIN, "feature", op, fid], timeout=1800)
+        self.hello_again(f"the {fid} feature was {'installed' if op == 'install' else 'removed'}")
+        return ("succeeded", 0) if rc == 0 else ("failed", rc)
 
     def _apply_lockdown(self, job):
         """Lock down (R92): every container here stopped and kept from

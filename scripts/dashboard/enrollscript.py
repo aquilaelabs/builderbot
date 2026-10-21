@@ -189,6 +189,13 @@ def check(answers, again=False):
     # The box closed on itself (R93): for a node with no sessions, whose
     # ports the controller never reaches back to.
     out["firewall"] = answers.get("firewall") is True and not out["sessions"]
+    # The features ticked (R91), each bb-sandbox's own install once the node
+    # has enrolled; the firewall rides as its own flag above.
+    feats = answers.get("features") if isinstance(answers.get("features"), list) else []
+    bad = [str(f) for f in feats if f not in FEATURES]
+    if bad:
+        return {"error": f"no such feature: {', '.join(bad)}; one of {', '.join(FEATURES)}"}
+    out["features"] = sorted(set(feats))
     if reach == "wireguard":
         try:
             ip = ipaddress.ip_address(host)
@@ -211,6 +218,9 @@ def check(answers, again=False):
                        endpoint=wg["endpoint"], controller_ip=str(ip))
     return out
 
+
+# The features Enroll node offers a tick for (R91), as bb-sandbox names them.
+FEATURES = ("vmhost",)
 
 WG_BEGIN = "base64 -d > \"$dir/bb.conf\" <<'WGCONF'"
 # The door's secret, the same way (R174): in the script until it has run.
@@ -258,6 +268,8 @@ def build(ans, *, name, user, token, expires, provisioner, family=b"", again=Fal
             flags.append("--door-close22")
     if ans.get("firewall"):
         flags.append("--firewall")
+    for f in ans.get("features") or []:
+        flags.append(f"--feature {_q(f)}")
     when = time.strftime("%d %b %Y %H:%M UTC", time.gmtime(expires))
     lines = [
         "#!/usr/bin/env bash",
