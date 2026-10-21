@@ -123,7 +123,8 @@ to install from, and is refused.
 MAC address kept for good (so a DHCP reservation holds) and the screen's
 password; every disk hands freed space back to the pool (discard). **Grow
 disk** on a stopped VM makes one of its disks larger, never smaller; the
-partition inside is the system's own to grow.
+partition inside is the system's own to grow. **Add disk** gives a stopped
+VM the next of vdb to vdd, there at its next start.
 
 ## From a session
 

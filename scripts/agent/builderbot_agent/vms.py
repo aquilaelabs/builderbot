@@ -28,7 +28,7 @@ SNAP_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,40}")
 USER_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}")
 KEY_RE = re.compile(r"(ssh-(ed25519|rsa)|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0-9+/=]{20,800}( [^\n]{0,100})?")
 ACTIONS = ("create", "start", "stop", "restart", "remove", "snapshot", "revert", "snapshot-rm",
-           "eject", "disk-grow", "iso-add", "iso-rm")
+           "eject", "disk-grow", "disk-add", "iso-add", "iso-rm")
 # An installer ISO a person fetched onto this node (R99), by its own name.
 ISO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,100}\.iso")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -587,6 +587,35 @@ class VmsMixin:
             job.say("qemu-img refused it: a disk grows and never shrinks\n")
             return "failed", 70
         job.say(f"{dev} is {gb} GB now; grow its partition inside the system to use it\n")
+        return "succeeded", 0
+
+    def _vm_disk_add(self, job, spec, name, who):
+        """A further disk on a stopped VM, the next of vdb to vdd."""
+        try:
+            gb = int(spec.get("gb") or 0)
+        except (TypeError, ValueError):
+            gb = 0
+        if not 1 <= gb <= MAX_DISK_GB:
+            job.say("refused: a disk is 1 GB to 4 TB\n")
+            return "failed", 64
+        if "shut off" not in subprocess.run(VIRSH + ["domstate", name], capture_output=True, text=True,
+                                            check=False, **who).stdout:
+            job.say("refused: stop the VM first; a disk is added while it is off\n")
+            return "failed", 75
+        ddir = os.path.join(VM_DIR, "disks")
+        i = next((k for k in range(1, len(DISK_DEVS)) if not os.path.exists(os.path.join(ddir, f"{name}-d{k}.qcow2"))), 0)
+        if not i:
+            job.say(f"refused: {name} has {len(DISK_DEVS)} disks already\n")
+            return "failed", 64
+        path = os.path.join(ddir, f"{name}-d{i}.qcow2")
+        if self._vm_run(job, ["qemu-img", "create", "-f", "qcow2", path, f"{gb}G"], who, say=False) != 0:
+            return "failed", 70
+        if self._vm_run(job, VIRSH + ["attach-disk", name, path, DISK_DEVS[i], "--driver", "qemu", "--subdriver", "qcow2",
+                                      "--targetbus", "virtio", "--config"], who) != 0:
+            with contextlib.suppress(OSError):
+                os.unlink(path)
+            return "failed", 70
+        job.say(f"{DISK_DEVS[i]}: a {gb} GB disk, there at its next start\n")
         return "succeeded", 0
 
     def _vm_iso_add(self, job, spec, name, who):

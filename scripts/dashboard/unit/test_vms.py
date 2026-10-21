@@ -153,6 +153,10 @@ class Controller(unittest.TestCase):
         r = vms.act("user:test", "web", "db", "disk-grow", {"disk": "vda", "gb": 40})
         self.assertTrue(r.get("ok"), r)
         self.assertEqual((self.f.jobs[-1][2]["disk"], self.f.jobs[-1][2]["gb"]), ("vda", 40))
+        r = vms.act("user:test", "web", "db", "disk-add", {"gb": 50})
+        self.assertTrue(r.get("ok"), r)
+        vms.vm_done({"node": "n1", "spec": {"action": "disk-add", "domain": "bbvm-web-db", "gb": 50}}, "succeeded")
+        self.assertEqual([v for v in vms.view() if v["name"] == "db"][0]["disks"], [50])
 
     def test_no_key_no_node_no_vm(self):
         self.assertIn("ssh public key", vms.create("user:test", "web", {"name": "a", "os": "debian"}, ["n1"])["error"])

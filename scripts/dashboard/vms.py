@@ -31,7 +31,7 @@ KEY_RE = re.compile(r"(ssh-(ed25519|rsa)|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0
 # 192.168.122.0/24.
 VM_NET = ipaddress.ip_network("10.232.0.0/16")
 DEFAULTS = {"vcpus": 2, "mem_mb": 2048, "disk_gb": 20}
-ACTIONS = ("start", "stop", "restart", "remove", "snapshot", "revert", "snapshot-rm", "eject", "disk-grow")
+ACTIONS = ("start", "stop", "restart", "remove", "snapshot", "revert", "snapshot-rm", "eject", "disk-grow", "disk-add")
 # R99: an installer's ISO on a node, a VM's further disks, its MAC and the
 # password its screen asks for (VNC takes eight characters at most).
 ISO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,100}\.iso")
@@ -508,6 +508,19 @@ def act(principal, project, name, action, req=None):
             if why:
                 return {"error": why}
             spec.update(disk=dev, gb=gb)
+        if action == "disk-add":
+            try:
+                gb = int(req.get("gb") or 0)
+            except (TypeError, ValueError):
+                gb = 0
+            if not 1 <= gb <= 4096:
+                return {"error": "a disk is 1 GB to 4 TB"}
+            if len(rec.get("disks") or []) >= len(DISK_DEVS) - 1:
+                return {"error": f"{name} has {len(DISK_DEVS)} disks already"}
+            why = check_caps(d, project, rec["node"], {"vcpus": 0, "mem_mb": 0, "disk_gb": gb})
+            if why:
+                return {"error": why}
+            spec["gb"] = gb
         r = job_add(principal, {"node": rec["node"]}, "vm", spec, project)
         if r.get("error"):
             return r
@@ -551,6 +564,8 @@ def vm_done(job, state):
                 if i - 1 < len(ds):
                     ds[i - 1] = int(spec.get("gb") or ds[i - 1])
                 rec["disks"] = ds
+        elif ok and spec.get("action") == "disk-add":
+            rec["disks"] = [*(rec.get("disks") or []), int(spec.get("gb") or 0)]
         elif ok and spec.get("action") == "eject":
             rec.pop("iso", None)
         elif ok and spec.get("action") in ("snapshot", "snapshot-rm"):

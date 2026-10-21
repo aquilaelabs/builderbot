@@ -84,6 +84,7 @@ function vmRow(v){
       !busy && v.state !== "failed" ? `<button type="button" data-vm="snapshot" title="its state saved under a name; a running VM's memory too">Snapshot…</button>` : "",
       v.iso && !busy ? `<button type="button" data-vm="eject" title="take ${esc(v.iso)} out of its drive, so it boots from its disk">Eject ISO</button>` : "",
       v.state === "stopped" ? `<button type="button" data-vm="disk-grow" title="make one of its disks larger; it never shrinks">Grow disk…</button>` : "",
+      v.state === "stopped" && (v.disks || []).length < 3 ? `<button type="button" data-vm="disk-add" title="another disk, there at its next start">Add disk…</button>` : "",
       `<button type="button" class="danger" data-vm="remove"${v.state === "removing" ? " disabled" : ""}
         title="destroy it, with its disk and its snapshots">Remove</button>`])}`;
   return `<div class="row stack2" data-vm-key="${esc(v.key)}">
@@ -185,11 +186,16 @@ function wireVms(el){
         if (!gb) return;
         body.disk = dev.trim(); body.gb = +gb;
       }
+      if (action === "disk-add"){
+        const gb = prompt(`A further disk for ${v.name}, in GB:`, "20");
+        if (!gb) return;
+        body.gb = +gb;
+      }
       if (action === "eject" && !confirm(`Eject ${v.iso} from ${v.name}?\n\nIts next boot is from its disk, where the installer put the system.`)) return;
       if (b.dataset.snap) body.snapshot = b.dataset.snap;
       if (b.dataset.force) body.force = true;
       busy(b, {start: "Starting", stop: "Stopping", restart: "Restarting", remove: "Removing", snapshot: "Saving",
-               revert: "Reverting", "snapshot-rm": "Deleting", eject: "Ejecting", "disk-grow": "Growing"}[action] || "Working");
+               revert: "Reverting", "snapshot-rm": "Deleting", eject: "Ejecting", "disk-grow": "Growing", "disk-add": "Adding"}[action] || "Working");
       const j = await (await postJSON("/api/vms", body)).json();
       if (j.error) notify(j.error, true);
       else notify(`${v.name}: ${action === "snapshot-rm" ? "snapshot delete" : action} queued`);
