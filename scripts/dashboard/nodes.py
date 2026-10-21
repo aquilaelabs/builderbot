@@ -3915,6 +3915,25 @@ _host_refused_lock = threading.Lock()
 HOST_REFUSED_VERBS = 16
 
 
+# How many hellos a hosting-only node may say a minute: each writes its row
+# and moves the token every page re-reads the nodes on, so a box saying it
+# on a loop would keep every dashboard reading (R92). The agent says one
+# every ten minutes, and again after a job changed the machine.
+HOST_HELLOS_A_MINUTE = 12
+_host_hellos = {}
+
+
+def host_hello_allowed(nid, now):
+    """Whether a hosting-only node's hello is taken now, counted."""
+    with _host_refused_lock:
+        seen = [t for t in _host_hellos.get(nid, []) if now - t < 60]
+        if len(seen) >= HOST_HELLOS_A_MINUTE:
+            _host_hellos[nid] = seen
+            return False
+        _host_hellos[nid] = seen + [now]
+        return True
+
+
 def host_refused_audit(nid, verb, now):
     """Whether this refusal is audited now, kept: once an hour a node and
     verb, and HOST_REFUSED_VERBS verbs a node an hour, the last of them

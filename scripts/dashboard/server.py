@@ -6807,6 +6807,12 @@ class Handler(BaseHTTPRequestHandler):
                 if said:
                     db.audit(f"node:{auth['node']}", "host-refused", said, {})
                 return self._json({"error": why}, 403)
+            if nodes.host_only(auth["node"]):
+                # A public box's request that stalls is let go rather than
+                # holding a thread, and its hellos are counted (R92).
+                self.connection.settimeout(120)
+                if verb == "hello" and not nodes.host_hello_allowed(auth["node"], time.monotonic()):
+                    return self._json({"error": "too many hellos: one in a while is enough"}, 429)
         # The verbs that serve or take a FILE, on any method.
         if verb in ("source", "file", "download"):
             got, status = channel.fetch(verb, auth, q, authed=self._authed)

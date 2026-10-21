@@ -47,6 +47,15 @@ class RefusalAudit(unittest.TestCase):
         self.assertEqual(nodes.host_refused_audit("n_vps", "source", 3700), "source", "an hour on, again")
 
 
+class Hellos(unittest.TestCase):
+    def test_a_dozen_a_minute(self):
+        nodes._host_hellos.clear()
+        said = [nodes.host_hello_allowed("n_vps", i) for i in range(30)]
+        self.assertEqual(said.count(True), nodes.HOST_HELLOS_A_MINUTE)
+        self.assertTrue(nodes.host_hello_allowed("n_vps", 61), "a minute on, again")
+        self.assertTrue(nodes.host_hello_allowed("n_other", 5), "another node is its own")
+
+
 class StaysHostOnly(unittest.TestCase):
     def test_a_node_enrolled_through_a_public_hostname_cannot_be_switched_off_hosting_only(self):
         import json
