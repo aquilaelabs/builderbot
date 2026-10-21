@@ -4207,6 +4207,10 @@ button[aria-busy="true"]{opacity:.75}
 .ndconf{display:contents}
 .ndconfbody{display:contents}
 .ndrow>.ndsections{margin:8px calc(-1 * var(--row-x)) calc(-1 * var(--row-y))}
+/* A guest node's one line where Storage and Network would be: at the row's
+   inset with a gap either side, not run to the screen's edges against the
+   next section's head (the operator, 21 Oct). */
+.ndrow .ndguest{margin:var(--card-gap) var(--row-x)}
 /* What a node has beside its numbers (its tools, git, GPU, sound, labels):
    one band that flows across the width, not five lines under the charts. */
 .ndhmore{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px}

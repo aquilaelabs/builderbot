@@ -1250,7 +1250,7 @@ function nodeConfSections(n){
     ${managed
       ? docSection("nodes", "storage", ndTitle("storage"), stStatus, storage, {cls: stCls})
         + docSection("nodes", "network", ndTitle("network"), netStatus, network, {cls: netCls})
-      : `<div class="sub dim ndguest">Storage and network are managed on the machine itself, not here.</div>`}
+      : `<div class="hint ndguest">Storage and network are managed on the machine itself, not here.</div>`}
   </div></div>`;
 }
 function meter(label, pct, right, title){

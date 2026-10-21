@@ -1548,6 +1548,23 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   }, ROW);
   ok(phone.over <= 0 && phone.seen >= 8 && phone.small === 0,
      `...and at phone width it does not scroll sideways (${phone.over}px) and its ${phone.seen} controls are the field type, ${phone.field}px (${phone.small} smaller)`);
+  // A guest node's one line where Storage and Network would be (B157): inset
+  // from the screen's edges and clear of the next section's head, in the
+  // note voice, at phone width as at a desk.
+  const guest = await page.evaluate(sel => {
+    const body = document.querySelector(sel + ' .ndconfbody');
+    const line = document.createElement('div'); line.className = 'hint ndguest'; line.textContent = 'Storage and network are managed on the machine itself, not here.';
+    body.prepend(line);
+    const r = line.getBoundingClientRect(), next = [...document.querySelectorAll(sel + ' .ndsections details.sect > summary')]
+      .map(e => e.getBoundingClientRect()).find(b => b.top >= r.bottom - 1);
+    const probe = document.createElement('i'); probe.style.font = 'var(--f-note)'; document.body.append(probe);
+    const note = getComputedStyle(probe).fontFamily; probe.remove();
+    const out = { left: Math.round(r.left), right: Math.round(innerWidth - r.right), gap: next ? Math.round(next.top - r.bottom) : null,
+                  font: getComputedStyle(line).fontFamily === note };
+    line.remove(); return out;
+  }, ROW);
+  ok(guest.left >= 8 && guest.right >= 8 && guest.gap >= 4 && guest.font,
+     `a guest node's storage line is inset and clear of the next section on a phone, in the note font (${JSON.stringify(guest)})`);
   await page.setViewportSize({ width: 1280, height: 900 });
 
   // ---- toolchains on the node, from the Tools tab (phase 6) ---------------

@@ -92,7 +92,7 @@ function signinBlock(n){
         : failed ? `<div class="sub bad">${esc(lg.error || "the sign-in did not finish")}</div>` : ""}`;
   }
   return `<div class="ndsignin" data-signin="${esc(n.id)}">${inner}${said}
-    <div class="sub dim">A sign-in is this node's alone: each node you work on is signed in from its own row.</div></div>`;
+    <div class="hint">A sign-in is this node's alone: each node you work on is signed in from its own row.</div></div>`;
 }
 
 function wireSignin(root){
