@@ -52,6 +52,7 @@ import ids  # noqa: E402
 from fields import field, field_list  # noqa: E402
 import pending  # noqa: E402
 import re
+import subprocess
 import time
 from pathlib import Path
 
@@ -1058,10 +1059,24 @@ def releases(project):
         text = (Path(os.environ.get("WORKSPACE", "/workspace")) / project / "CHANGELOG.md").read_text(errors="replace")
     except OSError:
         return []
+    # When each was tagged, where the project's git has its tag: the moment
+    # it was made, not the end of its day, so work finished later that day
+    # is the next version's (B165). The day's end where there is no tag.
+    tagged = {}
+    try:
+        p = subprocess.run(["git", "-C", str(Path(os.environ.get("WORKSPACE", "/workspace")) / project), "for-each-ref",
+                            "--format=%(refname:short) %(creatordate:unix)", "refs/tags"],
+                           capture_output=True, text=True, timeout=10, check=False)
+        for line in p.stdout.splitlines():
+            name, _, at = line.rpartition(" ")
+            if at.isdigit():
+                tagged[name.rsplit("-v", 1)[-1].removeprefix("v")] = int(at)
+    except (OSError, subprocess.SubprocessError):
+        pass
     out = []
     for m in _RELEASE.finditer(text):
         try:
-            out.append((m.group(1), time.mktime(time.strptime(m.group(2), "%Y-%m-%d")) + 86400))
+            out.append((m.group(1), tagged.get(m.group(1)) or time.mktime(time.strptime(m.group(2), "%Y-%m-%d")) + 86400))
         except ValueError:
             continue
     return out
