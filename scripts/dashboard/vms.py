@@ -188,7 +188,10 @@ def view(projects=None):
             # last report.
             snaps = list(live.get("snapshots") or [])
             snaps += [x for x in rec.get("snaps") or [] if x not in snaps]
-            row.update(state=live.get("state") or "unknown", ip=live.get("ip") or "", snapshots=snaps)
+            row.update(state=live.get("state") or "unknown", ip=live.get("ip") or "", snapshots=snaps,
+                       # Its screen, and what its drive holds now (R99): the
+                       # node says, after an Eject or a person's own change.
+                       screen=bool(live.get("screen")), iso=live.get("iso") or "")
             # A node VM is on the LAN, where the host sees no lease of its:
             # its address is the one its agent dials in from.
             if rec.get("node_id") and not row["ip"]:
