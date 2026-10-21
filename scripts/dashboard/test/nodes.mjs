@@ -2687,9 +2687,10 @@ await page.evaluate(async () => {
   await fillHeld(page, '#ndBody #ndEnName', 'vpsbox');
   await page.selectOption('#ndBody #ndEnReach', 'public');
   const cf = await page.evaluate(() => ({ host: $('ndEnHost').checked, held: $('ndEnHost').disabled,
-    sess: $('ndEnSess').checked, ctl: $('ndEnCtl').value, hint: !$('ndEnCfHint').hidden, wg: $('ndEnWgRow').hidden }));
-  ok(cf.host && cf.held && !cf.sess && cf.ctl === 'https://' && cf.hint && cf.wg,
-     `a public hostname holds Hosting only on, takes sessions off, and asks for the name (${JSON.stringify(cf)})`);
+    sess: $('ndEnSess').checked, ctl: $('ndEnCtl').value, hint: !$('ndEnCfHint').hidden, wg: $('ndEnWgRow').hidden,
+    fw: !$('ndEnFwRow').hidden && $('ndEnFw').checked }));
+  ok(cf.host && cf.held && !cf.sess && cf.ctl === 'https://' && cf.hint && cf.wg && cf.fw,
+     `a public hostname holds Hosting only on, takes sessions off, offers the firewall ticked, and asks for the name (${JSON.stringify(cf)})`);
   await fillHeld(page, '#ndBody #ndEnCtl', 'https://192.168.1.16');
   await page.click('#ndBody #ndEnGo');
   await page.waitForFunction(() => document.querySelector('#ndBody #ndEnGo') && !document.querySelector('#ndBody #ndEnGo').disabled
@@ -2701,8 +2702,8 @@ await page.evaluate(async () => {
   const script2 = readFileSync(await dl2.path(), 'utf8');
   const run2 = script2.split('\n').find(l => l.startsWith('bash "$dir/provision-linux.sh"')) || '';
   ok(/--controller 'https:\/\/bb\.example\.com'/.test(run2) && /--reach public/.test(run2) && /--session-user none/.test(run2)
-     && !/WGCONF/.test(script2),
-     `...and the script runs the provisioner with --reach public, no tunnel inside (${run2.replace(/bbe_[^']+/, 'bbe_…').slice(0, 140)})`);
+     && /--firewall/.test(run2) && !/WGCONF/.test(script2),
+     `...and the script runs the provisioner with --reach public and --firewall, no tunnel inside (${run2.replace(/bbe_[^']+/, 'bbe_…').slice(0, 140)})`);
   const home2 = await page.$eval('#ndBody #ndHome', e => e.textContent);
   ok(/hostname: bb\.example\.com/.test(home2) && /path: \^\/api\/v1\/agent\//.test(home2) && /http_status:404/.test(home2)
      && /tunnel/.test(await page.$eval('#ndBody .ndtoken .lbl', e => e.textContent)),

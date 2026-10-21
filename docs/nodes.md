@@ -1170,6 +1170,20 @@ node is retired and its credential revoked. A box whose agent is away is
 retired at the press. Powering the box off from its provider's console is
 the stop that needs nothing from the agent, and the dialog says so.
 
+**Closed on the box itself (R93).** Enroll node offers, ticked, *Take in
+only 80 and 443* for a hosting-only node, and the script passes the
+provisioner `--firewall`, which it refuses on a node with sessions. It
+writes its own nftables table (`builderbot_hosting`, re-applied at boot by
+`builderbot-hosting-fw`): what comes in is 80 and 443, ICMP, DHCP and what
+the box itself opened, and port 22 as the door left it (open, or from the
+tailnet and the loopback once `--door-close22` closed it). Docker's
+published ports are rewritten before the input hook and never reach it, so
+the table's forward chain drops any rewritten connection from outside the
+box's own bridges but on 80 and 443: a compose that publishes
+`0.0.0.0:5432` is not reached from the internet, and nginx is the way to a
+container. Going out is left alone, since the box pulls images, renews
+certificates and dials the controller. Uninstall's `--doors` takes it away.
+
 **Which projects a container may go under.** The project pickers on Send,
 on a row's Project and Built from, and the project a Send, copy or move is
 made from, are the asker's own list of projects, for an administrator and

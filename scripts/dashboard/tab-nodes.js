@@ -1755,6 +1755,8 @@ function ndDialogs(){
         <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
         <label class="ndcap"><input type="checkbox" id="ndEnHost"> Hosting only: it runs containers sent to it, and nothing of it comes back</label>
         <div class="hint" id="ndEnHostHint" hidden>No project's code, no sessions and no bb go to it; its agent may ask the controller for its own jobs and nothing else. For a public box such as a cloud VPS.</div>
+        <label class="ndcap" id="ndEnFwRow" hidden><input type="checkbox" id="ndEnFw" checked> Take in only 80 and 443</label>
+        <div class="hint" id="ndEnFwHint" hidden>A firewall on the machine drops everything else coming in, a port a container publishes included, so nginx is the way to a container. Port 22 stays open unless the SSH door closes it. Going out is left alone.</div>
         <div class="setrow col ctlrow">${lbl("ndEnDoor", "SSH door",
           "a way in for ssh, switched on and off from the node's row. cloudflared publishes the machine's port 22 at a hostname of its own, with a tunnel token from Zero Trust" + (dev ? "; Tailscale joins the machine to your tailnet with an auth key and answers ssh there, with no public name" : ""))}
           <select id="ndEnDoor">
@@ -1817,11 +1819,13 @@ function ndDialogs(){
       const cf = reach.value === "public";
       if (cf) host.checked = true;
       host.disabled = cf;
-      $b("#ndEnHostHint").hidden = !host.checked;
+      $b("#ndEnHostHint").hidden = $b("#ndEnFwRow").hidden = !host.checked;
+      $b("#ndEnFwHint").hidden = !host.checked || !$b("#ndEnFw").checked;
       $b("#ndEnCfHint").hidden = !cf;
       sess.disabled = host.checked;
       if (host.checked) sess.checked = false;
     };
+    $b("#ndEnFw").onchange = showHost;
     const ngx = $b("#ndEnNginx");
     ngx.onchange = () => { $b("#ndEnNginxHint").hidden = !ngx.checked; };
     const door = $b("#ndEnDoor");
@@ -1870,7 +1874,7 @@ function ndDialogs(){
     // What was typed comes back after a refusal: a redraw to its defaults
     // lost the name and the account on every one (B331's shape).
     const keep = () => ({"#ndEnName": $b("#ndEnName").value, "#ndEnUser": $b("#ndEnUser").value, "#ndEnSystem": $b("#ndEnSystem")?.value,
-      "#ndEnSess": $b("#ndEnSess").checked, "#ndEnHost": $b("#ndEnHost").checked, "#ndEnNginx": ngx.checked,
+      "#ndEnSess": $b("#ndEnSess").checked, "#ndEnHost": $b("#ndEnHost").checked, "#ndEnFw": $b("#ndEnFw").checked, "#ndEnNginx": ngx.checked,
       "#ndEnDoor": door.value, "#ndEnDoorHost": $b("#ndEnDoorHost").value, "#ndEnDoorClose": $b("#ndEnDoorClose").checked,
       "#ndEnReach": reach.value, "#ndEnCtl": $b("#ndEnCtl").value,
       "#ndEnWgText": $b("#ndEnWgText").value});
@@ -1885,6 +1889,7 @@ function ndDialogs(){
       const r = await nodeAct({action: "enroll", script: true, ...answers(), ...(again ? {node: again.id} : {}),
         sessions: $b("#ndEnSess").checked && !$b("#ndEnHost").checked, reach: reach.value,
         host_only: $b("#ndEnHost").checked, nginx: ngx.checked,
+        firewall: $b("#ndEnHost").checked && $b("#ndEnFw").checked,
         door: door.value, door_host: $b("#ndEnDoorHost").value.trim(),
         door_secret: $b("#ndEnDoorSecret").value.trim(), door_close22: $b("#ndEnDoorClose").checked,
         controller: $b("#ndEnCtl").value.trim(),

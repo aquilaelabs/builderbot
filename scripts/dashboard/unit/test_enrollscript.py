@@ -194,6 +194,47 @@ class PublicHostname(unittest.TestCase):
         self.assertIn(":7680", rules)
 
 
+class HostingFirewall(unittest.TestCase):
+    """A hosting-only box closed on itself (R93): the flag rides only with
+    no sessions, the provisioner refuses it on a session node before it
+    changes anything, and the rules it writes drop what Docker publishes
+    as well as what reaches the host."""
+    PROV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "nodes", "provision-linux.sh")
+
+    def run_line(self, ans):
+        s = es.build(ans, name="vps", user="bb", token="bbe_x", expires=0, provisioner=b"x")
+        return next(x for x in s.splitlines() if x.startswith('bash "$dir/provision-linux.sh"'))
+
+    def test_it_rides_only_with_no_sessions(self):
+        pub = es.check({"reach": "public", "controller": "https://bb.example.com", "firewall": True})
+        self.assertTrue(pub["firewall"])
+        self.assertIn("--firewall", self.run_line(pub))
+        lan = {"reach": "lan", "controller": "http://192.168.1.16:7680", "firewall": True}
+        self.assertFalse(es.check(lan)["firewall"])
+        self.assertNotIn("--firewall", self.run_line(es.check(lan)))
+        self.assertTrue(es.check(lan | {"sessions": False})["firewall"])
+        self.assertNotIn("--firewall", self.run_line(es.check({"reach": "public", "controller": "https://bb.example.com"})))
+
+    def test_the_provisioner_refuses_it_on_a_session_node(self):
+        r = subprocess.run(["bash", self.PROV, "--controller", "https://bb.example.com", "--token", "bbe_x", "--firewall"],
+                           capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("--firewall is for a hosting-only node", r.stderr)
+
+    def test_the_rules_hold_docker_s_ports_too(self):
+        text = open(self.PROV, encoding="utf-8").read()
+        m = re.search(r"^    cat > /etc/builderbot/hosting-fw\.nft <<NFT\n(.*?)^NFT$", text, re.S | re.M)
+        rules = m.group(1)
+        self.assertIn("hook input priority -5; policy drop;", rules)
+        self.assertIn("tcp dport { 80, 443 } accept", rules)
+        self.assertIn("${ssh_rule}", rules)
+        fwd = rules[rules.index("chain forward"):]
+        self.assertIn("ct original proto-dst { 80, 443 } accept", fwd)
+        self.assertTrue(fwd.rstrip().rstrip("}").rstrip().rstrip("}").rstrip().endswith("ct status dnat drop"))
+        # Taken away with the doors, and not left behind by an uninstall.
+        self.assertIn("nft delete table inet builderbot_hosting", text)
+
+
 class Door(unittest.TestCase):
     """A door in for SSH (R174): the recipe's answers checked, the secret in
     the script until it has run and out of it after, the flags to the

@@ -67,6 +67,10 @@ REACH=""
 # with the auth key in it and answering ssh there. --door-close22 drops
 # public port 22 once the door is up.
 DOOR=""; DOOR_HOST=""; DOOR_SECRET=""; DOOR_CLOSE22=0
+# --firewall: a hosting-only box takes in 80 and 443 and nothing else
+# (R93), its containers' published ports included; port 22 as the door
+# leaves it.
+FIREWALL=0
 # --machine HASH: the script was made for a node that enrolled from one
 # machine (R177), and runs on that one alone.
 MACHINE=""
@@ -173,6 +177,13 @@ it, which is a paste rather than a questionnaire.
                        port 22 from anywhere but the loopback afterwards:
                        off unless asked, since the person running this is
                        usually on that port.
+  --firewall           for a hosting-only node (--session-user none): drop
+                       everything coming in but 80 and 443, a container's
+                       published port included (Docker's ports pass the
+                       host's input rules, so its forward path is held
+                       too), and port 22 unless a door closed it. Going
+                       out is left alone: the box pulls images, renews
+                       certificates and dials the controller.
   --data PATH          the four stores, all defaulting under
   --toolchains PATH      /var/lib/builderbot/: a job's working tree and AVDs,
   --cache PATH         the toolchains installed on this node, the build
@@ -238,6 +249,7 @@ while [ $# -gt 0 ]; do
         --door-host) DOOR_HOST="$2"; shift 2 ;;
         --door-secret) DOOR_SECRET="$2"; shift 2 ;;
         --door-close22) DOOR_CLOSE22=1; shift ;;
+        --firewall) FIREWALL=1; shift ;;
         --machine) MACHINE="$2"; shift 2 ;;
         --data)  STORE_DATA="$2"; STORE_DATA_SET=1; shift 2 ;;
         --toolchains) STORE_TOOLCHAINS="$2"; STORE_TOOLCHAINS_SET=1; shift 2 ;;
@@ -273,6 +285,10 @@ if [ -n "$REACH" ]; then
     [ -z "$WG_CONF" ] || { echo "--reach public and --wg-conf are two ways to the controller: one or the other" >&2; exit 1; }
     [ -n "$CONTROLLER" ] || { echo "--reach goes with --controller and --token" >&2; exit 1; }
     case "$CONTROLLER" in https://*) ;; *) echo "through a public hostname the controller is an https hostname, not ${CONTROLLER}" >&2; exit 1 ;; esac
+fi
+if [ "$FIREWALL" = 1 ]; then
+    [ "${GUEST:-0}" != 1 ] || { echo "--firewall needs root, and a guest node runs without it" >&2; exit 1; }
+    [ "$SESSION_NAME" = none ] || { echo "--firewall is for a hosting-only node (--session-user none): it would shut the session ports the controller reaches" >&2; exit 1; }
 fi
 if [ -n "$DOOR" ]; then
     case "$DOOR" in cloudflared|tailscale) ;; *) echo "--door takes cloudflared or tailscale" >&2; exit 1 ;; esac
@@ -1764,7 +1780,7 @@ cmd_uninstall() {
     printf '          the accounts %s and %s with their homes, /etc/builderbot, and this tool\n' "$DOCKER_USER" "$session_user"
     [ "$stores" = 1 ] && printf '   also:  the stores on this disk (%s), /workspace, /var/lib/builderbot\n' "${store_dirs:- none}"
     [ "$configured" = 1 ] && printf '   also:  the mounts BuilderBot used (%s), the runners, the GPU display\n' "${mounts:- none}"
-    [ "$doors" = 1 ] && printf '   also:  cloudflared and its token, Tailscale'"'"'s login, the port 22 rule, the nginx container\n'
+    [ "$doors" = 1 ] && printf '   also:  cloudflared and its token, Tailscale'"'"'s login, the port 22 rule, the hosting firewall, the nginx container\n'
     printf '   stays: docker, nfs-common, python3, tmux, jq, curl, the empty mountpoints,\n'
     printf '          everything on the shares (other nodes may use them)%s\n' "$([ "$stores" = 1 ] || printf ', the stores')"
     printf '   note:  a runner registered from here stays listed on its forge;\n'
@@ -1812,6 +1828,9 @@ cmd_uninstall() {
         have systemctl && { systemctl disable --now builderbot-door-22 >/dev/null 2>&1 || true; rm -f /etc/systemd/system/builderbot-door-22.service; }
         have nft && nft delete table inet builderbot_door >/dev/null 2>&1 || true
         rm -f /etc/builderbot/door-22.nft
+        have systemctl && { systemctl disable --now builderbot-hosting-fw >/dev/null 2>&1 || true; rm -f /etc/systemd/system/builderbot-hosting-fw.service; }
+        have nft && nft delete table inet builderbot_hosting >/dev/null 2>&1 || true
+        rm -f /etc/builderbot/hosting-fw.nft
         if have docker; then
             for a in $(docker ps -aq --filter "label=com.docker.compose.project" --format '{{.ID}} {{.Label "com.docker.compose.project"}}' 2>/dev/null | awk '$2 ~ /^nginx-/ {print $1}'); do
                 docker rm -f "$a" >/dev/null 2>&1 || true
@@ -2711,6 +2730,82 @@ PY
         svc_restart builderbot-agent 2>/dev/null || true
     fi
     svc_active builderbot-agent || svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run" "$AGENT_KILLMODE"
+fi
+
+# --- a hosting-only box closed on itself (R93) ------------------------------
+# What comes in is 80 and 443 for nginx, and port 22 as the door left it;
+# what goes out is left alone. Docker's published ports are DNAT'd in
+# prerouting and never reach the input hook, so a compose that publishes
+# 0.0.0.0:5432 was open to the world whatever the input rules said: the
+# forward chain drops any DNAT'd connection from outside the box's own
+# bridges but on 80 and 443. Its own table, as the door's is, re-applied at
+# boot; after the enrollment, so a run that cannot enroll leaves the
+# machine as it found it.
+if [ "$FIREWALL" = 1 ]; then
+    say "firewall: only 80 and 443 come in"
+    # shellcheck disable=SC2046
+    command -v nft >/dev/null 2>&1 || pkg $(pkg_names nft) >/dev/null 2>&1 || true
+    ssh_rule="tcp dport 22 accept"
+    if nft list table inet builderbot_door >/dev/null 2>&1; then
+        ssh_rule="tcp dport 22 ip saddr 100.64.0.0/10 accept"
+        printf '   port 22: through the door only, as it was closed\n'
+    else
+        printf '   port 22: open, as no door closed it\n'
+    fi
+    install -d -m 0755 /etc/builderbot
+    cat > /etc/builderbot/hosting-fw.nft <<NFT
+# Written by BuilderBot's provision-linux.sh --firewall: 80 and 443 in, and port 22 as the door left it.
+table inet builderbot_hosting
+delete table inet builderbot_hosting
+table inet builderbot_hosting {
+    chain input {
+        type filter hook input priority -5; policy drop;
+        iifname "lo" accept
+        ct state established,related accept
+        ct state invalid drop
+        meta l4proto { icmp, ipv6-icmp } accept
+        udp sport 67 udp dport 68 accept
+        udp sport 547 udp dport 546 accept
+        iifname "docker0" accept
+        iifname "br-*" accept
+        iifname "tailscale0" accept
+        udp dport 41641 accept
+        tcp dport { 80, 443 } accept
+        udp dport 443 accept
+        ${ssh_rule}
+    }
+    chain forward {
+        type filter hook forward priority -5; policy accept;
+        ct state established,related accept
+        iifname { "lo", "docker0" } accept
+        iifname "br-*" accept
+        ct status dnat meta l4proto tcp ct original proto-dst { 80, 443 } accept
+        ct status dnat meta l4proto udp ct original proto-dst 443 accept
+        ct status dnat drop
+    }
+}
+NFT
+    if nft -f /etc/builderbot/hosting-fw.nft 2>/dev/null; then
+        if [ "$INIT" = systemd ]; then
+            cat > /etc/systemd/system/builderbot-hosting-fw.service <<UNIT
+[Unit]
+Description=BuilderBot: a hosting-only box takes in 80 and 443
+After=network-pre.target
+Before=docker.service
+[Service]
+Type=oneshot
+ExecStart=$(command -v nft) -f /etc/builderbot/hosting-fw.nft
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+UNIT
+            systemctl daemon-reload >/dev/null 2>&1 || true
+            systemctl enable builderbot-hosting-fw >/dev/null 2>&1 || true
+        fi
+        printf '   a container that publishes another port is not reached from outside; nginx in front of it is the way\n'
+    else
+        warn "nft could not apply the hosting firewall, so this box takes in what it did before"
+    fi
 fi
 
 # --- the session ports, to the controller only (roadmap #24, phase 10b) ----
