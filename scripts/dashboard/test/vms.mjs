@@ -157,5 +157,15 @@ for (let i = 0; i < 4; i++){
 }
 const left = (await call('/api/vms')).vms.map(v => v.key);
 ok(!left.includes('alpha/db'), `...and once it has run the record is gone (${left.join(', ')})`);
+// A console tab whose VM went while no page watched it is dropped once the
+// records are read (B172); a page opening with one reads them itself.
+const reaped = await page.evaluate(async () => {
+  tabs.push({id: 'vmc-gone', kind: 'term', arg: 'vm:alpha:db', label: 'console db'});
+  vmsData = null; vmsAskedForConsoles = false;
+  vmConsolesChecked();
+  for (let i = 0; i < 40 && tabs.some(t => t.id === 'vmc-gone'); i++) await new Promise(r => setTimeout(r, 100));
+  return !tabs.some(t => t.id === 'vmc-gone');
+});
+ok(reaped, 'a console tab whose VM is gone leaves the dock once the records are read');
 await call('/api/v1/nodes', { action: 'retire', id: minted.id });
 await done(browser);

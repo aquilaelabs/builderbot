@@ -64,6 +64,7 @@ function reapDeadTerminals(){
   // Collected first: dropTab re-renders and repairs the panes, and doing that
   // while walking the list it edits is how one of two dying tabs gets missed.
   gone.forEach(dropTab);
+  vmConsolesChecked();
 }
 
 let refreshBusy = false;     // a poll is out

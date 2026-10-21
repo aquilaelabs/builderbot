@@ -25,7 +25,25 @@ async function loadVms(){
     vmsData = vmsData || {vms: [], images: [], hosts: [], can: {}};
   }
   vmsRev++;
+  vmReapConsoles();
   if (tabs.some(t => t.kind === "vms")) drawPanes();
+}
+// A console tab is the account's and outlives the page, so one whose VM was
+// removed while no page watched it stayed in the dock onto nothing (B172):
+// dropped once the records are read and the VM is not among them.
+const vmConsoleTab = t => t.kind === "term" && String(t.arg).startsWith("vm:");
+// ...and read once for a page that opens with one, since the first poll's
+// tokens fire nothing.
+let vmsAskedForConsoles = false;
+function vmConsolesChecked(){
+  if (vmsData || vmsAskedForConsoles || !tabs.some(vmConsoleTab)) return;
+  vmsAskedForConsoles = true;
+  loadVms();
+}
+function vmReapConsoles(){
+  if (!vmsData || vmsErr) return;
+  const have = new Set((vmsData.vms || []).map(v => `vm:${v.project}:${v.name}`));
+  tabs.filter(t => vmConsoleTab(t) && !have.has(t.arg)).map(t => t.id).forEach(dropTab);
 }
 
 // What a VM's state says, in its level's tone.

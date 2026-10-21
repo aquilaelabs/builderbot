@@ -7386,7 +7386,8 @@ onRev("emulator", () => {
 // re-reads too, since its rows say which ports are routed.
 // The VMs page (R91): a record written, a job ended, or a node's hello
 // carrying what its VMs are doing now.
-onRev("vms", () => { if (shown("vms")) loadVms(); });
+// ...and read for a console tab too, which goes when its VM does (B172).
+onRev("vms", () => { if (shown("vms") || tabs.some(vmConsoleTab)) loadVms(); });
 onRev("nginx", () => {
   if (shown("nginx")) loadNginx();
   if (shown("docker")){ dockerList = null; dockerRev++; loadDocker(); }
