@@ -24,10 +24,11 @@ from .sessions import SessionWatch, SessionsMixin
 from .workspace import WorkspaceMixin
 from .work import WorkMixin
 from .configplane import ConfigPlaneMixin
+from .vms import VmsMixin
 from . import storage
 
 
-class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin):
+class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin):
     def __init__(self, state):
         self.state = state
         # Its own directory under the toolchain store, by its node id (R196),
