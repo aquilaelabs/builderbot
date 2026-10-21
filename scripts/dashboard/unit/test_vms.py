@@ -149,6 +149,20 @@ class Controller(unittest.TestCase):
         self.assertIn("SHA-256", vms.iso("user:test", "iso-add", {"node": "n1", "url": "https://x/y.iso"})["error"])
         self.assertIn("https", vms.iso("user:test", "iso-add", {"node": "n1", "url": "http://x/y.iso", "sha256": "a" * 64})["error"])
 
+    def test_an_uploaded_iso_is_spooled_hashed_and_fetched_by_its_job_alone(self):
+        import hashlib
+        import io
+        body = b"\x00" * 4096
+        r = vms.iso_upload("user:test", io.BytesIO(body), len(body), "n1", "own.iso")
+        self.assertTrue(r.get("ok"), r)
+        spec = self.f.jobs[-1][2]
+        self.assertEqual(spec["iso"]["sha256"], hashlib.sha256(body).hexdigest())
+        path = vms.upload_path(spec["iso"]["upload"])
+        self.assertEqual(path.read_bytes(), body)
+        self.assertIn("ended early", vms.iso_upload("user:test", io.BytesIO(body[:10]), len(body), "n1", "x.iso")["error"])
+        vms.vm_done({"node": "n1", "spec": spec}, "succeeded")
+        self.assertIsNone(vms.upload_path(spec["iso"]["upload"]), "the spool is emptied when its job ends")
+
     def test_a_disk_grows_and_never_shrinks(self):
         self.new()
         vms.vm_done({"node": "n1", "spec": {"action": "create", "domain": "bbvm-web-db"}}, "succeeded")
@@ -320,7 +334,8 @@ class Agent(unittest.TestCase):
         i = self.av.domain_xml("bbvm-web-win", "web", 2, 4096, "/v/w.qcow2", "/v/iso/ubuntu.iso", "bbvm-n00",
                                installer=True, extra=["/v/w-d1.qcow2"], mac="52:54:00:12:34:56", vnc_pw="s3cret")
         self.assertIn("<boot dev='cdrom'/><boot dev='hd'/>", i)
-        self.assertIn("<target dev='vdb' bus='virtio'/>", i)
+        self.assertIn("<target dev='vdb' bus='virtio'/><serial>bb", i)
+        self.assertIn("-vdb</serial>", i)
         self.assertIn("<mac address='52:54:00:12:34:56'/>", i.replace('"', "'"))
         self.assertIn("passwd='s3cret'", i.replace('"', "'"))
         # A VM made a node is on the LAN by the host's own interface, where

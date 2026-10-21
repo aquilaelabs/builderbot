@@ -419,6 +419,51 @@ def create(principal, project, req, nodes_allowed, session=False):
     return {"ok": True, "key": key, "job": r["job"], "node": pick["name"], "domain": dom}
 
 
+UPLOAD_MAX = 16 * 2**30         # an installer's ISO, uploaded (R99): DVD-sized and then some
+
+
+def upload_dir():
+    return STATE / "vm-uploads"
+
+
+def upload_path(uid):
+    """Where an uploaded ISO waits for its node's job, or None."""
+    if not re.fullmatch(r"[0-9a-f]{16}", str(uid or "")):
+        return None
+    p = upload_dir() / f"{uid}.iso"
+    return p if p.is_file() else None
+
+
+def iso_upload(principal, stream, size, node_id, name):
+    """An ISO uploaded on the VMs page, streamed to the controller's spool and
+    hashed as it comes, then fetched by its node's job (iso-add with an
+    upload) and deleted once that job ends."""
+    import hashlib
+    import secrets
+    if not ISO_RE.fullmatch(str(name or "")):
+        return {"error": f"an ISO's name ends .iso and is letters, digits, dots, dashes and underscores: not {name or 'nothing'}"}
+    if not 0 < size <= UPLOAD_MAX:
+        return {"error": f"an ISO here is at most {UPLOAD_MAX // 2**30} GB"}
+    upload_dir().mkdir(parents=True, exist_ok=True)
+    uid = secrets.token_hex(8)
+    dest, h, left = upload_dir() / f"{uid}.iso", hashlib.sha256(), size
+    with open(dest, "wb") as f:
+        while left > 0:
+            chunk = stream.read(min(left, 1 << 20))
+            if not chunk:
+                break
+            f.write(chunk)
+            h.update(chunk)
+            left -= len(chunk)
+    if left:
+        dest.unlink(missing_ok=True)
+        return {"error": "the upload ended early; try again"}
+    r = iso(principal, "iso-add", {"node": node_id, "iso": name, "upload": uid, "sha256": h.hexdigest()})
+    if r.get("error"):
+        dest.unlink(missing_ok=True)
+    return r
+
+
 def iso(principal, action, req):
     """An installer's ISO fetched onto a VM host from an https address and
     kept only when it matches the SHA-256 given (iso-add), or taken off it
@@ -435,7 +480,9 @@ def iso(principal, action, req):
     if not ISO_RE.fullmatch(name):
         return {"error": f"an ISO's name ends .iso and is letters, digits, dots, dashes and underscores: not {name or 'nothing'}"}
     spec = {"action": action, "domain": "bbvm-iso", "iso": {"name": name}, "timeout": 7200}
-    if action == "iso-add":
+    if action == "iso-add" and req.get("upload"):
+        spec["iso"].update(upload=str(req["upload"]), sha256=str(req.get("sha256") or ""))
+    elif action == "iso-add":
         url, sha = str(req.get("url") or "").strip(), str(req.get("sha256") or "").strip().lower()
         if not url.startswith("https://"):
             return {"error": "an ISO comes from an https address"}
@@ -544,6 +591,9 @@ def vm_done(job, state):
     succeeded takes the record."""
     spec = job.get("spec") or {}
     dom = spec.get("domain")
+    # An uploaded ISO's spool, done with once its node's job has ended.
+    if spec.get("action") == "iso-add" and (p := upload_path((spec.get("iso") or {}).get("upload"))):
+        p.unlink(missing_ok=True)
     with _lock:
         d = _load()
         key = next((k for k, r in d["vms"].items() if r.get("domain") == dom and r.get("node") == job.get("node")), None)

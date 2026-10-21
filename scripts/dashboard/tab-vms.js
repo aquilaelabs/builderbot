@@ -243,6 +243,9 @@ function openNewVm(forProject = ""){
       <div class="field">${lbl("vmIsoSum", "Its SHA-256", "from the publisher's SHA256SUMS: the ISO is kept only when it matches")}
         <input id="vmIsoSum" spellcheck="false" autocomplete="off" maxlength="64" placeholder="64 hex digits"></div>
       <div class="field"><div class="actbar"><button type="button" id="vmIsoGo">Fetch it onto the node</button></div></div>
+      <div class="field">${lbl("vmIsoFile", "Or upload one", "an .iso from this computer, sent through the controller to the node and checked there")}
+        <input id="vmIsoFile" type="file" accept=".iso"></div>
+      <div class="field"><div class="actbar"><button type="button" id="vmIsoUp" disabled>Upload it to the node</button></div></div>
     </div>
     <div class="prefrow ctlrow">
       <div class="setrow col ctlrow">${lbl("vmCpu", "vCPUs")}<input id="vmCpu" type="number" min="1" max="64" value="2"></div>
@@ -293,6 +296,21 @@ function openNewVm(forProject = ""){
     if (j.error) return say(j.error);
     say("");
     notify(`${j.iso}: downloading onto ${j.node}, then checked; it is offered under From once it is there`);
+  });
+  $m("#vmIsoFile").onchange = () => { $m("#vmIsoUp").disabled = !$m("#vmIsoFile").files.length; };
+  $m("#vmIsoUp").onclick = () => pressing($m("#vmIsoUp"), async () => {
+    const f = $m("#vmIsoFile").files[0];
+    if (!f) return;
+    busy($m("#vmIsoUp"), "Uploading");
+    const q = new URLSearchParams({project: $m("#vmProject").value, node: $m("#vmNode").value, name: f.name});
+    let j;
+    try{ j = await (await fetch("/api/vms-iso-upload?" + q, {method: "POST", body: f,
+                                 headers: {"Content-Type": "application/octet-stream"}})).json(); }
+    catch(e){ j = {error: String(e)}; }
+    $m("#vmIsoUp").disabled = false; $m("#vmIsoUp").textContent = "Upload it to the node";
+    if (j.error) return say(j.error);
+    say("");
+    notify(`${j.iso}: uploaded; ${j.node} takes it from the controller and checks it, then it is offered under From`);
   });
   $m("#vmGo").onclick = () => pressing($m("#vmGo"), async () => {
     busy($m("#vmGo"), "Making");

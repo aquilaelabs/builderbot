@@ -262,9 +262,13 @@ def domain_xml(name, project, vcpus, mem_mb, disk, seed, network, boot="bios", f
     mac_el = f"<mac address={quoteattr(mac)}/>" if mac else ""
     nic = (f"<interface type='direct'>{mac_el}<source dev={quoteattr(lan)} mode='bridge'/><model type='virtio'/></interface>"
            if lan else f"<interface type='network'>{mac_el}<source network={quoteattr(network)}/><model type='virtio'/></interface>")
+    # A serial per disk, the same every boot, so /dev/disk/by-id names it
+    # (virtio takes 20 bytes): this VM's and the disk's own.
+    tag = hashlib.sha256(name.encode()).hexdigest()[:10]
+    serial = lambda dev: f"<serial>bb{tag}-{dev}</serial>"  # noqa: E731
     boots = "<boot dev='cdrom'/><boot dev='hd'/>" if installer else "<boot dev='hd'/>"
     disks = "".join(f"\n    <disk type='file' device='disk'><driver name='qemu' type='qcow2' discard='unmap'/>"
-                    f"<source file={quoteattr(d)}/><target dev='{DISK_DEVS[i + 1]}' bus='virtio'/></disk>"
+                    f"<source file={quoteattr(d)}/><target dev='{DISK_DEVS[i + 1]}' bus='virtio'/>{serial(DISK_DEVS[i + 1])}</disk>"
                     for i, d in enumerate(list(extra)[:len(DISK_DEVS) - 1]))
     pw = f" passwd={quoteattr(vnc_pw)}" if vnc_pw else ""
     arch = escape(os.uname().machine)
@@ -282,7 +286,7 @@ def domain_xml(name, project, vcpus, mem_mb, disk, seed, network, boot="bios", f
   <features><acpi/><apic/></features>
   <cpu mode='host-passthrough'/>
   <devices>
-    <disk type='file' device='disk'><driver name='qemu' type='qcow2' discard='unmap'/><source file={quoteattr(disk)}/><target dev='vda' bus='virtio'/></disk>{disks}
+    <disk type='file' device='disk'><driver name='qemu' type='qcow2' discard='unmap'/><source file={quoteattr(disk)}/><target dev='vda' bus='virtio'/>{serial('vda')}</disk>{disks}
     <disk type='file' device='cdrom'><driver name='qemu' type='raw'/><source file={quoteattr(seed)}/><target dev='sda' bus='sata'/><readonly/></disk>
     {nic}
     <graphics type='vnc' listen='127.0.0.1' autoport='yes'{pw}/>
@@ -624,39 +628,34 @@ class VmsMixin:
         return "succeeded", 0
 
     def _vm_iso_add(self, job, spec, name, who):
-        """An installer's ISO onto this node, from an https address, kept
-        only when it matches the SHA-256 the person gave."""
+        """An installer's ISO onto this node, kept only when it matches the
+        SHA-256 given: from an https address, or uploaded on the VMs page
+        and fetched from the controller with this node's own token (R99)."""
         iso = spec.get("iso") if isinstance(spec.get("iso"), dict) else {}
         fname, url, want = str(iso.get("name") or ""), str(iso.get("url") or ""), str(iso.get("sha256") or "").lower()
-        if not (ISO_RE.fullmatch(fname) and url.startswith("https://") and SHA256_RE.fullmatch(want)):
-            job.say("refused: an ISO is a name ending .iso, an https address and its SHA-256\n")
+        upload = str(iso.get("upload") or "")
+        if not (ISO_RE.fullmatch(fname) and (url.startswith("https://") or re.fullmatch(r"[0-9a-f]{16}", upload))
+                and SHA256_RE.fullmatch(want)):
+            job.say("refused: an ISO is a name ending .iso, an https address or an upload, and its SHA-256\n")
             return "failed", 64
         self.own_dir(iso_dir(), who)
         path = os.path.join(iso_dir(), fname)
         if os.path.isfile(path):
             job.say(f"{fname} is here already\n")
             return "succeeded", 0
-        part, h = path + ".part", hashlib.sha256()
-        job.step(f"downloading {fname}")
-        try:
-            with urllib.request.urlopen(url, timeout=60) as r, open(part, "wb") as f:  # noqa: S310 (https, checked above)
-                total = int(r.headers.get("Content-Length") or 0)
-                got, said = 0, 0
-                while True:
-                    chunk = r.read(1 << 20)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    h.update(chunk)
-                    got += len(chunk)
-                    if total and got * 10 // total > said:
-                        said = got * 10 // total
-                        job.say(f"{fname}: {said * 10}% of {total // 2**20} MB\n")
-        except OSError as e:
-            job.say(f"could not download {fname} from {url}: {e}\n")
-            with contextlib.suppress(OSError):
-                os.unlink(part)
+        part = path + ".part"
+        if upload:
+            job.step(f"fetching {fname} from the controller")
+            code, _ = self.ctl.fetch(f"iso?job={job.job['id']}&upload={upload}", part, timeout=7200)
+            if code != 200:
+                job.say(f"could not fetch {fname} from the controller ({code})\n")
+                return "failed", 69
+        elif not self._vm_iso_download(job, fname, url, part):
             return "failed", 69
+        h = hashlib.sha256()
+        with open(part, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
         if h.hexdigest() != want:
             job.say(f"{fname} does not match the SHA-256 given ({h.hexdigest()}); not kept\n")
             os.unlink(part)
@@ -665,8 +664,28 @@ class VmsMixin:
         if who:
             with contextlib.suppress(OSError):
                 os.chown(path, who["user"], who["group"])
-        job.say(f"{fname}: downloaded and checked, {os.path.getsize(path) // 2**20} MB\n")
+        job.say(f"{fname}: {'uploaded' if upload else 'downloaded'} and checked, {os.path.getsize(path) // 2**20} MB\n")
         return "succeeded", 0
+
+    @staticmethod
+    def _vm_iso_download(job, fname, url, part):
+        job.step(f"downloading {fname}")
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r, open(part, "wb") as f:  # noqa: S310 (https, checked by the caller)
+                total = int(r.headers.get("Content-Length") or 0)
+                got, said = 0, 0
+                for chunk in iter(lambda: r.read(1 << 20), b""):
+                    f.write(chunk)
+                    got += len(chunk)
+                    if total and got * 10 // total > said:
+                        said = got * 10 // total
+                        job.say(f"{fname}: {said * 10}% of {total // 2**20} MB\n")
+        except OSError as e:
+            job.say(f"could not download {fname} from {url}: {e}\n")
+            with contextlib.suppress(OSError):
+                os.unlink(part)
+            return False
+        return True
 
     def _vm_iso_rm(self, job, spec, name, who):
         fname = str((spec.get("iso") or {}).get("name") or "") if isinstance(spec.get("iso"), dict) else ""

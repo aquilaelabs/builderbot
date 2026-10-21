@@ -6542,6 +6542,9 @@ class Handler(BaseHTTPRequestHandler):
         # form, and an upload is not read into memory at all.
         if self.path.split("?")[0] == "/api/upload-archive":
             return self._upload_archive()
+        # ...and an installer's ISO for a VM host (R99), streamed the same way.
+        if self.path.split("?")[0] == "/api/vms-iso-upload":
+            return self._vms_iso_upload()
         req = self._read_json()
         if req is None:
             return None
@@ -7064,7 +7067,7 @@ class Handler(BaseHTTPRequestHandler):
                 if verb == "hello" and not nodes.host_hello_allowed(auth["node"], time.monotonic()):
                     return self._json({"error": "too many hellos: one in a while is enough"}, 429)
         # The verbs that serve or take a FILE, on any method.
-        if verb in ("source", "file", "download"):
+        if verb in ("source", "file", "download", "iso"):
             got, status = channel.fetch(verb, auth, q, authed=self._authed)
             if status != 200:
                 return self._json(got, status)
@@ -8321,6 +8324,27 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": busy}, 409)
         return self._result(gitview.verb(name, action, req, me, prefix=users.tmux_prefix(me),
                                          principal=self._principal()))
+
+    def _vms_iso_upload(self):
+        """An ISO uploaded on the VMs page: VMs Write on the project the dialog
+        is for, a person's (never a session's), streamed to the controller's
+        spool and fetched from there by the node's job."""
+        q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        project = (q.get("project") or [""])[0]
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "uploading an installer ISO is a person's, on the VMs page"}, 403)
+        if why := featuresoff.refused("POST", "/api/vms", {}):
+            return self._json({"error": why, "off": True}, 403)
+        if not registry.is_project(project):
+            return self._json({"error": "which project's VMs is it for? name one"}, 400)
+        if self._refused("vms-write", project):
+            return None
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return self._json({"error": "bad request"}, 400)
+        return self._result(vms.iso_upload(self._principal(), self.rfile, n, (q.get("node") or [""])[0],
+                                           (q.get("name") or [""])[0]))
 
     def _upload_archive(self):
         """Spool an archive for the create dialog; {id, name, size, kind}.

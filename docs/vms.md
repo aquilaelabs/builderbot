@@ -113,7 +113,9 @@ A screen password set at New VM is asked for when it opens.
 For a system the catalog does not carry (Windows, a BSD, an appliance, a
 distribution of your own), New VM's **From** has **Add an ISO…**: an https
 address and the SHA-256 its publisher gives, fetched onto the node and
-kept only when it matches. The ISO is then offered under **From** on that
+kept only when it matches; or an .iso uploaded from your computer, sent
+through the controller (up to 16 GB, held there only until the node has
+taken it) and checked on the node against the hash taken as it arrived. The ISO is then offered under **From** on that
 node. A VM made from it boots the installer with a blank disk of the size
 given, UEFI or BIOS as picked, and nothing of BuilderBot's inside it (no
 account, no key, no cloud-init): its **Screen** is where you install it.
@@ -123,7 +125,8 @@ to install from, and is refused.
 
 **More** at New VM gives any VM up to three further disks (vdb to vdd), a
 MAC address kept for good (so a DHCP reservation holds) and the screen's
-password; every disk hands freed space back to the pool (discard). **Grow
+password; every disk hands freed space back to the pool (discard) and has
+a serial of its own, the same every boot, for `/dev/disk/by-id`. **Grow
 disk** on a stopped VM makes one of its disks larger, never smaller; the
 partition inside is the system's own to grow. **Add disk** gives a stopped
 VM the next of vdb to vdd, there at its next start.

@@ -89,7 +89,7 @@ def _feature(method, path, req):
         return "image-updates"
     if path in ("/api/devapp", "/api/nginx") and method == "POST" and act == "update":
         return "image-updates"
-    if path == "/api/vms" and method == "POST":
+    if path in ("/api/vms", "/api/vms-iso-upload") and method == "POST":
         return "vms"
     if path == "/api/v1/nodes" and method == "POST":
         if act == "feature" and (req or {}).get("feature") == "vmhost" and (req or {}).get("op") == "install":

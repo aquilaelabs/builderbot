@@ -21,6 +21,7 @@ import plugins
 import runners
 import signing
 import toolchains
+import vms
 import wssync
 import claudesync
 import workspace
@@ -85,6 +86,20 @@ def fetch(verb, auth, q, authed):
         if path is None:
             return {"error": "no such file in the project's dist/"}, 404
         return {"path": path, "ctype": "application/octet-stream", "headers": {}}, 200
+    if verb == "iso":
+        # An installer's ISO uploaded on the VMs page (R99), for the node
+        # whose running vm job was queued to fetch it, and nobody else.
+        if (no := _node_only(auth)):
+            return no
+        j = nodes.job(q.get("job", [""])[0], with_log=False)
+        up = str(q.get("upload", [""])[0])
+        if not j or j["node"] != auth["node"] or j["state"] not in nodes.JOB_ACTIVE \
+                or ((j.get("spec") or {}).get("iso") or {}).get("upload") != up:
+            return {"error": "not this node's running ISO job"}, 403
+        path = vms.upload_path(up)
+        if path is None:
+            return {"error": "no such upload"}, 404
+        return {"path": str(path), "ctype": "application/octet-stream", "headers": {}}, 200
     what = q.get("what", [""])[0]
     if what == "bundle":
         # bb, its library and the catalog, for a node installing a
