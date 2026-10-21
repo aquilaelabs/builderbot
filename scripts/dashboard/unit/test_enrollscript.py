@@ -85,6 +85,10 @@ class Script(unittest.TestCase):
             self.assertIn("Offer dev features", es.check(answers(system="arch"))["error"])
             forges.unvetted_ok = lambda: True
             self.assertEqual(es.check(answers(system="arch"))["system"], "arch")
+            # ...and its script passes --dev, which a family the provisioner
+            # has not run on needs, where a walked system's does not.
+            self.assertIn("--dev", self.build(system="arch")[1])
+            self.assertNotIn("--dev", self.build(system="ubuntu")[1])
         finally:
             forges.unvetted_ok = was
         self.assertEqual(systems.family_file("rocky").name, "rhel.sh")

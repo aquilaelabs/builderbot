@@ -268,6 +268,13 @@ def build(ans, *, name, user, token, expires, provisioner, family=b"", again=Fal
             flags.append("--door-close22")
     if ans.get("firewall"):
         flags.append("--firewall")
+    # A system not walked yet, picked under Offer dev features: its family
+    # may be one the provisioner has never run on, which it refuses without
+    # --dev, and the script stopped there having changed nothing (R97's walk,
+    # Arch, 21 Oct).
+    import systems
+    if not (systems.get(ans.get("system") or "") or {}).get("vetted"):
+        flags.append("--dev")
     for f in ans.get("features") or []:
         flags.append(f"--feature {_q(f)}")
     when = time.strftime("%d %b %Y %H:%M UTC", time.gmtime(expires))
