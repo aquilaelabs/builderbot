@@ -103,6 +103,31 @@ const overShimmer = await page.evaluate(async () => {
 ok(!overShimmer.during && overShimmer.after, `no tour over a placeholder, and one once the page has drawn (${JSON.stringify(overShimmer)})`);
 ok(/9999px/.test(overShimmer.shade) && /0\.35/.test(overShimmer.shade), `...and the page is shaded around the part a step is about (${overShimmer.shade})`);
 
+// An empty page's step about its rows shows an example of one, inert, and
+// takes it away after (the operator, 21 Oct).
+const sample = await page.evaluate(async () => {
+  const seen = state.tour;
+  state.tour = { seen: [], off: false };
+  openVmsTab();
+  await new Promise(r => setTimeout(r, 1500));
+  tourAsked.clear(); tourSoon('vms');
+  for (let i = 0; i < 30 && !tourKind; i++) await new Promise(r => setTimeout(r, 100));
+  while (tourKind && tourI < tourSteps.length - 1 && !$('tourSample')) tourGo(1);
+  const box = $('tourSample');
+  const out = { shown: !!box, inert: !!box?.inert, example: /example/.test(box?.textContent || ''),
+                row: !!box?.querySelector('[data-vm-key]'), empty: !(vmsData?.vms || []).length };
+  tourEnd(false);
+  out.gone = !$('tourSample');
+  // tourEnd's save goes out unawaited: let it land before the next check
+  // resets the account, or it lands after and marks the pages toured.
+  await new Promise(r => setTimeout(r, 1000));
+  state.tour = seen;
+  openHome();
+  return out;
+});
+ok(sample.empty && sample.shown && sample.inert && sample.example && sample.row && sample.gone,
+   `an empty VMs page's tour shows an example VM, inert and marked, gone after (${JSON.stringify(sample)})`);
+
 // On a phone the card is a sheet from the bottom edge.
 await prefs({ tour_seen: [], tour_off: false });
 const phone = await newPage(browser, { tour: true, viewport: { width: 393, height: 852 }, isMobile: true, hasTouch: true });

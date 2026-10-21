@@ -60,12 +60,15 @@ const TOUR_STEPS = {
     {say: "Containers: every project's containers on a node, grouped by project, with Up, Down, Rebuild and a Shell in the dock."},
     {at: TOUR_SUB, say: "Containers, VMs and nginx are the three tools of this group."},
     {at: TOUR_BAR, say: "Pick the node, search, and switch between cards and a list. New container and Check for updates sit at the right."},
-    {at: TOUR_FIRST, say: "A project's card: each container with its state, where it answers, and its buttons. The menu holds the rest, Remove last."},
+    {at: TOUR_FIRST, sample: () => tourSampleCard(), say: "A project's card: each container with its state, where it answers, and its buttons. The menu holds the rest, Remove last."},
   ],
   vms: [
     {say: "VMs: a project's virtual machines on the nodes with VM host installed, made from the cloud images of a dozen Linux systems."},
     {at: TOUR_BAR, say: "New VM is here. A Claude session can make one too, with bb vm new, where the project's Make VMs setting allows it."},
-    {at: TOUR_FIRST, say: "Each VM says its state and how to ssh in. Snapshot keeps its state under a name, and Revert goes back to it."},
+    {at: TOUR_FIRST, sample: () => vmGroupsHtml([{key: "example/db", project: "example", name: "db", state: "running",
+      os_name: "Debian 13", node_name: "your-node", vcpus: 2, mem_mb: 2048, disk_gb: 20, ip: "10.232.0.12", user: "builder",
+      snapshots: ["clean"], screen: true}]),
+     say: "Each VM says its state and how to ssh in. Snapshot keeps its state under a name, and Revert goes back to it."},
   ],
   nginx: [
     {say: "nginx: BuilderBot's own reverse proxy on a node, putting your containers behind hostnames and certificates."},
@@ -112,6 +115,8 @@ function tourSeen(){ return new Set(state?.tour?.seen || []); }
 
 // Called after the panes are drawn: the page in front, toured once.
 function tourSoon(kind){
+  // A step's example, put back after a draw of the page wiped it.
+  if (tourKind && tourSteps[tourI]?.sample && !$("tourSample") && tourKind === kind) return tourDraw();
   // BB_NO_TOUR: a page the test harness or the README's pictures opened.
   if (!kind || !TOUR_STEPS[kind] || !state?.me || state?.tour?.off || tourKind || window.BB_NO_TOUR) return;
   if (tourSeen().has(kind) || tourAsked.has(kind)) return;
@@ -153,7 +158,9 @@ function tourStart(kind){
     tourAsked.delete(kind);
     return;
   }
-  tourSteps = TOUR_STEPS[kind].filter(s => !s.at || tourTarget(s.at));
+  // A step about a row the page has none of yet keeps its place with an
+  // example of one (the operator, 21 Oct): an empty Containers or VMs page.
+  tourSteps = TOUR_STEPS[kind].filter(s => !s.at || s.sample || tourTarget(s.at));
   if (!tourSteps.length) return;
   tourKind = kind;
   tourI = 0;
@@ -177,10 +184,35 @@ function tourStart(kind){
   tourDraw();
 }
 
+// An example of what a step is about, put on the page while the step shows
+// and taken away after: drawn by the page's own renderer where it has one,
+// inert, and marked as an example.
+function tourSample(s){
+  $("tourSample")?.remove();
+  if (!s?.sample || (s.at && tourTarget(s.at))) return null;
+  const doc = document.querySelector(`${TOUR_PANE} .doctab`);
+  if (!doc) return null;
+  const box = document.createElement("div");
+  box.id = "tourSample"; box.className = "toursample"; box.inert = true;
+  box.innerHTML = `<div class="field"><span class="pill note">example</span> <span class="sub">what one looks like once there is one</span></div>${s.sample()}`;
+  const bar = doc.querySelector(":scope > .docbarrow, :scope > .vbar");
+  if (bar) bar.after(box); else doc.prepend(box);
+  return box;
+}
+function tourSampleCard(){
+  return `<section class="dmcard"><div class="field dmgroup" style="--gc:var(--accent)"><b>example</b></div>
+    <div class="row stack2"><div class="grow"><div class="dmhead"><div class="dmid">
+      <div class="name">web<span class="pill stat dmpill ok live">running</span></div>
+      <div class="sub dmorigin">nginx:1.31-alpine<span class="sep"></span>your-node</div>
+      <div class="sub dmstate ok">answers at http://your-node:8080/</div></div>
+      <div class="actbar dmacts"><button type="button">Shell</button><button type="button">Rebuild</button>
+        <span class="more"><button type="button" class="moreb" aria-label="More">⋯</button></span></div></div></div></div></section>`;
+}
+
 function tourDraw(){
   const ring = $("tourRing"), card = $("tourCard");
   const s = tourSteps[tourI], last = tourI === tourSteps.length - 1;
-  const el = tourTarget(s.at);
+  const el = tourSample(s) || tourTarget(s.at);
   card.innerHTML = `<div class="tourstep">${tourI + 1} of ${tourSteps.length}</div>
     <div class="toursay">${esc(s.say)}</div>
     <label class="ndcap tourall"><input type="checkbox" id="tourAll"> Skip the tour on every page</label>
@@ -236,6 +268,7 @@ function tourEnd(all){
   const kind = tourKind;
   tourKind = "";
   $("tourCard").hidden = $("tourRing").hidden = true;
+  $("tourSample")?.remove();
   if (!state?.me) return;
   const seen = [...new Set([...tourSeen(), kind])].slice(-64);
   state.tour = {seen, off: !!state?.tour?.off || all};
