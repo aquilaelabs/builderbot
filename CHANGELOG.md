@@ -10,7 +10,7 @@
 
 ### Removed
 
-- An agent from 0.5 no longer works with this controller: a node's agent is updated to 0.6 by the controller on its own, and until it is, that node's sessions are held. Claude sessions on every node are restarted once, as their agent moves, and a session started under 0.5 is not carried over. (afd46ac)
+- An agent from 0.5 no longer works with this controller: a node's agent is updated to 0.6 by the controller on its own, and until it is, that node's sessions are held. Claude sessions on every node are restarted once, as their agent moves, and a session started under 0.5 is not carried over. (dfdf573)
 
 ### Fixed
 
