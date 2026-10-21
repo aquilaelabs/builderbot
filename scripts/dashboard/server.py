@@ -523,10 +523,6 @@ def compat_holds(reap=False):
     return out
 
 
-# When a hosting-only node's refused verb was last audited (Handler._agent).
-_host_refused_at = {}
-
-
 # How often the sweep below runs. Settable only so the suite need not wait
 # half a minute to see a session end.
 COMPAT_SWEEP_S = float(os.environ.get("BB_COMPAT_SWEEP") or 30)
@@ -6807,10 +6803,9 @@ class Handler(BaseHTTPRequestHandler):
             if why:
                 # Audited once an hour a node and verb, so a verb asked on a
                 # loop does not fill the log.
-                key = (auth["node"], verb)
-                if time.monotonic() - _host_refused_at.get(key, -3600) >= 3600:
-                    _host_refused_at[key] = time.monotonic()
-                    db.audit(f"node:{auth['node']}", "host-refused", verb[:60], {})
+                said = nodes.host_refused_audit(auth["node"], verb, time.monotonic())
+                if said:
+                    db.audit(f"node:{auth['node']}", "host-refused", said, {})
                 return self._json({"error": why}, 403)
         # The verbs that serve or take a FILE, on any method.
         if verb in ("source", "file", "download"):

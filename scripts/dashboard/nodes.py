@@ -3840,6 +3840,30 @@ def host_refuses(nid, verb, what=""):
             + (f" ({what})" if what else "") + " is not something it is given or may send")
 
 
+# When a hosting-only node's refused verb was last audited (server's Handler._agent).
+_host_refused_at = {}
+_host_refused_lock = threading.Lock()
+# How many verbs a node is audited for in an hour: a box asking made-up
+# verbs on a loop neither fills the audit log nor grows the table (R92).
+HOST_REFUSED_VERBS = 16
+
+
+def host_refused_audit(nid, verb, now):
+    """Whether this refusal is audited now, kept: once an hour a node and
+    verb, and HOST_REFUSED_VERBS verbs a node an hour, the last of them
+    saying the rest go unrecorded."""
+    with _host_refused_lock:
+        for k in [k for k, t in _host_refused_at.items() if now - t >= 3600]:
+            del _host_refused_at[k]
+        if (nid, verb) in _host_refused_at:
+            return ""
+        seen = sum(1 for n, _v in _host_refused_at if n == nid)
+        if seen >= HOST_REFUSED_VERBS:
+            return ""
+        _host_refused_at[(nid, verb)] = now
+    return verb[:60] + (" (and any more verbs this hour, unrecorded)" if seen == HOST_REFUSED_VERBS - 1 else "")
+
+
 def session_kill(node_id, name):
     """End a tmux session on a node: queued for the agent's held poll, and
     the poll woken so it goes now. The name is the node's own (the session

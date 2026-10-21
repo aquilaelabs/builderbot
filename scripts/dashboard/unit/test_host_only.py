@@ -32,5 +32,20 @@ class Placement(unittest.TestCase):
         self.assertTrue(nodes.fits({"type": "exec", "placement": sel, "spec": {"argv": ["docker", "ps"]}}, row()))
 
 
+class RefusalAudit(unittest.TestCase):
+    def setUp(self):
+        nodes._host_refused_at.clear()
+
+    def test_a_verb_once_an_hour_and_made_up_verbs_kept_to_a_few(self):
+        self.assertEqual(nodes.host_refused_audit("n_vps", "source", 0), "source")
+        self.assertEqual(nodes.host_refused_audit("n_vps", "source", 10), "", "once an hour")
+        said = [nodes.host_refused_audit("n_vps", f"a{i}", 20) for i in range(1000)]
+        self.assertEqual(sum(1 for x in said if x), nodes.HOST_REFUSED_VERBS - 1)
+        self.assertIn("unrecorded", [x for x in said if x][-1])
+        self.assertLessEqual(len(nodes._host_refused_at), nodes.HOST_REFUSED_VERBS, "the table does not grow")
+        self.assertEqual(nodes.host_refused_audit("n_other", "source", 30), "source", "another node is its own")
+        self.assertEqual(nodes.host_refused_audit("n_vps", "source", 3700), "source", "an hour on, again")
+
+
 if __name__ == "__main__":
     unittest.main()
