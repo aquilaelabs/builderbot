@@ -172,7 +172,11 @@ def view(projects=None):
         live = _live(n).get(rec.get("domain"))
         row = dict(rec, key=key, node_name=(n or {}).get("name") or rec.get("node"), node_live=bool((n or {}).get("live")))
         if live:
-            row.update(state=live.get("state") or "unknown", ip=live.get("ip") or "", snapshots=live.get("snapshots") or [])
+            # The node's list, with what this side's own jobs made since its
+            # last report.
+            snaps = list(live.get("snapshots") or [])
+            snaps += [x for x in rec.get("snaps") or [] if x not in snaps]
+            row.update(state=live.get("state") or "unknown", ip=live.get("ip") or "", snapshots=snaps)
         elif rec.get("state") not in ("making", "failed", "removing"):
             # Made, and the node's last report does not list it: not there.
             row.update(state="missing" if (n or {}).get("reported", {}).get("vms") is not None else "unknown")
@@ -360,7 +364,8 @@ def act(principal, project, name, action, req=None):
             spec["snapshot"] = snap
             if action == "snapshot":
                 spec["note"] = str(req.get("note") or "")[:200]
-            if action != "snapshot" and snap not in (_live(n).get(rec["domain"]) or {}).get("snapshots", []):
+            known = set((_live(n).get(rec["domain"]) or {}).get("snapshots", [])) | set(rec.get("snaps") or [])
+            if action != "snapshot" and snap not in known:
                 return {"error": f"{name} has no snapshot called {snap}"}
         if action == "stop" and req.get("force"):
             spec["force"] = True
@@ -397,6 +402,11 @@ def vm_done(job, state):
         elif spec.get("action") == "create":
             rec["state"] = "made" if ok else "failed"
             rec["error"] = "" if ok else (job.get("error") or f"its create job {state}; the job's log says why")[:300]
+        elif ok and spec.get("action") in ("snapshot", "snapshot-rm"):
+            # What its own jobs did, kept until the node's next report says
+            # so too: a revert pressed right after a snapshot finds it.
+            snaps = [x for x in rec.get("snaps") or [] if x != spec.get("snapshot")]
+            rec["snaps"] = snaps + ([spec["snapshot"]] if spec.get("action") == "snapshot" else [])
         elif not ok:
             if spec.get("action") == "remove":
                 rec["state"] = "made"

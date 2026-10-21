@@ -113,6 +113,10 @@ class Controller(unittest.TestCase):
         row = vms.view()[0]
         self.assertEqual((row["state"], row["ip"], row["snapshots"]), ("running", "10.232.0.12", ["clean"]))
         self.assertIn("no snapshot called gone", vms.act("user:test", "web", "db", "revert", {"snapshot": "gone"})["error"])
+        # One its own job just made is there before the node says so.
+        vms.vm_done({"node": "n1", "spec": {"action": "snapshot", "domain": "bbvm-web-db", "snapshot": "fresh"}}, "succeeded")
+        self.assertTrue(vms.act("user:test", "web", "db", "revert", {"snapshot": "fresh"}).get("ok"))
+        self.assertEqual(vms.view()[0]["snapshots"], ["clean", "fresh"])
         self.assertTrue(vms.act("user:test", "web", "db", "revert", {"snapshot": "clean"}).get("ok"))
         vms.act("user:test", "web", "db", "remove")
         vms.vm_done({"node": "n1", "spec": {"action": "remove", "domain": "bbvm-web-db"}}, "succeeded")
