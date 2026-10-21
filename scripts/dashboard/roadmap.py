@@ -1075,6 +1075,11 @@ def releases(project):
         pass
     out = []
     for m in _RELEASE.finditer(text):
+        # A project that tags its releases has released a version only once
+        # its tag is there: a bump dates the heading before the release, and
+        # read as made, everything finished since counted as shipped in it.
+        if tagged and m.group(1) not in tagged:
+            continue
         try:
             out.append((m.group(1), tagged.get(m.group(1)) or time.mktime(time.strptime(m.group(2), "%Y-%m-%d")) + 86400))
         except ValueError:
