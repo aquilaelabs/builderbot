@@ -23,7 +23,9 @@ const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'
 const base = URL.replace(/\/$/, '');
 const call = async (path, body, headers = H) => {
   const r = await fetch(base + path, body === undefined ? { headers } : { method: 'POST', headers, body: JSON.stringify(body) });
-  return { status: r.status, ...(await r.json()) };
+  // An agent poll with no work for it may answer nothing at all (B173).
+  const t = await r.text();
+  return { status: r.status, ...(t ? JSON.parse(t) : {}) };
 };
 
 // The page is a tool of the Containers group, between Containers and nginx.
