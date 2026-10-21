@@ -2617,8 +2617,18 @@ cmd_tests() {
             export BB_LAB_CONTROLLER BB_LAB_NODE BB_LAB_TOKEN
             ok_ctl="$BB_LAB_CONTROLLER ($BB_LAB_NODE)"
         fi
-        echo "lab services: gitea=${ok_gitea:-none} forgejo=${ok_forgejo:-none} controller=${ok_ctl:-none}"
-        if [ -z "$ok_gitea" ] && [ -z "$ok_ctl" ]; then
+        # ...and a VM host there, which walks every Linux system (lab-systems).
+        local ok_vmhost=""
+        if [ -n "${BB_LAB_CONTROLLER:-}" ] && [ -n "${BB_LAB_VMHOST:-}" ] && [ -n "${BB_LAB_TOKEN:-}" ] \
+           && [ -n "${BB_LAB_KEY:-}" ]; then
+            export BB_LAB_CONTROLLER BB_LAB_VMHOST BB_LAB_TOKEN BB_LAB_KEY
+            ok_vmhost="$BB_LAB_CONTROLLER ($BB_LAB_VMHOST)"
+            # Each system boots and provisions itself: hours for all of them,
+            # where a suite is otherwise given twenty-five minutes.
+            export SUITE_TIMEOUT="${SUITE_TIMEOUT:-21600}"
+        fi
+        echo "lab services: gitea=${ok_gitea:-none} forgejo=${ok_forgejo:-none} controller=${ok_ctl:-none} vmhost=${ok_vmhost:-none}"
+        if [ -z "$ok_gitea" ] && [ -z "$ok_ctl" ] && [ -z "$ok_vmhost" ]; then
             echo "lab: nothing answers, so every suite will skip and that is not a failure."
             echo "     A Gitea comes from the lab's own stack, lab/compose.yml, made with"
             echo "     bb container new beside the dev instance. A node comes from the three"
@@ -2626,7 +2636,11 @@ cmd_tests() {
             echo "     you are willing to have a job run on."
         fi
 
-        local tdir; tdir="$(dirname "$(readlink -f "$0")")/dashboard/test"
+        # This tree's suites, as the other test verbs find them (BB_REPO, or
+        # the tree here): beside the installed bb there are none, so a
+        # session's bb tests lab died saying the checkout had no lab suites.
+        local tdir="${BB_REPO:-$PWD}/scripts/dashboard/test"
+        [ -d "$tdir" ] || tdir="$(dirname "$(readlink -f "$0")")/dashboard/test"
         local -a labs=()
         local f
         for f in "$tdir"/lab-*.mjs; do [ -e "$f" ] && labs+=("$(basename "$f" .mjs)"); done
