@@ -380,7 +380,10 @@ bb tests lab       the lab suites (test/lab-*.mjs) against real services rather 
                    through the controller it is enrolled on: `BB_LAB_CONTROLLER` (that dashboard's
                    address), `BB_LAB_TOKEN` (`user:password` for an administrator there, the lab's
                    own) and `BB_LAB_NODE` (the node by name or id). A job runs on that node, so name
-                   one you are willing to have that happen to
+                   one you are willing to have that happen to. A VM host there as well
+                   (`BB_LAB_VMHOST`, with `BB_LAB_KEY` an ssh public key) walks every Linux
+                   system Enroll node offers as a VM made a node, enrolled to Uninstall
+                   (lab-systems, slow: each system takes its ten to twenty minutes)
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
 bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
 bb rules           the house rules for this project: the operator's and yours
