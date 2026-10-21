@@ -511,12 +511,17 @@ function nodeFeaturesSection(n){
   const fe = n.reported?.features;
   const job = n.applying?.what === "feature" ? n.applying : null;
   const failed = n.last_apply?.what === "feature" && n.last_apply.state === "failed" ? n.last_apply : null;
-  // A job that ended after the census the row draws, or in its second (B162):
-  // the machine has changed and has not said so yet, so its row waits for the
-  // report the agent sends after every feature job rather than offering the
-  // press that was just made.
-  const ahead = n.last_apply?.what === "feature" && n.last_apply.state === "succeeded"
-    && (n.last_apply.ended || 0) >= (n.reported?.at || 0) ? n.last_apply.feature : "";
+  // A job that succeeded and a census that does not show it yet (B162): the
+  // machine has changed and has not said so, so its row waits for the report
+  // the agent sends after every feature job rather than offering the press
+  // that was just made. Read off what the census says, not off the clock:
+  // the two land in the same second often enough that time cannot tell.
+  const la = n.last_apply;
+  const ahead = la?.what === "feature" && la.state === "succeeded" && fe?.[la.feature]
+    && !!fe[la.feature].installed !== (la.op !== "remove")
+    // ...for a few minutes at most: past that the machine has been changed
+    // since by something else, and the row says what it reports.
+    && Date.now() / 1000 - (la.ended || 0) < 300 ? la.feature : "";
   const why = !fe ? (n.reported ? "Its agent does not report its features yet: Update agent above." : "")
     : !n.reported?.administers ? "This node's agent is not root on a managed machine, so its features are set on the machine itself."
     : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
@@ -542,7 +547,34 @@ function nodeFeaturesSection(n){
   if (n.config?.host_only)
     rows.push(row("firewall", "Hosting firewall", !!fe?.firewall?.installed,
       "Takes in only 80 and 443, a port a container publishes included; port 22 as the SSH door leaves it.", ""));
-  const have = rows.length && fe ? [fe.vmhost?.installed, n.config?.host_only && fe.firewall?.installed].filter(Boolean).length : 0;
+  // The features installed elsewhere on the page (R91 step 1): each said as
+  // the machine reports it, with the press that installs or removes it where
+  // it already lives, since those take a license to accept (Google's, NVIDIA's)
+  // or a secret (a door's token, a forge's) that is the person's to give.
+  const r = n.reported || {};
+  const elsewhere = (fid, title, has, about, btn) => `<div class="row ndfeat" data-feat="${fid}"><div class="grow">
+      <div class="name">${esc(title)} <span class="pill${has ? " ok" : ""}">${has ? "installed" : "not installed"}</span></div>
+      <div class="sub">${about}</div></div>${btn}</div>`;
+  const others = [];
+  if (!n.config?.host_only)
+    others.push(elsewhere("sessions", "Claude sessions", !!r.session?.user,
+      r.session?.user ? `Sessions run here as ${esc(r.session.user)}, kept off Docker and root.` : "No session account on this machine: enrolling it again with Claude sessions ticked makes one.",
+      `<button type="button" data-nd="reenroll" title="a new script for this machine, with the ticks changed">Enroll again…</button>`));
+  others.push(elsewhere("door", "SSH door", !!r.door?.installed,
+    r.door?.installed ? `${esc(r.door.kind)}, opened and shut under Sessions.` : "A way in for ssh through a tunnel; its token is given in the enroll script.",
+    `<button type="button" data-nd="reenroll" title="a new script for this machine, with the door's token in it">Enroll again…</button>`));
+  if (r.gpu_card)
+    others.push(elsewhere("gpu", "GPU driver", !!r.gpu_driver?.installed, "NVIDIA's driver, installed and removed from its row on the Toolchains page, where its license is accepted.",
+      `<button type="button" data-ndtc="${esc(n.id)}">Toolchains</button>`));
+  const emu = (r.store_dirs?.android || []).includes("emulator");
+  others.push(elsewhere("emulator", "Android emulator", emu, "The emulator and its system images, from the Toolchains page, where Google's SDK license is accepted.",
+    `<button type="button" data-ndtc="${esc(n.id)}">Toolchains</button>`));
+  const runs = ((r.services || {}).runners || []).length;
+  others.push(elsewhere("runner", "CI runner", runs > 0, runs ? `${runs} runner${runs === 1 ? "" : "s"} registered here.` : "A forge's runner, registered with a token from the forge on the CI runner page.",
+    `<button type="button" data-ndrunner="${esc(n.id)}">CI runner</button>`));
+  rows.push(...others);
+  const have = fe ? [fe.vmhost?.installed, n.config?.host_only && fe.firewall?.installed].filter(Boolean).length
+    + others.filter(h => / ok">installed/.test(h)).length : 0;
   return docSection("nodes", "features", ndTitle("features"), fe ? (have ? `${have} installed` : "none installed") : "",
     `${why ? `<div class="sub dim ndfeatwhy">${why}</div>` : ""}${rows.join("")}`);
 }
@@ -2423,6 +2455,7 @@ function wireNodesTab(root){
       await nodeAct({action: act, id, ...(act === "door" ? {on: b.dataset.on === "1"} : {}),
                      ...(act === "feature" ? {feature: b.dataset.feature, op: b.dataset.op} : {})});
     }));
+    box.querySelectorAll("[data-ndrunner]").forEach(b => b.onclick = () => openRunnerTab(b.dataset.ndrunner));
     box.querySelectorAll("[data-ndvmlan]").forEach(c => c.onchange = async () => {
       const j = await nodeAct({action: "vm-lan", id, on: c.checked});
       if (j.error){ c.checked = !c.checked; notify(j.error, true); }

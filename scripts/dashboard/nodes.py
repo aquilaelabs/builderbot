@@ -176,7 +176,8 @@ def _node_list(all=False):
         done[j["node"]] = {"id": j["id"], "what": spec.get("apply", ""),
                            "state": j["state"], "error": (j["error"] or "")[:200],
                            "ended": j["ended"], "cfg": spec.get("config"),
-                           "feature": str((spec.get("config") or {}).get("id") or "") if spec.get("apply") == "feature" else ""}
+                           "feature": str((spec.get("config") or {}).get("id") or "") if spec.get("apply") == "feature" else "",
+                           "op": str((spec.get("config") or {}).get("op") or "") if spec.get("apply") == "feature" else ""}
     for r in rows:
         r["applying"] = busy.get(r["id"])
         r["jobs"] = inflight.get(r["id"], [])
