@@ -67,6 +67,8 @@ const open = async ({ tour = false, ...opts }, view) => {
     try {
       const res = await r.fetch(), j = await res.json();
       if (SHOW) j.projects = (j.projects || []).filter(p => SHOW.includes(p.name));
+      // The tour's picture is of a first visit, whatever the account has seen.
+      if (tour) j.tour = { seen: [], off: false };
       // A lived-in instance's bell is long: two rows say what it is for.
       if (Array.isArray(j.attention)) j.attention = j.attention.slice(0, 2);
       const sh = (j.layout?.tabs || []).find(t => t.kind === 'term' && /^sh:\d+:$/.test(t.arg));
@@ -127,8 +129,9 @@ const tab = async (page, open, settle = 4000) => {
   await page.evaluate(open);
   await page.waitForTimeout(settle);
 };
-const shoot = async (page, file) => {
-  await page.evaluate(() => { document.querySelectorAll('.doc, .pane').forEach(e => { e.scrollTop = 0; }); window.scrollTo(0, 0); });
+const shoot = async (page, file, { keep = false } = {}) => {
+  // To the top, unless the picture is of a part further down the page.
+  if (!keep) await page.evaluate(() => { document.querySelectorAll('.doc, .pane').forEach(e => { e.scrollTop = 0; }); window.scrollTo(0, 0); });
   await page.waitForTimeout(300);
   const left = await scrub(page);
   if (left.length) throw new Error('an address is still on the page: ' + left.join(', '));
@@ -150,6 +153,23 @@ const desk = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 };
   await tab(page, 'openNodesTab()', 6000); await shoot(page, 'nodes.png'); await ctx.close(); }
 { const { ctx, page } = await open(desk);
   await tab(page, 'openToolchains()', 6000); await shoot(page, 'toolchains.png'); await ctx.close(); }
+{ const { ctx, page } = await open(desk);
+  await tab(page, 'openDocker()', 7000); await shoot(page, 'containers.png'); await ctx.close(); }
+{ const { ctx, page } = await open(desk);
+  await tab(page, 'openVmsTab()', 5000); await shoot(page, 'vms.png'); await ctx.close(); }
+// A node's Features section (R91), scrolled to: what the machine has and what
+// installs from there.
+{ const { ctx, page } = await open(desk);
+  await tab(page, 'openNodesTab()', 6000);
+  await page.evaluate(() => document.querySelector('[data-sect="nodes:features"]')?.scrollIntoView({ block: 'start' }));
+  await page.waitForTimeout(500);
+  await shoot(page, 'features.png', { keep: true }); await ctx.close(); }
+// The tour (R94) on Home, at its second step: the rail ringed, its card beside it.
+{ const { ctx, page } = await open({ ...desk, tour: true });
+  await page.evaluate(() => openHome());
+  await page.waitForSelector('#tourCard:not([hidden])', { timeout: 15000 });
+  await page.click('#tourNext'); await page.waitForTimeout(600);
+  await shoot(page, 'tour.png', { keep: true }); await ctx.close(); }
 { const { ctx, page } = await open({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, 'dash');
   await page.waitForTimeout(1200); await shoot(page, 'phone-dashboard.png'); await ctx.close(); }
 { const { ctx, page } = await open({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true }, 'terminal');

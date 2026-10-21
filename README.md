@@ -52,12 +52,14 @@ your projects mounted straight in, and to grow from one machine to several.
   restart, pick the model and effort, and see at a glance which sessions need
   a restart to pick up a change.
 - **A page per project.** Its overview and house rules, roadmap, bug
-  tracker, git, tests, static analysis, artifacts, containers, wiki and
+  tracker, git, tests, static analysis, artifacts, containers, VMs, wiki and
   design, shared between you and every session that works there.
 - **Nodes that do the work.** Enroll a Linux machine or VM with one script.
   Each node carries its own toolchains (JDK, Android SDK, Flutter, Node,
   Python, Playwright and more), installed and updated from the Toolchains page
-  and kept on a store that survives the machine being rebuilt.
+  and kept on a store that survives the machine being rebuilt. A node's
+  Features section says what the machine has and installs more of it, a VM
+  host among them.
 - **Builds, tests and CI.** `bb build` and `bb test` run on the project's
   node, a test run is timed and recorded, and a node can be a self-hosted
   GitHub Actions runner.
@@ -66,10 +68,19 @@ your projects mounted straight in, and to grow from one machine to several.
   and release signing with keys no session ever sees.
 - **Containers and hosting.** A project's compose file becomes a dev
   instance with one click; hosting-only nodes run what a dev node built, and
-  an nginx per node puts a hostname and a certificate in front of it.
+  an nginx per node puts a hostname and a certificate in front of it. A
+  public box can take in only 80 and 443, and Lock down stops it and revokes
+  it in one press if it is ever taken over.
+- **Virtual machines.** A project's VMs on any node with KVM, made from
+  Ubuntu, Debian, Fedora, Rocky or Alpine, each on its own network, with
+  snapshots to go back to and a console in the dock. Ask a Claude session for
+  "a Debian 12 VM with 4 GB" and it makes one, where the project allows it;
+  a VM can even enroll itself as another node.
 - **People and permissions.** Accounts with roles, per-project access, and a
   dial for everything a session may do on its own (file bugs, add rules, run
   its container, sign a release): allowed, asked of a person, or refused.
+- **A tour of each page** the first time you open it, which you can skip
+  once for every page and bring back from About or your Profile.
 - **Logs you can read.** Every job's output, each node's own logs and the
   controller's diagnostics, kept for as long as the log policy says and
   readable by a session that has been granted them.
@@ -86,6 +97,14 @@ your projects mounted straight in, and to grow from one machine to several.
   </tr>
   <tr>
     <td colspan="2"><img src="docs/screenshots/toolchains.png" alt="The Toolchains page for a node"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/containers.png" alt="The Containers page: each project's containers on a node"></td>
+    <td width="50%"><img src="docs/screenshots/vms.png" alt="The VMs page: a project's virtual machines with their state, address and snapshots"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/features.png" alt="A node's Features section: VM host, Claude sessions, the SSH door and the rest, each with how it installs"></td>
+    <td width="50%"><img src="docs/screenshots/tour.png" alt="The first-use tour on Home, its card beside the rail it is about"></td>
   </tr>
   <tr>
     <td width="50%" align="center"><img src="docs/screenshots/phone-dashboard.png" width="80%" alt="Home on a phone"></td>
@@ -126,7 +145,7 @@ match:
 ```yaml
 services:
   builderbot:
-    image: ghcr.io/aquilaelabs/builderbot:0.5   # a release line; see Upgrading in docs/install.md
+    image: ghcr.io/aquilaelabs/builderbot:0.6   # a release line; see Upgrading in docs/install.md
     container_name: BuilderBot
     hostname: builderbot
     restart: unless-stopped
@@ -190,7 +209,7 @@ Everything else, from installing to the full command reference, is in
 - [How it works](docs/how-it-works.md), the overview, with a doc for each part
   of the dashboard: [projects](docs/projects.md), [a project's page](docs/notebook.md),
   [sessions](docs/sessions.md), [building](docs/building.md),
-  [toolchains](docs/toolchains.md), [containers](docs/containers.md),
+  [toolchains](docs/toolchains.md), [containers](docs/containers.md), [VMs](docs/vms.md),
   [machines](docs/machines.md) and [people](docs/people.md)
 - [Reference](docs/reference.md): settings, every `bb` command, Android signing
 - [Data and privacy](docs/privacy.md): what an install keeps and contacts; nothing is sent to us

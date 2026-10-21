@@ -185,7 +185,7 @@ back, see [Upgrading](#upgrading). Compose: `docker compose pull && docker compo
 ## Upgrading
 
 **Pin a release, not `:latest`.** `:latest` follows the main branch between
-releases. Each release publishes its own image, `ghcr.io/aquilaelabs/builderbot:0.5.0`,
+releases. Each release publishes its own image, `ghcr.io/aquilaelabs/builderbot:0.6.0`,
 and `:0.5` for the newest release of that line; pin one of those in your
 compose file or template, and move it on when you choose to upgrade.
 
