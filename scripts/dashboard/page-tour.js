@@ -26,7 +26,7 @@ const TOUR_STEPS = {
   projects: [
     {say: "Every project you work on. A project is a git repository with its own notebook: a roadmap, bugs, tests, its containers and VMs."},
     {at: TOUR_BAR, say: "Search and the view switch are here, and New project at the right."},
-    {at: TOUR_FIRST, say: "A project's card: its branch, its sessions, and Start Claude. Its name opens the notebook."},
+    {at: `${TOUR_PANE} .pcard`, say: "A project's card: its branch, its sessions, and Start Claude. Its name opens the notebook."},
   ],
   notebook: [
     {say: "A project's notebook: everything about it in one place, shared by the people and the Claude sessions working on it."},
@@ -122,12 +122,18 @@ function tourSoon(kind){
   setTimeout(() => tourStart(kind), 700);
 }
 
+// The part a step is about: its selectors tried in the order written (the
+// page's own order would pick a node's whole row over its first section),
+// the first that is on screen.
 function tourTarget(sel){
   if (!sel) return null;
-  return [...document.querySelectorAll(sel)].find(e => {
-    const r = e.getBoundingClientRect();
-    return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== "hidden";
-  }) || null;
+  const shown = e => { const r = e.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== "hidden"; };
+  for (const one of sel.split(",")){
+    const hit = [...document.querySelectorAll(one.trim())].find(shown);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 function tourStart(kind){
@@ -192,9 +198,17 @@ function tourDraw(){
     card.style.top = `${Math.max(16, (innerHeight - card.offsetHeight) / 3)}px`;
   } else {
     const r = el.getBoundingClientRect(), h = card.offsetHeight, w = card.offsetWidth;
-    const below = r.bottom + 12 + h < innerHeight;
-    card.style.top = `${below ? r.bottom + 12 : Math.max(16, r.top - h - 12)}px`;
-    card.style.left = `${Math.min(Math.max(16, r.left), innerWidth - w - 16)}px`;
+    if (r.bottom + 12 + h < innerHeight){             // under it
+      card.style.top = `${r.bottom + 12}px`;
+      card.style.left = `${Math.min(Math.max(16, r.left), innerWidth - w - 16)}px`;
+    } else if (r.top - h - 12 > 0){                     // over it
+      card.style.top = `${r.top - h - 12}px`;
+      card.style.left = `${Math.min(Math.max(16, r.left), innerWidth - w - 16)}px`;
+    } else {                                            // a tall part (the rail): beside it
+      const right = r.right + 12 + w < innerWidth;
+      card.style.left = `${right ? r.right + 12 : Math.max(16, r.left - w - 12)}px`;
+      card.style.top = `${Math.min(Math.max(16, r.top + 40), innerHeight - h - 16)}px`;
+    }
   }
   $("tourNext").focus({preventScroll: true});
 }

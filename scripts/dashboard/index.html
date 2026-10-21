@@ -689,11 +689,11 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   #bBell.waiting{animation:none;background:var(--warn)}
 }
 /* The tour (R94): a card beside the part of the page a step is about, and a
-   ring around that part; a sheet from the bottom on a phone. Over the page,
-   under a dialog. */
-.tourring{position:fixed;z-index:60;pointer-events:none;border:2px solid var(--accent);
+   ring around that part; a sheet from the bottom on a phone. Over the page
+   and a toast; a tour never starts over a dialog. */
+.tourring{position:fixed;z-index:81;pointer-events:none;border:2px solid var(--accent);
   border-radius:var(--r-surface);box-shadow:0 0 0 9999px rgba(0,0,0,.35);transition:all .18s ease}
-.tourcard{position:fixed;z-index:61;width:min(360px,calc(100vw - 32px));background:var(--panel);
+.tourcard{position:fixed;z-index:82;width:min(360px,calc(100vw - 32px));background:var(--panel);
   border:var(--hair) solid var(--line);border-radius:var(--r-surface);box-shadow:0 8px 22px rgba(0,0,0,.45);
   padding:14px 16px 10px;font:var(--f-ui);color:var(--ink)}
 .tourcard .tourstep{font:var(--f-note);color:var(--dim);margin-bottom:6px}
