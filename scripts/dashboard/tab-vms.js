@@ -250,7 +250,7 @@ function openNewVm(forProject = ""){
       <div class="setrow col ctlrow">${lbl("vmDisk", "Disk, GB")}<input id="vmDisk" type="number" min="2" max="4096" value="20"></div>
     </div>
     <div id="vmCloud">
-      <div class="field">${lbl("vmKey", "SSH public key", "who may log in: yours, as in ~/.ssh/id_ed25519.pub. The account is builder, with sudo")}
+      <div class="field">${lbl("vmKey", "SSH public key", "who may log in: yours, as in ~/.ssh/id_ed25519.pub. The account is builder (admin on a VM made a node), with sudo")}
         <textarea id="vmKey" rows="3" spellcheck="false" autocomplete="off" placeholder="ssh-ed25519 AAAA… you@laptop"></textarea></div>
       <label class="ndcap"><input type="checkbox" id="vmAgent"> Make it a node: enroll it with an agent at its first boot</label>
       <div class="hint" id="vmAgentHint" hidden>It joins your LAN as its own machine and appears on the Nodes page once it has booted, a node like any other, marked as a VM on its host; removing the VM retires the node and revokes its credential.</div>

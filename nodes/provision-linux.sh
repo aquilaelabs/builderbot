@@ -1094,7 +1094,18 @@ authorize() {
 }
 
 say "user ${USER_NAME}"
-id -u "$USER_NAME" >/dev/null 2>&1 || useradd -m -s /bin/bash "$USER_NAME"
+# An account here before BuilderBot is somebody's own: noted, so Uninstall
+# leaves it and its home where it found them.
+KEPT_ACCOUNTS=/etc/builderbot/kept-accounts
+keep_account() {
+    install -d -m 0755 /etc/builderbot
+    grep -qx "$1" "$KEPT_ACCOUNTS" 2>/dev/null || echo "$1" >> "$KEPT_ACCOUNTS"
+}
+if id -u "$USER_NAME" >/dev/null 2>&1; then
+    grep -qx "$USER_NAME" "$KEPT_ACCOUNTS" 2>/dev/null || [ -f /etc/builderbot/node.json ] || keep_account "$USER_NAME"
+else
+    useradd -m -s /bin/bash "$USER_NAME"
+fi
 usermod -aG docker "$USER_NAME"
 # ...and kvm, where the host exposes it. Without this the Android emulator on
 # this node runs with no hardware acceleration and is unusably slow, measured
@@ -1156,8 +1167,18 @@ elif [ "$SESSION_NAME" = "$USER_NAME" ]; then
     warn "--session-user ${SESSION_NAME} is the docker account: a session must not be it"
     printf '   pick a different --session-user, or none\n'
     SESSION_NAME=""
+elif id -u "$SESSION_NAME" >/dev/null 2>&1 && [ ! -f /etc/builderbot/node.json ] \
+        && sudo -n -l -U "$SESSION_NAME" 2>/dev/null | grep -q '(ALL'; then
+    # An account already here that can sudo: a session under it would have
+    # root, which a session never has (a cloud image's own account, R97's
+    # walk). Somebody's account, so it is left as it is.
+    warn "${SESSION_NAME} is already an account here, and it can sudo: a session under it would be root"
+    printf '   pick another --session-user (one that does not exist yet), or none\n'
+    SESSION_NAME=""
 else
-    if ! id -u "$SESSION_NAME" >/dev/null 2>&1; then
+    if id -u "$SESSION_NAME" >/dev/null 2>&1; then
+        [ -f /etc/builderbot/node.json ] || keep_account "$SESSION_NAME"
+    else
         getent group "$SESSION_GID" >/dev/null 2>&1 \
             || groupadd -g "$SESSION_GID" "$SESSION_NAME" 2>/dev/null \
             || groupadd -g "$SESSION_GID" "bbusers"
@@ -1996,6 +2017,12 @@ cmd_uninstall() {
     for u in "$session_user" "$DOCKER_USER"; do
         id -u "$u" >/dev/null 2>&1 || continue
         [ "$(id -u "$u")" != 0 ] || continue
+        # One that was here before BuilderBot is somebody's own: left, home
+        # and all (it took the session account's name on a cloud image).
+        if grep -qx "$u" /etc/builderbot/kept-accounts 2>/dev/null; then
+            say "kept ${u}: it was an account here before BuilderBot"
+            continue
+        fi
         case "$(getent passwd "$u" | cut -d: -f6)" in
             /home/*) userdel -r "$u" >/dev/null 2>&1 || userdel "$u" >/dev/null 2>&1 || true ;;
             *) userdel "$u" >/dev/null 2>&1 || true ;;

@@ -81,7 +81,9 @@ as a VM on its host, and is retired with its credential revoked when the VM
 is removed. A session's is always an administrator's to allow, whatever the
 dial says: adding a node is theirs.
 
-A VM made a node is not on its project's network. It joins the LAN through
+A VM made a node is not on its project's network, and its own account is
+`admin`, not `builder`: `builder` is the account its sessions run as, which
+has no sudo, where cloud-init gives the VM's own account sudo. It joins the LAN through
 the host's own interface (macvtap) and takes an address from the LAN's DHCP
 like any other machine, because the controller reaches a node at its address
 (its sessions' terminals, its Docker over SSH), which a project network

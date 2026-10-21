@@ -321,9 +321,14 @@ def create(principal, project, req, nodes_allowed, session=False):
         return {"error": f"not an ssh public key: {bad[0]}…"}
     if not keys and not iso:
         return {"error": "a VM needs an ssh public key to let anyone in: give one (bb vm new reads ~/.ssh/id_ed25519.pub)"}
-    user = str(req.get("user") or "builder").strip().lower()
+    # A VM made a node gets its sessions' account from the enroll script
+    # (builder, without sudo): its own account, which cloud-init gives sudo,
+    # is another, or every session there would be root (R97's walk).
+    user = str(req.get("user") or ("admin" if req.get("node_agent") is True else "builder")).strip().lower()
     if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", user) or user == "root":
         return {"error": f"the VM's account is a plain Linux name, not {user}"}
+    if req.get("node_agent") is True and user in ("builder", "bb"):
+        return {"error": f"a VM made a node keeps {user} for BuilderBot's own accounts: name its account something else (admin, say)"}
     can = [n for n in hosts() if n["id"] in nodes_allowed]
     want = str(req.get("node") or "")
     if want:

@@ -95,6 +95,9 @@ class Controller(unittest.TestCase):
             self.assertEqual((made[0]["system"], made[0]["controller"], made[0]["sessions"]), ("debian", "http://192.168.1.16:7680", True))
             self.assertTrue(self.f.jobs[-1][2]["enroll"].startswith("#!/usr/bin/env bash\n# BuilderBot: enroll"))
             self.assertEqual(marked, [("n_vm", "n1")])
+            # Its own account is not the sessions', which cloud-init would give sudo.
+            self.assertEqual(self.f.jobs[-1][2]["user"], "admin")
+            self.assertIn("something else", self.new(name="n2", node_agent=True, user="builder")["error"])
             vms.vm_done({"node": "n1", "spec": {"action": "remove", "domain": "bbvm-web-db"}}, "succeeded")
             self.assertEqual(retired, ["n_vm"])
         finally:
