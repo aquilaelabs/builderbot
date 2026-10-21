@@ -602,6 +602,113 @@ elif command -v rc-service >/dev/null 2>&1; then INIT=openrc
 elif [ -d /etc/sv ] && command -v sv >/dev/null 2>&1; then INIT=runit
 fi
 
+is_vm() {
+    if command -v systemd-detect-virt >/dev/null 2>&1; then systemd-detect-virt --quiet --vm
+    else grep -qi hypervisor /proc/cpuinfo 2>/dev/null; fi
+}
+# The services, whichever init runs this machine: the core's, never a family
+# file's, since every family has one of these three (B166: the split into
+# family files took them out and put them nowhere).
+# svc_enable NAME: a service the DISTRIBUTION ships (docker, the guest
+# agent), started now and at boot, whichever init runs this machine.
+svc_enable() {
+    case "$INIT" in
+        systemd) systemctl enable --now "$1" ;;
+        openrc)  rc-update add "$1" default >/dev/null 2>&1 || true; rc-service "$1" start >/dev/null 2>&1 || rc-service "$1" restart ;;
+        runit)   [ -d "/etc/sv/$1" ] || { echo "no runit service /etc/sv/$1" >&2; return 1; }
+                 ln -sfn "/etc/sv/$1" "/var/service/$1"
+                 # runsvdir scans /var/service every five seconds; until it
+                 # has, sv cannot reach the service and every verb fails.
+                 for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+                     [ -e "/var/service/$1/supervise/ok" ] && break; sleep 1
+                 done
+                 sv start "$1" >/dev/null 2>&1 || true ;;
+    esac
+}
+svc_restart() {
+    case "$INIT" in
+        systemd) systemctl restart "$1" ;;
+        openrc)  rc-service "$1" restart ;;
+        runit)   sv restart "$1" ;;
+    esac
+}
+svc_stop() {
+    case "$INIT" in
+        systemd) systemctl stop "$1" 2>/dev/null || true ;;
+        openrc)  rc-service "$1" stop 2>/dev/null || true ;;
+        runit)   sv stop "$1" 2>/dev/null || true ;;
+    esac
+}
+svc_active() {
+    case "$INIT" in
+        systemd) systemctl is-active --quiet "$1" ;;
+        openrc)  rc-service "$1" status >/dev/null 2>&1 ;;
+        runit)   sv status "$1" 2>/dev/null | grep -q '^run' ;;
+    esac
+}
+# svc_install NAME DESCRIPTION COMMAND: a service of OUR OWN (the agent),
+# written the way this init wants one: a unit, an OpenRC script under
+# supervise-daemon, or a runit directory. Rewritten on every run, then
+# enabled and (re)started. Ordered after the network mounts (remote-fs,
+# netmount): a store on a share is there before the agent's first census.
+# svc_install NAME DESC CMD [EXTRA]: the service, whichever init this is.
+# EXTRA is extra [Service] lines for systemd, where a unit's settings decide
+# what a stop reaches; the other inits take the command and nothing else.
+svc_install() {
+    local name="$1" desc="$2" cmd="$3" extra="${4:-}"
+    case "$INIT" in
+        systemd)
+            cat > "/etc/systemd/system/${name}.service" <<EOF
+[Unit]
+Description=${desc}
+After=network-online.target remote-fs.target docker.service
+Wants=network-online.target
+
+[Service]
+ExecStart=${cmd}
+Restart=always
+RestartSec=5
+${extra}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+            systemctl daemon-reload
+            systemctl enable "$name" >/dev/null 2>&1
+            systemctl restart "$name" ;;
+        openrc)
+            cat > "/etc/init.d/${name}" <<EOF
+#!/sbin/openrc-run
+# ${desc}
+description="${desc}"
+supervisor=supervise-daemon
+command="${cmd%% *}"
+command_args="${cmd#* }"
+# Kept, where OpenRC has no journal: supervise-daemon sent it to /dev/null.
+# The agent keeps the file to its size (cap_logs) and bb logs --node reads it.
+output_log="/var/log/${name}.log"
+error_log="/var/log/${name}.log"
+respawn_delay=5
+depend() { need net; use netmount; after docker; }
+EOF
+            chmod 0755 "/etc/init.d/${name}"
+            rc-update add "$name" default >/dev/null 2>&1 || true
+            rc-service "$name" restart >/dev/null 2>&1 || rc-service "$name" start ;;
+        runit)
+            install -d -m 0755 "/etc/sv/${name}"
+            cat > "/etc/sv/${name}/run" <<EOF
+#!/bin/sh
+# ${desc}
+# Kept, where runit has no journal and no log service here: it went to
+# runsvdir and nowhere. The agent keeps the file to its size (cap_logs).
+exec ${cmd} >> "/var/log/${name}.log" 2>&1
+EOF
+            chmod 0755 "/etc/sv/${name}/run"
+            ln -sfn "/etc/sv/${name}" "/var/service/${name}"
+            sv restart "$name" >/dev/null 2>&1 || sv start "$name" >/dev/null 2>&1 || true ;;
+    esac
+}
+
 # pkg_refresh, pkg and pkg_names are the family's (nodes/families/*.sh),
 # sourced below once the machine's family is known.
 
