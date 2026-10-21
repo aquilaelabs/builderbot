@@ -2463,6 +2463,8 @@ cmd_gpu_driver() {
             if have update-initramfs; then update-initramfs -u >/dev/null 2>&1 || true; fi
             if [ -d /sys/module/nvidia ]; then
                 say "removed; the loaded driver keeps the card until the next boot, when nouveau takes it back: Reboot on this node's row in the Nodes page"
+            elif [ -z "$card" ]; then
+                say "removed; there is no NVIDIA card here, and nothing tries for one at boot now"
             else
                 say "removed; nouveau has the card"
             fi ;;
