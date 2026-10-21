@@ -2504,8 +2504,8 @@ pkgs_add() {
 # so a remove takes those and no package that was orphaned before it.
 pkgs_all() {
     case "$1" in
-        deb) dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null | awk '$1 ~ /^ii/ {print $2}' | sort ;;
-        rhel) rpm -qa --qf '%{NAME}\n' 2>/dev/null | sort ;;
+        deb) dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null | awk '$1 ~ /^ii/ {print $2}' | LC_ALL=C sort -u ;;
+        rhel) rpm -qa --qf '%{NAME}\n' 2>/dev/null | LC_ALL=C sort -u ;;
     esac
 }
 pkgs_drop() {
@@ -2541,15 +2541,23 @@ feature_vmhost() {
             say "VM host: KVM through libvirt"
             local before
             before="$(pkgs_all "$fam")"
+            # The marker first, naming what it sets out to add, so a run that
+            # fails part way still leaves what it may have put here on record.
+            install -d -m 0755 "$FEATURES_DIR"
+            printf 'packages=%s\n' "$added" > "$FEATURES_DIR/vmhost.partial"
             # shellcheck disable=SC2086
-            pkgs_add "$fam" $added || die "the packages did not install; the output above says why"
-            added="$(comm -13 <(printf '%s\n' "$before") <(pkgs_all "$fam") | tr '\n' ' ')"
+            pkgs_add "$fam" $added || die "the packages did not install; the output above says why ($FEATURES_DIR/vmhost.partial names what it set out to add)"
+            added="$(LC_ALL=C comm -13 <(printf '%s\n' "$before") <(pkgs_all "$fam") | tr '\n' ' ')"
             have systemctl && { systemctl enable --now libvirtd >/dev/null 2>&1 || systemctl enable --now virtqemud.socket >/dev/null 2>&1 || true; }
             getent group libvirt >/dev/null 2>&1 && id -u "$DOCKER_USER" >/dev/null 2>&1 && usermod -aG libvirt "$DOCKER_USER"
-            install -d -m 0755 "$FEATURES_DIR"
+            # The cached cloud images and each VM's disk, the jobs account's;
+            # 0755 so libvirt's own account reaches the disks it is handed.
+            install -d -m 0755 -o "$DOCKER_USER" /var/lib/builderbot/vms /var/lib/builderbot/vms/images /var/lib/builderbot/vms/disks
             printf 'packages=%s\n' "$added" > "$FEATURES_DIR/vmhost"
+            rm -f "$FEATURES_DIR/vmhost.partial"
             say "VM host installed${added:+ ($(printf '%s' "$added" | wc -w) packages added)}; ${DOCKER_USER} runs the VMs, and no session can" ;;
         remove)
+            [ -f "$FEATURES_DIR/vmhost.partial" ] && [ ! -f "$FEATURES_DIR/vmhost" ] && mv "$FEATURES_DIR/vmhost.partial" "$FEATURES_DIR/vmhost"
             [ -f "$FEATURES_DIR/vmhost" ] || { say "VM host was not installed by BuilderBot here; nothing to remove"; return 0; }
             if have virsh; then
                 n="$(virsh -c qemu:///system list --all --name 2>/dev/null | grep -c . || true)"
@@ -2557,6 +2565,7 @@ feature_vmhost() {
             fi
             say "taking VM host off"
             getent group libvirt >/dev/null 2>&1 && gpasswd -d "$DOCKER_USER" libvirt >/dev/null 2>&1 || true
+            rm -rf /var/lib/builderbot/vms
             added="$(sed -n 's/^packages=//p' "$FEATURES_DIR/vmhost")"
             # shellcheck disable=SC2086
             [ -z "${added// /}" ] || pkgs_drop "$fam" $added || warn "the packages did not all come off; the output above says why"
