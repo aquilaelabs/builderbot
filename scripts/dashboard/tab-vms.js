@@ -73,6 +73,15 @@ function vmRow(v){
   // Made a node (step 14): its row on the Nodes page.
   const asNode = v.node_id ? `<div class="sub dmorigin">a node too: ${pageLink("nodes", "on the Nodes page", `#/machines/nodes/${encodeURIComponent(v.node_id)}`)}</div>` : "";
   const snaps = v.snapshots || [];
+  // Who else is on it now (the operator, 21 Oct): a Screen is shared, one
+  // keyboard among them; a Console is one person's at a time.
+  const me = state?.me?.name || "";
+  const who = list => list.map(w => w === me ? "you" : w);
+  const onScreen = who(v.on?.screen || []), onConsole = who(v.on?.console || []);
+  const others = [...onScreen, ...onConsole].some(w => w !== "you");
+  const onLine = onScreen.length || onConsole.length ? `<div class="sub dmstate${others ? " warn" : ""}">${[
+      onScreen.length ? `${esc(andList(onScreen))} ${onScreen.length > 1 || onScreen[0] === "you" ? "are" : "is"} on its Screen, sharing one keyboard` : "",
+      onConsole.length ? `${esc(andList(onConsole))} ${onConsole[0] === "you" ? "have" : "has"} its Console` : ""].filter(Boolean).join("; ")}</div>` : "";
   const acts = !may ? "" : `
     ${!up && !busy && v.state !== "failed" ? `<button type="button" class="primary" data-vm="start">Start</button>` : ""}
     ${up && v.screen ? `<button type="button" data-vmscreen title="its screen, keyboard and mouse, in the dock">Screen</button>` : ""}
@@ -95,6 +104,7 @@ function vmRow(v){
           ${origin ? `<div class="sub dmorigin">${origin}</div>` : ""}
           ${reach ? `<div class="sub dmstate${v.ip ? " ok" : ""}">${reach}</div>` : ""}
           ${asNode}
+          ${onLine}
           ${v.error ? `<div class="sub dmstate bad">${esc(v.error)}</div>` : ""}
         </div>
         <div class="actbar dmacts">${acts}</div>
@@ -159,8 +169,12 @@ function wireVms(el){
   el.querySelectorAll("[data-vm-key]").forEach(row => {
     const v = (vmsData?.vms || []).find(x => x.key === row.dataset.vmKey);
     if (!v) return;
-    row.querySelectorAll("[data-vmcon]").forEach(b => b.onclick = () =>
-      openTab({kind: "term", arg: `vm:${v.project}:${v.name}`, label: `console ${v.name}`}));
+    row.querySelectorAll("[data-vmcon]").forEach(b => b.onclick = () => {
+      // One at a time: opening it takes it from whoever has it.
+      const held = (v.on?.console || []).filter(w => w !== (state?.me?.name || ""));
+      if (held.length && !confirm(`${andList(held)} ${held.length > 1 ? "have" : "has"} ${v.name}'s Console open.\n\nA console is one person's at a time: opening yours takes it from them. Its Screen can be shared instead.`)) return;
+      openTab({kind: "term", arg: `vm:${v.project}:${v.name}`, label: `console ${v.name}`});
+    });
     row.querySelectorAll("[data-vmscreen]").forEach(b => b.onclick = () =>
       openTab({kind: "term", arg: `screen:${v.project}:${v.name}`, label: `screen ${v.name}`}));
     row.querySelectorAll("[data-vm]").forEach(b => b.onclick = () => pressing(b, async () => {

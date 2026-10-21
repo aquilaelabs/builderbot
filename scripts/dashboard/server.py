@@ -5240,6 +5240,8 @@ class Handler(BaseHTTPRequestHandler):
                 lines.append(f"{k}: {v}")
         self.close_connection = True
         down = self.connection
+        # On its row while it lasts: who else has the Screen (the operator, 21 Oct).
+        here = vms.present(f"{project}/{name}", "screen", (self._who() or {}).get("name") or self._principal())
         try:
             up.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
             self.wfile.flush()
@@ -5255,6 +5257,7 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:
             return None
         finally:
+            vms.gone(here)
             up.close()
 
     def _term_proxy(self):
@@ -5366,6 +5369,7 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True
         down = self.connection
         sel = selectors.DefaultSelector()
+        console_on = None
         try:
             up.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
             self.wfile.flush()
@@ -5373,6 +5377,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._term_page(up, down)
             sel.register(up, selectors.EVENT_READ, down)
             sel.register(down, selectors.EVENT_READ, up)
+            # A VM's Console, on its row while it lasts: one at a time, so the
+            # next person to open it is warned (the operator, 21 Oct).
+            if vmm and ws:
+                console_on = vms.present(f"{vmm.group(1)}/{vmm.group(2)}", "console",
+                                         (self._who() or {}).get("name") or self._principal())
             # Maintenance mode switched on while this terminal is open ends it
             # for anybody but the owner: the sign-in was checked when it
             # connected, and a relay runs until a side hangs up.
@@ -5388,6 +5397,8 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:
             pass                          # either side hung up mid-relay
         finally:
+            if console_on is not None:
+                vms.gone(console_on)
             sel.close()
             up.close()
 

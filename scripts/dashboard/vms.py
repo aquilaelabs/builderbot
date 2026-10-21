@@ -166,6 +166,36 @@ def nets_on(nid):
     return dict(_load()["nets"].get(nid) or {})
 
 
+# Who has a VM's Screen or Console open now (the operator, 21 Oct): kept in
+# memory while each websocket lasts, for the row's warning. A Screen is
+# shared (VNC, several people at once, one keyboard); a Console is one at a
+# time, a second taking it from the first.
+_on = {}                        # token -> (vm key, "screen"|"console", who)
+_on_lock = threading.Lock()
+
+
+def present(key, kind, who):
+    """Someone opened a VM's Screen or Console: a token for gone()."""
+    tok = object()
+    with _on_lock:
+        _on[tok] = (key, kind, str(who or "somebody")[:60])
+    _rev[0] += 1
+    return tok
+
+
+def gone(tok):
+    with _on_lock:
+        _on.pop(tok, None)
+    _rev[0] += 1
+
+
+def on(key):
+    """{"screen": [who...], "console": [who...]} for one VM, each once."""
+    with _on_lock:
+        rows = [(k, w) for v, k, w in _on.values() if v == key]
+    return {k: sorted({w for kk, w in rows if kk == k}) for k in ("screen", "console") if any(kk == k for kk, _ in rows)}
+
+
 def _live(n):
     """What the node's census says of the VMs on it, by domain name."""
     return {v.get("name"): v for v in ((n or {}).get("reported") or {}).get("vms") or [] if isinstance(v, dict)}
@@ -182,7 +212,8 @@ def view(projects=None):
             continue
         n = nodes.get(rec.get("node"))
         live = _live(n).get(rec.get("domain"))
-        row = dict(rec, key=key, node_name=(n or {}).get("name") or rec.get("node"), node_live=bool((n or {}).get("live")))
+        row = dict(rec, key=key, node_name=(n or {}).get("name") or rec.get("node"), node_live=bool((n or {}).get("live")),
+                   on=on(key))
         if live:
             # The node's list, with what this side's own jobs made since its
             # last report.

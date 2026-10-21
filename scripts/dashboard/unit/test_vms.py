@@ -175,6 +175,19 @@ class Controller(unittest.TestCase):
         vms.vm_done({"node": "n1", "spec": {"action": "disk-add", "domain": "bbvm-web-db", "gb": 50}}, "succeeded")
         self.assertEqual([v for v in vms.view() if v["name"] == "db"][0]["disks"], [50])
 
+    def test_who_is_on_a_vm_is_on_its_row_while_it_lasts(self):
+        self.new()
+        before = vms.rev()
+        a = vms.present("web/db", "screen", "Ada")
+        b = vms.present("web/db", "screen", "Ben")
+        c = vms.present("web/db", "console", "Ada")
+        self.assertNotEqual(vms.rev(), before, "the page re-reads when somebody comes or goes")
+        row = [v for v in vms.view() if v["name"] == "db"][0]
+        self.assertEqual(row["on"], {"screen": ["Ada", "Ben"], "console": ["Ada"]})
+        for t in (a, b, c):
+            vms.gone(t)
+        self.assertEqual([v for v in vms.view() if v["name"] == "db"][0]["on"], {})
+
     def test_no_key_no_node_no_vm(self):
         self.assertIn("ssh public key", vms.create("user:test", "web", {"name": "a", "os": "debian"}, ["n1"])["error"])
         self.assertIn("no node web works on", vms.create("user:test", "web", {"name": "a", "os": "debian",

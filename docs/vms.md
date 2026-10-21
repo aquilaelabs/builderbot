@@ -108,6 +108,11 @@ controller signed for that VM within the last two minutes. It takes VMs
 Write on the VM's project, since seeing a screen is driving the machine.
 A screen password set at New VM is asked for when it opens.
 
+A Screen is shared: several people can have it open at once, all on one
+keyboard and mouse. A Console is one person's at a time, and opening it
+takes it from whoever had it. The VM's row says who is on its Screen and who
+has its Console, and Console asks first when somebody else has it.
+
 ## From an installer
 
 For a system the catalog does not carry (Windows, a BSD, an appliance, a
