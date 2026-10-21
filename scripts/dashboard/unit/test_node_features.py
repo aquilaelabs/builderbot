@@ -84,6 +84,12 @@ class Controller(unittest.TestCase):
 
     def test_the_firewall_is_a_hosting_only_node_s(self):
         self.assertIn("hosting-only", nodes.node_feature("user:test", self.nid, "firewall", "install").get("error", ""))
+        # ...whose machine runs no sessions: the switch alone left them, and
+        # the job failed on the machine (R97's walk).
+        nodes.node_update("user:test", self.nid, {"host_only": True})
+        rep = dict(nodes.node(self.nid).get("reported") or {}, session={"up": True})
+        nodes._exec("UPDATE nodes SET reported = ? WHERE id = ?", (json.dumps(rep), self.nid))
+        self.assertIn("still runs sessions", nodes.node_feature("user:test", self.nid, "firewall", "install").get("error", ""))
 
     def test_an_unknown_one_is_refused(self):
         self.assertIn("no such feature", nodes.node_feature("user:test", self.nid, "warpdrive", "install").get("error", ""))

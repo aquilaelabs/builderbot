@@ -2539,6 +2539,12 @@ def node_feature(principal, node_id, fid, op):
     if op == "install" and fid == "firewall" and not (n.get("config") or {}).get("host_only"):
         return {"error": "the hosting firewall is for a hosting-only node: it would shut the ports the controller "
                          "reaches sessions on"}
+    # ...and one whose machine runs no sessions: the switch alone leaves the
+    # session account and its ports, which the machine's helper then refused
+    # with exit 1 after the job had been queued (R97's walk, 21 Oct).
+    if op == "install" and fid == "firewall" and ((n.get("reported") or {}).get("session") or {}).get("up"):
+        return {"error": "this machine still runs sessions, so the firewall would shut the ports the controller "
+                         "reaches them on: it is for a node enrolled hosting-only (Enroll node, sessions off)"}
     r = job_add(principal, {"node": node_id}, "system",
                 {"apply": "feature", "config": {"id": fid, "op": op}, "timeout": 1800})
     if r.get("ok"):
