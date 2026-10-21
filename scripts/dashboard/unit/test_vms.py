@@ -148,6 +148,28 @@ class Agent(unittest.TestCase):
         self.assertEqual(a.vm(Job(), {"action": "explode", "domain": "bbvm-x"}), ("failed", 64))
         self.assertEqual(a.vm(Job(), {"action": "start", "domain": "someone-elses"}), ("failed", 64))
 
+    def test_what_the_controller_sends_is_what_the_agent_takes(self):
+        """Every catalog image, every arch, through the controller's create and
+        into the agent's own shapes: the image id once carried an underscore
+        (x86_64) the agent's shape refused, on the dev VM."""
+        import vms as cv
+        f = Fake()
+        cv.configure(state=tempfile.mkdtemp(), write_json=lambda p, d: p.write_text(json.dumps(d)),
+                     node=lambda nid: f.nodes.get(nid), node_list=lambda: list(f.nodes.values()),
+                     job_add=f.job_add, audit=lambda *a: None, prefs_get=lambda p: {"vm_caps": {}})
+        f.nodes["n1"]["reported"].update(mem_mb=10**6, vm_pool={"free_mb": 10**8})
+        for arch in ("x86_64", "aarch64"):
+            f.nodes["n1"]["reported"]["arch"] = arch
+            for img in cv.catalog():
+                if img.get("person") or arch not in img.get("arch", {}):
+                    continue
+                r = cv.create("user:t", "web", {"name": f"a{len(f.jobs)}", "os": img["id"], "keys": [KEY]}, ["n1"])
+                self.assertTrue(r.get("ok"), (img["id"], arch, r))
+                spec = f.jobs[-1][2]
+                im = spec["image"]
+                self.assertTrue(self.av.IMAGE_RE.fullmatch(im["id"]) and self.av.FILE_RE.fullmatch(im["file"]), im)
+                self.assertTrue(self.av.DOMAIN_RE.fullmatch(spec["domain"]) and self.av.NETWORK_RE.fullmatch(spec["network"]), spec)
+
     def test_the_domain_carries_its_marker_and_no_graphics(self):
         x = self.av.domain_xml("bbvm-web-db", "web", 2, 2048, "/v/d.qcow2", "/v/s.iso", "bbvm-n00")
         self.assertIn("<bb:vm xmlns:bb='https://builderbot.dev/vm/1' project='web'/>", x.replace('"', "'"))
