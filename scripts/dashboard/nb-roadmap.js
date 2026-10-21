@@ -1119,6 +1119,10 @@ function nbRoadmapView({$, nb}){
     // Only the matching rows, a page at a time (pageLimit, the operator,
     // 17 Oct): built whole and hidden, a long finished list was slow to draw.
     const vis = rows.filter(r => rmVer(r, nb.roadmapVer) && rmMatch(r, q));
+    if (!vis.length && nb.roadmapVer){
+      host.innerHTML = `<div class="empty">nothing finished ${nb.roadmapVer === "none" ? "without a target" : `for ${esc(nb.roadmapVer)}`}</div>`;
+      return;
+    }
     const lim = pageLimit(host, "roadmapDone", vis.length);
     host.innerHTML = vis.slice(0, lim).map(r => `<details class="grp done" data-done="${r.id}"${
         held.has(String(r.id)) ? " open" : ""}>

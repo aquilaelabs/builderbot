@@ -3579,6 +3579,9 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 /* The chips by release (the Roadmap's targets, Bugs' seen-in): a line of
    their own under the others, which they would otherwise share a wrap with. */
 .lfilter .chips.relchips{flex:1 1 100%;order:3}
+/* On a phone, where the search wraps under the chips, it comes after both
+   lines of them rather than between. */
+@media(max-width:900px){ .lfilter:has(.relchips:not(:empty)) :is(input[type=search],.lsort){order:4} }
 .lfilter input[type=search]{flex:0 1 16rem;min-width:10rem}
 /* A band's order (Sort on Bugs) keeps its label beside its menu. */
 .lfilter .lsort{display:flex;align-items:center;gap:6px;flex:0 0 auto}
