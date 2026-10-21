@@ -91,14 +91,15 @@ node mints a token and prints this line with the address and the token in
 it, which is a paste rather than a questionnaire.
 
   --user NAME          the account Docker runs under and ssh lands on, bb by
-                       default. Enroll node asks for it too, so the row says
+                       default, made fresh: a name already taken on the machine
+                       is refused, never taken over. Enroll node asks for it too, so the row says
                        the right one before this runs; the agent reports it
                        at enrollment either way. It gets NO sudo and cannot
                        run bb-sandbox: this is the account a session's JOBS
                        run as, and reconfiguring the machine's mounts is not
                        what it is for.
   --session-user NAME|none   the account a Claude SESSION works as on this
-                       node (builder), made with --session-uid/--session-gid
+                       node (builder; a name already taken is refused), made with --session-uid/--session-gid
                        (99:100, the controller's PUID:PGID, so files it saves
                        are owned as the controller's are). In kvm for the emulator, in NO docker group. The
                        agent runs ttyd for it and the dashboard's terminals
@@ -1101,8 +1102,15 @@ keep_account() {
     install -d -m 0755 /etc/builderbot
     grep -qx "$1" "$KEPT_ACCOUNTS" 2>/dev/null || echo "$1" >> "$KEPT_ACCOUNTS"
 }
+# Never one that is already here and not BuilderBot's: an account is
+# somebody's, and taking it over (or deleting it at Uninstall) is never
+# ours to do, whatever it is called. A machine already enrolled has made its
+# own, which a run again keeps using.
 if id -u "$USER_NAME" >/dev/null 2>&1; then
-    grep -qx "$USER_NAME" "$KEPT_ACCOUNTS" 2>/dev/null || [ -f /etc/builderbot/node.json ] || keep_account "$USER_NAME"
+    if [ ! -f /etc/builderbot/node.json ]; then
+        keep_account "$USER_NAME"
+        warn "${USER_NAME} is already an account on this machine, and not one BuilderBot made: run again with --user NAME, a name that is not taken (bbjobs, say)"; exit 1
+    fi
 else
     useradd -m -s /bin/bash "$USER_NAME"
 fi
@@ -1167,17 +1175,17 @@ elif [ "$SESSION_NAME" = "$USER_NAME" ]; then
     warn "--session-user ${SESSION_NAME} is the docker account: a session must not be it"
     printf '   pick a different --session-user, or none\n'
     SESSION_NAME=""
-elif id -u "$SESSION_NAME" >/dev/null 2>&1 && [ ! -f /etc/builderbot/node.json ] \
-        && sudo -n -l -U "$SESSION_NAME" 2>/dev/null | grep -q '(ALL'; then
-    # An account already here that can sudo: a session under it would have
-    # root, which a session never has (a cloud image's own account, R97's
-    # walk). Somebody's account, so it is left as it is.
-    warn "${SESSION_NAME} is already an account here, and it can sudo: a session under it would be root"
-    printf '   pick another --session-user (one that does not exist yet), or none\n'
+elif id -u "$SESSION_NAME" >/dev/null 2>&1 && [ ! -f /etc/builderbot/node.json ]; then
+    # Already an account here, and not one BuilderBot made: somebody's, and
+    # maybe one that can sudo, which a session never may (a cloud image's own
+    # account, R97's walk). Left as it is; sessions wait for another name.
+    keep_account "$SESSION_NAME"
+    warn "${SESSION_NAME} is already an account on this machine, and not one BuilderBot made"
+    printf '   run again with --session-user NAME, a name that is not taken (bbsession, say), or none\n'
     SESSION_NAME=""
 else
     if id -u "$SESSION_NAME" >/dev/null 2>&1; then
-        [ -f /etc/builderbot/node.json ] || keep_account "$SESSION_NAME"
+        :
     else
         getent group "$SESSION_GID" >/dev/null 2>&1 \
             || groupadd -g "$SESSION_GID" "$SESSION_NAME" 2>/dev/null \
