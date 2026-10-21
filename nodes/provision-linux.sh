@@ -2634,6 +2634,9 @@ os_family() {
     case "$ids" in
         *" debian "*|*" ubuntu "*) echo deb ;;
         *" rhel "*|*" fedora "*|*" centos "*|*" rocky "*|*" almalinux "*) echo rhel ;;
+        *" arch "*|*" archlinux "*) echo arch ;;
+        *" suse "*|*" opensuse "*|*" opensuse-leap "*|*" opensuse-tumbleweed "*) echo suse ;;
+        *" alpine "*) echo alpine ;;
         *) echo "" ;;
     esac
 }
@@ -2644,7 +2647,9 @@ pkgs_missing() {
     for p in "$@"; do
         case "$fam" in
             deb) dpkg-query -W -f='${db:Status-Abbrev}' "$p" 2>/dev/null | grep -q '^ii' || printf '%s ' "$p" ;;
-            rhel) rpm -q "$p" >/dev/null 2>&1 || printf '%s ' "$p" ;;
+            rhel|suse) rpm -q "$p" >/dev/null 2>&1 || printf '%s ' "$p" ;;
+            arch) pacman -Q "$p" >/dev/null 2>&1 || printf '%s ' "$p" ;;
+            alpine) apk info -e "$p" >/dev/null 2>&1 || printf '%s ' "$p" ;;
         esac
     done
 }
@@ -2654,6 +2659,9 @@ pkgs_add() {
     case "$fam" in
         deb) export DEBIAN_FRONTEND=noninteractive; apt_get update -qq; apt_get install -y -qq --no-install-recommends "$@" ;;
         rhel) dnf install -y -q "$@" ;;
+        arch) pacman -S --noconfirm --needed --quiet "$@" ;;
+        suse) zypper -n -q install --no-recommends "$@" ;;
+        alpine) apk add -q "$@" ;;
     esac
 }
 # Exactly what is installed, one package a line: taken before and after an
@@ -2662,7 +2670,9 @@ pkgs_add() {
 pkgs_all() {
     case "$1" in
         deb) dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null | awk '$1 ~ /^ii/ {print $2}' | LC_ALL=C sort -u ;;
-        rhel) rpm -qa --qf '%{NAME}\n' 2>/dev/null | LC_ALL=C sort -u ;;
+        rhel|suse) rpm -qa --qf '%{NAME}\n' 2>/dev/null | LC_ALL=C sort -u ;;
+        arch) pacman -Qq 2>/dev/null | LC_ALL=C sort -u ;;
+        alpine) apk info 2>/dev/null | LC_ALL=C sort -u ;;
     esac
 }
 pkgs_drop() {
@@ -2671,13 +2681,19 @@ pkgs_drop() {
     case "$fam" in
         deb) export DEBIAN_FRONTEND=noninteractive; apt_get purge -y -qq "$@" ;;
         rhel) dnf remove -y -q --noautoremove "$@" ;;
+        arch) pacman -R --noconfirm "$@" ;;
+        suse) zypper -n -q remove --clean-deps "$@" ;;
+        alpine) apk del -q "$@" ;;
     esac
 }
 vmhost_pkgs() {
     case "$1:$(uname -m)" in
         deb:x86_64)  echo "qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils ovmf" ;;
         deb:aarch64) echo "qemu-system-arm qemu-efi-aarch64 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils" ;;
-        rhel:*)      echo "qemu-kvm qemu-img libvirt-daemon-kvm libvirt-client edk2-ovmf" ;;
+        rhel:*)      echo "qemu-kvm qemu-img libvirt-daemon-kvm libvirt-client edk2-ovmf xorriso" ;;
+        arch:x86_64) echo "qemu-base libvirt dnsmasq edk2-ovmf libisoburn" ;;
+        suse:x86_64) echo "qemu-kvm libvirt-daemon-qemu libvirt-client qemu-ovmf-x86_64 xorriso" ;;
+        alpine:x86_64) echo "qemu-system-x86_64 qemu-img libvirt-daemon libvirt-qemu ovmf xorriso dnsmasq" ;;
     esac
 }
 feature_vmhost() {
@@ -2690,7 +2706,7 @@ feature_vmhost() {
             # whose host does not pass virtualization through, or a box with
             # it off in the firmware. Said, not emulated (tens of times slower).
             [ -e /dev/kvm ] || die "no /dev/kvm here, so VMs would run in software, tens of times slower. On a VM, its host must pass virtualization through: CPU mode host-passthrough (Unraid: CPU Mode Host Passthrough; Proxmox: CPU type host) and nested KVM on in the host's kvm_intel or kvm_amd. On a machine of its own, turn VT-x or AMD-V on in its firmware"
-            [ -n "$fam" ] || die "VM host is installed on the Debian and RHEL families; this machine is neither"
+            [ -n "$fam" ] || die "VM host is installed on the Debian, RHEL, Arch, openSUSE and Alpine families; this machine is none of them"
             pkgs="$(vmhost_pkgs "$fam")"
             [ -n "$pkgs" ] || die "no VM host packages for $(uname -m) on this family"
             # shellcheck disable=SC2086
@@ -2706,6 +2722,8 @@ feature_vmhost() {
             pkgs_add "$fam" $added || die "the packages did not install; the output above says why ($FEATURES_DIR/vmhost.partial names what it set out to add)"
             added="$(LC_ALL=C comm -13 <(printf '%s\n' "$before") <(pkgs_all "$fam") | tr '\n' ' ')"
             have systemctl && { systemctl enable --now libvirtd >/dev/null 2>&1 || systemctl enable --now virtqemud.socket >/dev/null 2>&1 || true; }
+            # Alpine's OpenRC, which has no systemctl.
+            have rc-update && { rc-update add libvirtd default >/dev/null 2>&1; rc-service libvirtd start >/dev/null 2>&1 || true; }
             getent group libvirt >/dev/null 2>&1 && id -u "$DOCKER_USER" >/dev/null 2>&1 && usermod -aG libvirt "$DOCKER_USER"
             # The cached cloud images and each VM's disk, the jobs account's;
             # 0755 so libvirt's own account reaches the disks it is handed.
