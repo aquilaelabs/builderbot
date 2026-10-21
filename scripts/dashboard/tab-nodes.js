@@ -552,9 +552,12 @@ function nodeFeaturesSection(n){
   // it already lives, since those take a license to accept (Google's, NVIDIA's)
   // or a secret (a door's token, a forge's) that is the person's to give.
   const r = n.reported || {};
+  // Its presses only for an account that may change the node: one that may
+  // read it sees what is installed and no way onto a page it is not given.
+  const writes = nodeMay(n) === "write";
   const elsewhere = (fid, title, has, about, btn) => `<div class="row ndfeat" data-feat="${fid}"><div class="grow">
       <div class="name">${esc(title)} <span class="pill${has ? " ok" : ""}">${has ? "installed" : "not installed"}</span></div>
-      <div class="sub">${about}</div></div>${btn}</div>`;
+      <div class="sub">${about}</div></div>${writes ? btn : ""}</div>`;
   const others = [];
   if (!n.config?.host_only)
     others.push(elsewhere("sessions", "Claude sessions", !!r.session?.user,
