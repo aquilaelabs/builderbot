@@ -418,6 +418,7 @@ await page.click('.nodestab #ndEnroll');
 await page.waitForSelector('#ndBody #ndEnNginx', { timeout: 10000 });
 await page.fill('#ndBody #ndEnName', 'vpsbox');
 await page.check('#ndBody #ndEnNginx');
+await page.check('#ndBody #ndEnHost');
 ok(!(await page.$eval('#ndBody #ndEnNginxHint', e => e.hidden)), 'the Enroll dialog offers nginx on the new node, saying what it means');
 await page.click('#ndBody #ndEnTok');
 await page.waitForSelector('#ndBody .ndcmd', { timeout: 10000 });
@@ -434,6 +435,26 @@ const en = await (await fetch(base + '/api/v1/agent/enroll', { method: 'POST',
 const vps = JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'))['nginx-vpsbox'];
 ok(en.ok && vps?.main?.node === pending.id && vps.main.source === 'file',
    `...and the node enrolling puts nginx on it from the routes saved for it (${JSON.stringify(vps?.main).slice(0, 80)})`);
+// A wildcard pair on a public box (R93): its key sits there, so the pair
+// says which names beyond the box's own routes a box taken over could
+// pass as, in the warning's color, not red.
+{
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '2', '-subj', '/CN=*.example.com',
+    '-addext', 'subjectAltName=DNS:*.example.com', '-keyout', `${DIR}/ngw-k.pem`, '-out', `${DIR}/ngw-c.pem`], { stdio: 'ignore' });
+  await api('/api/nginx', { action: 'save', node: pending.id, routes: [{ host: 'shop.example.com', path: '/', port: 3000 }],
+    cert: readFileSync(`${DIR}/ngw-c.pem`, 'utf8'), key: readFileSync(`${DIR}/ngw-k.pem`, 'utf8') });
+  const w = (await api('/api/nginx')).nodes.find(n => n.node === pending.id);
+  const lan = (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node);
+  ok(w?.host_only && JSON.stringify(w.wide) === JSON.stringify({ 'example.com': ['*.example.com'] }) && JSON.stringify(lan?.wide) === '{}',
+     `a wildcard pair on a hosting-only node is named wide, and none on a node at home (${JSON.stringify([w?.wide, lan?.wide])})`);
+  await page.evaluate(id => openNginxTab(id), pending.id);
+  const line = await page.waitForFunction(id => document.querySelector(`.nginxtab [data-ngnode="${id}"] .ngcert .ngwide`), pending.id, { timeout: 10000 })
+    .then(h => h.evaluate(e => ({ text: e.textContent, color: getComputedStyle(e).color })), () => null);
+  const warn = await page.evaluate(() => { const p = document.createElement('i'); p.style.color = 'var(--warn)'; document.body.append(p);
+    const c = getComputedStyle(p).color; p.remove(); return c; });
+  ok(line && /answers for \*\.example\.com/.test(line.text) && line.color === warn,
+     `...and its pair on the nginx page says so in the warning color (${JSON.stringify(line)})`);
+}
 await api('/api/nginx', { action: 'remove', node: pending.id });
 await api('/api/v1/nodes', { action: 'retire', id: pending.id });
 

@@ -246,7 +246,10 @@ function nginxCertLines(n, d){
     const used = routes.filter(r => r.tls !== false && (r.cert === k || (!r.cert && nginxResolve(n, r.host) === k))).length;
     return `<div class="row ngcert"><div class="grow"><div class="name">${esc(k)}</div>
       <div class="sub">${esc(c.subject || "")}${c.names ? ` (${esc(c.names)})` : ""}${when ? `, until ${esc(when)}` : ""}${
-        used ? `; ${used} route${used === 1 ? "" : "s"}` : "; no route"}</div></div>
+        used ? `; ${used} route${used === 1 ? "" : "s"}` : "; no route"}</div>${
+      // On a public box (R93) its key lives there: a pair wider than the
+      // box's own routes lends every other name to whoever takes the box.
+      n.wide?.[k]?.length ? `<div class="sub warn ngwide">Its key sits on this public box and also answers for ${esc(n.wide[k].join(", "))}: a box taken over could pass as ${n.wide[k].length === 1 ? "it" : "them"}. A pair for this box's own names alone keeps the rest safe.</div>` : ""}</div>
       ${rmIcon(`data-ngcertrm="${esc(k)}"`, `take ${k}'s pair off`, {title: "take this pair off the node"})}</div>`;
   }).join("");
 }

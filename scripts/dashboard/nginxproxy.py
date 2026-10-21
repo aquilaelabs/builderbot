@@ -354,6 +354,24 @@ def set_cert(nid, cert, key, host=""):
     return {"ok": True, "cert": summary, "host": host}
 
 
+def wide_names(rec):
+    """For each pair the node holds, the names it serves beyond the node's
+    own routes (R93): a wildcard always, and any name no route on the node
+    is for. On a hosting-only node the key sits on a public box in the
+    compose file, and a box that was taken over could pass as every one
+    of them; the page says so under the pair."""
+    hosts = {str(r.get("host") or "").lower() for r in (rec.get("routes") or [])}
+    out = {}
+    for k, c in (rec.get("certs") or {}).items():
+        if not (c or {}).get("set"):
+            continue
+        names = [x.strip().lower() for x in str(c.get("names") or c.get("subject") or "").split(",") if x.strip()]
+        wide = [x for x in names if x.startswith("*.") or x not in hosts]
+        if wide:
+            out[k] = wide
+    return out
+
+
 def domain_of(names):
     """The domain a pair is for, from its names: the first, a wildcard's
     star taken off (*.example.com is example.com's), lowercased."""
@@ -612,6 +630,7 @@ def view(devapp, instance_state):
                # hostname resolves to with no pick of its own, for the row.
                "certs": rec.get("certs") or {},
                "resolved": {r["host"]: cert_for(rec, r["host"]) for r in (rec.get("routes") or [])},
+               "wide": wide_names(rec) if (n.get("config") or {}).get("host_only") else {},
                "live": n.get("live"), "clash": [],
                # What it is pinned to and the line it would move to (R192).
                "image": image_of(rec) | {"ref": image_ref(rec)}, "behind": behind(rec)}

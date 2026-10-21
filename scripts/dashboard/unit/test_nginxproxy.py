@@ -253,6 +253,21 @@ class FakeDevactions:
         return {"job": f"j-{len(self.rebuilt)}"}
 
 
+class WideNames(unittest.TestCase):
+    """A pair on a public box (R93): the names it answers for beyond the
+    node's own routes, a wildcard always among them."""
+    def test_a_wildcard_and_an_unrouted_name_are_wide(self):
+        rec = {"routes": [{"host": "app.example.com"}],
+               "certs": {"example.com": {"set": True, "names": "*.example.com, example.com"},
+                         "app.example.com": {"set": True, "names": "app.example.com"},
+                         "gone.example.com": {"set": False, "names": "*.gone.example.com"}}}
+        self.assertEqual(npx.wide_names(rec), {"example.com": ["*.example.com", "example.com"]})
+
+    def test_the_subject_stands_in_for_names(self):
+        rec = {"routes": [], "certs": {"x.org": {"set": True, "names": "", "subject": "x.org"}}}
+        self.assertEqual(npx.wide_names(rec), {"x.org": ["x.org"]})
+
+
 class Image(unittest.TestCase):
     """The image kept up to date (R192): the registry's tag list read into
     the newest release line's alpine tag and its digest, a node pinned to
