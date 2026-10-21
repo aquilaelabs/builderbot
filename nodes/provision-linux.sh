@@ -2689,12 +2689,12 @@ pkgs_drop() {
 }
 vmhost_pkgs() {
     case "$1:$(uname -m)" in
-        deb:x86_64)  echo "qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils ovmf" ;;
-        deb:aarch64) echo "qemu-system-arm qemu-efi-aarch64 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils" ;;
-        rhel:*)      echo "qemu-kvm qemu-img libvirt-daemon-kvm libvirt-client edk2-ovmf xorriso" ;;
-        arch:x86_64) echo "qemu-base libvirt dnsmasq edk2-ovmf libisoburn" ;;
-        suse:x86_64) echo "qemu-kvm libvirt-daemon-qemu libvirt-client qemu-ovmf-x86_64 xorriso" ;;
-        alpine:x86_64) echo "qemu-system-x86_64 qemu-img libvirt-daemon libvirt-qemu ovmf xorriso dnsmasq" ;;
+        deb:x86_64)  echo "qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils ovmf virtiofsd" ;;
+        deb:aarch64) echo "qemu-system-arm qemu-efi-aarch64 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils virtiofsd" ;;
+        rhel:*)      echo "qemu-kvm qemu-img libvirt-daemon-kvm libvirt-client edk2-ovmf xorriso virtiofsd" ;;
+        arch:x86_64) echo "qemu-base libvirt dnsmasq edk2-ovmf libisoburn virtiofsd" ;;
+        suse:x86_64) echo "qemu-kvm libvirt-daemon-qemu libvirt-client qemu-ovmf-x86_64 xorriso virtiofsd" ;;
+        alpine:x86_64) echo "qemu-system-x86_64 qemu-img libvirt-daemon libvirt-qemu ovmf xorriso dnsmasq virtiofsd" ;;
     esac
 }
 feature_vmhost() {

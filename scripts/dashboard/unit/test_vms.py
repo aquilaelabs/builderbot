@@ -42,6 +42,31 @@ class Controller(unittest.TestCase):
     def new(self, **kw):
         return vms.create("user:test", "web", {"name": "db", "os": "debian 13", "keys": [KEY], **kw}, ["n1"])
 
+    def test_a_vm_s_hardware_is_checked_before_its_node_sees_it(self):
+        # R100: a thread another VM is pinned to is refused unless shared, a
+        # memory ceiling under its start is refused (none is its start), the
+        # shared folder is the project's own, and a device is an
+        # administrator's.
+        self.f.nodes["n1"]["reported"]["vms"] = [{"name": "bbvm-web-a", "hw": {"cpuset": [2, 3]}}]
+        hw, why = vms.hardware({"hw": {"cpuset": [3, 4]}}, "web", "n1", False, 2048)
+        self.assertIsNone(hw)
+        self.assertIn("bbvm-web-a is pinned", why)
+        self.assertEqual(vms.hardware({"hw": {"cpuset": [3, 4]}}, "web", "n1", False, 2048, but="bbvm-web-a")[0]["cpuset"], [3, 4])
+        self.assertEqual(vms.hardware({"hw": {"cpuset": [4, 3], "share_cpus": True}}, "web", "n1", False, 2048)[0]["cpuset"], [3, 4])
+        self.assertIn("under what it starts", vms.hardware({"hw": {"mem_max_mb": 1024}}, "web", "n1", False, 2048)[1])
+        self.assertEqual(vms.hardware({"hw": {"mem_max_mb": 0}}, "web", "n1", False, 2048)[0]["mem_max_mb"], 2048)
+        sh = vms.hardware({"hw": {"share": {"path": "data/in", "ro": True}}}, "web", "n1", False, 2048)[0]["share"]
+        self.assertEqual(sh, {"path": "/workspace/web/data/in", "tag": "project", "ro": True})
+        self.assertIn("inside the project", vms.hardware({"hw": {"share": {"path": "../api"}}}, "web", "n1", False, 2048)[1])
+        dev = {"devices": [{"type": "usb", "vendor": "046d", "product": "c52b"}]}
+        self.assertIn("administrator", vms.hardware({"hw": dev}, "web", "n1", False, 2048)[1])
+        self.assertEqual(vms.hardware({"hw": dev}, "web", "n1", True, 2048)[0]["devices"], dev["devices"])
+        self.assertIn("administrator", vms.vbios("user:test", {"node": "n1", "addr": "0000:01:00.0"}, False)["error"])
+        r = self.new(hw={"cpuset": [0, 1], "net": "lan"}, autostart=True)
+        self.assertTrue(r.get("ok"), r)
+        spec = self.f.jobs[-1][2]
+        self.assertEqual((spec["hw"], spec["autostart"]), ({"cpuset": [0, 1], "net": "lan"}, True))
+
     def test_the_os_is_found_however_it_is_said(self):
         for said, want in (("Debian 12", "debian-12"), ("debian", "debian-13"), ("ubuntu-24.04", "ubuntu-24.04"),
                            ("rocky", "rocky-10"), ("Ubuntu 26.04 LTS", "ubuntu-26.04"), ("noble", "ubuntu-24.04"),
@@ -246,7 +271,8 @@ class Census(unittest.TestCase):
                                      {"name": "someone-elses", "state": "running"}],
                              "vm_pool": {"free_mb": 39000, "total_mb": 60000, "path": "/x"}})
         self.assertEqual(got["vms"], [{"name": "bbvm-web-db", "state": "running", "ip": "10.232.0.12", "vcpus": 2,
-                                       "mem_mb": 2048, "snapshots": ["clean"], "screen": False, "iso": ""}])
+                                       "mem_mb": 2048, "snapshots": ["clean"], "screen": False, "iso": "",
+                                   "autostart": False, "hw": {"cpuset": [], "devices": [], "net": "project"}}])
         self.assertEqual(got["vm_pool"], {"free_mb": 39000, "total_mb": 60000})
 
 
@@ -334,6 +360,37 @@ class Agent(unittest.TestCase):
         fr = sc._Frames()
         self.assertEqual(fr.feed(frame[:5]), [])
         self.assertEqual(fr.feed(frame[5:]), [(2, payload)])
+
+    def test_a_vm_s_hardware_lands_in_its_domain_and_reads_back(self):
+        # R100: what clean() lets through, apply() writes, and read() finds
+        # again, so the row says what the VM has.
+        hw = sys.modules[self.av.__name__.rsplit(".", 1)[0] + ".vmhw"]
+        x = self.av.domain_xml("bbvm-web-db", "web", 2, 2048, "/v/d.qcow2", "/v/s.iso", "bbvm-n00", mac="52:54:00:12:34:56")
+        want, why = hw.clean({"cpuset": [3, 2], "mem_max_mb": 4096, "net": "lan",
+                              "share": {"path": "/workspace/web/data", "tag": "project", "ro": True},
+                              "devices": [{"type": "usb", "vendor": "0x046d", "product": "0xc52b"},
+                                          {"type": "pci", "addr": "0000:01:00.0", "rom": "0000-01-00.0.rom"}]}, 2, 2048)
+        self.assertEqual(why, "")
+        out = hw.apply(x, want, 2, 2048, "enp1s0", "bbvm-n00", "/v/vbios").replace('"', "'").replace(" />", "/>")
+        self.assertIn("<vcpupin vcpu='0' cpuset='2'/>", out)
+        self.assertIn("<memballoon model='virtio'", out)
+        self.assertIn("<mac address='52:54:00:12:34:56'/>", out, "its MAC kept, so a DHCP reservation holds")
+        self.assertIn("<source dev='enp1s0' mode='bridge'/>", out)
+        self.assertIn("<driver type='virtiofs'", out)
+        self.assertIn("<readonly/>", out)
+        self.assertIn("<vendor id='0x046d'/>", out)
+        self.assertIn("<rom file='/v/vbios/0000-01-00.0.rom'/>", out)
+        self.assertEqual(hw.rom_name("0000:01:00.0"), "0000-01-00.0.rom", "the name vbios_dump writes is one clean() takes")
+        back = hw.read(out)
+        self.assertEqual((back["cpuset"], back["mem_max_mb"], back["net"], back["share"]["path"], len(back["devices"])),
+                         ([2, 3], 4096, "lan", "/workspace/web/data", 2))
+        # Taken off again: an empty record clears what it set.
+        bare = hw.read(hw.apply(out, {"cpuset": [], "mem_max_mb": 2048, "net": "project", "share": {}, "devices": []},
+                                2, 2048, "enp1s0", "bbvm-n00", "/v/vbios"))
+        self.assertEqual((bare["cpuset"], bare.get("mem_max_mb"), bare["net"], bare.get("share"), bare["devices"]),
+                         ([], None, "project", None, []))
+        self.assertIsNone(hw.clean({"share": {"path": "/etc", "tag": "project"}}, 2, 2048)[0])
+        self.assertIsNone(hw.clean({"devices": [{"type": "pci", "addr": "1:2"}]}, 2, 2048)[0])
 
     def test_the_domain_carries_its_marker_and_a_screen_on_the_loopback(self):
         x = self.av.domain_xml("bbvm-web-db", "web", 2, 2048, "/v/d.qcow2", "/v/s.iso", "bbvm-n00")

@@ -138,6 +138,36 @@ disk** on a stopped VM makes one of its disks larger, never smaller; the
 partition inside is the system's own to grow. **Add disk** gives a stopped
 VM the next of vdb to vdd, there at its next start.
 
+## Hardware
+
+New VM's **More**, and **Hardware…** under a stopped VM's More, set what
+a VM has beyond its size; a change lands at its next start, and the row
+says what it was given.
+
+- **CPU threads**: its vCPUs pinned to host threads, picked in each core's
+  pair as the node reports them. A thread another VM on the node is pinned
+  to is refused unless **Share them** is ticked.
+- **Memory ceiling**: it starts with its memory and may balloon up to
+  this, through a virtio balloon; empty for none.
+- **Network**: its project's own network, or the LAN as a machine of its
+  own through the node's wired interface (refused on Wi-Fi, which cannot
+  carry it).
+- **Shared folder**: a folder of the project, read-only if ticked, seen
+  inside the VM through virtiofs: `mount -t virtiofs project /mnt`. It is
+  always inside the project; a dot shares the whole of it.
+- **Devices passed through**: a USB device by its vendor and product, or a
+  PCI device (a GPU, its sound, a controller) by its address. These are an
+  administrator's alone, and a PCI device needs the IOMMU on in the node's
+  firmware and kernel (`intel_iommu=on` or `amd_iommu=on`); the dialog says
+  when it is off. A card the node's own display runs on is refused.
+- **Dump vBIOS**, beside a GPU: reads the card's ROM on the node as root
+  and keeps it, so passing it through hands the VM a clean copy, which
+  some cards need before a VM will start with them. A card that reads
+  short is woken by a moment in a throwaway VM and read again.
+
+**Starts with its host**, on the row and at New VM, starts the VM whenever
+its node boots; a VM made a node always does.
+
 ## From a session
 
 ```

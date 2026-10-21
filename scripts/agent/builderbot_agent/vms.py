@@ -14,6 +14,7 @@ import tempfile
 import urllib.request
 from xml.sax.saxutils import escape, quoteattr
 
+from . import vmhw
 from .base import _run
 
 VIRSH = ["virsh", "-c", "qemu:///system"]
@@ -28,7 +29,7 @@ SNAP_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,40}")
 USER_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}")
 KEY_RE = re.compile(r"(ssh-(ed25519|rsa)|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0-9+/=]{20,800}( [^\n]{0,100})?")
 ACTIONS = ("create", "start", "stop", "restart", "remove", "snapshot", "revert", "snapshot-rm",
-           "eject", "disk-grow", "disk-add", "iso-add", "iso-rm")
+           "eject", "disk-grow", "disk-add", "iso-add", "iso-rm", "hardware", "autostart", "vbios")
 # An installer ISO a person fetched onto this node (R99), by its own name.
 ISO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,100}\.iso")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -82,7 +83,11 @@ def vms_now():
             p = line.split(None, 1)
             if len(p) == 2 and p[0] == "sda" and p[1].strip().startswith(iso_dir() + "/"):
                 iso = os.path.basename(p[1].strip())
-        out.append({"screen": bool(screen), "iso": iso if ISO_RE.fullmatch(iso) else "",
+        # Its hardware beyond size (R100), read off its own XML, and whether
+        # it starts with its host.
+        hw = vmhw.read(_run(VIRSH + ["dumpxml", name, "--inactive"], timeout=10))
+        out.append({"hw": hw, "autostart": info.get("autostart") == "enable",
+                    "screen": bool(screen), "iso": iso if ISO_RE.fullmatch(iso) else "",
                     "name": name, "state": _state_word(info.get("state", "")), "ip": ip,
                     "vcpus": int(info["cpu(s)"]) if info.get("cpu(s)", "").isdigit() else 0,
                     "mem_mb": int(mem.group(1)) // 1024 if mem else 0, "snapshots": snaps[:32]})
@@ -355,7 +360,7 @@ class VmsMixin:
         if action not in ACTIONS:
             job.say(f"refused: {action or 'no action'} is not a VM action (one of {', '.join(ACTIONS)})\n")
             return "failed", 64
-        if not DOMAIN_RE.fullmatch(name) and not action.startswith("iso-"):
+        if not DOMAIN_RE.fullmatch(name) and not action.startswith("iso-") and action != "vbios":
             job.say(f"refused: {name or 'no name'} is not a BuilderBot VM's name\n")
             return "failed", 64
         if not shutil.which("virsh") or not os.path.isdir(VM_DIR):
@@ -559,14 +564,26 @@ class VmsMixin:
         nvram = os.path.join(ddir, name + "_VARS.qcow2")
         if fw and self._vm_run(job, ["qemu-img", "convert", "-f", "raw", "-O", "qcow2", fw[1], nvram], who, say=False) != 0:
             return "failed", 70
+        text = domain_xml(name, project, vcpus, mem, disk, seed, str(spec.get("network") or ""), boot, fw,
+                          nvram, lan, extra=extra, installer=bool(iso), mac=mac, vnc_pw=vnc_pw)
+        # Its hardware beyond size (R100), where New VM gave any.
+        hw, why = vmhw.clean(spec.get("hw"), vcpus, mem)
+        if hw is None or (hw and not self._vm_hw_ok(job, hw)):
+            if why:
+                job.say(f"refused: {why}\n")
+            return "failed", 64
+        if hw:
+            text = vmhw.apply(text, hw, vcpus, mem, lan=lan or lan_iface(), network=str(spec.get("network") or ""),
+                              vbios_dir=os.path.join(VM_DIR, vmhw.VBIOS_DIR))
         with open(xml, "w") as f:
-            f.write(domain_xml(name, project, vcpus, mem, disk, seed, str(spec.get("network") or ""), boot, fw,
-                               nvram, lan, extra=extra, installer=bool(iso),
-                               mac=mac, vnc_pw=vnc_pw))
+            f.write(text)
         job.step("starting it")
         if self._vm_run(job, VIRSH + ["define", xml], who) != 0:
             return "failed", 70
-        self._vm_run(job, VIRSH + ["autostart", name], who, say=False)
+        # Starting with its host is asked for (R100), but for a node, whose
+        # whole point is to be there.
+        if spec.get("autostart") is True or enroll:
+            self._vm_run(job, VIRSH + ["autostart", name], who, say=False)
         if self._vm_run(job, VIRSH + ["start", name], who) != 0:
             return "failed", 70
         job.say(f"{name} is running: {vcpus} vCPU, {mem} MB, {disk_gb} GB; it takes its address once it has booted\n")
@@ -640,6 +657,89 @@ class VmsMixin:
             return "failed", 70
         job.say(f"{DISK_DEVS[i]}: a {gb} GB disk, there at its next start\n")
         return "succeeded", 0
+
+    def _vm_hw_ok(self, job, hw):
+        """What the host must hold for `hw`: a passed device not the host's own
+        display's, PCI ones under an IOMMU, a LAN that is wired, virtiofsd for
+        a share. Said and False when it does not."""
+        host = vmhw.host_hw()
+        for d in hw.get("devices") or []:
+            if d["type"] == "pci":
+                if not host["iommu"]:
+                    job.say("refused: this machine's IOMMU is off (intel_iommu=on or amd_iommu=on on its kernel's "
+                            "command line, and VT-d or AMD-Vi in its firmware), so no PCI device can be passed through\n")
+                    return False
+                row = next((p for p in host["pci"] if p["addr"] == d["addr"]), None)
+                if not row:
+                    job.say(f"refused: no PCI device {d['addr']} here\n")
+                    return False
+                if row["driver"] == "nvidia" and subprocess.run(["systemctl", "is-active", "--quiet", "builderbot-gpu-display"],
+                                                                check=False).returncode == 0:
+                    job.say(f"refused: {d['addr']} is the card the host's own display runs on (the emulators' GPU); "
+                            "switch the GPU display off on the node's page first\n")
+                    return False
+        if hw.get("net") == "lan" and os.path.isdir(f"/sys/class/net/{lan_iface()}/wireless"):
+            job.say("refused: this machine's LAN is Wi-Fi, which will not carry a second machine's address\n")
+            return False
+        if hw.get("share") and not (shutil.which("virtiofsd") or os.path.exists("/usr/libexec/virtiofsd")
+                                    or os.path.exists("/usr/lib/qemu/virtiofsd")):
+            job.say("refused: virtiofsd is not on this machine; VM host's install brings it from this build on: "
+                    "install VM host again on the node's Features section\n")
+            return False
+        if hw.get("share") and not os.path.isdir(hw["share"]["path"]):
+            job.say(f"refused: {hw['share']['path']} is not a folder on this node\n")
+            return False
+        return True
+
+    def _vm_hardware(self, job, spec, name, who):
+        """A stopped VM's hardware beyond size, changed: its own XML read,
+        the record applied, defined again."""
+        if not self._vm_exists(name, who):
+            job.say(f"{name} is not on this machine\n")
+            return "failed", 66
+        if "shut off" not in subprocess.run(VIRSH + ["domstate", name], capture_output=True, text=True,
+                                            check=False, **who).stdout:
+            job.say("refused: stop the VM first; its hardware changes while it is off\n")
+            return "failed", 75
+        xml = subprocess.run(VIRSH + ["dumpxml", name, "--inactive"], capture_output=True, text=True,
+                             check=False, **who).stdout
+        m_v = re.search(r"<vcpu[^>]*>(\d+)</vcpu>", xml)
+        cur = re.search(r"<currentMemory unit='KiB'>(\d+)</currentMemory>", xml) or re.search(r"<memory unit='KiB'>(\d+)</memory>", xml)
+        vcpus, mem = int(m_v.group(1)) if m_v else 1, int(cur.group(1)) // 1024 if cur else 1024
+        hw, why = vmhw.clean(spec.get("hw"), vcpus, mem)
+        if hw is None:
+            job.say(f"refused: {why}\n")
+            return "failed", 64
+        if not self._vm_hw_ok(job, hw):
+            return "failed", 64
+        try:
+            text = vmhw.apply(xml, hw, vcpus, mem, lan=lan_iface(), network=str(spec.get("network") or ""),
+                              vbios_dir=os.path.join(VM_DIR, vmhw.VBIOS_DIR))
+        except ValueError as e:
+            job.say(f"refused: {e}\n")
+            return "failed", 65
+        path = os.path.join(VM_DIR, "disks", name + ".xml")
+        with open(path, "w") as f:
+            f.write(text)
+        if self._vm_run(job, VIRSH + ["define", path], who) != 0:
+            return "failed", 70
+        job.say(f"{name}'s hardware changed: " + ", ".join(sorted(hw)) + "\n")
+        return "succeeded", 0
+
+    def _vm_autostart(self, job, spec, name, who):
+        on = spec.get("on") is True
+        if self._vm_run(job, VIRSH + ["autostart", name] + ([] if on else ["--disable"]), who) != 0:
+            return "failed", 70
+        job.say(f"{name} {'starts' if on else 'no longer starts'} with its host\n")
+        return "succeeded", 0
+
+    def _vm_vbios(self, job, spec, name, who):
+        """A GPU's vBIOS dumped through sysfs, as root (R100)."""
+        if os.geteuid() != 0:
+            job.say("refused: dumping a vBIOS is root's, and this agent is not\n")
+            return "failed", 77
+        got = vmhw.vbios_dump(str(spec.get("addr") or ""), os.path.join(VM_DIR, vmhw.VBIOS_DIR), job.say)
+        return ("succeeded", 0) if got else ("failed", 70)
 
     def _vm_iso_add(self, job, spec, name, who):
         """An installer's ISO onto this node, kept only when it matches the

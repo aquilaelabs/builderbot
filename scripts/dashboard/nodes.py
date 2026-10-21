@@ -1140,6 +1140,23 @@ def _mb(v):
         return 0
 
 
+def _vm_hw(hw):
+    """A VM's hardware as its node reported it (R100), kept to its shapes."""
+    hw = hw if isinstance(hw, dict) else {}
+    out = {"cpuset": [int(c) for c in (hw.get("cpuset") or [])[:512] if isinstance(c, int)],
+           "net": "lan" if hw.get("net") == "lan" else "project"}
+    if isinstance(hw.get("mem_max_mb"), int):
+        out["mem_max_mb"] = hw["mem_max_mb"]
+    sh = hw.get("share") if isinstance(hw.get("share"), dict) else None
+    if sh and str(sh.get("path") or "").startswith("/workspace/"):
+        out["share"] = {"path": str(sh["path"])[:300], "tag": re.sub(r"[^a-z0-9_-]", "", str(sh.get("tag") or ""))[:31],
+                        "ro": sh.get("ro") is True}
+    out["devices"] = [{"type": d.get("type"), **({"addr": str(d.get("addr"))[:12]} if d.get("type") == "pci" else
+                                                  {"vendor": str(d.get("vendor"))[:6], "product": str(d.get("product"))[:6]})}
+                      for d in (hw.get("devices") or [])[:8] if isinstance(d, dict) and d.get("type") in ("usb", "pci")]
+    return out
+
+
 # An installer ISO's name on a node (R99), as the agent's ISO_RE.
 VM_ISO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,100}\.iso")
 
@@ -1268,10 +1285,29 @@ def _census(c):
                                              if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,40}", str(x))],
                                # Its screen, and an installer's ISO in its drive (R99).
                                "screen": v.get("screen") is True,
+                               # Its hardware beyond size and whether it starts with
+                               # its host (R100), whitelisted field by field.
+                               "autostart": v.get("autostart") is True,
+                               "hw": _vm_hw(v.get("hw")),
                                "iso": str(v.get("iso") or "") if VM_ISO_RE.fullmatch(str(v.get("iso") or "")) else ""})
     vp = c.get("vm_pool") if isinstance(c.get("vm_pool"), dict) else None
     if vp:
         out["vm_pool"] = {k: int(vp[k]) for k in ("free_mb", "total_mb") if isinstance(vp.get(k), int)}
+    # ...and what a VM there could be given (R100).
+    vh = c.get("vm_host") if isinstance(c.get("vm_host"), dict) else None
+    if vh:
+        hex_ = lambda x: str(x or "")[:8] if re.fullmatch(r"0x[0-9a-f]{1,6}", str(x or "")) else ""  # noqa: E731
+        out["vm_host"] = {
+            "cpus": [[int(c) for c in pr[:4] if isinstance(c, int)] for pr in (vh.get("cpus") or [])[:256] if isinstance(pr, list)],
+            "usb": [{"vendor": hex_(u.get("vendor")), "product": hex_(u.get("product")),
+                     "name": re.sub(r"[^\w .,:()+/-]", "", str(u.get("name") or ""))[:80]}
+                    for u in (vh.get("usb") or [])[:64] if isinstance(u, dict)],
+            "pci": [{"addr": str(d.get("addr")), "class": hex_(d.get("class")), "vendor": hex_(d.get("vendor")),
+                     "device": hex_(d.get("device")), "group": re.sub(r"\D", "", str(d.get("group") or ""))[:6],
+                     "driver": re.sub(r"[^\w-]", "", str(d.get("driver") or ""))[:30]}
+                    for d in (vh.get("pci") or [])[:64]
+                    if isinstance(d, dict) and re.fullmatch(r"[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]", str(d.get("addr")))],
+            "iommu": vh.get("iommu") is True}
     # ...and the installer ISOs fetched onto it (R99).
     if isinstance(c.get("vm_isos"), list):
         out["vm_isos"] = [{"name": str(i["name"]), "mb": int(i.get("mb") or 0) if isinstance(i.get("mb"), int) else 0}

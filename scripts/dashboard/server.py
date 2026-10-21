@@ -3528,9 +3528,11 @@ def _vm_do(principal, project, req, session):
     removal is vms.iso; the rest vms.act."""
     if field(req, "action") in ("iso-add", "iso-rm"):
         return vms.iso(principal, field(req, "action"), req)
+    if field(req, "action") == "vbios":
+        return vms.vbios(principal, req, bool(req.get("_admin")))
     if field(req, "action") == "new":
         allowed = devapp.nodes_of(project) or [] if session else [n["id"] for n in vms.hosts()]
-        return vms.create(principal, project, req, allowed, session=session)
+        return vms.create(principal, project, req, allowed, session=session, admin=bool(req.get("_admin")))
     return vms.act(principal, project, field(req, "name"), field(req, "action"), req)
 
 
@@ -6205,11 +6207,14 @@ class Handler(BaseHTTPRequestHandler):
         sess = me.get("session") or ""
         project = field(req, "project") or sess
         action = field(req, "action")
-        if action not in ("new", "iso-add", "iso-rm", "console-take") + vms.ACTIONS:
+        if action not in ("new", "iso-add", "iso-rm", "console-take", "vbios") + vms.ACTIONS:
             return self._json({"error": f"no such VM action: {action}"}, 400)
         # An installer's ISO onto a node, or off it (R99): a person's, since
         # what it fetches is a whole system to install by hand.
-        if action in ("iso-add", "iso-rm") and sess:
+        # Whether the asker administers, which a passthrough and a vBIOS need
+        # (R100): the server's word, never what the request says of itself.
+        req = dict(req, _admin=bool(users.is_admin(me)) and not sess)
+        if action in ("iso-add", "iso-rm", "vbios") and sess:
             return self._json({"error": "fetching an installer ISO onto a node is a person's, on the VMs page"}, 403)
         if not project or not registry.is_project(project):
             return self._json({"error": "which project's VM? name one"}, 400)
