@@ -342,7 +342,7 @@ class Agent(unittest.TestCase):
         u = self.av.domain_xml("bbvm-web-db", "web", 2, 2048, "/v/d.qcow2", "/v/s.iso", "bbvm-n00", boot="uefi",
                                fw=("/usr/share/OVMF/OVMF_CODE_4M.fd", "/usr/share/OVMF/OVMF_VARS_4M.fd"), nvram="/v/d_VARS.fd")
         self.assertIn("<loader readonly='yes' type='pflash'>/usr/share/OVMF/OVMF_CODE_4M.fd</loader>", u)
-        self.assertIn("/v/d_VARS.fd</nvram>", u)
+        self.assertIn("<nvram format='qcow2'>/v/d_VARS.fd</nvram>", u, "qcow2, which a UEFI VM's snapshot needs")
         self.assertIn("machine='q35'", u)
         self.assertNotIn("<loader", x)
         # A screen for the dock (R99), on the loopback alone: the agent's
