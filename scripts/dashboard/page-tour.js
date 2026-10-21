@@ -60,12 +60,14 @@ const TOUR_STEPS = {
     {say: "Containers: every project's containers on a node, grouped by project, with Up, Down, Rebuild and a Shell in the dock."},
     {at: TOUR_SUB, say: "Containers, VMs and nginx are the three tools of this group."},
     {at: TOUR_BAR, say: "Pick the node, search, and switch between cards and a list. New container and Check for updates sit at the right."},
-    {at: TOUR_FIRST, sample: () => tourSampleCard(), say: "A project's card: each container with its state, where it answers, and its buttons. The menu holds the rest, Remove last."},
+    // Its rows by name: TOUR_FIRST matched an empty page's own notice, so
+    // the example never came (the operator, 21 Oct, on a phone).
+    {at: `${TOUR_PANE} .dmtab .dmcard, ${TOUR_PANE} .dmtab > .tbl`, sample: () => tourSampleCard(), say: "A project's card: each container with its state, where it answers, and its buttons. The menu holds the rest, Remove last."},
   ],
   vms: [
     {say: "VMs: a project's virtual machines on the nodes with VM host installed, made from the cloud images of a dozen Linux systems."},
     {at: TOUR_BAR, say: "New VM is here. A Claude session can make one too, with bb vm new, where the project's Make VMs setting allows it."},
-    {at: TOUR_FIRST, sample: () => vmGroupsHtml([{key: "example/db", project: "example", name: "db", state: "running",
+    {at: `${TOUR_PANE} .vmtab [data-vm-key]`, sample: () => vmGroupsHtml([{key: "example/db", project: "example", name: "db", state: "running",
       os_name: "Debian 13", node_name: "your-node", vcpus: 2, mem_mb: 2048, disk_gb: 20, ip: "10.232.0.12", user: "builder",
       snapshots: ["clean"], screen: true}]),
      say: "Each VM says its state and how to ssh in. Snapshot keeps its state under a name, and Revert goes back to it."},
@@ -147,9 +149,12 @@ function tourTarget(sel){
   return null;
 }
 
-// Whether the page in front is still its placeholder.
+// Whether the page in front is still its placeholder, or the page is still
+// booting: a boot draws the saved front tab before it lands on Home, and a
+// tour asked for in between toured Projects instead.
 function tourLoading(){
-  return !!document.querySelector(".doc.on .skel, .doc.on .loading, .doc.on .sk-b");
+  return document.body.classList.contains("booting")
+    || !!document.querySelector(".doc.on .skel, .doc.on .loading, .doc.on .sk-b");
 }
 function tourStart(kind){
   // Still the page in front, and nothing over it: a tour asked for a page
