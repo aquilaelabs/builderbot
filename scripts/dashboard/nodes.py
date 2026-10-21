@@ -3372,6 +3372,11 @@ def fits(job, n):
     pl = job.get("placement") or {}
     if pl.get("node"):
         return pl["node"] == n["id"]
+    # A hosting-only node takes by selector only what job_add would place
+    # on it by name: an exec's argv and its output are not a public box's
+    # to see or to write (R92).
+    if host_only(n) and job.get("type") not in HOST_JOBS and not host_exec_ok(job.get("type"), job.get("spec")):
+        return False
     sel = pl.get("select") or {}
     if sel.get("capability") and sel["capability"] not in n["capabilities"]:
         return False
@@ -3431,7 +3436,7 @@ def job_add(principal, placement, type, spec, project="", source=None):
     pl, why = _placement(placement)
     if why:
         return {"error": why}
-    probe = {"placement": pl, "type": type}
+    probe = {"placement": pl, "type": type, "spec": spec}
     if pl.get("node"):
         n = node(pl["node"])
         if not n:
