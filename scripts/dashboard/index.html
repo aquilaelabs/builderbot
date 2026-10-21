@@ -3403,6 +3403,11 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    under it when the card is narrow. */
 .dmid .name{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
 .dmid .dmmeta{font:var(--f-note);color:var(--dim)}
+/* A VM's snapshots (R91): under its head, each its name and its two verbs. */
+.vmsnaps{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:10px}
+.vmsnaps .vmsnaplbl{font:var(--f-note);color:var(--dim)}
+.vmsnap{display:inline-flex;align-items:center;gap:6px}
+.vmsnap code{font:var(--f-data);color:var(--ink)}
 .dmid .dmorigin{font:var(--f-data);color:var(--dim);margin-top:2px;overflow-wrap:anywhere}
 .dmid .dmorigin .sep{display:inline-block;width:14px}
 .dmid .dmstate.bad{color:var(--bad)}

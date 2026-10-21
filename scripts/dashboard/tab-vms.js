@@ -71,7 +71,7 @@ function vmRow(v){
         </div>
         <div class="actbar dmacts">${acts}</div>
       </div>
-      ${snaps.length ? `<div class="vmsnaps">${snaps.map(s => `<div class="vmsnap"><span class="chip">${esc(s)}</span>${may && !busy ? `
+      ${snaps.length ? `<div class="vmsnaps"><span class="vmsnaplbl">Snapshots</span>${snaps.map(s => `<div class="vmsnap"><code>${esc(s)}</code>${may && !busy ? `
         <button type="button" data-vm="revert" data-snap="${esc(s)}" title="back to ${esc(s)}: what changed since is lost">Revert</button>
         <button type="button" data-vm="snapshot-rm" data-snap="${esc(s)}" title="delete this snapshot">Delete</button>` : ""}</div>`).join("")}</div>` : ""}
     </div>
