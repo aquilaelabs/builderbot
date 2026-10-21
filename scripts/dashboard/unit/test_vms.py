@@ -331,8 +331,13 @@ class Agent(unittest.TestCase):
         self.assertNotIn("bbvm-n00", n)
         ud = self.av.user_data("db", "builder", [KEY])
         self.assertIn("ssh_pwauth: false", ud)
-        self.assertNotIn("runcmd", ud)
-        self.assertIn("bash /root/bb-enroll.sh", self.av.user_data("db", "builder", [KEY], self.av.ENROLL_HEAD + "x"))
+        # bash brought in where the image has none (Alpine), and the enroll
+        # started from sh, which every image has.
+        self.assertIn("apk add --no-cache bash", ud)
+        self.assertNotIn("bb-enroll", ud)
+        en = self.av.user_data("db", "builder", [KEY], self.av.ENROLL_HEAD + "x")
+        self.assertIn("[sh, -c, 'command -v bash", en)
+        self.assertIn("bash /root/bb-enroll.sh", en)
         self.assertIn(json.dumps(KEY), ud)
 
 

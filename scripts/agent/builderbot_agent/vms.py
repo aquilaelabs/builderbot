@@ -206,11 +206,16 @@ def user_data(hostname, user, keys, enroll=""):
              f"  - name: {user}", "    sudo: ALL=(ALL) NOPASSWD:ALL", "    shell: /bin/bash",
              "    ssh_authorized_keys:"]
     lines += [f"      - {json.dumps(k)}" for k in keys]
+    # bash where the image has none (Alpine's): the account's shell, and
+    # what the enroll script runs in, which never started there (R97's walk).
+    bash = "command -v bash >/dev/null || apk add --no-cache bash >/dev/null 2>&1 || true"
     if enroll:
         import base64
         lines += ["write_files:", "  - path: /root/bb-enroll.sh", "    permissions: '0700'", "    encoding: b64",
                   f"    content: {base64.b64encode(enroll.encode()).decode()}",
-                  "runcmd:", "  - [bash, -c, 'bash /root/bb-enroll.sh > /root/bb-enroll.log 2>&1; rm -f /root/bb-enroll.sh']"]
+                  "runcmd:", f"  - [sh, -c, '{bash}; bash /root/bb-enroll.sh > /root/bb-enroll.log 2>&1; rm -f /root/bb-enroll.sh']"]
+    else:
+        lines += ["runcmd:", f"  - [sh, -c, '{bash}']"]
     return "\n".join(lines) + "\n"
 
 
