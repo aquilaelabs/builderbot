@@ -294,7 +294,9 @@ ok(page.dialogs.length === ndx + 1 && /Your Claude session here ends now|2 Claud
    && !(await page.evaluate(() => tabs.some(t => t.arg === 'claude:ep.silon'))) && gone('claude-ep_silon') && gone(`${lockUid}~claude-ep_silon`),
    `dotted project: archiving it asks, naming the sessions running there, ends every one of them and drops its tab (${(page.dialogs[ndx] || '').split('\n')[2]})`);
 await page.evaluate(() => setLocked('ep.silon', false));      // and unlock it again
-await page.waitForFunction(() => document.querySelector('.pgrid .pcard[data-row="ep.silon"] [data-c]'), { timeout: 15000 });
+// Its Claude button back: Start Claude, or Install Claude where the stub
+// node says it carries no Claude Code (the operator, 21 Oct).
+await page.waitForFunction(() => document.querySelector('.pgrid .pcard[data-row="ep.silon"] :is([data-c], [data-tcinst])'), { timeout: 15000 });
 
 // A back/forward-cache restore (persisted pageshow) reloads the terminal
 // iframe so a dead socket reconnects instead of sitting on ttyd's prompt.
