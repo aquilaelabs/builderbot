@@ -525,7 +525,7 @@ function nodeFeaturesSection(n){
   const why = !n.reported ? ""
     : !n.reported.administers ? "This node's agent is not root on a managed machine, so its features are set on the machine itself."
     : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
-  const row = (fid, title, has, about, cant) => {
+  const row = (fid, title, has, about, cant, more = "") => {
     const mine = job?.feature === fid;
     const btn = ahead === fid ? `<button type="button" disabled>Done, the node is reporting back…</button>`
       : why || cant || (job && !mine) ? ""
@@ -534,15 +534,16 @@ function nodeFeaturesSection(n){
     const fail = failed?.feature === fid ? `<div class="sub bad">The last try failed${failed.error ? `: ${esc(failed.error)}` : ""}; its job's log says more.</div>` : "";
     return `<div class="row ndfeat" data-feat="${fid}"><div class="grow">
         <div class="name">${esc(title)} <span class="pill${has ? " ok" : ""}">${has ? "installed" : "not installed"}</span></div>
-        <div class="sub">${about}</div>${cant ? `<div class="sub dim">${cant}</div>` : ""}${fail}</div>${btn}</div>`;
+        <div class="sub">${about}</div>${cant ? `<div class="sub dim">${cant}</div>` : ""}${fail}${more}</div>${btn}</div>`;
   };
   const vm = fe?.vmhost || {};
   const rows = [row("vmhost", "VM host", !!vm.installed,
       `Runs virtual machines here with KVM through libvirt${vm.libvirt ? ` (libvirt ${esc(vm.libvirt)})` : ""}, as the jobs account and never a session.`,
-      fe && !vm.kvm && !vm.installed ? "No /dev/kvm here, so a VM would run in software. On a VM, its host passes virtualization through: CPU mode host-passthrough and nested KVM on." : "")
-    // Where its VMs may go (R91 step 8): the internet, the controller and
-    // their own project's network, and the LAN only when ticked here.
-    + (vm.installed ? `<label class="ndcap ndvmlan"><input type="checkbox" data-ndvmlan${n.config?.vm_lan ? " checked" : ""}${why ? " disabled" : ""}>
+      fe && !vm.kvm && !vm.installed ? "No /dev/kvm here, so a VM would run in software. On a VM, its host passes virtualization through: CPU mode host-passthrough and nested KVM on." : "",
+      // Where its VMs may go (R91 step 8): the internet, the controller and
+      // their own project's network, and the LAN only when ticked, inside
+      // the row it is about.
+      vm.installed ? `<label class="ndcap ndvmlan"><input type="checkbox" data-ndvmlan${n.config?.vm_lan ? " checked" : ""}${why ? " disabled" : ""}>
         its VMs may reach this machine's LAN too</label>` : "")];
   if (n.config?.host_only)
     rows.push(row("firewall", "Hosting firewall", !!fe?.firewall?.installed,
