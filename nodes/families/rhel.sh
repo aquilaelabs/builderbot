@@ -16,9 +16,18 @@ FAMILY_NEED="dnf rpm"
 pkg_refresh() {
     dnf -y -q makecache >/dev/null 2>&1 || true
 }
-# pkg NAME...: install what is named, quietly.
+# pkg NAME...: install what is named, quietly. xdotool (the capture tools)
+# is EPEL's on RHEL 9 and its rebuilds, and never installed there without it
+# (R97's walk, AlmaLinux 9, 21 Oct); Fedora carries it itself.
 pkg() {
+    case " $* " in *" xdotool "*) epel_here ;; esac
     dnf -y -q install "$@"
+}
+# epel_here: EPEL's release package, on a RHEL rebuild that lacks it.
+epel_here() {
+    [ "${ID:-}" = fedora ] && return 0
+    rpm -q epel-release >/dev/null 2>&1 && return 0
+    dnf -y -q install epel-release >/dev/null 2>&1 || true
 }
 # pkg_names KEY: what a package is called here, for the handful the core
 # installs itself. A recipe's system packages are the recipe's business,
