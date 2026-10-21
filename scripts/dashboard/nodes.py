@@ -865,6 +865,9 @@ def authenticate(bearer):
     if t["expires"] and t["expires"] < time.time():
         return {"error": "token expired"}
     n = node(t["node_id"])
+    if n and kind == "node" and lockdown_over(n):
+        node_state(f"node:{n['id']}", n["id"], "retired")
+        n = node(n["id"])
     if not n or n["state"] == "retired":
         return {"error": "credential revoked"}
     return {"principal": f"node:{n['id']}", "node": n["id"], "kind": kind,
@@ -2428,6 +2431,55 @@ def node_uninstall(principal, node_id, rings=None):
     return r
 
 
+# How long a node locked down may still take its lockdown job and say how
+# it went: past this its credential is revoked whether or not it answered.
+LOCKDOWN_GRACE_S = 300
+
+
+def lockdown_over(n):
+    """Whether a node was locked down and its grace has run out."""
+    at = ((n.get("config") or {}).get("lockdown") or {}).get("at") or 0
+    return bool(at) and n.get("state") != "retired" and time.time() - at > LOCKDOWN_GRACE_S
+
+
+def node_lockdown(principal, node_id):
+    """Lock down a hosting-only node (R92), the press for a box that may
+    have been taken over: from this moment its agent may ask for nothing
+    but the lockdown job and say how it went, which stops every container
+    there (and keeps it from starting again at a boot), its nginx with
+    them, and its door in; when that job ends, or LOCKDOWN_GRACE_S after
+    the press if it never does, the node is retired and its credential
+    revoked. Neither the agent's answer nor a container that is running is
+    waited on to refuse it: a box that is not on our side would never
+    let either go."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n.get("kind") != "agent" or not host_only(n):
+        return {"error": "Lock down is for a hosting-only node: another is stopped with Disable, "
+                         "Drain or Un-enroll"}
+    if n.get("state") == "retired":
+        return {"error": f"{n['name']} is removed already, its credential revoked"}
+    if (n.get("config") or {}).get("lockdown"):
+        return {"error": f"{n['name']} is locking down already"}
+    cfg = dict(n.get("config") or {}, lockdown={"at": int(time.time()), "by": str(principal)[:80]})
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(cfg), node_id))
+    _bump()
+    # Anything else queued for it is never handed over (fits). Where the
+    # job cannot go (its agent away or behind), nothing is waited for.
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "lockdown", "timeout": 240}) \
+        if n.get("live") else {"error": "its agent is not dialing in"}
+    if r.get("error"):
+        node_state(principal, node_id, "retired")
+        r = {"ok": True, "retired": True, "why": r["error"]}
+    audit(principal, "node-lockdown", node_id, {"job": r.get("job", ""), "live": bool(n.get("live"))})
+    t = threading.Timer(LOCKDOWN_GRACE_S + 1, lambda: lockdown_over(node(node_id) or {})
+                        and node_state(f"node:{node_id}", node_id, "retired"))
+    t.daemon = True
+    t.start()
+    return r
+
+
 def reset_unenroll(principal, ids, stores=False):
     """Un-enroll these nodes ahead of a Reset (the operator, 12 Oct), so
     each machine is clean to enroll again afterwards: a node BuilderBot
@@ -3368,6 +3420,9 @@ def fits(job, n):
     scheduling policy a single operator needs (docs/nodes.md §2)."""
     if n["state"] != "online":
         return False
+    if (n.get("config") or {}).get("lockdown"):
+        return job.get("type") == "system" and (job.get("spec") or {}).get("apply") == "lockdown" \
+            and (job.get("placement") or {}).get("node") == n["id"]
     # An agent that is behind takes nothing but its own update. Here as well
     # as in job_add, because job_add only sees the explicitly-placed case:
     # a selector-placed job is matched to a node at take time, and this is
@@ -3745,6 +3800,9 @@ def sync_node_ids():
 # storage and network, self-update and cache-clearing jobs go to it.
 HOST_VERBS = frozenset(("hello", "beat", "work", "log", "result", "download",
                         "devimage", "devdata", "devdata-put"))
+# ...and of those, what a node locked down (node_lockdown) still asks: its
+# one job, and saying how it went.
+LOCKDOWN_VERBS = frozenset(("hello", "beat", "work", "log", "result"))
 HOST_JOBS = frozenset(("compose", "system", "self-update", "cache-clear", "storage"))
 # ...and one docker verb at a time about the containers it hosts: the Docker
 # tab's listing is a `docker ps` exec on the node (devapp._agent_read), and
@@ -3840,6 +3898,9 @@ def host_refuses(nid, verb, what=""):
     the bb bundle may not."""
     if not host_only(nid):
         return ""
+    if ((node(nid) or {}).get("config") or {}).get("lockdown"):
+        return "" if verb in LOCKDOWN_VERBS else (f"this node is locked down: {verb} is refused, "
+                                                  "and it may take only its lockdown job")
     if verb in HOST_VERBS and not (verb == "download" and what):
         return ""
     return (f"this node hosts containers only: {verb}"
@@ -4045,7 +4106,8 @@ def job_next(node_id, wait, runner="node", alive=None):
                 # handed nothing new, and it is handed the update once what
                 # was running has finished; a node not quiet within
                 # UPDATE_QUIET_S fails it, saying so, and works again.
-                upd = _update_gate(node_id) if runner == "node" else None
+                # Not on a node locked down: its lockdown job is all it takes.
+                upd = _update_gate(node_id) if runner == "node" and not (n.get("config") or {}).get("lockdown") else None
                 if upd is not None:
                     free = lane = False
                     if upd:
@@ -4483,6 +4545,11 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     if got[0]["type"] == "system" and state == "succeeded":
         spec = (job(job_id, with_log=False) or {}).get("spec") or {}
         if spec.get("apply") == "uninstall":
+            node_state(f"node:{node_id}", node_id, "retired")
+    # A lockdown that ran, or failed, retires the node either way (R92).
+    if got[0]["type"] == "system" and state in ("succeeded", "failed"):
+        spec = (job(job_id, with_log=False) or {}).get("spec") or {}
+        if spec.get("apply") == "lockdown":
             node_state(f"node:{node_id}", node_id, "retired")
     # An update that installed its file is the agent this node runs from now:
     # recorded here, since the hello that says so waits on the new agent's
@@ -5111,6 +5178,7 @@ def verb(principal, req):
              "root-asks": root_asks, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
              "host-only": host_on, "host-off": host_off,
              "door": lambda: node_door(principal, nid, req.get("on")),
+             "lockdown": lambda: node_lockdown(principal, nid),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,
              "storage": lambda: node_storage_measure(principal, nid),

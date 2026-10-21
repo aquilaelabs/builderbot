@@ -88,6 +88,8 @@ class ConfigPlaneMixin:
             return self._apply_gpu(job)
         if what == "door":
             return self._apply_door(job, cfg)
+        if what == "lockdown":
+            return self._apply_lockdown(job)
         if what == "gpu-off":
             # The emulator off the card (R102): the display's unit stopped,
             # the driver left alone; then a hello, as the set-up sends.
@@ -191,6 +193,34 @@ class ConfigPlaneMixin:
             return "failed", code
         job.say(f"the door is {'open' if on else 'shut'}: {kind}{' at ' + d['host'] if d.get('host') else ''}\n")
         return "succeeded", 0
+
+    def _apply_lockdown(self, job):
+        """Lock down (R92): every container here stopped and kept from
+        starting again at a boot (BuilderBot's nginx among them), and the
+        door in shut. The controller retires this node when this ends, so
+        its credential goes with it; a part that fails is said and the rest
+        still done."""
+        bad = 0
+        docker = shutil.which("docker")
+        ids = []
+        if docker:
+            r = subprocess.run([docker, "ps", "-q"], capture_output=True, text=True, timeout=60, check=False)
+            ids = r.stdout.split()
+            bad += r.returncode != 0
+        if ids:
+            job.say(f"stopping {len(ids)} container(s), and none starts again at a boot\n")
+            bad += self._sh(job, [docker, "update", "--restart=no", *ids], timeout=120) != 0
+            bad += self._sh(job, [docker, "stop", "-t", "10", *ids], timeout=600) != 0
+        else:
+            job.say("no container was running\n" if docker else "no docker here\n")
+        d = self.state.get("door") if isinstance(self.state.get("door"), dict) else {}
+        if d.get("kind") == "cloudflared" and shutil.which("systemctl"):
+            bad += self._sh(job, ["systemctl", "disable", "--now", "cloudflared"], timeout=120) != 0
+        elif d.get("kind") == "tailscale":
+            bad += self._sh(job, [TAILSCALE_BIN, "down"], timeout=120) != 0
+        job.say("locked down: this node's credential is revoked as this job ends\n" if not bad
+                else f"locked down with {bad} step(s) failing, above; this node's credential is revoked as this job ends\n")
+        return ("succeeded", 0) if not bad else ("failed", 1)
 
     def _apply_gpu(self, job):
         """The NVIDIA driver and a headless X server on the card, for the

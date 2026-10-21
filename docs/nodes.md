@@ -1147,6 +1147,29 @@ the agent's own file) and reaches the controller, if at all, only as the
 tunnel's address, which is refused everything but the agent API.
 Development stays on the project's own nodes.
 
+**When the box may have been taken over (R92).** The controller assumes it
+might be, and nothing the box says reaches past its own containers. The
+tunnel address the controller refuses everything but the agent API from is
+the enroll script's, never what the node reports (`tunnel_addr`), and a
+removed node's hostname and address stay refused. A node's address is the
+X-Forwarded-For hop the proxy wrote, not the client's own, and a
+hosting-only node is opened to a project's sessions only by its containers'
+ports, never whole (`devapp.reach`). A job placed by selector is taken only
+if it is one the node may run by name (`fits`). Data brought home from it is
+unpacked only into the moved instance's own volumes: a manifest naming
+another, or a part it could not have packed, is refused (`UNPACK_PY`).
+Refused verbs are audited once an hour each, sixteen to a node an hour
+(`host_refused_audit`). A node enrolled through a public hostname stays
+hosting only. **Lock down**, first under the node's Advanced, is the press
+for an incident (`node_lockdown`): from that moment the box may take only
+its lockdown job (hello, beat, work, log and result, `LOCKDOWN_VERBS`),
+which stops every container there, nginx among them, sets none to restart
+at a boot and shuts its SSH door; when that job ends, failed or not, or
+`LOCKDOWN_GRACE_S` (five minutes) after the press if it never does, the
+node is retired and its credential revoked. A box whose agent is away is
+retired at the press. Powering the box off from its provider's console is
+the stop that needs nothing from the agent, and the dialog says so.
+
 **Which projects a container may go under.** The project pickers on Send,
 on a row's Project and Built from, and the project a Send, copy or move is
 made from, are the asker's own list of projects, for an administrator and

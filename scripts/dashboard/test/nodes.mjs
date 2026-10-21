@@ -1453,6 +1453,36 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const rec = (await napi('/api/v1/nodes')).nodes.find(n => n.id === vps.id);
     ok(vps.ok && rec?.config?.host_only === true, `a node enrolled as hosting only is so from the start (${vps.error || 'ok'})`);
     await napi('/api/v1/nodes', { action: 'retire', id: vps.id });
+    // Lock down (R92): one press on a hosting-only node's page, after which
+    // the box may take only the job that stops it, and is removed when it ends.
+    {
+      const lk = await napi('/api/v1/nodes', { action: 'enroll', name: 'vps-lock', host_only: true });
+      const len = await napi('/api/v1/agent/enroll', { user: 'bb', version: shipped.version, digest: shipped.digest, census: CENSUS },
+        { Authorization: 'Bearer ' + lk.token, 'Content-Type': 'application/json' });
+      const LH = { Authorization: 'Bearer ' + len.token, 'Content-Type': 'application/json' };
+      const as = (verb, body) => fetch(base + '/api/v1/agent/' + verb, { method: 'POST', headers: LH, body: JSON.stringify(body || {}) });
+      await as('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest });
+      await page.evaluate(async () => { nodesList = null; await loadNodes(); });
+      await pickNode(page, lk.id);
+      const LROW = `.nodestab .ndrow[data-node="${lk.id}"]`;
+      await page.waitForSelector(`${LROW} [data-nd="lockdown"]`, { timeout: 10000 });
+      page.dialogs.length = 0;
+      await page.click(`${LROW} [data-nd="lockdown"]`);
+      await page.waitForSelector(`${LROW} [data-nd="lockdown"][disabled]`, { timeout: 10000 });
+      ok(page.dialogs.length === 1 && /Lock down vps-lock[\s\S]*revoked[\s\S]*provider's console/.test(page.dialogs[0]),
+         `Lock down asks first, saying what stops, that its credential goes, and the console's stop (${page.dialogs[0]?.slice(0, 40)})`);
+      const refused = await as('devdata', {});
+      const taken = await (await as('work', { running: [], wait: 0 })).json();
+      ok(refused.status === 403 && taken?.spec?.apply === 'lockdown',
+         `...from then it is refused all but its lockdown job (${refused.status}, ${taken?.spec?.apply})`);
+      await as('result', { job: taken.id, state: 'succeeded', exit: 0 });
+      const after = await as('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest });
+      const row = (await napi('/api/v1/nodes')).nodes.find(n => n.id === lk.id);
+      ok(after.status === 401 && (!row || row.state === 'retired'),
+         `...and once it has run, the node is removed and its credential refused (${after.status}, ${row?.state})`);
+      await page.evaluate(async () => { nodesList = null; await loadNodes(); });
+      await pickNode(page, minted.id);
+    }
     // The row's switch, on the sandbox fixture node once it reports a door.
     const hello = census => agent('hello', { census, version: shipped.version, digest: shipped.digest });
     await hello({ ...CENSUS, door: { kind: 'cloudflared', host: 'ssh-shed.example.com', installed: true, active: true } });

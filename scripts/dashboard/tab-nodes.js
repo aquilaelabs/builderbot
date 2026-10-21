@@ -933,6 +933,10 @@ function nodeAdvancedSection(n, stale, inflight){
     </div>
     <div class="sub ndcheck${nodesCheck[n.id]?.warn ? " warn" : ""}"${nodesCheck[n.id] ? "" : " hidden"}>${esc(nodesCheck[n.id]?.text || "")}</div>
     <div class="ndacts">
+    ${n.kind !== "agent" || !n.config?.host_only ? "" : act("Lock down",
+        n.config?.lockdown ? "Locking down: it may take nothing but the job that stops its containers and shuts its door, and its credential is revoked when that ends, or within five minutes if it never answers."
+        : "For a box that may have been taken over: stops every container here and its nginx, keeps them from starting at a boot, shuts its SSH door, and revokes its credential. The box's own console stops it without the agent.",
+        `<button type="button" class="danger" data-nd="lockdown" ${n.config?.lockdown ? "disabled" : ""}>${n.config?.lockdown ? "Locking down…" : "Lock down"}</button>`)}
     ${!n.reported?.sandbox ? "" : act(n.config?.lock ? "Unlock system changes" : "Lock system changes",
         n.config?.lock ? "Locked: storage, network and root changes are refused from here." : "Refuses storage, network and root changes from here, keeping them to the machine's own console.",
         `<button type="button" data-nd="${n.config?.lock ? "unlock" : "lock"}">${n.config?.lock ? "Unlock" : "Lock"}</button>`)}
@@ -2137,6 +2141,13 @@ function wireNodesTab(root){
                       + "Enrolling it again starts from scratch.")) return;
       // A reboot ends every session on the node, so the press names them,
       // as Update agent's does; a shutdown also does not come back by itself.
+      if (act === "lockdown"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        if (!confirm(`Lock down ${name}?\n\nFrom now it may ask this controller for nothing but the job that stops `
+              + "every container there, its nginx with them, keeps them from starting at a boot and shuts its SSH door. "
+              + "Its credential is revoked when that job ends, or in five minutes if the box never answers, and the node is removed.\n\n"
+              + "If the box itself may be taken over, also power it off from its provider's console: that stop does not need the agent.")) return;
+      }
       if (act === "reboot" || act === "poweroff"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
         const here = (state?.sessions || []).filter(x => x.node_id === id);
@@ -2213,7 +2224,7 @@ function wireNodesTab(root){
       // actions whose effect the row cannot see at once: beyond it.
       busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing",
-               retire: "Removing", discard: "Discarding", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
+               retire: "Removing", discard: "Discarding", uninstall: "Uninstalling", lockdown: "Locking down", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
                paths: "Saving", "check-paths": "Checking", "to-sync": "Moving",
                "sync-stop": "Stopping", "sync-resume": "Resuming", "sync-clean": "Cleaning",
                rename: "Renaming", turns: "Saving"}[act] || "Working");
