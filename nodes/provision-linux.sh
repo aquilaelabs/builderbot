@@ -2518,9 +2518,9 @@ pkgs_drop() {
 }
 vmhost_pkgs() {
     case "$1:$(uname -m)" in
-        deb:x86_64)  echo "qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils" ;;
+        deb:x86_64)  echo "qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils ovmf" ;;
         deb:aarch64) echo "qemu-system-arm qemu-efi-aarch64 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils" ;;
-        rhel:*)      echo "qemu-kvm qemu-img libvirt-daemon-kvm libvirt-client" ;;
+        rhel:*)      echo "qemu-kvm qemu-img libvirt-daemon-kvm libvirt-client edk2-ovmf" ;;
     esac
 }
 feature_vmhost() {
@@ -2553,7 +2553,10 @@ feature_vmhost() {
             # The cached cloud images and each VM's disk, the jobs account's;
             # 0755 so libvirt's own account reaches the disks it is handed.
             install -d -m 0755 -o "$DOCKER_USER" /var/lib/builderbot/vms /var/lib/builderbot/vms/images /var/lib/builderbot/vms/disks
-            printf 'packages=%s\n' "$added" > "$FEATURES_DIR/vmhost"
+            # Run again on a machine that has it (a package the feature has
+            # gained since, UEFI's firmware), what it added before is kept.
+            [ -f "$FEATURES_DIR/vmhost" ] && added="$(sed -n 's/^packages=//p' "$FEATURES_DIR/vmhost") $added"
+            printf 'packages=%s\n' "$(printf '%s\n' $added | LC_ALL=C sort -u | tr '\n' ' ')" > "$FEATURES_DIR/vmhost"
             rm -f "$FEATURES_DIR/vmhost.partial"
             say "VM host installed${added:+ ($(printf '%s' "$added" | wc -w) packages added)}; ${DOCKER_USER} runs the VMs, and no session can" ;;
         remove)

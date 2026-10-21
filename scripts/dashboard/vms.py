@@ -323,6 +323,9 @@ def create(principal, project, req, nodes_allowed, session=False):
                 "subnet": subnet,
                 "image": {"id": img["id"] + "-" + arch, "url": src["url"], "sums": src["sums"],
                           "file": src["url"].rsplit("/", 1)[-1]},
+                # UEFI for an image whose kernel resets under a BIOS boot
+                # (Debian 13, on the dev node, 21 Oct); BIOS otherwise.
+                "boot": "uefi" if img.get("boot") == "uefi" else "bios",
                 "timeout": 3600}
         if enroll:
             spec["enroll"] = enroll["script"]

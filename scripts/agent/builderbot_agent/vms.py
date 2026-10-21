@@ -183,16 +183,23 @@ def user_data(hostname, user, keys, enroll=""):
     return "\n".join(lines) + "\n"
 
 
-def domain_xml(name, project, vcpus, mem_mb, disk, seed, network):
+def domain_xml(name, project, vcpus, mem_mb, disk, seed, network, boot="bios"):
     """The domain, from a fixed shape: KVM, the host's CPU, virtio disk and
     network on the project's own network, the seed as a cdrom, a serial
-    console and no graphics, and BuilderBot's marker in <metadata>."""
+    console and no graphics, and BuilderBot's marker in <metadata>. `boot`
+    uefi is the q35 machine on the firmware VM host installs (OVMF), with
+    Secure Boot off, for an image whose kernel will not start under BIOS."""
+    arch = escape(os.uname().machine)
+    os_el = (f"<os firmware='efi'><type arch='{arch}' machine='q35'>hvm</type>"
+             "<firmware><feature enabled='no' name='secure-boot'/><feature enabled='no' name='enrolled-keys'/></firmware>"
+             "<boot dev='hd'/></os>" if boot == "uefi" else
+             f"<os><type arch='{arch}'>hvm</type><boot dev='hd'/></os>")
     return f"""<domain type='kvm'>
   <name>{escape(name)}</name>
   <metadata><bb:vm xmlns:bb={quoteattr(META_NS)} project={quoteattr(project)}/></metadata>
   <memory unit='MiB'>{int(mem_mb)}</memory>
   <vcpu>{int(vcpus)}</vcpu>
-  <os><type arch='{escape(os.uname().machine)}'>hvm</type><boot dev='hd'/></os>
+  {os_el}
   <features><acpi/><apic/></features>
   <cpu mode='host-passthrough'/>
   <devices>
@@ -407,7 +414,8 @@ class VmsMixin:
             return "failed", 70
         xml = os.path.join(ddir, name + ".xml")
         with open(xml, "w") as f:
-            f.write(domain_xml(name, project, vcpus, mem, disk, seed, str(spec["network"])))
+            f.write(domain_xml(name, project, vcpus, mem, disk, seed, str(spec["network"]),
+                               "uefi" if spec.get("boot") == "uefi" else "bios"))
         job.step("starting it")
         if self._vm_run(job, VIRSH + ["define", xml], who) != 0:
             return "failed", 70

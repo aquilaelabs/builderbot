@@ -11,7 +11,7 @@
                          "sums": "https://cloud-images.ubuntu.com/releases/noble/release/SHA256SUMS"},
               "aarch64": {"url": "https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-arm64.img",
                           "sums": "https://cloud-images.ubuntu.com/releases/noble/release/SHA256SUMS"}}},
-    {"id": "debian-13", "name": "Debian 13", "family": "debian", "aliases": ["debian", "trixie"],
+    {"id": "debian-13", "name": "Debian 13", "family": "debian", "aliases": ["debian", "trixie"], "boot": "uefi",
      "arch": {"x86_64": {"url": "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2",
                          "sums": "https://cloud.debian.org/images/cloud/trixie/latest/SHA512SUMS"},
               "aarch64": {"url": "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-arm64.qcow2",
