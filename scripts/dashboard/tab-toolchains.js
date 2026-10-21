@@ -881,7 +881,10 @@ function renderToolchainsInto(i){
     if (inst) inst.disabled = busy || pstale || !tcTicked.size;
   };
   el.querySelectorAll("[data-tcdrvrm]").forEach(b => b.onclick = () => {
-    if (confirm(`Remove NVIDIA's driver from ${toolchains?.name || "this node"}? The emulator's GPU display goes with it, and nouveau takes the card back when the machine restarts.`))
+    // With no card there is nothing for nouveau to take back (B168).
+    const gone = (toolchains?.machine || []).some(m => m.name === TC_DRIVER && m.state === "nocard");
+    if (confirm(gone ? `Remove NVIDIA's driver from ${toolchains?.name || "this node"}? It has no card to drive here, and its tries for one stop.`
+                     : `Remove NVIDIA's driver from ${toolchains?.name || "this node"}? The emulator's GPU display goes with it, and nouveau takes the card back when the machine restarts.`))
       tcAct("remove", [TC_DRIVER]);
   });
   el.querySelectorAll("[data-tcclrm]").forEach(b => b.onclick = () => {
