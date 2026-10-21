@@ -926,6 +926,9 @@ function projectNote(p){
   // drawn (the operator, 21 Oct: a role somebody lacks is not advertised to
   // them, and a reason a button is off is not an error, so no line is red).
   if (!p.locked && writeWhy(p)) return "";
+  // No Claude Code on its node, for an account that may install it: the
+  // button says it (Install Claude), so no line does.
+  if (claudeInstall(p)) return "";
   const said = held || p.session_why;
   if (said && !p.locked && !here) return `<div class="pnote dim">${esc(said)}</div>`;
   // ...and otherwise why Start Claude is dead, whatever made it so (B88):
@@ -934,6 +937,11 @@ function projectNote(p){
   const dead = p.locked ? "" : claudeDeadWhy(p);
   return dead ? `<div class="pnote dim">${esc(dead)}</div>` : "";
 }
+// The node to install Claude Code on in place of starting a session, or "":
+// the project's node has none and this account may install toolchains there
+// (the operator, 21 Oct: the button opens that node's Toolchains).
+const claudeInstall = p => !p.locked && !liveSessions().has(myClaude(p.name)) && p.claude_missing
+  && mayToolchains(p.claude_missing) ? p.claude_missing : "";
 // Why Start Claude is dead on this project, or "" when it is live: the one
 // answer the button, its description and the line under it all read.
 function claudeDeadWhy(p){
@@ -992,7 +1000,10 @@ function projectActions(p, extra = ""){
   // Green only while your session runs, and then it opens it; otherwise a
   // plain Start Claude (the operator, 16 Oct: green on every card read as
   // running everywhere).
-  return `${isBroken(p) || forbid ? "" : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(name)}"${dead ? " disabled" : ""} title="${esc(say)}">${
+  const inst = claudeInstall(p);
+  return `${isBroken(p) || forbid ? "" : inst ? `<button type="button" data-tcinst="${esc(inst)}" title="${
+        esc(`Claude Code is not installed on ${p.node_name || "its node"}: open its Toolchains to install it`)}">Install Claude</button>`
+      : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(name)}"${dead ? " disabled" : ""} title="${esc(say)}">${
         mine ? "Open Claude" : "Start Claude"}</button>`}
     ${mayShell() && !notMine(p) ? `<button type="button" data-s="${esc(name)}"${!gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}
     <span class="more"><button type="button" data-pmore aria-label="more" aria-expanded="false">${DOTS}</button><div class="actmenu" hidden>${menu}</div></span>`;

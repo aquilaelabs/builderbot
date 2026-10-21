@@ -1061,6 +1061,9 @@ def _project_columns(who, facts):
     # WINDOW holds this project's sessions; one merely behind does not.
     with timing.timed("projects:setup:holds"):
         held_nodes = node_holds()
+        # ...and the nodes with no Claude Code, whose Start Claude is an
+        # Install Claude that opens the node's Toolchains (the operator, 21 Oct).
+        no_claude = {} if NODES_OK else {i: i for i in claudecode.missing_nodes()}
     _t1 = time.monotonic()
     open_roadmap = roadmap.counts()
     # One batch spans the notebook, so the count the panel shows has to be
@@ -1228,6 +1231,8 @@ def _project_columns(who, facts):
                     # the same fact; the sweep ends what is running. Per
                     # project: another project's node being out of window is
                     # not this row's hold.
+                    # The project's node, when it has no Claude Code, or "".
+                    "claude_missing": no_claude.get(project_prefs.get(d.name, {}).get("node") or "", ""),
                     "held": held_nodes.get(
                         project_prefs.get(d.name, {}).get("node") or "", "")
                     # ...or its map is still building (mapping.py): the
