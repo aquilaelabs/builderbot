@@ -447,13 +447,19 @@ ok(en.ok && vps?.main?.node === pending.id && vps.main.source === 'file',
   const lan = (await api('/api/nginx')).nodes.find(n => n.node === sandbox.node);
   ok(w?.host_only && JSON.stringify(w.wide) === JSON.stringify({ 'example.com': ['*.example.com'] }) && JSON.stringify(lan?.wide) === '{}',
      `a wildcard pair on a hosting-only node is named wide, and none on a node at home (${JSON.stringify([w?.wide, lan?.wide])})`);
+  if (await page.$('#ndBody #ndTokDone')) await page.click('#ndBody #ndTokDone');
+  // Asked for by a list read before it enrolled: the page waits for it
+  // rather than standing the first node in for it (B160).
   await page.evaluate(id => openNginxTab(id), pending.id);
-  const line = await page.waitForFunction(id => document.querySelector(`.nginxtab [data-ngnode="${id}"] .ngcert .ngwide`), pending.id, { timeout: 10000 })
-    .then(h => h.evaluate(e => ({ text: e.textContent, color: getComputedStyle(e).color })), () => null);
-  const warn = await page.evaluate(() => { const p = document.createElement('i'); p.style.color = 'var(--warn)'; document.body.append(p);
-    const c = getComputedStyle(p).color; p.remove(); return c; });
-  ok(line && /answers for \*\.example\.com/.test(line.text) && line.color === warn,
-     `...and its pair on the nginx page says so in the warning color (${JSON.stringify(line)})`);
+  const line = await page.waitForFunction(id => {
+    const e = document.querySelector(`.nginxtab [data-ngnode="${id}"] .ngcert .ngwide`);
+    if (!e) return null;
+    const p = document.createElement('i'); p.style.color = 'var(--warn)'; document.body.append(p);
+    const warn = getComputedStyle(p).color; p.remove();
+    return { text: e.textContent, color: getComputedStyle(e).color, warn };
+  }, pending.id, { timeout: 10000 }).then(h => h.jsonValue(), () => null);
+  ok(line && /answers for \*\.example\.com/.test(line.text) && line.color === line.warn,
+     `...and its pair on the nginx page says so in the warning color (${JSON.stringify(line || await page.evaluate(() => ({ node: nginxNode, pick: nginxPick()?.name })))})`);
 }
 await api('/api/nginx', { action: 'remove', node: pending.id });
 await api('/api/v1/nodes', { action: 'retire', id: pending.id });
