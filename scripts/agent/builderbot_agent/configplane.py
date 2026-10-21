@@ -284,8 +284,10 @@ class ConfigPlaneMixin:
         # so root's copy was whatever some other job or a session had last
         # pulled, and a job pressed right after a controller update ran the
         # helper from before it. A fetch of an unchanged bundle is one
-        # download checked by digest.
-        if tc_root(self.state):
+        # download checked by digest. Not on a hosting-only node, which the
+        # controller refuses the bundle (403 at the head of every system
+        # job's log, R97's walk): its helper is the one Enroll again writes.
+        if tc_root(self.state) and not self.state.get("host_only"):
             try:
                 who = self.as_user({}, self.state.get("user") or "")
             except RuntimeError:
