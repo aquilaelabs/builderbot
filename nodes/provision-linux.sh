@@ -538,11 +538,12 @@ ID=""; ID_LIKE=""; PRETTY_NAME=""; VERSION_ID=""; VERSION_CODENAME=""; UBUNTU_CO
 # pre-flight below, beside everything else it found, so one run says the
 # whole of what is wrong rather than the first thing.
 # The families this script has been run on for real: Debian's (Ubuntu
-# 24.04 and 26.04 sandboxes) and RHEL's (a Rocky sandbox). The others are
+# 24.04 and 26.04, Debian 13), RHEL's (Rocky, Alma, CentOS Stream, Fedora),
+# Arch's and openSUSE's (R97's walk, 21 Oct). The others are
 # written to each family's tools and never run (dev, in the dashboard's
 # word), so they need --dev to proceed, and a run that works is what moves
 # one onto this list.
-VETTED_FAMILIES=" deb rhel "
+VETTED_FAMILIES=" deb rhel arch suse "
 DEV="${DEV:-0}"
 FAMILY=""; FAMILY_WHY=""
 _ids=" ${ID:-} ${ID_LIKE:-} "

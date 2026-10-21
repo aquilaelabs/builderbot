@@ -82,12 +82,12 @@ class Script(unittest.TestCase):
         was = forges.unvetted_ok
         try:
             forges.unvetted_ok = lambda: False
-            self.assertIn("Offer dev features", es.check(answers(system="arch"))["error"])
+            self.assertIn("Offer dev features", es.check(answers(system="gentoo"))["error"])
             forges.unvetted_ok = lambda: True
-            self.assertEqual(es.check(answers(system="arch"))["system"], "arch")
+            self.assertEqual(es.check(answers(system="gentoo"))["system"], "gentoo")
             # ...and its script passes --dev, which a family the provisioner
             # has not run on needs, where a walked system's does not.
-            self.assertIn("--dev", self.build(system="arch")[1])
+            self.assertIn("--dev", self.build(system="gentoo")[1])
             self.assertNotIn("--dev", self.build(system="ubuntu")[1])
         finally:
             forges.unvetted_ok = was
