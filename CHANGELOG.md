@@ -15,6 +15,7 @@
 
 ### Fixed
 
+- A session's pgrep -f or pkill -f inside a for loop over a command substitution is refused like any other, where it used to slip past and match its own shell (fea13264)
 - A node whose NVIDIA card has gone keeps its driver and container toolkit rows on the Toolchains page, saying so with Remove, and no longer tries to load the driver at every boot, which filled its console with No NVIDIA GPU found (57ef607)
 - Enrolling a new Linux node works again: since the provisioner was split into one file per system, it stopped right after installing Docker with 'svc_enable: command not found', and a VM's guest agent was never installed. (2a64240)
 - On a phone, a node that is not a sandbox says where its storage and network are managed with room around it, no longer pressed against the next section's heading (18b971e1)
