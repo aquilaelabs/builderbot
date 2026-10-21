@@ -319,6 +319,7 @@ function openNewVm(forProject = ""){
   };
   const hwBox = () => {
     const nid = $m("#vmNode").value;
+    document.getElementById("vmhwmodal")?.replaceChildren();   // one set of the fields' ids on the page
     $m("#vmHwBox").innerHTML = vmHwFields((vmsData?.hosts || []).find(h => h.id === nid), {}, !!state?.can?.admin);
     vmHwWire($m("#vmHwBox"), nid, $m("#vmProject").value);
   };
@@ -461,6 +462,7 @@ function openVmHardware(v){
     armModal(m);
   }
   const host = (vmsData?.hosts || []).find(h => h.id === v.node);
+  document.getElementById("vmHwBox")?.replaceChildren();   // New VM's, so the fields' ids are this dialog's alone
   m.innerHTML = `<div class="box"><h3>${esc(v.name)}'s hardware</h3>
     ${vmHwFields(host, v.hw || {}, !!state?.can?.admin)}
     <div class="field" id="vmHwWhyF" hidden><div class="hint bad" id="vmHwWhy"></div></div>
