@@ -2033,7 +2033,9 @@ def tunnel_hosts():
     (R170), read again at most every five seconds like tunnel_addrs."""
     now = time.monotonic()
     if now - _tunnels["at"] > 5 or "hosts" not in _tunnels:
-        rows = [n for n in node_list() if n.get("state") != "retired"]
+        # A retired node's too: removing a box in an incident must not
+        # open the dashboard on the name it was reached at (R92).
+        rows = node_list()
         _tunnels.update(at=now, addrs=frozenset(a for a in (tunnel_addr(n) for n in rows) if a),
                         hosts=frozenset(h for h in (tunnel_host(n) for n in rows) if h))
     return _tunnels["hosts"]

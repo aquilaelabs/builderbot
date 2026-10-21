@@ -298,6 +298,24 @@ class TunnelGate(unittest.TestCase):
         self.assertEqual(nodes.tunnel_addr({"config": {"tunnel": {"addr": "not; an address"}}}), "")
 
 
+class RetiredTunnel(unittest.TestCase):
+    """A removed box's hostname and address stay refused (R92)."""
+
+    def setUp(self):
+        self.was = nodes.node_list
+        nodes.node_list = lambda: [{"state": "retired", "config": {"tunnel": {
+            "kind": "public", "host": "vps.example.com", "addr": "10.6.0.7"}}}]
+        nodes._tunnels["at"] = 0.0
+
+    def tearDown(self):
+        nodes.node_list = self.was
+        nodes._tunnels["at"] = 0.0
+
+    def test_its_name_and_address_are_still_the_tunnel_s(self):
+        self.assertIn("hostname", nodes.tunnel_refuses("172.16.0.9", "/api/status", host="vps.example.com"))
+        self.assertIn("address", nodes.tunnel_refuses("10.6.0.7", "/"))
+
+
 if __name__ == "__main__":
     unittest.main()
 
