@@ -16,7 +16,7 @@
 
 ### Fixed
 
-- Uninstalling a node keeps an account that was on the machine before BuilderBot, where it deleted it with its home when its name was the one BuilderBot uses, and enrolling refuses to run sessions under such an account when it can sudo (b17916df)
+- Enrolling a node never takes over an account that is already on the machine (a builder or bb of somebody's own): it stops and asks for another name, where it adopted the account and Uninstall then deleted it with its home (b17916df)
 - A Rocky Linux node gets the tools bb capture reel --display needs, which never installed there (7041619)
 - On a phone the Storage and nginx pages open one section at a time, sliding, as every other page does, where every section stood open at once (a18ac8e7)
 - A session's pgrep -f or pkill -f inside a for loop over a command substitution is refused like any other, where it used to slip past and match its own shell (fea13264)
