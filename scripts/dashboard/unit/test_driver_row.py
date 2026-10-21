@@ -38,6 +38,14 @@ class DriverRow(unittest.TestCase):
         self.assertIn("only be removed", toolchains._driver_name(n, "install", "")[1])
         self.assertEqual(toolchains._driver_name(n, "remove", "")[1], "")
 
+    def test_the_controller_keeps_a_census_left_without_a_card(self):
+        import nodes
+        got = nodes._census({"gpu_card": "", "gpu_driver": {"installed": "610.57.04", "nocard": True},
+                             "gpu_container": {"installed": "1.20.1-1", "nocard": True}})
+        self.assertEqual((got["gpu_driver"]["installed"], got["gpu_driver"]["nocard"]), ("610.57.04", True))
+        self.assertTrue(got["gpu_container"]["nocard"])
+        self.assertNotIn("gpu_driver", nodes._census({"gpu_card": "", "gpu_driver": {"installed": "610.57.04"}}))
+
     def test_each_state(self):
         self.assertEqual(self.state(bound="nouveau"), "absent")
         self.assertEqual(self.state("580.95.05", bound="nouveau"), "waiting")

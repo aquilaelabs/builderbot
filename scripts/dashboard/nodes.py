@@ -1268,8 +1268,10 @@ def _census(c):
     # Where the NVIDIA driver stands (R102): installed for this kernel,
     # loaded now, and which driver has the card, for the Toolchains tab's
     # driver row.
+    # Kept without a card too when the agent says it was left for one that
+    # has gone (nocard), so its row can remove it (B168).
     gd = c.get("gpu_driver")
-    if c.get("gpu_card") and isinstance(gd, dict):
+    if isinstance(gd, dict) and (c.get("gpu_card") or gd.get("nocard")):
         clean = lambda v, n=60: re.sub(r"[^A-Za-z0-9._~+:-]", "", str(v or ""))[:n]  # noqa: E731
         out["gpu_driver"] = {k: clean(gd.get(k)) for k in
                              ("installed", "loaded", "bound", "package", "pkg_version", "candidate", "recommended")}
@@ -1279,13 +1281,16 @@ def _census(c):
             {"pkg": clean(o.get("pkg")), "version": clean(o.get("version"), 30), "open": bool(o.get("open"))}
             for o in (gd.get("options") or [])[:16]
             if isinstance(o, dict) and DRIVER_PKG.fullmatch(str(o.get("pkg") or ""))]
+        if not c.get("gpu_card"):
+            out["gpu_driver"]["nocard"] = True
     # ...and the container toolkit (R102): the version installed, what apt
     # would move it to, and whether Docker lists the nvidia runtime.
     gc = c.get("gpu_container")
-    if c.get("gpu_card") and isinstance(gc, dict):
+    if isinstance(gc, dict) and (c.get("gpu_card") or gc.get("nocard")):
         ver = lambda v: re.sub(r"[^A-Za-z0-9._~+:-]", "", str(v or ""))[:60]  # noqa: E731
         out["gpu_container"] = {"installed": ver(gc.get("installed")), "candidate": ver(gc.get("candidate")),
-                                "runtime": bool(gc.get("runtime"))}
+                                "runtime": bool(gc.get("runtime")),
+                                **({} if c.get("gpu_card") else {"nocard": True})}
     # The sound it has (R107): ALSA's cards, real and virtual apart, and the
     # sound server installed.
     snd = c.get("sound")
