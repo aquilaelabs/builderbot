@@ -468,6 +468,21 @@ bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--hand NAME] [--s
                    in front (another project's keyboard), and Approve for this
                    session does not cover it; bb phone ui prints the screen's
                    layout under the same rule
+bb vm [list]       this project's VMs (R91): state, OS, node, address, size, snapshots
+bb vm os           the operating systems a VM is made from
+bb vm new NAME --os OS [--vcpus N] [--mem 4G] [--disk 20] [--node NODE] [--key FILE] --why "..."
+                   a VM on one of the project's nodes with VM host installed,
+                   letting in this session's ssh key (made when there is none);
+                   the project's Make VMs setting decides: deny refuses, ask
+                   waits for an administrator's Allow, auto makes it now
+bb vm start|stop|restart|rm NAME [--force]
+                   one VM, under the same setting; stop asks it to shut down,
+                   --force pulls the plug
+bb vm snapshot NAME SNAP [--note "..."] | revert NAME SNAP | snapshot-rm NAME SNAP
+                   its state saved under a name and gone back to; a running
+                   VM's memory is kept too, so a revert lands mid-program
+bb vm ip NAME | ssh NAME [COMMAND...]
+                   its address, and ssh in as its account
 bb container       what container asks are waiting on an administrator
 bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
                    a container built from a compose file the session wrote,

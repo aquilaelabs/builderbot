@@ -3367,7 +3367,7 @@ def ctr_spark(nid, names=None):
 # exec runs argv; compose is the controller's docker; self-update, system
 # (phase 5), toolchain (an install against the node's toolchain store)
 # and cache-clear (drop the node's build caches) are the agent's own.
-JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-clear",
+JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-clear", "vm",
              # A walk of the node's disks now, for the Storage tab (R169).
              "storage",
              # An Android system image onto a node's toolchain store, or off

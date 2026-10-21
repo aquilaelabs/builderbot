@@ -3461,6 +3461,25 @@ containers.ctr_spark = nodes.ctr_spark
 # One nginx per node, from the nginx tab (R171): its records here, the
 # container through containers.py, and the node's own view of its ports.
 imagecheck.configure(state=STATE, write_json=write_json, devapp_module=devapp)
+# The VM manager (R91): its records, the jobs it queues, and what becomes of
+# them; a session's ask through the same machinery a container's goes.
+import vms                                                       # noqa: E402
+
+vms.configure(state=STATE, write_json=write_json, node=nodes.node, node_list=nodes.node_list,
+              job_add=nodes.job_add, audit=db.audit, prefs_get=prefs.get)
+nodes.on_done("vm", vms.vm_done)
+phone.vm_runner = lambda project, req, by: _vm_do(f"session:{project} (allowed by {by})", project, req, True)
+
+
+def _vm_do(principal, project, req, session):
+    """One VM verb for `project`: new is vms.create, onto the project's own
+    nodes for a session and any VM host for a person; the rest vms.act."""
+    if field(req, "action") == "new":
+        allowed = devapp.nodes_of(project) or [] if session else [n["id"] for n in vms.hosts()]
+        return vms.create(principal, project, req, allowed, session=session)
+    return vms.act(principal, project, field(req, "name"), field(req, "action"), req)
+
+
 nginxproxy.configure(state=STATE, write_json=write_json, node_list=nodes.node_list,
                      node_name=lambda nid: (nodes.node(nid) or {}).get("name") or nid,
                      taken_ports=devapp.taken_ports)
@@ -4408,6 +4427,7 @@ GET_ROUTES = (
     ("prefix", "/api/help", "_get_help"),
     ("prefix", "/api/docker", "_get_docker"),
     ("prefix", "/api/containers", "_get_containers"),
+    ("exact", "/api/vms", "_get_vms"),
     ("prefix", "/api/project-job", "_get_project_job"),
     ("prefix", "/api/trash", "_get_trash"),
     ("prefix", "/api/claude-now", "_get_claude_now"),
@@ -4454,6 +4474,7 @@ POST_ROUTES = (
     ("prefix", "/api/project-auth", "_project_auth"),
     ("exact", "/api/project-ftp", "_project_ftp"),
     ("prefix", "/api/container", "_container"),
+    ("exact", "/api/vms", "_vms"),
     ("prefix", "/api/dockerctl", "_docker_ctl"),
     ("prefix", "/api/rename", "_rename"),
     # These two before the bare prefix, or startswith swallows them.
@@ -5975,6 +5996,49 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return self._json(devapp.containers())
 
+    def _get_vms(self):
+        """GET /api/vms (R91): the VMs of the projects this account may read
+        them on (a session: its own), the OS catalog and the VM hosts."""
+        me = self._who() or {}
+        sess = me.get("session") or ""
+        if sess:
+            seen = {sess}
+        else:
+            seen = {p for p in project_names(me) if roles.level_of(me, "vms", p)}
+        return self._json(vms.payload(seen))
+
+    def _vms(self, req):
+        """POST /api/vms (R91): new, start, stop, restart, remove, snapshot,
+        revert, snapshot-rm. A person needs VMs Write on the project; a
+        session acts on its own project alone, under its Make VMs dial
+        (deny refuses, ask holds it for the administrators, auto does it)."""
+        me = self._who() or {}
+        sess = me.get("session") or ""
+        project = field(req, "project") or sess
+        action = field(req, "action")
+        if action not in ("new",) + vms.ACTIONS:
+            return self._json({"error": f"no such VM action: {action}"}, 400)
+        if not project or not registry.is_project(project):
+            return self._json({"error": "which project's VM? name one"}, 400)
+        if sess:
+            if project != sess:
+                return self._json({"error": f"a session works on {sess}'s VMs alone, not {project}'s"}, 403)
+            mode = prefs.get(sess)["makevms"]
+            if mode == "deny":
+                return self._json({"error": f"{sess}'s settings say Claude may not make or change VMs "
+                                            "(Make VMs is deny): a person changes that in the project's settings"}, 403)
+            if mode == "ask":
+                r = phone.ask_vm(field(req, "why") or f"{action} {field(req, 'name')}", sess, req,
+                                 asker_name=(me.get("name") or ""))
+                return self._result(r)
+            return self._result(_vm_do(f"session:{sess}", sess, req, True))
+        if self._refused("vms-write", project):
+            return
+        why = self._not_on_list(me, project)
+        if why:
+            return self._json({"error": why}, 403)
+        return self._result(_vm_do(self._principal(), project, req, False))
+
     def _get_project_job(self):
         """GET /api/project-job."""
         if self._refused("create"):
@@ -6528,6 +6592,12 @@ class Handler(BaseHTTPRequestHandler):
         if req.get("devbuild") is not None \
                 and str(req.get("devbuild")) != prefs.get(name)["devbuild"] \
                 and self._refused("docker-write"):
+            return
+        # ...and the same of the VM dial and the VMs' limits (R91): a VM is a
+        # machine on a node, the VMs area's to hand a session or to raise.
+        if ((req.get("makevms") is not None and str(req.get("makevms")) != prefs.get(name)["makevms"])
+                or (req.get("vm_caps") is not None and req.get("vm_caps") != prefs.get(name)["vm_caps"])) \
+                and self._refused("vms-write", name):
             return
         held = (("node" in req or "nodes" in req) and prefs.node_changed(name, req)) \
             or (req.get("reads") is not None and prefs.reads_changed(name, req.get("reads")))

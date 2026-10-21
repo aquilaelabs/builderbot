@@ -48,6 +48,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/help` | prefix | `_get_help` | GET /api/help: the docs on the Help page (helpdocs.py, R258): the listing, ?doc=NAME one of them, ?q=WORDS a search across them. |  |
 | GET | `/api/docker` | prefix | `_get_docker` | GET /api/docker: the manager's whole page, containers.manager_view, for the node this account may read. |  |
 | GET | `/api/containers` | prefix | `_get_containers` | GET /api/containers. | refused: containers-read |
+| GET | `/api/vms` | exact | `_get_vms` | GET /api/vms (R91): the VMs of the projects this account may read them on (a session: its own), the OS catalog and the VM hosts. |  |
 | GET | `/api/project-job` | prefix | `_get_project_job` | GET /api/project-job. | refused: create |
 | GET | `/api/trash` | prefix | `_get_trash` | GET /api/trash. | refused: trash |
 | GET | `/api/claude-now` | prefix | `_get_claude_now` | GET /api/claude-now. |  |
@@ -82,6 +83,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/project-auth` | prefix | `_project_auth` | What credential this project's remote uses, and what else it could: projects.auth_answer. | refused: rename |
 | POST | `/api/project-ftp` | exact | `_project_ftp` | A project's file access over FTP (ftp.py, R151): what it is, for whoever sees the project, and a change, for an account with the ftp grant (named only: the owner, until a role names it). | refused: ftp |
 | POST | `/api/container` | prefix | `_container` | A container from a compose file written here, with no project: containers.tab_verb. | refused: docker-write |
+| POST | `/api/vms` | exact | `_vms` | POST /api/vms (R91): new, start, stop, restart, remove, snapshot, revert, snapshot-rm. | refused: vms-write |
 | POST | `/api/dockerctl` | prefix | `_docker_ctl` | Start, stop, restart or read the log of ONE container on a node. | refused: docker-write |
 | POST | `/api/rename` | prefix | `_rename` | Rename a project: projects.rename, once project_busy says nothing holds it. | refused: rename |
 | POST | `/api/trash-restore` | prefix | `_trash_restore` |  | refused: trash |
@@ -122,7 +124,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/global-rules` | prefix | `_global_rules` | The rules that apply to EVERY project (R63): rules.global_verb. | refused: controller |
 | POST | `/api/pending` | prefix | `_pending` | Approve or deny what a session has waiting (roadmap #27): pending.verb. | refused: pending |
 | POST | `/api/memory` | prefix | `_memory` | Edit, create or delete one of this project's memories, rewrite their index, or read the history: memory.verb, behind the gates here. |  |
-| POST | `/api/prefs` | prefix | `_prefs_post` | POST /api/prefs: a project's settings dialog, saved by prefs.dialog_save behind the gates here. | refused: node, refused: nodes-write, refused: debug, refused: docker-write, refused: settings |
+| POST | `/api/prefs` | prefix | `_prefs_post` | POST /api/prefs: a project's settings dialog, saved by prefs.dialog_save behind the gates here. | refused: node, refused: nodes-write, refused: debug, refused: docker-write, refused: vms-write, refused: settings |
 | POST | `/api/brief` | prefix | `_brief` | POST /api/brief: the first Claude press's Build it and Start without it, and a session's take as it starts: brief.verb, behind the gates here. |  |
 | POST | `/api/design` | prefix | `_design` | POST /api/design: a Design section's Save of the language and the pages, and the file written into the tree: design.verb, for an account that works on the project. |  |
 | POST | `/api/wiki` | exact | `_wiki` | POST /api/wiki: a page saved, removed or renamed, and the wiki pushed to or pulled from the forge's (wiki.verb), for an account that works on the project. |  |
