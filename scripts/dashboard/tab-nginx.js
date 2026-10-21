@@ -24,6 +24,7 @@ let nginxList = null;             // last answer, or null before the first
 let nginxErr = "";
 let nginxRev = 0;
 let nginxNode = "";               // the node the tab shows
+let nginxWant = "";               // a node asked for that the last read did not list yet
 let nginxLatest = {};             // the registry's newest line, from the same answer
 let nginxCertOpen = false;        // Add a certificate pressed: its form unrolled
 let nginxHostnames = [];          // every node's hostnames: [{name, used: [{node, path, port}]}]
@@ -33,6 +34,9 @@ const nginxDraft = {};
 
 function openNginxTab(node){
   if (node) nginxNode = node;
+  // One the last read has not listed (enrolled since): kept until a read
+  // does, or the fallback in nginxPick would stand in for it for good.
+  if (node && nginxList && !nginxList.some(n => n.node === node)){ nginxWant = node; loadNginx(); }
   openTab({kind: "nginx", arg: "__nginx", label: "nginx"});
 }
 
@@ -51,6 +55,7 @@ async function loadNginx(){
     nginxList = j.nodes || [];
     nginxLatest = j.latest || {};
     nginxHostnames = j.hostnames || [];
+    if (nginxWant && nginxList.some(n => n.node === nginxWant)){ nginxNode = nginxWant; nginxWant = ""; }
   }catch(e){
     if (asked < nginxDrawn) return;
     nginxErr = String(e);
