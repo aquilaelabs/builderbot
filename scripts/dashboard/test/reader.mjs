@@ -52,16 +52,13 @@ ok(/no Projects Write on alpha/.test(row.write_why || '') && !!row.trash_why && 
 // ---- the Projects page (B86, B87, B88) -----------------------------------
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.pgrid .pcard[data-row="alpha"]', { timeout: 15000 });
-const bar = await page.evaluate(() => ({ np: document.querySelector('.doc.on #bNewProjTab')?.disabled,
-  bin: document.querySelector('.doc.on #bTrashTab')?.disabled,
-  why: [...document.querySelectorAll('.doc.on #pjWhy .deadwhy')].map(e => e.textContent) }));
-ok(bar.np === true && bar.bin === true, 'New project and the trash are dead for an account without them');
-ok(bar.why.some(t => /making a project needs New projects Write/.test(t)) && bar.why.some(t => /deleting a project/.test(t)),
-   `...each with the server's reason under the bar, in red (${bar.why.join(' | ')})`);
-const red = await page.$eval('.doc.on #pjWhy .deadwhy', e => getComputedStyle(e).color);
-const bad = await page.evaluate(() => { const d = document.createElement('i'); d.style.color = 'var(--bad)'; document.body.append(d);
-  const c = getComputedStyle(d).color; d.remove(); return c; });
-ok(red === bad, `...the bad color (${red})`);
+// What a role does not give is not drawn, and nothing says why (the
+// operator, 21 Oct: a role somebody lacks is not advertised to them).
+const bar = await page.evaluate(() => ({ np: document.querySelector('.doc.on #bNewProjTab')?.checkVisibility(),
+  bin: document.querySelector('.doc.on #bTrashTab')?.checkVisibility(),
+  why: [...document.querySelectorAll('.doc.on .deadwhy, .doc.on .notice.bad')].map(e => e.textContent) }));
+ok(bar.np === false && bar.bin === false, 'New project and the trash are not drawn for an account without them');
+ok(!bar.why.length, `...and nothing on the page says why (${bar.why.join(' | ')})`);
 // The bin, opened all the same: a refusal is said, not read as empty.
 await page.evaluate(() => openTrash());
 await page.waitForFunction(() => !document.querySelector('#tList .sk-row') && document.querySelector('#tList').textContent.trim(), null, { timeout: 15000 });
@@ -70,10 +67,10 @@ ok(!/nothing deleted/.test(bin) && /deleting a project/.test(bin), `the bin, ask
 await page.evaluate(() => { $("tmodal").hidden = true; });
 const card = await page.evaluate(() => {
   const c = document.querySelector('.pgrid .pcard[data-row="alpha"]');
-  return { dead: c.querySelector('[data-c]')?.disabled, note: [...c.querySelectorAll('.pnote.bad')].map(n => n.textContent).join(' | '),
+  return { start: !!c.querySelector('[data-c]'), note: [...c.querySelectorAll('.pnote')].map(n => n.textContent).join(' | '),
            del: !!c.querySelector('[data-del]'), mark: c.querySelector('.lockmark')?.textContent.trim() };
 });
-ok(card.dead && /no Projects Write on alpha/.test(card.note), `Start Claude is dead and the card says why under it, in red (${card.note})`);
+ok(!card.start && !card.note, `the card has no Start Claude and no line saying why (${card.note})`);
 ok(!card.del && card.mark === 'read-only', `the card offers no Delete, and its name is marked read-only (${card.mark})`);
 
 // ---- the project's page (B86) ---------------------------------------------
@@ -83,70 +80,69 @@ const view = async (v, sel) => {
   if (sel) await page.waitForSelector(`.pane .nb ${sel}`, { state: 'attached', timeout: 20000 });
   await sleep(400);
 };
-await view('briefing', '#rlAdd');
-await page.waitForSelector('.pane .nb #memAdd button', { state: 'attached', timeout: 20000 });
+await view('briefing', '#rlList');
+await page.waitForSelector('.pane .nb #memAdd', { state: 'attached', timeout: 20000 });
 const head = await page.evaluate(() => {
-  const h = document.querySelector('.pane .phead [data-c]'), n = document.querySelector('.pane .pnote.bad');
-  return { dead: h?.disabled, note: n?.textContent || '' };
+  const h = document.querySelector('.pane .phead [data-c]'), n = document.querySelector('.pane .pnote');
+  return { start: !!h, note: n?.textContent || '' };
 });
-ok(head.dead && /no Projects Write/.test(head.note), `the page's header: Start Claude dead, why under it (${head.note})`);
+ok(!head.start && !head.note, `the page's header: no Start Claude, nothing said (${head.note})`);
 const ov = await page.evaluate(() => {
   const nb = document.querySelector('.pane .nb'), add = nb.querySelector('#rlAdd');
-  return { add: add.disabled, why: add.closest('.addbar')?.nextElementSibling?.textContent || '',
+  return { add: !!add, why: nb.querySelectorAll('.deadwhy').length,
            switches: [...nb.querySelectorAll('.grHere')].map(c => c.disabled),
            edits: nb.querySelectorAll('.rulerow .rlEdit, .rulerow .rlRm').length,
-           mem: nb.querySelector('#memAdd button')?.disabled, memWhy: nb.querySelector('#memAdd .deadwhy')?.textContent || '' };
+           mem: !!nb.querySelector('#memAdd button') };
 });
-ok(ov.add && /no Projects Write on alpha/.test(ov.why), `Overview: Add a rule dead, why under it (${ov.why})`);
+ok(!ov.add && !ov.why, `Overview: no Add a rule, and no reason drawn (${ov.why})`);
 ok(ov.switches.every(Boolean) && ov.edits === 0, `...every global rule's switch dead (${ov.switches.length}) and no Edit or Remove on a rule`);
-ok(ov.mem === true && /no Projects Write/.test(ov.memWhy), `...Write a memory dead, why under it (${ov.memWhy})`);
+ok(!ov.mem, '...and no Write a memory');
 
 await view('roadmap', '#roadmapShow');
 const rm = await page.evaluate(() => {
   const nb = document.querySelector('.pane .nb');
-  return { add: nb.querySelector('#roadmapShow').disabled, why: nb.querySelector('#roadmapWhy')?.checkVisibility() ? nb.querySelector('#roadmapWhy').textContent : '',
+  return { add: nb.querySelector('#roadmapShow').checkVisibility(), why: nb.querySelectorAll('.deadwhy').length,
            order: nb.querySelector('#roadmapOrder').hidden,
            acts: nb.querySelectorAll('#roadmapList .rowacts, #roadmapList .addstep, #roadmapList .go').length };
 });
-ok(rm.add && /no Projects Write/.test(rm.why) && rm.order, `Plan: Add to roadmap dead with why under it, Reorder gone (${rm.why})`);
+ok(!rm.add && !rm.why && rm.order, `Plan: no Add to roadmap and no Reorder, nothing said (${rm.why})`);
 ok(rm.acts === 0, `...and no row carries Done, Shelve, Reword, Drop, a step or a send (${rm.acts})`);
 
-await view('bugs', '#bugAdd button');
+await view('bugs', '#bugAdd');
 const bg = await page.evaluate(() => {
   const nb = document.querySelector('.pane .nb');
-  return { add: nb.querySelector('#bugAdd button').disabled, why: nb.querySelector('#bugAdd .deadwhy')?.textContent || '',
+  return { add: !!nb.querySelector('#bugAdd button'), why: nb.querySelectorAll('.deadwhy').length,
            acts: nb.querySelectorAll('#bugList .macts').length };
 });
-ok(bg.add && /no Projects Write/.test(bg.why) && bg.acts === 0, `Bugs: Report a bug dead with why, and no verbs on a report (${bg.why})`);
+ok(!bg.add && !bg.why && bg.acts === 0, `Bugs: no Report a bug, no verbs on a report, nothing said (${bg.why})`);
 
-await view('git', '#gitWhy');
-await page.waitForFunction(() => document.querySelector('.pane .nb #gitWhy')?.checkVisibility()
+await view('git', '#gitHint');
+await page.waitForFunction(() => document.querySelector('.pane .nb #gitNet [data-gitact="fetch"]')?.hidden
   || /not a git|no repository/.test(document.querySelector('.pane .nb #gitHint')?.textContent || ''), null, { timeout: 20000 });
 const gt = await page.evaluate(() => {
   const nb = document.querySelector('.pane .nb');
-  return { why: nb.querySelector('#gitWhy')?.checkVisibility() ? nb.querySelector('#gitWhy').textContent : '',
-           net: [...nb.querySelectorAll('#gitNet [data-gitact]')].filter(b => b.checkVisibility()).map(b => b.disabled),
+  return { why: nb.querySelectorAll('.deadwhy').length,
+           net: [...nb.querySelectorAll('#gitNet [data-gitact]')].filter(b => b.checkVisibility()).length,
            verbs: nb.querySelectorAll('#gitBody [data-gitmerge], #gitBody [data-gitaskbranch], #gitBody [data-gitswitch], #gitBody [data-gitdelete], #gitBody #gitCommit').length,
            hint: nb.querySelector('#gitHint')?.textContent || '' };
 });
 if (/not a git|no repository/.test(gt.hint)) ok(true, 'Code > Git: alpha has no repository here, nothing to change');
 else {
-  ok(/no Projects Write/.test(gt.why) && gt.net.every(Boolean), `Code > Git: Fetch and Push dead, why under them (${gt.why})`);
+  ok(!gt.why && gt.net === 0, `Code > Git: no Fetch, Push or Pull, nothing said (${gt.net})`);
   ok(gt.verbs === 0, `...and no branch carries Merge, Ask Claude, Switch or Delete (${gt.verbs})`);
 }
 
-// Settings: Delete project dead with why, and nothing asked to be refused (B89).
+// Settings: no Delete project, and nothing asked to be refused (B89).
 const before = asked.length;
 await view('settings', '#rnDelete');
 await sleep(1500);
-const st = await page.evaluate(() => ({ del: document.querySelector('#rnDelete')?.disabled,
-  why: document.querySelector('#rnDeleteWhy')?.checkVisibility() ? document.querySelector('#rnDeleteWhy').textContent : '' }));
-ok(st.del === true && /deleting a project needs Project settings Write on alpha/.test(st.why), `Settings: Delete project dead, why under it (${st.why})`);
+const st = await page.evaluate(() => ({ del: document.querySelector('#rnDelete')?.hidden,
+  snap: !document.querySelector('#rnSnapField')?.hidden, sess: !document.querySelector('#rnSessField')?.hidden,
+  why: document.querySelectorAll('.deadwhy').length }));
+ok(st.del === true && !st.why, `Settings: no Delete project, nothing said (${st.why})`);
 const refusedAsks = asked.slice(before).filter(u => /\/api\/(snapshots|project-sessions)/.test(u));
 ok(refusedAsks.length === 0, `...and Snapshots and Running sessions are not asked for (${refusedAsks.join(', ') || 'none'})`);
-await splitPick(page, 'snapshots');
-const snapSaid = await page.evaluate(() => document.querySelector('#rnSnapRows')?.textContent || '');
-ok(/Project settings Write on alpha/.test(snapSaid), `...Snapshots says why, from the row (${snapSaid.slice(0, 80)})`);
+ok(!st.snap && !st.sess, '...nor drawn');
 
 // ---- Tests, Wiki, Design, Artifacts and Pending (B101) --------------------
 // What each has to show, made by the owner: a test run ingested, a wiki
@@ -165,23 +161,22 @@ ok(/Project settings Write on alpha/.test(snapSaid), `...Snapshots says why, fro
 }
 await view('tests', '#tstList .tst > summary');
 await page.click('.pane .nb #tstList .tst > summary');
-await page.waitForSelector('.pane .nb #tstList .tst[open] .tstEdit', { state: 'attached', timeout: 15000 });
+await page.waitForSelector('.pane .nb #tstList .tst[open] .bfield', { state: 'attached', timeout: 15000 });
 const ts = await page.evaluate(() => {
   const b = document.querySelector('.pane .nb #tstList .tst[open] .tstEdit');
-  return { dead: b.disabled, why: b.closest('.actbar')?.nextElementSibling?.classList.contains('deadwhy')
-    ? b.closest('.actbar').nextElementSibling.textContent : '' };
+  return { edit: !!b, why: document.querySelectorAll('.pane .nb .deadwhy').length };
 });
-ok(ts.dead && /no Projects Write on alpha/.test(ts.why), `Tests: a test's Edit dead, why under it (${ts.why})`);
+ok(!ts.edit && !ts.why, `Tests: a test has no Edit, nothing said (${ts.why})`);
 
-await view('wiki', '#wkNew');
+await view('wiki', '#wkBody');
 await page.waitForSelector('.pane .nb #wkBody .wktabs', { state: 'attached', timeout: 20000 });
 const wk = await page.evaluate(() => {
   const nb = document.querySelector('.pane .nb');
-  return { add: nb.querySelector('#wkNew').disabled, why: nb.querySelector('#wkAddBox .deadwhy')?.textContent || '',
+  return { add: !!nb.querySelector('#wkNew'), why: nb.querySelectorAll('.deadwhy').length,
            verbs: nb.querySelectorAll('#wkEditTab, #wkRename, #wkRm').length };
 });
-ok(wk.add && /no Projects Write/.test(wk.why) && wk.verbs === 0,
-   `Wiki: New page dead with why under it, and no Edit, Rename or Remove on a page (${wk.why})`);
+ok(!wk.add && !wk.why && wk.verbs === 0,
+   `Wiki: no New page, and no Edit, Rename or Remove on a page, nothing said (${wk.why})`);
 
 await view('design', '#dsWrite');
 await page.waitForFunction(() => document.querySelector('.pane .nb #dsBody [data-sect]'), null, { timeout: 20000 });
@@ -189,11 +184,10 @@ const ds = await page.evaluate(() => {
   const nb = document.querySelector('.pane .nb');
   const live = [...nb.querySelectorAll('#dsBody input, #dsBody select:not([data-dspick]), #dsBody textarea, #dsBody button')]
     .filter(e => !e.disabled).map(e => e.id || e.className || e.tagName);
-  return { write: nb.querySelector('#dsWrite').disabled,
-           why: nb.querySelector('#dsWhyF')?.checkVisibility() ? nb.querySelector('#dsWhy').textContent : '', live };
+  return { write: nb.querySelector('#dsWrite').checkVisibility(), why: nb.querySelectorAll('.deadwhy').length, live };
 });
-ok(ds.write && /no Projects Write/.test(ds.why) && !ds.live.length,
-   `Design: Write the file and every field dead, why under the head (${ds.why}; live: ${ds.live.join(', ')})`);
+ok(!ds.write && !ds.why && !ds.live.length,
+   `Design: no Write the file, every field read-only, nothing said (${ds.why}; live: ${ds.live.join(', ')})`);
 
 // The fixture's alpha has no commit, so no version to move: the version a
 // project with one is read as, from the server's own shape, and drawn.
@@ -209,30 +203,42 @@ const ar = await page.evaluate(() => {
   const nb = document.querySelector('.pane .nb');
   return { verbs: nb.querySelectorAll('#artList [data-artinstall], #artList [data-artpush], #artList [data-artpin], #artList [data-artunnamed], #artList [data-artsign]').length,
            dl: nb.querySelectorAll('#artList a[download]').length,
-           why: nb.querySelector('#artList .deadwhy')?.textContent || '' };
+           why: nb.querySelectorAll('#artList .deadwhy').length };
 });
-ok(ar.verbs === 0 && ar.dl > 0 && /no Projects Write/.test(ar.why),
-   `Artifacts: a build carries Download and no Install, pin, Remove or Sign, the reason over the list (${ar.why})`);
+ok(ar.verbs === 0 && ar.dl > 0 && !ar.why,
+   `Artifacts: a build carries Download and no Install, pin, Remove or Sign, nothing said (${ar.why})`);
 await page.waitForSelector('.pane .nb #verBox [data-verbump]', { state: 'attached', timeout: 15000 });
 Object.assign(ar, await page.evaluate(() => {
   const nb = document.querySelector('.pane .nb');
-  return { ver: [...nb.querySelectorAll('#verBox [data-verbump], #verBox [data-verrelease], #verPolicy')].map(b => b.disabled),
-           verWhy: nb.querySelector('#verBox .verbtns + .deadwhy')?.textContent || '',
+  return { ver: [...nb.querySelectorAll('#verBox [data-verbump], #verBox [data-verrelease]')].map(b => b.checkVisibility()),
+           policy: nb.querySelector('#verPolicy')?.disabled, verWhy: nb.querySelectorAll('#verBox .deadwhy').length,
            verSaid: (nb.querySelector('#verBox')?.textContent || '').replace(/\s+/g, ' ').slice(0, 120) };
 }));
 await page.unroute('**/api/version?project=alpha*');
-ok(ar.ver.length > 0 && ar.ver.every(Boolean) && /Releases and versions Write on alpha/.test(ar.verWhy),
-   `...and the version's bumps, Release and Claude access dead, the reason under them (${ar.verWhy || ar.verSaid})`);
+ok(ar.ver.length > 0 && !ar.ver.some(Boolean) && ar.policy !== false && !ar.verWhy,
+   `...and no bump or Release on the version, its Claude access read-only, nothing said (${ar.verSaid})`);
 const cl = await api('/api/changelog', { project: 'alpha', component: '', groups: [] }, { ...owner, Authorization: auth });
 ok(cl.status === 403 && /no Projects Write/.test(cl.error || ''), `...and the changelog's Save is refused it at the server too (${cl.status} ${cl.error || ''})`);
 
 // Pending: what a session left for approval, drawn into the review dialog.
 await page.evaluate(() => { pendFor = 'alpha'; $("pendModal").hidden = false;
   drawPendingModal({ pending: [{ id: 1, kind: 'roadmap', verb: 'add', summary: 'something a session added', args: {} }], gate: {} }); });
-const pd = await page.evaluate(() => ({ ok: $("pendApprove").disabled, no: $("pendDeny").disabled,
-  why: $("pendWhyF").checkVisibility() ? $("pendWhy").textContent : '' }));
-ok(pd.ok && pd.no && /no Projects Write/.test(pd.why), `Pending: Approve and Deny dead, why over the foot (${pd.why})`);
+const pd = await page.evaluate(() => ({ ok: $("pendApprove").hidden, no: $("pendDeny").hidden,
+  why: $("pendModal").querySelectorAll('.deadwhy').length }));
+ok(pd.ok && pd.no && !pd.why, `Pending: no Approve or Deny, nothing said (${pd.why})`);
 await page.evaluate(() => { $("pendModal").hidden = true; pendFor = null; });
+
+// What is left of the reason under a dead control is a feature the install
+// switched off (FEATURES_OFF): in the warning's yellow, never the failure's
+// red (the operator, 21 Oct).
+const tone = await page.evaluate(() => {
+  const c = v => { const d = document.createElement('i'); d.style.color = `var(${v})`; document.body.append(d);
+    const x = getComputedStyle(d).color; d.remove(); return x; };
+  const box = document.createElement('div'); box.innerHTML = deadWhy('switched off here'); document.body.append(box);
+  const got = getComputedStyle(box.firstElementChild).color; box.remove();
+  return { got, warn: c('--warn'), bad: c('--bad') };
+});
+ok(tone.got === tone.warn && tone.got !== tone.bad, `a switched-off feature's reason is yellow, not red (${tone.got})`);
 
 // ---- the Profile's Password (B90) -----------------------------------------
 await page.evaluate(() => openProfileTab());

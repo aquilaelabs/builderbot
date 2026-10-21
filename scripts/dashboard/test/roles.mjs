@@ -278,10 +278,10 @@ for (const who of CAST) {
     add: !!document.querySelector('.userstab #uAddOpen'), save: !!document.querySelector('.userstab #ueSave'),
     remove: !!document.querySelector('.userstab #ueRemove'),
     live: [...document.querySelectorAll('.userstab .rdetail input, .userstab .rdetail select, .userstab .rdetail [data-rprojoff]')].filter(i => !i.disabled).length,
-    why: document.querySelector('.userstab #ueWhyRo')?.textContent || '',
+    why: [...document.querySelectorAll('.userstab .sub.bad')].filter(e => e.checkVisibility()).length,
     access: document.querySelector('.userstab #ueAccess')?.textContent.replace(/\s+/g, ' ') || '' }));
-  ok(!u.add && !u.save && !u.remove && u.live === 0 && /Read, not Write/.test(u.why) && !/not yours to give/.test(u.access),
-     `Users with Read: no Add, Save or Remove, every field dead, the reason on the page, its roles shown (${JSON.stringify({ ...u, access: u.access.slice(0, 60) })})`);
+  ok(!u.add && !u.save && !u.remove && u.live === 0 && !u.why && !/not yours to give/.test(u.access),
+     `Users with Read: no Add, Save or Remove, every field read-only, no line saying why, its roles shown (${JSON.stringify({ ...u, access: u.access.slice(0, 60) })})`);
   await page.evaluate(() => openRolesTab());
   await page.waitForSelector('.rolestab [data-rpick]', { timeout: 15000 }).catch(() => {});
   const r = await page.evaluate(() => ({ bad: document.querySelector('.rolestab .row.bad')?.textContent || '',

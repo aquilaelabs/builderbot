@@ -566,6 +566,10 @@ header h1{font-size:15px;margin:0;font-weight:600}
 .banner{flex:0 0 auto;padding:6px 12px;font-size:13px;line-height:1.4;color:var(--ink);
   background:var(--panel);border-bottom:var(--hair) solid var(--line);overflow-wrap:anywhere}
 .banner a{color:var(--note);margin-left:6px}
+/* Maintenance mode's, for the owner while it is on: in the warning color,
+   since everybody else is kept out until it is off. */
+.banner.maint{background:color-mix(in srgb, var(--warn) 18%, var(--panel))}
+.banner[hidden]{display:none}
 /* Every header button one box, at every width: the bell carried the tap
    size on its own and the bug, gear and sign-out got it only on a narrow
    screen, so on a desk the bell stood taller and wider than its row (the
@@ -3331,7 +3335,8 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;align-items:center;justify-content:center}
 /* Search in the top bar: a field that jumps, its rows under it. */
 .jump{position:relative;flex:0 1 360px;min-width:0}
-.jump input{width:100%;min-height:32px;padding:4px 10px;background:var(--sunk);color:var(--ink);font:var(--f-data)}
+/* The header's height, as the buttons beside it are (B142). */
+.jump input{width:100%;min-height:var(--tap);padding:4px 10px;background:var(--sunk);color:var(--ink);font:var(--f-data)}
 .jump input::placeholder{color:var(--dim)}
 @media(max-width:1000px){ .jump{flex:0 1 150px} .meta.host{display:none} }
 .jumplist{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:40;display:flex;flex-direction:column;
@@ -3388,6 +3393,9 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
   .tiles > .tile:only-child{grid-column:1 / -1}
   .tiles:has(> .tile:last-child:nth-child(odd)) .tl,
   .tiles:has(> .tile:last-child:nth-child(odd)) .ts{overflow-wrap:anywhere}
+  /* ...and a number with its unit wraps at the space rather than being cut
+     in a third of the screen ("11.1 TB" read "11.1…", B150). */
+  .tiles:has(> .tile:last-child:nth-child(odd)) .tv{white-space:normal}
 }
 /* A container's card (the operator's concept, 17 Oct). Its head: the name,
    its pill and how long it has been up, a mono line of what it is (image,
@@ -3568,6 +3576,12 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .lfilter .chips{flex:1 1 auto;min-width:0}
 /* With no chips to draw (one kind of row), the search starts the band. */
 .lfilter .chips:empty{display:none}
+/* The chips by release (the Roadmap's targets, Bugs' seen-in): a line of
+   their own under the others, which they would otherwise share a wrap with. */
+.lfilter .chips.relchips{flex:1 1 100%;order:3}
+/* On a phone, where the search wraps under the chips, it comes after both
+   lines of them rather than between. */
+@media(max-width:900px){ .lfilter:has(.relchips:not(:empty)) :is(input[type=search],.lsort){order:4} }
 .lfilter input[type=search]{flex:0 1 16rem;min-width:10rem}
 /* A band's order (Sort on Bugs) keeps its label beside its menu. */
 .lfilter .lsort{display:flex;align-items:center;gap:6px;flex:0 0 auto}
@@ -4719,7 +4733,8 @@ html,body{overscroll-behavior-x:none}
    count a pill in it rather than a dot to decode. */
 .dockline .dtab.dchat .dlbl{padding:2px 10px}
 .dockline .dtab.dchat.unread{color:var(--ink)}
-.pane .bar.dockbar .ic{min-height:30px;min-width:30px}
+/* As tall as a tab beside it, its 32px and its edges (B142). */
+.pane .bar.dockbar .ic{min-height:calc(32px + 2 * var(--hair));min-width:calc(32px + 2 * var(--hair))}
 @media(max-width:900px){
   .panes{border:0;border-radius:0}
   /* Up, the page is not drawn and the header's line is right above: the
@@ -5113,7 +5128,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           title="reorder; the send controls come back after"
           >Reorder</button>
       </div>
-      <div class="notice bad deadwhy" id="roadmapWhy" hidden></div>
       <div class="roadmapadd ctlrow" id="roadmapForm" hidden>
         <textarea id="roadmapText" class="proseline" rows="1" maxlength="500"
                placeholder="something for the roadmap"></textarea>
@@ -5122,10 +5136,12 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       </div>
     </div>
     <!-- Narrowing the list (R254 step 1): chips for All, Open and Shelved,
+         a line of them by the release an item is meant for,
          and a search over the items, their steps and their details, which
          reaches the Finished section too. A view, never a setting. -->
     <div class="field lfilter" id="roadmapFilter" hidden>
       <div class="chips" id="roadmapChips"></div>
+      <div class="chips relchips" id="roadmapVers"></div>
       <input id="roadmapFind" type="search" maxlength="80" autocomplete="off"
              placeholder="search the roadmap" aria-label="search the roadmap">
     </div>
@@ -5238,6 +5254,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            within it. -->
       <div class="field lfilter" id="bugSortBar">
         <div class="chips" id="bugChips"></div>
+        <div class="chips relchips" id="bugVers"></div>
         <input id="bugFind" type="search" maxlength="80" autocomplete="off"
                placeholder="search the tracker" aria-label="search the tracker">
         <span class="lsort"><label for="bugSort">Sort</label>
@@ -5331,7 +5348,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" data-gitact="pull" title="fast-forward this branch to its upstream">Pull</button>
         <button type="button" data-gitact="push" class="primary" title="send this branch up, with the project's credentials">Push</button>
       </div>
-      <div class="field" id="gitWhyF" hidden><div class="notice bad deadwhy" id="gitWhy"></div></div>
       <div id="gitBody" data-skel="git"></div>
       <!-- A branch against main, its own page (R269 step 2): drawn in
            place of the sections above while the address names it. -->
@@ -5348,7 +5364,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" id="dsWrite"
           title="write docs/design-language.md into the project from what is saved here; a session commits it with the work">Write the file</button></div>
       <!-- Why Write the file and every control below are dead (B101). -->
-      <div class="field" id="dsWhyF" hidden><div class="notice bad deadwhy" id="dsWhy"></div></div>
       <!-- Add page is the Pages section's own (the operator, 29 Sep):
            nb-design.js draws it at the top of that section. -->
       <div id="dsBody" data-skel="design"></div>
@@ -5806,7 +5821,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <label id="rnReadsLabel">Reads<span class="help" data-help="other projects a session here may read, code and notebook alike, and never change" tabindex="0">?</span></label>
       <div class="lbox" id="rnReads" role="group" aria-labelledby="rnReadsLabel"></div>
       <div class="hint">A session here reads these projects, code and notebook, read-only; only a session on that project changes them.</div>
-      <div class="hint bad" id="rnReadsWhy" hidden>Only BuilderBot's owner chooses which other projects a project's sessions may read.</div>
+      <div class="hint" id="rnReadsWhy" hidden>Only BuilderBot's owner chooses which other projects a project's sessions may read.</div>
     </div>
     <!-- The places on its node a session here is shown (prefs.sees). A
          session's view is built from what it is given, so a share mounted
@@ -5905,7 +5920,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <button id="rnUnlink" class="danger" hidden>Unlink</button>
     </div>
     <!-- Why Delete project is dead for this account (B86), under it. -->
-    <div class="notice bad deadwhy" id="rnDeleteWhy" hidden></div>
   </div>
 </div>
 
@@ -6095,7 +6109,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     <div class="field" id="pendListF"><div id="pendList"></div></div>
     <div class="field"><div id="pendEmpty" hidden>Nothing is waiting here.</div></div>
     <!-- Why Approve and Deny are dead for this account (B101). -->
-    <div class="field" id="pendWhyF" hidden><div class="notice bad deadwhy" id="pendWhy"></div></div>
     <div class="foot">
       <button id="pendApprove" class="primary">Approve</button>
       <button id="pendDeny" class="danger">Deny</button>

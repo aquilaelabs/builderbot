@@ -176,9 +176,12 @@ function nbBugsView({$, nb, project}){
   }
 
   function drawBugAdd(){
-    const box = $("bugAdd"), ro = projWriteWhy(project);
+    const box = $("bugAdd");
+    // Not drawn for a role that only reads the project (the operator, 21
+    // Oct: what a role does not give is not advertised).
+    if (projWriteWhy(project)){ box.innerHTML = ""; return; }
     box.innerHTML = `<div class="addbar ctlrow" data-add="bug">
-      <button type="button"${ro ? " disabled" : ""}>Report a bug</button></div>${deadWhy(ro)}`;
+      <button type="button">Report a bug</button></div>`;
     // The same fold the memory writer opens with: the two are the same control
     // on two views of one notebook, and one of them appearing whole while the
     // other unrolled was the kind of difference you cannot unsee.
@@ -231,7 +234,13 @@ function nbBugsView({$, nb, project}){
                                           {key: "closed", label: "Closed", count: rows.length - open}], nb.bugChip, "data-bgchip"), true))
       $("bugChips").querySelectorAll("[data-bgchip]").forEach(b => b.onclick = () => fadeThrough(() => [$("bugList")], () => { nb.bugChip = b.dataset.bgchip; drawBugs(true); }));
     const q = (nb.bugFind || "").trim().toLowerCase();
-    const shown = b => (!nb.bugChip || (nb.bugChip === "open") === (b.status === "open")) && bugMatch(b, q);
+    // ...and by the release a report was seen in (the operator, 21 Oct).
+    const vers = versionChips(rows, b => b.seen_in, "Unknown");
+    if (nb.bugVer && !vers.some(v => v.key === nb.bugVer)) nb.bugVer = "";
+    if (paint($("bugVers"), chipButtons(vers, nb.bugVer, "data-bgver"), true))
+      $("bugVers").querySelectorAll("[data-bgver]").forEach(b => b.onclick = () => fadeThrough(() => [$("bugList")], () => { nb.bugVer = b.dataset.bgver; drawBugs(true); }));
+    const shown = b => (!nb.bugChip || (nb.bugChip === "open") === (b.status === "open"))
+      && inRelease(b.seen_in, nb.bugVer) && bugMatch(b, q);
     // Which were open before this redraw, so acting on one does not fold it.
     const held = new Set([...list.querySelectorAll(".bug[open]")].map(d => d.dataset.id));
     // Only the rows on show are built, a page at a time (pageLimit): every

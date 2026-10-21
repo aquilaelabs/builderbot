@@ -1819,7 +1819,7 @@ ok(AD.user[0] === 'ssh://someone@10.0.0.9' && AD.user[1] === true,
    '...and writing the account out still means what it says');
 ok(AD.proxy[1] === false && /sandbox/.test(AD.proxy[2]) && /tcp:/.test(AD.proxy[2]),
    'anything that is not a sandbox VM is off, and the reason names what was set');
-ok(AD.unset[1] === false && /enroll the sandbox VM/.test(AD.unset[2]),
+ok(AD.unset[1] === false && /no node with a daemon yet: enroll one on the Nodes page/.test(AD.unset[2]),
    '...as is no node at all, which is the shipped state and not a fault');
 ok(AD.bare[3] === 'alpha' && AD.bare[4] === 'dev',
    'a container is called exactly what it was named, with no prefix in front of it');
@@ -2879,7 +2879,7 @@ print(json.dumps(out))
   const ONE = JSON.parse(one.trim().split('\n').pop());
   ok(ONE.vm.kind === 'the sandbox VM' && ONE.vm.where === 'ssh://bb@vm',
      'the daemon is the sandbox VM the node record names, and nothing else is looked for');
-  ok(!ONE.off[0].kind && /enroll the sandbox VM/.test(ONE.off[1]),
+  ok(!ONE.off[0].kind && /no node with a daemon yet: enroll one on the Nodes page/.test(ONE.off[1]),
      '...and with no node the feature is off, with the reason said');
 }
 

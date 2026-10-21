@@ -104,6 +104,7 @@ function nbRoadmapView({$, nb}){
     if (idx >= 0) return factGrid([["Done", st.done ? rmDay(st.done) : ""], ["Sent", st.sent ? rmDay(st.sent) : ""]]);
     const steps = r.steps || [];
     return factGrid([["Added", r.added ? `${rmDay(r.added)}, by ${who(r.by)}` : ""],
+                     ["Target", r.target || ""],
                      ["Plan", steps.length ? `${steps.filter(x => x.done).length} of ${steps.length} steps done` : ""],
                      ["Sent", r.sent ? rmDay(r.sent) : ""],
                      ["Changelog", clRefs((nb.roadmapChangelog || {})["R" + r.id]), {html: true}]]);
@@ -158,8 +159,10 @@ function nbRoadmapView({$, nb}){
     // The tags sit above the line rather than beside it: they are labels on the
     // whole item, and on a phone a pill sharing the first line pushed the words
     // into a column two thirds as wide as the ones under it.
-    const tags = idx >= 0 || r.by !== "claude" ? ""
-      : `<span class="tag who" title="Claude put this here">claude</span>`;
+    // ...and the release it is meant for, where one is set (the operator,
+    // 21 Oct).
+    const tags = idx >= 0 ? "" : (r.target ? `<span class="tag ver" title="meant to ship in ${esc(r.target)}">for ${esc(r.target)}</span>` : "")
+      + (r.by === "claude" ? `<span class="tag who" title="Claude put this here">claude</span>` : "");
     // In reorder mode the row's three controls are replaced rather than joined:
     // five buttons and a number do not fit a phone, and moving things about is
     // not something anybody does at the same time as sending them.
@@ -310,8 +313,17 @@ function nbRoadmapView({$, nb}){
       $("roadmapChips").querySelectorAll("[data-rmchip]").forEach(b => b.onclick = () => {
         fadeThrough(() => [$("roadmapList")], () => { nb.roadmapChip = b.dataset.rmchip; redrawRoadmap(); }); });
     setHidden($("roadmapFilter"), rows.length + finishedN < 2);
+    // ...and by the release an item is meant for (the operator, 21 Oct): a
+    // chip per target, oldest first, and No target; the Finished section
+    // narrows by it too, so what went into a release can be read back.
+    const vers = versionChips(rows, r => r.target, "No target");
+    if (nb.roadmapVer && !vers.some(v => v.key === nb.roadmapVer)) nb.roadmapVer = "";
+    if (paint($("roadmapVers"), chipButtons(vers, nb.roadmapVer, "data-rmver"), true))
+      $("roadmapVers").querySelectorAll("[data-rmver]").forEach(b => b.onclick = () => {
+        fadeThrough(() => [$("roadmapList"), $("roadmapDoneList")], () => {
+          nb.roadmapVer = b.dataset.rmver; redrawRoadmap(); if (nb.roadmapDone) nb.drawFinished(); }); });
     const q = (nb.roadmapFind || "").trim().toLowerCase();
-    const shown = r => (!nb.roadmapChip || (nb.roadmapChip === "shelved") === !!r.shelved) && rmMatch(r, q);
+    const shown = r => (!nb.roadmapChip || (nb.roadmapChip === "shelved") === !!r.shelved) && rmVer(r, nb.roadmapVer) && rmMatch(r, q);
     setHidden($("roadmapDoneSect"), !finishedN);
     setText($("roadmapDoneN"), finishedN ? String(finishedN) : "");
     // An open section fetches again when what it holds is not what the
@@ -425,13 +437,13 @@ function nbRoadmapView({$, nb}){
     nb.drawBatchNote();
     nb.syncSave();
     $("roadmapOrder").hidden = !rows.length || !!ro;
-    // Add to roadmap dead, with why under it (B86), and its box shut.
-    $("roadmapShow").disabled = !!ro;
-    if (ro && !$("roadmapForm").hidden){ $("roadmapForm").hidden = true; $("roadmapShow").hidden = false; }
-    setText($("roadmapWhy"), ro);
-    setHidden($("roadmapWhy"), !ro);
+    // No Add to roadmap for a role that only reads (B86; the operator, 21
+    // Oct: what a role does not give is not drawn), and its box shut.
+    if (ro && !$("roadmapForm").hidden) $("roadmapForm").hidden = true;
+    if (ro) $("roadmapShow").hidden = true;
+    else if ($("roadmapForm").hidden) $("roadmapShow").hidden = false;
     // An empty band (the box open, nothing to reorder) is not drawn.
-    $("roadmapAddBar").hidden = !$("roadmapForm").hidden && $("roadmapOrder").hidden;
+    $("roadmapAddBar").hidden = !!ro || (!$("roadmapForm").hidden && $("roadmapOrder").hidden);
     $("roadmapOrder").classList.toggle("on", nb.roadmapOrdering);
     $("roadmapLog").classList.toggle("on", nb.roadmapLogOn);
     drawSendBox(live);
@@ -755,7 +767,9 @@ function nbRoadmapView({$, nb}){
     <textarea maxlength="4000" spellcheck="false"></textarea>
     <div class="q qd"><span>Details: the technical half: files, functions, approach</span></div>
     <textarea class="dta" maxlength="20000" spellcheck="false"
-      placeholder="mostly Claude's to write; empty is fine"></textarea>
+      placeholder="mostly Claude's to write; empty is fine"></textarea>${step < 0 ? `
+    <div class="q qd"><span>Target: the release it is meant to ship in; empty for none</span></div>
+    <input class="tgt" maxlength="24" autocomplete="off" spellcheck="false" inputmode="decimal" placeholder="0.6.0">` : ""}
     <div class="actbar">
       <button type="button" class="stop">Cancel</button>
       <button type="button" class="primary">Save</button></div>`;
@@ -765,11 +779,20 @@ function nbRoadmapView({$, nb}){
     ta.value = was;
     const dta = box.querySelector(".dta");
     dta.value = wasInfo;
+    const tgt = box.querySelector(".tgt"), wasTarget = r0?.target || "";
+    if (tgt) tgt.value = wasTarget;
     const shut = () => box.remove();
     box.querySelector(".stop").onclick = shut;
     box.querySelector(".primary").onclick = () => {
-      const now = ta.value, nowInfo = dta.value;
+      const now = ta.value, nowInfo = dta.value, nowTarget = (tgt?.value || "").trim().replace(/^v/i, "");
+      // The server's own check, said before Save rather than after it.
+      if (tgt && nowTarget && !/^\d{1,4}\.\d{1,5}\.\d{1,6}$/.test(nowTarget)){
+        notify(`${nowTarget} is not a version: a target is X.Y.Z, as 0.6.0`, true);
+        tgt.focus();
+        return;
+      }
       shut();
+      if (tgt && nowTarget !== wasTarget) stageTarget(id, nowTarget);
       if (now.trim() && now !== was)
         stageEdit(id, step < 0 ? null : step, now);
       if (nowInfo !== wasInfo)
@@ -966,6 +989,16 @@ function nbRoadmapView({$, nb}){
     });
   }
 
+  // The release an item is meant for: a state like a shelf, so it carries
+  // no was; "" clears it.
+  function stageTarget(id, target){
+    return stage({action: "target", id, target}, () => {
+      const r = findRow(id);
+      if (!r) return false;
+      if (target) r.target = target; else delete r.target;
+    });
+  }
+
   function stageRemove(id, step, why){
     return stage({action: "remove", id, ...(step >= 0 ? {step} : {}), why,
                   was: wasOf(id, step, "remove")}, () => {
@@ -1085,7 +1118,11 @@ function nbRoadmapView({$, nb}){
     const held = new Set([...host.querySelectorAll("details.grp[open]")].map(d => d.dataset.done));
     // Only the matching rows, a page at a time (pageLimit, the operator,
     // 17 Oct): built whole and hidden, a long finished list was slow to draw.
-    const vis = rows.filter(r => rmMatch(r, q));
+    const vis = rows.filter(r => rmVer(r, nb.roadmapVer) && rmMatch(r, q));
+    if (!vis.length && nb.roadmapVer){
+      host.innerHTML = `<div class="empty">nothing finished ${nb.roadmapVer === "none" ? "without a target" : `for ${esc(nb.roadmapVer)}`}</div>`;
+      return;
+    }
     const lim = pageLimit(host, "roadmapDone", vis.length);
     host.innerHTML = vis.slice(0, lim).map(r => `<details class="grp done" data-done="${r.id}"${
         held.has(String(r.id)) ? " open" : ""}>
@@ -1093,6 +1130,7 @@ function nbRoadmapView({$, nb}){
         <span class="sub dim">done ${r.done_at ? esc(when(r.done_at)) : ""}${(() => { const v = shippedIn(r.done_at, nb.roadmapReleases);
           return v ? ` · in ${esc(v)}` : ""; })()}</span></span></div></summary>
       ${factGrid([["Added", r.added ? `${rmDay(r.added)}, by ${r.by === "claude" ? "Claude" : "you"}` : ""],
+                  ["Target", r.target || ""],
                   ["Finished", r.done_at ? `${rmDay(r.done_at)}${r.done_by ? `, by ${r.done_by === "claude" ? "Claude" : r.done_by === "you" ? "you" : r.done_by}` : ""}` : ""],
                   ["Shipped in", (() => { const v = shippedIn(r.done_at, nb.roadmapReleases);
                     return v === null ? "not yet: planned for the next release" : v || ""; })()],
@@ -1164,10 +1202,13 @@ function clRefs(refs){
 
 // Whether an item answers a search (R254 step 1): its number (R12 or 12), its
 // words, its steps' and their details, case aside. An empty search is all.
+// Whether an item is under the target chip in force ("" is All).
+const rmVer = (r, v) => inRelease(r.target, v);
+
 function rmMatch(r, q){
   if (!q) return true;
   if (q === "r" + r.id || q === String(r.id)) return true;
-  return [r.text, r.info, ...(r.steps || []).flatMap(st => [st.text, st.info])]
+  return [r.text, r.info, r.target, ...(r.steps || []).flatMap(st => [st.text, st.info])]
     .some(t => String(t || "").toLowerCase().includes(q));
 }
 

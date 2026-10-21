@@ -180,6 +180,11 @@ def holds(reap=False):
     return out
 
 
+def missing_nodes():
+    """The ids of the agent nodes that run sessions and have no Claude Code."""
+    return {n["id"] for n in (nodes.node_list() if nodes else []) if n.get("kind") == "agent" and missing(n)}
+
+
 def missing(n):
     """True when a node runs a session account and has measured no Claude
     Code for it: a session there has nothing to run."""

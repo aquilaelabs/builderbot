@@ -162,11 +162,12 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // for, so the one left open when nobody has chosen.
     // A role that reads the project and does not write it (B101): no
     // Install, Push, Remove or pin on a file, no Sign without Releases and versions
-    // Write, and why said once over the list.
+    // Write; nothing says why (the operator, 21 Oct: what a role does not
+    // give is not advertised).
     const ro = projWriteWhy(project), relWhy = projReleaseWhy(project);
     const filesBody = !rows.length
       ? `<div class="hint">Nothing in <b>dist/</b> yet: a build copies what it keeps there.</div>`
-      : deadWhy(ro) + devNote + jobHtml + instHtml + rows.map((a, i) => `
+      : devNote + jobHtml + instHtml + rows.map((a, i) => `
         <div class="artrow">
           <span class="grow">
             <span class="top"><span class="pill">${esc(a.kind)}</span>
@@ -468,17 +469,17 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       verSection(v) + nb.sectBar(`artifacts:version${v.component ? ":" + v.component : ""}`),
       {cls: v.target ? "" : "warn"})).join("");
     wireSections(box);
-    // A role without Releases and versions Write on the project (B101): every control
-    // that moves or releases the version dead, the reason under its row;
-    // without Projects Write, Send to Claude too.
+    // A role without Releases and versions Write on the project (B101):
+    // every button that moves or releases the version left out, and the
+    // fields that say it read-only; without Projects Write, Send to Claude
+    // too. Nothing says why (the operator, 21 Oct).
     {
       const relWhy = projReleaseWhy(project), ro = projWriteWhy(project);
-      if (relWhy || ro){
-        box.querySelectorAll("[data-verbump],[data-verrelease],[data-verunbump],[data-verinit],[data-veradd],#verPolicy,.vstart,.vdir")
-          .forEach(x => { if (relWhy) x.disabled = true; });
-        if (ro) box.querySelectorAll("[data-verask]").forEach(x => { x.disabled = true; });
-        box.querySelectorAll(".verbtns, details.veradd .verinit").forEach(bar => bar.insertAdjacentHTML("afterend", deadWhy(relWhy || ro)));
+      if (relWhy){
+        box.querySelectorAll("[data-verbump],[data-verrelease],[data-verunbump],[data-verinit],[data-veradd]").forEach(x => { x.hidden = true; });
+        box.querySelectorAll("#verPolicy,.vstart,.vdir").forEach(x => { x.disabled = true; });
       }
+      if (ro) box.querySelectorAll("[data-verask]").forEach(x => { x.hidden = true; });
     }
     // Releasing: outward-facing, and the one thing on this tab other people
     // fetch. Confirmed by name, because a pushed tag is not taken back from
@@ -612,9 +613,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
                    </div>`).join("")}
                </div>`).join("")
              : `<div class="empty">nothing unreleased here yet</div>`}
-             <div class="actbar"><span class="state" id="clState"></span>
-               <button type="button" class="primary" id="clSave"${projWriteWhy(project) ? " disabled" : ""}>Save</button></div>${
-             deadWhy(projWriteWhy(project))}
+             ${projWriteWhy(project) ? "" : `<div class="actbar"><span class="state" id="clState"></span>
+               <button type="button" class="primary" id="clSave">Save</button></div>`}
            </div>
            ${dated ? `<div class="verlogpane">${clLinks(dated)}</div>` : ""}`;
         wire();

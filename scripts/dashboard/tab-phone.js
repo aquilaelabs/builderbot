@@ -129,7 +129,7 @@ function phWhy(which, offWhy){
 }
 const phWhyLine = (which, offWhy) => {
   const why = phWhy(which, offWhy);
-  return `<div class="sub bad phwhy" data-phwhy="${which}"${why ? "" : " hidden"}>${why}</div>`;
+  return `<div class="sub warn phwhy" data-phwhy="${which}"${why ? "" : " hidden"}>${why}</div>`;
 };
 
 // The section's body for one node: its phone, connecting and pairing, the
@@ -150,7 +150,6 @@ function phonePanel(n){
   const offWhy = featureOff("phone") ? esc(featureOff("phone"))
     : held ? `connected by ${esc(n.owner.name)}: only they can change it`
     : !n.live ? "the node is not dialing in"
-    : !mayPhone() ? "this account may not drive the phone"
     : "";
   // A word and an animated ellipsis, never a bar: nothing here knows a
   // percentage, and inventing one would be a lie about progress.

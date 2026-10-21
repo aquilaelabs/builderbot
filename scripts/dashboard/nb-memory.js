@@ -332,9 +332,10 @@ function nbMemoryView({$, nb}){
     reference: "a pointer somewhere else: a URL, a dashboard, a ticket"};
 
   function drawMemAdd(){
-    const box = $("memAdd"), ro = projWriteWhy(nb.memProj);
+    const box = $("memAdd");
+    if (projWriteWhy(nb.memProj)){ box.innerHTML = ""; return; }
     box.innerHTML = `<div class="addbar ctlrow" data-add="memory">
-    <button type="button"${ro ? " disabled" : ""}>Write a memory</button></div>${deadWhy(ro)}`;
+    <button type="button">Write a memory</button></div>`;
     box.querySelector("button").onclick = openMemAdd;
   }
 

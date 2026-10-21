@@ -279,6 +279,16 @@ the step does not start from a cold grep. Claude writes them with
 `bb roadmap info N [M] "..."`, usually when it writes the plan; the pencil edits
 them alongside the words.
 
+**An item can name the release it is meant for**, its target: the
+project's own version, as `0.6.0`. It shows as a tag above the item's words
+and among its facts, and a line of chips under the list's own narrows it to
+one release, or to the items meant for none yet; the Finished section
+narrows with it, so what went into a release can be read back. The Reword
+box sets it, and a session sets it with `bb roadmap target N 0.6.0` (or
+`--target` on `bb roadmap add`), and lists one release's with
+`bb roadmap --target 0.6.0`. It is a plan, not a gate: nothing holds a
+release for it, and what shipped an item is still read off the changelog.
+
 **A group is one goal with an order to it.** Its title is that goal in plain
 words ("make the picker usable on a phone") and the steps under it carry the
 detail; the group folds like a bug's row, its title the heading and a tap on
@@ -441,6 +451,9 @@ is stamped with the project's version as `bb version` prints it, on filing
 (*in 0.4.0-dev.390+045bb5a* on the row) and again on closing (*closed in*),
 plus the image the container was running when it was filed; a report that
 predates the stamp stays blank rather than being backfilled with a guess.
+A line of chips under the Open and Closed ones narrows the list by the
+release a report was seen in (the X.Y.Z of its stamp), with Unknown for one
+that has none.
 Closing a bug that is already closed is refused: reopen it first, so the
 log says the earlier answer was withdrawn. A bug **closes**
 three ways, and the difference is what the next reader is told: **fixed**

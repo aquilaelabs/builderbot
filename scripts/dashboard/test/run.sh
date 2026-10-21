@@ -24,6 +24,11 @@
 # on the toolchain store and are found the way bb finds them. Missing either, the
 # run reports [skip] rather than passing by omission.
 set -euo pipefail
+# A Claude session's own git identity and credential helper ride in
+# GIT_CONFIG_n, which every git the fixture runs would read as its config,
+# and bb-tty leaves alone as somebody else's: not the fixture's to inherit
+# (B151; settings.mjs met it as B146).
+while IFS= read -r v; do unset "$v"; done < <(compgen -e | grep -E '^GIT_CONFIG_(COUNT|KEY_[0-9]+|VALUE_[0-9]+)$' || true)
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # Its own: the harness sources nothing of bb's, and the sentence a failed copy
 # meant to say ended as "die: command not found" (B231).

@@ -22,6 +22,15 @@ const sp = await page.evaluate(() => ({ hash: location.hash, on: document.queryS
 ok(sp.hash === '#/sessions' && sp.on && sp.head.join(',') === 'Session,Project,Node,Started' && !sp.bar && !sp.panel,
    `the rail's Sessions opens its page at #/sessions, a table of Session, Project, Node, Started, the old panel gone (${JSON.stringify(sp)})`);
 const row = n => page.locator('.sesstbl .sessrow', { has: page.locator(`[data-go="${n}"]`) });
+// ...and a session on the controller itself says when it started, as a
+// node's does: its Started was blank for every one here (B149).
+{
+  const started = await page.evaluate(() => {
+    const r = document.querySelector('.sesstbl .sessrow [data-go="shell-9"]')?.closest('.sessrow');
+    return r ? [...r.querySelectorAll('.td')].map(c => c.textContent.trim())[3] || '' : null;
+  });
+  ok(/ago|now/.test(started || ''), `a session here says when it started (${JSON.stringify(started)})`);
+}
 const btn = n => row(n).locator('button').first();
 
 ok((await btn('shell-9').textContent()).trim() === 'Open', 'minimized session shows Open');
@@ -285,7 +294,9 @@ ok(page.dialogs.length === ndx + 1 && /Your Claude session here ends now|2 Claud
    && !(await page.evaluate(() => tabs.some(t => t.arg === 'claude:ep.silon'))) && gone('claude-ep_silon') && gone(`${lockUid}~claude-ep_silon`),
    `dotted project: archiving it asks, naming the sessions running there, ends every one of them and drops its tab (${(page.dialogs[ndx] || '').split('\n')[2]})`);
 await page.evaluate(() => setLocked('ep.silon', false));      // and unlock it again
-await page.waitForFunction(() => document.querySelector('.pgrid .pcard[data-row="ep.silon"] [data-c]'), { timeout: 15000 });
+// Its Claude button back: Start Claude, or Install Claude where the stub
+// node says it carries no Claude Code (the operator, 21 Oct).
+await page.waitForFunction(() => document.querySelector('.pgrid .pcard[data-row="ep.silon"] :is([data-c], [data-tcinst])'), { timeout: 15000 });
 
 // A back/forward-cache restore (persisted pageshow) reloads the terminal
 // iframe so a dead socket reconnects instead of sitting on ttyd's prompt.

@@ -88,8 +88,8 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Logs|Claude sessions|Storage|Apps|Reach from outside|Debugging|Reset',
-   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the home tunnel the controller runs itself (R176), debugging, and the reset (${groups.join(', ')})`);
+ok(groups.join('|') === 'Logs|Claude sessions|Storage|Apps|Reach from outside|Maintenance|Debugging|Reset',
+   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the home tunnel the controller runs itself (R176), maintenance mode (the owner's), debugging, and the reset (${groups.join(', ')})`);
 // Sections, and a page of settings (the operator, 16 Oct): a list of them
 // beside the one picked, each row saying what is in it, and Revert beside
 // each Apply putting the section's fields back to what is saved.
@@ -245,7 +245,10 @@ ok(prof.status === 200 && prof.body.git.name === 'Test Person' && prof.body.git.
 const prof2 = await post('/api/profile', { action: 'save', profile: { git_name: 'T. Person', git_email: 'tp@users.noreply.invalid' } });
 ok(prof2.body.git.name === 'T. Person' && prof2.body.git.email === 'tp@users.noreply.invalid',
    '...and a git identity of its own outranks them');
-const gitc = k => { try { return execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'config', k], { encoding: 'utf8' }).trim(); } catch { return ''; } };
+// The repository's own config alone: a session's environment carries its
+// identity as GIT_CONFIG_KEY_n, which git config would answer with (B146).
+const repoEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^GIT_CONFIG_(COUNT|KEY_|VALUE_)/.test(k)));
+const gitc = k => { try { return execFileSync('git', ['-C', `${DIR}/ws/alpha`, 'config', k], { encoding: 'utf8', env: repoEnv }).trim(); } catch { return ''; } };
 ok(gitc('user.name') === 'dashboard test' && gitc('user.email') === 'test@example.invalid',
    '...without writing anything into the repository\'s own config, which keeps the fixture\'s');
 const owner = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;

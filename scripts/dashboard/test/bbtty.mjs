@@ -16,6 +16,11 @@ import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsS
 import { tmpdir } from 'os';
 import { join } from 'path';
 
+// bb-tty leaves git's GIT_CONFIG_n to whoever set them, and a Claude session
+// running this suite has set its own: they are not this suite's to inherit
+// (B151, as settings.mjs's B146).
+for (const k of Object.keys(process.env)) if (/^GIT_CONFIG_(COUNT|KEY_|VALUE_)/.test(k)) delete process.env[k];
+
 const BBTTY = join(import.meta.dirname, '..', 'bb-tty');
 // This suite must not pick up the NODE'S OWN bb-session (R35). On a node where
 // the agent has installed it, `isolating()` is true, every launch below goes

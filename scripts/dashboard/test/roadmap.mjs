@@ -2125,6 +2125,50 @@ ok(await nbOn() === await page.evaluate(() => document.querySelector('.pane .nb 
      '...and stops saying it once there is nothing unsaved');
 }
 
+// ---- a target release, and the chips by it (the operator, 21 Oct) --------
+{
+  const added = [];
+  for (const [text, target] of [['ship the first', '0.6.0'], ['ship the second', '0.5.4'], ['ship the third', '']])
+    added.push(await post({ action: 'add', project: 'ep.silon', text, ...(target ? { target } : {}) }));
+  for (const a of added) Object.assign(a, a.body);
+  ok(added[0].item?.target === '0.6.0' && !added[2].item?.target, `an item is added with its target, or none (${JSON.stringify(added.map(a => a.item?.target || ''))})`);
+  await page.evaluate(n => openNotebook(n, 'roadmap'), 'ep.silon');
+  await page.waitForFunction(() => document.querySelectorAll('.pane .doc.on #roadmapVers [data-rmver]').length === 4, null, { timeout: 15000 });
+  const chips = await page.$$eval('.pane .doc.on #roadmapVers [data-rmver]', bs => bs.map(b => b.textContent.replace(/\s+/g, ' ').trim()));
+  ok(chips.join('|') === 'All3|0.5.41|0.6.01|No target1', `a chip per target, oldest first, and No target, each with its count (${chips.join('|')})`);
+  const tag = await page.$$eval('.pane .doc.on #roadmapList .roadmap .tag.ver', ts => ts.map(t => t.textContent.trim()));
+  ok(tag.includes('for 0.6.0') && tag.includes('for 0.5.4') && tag.length === 2, `an item with a target says it above its words (${tag.join(', ')})`);
+  const texts = () => page.$$eval('.pane .doc.on #roadmapList .roadmap[data-step="-1"] .txt', ts => ts.filter(t => t.checkVisibility()).map(t => t.textContent));
+  await page.click('.pane .doc.on #roadmapVers [data-rmver="0.6.0"]');
+  await page.waitForFunction(() => [...document.querySelectorAll('.pane .doc.on #roadmapList .roadmap[data-step="-1"] .txt')].filter(t => t.checkVisibility()).length === 1, null, { timeout: 5000 });
+  ok((await texts()).join() === 'ship the first', '0.6.0 narrows the list to what is meant for it');
+  await page.click('.pane .doc.on #roadmapVers [data-rmver="none"]');
+  await page.waitForFunction(() => [...document.querySelectorAll('.pane .doc.on #roadmapList .roadmap[data-step="-1"] .txt')].filter(t => t.checkVisibility()).map(t => t.textContent).join() === 'ship the third', null, { timeout: 5000 });
+  ok(true, '...and No target to what is meant for none');
+  // Set from the row's Reword box, staged behind Save like a reword.
+  const third = `.pane .doc.on #roadmapList .roadmap[data-id="${added[2].item.id}"][data-step="-1"]`;
+  await page.click(`${third} .dtog`);
+  await page.click(`${third} .ed`);
+  await page.fill('.pane .doc.on .editbox .tgt', 'v0.6.0');
+  await page.click('.pane .doc.on .editbox .primary');
+  // This notebook's Save: alpha's is open too, and saveList takes the first.
+  const save = '.pane .doc.on #roadmapSaveQuiet';
+  await page.waitForFunction(s => !document.querySelector(s)?.disabled, save, { timeout: 5000 });
+  await page.click(save);
+  await page.waitForFunction(s => { const b = document.querySelector(s); return b.getAttribute('aria-busy') !== 'true' && b.disabled; }, save, { timeout: 15000 });
+  const bbEps = (...a) => execFileSync(BB, ['roadmap', ...a],
+    { env: { ...process.env, BB_ROADMAP_PROJECT: 'ep.silon', DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).toString();
+  const shown = bbEps('show', 'R' + added[2].item.id);
+  ok(/ship the third\s+\[for 0\.6\.0\]/.test(shown), `the Reword box sets the target, v dropped, and Save writes it (${shown.trim().split('\n')[0]})`);
+  await page.click('.pane .doc.on #roadmapVers [data-rmver=""]');
+  let refused = '';
+  try { bbEps('target', 'R' + added[2].item.id, 'soon'); } catch (e) { refused = String(e.stderr || e); }
+  ok(/not a version/.test(refused), `...and a target that is not X.Y.Z is refused (${refused.trim().slice(0, 90)})`);
+  const listed = bbEps('--target', '0.6.0');
+  ok(/ship the first\s+\[for 0\.6\.0\]/.test(listed) && /ship the third/.test(listed) && !/ship the second/.test(listed),
+     `bb roadmap --target lists what is meant for one release (${listed.trim().replace(/\n/g, ' / ')})`);
+}
+
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 await done(browser);

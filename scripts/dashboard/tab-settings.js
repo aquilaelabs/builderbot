@@ -236,6 +236,15 @@ const SETTING_GROUPS = [
      hint: "From Zero Trust: Networks, Tunnels, Create a tunnel (Cloudflared), the long eyJ… string in its install command. The controller runs the tunnel itself with it."},
     {key: "cf_api_token", label: "Cloudflare API token (optional)", type: "secret",
      hint: "With Zone DNS Edit and Account Cloudflare Tunnel Edit: the hostname's record and the tunnel's two rules (the agent's API to the controller, everything else 404) are written on Apply rather than clicked."}]},
+  // Maintenance mode, the owner's alone (state.can.maintenance): every
+  // other account is told why and kept out until it is off, and a band on
+  // every page reminds the owner it is on.
+  {key: "maint", title: "Maintenance", can: "maintenance",
+   heading: s => s?.settings?.maintenance_mode?.value ? "on" : "off",
+   headingCls: s => s?.settings?.maintenance_mode?.value ? "warn" : "",
+   fields: [
+    {key: "maintenance_mode", label: "Maintenance mode", type: "bool",
+     hint: "Only you can sign in and use BuilderBot, from the page, a phone or a session. Everybody else is told it is down for maintenance and stays signed in for after. Nodes keep running."}]},
   {key: "debug", title: "Debugging", heading: s => s?.settings?.debug_mode?.value ? "on" : "off", fields: [
     {key: "debug_mode", label: "Debug mode", type: "bool",
      hint: "Shows the Debug settings button here, and lets a project's settings grant its "
@@ -473,7 +482,8 @@ function settingsSections(){
   const offSect = offs.length ? [{key: "off", title: "Switched off", status: String(offs.length), cls: "",
     html: `<div class="row stack2"><div class="grow"><div class="sub">Set where this container starts (FEATURES_OFF), so nothing here turns them back on.</div>${
       offs.map(w => `<div class="setrow">${esc(w)}</div>`).join("")}</div></div>`}] : [];
-  return offSect.concat(SETTING_GROUPS.filter(g => !g.debug || (state?.can?.debug !== false && state?.settings?.debug_available)).map(g => {
+  return offSect.concat(SETTING_GROUPS.filter(g => (!g.debug || (state?.can?.debug !== false && state?.settings?.debug_available))
+    && (!g.can || state?.can?.[g.can])).map(g => {
     const field = f => {
             const v = s.settings[f.key]?.value;
             const id = "set_" + f.key;

@@ -75,7 +75,23 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         purpose). Popen's own user/group/extra_groups rather than a
         preexec_fn: this process has job threads, and a fork hook that runs
         between fork and exec can deadlock on a lock another thread held."""
-        return self.as_user(env, self.state.get("user") or "")
+        who = self.as_user(env, self.state.get("user") or "")
+        if not who:
+            env.setdefault("HOME", self.job_home())
+        return who
+
+    def job_home(self):
+        """A home a job run as this agent's own account can write: its own,
+        or one under the data store where it has none. Run as a uid with no
+        passwd entry, a job had no HOME at all and npm stopped on
+        uv_os_homedir (B145, diagnostics #122)."""
+        home = os.environ.get("HOME") or os.path.expanduser("~")
+        if home and home != "/" and os.path.isdir(home) and os.access(home, os.W_OK):
+            return home
+        home = os.path.join((self.state.get("stores") or {}).get("data") or "/tmp", "home")
+        with contextlib.suppress(OSError):
+            os.makedirs(home, mode=0o700, exist_ok=True)
+        return home
 
     def as_user(self, env, user):
         """The same, for a named account: jobs drop to the enrolled one,

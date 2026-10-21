@@ -45,8 +45,7 @@ function nbDesignView({$, nb, project, root}){
   const holderSlug = name => (name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "color";
 
   // Nothing here changes: a locked project's notebook, or a role that reads
-  // the project and does not write it (B101), whose reason is said under
-  // the head.
+  // the project and does not write it (B101).
   const dsRo = () => root.classList.contains("ro") || !!projWriteWhy(project);
 
   async function loadDesign(){
@@ -77,11 +76,10 @@ function nbDesignView({$, nb, project, root}){
       : `${f.path} is behind what is saved: Write the file`;
     $("dsHint").textContent = `${pages} · ${file}`;
     const w = $("dsWrite"), ro = projWriteWhy(project);
-    w.disabled = !!nb.dsDirty || !!ro;
+    w.disabled = !!nb.dsDirty;
+    w.hidden = !!ro;
     w.title = nb.dsDirty ? "Save first: the file is written from what is saved"
       : "write docs/design-language.md into the project from what is saved here; a session commits it with the work";
-    $("dsWhy").textContent = ro;
-    $("dsWhyF").hidden = !ro;
   }
 
   function drawAdd(){

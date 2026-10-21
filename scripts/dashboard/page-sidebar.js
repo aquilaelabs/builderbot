@@ -42,6 +42,7 @@ const heldWhy = p => p.held || (!gitReadyFor(p) && !liveSessions().has(myClaude(
 function wireProjectRows(root){
   root.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
   root.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
+  root.querySelectorAll("[data-tcinst]").forEach(b => b.onclick = () => openToolchainsOn(b.dataset.tcinst));
   // The chain is the remote, whichever state the project is in: linking one
   // that has no remote, and the credential half (and the way off it) for
   // one that has.

@@ -88,6 +88,7 @@ def configure(*, write_json, state, tell=None, tmux_name=None, settle=None,
 # through bb is here: add, and the three follow-ups that ride behind a held
 # add. Everything else on a held item is refused by bb with "still waiting".
 _REPLAY = {"add": "add", "info": "set_info", "step-add": "add_step", "edit": "edit",
+           "target": "set_target",
            # A session asking for an item back off the shelf (R78): held as a
            # request whatever the gate says, and a person's Approve replays it.
            "unshelve": "shelve"}
@@ -622,6 +623,47 @@ def set_info(project, item_id, text, step=None, by="you", was=None, who=""):
     return _edit(project, item_id, change, by, who, finished=True)
 
 
+# The release an item is meant to ship in (the operator, 21 Oct): the
+# project's own version, X.Y.Z, as bb version and the changelog's headings
+# name one. A plan, not a promise: nothing holds a release for it, and what
+# shipped an item is still read off the changelog.
+TARGET = re.compile(r"^\d{1,4}\.\d{1,5}\.\d{1,6}$")
+
+
+def _target(version):
+    """(the version, "") with a leading v dropped, ("", "") for none, or
+    ("", why) for something that is not one."""
+    v = str(version or "").strip()
+    v = v[1:] if v[:1] in ("v", "V") else v
+    if v and not TARGET.match(v):
+        return "", f"{version!r} is not a version: a target is X.Y.Z, as 0.6.0"
+    return v, ""
+
+
+def set_target(project, item_id, version, by="you", who=""):
+    """Say which release an item is meant for, or clear it with "".
+
+    Its own verb, as the details are: what the item asks and when it is
+    meant to land change for different reasons, and the history says which
+    moved."""
+    v, bad = _target(version)
+    if bad:
+        return {"error": bad}
+
+    def change(row, rows):
+        old = row.get("target", "")
+        if old == v:
+            return {"error": f"it is already for {v}" if v else "it has no target"}
+        if v:
+            row["target"] = v
+        else:
+            row.pop("target", None)
+        return {"ok": True, "item": row,
+                "log": {"act": "target", "id": row["id"], "text": row["text"], "target": v,
+                        **({"was": old} if old else {})}}
+    return _edit(project, item_id, change, by, who)
+
+
 # An item is one thing to do, or several in an order that matters. A change
 # that needs three things done in sequence is not three items: put them out
 # of order and the second one lands on a tree the first was supposed to have
@@ -629,10 +671,13 @@ def set_info(project, item_id, text, step=None, by="you", was=None, who=""):
 MAX_STEPS = 100
 
 
-def add(project, text, by="you", steps=(), who="", number=None):
+def add(project, text, by="you", steps=(), who="", number=None, target=""):
     text = _clean(text)
     if not text:
         return {"error": "nothing to add"}
+    target, bad = _target(target)
+    if bad:
+        return {"error": bad}
     if len(text) > MAX_TEXT:
         return {"error": f"too long: {MAX_TEXT} characters is the limit. Almost never compress the wording: the technical half belongs in `bb roadmap info`, and a step should say what has to be true before the next one can start."}
     steps = [_clean(str(x)) for x in (steps or [])]
@@ -659,7 +704,8 @@ def add(project, text, by="you", steps=(), who="", number=None):
                 d.setdefault("reserved", {})[project] = n
                 save(d)
             return pending.hold(project, "roadmap", "add",
-                                {"text": text, "steps": steps, "who": who, "number": n},
+                                {"text": text, "steps": steps, "who": who, "number": n,
+                                 **({"target": target} if target else {})},
                                 summary=text, number=n)
     with _lock:
         d = load()
@@ -672,7 +718,8 @@ def add(project, text, by="you", steps=(), who="", number=None):
         row = {"id": nid, "text": text,
                "added": int(time.time()), "by": "claude" if by == "claude" else "you",
                "sent": 0,
-               "steps": [{"text": x, "sent": 0} for x in steps]}
+               "steps": [{"text": x, "sent": 0} for x in steps],
+               **({"target": target} if target else {})}
         # The end, so the ids run down the page. The alternative is a list
         # where every addition renumbers what a session was looking at, and
         # the number is the whole way to say which item is meant.
@@ -682,7 +729,8 @@ def add(project, text, by="you", steps=(), who="", number=None):
         # than where it was drawn is the kind of jump that reads as a bug.
         rows.insert(sum(1 for r in rows if not r.get("shelved")), row)
         _log(d, project, by, {"act": "add", "id": row["id"], "text": text,
-                              **({"steps": len(steps)} if steps else {})})
+                              **({"steps": len(steps)} if steps else {}),
+                              **({"target": target} if target else {})})
         d["projects"][project] = rows
         _touch(d, project, who=who)
         _credit(d, project, who)
@@ -800,6 +848,10 @@ def _rebuilt_row(events, item_id, text):
             row["text"] = e.get("text") or row["text"]
         elif act == "info" and i is None:
             row["info"] = e.get("text", "")
+        if act in ("add", "target") and i is None and "target" in e:
+            row["target"] = e["target"]
+    if not row.get("target"):
+        row.pop("target", None)
     return row
 
 
@@ -1755,7 +1807,8 @@ def brief(project):
               "`bb roadmap done N` ticks one off, `bb roadmap step done N STEP` one step, "
               "`bb roadmap add \"...\"` adds what is worth doing and out of scope, and "
               "`bb roadmap info N [STEP] \"...\"` attaches the files and approach to a plan you write, so "
-              "whoever works it does not start from a cold grep. A parked item is the operator's to "
+              "whoever works it does not start from a cold grep. `bb roadmap target N X.Y.Z` says "
+              "which release one is meant for, and `bb roadmap --target X.Y.Z` lists those. A parked item is the operator's to "
               "unpark: `bb roadmap unshelve N WHY` asks, and nothing is read for or drafted until they "
               "approve. Every change is logged where the operator reads it, so correct the list rather "
               "than working around it, and do not restate it to them.")
@@ -1867,7 +1920,10 @@ def verb(name, act, req, me, *, live, prefix):
         mark_told(name)
         return {"ok": True} | panel(name, live, prefix), 200
     if act == "add":
-        r = add(name, field(req, "text"), steps=field_list(req, "steps"), who=who)
+        r = add(name, field(req, "text"), steps=field_list(req, "steps"), who=who,
+                target=field(req, "target"))
+    elif act == "target":
+        r = set_target(name, req.get("id"), field(req, "target"), who=who)
     elif act == "send":
         r = send(name, req.get("id"), req.get("step"), live,
                  also_told=unsaved(name) if req.get("tell") else False,

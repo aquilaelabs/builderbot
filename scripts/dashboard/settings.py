@@ -85,6 +85,10 @@ KEYS = {
     "apps_android": {"default": True, "kind": "bool", "applied": "now"},
     "apps_vscode": {"default": True, "kind": "bool", "applied": "now"},
     "apps_companion": {"default": True, "kind": "bool", "applied": "now"},
+    # Maintenance mode: while on, the owner alone signs in and is answered,
+    # from the page, a phone or a session; every other account is told why
+    # and stays signed in for after. Nodes are not accounts and keep running.
+    "maintenance_mode": {"default": False, "kind": "bool", "applied": "now"},
 }
 
 

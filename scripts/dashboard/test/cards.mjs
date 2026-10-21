@@ -551,8 +551,8 @@ print(json.dumps(out))
      `a node that cannot take one puts the reason on the card (${await line()})`);
   ok(/Sessions run on a node and nowhere else/.test(await line()),
      '...the whole of it, fix included: there is no tooltip to carry the rest (the operator, 11 Oct)');
-  ok(await page.$eval(C, r => [...r.querySelectorAll('.pnote')].pop().classList.contains('bad')),
-     '...in red, because a dead button with no reason is what somebody stares at');
+  ok(await page.$eval(C, r => [...r.querySelectorAll('.pnote')].pop().classList.contains('dim')),
+     '...muted, not red: a reason a button is off is not an error (the operator, 21 Oct)');
   ok(await page.$eval(`${C} [data-c]`, b => /nowhere else/.test(saidOf(b))),
      '...and a screen reader hears the same words on the ghosted button');
   await plant({ session_at: '', locked: false, node_name: '',
@@ -1619,7 +1619,7 @@ const signRows = await page.$$eval('#rnSignRows .rnsign[data-key]', rs => rs.map
 // ...under the backup password's line, the project's owner's to set (the
 // fixture's owner owns alpha).
 ok(/Backup password: none/.test(await page.$eval('#rnSignRows .rnsignlock', e => e.textContent))
-   && /No key can be added or made until it has one: set it first/.test(await page.$eval('#rnSignRows .rnsignlock .sub.bad', e => e.textContent))
+   && /No key can be added or made until it has one: set it first/.test(await page.$eval('#rnSignRows .rnsignlock .sub.warn', e => e.textContent))
    && await page.$('#rnLockOpen') !== null && await page.$('#rnSignRows [data-signopen]') === null,
    'the signing keys open on whether their backups have a password, and with none no key can be added, the owner told to set it first');
 // Set, as the owner does it, and the keys can be added.

@@ -1061,6 +1061,9 @@ def _project_columns(who, facts):
     # WINDOW holds this project's sessions; one merely behind does not.
     with timing.timed("projects:setup:holds"):
         held_nodes = node_holds()
+        # ...and the nodes with no Claude Code, whose Start Claude is an
+        # Install Claude that opens the node's Toolchains (the operator, 21 Oct).
+        no_claude = {} if NODES_OK else {i: i for i in claudecode.missing_nodes()}
     _t1 = time.monotonic()
     open_roadmap = roadmap.counts()
     # One batch spans the notebook, so the count the panel shows has to be
@@ -1228,6 +1231,8 @@ def _project_columns(who, facts):
                     # the same fact; the sweep ends what is running. Per
                     # project: another project's node being out of window is
                     # not this row's hold.
+                    # The project's node, when it has no Claude Code, or "".
+                    "claude_missing": no_claude.get(project_prefs.get(d.name, {}).get("node") or "", ""),
                     "held": held_nodes.get(
                         project_prefs.get(d.name, {}).get("node") or "", "")
                     # ...or its map is still building (mapping.py): the
@@ -1926,7 +1931,7 @@ def tmux_owner(name):
 
 
 def tmux_sessions():
-    r = run(["tmux", "list-sessions", "-F", "#{session_name}\t#{session_attached}"],
+    r = run(["tmux", "list-sessions", "-F", "#{session_name}\t#{session_attached}\t#{session_created}"],
             timeout=10)
     if r["code"] != 0:
         return []          # no server running yet is the normal empty case
@@ -1934,10 +1939,13 @@ def tmux_sessions():
     rows = []
     for line in r["out"].splitlines():
         if "\t" in line:
-            name, attached = line.split("\t", 1)
+            name, attached, created = (line.split("\t") + ["", ""])[:3]
             info = panes.get(name, {})
+            # When it started, as a node's rows say, for the Sessions page's
+            # Started column, which was blank for every one here (B149).
             row = {"name": name, "attached": attached.strip() not in ("", "0"),
-                   "cwd": info.get("cwd", "")}
+                   "cwd": info.get("cwd", ""),
+                   "created": int(created) if created.strip().isdigit() else 0}
             # By the unprefixed name, the way node rows are read, so another
             # account's session here says whether it is working too.
             if tmux_base(name).startswith("claude-"):
@@ -2104,6 +2112,19 @@ def project_busy(name, verb):
     if holds:
         return "its dev instance still has containers; press Down on the Artifacts view first"
     return ""
+
+
+MAINT_BAND = ('<div class="banner maint" id="maintband" role="status" hidden>Maintenance mode is on: '
+              'only you can use BuilderBot. It is switched off under Controller settings.</div>')
+MAINTENANCE_SAID = "BuilderBot is down for maintenance: only its owner can sign in until it is over."
+
+
+def kept_out(u):
+    """True when maintenance mode is on and `u` is not the owner: a session's
+    token counts as the account it was minted for, so the owner's own
+    sessions go on working."""
+    return bool(u) and bool(settings.get("maintenance_mode")) \
+        and (users.account_of(u) or {}).get("role") != "owner"
 
 
 def owner_session_open(project):
@@ -2407,7 +2428,8 @@ def _versioned_page(raw, tag):
     out = _SCRIPT_TAG.sub(named, raw)
     # The install's banner (R88), at its place under the header; part of the
     # page's tag, so a banner changed at a restart is not served from a copy.
-    band = featuresoff.banner_html()
+    # ...and maintenance mode's, shown to the owner by the page while it is on.
+    band = featuresoff.banner_html() + MAINT_BAND
     out = out.replace(b"<!--BANNER-->", band.encode())
     parts.append(hashlib.sha256(band.encode()).hexdigest()[:8])
     # Every script runs as written, in order: Cloudflare's Rocket Loader
@@ -4288,7 +4310,10 @@ def _snapshot(who):
                  "debug")}
                # ...and what other projects a session may read: the owner's
                # alone (the operator, 6 Oct), whatever the grants say.
-               | {"reads": (who or {}).get("role") == "owner"},
+               | {"reads": (who or {}).get("role") == "owner",
+                  # ...and maintenance mode, the owner's alone, a session of
+                  # theirs counting as them.
+                  "maintenance": (users.account_of(who) or {}).get("role") == "owner"},
         # ...and, for the page-wide ones a bar offers, the server's own
         # refusal, which is said under the dead control (B87).
         "can_why": {name: users.may(who, name) for name in ("create", "trash")},
@@ -4514,6 +4539,11 @@ class Handler(BaseHTTPRequestHandler):
         logs on the way past (writer_name), so an entry can say WHICH person
         wrote it. See _who_raw for how the principal itself is proved."""
         u = self._who_raw()
+        # Maintenance mode (kept_out): anybody but the owner is not signed in
+        # for now, and _deny says why. Reset per request, as _renewed is.
+        self._maint = kept_out(u)
+        if self._maint:
+            u = None
         _writing.who = u
         return u
 
@@ -4643,7 +4673,14 @@ class Handler(BaseHTTPRequestHandler):
         curl), and both handle a 401 better than a redirect-to-HTML."""
         # /metrics too: a scraper following a redirect to the login page
         # would parse HTML as an exposition and report the target down.
-        if self.path.split("?")[0].startswith("/api/") or self.path == "/metrics":
+        api = self.path.split("?")[0].startswith("/api/") or self.path == "/metrics"
+        if getattr(self, "_maint", False):
+            # Signed in, and kept out while the owner works: told so, and the
+            # cookie kept, so the page is back the moment it ends.
+            if api:
+                return self._json({"error": MAINTENANCE_SAID, "maintenance": True}, 503)
+            return self._login_page(MAINTENANCE_SAID, nxt=self.path)
+        if api:
             return self._json({"error": "not signed in"}, 401)
         nxt = urllib.parse.quote(self.path, safe="/?=&")
         self.send_response(302)
@@ -4658,6 +4695,8 @@ class Handler(BaseHTTPRequestHandler):
         copy, and two pages would have drifted apart the first time either was
         touched.
         """
+        if not error and not setup and settings.get("maintenance_mode"):
+            error = MAINTENANCE_SAID
         err = f'<p class="err">{error}</p>' if error else ""
         body = (LOGIN_HTML
                 .replace("<!--TITLE-->", "set up" if setup else "sign in")
@@ -4740,6 +4779,9 @@ class Handler(BaseHTTPRequestHandler):
             time.sleep(0.5)
             return self._login_page("Wrong username or password.",
                                     name=form.get("username", [""])[0][:200],
+                                    nxt=form.get("next", ["/"])[0][:2000])
+        if kept_out(u):
+            return self._login_page(MAINTENANCE_SAID, name=form.get("username", [""])[0][:200],
                                     nxt=form.get("next", ["/"])[0][:2000])
         users.touch(u["name"])
         nxt = form.get("next", ["/"])[0]
@@ -5162,12 +5204,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._term_page(up, down)
             sel.register(up, selectors.EVENT_READ, down)
             sel.register(down, selectors.EVENT_READ, up)
+            # Maintenance mode switched on while this terminal is open ends it
+            # for anybody but the owner: the sign-in was checked when it
+            # connected, and a relay runs until a side hangs up.
+            who = self._who_raw()
             while True:
-                for key, _ in sel.select():
+                for key, _ in sel.select(timeout=5):
                     data = key.fileobj.recv(65536)
                     if not data:
                         return
                     key.data.sendall(data)
+                if kept_out(who):
+                    return
         except OSError:
             pass                          # either side hung up mid-relay
         finally:
@@ -6357,6 +6405,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         # Finish on the setup page (R199): the first node is the one step
         # that cannot wait, so it is checked here and not only on the page.
+        # Maintenance mode is the owner's alone: an administrator who switched
+        # it on would be kept out by it.
+        if ("maintenance_mode" in want and want["maintenance_mode"] != settings.get("maintenance_mode")
+                and (users.account_of(self._who()) or {}).get("role") != "owner"):
+            return self._json({"error": "only the owner switches maintenance mode"}, 403)
         if want.get("setup_done") is True and not settings.get("setup_done") and not setup_node():
             return self._json({"error": "enroll a node that runs sessions first: Finish needs one enrolled and "
                                         "answering, and not hosting only"}, 409)
@@ -6835,6 +6888,8 @@ class Handler(BaseHTTPRequestHandler):
                 # As the sign-in page: a beat of delay, and not saying which half.
                 time.sleep(0.5)
                 return self._json({"error": "wrong username or password"}, 401)
+            if kept_out(u):
+                return self._json({"error": MAINTENANCE_SAID, "maintenance": True}, 503)
             row, got = devices.mint_for(u, req.get("name"), str(req.get("kind") or "pc"))
             if not row:
                 return self._json(got, 400)
@@ -6842,6 +6897,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({**got, "device": row, "account": u["name"]})
         hdr = self.headers.get("Authorization", "")
         auth = devices.authenticate(hdr[7:]) if hdr.startswith("Bearer ") else {"error": "no token"}
+        # A phone or a PC signed in as somebody else waits out maintenance
+        # mode; what to update to is still answered.
+        if verb not in ("apps", "app-file") and not auth.get("error") and kept_out(auth.get("account")):
+            return self._json({"error": MAINTENANCE_SAID, "maintenance": True}, 503)
         if verb in ("sync-file", "sync-tar", "app-file"):
             got, status = devices.file_verb(verb, auth, q)
             return self._send_file(got) if status == 200 else self._json(got, status)

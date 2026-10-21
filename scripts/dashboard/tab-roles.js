@@ -342,10 +342,10 @@ function rolesRoleBody(){
         box("data-riwrite", k, `Write ${label} on ${i.name}`, at === "write", false, !at)],
         "div", "rarea rinst", `data-rinst="${esc(k)}"`); }).join("") : "");
   }).join("");
-  // Why some rows are gray, said once above the table, in the reason's
-  // color (the design: the reason under a dead control).
+  // Why some rows are gray, said once above the table: how the form works,
+  // not a fault, so in the hint's voice (the operator, 21 Oct).
   const why = !ro && (d.areas || []).some(([, , group]) => offOf(group))
-    ? `<div class="sub bad" id="rolesWhyOff">The gray areas are not about one project: only an Everywhere role holds them.</div>` : "";
+    ? `<div class="sub" id="rolesWhyOff">The gray areas are not about one project: only an Everywhere role holds them.</div>` : "";
   const areas = why + tblWrap(ROLE_AREA_COLS, rows, "rareas");
   return rolesSplit("roles", list, `${pick}
     <div class="setrow col ctlrow">${lbl("rolesScope", "Kind", "On a project: given per project under People, and holds there. Everywhere: given to the account, holds on every project and is the only kind that reaches the nodes, toolchains and the controller")}
@@ -356,7 +356,7 @@ function rolesRoleBody(){
     ${ro ? "" : `<div class="setrow col ctlrow">${lbl("rolesNote", "What this role is for")}<input id="rolesNote" value="${esc(r.note)}" autocomplete="off"></div>`}
     ${areas}
     ${r.builtin ? `<div class="sub">${esc(r.note)}. Built in, every area to write, and not changed here.</div>`
-      : !d.admin ? `<div class="sub bad" id="rolesWhyRo">Only an administrator changes a role: this one is here to read.</div>` : ""}
+      : ""}
     ${ro ? "" : `${saveBar({save: 'id="rolesSave"', revert: 'id="rolesRevert"', state: rolesRoleDirty() ? "unsaved" : ""})}
       ${r.fresh ? "" : `<div class="rfoot"><button type="button" class="danger" id="rolesRemove">Remove ${esc(d.roles[r.name]?.label || r.name)}</button></div>`}`}`);
 }

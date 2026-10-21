@@ -3604,6 +3604,23 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
   const none = (await napi('/api/status')).projects.find(p => p.name === 'beta')?.held || '';
   ok(/Claude Code is not installed on clbox: its Toolchains page installs it/.test(none),
      `a node with no Claude Code holds its projects' Claude button, saying where to install it (${none.slice(0, 80)})`);
+  // ...and the button is Install Claude, opening that node's Toolchains,
+  // with no line under it (the operator, 21 Oct).
+  ok((await napi('/api/status')).projects.find(p => p.name === 'beta')?.claude_missing === en.id,
+     'the row names the node with no Claude Code');
+  await page.waitForFunction(() => (state?.projects || []).find(p => p.name === 'beta')?.claude_missing, null, { timeout: 15000 });
+  const inst = await page.evaluate(() => {
+    const p = state.projects.find(x => x.name === 'beta');
+    const box = document.createElement('div'); box.innerHTML = projectActions(p) + projectNote(p);
+    document.body.append(box); wireProjectRows(box);
+    const b = box.querySelector('[data-tcinst]'), r = { label: b?.textContent.trim(), node: b?.dataset.tcinst,
+      start: !!box.querySelector('[data-c]'), note: box.querySelector('.pnote')?.textContent || '' };
+    b?.click(); box.remove(); return r;
+  });
+  ok(inst.label === 'Install Claude' && inst.node === en.id && !inst.start && !inst.note,
+     `...its button is Install Claude in place of Start Claude, nothing under it (${JSON.stringify(inst)})`);
+  await page.waitForFunction(id => tcNode === id && tabs.some(t => t.kind === 'toolchains'), en.id, { timeout: 15000 });
+  ok(true, '...and a press opens the Toolchains page on that node');
   await napi('/api/prefs', { project: 'beta', node: '' });
   await napi('/api/v1/nodes', { action: 'retire', id: en.id });
 }

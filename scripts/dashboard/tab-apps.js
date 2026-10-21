@@ -53,6 +53,7 @@ function devAppRow(a){
       <div class="name">${esc(a.title)}${a.version ? ` <span class="pill${behind ? " warn" : ""}">${esc(a.version)}</span>` : ""}</div>
       <div class="hint">${esc(a.does)}</div>
       ${first ? `<div class="sub">${devHow(a.name)}</div>`
+        : a.absent ? `<div class="sub warn">Not in ${esc(a.absent)}: that release does not carry it.</div>`
         : `<div class="sub warn">Not fetched yet${devApps?.problem ? "" : ": the controller looks at its release a while after it starts, then daily"}.</div>`}
       ${rest.length ? `<div class="sub dim">Also: ${rest.map(f => `<a href="${esc(f.url)}" download>${esc(f.file)}</a>`).join(", ")}</div>` : ""}
     </div>

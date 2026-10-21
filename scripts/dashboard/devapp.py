@@ -836,6 +836,27 @@ def _agent_instance_containers(n, project, instance, running_only):
     return mine
 
 
+def _no_daemon_why():
+    """Why there is no daemon to send docker work to, said for this install
+    (B147): nodes enrolled that run no Docker want Docker, not another node,
+    and an install that holds enrolling off is not told to enroll."""
+    enrolled = [n["name"] for n in (queue.node_list() if queue else [])
+                if n.get("kind") != "local" and n.get("state") not in ("retired", "pending")]
+    if enrolled:
+        return (f"no node runs Docker that docker work can be sent to ({', '.join(enrolled[:3])}"
+                f"{' and more' if len(enrolled) > 3 else ''}): install Docker on one, "
+                "or enroll one that has it on the Nodes page")
+    try:
+        import featuresoff
+        held = featuresoff.sentences().get("enroll")
+    except ImportError:
+        held = None
+    if held:
+        return f"no node with a daemon here. {held}"
+    return ("no node with a daemon yet: enroll one on the Nodes page (Enroll node "
+            "mints a token, then provision-linux.sh on the machine); see docs/sandbox-vm.md")
+
+
 def _available_agent(n):
     """Whether an agent node can run compose, from what it says about itself.
 
@@ -914,10 +935,7 @@ def available():
             return {"on": False,
                     "why": "this project has no node, so it has no daemon: pick one on its "
                            "notebook's Settings (" + ", ".join(n["name"] for n in have[:3]) + ")"} | source()
-        return {"on": False,
-                "why": "no node with a daemon; enroll the sandbox VM on the "
-                       "Nodes page (Enroll node mints a token, then provision-linux.sh "
-                       "on the machine); see docs/sandbox-vm.md"} | source()
+        return {"on": False, "why": _no_daemon_why()} | source()
     if not addr.startswith("ssh://"):
         return {"on": False,
                 "why": f"the node answers at {addr}, and dev instances need a "

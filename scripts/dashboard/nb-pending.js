@@ -118,13 +118,11 @@ function drawPendingModal(j){
   // and a blank hint were three bands of chrome around one sentence.
   $("pendAllF").hidden = $("pendListF").hidden = !rows.length;
   $("pendHintF").hidden = !rows.length && !$("pendHint").textContent;
-  // A role that reads the project and does not write it (B101): Approve
-  // and Deny dead, the reason over the foot, in red.
+  // A role that reads the project and does not write it (B101): no
+  // Approve or Deny.
   const ro = projWriteWhy(pendFor);
-  $("pendApprove").disabled = $("pendDeny").disabled = !rows.length || !!ro;
-  $("pendApprove").hidden = $("pendDeny").hidden = !rows.length;
-  $("pendWhy").textContent = rows.length ? ro : "";
-  $("pendWhyF").hidden = !rows.length || !ro;
+  $("pendApprove").disabled = $("pendDeny").disabled = !rows.length;
+  $("pendApprove").hidden = $("pendDeny").hidden = !rows.length || !!ro;
   const NAMES = {roadmap: "Roadmap", bugs: "Bugs", rules: "Rules", settings: "Build and test", design: "Design", wiki: "Wiki"};
   const tag = r => r.kind === "roadmap" && r.number != null ? `R${r.number}`
              : r.kind === "bugs" && r.number != null ? `B${r.number}`

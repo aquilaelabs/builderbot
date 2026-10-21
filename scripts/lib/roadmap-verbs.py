@@ -5,7 +5,7 @@ edited from a terminal cannot disagree.
 
 Arguments: roadmap.py's path, the project, then the words of the verb
 (list, show N, add TEXT, edit, done, rm, restore, shelve, mv, step, info,
-begin, commit, revert, pending, history). DASHBOARD_STATE says where the
+target, begin, commit, revert, pending, history). DASHBOARD_STATE says where the
 notebook's files are and BB_ACCOUNT_UID which seat this session sits in.
 """
 import os
@@ -93,8 +93,12 @@ def ident(word):
     return n
 
 
-def show():
+def show(target=None):
     rows = roadmap.items(proj)
+    # `bb roadmap --target 0.6.0`: the items meant for one release, and
+    # `--target none` the ones meant for none yet.
+    if target is not None:
+        rows = [r for r in rows if (r.get("target") or "none") == (target.lstrip("vV") or "none")]
     # The whole notebook's count, not the roadmap's: one batch covers both,
     # and a banner reporting half of it would read as "nothing much staged"
     # while a dozen tracker changes sat unrecorded.
@@ -114,6 +118,7 @@ def show():
         who = " (claude)" if r.get("by") == "claude" else ""
         mark = "~" if r.get("shelved") else " "
         print(f" {mark}{R(r['id']):>4}  {r['text']}{who}"
+              + (f"  [for {r['target']}]" if r.get("target") else "")
               + ("  [shelved]" if r.get("shelved") else ""))
         if r.get("info"):
             print("       details: " + r["info"].replace("\n", "\n                "))
@@ -158,8 +163,14 @@ def fresh():
         sys.exit(2)
 
 
-if op in ("list", "ls"):
-    show()
+if op in ("list", "ls", "--target"):
+    if op == "--target" or "--target" in rest:
+        at = rest if op == "--target" else rest[rest.index("--target") + 1:]
+        if not at:
+            print("usage: bb roadmap --target X.Y.Z|none", file=sys.stderr); sys.exit(1)
+        show(at[0])
+    else:
+        show()
     # Read, so what arrives on the next prompt is what has moved SINCE this,
     # and so the guard above stops holding a session that has just looked.
     roadmap.mark_seen(proj, _who, "roadmap")
@@ -181,6 +192,7 @@ elif op == "show":
     who = " (claude)" if r.get("by") == "claude" else ""
     when = time.strftime("%d %b", time.localtime(r["done_at"])) if r.get("done_at") else ""
     print(f"  {R(r['id'])}  {r['text']}{who}"
+          + (f"  [for {r['target']}]" if r.get("target") else "")
           + ("  [shelved]" if r.get("shelved") else "")
           + (f"  [finished {when}]" if r.get("done_at") else ""))
     if r.get("info"):
@@ -197,9 +209,15 @@ elif op == "add":
     # `bb roadmap add "title" --step "..." --step "..."`: a change that needs
     # things done in an order is one item with steps, not several items that
     # can be handed over backwards.
-    words, steps, i = [], [], 0
+    words, steps, target, i = [], [], "", 0
     while i < len(rest):
-        if rest[i] == "--step":
+        if rest[i] == "--target":
+            if i + 1 >= len(rest):
+                print("[builderbot] ERROR: --target needs the version after it, as 0.6.0",
+                      file=sys.stderr)
+                sys.exit(1)
+            target = rest[i + 1]; i += 2
+        elif rest[i] == "--step":
             # A dangling --step used to fall through and become part of the
             # title, so `bb roadmap add "x" --step` quietly made an item called
             # "x --step" instead of saying what was missing.
@@ -211,12 +229,13 @@ elif op == "add":
         else:
             words.append(rest[i]); i += 1
     r = roadmap.add(proj, " ".join(words).strip(), by="claude", steps=steps,
-                 who=_who); bail(r)
+                 who=_who, target=target); bail(r)
     if r.get("held"):
         print(held_line(r)); sys.exit(0)
     n = len(r["item"]["steps"])
     print(f"added {R(r['item']['id'])}: {r['item']['text']}"
-          + (f" ({n} steps)" if n else ""))
+          + (f" ({n} steps)" if n else "")
+          + (f", for {r['item']['target']}" if r["item"].get("target") else ""))
 elif op == "done":
     # Off the list and into the log. There is no undoing it: a list is read to
     # find out what is left, so nothing finished stays on it, and the history
@@ -287,6 +306,18 @@ elif op in ("mv", "move"):
                   who=_who)
     bail(r)
     print(f"moved {R(n)} {rest[1]}")
+elif op == "target":
+    # The release an item is meant to ship in (the operator, 21 Oct):
+    # `bb roadmap target N 0.6.0`, and `none` takes it off.
+    if len(rest) < 2:
+        print("usage: bb roadmap target <n> X.Y.Z|none", file=sys.stderr); sys.exit(1)
+    n = ident(rest[0])
+    v = "" if rest[1].lower() == "none" else rest[1]
+    if behind(n, "target", {"item_id": n, "version": v, "who": _who},
+              f"{R(n)} for {v}" if v else f"{R(n)} with no target"):
+        sys.exit(0)
+    r = roadmap.set_target(proj, n, v, by="claude", who=_who); bail(r)
+    print(f"{R(n)} is for {r['item']['target']}" if r["item"].get("target") else f"{R(n)} has no target")
 elif op == "shelve":
     # Parked, not dropped: a reason to keep it, no intention of doing it now.
     # One direction only. Putting something on the shelf is a thing a session

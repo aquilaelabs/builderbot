@@ -315,6 +315,17 @@ function wireShellBar(bar){
   });
 }
 
+// ---- maintenance mode's band ---------------------------------------------------
+// Drawn under the header for the owner while maintenance mode is on: the
+// server sends it hidden on every page, and the poll shows it, so switching
+// it on or off shows without a reload.
+function drawMaintBand(){
+  const b = document.getElementById("maintband");
+  const off = !(state?.can?.maintenance && state?.settings?.settings?.maintenance_mode?.value);
+  // Written only when it changes: a poll that brings nothing new writes nothing.
+  if (b && b.hidden !== off) b.hidden = off;
+}
+
 // ---- search: jump to a page, a project, a container or a node ---------------
 
 // Rows: [label, where, go]. Pages by name, projects by the name they are

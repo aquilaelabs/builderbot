@@ -1138,6 +1138,28 @@ ok(seenSects.size <= 1,
   await sleep(300);
   ok(!desk.length && !phone.length, `...and each icon sits in the middle of its button, at a desk and on a phone (${JSON.stringify({ desk, phone })})`);
 }
+{
+  // The frame's lines of controls are one height each, as a page's are
+  // (B142): the header's search stood 32px beside 38px buttons, and the
+  // dock's + and its pull 30px beside 34px tabs, at every width.
+  const frameLines = () => page.$$eval('header, .pane .bar.dockbar', fs => fs.flatMap(f => {
+    const cs = [...f.querySelectorAll('button, input, .dtab')].filter(e => e.offsetParent)
+      .map(e => ({ e, r: e.getBoundingClientRect() }));
+    // A button inside a counted tab (its close) is part of the tab.
+    const top = cs.filter(c => !cs.some(o => o !== c && o.e.contains(c.e)));
+    const hs = top.map(c => Math.round(c.r.height));
+    return top.length > 1 && Math.max(...hs) - Math.min(...hs) > 1.5
+      ? [`${f.tagName.toLowerCase()}: ${top.map(c => `${c.e.id || c.e.className.split(' ')[0]}:${Math.round(c.r.height)}`).join(' ')}`] : [];
+  }));
+  const desk = await frameLines();
+  await page.setViewportSize({ width: 393, height: 851 });
+  await sleep(300);
+  const phone = await frameLines();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await sleep(300);
+  ok(!desk.length && !phone.length,
+     `the header's and the dock's controls are one height each, at a desk and on a phone (${JSON.stringify({ desk, phone })})`);
+}
 ok(seenReds.size <= 1,
    `a verb that cannot be undone is the same color everywhere (${JSON.stringify([...seenReds])})`);
 
@@ -1580,6 +1602,11 @@ for (const kind of kinds){
   }).filter(Boolean));
   ok(crowded.length === 0,
      `[${kind}] an action bar shows at most five buttons at phone width${crowded.length ? `: ${crowded.join(', ')}` : ''}`);
+  // A tile's number is read whole at phone width (B150): three to a row,
+  // "11.1 TB" was cut to "11.1…" in a third of the screen.
+  const cut = await page.$$eval('.doc.on .tile .tv', vs => vs.filter(v => v.offsetParent && v.scrollWidth > v.clientWidth + 1)
+    .map(v => v.textContent.trim()));
+  ok(cut.length === 0, `[${kind}] every tile's number is whole at phone width${cut.length ? `; cut: ${cut.join(', ')}` : ''}`);
   const room = await headRoom();
   ok(room.length === 0,
      `[${kind}] every section's first line keeps room under its head at phone width${room.length ? `; touching: ${room.join(', ')}` : ''}`);

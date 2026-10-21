@@ -1174,6 +1174,21 @@ function chipBar(groups, on, attr, all){
   const chips = chipButtons(groups, on, attr, all);
   return chips ? `<div class="field"><div class="chips">${chips}</div></div>` : "";
 }
+// Chips by release (the operator, 21 Oct: the Roadmap's by an item's target,
+// Bugs' by the version a report was seen in): [{key, label, count}], one per
+// X.Y.Z that verOf gives, oldest first, then `none` with what has none.
+const relOf = v => (String(v || "").match(/^v?(\d+\.\d+\.\d+)/) || [])[1] || "";
+function versionChips(rows, verOf, none){
+  const n = new Map();
+  for (const r of rows){ const k = relOf(verOf(r)) || "none"; n.set(k, (n.get(k) || 0) + 1); }
+  const num = v => v.split(".").map(Number);
+  const keys = [...n.keys()].filter(k => k !== "none")
+    .sort((a, b) => { const x = num(a), y = num(b); return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]; });
+  return [...keys.map(k => ({key: k, label: k, count: n.get(k)})),
+          ...(n.has("none") ? [{key: "none", label: none, count: n.get("none")}] : [])];
+}
+// Whether a row is under the release chip in force ("" is All).
+const inRelease = (v, on) => !on || (on === "none" ? !relOf(v) : relOf(v) === on);
 // The chips alone, for a band that holds more than them (a list's search
 // beside them, R254 step 1): "" when fewer than two groups have anything.
 // `all` is All's count where the groups overlap (a branch both Active and

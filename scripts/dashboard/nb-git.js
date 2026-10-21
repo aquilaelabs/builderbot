@@ -96,7 +96,7 @@ function nbGitView({$, nb, project}){
   // administrator is asked by the server first.
   // Nothing here changes the tree, the branches or what a session may push
   // while the project is archived, or for a role that reads it and does
-  // not write it (B86), which the view then says under Fetch and Push.
+  // not write it (B86).
   const shut = () => !!(state?.projects || []).find(p => p.name === project)?.locked || !!projWriteWhy(project);
   const treeOf = () => {
     const owner = git?.owner || "", notMine = !!owner && owner !== state?.me;
@@ -145,16 +145,15 @@ function nbGitView({$, nb, project}){
           ? `pull first: ${git.host?.name || "the remote"} has ${st.behind} commit${st.behind === 1 ? "" : "s"} this branch does not, and this branch has ${st.ahead} to push (${st.upstream})`
           : `${git.host?.name || "the remote"}, ${st.upstream}${st.ahead ? ` · ${st.ahead} to push` : ""}${st.behind ? ` · ${st.behind} to pull` : ""}`)
         : "no upstream yet: Push sets one";
-      const ro = projWriteWhy(project);
-      net.querySelector('[data-gitact="fetch"]').disabled = !!ro;
-      net.querySelector('[data-gitact="push"]').disabled = !git.push || !!ro;
-      net.querySelector('[data-gitact="pull"]').disabled = !st.upstream || !!ro;
-      net.querySelector('[data-gitact="pull"]').hidden = tree.barred;
+      // A role that only reads the project is shown none of them (the
+      // operator, 21 Oct: what a role does not give is not drawn).
+      const ro = !!projWriteWhy(project);
+      net.querySelector('[data-gitact="fetch"]').hidden = ro;
+      net.querySelector('[data-gitact="push"]').hidden = ro;
+      net.querySelector('[data-gitact="push"]').disabled = !git.push;
+      net.querySelector('[data-gitact="pull"]').disabled = !st.upstream;
+      net.querySelector('[data-gitact="pull"]').hidden = tree.barred || ro;
     }
-    // Why none of it is this account's, under the bar (or alone where there
-    // is no remote), once for every verb the view leaves out.
-    const why = $("gitWhy"), ro = projWriteWhy(project);
-    if (why){ setText(why, ro); setHidden($("gitWhyF"), !ro || !!(state?.projects || []).find(p => p.name === project)?.locked); }
     drawGit();
   }
 

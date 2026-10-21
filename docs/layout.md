@@ -198,6 +198,7 @@ scripts/
     projsessions.py              every account's sessions on a project, and an administrator ending one
     reports.py                   problems with BuilderBot reported by any project's session (bb report)
     diag.py                      the Diagnostics section of Controller settings: reports, images, errors, the audit trail, and the download
+    featuresoff.py               the features an install switches off from its environment (FEATURES_OFF): the list, the sentence, and what the page and the routes read of it (R81)
     doctor.py                    `bb doctor` run on a timer and cached, for the Doctor card
     runners.py                   a node's CI runners: the root-only token helper, and the Runner card's list
     findings.py                  the scanner's reports read and attributed, and what they used to say
