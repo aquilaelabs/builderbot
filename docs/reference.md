@@ -88,7 +88,9 @@ bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]
                    edit its own ask: the notes replaced whole (- reads stdin),
                    a build in dist/ or a committed file attached (one of the
                    same name replaced), (asset:NAME) in the notes the address
-                   of that file on the release, for a screenshot
+                   of that file on the release, (file:PATH) a committed
+                   picture shown from the repository at its pushed commit,
+                   never a download: the way for a screenshot
 bb version release --remove NAME [--remove NAME]... --why "..." [--tag TAG]
                    take files off the published release, named as the forge
                    lists them: its own ask under the same setting, never part

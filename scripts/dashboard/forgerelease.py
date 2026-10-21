@@ -428,6 +428,8 @@ ATTACHABLE = re.compile(r"\.(apk|aab|zip|xpi|tar\.gz|tgz|exe|msi|dmg|deb|rpm|App
                         re.I)
 TAG = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,99}")
 ASSET_REF = re.compile(r"\(asset:([^)\s]+)\)")
+FILE_REF = re.compile(r"\(file:([^)\s]+)\)")
+SHOWABLE = re.compile(r"\.(png|jpe?g|gif|webp|svg)$", re.I)
 
 
 def _tree_git(project, *args):
@@ -456,11 +458,30 @@ def edit_plan(project, tag, notes=None, attach=()):
         if len(notes) > NOTES_MAX:
             return {"error": f"the notes are {len(notes)} characters; a release takes {NOTES_MAX} at most"}
     attach = [str(a) for a in (attach or [])]
+    # `(file:PATH)` shows a committed picture from the repository at the
+    # pushed commit that has it, so a screenshot is on the page without
+    # being one of the release's downloads, which (asset:NAME) makes it.
+    root = (WORKSPACE / project).resolve()
+    pinned = {}
+    for rel in sorted({m.group(1) for m in FILE_REF.finditer(notes or "")}):
+        p = (root / rel).resolve()
+        if rel.startswith("/") or not p.is_relative_to(root) or not p.is_file() or not SHOWABLE.search(p.name):
+            return {"error": f"file:{rel} is not a picture in {project}"}
+        r = _tree_git(project, "log", "-1", "--format=%H", "HEAD", "--", rel)
+        sha = r.stdout.strip() if r is not None and not r.returncode else ""
+        same = _tree_git(project, "diff", "--quiet", "HEAD", "--", rel)
+        if not sha or same is None or same.returncode:
+            return {"error": f"file:{rel} is not committed as it is now: commit it and push, so the page "
+                             "shows what the history has"}
+        on = _tree_git(project, "branch", "-r", "--contains", sha)
+        if on is None or on.returncode or not on.stdout.strip():
+            return {"error": f"file:{rel} is in commit {sha[:8]}, which is not pushed: push it first, or the "
+                             "picture is a broken link on the release"}
+        pinned[rel] = sha
     if notes is None and not attach:
         return {"error": "say what changes: --notes FILE, --attach FILE, or both"}
     if len(attach) > ATTACH_MAX:
         return {"error": f"{len(attach)} files; one edit attaches {ATTACH_MAX} at most"}
-    root = (WORKSPACE / project).resolve()
     files, names = [], set()
     for rel in attach:
         p = (root / rel).resolve()
@@ -485,7 +506,7 @@ def edit_plan(project, tag, notes=None, attach=()):
             return {"error": f"two files are named {p.name}; a release keeps one of each name"}
         names.add(p.name)
         files.append({"path": rel, "name": p.name, "size": size, "signed": "-signed" in p.name})
-    return {"tag": tag, "notes": notes, "files": files}
+    return {"tag": tag, "notes": notes, "files": files, "pinned": pinned}
 
 
 def _with_assets(notes, urls):
@@ -494,12 +515,22 @@ def _with_assets(notes, urls):
     return ASSET_REF.sub(lambda m: f"({urls[m.group(1)]})" if urls.get(m.group(1)) else m.group(0), notes)
 
 
+def _with_files(notes, pinned, raw):
+    """`(file:PATH)` in the notes, the forge's address of that committed
+    file at the commit edit_plan() pinned it to."""
+    return FILE_REF.sub(lambda m: f"({raw(pinned[m.group(1)], m.group(1))})" if m.group(1) in pinned else m.group(0),
+                        notes)
+
+
 def edit(project, plan):
     """Make the edit edit_plan() checked: {url, notes, attached, replaced,
     skipped, forge} or {error, forge}."""
     tag, notes, files = plan["tag"], plan.get("notes"), plan.get("files") or []
+    pinned = plan.get("pinned") or {}
     if cilogs.repo_of(project):
         name = "GitHub"
+        if notes is not None:
+            notes = _with_files(notes, pinned, lambda sha, rel: f"https://github.com/{cilogs.repo_of(project)}/raw/{sha}/{rel}")
         token = cilogs._token(project)
         if not token:
             return {"error": "the controller has no GitHub token for this project", "forge": name}
@@ -518,6 +549,10 @@ def edit(project, plan):
         return {"error": f"the controller has no {name} token for this project", "forge": name}
     f = _Forge(forges.api_base(entry, at["host"], scheme or ("https" if at["scheme"] == "ssh" else at["scheme"])),
                entry, token)
+    web = f"{scheme or ('https' if at['scheme'] in ('ssh', '') else at['scheme'])}://{at['host']}/{at['path']}"
+    if notes is not None:
+        notes = _with_files(notes, pinned, lambda sha, rel: f"{web}/-/raw/{sha}/{rel}" if entry["kind"] == "gitlab"
+                            else f"{web}/raw/commit/{sha}/{rel}")
     try:
         run = _gitlab_edit if entry["kind"] == "gitlab" else _gitea_edit
         return run(f, at, project, tag, notes, files) | {"forge": name}

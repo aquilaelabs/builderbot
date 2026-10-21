@@ -154,8 +154,9 @@ if argv and argv[0] == "release":
               'bb version [--for DIR] release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...\n'
               "    change the published release: its notes replaced whole (- reads stdin), a file from\n"
               "    dist/ or the committed tree attached (one of the same name replaced), (asset:NAME) in\n"
-              "    the notes the address of an attached file, for a screenshot. TAG is the version's own\n"
-              "    unless named. The same dial; on ask, every edit is its own ask.\n"
+              "    the notes the address of an attached file, (file:PATH) a committed picture shown from\n"
+              "    the repository at its pushed commit, never a download: the way for a screenshot. TAG\n"
+              "    is the version's own unless named. The same dial; on ask, every edit is its own ask.\n"
               'bb version [--for DIR] release --remove NAME [--remove NAME]... --why "..." [--tag TAG]\n'
               "    take files off the published release, named as the forge lists them: its own ask,\n"
               "    never part of an edit, the names checked against the release before anybody is asked.")
