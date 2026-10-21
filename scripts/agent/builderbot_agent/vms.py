@@ -183,16 +183,30 @@ def user_data(hostname, user, keys, enroll=""):
     return "\n".join(lines) + "\n"
 
 
-def domain_xml(name, project, vcpus, mem_mb, disk, seed, network, boot="bios"):
+# The UEFI firmware VM host installs, named rather than left to libvirt's
+# pick, which chose the AMD SEV build on the dev node (21 Oct): its code, and
+# the template its variables file is copied from, by family.
+OVMF_PAIRS = (("/usr/share/OVMF/OVMF_CODE_4M.fd", "/usr/share/OVMF/OVMF_VARS_4M.fd"),
+              ("/usr/share/edk2/ovmf/OVMF_CODE.fd", "/usr/share/edk2/ovmf/OVMF_VARS.fd"),
+              ("/usr/share/AAVMF/AAVMF_CODE.fd", "/usr/share/AAVMF/AAVMF_VARS.fd"))
+
+
+def ovmf():
+    """(code, vars template) of the UEFI firmware here, or None."""
+    return next((p for p in OVMF_PAIRS if os.path.isfile(p[0]) and os.path.isfile(p[1])), None)
+
+
+def domain_xml(name, project, vcpus, mem_mb, disk, seed, network, boot="bios", fw=None, nvram=""):
     """The domain, from a fixed shape: KVM, the host's CPU, virtio disk and
     network on the project's own network, the seed as a cdrom, a serial
     console and no graphics, and BuilderBot's marker in <metadata>. `boot`
     uefi is the q35 machine on the firmware VM host installs (OVMF), with
     Secure Boot off, for an image whose kernel will not start under BIOS."""
     arch = escape(os.uname().machine)
-    os_el = (f"<os firmware='efi'><type arch='{arch}' machine='q35'>hvm</type>"
-             "<firmware><feature enabled='no' name='secure-boot'/><feature enabled='no' name='enrolled-keys'/></firmware>"
-             "<boot dev='hd'/></os>" if boot == "uefi" else
+    os_el = (f"<os><type arch='{arch}' machine='q35'>hvm</type>"
+             f"<loader readonly='yes' type='pflash'>{escape(fw[0])}</loader>"
+             f"<nvram template={quoteattr(fw[1])}>{escape(nvram)}</nvram>"
+             "<boot dev='hd'/></os>" if boot == "uefi" and fw else
              f"<os><type arch='{arch}'>hvm</type><boot dev='hd'/></os>")
     return f"""<domain type='kvm'>
   <name>{escape(name)}</name>
@@ -413,9 +427,14 @@ class VmsMixin:
         if not self._vm_seed(job, seed, hostname, user, keys, who, enroll):
             return "failed", 70
         xml = os.path.join(ddir, name + ".xml")
+        boot = "uefi" if spec.get("boot") == "uefi" else "bios"
+        fw = ovmf() if boot == "uefi" else None
+        if boot == "uefi" and not fw:
+            job.say("refused: this image boots by UEFI and the firmware is not here: run VM host's install again on the node's Features section\n")
+            return "failed", 69
         with open(xml, "w") as f:
-            f.write(domain_xml(name, project, vcpus, mem, disk, seed, str(spec["network"]),
-                               "uefi" if spec.get("boot") == "uefi" else "bios"))
+            f.write(domain_xml(name, project, vcpus, mem, disk, seed, str(spec["network"]), boot, fw,
+                               os.path.join(ddir, name + "_VARS.fd")))
         job.step("starting it")
         if self._vm_run(job, VIRSH + ["define", xml], who) != 0:
             return "failed", 70
@@ -451,7 +470,7 @@ class VmsMixin:
             if self._vm_run(job, VIRSH + ["undefine", name, "--nvram"], who) != 0 \
                     and self._vm_run(job, VIRSH + ["undefine", name], who) != 0:
                 return "failed", 70
-        for suffix in (".qcow2", "-seed.iso", ".xml"):
+        for suffix in (".qcow2", "-seed.iso", ".xml", "_VARS.fd"):
             with contextlib.suppress(OSError):
                 os.unlink(os.path.join(VM_DIR, "disks", name + suffix))
         job.say(f"{name} removed, with its disk and its snapshots\n")
