@@ -643,6 +643,12 @@ def node_update(principal, node_id, fields):
                 return {"error": f"{', '.join(held)} {'lists' if len(held) == 1 else 'list'} this node "
                                  "among its nodes: take it out of their settings first, so no code "
                                  "or session is left on a node that is to host containers only"}
+        if not on and ((n.get("config") or {}).get("tunnel") or {}).get("kind") == "public":
+            # Enrolled through a public hostname, it is a public box by
+            # construction: off, its next hello would hand it the bb
+            # bundle, session tokens and FTP (R92).
+            return {"error": f"{n['name']} reaches this controller through a public hostname, so it "
+                             "hosts containers only; enroll it again on the LAN or a VPN to run sessions"}
         cfg = dict(n.get("config") or {}, host_only=True)
         if not on:
             cfg.pop("host_only", None)

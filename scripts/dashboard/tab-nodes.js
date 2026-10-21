@@ -531,7 +531,9 @@ function nodeHostRow(n){
     ? `<div class="sub">It hosts containers only: no project lists it, no session or synced copy runs here,
         and its agent may ask the controller for nothing but its own jobs, an image shipped to it
         and a container's data in a copy or a move.</div>
-       <div><button type="button" data-nd="host-off">Let projects use it again</button></div>`
+       ${n.config?.tunnel?.kind === "public"
+         ? `<div class="sub dim ndhostfixed">It reaches the controller through a public hostname, so it stays hosting only.</div>`
+         : `<div><button type="button" data-nd="host-off">Let projects use it again</button></div>`}`
     : `<div class="sub dim">A node that only runs containers sent to it (a web-facing one) can be made
         hosting only: no code, no sessions, and nothing of it comes back but its own jobs.</div>
        <div><button type="button" data-nd="host-only" ${n.live ? "" : "disabled"}>Make it hosting only</button></div>`;

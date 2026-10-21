@@ -47,5 +47,19 @@ class RefusalAudit(unittest.TestCase):
         self.assertEqual(nodes.host_refused_audit("n_vps", "source", 3700), "source", "an hour on, again")
 
 
+class StaysHostOnly(unittest.TestCase):
+    def test_a_node_enrolled_through_a_public_hostname_cannot_be_switched_off_hosting_only(self):
+        import json
+        import tempfile
+        nodes.configure(state=tempfile.mkdtemp())
+        nid = nodes.enroll_mint("user:test", "vps")["id"]
+        nodes._exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(
+            {"host_only": True, "tunnel": {"kind": "public", "host": "bb.example.com"}}), nid))
+        self.assertIn("public hostname", nodes.node_update("user:test", nid, {"host_only": False}).get("error", ""))
+        self.assertTrue(nodes.host_only(nid))
+        nodes._exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps({"host_only": True}), nid))
+        self.assertTrue(nodes.node_update("user:test", nid, {"host_only": False}).get("ok"), "one on the LAN may")
+
+
 if __name__ == "__main__":
     unittest.main()
