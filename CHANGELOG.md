@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A snapshot of a VM that boots by UEFI (Debian 13, an installer VM set to UEFI) works, where it failed; one made in 0.6.0 takes its first snapshot once it has been stopped (587f511)
+
 ## 0.6.0: 2026-10-21
 
 ### Added
