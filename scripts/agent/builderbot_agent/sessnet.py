@@ -29,6 +29,7 @@ from .base import (
     log,
 )
 from .stores import tc_root
+from .vms import vmnet_keep
 from .backends import _have
 
 
@@ -223,6 +224,7 @@ def sessnet_table(cidr=SESSNET_CIDR, mark=SESSNET_MARK):
 	set own {{ type ipv4_addr . ipv4_addr; }}
 	set peers {{ type ipv4_addr . ipv4_addr . inet_service; }}
 	set hosts {{ type ipv4_addr . ipv4_addr; }}
+	set vms {{ type ipv4_addr . ipv4_addr; flags interval; }}
 	set local {{ type ipv4_addr; flags interval; elements = {{ {", ".join(SESSNET_LOCAL)} }}; }}
 	chain forward {{
 		type filter hook forward priority -10; policy accept;
@@ -242,6 +244,7 @@ def sessnet_table(cidr=SESSNET_CIDR, mark=SESSNET_MARK):
 		ip saddr . ip daddr . tcp dport @peers goto pass
 		ip saddr . ip daddr . udp dport @peers goto pass
 		ip saddr . ip daddr @hosts goto pass
+		ip saddr . ip daddr @vms goto pass
 		ip daddr @local reject with icmpx type admin-prohibited
 		goto pass
 	}}
@@ -268,7 +271,7 @@ def sessnet_table(cidr=SESSNET_CIDR, mark=SESSNET_MARK):
 """
 
 
-def sessnet_fill(ctl, dns, own, peers=(), hosts=()):
+def sessnet_fill(ctl, dns, own, peers=(), hosts=(), vms=()):
     """The sets, replaced in one transaction: the controller's address and
     port, the resolvers, (session address, container address) for every
     container each session's project owns here, and (R82) what its project
@@ -277,7 +280,7 @@ def sessnet_fill(ctl, dns, own, peers=(), hosts=()):
     which has no containers to narrow to and is reached whole."""
     t = f"inet {SESSNET_TABLE}"
     out = [f"flush set {t} ctl", f"flush set {t} dns", f"flush set {t} own",
-           f"flush set {t} peers", f"flush set {t} hosts"]
+           f"flush set {t} peers", f"flush set {t} hosts", f"flush set {t} vms"]
     if ctl:
         out.append(f"add element {t} ctl {{ {', '.join(f'{a} . {p}' for a, p in ctl)} }}")
     if dns:
@@ -288,6 +291,8 @@ def sessnet_fill(ctl, dns, own, peers=(), hosts=()):
         out.append(f"add element {t} peers {{ {', '.join(f'{a} . {b} . {p}' for a, b, p in peers)} }}")
     if hosts:
         out.append(f"add element {t} hosts {{ {', '.join(f'{a} . {b}' for a, b in hosts)} }}")
+    if vms:
+        out.append(f"add element {t} vms {{ {', '.join(f'{a} . {b}' for a, b in vms)} }}")
     return "\n".join(out) + "\n"
 
 
@@ -405,6 +410,21 @@ def sessnet_hosts(sessions, own):
         for a in (o.get("hosts") or []) if isinstance(o, dict) else []:
             with contextlib.suppress(ValueError, TypeError):
                 out.add((s["addr"], str(ipaddress.IPv4Address(str(a)))))
+    return sorted(out)
+
+
+def sessnet_vms(sessions, own):
+    """(session address, VM network) for every session and every network its
+    project's VMs are on here (R91 step 8): a session reaches its own
+    project's VMs, by ssh and anything else, and no other's."""
+    out = set()
+    for s in sessions:
+        o = (own or {}).get(s["project"])
+        for net in (o.get("vmnets") or []) if isinstance(o, dict) else []:
+            with contextlib.suppress(ValueError, TypeError):
+                n = ipaddress.ip_network(str(net))
+                if n.version == 4 and n.prefixlen >= 16:
+                    out.add((s["addr"], str(n)))
     return sorted(out)
 
 
@@ -693,6 +713,20 @@ class SessionNet:
         # and every key is written every time, so a copy is always whole.
         SESSNET_STATUS.update(now_is)
         self.step_ctr(now)
+        self.step_vms(now)
+
+    # -- the VMs' own network rules (R91 step 8) -------------------------------
+    def step_vms(self, now):
+        """The VMs' table kept while a project network is here, with the
+        controller's address resolved as the sessions' is, and the LAN let in
+        only where the node's owner said so (session_net's vm_lan)."""
+        if now - self.ctl_at > 60 and not self.ctl:
+            self.ctl_at = now
+            self.ctl = sessnet_ctl(self.agent.state.get("controller") or "") or self.ctl
+        lan = bool((self.agent.state.get("session_net") or {}).get("vm_lan"))
+        err = vmnet_keep(self.ctl, lan, now, NFT_BIN)
+        if err:
+            self.say(f"VM network: {err}")
 
     # -- each project's containers kept to their own network (R178) ----------
     def ctr_wanted(self):
@@ -797,7 +831,7 @@ class SessionNet:
             self.ctl_at = now
             self.ctl = sessnet_ctl(self.agent.state.get("controller") or "") or self.ctl
         fill = sessnet_fill(self.ctl, ns, sessnet_pairs(sessions, own, self.containers),
-                            sessnet_peers(sessions, own), sessnet_hosts(sessions, own))
+                            sessnet_peers(sessions, own), sessnet_hosts(sessions, own), sessnet_vms(sessions, own))
         if fill != self.filled:
             p = subprocess.run([NFT_BIN, "-f", "-"], input=fill, capture_output=True, text=True,
                                timeout=30, check=False)

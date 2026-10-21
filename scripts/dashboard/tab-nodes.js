@@ -534,7 +534,11 @@ function nodeFeaturesSection(n){
   const vm = fe?.vmhost || {};
   const rows = [row("vmhost", "VM host", !!vm.installed,
       `Runs virtual machines here with KVM through libvirt${vm.libvirt ? ` (libvirt ${esc(vm.libvirt)})` : ""}, as the jobs account and never a session.`,
-      fe && !vm.kvm && !vm.installed ? "No /dev/kvm here, so a VM would run in software. On a VM, its host passes virtualization through: CPU mode host-passthrough and nested KVM on." : "")];
+      fe && !vm.kvm && !vm.installed ? "No /dev/kvm here, so a VM would run in software. On a VM, its host passes virtualization through: CPU mode host-passthrough and nested KVM on." : "")
+    // Where its VMs may go (R91 step 8): the internet, the controller and
+    // their own project's network, and the LAN only when ticked here.
+    + (vm.installed ? `<label class="ndcap ndvmlan"><input type="checkbox" data-ndvmlan${n.config?.vm_lan ? " checked" : ""}${why ? " disabled" : ""}>
+        its VMs may reach this machine's LAN too</label>` : "")];
   if (n.config?.host_only)
     rows.push(row("firewall", "Hosting firewall", !!fe?.firewall?.installed,
       "Takes in only 80 and 443, a port a container publishes included; port 22 as the SSH door leaves it.", ""));
@@ -2419,6 +2423,10 @@ function wireNodesTab(root){
       await nodeAct({action: act, id, ...(act === "door" ? {on: b.dataset.on === "1"} : {}),
                      ...(act === "feature" ? {feature: b.dataset.feature, op: b.dataset.op} : {})});
     }));
+    box.querySelectorAll("[data-ndvmlan]").forEach(c => c.onchange = async () => {
+      const j = await nodeAct({action: "vm-lan", id, on: c.checked});
+      if (j.error){ c.checked = !c.checked; notify(j.error, true); }
+    });
     wireNodeConf(box, id);
     const pi = box.querySelector('.ndpaths [data-k="paths"]');
     if (pi){

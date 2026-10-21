@@ -1716,6 +1716,21 @@ def node_session_net(principal, node_id, on):
     return {"ok": True, "on": bool(on)}
 
 
+def node_vm_lan(principal, node_id, on):
+    """Whether this node's VMs may reach its LAN (R91 step 8): off, they
+    reach the internet, the controller and their own project's network; on,
+    the rest of the network too. An administrator's, heard at once."""
+    n = node(node_id)
+    if not n or n["kind"] != "agent":
+        return {"error": "no such node"}
+    conf = dict(n.get("config") or {})
+    conf["vm_lan"] = bool(on)
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-vm-lan", {"on": bool(on)})
+    ask_hello(node_id)
+    return {"ok": True, "on": bool(on)}
+
+
 def node_root_asks(principal, node_id, on):
     """Whether a session on this node may ask for a root command (bb root
     run): on, the ask goes to a person as ever; off, it is refused with the
@@ -5258,6 +5273,7 @@ def verb(principal, req):
              "door": lambda: node_door(principal, nid, req.get("on")),
              "lockdown": lambda: node_lockdown(principal, nid),
              "feature": lambda: node_feature(principal, nid, field(req, "feature"), field(req, "op")),
+             "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,
              "storage": lambda: node_storage_measure(principal, nid),

@@ -3328,10 +3328,12 @@ try:
     # ...and the containers' (R178): whether each project's are kept apart
     # here, and what each compose project may reach, whatever the sessions'
     # switch says.
-    nodes.session_net_for = lambda nid: (({"on": True, "own": devapp.session_net_own(nid)}
+    nodes.session_net_for = lambda nid: (({"on": True, "own": _with_vmnets(nid, devapp.session_net_own(nid))}
                                           if nodes.session_net_on(nid) else {"on": False, "own": {}})
                                          | {"ctr_on": nodes.container_net_on(nid),
-                                            "ctr": devapp.container_net_own(nid) if nodes.container_net_on(nid) else {}})
+                                            "ctr": devapp.container_net_own(nid) if nodes.container_net_on(nid) else {},
+                                            # Whether this node's VMs may reach its LAN (R91 step 8).
+                                            "vm_lan": bool(((nodes.node(nid) or {}).get("config") or {}).get("vm_lan"))})
     NODES_OK = ""
     # The job logs are the only copy of what a node's job wrote and had no
     # retention at all until R17 step 1. Swept once here for whatever ended
@@ -3504,6 +3506,15 @@ vms.configure(state=STATE, write_json=write_json, node=nodes.node, node_list=nod
               job_add=nodes.job_add, audit=db.audit, prefs_get=prefs.get, nodes_rev=nodes.rev)
 nodes.on_done("vm", vms.vm_done)
 phone.vm_runner = lambda project, req, by: _vm_do(f"session:{project} (allowed by {by})", project, req, True)
+
+
+def _with_vmnets(nid, own):
+    """Each project's own reach on a node, with the network its VMs are on
+    there (R91 step 8): its sessions reach those and no other project's."""
+    own = dict(own or {})
+    for project, net in vms.nets_on(nid).items():
+        own[project] = dict(own.get(project) or {}, vmnets=[net])
+    return own
 
 
 def _vm_do(principal, project, req, session):

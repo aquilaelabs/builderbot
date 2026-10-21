@@ -72,6 +72,72 @@ def vms_now():
     return out
 
 
+VMNET_TABLE = "builderbot_vmnet"
+# What a VM may not reach unless the node's owner lets its VMs onto the LAN:
+# every private, shared, link-local and loopback range, the same list the
+# sessions are kept from.
+VMNET_PRIVATE = ("10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12",
+                 "192.168.0.0/16", "198.18.0.0/15")
+
+
+def vmnet_table(ctl, lan=False):
+    """The VMs' own firewall (R91 step 8), whole: a VM reaches the internet,
+    the controller (its address and port) and its own project's network;
+    not another project's VMs, not the LAN unless `lan`, and of this node
+    only the DHCP and DNS libvirt serves it. Nothing starts a connection
+    into a VM but its own project's sessions, which the sessions' table
+    lets through by their project (sessnet)."""
+    ctl_set = (" elements = { " + ", ".join(f"{a} . {p}" for a, p in ctl) + " };") if ctl else ""
+    priv = "" if lan else ("\n\t\tiifname \"bbvm-n*\" ip daddr { " + ", ".join(VMNET_PRIVATE) + " } drop")
+    return (f"table inet {VMNET_TABLE} {{\n"
+            f"\tset ctl {{ type ipv4_addr . inet_service;{ctl_set} }}\n"
+            "\tchain forward {\n"
+            "\t\ttype filter hook forward priority -5; policy accept;\n"
+            "\t\tiifname \"bbvm-n*\" ct state established,related accept\n"
+            "\t\tiifname \"bbvm-n*\" oifname \"bbvm-n*\" drop\n"
+            f"\t\tiifname \"bbvm-n*\" ip daddr . tcp dport @ctl accept{priv}\n"
+            "\t\tiifname \"bbvm-n*\" meta nfproto ipv6 drop\n"
+            "\t}\n"
+            "\tchain input {\n"
+            "\t\ttype filter hook input priority -5; policy accept;\n"
+            "\t\tiifname \"bbvm-n*\" ct state established,related accept\n"
+            "\t\tiifname \"bbvm-n*\" udp dport { 53, 67 } accept\n"
+            "\t\tiifname \"bbvm-n*\" tcp dport 53 accept\n"
+            "\t\tiifname \"bbvm-n*\" ip daddr . tcp dport @ctl accept\n"
+            "\t\tiifname \"bbvm-n*\" drop\n"
+            "\t}\n"
+            "}\n")
+
+
+_vmnet = {"applied": None, "at": 0.0}
+
+
+def vmnet_keep(ctl, lan=False, now=0.0, nft="nft"):
+    """The VMs' table in place while any project network is here, rewritten
+    when what it should hold moves, and put back within half a minute of a
+    flush or a reboot. "" or what went wrong."""
+    try:
+        here = any(n.startswith("bbvm-n") for n in os.listdir("/sys/class/net"))
+    except OSError:
+        here = False
+    if not here:
+        return ""
+    want = vmnet_table(ctl, lan)
+    gone = False
+    if now - _vmnet["at"] > 30:
+        _vmnet["at"] = now
+        gone = subprocess.run([nft, "list", "table", "inet", VMNET_TABLE], capture_output=True,
+                              check=False).returncode != 0
+    if want == _vmnet["applied"] and not gone:
+        return ""
+    p = subprocess.run([nft, "-f", "-"], input=f"table inet {VMNET_TABLE}\ndelete table inet {VMNET_TABLE}\n" + want,
+                       capture_output=True, text=True, check=False)
+    if p.returncode:
+        return f"nft refused the VMs' table: {(p.stderr or p.stdout).strip()[:200]}"
+    _vmnet["applied"] = want
+    return ""
+
+
 def vm_pool():
     """Room where the VMs' disks go, for the census and the page."""
     try:

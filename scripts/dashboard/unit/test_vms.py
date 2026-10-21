@@ -170,6 +170,24 @@ class Agent(unittest.TestCase):
                 self.assertTrue(self.av.IMAGE_RE.fullmatch(im["id"]) and self.av.FILE_RE.fullmatch(im["file"]), im)
                 self.assertTrue(self.av.DOMAIN_RE.fullmatch(spec["domain"]) and self.av.NETWORK_RE.fullmatch(spec["network"]), spec)
 
+    def test_a_vm_reaches_the_internet_the_controller_and_its_own(self):
+        t = self.av.vmnet_table([("192.168.1.16", 7680)])
+        self.assertIn('iifname "bbvm-n*" oifname "bbvm-n*" drop', t)
+        self.assertIn("elements = { 192.168.1.16 . 7680 }", t)
+        self.assertIn("192.168.0.0/16", t)
+        self.assertLess(t.index("@ctl accept"), t.index("192.168.0.0/16"), "the controller before the LAN's drop")
+        self.assertIn('udp dport { 53, 67 } accept', t)
+        self.assertNotIn("192.168.0.0/16", self.av.vmnet_table([], lan=True))
+
+    def test_a_session_reaches_its_own_project_s_vms(self):
+        sn = sys.modules[self.agent.Agent.__module__.rsplit(".", 1)[0] + ".sessnet"]
+        sessions = [{"addr": "10.231.0.5", "project": "web"}, {"addr": "10.231.0.6", "project": "api"}]
+        own = {"web": {"vmnets": ["10.232.0.0/24"]}, "api": {"vmnets": ["not a net"]}}
+        self.assertEqual(sn.sessnet_vms(sessions, own), [("10.231.0.5", "10.232.0.0/24")])
+        self.assertIn("vms { 10.231.0.5 . 10.232.0.0/24 }", sn.sessnet_fill([], [], [], vms=sn.sessnet_vms(sessions, own)))
+        t = sn.sessnet_table()
+        self.assertLess(t.index("@vms goto pass"), t.index("@local reject"))
+
     def test_the_domain_carries_its_marker_and_no_graphics(self):
         x = self.av.domain_xml("bbvm-web-db", "web", 2, 2048, "/v/d.qcow2", "/v/s.iso", "bbvm-n00")
         self.assertIn("<bb:vm xmlns:bb='https://builderbot.dev/vm/1' project='web'/>", x.replace('"', "'"))

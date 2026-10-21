@@ -144,6 +144,11 @@ def _subnet(d, project, nid):
     raise RuntimeError("every project network on this node is taken")
 
 
+def nets_on(nid):
+    """{project: its VM network} on one node, for the sessions' rules there."""
+    return dict(_load()["nets"].get(nid) or {})
+
+
 def _live(n):
     """What the node's census says of the VMs on it, by domain name."""
     return {v.get("name"): v for v in ((n or {}).get("reported") or {}).get("vms") or [] if isinstance(v, dict)}
