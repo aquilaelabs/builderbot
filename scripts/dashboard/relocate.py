@@ -28,6 +28,7 @@ end. Both nodes must be agent nodes: a plan is what carries the steps.
 """
 import re
 import posixpath
+import shutil
 import time
 import os
 import threading
@@ -682,6 +683,10 @@ def built(project, instance, ok):
         _queue_on(project, instance, plan["old"], "down")
 
 
+# What a container's data coming home leaves free on the controller's disk.
+DATA_KEEP_FREE = 2 * 1024 ** 3
+
+
 def data_put(nid, q, stream, length):
     """The old node's packed data (agent verb devdata-put): only for a job
     of that node's that is sending it, whole or not at all."""
@@ -706,6 +711,14 @@ def data_put(nid, q, stream, length):
         return {"error": "that piece is not within the data"}, 400
     tmp = dest.with_name(f".{dest.name}.part")
     have = tmp.stat().st_size if tmp.is_file() else 0
+    # Room for the whole of it before the first byte, with DATA_KEEP_FREE
+    # left over: the old node says how big it is, and a box that was taken
+    # over would otherwise fill the controller's disk (R92).
+    if offset == 0:
+        free = shutil.disk_usage(dest.parent).free + have
+        if total + DATA_KEEP_FREE > free:
+            return {"error": f"the data is {total >> 20} MB and this controller has "
+                             f"{max(free - DATA_KEEP_FREE, 0) >> 20} MB to spare for it"}, 507
     if offset != have:
         # Not the next piece: a retry of one that landed is answered as
         # landed, anything else is said, so the file never has a hole.

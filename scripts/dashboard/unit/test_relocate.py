@@ -153,6 +153,19 @@ class Relocate(unittest.TestCase):
         self.assertEqual(relocate.data_put("n1", q(3, 6), io.BytesIO(b"def"), 3), ({"ok": True, "bytes": 6}, 200))
         self.assertEqual(relocate._data_file("alpha", "alpha-web").read_bytes(), b"abcdef")
 
+    def test_data_bigger_than_the_room_here_is_refused_before_a_byte(self):
+        """The old node says how big its data is; a box that was taken over
+        would otherwise fill the controller's disk (R92)."""
+        r = relocate.start("alpha", "main", "copy", "n2", "alpha-web")
+        self.q.jobs[r["job"]]["state"] = "running"
+        was = relocate.DATA_KEEP_FREE
+        self.addCleanup(setattr, relocate, "DATA_KEEP_FREE", was)
+        relocate.DATA_KEEP_FREE = shutil.disk_usage(paths.of("images").parent).free
+        q = {"job": [r["job"]], "offset": ["0"], "total": ["3"]}
+        got, status = relocate.data_put("n1", q, io.BytesIO(b"abc"), 3)
+        self.assertEqual(status, 507, got)
+        self.assertFalse(relocate._data_file("alpha", "alpha-web").with_name(".data.tar.part").exists())
+
     def test_a_move_switches_node_after_the_data_and_takes_the_old_down_once_up(self):
         r = relocate.start("alpha", "main", "move", "n3")
         self.q.jobs[r["job"]]["state"] = "running"
