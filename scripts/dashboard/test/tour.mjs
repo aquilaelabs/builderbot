@@ -83,6 +83,26 @@ const overSetup = await page.evaluate(async () => {
 });
 ok(!overSetup, 'no tour starts while the setup page is up');
 
+// Nor over a page's placeholder: the draw after its data has landed asks
+// again (the operator, 21 Oct).
+const overShimmer = await page.evaluate(async () => {
+  const seen = state.tour;
+  state.tour = { seen: [], off: false };
+  const ph = document.createElement('div'); ph.className = 'loading skel';
+  document.querySelector('.doc.on')?.appendChild(ph);
+  tourAsked.clear(); tourSoon(tabOf(panes[0])?.kind);
+  await new Promise(r => setTimeout(r, 1200));
+  const during = !$('tourCard')?.hidden;
+  ph.remove(); tourSoon(tabOf(panes[0])?.kind);
+  await new Promise(r => setTimeout(r, 1200));
+  const after = !$('tourCard')?.hidden;
+  const shade = getComputedStyle($('tourRing')).boxShadow;
+  tourEnd?.(); state.tour = seen;
+  return { during, after, shade };
+});
+ok(!overShimmer.during && overShimmer.after, `no tour over a placeholder, and one once the page has drawn (${JSON.stringify(overShimmer)})`);
+ok(/9999px/.test(overShimmer.shade) && /0\.35/.test(overShimmer.shade), `...and the page is shaded around the part a step is about (${overShimmer.shade})`);
+
 // On a phone the card is a sheet from the bottom edge.
 await prefs({ tour_seen: [], tour_off: false });
 const phone = await newPage(browser, { tour: true, viewport: { width: 393, height: 852 }, isMobile: true, hasTouch: true });

@@ -118,6 +118,9 @@ function tourSoon(kind){
   // The welcome panel first, and no tour over another dialog: the next draw
   // asks again once it is closed.
   if (document.querySelector(".modal:not([hidden])")) return;
+  // ...nor over a placeholder: the page's own draw, once its data has
+  // landed, asks again (the operator, 21 Oct: the tour pointed at shimmer).
+  if (tourLoading()) return;
   // ...nor over the setup page, which is the whole page until Finish: a new
   // owner's first look was Home's tour over its four steps.
   if (setupNeeded()) return;
@@ -139,10 +142,14 @@ function tourTarget(sel){
   return null;
 }
 
+// Whether the page in front is still its placeholder.
+function tourLoading(){
+  return !!document.querySelector(".doc.on .skel, .doc.on .loading, .doc.on .sk-b");
+}
 function tourStart(kind){
   // Still the page in front, and nothing over it: a tour asked for a page
   // left meanwhile waits for that page's next visit.
-  if (tourKind || document.querySelector(".modal:not([hidden])") || setupNeeded() || tabOf(panes[0])?.kind !== kind){
+  if (tourKind || document.querySelector(".modal:not([hidden])") || setupNeeded() || tourLoading() || tabOf(panes[0])?.kind !== kind){
     tourAsked.delete(kind);
     return;
   }
