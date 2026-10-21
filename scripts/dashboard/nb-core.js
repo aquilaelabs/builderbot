@@ -197,9 +197,9 @@ function makeNotebook(project){
     nb.tstSuite = ""; nb.tstFlagged = nb.tstUndoc = false;
     nb.roadmapLogOn = false;
     nb.roadmapLog = null;
-    nb.roadmapDone = null; nb.roadmapChip = ""; nb.roadmapFind = ""; nb.roadmapFinishedN = 0;
+    nb.roadmapDone = null; nb.roadmapChip = ""; nb.roadmapVer = ""; nb.roadmapFind = ""; nb.roadmapFinishedN = 0;
     nb.roadmapDoneAsking = false;
-    nb.bugChip = ""; nb.bugFind = "";
+    nb.bugChip = ""; nb.bugVer = ""; nb.bugFind = "";
     $("roadmapFind").value = ""; $("bugFind").value = "";
     $("histFind").value = "";
     cancelSend();
@@ -818,8 +818,8 @@ function makeNotebook(project){
     find(id){
       const bug = /^b/i.test(id);
       setNbView(bug ? "bugs" : "roadmap");
-      if (bug){ nb.bugChip = ""; nb.bugFind = id; $("bugFind").value = id; drawBugs(true); }
-      else { nb.roadmapChip = ""; nb.roadmapFind = id; $("roadmapFind").value = id; redrawRoadmap(); }
+      if (bug){ nb.bugChip = ""; nb.bugVer = ""; nb.bugFind = id; $("bugFind").value = id; drawBugs(true); }
+      else { nb.roadmapChip = ""; nb.roadmapVer = ""; nb.roadmapFind = id; $("roadmapFind").value = id; redrawRoadmap(); }
     },
     reloadTests(){ return loadTests(); },
     leaving: notebookLeaving,

@@ -3576,6 +3576,9 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .lfilter .chips{flex:1 1 auto;min-width:0}
 /* With no chips to draw (one kind of row), the search starts the band. */
 .lfilter .chips:empty{display:none}
+/* The chips by release (the Roadmap's targets, Bugs' seen-in): a line of
+   their own under the others, which they would otherwise share a wrap with. */
+.lfilter .chips.relchips{flex:1 1 100%;order:3}
 .lfilter input[type=search]{flex:0 1 16rem;min-width:10rem}
 /* A band's order (Sort on Bugs) keeps its label beside its menu. */
 .lfilter .lsort{display:flex;align-items:center;gap:6px;flex:0 0 auto}
@@ -5130,10 +5133,12 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       </div>
     </div>
     <!-- Narrowing the list (R254 step 1): chips for All, Open and Shelved,
+         a line of them by the release an item is meant for,
          and a search over the items, their steps and their details, which
          reaches the Finished section too. A view, never a setting. -->
     <div class="field lfilter" id="roadmapFilter" hidden>
       <div class="chips" id="roadmapChips"></div>
+      <div class="chips relchips" id="roadmapVers"></div>
       <input id="roadmapFind" type="search" maxlength="80" autocomplete="off"
              placeholder="search the roadmap" aria-label="search the roadmap">
     </div>
@@ -5246,6 +5251,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            within it. -->
       <div class="field lfilter" id="bugSortBar">
         <div class="chips" id="bugChips"></div>
+        <div class="chips relchips" id="bugVers"></div>
         <input id="bugFind" type="search" maxlength="80" autocomplete="off"
                placeholder="search the tracker" aria-label="search the tracker">
         <span class="lsort"><label for="bugSort">Sort</label>

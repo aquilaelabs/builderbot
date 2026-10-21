@@ -35,6 +35,7 @@ function nbHistoryView({$, nb, project}){
     "undone-step": ["took back a step", ""],
     shelved:       ["shelved", ""],
     unshelved:     ["off the shelf", ""],
+    target:        ["targeted", ""],
   };
 
   // In this browser's time zone (Profile), like every time on the page.
@@ -85,7 +86,9 @@ function nbHistoryView({$, nb, project}){
       <span class="what">${where} · ${esc(e.text || "")}${
           e.was ? ` <span class="was">${esc(e.was)}</span>` : ""}${
           e.act === "moved" ? ` <span class="was" style="text-decoration:none">(place ${esc(String(e.from))} to ${esc(String(e.to))})</span>` : ""}${
-          e.steps ? ` <span class="was" style="text-decoration:none">(${e.steps} steps)</span>` : ""}
+          e.steps ? ` <span class="was" style="text-decoration:none">(${e.steps} steps)</span>` : ""}${
+          e.act === "target" || (e.act === "add" && e.target)
+            ? ` <span class="was" style="text-decoration:none">(${e.target ? `for ${esc(e.target)}` : "no target"})</span>` : ""}
         <span class="who${e.by === "you" ? " you" : ""}">${esc(whoSays(e))}${
           e.approved ? ", approved by you" : ""}</span>${
           e.why ? `<span class="note">why: ${esc(e.why)}</span>` : ""}${

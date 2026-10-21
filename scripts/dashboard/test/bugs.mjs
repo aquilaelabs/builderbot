@@ -233,6 +233,16 @@ await page.waitForFunction(() => document.querySelectorAll('#bugList .bug:not(.o
 ok(await shownIds() === '1', 'the Closed chip shows the closed report alone');
 await page.click('#bugChips [data-bgchip="open"]');
 ok(await shownIds() === '2,3', '...Open the outstanding ones');
+// ...and a chip per release a report was seen in (the operator, 21 Oct):
+// the build's X.Y.Z, oldest first, Unknown for a report with none.
+const rel = await page.evaluate(() => {
+  const rows = [{seen_in: '0.5.4-dev.3481+018be7f'}, {seen_in: '0.5.10'}, {seen_in: 'v0.5.4'}, {}];
+  return { chips: versionChips(rows, b => b.seen_in, 'Unknown').map(c => `${c.label} ${c.count}`).join('|'),
+           in: rows.map(b => inRelease(b.seen_in, '0.5.4')), none: rows.map(b => inRelease(b.seen_in, 'none')),
+           band: !!document.querySelector('#bugSortBar #bugVers') };
+});
+ok(rel.chips === '0.5.4 2|0.5.10 1|Unknown 1' && rel.in.join() === 'true,false,true,false' && rel.none.join() === 'false,false,false,true' && rel.band,
+   `the version chips group by release, oldest first, with Unknown last (${rel.chips})`);
 await page.click('#bugChips [data-bgchip=""]');
 await page.fill('#bugFind', 'graded critical');
 await page.waitForFunction(() => document.querySelectorAll('#bugList .bug:not(.off)').length === 1, null, { timeout: 5000 });
