@@ -568,7 +568,8 @@ function tcDriverRow(m, busy, job){
   const upToDate = !mine && m.here && !m.newer;
   const opts = m.options || [];
   const picked = m.here ? m.package : (opts.some(o => o.pkg === tcDriverPick) ? tcDriverPick : "");
-  const sel = opts.length ? `<label class="pick tcdrvpick">Version <select id="tcDrvSel" aria-label="driver version"${
+  // No card, nothing to pick a version for: the row is there to remove it (B168).
+  const sel = opts.length && m.state !== "nocard" ? `<label class="pick tcdrvpick">Version <select id="tcDrvSel" aria-label="driver version"${
       m.here || busy || !may ? " disabled" : ""}${
       m.here ? ` title="installed: remove it first to install another version"` : ""}>
       ${m.here ? "" : `<option value=""${picked ? "" : " selected"}>${esc(m.recommended
