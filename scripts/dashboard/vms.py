@@ -210,10 +210,12 @@ def gone(tok):
 
 
 def on(key):
-    """{"screen": [who...], "console": [who...]} for one VM, each once."""
+    """{"screen": [{name, uid}...], "console": [...]} for one VM, each person
+    once; the page says "you" by the uid, which a display name is not."""
     with _on_lock:
-        rows = [(k, w) for v, k, w, _ in _on.values() if v == key]
-    return {k: sorted({w for kk, w in rows if kk == k}) for k in ("screen", "console") if any(kk == k for kk, _ in rows)}
+        rows = [(k, w, u) for v, k, w, u in _on.values() if v == key]
+    return {k: [{"name": w, "uid": u} for w, u in sorted({(w, u) for kk, w, u in rows if kk == k})]
+            for k in ("screen", "console") if any(kk == k for kk, _, _ in rows)}
 
 
 def _live(n):

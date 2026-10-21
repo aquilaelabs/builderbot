@@ -183,7 +183,8 @@ class Controller(unittest.TestCase):
         c = vms.present("web/db", "console", "Ada", "u_ada")
         self.assertNotEqual(vms.rev(), before, "the page re-reads when somebody comes or goes")
         row = [v for v in vms.view() if v["name"] == "db"][0]
-        self.assertEqual(row["on"], {"screen": ["Ada", "Ben"], "console": ["Ada"]})
+        self.assertEqual(row["on"], {"screen": [{"name": "Ada", "uid": ""}, {"name": "Ben", "uid": ""}],
+                                     "console": [{"name": "Ada", "uid": "u_ada"}]})
         self.assertEqual(vms.holders("web/db", "console", but="u_ada"), [])
         self.assertFalse(vms.may_take("u_ben", "web/db"))
         vms.take("u_ben", "web/db")

@@ -6194,7 +6194,7 @@ class Handler(BaseHTTPRequestHandler):
         uid = users.uid_of(me) or ""
         take = {p: not sess and can[p] == "write" and (users.is_admin(me) or (uid and membership.owner_of(p) == uid))
                 for p in seen}
-        return self._json(vms.payload(seen) | {"can": can, "take": take})
+        return self._json(vms.payload(seen) | {"can": can, "take": take, "me": uid})
 
     def _vms(self, req):
         """POST /api/vms (R91): new, start, stop, restart, remove, snapshot,

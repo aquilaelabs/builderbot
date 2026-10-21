@@ -75,8 +75,8 @@ function vmRow(v){
   const snaps = v.snapshots || [];
   // Who else is on it now (the operator, 21 Oct): a Screen is shared, one
   // keyboard among them; a Console is one person's at a time.
-  const me = state?.me?.name || "";
-  const who = list => list.map(w => w === me ? "you" : w);
+  const me = vmsData?.me || "";
+  const who = list => list.map(w => w.uid && w.uid === me ? "you" : w.name);
   const onScreen = who(v.on?.screen || []), onConsole = who(v.on?.console || []);
   const others = [...onScreen, ...onConsole].some(w => w !== "you");
   const onLine = onScreen.length || onConsole.length ? `<div class="sub dmstate${others ? " warn" : ""}">${[
@@ -173,7 +173,7 @@ function wireVms(el){
       // One person's at a time (the operator, 21 Oct): somebody else's is
       // refused, but for the project's owner and the administrators, who
       // may take it over, asked first, and the person is told.
-      const held = (v.on?.console || []).filter(w => w !== (state?.me?.name || ""));
+      const held = (v.on?.console || []).filter(w => !w.uid || w.uid !== vmsData?.me).map(w => w.name);
       if (held.length){
         if (!vmsData?.take?.[v.project])
           return notify(`${andList(held)} ${held.length > 1 ? "have" : "has"} ${v.name}'s Console open: it is one person's at a time. Its Screen can be shared, or ask them.`, true);
