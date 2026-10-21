@@ -120,7 +120,9 @@ def commands(text, depth=0):
     toks = _tokens(_drop_heredocs(str(text or "")).replace("\\\n", " ").replace("\n", " \n "))
     out, cur = [], []
     for t in toks + [";"]:
-        if t in SEPARATORS or t.strip() == "":
+        # Punctuation run together (`);` after a `$(seq 1 9)`) is still
+        # separators: read as a word, it hid the next command (B170).
+        if t in SEPARATORS or t.strip() == "" or (set(t) <= set(";&|()") and t):
             if cur:
                 words = _unwrap(cur)
                 if words:

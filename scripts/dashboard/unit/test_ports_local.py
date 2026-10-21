@@ -21,7 +21,7 @@ class DaemonJson(unittest.TestCase):
         self.assertEqual(both, {"ip": "127.0.0.1", "default-network-opts": {"bridge": {
             "com.docker.network.bridge.host_binding_ipv4": "127.0.0.1"}},
             "log-opts": {"max-size": "20m", "max-file": "3"}},
-            "the default bridge's and every network compose makes (draconis, 11 Oct), and bounded container logs")
+            "the default bridge's and every network compose makes (a hosting node, 11 Oct), and bounded container logs")
         kept = f('{"labels": ["builderbot.sandbox=1"], "log-driver": "json-file"}', True)
         self.assertIn('"labels"', kept)
         self.assertIn('"ip": "127.0.0.1"', kept)

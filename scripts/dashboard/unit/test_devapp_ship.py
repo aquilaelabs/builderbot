@@ -162,6 +162,16 @@ class Ship(unittest.TestCase):
         self.assertIn(("10.0.0.2", 8080), [tuple(x) for x in own["alpha"]["peers"]],
                       "a session on the project's node reaches the shipped container's published port")
 
+    def test_a_hosting_only_node_is_never_opened_whole(self):
+        # It says it is no sandbox, which would open its whole address: a
+        # public box's word about itself is not taken (R92).
+        n2 = self.q.nodes["n2"]
+        n2["reported"]["sandbox"], n2["config"]["host_only"] = False, True
+        self.make()
+        own = devapp.session_net_own("n1")
+        self.assertNotIn("10.0.0.2", own["alpha"]["hosts"])
+        self.assertIn(("10.0.0.2", 8080), [tuple(x) for x in own["alpha"]["peers"]])
+
 
 if __name__ == "__main__":
     unittest.main()

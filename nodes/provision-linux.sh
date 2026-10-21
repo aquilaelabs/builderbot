@@ -67,6 +67,12 @@ REACH=""
 # with the auth key in it and answering ssh there. --door-close22 drops
 # public port 22 once the door is up.
 DOOR=""; DOOR_HOST=""; DOOR_SECRET=""; DOOR_CLOSE22=0
+# --firewall: a hosting-only box takes in 80 and 443 and nothing else
+# (R93), its containers' published ports included; port 22 as the door
+# leaves it. --feature ID (R91): one of bb-sandbox's features installed
+# once the node is enrolled; --firewall is --feature firewall.
+FIREWALL=0
+declare -a FEATURES_WANT=()
 # --machine HASH: the script was made for a node that enrolled from one
 # machine (R177), and runs on that one alone.
 MACHINE=""
@@ -85,14 +91,15 @@ node mints a token and prints this line with the address and the token in
 it, which is a paste rather than a questionnaire.
 
   --user NAME          the account Docker runs under and ssh lands on, bb by
-                       default. Enroll node asks for it too, so the row says
+                       default, made fresh: a name already taken on the machine
+                       is refused, never taken over. Enroll node asks for it too, so the row says
                        the right one before this runs; the agent reports it
                        at enrollment either way. It gets NO sudo and cannot
                        run bb-sandbox: this is the account a session's JOBS
                        run as, and reconfiguring the machine's mounts is not
                        what it is for.
   --session-user NAME|none   the account a Claude SESSION works as on this
-                       node (builder), made with --session-uid/--session-gid
+                       node (builder; a name already taken is refused), made with --session-uid/--session-gid
                        (99:100, the controller's PUID:PGID, so files it saves
                        are owned as the controller's are). In kvm for the emulator, in NO docker group. The
                        agent runs ttyd for it and the dashboard's terminals
@@ -173,6 +180,19 @@ it, which is a paste rather than a questionnaire.
                        port 22 from anywhere but the loopback afterwards:
                        off unless asked, since the person running this is
                        usually on that port.
+  --firewall           for a hosting-only node (--session-user none): drop
+                       everything coming in but 80 and 443, a container's
+                       published port included (Docker's ports pass the
+                       host's input rules, so its forward path is held
+                       too), and port 22 unless a door closed it. Going
+                       out is left alone: the box pulls images, renews
+                       certificates and dials the controller.
+  --feature vmhost     a VM host: KVM through libvirt, for the VMs page
+                       (needs /dev/kvm; on a VM, its host passes
+                       virtualization through). Each feature is bb-sandbox
+                       feature install ID, run once the node has enrolled,
+                       and its Features section on the Nodes page installs
+                       and removes it later.
   --data PATH          the four stores, all defaulting under
   --toolchains PATH      /var/lib/builderbot/: a job's working tree and AVDs,
   --cache PATH         the toolchains installed on this node, the build
@@ -238,6 +258,8 @@ while [ $# -gt 0 ]; do
         --door-host) DOOR_HOST="$2"; shift 2 ;;
         --door-secret) DOOR_SECRET="$2"; shift 2 ;;
         --door-close22) DOOR_CLOSE22=1; shift ;;
+        --firewall) FIREWALL=1; FEATURES_WANT+=(firewall); shift ;;
+        --feature) FEATURES_WANT+=("$2"); shift 2 ;;
         --machine) MACHINE="$2"; shift 2 ;;
         --data)  STORE_DATA="$2"; STORE_DATA_SET=1; shift 2 ;;
         --toolchains) STORE_TOOLCHAINS="$2"; STORE_TOOLCHAINS_SET=1; shift 2 ;;
@@ -273,6 +295,14 @@ if [ -n "$REACH" ]; then
     [ -z "$WG_CONF" ] || { echo "--reach public and --wg-conf are two ways to the controller: one or the other" >&2; exit 1; }
     [ -n "$CONTROLLER" ] || { echo "--reach goes with --controller and --token" >&2; exit 1; }
     case "$CONTROLLER" in https://*) ;; *) echo "through a public hostname the controller is an https hostname, not ${CONTROLLER}" >&2; exit 1 ;; esac
+fi
+for f in "${FEATURES_WANT[@]}"; do
+    case "$f" in vmhost|firewall) ;; *) echo "--feature takes vmhost or firewall, not ${f}" >&2; exit 1 ;; esac
+    [ "${GUEST:-0}" != 1 ] || { echo "--feature ${f} needs root, and a guest node runs without it" >&2; exit 1; }
+done
+if [ "$FIREWALL" = 1 ]; then
+    [ "${GUEST:-0}" != 1 ] || { echo "--firewall needs root, and a guest node runs without it" >&2; exit 1; }
+    [ "$SESSION_NAME" = none ] || { echo "--firewall is for a hosting-only node (--session-user none): it would shut the session ports the controller reaches" >&2; exit 1; }
 fi
 if [ -n "$DOOR" ]; then
     case "$DOOR" in cloudflared|tailscale) ;; *) echo "--door takes cloudflared or tailscale" >&2; exit 1 ;; esac
@@ -508,11 +538,12 @@ ID=""; ID_LIKE=""; PRETTY_NAME=""; VERSION_ID=""; VERSION_CODENAME=""; UBUNTU_CO
 # pre-flight below, beside everything else it found, so one run says the
 # whole of what is wrong rather than the first thing.
 # The families this script has been run on for real: Debian's (Ubuntu
-# 24.04 and 26.04 sandboxes) and RHEL's (a Rocky sandbox). The others are
+# 24.04 and 26.04, Debian 13), RHEL's (Rocky, Alma, CentOS Stream, Fedora),
+# Arch's and openSUSE's (R97's walk, 21 Oct). The others are
 # written to each family's tools and never run (dev, in the dashboard's
 # word), so they need --dev to proceed, and a run that works is what moves
 # one onto this list.
-VETTED_FAMILIES=" deb rhel "
+VETTED_FAMILIES=" deb rhel arch suse "
 DEV="${DEV:-0}"
 FAMILY=""; FAMILY_WHY=""
 _ids=" ${ID:-} ${ID_LIKE:-} "
@@ -572,6 +603,113 @@ if [ -d /run/systemd/system ]; then INIT=systemd
 elif command -v rc-service >/dev/null 2>&1; then INIT=openrc
 elif [ -d /etc/sv ] && command -v sv >/dev/null 2>&1; then INIT=runit
 fi
+
+is_vm() {
+    if command -v systemd-detect-virt >/dev/null 2>&1; then systemd-detect-virt --quiet --vm
+    else grep -qi hypervisor /proc/cpuinfo 2>/dev/null; fi
+}
+# The services, whichever init runs this machine: the core's, never a family
+# file's, since every family has one of these three (B166: the split into
+# family files took them out and put them nowhere).
+# svc_enable NAME: a service the DISTRIBUTION ships (docker, the guest
+# agent), started now and at boot, whichever init runs this machine.
+svc_enable() {
+    case "$INIT" in
+        systemd) systemctl enable --now "$1" ;;
+        openrc)  rc-update add "$1" default >/dev/null 2>&1 || true; rc-service "$1" start >/dev/null 2>&1 || rc-service "$1" restart ;;
+        runit)   [ -d "/etc/sv/$1" ] || { echo "no runit service /etc/sv/$1" >&2; return 1; }
+                 ln -sfn "/etc/sv/$1" "/var/service/$1"
+                 # runsvdir scans /var/service every five seconds; until it
+                 # has, sv cannot reach the service and every verb fails.
+                 for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+                     [ -e "/var/service/$1/supervise/ok" ] && break; sleep 1
+                 done
+                 sv start "$1" >/dev/null 2>&1 || true ;;
+    esac
+}
+svc_restart() {
+    case "$INIT" in
+        systemd) systemctl restart "$1" ;;
+        openrc)  rc-service "$1" restart ;;
+        runit)   sv restart "$1" ;;
+    esac
+}
+svc_stop() {
+    case "$INIT" in
+        systemd) systemctl stop "$1" 2>/dev/null || true ;;
+        openrc)  rc-service "$1" stop 2>/dev/null || true ;;
+        runit)   sv stop "$1" 2>/dev/null || true ;;
+    esac
+}
+svc_active() {
+    case "$INIT" in
+        systemd) systemctl is-active --quiet "$1" ;;
+        openrc)  rc-service "$1" status >/dev/null 2>&1 ;;
+        runit)   sv status "$1" 2>/dev/null | grep -q '^run' ;;
+    esac
+}
+# svc_install NAME DESCRIPTION COMMAND: a service of OUR OWN (the agent),
+# written the way this init wants one: a unit, an OpenRC script under
+# supervise-daemon, or a runit directory. Rewritten on every run, then
+# enabled and (re)started. Ordered after the network mounts (remote-fs,
+# netmount): a store on a share is there before the agent's first census.
+# svc_install NAME DESC CMD [EXTRA]: the service, whichever init this is.
+# EXTRA is extra [Service] lines for systemd, where a unit's settings decide
+# what a stop reaches; the other inits take the command and nothing else.
+svc_install() {
+    local name="$1" desc="$2" cmd="$3" extra="${4:-}"
+    case "$INIT" in
+        systemd)
+            cat > "/etc/systemd/system/${name}.service" <<EOF
+[Unit]
+Description=${desc}
+After=network-online.target remote-fs.target docker.service
+Wants=network-online.target
+
+[Service]
+ExecStart=${cmd}
+Restart=always
+RestartSec=5
+${extra}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+            systemctl daemon-reload
+            systemctl enable "$name" >/dev/null 2>&1
+            systemctl restart "$name" ;;
+        openrc)
+            cat > "/etc/init.d/${name}" <<EOF
+#!/sbin/openrc-run
+# ${desc}
+description="${desc}"
+supervisor=supervise-daemon
+command="${cmd%% *}"
+command_args="${cmd#* }"
+# Kept, where OpenRC has no journal: supervise-daemon sent it to /dev/null.
+# The agent keeps the file to its size (cap_logs) and bb logs --node reads it.
+output_log="/var/log/${name}.log"
+error_log="/var/log/${name}.log"
+respawn_delay=5
+depend() { need net; use netmount; after docker; }
+EOF
+            chmod 0755 "/etc/init.d/${name}"
+            rc-update add "$name" default >/dev/null 2>&1 || true
+            rc-service "$name" restart >/dev/null 2>&1 || rc-service "$name" start ;;
+        runit)
+            install -d -m 0755 "/etc/sv/${name}"
+            cat > "/etc/sv/${name}/run" <<EOF
+#!/bin/sh
+# ${desc}
+# Kept, where runit has no journal and no log service here: it went to
+# runsvdir and nowhere. The agent keeps the file to its size (cap_logs).
+exec ${cmd} >> "/var/log/${name}.log" 2>&1
+EOF
+            chmod 0755 "/etc/sv/${name}/run"
+            ln -sfn "/etc/sv/${name}" "/var/service/${name}"
+            sv restart "$name" >/dev/null 2>&1 || sv start "$name" >/dev/null 2>&1 || true ;;
+    esac
+}
 
 # pkg_refresh, pkg and pkg_names are the family's (nodes/families/*.sh),
 # sourced below once the machine's family is known.
@@ -909,7 +1047,7 @@ fi
 
 # The journal kept across boots (R185): a fresh VPS keeps it in memory only,
 # so after a crash `bb logs --node NAME --crash` met "No journal boot entry
-# found for the specified boot (-1)" on draconis (11 Oct). A drop-in rather
+# found for the specified boot (-1)" on a hosting node (11 Oct). A drop-in rather
 # than an edit of journald.conf, so the distribution's own file is left as it
 # was; journald restarted only when the drop-in is new.
 keep_journal() {
@@ -958,7 +1096,25 @@ authorize() {
 }
 
 say "user ${USER_NAME}"
-id -u "$USER_NAME" >/dev/null 2>&1 || useradd -m -s /bin/bash "$USER_NAME"
+# An account here before BuilderBot is somebody's own: noted, so Uninstall
+# leaves it and its home where it found them.
+KEPT_ACCOUNTS=/etc/builderbot/kept-accounts
+keep_account() {
+    install -d -m 0755 /etc/builderbot
+    grep -qx "$1" "$KEPT_ACCOUNTS" 2>/dev/null || echo "$1" >> "$KEPT_ACCOUNTS"
+}
+# Never one that is already here and not BuilderBot's: an account is
+# somebody's, and taking it over (or deleting it at Uninstall) is never
+# ours to do, whatever it is called. A machine already enrolled has made its
+# own, which a run again keeps using.
+if id -u "$USER_NAME" >/dev/null 2>&1; then
+    if [ ! -f /etc/builderbot/node.json ]; then
+        keep_account "$USER_NAME"
+        warn "${USER_NAME} is already an account on this machine, and not one BuilderBot made: run again with --user NAME, a name that is not taken (bbjobs, say)"; exit 1
+    fi
+else
+    useradd -m -s /bin/bash "$USER_NAME"
+fi
 usermod -aG docker "$USER_NAME"
 # ...and kvm, where the host exposes it. Without this the Android emulator on
 # this node runs with no hardware acceleration and is unusably slow, measured
@@ -1020,8 +1176,18 @@ elif [ "$SESSION_NAME" = "$USER_NAME" ]; then
     warn "--session-user ${SESSION_NAME} is the docker account: a session must not be it"
     printf '   pick a different --session-user, or none\n'
     SESSION_NAME=""
+elif id -u "$SESSION_NAME" >/dev/null 2>&1 && [ ! -f /etc/builderbot/node.json ]; then
+    # Already an account here, and not one BuilderBot made: somebody's, and
+    # maybe one that can sudo, which a session never may (a cloud image's own
+    # account, R97's walk). Left as it is; sessions wait for another name.
+    keep_account "$SESSION_NAME"
+    warn "${SESSION_NAME} is already an account on this machine, and not one BuilderBot made"
+    printf '   run again with --session-user NAME, a name that is not taken (bbsession, say), or none\n'
+    SESSION_NAME=""
 else
-    if ! id -u "$SESSION_NAME" >/dev/null 2>&1; then
+    if id -u "$SESSION_NAME" >/dev/null 2>&1; then
+        :
+    else
         getent group "$SESSION_GID" >/dev/null 2>&1 \
             || groupadd -g "$SESSION_GID" "$SESSION_NAME" 2>/dev/null \
             || groupadd -g "$SESSION_GID" "bbusers"
@@ -1764,7 +1930,7 @@ cmd_uninstall() {
     printf '          the accounts %s and %s with their homes, /etc/builderbot, and this tool\n' "$DOCKER_USER" "$session_user"
     [ "$stores" = 1 ] && printf '   also:  the stores on this disk (%s), /workspace, /var/lib/builderbot\n' "${store_dirs:- none}"
     [ "$configured" = 1 ] && printf '   also:  the mounts BuilderBot used (%s), the runners, the GPU display\n' "${mounts:- none}"
-    [ "$doors" = 1 ] && printf '   also:  cloudflared and its token, Tailscale'"'"'s login, the port 22 rule, the nginx container\n'
+    [ "$doors" = 1 ] && printf '   also:  cloudflared and its token, Tailscale'"'"'s login, the port 22 rule, the hosting firewall, the nginx container\n'
     printf '   stays: docker, nfs-common, python3, tmux, jq, curl, the empty mountpoints,\n'
     printf '          everything on the shares (other nodes may use them)%s\n' "$([ "$stores" = 1 ] || printf ', the stores')"
     printf '   note:  a runner registered from here stays listed on its forge;\n'
@@ -1812,6 +1978,9 @@ cmd_uninstall() {
         have systemctl && { systemctl disable --now builderbot-door-22 >/dev/null 2>&1 || true; rm -f /etc/systemd/system/builderbot-door-22.service; }
         have nft && nft delete table inet builderbot_door >/dev/null 2>&1 || true
         rm -f /etc/builderbot/door-22.nft
+        have systemctl && { systemctl disable --now builderbot-hosting-fw >/dev/null 2>&1 || true; rm -f /etc/systemd/system/builderbot-hosting-fw.service; }
+        have nft && nft delete table inet builderbot_hosting >/dev/null 2>&1 || true
+        rm -f /etc/builderbot/hosting-fw.nft
         if have docker; then
             for a in $(docker ps -aq --filter "label=com.docker.compose.project" --format '{{.ID}} {{.Label "com.docker.compose.project"}}' 2>/dev/null | awk '$2 ~ /^nginx-/ {print $1}'); do
                 docker rm -f "$a" >/dev/null 2>&1 || true
@@ -1857,6 +2026,12 @@ cmd_uninstall() {
     for u in "$session_user" "$DOCKER_USER"; do
         id -u "$u" >/dev/null 2>&1 || continue
         [ "$(id -u "$u")" != 0 ] || continue
+        # One that was here before BuilderBot is somebody's own: left, home
+        # and all (it took the session account's name on a cloud image).
+        if grep -qx "$u" /etc/builderbot/kept-accounts 2>/dev/null; then
+            say "kept ${u}: it was an account here before BuilderBot"
+            continue
+        fi
         case "$(getent passwd "$u" | cut -d: -f6)" in
             /home/*) userdel -r "$u" >/dev/null 2>&1 || userdel "$u" >/dev/null 2>&1 || true ;;
             *) userdel "$u" >/dev/null 2>&1 || true ;;
@@ -2053,6 +2228,12 @@ cmd_gpu_off() {
 }
 cmd_gpu_display() {
     local bus b d f busid pid reason=""
+    # Asked before nvidia-smi, which tries to load the driver for a card that
+    # is not there (B168).
+    if [ -z "$(gpu_card)" ]; then
+        gpu_state "down: no NVIDIA card on this machine; the driver is installed for one that is gone (remove it on the Toolchains page)"
+        return 1
+    fi
     if ! nvidia-smi -L >/dev/null 2>&1; then
         gpu_state "down: the card does not answer nvidia-smi (the driver is not loaded: a reboot after the install, or the host took the card back)"
         return 1
@@ -2181,6 +2362,13 @@ cmd_gpu_nodes() {
     # not have the card yet, which is every boot until the one after the
     # install.
     local dev n=0 i=0 major
+    # No card, no module to load: every try at it writes "No NVIDIA GPU
+    # found" to the console, which a machine whose card went elsewhere
+    # showed at every boot (B168).
+    if [ -z "$(gpu_card)" ]; then
+        say "no NVIDIA card on this machine; no device nodes to make"
+        return 0
+    fi
     if ! modprobe nvidia 2>/dev/null; then
         say "the nvidia module is not loaded (nouveau has the card until a reboot); no device nodes to make"
         return 0
@@ -2311,6 +2499,8 @@ cmd_gpu_driver() {
             if have update-initramfs; then update-initramfs -u >/dev/null 2>&1 || true; fi
             if [ -d /sys/module/nvidia ]; then
                 say "removed; the loaded driver keeps the card until the next boot, when nouveau takes it back: Reboot on this node's row in the Nodes page"
+            elif [ -z "$card" ]; then
+                say "removed; there is no NVIDIA card here, and nothing tries for one at boot now"
             else
                 say "removed; nouveau has the card"
             fi ;;
@@ -2431,6 +2621,226 @@ cmd_gpu_container() {
     esac
 }
 
+# --- features (R91) ---------------------------------------------------------
+# What a node has beyond the base, each an install and a remove, run by the
+# provisioner's flag at enrollment and by the agent's `feature` system job
+# from the Nodes page: one copy, so the two ways cannot drift. A marker
+# under /etc/builderbot/features says BuilderBot put it there, and lists the
+# packages it added, so a remove takes those and leaves what the machine
+# had before.
+FEATURES_DIR=/etc/builderbot/features
+os_family() {
+    local ids
+    ids="$(. /etc/os-release 2>/dev/null; printf ' %s %s ' "${ID:-}" "${ID_LIKE:-}")"
+    case "$ids" in
+        *" debian "*|*" ubuntu "*) echo deb ;;
+        *" rhel "*|*" fedora "*|*" centos "*|*" rocky "*|*" almalinux "*) echo rhel ;;
+        *" arch "*|*" archlinux "*) echo arch ;;
+        *" suse "*|*" opensuse "*|*" opensuse-leap "*|*" opensuse-tumbleweed "*) echo suse ;;
+        *" alpine "*) echo alpine ;;
+        *) echo "" ;;
+    esac
+}
+# The packages a feature needs here that are not installed yet, by family.
+pkgs_missing() {
+    local fam="$1"; shift
+    local p
+    for p in "$@"; do
+        case "$fam" in
+            deb) dpkg-query -W -f='${db:Status-Abbrev}' "$p" 2>/dev/null | grep -q '^ii' || printf '%s ' "$p" ;;
+            rhel|suse) rpm -q "$p" >/dev/null 2>&1 || printf '%s ' "$p" ;;
+            arch) pacman -Q "$p" >/dev/null 2>&1 || printf '%s ' "$p" ;;
+            alpine) apk info -e "$p" >/dev/null 2>&1 || printf '%s ' "$p" ;;
+        esac
+    done
+}
+pkgs_add() {
+    local fam="$1"; shift
+    [ $# -gt 0 ] || return 0
+    case "$fam" in
+        deb) export DEBIAN_FRONTEND=noninteractive; apt_get update -qq; apt_get install -y -qq --no-install-recommends "$@" ;;
+        rhel) dnf install -y -q "$@" ;;
+        arch) pacman -S --noconfirm --needed --quiet "$@" ;;
+        suse) zypper -n -q install --no-recommends "$@" ;;
+        alpine) apk add -q "$@" ;;
+    esac
+}
+# Exactly what is installed, one package a line: taken before and after an
+# install, the difference is every package it added, dependencies included,
+# so a remove takes those and no package that was orphaned before it.
+pkgs_all() {
+    case "$1" in
+        deb) dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null | awk '$1 ~ /^ii/ {print $2}' | LC_ALL=C sort -u ;;
+        rhel|suse) rpm -qa --qf '%{NAME}\n' 2>/dev/null | LC_ALL=C sort -u ;;
+        arch) pacman -Qq 2>/dev/null | LC_ALL=C sort -u ;;
+        alpine) apk info 2>/dev/null | LC_ALL=C sort -u ;;
+    esac
+}
+pkgs_drop() {
+    local fam="$1"; shift
+    [ $# -gt 0 ] || return 0
+    case "$fam" in
+        deb) export DEBIAN_FRONTEND=noninteractive; apt_get purge -y -qq "$@" ;;
+        rhel) dnf remove -y -q --noautoremove "$@" ;;
+        arch) pacman -R --noconfirm "$@" ;;
+        suse) zypper -n -q remove --clean-deps "$@" ;;
+        alpine) apk del -q "$@" ;;
+    esac
+}
+vmhost_pkgs() {
+    case "$1:$(uname -m)" in
+        deb:x86_64)  echo "qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils ovmf" ;;
+        deb:aarch64) echo "qemu-system-arm qemu-efi-aarch64 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils" ;;
+        rhel:*)      echo "qemu-kvm qemu-img libvirt-daemon-kvm libvirt-client edk2-ovmf xorriso" ;;
+        arch:x86_64) echo "qemu-base libvirt dnsmasq edk2-ovmf libisoburn" ;;
+        suse:x86_64) echo "qemu-kvm libvirt-daemon-qemu libvirt-client qemu-ovmf-x86_64 xorriso" ;;
+        alpine:x86_64) echo "qemu-system-x86_64 qemu-img libvirt-daemon libvirt-qemu ovmf xorriso dnsmasq" ;;
+    esac
+}
+feature_vmhost() {
+    local fam pkgs added n
+    fam="$(os_family)"
+    case "$1" in
+        state) [ -f "$FEATURES_DIR/vmhost" ] && echo installed || echo absent ;;
+        install)
+            # No /dev/kvm is a machine that cannot run a VM at speed: a VM
+            # whose host does not pass virtualization through, or a box with
+            # it off in the firmware. Said, not emulated (tens of times slower).
+            [ -e /dev/kvm ] || die "no /dev/kvm here, so VMs would run in software, tens of times slower. On a VM, its host must pass virtualization through: CPU mode host-passthrough (Unraid: CPU Mode Host Passthrough; Proxmox: CPU type host) and nested KVM on in the host's kvm_intel or kvm_amd. On a machine of its own, turn VT-x or AMD-V on in its firmware"
+            [ -n "$fam" ] || die "VM host is installed on the Debian, RHEL, Arch, openSUSE and Alpine families; this machine is none of them"
+            pkgs="$(vmhost_pkgs "$fam")"
+            [ -n "$pkgs" ] || die "no VM host packages for $(uname -m) on this family"
+            # shellcheck disable=SC2086
+            added="$(pkgs_missing "$fam" $pkgs)"
+            say "VM host: KVM through libvirt"
+            local before
+            before="$(pkgs_all "$fam")"
+            # The marker first, naming what it sets out to add, so a run that
+            # fails part way still leaves what it may have put here on record.
+            install -d -m 0755 "$FEATURES_DIR"
+            printf 'packages=%s\n' "$added" > "$FEATURES_DIR/vmhost.partial"
+            # shellcheck disable=SC2086
+            pkgs_add "$fam" $added || die "the packages did not install; the output above says why ($FEATURES_DIR/vmhost.partial names what it set out to add)"
+            added="$(LC_ALL=C comm -13 <(printf '%s\n' "$before") <(pkgs_all "$fam") | tr '\n' ' ')"
+            have systemctl && { systemctl enable --now libvirtd >/dev/null 2>&1 || systemctl enable --now virtqemud.socket >/dev/null 2>&1 || true; }
+            # Alpine's OpenRC, which has no systemctl.
+            have rc-update && { rc-update add libvirtd default >/dev/null 2>&1; rc-service libvirtd start >/dev/null 2>&1 || true; }
+            getent group libvirt >/dev/null 2>&1 && id -u "$DOCKER_USER" >/dev/null 2>&1 && usermod -aG libvirt "$DOCKER_USER"
+            # The cached cloud images and each VM's disk, the jobs account's;
+            # 0755 so libvirt's own account reaches the disks it is handed.
+            install -d -m 0755 -o "$DOCKER_USER" /var/lib/builderbot/vms /var/lib/builderbot/vms/images /var/lib/builderbot/vms/disks
+            # Run again on a machine that has it (a package the feature has
+            # gained since, UEFI's firmware), what it added before is kept.
+            [ -f "$FEATURES_DIR/vmhost" ] && added="$(sed -n 's/^packages=//p' "$FEATURES_DIR/vmhost") $added"
+            printf 'packages=%s\n' "$(printf '%s\n' $added | LC_ALL=C sort -u | tr '\n' ' ')" > "$FEATURES_DIR/vmhost"
+            rm -f "$FEATURES_DIR/vmhost.partial"
+            say "VM host installed${added:+ ($(printf '%s' "$added" | wc -w) packages added)}; ${DOCKER_USER} runs the VMs, and no session can" ;;
+        remove)
+            [ -f "$FEATURES_DIR/vmhost.partial" ] && [ ! -f "$FEATURES_DIR/vmhost" ] && mv "$FEATURES_DIR/vmhost.partial" "$FEATURES_DIR/vmhost"
+            [ -f "$FEATURES_DIR/vmhost" ] || { say "VM host was not installed by BuilderBot here; nothing to remove"; return 0; }
+            if have virsh; then
+                n="$(virsh -c qemu:///system list --all --name 2>/dev/null | grep -c . || true)"
+                [ "${n:-0}" -eq 0 ] || die "${n} VM(s) are on this machine: remove them first, then VM host"
+            fi
+            say "taking VM host off"
+            getent group libvirt >/dev/null 2>&1 && gpasswd -d "$DOCKER_USER" libvirt >/dev/null 2>&1 || true
+            rm -rf /var/lib/builderbot/vms
+            added="$(sed -n 's/^packages=//p' "$FEATURES_DIR/vmhost")"
+            # shellcheck disable=SC2086
+            [ -z "${added// /}" ] || pkgs_drop "$fam" $added || warn "the packages did not all come off; the output above says why"
+            rm -f "$FEATURES_DIR/vmhost"
+            say "VM host removed${added:+ ($(printf '%s' "$added" | wc -w) packages it had added)}; what was here before it stays" ;;
+    esac
+}
+# The hosting-only box closed on itself (R93): 80 and 443 in, and port 22
+# as the door left it. Docker's published ports are DNAT'd in prerouting
+# and never reach the input hook, so a compose that publishes 0.0.0.0:5432
+# was open to the world whatever the input rules said: the forward chain
+# drops any DNAT'd connection from outside the box's own bridges but on 80
+# and 443. Its own table, as the door's is, re-applied at boot.
+feature_firewall() {
+    local ssh_rule su
+    case "$1" in
+        state) [ -f /etc/builderbot/hosting-fw.nft ] && echo installed || echo absent ;;
+        install)
+            su="$(python3 -c 'import json; print(json.load(open("/etc/builderbot/node.json")).get("session_user", ""))' 2>/dev/null || true)"
+            [ -z "$su" ] || die "the firewall is for a hosting-only node: it would shut the session ports the controller reaches ${su}'s sessions on"
+            have nft || pkgs_add "$(os_family)" nftables || true
+            have nft || die "nft is not here and could not be installed"
+            say "firewall: only 80 and 443 come in"
+            ssh_rule="tcp dport 22 accept"
+            if nft list table inet builderbot_door >/dev/null 2>&1; then
+                ssh_rule="tcp dport 22 ip saddr 100.64.0.0/10 accept"
+                printf '   port 22: through the door only, as it was closed\n'
+            else
+                printf '   port 22: open, as no door closed it\n'
+            fi
+            install -d -m 0755 /etc/builderbot
+            cat > /etc/builderbot/hosting-fw.nft <<NFT
+# Written by bb-sandbox feature install firewall: 80 and 443 in, and port 22 as the door left it.
+table inet builderbot_hosting
+delete table inet builderbot_hosting
+table inet builderbot_hosting {
+    chain input {
+        type filter hook input priority -5; policy drop;
+        iifname "lo" accept
+        ct state established,related accept
+        ct state invalid drop
+        meta l4proto { icmp, ipv6-icmp } accept
+        udp sport 67 udp dport 68 accept
+        udp sport 547 udp dport 546 accept
+        iifname "docker0" accept
+        iifname "br-*" accept
+        iifname "tailscale0" accept
+        udp dport 41641 accept
+        tcp dport { 80, 443 } accept
+        udp dport 443 accept
+        ${ssh_rule}
+    }
+    chain forward {
+        type filter hook forward priority -5; policy accept;
+        ct state established,related accept
+        iifname { "lo", "docker0" } accept
+        iifname "br-*" accept
+        ct status dnat meta l4proto tcp ct original proto-dst { 80, 443 } accept
+        ct status dnat meta l4proto udp ct original proto-dst 443 accept
+        ct status dnat drop
+    }
+}
+NFT
+            nft -f /etc/builderbot/hosting-fw.nft || { rm -f /etc/builderbot/hosting-fw.nft; die "nft could not apply the firewall, so this box takes in what it did before"; }
+            if have systemctl; then
+                cat > /etc/systemd/system/builderbot-hosting-fw.service <<UNIT
+[Unit]
+Description=BuilderBot: a hosting-only box takes in 80 and 443
+After=network-pre.target
+Before=docker.service
+[Service]
+Type=oneshot
+ExecStart=$(command -v nft) -f /etc/builderbot/hosting-fw.nft
+RemainAfterExit=yes
+[Install]
+WantedBy=multi-user.target
+UNIT
+                systemctl daemon-reload >/dev/null 2>&1 || true
+                systemctl enable builderbot-hosting-fw >/dev/null 2>&1 || true
+            fi
+            say "firewall on: a container that publishes another port is not reached from outside; nginx in front of it is the way" ;;
+        remove)
+            have systemctl && { systemctl disable --now builderbot-hosting-fw >/dev/null 2>&1 || true; rm -f /etc/systemd/system/builderbot-hosting-fw.service; systemctl daemon-reload >/dev/null 2>&1 || true; }
+            have nft && nft delete table inet builderbot_hosting >/dev/null 2>&1 || true
+            rm -f /etc/builderbot/hosting-fw.nft
+            say "firewall off: this box takes in what its other rules allow" ;;
+    esac
+}
+FEATURE_IDS="vmhost firewall"
+cmd_feature() {
+    local op="${1-}" id="${2-}"
+    case "$op" in install|remove|state) ;; *) die "usage: bb-sandbox feature install|remove|state ID (one of: ${FEATURE_IDS})" ;; esac
+    case " $FEATURE_IDS " in *" $id "*) ;; *) die "no such feature: ${id:-none named}; one of: ${FEATURE_IDS}" ;; esac
+    "feature_${id}" "$op"
+}
+
 case "${1-}" in
     # The menu only when asked for by name, and only at a terminal (the
     # operator, 11 Oct): a bare bb-sandbox reached from a run of the enroll
@@ -2457,6 +2867,7 @@ case "${1-}" in
     readonly)    shift; cmd_readonly "${1-}" "${2-on}" ;;
     settings)    cmd_settings ;;
     sdk)         shift; cmd_sdk "$@" ;;
+    feature)     shift; cmd_feature "${1-}" "${2-}" ;;
     -h|--help|help)
         sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
     *) die "unknown command: $1. Try: bb-sandbox --help" ;;
@@ -2713,6 +3124,16 @@ PY
     svc_active builderbot-agent || svc_install builderbot-agent "$AGENT_DESC" "${AGENT} run" "$AGENT_KILLMODE"
 fi
 
+# --- the features asked for (R91) -------------------------------------------
+# Each through bb-sandbox's own install, the one the Nodes page's Features
+# section runs later: after the enrollment, so a run that cannot enroll
+# leaves the machine as it found it, and a feature that cannot go on here
+# (no /dev/kvm for a VM host) is said without failing the enrollment.
+for f in "${FEATURES_WANT[@]}"; do
+    /usr/local/sbin/bb-sandbox feature install "$f" \
+        || warn "${f} did not install; the node is enrolled without it, and its Features section on the Nodes page can try again"
+done
+
 # --- the session ports, to the controller only (roadmap #24, phase 10b) ----
 # The agent binds ttyd on this machine's LAN address so the controller's
 # terminal proxy can dial it, and a ttyd on the LAN with no credential of
@@ -2726,7 +3147,7 @@ fi
 ctl_url="$CONTROLLER"
 [ -n "$ctl_url" ] || ctl_url="$(python3 -c 'import json; print(json.load(open("/etc/builderbot/node.json")).get("controller", ""))' 2>/dev/null || true)"
 if [ -n "$SESSION_NAME" ] && [ -n "$ctl_url" ]; then
-    say "session ports: 7681, 7682 and 7683 (a container's shell) open to the controller only"
+    say "session ports: 7681, 7682, 7683 (a container's shell) and 7684 (a VM's screen) open to the controller only"
     ctl_host="${ctl_url#*://}"; ctl_host="${ctl_host%%/*}"; ctl_host="${ctl_host%%:*}"
     ctl_host="${ctl_host#\[}"; ctl_host="${ctl_host%\]}"
     ctl_ip="$(getent ahosts "$ctl_host" 2>/dev/null | awk 'NR==1{print $1}' || true)"
@@ -2742,7 +3163,7 @@ if [ -n "$SESSION_NAME" ] && [ -n "$ctl_url" ]; then
         for r in $(firewall-cmd --permanent --list-rich-rules 2>/dev/null | grep -F 'port="768' | sed 's/ /\x01/g'); do
             firewall-cmd --permanent --remove-rich-rule="$(printf '%s' "$r" | sed 's/\x01/ /g')" >/dev/null 2>&1 || true
         done
-        for port in 7681 7682 7683; do
+        for port in 7681 7682 7683 7684; do
             firewall-cmd --permanent --add-rich-rule="rule family=\"${fam}\" source address=\"${ctl_ip}\" port port=\"${port}\" protocol=\"tcp\" accept" >/dev/null
         done
         firewall-cmd --reload >/dev/null
@@ -2760,9 +3181,9 @@ delete table inet builderbot_session
 table inet builderbot_session {
     chain input {
         type filter hook input priority -10; policy accept;
-        tcp dport { 7681, 7682, 7683 } iifname "lo" accept
-        tcp dport { 7681, 7682, 7683 } ${fam} saddr ${ctl_ip} accept
-        tcp dport { 7681, 7682, 7683 } drop
+        tcp dport { 7681, 7682, 7683, 7684 } iifname "lo" accept
+        tcp dport { 7681, 7682, 7683, 7684 } ${fam} saddr ${ctl_ip} accept
+        tcp dport { 7681, 7682, 7683, 7684 } drop
     }
 }
 EOF

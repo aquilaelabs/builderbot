@@ -25,6 +25,7 @@ FEATURES = {
     "runner": "CI runners on nodes",
     "enroll": "enrolling a node",
     "shell": "a terminal on the controller itself",
+    "vms": "virtual machines on nodes",
     # An install meant to run with no way out (R88): what reaches the
     # internet is off with it, and the Doctor skips asking.
     "internet": "reaching the internet from this install",
@@ -88,7 +89,11 @@ def _feature(method, path, req):
         return "image-updates"
     if path in ("/api/devapp", "/api/nginx") and method == "POST" and act == "update":
         return "image-updates"
+    if path in ("/api/vms", "/api/vms-iso-upload") and method == "POST":
+        return "vms"
     if path == "/api/v1/nodes" and method == "POST":
+        if act == "feature" and (req or {}).get("feature") == "vmhost" and (req or {}).get("op") == "install":
+            return "vms"
         if act in ("runner", "runner-token", "runner-forget"):
             return "runner"
         if act in ("add", "enroll", "vm-xml"):

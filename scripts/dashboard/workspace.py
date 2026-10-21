@@ -315,10 +315,7 @@ BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/toolchains.json", "nodes/pr
                 # The gate, which refuses every tool call while the
                 # controller is not answering, so a node's sessions stop for
                 # an update the same way the controller's do.
-                "scripts/dashboard/bb-gate",
-                # A hook that does nothing, for the sessions an earlier
-                # build of this window started with it in their settings.
-                "scripts/dashboard/bb-keep-login")
+                "scripts/dashboard/bb-gate")
 
 
 def bundle():

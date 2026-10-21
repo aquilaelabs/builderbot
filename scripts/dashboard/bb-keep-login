@@ -1,7 +1,0 @@
-#!/bin/sh
-# A hook that does nothing, kept for the sessions that name it: a session
-# started by an earlier build of this agent window has it in its settings as
-# a UserPromptSubmit hook, by this path, and a hook that is not there is an
-# error on every prompt of a conversation nobody restarted. bb-tty no longer
-# writes it into a session's settings. It goes when the window moves.
-exit 0

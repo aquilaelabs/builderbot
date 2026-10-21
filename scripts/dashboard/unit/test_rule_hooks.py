@@ -96,6 +96,8 @@ class Store(unittest.TestCase):
         import rules
         pats = next(r for r in rules.ALWAYS if r["name"] == "pkill-by-pid")["refuse"]
         for line in ("pgrep -f ff/grant.js", "kill $(pgrep -f x.js)", "until ! pgrep -f x; do sleep 2; done",
+                     # B170: `);` run together after a substitution hid it.
+                     "for i in $(seq 1 9); do pgrep -f x >/dev/null || break; done",
                      "while pgrep -f x >/dev/null; do sleep 1; done", "pgrep -af x", "pkill -9 -f x"):
             self.assertIsNotNone(cmdmatch.first_match(line, pats), line)
         for line in ("pgrep -x firefox", "pgrep firefox", "bb proc stop ff/grant.js", "echo until done",

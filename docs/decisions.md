@@ -516,3 +516,23 @@ own controller through its own API (tools/upgrade-snapshot.py), and the
 upgrade suite starts this tree on every supported one, so a change that
 loses an account or a notebook entry on upgrade fails a test, not an
 install; `bb version release` refuses a version that has none.
+
+## A VM manager beside the Containers page
+
+**VMs are made the way containers are, by the node that runs them, from a
+fixed table, under a dial a project sets (21 Oct 2026, R91).** The operator
+asked for VMs a project's session can make, looking and asking like the
+Containers page. libvirt over KVM on any node with VM host installed, rather
+than a hypervisor of BuilderBot's own: it is what every Linux distribution
+ships and what Proxmox and Unraid run underneath. The agent builds every
+virsh and qemu-img command itself from the job's checked fields, so the
+controller, and anything that reaches it, names what to make and never a
+command line. An OS is a publisher's cloud image checked against the
+checksum file the publisher posts, not a copy BuilderBot keeps, so the trust
+is the distribution's. Windows and macOS are refused by name: their license
+is a person's to accept. Each project gets its own NAT network per node and
+a firewall of BuilderBot's own keeps a VM off the LAN and off other
+projects', for the same reason a session is kept to its own containers. A
+software-emulated VM is never offered: a node without /dev/kvm says what to
+change on its host instead.
+

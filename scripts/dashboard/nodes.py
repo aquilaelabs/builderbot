@@ -142,7 +142,10 @@ def _node_list(all=False):
             # uninstall in flight" off the type alone and never graying.
             entry["apply"] = sp.get("apply", "")
             busy[j["node"]] = {"id": j["id"], "what": sp.get("apply", ""),
-                               "slot": str((sp.get("config") or {}).get("slot") or "")}
+                               "slot": str((sp.get("config") or {}).get("slot") or ""),
+                               # Which feature and which way (R91), for its row.
+                               "feature": str((sp.get("config") or {}).get("id") or "") if sp.get("apply") == "feature" else "",
+                               "op": str((sp.get("config") or {}).get("op") or "") if sp.get("apply") == "feature" else ""}
         except (ValueError, AttributeError):
             busy[j["node"]] = {"id": j["id"], "what": ""}
     # ...and the last system job that FINISHED on each, which is the only
@@ -172,7 +175,9 @@ def _node_list(all=False):
             continue
         done[j["node"]] = {"id": j["id"], "what": spec.get("apply", ""),
                            "state": j["state"], "error": (j["error"] or "")[:200],
-                           "ended": j["ended"], "cfg": spec.get("config")}
+                           "ended": j["ended"], "cfg": spec.get("config"),
+                           "feature": str((spec.get("config") or {}).get("id") or "") if spec.get("apply") == "feature" else "",
+                           "op": str((spec.get("config") or {}).get("op") or "") if spec.get("apply") == "feature" else ""}
     for r in rows:
         r["applying"] = busy.get(r["id"])
         r["jobs"] = inflight.get(r["id"], [])
@@ -643,6 +648,12 @@ def node_update(principal, node_id, fields):
                 return {"error": f"{', '.join(held)} {'lists' if len(held) == 1 else 'list'} this node "
                                  "among its nodes: take it out of their settings first, so no code "
                                  "or session is left on a node that is to host containers only"}
+        if not on and ((n.get("config") or {}).get("tunnel") or {}).get("kind") == "public":
+            # Enrolled through a public hostname, it is a public box by
+            # construction: off, its next hello would hand it the bb
+            # bundle, session tokens and FTP (R92).
+            return {"error": f"{n['name']} reaches this controller through a public hostname, so it "
+                             "hosts containers only; enroll it again on the LAN or a VPN to run sessions"}
         cfg = dict(n.get("config") or {}, host_only=True)
         if not on:
             cfg.pop("host_only", None)
@@ -793,6 +804,15 @@ def _addr(n):
     return ""
 
 
+def screen_key(node_id):
+    """The key a VM's screen request to this node is signed with (R99): its
+    live node token's stored hash, which the agent computes from the token it
+    holds; "" for a node with none."""
+    rows = _rows("SELECT secret_hash FROM tokens WHERE node_id = ? AND kind = 'node' AND revoked = 0 "
+                 "ORDER BY created DESC LIMIT 1", (node_id,))
+    return str(rows[0]["secret_hash"]) if rows else ""
+
+
 def ssh_addr_of(node_id):
     """The address a node's daemon answers on; '' for local/unknown."""
     n = node(node_id)
@@ -859,6 +879,9 @@ def authenticate(bearer):
     if t["expires"] and t["expires"] < time.time():
         return {"error": "token expired"}
     n = node(t["node_id"])
+    if n and kind == "node" and lockdown_over(n):
+        node_state(f"node:{n['id']}", n["id"], "retired")
+        n = node(n["id"])
     if not n or n["state"] == "retired":
         return {"error": "credential revoked"}
     return {"principal": f"node:{n['id']}", "node": n["id"], "kind": kind,
@@ -1117,6 +1140,10 @@ def _mb(v):
         return 0
 
 
+# An installer ISO's name on a node (R99), as the agent's ISO_RE.
+VM_ISO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,100}\.iso")
+
+
 def _census(c):
     """What a node says about itself, kept to the fields the row shows.
     Whitelisted rather than stored whole: a census is a JSON blob from a
@@ -1208,13 +1235,48 @@ def _census(c):
     # ...and its docker group's id (R86), passed to a compose as BB_DOCKER_GID.
     g = c.get("docker_gid")
     out["docker_gid"] = g if isinstance(g, int) and not isinstance(g, bool) and 0 <= g < 2**31 else None
-    # ...and whether it reaches the internet (R82); None from an agent that
-    # does not say.
+    # ...and whether it reaches the internet (R82); None where the report's
+    # answer is not one.
     out["internet"] = c.get("internet") if isinstance(c.get("internet"), bool) else None
     # ...and whether its toolchain store is read-only to it (R85).
     out["store_ro"] = c.get("store_ro") is True
     # ...and whether it is mounted noexec, which stops every terminal there.
     out["store_noexec"] = c.get("store_noexec") is True
+    # The features bb-sandbox installs and removes (R91), each not installed
+    # where the report says nothing usable of it.
+    fe = c.get("features") if isinstance(c.get("features"), dict) else {}
+    vm = fe.get("vmhost") if isinstance(fe.get("vmhost"), dict) else {}
+    fw = fe.get("firewall") if isinstance(fe.get("firewall"), dict) else {}
+    out["features"] = {"vmhost": {"installed": vm.get("installed") is True, "kvm": vm.get("kvm") is True,
+                                  "libvirt": re.sub(r"[^0-9.]", "", str(vm.get("libvirt") or ""))[:20],
+                                  # A kernel built without KVM (R97's walk, openSUSE).
+                                  **({"nokvm": "kernel"} if vm.get("nokvm") == "kernel" else {})},
+                       "firewall": {"installed": fw.get("installed") is True}}
+    # ...and the VMs it runs (R91), each as libvirt says, with the room their
+    # disks have: whitelisted field by field like the rest.
+    if isinstance(c.get("vms"), list):
+        out["vms"] = []
+        for v in c["vms"][:64]:
+            if not isinstance(v, dict) or not re.fullmatch(r"bbvm-[a-z0-9][a-z0-9-]{0,62}", str(v.get("name") or "")):
+                continue
+            ip = str(v.get("ip") or "")
+            out["vms"].append({"name": v["name"], "state": re.sub(r"[^a-z ]", "", str(v.get("state") or ""))[:20],
+                               "ip": ip if re.fullmatch(r"[0-9.]{7,15}", ip) else "",
+                               "vcpus": int(v["vcpus"]) if isinstance(v.get("vcpus"), int) else 0,
+                               "mem_mb": int(v["mem_mb"]) if isinstance(v.get("mem_mb"), int) else 0,
+                               "snapshots": [str(x)[:41] for x in (v.get("snapshots") or [])[:32]
+                                             if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,40}", str(x))],
+                               # Its screen, and an installer's ISO in its drive (R99).
+                               "screen": v.get("screen") is True,
+                               "iso": str(v.get("iso") or "") if VM_ISO_RE.fullmatch(str(v.get("iso") or "")) else ""})
+    vp = c.get("vm_pool") if isinstance(c.get("vm_pool"), dict) else None
+    if vp:
+        out["vm_pool"] = {k: int(vp[k]) for k in ("free_mb", "total_mb") if isinstance(vp.get(k), int)}
+    # ...and the installer ISOs fetched onto it (R99).
+    if isinstance(c.get("vm_isos"), list):
+        out["vm_isos"] = [{"name": str(i["name"]), "mb": int(i.get("mb") or 0) if isinstance(i.get("mb"), int) else 0}
+                          for i in c["vm_isos"][:64]
+                          if isinstance(i, dict) and VM_ISO_RE.fullmatch(str(i.get("name") or ""))]
     # The configuration plane's reported half (docs/nodes.md §12): whether
     # the node was provisioned as a sandbox (bb-sandbox is there: the stamp
     # system jobs are gated on), what it mounts as bb-sandbox reads it, and
@@ -1229,8 +1291,10 @@ def _census(c):
     # Where the NVIDIA driver stands (R102): installed for this kernel,
     # loaded now, and which driver has the card, for the Toolchains tab's
     # driver row.
+    # Kept without a card too when the agent says it was left for one that
+    # has gone (nocard), so its row can remove it (B168).
     gd = c.get("gpu_driver")
-    if c.get("gpu_card") and isinstance(gd, dict):
+    if isinstance(gd, dict) and (c.get("gpu_card") or gd.get("nocard")):
         clean = lambda v, n=60: re.sub(r"[^A-Za-z0-9._~+:-]", "", str(v or ""))[:n]  # noqa: E731
         out["gpu_driver"] = {k: clean(gd.get(k)) for k in
                              ("installed", "loaded", "bound", "package", "pkg_version", "candidate", "recommended")}
@@ -1240,13 +1304,16 @@ def _census(c):
             {"pkg": clean(o.get("pkg")), "version": clean(o.get("version"), 30), "open": bool(o.get("open"))}
             for o in (gd.get("options") or [])[:16]
             if isinstance(o, dict) and DRIVER_PKG.fullmatch(str(o.get("pkg") or ""))]
+        if not c.get("gpu_card"):
+            out["gpu_driver"]["nocard"] = True
     # ...and the container toolkit (R102): the version installed, what apt
     # would move it to, and whether Docker lists the nvidia runtime.
     gc = c.get("gpu_container")
-    if c.get("gpu_card") and isinstance(gc, dict):
+    if isinstance(gc, dict) and (c.get("gpu_card") or gc.get("nocard")):
         ver = lambda v: re.sub(r"[^A-Za-z0-9._~+:-]", "", str(v or ""))[:60]  # noqa: E731
         out["gpu_container"] = {"installed": ver(gc.get("installed")), "candidate": ver(gc.get("candidate")),
-                                "runtime": bool(gc.get("runtime"))}
+                                "runtime": bool(gc.get("runtime")),
+                                **({} if c.get("gpu_card") else {"nocard": True})}
     # The sound it has (R107): ALSA's cards, real and virtual apart, and the
     # sound server installed.
     snd = c.get("sound")
@@ -1402,8 +1469,8 @@ def _census(c):
             # a session THERE (bb-tty compares against the machine it runs
             # on); the row hands it to the page per project.
             "boot": re.sub(r"[^0-9.]", "", str(se.get("boot") or ""))[:40],
-            # Seconds since the machine booted, from an agent that reports
-            # it. Finite: json.loads takes Infinity and NaN, and int() of either
+            # Seconds since the machine booted. Finite: json.loads takes
+            # Infinity and NaN, and int() of either
             # raised, failing the node's whole hello (B180).
             "up_s": max(-1, int(se["up_s"])) if isinstance(se.get("up_s"), (int, float))
                     and math.isfinite(se["up_s"]) else None}
@@ -1689,6 +1756,32 @@ def node_session_net(principal, node_id, on):
     conf["session_net"] = bool(on)
     _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
     _touch(node_id, principal, "node-session-net", {"on": bool(on)})
+    ask_hello(node_id)
+    return {"ok": True, "on": bool(on)}
+
+
+def node_vm_of(node_id, host_id):
+    """A node that is a VM BuilderBot made on another node (R91 step 14),
+    said on its row; retired with the VM."""
+    n = node(node_id)
+    if not n:
+        return
+    conf = dict(n.get("config") or {}, vm_of=str(host_id))
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _bump()
+
+
+def node_vm_lan(principal, node_id, on):
+    """Whether this node's VMs may reach its LAN (R91 step 8): off, they
+    reach the internet, the controller and their own project's network; on,
+    the rest of the network too. An administrator's, heard at once."""
+    n = node(node_id)
+    if not n or n["kind"] != "agent":
+        return {"error": "no such node"}
+    conf = dict(n.get("config") or {})
+    conf["vm_lan"] = bool(on)
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-vm-lan", {"on": bool(on)})
     ask_hello(node_id)
     return {"ok": True, "on": bool(on)}
 
@@ -2008,10 +2101,11 @@ def node_runner(principal, node_id, slot, want, labels=None, token=False):
 
 def tunnel_addr(n):
     """A node's address in the tunnel it reaches the controller through,
-    '' for one on the LAN: what it reports, else what its enroll script was
-    made with (R161)."""
-    t = ((n.get("reported") or {}).get("tunnel") or {}).get("addr") \
-        or ((n.get("config") or {}).get("tunnel") or {}).get("addr") or ""
+    '' for one on the LAN: what its enroll script was made with (R161).
+    Never what the node reports: every address here is refused all but the
+    agent's API, and a node that named loopback would lock out every bb
+    call (R92)."""
+    t = ((n.get("config") or {}).get("tunnel") or {}).get("addr") or ""
     return t if re.fullmatch(r"[0-9.]{7,15}", t) else ""
 
 
@@ -2032,7 +2126,9 @@ def tunnel_hosts():
     (R170), read again at most every five seconds like tunnel_addrs."""
     now = time.monotonic()
     if now - _tunnels["at"] > 5 or "hosts" not in _tunnels:
-        rows = [n for n in node_list() if n.get("state") != "retired"]
+        # A retired node's too: removing a box in an incident must not
+        # open the dashboard on the name it was reached at (R92).
+        rows = node_list()
         _tunnels.update(at=now, addrs=frozenset(a for a in (tunnel_addr(n) for n in rows) if a),
                         hosts=frozenset(h for h in (tunnel_host(n) for n in rows) if h))
     return _tunnels["hosts"]
@@ -2416,6 +2512,107 @@ def node_uninstall(principal, node_id, rings=None):
                 {"apply": "uninstall", "config": rings, "timeout": 900})
     if r.get("ok"):
         audit(principal, "node-uninstall", node_id, {"job": r["job"]})
+    return r
+
+
+# How long a node locked down may still take its lockdown job and say how
+# it went: past this its credential is revoked whether or not it answered.
+LOCKDOWN_GRACE_S = 300
+
+
+def lockdown_over(n):
+    """Whether a node was locked down and its grace has run out."""
+    at = ((n.get("config") or {}).get("lockdown") or {}).get("at") or 0
+    return bool(at) and n.get("state") != "retired" and time.time() - at > LOCKDOWN_GRACE_S
+
+
+# The features a node's Features section installs and removes (R91), as
+# bb-sandbox's FEATURE_IDS and the agent's census name them.
+FEATURES = ("vmhost", "firewall")
+FEATURE_NAMES = {"vmhost": "VM host", "firewall": "the hosting firewall"}
+
+
+def node_feature(principal, node_id, fid, op):
+    """Install or remove one of a node's features (R91): a system job the
+    agent answers with bb-sandbox's own feature install, the one the enroll
+    script's flag ran, so a feature not picked at enrollment is added from
+    the node's page afterwards. Refused here with the reason the page
+    shows, before a job could only fail."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if fid not in FEATURES or op not in ("install", "remove"):
+        return {"error": f"no such feature verb: {op} {fid}"}
+    name = FEATURE_NAMES[fid]
+    rep = n.get("reported") or {}
+    if n.get("kind") != "agent" or not rep.get("administers"):
+        return {"error": f"{n['name']} was not provisioned as a managed node with its agent as root, so {name} cannot be "
+                         "installed or removed from here"}
+    fe = rep.get("features") or {}
+    why = node_locked(n)
+    if why:
+        return {"error": why}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node; one at a time"}
+    if op == "install" and fid == "vmhost" and (fe.get("vmhost") or {}).get("nokvm") == "kernel":
+        return {"error": f"{n['name']}'s running kernel was built without KVM (openSUSE's minimal kernel-default-base "
+                         "is one): install its full kernel (kernel-default), restart the machine, then VM host"}
+    if op == "install" and fid == "vmhost" and not (fe.get("vmhost") or {}).get("kvm"):
+        return {"error": f"{n['name']} has no /dev/kvm, so VMs would run in software, tens of times slower: on a VM, "
+                         "its host passes virtualization through (CPU mode host-passthrough, nested KVM on)"}
+    if op == "install" and fid == "firewall" and not (n.get("config") or {}).get("host_only"):
+        return {"error": "the hosting firewall is for a hosting-only node: it would shut the ports the controller "
+                         "reaches sessions on"}
+    # ...and one whose machine runs no sessions: the switch alone leaves the
+    # session account and its ports, which the machine's helper then refused
+    # with exit 1 after the job had been queued (R97's walk, 21 Oct).
+    if op == "install" and fid == "firewall" and ((n.get("reported") or {}).get("session") or {}).get("up"):
+        return {"error": "this machine still runs sessions, so the firewall would shut the ports the controller "
+                         "reaches them on: it is for a node enrolled hosting-only (Enroll node, sessions off)"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "feature", "config": {"id": fid, "op": op}, "timeout": 1800})
+    if r.get("ok"):
+        audit(principal, "node-feature", node_id, {"job": r["job"], "id": fid, "op": op})
+    return r
+
+
+def node_lockdown(principal, node_id):
+    """Lock down a hosting-only node (R92), the press for a box that may
+    have been taken over: from this moment its agent may ask for nothing
+    but the lockdown job and say how it went, which stops every container
+    there (and keeps it from starting again at a boot), its nginx with
+    them, and its door in; when that job ends, or LOCKDOWN_GRACE_S after
+    the press if it never does, the node is retired and its credential
+    revoked. Neither the agent's answer nor a container that is running is
+    waited on to refuse it: a box that is not on our side would never
+    let either go."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n.get("kind") != "agent" or not host_only(n):
+        return {"error": "Lock down is for a hosting-only node: another is stopped with Disable, "
+                         "Drain or Un-enroll"}
+    if n.get("state") == "retired":
+        return {"error": f"{n['name']} is removed already, its credential revoked"}
+    if (n.get("config") or {}).get("lockdown"):
+        return {"error": f"{n['name']} is locking down already"}
+    cfg = dict(n.get("config") or {}, lockdown={"at": int(time.time()), "by": str(principal)[:80]})
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(cfg), node_id))
+    _bump()
+    # Anything else queued for it is never handed over (fits). Where the
+    # job cannot go (its agent away or behind), nothing is waited for.
+    r = job_add(principal, {"node": node_id}, "system", {"apply": "lockdown", "timeout": 240}) \
+        if n.get("live") else {"error": "its agent is not dialing in"}
+    if r.get("error"):
+        node_state(principal, node_id, "retired")
+        r = {"ok": True, "retired": True, "why": r["error"]}
+    audit(principal, "node-lockdown", node_id, {"job": r.get("job", ""), "live": bool(n.get("live"))})
+    t = threading.Timer(LOCKDOWN_GRACE_S + 1, lambda: lockdown_over(node(node_id) or {})
+                        and node_state(f"node:{node_id}", node_id, "retired"))
+    t.daemon = True
+    t.start()
     return r
 
 
@@ -3247,7 +3444,7 @@ def ctr_spark(nid, names=None):
 # exec runs argv; compose is the controller's docker; self-update, system
 # (phase 5), toolchain (an install against the node's toolchain store)
 # and cache-clear (drop the node's build caches) are the agent's own.
-JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-clear",
+JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-clear", "vm",
              # A walk of the node's disks now, for the Storage tab (R169).
              "storage",
              # An Android system image onto a node's toolchain store, or off
@@ -3359,6 +3556,9 @@ def fits(job, n):
     scheduling policy a single operator needs (docs/nodes.md §2)."""
     if n["state"] != "online":
         return False
+    if (n.get("config") or {}).get("lockdown"):
+        return job.get("type") == "system" and (job.get("spec") or {}).get("apply") == "lockdown" \
+            and (job.get("placement") or {}).get("node") == n["id"]
     # An agent that is behind takes nothing but its own update. Here as well
     # as in job_add, because job_add only sees the explicitly-placed case:
     # a selector-placed job is matched to a node at take time, and this is
@@ -3369,6 +3569,11 @@ def fits(job, n):
     pl = job.get("placement") or {}
     if pl.get("node"):
         return pl["node"] == n["id"]
+    # A hosting-only node takes by selector only what job_add would place
+    # on it by name: an exec's argv and its output are not a public box's
+    # to see or to write (R92).
+    if host_only(n) and job.get("type") not in HOST_JOBS and not host_exec_ok(job.get("type"), job.get("spec")):
+        return False
     sel = pl.get("select") or {}
     if sel.get("capability") and sel["capability"] not in n["capabilities"]:
         return False
@@ -3428,7 +3633,7 @@ def job_add(principal, placement, type, spec, project="", source=None):
     pl, why = _placement(placement)
     if why:
         return {"error": why}
-    probe = {"placement": pl, "type": type}
+    probe = {"placement": pl, "type": type, "spec": spec}
     if pl.get("node"):
         n = node(pl["node"])
         if not n:
@@ -3731,6 +3936,9 @@ def sync_node_ids():
 # storage and network, self-update and cache-clearing jobs go to it.
 HOST_VERBS = frozenset(("hello", "beat", "work", "log", "result", "download",
                         "devimage", "devdata", "devdata-put"))
+# ...and of those, what a node locked down (node_lockdown) still asks: its
+# one job, and saying how it went.
+LOCKDOWN_VERBS = frozenset(("hello", "beat", "work", "log", "result"))
 HOST_JOBS = frozenset(("compose", "system", "self-update", "cache-clear", "storage"))
 # ...and one docker verb at a time about the containers it hosts: the Docker
 # tab's listing is a `docker ps` exec on the node (devapp._agent_read), and
@@ -3826,10 +4034,56 @@ def host_refuses(nid, verb, what=""):
     the bb bundle may not."""
     if not host_only(nid):
         return ""
+    if ((node(nid) or {}).get("config") or {}).get("lockdown"):
+        return "" if verb in LOCKDOWN_VERBS else (f"this node is locked down: {verb} is refused, "
+                                                  "and it may take only its lockdown job")
     if verb in HOST_VERBS and not (verb == "download" and what):
         return ""
     return (f"this node hosts containers only: {verb}"
             + (f" ({what})" if what else "") + " is not something it is given or may send")
+
+
+# When a hosting-only node's refused verb was last audited (server's Handler._agent).
+_host_refused_at = {}
+_host_refused_lock = threading.Lock()
+# How many verbs a node is audited for in an hour: a box asking made-up
+# verbs on a loop neither fills the audit log nor grows the table (R92).
+HOST_REFUSED_VERBS = 16
+
+
+# How many hellos a hosting-only node may say a minute: each writes its row
+# and moves the token every page re-reads the nodes on, so a box saying it
+# on a loop would keep every dashboard reading (R92). The agent says one
+# every ten minutes, and again after a job changed the machine.
+HOST_HELLOS_A_MINUTE = 12
+_host_hellos = {}
+
+
+def host_hello_allowed(nid, now):
+    """Whether a hosting-only node's hello is taken now, counted."""
+    with _host_refused_lock:
+        seen = [t for t in _host_hellos.get(nid, []) if now - t < 60]
+        if len(seen) >= HOST_HELLOS_A_MINUTE:
+            _host_hellos[nid] = seen
+            return False
+        _host_hellos[nid] = seen + [now]
+        return True
+
+
+def host_refused_audit(nid, verb, now):
+    """Whether this refusal is audited now, kept: once an hour a node and
+    verb, and HOST_REFUSED_VERBS verbs a node an hour, the last of them
+    saying the rest go unrecorded."""
+    with _host_refused_lock:
+        for k in [k for k, t in _host_refused_at.items() if now - t >= 3600]:
+            del _host_refused_at[k]
+        if (nid, verb) in _host_refused_at:
+            return ""
+        seen = sum(1 for n, _v in _host_refused_at if n == nid)
+        if seen >= HOST_REFUSED_VERBS:
+            return ""
+        _host_refused_at[(nid, verb)] = now
+    return verb[:60] + (" (and any more verbs this hour, unrecorded)" if seen == HOST_REFUSED_VERBS - 1 else "")
 
 
 def session_kill(node_id, name):
@@ -4007,7 +4261,8 @@ def job_next(node_id, wait, runner="node", alive=None):
                 # handed nothing new, and it is handed the update once what
                 # was running has finished; a node not quiet within
                 # UPDATE_QUIET_S fails it, saying so, and works again.
-                upd = _update_gate(node_id) if runner == "node" else None
+                # Not on a node locked down: its lockdown job is all it takes.
+                upd = _update_gate(node_id) if runner == "node" and not (n.get("config") or {}).get("lockdown") else None
                 if upd is not None:
                     free = lane = False
                     if upd:
@@ -4445,6 +4700,11 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     if got[0]["type"] == "system" and state == "succeeded":
         spec = (job(job_id, with_log=False) or {}).get("spec") or {}
         if spec.get("apply") == "uninstall":
+            node_state(f"node:{node_id}", node_id, "retired")
+    # A lockdown that ran, or failed, retires the node either way (R92).
+    if got[0]["type"] == "system" and state in ("succeeded", "failed"):
+        spec = (job(job_id, with_log=False) or {}).get("spec") or {}
+        if spec.get("apply") == "lockdown":
             node_state(f"node:{node_id}", node_id, "retired")
     # An update that installed its file is the agent this node runs from now:
     # recorded here, since the hello that says so waits on the new agent's
@@ -5073,6 +5333,9 @@ def verb(principal, req):
              "root-asks": root_asks, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
              "host-only": host_on, "host-off": host_off,
              "door": lambda: node_door(principal, nid, req.get("on")),
+             "lockdown": lambda: node_lockdown(principal, nid),
+             "feature": lambda: node_feature(principal, nid, field(req, "feature"), field(req, "op")),
+             "vm-lan": lambda: node_vm_lan(principal, nid, req.get("on") is True),
              "discard": lambda: node_discard(principal, nid),
              "disable": state, "enable": state,
              "storage": lambda: node_storage_measure(principal, nid),

@@ -128,13 +128,11 @@ SESSNET_LOCAL = ("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169
 # session's view /workspace is the view's own read-only root.
 SHARE = os.environ.get("BUILDERBOT_SHARE", "/workspace")
 # The pane a respawn may run again: bb-tty's claude launcher, in the project's
-# cache folder and started inside the project's view when the node builds one,
-# or in the flat cache a bundle before R35 wrote, for a session that has run
-# since then (the compatibility window).
+# cache folder and started inside the project's view when the node builds one.
 _PATHCH = r"[A-Za-z0-9._/@+-]"
 RESPAWNABLE = (rf"(?:sudo -n {re.escape(SESSION_BIN)} enter(?: --[a-z]+ {_PATHCH}+)* -- )?"
                rf"{_PATHCH}*/builderbot/(?:u/u_[0-9a-f]{{8}}/)?"
-               rf"(?:project/[A-Za-z0-9._-]+/claude-run|claude-run-[A-Za-z0-9._-]+)\.sh")
+               rf"project/[A-Za-z0-9._-]+/claude-run\.sh")
 NETPLAN_DIR = os.environ.get("BUILDERBOT_NETPLAN_DIR", "/etc/netplan")
 NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
 NETPLAN_FILE = "90-builderbot.yaml"
@@ -316,7 +314,7 @@ def daemon_json_with_ip(text, on):
         return None
     # Two keys: `ip` is the default bridge's, and every network compose makes
     # is a user-defined one, which takes its bind address from
-    # default-network-opts instead (draconis, 11 Oct: with `ip` alone,
+    # default-network-opts instead (a hosting node, 11 Oct: with `ip` alone,
     # aquilaeLabs's 8380 and 8381 answered from the internet).
     want = "127.0.0.1" if on else None
     before = json.dumps(d, sort_keys=True)

@@ -24,6 +24,7 @@ let nginxList = null;             // last answer, or null before the first
 let nginxErr = "";
 let nginxRev = 0;
 let nginxNode = "";               // the node the tab shows
+let nginxWant = "";               // a node asked for that the last read did not list yet
 let nginxLatest = {};             // the registry's newest line, from the same answer
 let nginxCertOpen = false;        // Add a certificate pressed: its form unrolled
 let nginxHostnames = [];          // every node's hostnames: [{name, used: [{node, path, port}]}]
@@ -33,6 +34,9 @@ const nginxDraft = {};
 
 function openNginxTab(node){
   if (node) nginxNode = node;
+  // One the last read has not listed (enrolled since): kept until a read
+  // does, or the fallback in nginxPick would stand in for it for good.
+  if (node && nginxList && !nginxList.some(n => n.node === node)){ nginxWant = node; loadNginx(); }
   openTab({kind: "nginx", arg: "__nginx", label: "nginx"});
 }
 
@@ -51,6 +55,7 @@ async function loadNginx(){
     nginxList = j.nodes || [];
     nginxLatest = j.latest || {};
     nginxHostnames = j.hostnames || [];
+    if (nginxWant && nginxList.some(n => n.node === nginxWant)){ nginxNode = nginxWant; nginxWant = ""; }
   }catch(e){
     if (asked < nginxDrawn) return;
     nginxErr = String(e);
@@ -246,7 +251,10 @@ function nginxCertLines(n, d){
     const used = routes.filter(r => r.tls !== false && (r.cert === k || (!r.cert && nginxResolve(n, r.host) === k))).length;
     return `<div class="row ngcert"><div class="grow"><div class="name">${esc(k)}</div>
       <div class="sub">${esc(c.subject || "")}${c.names ? ` (${esc(c.names)})` : ""}${when ? `, until ${esc(when)}` : ""}${
-        used ? `; ${used} route${used === 1 ? "" : "s"}` : "; no route"}</div></div>
+        used ? `; ${used} route${used === 1 ? "" : "s"}` : "; no route"}</div>${
+      // On a public box (R93) its key lives there: a pair wider than the
+      // box's own routes lends every other name to whoever takes the box.
+      n.wide?.[k]?.length ? `<div class="sub warn ngwide">Its key sits on this public box and also answers for ${esc(n.wide[k].join(", "))}: a box taken over could pass as ${n.wide[k].length === 1 ? "it" : "them"}. A pair for this box's own names alone keeps the rest safe.</div>` : ""}</div>
       ${rmIcon(`data-ngcertrm="${esc(k)}"`, `take ${k}'s pair off`, {title: "take this pair off the node"})}</div>`;
   }).join("");
 }
@@ -413,6 +421,8 @@ function nginxReadDraft(sect, n){
 }
 
 function wireNginxTab(root){
+  // One section open at a time on a phone, sliding, as on every page (B171).
+  wireSections(root);
   const psel = root.querySelector("#ngNodeSel");
   // A pick is a history entry (B31), so Back returns to the node before.
   if (psel) psel.onchange = () => navPush(() => { nginxNode = psel.value;

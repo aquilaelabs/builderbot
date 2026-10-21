@@ -63,6 +63,21 @@ def gate_ok(kind, mode):
 # project's dev instance. One vocabulary: a person who has set a notebook
 # tab to "ask me" knows what this one does without being told twice.
 DEVBUILD_MODES = ("deny", "ask", "auto")
+# What one project's VMs may hold in all, at most (R91 step 7): how many, and
+# their vCPUs, memory and disk added up. An administrator's to raise.
+VM_CAPS = {"count": 4, "vcpus": 8, "mem_mb": 16384, "disk_gb": 200}
+VM_CAPS_MAX = {"count": 64, "vcpus": 256, "mem_mb": 1048576, "disk_gb": 16384}
+
+
+def _vm_caps(v):
+    """The project's VM limits: each a whole number from 0 to its ceiling, the
+    default where the file says nothing usable."""
+    v = v if isinstance(v, dict) else {}
+    out = {}
+    for k, d in VM_CAPS.items():
+        x = v.get(k)
+        out[k] = x if isinstance(x, int) and not isinstance(x, bool) and 0 <= x <= VM_CAPS_MAX[k] else d
+    return out
 # Claude may: Sign a build (R106). Ask by default: a signed build is
 # something that leaves, and a person reads which build and which key.
 SIGN_MODES = ("deny", "ask", "auto")
@@ -311,6 +326,11 @@ def _clean(rec):
             # Creating, removing and Up/Down are not on this dial at all:
             # those are docker-write, which a session never has.
             "devbuild": _devbuild(rec.get("devbuild")),
+            # Whether a session may make, start, stop and remove this
+            # project's VMs (R91 step 4), read as devbuild is: `deny` by
+            # default, `ask` puts each in front of a person, `auto` lets it.
+            "makevms": _devbuild(rec.get("makevms")),
+            "vm_caps": _vm_caps(rec.get("vm_caps")),
             # Where `bb test` runs the tests, one of TESTS_IN. On the node
             # unless the project says otherwise: an image built to ship
             # carries no tests, and a run inside one found none and reported
@@ -636,7 +656,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
               snapshot_days=None,
               release=None, log_from=None, diag=None, build_local=None, reaches=None, hosts=None,
-              pc=None, tc_off=None, packs_on=None):
+              pc=None, tc_off=None, packs_on=None, makevms=None, vm_caps=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -715,6 +735,21 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 return {"error": f"devbuild is one of {', '.join(DEVBUILD_MODES)}, "
                                  f"not {devbuild}"}
             cur["devbuild"] = mode
+        if makevms is not None:
+            if makevms not in DEVBUILD_MODES:
+                return {"error": f"makevms is one of {', '.join(DEVBUILD_MODES)}, not {makevms}"}
+            cur["makevms"] = makevms
+        if vm_caps is not None:
+            if not isinstance(vm_caps, dict):
+                return {"error": "vm_caps is {count, vcpus, mem_mb, disk_gb}"}
+            caps = dict(cur["vm_caps"])
+            for k, x in vm_caps.items():
+                if k not in VM_CAPS:
+                    return {"error": f"not a VM limit: {k}; one of {', '.join(VM_CAPS)}"}
+                if not isinstance(x, int) or isinstance(x, bool) or not 0 <= x <= VM_CAPS_MAX[k]:
+                    return {"error": f"{k} is a whole number from 0 to {VM_CAPS_MAX[k]}, not {x}"}
+                caps[k] = x
+            cur["vm_caps"] = caps
         if sign is not None:
             if sign not in SIGN_MODES:
                 return {"error": f"sign is one of {', '.join(SIGN_MODES)}, not {sign}"}
@@ -806,6 +841,10 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("gitpol", None)
             if cur["devbuild"] == "deny":
                 rec.pop("devbuild", None)
+            if cur["makevms"] == "deny":
+                rec.pop("makevms", None)
+            if cur["vm_caps"] == VM_CAPS:
+                rec.pop("vm_caps", None)
             if cur["tests_in"] == "node":
                 rec.pop("tests_in", None)
             if cur["report"] == "auto":
@@ -973,6 +1012,7 @@ def dialog_save(name, req, uid):
                   test=req.get("test"), outputs=req.get("outputs"),
                   gate=req.get("gate"), gitpol=req.get("gitpol"),
                   devbuild=req.get("devbuild"),
+                  makevms=req.get("makevms"), vm_caps=req.get("vm_caps"),
                   tests_in=req.get("tests_in"),
                   test_change=req.get("test_change"), gpu=req.get("gpu"),
                   report=req.get("report"), capture_days=req.get("capture_days"),

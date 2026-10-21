@@ -28,6 +28,7 @@ end. Both nodes must be agent nodes: a plan is what carries the steps.
 """
 import re
 import posixpath
+import shutil
 import time
 import os
 import threading
@@ -84,7 +85,7 @@ print(f"packed {len(vols)} volume(s)" + (" and the data directory" if has_data e
 # argv, the python included, and the helper's mount pointed at the compose
 # directory while the tar had gone into in/ (B659).
 UNPACK_PY = r"""
-import json, os, subprocess, sys, tarfile
+import json, os, re, subprocess, sys, tarfile
 pname, old, src, data, helper = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
 work = os.path.join(os.path.dirname(src), "in")
 os.makedirs(work, exist_ok=True)
@@ -94,10 +95,19 @@ m = json.load(open(os.path.join(work, "manifest.json")))
 have = set(subprocess.run(["docker", "volume", "ls", "-q"], check=True,
                           capture_output=True, text=True).stdout.split())
 for v in m.get("volumes") or []:
-    name = v["name"]
+    name, part = str(v.get("name") or ""), str(v.get("part") or "")
+    # The manifest was written on the old node, which may not be trusted:
+    # a name or a part it did not pack is refused, and a volume already here
+    # is written over only when it is this instance's own.
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", name) or not re.fullmatch(r"vol-[0-9]{1,4}[.]tgz", part):
+        sys.exit(f"the archive names a volume or a part it could not have packed: {name[:80]!r} {part[:40]!r}")
     key = name[len(old) + 1:] if name.startswith(old + "_") else name
     new = f"{pname}_{key}" if name.startswith(old + "_") else name
     if new in have:
+        owner = subprocess.run(["docker", "volume", "inspect", "-f", '{{index .Labels "com.docker.compose.project"}}', new],
+                               check=True, capture_output=True, text=True).stdout.strip()
+        if owner != pname:
+            sys.exit(f"the volume {new} here is not this instance's (it is {owner or 'no compose project'}'s), so it is not written over")
         held = subprocess.run(["docker", "run", "--rm", "-v", f"{new}:/v:ro", helper, "sh", "-c", "ls -A /v | wc -l"],
                               check=True, capture_output=True, text=True).stdout.strip()
         if held and held != "0":
@@ -109,7 +119,7 @@ for v in m.get("volumes") or []:
         subprocess.run(["docker", "volume", "create", "--label", "com.docker.compose.project=" + pname,
                         "--label", "com.docker.compose.volume=" + key, new], check=True, capture_output=True)
     subprocess.run(["docker", "run", "--rm", "-v", f"{new}:/v", "-v", f"{work}:/i:ro", helper,
-                    "tar", "xzf", "/i/" + v["part"], "-C", "/v"], check=True)
+                    "tar", "xzf", "/i/" + part, "-C", "/v"], check=True)
 if m.get("data"):
     if not data:
         sys.exit("the old node had a data directory and this one has no place for it")
@@ -673,6 +683,10 @@ def built(project, instance, ok):
         _queue_on(project, instance, plan["old"], "down")
 
 
+# What a container's data coming home leaves free on the controller's disk.
+DATA_KEEP_FREE = 2 * 1024 ** 3
+
+
 def data_put(nid, q, stream, length):
     """The old node's packed data (agent verb devdata-put): only for a job
     of that node's that is sending it, whole or not at all."""
@@ -697,6 +711,14 @@ def data_put(nid, q, stream, length):
         return {"error": "that piece is not within the data"}, 400
     tmp = dest.with_name(f".{dest.name}.part")
     have = tmp.stat().st_size if tmp.is_file() else 0
+    # Room for the whole of it before the first byte, with DATA_KEEP_FREE
+    # left over: the old node says how big it is, and a box that was taken
+    # over would otherwise fill the controller's disk (R92).
+    if offset == 0:
+        free = shutil.disk_usage(dest.parent).free + have
+        if total + DATA_KEEP_FREE > free:
+            return {"error": f"the data is {total >> 20} MB and this controller has "
+                             f"{max(free - DATA_KEEP_FREE, 0) >> 20} MB to spare for it"}, 507
     if offset != have:
         # Not the next piece: a retry of one that landed is answered as
         # landed, anything else is said, so the file never has a hole.

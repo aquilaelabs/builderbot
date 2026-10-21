@@ -115,6 +115,7 @@ async function holds(c, m, said){
 
 async function signIn(browser, c, m, said){
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await ctx.addInitScript(() => { window.BB_NO_TOUR = true; });     // the tour is tour.mjs's (R94)
   const page = await ctx.newPage();
   await page.goto(c.base + '/');
   await page.waitForURL('**/login**', { timeout: patience(20000) });

@@ -1147,6 +1147,61 @@ the agent's own file) and reaches the controller, if at all, only as the
 tunnel's address, which is refused everything but the agent API.
 Development stays on the project's own nodes.
 
+**When the box may have been taken over (R92).** The controller assumes it
+might be, and nothing the box says reaches past its own containers. The
+tunnel address the controller refuses everything but the agent API from is
+the enroll script's, never what the node reports (`tunnel_addr`), and a
+removed node's hostname and address stay refused. A node's address is the
+X-Forwarded-For hop the proxy wrote, not the client's own, and a
+hosting-only node is opened to a project's sessions only by its containers'
+ports, never whole (`devapp.reach`). A job placed by selector is taken only
+if it is one the node may run by name (`fits`). Data brought home from it is
+unpacked only into the moved instance's own volumes: a manifest naming
+another, or a part it could not have packed, is refused (`UNPACK_PY`).
+Refused verbs are audited once an hour each, sixteen to a node an hour
+(`host_refused_audit`). A node enrolled through a public hostname stays
+hosting only. **Lock down**, first under the node's Advanced, is the press
+for an incident (`node_lockdown`): from that moment the box may take only
+its lockdown job (hello, beat, work, log and result, `LOCKDOWN_VERBS`),
+which stops every container there, nginx among them, sets none to restart
+at a boot and shuts its SSH door; when that job ends, failed or not, or
+`LOCKDOWN_GRACE_S` (five minutes) after the press if it never does, the
+node is retired and its credential revoked. A box whose agent is away is
+retired at the press. Powering the box off from its provider's console is
+the stop that needs nothing from the agent, and the dialog says so.
+
+**Closed on the box itself (R93).** Enroll node offers, ticked, *Take in
+only 80 and 443* for a hosting-only node, and the script passes the
+provisioner `--firewall`, which it refuses on a node with sessions. It
+writes its own nftables table (`builderbot_hosting`, re-applied at boot by
+`builderbot-hosting-fw`): what comes in is 80 and 443, ICMP, DHCP and what
+the box itself opened, and port 22 as the door left it (open, or from the
+tailnet and the loopback once `--door-close22` closed it). Docker's
+published ports are rewritten before the input hook and never reach it, so
+the table's forward chain drops any rewritten connection from outside the
+box's own bridges but on 80 and 443: a compose that publishes
+`0.0.0.0:5432` is not reached from the internet, and nginx is the way to a
+container. Going out is left alone, since the box pulls images, renews
+certificates and dials the controller. Uninstall's `--doors` takes it away.
+
+**Features (R91).** What a node has beyond the base is a list of features,
+each an install and a remove in `bb-sandbox feature install|remove|state
+ID`, the node's own root helper: Enroll node's ticks hand the provisioner
+`--feature ID` (and `--firewall`, which is `--feature firewall`), which runs
+that install once the node has enrolled, and the node's Features section on
+the Nodes page runs the same one later as a `feature` system job
+(`node_feature`), so the two ways cannot drift. A marker in
+`/etc/builderbot/features` says BuilderBot installed it and lists the
+packages it added, so a remove takes those and leaves what the machine had
+before. The census reports each (`features`), and the section reads that.
+**VM host** is KVM through libvirt, run by the jobs account in the libvirt
+group and never by a session; it needs `/dev/kvm`, which a node that is
+itself a VM has only when its host passes virtualization through (CPU mode
+host-passthrough, nested KVM on), and without it the row says so rather
+than offering a software-emulated VM. Its remove is refused while any VM is
+there. The firewall above is the second feature, a hosting-only node's
+alone.
+
 **Which projects a container may go under.** The project pickers on Send,
 on a row's Project and Built from, and the project a Send, copy or move is
 made from, are the asker's own list of projects, for an administrator and

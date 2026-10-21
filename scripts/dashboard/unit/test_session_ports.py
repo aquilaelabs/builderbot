@@ -52,7 +52,7 @@ class SessionPorts(unittest.TestCase):
         Fake().session_firewall_check()
         with open(nft) as f:
             text = f.read()
-        self.assertEqual(text.count("tcp dport { 7681, 7682, 7683 }"), 3, text)
+        self.assertEqual(text.count("tcp dport { 7681, 7682, 7683, 7684 }"), 3, text)
         self.assertIn("ip saddr 192.168.1.16 accept", text)
         before = os.stat(nft).st_mtime_ns
         a = Fake()
@@ -70,8 +70,8 @@ class SessionPorts(unittest.TestCase):
                                subprocess.CompletedProcess(argv, 0)):
             Fake().session_firewall_check()
         added = [a for c in calls for a in c if a.startswith("--add-rich-rule=")]
-        self.assertTrue(any('port="7683"' in a and 'address="192.168.1.16"' in a for a in added), added)
-        self.assertEqual(len(added), 3)
+        self.assertTrue(any('port="7684"' in a and 'address="192.168.1.16"' in a for a in added), added)
+        self.assertEqual(len(added), 4)
 
 
 if __name__ == "__main__":

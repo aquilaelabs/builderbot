@@ -340,11 +340,14 @@ object Watch {
         "release" -> "Release ${a.str("project").ifBlank { "a project" }} ${a.str("tag")}"
         "release-edit" -> "Edit the ${a.str("tag")} release of ${a.str("project").ifBlank { "a project" }}"
         "release-remove" -> "Remove files from the ${a.str("tag")} release of ${a.str("project").ifBlank { "a project" }}"
+        // A VM a session asks to make, start or remove (R91), under its
+        // project's Make VMs setting.
+        "vm" -> "A VM in ${a.str("project").ifBlank { "a project" }}"
         else -> "The phone on ${a.str("node_name")}"
     }
     fun askCommand(a: JSONObject): String = when (a.str("kind")) {
         "root" -> "# "
-        "rebuild", "container", "sign", "sign-key", "release", "release-edit", "release-remove" -> "bb "
+        "rebuild", "container", "sign", "sign-key", "release", "release-edit", "release-remove", "vm" -> "bb "
         else -> "adb "
     } + a.strs("cmd").joinToString(" ")
 }

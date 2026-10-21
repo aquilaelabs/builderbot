@@ -35,7 +35,7 @@ from .backends import net_backend
 from .toolchains import extract_sandbox_tool
 from .sessnet import session_conf, session_sudoers
 from .runners import runner_dirs, runner_slot
-from .census import _os_release, export_gaps, mounts_now, network_now, services_now
+from .census import FEATURES, _os_release, export_gaps, mounts_now, network_now, services_now
 from .jobs import Job, pump
 
 
@@ -65,7 +65,7 @@ class ConfigPlaneMixin:
         # tarball and a funnel only tailscale, and a container node (this
         # image in the node role) or a guest machine has neither the stamp
         # nor any reason to be refused either of those.
-        if what in ("storage", "network", "root", "gpu", "gpu-off") and not os.access(SANDBOX_BIN, os.X_OK):
+        if what in ("storage", "network", "root", "gpu", "gpu-off", "feature") and not os.access(SANDBOX_BIN, os.X_OK):
             job.say(f"refused: {what} edits this machine's own configuration, and this node "
                     f"was not provisioned as a BuilderBot sandbox ({SANDBOX_BIN} is not here)\n")
             return "failed", 77
@@ -88,6 +88,10 @@ class ConfigPlaneMixin:
             return self._apply_gpu(job)
         if what == "door":
             return self._apply_door(job, cfg)
+        if what == "lockdown":
+            return self._apply_lockdown(job)
+        if what == "feature":
+            return self._apply_feature(job, cfg)
         if what == "gpu-off":
             # The emulator off the card (R102): the display's unit stopped,
             # the driver left alone; then a hello, as the set-up sends.
@@ -192,6 +196,47 @@ class ConfigPlaneMixin:
         job.say(f"the door is {'open' if on else 'shut'}: {kind}{' at ' + d['host'] if d.get('host') else ''}\n")
         return "succeeded", 0
 
+    def _apply_feature(self, job, cfg):
+        """A feature installed or removed (R91): bb-sandbox's own feature
+        install, the one the provisioner's flag runs at enrollment, so the
+        two ways cannot drift. The id and the verb are checked against the
+        helper's table here as well, so nothing else reaches its argv."""
+        fid, op = str(cfg.get("id") or ""), str(cfg.get("op") or "")
+        if fid not in FEATURES or op not in ("install", "remove"):
+            job.say(f"refused: {op or 'no verb'} {fid or 'no feature'} is not a feature verb (one of {', '.join(FEATURES)})\n")
+            return "failed", 64
+        rc = self._sh(job, [SANDBOX_BIN, "feature", op, fid], timeout=1800)
+        self.hello_again(f"the {fid} feature was {'installed' if op == 'install' else 'removed'}")
+        return ("succeeded", 0) if rc == 0 else ("failed", rc)
+
+    def _apply_lockdown(self, job):
+        """Lock down (R92): every container here stopped and kept from
+        starting again at a boot (BuilderBot's nginx among them), and the
+        door in shut. The controller retires this node when this ends, so
+        its credential goes with it; a part that fails is said and the rest
+        still done."""
+        bad = 0
+        docker = shutil.which("docker")
+        ids = []
+        if docker:
+            r = subprocess.run([docker, "ps", "-q"], capture_output=True, text=True, timeout=60, check=False)
+            ids = r.stdout.split()
+            bad += r.returncode != 0
+        if ids:
+            job.say(f"stopping {len(ids)} container(s), and none starts again at a boot\n")
+            bad += self._sh(job, [docker, "update", "--restart=no", *ids], timeout=120) != 0
+            bad += self._sh(job, [docker, "stop", "-t", "10", *ids], timeout=600) != 0
+        else:
+            job.say("no container was running\n" if docker else "no docker here\n")
+        d = self.state.get("door") if isinstance(self.state.get("door"), dict) else {}
+        if d.get("kind") == "cloudflared" and shutil.which("systemctl"):
+            bad += self._sh(job, ["systemctl", "disable", "--now", "cloudflared"], timeout=120) != 0
+        elif d.get("kind") == "tailscale":
+            bad += self._sh(job, [TAILSCALE_BIN, "down"], timeout=120) != 0
+        job.say("locked down: this node's credential is revoked as this job ends\n" if not bad
+                else f"locked down with {bad} step(s) failing, above; this node's credential is revoked as this job ends\n")
+        return ("succeeded", 0) if not bad else ("failed", 1)
+
     def _apply_gpu(self, job):
         """The NVIDIA driver and a headless X server on the card, for the
         emulator's -gpu host (R20): bb-sandbox gpu does it and says whether
@@ -235,6 +280,19 @@ class ConfigPlaneMixin:
         copy and gets none."""
         if os.geteuid() != 0 or not os.path.isfile(SANDBOX_BIN):
             return
+        # The bundle fetched first (B163): nothing else in a system job does,
+        # so root's copy was whatever some other job or a session had last
+        # pulled, and a job pressed right after a controller update ran the
+        # helper from before it. A fetch of an unchanged bundle is one
+        # download checked by digest. Not on a hosting-only node, which the
+        # controller refuses the bundle (403 at the head of every system
+        # job's log, R97's walk): its helper is the one Enroll again writes.
+        if tc_root(self.state) and not self.state.get("host_only"):
+            try:
+                who = self.as_user({}, self.state.get("user") or "")
+            except RuntimeError:
+                who = {}
+            self.bundle(job, who)
         # From root's own copy, never the store's: the store is the job
         # account's to write.
         src = os.path.join(TOOLS_DIR, "current", "nodes", "provision-linux.sh")

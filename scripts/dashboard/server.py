@@ -54,6 +54,8 @@ TTYD_PORT = int(os.environ.get("DASHBOARD_TTYD_PORT", "7681"))
 # path, which is a table lookup and literal text like every other thing this
 # page can make happen.
 TTYD_RO_PORT = int(os.environ.get("DASHBOARD_TTYD_RO_PORT", str(TTYD_PORT + 1)))
+# A VM host's screen relay (R99), beside its terminals on the node.
+SCREEN_PORT = 7684
 
 # ---- one login for everything ---------------------------------------------
 # The browser used to be asked twice: once by this server, once by ttyd on
@@ -521,10 +523,6 @@ def compat_holds(reap=False):
         if why:
             out[d.name] = why
     return out
-
-
-# When a hosting-only node's refused verb was last audited (Handler._agent).
-_host_refused_at = {}
 
 
 # How often the sweep below runs. Settable only so the suite need not wait
@@ -1525,6 +1523,38 @@ _ARG_CTR = re.compile(r"^ctr:([A-Za-z0-9][A-Za-z0-9._-]*):([A-Za-z0-9][A-Za-z0-9
                       r"([A-Za-z0-9][A-Za-z0-9_.-]*)$")
 
 
+# `vm:PROJECT:NAME`: a VM's serial console (R91), opened on its node's
+# container terminal server, as the jobs account, with virsh console.
+_ARG_VM = re.compile(r"^vm:([A-Za-z0-9][A-Za-z0-9._-]*):([a-z0-9][a-z0-9-]{0,30})$")
+
+
+def vm_target(project, name):
+    """Where a VM's console opens: its node's container terminal server,
+    which runs as the jobs account the VM was made by. A refusal says why,
+    in ctr_target's words."""
+    rec = next((v for v in vms.view({project}) if v.get("name") == name), None)
+    if not rec:
+        return {"where": "refused", "name": name, "why": f"{project} has no VM called {name}"}
+    if rec.get("state") != "running":
+        return {"where": "refused", "name": name, "why": f"{name} is {rec.get('state')}, and a console opens on a running VM"}
+    nid = rec["node"]
+    n = nodes.node(nid) if not NODES_OK else None
+    if not n:
+        return {"where": "refused", "name": name, "why": f"{name}'s node is not on record here"}
+    nm = n.get("name") or nid
+    se = (n.get("reported") or {}).get("session")
+    if n.get("state") != "online" or n.get("live") is False:
+        why = f"{nm}, where {name} runs, is not answering now"
+    elif not isinstance(se, dict) or not se.get("ctr_port"):
+        why = (f"{nm} cannot open a console: {se['ctr_why']}" if isinstance(se, dict) and se.get("ctr_why")
+               else f"{nm} has not started its container terminal yet; try again in a minute")
+    else:
+        return {"where": "node", "id": nid, "name": nm, "host": nodes.route_host(nid),
+                "port": int(se["ctr_port"]), "ro_port": int(se["ctr_port"]),
+                "boot": str(se.get("boot") or ""), "domain": rec["domain"]}
+    return {"where": "refused", "name": nm, "why": why}
+
+
 def _ctr_owner(name, instance):
     """The project a container's terminal is for: the one its instance
     belongs to (devapp.owner_of), "" for nobody's."""
@@ -1537,6 +1567,9 @@ def _arg_project(arg):
     m = _ARG_CTR.match(arg or "")
     if m:
         return _ctr_owner(m.group(1), m.group(2))
+    m = _ARG_VM.match(arg or "")
+    if m:
+        return m.group(1)
     if arg.startswith("claude:"):
         return arg[len("claude:"):].split(":")[0]
     if arg.startswith("shell:"):
@@ -1734,7 +1767,7 @@ def ctr_target(name, instance):
         why = f"{nm} runs no terminal server yet" + (f": {se['why']}" if isinstance(se, dict) and se.get("why") else "")
     elif se.get("bundle") and nodes.bundle_digest() and se["bundle"] != nodes.bundle_digest():
         # Its terminals still run the scripts from before this controller's
-        # update, whose bb-tty does not know a container's terminal (B746):
+        # update, which may not know what this one asks of them (B746):
         # asked to check in now, it takes the new ones in a minute or so.
         _ask_hello(nid)
         why = (f"{nm} has not taken this controller's update yet; its terminals restart onto it at "
@@ -3297,10 +3330,12 @@ try:
     # ...and the containers' (R178): whether each project's are kept apart
     # here, and what each compose project may reach, whatever the sessions'
     # switch says.
-    nodes.session_net_for = lambda nid: (({"on": True, "own": devapp.session_net_own(nid)}
+    nodes.session_net_for = lambda nid: (({"on": True, "own": _with_vmnets(nid, devapp.session_net_own(nid))}
                                           if nodes.session_net_on(nid) else {"on": False, "own": {}})
                                          | {"ctr_on": nodes.container_net_on(nid),
-                                            "ctr": devapp.container_net_own(nid) if nodes.container_net_on(nid) else {}})
+                                            "ctr": devapp.container_net_own(nid) if nodes.container_net_on(nid) else {},
+                                            # Whether this node's VMs may reach its LAN (R91 step 8).
+                                            "vm_lan": bool(((nodes.node(nid) or {}).get("config") or {}).get("vm_lan"))})
     NODES_OK = ""
     # The job logs are the only copy of what a node's job wrote and had no
     # retention at all until R17 step 1. Swept once here for whatever ended
@@ -3433,7 +3468,7 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  # A hosting-only node has no docker address here: the controller
                  # holds no key to a VPS, and every `docker compose config` and
                  # data-directory mkdir addressed at it waited out a 30s ssh
-                 # timeout, twice per nginx Save on draconis, holding the server
+                 # timeout, twice per nginx Save on a hosting node, holding the server
                  # with it (R85 step 1, the operator, 11 Oct). With no address
                  # the config check runs the compose plugin here, which parses
                  # without a daemon, and the directory is the agent's to make.
@@ -3465,6 +3500,40 @@ containers.ctr_spark = nodes.ctr_spark
 # One nginx per node, from the nginx tab (R171): its records here, the
 # container through containers.py, and the node's own view of its ports.
 imagecheck.configure(state=STATE, write_json=write_json, devapp_module=devapp)
+# The VM manager (R91): its records, the jobs it queues, and what becomes of
+# them; a session's ask through the same machinery a container's goes.
+import vms                                                       # noqa: E402
+
+vms.configure(state=STATE, write_json=write_json, node=nodes.node, node_list=nodes.node_list,
+              job_add=nodes.job_add, audit=db.audit, prefs_get=prefs.get, nodes_rev=nodes.rev,
+              enroll_script=nodes.enroll_script,
+              node_retire=lambda by, nid: nodes.node_state(by, nid, "retired"),
+              node_mark=nodes.node_vm_of, node_discard=nodes.node_discard)
+nodes.on_done("vm", vms.vm_done)
+phone.vm_runner = lambda project, req, by: _vm_do(f"session:{project} (allowed by {by})", project, req, True)
+
+
+def _with_vmnets(nid, own):
+    """Each project's own reach on a node, with the network its VMs are on
+    there (R91 step 8): its sessions reach those and no other project's."""
+    own = dict(own or {})
+    for project, net in vms.nets_on(nid).items():
+        own[project] = dict(own.get(project) or {}, vmnets=[net])
+    return own
+
+
+def _vm_do(principal, project, req, session):
+    """One VM verb for `project`: new is vms.create, onto the project's own
+    nodes for a session and any VM host for a person; an ISO's fetch or
+    removal is vms.iso; the rest vms.act."""
+    if field(req, "action") in ("iso-add", "iso-rm"):
+        return vms.iso(principal, field(req, "action"), req)
+    if field(req, "action") == "new":
+        allowed = devapp.nodes_of(project) or [] if session else [n["id"] for n in vms.hosts()]
+        return vms.create(principal, project, req, allowed, session=session)
+    return vms.act(principal, project, field(req, "name"), field(req, "action"), req)
+
+
 nginxproxy.configure(state=STATE, write_json=write_json, node_list=nodes.node_list,
                      node_name=lambda nid: (nodes.node(nid) or {}).get("name") or nid,
                      taken_ports=devapp.taken_ports)
@@ -4048,6 +4117,8 @@ def revisions(who=None, projects=None):
         # The nginx tab's record and hostnames (B714): a route written from
         # a Docker row, bb or another browser.
         "nginx": nginxproxy.rev(),
+        # The VMs page (R91): a record written, or a node's census of them.
+        "vms": vms.rev(),
         "jobs": 0 if NODES_OK else nodes.jobs_rev(),
         # Who has a session where, and whether it is working: the project
         # rows fetch /api/live when this moves.
@@ -4298,7 +4369,7 @@ def _snapshot(who):
         "emulator": {"ready": False, "why": "the node store did not open"} if NODES_OK
                     else emulator.ready(),
         "can": {name: not users.may(who, name) for name in
-                ("terminal", "docker-write", "toolchains-write", "git-auth", "admin",
+                ("terminal", "docker-write", "vms-write", "toolchains-write", "git-auth", "admin",
                  # The CI runner tab, a job run and a project's node, by
                  # grant (R137 step 3): the Tools card hides CI runner on it.
                  "runner", "jobs", "node",
@@ -4364,6 +4435,9 @@ def _snapshot(who):
         # once per image update), and these are what make it once.
         "welcome": {"seen": bool(users.prefs(who).get("welcome_seen")),
                     "image_seen": str(users.prefs(who).get("image_seen") or "")},
+        # ...and the pages it has toured, and whether it skips the tour (R94).
+        "tour": {"seen": [str(k) for k in users.prefs(who).get("tour_seen") or []][:64],
+                 "off": users.prefs(who).get("tour_off") is True},
     }
 
 
@@ -4412,6 +4486,7 @@ GET_ROUTES = (
     ("prefix", "/api/help", "_get_help"),
     ("prefix", "/api/docker", "_get_docker"),
     ("prefix", "/api/containers", "_get_containers"),
+    ("exact", "/api/vms", "_get_vms"),
     ("prefix", "/api/project-job", "_get_project_job"),
     ("prefix", "/api/trash", "_get_trash"),
     ("prefix", "/api/claude-now", "_get_claude_now"),
@@ -4458,6 +4533,7 @@ POST_ROUTES = (
     ("prefix", "/api/project-auth", "_project_auth"),
     ("exact", "/api/project-ftp", "_project_ftp"),
     ("prefix", "/api/container", "_container"),
+    ("exact", "/api/vms", "_vms"),
     ("prefix", "/api/dockerctl", "_docker_ctl"),
     ("prefix", "/api/rename", "_rename"),
     # These two before the bare prefix, or startswith swallows them.
@@ -4917,12 +4993,35 @@ class Handler(BaseHTTPRequestHandler):
         arg = _term_arg(rest)
         if arg.startswith("ctr:"):
             return self._ctr_refused(arg, me)
+        if arg.startswith("vm:"):
+            return self._vm_con_refused(arg, me)
         if arg.startswith("claude:"):
             project = arg[len("claude:"):].split(":")[0]
             # Terminal Read is the shielded Claude console; without it there
             # is no terminal on the project at all (R152 (e)).
             return users.may(me, "claude", project) or self._area_read_why("terminal", project, me)
         return users.may(me, "terminal")
+
+    def _vm_con_refused(self, arg, me):
+        """A sentence when this account may not open the console of the VM a
+        vm: argument names, "" when it may (R91): a person with a shell and
+        VMs Write on its project, or an administrator; an administrator alone
+        when the project's Make VMs is deny; the VM running now."""
+        m = _ARG_VM.match(arg)
+        if not m:
+            return "not a VM's console: vm:PROJECT:NAME"
+        project, name = m.groups()
+        no_shell = users.may(me, "terminal")
+        if no_shell:
+            return no_shell
+        if not users.is_admin(me):
+            why = users.may(me, "vms-write", project)
+            if why:
+                return why
+            if (prefs.get(project) or {}).get("makevms") == "deny":
+                return f"{project}'s Make VMs is deny, so its VMs' consoles are an administrator's"
+        t = vm_target(project, name)
+        return t["why"] if t["where"] == "refused" else ""
 
     def _ctr_refused(self, arg, me):
         """A sentence when this account may not open a shell in the container
@@ -5089,6 +5188,79 @@ class Handler(BaseHTTPRequestHandler):
             out.append(f"{k}{eq}{v}")
         return head + "?" + "&".join(out)
 
+    def _novnc(self, rest):
+        """noVNC's files (the page and the RFB client it imports), as the
+        image fetched them; nothing outside its directory."""
+        root = Path(os.environ.get("BB_NOVNC_DIR", "/opt/builderbot/novnc")).resolve()
+        target = (root / urllib.parse.unquote(rest)).resolve()
+        if root not in target.parents or not target.is_file():
+            return self._json({"error": "not part of noVNC" if root.is_dir() else
+                               "noVNC is not in this image, so a VM's screen cannot open here"}, 404)
+        ctype = {".js": "text/javascript", ".html": "text/html", ".css": "text/css", ".svg": "image/svg+xml",
+                 ".png": "image/png", ".ico": "image/x-icon"}.get(target.suffix, "application/octet-stream")
+        body = target.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype + ("; charset=utf-8" if ctype.startswith("text/") else ""))
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "max-age=3600")
+        self.end_headers()
+        self.wfile.write(body)
+        return None
+
+    def _screen_proxy(self):
+        """/screen/ws?vm=PROJECT/NAME (R99): the browser's noVNC relayed to
+        the VM's node, whose agent opens the VM's VNC on its loopback. Seeing
+        a screen is driving the machine, so it takes VMs Write on the VM's
+        project; the request upstream carries this controller's signature for
+        that VM and this minute, keyed with the node's token hash."""
+        q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        project, _, name = str((q.get("vm") or [""])[0]).partition("/")
+        if not registry.is_project(project):
+            return self._json({"error": f"no project called {project}"}, 404)
+        if self._refused("vms-write", project):
+            return None
+        rec = next((v for v in vms.view([project]) if v.get("name") == name), None)
+        if not rec:
+            return self._json({"error": f"{project} has no VM called {name}"}, 404)
+        host, key = nodes.route_host(rec["node"]), nodes.screen_key(rec["node"])
+        if not host or not key:
+            return self._json({"error": f"{rec.get('node_name')} cannot be reached for a screen"}, 503)
+        t = int(time.time())
+        sig = hmac.new(key.encode(), f"{rec['domain']}.{t}".encode(), hashlib.sha256).hexdigest()
+        try:
+            up = socket.create_connection((host, SCREEN_PORT), timeout=5)
+        except OSError:
+            return self._json({"error": f"{rec.get('node_name')} did not answer on {host}:{SCREEN_PORT}: "
+                                        "its agent opens that port to this controller once it is updated"}, 502)
+        up.settimeout(None)
+        lines = [f"GET /ws?vm={rec['domain']}&t={t}&s={sig} HTTP/1.1", f"Host: {host}:{SCREEN_PORT}"]
+        for k, v in self.headers.items():
+            if k.lower() in ("upgrade", "connection", "sec-websocket-key", "sec-websocket-version",
+                             "sec-websocket-protocol"):
+                lines.append(f"{k}: {v}")
+        self.close_connection = True
+        down = self.connection
+        # On its row while it lasts: who else has the Screen (the operator, 21 Oct).
+        here = vms.present(f"{project}/{name}", "screen", (self._who() or {}).get("name") or self._principal(),
+                           users.uid_of(self._who() or {}) or "")
+        try:
+            up.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
+            self.wfile.flush()
+            sel = selectors.DefaultSelector()
+            sel.register(up, selectors.EVENT_READ, down)
+            sel.register(down, selectors.EVENT_READ, up)
+            while True:
+                for k, _ in sel.select():
+                    data = k.fileobj.recv(65536)
+                    if not data:
+                        return None
+                    k.data.sendall(data)
+        except OSError:
+            return None
+        finally:
+            vms.gone(here)
+            up.close()
+
     def _term_proxy(self):
         """Everything under /term, relayed byte-for-byte to ttyd on the
         loopback, websockets included.
@@ -5130,13 +5302,24 @@ class Handler(BaseHTTPRequestHandler):
         arg0 = _term_arg(rest0)
         # ...and a container's shell is where its container is (R218 step 4).
         ctr = _ARG_CTR.match(arg0)
-        target = ctr_target(ctr.group(1), ctr.group(2)) if ctr else \
+        vmm = _ARG_VM.match(arg0)
+        target = ctr_target(ctr.group(1), ctr.group(2)) if ctr else vm_target(*vmm.groups()) if vmm else \
             session_target(_arg_project(arg0),
                            claude=arg0.startswith("claude:"),
                            node=_arg_node(arg0),
                            uid=users.uid_of(self._who() or {}) or "")
         if target["where"] == "refused":
             return self._term_notice(target["why"], 503)
+        # A VM's Console is one person's at a time (the operator, 21 Oct):
+        # anybody else is refused while it is held, unless the project's
+        # owner or an administrator took it over a moment ago.
+        if vmm:
+            vkey, my_uid = f"{vmm.group(1)}/{vmm.group(2)}", users.uid_of(self._who() or {}) or ""
+            held = vms.holders(vkey, "console", but=my_uid)
+            if held and not vms.may_take(my_uid, vkey):
+                return self._term_notice(f"{', '.join(w for _, w in held)} has {vmm.group(2)}'s Console open, and it is "
+                                         "one person's at a time. Its Screen can be shared, or ask them; the "
+                                         "project's owner or an administrator can take it over.", 409)
         # A terminal on the controller itself, switched off for this install
         # (R81): what a node runs is the node's, and stays.
         if target["where"] != "node" and (why := featuresoff.sentences().get("shell")):
@@ -5197,6 +5380,7 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True
         down = self.connection
         sel = selectors.DefaultSelector()
+        console_on = None
         try:
             up.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
             self.wfile.flush()
@@ -5204,6 +5388,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._term_page(up, down)
             sel.register(up, selectors.EVENT_READ, down)
             sel.register(down, selectors.EVENT_READ, up)
+            # A VM's Console, on its row while it lasts: one at a time, so the
+            # next person to open it is warned (the operator, 21 Oct).
+            if vmm and ws:
+                console_on = vms.present(f"{vmm.group(1)}/{vmm.group(2)}", "console",
+                                         (self._who() or {}).get("name") or self._principal(),
+                                         users.uid_of(self._who() or {}) or "")
             # Maintenance mode switched on while this terminal is open ends it
             # for anybody but the owner: the sign-in was checked when it
             # connected, and a relay runs until a side hangs up.
@@ -5219,6 +5409,8 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:
             pass                          # either side hung up mid-relay
         finally:
+            if console_on is not None:
+                vms.gone(console_on)
             sel.close()
             up.close()
 
@@ -5449,6 +5641,12 @@ class Handler(BaseHTTPRequestHandler):
             return None
         if path == "/term" or path.startswith("/term/"):
             return self._term_proxy()
+        # A VM's screen (R99): noVNC's page and client, and the relay to the
+        # VM's node.
+        if path.startswith("/novnc/"):
+            return self._novnc(path[len("/novnc/"):])
+        if path == "/screen/ws":
+            return self._screen_proxy()
         if path.startswith("/apps/"):
             return self._app_file(path)
         # The page's companion scripts: a new surface is a new classic-script
@@ -5979,6 +6177,91 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return self._json(devapp.containers())
 
+    def _get_vms(self):
+        """GET /api/vms (R91): the VMs of the projects this account may read
+        them on (a session: its own), the OS catalog and the VM hosts."""
+        me = self._who() or {}
+        sess = me.get("session") or ""
+        if sess:
+            seen = {sess}
+        else:
+            seen = {p for p in project_names(me) if roles.level_of(me, "vms", p)}
+        # Which of them it may change, for the page's buttons: the server
+        # refuses the rest whatever is pressed.
+        can = {p: "write" if sess or roles.level_of(me, "vms", p) == "write" else "read" for p in seen}
+        # ...and on which it may take a Console from whoever has it: the
+        # project's owner's and the administrators' (the operator, 21 Oct).
+        uid = users.uid_of(me) or ""
+        take = {p: not sess and can[p] == "write" and (users.is_admin(me) or (uid and membership.owner_of(p) == uid))
+                for p in seen}
+        return self._json(vms.payload(seen) | {"can": can, "take": take, "me": uid})
+
+    def _vms(self, req):
+        """POST /api/vms (R91): new, start, stop, restart, remove, snapshot,
+        revert, snapshot-rm. A person needs VMs Write on the project; a
+        session acts on its own project alone, under its Make VMs dial
+        (deny refuses, ask holds it for the administrators, auto does it)."""
+        me = self._who() or {}
+        sess = me.get("session") or ""
+        project = field(req, "project") or sess
+        action = field(req, "action")
+        if action not in ("new", "iso-add", "iso-rm", "console-take") + vms.ACTIONS:
+            return self._json({"error": f"no such VM action: {action}"}, 400)
+        # An installer's ISO onto a node, or off it (R99): a person's, since
+        # what it fetches is a whole system to install by hand.
+        if action in ("iso-add", "iso-rm") and sess:
+            return self._json({"error": "fetching an installer ISO onto a node is a person's, on the VMs page"}, 403)
+        if not project or not registry.is_project(project):
+            return self._json({"error": "which project's VM? name one"}, 400)
+        # The address this controller was reached at, which a VM made a node
+        # dials (R91 step 14): the asker's own, as Enroll node's script uses.
+        req = dict(req, ctl=f"{'https' if self.headers.get('X-Forwarded-Proto') == 'https' else 'http'}://"
+                            f"{self.headers.get('Host') or ''}")
+        if req.get("node_agent") is True and not sess and self._refused("node"):
+            return
+        if sess:
+            if project != sess:
+                return self._json({"error": f"a session works on {sess}'s VMs alone, not {project}'s"}, 403)
+            if req.get("node_agent") is True and prefs.get(sess)["makevms"] != "deny":
+                # A node is the administrators' to add: asked of them whatever
+                # the dial says, and made by whoever allows it.
+                return self._result(phone.ask_vm(field(req, "why") or f"new {field(req, 'name')}, made a node", sess, req,
+                                                 asker_name=(me.get("name") or "")))
+            mode = prefs.get(sess)["makevms"]
+            if mode == "deny":
+                return self._json({"error": f"{sess}'s settings say Claude may not make or change VMs "
+                                            "(Make VMs is deny): a person changes that in the project's settings"}, 403)
+            if mode == "ask":
+                r = phone.ask_vm(field(req, "why") or f"{action} {field(req, 'name')}", sess, req,
+                                 asker_name=(me.get("name") or ""))
+                return self._result(r)
+            return self._result(_vm_do(f"session:{sess}", sess, req, True))
+        if self._refused("vms-write", project):
+            return
+        why = self._not_on_list(me, project)
+        if why:
+            return self._json({"error": why}, 403)
+        if action == "console-take":
+            return self._console_take(me, project, field(req, "name"))
+        return self._result(_vm_do(self._principal(), project, req, False))
+
+    def _console_take(self, me, project, name):
+        """A VM's Console taken from whoever has it, by the project's owner or
+        an administrator: a minute's grant the console proxy honors, and a
+        notice to each person it is taken from."""
+        uid = users.uid_of(me) or ""
+        if not (users.is_admin(me) or (uid and membership.owner_of(project) == uid)):
+            return self._json({"error": "taking a VM's Console from whoever has it is the project's owner's or an "
+                                        "administrator's; its Screen can be shared instead"}, 403)
+        key = f"{project}/{name}"
+        vms.take(uid, key)
+        by = me.get("name") or self._principal()
+        for huid, _ in vms.holders(key, "console", but=uid):
+            if huid:
+                notices.act(huid, {"action": "add", "level": "warn",
+                                   "text": f"{by} took {name}'s Console in {project} from you"})
+        return self._json({"ok": True})
+
     def _get_project_job(self):
         """GET /api/project-job."""
         if self._refused("create"):
@@ -6306,6 +6589,9 @@ class Handler(BaseHTTPRequestHandler):
         # form, and an upload is not read into memory at all.
         if self.path.split("?")[0] == "/api/upload-archive":
             return self._upload_archive()
+        # ...and an installer's ISO for a VM host (R99), streamed the same way.
+        if self.path.split("?")[0] == "/api/vms-iso-upload":
+            return self._vms_iso_upload()
         req = self._read_json()
         if req is None:
             return None
@@ -6533,6 +6819,12 @@ class Handler(BaseHTTPRequestHandler):
                 and str(req.get("devbuild")) != prefs.get(name)["devbuild"] \
                 and self._refused("docker-write"):
             return
+        # ...and the same of the VM dial and the VMs' limits (R91): a VM is a
+        # machine on a node, the VMs area's to hand a session or to raise.
+        if ((req.get("makevms") is not None and str(req.get("makevms")) != prefs.get(name)["makevms"])
+                or (req.get("vm_caps") is not None and req.get("vm_caps") != prefs.get(name)["vm_caps"])) \
+                and self._refused("vms-write", name):
+            return
         held = (("node" in req or "nodes" in req) and prefs.node_changed(name, req)) \
             or (req.get("reads") is not None and prefs.reads_changed(name, req.get("reads")))
         # Then the rest: the project's own settings are the Project settings area's to
@@ -6737,7 +7029,11 @@ class Handler(BaseHTTPRequestHandler):
                            # The container a ctr: terminal goes into, checked
                            # above against its instance's running ones: what
                            # bb-tty execs into, never the URL's word for it.
-                           "ctr": (_ARG_CTR.match(arg).group(3) if _ARG_CTR.match(arg) else "")})
+                           "ctr": (_ARG_CTR.match(arg).group(3) if _ARG_CTR.match(arg) else ""),
+                           # ...and the VM a vm: console opens (R91): its libvirt
+                           # name from the record, never the URL's word for it.
+                           "vm": (vm_target(*_ARG_VM.match(arg).groups()).get("domain", "")
+                                  if _ARG_VM.match(arg) else "")})
 
     def _hook(self, req):
         """What a session's hooks have to say, from a NODE (roadmap #24):
@@ -6807,13 +7103,18 @@ class Handler(BaseHTTPRequestHandler):
             if why:
                 # Audited once an hour a node and verb, so a verb asked on a
                 # loop does not fill the log.
-                key = (auth["node"], verb)
-                if time.monotonic() - _host_refused_at.get(key, -3600) >= 3600:
-                    _host_refused_at[key] = time.monotonic()
-                    db.audit(f"node:{auth['node']}", "host-refused", verb[:60], {})
+                said = nodes.host_refused_audit(auth["node"], verb, time.monotonic())
+                if said:
+                    db.audit(f"node:{auth['node']}", "host-refused", said, {})
                 return self._json({"error": why}, 403)
+            if nodes.host_only(auth["node"]):
+                # A public box's request that stalls is let go rather than
+                # holding a thread, and its hellos are counted (R92).
+                self.connection.settimeout(120)
+                if verb == "hello" and not nodes.host_hello_allowed(auth["node"], time.monotonic()):
+                    return self._json({"error": "too many hellos: one in a while is enough"}, 429)
         # The verbs that serve or take a FILE, on any method.
-        if verb in ("source", "file", "download"):
+        if verb in ("source", "file", "download", "iso"):
             got, status = channel.fetch(verb, auth, q, authed=self._authed)
             if status != 200:
                 return self._json(got, status)
@@ -6848,8 +7149,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": auth["error"]}, 401)
         # Where the node is, as seen from here: informational on the row,
         # and the address docker-over-ssh goes to for an agent node (see
-        # nodes._addr). A proxy in front says so in the usual header.
-        addr = (self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        # nodes._addr). A proxy in front says so in the usual header, whose
+        # last hop is the one the proxy wrote: the first is the client's own
+        # word, and a node that named a LAN address there was let into it (R92).
+        addr = (self.headers.get("X-Forwarded-For", "").split(",")[-1].strip()
                 or self.client_address[0])
         if verb == "work":
             got = channel.work(auth, req, addr, alive=lambda: not client_gone(self.connection))
@@ -8068,6 +8371,27 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": busy}, 409)
         return self._result(gitview.verb(name, action, req, me, prefix=users.tmux_prefix(me),
                                          principal=self._principal()))
+
+    def _vms_iso_upload(self):
+        """An ISO uploaded on the VMs page: VMs Write on the project the dialog
+        is for, a person's (never a session's), streamed to the controller's
+        spool and fetched from there by the node's job."""
+        q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        project = (q.get("project") or [""])[0]
+        if (self._who() or {}).get("session"):
+            return self._json({"error": "uploading an installer ISO is a person's, on the VMs page"}, 403)
+        if why := featuresoff.refused("POST", "/api/vms", {}):
+            return self._json({"error": why, "off": True}, 403)
+        if not registry.is_project(project):
+            return self._json({"error": "which project's VMs is it for? name one"}, 400)
+        if self._refused("vms-write", project):
+            return None
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return self._json({"error": "bad request"}, 400)
+        return self._result(vms.iso_upload(self._principal(), self.rfile, n, (q.get("node") or [""])[0],
+                                           (q.get("name") or [""])[0]))
 
     def _upload_archive(self):
         """Spool an archive for the create dialog; {id, name, size, kind}.

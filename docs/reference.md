@@ -19,7 +19,7 @@ runner's token is typed on the CI runner page.
 | `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
 | `TZ` | `Etc/UTC` | The container's clock, for its log lines. Optional: the dashboard shows times in each browser's own zone, or the one picked under the gear in the header |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
-| `FEATURES_OFF` | *(empty)* | Features switched off for the whole install, comma-separated: `tunnel`, `ftp`, `phone`, `devices`, `apps`, `image-updates`, `runner`, `enroll`, `shell` (a terminal on the controller itself; a node's stay), `internet` (an install meant to run offline: apps, image updates, the tunnel and runners with it, and the Doctor skips asking the outside). Each one's controls are drawn dead with the sentence below under them, its requests are refused, and Settings lists them |
+| `FEATURES_OFF` | *(empty)* | Features switched off for the whole install, comma-separated: `tunnel`, `ftp`, `phone`, `devices`, `apps`, `image-updates`, `runner`, `enroll`, `shell` (a terminal on the controller itself; a node's stay), `vms` (virtual machines on nodes: the VMs page, `bb vm` and installing VM host), `internet` (an install meant to run offline: apps, image updates, the tunnel and runners with it, and the Doctor skips asking the outside). Each one's controls are drawn dead with the sentence below under them, its requests are refused, and Settings lists them |
 | `BANNER_TEXT` | *(empty)* | One line every visitor sees under the header, on every page and the sign-in page: a shared install's word to whoever is on it |
 | `BANNER_LINK` | *(empty)* | A link at the banner's end, http(s) or a path on this site; anything else is dropped |
 | `BANNER_LINK_LABEL` | *(empty)* | The link's words; "more" when empty |
@@ -383,7 +383,10 @@ bb tests lab       the lab suites (test/lab-*.mjs) against real services rather 
                    through the controller it is enrolled on: `BB_LAB_CONTROLLER` (that dashboard's
                    address), `BB_LAB_TOKEN` (`user:password` for an administrator there, the lab's
                    own) and `BB_LAB_NODE` (the node by name or id). A job runs on that node, so name
-                   one you are willing to have that happen to
+                   one you are willing to have that happen to. A VM host there as well
+                   (`BB_LAB_VMHOST`, with `BB_LAB_KEY` an ssh public key) walks every Linux
+                   system Enroll node offers as a VM made a node, enrolled to Uninstall
+                   (lab-systems, slow: each system takes its ten to twenty minutes)
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
 bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
 bb rules           the house rules for this project: the operator's and yours
@@ -468,6 +471,23 @@ bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--hand NAME] [--s
                    in front (another project's keyboard), and Approve for this
                    session does not cover it; bb phone ui prints the screen's
                    layout under the same rule
+bb vm [list]       this project's VMs (R91): state, OS, node, address, size, snapshots
+bb vm os           the operating systems a VM is made from
+bb vm new NAME --os OS [--vcpus N] [--mem 4G] [--disk 20] [--node NODE] [--key FILE] [--node-agent] --why "..."
+                   a VM on one of the project's nodes with VM host installed,
+                   letting in this session's ssh key (made when there is none);
+                   the project's Make VMs setting decides: deny refuses, ask
+                   waits for an administrator's Allow, auto makes it now.
+                   --node-agent enrolls it as a node at its first boot, which
+                   an administrator always allows
+bb vm start|stop|restart|rm NAME [--force]
+                   one VM, under the same setting; stop asks it to shut down,
+                   --force pulls the plug
+bb vm snapshot NAME SNAP [--note "..."] | revert NAME SNAP | snapshot-rm NAME SNAP
+                   its state saved under a name and gone back to; a running
+                   VM's memory is kept too, so a revert lands mid-program
+bb vm ip NAME | ssh NAME [COMMAND...]
+                   its address, and ssh in as its account
 bb container       what container asks are waiting on an administrator
 bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
                    a container built from a compose file the session wrote,

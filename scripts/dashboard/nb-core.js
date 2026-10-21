@@ -575,6 +575,7 @@ function makeNotebook(project){
     else if (rnHost && root.contains(rnHost)) settingsOut();
     if (v === "git") loadGit();
     if (v === "docker") loadNbDocker();
+    if (v === "vms") loadNbVms();
     if (v === "bugs" && !nb.bugs) loadBugs();
     if (v === "analysis") loadAnalysis();
     if (v === "design") loadDesign();
@@ -687,6 +688,7 @@ function makeNotebook(project){
   // through its agent, whose heartbeat moves the nodes token, whose watch
   // runs the status poll, which re-read docker again, 134 requests in 30 s.
   watch("devapp", () => { if (showing("docker")) loadNbDocker(); });
+  watch("vms", () => { if (showing("vms")) loadNbVms(); });
   watch("reports", () => { if (showing("analysis")) loadAnalysis(); });
   watch(() => `wiki:${project}`, k => { if (showing("wiki") && wikiNews(k)) loadWiki(); });
   watch("findings", () => { if (showing("analysis")) loadAnalysis(); });
@@ -757,6 +759,31 @@ function makeNotebook(project){
           () => { if (showing("briefing")) loadPreamble(); });
 
   // ---- the handle the rest of the page holds ------------------------------
+  // This project's VMs as the VMs page draws them, scoped to it (R96): the
+  // page's own rows and their presses, the project's card alone.
+  async function loadNbVms(){
+    try{
+      vmsData = await (await fetch("/api/vms")).json();
+    }catch(e){ $("nvHint").textContent = "VMs: " + e; return; }
+    const rows = (vmsData.vms || []).filter(v => v.project === project);
+    const up = rows.filter(v => v.state === "running").length;
+    $("nvHint").textContent = rows.length ? `${up} running of ${rows.length}` : "no VMs yet";
+    const may = (vmsData.can || {})[project] === "write";
+    const nb = $("nvNew");
+    nb.hidden = !may;
+    nb.disabled = !(vmsData.hosts || []).length;
+    nb.onclick = () => openNewVm(project);
+    $("nvOpen").onclick = () => openVmsTab();
+    const dial = (state?.projects || []).find(x => x.name === project)?.prefs?.makevms || "deny";
+    // What the view is for, as its empty state (R119 step 4).
+    $("nvList").innerHTML = rows.length ? vmGroupsHtml(rows)
+      : `<div class="field"><div class="hint nbempty">${!(vmsData.hosts || []).length
+          ? `No node has VM host yet: a node's Features section on the ${pageLink("nodes", "Nodes page")} installs it.`
+          : dial === "deny" ? "A session here may not make VMs (Make VMs is deny in this project's settings); a person makes one with New VM."
+          : "A session makes one with bb vm new NAME --os debian, or a person with New VM."}</div></div>`;
+    wireVms($("nvList"));
+  }
+
   // This project's containers as the Containers page draws them, scoped to
   // it (the operator, 19 Oct): its tiles, when the images were checked, and
   // its card in the page's cards or list, whichever this browser keeps.

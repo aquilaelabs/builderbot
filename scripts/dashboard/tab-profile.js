@@ -147,6 +147,13 @@ function renderProfileInto(i){
             <button type="button" id="pfPasswd" disabled>Change password</button>
           </div>
         </div>`)}
+    ${sec("tour", "The tour", `
+        <div class="logset">
+          <div class="field"><div class="hint">${(state?.tour?.seen || []).length || state?.tour?.off
+            ? `${state?.tour?.off ? "Skipped on every page" : `Seen on ${state.tour.seen.length} page${state.tour.seen.length === 1 ? "" : "s"}`}: each page's tour shows again the next time you open it.`
+            : "Each page shows its tour the first time you open it."}</div></div>
+          <div class="actbar"><span class="sp"></span><button type="button" id="pfTours">Show the tours again</button></div>
+        </div>`)}
     ${sec("plugins", "Claude plugins", `
         <div class="logset">${profilePlugins(profile.plugins || [])}</div>`)}
     ${sec("logs", "Conversation logs", `
@@ -239,6 +246,8 @@ async function openConversation(project, id){
   body.scrollTop = body.scrollHeight;
 }
 function wireProfile(root){
+  const tr = root.querySelector("#pfTours");
+  if (tr) tr.onclick = () => pressing(tr, async () => { await tourReset(); drawPanes(); });
   root.querySelectorAll("[data-cvread]").forEach(b => b.onclick = () => openConversation(b.dataset.cvproject, b.dataset.cvread));
   const p = {...(profile?.profile || {}), account: profile?.name};
   root.querySelectorAll("[data-pf]").forEach(inp => inp.oninput = () => {

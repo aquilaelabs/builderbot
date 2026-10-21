@@ -486,7 +486,7 @@ function nodeSyncRow(n){
 // script set up while it has not reported yet; the switch is a system job,
 // and the line says the ssh command to use.
 // What a PC needs to come in through a cloudflared door (R179, the
-// operator's own way in to draconis, 11 Oct): an ~/.ssh/config block named
+// operator's own way in to a hosting node, 11 Oct): an ~/.ssh/config block named
 // for the node, so every server keeps its own name and its own saved
 // password rather than all of them being localhost:22, and `ssh NAME`.
 // MobaXterm's own SSH sessions read no ssh config, so it is said how it
@@ -500,6 +500,87 @@ Host ${esc(alias)}
   User ${esc(user)}
   ProxyCommand cloudflared access ssh --hostname %h</pre>
       <div class="sub">Then <code>ssh ${esc(alias)}</code>. In MobaXterm, whose own SSH sessions read no ssh config, make a Shell session that runs <code>ssh ${esc(alias)}</code>, or type it in its local terminal.</div>`;
+}
+
+// What the node has beyond the base (R91): each feature bb-sandbox installs
+// and removes, with Install or Uninstall on its row, the same install the
+// enroll script's tick ran. A row that cannot be pressed says why under it,
+// muted; the firewall is a hosting-only node's alone.
+function nodeFeaturesSection(n){
+  if (n.kind !== "agent") return "";
+  const fe = n.reported?.features;
+  const job = n.applying?.what === "feature" ? n.applying : null;
+  const failed = n.last_apply?.what === "feature" && n.last_apply.state === "failed" ? n.last_apply : null;
+  // A job that succeeded and a census that does not show it yet (B162): the
+  // machine has changed and has not said so, so its row waits for the report
+  // the agent sends after every feature job rather than offering the press
+  // that was just made. Read off what the census says, not off the clock:
+  // the two land in the same second often enough that time cannot tell.
+  const la = n.last_apply;
+  const ahead = la?.what === "feature" && la.state === "succeeded" && fe?.[la.feature]
+    && !!fe[la.feature].installed !== (la.op !== "remove")
+    // ...for a few minutes at most: past that the machine has been changed
+    // since by something else, and the row says what it reports.
+    && Date.now() / 1000 - (la.ended || 0) < 300 ? la.feature : "";
+  const why = !n.reported ? ""
+    : !n.reported.administers ? "This node's agent is not root on a managed machine, so its features are set on the machine itself."
+    : !n.live ? "Its agent is not dialing in, so nothing from here reaches the machine." : "";
+  const row = (fid, title, has, about, cant, more = "") => {
+    const mine = job?.feature === fid;
+    const btn = ahead === fid ? `<button type="button" disabled>Done, the node is reporting back…</button>`
+      : why || cant || (job && !mine) ? ""
+      : `<button type="button" data-nd="feature" data-feature="${fid}" data-op="${has ? "remove" : "install"}"${mine ? " disabled" : ""}>${
+          mine ? (job.op === "remove" ? "Uninstalling…" : "Installing…") : has ? "Uninstall" : "Install"}</button>`;
+    const fail = failed?.feature === fid ? `<div class="sub bad">The last try failed${failed.error ? `: ${esc(failed.error)}` : ""}; its job's log says more.</div>` : "";
+    return `<div class="row ndfeat" data-feat="${fid}"><div class="grow">
+        <div class="name">${esc(title)} <span class="pill${has ? " ok" : ""}">${has ? "installed" : "not installed"}</span></div>
+        <div class="sub">${about}</div>${cant ? `<div class="sub dim">${cant}</div>` : ""}${fail}${more}</div>${btn}</div>`;
+  };
+  const vm = fe?.vmhost || {};
+  const rows = [row("vmhost", "VM host", !!vm.installed,
+      `Runs virtual machines here with KVM through libvirt${vm.libvirt ? ` (libvirt ${esc(vm.libvirt)})` : ""}, as the jobs account and never a session.`,
+      fe && !vm.kvm && !vm.installed ? "No /dev/kvm here, so a VM would run in software. On a VM, its host passes virtualization through: CPU mode host-passthrough and nested KVM on." : "",
+      // Where its VMs may go (R91 step 8): the internet, the controller and
+      // their own project's network, and the LAN only when ticked, inside
+      // the row it is about.
+      vm.installed ? `<label class="ndcap ndvmlan"><input type="checkbox" data-ndvmlan${n.config?.vm_lan ? " checked" : ""}${why ? " disabled" : ""}>
+        its VMs may reach this machine's LAN too</label>` : "")];
+  if (n.config?.host_only)
+    rows.push(row("firewall", "Hosting firewall", !!fe?.firewall?.installed,
+      "Takes in only 80 and 443, a port a container publishes included; port 22 as the SSH door leaves it.", ""));
+  // The features installed elsewhere on the page (R91 step 1): each said as
+  // the machine reports it, with the press that installs or removes it where
+  // it already lives, since those take a license to accept (Google's, NVIDIA's)
+  // or a secret (a door's token, a forge's) that is the person's to give.
+  const r = n.reported || {};
+  // Its presses only for an account that may change the node: one that may
+  // read it sees what is installed and no way onto a page it is not given.
+  const writes = nodeMay(n) === "write";
+  const elsewhere = (fid, title, has, about, btn) => `<div class="row ndfeat" data-feat="${fid}"><div class="grow">
+      <div class="name">${esc(title)} <span class="pill${has ? " ok" : ""}">${has ? "installed" : "not installed"}</span></div>
+      <div class="sub">${about}</div></div>${writes ? btn : ""}</div>`;
+  const others = [];
+  if (!n.config?.host_only)
+    others.push(elsewhere("sessions", "Claude sessions", !!r.session?.user,
+      r.session?.user ? `Sessions run here as ${esc(r.session.user)}, kept off Docker and root.` : "No session account on this machine: enrolling it again with Claude sessions ticked makes one.",
+      `<button type="button" data-nd="reenroll" title="a new script for this machine, with the ticks changed">Enroll again…</button>`));
+  others.push(elsewhere("door", "SSH door", !!r.door?.installed,
+    r.door?.installed ? `${esc(r.door.kind)}, opened and shut under Sessions.` : "A way in for ssh through a tunnel; its token is given in the enroll script.",
+    `<button type="button" data-nd="reenroll" title="a new script for this machine, with the door's token in it">Enroll again…</button>`));
+  if (r.gpu_card)
+    others.push(elsewhere("gpu", "GPU driver", !!r.gpu_driver?.installed, "NVIDIA's driver, installed and removed from its row on the Toolchains page, where its license is accepted.",
+      `<button type="button" data-ndtc="${esc(n.id)}">Toolchains</button>`));
+  const emu = (r.store_dirs?.android || []).includes("emulator");
+  others.push(elsewhere("emulator", "Android emulator", emu, "The emulator and its system images, from the Toolchains page, where Google's SDK license is accepted.",
+    `<button type="button" data-ndtc="${esc(n.id)}">Toolchains</button>`));
+  const runs = ((r.services || {}).runners || []).length;
+  others.push(elsewhere("runner", "CI runner", runs > 0, runs ? `${runs} runner${runs === 1 ? "" : "s"} registered here.` : "A forge's runner, registered with a token from the forge on the CI runner page.",
+    `<button type="button" data-ndrunner="${esc(n.id)}">CI runner</button>`));
+  rows.push(...others);
+  const have = fe ? [fe.vmhost?.installed, n.config?.host_only && fe.firewall?.installed].filter(Boolean).length
+    + others.filter(h => / ok">installed/.test(h)).length : 0;
+  return docSection("nodes", "features", ndTitle("features"), fe ? (have ? `${have} installed` : "none installed") : "",
+    `${why ? `<div class="sub dim ndfeatwhy">${why}</div>` : ""}${rows.join("")}`);
 }
 
 // How the node reaches the controller, chosen in Enroll node and kept on
@@ -531,7 +612,9 @@ function nodeHostRow(n){
     ? `<div class="sub">It hosts containers only: no project lists it, no session or synced copy runs here,
         and its agent may ask the controller for nothing but its own jobs, an image shipped to it
         and a container's data in a copy or a move.</div>
-       <div><button type="button" data-nd="host-off">Let projects use it again</button></div>`
+       ${n.config?.tunnel?.kind === "public"
+         ? `<div class="sub dim ndhostfixed">It reaches the controller through a public hostname, so it stays hosting only.</div>`
+         : `<div><button type="button" data-nd="host-off">Let projects use it again</button></div>`}`
     : `<div class="sub dim">A node that only runs containers sent to it (a web-facing one) can be made
         hosting only: no code, no sessions, and nothing of it comes back but its own jobs.</div>
        <div><button type="button" data-nd="host-only" ${n.live ? "" : "disabled"}>Make it hosting only</button></div>`;
@@ -931,6 +1014,10 @@ function nodeAdvancedSection(n, stale, inflight){
     </div>
     <div class="sub ndcheck${nodesCheck[n.id]?.warn ? " warn" : ""}"${nodesCheck[n.id] ? "" : " hidden"}>${esc(nodesCheck[n.id]?.text || "")}</div>
     <div class="ndacts">
+    ${n.kind !== "agent" || !n.config?.host_only ? "" : act("Lock down",
+        n.config?.lockdown ? "Locking down: it may take nothing but the job that stops its containers and shuts its door, and its credential is revoked when that ends, or within five minutes if it never answers."
+        : "For a box that may have been taken over: stops every container here and its nginx, keeps them from starting at a boot, shuts its SSH door, and revokes its credential. The box's own console stops it without the agent.",
+        `<button type="button" class="danger" data-nd="lockdown" ${n.config?.lockdown ? "disabled" : ""}>${n.config?.lockdown ? "Locking down…" : "Lock down"}</button>`)}
     ${!n.reported?.sandbox ? "" : act(n.config?.lock ? "Unlock system changes" : "Lock system changes",
         n.config?.lock ? "Locked: storage, network and root changes are refused from here." : "Refuses storage, network and root changes from here, keeping them to the machine's own console.",
         `<button type="button" data-nd="${n.config?.lock ? "unlock" : "lock"}">${n.config?.lock ? "Unlock" : "Lock"}</button>`)}
@@ -1250,7 +1337,7 @@ function nodeConfSections(n){
     ${managed
       ? docSection("nodes", "storage", ndTitle("storage"), stStatus, storage, {cls: stCls})
         + docSection("nodes", "network", ndTitle("network"), netStatus, network, {cls: netCls})
-      : `<div class="sub dim ndguest">Storage and network are managed on the machine itself, not here.</div>`}
+      : `<div class="hint ndguest">Storage and network are managed on the machine itself, not here.</div>`}
   </div></div>`;
 }
 function meter(label, pct, right, title){
@@ -1338,7 +1425,7 @@ function nodeCharts(n){
 // is a change to both; given null, each draws the placeholder's.
 // A node's sections, in their order, by the titles they are drawn under.
 const ND_SECTS = [["health", "Health"], ["projects", "Projects"], ["sessions", "Sessions"], ["gpu", "GPU"],
-                  ["claude", "Claude Code"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
+                  ["features", "Features"], ["claude", "Claude Code"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
 function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
 // Why Create sandbox VM and Enroll node are dead, when this install switched
 // enrolling off (R81): under the bar, since a reason in a tooltip is nothing
@@ -1358,7 +1445,7 @@ function ndBar(live){
 }
 // Its facts in the facts voice, its id among them (R218 step 26): the id is
 // the one in its enroll script's name.
-const ND_FACTS = ["Reached", "Has", "Seen", "Agent", "Jobs run as", "Id"];
+const ND_FACTS = ["Reached", "Has", "Seen", "Agent", "Jobs run as", "Runs on", "Id"];
 function ndFacts(vals){
   return factGrid(ND_FACTS.map((k, i) => [k, vals ? vals[i] : GHOST, k === "Id" ? {cls: "ndid"} : undefined]), "ndfacts");
 }
@@ -1521,7 +1608,9 @@ function renderNodesInto(i){
         ${
         // Its facts in the facts voice, its id among them (R218 step 26):
         // the id is the one in its enroll script's name.
-        ndFacts([where, census, seen, agentVer, n.kind === "agent" ? n.config?.user || "" : "", n.id])}
+        ndFacts([where, census, seen, agentVer, n.kind === "agent" ? n.config?.user || "" : "",
+                 // A VM BuilderBot made on another node (R91 step 14).
+                 n.config?.vm_of ? `${(nodesList || []).find(x => x.id === n.config.vm_of)?.name || n.config.vm_of}, as a VM` : "", n.id])}
         ${keepLine(n)}
         ${agentBar}${pendingBar}
       </div>
@@ -1530,6 +1619,7 @@ function renderNodesInto(i){
         ${n.kind === "agent" && !pending ? nodeProjectsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
+        ${n.kind === "agent" && !pending ? nodeFeaturesSection(n) : ""}
         ${n.kind === "agent" && !pending && !n.config?.host_only ? nodeClaudeSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
@@ -1749,6 +1839,8 @@ function ndDialogs(){
         <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
         <label class="ndcap"><input type="checkbox" id="ndEnHost"> Hosting only: it runs containers sent to it, and nothing of it comes back</label>
         <div class="hint" id="ndEnHostHint" hidden>No project's code, no sessions and no bb go to it; its agent may ask the controller for its own jobs and nothing else. For a public box such as a cloud VPS.</div>
+        <label class="ndcap" id="ndEnFwRow" hidden><input type="checkbox" id="ndEnFw" checked> Take in only 80 and 443</label>
+        <div class="hint" id="ndEnFwHint" hidden>A firewall on the machine drops everything else coming in, a port a container publishes included, so nginx is the way to a container. Port 22 stays open unless the SSH door closes it. Going out is left alone.</div>
         <div class="setrow col ctlrow">${lbl("ndEnDoor", "SSH door",
           "a way in for ssh, switched on and off from the node's row. cloudflared publishes the machine's port 22 at a hostname of its own, with a tunnel token from Zero Trust" + (dev ? "; Tailscale joins the machine to your tailnet with an auth key and answers ssh there, with no public name" : ""))}
           <select id="ndEnDoor">
@@ -1764,6 +1856,8 @@ function ndDialogs(){
           <input id="ndEnDoorSecret" type="password" autocomplete="off" spellcheck="false"></div>
         <label class="ndcap" id="ndEnDoorCloseRow" hidden><input type="checkbox" id="ndEnDoorClose"> Close port 22 to the internet once the door is up</label>
         <div class="hint" id="ndEnDoorHint" hidden>Who gets to the door is the tunnel's own say (Cloudflare Access${dev ? ", or the tailnet's ACLs" : ""}); the machine's keys decide after that. Leave port 22 open until you have come in through the door once.</div>
+        <label class="ndcap"><input type="checkbox" id="ndEnVm"> VM host: run virtual machines on it</label>
+        <div class="hint" id="ndEnVmHint" hidden>KVM through libvirt, installed once it has enrolled. It needs /dev/kvm: on a VM, its host passes virtualization through (CPU mode host-passthrough). Its Features section on this page installs and removes it later too.</div>
         <label class="ndcap"><input type="checkbox" id="ndEnNginx"> Put nginx on it once it is enrolled</label>
         <div class="hint" id="ndEnNginxHint" hidden>BuilderBot's own reverse proxy, deployed the moment the node enrolls, with the routes and certificate the nginx page holds for it (set them there first or after).</div>
       </div>
@@ -1811,11 +1905,14 @@ function ndDialogs(){
       const cf = reach.value === "public";
       if (cf) host.checked = true;
       host.disabled = cf;
-      $b("#ndEnHostHint").hidden = !host.checked;
+      $b("#ndEnHostHint").hidden = $b("#ndEnFwRow").hidden = !host.checked;
+      $b("#ndEnFwHint").hidden = !host.checked || !$b("#ndEnFw").checked;
       $b("#ndEnCfHint").hidden = !cf;
       sess.disabled = host.checked;
       if (host.checked) sess.checked = false;
     };
+    $b("#ndEnFw").onchange = showHost;
+    $b("#ndEnVm").onchange = () => { $b("#ndEnVmHint").hidden = !$b("#ndEnVm").checked; };
     const ngx = $b("#ndEnNginx");
     ngx.onchange = () => { $b("#ndEnNginxHint").hidden = !ngx.checked; };
     const door = $b("#ndEnDoor");
@@ -1864,7 +1961,7 @@ function ndDialogs(){
     // What was typed comes back after a refusal: a redraw to its defaults
     // lost the name and the account on every one (B331's shape).
     const keep = () => ({"#ndEnName": $b("#ndEnName").value, "#ndEnUser": $b("#ndEnUser").value, "#ndEnSystem": $b("#ndEnSystem")?.value,
-      "#ndEnSess": $b("#ndEnSess").checked, "#ndEnHost": $b("#ndEnHost").checked, "#ndEnNginx": ngx.checked,
+      "#ndEnSess": $b("#ndEnSess").checked, "#ndEnHost": $b("#ndEnHost").checked, "#ndEnFw": $b("#ndEnFw").checked, "#ndEnVm": $b("#ndEnVm").checked, "#ndEnNginx": ngx.checked,
       "#ndEnDoor": door.value, "#ndEnDoorHost": $b("#ndEnDoorHost").value, "#ndEnDoorClose": $b("#ndEnDoorClose").checked,
       "#ndEnReach": reach.value, "#ndEnCtl": $b("#ndEnCtl").value,
       "#ndEnWgText": $b("#ndEnWgText").value});
@@ -1879,6 +1976,8 @@ function ndDialogs(){
       const r = await nodeAct({action: "enroll", script: true, ...answers(), ...(again ? {node: again.id} : {}),
         sessions: $b("#ndEnSess").checked && !$b("#ndEnHost").checked, reach: reach.value,
         host_only: $b("#ndEnHost").checked, nginx: ngx.checked,
+        firewall: $b("#ndEnHost").checked && $b("#ndEnFw").checked,
+        features: $b("#ndEnVm").checked ? ["vmhost"] : [],
         door: door.value, door_host: $b("#ndEnDoorHost").value.trim(),
         door_secret: $b("#ndEnDoorSecret").value.trim(), door_close22: $b("#ndEnDoorClose").checked,
         controller: $b("#ndEnCtl").value.trim(),
@@ -2135,6 +2234,13 @@ function wireNodesTab(root){
                       + "Enrolling it again starts from scratch.")) return;
       // A reboot ends every session on the node, so the press names them,
       // as Update agent's does; a shutdown also does not come back by itself.
+      if (act === "lockdown"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        if (!confirm(`Lock down ${name}?\n\nFrom now it may ask this controller for nothing but the job that stops `
+              + "every container there, its nginx with them, keeps them from starting at a boot and shuts its SSH door. "
+              + "Its credential is revoked when that job ends, or in five minutes if the box never answers, and the node is removed.\n\n"
+              + "If the box itself may be taken over, also power it off from its provider's console: that stop does not need the agent.")) return;
+      }
       if (act === "reboot" || act === "poweroff"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
         const here = (state?.sessions || []).filter(x => x.node_id === id);
@@ -2203,6 +2309,12 @@ function wireNodesTab(root){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
         if (!confirm(`Shut the SSH door on ${name}?\n\nNothing reaches its port 22 through the tunnel until it is opened again from here.`)) return;
       }
+      if (act === "feature" && b.dataset.op === "remove"){
+        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
+        if (!confirm(b.dataset.feature === "vmhost"
+              ? `Uninstall VM host from ${name}?\n\nThe packages BuilderBot added for it come off; what the machine had before stays. It is refused while any VM is still there.`
+              : `Turn the hosting firewall off on ${name}?\n\nEvery port this box and its containers publish is reachable from the internet again.`)) return;
+      }
       if (act === "cache-clear"
           && !confirm("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "
@@ -2211,10 +2323,11 @@ function wireNodesTab(root){
       // actions whose effect the row cannot see at once: beyond it.
       busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing",
-               retire: "Removing", discard: "Discarding", uninstall: "Uninstalling", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
+               retire: "Removing", discard: "Discarding", uninstall: "Uninstalling", lockdown: "Locking down", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
                paths: "Saving", "check-paths": "Checking", "to-sync": "Moving",
                "sync-stop": "Stopping", "sync-resume": "Resuming", "sync-clean": "Cleaning",
-               rename: "Renaming", turns: "Saving"}[act] || "Working");
+               rename: "Renaming", turns: "Saving",
+               feature: b.dataset.op === "remove" ? "Uninstalling" : "Installing"}[act] || "Working");
       if (act === "update-agent"){
         nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});
@@ -2345,8 +2458,14 @@ function wireNodesTab(root){
         return;
       }
       // The door's press says which way (R174); every other verb is its name.
-      await nodeAct({action: act, id, ...(act === "door" ? {on: b.dataset.on === "1"} : {})});
+      await nodeAct({action: act, id, ...(act === "door" ? {on: b.dataset.on === "1"} : {}),
+                     ...(act === "feature" ? {feature: b.dataset.feature, op: b.dataset.op} : {})});
     }));
+    box.querySelectorAll("[data-ndrunner]").forEach(b => b.onclick = () => openRunnerTab(b.dataset.ndrunner));
+    box.querySelectorAll("[data-ndvmlan]").forEach(c => c.onchange = async () => {
+      const j = await nodeAct({action: "vm-lan", id, on: c.checked});
+      if (j.error){ c.checked = !c.checked; notify(j.error, true); }
+    });
     wireNodeConf(box, id);
     const pi = box.querySelector('.ndpaths [data-k="paths"]');
     if (pi){

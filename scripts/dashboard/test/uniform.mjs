@@ -117,6 +117,12 @@ const DRIVERS = {
     open: () => page.evaluate(() => openNginxTab()),
     readyWhen: '.nginxtab [data-ngnode], .nginxtab .empty',
   },
+  vms: {
+    // A card per project with VMs, or the empty band where there is none
+    // or no node has VM host (R91).
+    open: () => page.evaluate(() => openVmsTab()),
+    readyWhen: '.vmtab [data-vm-key], .vmtab .empty',
+  },
   users: {
     // There is always at least one row: the owner, seeded on the first boot,
     // which cannot be deleted and so cannot be absent.
@@ -1825,6 +1831,13 @@ for (const kind of kinds){
       return { n: mine.length, open: mine.filter(d => d.open).length,
                keys: mine.map(d => d.dataset.sect), openKeys: mine.filter(d => d.open).map(d => d.dataset.sect) };
     });
+    // Every section on show is wired (wireSections), with data or without:
+    // one that is not snaps open beside the rest on a phone, and the check
+    // below needs two sections, which a page with nothing to show does not
+    // draw (B171: Storage and nginx, both never wired).
+    const loose = await page.evaluate(() => [...(document.querySelector('.doc.on')?.querySelectorAll('details.sect > summary') || [])]
+      .filter(s => s.checkVisibility() && !s.onclick).map(s => s.parentElement.dataset.sect || '(no key)'));
+    ok(loose.length === 0, `[${tag}] every section is wired to fold as the rest do${loose.length ? `; not: ${loose.join(', ')}` : ''}`);
     if (sects.n >= 2){
       ok(sects.open === 1, `[${tag}] a phone shows one section open after a draw (${sects.open} of ${sects.n})`);
       const other = sects.keys.find(k => !sects.openKeys.includes(k));

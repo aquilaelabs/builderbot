@@ -169,6 +169,8 @@ def show():
                        ("Write the wiki", "wiki")):
         print(f"    Claude may: {label:<28} {gate.get(key) or 'auto'}")
     for label, key, dflt in (("Run its container", "devbuild", "deny"),
+                             # R91: its VMs, bb vm.
+                             ("Make VMs", "makevms", "deny"),
                              ("Report BuilderBot bugs", "report", "auto"),
                              # R106: signing a build, and its keys and mapping.
                              ("Sign a build", "sign", "ask"),

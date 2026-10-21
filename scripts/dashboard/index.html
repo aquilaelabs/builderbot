@@ -688,6 +688,24 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 @media(prefers-reduced-motion:reduce){
   #bBell.waiting{animation:none;background:var(--warn)}
 }
+/* The tour (R94): a card beside the part of the page a step is about, and a
+   ring around that part; a sheet from the bottom on a phone. Over the page
+   and a toast; a tour never starts over a dialog. */
+/* A feature's own switch, under its sentence in its row (R91). */
+.ndfeat .ndvmlan{margin-top:8px}
+.tourring{position:fixed;z-index:81;pointer-events:none;border:2px solid var(--accent);
+  border-radius:var(--r-surface);box-shadow:0 0 0 9999px rgba(0,0,0,.35);transition:all .18s ease}
+.tourcard{position:fixed;z-index:82;width:min(360px,calc(100vw - 32px));background:var(--panel);
+  border:var(--hair) solid var(--line);border-radius:var(--r-surface);box-shadow:0 8px 22px rgba(0,0,0,.45);
+  padding:14px 16px 10px;font:var(--f-ui);color:var(--ink)}
+.tourcard .tourstep{font:var(--f-note);color:var(--dim);margin-bottom:6px}
+.tourcard .toursay{line-height:1.45;margin-bottom:10px}
+.tourcard .tourall{margin-bottom:8px}
+.tourcard .actbar{padding:0;border:0;background:none;gap:8px}
+.tourcard.sheet{left:0;right:0;bottom:0;top:auto!important;width:auto;border-radius:var(--r-surface) var(--r-surface) 0 0;
+  padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+@media(prefers-reduced-motion:reduce){ .tourring{transition:none} }
+html[data-motion="reduce"] .tourring{transition:none}
 .bellpanel{position:absolute;right:8px;top:100%;z-index:40;
   width:min(400px,calc(100vw - 16px));max-height:min(60vh,440px);overflow:auto;
   background:var(--panel);border:var(--hair) solid var(--line);border-top:0;
@@ -3038,17 +3056,17 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    color, or the scheme's accent for one with none, the name heavier than
    the rows under it, and room above each group but the first. No project
    is the same shape in the line color, since it is nobody's. */
-:is(.dmtab,.dkview) .dmgroup{--gc:var(--accent);color:var(--dim);font:var(--f-ui);
+:is(.dmtab,.dkview,.vmtab) .dmgroup{--gc:var(--accent);color:var(--dim);font:var(--f-ui);
   display:flex;align-items:baseline;align-content:center;flex-wrap:wrap;gap:4px 10px;
   min-height:46px;box-sizing:border-box;
   background:color-mix(in srgb, var(--gc) 16%, transparent);
   box-shadow:inset 4px 0 0 0 var(--gc);
   border-bottom:var(--hair) solid color-mix(in srgb, var(--gc) 50%, var(--line))}
-:is(.dmtab,.dkview) .dmgroup.none{--gc:var(--line)}
+:is(.dmtab,.dkview,.vmtab) .dmgroup.none{--gc:var(--line)}
 /* Another project's containers, for an administrator not on it (R274): its
    heading in its color, the reason under it, its rows dimmed. */
-:is(.dmtab,.dkview) .dmcard.notmine>:not(.dmgroup,.dmwhy){opacity:.55}
-:is(.dmtab,.dkview) .dmwhy{padding:6px var(--row-x)}
+:is(.dmtab,.dkview,.vmtab) .dmcard.notmine>:not(.dmgroup,.dmwhy){opacity:.55}
+:is(.dmtab,.dkview,.vmtab) .dmwhy{padding:6px var(--row-x)}
 /* ---- floating cards at a desk (R262, the operator, 17 Oct) ---------------
    Every page's content floats as cards on the page's margin, the way Home
    and Projects do: no line runs to the page's edge. A page-level section is
@@ -3065,7 +3083,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
      which sits beside its list below. */
   :is(.doctab, .dmtab, .nbview) details.sect:not(details.sect details.sect, .row details.sect, .modal details.sect, .ssplit>details.sect),
   .doctab>.doclist>.tbl,
-  :is(.dmtab,.dkview) .dmcard,
+  :is(.dmtab,.dkview,.vmtab) .dmcard,
   .nbview :is(#bugList, #roadmapList, #memList, #tstList, #roadmapHist):has(> :is(.bug, .grp, .mem, .tst, .hist, .skel)),
   .doctab>.doclist>.skt>.tbl,.doctab>.doclist>.skel:not(.skt){
     margin:var(--card-gap) var(--row-x) 0;border:var(--hair) solid var(--line);
@@ -3079,7 +3097,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
      does a section in one, the Roadmap's Finished under its list (B866: it
      stood a second inset in, narrower than the list over it). */
   .nbview .field>:is(#roadmapList, #memList, details.sect){margin-left:0;margin-right:0}
-  .doctab>.doclist>.tbl>.row:last-child,:is(.dmtab,.dkview) .dmcard>.row:last-child,:is(.dmtab,.dkview) .dmcard>.tbl>.row:last-child,
+  .doctab>.doclist>.tbl>.row:last-child,:is(.dmtab,.dkview,.vmtab) .dmcard>.row:last-child,:is(.dmtab,.dkview,.vmtab) .dmcard>.tbl>.row:last-child,
   .nbview :is(#bugList, #roadmapList, #memList, #tstList, #roadmapHist)>:last-child{border-bottom:0}
   /* A band's line under it is the card's edge now: a notebook view's head
      row and a jump bar float like the rest. */
@@ -3142,13 +3160,13 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   .rsplit>.rdetail{border:var(--hair) solid var(--line);border-radius:var(--r-surface);background:var(--panel);
     padding:0 var(--row-x) var(--row-y);align-self:start;position:sticky;top:12px}
   /* The Docker manager's group: the project its card's heading. */
-  :is(.dmtab,.dkview) .dmcard>.dmgroup{border-bottom:var(--hair) solid var(--line)}
+  :is(.dmtab,.dkview,.vmtab) .dmcard>.dmgroup{border-bottom:var(--hair) solid var(--line)}
   /* ...and its stacks told apart (the operator, 18 Oct: a project's
      instances ran together in its card): between two, a band of the page's
      own ground the width of the gap between cards, a hairline either side,
      so the card stays the project's and each stack in it reads as its own. */
-  :is(.dmtab,.dkview) .dmcard>.row+.row{box-shadow:inset 0 12px 0 var(--bg),inset 0 13px 0 var(--line);padding-top:calc(var(--row-y) + 13px)}
-  :is(.dmtab,.dkview) .row + .dmgroup{margin-top:0}
+  :is(.dmtab,.dkview,.vmtab) .dmcard>.row+.row{box-shadow:inset 0 12px 0 var(--bg),inset 0 13px 0 var(--line);padding-top:calc(var(--row-y) + 13px)}
+  :is(.dmtab,.dkview,.vmtab) .row + .dmgroup{margin-top:0}
 }
 /* A section's body keeps a row's room under its head at every width (the
    operator, 19 Oct: on a phone the first field met the head on every page,
@@ -3403,6 +3421,11 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    under it when the card is narrow. */
 .dmid .name{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
 .dmid .dmmeta{font:var(--f-note);color:var(--dim)}
+/* A VM's snapshots (R91): under its head, each its name and its two verbs. */
+.vmsnaps{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:10px}
+.vmsnaps .vmsnaplbl{font:var(--f-note);color:var(--dim)}
+.vmsnap{display:inline-flex;align-items:center;gap:6px}
+.vmsnap code{font:var(--f-data);color:var(--ink)}
 .dmid .dmorigin{font:var(--f-data);color:var(--dim);margin-top:2px;overflow-wrap:anywhere}
 .dmid .dmorigin .sep{display:inline-block;width:14px}
 .dmid .dmstate.bad{color:var(--bad)}
@@ -3413,7 +3436,7 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
   border:var(--hair) solid var(--line);border-radius:var(--r-control);overflow:hidden;margin:10px 0 0}
 /* A line under the stats or the services' table keeps the gap the stats
    keep above them, not flush on their edge. */
-:is(.dmtab,.dkview) :is(.dmstats,.dmsvctbl)+.sub{margin-top:10px}
+:is(.dmtab,.dkview,.vmtab) :is(.dmstats,.dmsvctbl)+.sub{margin-top:10px}
 @media(max-width:900px){ .dmstats{grid-template-columns:repeat(2,minmax(0,1fr))} }
 .dmstats .tile{background:var(--sunk);border:0;border-radius:0;padding:8px 12px;min-width:0;
   display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"l l" "v s" "x x";align-items:center;gap:2px 8px}
@@ -3468,19 +3491,19 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    (rows-you-open), each project's group a table (R218 step 8): the name,
    its state pill, whose, its ports as links, where nginx routes it, its
    image. The bar's search box takes the room the picker leaves. */
-:is(.dmtab,.dkview) details.dmline{display:block;padding:0}
-:is(.dmtab,.dkview) details.dmline > summary.dmsum{cursor:pointer;list-style:none;padding:var(--row-y) var(--row-x);min-height:var(--tap)}
-:is(.dmtab,.dkview) details.dmline > summary.dmsum::-webkit-details-marker{display:none}
+:is(.dmtab,.dkview,.vmtab) details.dmline{display:block;padding:0}
+:is(.dmtab,.dkview,.vmtab) details.dmline > summary.dmsum{cursor:pointer;list-style:none;padding:var(--row-y) var(--row-x);min-height:var(--tap)}
+:is(.dmtab,.dkview,.vmtab) details.dmline > summary.dmsum::-webkit-details-marker{display:none}
 /* The fold's mark, the page's one chevron (.chev), sits in the lead cell:
    on the summary it would be a grid item and take the first column. */
-:is(.dmtab,.dkview) details.dmline > summary.dmsum .td.lead::before{content:"\25B8";color:var(--dim);font-size:11px;display:inline-block;width:9px;margin-right:8px}
-:is(.dmtab,.dkview) details.dmline[open] > summary.dmsum .td.lead::before{content:"\25BE"}
-:is(.dmtab,.dkview) .dmsum .td a{color:var(--note)}
-:is(.dmtab,.dkview) details.dmline > .dmbody{padding:0 var(--row-x) var(--row-y);border-top:var(--hair) solid var(--line)}
+:is(.dmtab,.dkview,.vmtab) details.dmline > summary.dmsum .td.lead::before{content:"\25B8";color:var(--dim);font-size:11px;display:inline-block;width:9px;margin-right:8px}
+:is(.dmtab,.dkview,.vmtab) details.dmline[open] > summary.dmsum .td.lead::before{content:"\25BE"}
+:is(.dmtab,.dkview,.vmtab) .dmsum .td a{color:var(--note)}
+:is(.dmtab,.dkview,.vmtab) details.dmline > .dmbody{padding:0 var(--row-x) var(--row-y);border-top:var(--hair) solid var(--line)}
 /* One control high, its edge drawn inside it as an outline rather than
    around it, so the switch is the height of every control beside it. */
-:is(.dmtab,.dkview) .dmviewseg{border:0;outline:var(--hair) solid var(--line);outline-offset:calc(-1 * var(--hair))}
-:is(.dmtab,.dkview) .dmviewseg button{min-height:var(--ctl)}
+:is(.dmtab,.dkview,.vmtab) .dmviewseg{border:0;outline:var(--hair) solid var(--line);outline-offset:calc(-1 * var(--hair))}
+:is(.dmtab,.dkview,.vmtab) .dmviewseg button{min-height:var(--ctl)}
 .facts dd a{color:var(--note)}
 /* The row's Log fold: each container's tail under its name, the whole no
    taller than a screen, and the Follow switch on its action bar. */
@@ -3596,8 +3619,8 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .chip .pill{font:var(--f-tag);padding:2px 6px}
 .chip.on{background:var(--accent-deep);border-color:var(--accent-mid);color:var(--on-fill)}
 .chip.on .pill{color:var(--on-fill);border-color:color-mix(in srgb, var(--on-fill) 40%, transparent)}
-:is(.dmtab,.dkview) .dmgroup b{color:var(--ink);font-weight:700;font-size:1.1em;letter-spacing:.02em}
-:is(.dmtab,.dkview) .row + .dmgroup{margin-top:14px}
+:is(.dmtab,.dkview,.vmtab) .dmgroup b{color:var(--ink);font-weight:700;font-size:1.1em;letter-spacing:.02em}
+:is(.dmtab,.dkview,.vmtab) .row + .dmgroup{margin-top:14px}
 /* The small text areas in the container form: a few lines each, not the
    full-height editor the compose file gets. */
 #cmodal textarea.csmall{min-height:64px}
@@ -3751,35 +3774,35 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
      log tail on some states, and a positional rule would put those in a
      column the day one appears. Everything unnamed spans, which is what those
      are: full-width things that happen to live in the same box. */
-  :is(.dmtab,.dkview) .row.stack2 .grow{
+  :is(.dmtab,.dkview,.vmtab) .row.stack2 .grow{
     display:grid;
     grid-template-columns:minmax(0,1.6fr) minmax(0,1.3fr) minmax(0,1.1fr);
     align-items:start;column-gap:14px;row-gap:2px}
-  :is(.dmtab,.dkview) .row.stack2 .grow > *{grid-column:1 / -1}
-  :is(.dmtab,.dkview) .row.stack2 .dmhead{grid-column:1 / -1;grid-row:1;min-width:0}
-  :is(.dmtab,.dkview) .row.stack2 .dmid .sub{margin:0}
+  :is(.dmtab,.dkview,.vmtab) .row.stack2 .grow > *{grid-column:1 / -1}
+  :is(.dmtab,.dkview,.vmtab) .row.stack2 .dmhead{grid-column:1 / -1;grid-row:1;min-width:0}
+  :is(.dmtab,.dkview,.vmtab) .row.stack2 .dmid .sub{margin:0}
 
   /* The fold's two halves, likewise: ports on the left, mounts on the right.
      They are different questions (where it answers, and what it can see),
      and a single column made the reader count lines to tell them apart. */
-  :is(.dmtab,.dkview) .sect .wire{display:grid;
+  :is(.dmtab,.dkview,.vmtab) .sect .wire{display:grid;
     grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);
     column-gap:18px;align-items:start;
     /* dense: the first mount beside the first port, not the last */
     grid-auto-flow:row dense}
-  :is(.dmtab,.dkview) .sect .wire > .wport {grid-column:1}
-  :is(.dmtab,.dkview) .sect .wire > .wmount{grid-column:2}
+  :is(.dmtab,.dkview,.vmtab) .sect .wire > .wport {grid-column:1}
+  :is(.dmtab,.dkview,.vmtab) .sect .wire > .wmount{grid-column:2}
   /* Anything that is neither ("it publishes nothing", a read failure)
      is a sentence and spans. */
-  :is(.dmtab,.dkview) .sect .wire > .li:not(.wport):not(.wmount){grid-column:1 / -1}
+  :is(.dmtab,.dkview,.vmtab) .sect .wire > .li:not(.wport):not(.wmount){grid-column:1 / -1}
   /* A stack of more than one container: a group per service, each the same
      two columns under its name (B252). */
-  :is(.dmtab,.dkview) .sect .wire > .wgrp{grid-column:1 / -1;display:grid;
+  :is(.dmtab,.dkview,.vmtab) .sect .wire > .wgrp{grid-column:1 / -1;display:grid;
     grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);
     column-gap:18px;align-items:start;grid-auto-flow:row dense}
-  :is(.dmtab,.dkview) .sect .wgrp > .wport {grid-column:1}
-  :is(.dmtab,.dkview) .sect .wgrp > .wmount{grid-column:2}
-  :is(.dmtab,.dkview) .sect .wgrp > .wsvc{grid-column:1 / -1}
+  :is(.dmtab,.dkview,.vmtab) .sect .wgrp > .wport {grid-column:1}
+  :is(.dmtab,.dkview,.vmtab) .sect .wgrp > .wmount{grid-column:2}
+  :is(.dmtab,.dkview,.vmtab) .sect .wgrp > .wsvc{grid-column:1 / -1}
 }
 .wgrp + .wgrp{margin-top:6px}
 /* The wiring's own alignment, at every width: the container's side of the
@@ -3814,7 +3837,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    the bottom of a page ran into the dock): a spacer at the end of the
    list, since a last child's margin is not kept at the end of a scrolling
    box. */
-.doctab>.doclist::after,.doctab.dmtab::after,.nb .nbview:not([hidden])::after{content:"";display:block;height:16px;flex:0 0 auto}
+.doctab>.doclist::after,.doctab.dmtab::after,.doctab.vmtab::after,.nb .nbview:not([hidden])::after{content:"";display:block;height:16px;flex:0 0 auto}
 /* The node-scoped tools' foot line (R121) is a quiet note, not body text. */
 .toolfoot .hint{font:var(--f-note);color:var(--dim);padding:0}
 .fxtab .fxproj{display:flex;gap:8px;align-items:baseline;
@@ -4010,7 +4033,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .sect>.body>.sub:first-child{margin-top:0}
 /* A container's own folds (Ports and mounts, Log) start where its card's
    words do, not a section's inset further in (the operator's phone, 18 Oct). */
-:is(.dmtab,.dkview) .row>details.sect>summary,:is(.dmtab,.dkview) .row>details.sect>.body{padding-left:0;padding-right:0}
+:is(.dmtab,.dkview,.vmtab) .row>details.sect>summary,:is(.dmtab,.dkview,.vmtab) .row>details.sect>.body{padding-left:0;padding-right:0}
 /* A section's own explainer line, straight in its body, is the quiet note
    it is everywhere else: the Git view's Branches line read at body size
    (the design pass, 4 Oct). */
@@ -4207,6 +4230,10 @@ button[aria-busy="true"]{opacity:.75}
 .ndconf{display:contents}
 .ndconfbody{display:contents}
 .ndrow>.ndsections{margin:8px calc(-1 * var(--row-x)) calc(-1 * var(--row-y))}
+/* A guest node's one line where Storage and Network would be: at the row's
+   inset with a gap either side, not run to the screen's edges against the
+   next section's head (the operator, 21 Oct). */
+.ndrow .ndguest{margin:var(--card-gap) var(--row-x)}
 /* What a node has beside its numbers (its tools, git, GPU, sound, labels):
    one band that flows across the width, not five lines under the charts. */
 .ndhmore{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px}
@@ -4331,7 +4358,7 @@ button[aria-busy="true"]{opacity:.75}
   background:var(--sunk);border:var(--hair) solid var(--line);border-radius:var(--r-control);
   color:var(--dim);font:11px/1.5 var(--mono);white-space:pre-wrap;
   overflow-wrap:anywhere}
-:is(.dmtab,.dkview) .sect .li{overflow-wrap:anywhere}
+:is(.dmtab,.dkview,.vmtab) .sect .li{overflow-wrap:anywhere}
 /* A repair on a toolchain row, in the words of the line it follows: a link
    rather than a button, since the line is the control's whole context. */
 .tcs .link{background:none;border:0;color:var(--note);padding:0;font:inherit;
@@ -5085,6 +5112,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" data-v="analysis" data-in="code">Analysis</button>
         <button type="button" data-v="artifacts" data-in="ship">Artifacts</button>
         <button type="button" data-v="docker" data-in="ship">Docker</button>
+        <button type="button" data-v="vms" data-in="ship">VMs</button>
         <button type="button" data-v="wiki" data-in="docs">Wiki</button>
         <button type="button" data-v="design" data-in="docs">Design</button>
         <button type="button" data-v="settings" data-in="overview">Settings</button>
@@ -5323,6 +5351,13 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          to it (the operator, 19 Oct): its tiles, when the images were
          checked, and its card, read from the project's node, which is where
          its work runs. -->
+    <!-- This project's VMs as the VMs page draws them, scoped to it (R96, the
+         operator, 21 Oct): its card, with New VM and the VMs page in its head. -->
+    <div class="nbview vmtab" data-view="vms" hidden>
+      <div class="field nbhead vbar"><span id="nvHint" data-skel="word">loading…</span><span class="sp"></span>
+        <span class="actbar"><button type="button" id="nvNew" hidden>New VM</button><button type="button" id="nvOpen">VMs<span class="lng"> page</span></button></span></div>
+      <div id="nvList" data-skel="rows"></div>
+    </div>
     <div class="nbview dkview" data-view="docker" hidden>
       <div class="field nbhead vbar"><span id="dkHint" data-skel="word">loading…</span><span class="sp"></span>
         <span id="dkSeg"></span><span class="actbar"><button type="button" id="dkCheck" hidden>Check<span class="lng"> for updates</span></button><button type="button" id="dkOpen">Containers<span class="lng"> page</span></button></span></div>
@@ -5506,8 +5541,10 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="abswitch" role="tablist">
         <button type="button" data-ab="guide" role="tab">Getting started</button>
         <button type="button" data-ab="log" role="tab">Changelog</button>
+        <button type="button" data-ab="credits" role="tab">Credits</button>
       </div>
       <div class="abpage" id="abGuide" hidden></div>
+      <div class="abpage" id="abCredits" hidden></div>
       <div class="abpage ablog" id="abLog" hidden></div>
       <div id="abBuild" hidden>
         <div class="aline"><span>version</span><code id="aVer"></code></div>
@@ -5522,6 +5559,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       </div>
     </div>
     <div class="foot"><span class="sp"></span>
+      <button type="button" id="aboutTours">Show the tours again</button>
       <button type="button" id="aboutClose">Close</button>
     </div>
   </div>
@@ -5594,6 +5632,16 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
              what it is set to). Deny by default. -->
         <label class="pick">Run its container <select id="rnGateDocker"
           aria-label="rebuilding, changing the env of, creating or removing this project's container, from a session"></select></label>
+        <!-- Its VMs (R91): bb vm new, start, stop, snapshot, rm from a
+             session, read as Run its container is. Deny by default. -->
+        <label class="pick">Make VMs <select id="rnGateVms"
+          aria-label="making, starting, stopping, snapshotting and removing this project's VMs, from a session"></select></label>
+        <!-- What its VMs may hold in all, whoever makes them (R91 step 7). -->
+        <div class="logdays setrow ctlrow" id="rnVmCapsRow"><label class="ndcap" for="rnVmCount">Its VMs may hold<span class="help" data-help="in all, whoever makes them: a VM that would pass one of these is refused with the limit named. Each node also keeps 2 GB of memory and 10 GB of disk for itself" tabindex="0">?</span></label>
+          <input id="rnVmCount" type="number" min="0" max="64" step="1" inputmode="numeric" aria-label="VMs at most"> <span class="dim">VMs,</span>
+          <input id="rnVmCpus" type="number" min="0" max="256" step="1" inputmode="numeric" aria-label="vCPUs in all"> <span class="dim">vCPUs,</span>
+          <input id="rnVmMem" type="number" min="0" max="1024" step="1" inputmode="numeric" aria-label="GB of memory in all"> <span class="dim">GB memory,</span>
+          <input id="rnVmDisk" type="number" min="0" max="16384" step="1" inputmode="numeric" aria-label="GB of disk in all"> <span class="dim">GB disk</span></div>
         <!-- bb report, which sends BuilderBot's own problems to its
              maintainers rather than this project's tracker. Off for the
              project that IS BuilderBot, whose tracker they belong in. -->
@@ -6596,6 +6644,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="tab-settings.js"></script>
 <script src="tab-jobs.js"></script>
 <script src="tab-nginx.js"></script>
+<script src="tab-vms.js"></script>
+<script src="page-tour.js"></script>
 <script src="tab-storage.js"></script>
 <script src="tab-phone.js"></script>
 <script src="tab-users.js"></script>
@@ -6867,6 +6917,7 @@ document.addEventListener("contextmenu", e => { if (ddrag) e.preventDefault(); }
 // else has loaded.
 $("bAbout").onclick = () => openAbout();
 $("aboutClose").onclick = closeAbout;
+$("aboutTours").onclick = () => pressing($("aboutTours"), () => tourReset());
 // Escape and the backdrop mean what Close means (B229): the popup opens
 // itself after an update, over whatever the person came to do, and every
 // other dialog on the page lets them out either way. Escape is modalKeys'.
@@ -7335,6 +7386,10 @@ onRev("emulator", () => {
 // container's row on the Docker tab (R209), by bb or by another browser
 // (B714). An open nginx tab re-reads around its draft; an open Docker tab
 // re-reads too, since its rows say which ports are routed.
+// The VMs page (R91): a record written, a job ended, or a node's hello
+// carrying what its VMs are doing now.
+// ...and read for a console tab too, which goes when its VM does (B172).
+onRev("vms", () => { if (shown("vms") || tabs.some(vmConsoleTab)) loadVms(); });
 onRev("nginx", () => {
   if (shown("nginx")) loadNginx();
   if (shown("docker")){ dockerList = null; dockerRev++; loadDocker(); }

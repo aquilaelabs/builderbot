@@ -64,6 +64,9 @@ remover = None
 # container_builds whether the file would build from an empty directory
 # (B329), asked at the same moment.
 container_maker = None
+# A VM's create or action, run on Allow (R91): vms.create or vms.act, as the
+# page runs them, with the asking session's project.
+vm_runner = None
 # signing.start(principal, project, file, route), set by the server: what
 # Allow on a session's `bb sign` runs (R106), queued as the session asked.
 signer = None
@@ -1177,6 +1180,28 @@ def ask_container(why, name, compose, env, nid, node_name, project, for_project=
                          "for": str(for_project or "")})
 
 
+def ask_vm(why, project, req, asker_name=""):
+    """A session asking for a VM, or for one thing done to one (R91), with
+    its project's Make VMs dial at ask: held for the administrators as a
+    container is, since a VM is a machine on a node. Allow runs the same
+    create or action the VMs page runs."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what the VM is for: the administrator is answering a question you are asking them"}
+    action = str(req.get("action") or "")
+    name = str(req.get("name") or "")
+    flags = [(f, str(req.get(k))) for f, k in (("--os", "os"), ("--vcpus", "vcpus"), ("--mem-mb", "mem_mb"),
+                                                 ("--disk-gb", "disk_gb")) if req.get(k) not in (None, "")]
+    shown = (["vm", "new", name] + [x for pair in flags for x in pair]
+             if action == "new" else ["vm", action, name] + ([str(req.get("snapshot"))] if req.get("snapshot") else []))
+    keep = {k: req.get(k) for k in ("action", "name", "os", "vcpus", "mem_mb", "disk_gb", "keys", "user", "node",
+                                     "snapshot", "note", "force", "node_agent", "ctl") if req.get(k) not in (None, "")}
+    if keep.get("node_agent"):
+        shown.append("--node-agent")
+    return _queue("vm", why, [a for a in shown if a], str(req.get("node") or ""), str(req.get("node") or ""), project,
+                  "claude", "admins", "the administrators", asker_name, extra={"vm": keep})
+
+
 def _find(rid):
     for r in _reqs:
         if r["id"] == rid:
@@ -1369,6 +1394,15 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
         if res.get("error"):
             return {"error": res["error"]}
         return {"ok": True}
+    if r.get("kind") == "vm":
+        # The VMs page's own create or action, under the session's project
+        # (R91); its refusal comes back to whoever pressed Allow as well.
+        res = vm_runner(r.get("project") or "", r.get("vm") or {}, name or "a person") if vm_runner else \
+            {"error": "no VM path is wired up here"}
+        with _lock:
+            r.update(state="done", code=1 if res.get("error") else 0,
+                     out=str(res.get("error") or res.get("job") or "done"))
+        return {"error": res["error"]} if res.get("error") else {"ok": True}
     if r.get("kind") == "phone-use":
         # A lent phone's command, allowed by its owner (R120): run as the
         # lease would have run it, on a thread (a recording takes its

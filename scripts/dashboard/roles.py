@@ -73,6 +73,9 @@ AREAS = (
     ("gitauth", "Git authentication", "project", "how it authenticates", "change the credential"),
     ("files", "File access", "project", "read the files over FTP or in an editor", "save, upload, rename and delete them"),
     ("containers", "Containers", "project", "its containers and their logs", "start, stop and rebuild them"),
+    # A project's VMs (R91): Read sees them on the VMs page, Write makes,
+    # starts, stops, snapshots and removes them.
+    ("vms", "VMs", "project", "its VMs and their state", "make, start, stop, snapshot and remove them"),
     ("terminal", "Terminal", "project", "the shielded Claude console", "the full tmux shell"),
     ("nodes", "Nodes", "global", "the Nodes page", "configure nodes, and what a project's sessions reach"),
     ("toolchains", "Toolchains", "global", "the Toolchains page", "install and remove"),
@@ -119,6 +122,7 @@ CAP_AREA = {
     # did not say what it could do.
     "controller": ("controller", "write"), "controller-read": ("controller", "read"),
     "nodes-write": ("nodes", "write"), "containers-read": ("containers", "read"),
+    "vms-write": ("vms", "write"), "vms-read": ("vms", "read"),
     "settings": ("settings", "write"), "signing": ("releases", "write"),
 }
 

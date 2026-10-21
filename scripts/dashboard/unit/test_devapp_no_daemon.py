@@ -27,8 +27,8 @@ class NoDaemon(unittest.TestCase):
             return devapp._no_daemon_why()
 
     def test_nodes_enrolled_without_docker_are_told_to_install_it(self):
-        w = self.why([{"name": "demo-node", "kind": "agent", "state": "active"}])
-        self.assertIn("(demo-node): install Docker on one", w)
+        w = self.why([{"name": "build-node", "kind": "agent", "state": "active"}])
+        self.assertIn("(build-node): install Docker on one", w)
         self.assertNotIn("sandbox VM", w)
 
     def test_no_node_is_told_to_enroll_one(self):

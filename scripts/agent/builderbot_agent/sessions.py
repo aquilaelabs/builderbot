@@ -964,7 +964,8 @@ class SessionsMixin:
         ip = controller_ip(self.state.get("controller") or "")
         if not ip:
             return
-        want = [7681, 7682, 7683]
+        # ...and the VMs' screens (R99), the same way.
+        want = [7681, 7682, 7683, 7684]
         ports = ", ".join(str(p) for p in want)
         fam = "ip6" if ":" in ip else "ip"
         if os.path.isfile(SESSION_NFT):

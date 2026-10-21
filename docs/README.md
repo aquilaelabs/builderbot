@@ -40,6 +40,7 @@ dashboard's rail.
 - [toolchains.md](toolchains.md): the Build pages: Toolchains, the NVIDIA card, Android versions and the Emulator, and a Phone lent to a project
 - [tool-packs.md](tool-packs.md): toolchains you add yourself from a repository, the commands they give Claude, and how to write one
 - [containers.md](containers.md): the Containers page and nginx: dev instances, how one is reached, their networks and image updates
+- [vms.md](vms.md): the VMs page and `bb vm`: VM host on a node, the OS catalog, Make VMs, the network, snapshots, a VM made a node
 
 ## Machines, people and devices
 

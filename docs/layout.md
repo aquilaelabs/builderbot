@@ -57,6 +57,7 @@ scripts/
   lib/browser.mjs                `bb browser`: Chrome or Firefox with an unpacked extension loaded, on its own port and profile, driven and stopped by one verb
   lib/proc-verbs.py              `bb proc`: this account's processes by a word of their command line, listed, ended or waited for, never the call's own shell
   lib/container-verbs.py         `bb container`: status and new
+  lib/vm-verbs.py                `bb vm`: a project's VMs listed, made, started, stopped, snapshotted and removed (R91)
   lib/phone-verbs.py             `bb phone`: status and run
   lib/root-verbs.py              `bb root`: status and run
   lib/report.py                  `bb report`, and file/close from BuilderBot's side
@@ -117,7 +118,6 @@ scripts/
     bb-prompt-relay              a node session's prompts and answers, back to the controller
     bb-work-note                 what a session is changing, for the overlap warning, and the named rules its file raises
     bb-rule-hook                 refuses a shell call a rule refuses, hands a definition grep the map's answer, and says the named rules again after a summary (R200)
-    bb-keep-login                a hook that does nothing, for sessions an earlier build of this window started with it
     users.py                     who may sign in, and what they are allowed to see (docs/users.md)
     roles.py                     roles and permissions (R137): a grant is a capability on a scope, a role a named set of them, in roles.json; the gate (users.may) reads them
     prefs.py                     which model and effort a project's Claude session runs on
@@ -177,6 +177,7 @@ scripts/
     relocate.py                  copying or moving a dev instance to another node, its volumes and data directory with it: three jobs, packed on the old node, unpacked on the new, then its rebuild
     containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is; the Docker manager's view and verbs
     imagecheck.py                every container's registry images against what their registries serve (R195): a weekly check, Check for updates on the Containers page, Update on a row
+    vms.py                       the VM manager (R91): each project's VMs on the nodes with VM host, the OS catalog matched by name, the limits, and the vm jobs
     nginxproxy.py                one nginx per node, BuilderBot's own (R171): the routes and certificate kept here, the compose file generated from them, deployed and rebuilt through containers.py
     phone.py                     a paired handset on a node: install, push, and the asking
     phonelease.py                a phone lent to a project (R113): the lease, and what its sessions may do on the phone without asking
@@ -230,6 +231,8 @@ scripts/
     stores.py                    the node's stores, a store's path rules, and node.json
     storage.py                   what the disks hold, by filesystem, store and project: an hourly walk on its own thread, for the Storage page (R169)
     backends.py                  the machine's package manager and network configuration backends
+    vms.py                       the VMs a node runs (R91): the vm job's fixed table of virsh and qemu-img commands, cloud-init, the census of them, and their network's firewall
+    screen.py                    a VM's screen for the dock (R99): a websocket relay on 7684 to the VM's VNC on the loopback, signed by the controller
     toolchains.py                the toolchain store (R19): what is installed, who uses it, a session's environment
     gpu.py                       the NVIDIA card: its sample, its memory's holders, the driver and container toolkit
     sessnet.py                   each session kept to its own project's network (R79)
@@ -276,6 +279,7 @@ nodes/cloud-init/                the seed a cloud image boots from: meta-data an
 config/skel/                     home directory skeleton
 config/icon.png                  the icon the Unraid template shows
 config/toolchains.json           the toolchains the Toolchains page offers, and how to install each
+config/vm-images.json            the operating systems a VM is made from: each publisher's cloud image and its checksum file (R91)
 config/templates/                briefing.md, assembled per session by preamble.py; nothing is copied into a project
 tools/readme-shots.mjs           the README's pictures (dashboard, notebook, nodes, toolchains, the phone's dashboard and terminal) from a running dashboard, normally the dev instance: default scheme, addresses scrubbed, nothing saved
 tools/bb-ref.sh                  writes the bb block of docs/reference.md from bb help; bb lint holds the two equal
@@ -312,6 +316,7 @@ docs/building.md                 builds, tests, CI runners and logs, the scanner
 docs/toolchains.md               the toolchain store, the Toolchains and Emulator pages, the NVIDIA card, Android, the Phone page
 docs/tool-packs.md               tool packs: adding one, a project's Toolchains setting, and writing a bbtool.json
 docs/containers.md               the Containers page and nginx: dev instances, how one is reached, networks, image updates
+docs/vms.md                      the VMs page and bb vm: VM host, the OS catalog, the dial, the limits, the network, snapshots, a VM made a node
 docs/machines.md                 Controller settings, Nodes, Storage, the logs, the Jobs page, a Mac as a node
 docs/people.md                   the first account, Users and Roles, owners and invitations, the chat, your Profile
 docs/bb-command.md               the bb verbs with more behind them: the test harness, the code map, capture, sound and documents

@@ -112,6 +112,8 @@ function rnPrefsOf(p){
                gpu: p?.prefs?.gpu || "on",
                reply: p?.yours?.reply || "", asks: p?.yours?.asks || "",
                devbuild: devClaudeMode(p?.name || rnFor),
+               makevms: p?.prefs?.makevms || "deny",
+               vm_caps: rnVmCapsOf(p),
                report: p?.prefs?.report || "auto",
                sign: p?.prefs?.sign || "ask",
                release: p?.prefs?.release || "ask",
@@ -466,7 +468,27 @@ function rnFillPrefsRest(p){
   pick("rnGateVersion", Object.entries(POLICY_LABEL), p?.version_policy || "locked");
   // docker-write's to change (the grant, R137 step 4), so not offered otherwise.
   pick("rnGateDocker", GATE_MODES, devClaudeMode(rnFor)).closest("label").hidden = state?.can?.["docker-write"] === false;
+  // ...and its VMs' (R91), the VMs area's to change, deny unless set.
+  pick("rnGateVms", GATE_MODES, p?.prefs?.makevms || "deny").closest("label").hidden = state?.can?.["vms-write"] === false;
+  rnVmCapsSet(rnVmCapsOf(p));
+  $("rnVmCapsRow").hidden = state?.can?.["vms-write"] === false;
   rnDrawPrefs();
+}
+
+// The project's VM limits (R91 step 7), as one string so the dirty check
+// compares it as it does every other field; memory shown in GB.
+function rnVmCapsOf(p){
+  const c = p?.prefs?.vm_caps || {count: 4, vcpus: 8, mem_mb: 16384, disk_gb: 200};
+  return JSON.stringify({count: c.count, vcpus: c.vcpus, mem_mb: c.mem_mb, disk_gb: c.disk_gb});
+}
+function rnVmCapsNow(){
+  const n = id => Math.max(0, Math.round(+$(id).value || 0));
+  return JSON.stringify({count: n("rnVmCount"), vcpus: n("rnVmCpus"), mem_mb: n("rnVmMem") * 1024, disk_gb: n("rnVmDisk")});
+}
+function rnVmCapsSet(s){
+  const c = JSON.parse(s || "{}");
+  $("rnVmCount").value = c.count ?? 4; $("rnVmCpus").value = c.vcpus ?? 8;
+  $("rnVmMem").value = Math.round((c.mem_mb ?? 16384) / 1024); $("rnVmDisk").value = c.disk_gb ?? 200;
 }
 
 function rnDrawPrefs(){
@@ -1484,7 +1506,7 @@ const RN_WAS = {
   build: ["build", "Build"], test: ["build", "Test"], outputs: ["build", "Outputs"],
   capture_days: ["build", "Captures kept"], snapshot_days: ["build", "Snapshots kept"], dev_keep: ["build", "Dev builds kept"],
   gate: ["claude", "Claude may"], test_change: ["claude", "During a test run, a change asked for"],
-  devbuild: ["claude", "Claude may"], report: ["claude", "Claude may"], sign: ["claude", "Claude may"],
+  devbuild: ["claude", "Claude may"], makevms: ["claude", "Claude may"], vm_caps: ["claude", "Its VMs may hold"], report: ["claude", "Claude may"], sign: ["claude", "Claude may"],
   keys: ["claude", "Claude may"], release: ["claude", "Claude may"], pc: ["claude", "Claude may"], version: ["claude", "Move the version"],
   reply: ["yours", "Replies"], asks: ["yours", "Questions"],
   git_name: ["yours", "Commit name and email"], git_email: ["yours", "Commit name and email"],
@@ -1526,7 +1548,7 @@ function rnEnc(){
           dev_keep: $("rnDevKeep").value.trim(), gate: gateKey(rnGateNow()),
           tests_in: $("rnDevTest").value || "node", test_change: $("rnTestChange").value || "wait",
           gpu: $("rnGpu").value || "on", reply: $("rnReply").value || "", asks: $("rnAsks").value || "",
-          devbuild: $("rnGateDocker").value || "deny", report: $("rnGateReport").value || "auto",
+          devbuild: $("rnGateDocker").value || "deny", makevms: $("rnGateVms").value || "deny", vm_caps: rnVmCapsNow(), report: $("rnGateReport").value || "auto",
           sign: $("rnGateSign").value || "ask", release: $("rnGateRelease").value || "ask",
           keys: $("rnGateKeys").value || "ask", pc: $("rnGatePc").value || "deny", version: $("rnGateVersion").value || "locked"};
 }
@@ -1637,7 +1659,7 @@ function rnRevertSect(sect){
   } else if (sect === "claude"){
     const g = String(w.gate).split(",");
     Object.values(GATE_IDS).forEach((id, i) => { $(id).value = g[i] || "auto"; });
-    $("rnTestChange").value = w.test_change; $("rnGateDocker").value = w.devbuild;
+    $("rnTestChange").value = w.test_change; $("rnGateDocker").value = w.devbuild; $("rnGateVms").value = w.makevms; rnVmCapsSet(w.vm_caps);
     $("rnGateReport").value = w.report; $("rnGateSign").value = w.sign;
     $("rnGateRelease").value = w.release; $("rnGateKeys").value = w.keys;
     $("rnGatePc").value = w.pc; $("rnGateVersion").value = w.version;
@@ -1751,7 +1773,7 @@ async function rnSubmit(sect, end = false){
                               tc_off: v.tc_off, packs_on: v.packs_on,
                               build: v.build, test: v.test, gate: v.gate, ...(v.dbg || {}),
                               tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks,
-                              devbuild: v.devbuild, report: v.report, sign: v.sign, keys: v.keys, release: v.release, pc: v.pc,
+                              devbuild: v.devbuild, makevms: v.makevms, vm_caps: JSON.parse(v.vm_caps || "{}"), report: v.report, sign: v.sign, keys: v.keys, release: v.release, pc: v.pc,
                               outputs: v.outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(v.capture_days !== "" ? {capture_days: +v.capture_days} : {}),
                               ...(v.snapshot_days !== "" ? {snapshot_days: +v.snapshot_days} : {}),

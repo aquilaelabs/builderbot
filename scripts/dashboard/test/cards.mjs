@@ -979,6 +979,12 @@ ok(true, '...and so does a click on the page under it');
   ok(look.links.length && look.links.every(t => !/\.md$/.test(t)) && look.links.includes('How BuilderBot works')
      && look.indent === 0 && look.caps === 'none' && look.share >= 65 && !look.build,
      `the guide's links read as the docs' titles, its headings sit flush with their text, and it fills the box (${JSON.stringify(look)})`);
+  // Credits: what BuilderBot is built on, each with its license.
+  await page.click('.abswitch [data-ab="credits"]');
+  const cred = await page.$eval('#abCredits', e => ({ hidden: e.hidden, rows: e.querySelectorAll('.tline').length,
+    novnc: /noVNC/.test(e.textContent), lic: /MPL-2\.0/.test(e.textContent), build: !document.querySelector('#abBuild').hidden }));
+  ok(!cred.hidden && cred.rows >= 20 && cred.novnc && cred.lic && !cred.build,
+     `About's Credits lists what BuilderBot is built on, with licenses (${JSON.stringify(cred)})`);
   await page.click('.abswitch [data-ab="log"]');
   ok(await page.$eval('#abBuild', e => !e.hidden), '...and the build lines are under the changelog');
   // Whatever the top section is: Unreleased while entries are accumulating,

@@ -82,9 +82,13 @@ class Script(unittest.TestCase):
         was = forges.unvetted_ok
         try:
             forges.unvetted_ok = lambda: False
-            self.assertIn("Offer dev features", es.check(answers(system="arch"))["error"])
+            self.assertIn("Offer dev features", es.check(answers(system="gentoo"))["error"])
             forges.unvetted_ok = lambda: True
-            self.assertEqual(es.check(answers(system="arch"))["system"], "arch")
+            self.assertEqual(es.check(answers(system="gentoo"))["system"], "gentoo")
+            # ...and its script passes --dev, which a family the provisioner
+            # has not run on needs, where a walked system's does not.
+            self.assertIn("--dev", self.build(system="gentoo")[1])
+            self.assertNotIn("--dev", self.build(system="ubuntu")[1])
         finally:
             forges.unvetted_ok = was
         self.assertEqual(systems.family_file("rocky").name, "rhel.sh")
@@ -194,6 +198,53 @@ class PublicHostname(unittest.TestCase):
         self.assertIn(":7680", rules)
 
 
+class HostingFirewall(unittest.TestCase):
+    """A hosting-only box closed on itself (R93): the flag rides only with
+    no sessions, the provisioner refuses it on a session node before it
+    changes anything, and the rules it writes drop what Docker publishes
+    as well as what reaches the host."""
+    PROV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "nodes", "provision-linux.sh")
+
+    def run_line(self, ans):
+        s = es.build(ans, name="vps", user="bb", token="bbe_x", expires=0, provisioner=b"x")
+        return next(x for x in s.splitlines() if x.startswith('bash "$dir/provision-linux.sh"'))
+
+    def test_a_feature_ticked_rides_as_its_flag(self):
+        base = {"reach": "lan", "controller": "http://192.168.1.16:7680"}
+        self.assertIn("--feature 'vmhost'", self.run_line(es.check(base | {"features": ["vmhost"]})))
+        self.assertNotIn("--feature", self.run_line(es.check(base)))
+        self.assertIn("no such feature", es.check(base | {"features": ["warpdrive"]})["error"])
+
+    def test_it_rides_only_with_no_sessions(self):
+        pub = es.check({"reach": "public", "controller": "https://bb.example.com", "firewall": True})
+        self.assertTrue(pub["firewall"])
+        self.assertIn("--firewall", self.run_line(pub))
+        lan = {"reach": "lan", "controller": "http://192.168.1.16:7680", "firewall": True}
+        self.assertFalse(es.check(lan)["firewall"])
+        self.assertNotIn("--firewall", self.run_line(es.check(lan)))
+        self.assertTrue(es.check(lan | {"sessions": False})["firewall"])
+        self.assertNotIn("--firewall", self.run_line(es.check({"reach": "public", "controller": "https://bb.example.com"})))
+
+    def test_the_provisioner_refuses_it_on_a_session_node(self):
+        r = subprocess.run(["bash", self.PROV, "--controller", "https://bb.example.com", "--token", "bbe_x", "--firewall"],
+                           capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("--firewall is for a hosting-only node", r.stderr)
+
+    def test_the_rules_hold_docker_s_ports_too(self):
+        text = open(self.PROV, encoding="utf-8").read()
+        m = re.search(r"^ *cat > /etc/builderbot/hosting-fw\.nft <<NFT\n(.*?)^NFT$", text, re.S | re.M)
+        rules = m.group(1)
+        self.assertIn("hook input priority -5; policy drop;", rules)
+        self.assertIn("tcp dport { 80, 443 } accept", rules)
+        self.assertIn("${ssh_rule}", rules)
+        fwd = rules[rules.index("chain forward"):]
+        self.assertIn("ct original proto-dst { 80, 443 } accept", fwd)
+        self.assertTrue(fwd.rstrip().rstrip("}").rstrip().rstrip("}").rstrip().endswith("ct status dnat drop"))
+        # Taken away with the doors, and not left behind by an uninstall.
+        self.assertIn("nft delete table inet builderbot_hosting", text)
+
+
 class Door(unittest.TestCase):
     """A door in for SSH (R174): the recipe's answers checked, the secret in
     the script until it has run and out of it after, the flags to the
@@ -290,12 +341,32 @@ class TunnelGate(unittest.TestCase):
     def test_any_other_address_is_not_this_gate_s(self):
         self.assertEqual(nodes.tunnel_refuses("192.168.1.20", "/api/status"), "")
 
-    def test_the_address_comes_from_the_report_or_the_script(self):
+    def test_the_address_comes_from_the_script_never_the_report(self):
         self.assertEqual(nodes.tunnel_addr({"config": {"tunnel": {"addr": "10.6.0.5"}}}), "10.6.0.5")
-        self.assertEqual(nodes.tunnel_addr({"reported": {"tunnel": {"addr": "10.6.0.9"}},
-                                            "config": {"tunnel": {"addr": "10.6.0.5"}}}), "10.6.0.9")
+        self.assertEqual(nodes.tunnel_addr({"reported": {"tunnel": {"addr": "127.0.0.1"}},
+                                            "config": {"tunnel": {"addr": "10.6.0.5"}}}), "10.6.0.5")
+        self.assertEqual(nodes.tunnel_addr({"reported": {"tunnel": {"addr": "127.0.0.1"}}}), "", "R92")
         self.assertEqual(nodes.tunnel_addr({"config": {"tunnel": {"addr": "not; an address"}}}), "")
+
+
+class RetiredTunnel(unittest.TestCase):
+    """A removed box's hostname and address stay refused (R92)."""
+
+    def setUp(self):
+        self.was = nodes.node_list
+        nodes.node_list = lambda: [{"state": "retired", "config": {"tunnel": {
+            "kind": "public", "host": "vps.example.com", "addr": "10.6.0.7"}}}]
+        nodes._tunnels["at"] = 0.0
+
+    def tearDown(self):
+        nodes.node_list = self.was
+        nodes._tunnels["at"] = 0.0
+
+    def test_its_name_and_address_are_still_the_tunnel_s(self):
+        self.assertIn("hostname", nodes.tunnel_refuses("172.16.0.9", "/api/status", host="vps.example.com"))
+        self.assertIn("address", nodes.tunnel_refuses("10.6.0.7", "/"))
 
 
 if __name__ == "__main__":
     unittest.main()
+

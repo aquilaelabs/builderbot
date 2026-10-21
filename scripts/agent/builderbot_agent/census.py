@@ -39,6 +39,7 @@ from .gpu import (
 from .sessnet import SESSNET_STATUS, isolation_now
 from .runners import _runner_state, runner_dirs
 from . import storage
+from .vms import isos_now, vm_pool, vms_now
 
 
 def _sshd_listening():
@@ -193,6 +194,36 @@ def _docker_ip():
     return ip if ip and br.get("com.docker.network.bridge.host_binding_ipv4") == ip else ""
 
 
+# The features bb-sandbox installs and removes (R91), as its FEATURE_IDS
+# names them; the configuration plane checks a job's id against this.
+FEATURES = ("vmhost", "firewall")
+FEATURES_DIR = "/etc/builderbot/features"
+
+
+def features_now():
+    """What this machine has of each feature (R91): installed by BuilderBot
+    or not (its marker, or the firewall's own file), and for a VM host what
+    decides whether one can run here, read whether it is installed or not:
+    /dev/kvm (absent on a VM whose host passes no virtualization through)
+    and libvirt's version."""
+    virsh = shutil.which("virsh")
+    kvm = os.path.exists("/dev/kvm")
+    # A kernel built without KVM is said apart from a machine without
+    # virtualization (openSUSE's kernel-default-base, R97's walk): the
+    # cure is another kernel, not the host's CPU mode.
+    nokvm = ""
+    if not kvm and not any(os.path.exists(f"/lib/modules/{os.uname().release}/kernel/arch/x86/kvm/{m}")
+                           for m in ("kvm.ko", "kvm.ko.xz", "kvm.ko.zst", "kvm.ko.gz")) \
+            and not os.path.isdir("/sys/module/kvm"):
+        nokvm = "kernel"
+    return {
+        "vmhost": {"installed": os.path.exists(os.path.join(FEATURES_DIR, "vmhost")),
+                   "kvm": kvm, **({"nokvm": nokvm} if nokvm else {}),
+                   "libvirt": _run([virsh, "--version"], timeout=10) if virsh else ""},
+        "firewall": {"installed": os.path.exists("/etc/builderbot/hosting-fw.nft")},
+    }
+
+
 def census(state):
     """What this machine is. Asked at hello, every ten minutes, so the
     slow questions (docker, java) are allowed here and not in the sample."""
@@ -252,6 +283,13 @@ def census(state):
         "tunnel": tunnel_now(state),
         # The door in for SSH (R174), as the machine has it now.
         "door": door_now(state),
+        # The features bb-sandbox installs and removes (R91).
+        "features": features_now(),
+        # ...and the VMs it runs, with the room their disks have (R91).
+        "vms": vms_now(),
+        "vm_pool": vm_pool(),
+        # The installer ISOs fetched onto this node (R99).
+        "vm_isos": isos_now(),
         "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,
         "store_dirs": store_dirs(state),

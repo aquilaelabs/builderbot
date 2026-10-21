@@ -926,16 +926,6 @@ print(uid)`);
         ok(scmd.includes(` --cwd ${join(DIR, 'ws', vproj)} --sees /mnt/media --sees /srv/samples --env `),
            `a place the project is set to see goes to the helper as --sees (${scmd.slice(scmd.indexOf('--cwd'), scmd.indexOf('--cwd') + 160)})`);
         tmuxKill(`${ownerUid}~claude-${vproj}`);
-        writeFileSync(helper, `#!/bin/sh\nprintf '%s\\n' "$*" >> ${calls}\n`
-          + 'case " $* " in *" --sees "*) echo "bb-session: \'--sees\' is not an option it takes" >&2; exit 2 ;; esac\n'
-          + 'case "$1" in check|plan) exit 0 ;; esac\n'
-          + 'while [ "$1" != -- ]; do shift; done; shift\nexec "$@"\n', { mode: 0o755 });
-        runView(`u:${ownerUid}:claude:${vproj}:b:${boot}`);
-        await sleep(400);
-        const ocmd = tmuxFmt(`${ownerUid}~claude-${vproj}`, '#{pane_start_command}');
-        ok(alive(`${ownerUid}~claude-${vproj}`) && !ocmd.includes('--sees') && ocmd.includes(` --cwd ${join(DIR, 'ws', vproj)} --env `),
-           `...and a helper from before the setting is handed none and still starts the session (${ocmd.slice(ocmd.indexOf('--cwd'), ocmd.indexOf('--cwd') + 100)})`);
-        tmuxKill(`${ownerUid}~claude-${vproj}`);
         writeFileSync(helper, helperSrc(false), { mode: 0o755 });
         setSees([]);
       }

@@ -1453,6 +1453,36 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const rec = (await napi('/api/v1/nodes')).nodes.find(n => n.id === vps.id);
     ok(vps.ok && rec?.config?.host_only === true, `a node enrolled as hosting only is so from the start (${vps.error || 'ok'})`);
     await napi('/api/v1/nodes', { action: 'retire', id: vps.id });
+    // Lock down (R92): one press on a hosting-only node's page, after which
+    // the box may take only the job that stops it, and is removed when it ends.
+    {
+      const lk = await napi('/api/v1/nodes', { action: 'enroll', name: 'vps-lock', host_only: true });
+      const len = await napi('/api/v1/agent/enroll', { user: 'bb', version: shipped.version, digest: shipped.digest, census: CENSUS },
+        { Authorization: 'Bearer ' + lk.token, 'Content-Type': 'application/json' });
+      const LH = { Authorization: 'Bearer ' + len.token, 'Content-Type': 'application/json' };
+      const as = (verb, body) => fetch(base + '/api/v1/agent/' + verb, { method: 'POST', headers: LH, body: JSON.stringify(body || {}) });
+      await as('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest });
+      await page.evaluate(async () => { nodesList = null; await loadNodes(); });
+      await pickNode(page, lk.id);
+      const LROW = `.nodestab .ndrow[data-node="${lk.id}"]`;
+      await page.waitForSelector(`${LROW} [data-nd="lockdown"]`, { timeout: 10000 });
+      page.dialogs.length = 0;
+      await page.click(`${LROW} [data-nd="lockdown"]`);
+      await page.waitForSelector(`${LROW} [data-nd="lockdown"][disabled]`, { timeout: 10000 });
+      ok(page.dialogs.length === 1 && /Lock down vps-lock[\s\S]*revoked[\s\S]*provider's console/.test(page.dialogs[0]),
+         `Lock down asks first, saying what stops, that its credential goes, and the console's stop (${page.dialogs[0]?.slice(0, 40)})`);
+      const refused = await as('devdata', {});
+      const taken = await (await as('work', { running: [], wait: 0 })).json();
+      ok(refused.status === 403 && taken?.spec?.apply === 'lockdown',
+         `...from then it is refused all but its lockdown job (${refused.status}, ${taken?.spec?.apply})`);
+      await as('result', { job: taken.id, state: 'succeeded', exit: 0 });
+      const after = await as('hello', { census: CENSUS, version: shipped.version, digest: shipped.digest });
+      const row = (await napi('/api/v1/nodes')).nodes.find(n => n.id === lk.id);
+      ok(after.status === 401 && (!row || row.state === 'retired'),
+         `...and once it has run, the node is removed and its credential refused (${after.status}, ${row?.state})`);
+      await page.evaluate(async () => { nodesList = null; await loadNodes(); });
+      await pickNode(page, minted.id);
+    }
     // The row's switch, on the sandbox fixture node once it reports a door.
     const hello = census => agent('hello', { census, version: shipped.version, digest: shipped.digest });
     await hello({ ...CENSUS, door: { kind: 'cloudflared', host: 'ssh-shed.example.com', installed: true, active: true } });
@@ -1486,6 +1516,53 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     await page.waitForFunction(sel => /SSH door\s*cloudflared at ssh-shed\.example\.com, shut/.test(document.querySelector(sel + ' .ndsessfacts')?.textContent.replace(/\s+/g, ' ') || ''), ROW, { timeout: 10000 });
     ok(await page.$eval(`${ROW} .nddoor`, e => /Open the door/.test(e.textContent) && !e.querySelector('.ndcmd')),
        '...and reported shut, the row offers Open the door and no command');
+    // The Features section (R91): each feature bb-sandbox installs, with
+    // Install or Uninstall as the machine reports it, a system job each; a
+    // machine with no /dev/kvm says why instead of offering VM host, and the
+    // firewall is offered only on a hosting-only node.
+    {
+      const feats = (vm, fw = false) => ({ vmhost: { installed: false, kvm: true, libvirt: '10.0.0', ...vm }, firewall: { installed: fw } });
+      const featJob = async op => { for (let i = 0; i < 40; i++){
+        const j = ((await napi('/api/v1/jobs?active=1')).jobs || []).find(x => x.type === 'system' && x.spec?.apply === 'feature');
+        if (j) return j;
+        await sleep(250);
+      } return null; };
+      const VM = `${ROW} .ndfeat[data-feat="vmhost"]`;
+      await hello({ ...CENSUS, features: feats({}) });
+      await page.evaluate(async () => { await refresh(); await loadNodes(); });
+      await page.waitForSelector(`${VM} [data-nd="feature"]`, { timeout: 10000 });
+      const before = await page.$eval(`${ROW} [data-sect="nodes:features"]`, e => ({ text: e.textContent.replace(/\s+/g, ' '),
+        btn: e.querySelector('.ndfeat[data-feat="vmhost"] [data-nd="feature"]').textContent, fw: !!e.querySelector('.ndfeat[data-feat="firewall"]') }));
+      ok(/VM host ?not installed/.test(before.text) && /libvirt 10\.0\.0/.test(before.text) && before.btn === 'Install' && !before.fw,
+         `a managed node's Features section offers VM host with Install, and no firewall on a node that is not hosting only (${before.text.slice(0, 120)})`);
+      await page.click(`${VM} [data-nd="feature"]`);
+      const inst = await featJob();
+      ok(inst?.spec?.config?.id === 'vmhost' && inst.spec.config.op === 'install',
+         `...and Install queues the feature system job (${JSON.stringify(inst?.spec)})`);
+      // The agent takes it and it succeeds: until the census after it, the
+      // row waits rather than offering Install again (B162).
+      const took = await (await agent('work', { running: [], wait: 0 })).json();
+      await agent('result', { job: took.id, state: 'succeeded', exit: 0 });
+      await page.evaluate(async () => { await refresh(); await loadNodes(); });
+      await page.waitForFunction(sel => /reporting back/.test(document.querySelector(sel)?.textContent || ''), VM, { timeout: 10000 }).catch(() => {});
+      const waiting = await page.$eval(VM, e => ({ text: e.textContent.replace(/\s+/g, ' '), live: !!e.querySelector('[data-nd="feature"]') }));
+      ok(took?.id === inst?.id && /Done, the node is reporting back/.test(waiting.text) && !waiting.live,
+         `...and once it has succeeded the row waits for the node's next report, with nothing to press (${waiting.text.slice(-60)})`);
+      await hello({ ...CENSUS, features: feats({ kvm: false }) });
+      await page.evaluate(async () => { await refresh(); await loadNodes(); });
+      await page.waitForFunction(sel => /host-passthrough/.test(document.querySelector(sel)?.textContent || ''), VM, { timeout: 10000 });
+      ok(!(await page.$(`${VM} [data-nd="feature"]`)),
+         '...a machine with no /dev/kvm says why on the row and offers no Install');
+      await hello({ ...CENSUS, features: feats({ installed: true }) });
+      await page.evaluate(async () => { await refresh(); await loadNodes(); });
+      await page.waitForFunction(sel => document.querySelector(sel + ' [data-nd="feature"]')?.textContent === 'Uninstall', VM, { timeout: 10000 });
+      page.dialogs.length = 0;
+      await page.click(`${VM} [data-nd="feature"]`);
+      const rm = await featJob();
+      ok(page.dialogs.length === 1 && /Uninstall VM host from shed/.test(page.dialogs[0]) && rm?.spec?.config?.op === 'remove',
+         `...and installed, Uninstall asks, then queues the remove (${JSON.stringify(rm?.spec?.config)})`);
+      if (rm) await napi('/api/v1/jobs', { action: 'cancel', id: rm.id });
+    }
     await hello(CENSUS);
     // Enroll script on the row (R177): a new script for this node, bound
     // to the machine it reported, with no secret in it; run on another
@@ -1548,6 +1625,23 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   }, ROW);
   ok(phone.over <= 0 && phone.seen >= 8 && phone.small === 0,
      `...and at phone width it does not scroll sideways (${phone.over}px) and its ${phone.seen} controls are the field type, ${phone.field}px (${phone.small} smaller)`);
+  // A guest node's one line where Storage and Network would be (B157): inset
+  // from the screen's edges and clear of the next section's head, in the
+  // note voice, at phone width as at a desk.
+  const guest = await page.evaluate(sel => {
+    const body = document.querySelector(sel + ' .ndconfbody');
+    const line = document.createElement('div'); line.className = 'hint ndguest'; line.textContent = 'Storage and network are managed on the machine itself, not here.';
+    body.prepend(line);
+    const r = line.getBoundingClientRect(), next = [...document.querySelectorAll(sel + ' .ndsections details.sect > summary')]
+      .map(e => e.getBoundingClientRect()).find(b => b.top >= r.bottom - 1);
+    const probe = document.createElement('i'); probe.style.font = 'var(--f-note)'; document.body.append(probe);
+    const note = getComputedStyle(probe).fontFamily; probe.remove();
+    const out = { left: Math.round(r.left), right: Math.round(innerWidth - r.right), gap: next ? Math.round(next.top - r.bottom) : null,
+                  font: getComputedStyle(line).fontFamily === note };
+    line.remove(); return out;
+  }, ROW);
+  ok(guest.left >= 8 && guest.right >= 8 && guest.gap >= 4 && guest.font,
+     `a guest node's storage line is inset and clear of the next section on a phone, in the note font (${JSON.stringify(guest)})`);
   await page.setViewportSize({ width: 1280, height: 900 });
 
   // ---- toolchains on the node, from the Tools tab (phase 6) ---------------
@@ -2640,9 +2734,10 @@ await page.evaluate(async () => {
   await fillHeld(page, '#ndBody #ndEnName', 'vpsbox');
   await page.selectOption('#ndBody #ndEnReach', 'public');
   const cf = await page.evaluate(() => ({ host: $('ndEnHost').checked, held: $('ndEnHost').disabled,
-    sess: $('ndEnSess').checked, ctl: $('ndEnCtl').value, hint: !$('ndEnCfHint').hidden, wg: $('ndEnWgRow').hidden }));
-  ok(cf.host && cf.held && !cf.sess && cf.ctl === 'https://' && cf.hint && cf.wg,
-     `a public hostname holds Hosting only on, takes sessions off, and asks for the name (${JSON.stringify(cf)})`);
+    sess: $('ndEnSess').checked, ctl: $('ndEnCtl').value, hint: !$('ndEnCfHint').hidden, wg: $('ndEnWgRow').hidden,
+    fw: !$('ndEnFwRow').hidden && $('ndEnFw').checked }));
+  ok(cf.host && cf.held && !cf.sess && cf.ctl === 'https://' && cf.hint && cf.wg && cf.fw,
+     `a public hostname holds Hosting only on, takes sessions off, offers the firewall ticked, and asks for the name (${JSON.stringify(cf)})`);
   await fillHeld(page, '#ndBody #ndEnCtl', 'https://192.168.1.16');
   await page.click('#ndBody #ndEnGo');
   await page.waitForFunction(() => document.querySelector('#ndBody #ndEnGo') && !document.querySelector('#ndBody #ndEnGo').disabled
@@ -2654,8 +2749,8 @@ await page.evaluate(async () => {
   const script2 = readFileSync(await dl2.path(), 'utf8');
   const run2 = script2.split('\n').find(l => l.startsWith('bash "$dir/provision-linux.sh"')) || '';
   ok(/--controller 'https:\/\/bb\.example\.com'/.test(run2) && /--reach public/.test(run2) && /--session-user none/.test(run2)
-     && !/WGCONF/.test(script2),
-     `...and the script runs the provisioner with --reach public, no tunnel inside (${run2.replace(/bbe_[^']+/, 'bbe_…').slice(0, 140)})`);
+     && /--firewall/.test(run2) && !/WGCONF/.test(script2),
+     `...and the script runs the provisioner with --reach public and --firewall, no tunnel inside (${run2.replace(/bbe_[^']+/, 'bbe_…').slice(0, 140)})`);
   const home2 = await page.$eval('#ndBody #ndHome', e => e.textContent);
   ok(/hostname: bb\.example\.com/.test(home2) && /path: \^\/api\/v1\/agent\//.test(home2) && /http_status:404/.test(home2)
      && /tunnel/.test(await page.$eval('#ndBody .ndtoken .lbl', e => e.textContent)),

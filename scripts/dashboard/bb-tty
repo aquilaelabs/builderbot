@@ -151,6 +151,9 @@ GRANT
     # against the instance's running ones (R218 step 4): the URL's own word
     # for it is never taken here, where anything on the node can write one.
     grant_ctr="$(printf '%s' "$grant" | jq -r '.ctr // ""')"
+    # ...and the VM a vm: console opens (R91), by its libvirt name from the
+    # controller's record.
+    grant_vm="$(printf '%s' "$grant" | jq -r '.vm // ""')"
     if [ "$(printf '%s' "$grant" | jq -r '.owner // false')" = true ]; then
         export BB_TREE_OWNER=1
     else
@@ -170,6 +173,22 @@ fi
 if [ "${BB_TTY_CTR:-}" = 1 ]; then
     ctr_no() { for line in "$@"; do echo "$line" >&2; done; if [ -t 2 ]; then sleep 10; fi; exit 1; }
     on_node || ctr_no "A container terminal server runs on a node and nowhere else."
+    # A VM's serial console (R91): virsh console as this account, which the
+    # VM host feature put in the libvirt group, into the domain the grant
+    # names. Ctrl+] leaves it, as virsh says.
+    if [ "${target%%:*}" = vm ]; then
+        dom="${grant_vm:-}"
+        case "$dom" in bbvm-[a-z0-9]*) ;; *) ctr_no "Invalid VM: ${dom}" ;; esac
+        case "$dom" in *[!a-z0-9-]*) ctr_no "Invalid VM: ${dom}" ;; esac
+        command -v virsh >/dev/null 2>&1 || ctr_no "There is no virsh here: VM host is not installed on this node."
+        s="$(tmux_prefix "$account")vm-${dom}"
+        tmux new-session -A -d -s "$s" -c / virsh -c qemu:///system console --force "$dom"
+        tmux set-option -t "$s" mouse off
+        tmux set-option -t "$s" status-style bg=color236,fg=color252
+        tmux set-option -t "$s" status-left '#[bold] #S '
+        tmux set-option -t "$s" status-right ' builderbot '
+        exec tmux attach-session -t "$s"
+    fi
     case "$target" in ctr:*) ;; *) ctr_no "This terminal server opens a container's shell and nothing else." ;; esac
     cname="${grant_ctr:-}"
     case "$cname" in
@@ -379,25 +398,12 @@ in_view() {
     # trees read-only, and repeated words keep the launcher line respawnable.
     local reads=() r
     for r in ${BB_READS:-}; do reads+=(--reads "$r"); done
-    # ...and the places it is shown, one --sees each, for a helper that
-    # takes them: one from before the setting would refuse the word and
-    # start no session at all, so it is asked first.
-    if [ -n "${BB_SEES:-}" ] && "$SESSION_BIN" plan --project "$proj" --account "${account:-}" \
-            --home "$HOME" --cwd "$dir" --sees /nowhere-a-node-has >/dev/null 2>&1; then
-        for r in ${BB_SEES:-}; do reads+=(--sees "$r"); done
-    fi
-    # ...and the toolchains it may not use left out of its view of the store
-    # (R77), for a helper that takes the word (asked first, as above).
-    if [ -n "${BB_TOOLCHAINS_OFF:-}" ] && "$SESSION_BIN" plan --project "$proj" --account "${account:-}" \
-            --home "$HOME" --cwd "$dir" --off none >/dev/null 2>&1; then
-        for r in ${BB_TOOLCHAINS_OFF:-}; do reads+=(--off "$r"); done
-    fi
-    # ...and the card's compute device covered where it is not this
-    # session's, for a helper that takes the word (asked first, as above).
-    if [ "${BB_GPU:-on}" != on ] && "$SESSION_BIN" plan --project "$proj" --account "${account:-}" \
-            --home "$HOME" --cwd "$dir" --cuda off >/dev/null 2>&1; then
-        reads+=(--cuda off)
-    fi
+    # ...and the places it is shown, one --sees each,
+    for r in ${BB_SEES:-}; do reads+=(--sees "$r"); done
+    # ...the toolchains it may not use left out of its view of the store (R77),
+    for r in ${BB_TOOLCHAINS_OFF:-}; do reads+=(--off "$r"); done
+    # ...and the card's compute device covered where it is not this session's.
+    [ "${BB_GPU:-on}" = on ] || reads+=(--cuda off)
     why="$("$SESSION_BIN" plan --project "$proj" --account "${account:-}" --home "$HOME" \
                --cwd "$dir" "${reads[@]}" 2>&1 >/dev/null)" \
         || bad "This node keeps each session to its own project, and could not for this one:" "$why"

@@ -55,7 +55,7 @@ class Uninstall(unittest.TestCase):
         self.assertIn("left as it was", r.stderr)
         self.assertIn("the session firewall rules and the sessions' own networks", r.stdout)
         self.assertIn("also:  the stores on this disk", r.stdout)
-        self.assertIn("also:  cloudflared and its token, Tailscale's login, the port 22 rule, the nginx container", r.stdout)
+        self.assertIn("also:  cloudflared and its token, Tailscale's login, the port 22 rule, the hosting firewall, the nginx container", r.stdout)
         self.assertNotIn("also:  the mounts BuilderBot used", r.stdout)
         self.assertIn("Un-enroll deregisters it first", r.stdout)
         self.assertNotIn(", the stores", r.stdout)

@@ -29,13 +29,16 @@ heading so a phone reads the headings and opens one: Health (the meters:
 cpu, memory, the card's load and its own memory where an NVIDIA driver
 answers, and each store's room; the toolchains its census found, which is what a project bound to it can
 build), Projects (the projects bound to it), Sessions (whether it runs them,
-and which are open), GPU (where it has a card), Claude Code (each account's
+and which are open), GPU (where it has a card), Features (what the machine has
+beyond the base, each with **Install** or **Uninstall**: VM host, and the
+hosting firewall on a hosting-only node), Claude Code (each account's
 sign-in there), Storage (mounts and stores), Network, and Advanced, which
 holds the node's **name** (Rename changes what it is called everywhere here:
 the pickers, the project cards and the label a runner installed from then on registers
 with; a runner already installed keeps the label it registered with until
 it is reinstalled), the path
-mapping and the rarely pressed verbs: **Drain** (finish what is running,
+mapping and the rarely pressed verbs: **Lock down** (a hosting-only node's: every container
+there stopped, its door shut and its credential revoked, docs/nodes.md), **Drain** (finish what is running,
 accept nothing new: what makes a node safe to reboot), **Clear cache**,
 **Revoke**, **Disable** (the operator, 11 Oct: kept and configured, its agent
 dialing in, but off every picker, refused to a project's set and handed no

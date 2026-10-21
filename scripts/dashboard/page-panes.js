@@ -287,6 +287,8 @@ function drawPanes(){
     openedNow.add(t.id);
     TABKINDS[t.kind]?.open?.();
   }
+  // The page in front, toured the first time this account opens it (R94).
+  tourSoon(tabOf(panes[0])?.kind);
 }
 
 // The notebook is *moved* into the pane rather than rendered into it. One

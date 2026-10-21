@@ -55,7 +55,7 @@ class Probe(unittest.TestCase):
         devapp.queue = LocalQueue()
         devapp._instance_node = lambda project, instance: "n_draco"
         devapp.pname = lambda project, instance: f"{project}-{instance}"
-        devapp.node_name = lambda nid: "draconis"
+        devapp.node_name = lambda nid: "hostbox"
         devactions.state_ports = lambda project, instance: [f"127.0.0.1:{self.live}->80/tcp",
                                                             f"{self.closed}->9000/tcp", "5353->5353/udp"]
         LocalQueue.asked = []
@@ -68,7 +68,7 @@ class Probe(unittest.TestCase):
         self.assertTrue(by[self.live]["open"])
         self.assertEqual(by[self.live]["http"], 200)
         self.assertFalse(by[self.closed]["open"])
-        self.assertEqual((out["name"], out["node"]), ("tl-site", "draconis"))
+        self.assertEqual((out["name"], out["node"]), ("tl-site", "hostbox"))
 
     def test_only_its_own_ports(self):
         out, code = devactions.probe("tl", "site", {"port": "22"}, "session:tl")

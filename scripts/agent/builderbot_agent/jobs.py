@@ -230,6 +230,8 @@ class Job(threading.Thread):
                 state, code = self.agent.system(self, spec)
             elif self.job.get("type") == "compose":
                 state, code = self.agent.compose(self, spec)
+            elif self.job.get("type") == "vm":
+                state, code = self.agent.vm(self, spec)
             elif self.job.get("type") == "toolchain":
                 state, code = self.agent.toolchain(self, spec)
                 # A recipe landed or left: the session environment is built
