@@ -4,6 +4,7 @@
 
 ### Added
 
+- FEATURES_OFF takes vms, for an install that should make no virtual machines: the VMs page says so, and making one or installing VM host is refused (296df6e0)
 - Enroll node offers Debian, Fedora, AlmaLinux, CentOS Stream, Arch Linux and openSUSE beside Ubuntu and Rocky Linux, each walked end to end on a real machine (075ec223)
 - About has Credits: the open-source work BuilderBot carries and runs, each with what it does here and its license (115a5fa)
 - A short tour of each page the first time you open it, pointing at its parts one step at a time, with Skip tour and a box to skip it on every page; Show the tours again, in About and on Profile, brings them back. (310b392)
