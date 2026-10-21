@@ -29,6 +29,9 @@ ARG NODE_MAJOR=22
 # ttyd serves the dashboard's terminal. Ubuntu packages it, but the static
 # release is a single self-contained binary and pins to a known version.
 ARG TTYD_VERSION=1.7.7
+# noVNC draws a VM's screen in the dock (R99): pinned, and checked by digest.
+ARG NOVNC_VERSION=1.7.0
+ARG NOVNC_SHA256=b1003a11b6e6e8d8f7f5e5586daae7f8ca651d8aee0aa155ff9ac841c48f52c6
 ARG TARGETARCH
 
 # --- Playwright build knob -------------------------------------------------
@@ -269,6 +272,20 @@ RUN set -eux; \
         "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${tarch}"; \
     chmod +x /usr/local/bin/ttyd; \
     ttyd --version
+
+# noVNC: the browser's half of a VM's screen (R99), the page and the RFB
+# client it imports, served by the dashboard under /novnc/. MPL-2.0, its
+# license kept beside it.
+RUN set -eux; \
+    curl -fsSL -o /tmp/novnc.tar.gz \
+        "https://github.com/novnc/noVNC/archive/refs/tags/v${NOVNC_VERSION}.tar.gz"; \
+    echo "${NOVNC_SHA256}  /tmp/novnc.tar.gz" | sha256sum -c -; \
+    mkdir -p /opt/builderbot/novnc; \
+    tar xzf /tmp/novnc.tar.gz -C /opt/builderbot/novnc --strip-components=1 \
+        "noVNC-${NOVNC_VERSION}/core" "noVNC-${NOVNC_VERSION}/vendor" \
+        "noVNC-${NOVNC_VERSION}/vnc_lite.html" "noVNC-${NOVNC_VERSION}/LICENSE.txt"; \
+    rm -f /tmp/novnc.tar.gz; \
+    test -f /opt/builderbot/novnc/core/rfb.js
 
 # cloudflared: the home tunnel the controller can run itself (R176), from
 # Cloudflare's release for this architecture. Latest rather than pinned,

@@ -31,7 +31,7 @@ async function loadVms(){
 // A console tab is the account's and outlives the page, so one whose VM was
 // removed while no page watched it stayed in the dock onto nothing (B172):
 // dropped once the records are read and the VM is not among them.
-const vmConsoleTab = t => t.kind === "term" && String(t.arg).startsWith("vm:");
+const vmConsoleTab = t => t.kind === "term" && /^(vm|screen):/.test(String(t.arg));
 // ...and read once for a page that opens with one, since the first poll's
 // tokens fire nothing.
 let vmsAskedForConsoles = false;
@@ -42,8 +42,8 @@ function vmConsolesChecked(){
 }
 function vmReapConsoles(){
   if (!vmsData || vmsErr) return;
-  const have = new Set((vmsData.vms || []).map(v => `vm:${v.project}:${v.name}`));
-  tabs.filter(t => vmConsoleTab(t) && !have.has(t.arg)).map(t => t.id).forEach(dropTab);
+  const have = new Set((vmsData.vms || []).map(v => `${v.project}:${v.name}`));
+  tabs.filter(t => vmConsoleTab(t) && !have.has(String(t.arg).replace(/^(vm|screen):/, ""))).map(t => t.id).forEach(dropTab);
 }
 
 // What a VM's state says, in its level's tone.
@@ -61,20 +61,29 @@ function vmRow(v){
   const may = vmMay(v.project);
   const busy = ["making", "removing"].includes(v.state);
   const up = v.state === "running";
-  const size = `${v.vcpus} vCPU · ${v.mem_mb >= 1024 ? `${+(v.mem_mb / 1024).toFixed(1)} GB` : `${v.mem_mb} MB`} · ${v.disk_gb} GB disk`;
+  const disks = [v.disk_gb, ...(v.disks || [])];
+  const size = `${v.vcpus} vCPU · ${v.mem_mb >= 1024 ? `${+(v.mem_mb / 1024).toFixed(1)} GB` : `${v.mem_mb} MB`} · ${
+    disks.length > 1 ? `disks of ${disks.join(", ")} GB` : `${v.disk_gb} GB disk`}`;
   const origin = [esc(v.os_name || v.os || ""), esc(v.node_name || ""), esc(size)].filter(Boolean).join(`<span class="sep"></span>`);
-  const reach = up && v.ip ? `ssh ${esc(v.user || "builder")}@${esc(v.ip)}` : up ? "taking its address" : "";
+  // From an installer (R99): its ISO in the drive until ejected, and no
+  // account of BuilderBot's to ssh in as.
+  const reach = up && v.iso ? `installing from ${esc(v.iso)}: its Screen shows the installer`
+    : up && v.ip && v.os !== "installer" ? `ssh ${esc(v.user || "builder")}@${esc(v.ip)}`
+    : up && v.ip ? `at ${esc(v.ip)}` : up ? "taking its address" : "";
   // Made a node (step 14): its row on the Nodes page.
   const asNode = v.node_id ? `<div class="sub dmorigin">a node too: ${pageLink("nodes", "on the Nodes page", `#/machines/nodes/${encodeURIComponent(v.node_id)}`)}</div>` : "";
   const snaps = v.snapshots || [];
   const acts = !may ? "" : `
     ${!up && !busy && v.state !== "failed" ? `<button type="button" class="primary" data-vm="start">Start</button>` : ""}
-    ${up ? `<button type="button" data-vmcon title="its serial console, in the dock">Console</button>` : ""}
+    ${up && v.screen ? `<button type="button" data-vmscreen title="its screen, keyboard and mouse, in the dock">Screen</button>` : ""}
+    ${up && v.os !== "installer" ? `<button type="button" data-vmcon title="its serial console, in the dock">Console</button>` : ""}
     ${up ? `<button type="button" data-vm="stop" title="ask it to shut down, as its power button would">Stop</button>` : ""}
     ${actMore([
       up ? `<button type="button" data-vm="restart">Restart</button>` : "",
       up ? `<button type="button" data-vm="stop" data-force="1" title="pull the plug: it stops at once, unsaved work in it lost">Force stop</button>` : "",
       !busy && v.state !== "failed" ? `<button type="button" data-vm="snapshot" title="its state saved under a name; a running VM's memory too">Snapshot…</button>` : "",
+      v.iso && !busy ? `<button type="button" data-vm="eject" title="take ${esc(v.iso)} out of its drive, so it boots from its disk">Eject ISO</button>` : "",
+      v.state === "stopped" ? `<button type="button" data-vm="disk-grow" title="make one of its disks larger; it never shrinks">Grow disk…</button>` : "",
       `<button type="button" class="danger" data-vm="remove"${v.state === "removing" ? " disabled" : ""}
         title="destroy it, with its disk and its snapshots">Remove</button>`])}`;
   return `<div class="row stack2" data-vm-key="${esc(v.key)}">
@@ -151,6 +160,8 @@ function wireVms(el){
     if (!v) return;
     row.querySelectorAll("[data-vmcon]").forEach(b => b.onclick = () =>
       openTab({kind: "term", arg: `vm:${v.project}:${v.name}`, label: `console ${v.name}`}));
+    row.querySelectorAll("[data-vmscreen]").forEach(b => b.onclick = () =>
+      openTab({kind: "term", arg: `screen:${v.project}:${v.name}`, label: `screen ${v.name}`}));
     row.querySelectorAll("[data-vm]").forEach(b => b.onclick = () => pressing(b, async () => {
       const action = b.dataset.vm;
       const body = {action, project: v.project, name: v.name};
@@ -165,10 +176,20 @@ function wireVms(el){
         if (!name) return;
         body.snapshot = name.trim();
       }
+      if (action === "disk-grow"){
+        const devs = ["vda", "vdb", "vdc", "vdd"].slice(0, 1 + (v.disks || []).length);
+        const sizes = [v.disk_gb, ...(v.disks || [])];
+        const dev = devs.length > 1 ? prompt(`Which disk of ${v.name}? ${devs.map((d, i) => `${d} (${sizes[i]} GB)`).join(", ")}`, "vda") : "vda";
+        if (!dev || !devs.includes(dev.trim())) return;
+        const gb = prompt(`${dev.trim()} of ${v.name} is ${sizes[devs.indexOf(dev.trim())]} GB. Its new size in GB:`, String(sizes[devs.indexOf(dev.trim())] * 2));
+        if (!gb) return;
+        body.disk = dev.trim(); body.gb = +gb;
+      }
+      if (action === "eject" && !confirm(`Eject ${v.iso} from ${v.name}?\n\nIts next boot is from its disk, where the installer put the system.`)) return;
       if (b.dataset.snap) body.snapshot = b.dataset.snap;
       if (b.dataset.force) body.force = true;
       busy(b, {start: "Starting", stop: "Stopping", restart: "Restarting", remove: "Removing", snapshot: "Saving",
-               revert: "Reverting", "snapshot-rm": "Deleting"}[action] || "Working");
+               revert: "Reverting", "snapshot-rm": "Deleting", eject: "Ejecting", "disk-grow": "Growing"}[action] || "Working");
       const j = await (await postJSON("/api/vms", body)).json();
       if (j.error) notify(j.error, true);
       else notify(`${v.name}: ${action === "snapshot-rm" ? "snapshot delete" : action} queued`);
@@ -192,41 +213,97 @@ function openNewVm(forProject = ""){
   const projects = Object.entries(vmsData?.can || {}).filter(([, l]) => l === "write").map(([p]) => p).sort();
   const imgs = (vmsData?.images || []).filter(i => !i.person);
   const hosts = vmsData?.hosts || [];
+  // What a VM is made from (R99): a catalog image, or an installer's ISO
+  // already on the picked node, or one to fetch there first.
+  const fromOptions = nid => {
+    const isos = (hosts.find(h => h.id === nid)?.isos || []);
+    return `<optgroup label="Cloud images">${optionList(imgs.map(i => [i.id, i.name]))}</optgroup>
+      <optgroup label="Installers on this node">${optionList(isos.map(i => ["iso:" + i.name, `${i.name} (${i.mb} MB)`]))}
+        <option value="iso-add">Add an ISO…</option></optgroup>`;
+  };
   m.innerHTML = `<div class="box"><h3>New VM</h3>
     <div class="prefrow ctlrow">
       <div class="setrow col ctlrow">${lbl("vmName", "Name")}<input id="vmName" maxlength="31" autocomplete="off" spellcheck="false" placeholder="db"></div>
       <div class="setrow col ctlrow">${lbl("vmProject", "Project")}<select id="vmProject">${optionList(projects.map(p => [p, projLabel(p)]), forProject)}</select></div>
     </div>
     <div class="prefrow ctlrow">
-      <div class="setrow col ctlrow">${lbl("vmOs", "OS", "a publisher's cloud image, checked against its checksums; Windows and macOS have a license to accept, so BuilderBot does not make them")}
-        <select id="vmOs">${optionList(imgs.map(i => [i.id, i.name]))}</select></div>
       <div class="setrow col ctlrow">${lbl("vmNode", "Node", "a node with VM host installed")}<select id="vmNode">${optionList(hosts.map(h => [h.id, h.name]))}</select></div>
+      <div class="setrow col ctlrow">${lbl("vmOs", "From", "a publisher's cloud image, checked against its checksums and set up by cloud-init; or an installer's ISO on the node, which you install on the VM's Screen yourself, the way Windows or your own system goes on")}
+        <select id="vmOs">${fromOptions(hosts[0]?.id || "")}</select></div>
+    </div>
+    <div id="vmIsoAdd" hidden>
+      <div class="field">${lbl("vmIsoUrl", "The ISO's address", "an https link to the installer's .iso")}
+        <input id="vmIsoUrl" type="url" spellcheck="false" autocomplete="off" placeholder="https://releases.ubuntu.com/…/ubuntu-26.04-live-server-amd64.iso"></div>
+      <div class="field">${lbl("vmIsoSum", "Its SHA-256", "from the publisher's SHA256SUMS: the ISO is kept only when it matches")}
+        <input id="vmIsoSum" spellcheck="false" autocomplete="off" maxlength="64" placeholder="64 hex digits"></div>
+      <div class="field"><div class="actbar"><button type="button" id="vmIsoGo">Fetch it onto the node</button></div></div>
     </div>
     <div class="prefrow ctlrow">
       <div class="setrow col ctlrow">${lbl("vmCpu", "vCPUs")}<input id="vmCpu" type="number" min="1" max="64" value="2"></div>
       <div class="setrow col ctlrow">${lbl("vmMem", "Memory, GB")}<input id="vmMem" type="number" min="1" max="256" value="2"></div>
       <div class="setrow col ctlrow">${lbl("vmDisk", "Disk, GB")}<input id="vmDisk" type="number" min="2" max="4096" value="20"></div>
     </div>
-    <div class="field">${lbl("vmKey", "SSH public key", "who may log in: yours, as in ~/.ssh/id_ed25519.pub. The account is builder, with sudo")}
-      <textarea id="vmKey" rows="3" spellcheck="false" autocomplete="off" placeholder="ssh-ed25519 AAAA… you@laptop"></textarea></div>
-    <label class="ndcap"><input type="checkbox" id="vmAgent"> Make it a node: enroll it with an agent at its first boot</label>
-    <div class="hint" id="vmAgentHint" hidden>It appears on the Nodes page once it has booted, a node like any other, marked as a VM on its host; removing the VM retires the node and revokes its credential.</div>
+    <div id="vmCloud">
+      <div class="field">${lbl("vmKey", "SSH public key", "who may log in: yours, as in ~/.ssh/id_ed25519.pub. The account is builder, with sudo")}
+        <textarea id="vmKey" rows="3" spellcheck="false" autocomplete="off" placeholder="ssh-ed25519 AAAA… you@laptop"></textarea></div>
+      <label class="ndcap"><input type="checkbox" id="vmAgent"> Make it a node: enroll it with an agent at its first boot</label>
+      <div class="hint" id="vmAgentHint" hidden>It joins your LAN as its own machine and appears on the Nodes page once it has booted, a node like any other, marked as a VM on its host; removing the VM retires the node and revokes its credential.</div>
+    </div>
+    <div class="prefrow ctlrow" id="vmFwRow" hidden>
+      <div class="setrow col ctlrow">${lbl("vmFw", "Firmware", "UEFI for most current installers (and Windows 11); BIOS for an older one")}
+        <select id="vmFw">${optionList([["uefi", "UEFI"], ["bios", "BIOS"]], "uefi")}</select></div>
+    </div>
+    <details class="vmmore"><summary>More: disks, network address, screen password</summary>
+      <div class="field">${lbl("vmDisks", "Further disks, GB", "up to three more, each its own virtio disk (vdb, vdc, vdd), comma-separated: 100, 500")}
+        <input id="vmDisks" spellcheck="false" autocomplete="off" placeholder="none"></div>
+      <div class="prefrow ctlrow">
+        <div class="setrow col ctlrow">${lbl("vmMac", "MAC address", "kept for good, so a DHCP reservation holds; libvirt picks one when empty")}
+          <input id="vmMac" spellcheck="false" autocomplete="off" placeholder="52:54:00:…"></div>
+        <div class="setrow col ctlrow">${lbl("vmPw", "Screen password", "asked when its Screen opens; one to eight characters, VNC's limit")}
+          <input id="vmPw" type="password" maxlength="8" autocomplete="new-password"></div>
+      </div>
+    </details>
     <div class="field" id="vmWhyF" hidden><div class="hint bad" id="vmWhy"></div></div>
     ${dlgFoot(`<button type="button" id="vmCancel">Cancel</button>`, `<button type="button" id="vmGo" class="primary">Make it</button>`)}</div>`;
   m.hidden = false;
   const $m = s => m.querySelector(s);
   const say = t => { $m("#vmWhy").textContent = t; $m("#vmWhyF").hidden = !t; };
+  const from = () => {
+    const v = $m("#vmOs").value;
+    $m("#vmIsoAdd").hidden = v !== "iso-add";
+    $m("#vmCloud").hidden = v.startsWith("iso");
+    $m("#vmFwRow").hidden = !v.startsWith("iso:");
+    $m("#vmGo").disabled = v === "iso-add";
+  };
+  $m("#vmNode").onchange = () => { $m("#vmOs").innerHTML = fromOptions($m("#vmNode").value); from(); };
+  $m("#vmOs").onchange = from;
   $m("#vmCancel").onclick = () => { m.hidden = true; };
   $m("#vmAgent").onchange = () => { $m("#vmAgentHint").hidden = !$m("#vmAgent").checked; };
+  $m("#vmIsoGo").onclick = () => pressing($m("#vmIsoGo"), async () => {
+    busy($m("#vmIsoGo"), "Asking");
+    const j = await (await postJSON("/api/vms", {action: "iso-add", project: $m("#vmProject").value, node: $m("#vmNode").value,
+      url: $m("#vmIsoUrl").value.trim(), sha256: $m("#vmIsoSum").value.trim()})).json();
+    $m("#vmIsoGo").disabled = false; $m("#vmIsoGo").textContent = "Fetch it onto the node";
+    if (j.error) return say(j.error);
+    say("");
+    notify(`${j.iso}: downloading onto ${j.node}, then checked; it is offered under From once it is there`);
+  });
   $m("#vmGo").onclick = () => pressing($m("#vmGo"), async () => {
     busy($m("#vmGo"), "Making");
+    const v = $m("#vmOs").value, iso = v.startsWith("iso:") ? v.slice(4) : "";
+    const disks = $m("#vmDisks").value.split(",").map(x => x.trim()).filter(Boolean).map(Number);
     const j = await (await postJSON("/api/vms", {action: "new", project: $m("#vmProject").value,
-      name: $m("#vmName").value.trim(), os: $m("#vmOs").value, node: $m("#vmNode").value,
+      name: $m("#vmName").value.trim(), node: $m("#vmNode").value,
+      ...(iso ? {iso, boot: $m("#vmFw").value} : {os: v, keys: $m("#vmKey").value.split("\n").map(s => s.trim()).filter(Boolean),
+                                                  node_agent: $m("#vmAgent").checked}),
       vcpus: +$m("#vmCpu").value, mem_mb: Math.round(+$m("#vmMem").value * 1024), disk_gb: +$m("#vmDisk").value,
-      keys: $m("#vmKey").value.split("\n").map(s => s.trim()).filter(Boolean), node_agent: $m("#vmAgent").checked})).json();
+      ...(disks.length ? {disks} : {}), ...($m("#vmMac").value.trim() ? {mac: $m("#vmMac").value.trim()} : {}),
+      ...($m("#vmPw").value ? {console_password: $m("#vmPw").value} : {})})).json();
     if (j.error){ say(j.error); $m("#vmGo").disabled = false; $m("#vmGo").textContent = "Make it"; return; }
     m.hidden = true;
-    notify(`${j.key}: being made on ${j.node}; the image downloads once per node`);
+    notify(iso ? `${j.key}: starting from ${iso} on ${j.node}; open its Screen to install`
+               : `${j.key}: being made on ${j.node}; the image downloads once per node`);
     await loadVms();
   });
+  from();
 }

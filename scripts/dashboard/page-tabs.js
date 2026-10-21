@@ -110,8 +110,11 @@ const bootFor = arg => {
   const onNode = picked ? (row?.session_nodes || []).find(x => x.id === picked)?.boot : "";
   return onNode || row?.session_boot || state?.boot || "";
 };
-const ttydUrl = (arg) => `/term/?arg=${encodeURIComponent(
-  arg.startsWith("claude:") && bootFor(arg) ? `${arg}:b:${bootFor(arg)}` : arg)}`;
+const ttydUrl = (arg) => arg.startsWith("screen:")
+  // A VM's screen (R99): noVNC's own page, speaking to this controller's
+  // relay for that VM, scaled to the dock's size.
+  ? `/novnc/vnc_lite.html?scale=true&path=${encodeURIComponent(`screen/ws?vm=${arg.split(":")[1]}/${arg.split(":")[2]}`)}`
+  : `/term/?arg=${encodeURIComponent(arg.startsWith("claude:") && bootFor(arg) ? `${arg}:b:${bootFor(arg)}` : arg)}`;
 
 const isPhone = () => window.matchMedia("(max-width:900px)").matches;
 

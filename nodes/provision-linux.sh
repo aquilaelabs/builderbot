@@ -3093,7 +3093,7 @@ done
 ctl_url="$CONTROLLER"
 [ -n "$ctl_url" ] || ctl_url="$(python3 -c 'import json; print(json.load(open("/etc/builderbot/node.json")).get("controller", ""))' 2>/dev/null || true)"
 if [ -n "$SESSION_NAME" ] && [ -n "$ctl_url" ]; then
-    say "session ports: 7681, 7682 and 7683 (a container's shell) open to the controller only"
+    say "session ports: 7681, 7682, 7683 (a container's shell) and 7684 (a VM's screen) open to the controller only"
     ctl_host="${ctl_url#*://}"; ctl_host="${ctl_host%%/*}"; ctl_host="${ctl_host%%:*}"
     ctl_host="${ctl_host#\[}"; ctl_host="${ctl_host%\]}"
     ctl_ip="$(getent ahosts "$ctl_host" 2>/dev/null | awk 'NR==1{print $1}' || true)"
@@ -3109,7 +3109,7 @@ if [ -n "$SESSION_NAME" ] && [ -n "$ctl_url" ]; then
         for r in $(firewall-cmd --permanent --list-rich-rules 2>/dev/null | grep -F 'port="768' | sed 's/ /\x01/g'); do
             firewall-cmd --permanent --remove-rich-rule="$(printf '%s' "$r" | sed 's/\x01/ /g')" >/dev/null 2>&1 || true
         done
-        for port in 7681 7682 7683; do
+        for port in 7681 7682 7683 7684; do
             firewall-cmd --permanent --add-rich-rule="rule family=\"${fam}\" source address=\"${ctl_ip}\" port port=\"${port}\" protocol=\"tcp\" accept" >/dev/null
         done
         firewall-cmd --reload >/dev/null
@@ -3127,9 +3127,9 @@ delete table inet builderbot_session
 table inet builderbot_session {
     chain input {
         type filter hook input priority -10; policy accept;
-        tcp dport { 7681, 7682, 7683 } iifname "lo" accept
-        tcp dport { 7681, 7682, 7683 } ${fam} saddr ${ctl_ip} accept
-        tcp dport { 7681, 7682, 7683 } drop
+        tcp dport { 7681, 7682, 7683, 7684 } iifname "lo" accept
+        tcp dport { 7681, 7682, 7683, 7684 } ${fam} saddr ${ctl_ip} accept
+        tcp dport { 7681, 7682, 7683, 7684 } drop
     }
 }
 EOF

@@ -122,6 +122,38 @@ class Controller(unittest.TestCase):
         finally:
             vms.enroll_script = vms.node_discard = None
 
+    def test_from_an_installer(self):
+        # R99: a person's VM from an ISO on the node, with further disks, a
+        # MAC and a screen password; never a session's, never a node.
+        self.f.nodes["n1"]["reported"]["vm_isos"] = [{"name": "ubuntu-26.04-live-server-amd64.iso", "mb": 3100}]
+        r = self.new(os="", iso="ubuntu-26.04-live-server-amd64.iso", keys=[], disks=[20], mac="52:54:00:aa:bb:cc",
+                     console_password="pw", boot="uefi")
+        self.assertTrue(r.get("ok"), r)
+        spec = self.f.jobs[-1][2]
+        self.assertEqual((spec["installer"], spec["disks"], spec["mac"], spec["boot"]),
+                         ({"iso": "ubuntu-26.04-live-server-amd64.iso"}, [20], "52:54:00:aa:bb:cc", "uefi"))
+        self.assertNotIn("image", spec)
+        self.assertIn("not on box", self.new(name="b", os="", iso="other.iso", keys=[])["error"])
+        self.assertIn("a person's", vms.create("session:web", "web", {"name": "c", "iso": "ubuntu-26.04-live-server-amd64.iso"},
+                                                ["n1"], session=True)["error"])
+        self.assertIn("MAC", self.new(name="d", mac="01:00:5e:00:00:01")["error"])
+        self.assertIn("eight", self.new(name="e", console_password="far-too-long")["error"])
+
+    def test_an_iso_is_fetched_against_its_sha256(self):
+        r = vms.iso("user:test", "iso-add", {"node": "n1", "url": "https://releases.example/ubuntu.iso", "sha256": "a" * 64})
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual(self.f.jobs[-1][2]["iso"], {"name": "ubuntu.iso", "url": "https://releases.example/ubuntu.iso", "sha256": "a" * 64})
+        self.assertIn("SHA-256", vms.iso("user:test", "iso-add", {"node": "n1", "url": "https://x/y.iso"})["error"])
+        self.assertIn("https", vms.iso("user:test", "iso-add", {"node": "n1", "url": "http://x/y.iso", "sha256": "a" * 64})["error"])
+
+    def test_a_disk_grows_and_never_shrinks(self):
+        self.new()
+        vms.vm_done({"node": "n1", "spec": {"action": "create", "domain": "bbvm-web-db"}}, "succeeded")
+        self.assertIn("never shrinks", vms.act("user:test", "web", "db", "disk-grow", {"disk": "vda", "gb": 5})["error"])
+        r = vms.act("user:test", "web", "db", "disk-grow", {"disk": "vda", "gb": 40})
+        self.assertTrue(r.get("ok"), r)
+        self.assertEqual((self.f.jobs[-1][2]["disk"], self.f.jobs[-1][2]["gb"]), ("vda", 40))
+
     def test_no_key_no_node_no_vm(self):
         self.assertIn("ssh public key", vms.create("user:test", "web", {"name": "a", "os": "debian"}, ["n1"])["error"])
         self.assertIn("no node web works on", vms.create("user:test", "web", {"name": "a", "os": "debian",
@@ -175,7 +207,7 @@ class Census(unittest.TestCase):
                                      {"name": "someone-elses", "state": "running"}],
                              "vm_pool": {"free_mb": 39000, "total_mb": 60000, "path": "/x"}})
         self.assertEqual(got["vms"], [{"name": "bbvm-web-db", "state": "running", "ip": "10.232.0.12", "vcpus": 2,
-                                       "mem_mb": 2048, "snapshots": ["clean"]}])
+                                       "mem_mb": 2048, "snapshots": ["clean"], "screen": False, "iso": ""}])
         self.assertEqual(got["vm_pool"], {"free_mb": 39000, "total_mb": 60000})
 
 
@@ -246,7 +278,25 @@ class Agent(unittest.TestCase):
         t = sn.sessnet_table()
         self.assertLess(t.index("@vms goto pass"), t.index("@local reject"))
 
-    def test_the_domain_carries_its_marker_and_no_graphics(self):
+    def test_the_screen_relay_takes_the_controller_s_signature_alone(self):
+        sc = sys.modules[self.agent.Agent.__module__.rsplit(".", 1)[0] + ".screen"]
+        key = sc.screen_key("bbn_secret")
+        import hashlib
+        self.assertEqual(key, hashlib.sha256(b"secret").hexdigest(), "the controller's stored hash of the token")
+        t = 1_800_000_000
+        sig = sc.sign(key, "bbvm-web-db", t)
+        self.assertTrue(sc.signed(key, "bbvm-web-db", t, sig, now=t + 30))
+        self.assertFalse(sc.signed(key, "bbvm-web-db", t, sig, now=t + 600), "a minute's signature, not forever")
+        self.assertFalse(sc.signed(key, "bbvm-web-other", t, sig, now=t), "for one VM, not another")
+        self.assertFalse(sc.signed(sc.screen_key("bbn_other"), "bbvm-web-db", t, sig, now=t), "this node's key")
+        # A masked client frame read back whole, split across reads.
+        payload, mask = b"RFB 003.008\n", b"\x01\x02\x03\x04"
+        frame = bytes([0x82, 0x80 | len(payload)]) + mask + bytes(c ^ mask[i % 4] for i, c in enumerate(payload))
+        fr = sc._Frames()
+        self.assertEqual(fr.feed(frame[:5]), [])
+        self.assertEqual(fr.feed(frame[5:]), [(2, payload)])
+
+    def test_the_domain_carries_its_marker_and_a_screen_on_the_loopback(self):
         x = self.av.domain_xml("bbvm-web-db", "web", 2, 2048, "/v/d.qcow2", "/v/s.iso", "bbvm-n00")
         self.assertIn("<bb:vm xmlns:bb='https://builderbot.dev/vm/1' project='web'/>", x.replace('"', "'"))
         self.assertIn("host-passthrough", x)
@@ -256,7 +306,16 @@ class Agent(unittest.TestCase):
         self.assertIn("/v/d_VARS.fd</nvram>", u)
         self.assertIn("machine='q35'", u)
         self.assertNotIn("<loader", x)
-        self.assertNotIn("<graphics", x)
+        # A screen for the dock (R99), on the loopback alone: the agent's
+        # relay is the only way to it.
+        self.assertIn("<graphics type='vnc' listen='127.0.0.1' autoport='yes'/>", x)
+        self.assertIn("discard='unmap'", x)
+        i = self.av.domain_xml("bbvm-web-win", "web", 2, 4096, "/v/w.qcow2", "/v/iso/ubuntu.iso", "bbvm-n00",
+                               installer=True, extra=["/v/w-d1.qcow2"], mac="52:54:00:12:34:56", vnc_pw="s3cret")
+        self.assertIn("<boot dev='cdrom'/><boot dev='hd'/>", i)
+        self.assertIn("<target dev='vdb' bus='virtio'/>", i)
+        self.assertIn("<mac address='52:54:00:12:34:56'/>", i.replace('"', "'"))
+        self.assertIn("passwd='s3cret'", i.replace('"', "'"))
         # A VM made a node is on the LAN by the host's own interface, where
         # the controller reaches it (R97's walk: behind the NAT it was not).
         self.assertIn("<source network='bbvm-n00'/>", x.replace('"', "'"))

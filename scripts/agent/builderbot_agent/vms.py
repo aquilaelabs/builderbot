@@ -27,7 +27,15 @@ FILE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,120}")
 SNAP_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,40}")
 USER_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}")
 KEY_RE = re.compile(r"(ssh-(ed25519|rsa)|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0-9+/=]{20,800}( [^\n]{0,100})?")
-ACTIONS = ("create", "start", "stop", "restart", "remove", "snapshot", "revert", "snapshot-rm")
+ACTIONS = ("create", "start", "stop", "restart", "remove", "snapshot", "revert", "snapshot-rm",
+           "eject", "disk-grow", "iso-add", "iso-rm")
+# An installer ISO a person fetched onto this node (R99), by its own name.
+ISO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,100}\.iso")
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
+MAC_RE = re.compile(r"[0-9a-f]{2}(:[0-9a-f]{2}){5}")
+# VNC takes a password of eight characters at most.
+VNC_PW_RE = re.compile(r"[A-Za-z0-9._-]{1,8}")
+DISK_DEVS = ("vda", "vdb", "vdc", "vdd")
 # The marker every domain this agent makes carries, beside its name prefix:
 # libvirt's own <metadata>, so a domain somebody else made is never ours.
 META_NS = "https://builderbot.dev/vm/1"
@@ -66,7 +74,16 @@ def vms_now():
                     break
         snaps = [s for s in _run(VIRSH + ["snapshot-list", name, "--name"], timeout=10).split() if SNAP_RE.fullmatch(s)]
         mem = re.match(r"(\d+)", info.get("max memory", ""))
-        out.append({"name": name, "state": _state_word(info.get("state", "")), "ip": ip,
+        # Its screen while it runs (R99), and an installer's ISO still in
+        # its drive, which the row offers to eject.
+        screen = info.get("state") == "running" and _run(VIRSH + ["domdisplay", name], timeout=10).startswith("vnc://")
+        iso = ""
+        for line in _run(VIRSH + ["domblklist", name], timeout=10).splitlines():
+            p = line.split(None, 1)
+            if len(p) == 2 and p[0] == "sda" and p[1].strip().startswith(iso_dir() + "/"):
+                iso = os.path.basename(p[1].strip())
+        out.append({"screen": bool(screen), "iso": iso if ISO_RE.fullmatch(iso) else "",
+                    "name": name, "state": _state_word(info.get("state", "")), "ip": ip,
                     "vcpus": int(info["cpu(s)"]) if info.get("cpu(s)", "").isdigit() else 0,
                     "mem_mb": int(mem.group(1)) // 1024 if mem else 0, "snapshots": snaps[:32]})
     return out
@@ -210,7 +227,21 @@ def ovmf():
     return next((p for p in OVMF_PAIRS if os.path.isfile(p[0]) and os.path.isfile(p[1])), None)
 
 
-def domain_xml(name, project, vcpus, mem_mb, disk, seed, network, boot="bios", fw=None, nvram="", lan=""):
+def iso_dir():
+    return os.path.join(VM_DIR, "iso")
+
+
+def isos_now():
+    """The installer ISOs fetched onto this node, for the census."""
+    try:
+        names = sorted(n for n in os.listdir(iso_dir()) if ISO_RE.fullmatch(n))
+    except OSError:
+        return []
+    return [{"name": n, "mb": os.path.getsize(os.path.join(iso_dir(), n)) // 2**20} for n in names[:64]]
+
+
+def domain_xml(name, project, vcpus, mem_mb, disk, seed, network, boot="bios", fw=None, nvram="", lan="",
+               extra=(), installer=False, mac="", vnc_pw=""):
     """The domain, from a fixed shape: KVM, the host's CPU, virtio disk and
     network on the project's own network, the seed as a cdrom, a serial
     console and no graphics, and BuilderBot's marker in <metadata>. `boot`
@@ -218,15 +249,25 @@ def domain_xml(name, project, vcpus, mem_mb, disk, seed, network, boot="bios", f
     Secure Boot off, for an image whose kernel will not start under BIOS.
     `lan`, the host's interface, puts it on the LAN instead (macvtap), as a
     VM made a node is: the controller reaches a node at its own address,
-    which a project network behind the host's NAT does not have."""
-    nic = (f"<interface type='direct'><source dev={quoteattr(lan)} mode='bridge'/><model type='virtio'/></interface>"
-           if lan else f"<interface type='network'><source network={quoteattr(network)}/><model type='virtio'/></interface>")
+    which a project network behind the host's NAT does not have.
+    R99: `installer` boots `seed` (then an installer's ISO) before the disk;
+    `extra` are further disks (vdb on); every disk gives freed space back
+    (discard); a screen over VNC on the loopback, with `vnc_pw` when given,
+    for the dock's Screen; `mac` keeps the address a DHCP reservation knows."""
+    mac_el = f"<mac address={quoteattr(mac)}/>" if mac else ""
+    nic = (f"<interface type='direct'>{mac_el}<source dev={quoteattr(lan)} mode='bridge'/><model type='virtio'/></interface>"
+           if lan else f"<interface type='network'>{mac_el}<source network={quoteattr(network)}/><model type='virtio'/></interface>")
+    boots = "<boot dev='cdrom'/><boot dev='hd'/>" if installer else "<boot dev='hd'/>"
+    disks = "".join(f"\n    <disk type='file' device='disk'><driver name='qemu' type='qcow2' discard='unmap'/>"
+                    f"<source file={quoteattr(d)}/><target dev='{DISK_DEVS[i + 1]}' bus='virtio'/></disk>"
+                    for i, d in enumerate(list(extra)[:len(DISK_DEVS) - 1]))
+    pw = f" passwd={quoteattr(vnc_pw)}" if vnc_pw else ""
     arch = escape(os.uname().machine)
     os_el = (f"<os><type arch='{arch}' machine='q35'>hvm</type>"
              f"<loader readonly='yes' type='pflash'>{escape(fw[0])}</loader>"
              f"<nvram template={quoteattr(fw[1])}>{escape(nvram)}</nvram>"
-             "<boot dev='hd'/></os>" if boot == "uefi" and fw else
-             f"<os><type arch='{arch}'>hvm</type><boot dev='hd'/></os>")
+             f"{boots}</os>" if boot == "uefi" and fw else
+             f"<os><type arch='{arch}'>hvm</type>{boots}</os>")
     return f"""<domain type='kvm'>
   <name>{escape(name)}</name>
   <metadata><bb:vm xmlns:bb={quoteattr(META_NS)} project={quoteattr(project)}/></metadata>
@@ -236,9 +277,12 @@ def domain_xml(name, project, vcpus, mem_mb, disk, seed, network, boot="bios", f
   <features><acpi/><apic/></features>
   <cpu mode='host-passthrough'/>
   <devices>
-    <disk type='file' device='disk'><driver name='qemu' type='qcow2'/><source file={quoteattr(disk)}/><target dev='vda' bus='virtio'/></disk>
+    <disk type='file' device='disk'><driver name='qemu' type='qcow2' discard='unmap'/><source file={quoteattr(disk)}/><target dev='vda' bus='virtio'/></disk>{disks}
     <disk type='file' device='cdrom'><driver name='qemu' type='raw'/><source file={quoteattr(seed)}/><target dev='sda' bus='sata'/><readonly/></disk>
     {nic}
+    <graphics type='vnc' listen='127.0.0.1' autoport='yes'{pw}/>
+    <video><model type='virtio'/></video>
+    <input type='tablet' bus='usb'/>
     <serial type='pty'><target port='0'/></serial>
     <console type='pty'><target type='serial' port='0'/></console>
     <channel type='unix'><target type='virtio' name='org.qemu.guest_agent.0'/></channel>
@@ -291,7 +335,7 @@ class VmsMixin:
         if action not in ACTIONS:
             job.say(f"refused: {action or 'no action'} is not a VM action (one of {', '.join(ACTIONS)})\n")
             return "failed", 64
-        if not DOMAIN_RE.fullmatch(name):
+        if not DOMAIN_RE.fullmatch(name) and not action.startswith("iso-"):
             job.say(f"refused: {name or 'no name'} is not a BuilderBot VM's name\n")
             return "failed", 64
         if not shutil.which("virsh") or not os.path.isdir(VM_DIR):
@@ -412,22 +456,38 @@ class VmsMixin:
         project = str(spec.get("project") or "")
         user = str(spec.get("user") or "builder")
         keys = [str(k).strip() for k in (spec.get("keys") or [])][:8]
+        # From an installer (R99): its ISO on this node, a blank disk, no seed.
+        iso = str((spec.get("installer") or {}).get("iso") or "") if isinstance(spec.get("installer"), dict) else ""
         try:
             vcpus, mem, disk_gb = int(spec.get("vcpus") or 0), int(spec.get("mem_mb") or 0), int(spec.get("disk_gb") or 0)
+            extra_gb = [int(g) for g in (spec.get("disks") or [])][:len(DISK_DEVS) - 1]
         except (TypeError, ValueError):
             vcpus = mem = disk_gb = 0
+            extra_gb = []
+        mac = str(spec.get("mac") or "").lower()
+        vnc_pw = str(spec.get("console_password") or "")
         if not (re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,60}", project) and USER_RE.fullmatch(user)
                 and all(KEY_RE.fullmatch(k) for k in keys)
-                and 1 <= vcpus <= MAX_VCPUS and 256 <= mem <= MAX_MEM_MB and 2 <= disk_gb <= MAX_DISK_GB):
-            job.say("refused: the VM's project, account, keys or size are not what a VM takes\n")
+                and 1 <= vcpus <= MAX_VCPUS and 256 <= mem <= MAX_MEM_MB and 2 <= disk_gb <= MAX_DISK_GB
+                and all(1 <= g <= MAX_DISK_GB for g in extra_gb)
+                and (not iso or ISO_RE.fullmatch(iso)) and (not mac or MAC_RE.fullmatch(mac))
+                and (not vnc_pw or VNC_PW_RE.fullmatch(vnc_pw))):
+            job.say("refused: the VM's project, account, keys, size, disks, ISO, address or console password are not what a VM takes\n")
             return "failed", 64
         if self._vm_exists(name, who):
             job.say(f"refused: {name} is there already\n")
             return "failed", 73
-        base = self._vm_image(job, spec, who)
-        if not base:
-            return "failed", 69
-        enroll = str(spec.get("enroll") or "")
+        base = ""
+        if iso:
+            seed = os.path.join(iso_dir(), iso)
+            if not os.path.isfile(seed):
+                job.say(f"refused: {iso} is not on this node; Add ISO on the VMs page fetches it\n")
+                return "failed", 66
+        else:
+            base = self._vm_image(job, spec, who)
+            if not base:
+                return "failed", 69
+        enroll = "" if iso else str(spec.get("enroll") or "")
         # Made a node: on the LAN as its own machine, where the controller
         # reaches it; every other VM on its project's network.
         lan = lan_iface() if enroll else ""
@@ -438,19 +498,32 @@ class VmsMixin:
             return "failed", 69
         ddir = os.path.join(VM_DIR, "disks")
         self.own_dir(ddir, who)
-        disk, seed = os.path.join(ddir, name + ".qcow2"), os.path.join(ddir, name + "-seed.iso")
+        disk = os.path.join(ddir, name + ".qcow2")
         job.step("making its disk")
-        if self._vm_run(job, ["qemu-img", "create", "-f", "qcow2", "-F", "qcow2", "-b", base, disk, f"{disk_gb}G"],
-                        who, say=False) != 0:
+        made = ["qemu-img", "create", "-f", "qcow2", disk, f"{disk_gb}G"] if iso else \
+            ["qemu-img", "create", "-f", "qcow2", "-F", "qcow2", "-b", base, disk, f"{disk_gb}G"]
+        if self._vm_run(job, made, who, say=False) != 0:
             return "failed", 70
-        hostname = name.removeprefix("bbvm-")[:63]
-        if enroll and (not enroll.startswith(ENROLL_HEAD) or len(enroll) > 4_000_000):
-            job.say("refused: what came to enroll the VM as a node is not the controller's enroll script\n")
-            return "failed", 64
-        if enroll:
-            job.say(f"it joins the LAN on {lan} as its own machine and enrolls as a node at its first boot\n")
-        if not self._vm_seed(job, seed, hostname, user, keys, who, enroll):
-            return "failed", 70
+        extra = []
+        for i, g in enumerate(extra_gb):
+            d = os.path.join(ddir, f"{name}-d{i + 1}.qcow2")
+            if self._vm_run(job, ["qemu-img", "create", "-f", "qcow2", d, f"{g}G"], who, say=False) != 0:
+                return "failed", 70
+            extra.append(d)
+        if extra:
+            job.say(f"and {len(extra)} more disk{'s' if len(extra) > 1 else ''}: {', '.join(f'{g} GB' for g in extra_gb)}\n")
+        if not iso:
+            seed = os.path.join(ddir, name + "-seed.iso")
+            hostname = name.removeprefix("bbvm-")[:63]
+            if enroll and (not enroll.startswith(ENROLL_HEAD) or len(enroll) > 4_000_000):
+                job.say("refused: what came to enroll the VM as a node is not the controller's enroll script\n")
+                return "failed", 64
+            if enroll:
+                job.say(f"it joins the LAN on {lan} as its own machine and enrolls as a node at its first boot\n")
+            if not self._vm_seed(job, seed, hostname, user, keys, who, enroll):
+                return "failed", 70
+        else:
+            job.say(f"it boots {iso}: its installer is on its Screen, in the dock\n")
         xml = os.path.join(ddir, name + ".xml")
         boot = "uefi" if spec.get("boot") == "uefi" else "bios"
         fw = ovmf() if boot == "uefi" else None
@@ -458,8 +531,9 @@ class VmsMixin:
             job.say("refused: this image boots by UEFI and the firmware is not here: run VM host's install again on the node's Features section\n")
             return "failed", 69
         with open(xml, "w") as f:
-            f.write(domain_xml(name, project, vcpus, mem, disk, seed, str(spec["network"]), boot, fw,
-                               os.path.join(ddir, name + "_VARS.fd"), lan))
+            f.write(domain_xml(name, project, vcpus, mem, disk, seed, str(spec.get("network") or ""), boot, fw,
+                               os.path.join(ddir, name + "_VARS.fd"), lan, extra=extra, installer=bool(iso),
+                               mac=mac, vnc_pw=vnc_pw))
         job.step("starting it")
         if self._vm_run(job, VIRSH + ["define", xml], who) != 0:
             return "failed", 70
@@ -467,6 +541,101 @@ class VmsMixin:
         if self._vm_run(job, VIRSH + ["start", name], who) != 0:
             return "failed", 70
         job.say(f"{name} is running: {vcpus} vCPU, {mem} MB, {disk_gb} GB; it takes its address once it has booted\n")
+        return "succeeded", 0
+
+    def _vm_eject(self, job, spec, name, who):
+        """The installer's ISO out of its drive, once the system is on disk,
+        so the next boot is the disk's."""
+        if not self._vm_exists(name, who):
+            job.say(f"{name} is not on this machine\n")
+            return "failed", 66
+        live = "running" in subprocess.run(VIRSH + ["domstate", name], capture_output=True, text=True,
+                                           check=False, **who).stdout
+        argv = VIRSH + ["change-media", name, "sda", "--eject", "--config"] + (["--live"] if live else [])
+        if self._vm_run(job, argv, who) != 0:
+            return "failed", 70
+        job.say("ejected: the next boot is from its disk\n")
+        return "succeeded", 0
+
+    def _vm_disk_grow(self, job, spec, name, who):
+        """One of a stopped VM's disks made larger; the partition inside is
+        the system's own to grow."""
+        dev = str(spec.get("disk") or "vda")
+        try:
+            gb = int(spec.get("gb") or 0)
+        except (TypeError, ValueError):
+            gb = 0
+        if dev not in DISK_DEVS or not 2 <= gb <= MAX_DISK_GB:
+            job.say("refused: a disk is vda to vdd and a size in GB\n")
+            return "failed", 64
+        if "shut off" not in subprocess.run(VIRSH + ["domstate", name], capture_output=True, text=True,
+                                            check=False, **who).stdout:
+            job.say("refused: stop the VM first; a disk grows while it is off\n")
+            return "failed", 75
+        i = DISK_DEVS.index(dev)
+        path = os.path.join(VM_DIR, "disks", name + (".qcow2" if i == 0 else f"-d{i}.qcow2"))
+        if not os.path.isfile(path):
+            job.say(f"{name} has no disk {dev}\n")
+            return "failed", 66
+        if self._vm_run(job, ["qemu-img", "resize", path, f"{gb}G"], who) != 0:
+            job.say("qemu-img refused it: a disk grows and never shrinks\n")
+            return "failed", 70
+        job.say(f"{dev} is {gb} GB now; grow its partition inside the system to use it\n")
+        return "succeeded", 0
+
+    def _vm_iso_add(self, job, spec, name, who):
+        """An installer's ISO onto this node, from an https address, kept
+        only when it matches the SHA-256 the person gave."""
+        iso = spec.get("iso") if isinstance(spec.get("iso"), dict) else {}
+        fname, url, want = str(iso.get("name") or ""), str(iso.get("url") or ""), str(iso.get("sha256") or "").lower()
+        if not (ISO_RE.fullmatch(fname) and url.startswith("https://") and SHA256_RE.fullmatch(want)):
+            job.say("refused: an ISO is a name ending .iso, an https address and its SHA-256\n")
+            return "failed", 64
+        self.own_dir(iso_dir(), who)
+        path = os.path.join(iso_dir(), fname)
+        if os.path.isfile(path):
+            job.say(f"{fname} is here already\n")
+            return "succeeded", 0
+        part, h = path + ".part", hashlib.sha256()
+        job.step(f"downloading {fname}")
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r, open(part, "wb") as f:  # noqa: S310 (https, checked above)
+                total = int(r.headers.get("Content-Length") or 0)
+                got, said = 0, 0
+                while True:
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    h.update(chunk)
+                    got += len(chunk)
+                    if total and got * 10 // total > said:
+                        said = got * 10 // total
+                        job.say(f"{fname}: {said * 10}% of {total // 2**20} MB\n")
+        except OSError as e:
+            job.say(f"could not download {fname} from {url}: {e}\n")
+            with contextlib.suppress(OSError):
+                os.unlink(part)
+            return "failed", 69
+        if h.hexdigest() != want:
+            job.say(f"{fname} does not match the SHA-256 given ({h.hexdigest()}); not kept\n")
+            os.unlink(part)
+            return "failed", 65
+        os.replace(part, path)
+        if who:
+            with contextlib.suppress(OSError):
+                os.chown(path, who["user"], who["group"])
+        job.say(f"{fname}: downloaded and checked, {os.path.getsize(path) // 2**20} MB\n")
+        return "succeeded", 0
+
+    def _vm_iso_rm(self, job, spec, name, who):
+        fname = str((spec.get("iso") or {}).get("name") or "") if isinstance(spec.get("iso"), dict) else ""
+        if not ISO_RE.fullmatch(fname):
+            job.say("refused: not an ISO's name\n")
+            return "failed", 64
+        with contextlib.suppress(OSError):
+            os.unlink(os.path.join(iso_dir(), fname))
+        job.say(f"{fname} removed from this node\n")
         return "succeeded", 0
 
     def _vm_simple(self, job, name, who, argv, timeout=120):
@@ -495,7 +664,7 @@ class VmsMixin:
             if self._vm_run(job, VIRSH + ["undefine", name, "--nvram"], who) != 0 \
                     and self._vm_run(job, VIRSH + ["undefine", name], who) != 0:
                 return "failed", 70
-        for suffix in (".qcow2", "-seed.iso", ".xml", "_VARS.fd"):
+        for suffix in (".qcow2", "-seed.iso", ".xml", "_VARS.fd", *(f"-d{i}.qcow2" for i in range(1, len(DISK_DEVS)))):
             with contextlib.suppress(OSError):
                 os.unlink(os.path.join(VM_DIR, "disks", name + suffix))
         job.say(f"{name} removed, with its disk and its snapshots\n")

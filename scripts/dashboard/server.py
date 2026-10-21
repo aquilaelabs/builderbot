@@ -54,6 +54,8 @@ TTYD_PORT = int(os.environ.get("DASHBOARD_TTYD_PORT", "7681"))
 # path, which is a table lookup and literal text like every other thing this
 # page can make happen.
 TTYD_RO_PORT = int(os.environ.get("DASHBOARD_TTYD_RO_PORT", str(TTYD_PORT + 1)))
+# A VM host's screen relay (R99), beside its terminals on the node.
+SCREEN_PORT = 7684
 
 # ---- one login for everything ---------------------------------------------
 # The browser used to be asked twice: once by this server, once by ttyd on
@@ -3522,7 +3524,10 @@ def _with_vmnets(nid, own):
 
 def _vm_do(principal, project, req, session):
     """One VM verb for `project`: new is vms.create, onto the project's own
-    nodes for a session and any VM host for a person; the rest vms.act."""
+    nodes for a session and any VM host for a person; an ISO's fetch or
+    removal is vms.iso; the rest vms.act."""
+    if field(req, "action") in ("iso-add", "iso-rm"):
+        return vms.iso(principal, field(req, "action"), req)
     if field(req, "action") == "new":
         allowed = devapp.nodes_of(project) or [] if session else [n["id"] for n in vms.hosts()]
         return vms.create(principal, project, req, allowed, session=session)
@@ -5183,6 +5188,75 @@ class Handler(BaseHTTPRequestHandler):
             out.append(f"{k}{eq}{v}")
         return head + "?" + "&".join(out)
 
+    def _novnc(self, rest):
+        """noVNC's files (the page and the RFB client it imports), as the
+        image fetched them; nothing outside its directory."""
+        root = Path(os.environ.get("BB_NOVNC_DIR", "/opt/builderbot/novnc")).resolve()
+        target = (root / urllib.parse.unquote(rest)).resolve()
+        if root not in target.parents or not target.is_file():
+            return self._json({"error": "not part of noVNC" if root.is_dir() else
+                               "noVNC is not in this image, so a VM's screen cannot open here"}, 404)
+        ctype = {".js": "text/javascript", ".html": "text/html", ".css": "text/css", ".svg": "image/svg+xml",
+                 ".png": "image/png", ".ico": "image/x-icon"}.get(target.suffix, "application/octet-stream")
+        body = target.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", ctype + ("; charset=utf-8" if ctype.startswith("text/") else ""))
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "max-age=3600")
+        self.end_headers()
+        self.wfile.write(body)
+        return None
+
+    def _screen_proxy(self):
+        """/screen/ws?vm=PROJECT/NAME (R99): the browser's noVNC relayed to
+        the VM's node, whose agent opens the VM's VNC on its loopback. Seeing
+        a screen is driving the machine, so it takes VMs Write on the VM's
+        project; the request upstream carries this controller's signature for
+        that VM and this minute, keyed with the node's token hash."""
+        q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        project, _, name = str((q.get("vm") or [""])[0]).partition("/")
+        if not registry.is_project(project):
+            return self._json({"error": f"no project called {project}"}, 404)
+        if self._refused("vms-write", project):
+            return None
+        rec = next((v for v in vms.view([project]) if v.get("name") == name), None)
+        if not rec:
+            return self._json({"error": f"{project} has no VM called {name}"}, 404)
+        host, key = nodes.route_host(rec["node"]), nodes.screen_key(rec["node"])
+        if not host or not key:
+            return self._json({"error": f"{rec.get('node_name')} cannot be reached for a screen"}, 503)
+        t = int(time.time())
+        sig = hmac.new(key.encode(), f"{rec['domain']}.{t}".encode(), hashlib.sha256).hexdigest()
+        try:
+            up = socket.create_connection((host, SCREEN_PORT), timeout=5)
+        except OSError:
+            return self._json({"error": f"{rec.get('node_name')} did not answer on {host}:{SCREEN_PORT}: "
+                                        "its agent opens that port to this controller once it is updated"}, 502)
+        up.settimeout(None)
+        lines = [f"GET /ws?vm={rec['domain']}&t={t}&s={sig} HTTP/1.1", f"Host: {host}:{SCREEN_PORT}"]
+        for k, v in self.headers.items():
+            if k.lower() in ("upgrade", "connection", "sec-websocket-key", "sec-websocket-version",
+                             "sec-websocket-protocol"):
+                lines.append(f"{k}: {v}")
+        self.close_connection = True
+        down = self.connection
+        try:
+            up.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
+            self.wfile.flush()
+            sel = selectors.DefaultSelector()
+            sel.register(up, selectors.EVENT_READ, down)
+            sel.register(down, selectors.EVENT_READ, up)
+            while True:
+                for k, _ in sel.select():
+                    data = k.fileobj.recv(65536)
+                    if not data:
+                        return None
+                    k.data.sendall(data)
+        except OSError:
+            return None
+        finally:
+            up.close()
+
     def _term_proxy(self):
         """Everything under /term, relayed byte-for-byte to ttyd on the
         loopback, websockets included.
@@ -5544,6 +5618,12 @@ class Handler(BaseHTTPRequestHandler):
             return None
         if path == "/term" or path.startswith("/term/"):
             return self._term_proxy()
+        # A VM's screen (R99): noVNC's page and client, and the relay to the
+        # VM's node.
+        if path.startswith("/novnc/"):
+            return self._novnc(path[len("/novnc/"):])
+        if path == "/screen/ws":
+            return self._screen_proxy()
         if path.startswith("/apps/"):
             return self._app_file(path)
         # The page's companion scripts: a new surface is a new classic-script
@@ -6097,8 +6177,12 @@ class Handler(BaseHTTPRequestHandler):
         sess = me.get("session") or ""
         project = field(req, "project") or sess
         action = field(req, "action")
-        if action not in ("new",) + vms.ACTIONS:
+        if action not in ("new", "iso-add", "iso-rm") + vms.ACTIONS:
             return self._json({"error": f"no such VM action: {action}"}, 400)
+        # An installer's ISO onto a node, or off it (R99): a person's, since
+        # what it fetches is a whole system to install by hand.
+        if action in ("iso-add", "iso-rm") and sess:
+            return self._json({"error": "fetching an installer ISO onto a node is a person's, on the VMs page"}, 403)
         if not project or not registry.is_project(project):
             return self._json({"error": "which project's VM? name one"}, 400)
         # The address this controller was reached at, which a VM made a node

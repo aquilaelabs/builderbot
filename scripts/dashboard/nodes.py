@@ -804,6 +804,15 @@ def _addr(n):
     return ""
 
 
+def screen_key(node_id):
+    """The key a VM's screen request to this node is signed with (R99): its
+    live node token's stored hash, which the agent computes from the token it
+    holds; "" for a node with none."""
+    rows = _rows("SELECT secret_hash FROM tokens WHERE node_id = ? AND kind = 'node' AND revoked = 0 "
+                 "ORDER BY created DESC LIMIT 1", (node_id,))
+    return str(rows[0]["secret_hash"]) if rows else ""
+
+
 def ssh_addr_of(node_id):
     """The address a node's daemon answers on; '' for local/unknown."""
     n = node(node_id)
@@ -1131,6 +1140,10 @@ def _mb(v):
         return 0
 
 
+# An installer ISO's name on a node (R99), as the agent's ISO_RE.
+VM_ISO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,100}\.iso")
+
+
 def _census(c):
     """What a node says about itself, kept to the fields the row shows.
     Whitelisted rather than stored whole: a census is a JSON blob from a
@@ -1250,10 +1263,18 @@ def _census(c):
                                "vcpus": int(v["vcpus"]) if isinstance(v.get("vcpus"), int) else 0,
                                "mem_mb": int(v["mem_mb"]) if isinstance(v.get("mem_mb"), int) else 0,
                                "snapshots": [str(x)[:41] for x in (v.get("snapshots") or [])[:32]
-                                             if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,40}", str(x))]})
+                                             if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,40}", str(x))],
+                               # Its screen, and an installer's ISO in its drive (R99).
+                               "screen": v.get("screen") is True,
+                               "iso": str(v.get("iso") or "") if VM_ISO_RE.fullmatch(str(v.get("iso") or "")) else ""})
     vp = c.get("vm_pool") if isinstance(c.get("vm_pool"), dict) else None
     if vp:
         out["vm_pool"] = {k: int(vp[k]) for k in ("free_mb", "total_mb") if isinstance(vp.get(k), int)}
+    # ...and the installer ISOs fetched onto it (R99).
+    if isinstance(c.get("vm_isos"), list):
+        out["vm_isos"] = [{"name": str(i["name"]), "mb": int(i.get("mb") or 0) if isinstance(i.get("mb"), int) else 0}
+                          for i in c["vm_isos"][:64]
+                          if isinstance(i, dict) and VM_ISO_RE.fullmatch(str(i.get("name") or ""))]
     # The configuration plane's reported half (docs/nodes.md §12): whether
     # the node was provisioned as a sandbox (bb-sandbox is there: the stamp
     # system jobs are gated on), what it mounts as bb-sandbox reads it, and

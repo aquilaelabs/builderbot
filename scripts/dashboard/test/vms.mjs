@@ -169,5 +169,31 @@ const reaped = await page.evaluate(async () => {
   return !tabs.some(t => t.id === 'vmc-gone');
 });
 ok(reaped, 'a console tab whose VM is gone leaves the dock once the records are read');
+// From an installer (R99): an ISO on the node is offered under From, and
+// picking it trades the key and the node box for the firmware.
+await agent('hello', { census: { ...CENSUS, vms: [], vm_isos: [{ name: 'ubuntu-26.04-live-server-amd64.iso', mb: 3100 }] },
+                       version: shipped.version, digest: shipped.digest });
+await page.evaluate(async () => { await loadVms(); });
+await page.click('#bVmNew');
+await page.waitForSelector('#vmnewmodal:not([hidden]) #vmName', { timeout: 10000 });
+const froms = await page.$$eval('#vmOs option', os => os.map(o => o.value));
+ok(froms.includes('iso:ubuntu-26.04-live-server-amd64.iso') && froms.includes('iso-add'),
+   `New VM's From offers the node's ISO and Add an ISO (${froms.filter(f => f.startsWith('iso')).join(', ')})`);
+await page.selectOption('#vmOs', 'iso-add');
+ok(await page.$eval('#vmIsoAdd', e => !e.hidden) && await page.$eval('#vmGo', b => b.disabled),
+   '...Add an ISO unrolls its address and SHA-256, and Make it waits');
+await page.selectOption('#vmOs', 'iso:ubuntu-26.04-live-server-amd64.iso');
+ok(await page.$eval('#vmCloud', e => e.hidden) && await page.$eval('#vmFwRow', e => !e.hidden),
+   '...an ISO picked hides the key and Make it a node, and asks for the firmware');
+await page.fill('#vmName', 'inst');
+await page.selectOption('#vmProject', 'alpha');
+await page.click('#vmGo');
+const inst = await (async () => { for (let i = 0; i < 40; i++){
+  const j = ((await call('/api/v1/jobs?active=1')).jobs || []).find(x => x.type === 'vm' && x.spec?.domain === 'bbvm-alpha-inst');
+  if (j) return j;
+  await sleep(250);
+} return null; })();
+ok(inst?.spec?.installer?.iso === 'ubuntu-26.04-live-server-amd64.iso' && inst.spec.boot === 'uefi' && !inst.spec.image,
+   `...and Make it queues a create from the ISO, UEFI, with no image (${JSON.stringify(inst?.spec?.installer)})`);
 await call('/api/v1/nodes', { action: 'retire', id: minted.id });
 await done(browser);

@@ -20,6 +20,7 @@ from .jobs import Job
 from .ftp import FtpServers
 from .wssync import WorkspaceSync
 from .claudesync import ClaudeMirror
+from .screen import ScreenRelay
 from .sessions import SessionWatch, SessionsMixin
 from .workspace import WorkspaceMixin
 from .work import WorkMixin
@@ -62,6 +63,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         self.sessnet = SessionNet(self)    # each session kept to its own project's network (R79)
         self.sesswatch = SessionWatch(self)  # its sessions reported as they change
         self.ftp = FtpServers(self)        # a project's file access over FTP (R151)
+        self.screen = ScreenRelay(self)    # its VMs' screens, for the dock (R99)
         self.wssync = WorkspaceSync(self)  # its projects as a synced copy, where it holds them so (R162)
         self.claudesync = ClaudeMirror(self, self.wssync)  # ...and its sessions' conversations with them (B613)
         # The runner as a child of this process where there is no systemd:
@@ -465,6 +467,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         self.sesswatch.start()
         self.wssync.start()
         self.claudesync.start()
+        self.screen.start()
         while True:
             # How long each part of a turn took before its poll (B841): a job
             # queued while the agent is between polls waits for all of it,

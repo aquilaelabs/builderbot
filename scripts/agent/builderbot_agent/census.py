@@ -39,7 +39,7 @@ from .gpu import (
 from .sessnet import SESSNET_STATUS, isolation_now
 from .runners import _runner_state, runner_dirs
 from . import storage
-from .vms import vm_pool, vms_now
+from .vms import isos_now, vm_pool, vms_now
 
 
 def _sshd_listening():
@@ -279,6 +279,8 @@ def census(state):
         # ...and the VMs it runs, with the room their disks have (R91).
         "vms": vms_now(),
         "vm_pool": vm_pool(),
+        # The installer ISOs fetched onto this node (R99).
+        "vm_isos": isos_now(),
         "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,
         "store_dirs": store_dirs(state),

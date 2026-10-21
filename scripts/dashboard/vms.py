@@ -18,6 +18,7 @@ import json
 import re
 import threading
 import time
+import urllib.parse
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -30,7 +31,14 @@ KEY_RE = re.compile(r"(ssh-(ed25519|rsa)|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0
 # 192.168.122.0/24.
 VM_NET = ipaddress.ip_network("10.232.0.0/16")
 DEFAULTS = {"vcpus": 2, "mem_mb": 2048, "disk_gb": 20}
-ACTIONS = ("start", "stop", "restart", "remove", "snapshot", "revert", "snapshot-rm")
+ACTIONS = ("start", "stop", "restart", "remove", "snapshot", "revert", "snapshot-rm", "eject", "disk-grow")
+# R99: an installer's ISO on a node, a VM's further disks, its MAC and the
+# password its screen asks for (VNC takes eight characters at most).
+ISO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,100}\.iso")
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
+MAC_RE = re.compile(r"[0-9a-f][02468ace](:[0-9a-f]{2}){5}")
+VNC_PW_RE = re.compile(r"[A-Za-z0-9._-]{1,8}")
+DISK_DEVS = ("vda", "vdb", "vdc", "vdd")
 # Room a node keeps for itself: memory beyond what its VMs are given, and
 # disk in the VM pool beyond theirs.
 NODE_KEEP_MB = 2048
@@ -47,6 +55,7 @@ nodes_rev = None
 enroll_script = None       # nodes.enroll_script, for a VM made a node (step 14)
 node_retire = None         # (principal, node id): its node retired with it
 node_mark = None           # (node id, host node id): the row says it is a VM there
+node_discard = None        # (principal, node id): a waiting row taken off when its VM is refused
 _lock = threading.Lock()
 _rev = [0]
 _seen = {"nodes": None, "sig": 0}
@@ -203,6 +212,7 @@ def payload(projects=None):
             "hosts": [{"id": n["id"], "name": n["name"], "live": bool(n.get("live")),
                        "arch": (n.get("reported") or {}).get("arch") or "",
                        "pool": (n.get("reported") or {}).get("vm_pool") or {},
+                       "isos": (n.get("reported") or {}).get("vm_isos") or [],
                        "mem_mb": (n.get("reported") or {}).get("mem_mb") or 0} for n in hosts()]}
 
 
@@ -215,6 +225,7 @@ def _used(d, project=None, nid=None):
         tot["count"] += 1
         for k in ("vcpus", "mem_mb", "disk_gb"):
             tot[k] += int(rec.get(k) or 0)
+        tot["disk_gb"] += sum(int(g or 0) for g in rec.get("disks") or [])
     return tot
 
 
@@ -265,21 +276,47 @@ def create(principal, project, req, nodes_allowed, session=False):
     name = str(req.get("name") or "").strip().lower()
     if not NAME_RE.fullmatch(name):
         return {"error": f"a VM's name is letters, digits and dashes, up to 31, starting with a letter or digit: not {name or 'nothing'}"}
-    img, why = find_os(req.get("os"))
-    if not img:
-        return {"error": why}
-    if img.get("person"):
-        return {"error": (f"{img['name']}: {img.get('why') or 'a person makes this one'}. "
-                          + ("Ask a person to make it on the VMs page." if session else
-                             "BuilderBot does not make it; a VM of your own with its installer is the way."))}
+    # From an installer (R99): a person's ISO on the node, which a person
+    # then installs on the VM's Screen; never a session's, which has no
+    # screen to install from.
+    iso = str(req.get("iso") or "").strip()
+    if iso:
+        if session:
+            return {"error": "a VM from an installer is a person's to make and install, on the VMs page"}
+        if not ISO_RE.fullmatch(iso):
+            return {"error": f"not an ISO's name: {iso}"}
+        if req.get("node_agent") is True:
+            return {"error": "a VM from an installer cannot be made a node: its system is the installer's, not one BuilderBot enrolls"}
+        img = {"id": "installer", "name": f"From {iso}", "family": "installer",
+               "boot": "uefi" if req.get("boot") == "uefi" else "bios"}
+    else:
+        img, why = find_os(req.get("os"))
+        if not img:
+            return {"error": why}
+        if img.get("person"):
+            return {"error": (f"{img['name']}: {img.get('why') or 'a person makes this one'}. "
+                              + ("Ask a person to make it on the VMs page." if session else
+                                 "Make it from its installer instead: Add ISO, then New VM from that ISO."))}
     size, why = _size(req)
     if not size:
         return {"error": why}
+    try:
+        disks = [int(g) for g in (req.get("disks") or []) if str(g).strip() not in ("", "0")]
+    except (TypeError, ValueError):
+        return {"error": "a further disk's size is a whole number of GB"}
+    if len(disks) > len(DISK_DEVS) - 1 or not all(1 <= g <= 4096 for g in disks):
+        return {"error": f"a VM takes up to {len(DISK_DEVS) - 1} further disks, each 1 GB to 4 TB"}
+    mac = str(req.get("mac") or "").strip().lower()
+    if mac and not MAC_RE.fullmatch(mac):
+        return {"error": f"a MAC address is six pairs of hex digits, one machine's (unicast): not {mac}"}
+    vnc_pw = str(req.get("console_password") or "")
+    if vnc_pw and not VNC_PW_RE.fullmatch(vnc_pw):
+        return {"error": "the screen's password is one to eight letters, digits, dots, dashes or underscores (VNC's limit)"}
     keys = [str(k).strip() for k in (req.get("keys") or []) if str(k).strip()][:8]
     bad = [k[:30] for k in keys if not KEY_RE.fullmatch(k)]
     if bad:
         return {"error": f"not an ssh public key: {bad[0]}…"}
-    if not keys:
+    if not keys and not iso:
         return {"error": "a VM needs an ssh public key to let anyone in: give one (bb vm new reads ~/.ssh/id_ed25519.pub)"}
     user = str(req.get("user") or "builder").strip().lower()
     if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", user) or user == "root":
@@ -299,13 +336,19 @@ def create(principal, project, req, nodes_allowed, session=False):
         return {"error": f"{pick['name']}'s agent is not dialing in, so nothing from here reaches it"}
     arch = (pick.get("reported") or {}).get("arch") or "x86_64"
     src = (img.get("arch") or {}).get(arch)
-    if not src:
+    if iso:
+        if iso not in {i.get("name") for i in (pick.get("reported") or {}).get("vm_isos") or []}:
+            return {"error": f"{iso} is not on {pick['name']}: Add ISO on the VMs page fetches it there"}
+    elif not src:
         return {"error": f"{img['name']} has no image for {arch}, which {pick['name']} is"}
     key = f"{project}/{name}"
+    # Every disk counts against the caps and the pool, not the first alone.
+    size = dict(size, disk_gb=size["disk_gb"] + sum(disks))
     # What refuses it, asked before a node row is made for it below: a
     # refusal after that left a waiting row behind, which then refused the
     # next try by its name.
     why = _refused(project, key, name, pick["id"], size)
+    size = dict(size, disk_gb=size["disk_gb"] - sum(disks))
     if why:
         return {"error": why}
     # Made a node as well (step 14): Enroll node's own script, for the
@@ -326,7 +369,7 @@ def create(principal, project, req, nodes_allowed, session=False):
             return {"error": f"it cannot be made a node: {enroll['error']}"}
     with _lock:
         d = _load()
-        why = _refused(project, key, name, pick["id"], size, d)
+        why = _refused(project, key, name, pick["id"], dict(size, disk_gb=size["disk_gb"] + sum(disks)), d)
         if why:
             # ...and its row taken off again when something got in between.
             if enroll and node_discard:
@@ -339,8 +382,11 @@ def create(principal, project, req, nodes_allowed, session=False):
                 # project's alone on this node; short enough for a bridge.
                 "network": f"bbvm-n{list(VM_NET.subnets(new_prefix=24)).index(ipaddress.ip_network(subnet)):02x}",
                 "subnet": subnet,
-                "image": {"id": img["id"] + "-" + arch, "url": src["url"], "sums": src["sums"],
-                          "file": src["url"].rsplit("/", 1)[-1]},
+                **({"installer": {"iso": iso}} if iso else
+                   {"image": {"id": img["id"] + "-" + arch, "url": src["url"], "sums": src["sums"],
+                              "file": src["url"].rsplit("/", 1)[-1]}}),
+                **({"disks": disks} if disks else {}), **({"mac": mac} if mac else {}),
+                **({"console_password": vnc_pw} if vnc_pw else {}),
                 # UEFI for an image whose kernel resets under a BIOS boot
                 # (Debian 13, on the dev node, 21 Oct); BIOS otherwise.
                 "boot": "uefi" if img.get("boot") == "uefi" else "bios",
@@ -355,12 +401,46 @@ def create(principal, project, req, nodes_allowed, session=False):
         d["vms"][key] = {"project": project, "name": name, "node": pick["id"], "domain": dom, "os": img["id"],
                          "os_name": img["name"], "user": user, **size, "by": principal, "at": int(time.time()),
                          "state": "making", "job": r["job"], "error": "",
-                         **({"node_id": enroll["id"]} if enroll else {})}
+                         **({"node_id": enroll["id"]} if enroll else {}),
+                         **({"disks": disks} if disks else {}), **({"iso": iso} if iso else {}),
+                         **({"mac": mac} if mac else {})}
         _save(d)
     if enroll and node_mark:
         node_mark(enroll["id"], pick["id"])
     audit(principal, "vm-new", key, {"node": pick["id"], "os": img["id"], **size, "job": r["job"]})
     return {"ok": True, "key": key, "job": r["job"], "node": pick["name"], "domain": dom}
+
+
+def iso(principal, action, req):
+    """An installer's ISO fetched onto a VM host from an https address and
+    kept only when it matches the SHA-256 given (iso-add), or taken off it
+    (iso-rm): a person's, queued as the node's vm job (R99)."""
+    nid = str(req.get("node") or "")
+    pick = next((n for n in hosts() if n["id"] == nid or n["name"] == nid), None)
+    if not pick:
+        return {"error": f"{nid or 'no node'} is not a node with VM host installed"}
+    if not pick.get("live"):
+        return {"error": f"{pick['name']}'s agent is not dialing in"}
+    name = str(req.get("iso") or req.get("file") or "").strip()
+    if not name and action == "iso-add":
+        name = urllib.parse.urlsplit(str(req.get("url") or "")).path.rsplit("/", 1)[-1]
+    if not ISO_RE.fullmatch(name):
+        return {"error": f"an ISO's name ends .iso and is letters, digits, dots, dashes and underscores: not {name or 'nothing'}"}
+    spec = {"action": action, "domain": "bbvm-iso", "iso": {"name": name}, "timeout": 7200}
+    if action == "iso-add":
+        url, sha = str(req.get("url") or "").strip(), str(req.get("sha256") or "").strip().lower()
+        if not url.startswith("https://"):
+            return {"error": "an ISO comes from an https address"}
+        if not SHA256_RE.fullmatch(sha):
+            return {"error": "give the ISO's SHA-256 (64 hex digits) from its publisher: it is kept only when it matches"}
+        spec["iso"].update(url=url, sha256=sha)
+    elif any(r.get("iso") == name and r.get("node") == pick["id"] for r in _load()["vms"].values()):
+        return {"error": f"a VM on {pick['name']} still has {name} in its drive: eject it first"}
+    r = job_add(principal, {"node": pick["id"]}, "vm", spec, "")
+    if r.get("error"):
+        return r
+    audit(principal, f"vm-{action}", f"{pick['name']}/{name}", {"job": r["job"]})
+    return {"ok": True, "job": r["job"], "iso": name, "node": pick["name"]}
 
 
 def _refused(project, key, name, node_id, size, d=None):
@@ -408,6 +488,23 @@ def act(principal, project, name, action, req=None):
                 return {"error": f"{name} has no snapshot called {snap}"}
         if action == "stop" and req.get("force"):
             spec["force"] = True
+        if action == "disk-grow":
+            dev = str(req.get("disk") or "vda")
+            try:
+                gb = int(req.get("gb") or 0)
+            except (TypeError, ValueError):
+                gb = 0
+            sizes = [int(rec.get("disk_gb") or 0), *(int(g or 0) for g in rec.get("disks") or [])]
+            i = DISK_DEVS.index(dev) if dev in DISK_DEVS else -1
+            now = sizes[i] if 0 <= i < len(sizes) else 0
+            if i < 0 or not now:
+                return {"error": f"{name} has no disk {dev}"}
+            if gb <= now:
+                return {"error": f"{dev} is {now} GB: a disk grows and never shrinks, so give more than that"}
+            why = check_caps(d, project, rec["node"], {"vcpus": 0, "mem_mb": 0, "disk_gb": gb - now})
+            if why:
+                return {"error": why}
+            spec.update(disk=dev, gb=gb)
         r = job_add(principal, {"node": rec["node"]}, "vm", spec, project)
         if r.get("error"):
             return r
@@ -442,6 +539,17 @@ def vm_done(job, state):
             rec["state"] = "made" if ok else "failed"
             rec["made_at"] = int(time.time())
             rec["error"] = "" if ok else (job.get("error") or f"its create job {state}; the job's log says why")[:300]
+        elif ok and spec.get("action") == "disk-grow":
+            i = DISK_DEVS.index(spec.get("disk") or "vda")
+            if i == 0:
+                rec["disk_gb"] = int(spec.get("gb") or rec.get("disk_gb") or 0)
+            else:
+                ds = list(rec.get("disks") or [])
+                if i - 1 < len(ds):
+                    ds[i - 1] = int(spec.get("gb") or ds[i - 1])
+                rec["disks"] = ds
+        elif ok and spec.get("action") == "eject":
+            rec.pop("iso", None)
         elif ok and spec.get("action") in ("snapshot", "snapshot-rm"):
             # What its own jobs did, kept until the node's next report says
             # so too: a revert pressed right after a snapshot finds it.

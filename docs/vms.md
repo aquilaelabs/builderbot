@@ -91,12 +91,39 @@ agent dials in from. A macvtap guest cannot talk to its own host, so a
 controller that runs on the VM host itself does not reach it: put node VMs on
 another machine than the controller's.
 
-## Console
+## Console and Screen
 
 **Console** on a running VM's row opens its serial console in the dock,
 `virsh console` as the jobs account on the node's container terminal
 server, for a person with a shell and VMs Write on its project. Ctrl+]
 leaves it.
+
+**Screen** opens the VM's display in the dock: keyboard, mouse and all,
+drawn by noVNC, which the image carries. Every VM has one, on its host's
+loopback alone; the node's agent relays it on port 7684, which it opens to
+the controller alone beside the terminals' ports, and only for a request the
+controller signed for that VM within the last two minutes. It takes VMs
+Write on the VM's project, since seeing a screen is driving the machine.
+A screen password set at New VM is asked for when it opens.
+
+## From an installer
+
+For a system the catalog does not carry (Windows, a BSD, an appliance, a
+distribution of your own), New VM's **From** has **Add an ISO…**: an https
+address and the SHA-256 its publisher gives, fetched onto the node and
+kept only when it matches. The ISO is then offered under **From** on that
+node. A VM made from it boots the installer with a blank disk of the size
+given, UEFI or BIOS as picked, and nothing of BuilderBot's inside it (no
+account, no key, no cloud-init): its **Screen** is where you install it.
+Once the system is on its disk, **Eject ISO** under More empties the drive
+so it boots from the disk. Making one is a person's: a session has no screen
+to install from, and is refused.
+
+**More** at New VM gives any VM up to three further disks (vdb to vdd), a
+MAC address kept for good (so a DHCP reservation holds) and the screen's
+password; every disk hands freed space back to the pool (discard). **Grow
+disk** on a stopped VM makes one of its disks larger, never smaller; the
+partition inside is the system's own to grow.
 
 ## From a session
 
