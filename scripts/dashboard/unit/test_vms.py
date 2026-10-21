@@ -137,6 +137,20 @@ class Shipped(unittest.TestCase):
         self.assertEqual(missing, [], "read from config/ and not copied into the image")
 
 
+class Census(unittest.TestCase):
+    """What a node reports of its VMs reaches the record: the cleaner keeps
+    the VMs and their pool, field by field, and drops what is not ours."""
+    def test_the_vms_and_their_pool_are_kept(self):
+        import nodes
+        got = nodes._census({"vms": [{"name": "bbvm-web-db", "state": "running", "ip": "10.232.0.12", "vcpus": 2,
+                                      "mem_mb": 2048, "snapshots": ["clean", "no way!"]},
+                                     {"name": "someone-elses", "state": "running"}],
+                             "vm_pool": {"free_mb": 39000, "total_mb": 60000, "path": "/x"}})
+        self.assertEqual(got["vms"], [{"name": "bbvm-web-db", "state": "running", "ip": "10.232.0.12", "vcpus": 2,
+                                       "mem_mb": 2048, "snapshots": ["clean"]}])
+        self.assertEqual(got["vm_pool"], {"free_mb": 39000, "total_mb": 60000})
+
+
 class Agent(unittest.TestCase):
     def setUp(self):
         import agentpkg

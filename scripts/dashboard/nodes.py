@@ -1238,6 +1238,23 @@ def _census(c):
         out["features"] = {"vmhost": {"installed": vm.get("installed") is True, "kvm": vm.get("kvm") is True,
                                       "libvirt": re.sub(r"[^0-9.]", "", str(vm.get("libvirt") or ""))[:20]},
                            "firewall": {"installed": fw.get("installed") is True}}
+    # ...and the VMs it runs (R91), each as libvirt says, with the room their
+    # disks have: whitelisted field by field like the rest.
+    if isinstance(c.get("vms"), list):
+        out["vms"] = []
+        for v in c["vms"][:64]:
+            if not isinstance(v, dict) or not re.fullmatch(r"bbvm-[a-z0-9][a-z0-9-]{0,62}", str(v.get("name") or "")):
+                continue
+            ip = str(v.get("ip") or "")
+            out["vms"].append({"name": v["name"], "state": re.sub(r"[^a-z ]", "", str(v.get("state") or ""))[:20],
+                               "ip": ip if re.fullmatch(r"[0-9.]{7,15}", ip) else "",
+                               "vcpus": int(v["vcpus"]) if isinstance(v.get("vcpus"), int) else 0,
+                               "mem_mb": int(v["mem_mb"]) if isinstance(v.get("mem_mb"), int) else 0,
+                               "snapshots": [str(x)[:41] for x in (v.get("snapshots") or [])[:32]
+                                             if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,40}", str(x))]})
+    vp = c.get("vm_pool") if isinstance(c.get("vm_pool"), dict) else None
+    if vp:
+        out["vm_pool"] = {k: int(vp[k]) for k in ("free_mb", "total_mb") if isinstance(vp.get(k), int)}
     # The configuration plane's reported half (docs/nodes.md §12): whether
     # the node was provisioned as a sandbox (bb-sandbox is there: the stamp
     # system jobs are gated on), what it mounts as bb-sandbox reads it, and
