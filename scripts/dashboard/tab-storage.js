@@ -215,6 +215,9 @@ function renderStorageInto(i){
 }
 
 function wireStorageTab(root){
+  // Its sections fold as every page's do: one open at a time on a phone,
+  // sliding, where they snapped and stood open together (B171).
+  wireSections(root);
   const psel = root.querySelector("#stNodeSel");
   // A pick is a history entry (B31), so Back returns to the node before.
   if (psel) psel.onchange = () => navPush(() => { storageNode = psel.value;

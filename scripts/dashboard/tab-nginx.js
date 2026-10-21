@@ -421,6 +421,8 @@ function nginxReadDraft(sect, n){
 }
 
 function wireNginxTab(root){
+  // One section open at a time on a phone, sliding, as on every page (B171).
+  wireSections(root);
   const psel = root.querySelector("#ngNodeSel");
   // A pick is a history entry (B31), so Back returns to the node before.
   if (psel) psel.onchange = () => navPush(() => { nginxNode = psel.value;
