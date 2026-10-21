@@ -366,7 +366,7 @@ class Agent(unittest.TestCase):
         self.assertIn("ssh_pwauth: false", ud)
         # bash brought in where the image has none (Alpine), and the enroll
         # started from sh, which every image has.
-        self.assertIn("apk add --no-cache bash", ud)
+        self.assertIn("apk add --no-cache bash sudo", ud)
         self.assertNotIn("bb-enroll", ud)
         en = self.av.user_data("db", "builder", [KEY], self.av.ENROLL_HEAD + "x")
         self.assertIn("[sh, -c, 'command -v bash", en)
