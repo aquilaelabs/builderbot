@@ -3385,7 +3385,9 @@ def session_net_own(node_id):
         if not re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", addr):
             return
         rep = n.get("reported") or {}
-        if not rep.get("sandbox"):
+        # A hosting-only node is a public box: what it says of itself does
+        # not open it whole, only its containers' ports (R92).
+        if not rep.get("sandbox") and not (n.get("config") or {}).get("host_only"):
             o["hosts"].add(addr)
             return
         pub = rep.get("published") or {}

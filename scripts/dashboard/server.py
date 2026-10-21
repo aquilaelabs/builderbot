@@ -6848,8 +6848,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": auth["error"]}, 401)
         # Where the node is, as seen from here: informational on the row,
         # and the address docker-over-ssh goes to for an agent node (see
-        # nodes._addr). A proxy in front says so in the usual header.
-        addr = (self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        # nodes._addr). A proxy in front says so in the usual header, whose
+        # last hop is the one the proxy wrote: the first is the client's own
+        # word, and a node that named a LAN address there was let into it (R92).
+        addr = (self.headers.get("X-Forwarded-For", "").split(",")[-1].strip()
                 or self.client_address[0])
         if verb == "work":
             got = channel.work(auth, req, addr, alive=lambda: not client_gone(self.connection))
