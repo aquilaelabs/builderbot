@@ -681,10 +681,9 @@ class VmsMixin:
         if hw.get("net") == "lan" and os.path.isdir(f"/sys/class/net/{lan_iface()}/wireless"):
             job.say("refused: this machine's LAN is Wi-Fi, which will not carry a second machine's address\n")
             return False
-        if hw.get("share") and not (shutil.which("virtiofsd") or os.path.exists("/usr/libexec/virtiofsd")
-                                    or os.path.exists("/usr/lib/qemu/virtiofsd")):
-            job.say("refused: virtiofsd is not on this machine; VM host's install brings it from this build on: "
-                    "install VM host again on the node's Features section\n")
+        if hw.get("share") and not vmhw.virtiofsd():
+            job.say("refused: a shared folder needs virtiofsd, which is not on this machine: "
+                    "press Bring in virtiofsd on VM host's row in the node's Features section\n")
             return False
         if hw.get("share") and not os.path.isdir(hw["share"]["path"]):
             job.say(f"refused: {hw['share']['path']} is not a folder on this node\n")

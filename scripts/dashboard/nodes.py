@@ -1267,7 +1267,10 @@ def _census(c):
     out["features"] = {"vmhost": {"installed": vm.get("installed") is True, "kvm": vm.get("kvm") is True,
                                   "libvirt": re.sub(r"[^0-9.]", "", str(vm.get("libvirt") or ""))[:20],
                                   # A kernel built without KVM (R97's walk, openSUSE).
-                                  **({"nokvm": "kernel"} if vm.get("nokvm") == "kernel" else {})},
+                                  **({"nokvm": "kernel"} if vm.get("nokvm") == "kernel" else {}),
+                                  # A shared folder's virtiofsd (R100), which an
+                                  # install from before it did not bring.
+                                  **({"virtiofs": vm["virtiofs"] is True} if "virtiofs" in vm else {})},
                        "firewall": {"installed": fw.get("installed") is True}}
     # ...and the VMs it runs (R91), each as libvirt says, with the room their
     # disks have: whitelisted field by field like the rest.

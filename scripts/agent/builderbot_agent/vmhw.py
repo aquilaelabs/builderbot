@@ -11,6 +11,7 @@ import base64
 import glob
 import os
 import re
+import shutil
 import subprocess
 import time
 import xml.etree.ElementTree as ET
@@ -135,6 +136,13 @@ def _need(parent, tag):
     if el is None:
         raise ValueError(f"the domain's XML has no <{tag}>")
     return el
+
+
+def virtiofsd():
+    """Where virtiofsd is, which a shared folder needs, or "": on the PATH
+    on some systems, in libexec or qemu's own folder on others."""
+    return shutil.which("virtiofsd") or next((p for p in ("/usr/libexec/virtiofsd", "/usr/lib/qemu/virtiofsd")
+                                              if os.path.exists(p)), "")
 
 
 def rom_name(addr):

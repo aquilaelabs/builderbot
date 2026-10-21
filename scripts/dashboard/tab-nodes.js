@@ -543,8 +543,12 @@ function nodeFeaturesSection(n){
       // Where its VMs may go (R91 step 8): the internet, the controller and
       // their own project's network, and the LAN only when ticked, inside
       // the row it is about.
-      vm.installed ? `<label class="ndcap ndvmlan"><input type="checkbox" data-ndvmlan${n.config?.vm_lan ? " checked" : ""}${why ? " disabled" : ""}>
-        its VMs may reach this machine's LAN too</label>` : "")];
+      (vm.installed ? `<label class="ndcap ndvmlan"><input type="checkbox" data-ndvmlan${n.config?.vm_lan ? " checked" : ""}${why ? " disabled" : ""}>
+        its VMs may reach this machine's LAN too</label>` : "")
+      // A shared folder needs virtiofsd, which an install from before it did
+      // not bring; installing again adds what is missing and keeps the rest.
+      + (vm.installed && vm.virtiofs === false ? `<div class="sub">A VM's shared folder needs virtiofsd, which is not here yet.
+        ${why || job ? "" : `<button type="button" data-nd="feature" data-feature="vmhost" data-op="install">Bring in virtiofsd</button>`}</div>` : ""))];
   if (n.config?.host_only)
     rows.push(row("firewall", "Hosting firewall", !!fe?.firewall?.installed,
       "Takes in only 80 and 443, a port a container publishes included; port 22 as the SSH door leaves it.", ""));

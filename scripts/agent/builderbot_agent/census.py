@@ -220,6 +220,7 @@ def features_now():
     return {
         "vmhost": {"installed": os.path.exists(os.path.join(FEATURES_DIR, "vmhost")),
                    "kvm": kvm, **({"nokvm": nokvm} if nokvm else {}),
+                   "virtiofs": bool(vmhw.virtiofsd()),
                    "libvirt": _run([virsh, "--version"], timeout=10) if virsh else ""},
         "firewall": {"installed": os.path.exists("/etc/builderbot/hosting-fw.nft")},
     }
