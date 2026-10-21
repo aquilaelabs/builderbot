@@ -1194,7 +1194,9 @@ def ask_vm(why, project, req, asker_name=""):
               "--mem", str(req.get("mem_mb") or ""), "--disk", str(req.get("disk_gb") or "")]
              if action == "new" else ["vm", action, name] + ([str(req.get("snapshot"))] if req.get("snapshot") else []))
     keep = {k: req.get(k) for k in ("action", "name", "os", "vcpus", "mem_mb", "disk_gb", "keys", "user", "node",
-                                     "snapshot", "note", "force") if req.get(k) not in (None, "")}
+                                     "snapshot", "note", "force", "node_agent", "ctl") if req.get(k) not in (None, "")}
+    if keep.get("node_agent"):
+        shown.append("--node-agent")
     return _queue("vm", why, [a for a in shown if a], str(req.get("node") or ""), str(req.get("node") or ""), project,
                   "claude", "admins", "the administrators", asker_name, extra={"vm": keep})
 

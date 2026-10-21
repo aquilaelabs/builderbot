@@ -3503,7 +3503,10 @@ imagecheck.configure(state=STATE, write_json=write_json, devapp_module=devapp)
 import vms                                                       # noqa: E402
 
 vms.configure(state=STATE, write_json=write_json, node=nodes.node, node_list=nodes.node_list,
-              job_add=nodes.job_add, audit=db.audit, prefs_get=prefs.get, nodes_rev=nodes.rev)
+              job_add=nodes.job_add, audit=db.audit, prefs_get=prefs.get, nodes_rev=nodes.rev,
+              enroll_script=nodes.enroll_script,
+              node_retire=lambda by, nid: nodes.node_state(by, nid, "retired"),
+              node_mark=nodes.node_vm_of)
 nodes.on_done("vm", vms.vm_done)
 phone.vm_runner = lambda project, req, by: _vm_do(f"session:{project} (allowed by {by})", project, req, True)
 
@@ -6095,9 +6098,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"no such VM action: {action}"}, 400)
         if not project or not registry.is_project(project):
             return self._json({"error": "which project's VM? name one"}, 400)
+        # The address this controller was reached at, which a VM made a node
+        # dials (R91 step 14): the asker's own, as Enroll node's script uses.
+        req = dict(req, ctl=f"{'https' if self.headers.get('X-Forwarded-Proto') == 'https' else 'http'}://"
+                            f"{self.headers.get('Host') or ''}")
+        if req.get("node_agent") is True and not sess and self._refused("node"):
+            return
         if sess:
             if project != sess:
                 return self._json({"error": f"a session works on {sess}'s VMs alone, not {project}'s"}, 403)
+            if req.get("node_agent") is True and prefs.get(sess)["makevms"] != "deny":
+                # A node is the administrators' to add: asked of them whatever
+                # the dial says, and made by whoever allows it.
+                return self._result(phone.ask_vm(field(req, "why") or f"new {field(req, 'name')}, made a node", sess, req,
+                                                 asker_name=(me.get("name") or "")))
             mode = prefs.get(sess)["makevms"]
             if mode == "deny":
                 return self._json({"error": f"{sess}'s settings say Claude may not make or change VMs "

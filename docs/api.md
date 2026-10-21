@@ -83,7 +83,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/project-auth` | prefix | `_project_auth` | What credential this project's remote uses, and what else it could: projects.auth_answer. | refused: rename |
 | POST | `/api/project-ftp` | exact | `_project_ftp` | A project's file access over FTP (ftp.py, R151): what it is, for whoever sees the project, and a change, for an account with the ftp grant (named only: the owner, until a role names it). | refused: ftp |
 | POST | `/api/container` | prefix | `_container` | A container from a compose file written here, with no project: containers.tab_verb. | refused: docker-write |
-| POST | `/api/vms` | exact | `_vms` | POST /api/vms (R91): new, start, stop, restart, remove, snapshot, revert, snapshot-rm. | refused: vms-write |
+| POST | `/api/vms` | exact | `_vms` | POST /api/vms (R91): new, start, stop, restart, remove, snapshot, revert, snapshot-rm. | refused: vms-write, refused: node |
 | POST | `/api/dockerctl` | prefix | `_docker_ctl` | Start, stop, restart or read the log of ONE container on a node. | refused: docker-write |
 | POST | `/api/rename` | prefix | `_rename` | Rename a project: projects.rename, once project_busy says nothing holds it. | refused: rename |
 | POST | `/api/trash-restore` | prefix | `_trash_restore` |  | refused: trash |

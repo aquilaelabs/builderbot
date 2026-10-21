@@ -21,7 +21,7 @@ AUTH = os.environ.get("BB_VM_AUTH", "")
 PROJECT = os.environ.get("BB_VM_PROJECT", "")
 USAGE = """usage: bb vm [list]
        bb vm os
-       bb vm new NAME --os OS [--vcpus N] [--mem 4G] [--disk 20] [--node NODE] [--key FILE] --why "what it is for"
+       bb vm new NAME --os OS [--vcpus N] [--mem 4G] [--disk 20] [--node NODE] [--key FILE] [--node-agent] --why "what it is for"
        bb vm start|stop|restart|rm NAME [--force]
        bb vm snapshot NAME SNAP [--note "..."] | revert NAME SNAP | snapshot-rm NAME SNAP
        bb vm ip NAME | ssh NAME [COMMAND...]"""
@@ -131,6 +131,8 @@ def cmd_new(args):
         die(USAGE)
     name, rest = args[0], args[1:]
     opts = {"os": "", "vcpus": "", "mem": "", "disk": "", "node": "", "key": "", "why": "", "user": ""}
+    agent = "--node-agent" in rest
+    rest = [a for a in rest if a != "--node-agent"]
     while rest:
         k = rest.pop(0)
         if k.lstrip("-") not in opts or not rest:
@@ -141,7 +143,7 @@ def cmd_new(args):
     if not opts["why"]:
         die('bb vm new needs --why "what it is for": a person may read it before allowing')
     body = {"action": "new", "name": name, "os": opts["os"], "node": opts["node"], "why": opts["why"],
-            "keys": [own_key(opts["key"])], "user": opts["user"] or "builder"}
+            "keys": [own_key(opts["key"])], "user": opts["user"] or "builder", "node_agent": agent}
     if opts["vcpus"]:
         body["vcpus"] = int(opts["vcpus"])
     if opts["mem"]:

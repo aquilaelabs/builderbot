@@ -1716,6 +1716,17 @@ def node_session_net(principal, node_id, on):
     return {"ok": True, "on": bool(on)}
 
 
+def node_vm_of(node_id, host_id):
+    """A node that is a VM BuilderBot made on another node (R91 step 14),
+    said on its row; retired with the VM."""
+    n = node(node_id)
+    if not n:
+        return
+    conf = dict(n.get("config") or {}, vm_of=str(host_id))
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _bump()
+
+
 def node_vm_lan(principal, node_id, on):
     """Whether this node's VMs may reach its LAN (R91 step 8): off, they
     reach the internet, the controller and their own project's network; on,

@@ -163,13 +163,23 @@ def sums_lookup(text, filename):
     return only.lower() if re.fullmatch(r"[0-9a-fA-F]{64}|[0-9a-fA-F]{128}", only) else ""
 
 
-def user_data(hostname, user, keys):
+ENROLL_HEAD = "#!/usr/bin/env bash\n# BuilderBot: enroll "
+
+
+def user_data(hostname, user, keys, enroll=""):
     """cloud-init's user-data: one account, sudo without a password, the
-    keys given and no password login."""
+    keys given and no password login; and, for a VM made a node (step 14),
+    the controller's enroll script written as root's and run once at first
+    boot, then removed, since the token in it is spent."""
     lines = ["#cloud-config", f"hostname: {hostname}", "ssh_pwauth: false", "users:",
              f"  - name: {user}", "    sudo: ALL=(ALL) NOPASSWD:ALL", "    shell: /bin/bash",
              "    ssh_authorized_keys:"]
     lines += [f"      - {json.dumps(k)}" for k in keys]
+    if enroll:
+        import base64
+        lines += ["write_files:", "  - path: /root/bb-enroll.sh", "    permissions: '0700'", "    encoding: b64",
+                  f"    content: {base64.b64encode(enroll.encode()).decode()}",
+                  "runcmd:", "  - [bash, -c, 'bash /root/bb-enroll.sh > /root/bb-enroll.log 2>&1; rm -f /root/bb-enroll.sh']"]
     return "\n".join(lines) + "\n"
 
 
@@ -337,12 +347,12 @@ class VmsMixin:
             return self._vm_run(job, VIRSH + ["net-start", net], who) == 0
         return True
 
-    def _vm_seed(self, job, path, hostname, user, keys, who):
+    def _vm_seed(self, job, path, hostname, user, keys, who, enroll=""):
         """The cloud-init seed: cidata on an ISO, by whichever tool is here."""
         with tempfile.TemporaryDirectory(dir=VM_DIR) as d:
             ud, md = os.path.join(d, "user-data"), os.path.join(d, "meta-data")
             with open(ud, "w") as f:
-                f.write(user_data(hostname, user, keys))
+                f.write(user_data(hostname, user, keys, enroll))
             with open(md, "w") as f:
                 f.write(f"instance-id: {hostname}\nlocal-hostname: {hostname}\n")
             for tool in ("cloud-localds", "genisoimage", "mkisofs", "xorrisofs"):
@@ -387,7 +397,13 @@ class VmsMixin:
                         who, say=False) != 0:
             return "failed", 70
         hostname = name.removeprefix("bbvm-")[:63]
-        if not self._vm_seed(job, seed, hostname, user, keys, who):
+        enroll = str(spec.get("enroll") or "")
+        if enroll and (not enroll.startswith(ENROLL_HEAD) or len(enroll) > 4_000_000):
+            job.say("refused: what came to enroll the VM as a node is not the controller's enroll script\n")
+            return "failed", 64
+        if enroll:
+            job.say("it enrolls as a node at its first boot\n")
+        if not self._vm_seed(job, seed, hostname, user, keys, who, enroll):
             return "failed", 70
         xml = os.path.join(ddir, name + ".xml")
         with open(xml, "w") as f:

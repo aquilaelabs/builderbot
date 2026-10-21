@@ -44,14 +44,19 @@ job_add = None
 audit = None
 prefs_get = None
 nodes_rev = None
+enroll_script = None       # nodes.enroll_script, for a VM made a node (step 14)
+node_retire = None         # (principal, node id): its node retired with it
+node_mark = None           # (node id, host node id): the row says it is a VM there
 _lock = threading.Lock()
 _rev = [0]
 _seen = {"nodes": None, "sig": 0}
 
 
-def configure(*, state, write_json, node, node_list, job_add, audit, prefs_get, nodes_rev=lambda: 0):
+def configure(*, state, write_json, node, node_list, job_add, audit, prefs_get, nodes_rev=lambda: 0,
+              enroll_script=None, node_retire=None, node_mark=None):
     globals().update(STATE=Path(state), write_json=write_json, node=node, node_list=node_list,
-                     job_add=job_add, audit=audit, prefs_get=prefs_get, nodes_rev=nodes_rev)
+                     job_add=job_add, audit=audit, prefs_get=prefs_get, nodes_rev=nodes_rev,
+                     enroll_script=enroll_script, node_retire=node_retire, node_mark=node_mark)
 
 
 def rev():
@@ -280,6 +285,21 @@ def create(principal, project, req, nodes_allowed, session=False):
     if not src:
         return {"error": f"{img['name']} has no image for {arch}, which {pick['name']} is"}
     key = f"{project}/{name}"
+    # Made a node as well (step 14): Enroll node's own script, for the
+    # catalog's system, run by cloud-init at first boot, so the VM appears
+    # on the Nodes page enrolled. `ctl` is the address the asker reached
+    # this controller at, which the VM dials from its project network.
+    enroll = None
+    if req.get("node_agent") is True:
+        sysid = {"ubuntu": "ubuntu", "debian": "debian", "rocky": "rocky", "fedora": "fedora",
+                 "alpine": "alpine"}.get(img.get("family") or "")
+        if not sysid or enroll_script is None:
+            return {"error": f"{img['name']} has no enroll script BuilderBot makes, so it cannot be made a node"}
+        enroll = enroll_script(principal, {"name": f"{project}-{name}", "controller": str(req.get("ctl") or ""),
+                                           "reach": "lan", "sessions": True, "system": sysid, "user": "bb",
+                                           "script": True})
+        if enroll.get("error"):
+            return {"error": f"it cannot be made a node: {enroll['error']}"}
     with _lock:
         d = _load()
         if key in d["vms"]:
@@ -300,13 +320,18 @@ def create(principal, project, req, nodes_allowed, session=False):
                 "image": {"id": img["id"] + "-" + arch, "url": src["url"], "sums": src["sums"],
                           "file": src["url"].rsplit("/", 1)[-1]},
                 "timeout": 3600}
+        if enroll:
+            spec["enroll"] = enroll["script"]
         r = job_add(principal, {"node": pick["id"]}, "vm", spec, project)
         if r.get("error"):
             return r
         d["vms"][key] = {"project": project, "name": name, "node": pick["id"], "domain": dom, "os": img["id"],
                          "os_name": img["name"], "user": user, **size, "by": principal, "at": int(time.time()),
-                         "state": "making", "job": r["job"], "error": ""}
+                         "state": "making", "job": r["job"], "error": "",
+                         **({"node_id": enroll["id"]} if enroll else {})}
         _save(d)
+    if enroll and node_mark:
+        node_mark(enroll["id"], pick["id"])
     audit(principal, "vm-new", key, {"node": pick["id"], "os": img["id"], **size, "job": r["job"]})
     return {"ok": True, "key": key, "job": r["job"], "node": pick["name"], "domain": dom}
 
@@ -365,7 +390,10 @@ def vm_done(job, state):
         rec = d["vms"][key]
         ok = state == "succeeded"
         if spec.get("action") == "remove" and ok:
-            d["vms"].pop(key)
+            gone = d["vms"].pop(key)
+            # Its node goes with it, credential and all (step 14).
+            if gone.get("node_id") and node_retire:
+                node_retire(f"vm:{key}", gone["node_id"])
         elif spec.get("action") == "create":
             rec["state"] = "made" if ok else "failed"
             rec["error"] = "" if ok else (job.get("error") or f"its create job {state}; the job's log says why")[:300]

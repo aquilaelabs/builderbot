@@ -82,6 +82,22 @@ class Controller(unittest.TestCase):
         self.assertIn("less than the 2048 MB it keeps", self.new(name="c", mem_mb=14000)["error"])
         self.assertIn("less than the 10 GB it keeps", self.new(name="d", disk_gb=195)["error"])
 
+    def test_made_a_node_it_carries_enroll_node_s_script_and_goes_with_it(self):
+        made, retired, marked = [], [], []
+        vms.enroll_script = lambda by, req: made.append(req) or {"id": "n_vm", "script": "#!/usr/bin/env bash\n# BuilderBot: enroll x"}
+        vms.node_retire = lambda by, nid: retired.append(nid)
+        vms.node_mark = lambda nid, host: marked.append((nid, host))
+        try:
+            r = self.new(node_agent=True, ctl="http://192.168.1.16:7680")
+            self.assertTrue(r.get("ok"), r)
+            self.assertEqual((made[0]["system"], made[0]["controller"], made[0]["sessions"]), ("debian", "http://192.168.1.16:7680", True))
+            self.assertTrue(self.f.jobs[-1][2]["enroll"].startswith("#!/usr/bin/env bash\n# BuilderBot: enroll"))
+            self.assertEqual(marked, [("n_vm", "n1")])
+            vms.vm_done({"node": "n1", "spec": {"action": "remove", "domain": "bbvm-web-db"}}, "succeeded")
+            self.assertEqual(retired, ["n_vm"])
+        finally:
+            vms.enroll_script = vms.node_retire = vms.node_mark = None
+
     def test_no_key_no_node_no_vm(self):
         self.assertIn("ssh public key", vms.create("user:test", "web", {"name": "a", "os": "debian"}, ["n1"])["error"])
         self.assertIn("no node web works on", vms.create("user:test", "web", {"name": "a", "os": "debian",
@@ -195,6 +211,8 @@ class Agent(unittest.TestCase):
         self.assertNotIn("<graphics", x)
         ud = self.av.user_data("db", "builder", [KEY])
         self.assertIn("ssh_pwauth: false", ud)
+        self.assertNotIn("runcmd", ud)
+        self.assertIn("bash /root/bb-enroll.sh", self.av.user_data("db", "builder", [KEY], self.av.ENROLL_HEAD + "x"))
         self.assertIn(json.dumps(KEY), ud)
 
 

@@ -46,6 +46,8 @@ function vmRow(v){
   const size = `${v.vcpus} vCPU · ${v.mem_mb >= 1024 ? `${+(v.mem_mb / 1024).toFixed(1)} GB` : `${v.mem_mb} MB`} · ${v.disk_gb} GB disk`;
   const origin = [esc(v.os_name || v.os || ""), esc(v.node_name || ""), esc(size)].filter(Boolean).join(`<span class="sep"></span>`);
   const reach = up && v.ip ? `ssh ${esc(v.user || "builder")}@${esc(v.ip)}` : up ? "taking its address" : "";
+  // Made a node (step 14): its row on the Nodes page.
+  const asNode = v.node_id ? `<div class="sub dmorigin">a node too: ${pageLink("nodes", "on the Nodes page", `#/machines/nodes/${encodeURIComponent(v.node_id)}`)}</div>` : "";
   const snaps = v.snapshots || [];
   const acts = !may ? "" : `
     ${!up && !busy && v.state !== "failed" ? `<button type="button" class="primary" data-vm="start">Start</button>` : ""}
@@ -64,6 +66,7 @@ function vmRow(v){
           <div class="name">${esc(v.name)}${vmPill(v)}</div>
           ${origin ? `<div class="sub dmorigin">${origin}</div>` : ""}
           ${reach ? `<div class="sub dmstate${v.ip ? " ok" : ""}">${reach}</div>` : ""}
+          ${asNode}
           ${v.error ? `<div class="sub dmstate bad">${esc(v.error)}</div>` : ""}
         </div>
         <div class="actbar dmacts">${acts}</div>
@@ -130,7 +133,8 @@ function wireVms(el){
       const action = b.dataset.vm;
       const body = {action, project: v.project, name: v.name};
       if (action === "remove" && !confirm(`Remove ${v.name}?\n\nThe VM is destroyed with its disk${
-            (v.snapshots || []).length ? ` and its ${v.snapshots.length} snapshot${v.snapshots.length === 1 ? "" : "s"}` : ""}. It cannot be undone.`)) return;
+            (v.snapshots || []).length ? ` and its ${v.snapshots.length} snapshot${v.snapshots.length === 1 ? "" : "s"}` : ""}${
+            v.node_id ? ", and its node is retired with its credential revoked" : ""}. It cannot be undone.`)) return;
       if (action === "stop" && b.dataset.force && !confirm(`Force ${v.name} to stop?\n\nIt stops at once, as if unplugged: what it had not saved is lost.`)) return;
       if (action === "revert" && !confirm(`Revert ${v.name} to ${b.dataset.snap}?\n\nWhat changed in it since that snapshot is lost.`)) return;
       if (action === "snapshot-rm" && !confirm(`Delete the snapshot ${b.dataset.snap} of ${v.name}?`)) return;
@@ -183,18 +187,21 @@ function openNewVm(){
     </div>
     <div class="field">${lbl("vmKey", "SSH public key", "who may log in: yours, as in ~/.ssh/id_ed25519.pub. The account is builder, with sudo")}
       <textarea id="vmKey" rows="3" spellcheck="false" autocomplete="off" placeholder="ssh-ed25519 AAAA… you@laptop"></textarea></div>
+    <label class="ndcap"><input type="checkbox" id="vmAgent"> Make it a node: enroll it with an agent at its first boot</label>
+    <div class="hint" id="vmAgentHint" hidden>It appears on the Nodes page once it has booted, a node like any other, marked as a VM on its host; removing the VM retires the node and revokes its credential.</div>
     <div class="field" id="vmWhyF" hidden><div class="hint bad" id="vmWhy"></div></div>
     ${dlgFoot(`<button type="button" id="vmCancel">Cancel</button>`, `<button type="button" id="vmGo" class="primary">Make it</button>`)}</div>`;
   m.hidden = false;
   const $m = s => m.querySelector(s);
   const say = t => { $m("#vmWhy").textContent = t; $m("#vmWhyF").hidden = !t; };
   $m("#vmCancel").onclick = () => { m.hidden = true; };
+  $m("#vmAgent").onchange = () => { $m("#vmAgentHint").hidden = !$m("#vmAgent").checked; };
   $m("#vmGo").onclick = () => pressing($m("#vmGo"), async () => {
     busy($m("#vmGo"), "Making");
     const j = await (await postJSON("/api/vms", {action: "new", project: $m("#vmProject").value,
       name: $m("#vmName").value.trim(), os: $m("#vmOs").value, node: $m("#vmNode").value,
       vcpus: +$m("#vmCpu").value, mem_mb: Math.round(+$m("#vmMem").value * 1024), disk_gb: +$m("#vmDisk").value,
-      keys: $m("#vmKey").value.split("\n").map(s => s.trim()).filter(Boolean)})).json();
+      keys: $m("#vmKey").value.split("\n").map(s => s.trim()).filter(Boolean), node_agent: $m("#vmAgent").checked})).json();
     if (j.error){ say(j.error); $m("#vmGo").disabled = false; $m("#vmGo").textContent = "Make it"; return; }
     m.hidden = true;
     notify(`${j.key}: being made on ${j.node}; the image downloads once per node`);

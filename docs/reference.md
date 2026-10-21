@@ -470,11 +470,13 @@ bb phone touch tap X Y | hold X Y [--ms N] | glide X Y X Y... [--hand NAME] [--s
                    layout under the same rule
 bb vm [list]       this project's VMs (R91): state, OS, node, address, size, snapshots
 bb vm os           the operating systems a VM is made from
-bb vm new NAME --os OS [--vcpus N] [--mem 4G] [--disk 20] [--node NODE] [--key FILE] --why "..."
+bb vm new NAME --os OS [--vcpus N] [--mem 4G] [--disk 20] [--node NODE] [--key FILE] [--node-agent] --why "..."
                    a VM on one of the project's nodes with VM host installed,
                    letting in this session's ssh key (made when there is none);
                    the project's Make VMs setting decides: deny refuses, ask
-                   waits for an administrator's Allow, auto makes it now
+                   waits for an administrator's Allow, auto makes it now.
+                   --node-agent enrolls it as a node at its first boot, which
+                   an administrator always allows
 bb vm start|stop|restart|rm NAME [--force]
                    one VM, under the same setting; stop asks it to shut down,
                    --force pulls the plug
