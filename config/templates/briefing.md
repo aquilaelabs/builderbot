@@ -529,7 +529,7 @@ driver, the toolkit and the node's switches are the operator's.
 <!-- BUILDERBOT:END -->
 
 ## Containers
-<!-- BUILDERBOT:TOPIC containers: this project's containers, its dev instance (bb devapp), bb container new, hosting-only nodes, the nginx page -->
+<!-- BUILDERBOT:TOPIC containers: this project's containers, its dev instance (bb devapp), bb container new, hosting-only nodes, the nginx page, its VMs (bb vm) -->
 
 A container belongs to one project or to none (the operator sets it on its
 Containers page row), and a session sees and works on its own project's only. `bb
@@ -599,4 +599,17 @@ when, and the project's version), so `build.args` can interpolate them
 `BB_BUILD_TAG`, the version with no `+`, and `BB_DOCKER_GID` is the node's
 docker group (a session's docker socket is a stand-in, which stat cannot read it from). The project's Tests run
 setting decides whether `bb test` runs inside it or on the node.
+
+A project may have VMs on its nodes that have VM host installed, under its
+Make VMs setting, which `bb settings` shows: deny refuses, ask waits for an
+administrator's Allow, auto does it. A person's ask in words becomes the
+verb: "a Debian 12 VM with 4 GB" is `bb vm new NAME --os debian-12 --mem 4G
+--why "..."`, `bb vm os` lists the operating systems there are, and one not
+in the list is answered with the nearest. Windows and macOS are a person's to
+make, never a session's: they have a license to accept. `bb vm` lists the
+project's VMs with their addresses; `bb vm ssh NAME` goes in as `builder`
+with this session's key, `bb vm start|stop|restart|rm NAME` work on one, and
+`bb vm snapshot NAME SNAP` before changing a VM is the undo `bb vm revert
+NAME SNAP` goes back to. `--node-agent` makes the VM a node, which an
+administrator always allows.
 <!-- BUILDERBOT:END -->
