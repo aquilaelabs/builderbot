@@ -2192,6 +2192,12 @@ cmd_gpu_off() {
 }
 cmd_gpu_display() {
     local bus b d f busid pid reason=""
+    # Asked before nvidia-smi, which tries to load the driver for a card that
+    # is not there (B168).
+    if [ -z "$(gpu_card)" ]; then
+        gpu_state "down: no NVIDIA card on this machine; the driver is installed for one that is gone (remove it on the Toolchains page)"
+        return 1
+    fi
     if ! nvidia-smi -L >/dev/null 2>&1; then
         gpu_state "down: the card does not answer nvidia-smi (the driver is not loaded: a reboot after the install, or the host took the card back)"
         return 1
@@ -2320,6 +2326,13 @@ cmd_gpu_nodes() {
     # not have the card yet, which is every boot until the one after the
     # install.
     local dev n=0 i=0 major
+    # No card, no module to load: every try at it writes "No NVIDIA GPU
+    # found" to the console, which a machine whose card went elsewhere
+    # showed at every boot (B168).
+    if [ -z "$(gpu_card)" ]; then
+        say "no NVIDIA card on this machine; no device nodes to make"
+        return 0
+    fi
     if ! modprobe nvidia 2>/dev/null; then
         say "the nvidia module is not loaded (nouveau has the card until a reboot); no device nodes to make"
         return 0

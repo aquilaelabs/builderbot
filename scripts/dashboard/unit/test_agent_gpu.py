@@ -116,6 +116,12 @@ class GpuDriver(unittest.TestCase):
         self.card(vendor="0x1234")
         self.assertEqual(self.read(), {})
 
+    def test_a_driver_left_for_a_card_that_has_gone_is_said(self):
+        # B168: the row it keeps is the only way to remove it.
+        self.card(vendor="0x1234")
+        got = agent._gpu_driver(sys_root=self.root, modinfo=self.modinfo("610.57.04"))
+        self.assertEqual((got["installed"], got["nocard"], got["bound"]), ("610.57.04", True, ""))
+
     def test_nouveau_with_no_driver_installed(self):
         self.card("nouveau")
         self.assertEqual(self.read(), {"installed": "", "loaded": "", "bound": "nouveau"})

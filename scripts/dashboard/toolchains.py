@@ -1460,23 +1460,27 @@ def driver_row(n):
     holds and what apt would move it to, and the branches on offer."""
     rep = n.get("reported") or {}
     card = rep.get("gpu_card")
-    if not card:
-        return None
     gd = rep.get("gpu_driver") if isinstance(rep.get("gpu_driver"), dict) else {}
+    # A driver left for a card that has gone keeps its row, so it can be
+    # removed: hidden, its boot-time tries at the card had no way off (B168).
+    gone = not card and gd.get("nocard") and gd.get("installed")
+    if not card and not gone:
+        return None
     inst, loaded, bound = gd.get("installed") or "", gd.get("loaded") or "", gd.get("bound") or ""
     has = bound == "nvidia" or bool(loaded)
-    state = ("update" if has and inst and loaded and inst != loaded
+    state = ("nocard" if gone
+             else "update" if has and inst and loaded and inst != loaded
              else "loaded" if has and inst
              else "leaving" if has
              else "waiting" if inst
              else "absent")
     pv, cand = gd.get("pkg_version") or "", gd.get("candidate") or ""
-    return {"name": DRIVER, "label": "NVIDIA driver", "card": str(card),
+    return {"name": DRIVER, "label": "NVIDIA driver", "card": str(card or ""),
             "gpu": str(rep.get("gpu") or ""), "installed": inst, "loaded": loaded,
             "bound": bound, "state": state, "managed": bool(rep.get("sandbox")),
             # On the machine, whether or not it has the card yet: what a
             # tick means and what Remove is offered on.
-            "here": state in ("waiting", "loaded", "update"),
+            "here": state in ("waiting", "loaded", "update", "nocard"),
             "package": gd.get("package") or "",
             # What apt would move the installed package to, when that is not
             # what is installed: the row's "update available".
@@ -1886,12 +1890,15 @@ def container_row(n):
     adds and its removal takes away; Docker reloads its configuration for
     it, and no container stops."""
     rep = n.get("reported") or {}
-    if not rep.get("gpu_card") or not rep.get("docker"):
-        return None
     gc = rep.get("gpu_container") if isinstance(rep.get("gpu_container"), dict) else {}
     inst, cand = gc.get("installed") or "", gc.get("candidate") or ""
+    # Left for a card that has gone, it keeps its row to be removed (B168).
+    gone = not rep.get("gpu_card") and gc.get("nocard") and inst
+    if not rep.get("docker") or not (rep.get("gpu_card") or gone):
+        return None
     drv = driver_row(n) or {}
     state = ("absent" if not inst
+             else "nocard" if gone
              else "ready" if gc.get("runtime")
              else "unconfigured")
     return {"name": TOOLKIT, "label": "NVIDIA container toolkit", "installed": inst,
@@ -1961,6 +1968,8 @@ def _machine_name(n, action, name, also):
     row = container_row(n)
     if not row:
         return "", f"{n['name']} reports no NVIDIA card with Docker beside it"
+    if row["state"] == "nocard" and action != "remove":
+        return "", f"{n['name']} has no NVIDIA card now: its toolkit can only be removed"
     if not row["managed"]:
         return "", (f"{n['name']} is its owner's machine, not a BuilderBot sandbox: the container toolkit "
                     "is installed or removed there, the way NVIDIA's guide does it")
@@ -1980,6 +1989,8 @@ def _driver_name(n, action, pkg):
     row = driver_row(n)
     if not row:
         return "", f"{n['name']} reports no NVIDIA card"
+    if row["state"] == "nocard" and action != "remove":
+        return "", f"{n['name']} has no NVIDIA card now: its driver can only be removed"
     if not row["managed"]:
         return "", (f"{n['name']} is its owner's machine, not a BuilderBot sandbox: its driver is "
                     "installed or removed there, the way its distribution does it")
@@ -2278,6 +2289,8 @@ def verb(action, req, principal):
         # the card (R102); node_job decides whether it may be touched.
         if (node.get("reported") or {}).get("gpu_card"):
             known = known | {DRIVER, TOOLKIT}
+        # ...and to remove one left for a card that has gone (B168).
+        known |= {r["name"] for r in (driver_row(node), container_row(node)) if r and r["state"] == "nocard"}
         # Claude Code is its own job (claudecode.py): an install or an update
         # runs the installer as the session account and ends the node's
         # Claude sessions first; a removal takes the copy off (R145). Ticked

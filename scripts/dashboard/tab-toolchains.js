@@ -542,6 +542,7 @@ function tcDriverLine(m){
     case "waiting": return `<span class="sub warn">installed; it takes the card when the machine restarts, which Reboot on the node's row does and which ends every session there.${nodesBtn}</span>`;
     case "update": return `<span class="sub warn">${esc(m.installed)} is installed and takes over from ${esc(m.loaded)} when the machine restarts.${nodesBtn}</span>`;
     case "leaving": return `<span class="sub warn">removed; it keeps the card until the machine restarts, when nouveau takes it back.${nodesBtn}</span>`;
+    case "nocard": return `<span class="sub warn">installed, but this machine has no NVIDIA card now: it tries for one at every boot and fills the console with "No NVIDIA GPU found". Remove it unless the card is coming back.</span>`;
     default: return `<span class="sub where on">installed, and running the card</span>`;
   }
 }
@@ -583,7 +584,7 @@ function tcDriverRow(m, busy, job){
                : tcTicked.has(TC_DRIVER) ? " checked" : ""}>
     <span class="grow">
       <label class="nm" for="tcDrvTick">${esc(m.label)}${ver ? ` <span class="pill" title="${m.installed ? "installed" : "loaded"}">${esc(ver)}</span>` : ""}</label>
-      <span class="sub">For this machine's ${esc(card)}: CUDA, the hardware video encoder and the emulator's GPU rendering need it. It is this machine's own, not a copy on the store.</span>
+      <span class="sub">For ${m.card ? `this machine's ${esc(card)}` : "an NVIDIA card"}: CUDA, the hardware video encoder and the emulator's GPU rendering need it. It is this machine's own, not a copy on the store.</span>
       ${sel}
       ${mine ? `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(tcDots)}</span></span>` : tcDriverLine(m)}
       ${m.newer && !mine ? `<span class="sub upd">update available: ${esc(m.newer)}. Tick it and press ${tcInstallSaid()}</span>` : ""}
@@ -604,6 +605,7 @@ function tcToolkitLine(m){
   switch (m.state){
     case "absent": return `<span class="sub where">not installed: a container here cannot reserve the card${
       m.driver ? "" : ". It needs the driver above: tick both, and the driver goes on first"}</span>`;
+    case "nocard": return `<span class="sub warn">installed, but this machine has no NVIDIA card now, and its refresh service restarts every second looking for one. Remove it unless the card is coming back.</span>`;
     case "unconfigured": return `<span class="sub warn">installed, but Docker here does not list the nvidia runtime: tick it and press ${tcInstallSaid()}, which configures Docker again</span>`;
     default: return m.driver_loaded
       ? `<span class="sub where on">installed: a compose file reserves the card with deploy.resources.reservations.devices (driver: nvidia)</span>`

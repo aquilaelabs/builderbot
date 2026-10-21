@@ -207,7 +207,9 @@ def _gpu_driver(sys_root=None, modinfo=None, modules_root="/lib/modules", runnin
     """Where the NVIDIA driver stands on this machine, for the Toolchains
     tab's driver row (R102): the version installed for this kernel (the
     module modinfo finds), the version loaded now, and which driver has the
-    card. {} with no NVIDIA card. Read from the files, never from
+    card. {} with no NVIDIA card, unless the driver is installed for one
+    that has gone, which is said (nocard) so it can still be removed (B168).
+    Read from the files, never from
     nvidia-smi, which only answers once the driver has the card, and the
     row has to tell "not installed" from "installed, waiting for a reboot"
     and from "removed, still loaded until one"."""
@@ -231,8 +233,6 @@ def _gpu_driver(sys_root=None, modinfo=None, modules_root="/lib/modules", runnin
             break
     except OSError:
         pass
-    if not card:
-        return {}
     loaded = ""
     try:
         with open(os.path.join(sys_root, "module", "nvidia", "version")) as f:
@@ -271,6 +271,9 @@ def _gpu_driver(sys_root=None, modinfo=None, modules_root="/lib/modules", runnin
                     installed = (p.stdout.strip().splitlines() or [""])[0][:40]
             except (OSError, subprocess.SubprocessError):
                 pass
+    if not card:
+        return {"installed": installed, "loaded": "", "bound": "", "nocard": True,
+                **_gpu_driver_apt()} if installed else {}
     return {"installed": installed, "loaded": loaded, "bound": bound[:20], **_gpu_driver_apt()}
 
 
@@ -339,10 +342,13 @@ def _gpu_container(card=None):
     would move it to (known only while NVIDIA's package source is on the
     machine, which the row's install adds), and whether Docker lists the
     nvidia runtime, which is what a container reserving the card needs. {}
-    with no NVIDIA card or no Docker: there is nothing to hand to a
-    container, and the row is not drawn."""
-    if not (card if card is not None else _gpu_card()) or not shutil.which("docker"):
+    with no Docker, or with no NVIDIA card and no toolkit: there is nothing
+    to hand to a container, and the row is not drawn. A toolkit left for a
+    card that has gone is said (nocard), since its refresh unit restarts
+    every second without one (B168)."""
+    if not shutil.which("docker"):
         return {}
+    has_card = bool(card if card is not None else _gpu_card())
 
     def out(argv, timeout=15):
         try:
@@ -373,8 +379,11 @@ def _gpu_container(card=None):
         runtimes = {}
     if isinstance(runtimes, dict) and isinstance(runtimes.get("Runtimes"), dict):
         runtimes = runtimes["Runtimes"]
+    if not has_card and not installed:
+        return {}
     return {"installed": installed[:60], "candidate": candidate[:60],
-            "runtime": isinstance(runtimes, dict) and "nvidia" in runtimes}
+            "runtime": isinstance(runtimes, dict) and "nvidia" in runtimes,
+            **({} if has_card else {"nocard": True})}
 
 
 def _gpu_display():

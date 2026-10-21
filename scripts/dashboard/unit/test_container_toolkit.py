@@ -52,6 +52,17 @@ class Census(unittest.TestCase):
         self.docker()
         self.assertEqual(agent._gpu_container(card=""), {})
 
+    def test_a_toolkit_left_for_a_card_that_has_gone_is_said(self):
+        self.docker()
+        self.tool("dpkg-query", "printf '1.20.1-1 ii \\n'")
+        got = agent._gpu_container(card="")
+        self.assertEqual((got["installed"], got["nocard"]), ("1.20.1-1", True))
+        self.assertTrue(toolchains.container_row(node(toolkit=got, card="", driver={})))
+        self.assertEqual(toolchains.container_row(node(toolkit=got, card="", driver={}))["state"], "nocard")
+        n = node(toolkit=got, card="", driver={})
+        self.assertIn("only be removed", toolchains._machine_name(n, "install", toolchains.TOOLKIT, [])[1])
+        self.assertEqual(toolchains._machine_name(n, "remove", toolchains.TOOLKIT, []), (toolchains.TOOLKIT, ""))
+
     def test_not_installed_and_no_source_on_the_machine(self):
         self.docker()
         self.tool("dpkg-query", "exit 1")
