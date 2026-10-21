@@ -4430,6 +4430,9 @@ def _snapshot(who):
         # once per image update), and these are what make it once.
         "welcome": {"seen": bool(users.prefs(who).get("welcome_seen")),
                     "image_seen": str(users.prefs(who).get("image_seen") or "")},
+        # ...and the pages it has toured, and whether it skips the tour (R94).
+        "tour": {"seen": [str(k) for k in users.prefs(who).get("tour_seen") or []][:64],
+                 "off": users.prefs(who).get("tour_off") is True},
     }
 
 

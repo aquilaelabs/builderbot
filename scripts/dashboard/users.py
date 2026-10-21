@@ -1159,6 +1159,13 @@ def own_prefs(name, want):
         keep["welcome_seen"] = want["welcome_seen"]
     if isinstance(want.get("image_seen"), str) and re.fullmatch(r"[0-9a-f]{0,40}", want["image_seen"]):
         keep["image_seen"] = want["image_seen"]
+    # The tour (R94): which pages this account has toured, by their kind,
+    # and whether it skips the tour on every page; both cleared by Show the
+    # tours again.
+    if isinstance(want.get("tour_seen"), list):
+        keep["tour_seen"] = sorted({str(k) for k in want["tour_seen"][:64] if re.fullmatch(r"[a-z][a-z0-9-]{0,30}", str(k))})
+    if isinstance(want.get("tour_off"), bool):
+        keep["tour_off"] = want["tour_off"]
     if not keep:
         return {"error": "nothing here is a setting"}, 400
     return prefs_set(name, keep), 200

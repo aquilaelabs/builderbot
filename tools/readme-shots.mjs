@@ -51,8 +51,10 @@ const scrub = page => page.evaluate(() => {
   return [...(text.match(mail) || []).filter(a => a !== 'you@example.com'),
           ...(text.match(ip) || []).filter(a => !a.startsWith('192.0.2.') && a !== '127.0.0.1')];
 });
-const open = async (opts, view) => {
+const open = async ({ tour = false, ...opts }, view) => {
   const ctx = await browser.newContext(opts);
+  // The first-use tour (R94) only in the picture that is of it.
+  if (!tour) await ctx.addInitScript(() => { window.BB_NO_TOUR = true; });
   // Marked as this account's own choice, or the page adopts the account's
   // saved scheme over it (adoptTheme, B491).
   await ctx.addInitScript(who => { try { localStorage.setItem('bb.theme', 'default'); localStorage.setItem('bb.theme.who', who); } catch (e) {} }, USER);

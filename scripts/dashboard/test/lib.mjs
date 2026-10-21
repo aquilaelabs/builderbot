@@ -140,7 +140,7 @@ export const launch = () => chromium.launch({ executablePath: CHROME });
 // A page with the test credentials, console errors collected on page.errors,
 // and dialogs auto-accepted (recorded on page.dialogs): the confirmations
 // are part of what the tests check.
-export async function newPage(browser, opts = {}){
+export async function newPage(browser, { tour = false, ...opts } = {}){
   // The Authorization header is sent preemptively: the server answers 401
   // without a WWW-Authenticate challenge now (the challenge is what popped
   // the browser dialog), and httpCredentials alone only reacts to one.
@@ -149,6 +149,9 @@ export async function newPage(browser, opts = {}){
     extraHTTPHeaders: { Authorization: 'Basic '
       + Buffer.from(`${CREDS.username}:${CREDS.password}`).toString('base64') },
     ...opts });
+  // The first-use tour (R94) would stand over every page a suite looks at:
+  // off unless the suite asks for it.
+  if (!tour) await ctx.addInitScript(() => { window.BB_NO_TOUR = true; });
   const page = await ctx.newPage();
   // Every wait in this suite is a guess about how long a poll, a subprocess and
   // a repaint take on THIS box, and this box also runs CI, the live dashboard

@@ -127,6 +127,7 @@ ok(page.url().split('#')[0] === URL, 'preemptive basic auth bypasses the login p
 
 // And a browser with no credentials walks the login flow end to end.
 const ctx2 = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+await ctx2.addInitScript(() => { window.BB_NO_TOUR = true; });     // the tour is tour.mjs's (R94)
 const page2 = await ctx2.newPage();
 await page2.goto(URL);
 await page2.waitForURL('**/login**');

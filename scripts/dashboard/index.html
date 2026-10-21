@@ -688,6 +688,22 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 @media(prefers-reduced-motion:reduce){
   #bBell.waiting{animation:none;background:var(--warn)}
 }
+/* The tour (R94): a card beside the part of the page a step is about, and a
+   ring around that part; a sheet from the bottom on a phone. Over the page,
+   under a dialog. */
+.tourring{position:fixed;z-index:60;pointer-events:none;border:2px solid var(--accent);
+  border-radius:var(--r-surface);box-shadow:0 0 0 9999px rgba(0,0,0,.35);transition:all .18s ease}
+.tourcard{position:fixed;z-index:61;width:min(360px,calc(100vw - 32px));background:var(--panel);
+  border:var(--hair) solid var(--line);border-radius:var(--r-surface);box-shadow:0 8px 22px rgba(0,0,0,.45);
+  padding:14px 16px 10px;font:var(--f-ui);color:var(--ink)}
+.tourcard .tourstep{font:var(--f-note);color:var(--dim);margin-bottom:6px}
+.tourcard .toursay{line-height:1.45;margin-bottom:10px}
+.tourcard .tourall{margin-bottom:8px}
+.tourcard .actbar{padding:0;border:0;background:none;gap:8px}
+.tourcard.sheet{left:0;right:0;bottom:0;top:auto!important;width:auto;border-radius:var(--r-surface) var(--r-surface) 0 0;
+  padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+@media(prefers-reduced-motion:reduce){ .tourring{transition:none} }
+html[data-motion="reduce"] .tourring{transition:none}
 .bellpanel{position:absolute;right:8px;top:100%;z-index:40;
   width:min(400px,calc(100vw - 16px));max-height:min(60vh,440px);overflow:auto;
   background:var(--panel);border:var(--hair) solid var(--line);border-top:0;
@@ -5539,6 +5555,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       </div>
     </div>
     <div class="foot"><span class="sp"></span>
+      <button type="button" id="aboutTours">Show the tours again</button>
       <button type="button" id="aboutClose">Close</button>
     </div>
   </div>
@@ -6624,6 +6641,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="tab-jobs.js"></script>
 <script src="tab-nginx.js"></script>
 <script src="tab-vms.js"></script>
+<script src="page-tour.js"></script>
 <script src="tab-storage.js"></script>
 <script src="tab-phone.js"></script>
 <script src="tab-users.js"></script>
@@ -6895,6 +6913,7 @@ document.addEventListener("contextmenu", e => { if (ddrag) e.preventDefault(); }
 // else has loaded.
 $("bAbout").onclick = () => openAbout();
 $("aboutClose").onclick = closeAbout;
+$("aboutTours").onclick = () => pressing($("aboutTours"), () => tourReset());
 // Escape and the backdrop mean what Close means (B229): the popup opens
 // itself after an update, over whatever the person came to do, and every
 // other dialog on the page lets them out either way. Escape is modalKeys'.
