@@ -353,6 +353,13 @@ class Agent(unittest.TestCase):
         en = self.av.user_data("db", "builder", [KEY], self.av.ENROLL_HEAD + "x")
         self.assertIn("[sh, -c, 'command -v bash", en)
         self.assertIn("bash /root/bb-enroll.sh", en)
+        # Alpine's account takes its key, and the whole stays YAML cloud-init reads.
+        self.assertIn('sed -i "s/^builder:!/builder:*/" /etc/shadow', ud)
+        try:
+            import yaml
+        except ImportError:
+            return
+        self.assertEqual(yaml.safe_load(en)["runcmd"][0][0], "sh")
         self.assertIn(json.dumps(KEY), ud)
 
 

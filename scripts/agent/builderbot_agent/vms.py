@@ -209,6 +209,9 @@ def user_data(hostname, user, keys, enroll=""):
     # bash where the image has none (Alpine's): the account's shell, and
     # what the enroll script runs in, which never started there (R97's walk).
     bash = "command -v bash >/dev/null || apk add --no-cache bash >/dev/null 2>&1 || true"
+    # ...and Alpine's sshd turns a key away for an account whose password is
+    # locked (!), which cloud-init leaves; no password (*) lets the key in.
+    bash += f'; if command -v apk >/dev/null; then sed -i "s/^{user}:!/{user}:*/" /etc/shadow; fi'
     if enroll:
         import base64
         lines += ["write_files:", "  - path: /root/bb-enroll.sh", "    permissions: '0700'", "    encoding: b64",
