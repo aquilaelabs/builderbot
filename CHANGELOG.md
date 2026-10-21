@@ -2,9 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- Lock down on a hosting-only node's page, for a box that may have been taken over: one press stops every container there and its nginx, keeps them from starting at a boot, shuts its SSH door, and removes the node with its credential revoked, within five minutes even if the box never answers (1217d3c)
+
 ### Fixed
 
 - On a phone, a node that is not a sandbox says where its storage and network are managed with room around it, no longer pressed against the next section's heading (a4fa774)
+
+### Security
+
+- A hosting-only node that was taken over can no longer reach past its own containers: bringing its containers home writes only their own volumes, it cannot lock the controller's own address out by what it reports, jobs placed by selector never land on it, a forged address no longer lets a project's sessions reach a LAN machine, it cannot fill the controller's disk or audit log, and a node enrolled through a public hostname stays hosting only. Update the controller, and its nodes' agents follow (a557592)
 
 ## 0.5.4: 2026-10-21
 
