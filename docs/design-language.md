@@ -18,8 +18,8 @@ Color comes only from these tokens, named once in the stylesheet. The app starts
 | `--dim` | `#9fa9b4` | secondary text and field labels |
 | `--line` | `#4d5c6f` | hairlines and borders, 1px |
 | `--accent` | `#3fb950` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#d29922` | a warning, and the amber marks |
-| `--bad` | `#f8524a` | an error, a destructive verb, the reason under a dead control |
+| `--warn` | `#d29922` | a warning, the amber marks, and the reason under a control a feature switched off for the install holds dead |
+| `--bad` | `#f8524a` | an error, a destructive verb |
 | `--note` | `#58a6ff` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
@@ -46,8 +46,8 @@ Its light half, the same tokens under the mode switch:
 | `--dim` | `#93a9ac` | secondary text and field labels |
 | `--line` | `#3e5e66` | hairlines and borders, 1px |
 | `--accent` | `#2fb8c6` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#d7ab4c` | a warning, and the amber marks |
-| `--bad` | `#ef6a63` | an error, a destructive verb, the reason under a dead control |
+| `--warn` | `#d7ab4c` | a warning, the amber marks, and the reason under a control a feature switched off for the install holds dead |
+| `--bad` | `#ef6a63` | an error, a destructive verb |
 | `--note` | `#e391d9` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
@@ -74,8 +74,8 @@ Its light half, the same tokens under the mode switch:
 | `--dim` | `#9d9da4` | secondary text and field labels |
 | `--line` | `#53535b` | hairlines and borders, 1px |
 | `--accent` | `#e64e53` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#d9a441` | a warning, and the amber marks |
-| `--bad` | `#ff6b6b` | an error, a destructive verb, the reason under a dead control |
+| `--warn` | `#d9a441` | a warning, the amber marks, and the reason under a control a feature switched off for the install holds dead |
+| `--bad` | `#ff6b6b` | an error, a destructive verb |
 | `--note` | `#3cc6b5` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
@@ -102,8 +102,8 @@ Its light half, the same tokens under the mode switch:
 | `--dim` | `#af9f90` | secondary text and field labels |
 | `--line` | `#67533e` | hairlines and borders, 1px |
 | `--accent` | `#f0873f` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#e8bb50` | a warning, and the amber marks |
-| `--bad` | `#ef5f52` | an error, a destructive verb, the reason under a dead control |
+| `--warn` | `#e8bb50` | a warning, the amber marks, and the reason under a control a feature switched off for the install holds dead |
+| `--bad` | `#ef5f52` | an error, a destructive verb |
 | `--note` | `#4cc9d0` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
@@ -130,8 +130,8 @@ Its light half, the same tokens under the mode switch:
 | `--dim` | `#9aa8ae` | secondary text and field labels |
 | `--line` | `#465b6c` | hairlines and borders, 1px |
 | `--accent` | `#58c7e8` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#d3ab52` | a warning, and the amber marks |
-| `--bad` | `#ee6a68` | an error, a destructive verb, the reason under a dead control |
+| `--warn` | `#d3ab52` | a warning, the amber marks, and the reason under a control a feature switched off for the install holds dead |
+| `--bad` | `#ee6a68` | an error, a destructive verb |
 | `--note` | `#b8a2ff` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
@@ -158,8 +158,8 @@ Its light half, the same tokens under the mode switch:
 | `--dim` | `#9daba0` | secondary text and field labels |
 | `--line` | `#48604f` | hairlines and borders, 1px |
 | `--accent` | `#63c98a` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#d6ad4e` | a warning, and the amber marks |
-| `--bad` | `#e8695f` | an error, a destructive verb, the reason under a dead control |
+| `--warn` | `#d6ad4e` | a warning, the amber marks, and the reason under a control a feature switched off for the install holds dead |
+| `--bad` | `#e8695f` | an error, a destructive verb |
 | `--note` | `#b49cf0` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
@@ -186,8 +186,8 @@ Its light half, the same tokens under the mode switch:
 | `--dim` | `#a2a0c1` | secondary text and field labels |
 | `--line` | `#53537b` | hairlines and borders, 1px |
 | `--accent` | `#9d7cff` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#e0b24d` | a warning, and the amber marks |
-| `--bad` | `#f2637b` | an error, a destructive verb, the reason under a dead control |
+| `--warn` | `#e0b24d` | a warning, the amber marks, and the reason under a control a feature switched off for the install holds dead |
+| `--bad` | `#f2637b` | an error, a destructive verb |
 | `--note` | `#5fdcb4` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
@@ -214,8 +214,8 @@ Its light half, the same tokens under the mode switch:
 | `--dim` | `#8b98a5` | secondary text and field labels |
 | `--line` | `#33404c` | hairlines and borders, 1px |
 | `--accent` | `#ffb000` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#e0913a` | a warning, and the amber marks |
-| `--bad` | `#ff5f45` | an error, a destructive verb, the reason under a dead control |
+| `--warn` | `#e0913a` | a warning, the amber marks, and the reason under a control a feature switched off for the install holds dead |
+| `--bad` | `#ff5f45` | an error, a destructive verb |
 | `--note` | `#6fa8dc` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
@@ -268,8 +268,8 @@ This scheme squares all three corner tokens in its dark half; its light half is 
 | `--dim` | `#ae9cb7` | secondary text and field labels |
 | `--line` | `#654d73` | hairlines and borders, 1px |
 | `--accent` | `#c874d8` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#dfae52` | a warning, and the amber marks |
-| `--bad` | `#ee6183` | an error, a destructive verb, the reason under a dead control |
+| `--warn` | `#dfae52` | a warning, the amber marks, and the reason under a control a feature switched off for the install holds dead |
+| `--bad` | `#ee6183` | an error, a destructive verb |
 | `--note` | `#7dd8a0` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
@@ -296,8 +296,8 @@ Its light half, the same tokens under the mode switch:
 | `--dim` | `#ae9d99` | secondary text and field labels |
 | `--line` | `#6a4e4a` | hairlines and borders, 1px |
 | `--accent` | `#cf6a4c` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#d9a441` | a warning, and the amber marks |
-| `--bad` | `#e8544a` | an error, a destructive verb, the reason under a dead control |
+| `--warn` | `#d9a441` | a warning, the amber marks, and the reason under a control a feature switched off for the install holds dead |
+| `--bad` | `#e8544a` | an error, a destructive verb |
 | `--note` | `#6cc2a8` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
@@ -324,8 +324,8 @@ Its light half, the same tokens under the mode switch:
 | `--dim` | `#b0a28c` | secondary text and field labels |
 | `--line` | `#63563e` | hairlines and borders, 1px |
 | `--accent` | `#d3a94f` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#e3c069` | a warning, and the amber marks |
-| `--bad` | `#e0705f` | an error, a destructive verb, the reason under a dead control |
+| `--warn` | `#e3c069` | a warning, the amber marks, and the reason under a control a feature switched off for the install holds dead |
+| `--bad` | `#e0705f` | an error, a destructive verb |
 | `--note` | `#5fbdb0` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
@@ -352,8 +352,8 @@ Its light half, the same tokens under the mode switch:
 | `--dim` | `#9fa6ae` | secondary text and field labels |
 | `--line` | `#4f5a68` | hairlines and borders, 1px |
 | `--accent` | `#6ea8fe` | the one color that means this is the one: the active tab, the primary button, a link |
-| `--warn` | `#d9a441` | a warning, and the amber marks |
-| `--bad` | `#ef6f6c` | an error, a destructive verb, the reason under a dead control |
+| `--warn` | `#d9a441` | a warning, the amber marks, and the reason under a control a feature switched off for the install holds dead |
+| `--bad` | `#ef6f6c` | an error, a destructive verb |
 | `--note` | `#a6d96a` | the second color: a link in words, the chosen view in a group's row, an info note; a hue apart from the accent |
 
 Its light half, the same tokens under the mode switch:
@@ -952,7 +952,7 @@ Applies to: scripts/dashboard/page-docs.js, scripts/dashboard/tab-*.js, scripts/
 
 Applies to: scripts/dashboard/page-docs.js, scripts/dashboard/tab-*.js, scripts/dashboard/nb-*.js, scripts/dashboard/index.html; table, tables, column, columns, header, thead, tline, tblwrap, tblline
 
-**A list whose rows are all the same shape is a table (R218 step 8).** Jobs, the people on Users and the roles, the pinned toolchains, images and volumes and the Docker list view: a header line naming the columns in `--f-note` dim over rows whose first line holds the same columns, so a value is found by looking down a column, not by reading every row. `tblWrap(cols, rows)` draws the table and its header, `tblLine(cols, cells)` one row's line (in page-docs.js); a column is a share or a fixed width and never auto, since each line is its own grid and only shares and widths line up across lines. The lead cell is the thing's name in `--f-ui` 600 and may wrap; every other cell is one line in `--f-data` dim ending in an ellipsis, numbers right-aligned in tabular figures. A value in a column (a version, a size) is plain text in that voice, never a pill, so a column reads alike down its length; a pill is for a state (succeeded, running, in use). A row is still a row (rows-you-open): its buttons are the line's last column, at its right end; a reason is under the line in red; what is long (a log, a container's card) is behind its fold, opened from the line. Where rows differ in what they hold, they stay cards. On a phone (under 900px) the header goes, the lead cell takes the first line and the others follow it, each wearing its column's name, an empty cell not drawn, and the buttons at the right of the last line they fit on. A grouped list (containers by project) is a table per group under the group's heading.
+**A list whose rows are all the same shape is a table (R218 step 8).** Jobs, the people on Users and the roles, the pinned toolchains, images and volumes and the Docker list view: a header line naming the columns in `--f-note` dim over rows whose first line holds the same columns, so a value is found by looking down a column, not by reading every row. `tblWrap(cols, rows)` draws the table and its header, `tblLine(cols, cells)` one row's line (in page-docs.js); a column is a share or a fixed width and never auto, since each line is its own grid and only shares and widths line up across lines. The lead cell is the thing's name in `--f-ui` 600 and may wrap; every other cell is one line in `--f-data` dim ending in an ellipsis, numbers right-aligned in tabular figures. A value in a column (a version, a size) is plain text in that voice, never a pill, so a column reads alike down its length; a pill is for a state (succeeded, running, in use). A row is still a row (rows-you-open): its buttons are the line's last column, at its right end; a reason is under the line; what is long (a log, a container's card) is behind its fold, opened from the line. Where rows differ in what they hold, they stay cards. On a phone (under 900px) the header goes, the lead cell takes the first line and the others follow it, each wearing its column's name, an empty cell not drawn, and the buttons at the right of the last line they fit on. A grouped list (containers by project) is a table per group under the group's heading.
 
 ### charts
 
@@ -1017,7 +1017,7 @@ As built (R218 step 3, 14 Oct): the doctor dot (#bDocDot) sits after the bell in
 As built (step 2): a page is still a tab in the page's tab model, kept out of the strip (isToolKind), so the panes, the per-account layout and every opener work as before; its bar is the group's sub-nav (a .pseg of the tools), one button in the accent for a page that stands alone (the operator, 16 Oct: a bare word read as a different kind of page), with no close. The address is #/group, #/group/tool or #/projects/NAME, replaced on each draw and pushed on a rail press; the status read's split waits for step 3.
   the-dashboard/dock: The dock is the foot of every page: one line when shut, naming the chat and the open terminals as tabs with their session dots, the line fading at either edge with more tabs past it (the operator, 16 Oct), Chat first since it is always there while terminals come and go (the operator, 15 Oct), and the page keeps its full height; pulled up it takes half the screen (a drag on its edge or a press on a tab) and the page scrolls above it. Its tabs are what the tab strip's terminals and the Sessions and Chat buttons were: a Claude session, a shell, the chat, each closed from its tab the way a terminal tab closed, and a session's end closes its tab as before. A Shell on a container's row opens docker exec in a dock tab, gated by the project's Run its container dial. On a phone the dock is a sheet from the bottom edge, the full width of the screen and the whole height between the header and the bottom bar when open (over the page and its sub-nav), its line on the bottom bar when shut (the operator, 16 Oct). On a phone the page's box itself runs to both edges of the screen and meets the header and the bottom bar with no gap, so what scrolls goes under them; at a desk it keeps its gutter and its border. Which tabs are open is the account's, as the strip was; which is in front and whether the dock is up are the browser's.
 
-As built (step 4, cut 2, 14 Oct): a running instance's row on the Containers page carries Shell for its first running container and Shell in SERVICE for the rest under More; each opens a terminal tab in the dock (argument ctr:NAME:INSTANCE:CONTAINER, label "in CONTAINER"). Who may: a person who may start and stop that container with a shell, an administrator alone when its project's Run its container is Deny (the operator, 14 Oct). Dead, with the reason under the row in red, on a hosting-only node (no terminal there) and under Deny for anybody else. On a node the shell runs on the agent's third terminal server (7683, the controller's only), as the docker account, since the session account is kept off docker (the operator, 14 Oct).
+As built (step 4, cut 2, 14 Oct): a running instance's row on the Containers page carries Shell for its first running container and Shell in SERVICE for the rest under More; each opens a terminal tab in the dock (argument ctr:NAME:INSTANCE:CONTAINER, label "in CONTAINER"). Who may: a person who may start and stop that container with a shell, an administrator alone when its project's Run its container is Deny (the operator, 14 Oct). Dead, with the reason under the row, on a hosting-only node (no terminal there) and under Deny for anybody else. On a node the shell runs on the agent's third terminal server (7683, the controller's only), as the docker account, since the session account is kept off docker (the operator, 14 Oct).
   the-dashboard/home: Five or six tiles across the top (the tiles rule), each a number across the whole install with its label under it, a tone when the number itself is news (failed jobs in --bad when any, updates due in --warn), and each a link into the page that holds the number: nodes online of enrolled, containers running of all, jobs running and failed today, sessions open, updates due (toolchains, images, nginx, the agent), CI red. Under them two cards side by side at a desk, stacked on a phone: Attention (the bell's rows, put away there as on the bell) and Last jobs (ten rows, state pill, when, the Jobs page's row on press). Under those, Projects at a glance: a small card per pinned project with its session dot, its branch and the one notice a project's card carries (no node, restart to use what changed), the full card on the project's page. Home reads on open and on the tokens the tiles depend on; nothing on it polls on its own.
 
 As built (R218 step 5, 14 Oct): page-home.js and /api/home (home.py). The tiles: nodes online of enrolled and containers running of all (only for an account that reads the Nodes area; a node that does not answer within eight seconds counts as unknown and the tile says "as last seen"), jobs running with the ones failed today (bad) or waiting under it, sessions open (claude_where), updates due (the attention rows, each toolchain behind counted), CI red. A tile opens its page (CI red, the first red project's Git view). Attention is the bell's own rows (needsRows) with Dismiss and Show again; Last jobs opens a job's row on the Jobs page with its log open and marked (openJob). Projects at a glance is the pinned projects, each its name (opening its page), branch, session state and one notice. It reads /api/home whole on open and light (the queue and the node counts, the containers kept) on the jobs token; not on the nodes token, which moves with every check-in and would make Home a poll. It redraws from the poll, painted only when it changed. A fresh browser with no page on show lands on Home.
@@ -1080,7 +1080,7 @@ As built (step 2): a page is still a tab in the page's tab model, kept out of th
 
 The dock is the foot of every page: one line when shut, naming the chat and the open terminals as tabs with their session dots, the line fading at either edge with more tabs past it (the operator, 16 Oct), Chat first since it is always there while terminals come and go (the operator, 15 Oct), and the page keeps its full height; pulled up it takes half the screen (a drag on its edge or a press on a tab) and the page scrolls above it. Its tabs are what the tab strip's terminals and the Sessions and Chat buttons were: a Claude session, a shell, the chat, each closed from its tab the way a terminal tab closed, and a session's end closes its tab as before. A Shell on a container's row opens docker exec in a dock tab, gated by the project's Run its container dial. On a phone the dock is a sheet from the bottom edge, the full width of the screen and the whole height between the header and the bottom bar when open (over the page and its sub-nav), its line on the bottom bar when shut (the operator, 16 Oct). On a phone the page's box itself runs to both edges of the screen and meets the header and the bottom bar with no gap, so what scrolls goes under them; at a desk it keeps its gutter and its border. Which tabs are open is the account's, as the strip was; which is in front and whether the dock is up are the browser's.
 
-As built (step 4, cut 2, 14 Oct): a running instance's row on the Containers page carries Shell for its first running container and Shell in SERVICE for the rest under More; each opens a terminal tab in the dock (argument ctr:NAME:INSTANCE:CONTAINER, label "in CONTAINER"). Who may: a person who may start and stop that container with a shell, an administrator alone when its project's Run its container is Deny (the operator, 14 Oct). Dead, with the reason under the row in red, on a hosting-only node (no terminal there) and under Deny for anybody else. On a node the shell runs on the agent's third terminal server (7683, the controller's only), as the docker account, since the session account is kept off docker (the operator, 14 Oct).
+As built (step 4, cut 2, 14 Oct): a running instance's row on the Containers page carries Shell for its first running container and Shell in SERVICE for the rest under More; each opens a terminal tab in the dock (argument ctr:NAME:INSTANCE:CONTAINER, label "in CONTAINER"). Who may: a person who may start and stop that container with a shell, an administrator alone when its project's Run its container is Deny (the operator, 14 Oct). Dead, with the reason under the row, on a hosting-only node (no terminal there) and under Deny for anybody else. On a node the shell runs on the agent's third terminal server (7683, the controller's only), as the docker account, since the session account is kept off docker (the operator, 14 Oct).
 
 ##### the-dashboard/home
 
@@ -1315,7 +1315,7 @@ Layout of first run on a desktop frame (12 columns by 8 rows), from the Blank te
   2. Card (a box holding one thing): Four step cards, one under another: a node, your name and email, Claude Code on the node, a first project, in the middle, columns 4 to 9 of 12, rows 2 to 7 of 8
   3. Card (a box holding one thing): Finish, under them at the right, with what can wait, in the middle, columns 4 to 9 of 12, row 8 of 8
 Notes:
-  After the owner is made, the page is this until Finish (the operator, 18 Oct, R267): the content area's whole height with nothing beside it, no rail, no bell, no doctor, no search and no panes, so no dock; its steps at the reading width (--doc-w), centered. Each step is a card on the page's ground: its number in a circle, its title in the section face and its state as a pill at the right (to do, waiting, done, the number and the pill in the pass color when done), what it is in one dim line, and its own action at the card's foot on the right. 1, your first node: Create sandbox VM and Enroll node open the Nodes page's own dialogs (ndDialogs), and the card says when a machine is waiting to dial in and when it is answering, by itself. 2, your name and email: two labeled fields side by side at a desk, stacked on a phone, Save waking once both are filled. 3, Claude Code on your node: Install, the Toolchains install as a job, dead until the node answers with the reason under it in red. 4, a first project: New project, the Projects page's own dialog. Finish waits for the node, as the server does, and says steps 2 to 4 can wait; storage and the idle timeout are not asked, their defaults being under Controller settings. After Finish the page is Home, whose Getting started card keeps what is left of the four, for an administrator, until done or put away; the About guide no longer opens by itself for them.
+  After the owner is made, the page is this until Finish (the operator, 18 Oct, R267): the content area's whole height with nothing beside it, no rail, no bell, no doctor, no search and no panes, so no dock; its steps at the reading width (--doc-w), centered. Each step is a card on the page's ground: its number in a circle, its title in the section face and its state as a pill at the right (to do, waiting, done, the number and the pill in the pass color when done), what it is in one dim line, and its own action at the card's foot on the right. 1, your first node: Create sandbox VM and Enroll node open the Nodes page's own dialogs (ndDialogs), and the card says when a machine is waiting to dial in and when it is answering, by itself. 2, your name and email: two labeled fields side by side at a desk, stacked on a phone, Save waking once both are filled. 3, Claude Code on your node: Install, the Toolchains install as a job, dead until the node answers with the reason under it. 4, a first project: New project, the Projects page's own dialog. Finish waits for the node, as the server does, and says steps 2 to 4 can wait; storage and the idle timeout are not asked, their defaults being under Controller settings. After Finish the page is Home, whose Getting started card keeps what is left of the four, for an administrator, until done or put away; the About guide no longer opens by itself for them.
 
 ### a terminal tab (Web app)
 
@@ -1360,11 +1360,11 @@ Platform: a responsive web app: the layout holds at phone and desktop widths, an
 Layout of the Docker tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
   1. Header (the band at the top): the bar: which node's daemon, and how it is reached, across the top, row 1 of 8
   2. List (rows of like things): containers grouped by the project that owns them, the group headed in the project's color; no project last, across the middle, rows 2 to 7 of 8
-  3. Card (a box holding one thing): one container: running as a pill, where it came from, Details, Ports and mounts; why a control is dead, in red under it, in the middle, columns 2 to 11 of 12, rows 3 to 6 of 8, inside block 2 (List: containers grouped by the project that o)
+  3. Card (a box holding one thing): one container: running as a pill, where it came from, Details, Ports and mounts; why a control is dead, under it, in the middle, columns 2 to 11 of 12, rows 3 to 6 of 8, inside block 2 (List: containers grouped by the project that o)
   4. Button (an action to press): the container's own action bar: Up, Down, Env or Edit, Rebuild (no cache, pull), Remove, in the middle, columns 2 to 11 of 12, row 6 of 8, inside block 3 (Card: one container)
   5. Footer (the band at the foot): New container, across the bottom, row 8 of 8
 Notes:
-  A document tab: the bar band, the list of bands, a quiet footer (docSurface). A group is headed by its project in the project's color. A container's row says whether it runs as a pill, never as colored words alone. Why a control is dead is written under the row in red, since a tooltip is nothing on a phone. A session's request to rebuild is answered here.
+  A document tab: the bar band, the list of bands, a quiet footer (docSurface). A group is headed by its project in the project's color. A container's row says whether it runs as a pill, never as colored words alone. Why a control is dead is written under the row, since a tooltip is nothing on a phone: in yellow, never in red, which is for what failed; a control the account's roles do not give is not drawn at all (the operator, 21 Oct). A session's request to rebuild is answered here.
   The nginx tab (R171) is a node-scoped tab of the Toolchains shape (the node-switcher rule): one node at a time, picked in the bar, a state row first (nginx on NAME, its pill not deployed, deployed or deployed, down, and under it the container's name and route count); then the form, route rows (hostname, path, port, 443 too, remove) with Add route on their action bar, the certificates' lines (each name and when it ends; a key is never shown back), the hostname picker, the certificate and the key each a full-width PEM box under its label (the operator, 11 Oct: side by side on desktop read as broken), the clash in red since nginx holds 80 and 443 on the host, and Save, Revert then Deploy or Remove on the action bar at the foot, the destructive one last.
   2.0 (R216, the operator, 13 Oct): under the bar, a row of tiles (containers running of all, updates due, projects) and a row of chips narrowing the list to one project. A container's row is its name and a state pill with a dot (running, stopped, partly up, down), a facts grid (image, ports, built from, compose file, containers), its notices, then the settings grid with one Apply, then its action bar. Nothing a person acts on moves into a fold. The bar carries a search box (name, image, port or project) and a Cards or List switch: in the list a container is one line, its name and state pill then its facts in the data voice (whose, its ports as links, where nginx routes it, its image), that opens into its card (rows-you-open); this browser's choice, kept. A published port is a link to where it answers; a port nginx routes to shows the address as a fact; Docker's health (healthy, unhealthy, starting) is said on the state pill.
 
@@ -1404,7 +1404,7 @@ Layout of a node's Phone section on a desktop frame (12 columns by 8 rows), from
   6. Card (a box holding one thing): an ask: its reason, its command, Allow and Deny, across the middle, row 7 of 8, inside block 5 (List: what sessions have asked of the phone)
   7. Footer (the band at the foot): a session reaches the phone only by asking, across the bottom, row 8 of 8
 Notes:
-  A fold of a node's page on the Nodes tab (the operator, 2 Oct: each node with adb holds its own phone), shown on a node whose census carries adb, shut until opened: the phone and who connected it, Connect by IP, Pair, the phones the node remembers, and the asks waiting on its owner. Live for any account whatever the node's other settings allow, since a phone is its owner's. Under the connected phone, its owner's Lend to a project row: a project picker (only projects on the phone's node), For (1 hour, 4 hours, until taken back) and Lend, with why it cannot be lent in red under it when no project fits. Once lent, a row says Lent to PROJECT with the time left as a pill, which apps its sessions drive, and the newest screenshot a session took at a phone's proportions (updated on the next poll), with Look now and Take back on the owner's action bar; the section's last band says the lease's terms beside Refresh. Another account's phone is a phone, not a name and an address: connected, and whose, with no model, serial or address, and no remembered rows but the account's own (B490); an administrator keeps both, since they may disconnect anyone's.
+  A fold of a node's page on the Nodes tab (the operator, 2 Oct: each node with adb holds its own phone), shown on a node whose census carries adb, shut until opened: the phone and who connected it, Connect by IP, Pair, the phones the node remembers, and the asks waiting on its owner. Live for any account whatever the node's other settings allow, since a phone is its owner's. Under the connected phone, its owner's Lend to a project row: a project picker (only projects on the phone's node), For (1 hour, 4 hours, until taken back) and Lend, with why it cannot be lent under it when no project fits. Once lent, a row says Lent to PROJECT with the time left as a pill, which apps its sessions drive, and the newest screenshot a session took at a phone's proportions (updated on the next poll), with Look now and Take back on the owner's action bar; the section's last band says the lease's terms beside Refresh. Another account's phone is a phone, not a name and an address: connected, and whose, with no model, serial or address, and no remembered rows but the account's own (B490); an administrator keeps both, since they may disconnect anyone's.
 
 ### Controller settings (Web app)
 
@@ -1457,7 +1457,7 @@ Platform: a responsive web app: the layout holds at phone and desktop widths, an
 Layout of the Projects tab on a desktop frame (12 columns by 8 rows), from the Blank template, numbered in drawing order (a later block draws over an earlier one where they overlap):
   1. Header (the band at the top): the bar, and New project, across the top, row 1 of 8
   2. List (rows of like things): every project the account may see, across the bottom, rows 2 to 8 of 8
-  3. Card (a box holding one thing): a project: its color, branch, the session's dot, Claude, shell, lock, pin, delete; what is wrong in red under it, across the middle, row 3 of 8, inside block 2 (List: every project the account may see)
+  3. Card (a box holding one thing): a project: its color, branch, the session's dot, Claude, shell, lock, pin, delete; why it cannot start, muted, under it, across the middle, row 3 of 8, inside block 2 (List: every project the account may see)
 Notes:
   A document tab: the bar band, the list of bands, a quiet footer (docSurface). Lock warns which sessions are running and ends them all; a user's account cannot lock or unlock. As built (R218 step 3, 14 Oct): a searchable grid of cards (.pgrid, .pcard in tab-projects.js): the project's color down the card's edge, the name a press opens the page with, the branch and the node in --f-data, the session's dot and word, the one notice, and Claude and Shell with the rest (link, phone, report, lock, pin, settings, delete) behind one menu (R238). The bar is the search (name, branch or node), New project and the trash. The pin is in a card's menu and decides Home's glance (step 5).
 

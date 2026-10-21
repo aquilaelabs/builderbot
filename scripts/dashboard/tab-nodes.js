@@ -393,7 +393,7 @@ function nodeRunnerSection(n, c, between = ""){
             title="drop the stored token and this row; a registered runner keeps running">${barSaid("Forget token", "Forget")}</button>` : ""}
           ${rep.installed || want.want ? `<button type="button" class="danger" data-nrunner="remove" data-slot="${esc(slot)}" ${busyNow || !stored ? "disabled" : ""}
             title="${why || (stored ? "deregister it and remove it from this node" : "add a token first")}">${barSaid("Remove runner", "Remove")}</button>` : ""}
-        </div>${ro ? `<div class="sub bad ndrunwhy">Your roles give no CI runner Write on this runner: an administrator gives it on the ${pageLink("users", "Users page")}.</div>` : ""}</div></div>`;
+        </div></div></div>`;
   }).join("");
   // Adding is a button that unrolls the form in its own band, the shape
   // every view adds with; the form is four fields that wrap to the width
@@ -429,7 +429,7 @@ function nodeRunnerSection(n, c, between = ""){
   // of their own, a card on that page (the operator, 18 Oct: it read as
   // loose rows under lines that ran to the edge).
   return `${headLine(`<span class="pill ${pill}">${esc(status)}</span> One runner per git host; its labels decide which workflows land here.`,
-        "", "toolstate")}${between}${n.runner_new === false && !c.addRunner ? `<div class="field"><div class="sub bad ndrunwhy">A new runner needs CI runner Write on every runner.</div></div>` : ""}
+        "", "toolstate")}${between}
       ${addbar ? `<div class="field">${addbar}</div>` : ""}
       <div class="ndruns">${rows || `<div class="row"><div class="grow"><div class="sub dim ndrunnone">no runner on this node</div></div></div>`}</div>
       ${slots.length ? `<div class="field toolfoot ndrunpin"><div class="hint">This node's name pins a job here:
@@ -1523,7 +1523,6 @@ function renderNodesInto(i){
         // the id is the one in its enroll script's name.
         ndFacts([where, census, seen, agentVer, n.kind === "agent" ? n.config?.user || "" : "", n.id])}
         ${keepLine(n)}
-        ${nodeMay(n) !== "write" ? `<div class="sub warn ndreadonly">Your roles give no Nodes Write on ${esc(n.name)}, so its settings are read here. Your Claude sign-in here, under Claude Code, is yours.</div>` : ""}
         ${agentBar}${pendingBar}
       </div>
       <div class="ndsections">
@@ -1650,14 +1649,16 @@ function renderRunnerInto(i){
 // button (the operator, 17 Oct: all of a page's header buttons on one row);
 // while the add band is open it is the band's to finish or cancel.
 function runnerAddBtn(n, c){
-  if (!n || c.addRunner) return "";
-  return `<button type="button" class="primary" data-nrunnershow ${n.applying || nodeStale(n) || n.runner_new === false || nodeMay(n) !== "write" || featureOff("runner") ? "disabled" : ""}
+  // Not drawn where this account's roles do not give it (the operator, 21 Oct).
+  if (!n || c.addRunner || n.runner_new === false || nodeMay(n) !== "write") return "";
+  return `<button type="button" class="primary" data-nrunnershow ${n.applying || nodeStale(n) || featureOff("runner") ? "disabled" : ""}
     title="a runner for another git host, or this one's under another address">Add runner</button>`;
 }
 
 // An account that does not administer sees a node's settings and changes
 // none of them: every control on the tab is dead for it but the picker and
-// its own Claude sign-in, and the row says why (the operator, 30 Sep). Once,
+// its own Claude sign-in (the operator, 30 Sep), with nothing saying why
+// (the operator, 21 Oct: a role somebody lacks is not advertised). Once,
 // after the draw and its wiring, rather than in each section: a control a
 // later section adds is dead for that account without anybody remembering.
 // Node by node since R260: a role may write one node and read another, so

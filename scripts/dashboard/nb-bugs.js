@@ -176,9 +176,12 @@ function nbBugsView({$, nb, project}){
   }
 
   function drawBugAdd(){
-    const box = $("bugAdd"), ro = projWriteWhy(project);
+    const box = $("bugAdd");
+    // Not drawn for a role that only reads the project (the operator, 21
+    // Oct: what a role does not give is not advertised).
+    if (projWriteWhy(project)){ box.innerHTML = ""; return; }
     box.innerHTML = `<div class="addbar ctlrow" data-add="bug">
-      <button type="button"${ro ? " disabled" : ""}>Report a bug</button></div>${deadWhy(ro)}`;
+      <button type="button">Report a bug</button></div>`;
     // The same fold the memory writer opens with: the two are the same control
     // on two views of one notebook, and one of them appearing whole while the
     // other unrolled was the kind of difference you cannot unsee.

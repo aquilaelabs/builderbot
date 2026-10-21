@@ -425,13 +425,13 @@ function nbRoadmapView({$, nb}){
     nb.drawBatchNote();
     nb.syncSave();
     $("roadmapOrder").hidden = !rows.length || !!ro;
-    // Add to roadmap dead, with why under it (B86), and its box shut.
-    $("roadmapShow").disabled = !!ro;
-    if (ro && !$("roadmapForm").hidden){ $("roadmapForm").hidden = true; $("roadmapShow").hidden = false; }
-    setText($("roadmapWhy"), ro);
-    setHidden($("roadmapWhy"), !ro);
+    // No Add to roadmap for a role that only reads (B86; the operator, 21
+    // Oct: what a role does not give is not drawn), and its box shut.
+    if (ro && !$("roadmapForm").hidden) $("roadmapForm").hidden = true;
+    if (ro) $("roadmapShow").hidden = true;
+    else if ($("roadmapForm").hidden) $("roadmapShow").hidden = false;
     // An empty band (the box open, nothing to reorder) is not drawn.
-    $("roadmapAddBar").hidden = !$("roadmapForm").hidden && $("roadmapOrder").hidden;
+    $("roadmapAddBar").hidden = !!ro || (!$("roadmapForm").hidden && $("roadmapOrder").hidden);
     $("roadmapOrder").classList.toggle("on", nb.roadmapOrdering);
     $("roadmapLog").classList.toggle("on", nb.roadmapLogOn);
     drawSendBox(live);

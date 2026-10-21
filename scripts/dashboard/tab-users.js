@@ -125,7 +125,6 @@ function usersDetail(u){
   return `<div class="rhead" data-uback><span class="shback" role="img" aria-label="Back to People">\u2039</span><b>${esc(u.name)}</b> <span class="dim">${facts.join(" · ")}</span></div>
     ${u.claude_shared_with?.length ? `<div class="sub warn">the same Claude account as ${u.claude_shared_with.map(esc).join(", ")
       }, allowed only while one person is behind both</div>` : ""}
-    ${ro ? `<div class="sub bad" id="ueWhyRo">Your roles give Accounts and roles Read, not Write: these are here to read.</div>` : ""}
     <div class="setgrid">
       ${isMe ? f("ueName", "name", "Account name", "text", "disabled", "your own account name changes on your Profile, which keeps this browser signed in")
              : f("ueName", "name", "Account name", "text", "", "what they sign in with. Changing it signs their browsers out")}

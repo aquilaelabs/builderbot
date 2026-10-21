@@ -119,8 +119,11 @@ const projReleaseWhy = name => {
   const p = (state?.projects || []).find(x => x.name === name);
   return !p ? "" : notMine(p) ? NOT_MINE_WHY : (p.release_why || "");
 };
-// The reason under a dead control, in the notice voice: one line, red.
-const deadWhy = why => why ? `<div class="notice bad deadwhy">${esc(why)}</div>` : "";
+// The reason under a dead control, a feature this install switched off: one
+// line in the warning's yellow, since a control that is off is not an error
+// (the operator, 21 Oct). A role an account lacks is never one: what it does
+// not give is not drawn at all.
+const deadWhy = why => why ? `<div class="notice warn deadwhy">${esc(why)}</div>` : "";
 // A feature this install switched off (R81): its sentence, or "" when it is
 // on. Every control the feature draws is dead with this under it.
 const featureOff = feature => state?.off?.[feature] || "";

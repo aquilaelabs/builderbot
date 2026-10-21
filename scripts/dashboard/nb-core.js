@@ -918,24 +918,21 @@ function projectState(p){
 // out of window), in the notice voice, or nothing.
 function projectNote(p){
   const here = withMe(p.name).length > 0;
-  // What holds it back is the notice, in red, ahead of a wait that would
-  // end by itself (B826: a copy going up was said in red and the missing
-  // Claude Code that really held it was never said); a wait alone is dim.
+  // What holds it back is said ahead of a wait that would end by itself
+  // (B826: a copy going up was said and the missing Claude Code that really
+  // held it never was).
   const held = p.held && !state?.mapping?.[p.name]?.running ? p.held : "";
-  // Not this account's to change comes first (B88): no node coming back
-  // or map finishing would let it start a session here, and somebody else
-  // working in it is no answer to why this account cannot.
-  const perm = p.locked ? "" : writeWhy(p);
-  if (perm) return `<div class="pnote bad">${esc(perm)}</div>`;
+  // Not this account's to change: nothing is said and Start Claude is not
+  // drawn (the operator, 21 Oct: a role somebody lacks is not advertised to
+  // them, and a reason a button is off is not an error, so no line is red).
+  if (!p.locked && writeWhy(p)) return "";
   const said = held || p.session_why;
-  if (said && !p.locked && !here)
-    return `<div class="pnote ${!held && p.session_waiting ? "dim" : "bad"}">${esc(said)}</div>`;
+  if (said && !p.locked && !here) return `<div class="pnote dim">${esc(said)}</div>`;
   // ...and otherwise why Start Claude is dead, whatever made it so (B88):
-  // a role that only reads the project, a Profile with no commit author.
-  // An archived one says so by its mark, and is left out; others working
-  // here do not make the button live for this account, so it is said too.
+  // a Profile with no commit author, somebody else's node. An archived one
+  // says so by its mark, and is left out.
   const dead = p.locked ? "" : claudeDeadWhy(p);
-  return dead ? `<div class="pnote bad">${esc(dead)}</div>` : "";
+  return dead ? `<div class="pnote dim">${esc(dead)}</div>` : "";
 }
 // Why Start Claude is dead on this project, or "" when it is live: the one
 // answer the button, its description and the line under it all read.
@@ -956,9 +953,11 @@ function claudeDeadWhy(p){
 function projectActions(p, extra = ""){
   const name = p.name, mine = liveSessions().has(myClaude(name));
   const dead = claudeDeadWhy(p);
+  // What this account's roles do not give is left out, not drawn dead.
+  const forbid = !p.locked && !!writeWhy(p);
   const menu = [
-    p.git_ok && !isBroken(p)
-      ? `<button type="button" data-l="${esc(name)}"${state?.can?.["git-auth"] === false ? " disabled" : ""}>${
+    p.git_ok && !isBroken(p) && state?.can?.["git-auth"] !== false
+      ? `<button type="button" data-l="${esc(name)}">${
           p.linked ? `${esc(p.forge_name || "Remote")} settings` : "Link to a git host"}</button>` : "",
     p.phone?.mine ? `<button type="button" data-ph="${esc(name)}"${phoneWhy(p) ? " disabled" : ""}>${
         p.phone?.lease?.project === name ? "Take your phone back" : "Lend your phone"}</button>` : "",
@@ -966,7 +965,7 @@ function projectActions(p, extra = ""){
     // Archive is the lock under the name it is used for (the operator, 18
     // Oct): an archived project is kept and run by hand, its card folded
     // away at the foot of the Projects page, and not pinned.
-    `<button type="button" data-k="${esc(name)}" data-on="${p.locked ? "0" : "1"}"${state?.can?.lock === false ? " disabled" : ""}>${p.locked ? "Unarchive" : "Archive"}</button>`,
+    state?.can?.lock === false ? "" : `<button type="button" data-k="${esc(name)}" data-on="${p.locked ? "0" : "1"}">${p.locked ? "Unarchive" : "Archive"}</button>`,
     p.locked ? "" : `<button type="button" data-p="${esc(name)}" data-on="${p.pinned ? "0" : "1"}">${p.pinned ? "Unpin" : "Pin"}</button>`,
     // A label of this account's to keep projects together on the Projects
     // page (the operator, 18 Oct): nothing else follows from it.
@@ -993,9 +992,9 @@ function projectActions(p, extra = ""){
   // Green only while your session runs, and then it opens it; otherwise a
   // plain Start Claude (the operator, 16 Oct: green on every card read as
   // running everywhere).
-  return `${isBroken(p) ? "" : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(name)}"${dead ? " disabled" : ""} title="${esc(say)}">${
+  return `${isBroken(p) || forbid ? "" : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(name)}"${dead ? " disabled" : ""} title="${esc(say)}">${
         mine ? "Open Claude" : "Start Claude"}</button>`}
-    ${mayShell() ? `<button type="button" data-s="${esc(name)}"${notMine(p) || !gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}
+    ${mayShell() && !notMine(p) ? `<button type="button" data-s="${esc(name)}"${!gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}
     <span class="more"><button type="button" data-pmore aria-label="more" aria-expanded="false">${DOTS}</button><div class="actmenu" hidden>${menu}</div></span>`;
 }
 function projectHeader(t){

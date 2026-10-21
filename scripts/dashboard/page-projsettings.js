@@ -662,13 +662,8 @@ function renameProject(name, mode = "all"){
   $("rnUnlink").hidden = !(git && p?.linked);
   unbusy($("rnUnlink"), `Unlink from ${p?.forge_name || "its remote"}`);
   // The bin, on the gear's door only: the chain's is about the remote.
-  $("rnDelete").hidden = git || !p;
-  // ...dead, with why under it, for an account whose roles do not give
-  // deleting it (B86): the server's own refusal, read off the row.
-  const delWhy = p?.trash_why || "";
-  $("rnDelete").disabled = !!delWhy;
-  setText($("rnDeleteWhy"), delWhy);
-  setHidden($("rnDeleteWhy"), git || !p || !delWhy);
+  // Not drawn for a role that does not give it (the operator, 21 Oct).
+  $("rnDelete").hidden = git || !p || !!p?.trash_why;
   $("rnKeyOut").hidden = true; $("rnKeyPaste").hidden = true; $("rnKeyPaste").value = "";
   rnLoadAuth(name);
   rnLoadSigning(name);
@@ -959,10 +954,9 @@ let rnSnap = null;
 function rnLoadSnapshots(name, keep = false){
   if (!keep){ rnSnap = null; $("rnSnapField").hidden = true; }
   if (rnMode === "git") return;
-  // Not asked for where the row already says it would be refused (B89): the
-  // reason is said under the section, without a 403 in the console.
-  const no = rnSettingsWhy(name);
-  if (no){ rnWhyOff($("rnSnapField"), $("rnSnapRows"), no); return; }
+  // Not asked for where the row already says it would be refused (B89), and
+  // not drawn: what a role does not give is not shown (the operator, 21 Oct).
+  if (rnSettingsWhy(name)) return;
   fetch("/api/snapshots?project=" + encodeURIComponent(name))
     .then(r => r.json())
     .then(j => {
@@ -1076,7 +1070,7 @@ function rnDrawSigning(){
       <div>Backup password: ${rnSignLocked ? "set" : "none"}</div>
       <div class="sub dim">${rnSignLocked ? "Every key backup asks for it, whoever downloads it."
         : "Every key backup will ask for it, whoever downloads it."}${rnSignMayLock ? "" : " The project's owner sets it."}</div>
-      ${rnSignLocked ? "" : `<div class="sub bad">No key can be added or made until it has one${rnSignMayLock ? ": set it first" : ""}.</div>`}
+      ${rnSignLocked ? "" : `<div class="sub warn">No key can be added or made until it has one${rnSignMayLock ? ": set it first" : ""}.</div>`}
       ${rnSignMayLock && rnSignLockOpen ? `<div class="rnsignform">
         ${rnSignLocked ? `<input type="password" id="rnLockCur" autocomplete="current-password" placeholder="the backup password now" aria-label="the backup password now">` : ""}
         <input type="password" id="rnLockNew" autocomplete="new-password" placeholder="${rnSignLocked ? "a new one, or empty to remove it" : "at least ten characters"}" aria-label="the new backup password">

@@ -260,8 +260,8 @@ function nbTestsView({$, nb, project}){
       if (!t || !body || body.dataset.done) return;
       body.dataset.done = "1";
       const draft = drafts.get(box.dataset.key);
-      // A role that reads the project and does not write it (B101): Edit
-      // dead, with the reason under it, and the fields never out.
+      // A role that reads the project and does not write it (B101): no
+      // Edit, and the fields never out.
       const ro = projWriteWhy(project);
       if (ro) tstEditing.delete(t.key);
       const sub = `<div class="sub">${esc(t.key)}${
@@ -279,9 +279,9 @@ function nbTestsView({$, nb, project}){
               esc(t.notes) || "not written yet"}</div></div>`
           : `<div class="bfield"><div class="bval dim">Not described yet: what breaks if this goes red, and what it exercises.</div></div>`}
           ${t.accepted ? `<div class="bfield"><label>The wait is the work</label><div class="bval">${esc(t.accepted)}</div></div>` : ""}
-          <div class="actbar"><span class="sp"></span>
-            <button type="button" class="tstEdit"${ro ? " disabled" : ""}>Edit</button></div>${deadWhy(ro)}`;
-        body.querySelector(".tstEdit").onclick = () => {
+          ${ro ? "" : `<div class="actbar"><span class="sp"></span>
+            <button type="button" class="tstEdit">Edit</button></div>`}`;
+        if (!ro) body.querySelector(".tstEdit").onclick = () => {
           tstEditing.add(t.key); body.dataset.done = ""; fill(box);
         };
         return;

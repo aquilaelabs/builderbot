@@ -220,8 +220,7 @@ await call('/api/users', { action: 'edit', name: 's.user', profile: { full_name:
      `its chooser's sign-in lands on the same section, where its own Sign in is live (${seen.live.join()})`);
   ok(seen.others > 5 && seen.ghosted === seen.others && !seen.toolchains && seen.enroll === true,
      `every other control on the tab is ghosted for it, enrolling included, and no way to the Toolchains page (${seen.ghosted} of ${seen.others})`);
-  ok(/no Nodes Write on signbox/.test(seen.why) && /Your Claude sign-in here/.test(seen.why),
-     '...and the row says why, and what is still theirs');
+  ok(!seen.why, '...and nothing on the row says why (the operator, 21 Oct: a role somebody lacks is not advertised)');
   // Its sign-in works: the job is for that account, on its project's node.
   await up.click(`[data-signin="${box.id}"] [data-si="in"]`);
   await up.waitForFunction(id => state?.signin?.running && state.signin.node === id, box.id, { timeout: 20000 });

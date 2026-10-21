@@ -5122,7 +5122,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           title="reorder; the send controls come back after"
           >Reorder</button>
       </div>
-      <div class="notice bad deadwhy" id="roadmapWhy" hidden></div>
       <div class="roadmapadd ctlrow" id="roadmapForm" hidden>
         <textarea id="roadmapText" class="proseline" rows="1" maxlength="500"
                placeholder="something for the roadmap"></textarea>
@@ -5340,7 +5339,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" data-gitact="pull" title="fast-forward this branch to its upstream">Pull</button>
         <button type="button" data-gitact="push" class="primary" title="send this branch up, with the project's credentials">Push</button>
       </div>
-      <div class="field" id="gitWhyF" hidden><div class="notice bad deadwhy" id="gitWhy"></div></div>
       <div id="gitBody" data-skel="git"></div>
       <!-- A branch against main, its own page (R269 step 2): drawn in
            place of the sections above while the address names it. -->
@@ -5357,7 +5355,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" id="dsWrite"
           title="write docs/design-language.md into the project from what is saved here; a session commits it with the work">Write the file</button></div>
       <!-- Why Write the file and every control below are dead (B101). -->
-      <div class="field" id="dsWhyF" hidden><div class="notice bad deadwhy" id="dsWhy"></div></div>
       <!-- Add page is the Pages section's own (the operator, 29 Sep):
            nb-design.js draws it at the top of that section. -->
       <div id="dsBody" data-skel="design"></div>
@@ -5815,7 +5812,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <label id="rnReadsLabel">Reads<span class="help" data-help="other projects a session here may read, code and notebook alike, and never change" tabindex="0">?</span></label>
       <div class="lbox" id="rnReads" role="group" aria-labelledby="rnReadsLabel"></div>
       <div class="hint">A session here reads these projects, code and notebook, read-only; only a session on that project changes them.</div>
-      <div class="hint bad" id="rnReadsWhy" hidden>Only BuilderBot's owner chooses which other projects a project's sessions may read.</div>
+      <div class="hint" id="rnReadsWhy" hidden>Only BuilderBot's owner chooses which other projects a project's sessions may read.</div>
     </div>
     <!-- The places on its node a session here is shown (prefs.sees). A
          session's view is built from what it is given, so a share mounted
@@ -5914,7 +5911,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <button id="rnUnlink" class="danger" hidden>Unlink</button>
     </div>
     <!-- Why Delete project is dead for this account (B86), under it. -->
-    <div class="notice bad deadwhy" id="rnDeleteWhy" hidden></div>
   </div>
 </div>
 
@@ -6104,7 +6100,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     <div class="field" id="pendListF"><div id="pendList"></div></div>
     <div class="field"><div id="pendEmpty" hidden>Nothing is waiting here.</div></div>
     <!-- Why Approve and Deny are dead for this account (B101). -->
-    <div class="field" id="pendWhyF" hidden><div class="notice bad deadwhy" id="pendWhy"></div></div>
     <div class="foot">
       <button id="pendApprove" class="primary">Approve</button>
       <button id="pendDeny" class="danger">Deny</button>

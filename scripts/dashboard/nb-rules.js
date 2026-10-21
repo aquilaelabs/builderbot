@@ -166,12 +166,12 @@ function nbRulesView({$, nb, project}){
     // anybody can answer without knowing what it is charged for, and the
     // charge is on every session started in this project, forever.
     const chars = ruleDirty() ? null : d.chars;
-    // A role that reads the project and does not write it (B86): Add a
-    // rule dead with the reason under it, and no Edit or Remove on a row.
+    // A role that reads the project and does not write it (B86): no Add a
+    // rule, and no Edit or Remove on a row.
     const ro = projWriteWhy(project);
     const body = `
       <div class="hint">How you want this project worked on. A session reads these at the start and cannot change yours.</div>
-      <div class="addbar ctlrow" data-add="rule"><button type="button" id="rlAdd"${ro ? " disabled" : ""}>Add a rule</button></div>${deadWhy(ro)}
+      ${ro ? "" : `<div class="addbar ctlrow" data-add="rule"><button type="button" id="rlAdd">Add a rule</button></div>`}
       <div class="field" id="rlList">${rows.map((r, i) => `
         <details class="bug chev rulerow${nb.ruleEditing.has(i) ? " editing" : ""}" data-i="${i}"${
             nb.ruleEditing.has(i) || nb.ruleOpen.has(i) ? " open" : ""}>
