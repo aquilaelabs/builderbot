@@ -2499,12 +2499,21 @@ pkgs_add() {
         rhel) dnf install -y -q "$@" ;;
     esac
 }
+# Exactly what is installed, one package a line: taken before and after an
+# install, the difference is every package it added, dependencies included,
+# so a remove takes those and no package that was orphaned before it.
+pkgs_all() {
+    case "$1" in
+        deb) dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' 2>/dev/null | awk '$1 ~ /^ii/ {print $2}' | sort ;;
+        rhel) rpm -qa --qf '%{NAME}\n' 2>/dev/null | sort ;;
+    esac
+}
 pkgs_drop() {
     local fam="$1"; shift
     [ $# -gt 0 ] || return 0
     case "$fam" in
-        deb) export DEBIAN_FRONTEND=noninteractive; apt_get purge -y -qq "$@"; apt_get autoremove -y -qq ;;
-        rhel) dnf remove -y -q "$@" ;;
+        deb) export DEBIAN_FRONTEND=noninteractive; apt_get purge -y -qq "$@" ;;
+        rhel) dnf remove -y -q --noautoremove "$@" ;;
     esac
 }
 vmhost_pkgs() {
@@ -2530,13 +2539,16 @@ feature_vmhost() {
             # shellcheck disable=SC2086
             added="$(pkgs_missing "$fam" $pkgs)"
             say "VM host: KVM through libvirt"
+            local before
+            before="$(pkgs_all "$fam")"
             # shellcheck disable=SC2086
             pkgs_add "$fam" $added || die "the packages did not install; the output above says why"
+            added="$(comm -13 <(printf '%s\n' "$before") <(pkgs_all "$fam") | tr '\n' ' ')"
             have systemctl && { systemctl enable --now libvirtd >/dev/null 2>&1 || systemctl enable --now virtqemud.socket >/dev/null 2>&1 || true; }
             getent group libvirt >/dev/null 2>&1 && id -u "$DOCKER_USER" >/dev/null 2>&1 && usermod -aG libvirt "$DOCKER_USER"
             install -d -m 0755 "$FEATURES_DIR"
             printf 'packages=%s\n' "$added" > "$FEATURES_DIR/vmhost"
-            say "VM host installed${added:+ (added: ${added% })}; ${DOCKER_USER} runs the VMs, and no session can" ;;
+            say "VM host installed${added:+ ($(printf '%s' "$added" | wc -w) packages added)}; ${DOCKER_USER} runs the VMs, and no session can" ;;
         remove)
             [ -f "$FEATURES_DIR/vmhost" ] || { say "VM host was not installed by BuilderBot here; nothing to remove"; return 0; }
             if have virsh; then
@@ -2549,7 +2561,7 @@ feature_vmhost() {
             # shellcheck disable=SC2086
             [ -z "${added// /}" ] || pkgs_drop "$fam" $added || warn "the packages did not all come off; the output above says why"
             rm -f "$FEATURES_DIR/vmhost"
-            say "VM host removed${added:+ (removed: ${added% })}; what was here before it stays" ;;
+            say "VM host removed${added:+ ($(printf '%s' "$added" | wc -w) packages it had added)}; what was here before it stays" ;;
     esac
 }
 # The hosting-only box closed on itself (R93): 80 and 443 in, and port 22
