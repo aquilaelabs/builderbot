@@ -1441,7 +1441,7 @@ function ndBar(live){
 }
 // Its facts in the facts voice, its id among them (R218 step 26): the id is
 // the one in its enroll script's name.
-const ND_FACTS = ["Reached", "Has", "Seen", "Agent", "Jobs run as", "Id"];
+const ND_FACTS = ["Reached", "Has", "Seen", "Agent", "Jobs run as", "Runs on", "Id"];
 function ndFacts(vals){
   return factGrid(ND_FACTS.map((k, i) => [k, vals ? vals[i] : GHOST, k === "Id" ? {cls: "ndid"} : undefined]), "ndfacts");
 }
@@ -1604,7 +1604,9 @@ function renderNodesInto(i){
         ${
         // Its facts in the facts voice, its id among them (R218 step 26):
         // the id is the one in its enroll script's name.
-        ndFacts([where, census, seen, agentVer, n.kind === "agent" ? n.config?.user || "" : "", n.id])}
+        ndFacts([where, census, seen, agentVer, n.kind === "agent" ? n.config?.user || "" : "",
+                 // A VM BuilderBot made on another node (R91 step 14).
+                 n.config?.vm_of ? `${(nodesList || []).find(x => x.id === n.config.vm_of)?.name || n.config.vm_of}, as a VM` : "", n.id])}
         ${keepLine(n)}
         ${agentBar}${pendingBar}
       </div>
