@@ -282,7 +282,10 @@ def domain_xml(name, project, vcpus, mem_mb, disk, seed, network, boot="bios", f
     arch = escape(os.uname().machine)
     os_el = (f"<os><type arch='{arch}' machine='q35'>hvm</type>"
              f"<loader readonly='yes' type='pflash'>{escape(fw[0])}</loader>"
-             f"<nvram template={quoteattr(fw[1])}>{escape(nvram)}</nvram>"
+             # Made qcow2 at create from the template: libvirt snapshots a
+             # UEFI VM only with its variables in qcow2 (a snapshot of a Debian
+             # 13 VM failed on the raw copy it made itself).
+             f"<nvram format='qcow2'>{escape(nvram)}</nvram>"
              f"{boots}</os>" if boot == "uefi" and fw else
              f"<os><type arch='{arch}'>hvm</type>{boots}</os>")
     return f"""<domain type='kvm'>
@@ -553,9 +556,12 @@ class VmsMixin:
         if boot == "uefi" and not fw:
             job.say("refused: this image boots by UEFI and the firmware is not here: run VM host's install again on the node's Features section\n")
             return "failed", 69
+        nvram = os.path.join(ddir, name + "_VARS.qcow2")
+        if fw and self._vm_run(job, ["qemu-img", "convert", "-f", "raw", "-O", "qcow2", fw[1], nvram], who, say=False) != 0:
+            return "failed", 70
         with open(xml, "w") as f:
             f.write(domain_xml(name, project, vcpus, mem, disk, seed, str(spec.get("network") or ""), boot, fw,
-                               os.path.join(ddir, name + "_VARS.fd"), lan, extra=extra, installer=bool(iso),
+                               nvram, lan, extra=extra, installer=bool(iso),
                                mac=mac, vnc_pw=vnc_pw))
         job.step("starting it")
         if self._vm_run(job, VIRSH + ["define", xml], who) != 0:
@@ -731,7 +737,7 @@ class VmsMixin:
             if self._vm_run(job, VIRSH + ["undefine", name, "--nvram"], who) != 0 \
                     and self._vm_run(job, VIRSH + ["undefine", name], who) != 0:
                 return "failed", 70
-        for suffix in (".qcow2", "-seed.iso", ".xml", "_VARS.fd", *(f"-d{i}.qcow2" for i in range(1, len(DISK_DEVS)))):
+        for suffix in (".qcow2", "-seed.iso", ".xml", "_VARS.fd", "_VARS.qcow2", *(f"-d{i}.qcow2" for i in range(1, len(DISK_DEVS)))):
             with contextlib.suppress(OSError):
                 os.unlink(os.path.join(VM_DIR, "disks", name + suffix))
         job.say(f"{name} removed, with its disk and its snapshots\n")
@@ -749,8 +755,45 @@ class VmsMixin:
         if not snap:
             return "failed", 64
         desc = re.sub(r"[^\w .,:()'-]", "", str(spec.get("note") or ""))[:200]
+        if not self._vm_nvram_qcow2(job, name, who):
+            return "failed", 75
         argv = ["snapshot-create-as", name, snap] + (["--description", desc] if desc else [])
         return self._vm_simple(job, name, who, argv, timeout=600)
+
+    def _vm_nvram_qcow2(self, job, name, who):
+        """A UEFI VM made before 0.6.1 keeps its firmware variables raw, which
+        libvirt will not snapshot: moved to qcow2 while it is off, the domain
+        defined again on the new file. True when nothing is in the way."""
+        xml = subprocess.run(VIRSH + ["dumpxml", name, "--inactive"], capture_output=True, text=True,
+                             check=False, **who).stdout
+        m = re.search(r"<nvram([^>]*)>([^<]+)</nvram>", xml)
+        if not m or "qcow2" in m.group(1):
+            return True
+        if "shut off" not in subprocess.run(VIRSH + ["domstate", name], capture_output=True, text=True,
+                                            check=False, **who).stdout:
+            job.say("refused: this VM boots by UEFI and was made before its firmware's variables were kept in qcow2, "
+                    "which a snapshot needs; stop it once and take the snapshot again, and they are moved while it is off\n")
+            return False
+        raw = m.group(2).strip()
+        new = os.path.join(VM_DIR, "disks", name + "_VARS.qcow2")
+        if self._vm_run(job, ["qemu-img", "convert", "-f", "raw", "-O", "qcow2", raw, new], who, say=False) != 0:
+            # libvirt hands the raw file to its own account, which the jobs
+            # account cannot read: fresh variables from the firmware's own
+            # template then, which a cloud image boots from as before
+            # (its disk's fallback loader) and an installed system may want
+            # its boot entry set again in the firmware's menu.
+            fw = ovmf()
+            if not fw or self._vm_run(job, ["qemu-img", "convert", "-f", "raw", "-O", "qcow2", fw[1], new], who) != 0:
+                return False
+            job.say("its UEFI settings start fresh from the firmware's defaults: the old file was libvirt's to read\n")
+        fixed = xml.replace(m.group(0), f"<nvram format='qcow2'>{escape(new)}</nvram>")
+        path = os.path.join(VM_DIR, "disks", name + ".xml")
+        with open(path, "w") as f:
+            f.write(fixed)
+        if self._vm_run(job, VIRSH + ["define", path], who) != 0:
+            return False
+        job.say("its UEFI variables are in qcow2 now, which a snapshot needs\n")
+        return True
 
     def _vm_revert(self, job, spec, name, who):
         snap = self._vm_snapname(job, spec)

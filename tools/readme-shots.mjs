@@ -157,6 +157,15 @@ const desk = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 };
   await tab(page, 'openDocker()', 7000); await shoot(page, 'containers.png'); await ctx.close(); }
 { const { ctx, page } = await open(desk);
   await tab(page, 'openVmsTab()', 5000); await shoot(page, 'vms.png'); await ctx.close(); }
+// A VM's Screen in the dock (R99): README_SHOT_SCREEN names the VM, as
+// PROJECT/NAME, whose installer or desktop the picture shows.
+if (process.env.README_SHOT_SCREEN){
+  const { ctx, page } = await open(desk);
+  await tab(page, 'openVmsTab()', 5000);
+  await page.click(`.vmtab [data-vm-key="${process.env.README_SHOT_SCREEN}"] [data-vmscreen]`);
+  await page.waitForTimeout(9000);
+  await shoot(page, 'vm-screen.png', { keep: true }); await ctx.close();
+}
 // A node's Features section (R91), scrolled to: what the machine has and what
 // installs from there.
 { const { ctx, page } = await open(desk);

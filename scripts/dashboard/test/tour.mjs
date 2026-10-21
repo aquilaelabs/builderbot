@@ -13,10 +13,11 @@ const prefs = async p => (await fetch(base + '/api/users', { method: 'POST', hea
 await prefs({ tour_seen: [], tour_off: false, welcome_seen: true });
 
 const page = await newPage(browser, { tour: true, viewport: { width: 1280, height: 900 } });
-await page.goto(URL);
+// Straight to Home by its address: landing on the account's saved front tab
+// (Projects) toured that page first whenever the boot outlasted the tour's
+// delay, which is right for a person and a race for this check.
+await page.goto(URL.replace(/\/?$/, '/') + '#/home');
 await ready(page);
-// Home, opened at once: whatever page the browser landed on is left before
-// its tour can start, and that one waits for its own next visit.
 await page.evaluate(() => openHome());
 await page.waitForSelector('#tourCard:not([hidden])', { timeout: 15000 });
 const first = await page.evaluate(() => ({ step: $('tourCard').querySelector('.tourstep').textContent,
@@ -136,5 +137,22 @@ await ready(phone);
 await phone.waitForSelector('#tourCard:not([hidden])', { timeout: 15000 });
 const sheet = await phone.evaluate(() => { const r = $('tourCard').getBoundingClientRect(); return { sheet: $('tourCard').classList.contains('sheet'), bottom: Math.round(innerHeight - r.bottom), left: Math.round(r.left), width: Math.round(r.width) }; });
 ok(sheet.sheet && sheet.bottom <= 1 && sheet.left === 0 && sheet.width === 393, `on a phone the tour is a sheet across the bottom (${JSON.stringify(sheet)})`);
+// ...and an empty VMs page there shows its example VM too (the operator, 21
+// Oct: the step's broad selector took the page's own notice for a row).
+const phoneSample = await phone.evaluate(async () => {
+  tourEnd(false);
+  await new Promise(r => setTimeout(r, 1000));
+  state.tour = { seen: [], off: false };
+  openVmsTab();
+  for (let i = 0; i < 100 && (!vmsData || tourLoading()); i++) await new Promise(r => setTimeout(r, 100));
+  tourAsked.clear(); tourSoon('vms');
+  for (let i = 0; i < 50 && !tourKind; i++) await new Promise(r => setTimeout(r, 100));
+  while (tourKind && tourI < tourSteps.length - 1) tourGo(1);
+  const out = { step: tourI, shown: !!$('tourSample'), row: !!$('tourSample')?.querySelector('[data-vm-key]') };
+  tourEnd(false);
+  await new Promise(r => setTimeout(r, 1000));
+  return out;
+});
+ok(phoneSample.shown && phoneSample.row, `...and on a phone an empty VMs page's last step shows an example VM (${JSON.stringify(phoneSample)})`);
 await prefs({ tour_seen: [], tour_off: true });
 await done(browser);
