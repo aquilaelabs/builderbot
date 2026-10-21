@@ -118,6 +118,9 @@ function tourSoon(kind){
   // The welcome panel first, and no tour over another dialog: the next draw
   // asks again once it is closed.
   if (document.querySelector(".modal:not([hidden])")) return;
+  // ...nor over the setup page, which is the whole page until Finish: a new
+  // owner's first look was Home's tour over its four steps.
+  if (setupNeeded()) return;
   tourAsked.add(kind);
   setTimeout(() => tourStart(kind), 700);
 }
@@ -139,7 +142,7 @@ function tourTarget(sel){
 function tourStart(kind){
   // Still the page in front, and nothing over it: a tour asked for a page
   // left meanwhile waits for that page's next visit.
-  if (tourKind || document.querySelector(".modal:not([hidden])") || tabOf(panes[0])?.kind !== kind){
+  if (tourKind || document.querySelector(".modal:not([hidden])") || setupNeeded() || tabOf(panes[0])?.kind !== kind){
     tourAsked.delete(kind);
     return;
   }

@@ -95,6 +95,8 @@ Everything else has sane defaults: full reference in [reference.md](reference.md
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir: read-only; see [Static analysis reports](building.md#static-analysis-reports) |
 | Docker builds (CI jobs, a project's containers) | On a node, never in this container: a node's own Docker, or the Docker sandbox VM ([sandbox-vm.md](sandbox-vm.md)). The template has no Docker socket field |
 | Extra tools | the Toolchains page, per node; the controller carries what it needs in the image |
+| Virtual machines | **VM host** in a node's Features section on the Nodes page (or ticked on Enroll node), on a machine with `/dev/kvm`; then the VMs page, see [vms.md](vms.md) |
+| A box on the internet that only serves | Enroll it hosting-only and tick the hosting firewall: it takes in 80 and 443 alone, and its page's **Lock down** stops and revokes it in one press |
 
 ### 6. First boot
 
@@ -111,7 +113,9 @@ project. The node cannot be skipped: nothing runs without one, so **Finish**
 opens only once one is enrolled and answering, and it has to be one that
 runs sessions, not a hosting-only one. The other three can wait: Home keeps
 them in its Getting started card. Storage and the idle timeout are not
-asked; their defaults are under Controller settings.
+asked; their defaults are under Controller settings. After Finish, each page
+gives a short tour the first time an account opens it; **Skip tour** with its
+box skips them all, and About or your Profile brings them back.
 
 Every `bb doctor` line should be `[ok]` or an expected `[skip]`. On the
 controller it verifies: the workspace and home are writable, git is new
@@ -186,7 +190,7 @@ back, see [Upgrading](#upgrading). Compose: `docker compose pull && docker compo
 
 **Pin a release, not `:latest`.** `:latest` follows the main branch between
 releases. Each release publishes its own image, `ghcr.io/aquilaelabs/builderbot:0.6.0`,
-and `:0.5` for the newest release of that line; pin one of those in your
+and `:0.6` for the newest release of that line; pin one of those in your
 compose file or template, and move it on when you choose to upgrade.
 
 **What is supported:**

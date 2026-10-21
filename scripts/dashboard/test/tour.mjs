@@ -70,6 +70,19 @@ await page.waitForSelector('#tourCard:not([hidden])', { timeout: 15000 });
 ok(/Nodes are the machines/.test(await page.$eval('#tourCard .toursay', e => e.textContent)), '...and the page in front tours again');
 await page.click('#tourSkip');
 
+// Never over the setup page, which is the whole page until Finish.
+const overSetup = await page.evaluate(async () => {
+  const was = state.settings.settings.setup_done, seen = state.tour;
+  state.settings.settings.setup_done = { value: false };
+  state.tour = { seen: [], off: false };     // a page not toured, so only the setup page holds it
+  tourAsked.clear(); tourSoon(tabOf(panes[0])?.kind);
+  await new Promise(r => setTimeout(r, 1200));
+  const shown = !$('tourCard')?.hidden;
+  state.settings.settings.setup_done = was; state.tour = seen;
+  return shown;
+});
+ok(!overSetup, 'no tour starts while the setup page is up');
+
 // On a phone the card is a sheet from the bottom edge.
 await prefs({ tour_seen: [], tour_off: false });
 const phone = await newPage(browser, { tour: true, viewport: { width: 393, height: 852 }, isMobile: true, hasTouch: true });
