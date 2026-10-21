@@ -1248,7 +1248,9 @@ def _census(c):
     vm = fe.get("vmhost") if isinstance(fe.get("vmhost"), dict) else {}
     fw = fe.get("firewall") if isinstance(fe.get("firewall"), dict) else {}
     out["features"] = {"vmhost": {"installed": vm.get("installed") is True, "kvm": vm.get("kvm") is True,
-                                  "libvirt": re.sub(r"[^0-9.]", "", str(vm.get("libvirt") or ""))[:20]},
+                                  "libvirt": re.sub(r"[^0-9.]", "", str(vm.get("libvirt") or ""))[:20],
+                                  # A kernel built without KVM (R97's walk, openSUSE).
+                                  **({"nokvm": "kernel"} if vm.get("nokvm") == "kernel" else {})},
                        "firewall": {"installed": fw.get("installed") is True}}
     # ...and the VMs it runs (R91), each as libvirt says, with the room their
     # disks have: whitelisted field by field like the rest.
@@ -2554,6 +2556,9 @@ def node_feature(principal, node_id, fid, op):
         return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
     if system_job_for(node_id):
         return {"error": "a system job is already in flight on this node; one at a time"}
+    if op == "install" and fid == "vmhost" and (fe.get("vmhost") or {}).get("nokvm") == "kernel":
+        return {"error": f"{n['name']}'s running kernel was built without KVM (openSUSE's minimal kernel-default-base "
+                         "is one): install its full kernel (kernel-default), restart the machine, then VM host"}
     if op == "install" and fid == "vmhost" and not (fe.get("vmhost") or {}).get("kvm"):
         return {"error": f"{n['name']} has no /dev/kvm, so VMs would run in software, tens of times slower: on a VM, "
                          "its host passes virtualization through (CPU mode host-passthrough, nested KVM on)"}

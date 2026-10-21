@@ -207,9 +207,18 @@ def features_now():
     /dev/kvm (absent on a VM whose host passes no virtualization through)
     and libvirt's version."""
     virsh = shutil.which("virsh")
+    kvm = os.path.exists("/dev/kvm")
+    # A kernel built without KVM is said apart from a machine without
+    # virtualization (openSUSE's kernel-default-base, R97's walk): the
+    # cure is another kernel, not the host's CPU mode.
+    nokvm = ""
+    if not kvm and not any(os.path.exists(f"/lib/modules/{os.uname().release}/kernel/arch/x86/kvm/{m}")
+                           for m in ("kvm.ko", "kvm.ko.xz", "kvm.ko.zst", "kvm.ko.gz")) \
+            and not os.path.isdir("/sys/module/kvm"):
+        nokvm = "kernel"
     return {
         "vmhost": {"installed": os.path.exists(os.path.join(FEATURES_DIR, "vmhost")),
-                   "kvm": os.path.exists("/dev/kvm"),
+                   "kvm": kvm, **({"nokvm": nokvm} if nokvm else {}),
                    "libvirt": _run([virsh, "--version"], timeout=10) if virsh else ""},
         "firewall": {"installed": os.path.exists("/etc/builderbot/hosting-fw.nft")},
     }

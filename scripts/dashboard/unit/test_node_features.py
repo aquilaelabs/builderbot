@@ -82,6 +82,10 @@ class Controller(unittest.TestCase):
         self.census(vmhost={"kvm": False})
         self.assertIn("host-passthrough", nodes.node_feature("user:test", self.nid, "vmhost", "install").get("error", ""))
 
+    def test_a_kernel_without_kvm_says_so(self):
+        self.census(vmhost={"kvm": False, "nokvm": "kernel"})
+        self.assertIn("kernel-default", nodes.node_feature("user:test", self.nid, "vmhost", "install").get("error", ""))
+
     def test_the_firewall_is_a_hosting_only_node_s(self):
         self.assertIn("hosting-only", nodes.node_feature("user:test", self.nid, "firewall", "install").get("error", ""))
         # ...whose machine runs no sessions: the switch alone left them, and
