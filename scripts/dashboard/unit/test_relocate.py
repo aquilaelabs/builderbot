@@ -355,3 +355,59 @@ class Relocate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnpackTrustsNoManifest(unittest.TestCase):
+    """The unpack script runs on the new node over an archive the old node
+    packed, and a hosting-only box that was taken over writes that archive:
+    it writes the moved instance's own volumes and no other (R92)."""
+
+    def run_unpack(self, manifest, have=(), labels=None):
+        import json
+        import subprocess
+        import tarfile
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, d, True)
+        calls = d / "calls"
+        labels = labels or {}
+        (d / "bin").mkdir()
+        # A docker that lists `have`, answers each volume's compose label
+        # from `labels`, and logs every other call.
+        (d / "bin" / "docker").write_text(
+            "#!/bin/sh\n"
+            f"echo \"$*\" >> {calls}\n"
+            "case \"$1 $2\" in\n"
+            f"  'volume ls') printf '%s\\n' {' '.join(have) or ''} ;;\n"
+            "  'volume inspect') case \"$5\" in\n"
+            + "".join(f"    {k}) echo {v} ;;\n" for k, v in labels.items())
+            + "  esac ;;\n"
+            "esac\n")
+        (d / "bin" / "docker").chmod(0o755)
+        (d / "manifest.json").write_text(json.dumps(manifest))
+        src = d / "data.tar"
+        with tarfile.open(src, "w") as t:
+            t.add(d / "manifest.json", arcname="manifest.json")
+        r = subprocess.run([sys.executable, "-c", relocate.UNPACK_PY, "web", "old", str(src), "", "busybox"],
+                           capture_output=True, text=True,
+                           env={**os.environ, "PATH": f"{d / 'bin'}:{os.environ['PATH']}"})
+        return r, (calls.read_text() if calls.exists() else "")
+
+    def test_its_own_volume_is_filled(self):
+        r, calls = self.run_unpack({"volumes": [{"name": "old_db", "part": "vol-0.tgz"}]})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("volume create", calls)
+        self.assertIn("web_db:/v", calls)
+
+    def test_another_projects_volume_is_not_written_over(self):
+        r, calls = self.run_unpack({"volumes": [{"name": "nextcloud_html", "part": "vol-0.tgz"}]},
+                                   have=["nextcloud_html"], labels={"nextcloud_html": "nextcloud"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("not this instance's", r.stderr)
+        self.assertNotIn("nextcloud_html:/v", calls)
+
+    def test_a_name_or_part_it_could_not_have_packed_is_refused(self):
+        for v in ({"name": "../etc", "part": "vol-0.tgz"}, {"name": "old_db", "part": "../../x"},
+                  {"name": "old_db", "part": "data.tgz"}):
+            r, calls = self.run_unpack({"volumes": [v]})
+            self.assertNotEqual(r.returncode, 0, v)
+            self.assertNotIn(":/v", calls, v)
