@@ -227,6 +227,20 @@ await call('/api/v1/nodes', { action: 'online', id: box.id });
   await call('/api/v1/agent/result', { job: xo.id, state: 'succeeded', exit: 0 }, asNode);
 }
 
+// ---- the agent a project's Start opens (R95 step 4) --------------------------
+{
+  const set = await call('/api/prefs', { project: 'beta', agent_default: 'codex' });
+  await page.evaluate(() => openProjectsTab());
+  await refreshUntil(page, () => document.querySelector('.pgrid .pcard[data-row="beta"] [data-c]')?.textContent.trim() === 'Start ChatGPT');
+  ok(!set.error && await page.$eval(PC, b => b.textContent.trim()) === 'Start ChatGPT',
+     `a project whose settings name ChatGPT says Start ChatGPT on its card (${set.error || 'saved'})`);
+  const refused = await call('/api/prefs', { project: 'beta', agent_default: 'open' });
+  ok(refused.status === 400 || /agent_default is one of/.test(refused.error || ''),
+     `...and an agent that cannot start a session is refused as the one Start opens (${refused.error})`);
+  await call('/api/prefs', { project: 'beta', agent_default: 'claude' });
+  await refreshUntil(page, () => document.querySelector('.pgrid .pcard[data-row="beta"] [data-c]')?.textContent.trim() === 'Start Claude');
+}
+
 // ---- an account that does not administer ------------------------------------
 // It is shown the nodes its own projects work on, no install or update, and
 // its own sign-in live: the one thing on the page that is its to change.

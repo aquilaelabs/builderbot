@@ -62,6 +62,10 @@ agent's section.
 - **Which agents a project allows.** Its settings' Agents may section has
   Coding agents, a tick for each agent beside Claude; one left unticked is
   not offered there and its terminal refuses. Claude always may.
+- **The one Start opens.** Under the same ticks, *Start opens* names the
+  agent the project's card and header say (Start ChatGPT, Open Copilot);
+  Claude unless it names another. Its chooser still offers every allowed
+  agent installed on each node.
 - **Signed in or refused.** A terminal that would start a Codex or Copilot
   session with no sign-in there says so and where to sign in, as Claude's
   does.
@@ -116,8 +120,7 @@ credential of any of them.
 
 ## Not built yet
 
-Resuming a Codex or Copilot conversation, a project's default agent, the
-guards mapped to their hooks, their state in the dock and their
+Resuming a Codex or Copilot conversation, the guards mapped to their hooks, their state in the dock and their
 transcripts, a model and effort kept per agent, the model router and the
 open agent: R95's later steps. Until the guards land, a Codex or Copilot
 session is held by its view and by bb's own checks, not by Claude's hooks.

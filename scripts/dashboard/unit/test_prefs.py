@@ -72,6 +72,20 @@ class Gpu(unittest.TestCase):
         prefs.set_prefs("alpha", agents_off="")
         self.assertEqual((prefs.get("alpha") or {}).get("agents_off", []), [])
 
+    def test_start_opens_claude_unless_the_project_names_another_it_allows(self):
+        # R95 step 4: the default agent is Claude's and is never written.
+        self.assertEqual(prefs.get("alpha")["agent_default"], "claude")
+        self.assertNotIn("error", prefs.set_prefs("alpha", agent_default="codex"))
+        self.assertEqual(prefs.get("alpha")["agent_default"], "codex")
+        self.assertIn("error", prefs.set_prefs("alpha", agent_default="open"))
+        # Switching it off puts Start back on Claude.
+        prefs.set_prefs("alpha", agents_off="codex")
+        self.assertEqual(prefs.get("alpha")["agent_default"], "claude")
+        self.assertIn("switched off", prefs.set_prefs("alpha", agent_default="codex")["error"])
+        prefs.set_prefs("alpha", agents_off="", agent_default="claude")
+        with open(prefs.FILE) as f:
+            self.assertNotIn("agent_default", f.read(), "Claude is the default and is never written")
+
     def test_daily_snapshots_on_by_default_and_stored_only_when_off(self):
         # R105: a project with nothing said takes one a day, as before.
         self.assertTrue(prefs.get("alpha")["snapshots_on"])

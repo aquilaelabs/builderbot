@@ -1013,7 +1013,10 @@ function claudeDeadWhy(p){
 // one menu (R238: nine look-alike icons on a row were one too many). Its
 // data-* names are wireProjectRows', which serves them.
 function projectActions(p, extra = ""){
-  const name = p.name, mine = liveSessions().has(myClaude(name));
+  // The agent the project's Start opens (R95 step 4): Claude's unless its
+  // settings name another. Its own session running here makes it Open.
+  const ag = agentById(p.prefs?.agent_default) || AGENTS[0];
+  const name = p.name, mine = liveSessions().has(myAgentSession(ag.id, name));
   const dead = claudeDeadWhy(p);
   // What this account's roles do not give is left out, not drawn dead.
   const forbid = !p.locked && !!writeWhy(p);
@@ -1045,20 +1048,20 @@ function projectActions(p, extra = ""){
   const say = dead ? dead
     : p.session_why ? p.session_why
     : othersOn(name).length ? `${othersOn(name).join(", ")} also working here, in a checkout of their own: start yours`
-    : p.session_node && !claudeOn(p.session_node) && !live.has(myClaude(name))
-      ? `Claude: you are not signed in on ${p.session_at}, this project's node. Press for its sign-in`
-    : p.session_at ? `Claude: a session on ${p.session_at}, this project's node`
-    : mine ? "Claude: your session is running; open its tab or end it"
-    : p.last_claude ? "Claude: no session running; resume or start one"
-    : "Claude: start a session here";
+    : p.session_node && !agentOn(ag.id, p.session_node) && !live.has(myAgentSession(ag.id, name))
+      ? `${ag.name}: you are not signed in on ${p.session_at}, this project's node. Press for its sign-in`
+    : p.session_at ? `${ag.name}: a session on ${p.session_at}, this project's node`
+    : mine ? `${ag.name}: your session is running; open its tab or end it`
+    : p.last_claude ? `${ag.name}: no session running; resume or start one`
+    : `${ag.name}: start a session here`;
   // Green only while your session runs, and then it opens it; otherwise a
   // plain Start Claude (the operator, 16 Oct: green on every card read as
   // running everywhere).
-  const inst = claudeInstall(p);
+  const inst = ag.id === "claude" ? claudeInstall(p) : "";
   return `${isBroken(p) || forbid ? "" : inst ? `<button type="button" data-tcinst="${esc(inst)}" title="${
         esc(`Claude Code is not installed on ${p.node_name || "its node"}: open its Agents page to install it`)}">Install Claude</button>`
       : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(name)}"${dead ? " disabled" : ""} title="${esc(say)}">${
-        mine ? "Open Claude" : "Start Claude"}</button>`}
+        `${mine ? "Open" : "Start"} ${esc(ag.name)}`}</button>`}
     ${mayShell() && !notMine(p) ? `<button type="button" data-s="${esc(name)}"${!gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}
     <span class="more"><button type="button" data-pmore aria-label="more" aria-expanded="false">${DOTS}</button><div class="actmenu" hidden>${menu}</div></span>`;
 }

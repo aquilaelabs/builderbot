@@ -99,6 +99,7 @@ function rnPrefsOf(p){
                reads: (p?.prefs?.reads || []).join(","),
                tc_off: (p?.prefs?.tc_off || []).join(","), packs_on: (p?.prefs?.packs_on || []).join(","),
                agents_off: (p?.prefs?.agents_off || []).join(","),
+               agent_default: p?.prefs?.agent_default || "claude",
                sees: (p?.prefs?.sees || []).join(", "),
                reaches: JSON.stringify(p?.prefs?.reaches || []),
                debug: rnDebugKey(p?.prefs?.diag, p?.prefs?.log_from),
@@ -418,12 +419,22 @@ function rnRowsList(saved, inputs, says){
 
 // The coding agents beside Claude a session here may run (R95), each a
 // row to tick, from the agent table; ticked is allowed.
-function rnFillAgents(off = rnPrefWas.agents_off){
+function rnFillAgents(off = rnPrefWas.agents_off, dflt = rnPrefWas.agent_default){
   const box = $("rnAgents");
   if (!box) return;
   const was = new Set(String(off || "").split(",").filter(Boolean));
   box.innerHTML = agentsLive().filter(a => a.id !== "claude")
     .map(a => lrow(a.id, a.name, a.product, !was.has(a.id))).join("");
+  // The one Start opens (R95 step 4): an agent left ticked, Claude first.
+  const sel = $("rnAgentDefault");
+  const offer = () => {
+    const off2 = new Set([...box.querySelectorAll("input:not(:checked)")].map(i => i.value));
+    const cur = sel.value || dflt || "claude";
+    sel.innerHTML = agentsLive().filter(a => !off2.has(a.id))
+      .map(a => `<option value="${esc(a.id)}"${a.id === cur ? " selected" : ""}>${esc(a.name)}</option>`).join("");
+    if (!sel.value) sel.value = "claude";
+  };
+  if (sel){ sel.value = ""; offer(); box.querySelectorAll("input").forEach(i => i.addEventListener("change", offer)); }
   // Drawn again on a revert, after rnLockSettings ran: held the same way.
   if ((state?.projects || []).find(x => x.name === rnFor)?.may_settings === false)
     box.querySelectorAll("input").forEach(i => { i.disabled = true; i.dataset.rnlock = "1"; });
@@ -1298,7 +1309,7 @@ const RN_WAS = {
   tc_off: ["tools", "Toolchains"], packs_on: ["tools", "Tool packs"],
   build: ["build", "Build"], test: ["build", "Test"], outputs: ["build", "Outputs"],
   capture_days: ["build", "Captures kept"], snapshot_days: ["build", "Snapshots kept"], snapshots_on: ["build", "Daily snapshots"], dev_keep: ["build", "Dev builds kept"],
-  gate: ["claude", "Agents may"], test_change: ["claude", "During a test run, a change asked for"], agents_off: ["claude", "Coding agents"],
+  gate: ["claude", "Agents may"], test_change: ["claude", "During a test run, a change asked for"], agents_off: ["claude", "Coding agents"], agent_default: ["claude", "Start opens"],
   devbuild: ["claude", "Agents may"], makevms: ["claude", "Agents may"], vm_caps: ["claude", "Its VMs may hold"], report: ["claude", "Agents may"], sign: ["claude", "Agents may"],
   keys: ["claude", "Agents may"], release: ["claude", "Agents may"], pc: ["claude", "Agents may"], version: ["claude", "Move the version"],
   reply: ["yours", "Replies"], asks: ["yours", "Questions"],
@@ -1333,6 +1344,7 @@ function rnEnc(){
           packs_on: rnToolsList === null ? rnPrefWas.packs_on
             : rnRowsList(rnPrefWas.packs_on, $("rnTools").querySelectorAll("input[data-pack]"), i => i.checked),
           agents_off: [...$("rnAgents").querySelectorAll("input:not(:checked)")].map(i => i.value).join(","),
+          agent_default: $("rnAgentDefault")?.value || "claude",
           sees: $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean).join(", "),
           reaches: JSON.stringify(rnReachNow()),
           debug: dbg ? rnDebugKey(dbg.diag, dbg.log_from) : rnPrefWas.debug,
@@ -1453,7 +1465,7 @@ function rnRevertSect(sect){
     const g = String(w.gate).split(",");
     Object.values(GATE_IDS).forEach((id, i) => { $(id).value = g[i] || "auto"; });
     $("rnTestChange").value = w.test_change; $("rnGateDocker").value = w.devbuild; $("rnGateVms").value = w.makevms; rnVmCapsSet(w.vm_caps);
-    rnFillAgents(w.agents_off);
+    rnFillAgents(w.agents_off, w.agent_default);
     $("rnGateReport").value = w.report; $("rnGateSign").value = w.sign;
     $("rnGateRelease").value = w.release; $("rnGateKeys").value = w.keys;
     $("rnGatePc").value = w.pc; $("rnGateVersion").value = w.version;
@@ -1558,7 +1570,7 @@ async function rnSubmit(sect, end = false){
       const r = await fetch("/api/prefs", {method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify({project: name, restart: restartNow, ...pick({git_name: v.git_name, git_email: v.git_email,
                               node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
-                              tc_off: v.tc_off, packs_on: v.packs_on, agents_off: v.agents_off,
+                              tc_off: v.tc_off, packs_on: v.packs_on, agents_off: v.agents_off, agent_default: v.agent_default,
                               build: v.build, test: v.test, gate: v.gate, ...(v.dbg || {}),
                               tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks,
                               devbuild: v.devbuild, makevms: v.makevms, vm_caps: JSON.parse(v.vm_caps || "{}"), report: v.report, sign: v.sign, keys: v.keys, release: v.release, pc: v.pc,
