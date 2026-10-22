@@ -186,7 +186,9 @@ is exact: a file changed in two trees at once is a collision whatever anybody
 intended, and it needs nothing recorded, while a **PreToolUse hook** adds the
 finer grain, naming the definition an edit lands in, which is a guess and is
 labeled as one. The hook also tells the second session, before its edit, that
-somebody else has that file open. It does not refuse it: each session is in its
+somebody else has that file open. A session is an account and a coding agent:
+your own Claude and Codex sessions on one project are two, each told of the
+other, and every session is named with its agent, "sam (Codex CLI)". It does not refuse it: each session is in its
 own worktree, so two people editing one function are making two commits rather
 than corrupting one tree, and that is what a merge is for.
 

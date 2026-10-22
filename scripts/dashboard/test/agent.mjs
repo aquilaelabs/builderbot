@@ -1547,9 +1547,16 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         JSON.stringify({ tool_input: { file_path: '/workspace/alpha/src/picker.py', old_string: 'def pick():\n  pass' } }));
       const work = execFileSync('bash', [`${REPO}/scripts/bb`, 'work'], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`,
         env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'alpha' } });
-      ok(/test\s+src\/picker\.py\s+\[pick\]/.test(work) && noteOut === '',
-         `an edit's note from the node is what bb work reads here, symbol guessed and file relative to the tree (${
+      ok(/test \(Claude Code\)\s+src\/picker\.py\s+\[pick\]/.test(work) && noteOut === '',
+         `an edit's note from the node is what bb work reads here, symbol guessed and file relative to the tree, the agent named (${
            (work.split('\n').find(l => /picker/.test(l)) || '').trim()})`);
+      // The notes are per account and agent (R95): the same person's Codex
+      // session about to edit that file is told their Claude session has it.
+      const codexNote = execFileSync('python3', [`${REPO}/scripts/dashboard/bb-work-note`, 'alpha', 'ignored'],
+        { input: JSON.stringify({ tool_input: { file_path: '/workspace/alpha/src/picker.py', old_string: 'x' } }),
+          encoding: 'utf8', env: { ...nodeEnv, BB_AGENT: 'codex' }, stdio: ['pipe', 'pipe', 'pipe'] });
+      ok(/has src\/picker\.py open: test \(Claude Code\)/.test(codexNote),
+         `...and one person's Codex session is told their own Claude session has the file, by agent (${codexNote.slice(0, 120)})`);
       // ---- the house rules reach a session on a node (B686, R200) -------
       // The note's answer and the prompt's seen carry the named rules the
       // controller's store fires, the hooks remember what this conversation

@@ -66,12 +66,15 @@ def verb(kind, req, me, uid, project):
         path = str(req.get("path") or "")[:400]
         if not path:
             return {"error": "a note names a file"}, 400
-        others = overlap.others_touching(project, uid, path)
-        overlap.note(project, uid, path, str(req.get("symbol") or "")[:120])
+        # Keyed by account and agent (R95): a person's Codex session is told
+        # of their own Claude session's edits, and named for its agent.
+        me_key = overlap.key(uid, agent)
+        others = overlap.others_touching(project, me_key, path)
+        overlap.note(project, me_key, path, str(req.get("symbol") or "")[:120])
         by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
         told = set(req.get("told") or []) if isinstance(req.get("told"), list) else set()
         hit = [r for r in rules.matching(project, path=path) if r["name"] not in told]
-        return {"ok": True, "others": [by_uid.get(o, o) for o in others],
+        return {"ok": True, "others": [overlap.said(o, by_uid) for o in others],
                 "rules": rules.said(hit, path=path), "names": [r["name"] for r in hit]}, 200
     if kind == "asked":
         text = str(req.get("text") or "").strip()[:800]

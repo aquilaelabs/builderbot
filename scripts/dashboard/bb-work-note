@@ -128,6 +128,7 @@ def main():
         sys.path.insert(0, os.path.join(here, "..", "lib"))
         import rulehook                                       # noqa: E402
         r = bbapi.call("/api/v1/hook", {"kind": "note", "path": rel, "symbol": symbol,
+                                        "agent": os.environ.get("BB_AGENT") or "claude",
                                         "told": rulehook.fired(project, req.get("session_id"))[:200]},
                        auth="Bearer " + os.environ.get("BB_TOKEN", ""), timeout=10)
         r = r if isinstance(r, dict) else {}
@@ -139,8 +140,10 @@ def main():
         overlap.configure(state=os.environ.get("DASHBOARD_STATE", "/config"),
                           workspace=os.environ.get("WORKSPACE", "/workspace"),
                           write_json=write_json)
-        others = overlap.others_touching(project, session, rel)
-        overlap.note(project, session, rel, symbol)
+        # Keyed by account and agent (R95), named the same way.
+        me = overlap.key(session, os.environ.get("BB_AGENT") or "claude")
+        others = [overlap.said(o) for o in overlap.others_touching(project, me, rel)]
+        overlap.note(project, me, rel, symbol)
         sys.path.insert(0, os.path.join(here, "..", "lib"))
         import rulehook                                       # noqa: E402
         ruled, names = house_rules(project, rel, rulehook.fired(project, req.get("session_id")))

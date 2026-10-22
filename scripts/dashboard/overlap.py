@@ -28,6 +28,7 @@ out to be worth looking at.
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -127,6 +128,37 @@ def collisions(project, worktrees, names=None):
 # symbol it was in when it touched them. Written by the hook on every edit and
 # read by `bb work`; nothing else depends on it, so a hook that never runs
 # leaves the git half working on its own.
+
+def key(uid, agent=""):
+    """The notes' key for one session: the account, and the coding agent
+    after a slash when it is not Claude (R95). One person's Claude and Codex
+    sessions on a project are two sessions, each told when the other has
+    the file it is about to edit; Claude's key is the account alone, as it
+    always was."""
+    agent = str(agent or "")
+    return str(uid) if agent in ("", "claude") else f"{uid}/{agent}"
+
+
+def said(k, names=None):
+    """A notes key as a reader says it: the account's name (from `names`, a
+    uid to name map, or the key itself), and which coding agent's session
+    it is: "sam (Claude Code)", "sam (Codex CLI)"."""
+    uid, _, agent = str(k).partition("/")
+    who = (names or {}).get(uid) or uid or "owner"
+    product = agent or "Claude Code"
+    try:
+        # Loaded by path from bb work too (dash.load), so the table beside
+        # this file is put on the path first (B229).
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import agents
+        a = agents.get(agent or "claude")
+        product = a.product if a else product
+    except ImportError:
+        pass
+    return f"{who} ({product})"
+
 
 def note(project, session, path, symbol=""):
     """Record that `session` is editing `path`, inside `symbol` if known."""
