@@ -127,6 +127,14 @@ jobs:
           set -o pipefail
           exec > >(tee -a "$CI_LOG") 2>&1
           echo "== Build the APK"
+          # A value pasted or typed into a secret can carry its line ending,
+          # which no alias or password has: taken off each one here.
+          for v in BB_APP_KEYSTORE_B64 BB_APP_KEYSTORE_PASSWORD BB_APP_KEY_ALIAS BB_APP_KEY_PASSWORD; do
+            export "$v=$(printf '%s' "${!v}" | tr -d '\r\n')"
+          done
+          # ...and an alias its surrounding spaces, which keytool's names never have.
+          BB_APP_KEY_ALIAS="$(printf '%s' "$BB_APP_KEY_ALIAS" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+          export BB_APP_KEY_ALIAS
           if [ -n "$BB_APP_KEYSTORE_B64" ] && [ -n "$BB_APP_KEYSTORE_PASSWORD" ] && [ -n "$BB_APP_KEY_ALIAS" ]; then
             ks="$RUNNER_TEMP/bb-app.keystore"
             printf '%s' "$BB_APP_KEYSTORE_B64" | base64 -d > "$ks"
