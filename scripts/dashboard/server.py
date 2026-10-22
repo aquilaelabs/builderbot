@@ -3976,6 +3976,7 @@ wssync.configure_reads(lambda p: prefs.get(p).get("reads") or [])
 # synced copy is undone from, kept for the days its settings say.
 import snapshots                                                 # noqa: E402
 snapshots.configure(workspace=WORKSPACE, days=lambda p: prefs.get(p)["snapshot_days"],
+                    on=lambda p: prefs.get(p)["snapshots_on"],
                     names=lambda: [p for p in prefs.all_projects() if (WORKSPACE / p).is_dir()],
                     audit_fn=lambda *row: None if NODES_OK else db.audit(*row))
 files.on_change = wssync.changed
@@ -8242,7 +8243,7 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("settings", name) or self._not_project(name):
             return None
         return self._json({"project": name, "keep": prefs.get(name)["snapshot_days"],
-                           "days": snapshots.days(name)})
+                           "on": prefs.get(name)["snapshots_on"], "days": snapshots.days(name)})
 
     def _snapshots(self, req):
         """POST /api/snapshots: take one now, or restore the whole tree as of a
@@ -8260,7 +8261,12 @@ class Handler(BaseHTTPRequestHandler):
         if act == "restore":
             return self._result(snapshots.restore(name, field(req, "day"), field(req, "path"),
                                                   who=self._principal()))
-        return self._json({"error": "take or restore"}, 400)
+        if act in ("pin", "unpin"):
+            r = snapshots.pin(name, field(req, "day"), act == "pin")
+            if r.get("ok"):
+                db.audit(self._principal(), f"snapshot-{act}", name, {"day": r["day"]})
+            return self._result(r)
+        return self._json({"error": "take, restore, pin or unpin"}, 400)
 
     def _get_transcripts(self):
         """GET /api/transcripts?project=NAME: the signed-in account's own

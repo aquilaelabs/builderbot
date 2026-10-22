@@ -365,6 +365,9 @@ def _clean(rec):
             # be reading a reel the other made. 0 keeps them.
             "capture_days": _capture_days(rec.get("capture_days")),
             "snapshot_days": _snapshot_days(rec.get("snapshot_days")),
+            # Whether a snapshot is taken each day (R105): on unless switched
+            # off; off takes none, and what is kept ages out by the days.
+            "snapshots_on": rec.get("snapshots_on") is not False,
             # How many dev builds of each kind the Artifacts tab keeps in
             # dist/ before it removes the older (R105); 0 keeps them all.
             "dev_keep": _dev_keep(rec.get("dev_keep")),
@@ -654,7 +657,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None, sign=None, keys=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
-              snapshot_days=None,
+              snapshot_days=None, snapshots_on=None,
               release=None, log_from=None, diag=None, build_local=None, reaches=None, hosts=None,
               pc=None, tc_off=None, packs_on=None, makevms=None, vm_caps=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
@@ -798,6 +801,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             if not 0 <= n <= 3650:
                 return {"error": f"snapshots kept is a number of days, 0 to 3650, not {snapshot_days}"}
             cur["snapshot_days"] = n
+        if snapshots_on is not None:
+            cur["snapshots_on"] = snapshots_on not in (False, "false", "off", "0", 0)
         if dev_keep is not None:
             try:
                 n = int(dev_keep)
@@ -826,7 +831,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 or cur["devbuild"] != "deny" or cur["tests_in"] != "node"
                 or cur["test_change"] != "wait" or cur["gpu"] != "on"
                 or cur["report"] != "auto" or cur["capture_days"] != CAPTURE_DAYS
-                or cur["snapshot_days"] != SNAPSHOT_DAYS
+                or cur["snapshot_days"] != SNAPSHOT_DAYS or not cur["snapshots_on"]
                 or cur["sign"] != "ask" or cur["keys"] != "ask" or cur["release"] != "ask"
                 or cur["pc"] != "deny"
                 or cur["dev_keep"] != DEV_KEEP
@@ -863,6 +868,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("capture_days", None)
             if cur["snapshot_days"] == SNAPSHOT_DAYS:
                 rec.pop("snapshot_days", None)
+            if cur["snapshots_on"]:
+                rec.pop("snapshots_on", None)
             if cur["dev_keep"] == DEV_KEEP:
                 rec.pop("dev_keep", None)
             if cur["build_local"]:
@@ -1016,7 +1023,7 @@ def dialog_save(name, req, uid):
                   tests_in=req.get("tests_in"),
                   test_change=req.get("test_change"), gpu=req.get("gpu"),
                   report=req.get("report"), capture_days=req.get("capture_days"),
-                  snapshot_days=req.get("snapshot_days"),
+                  snapshot_days=req.get("snapshot_days"), snapshots_on=req.get("snapshots_on"),
                   dev_keep=req.get("dev_keep"), sign=req.get("sign"), keys=req.get("keys"),
                   release=req.get("release"), pc=req.get("pc"),
                   color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
