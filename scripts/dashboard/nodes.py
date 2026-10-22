@@ -2366,11 +2366,12 @@ ROOM_WHAT = {"docker": "Docker's images and build cache", "root": "its root file
              "data": "its builds and their outputs", "cache": "its build caches"}
 
 
-def room_short(nid, floor_gb, roles=("docker", "root")):
+def room_short(nid, floor_gb, roles=("docker", "root"), need_mb=0):
     """Why work on `nid` would run out of disk, or "" (R110): the first of
-    `roles` the node says (a disk, or a store) under the floor. Docker's
-    for a container build, the data store's for a project's build or test.
-    A node that has said none of them is not refused."""
+    `roles` the node says (a disk, or a store) under the floor, or under
+    `need_mb` where that is more (what the project's last build took).
+    Docker's for a container build, the data store's for a project's build
+    or test. A node that has said none of them is not refused."""
     n = node(nid) or {}
     smp = (n.get("reported") or {}).get("sample") or {}
     disks, stores, totals = smp.get("disks") or {}, smp.get("stores") or {}, smp.get("store_totals") or {}
@@ -2379,16 +2380,38 @@ def room_short(nid, floor_gb, roles=("docker", "root")):
         if free is None or not total:
             continue
         keep = floor_mb(floor_gb, total)
-        if free >= keep:
+        if free >= max(keep, need_mb):
             return ""
+        if need_mb > keep:
+            return (f"{n.get('name') or nid} has {round(free / 1024, 1)} GB free for {ROOM_WHAT.get(role, role)}, "
+                    f"and this project's last build took {round(need_mb / 1024, 1):g} GB: free some first "
+                    "(its Storage page says what holds it)")
         return (f"{n.get('name') or nid} has {round(free / 1024, 1)} GB free for {ROOM_WHAT.get(role, role)}, "
                 f"under the {round(keep / 1024, 1):g} GB a node keeps for itself: free some first (its Storage page says what holds it)")
     return ""
 
 
-# Set by server.py (R110): the floor a build or test on a node is held to, 0
-# for none.
-room_floor_gb = 0
+# Set by server.py (R110): the floor in GB a build or test on a node is held
+# to, 0 for none (Controller settings, Room).
+room_floor_gb = lambda: 0  # noqa: E731
+
+
+def last_took(project):
+    """What the project's last build or test took on its node (R110 step 7):
+    {workspace, cache (bytes, or None), node, at}, from the room line the
+    agent adds to a job's outputs, or {} before one has said."""
+    for r in _rows("SELECT node, ended, outputs FROM jobs WHERE project = ? AND type = 'exec' "
+                   "AND outputs LIKE '%\"room\"%' ORDER BY ended DESC LIMIT 1", (project,)):
+        try:
+            outs = json.loads(r["outputs"] or "[]")
+        except ValueError:
+            return {}
+        for o in outs:
+            if isinstance(o, dict) and o.get("kind") == "room" and isinstance(o.get("workspace"), int):
+                cache = o.get("cache")
+                return {"workspace": o["workspace"], "cache": cache if isinstance(cache, int) else None,
+                        "node": r["node"], "at": r["ended"]}
+    return {}
 
 
 def room_attention(floor_gb, mem_pct, label=None, vm_pct=90, pool_keep_gb=10):
@@ -3421,6 +3444,12 @@ def heartbeat(nid, sample, addr, running=0):
     clean["disks"] = {r: [_mb((disks.get(r) or {}).get("free_mb")), _mb((disks.get(r) or {}).get("total_mb"))]
                       for r in ("root", "docker") if isinstance(disks.get(r), dict)}
     clean["store_totals"] = totals
+    # BuilderBot's memory fence (R110 step 4), [max MB, used MB], or None
+    # from an agent that looked and found none; absent from an older one.
+    if "fence" in s:
+        f = s.get("fence")
+        clean["fence"] = ([_mb(f.get("max_mb")), _mb(f.get("used_mb"))]
+                          if isinstance(f, dict) and _mb(f.get("max_mb")) else None)
     # A running VM's memory as its balloon says, [usable MB, available MB],
     # for the bell's ten minutes (R110 step 8).
     vm = s.get("vm_mem") if isinstance(s.get("vm_mem"), dict) else {}
@@ -5600,8 +5629,9 @@ def run_job(name, req, principal):
     # A build or a test held to the node's room (R110 step 7): it writes its
     # outputs and caches to the data store, and one started under the floor
     # fills the disk partway. bb run is left alone: it is how room is made.
-    if room_floor_gb and field(req, "role") in ("build", "test"):
-        why = room_short(nid, room_floor_gb, roles=("data", "cache", "root"))
+    if room_floor_gb() and field(req, "role") in ("build", "test"):
+        took = last_took(name).get("workspace") or 0
+        why = room_short(nid, room_floor_gb(), roles=("data", "cache", "root"), need_mb=took >> 20)
         if why:
             return {"error": why}, 400
     snap = workspace.snapshot(name)

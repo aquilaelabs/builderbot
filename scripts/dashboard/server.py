@@ -1398,9 +1398,17 @@ def _held_rows(who):
 
 # A node is short of room under this much free on its root filesystem,
 # Docker's or a store, or with this much of its memory used over ten
-# minutes (R110): the bell says so before the machine stops.
-ROOM_FLOOR_GB = 10
-ROOM_MEM_PCT = 92
+# minutes (R110): the bell says so before the machine stops. Controller
+# settings, Room.
+def room_floor_gb():
+    return settings.get("room_floor_gb")
+
+
+def room_mem_pct():
+    return settings.get("room_mem_pct")
+
+
+CACHE_KEEP_DAYS = 14      # a project's build cache no job has used this long goes when its store is short
 
 
 def _room_loop():
@@ -1409,14 +1417,23 @@ def _room_loop():
     for two weeks pruned (R110 step 3), before the bell's floor is reached;
     what Docker said it freed goes to the controller's log (bb logs), the
     prune itself to the audit log. Nothing a container
-    uses is touched, and a node with room is left alone."""
+    uses is touched, and a node with room is left alone. A node whose cache
+    store is as short gets the projects' build caches (Gradle's, npm's,
+    pub's: whatever a build keeps under BUILDERBOT_CACHE) that no job has
+    used for two weeks cleared by a cache-clear job (R110 step 7), its log
+    on the Jobs page."""
     while True:
         time.sleep(3600)
         try:
             for n in nodes.node_list():
                 if n["kind"] != "agent" or not n.get("live"):
                     continue
-                why = nodes.room_short(n["id"], ROOM_FLOOR_GB * 2)
+                if nodes.room_short(n["id"], room_floor_gb() * 2, ("cache",)):
+                    r = nodes.job_add("operator", {"node": n["id"]}, "cache-clear",
+                                      {"older_days": CACHE_KEEP_DAYS})
+                    print(f"[room] {n.get('name') or n['id']}: build caches unused for "
+                          f"{CACHE_KEEP_DAYS} days: {r.get('error') or 'clearing'}", flush=True)
+                why = nodes.room_short(n["id"], room_floor_gb() * 2)
                 if not why:
                     continue
                 with devapp.on_node(n["id"]):
@@ -1446,7 +1463,7 @@ def _attention(who):
             # ...and a node short of disk or memory (R110), for whoever
             # manages nodes: what is short, on the Storage page's terms.
             + ([] if users.may(who, "node") else nodes.room_attention(
-                ROOM_FLOOR_GB, ROOM_MEM_PCT,
+                room_floor_gb(), room_mem_pct(),
                 label=lambda r: {"root": "its root filesystem", "docker": "Docker's images and build cache"}.get(r, f"its {r} store")))
             + [a for a in toolchains.attention(where)
                if not users.may_node(who, "toolchains-write", a["id"])]
@@ -3185,7 +3202,10 @@ def build_state(name):
             "why": "" if n else no_node_advice(name),
             # Its agent behind or out of window: a build is refused until
             # the node is updated, and the tab says so before the refusal.
-            "gap": nodes.agent_stale(n) if n else ""}
+            "gap": nodes.agent_stale(n) if n else "",
+            # What its last build took there, so the next one's room is
+            # known before it is refused for it (R110 step 7).
+            "took": nodes.last_took(name)}
 
 
 def artifacts_of(name):
@@ -3533,8 +3553,9 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
 devactions.configure(runner=jobs if not NODES_OK else None)
 home.configure(nodes_mod=nodes, devapp_mod=devapp)
 devapp.gpu_why = gpu_container_why
-devapp.room_why = lambda nid: nodes.room_short(nid, ROOM_FLOOR_GB) if nid else ""
-nodes.room_floor_gb = ROOM_FLOOR_GB
+devapp.room_why = lambda nid: nodes.room_short(nid, room_floor_gb()) if nid else ""
+nodes.room_floor_gb = room_floor_gb
+devapp.container_mem_gb = lambda: settings.get("container_mem_gb")
 # ...and what its request() needs about who is asking, and who hears.
 devactions.users = users
 devactions.ask_rebuild = phone.ask_rebuild

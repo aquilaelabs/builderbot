@@ -56,6 +56,22 @@ class Room(unittest.TestCase):
         with mock.patch.object(nodes, "node", lambda nid: node("n1", smp)):
             self.assertIn("under the 1.6 GB", nodes.room_short("n1", 10, roles=("root",)))
 
+    def test_a_build_wants_what_the_last_one_took(self):
+        # 20 GB free is over the floor, but not enough for a build that
+        # took 30 GB last time (R110 step 7).
+        smp = {"disks": {}, "stores": {"data": 20 * 1024}, "store_totals": {"data": 500 * 1024}}
+        with mock.patch.object(nodes, "node", lambda nid: node("n1", smp)):
+            self.assertEqual(nodes.room_short("n1", 10, roles=("data",)), "")
+            self.assertIn("last build took 30 GB", nodes.room_short("n1", 10, roles=("data",), need_mb=30 * 1024))
+
+    def test_last_took_reads_the_newest_room_line(self):
+        rows = [{"node": "n1", "ended": 5, "outputs": '[{"kind": "artifact", "path": "a.apk"}, '
+                 '{"kind": "room", "workspace": 3145728, "cache": null}]'}]
+        with mock.patch.object(nodes, "_rows", lambda q, a: rows):
+            self.assertEqual(nodes.last_took("web"), {"workspace": 3145728, "cache": None, "node": "n1", "at": 5})
+        with mock.patch.object(nodes, "_rows", lambda q, a: []):
+            self.assertEqual(nodes.last_took("web"), {})
+
     def test_room_enough_says_nothing_and_an_away_node_is_skipped(self):
         smp = {"disks": {"root": [50 * 1024, 100 * 1024]}, "stores": {}, "store_totals": {}}
         self.assertEqual(self.rows([node("n1", smp), node("n2", {"disks": {"root": [1, 100]}}, live=False)]), [])

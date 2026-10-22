@@ -723,6 +723,25 @@ class Sampler:
                              "total_mb": st.f_blocks * st.f_frsize // (1024 * 1024)}
         return out
 
+    FENCE_DIR = "/sys/fs/cgroup/builderbot.slice"
+
+    @classmethod
+    def _fence(cls):
+        """BuilderBot's memory fence here (R110 step 4), {max_mb, used_mb},
+        or None where there is none: the provisioner's builderbot.slice, or
+        the cgroup of that name OpenRC's boot script makes."""
+        base = cls.FENCE_DIR
+        try:
+            with open(base + "/memory.max") as f:
+                mx = f.read().strip()
+            with open(base + "/memory.current") as f:
+                cur = int(f.read().strip())
+        except (OSError, ValueError):
+            return None
+        if not mx.isdigit():
+            return None
+        return {"max_mb": int(mx) >> 20, "used_mb": cur >> 20}
+
     def sample(self, state, running):
         now = self._stat()
         dt, di = now[0] - self.last[0], now[1] - self.last[1]
@@ -734,7 +753,7 @@ class Sampler:
             load1 = 0.0
         return {"cpu_pct": round(100.0 * (dt - di) / dt, 1) if dt > 0 else 0.0,
                 "load1": round(load1, 2), "mem_mb": tot, "mem_used_mb": used,
-                "stores": _stores(state.get("stores")), "disks": self._disks(), "running": running,
+                "stores": _stores(state.get("stores")), "disks": self._disks(), "fence": self._fence(), "running": running,
                 **({"vm_mem": vm_memory()} if shutil.which("virsh") else {}),
                 "cores": os.cpu_count() or 0, "kinds": _proc_kinds(),
                 **gpu_cached()}

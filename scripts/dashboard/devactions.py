@@ -272,6 +272,21 @@ def _plan(project, instance, action, extra=None):
     # prepare context"). So the node makes its own from its copy, first: the
     # ref's files by git archive, which writes nothing into the repository
     # (a worktree's records would sync back up to the controller's .git).
+    # A memory limit for every container its compose file gives none
+    # (Controller settings, Room; R110 step 5), right after up: a limit the
+    # file sets is the file's, and Docker's own is 0 for none. A fixed
+    # script with its values as arguments, as the checkout below is.
+    gb = devapp.container_mem_gb() if devapp.container_mem_gb else 0
+    if gb:
+        up = [up, {"name": "limiting memory", "timeout": 120, "env": {}, "argv": [
+            "sh", "-c", 'for c in $("$1" ps -q --filter "label=com.docker.compose.project=$2"); do '
+            '[ "$("$1" inspect -f "{{.HostConfig.Memory}}" "$c")" = 0 ] || continue; '
+            '"$1" update --memory "$3" --memory-swap "$3" "$c" >/dev/null && echo "limited $c to $3"; done; true',
+            "sh", devapp.DOCKER, pname, f"{gb}g"]}]
+    else:
+        up = [up]
+    if rebuild[-1] is up[0]:
+        rebuild = rebuild[:-1] + up
     if at is not None and not ship:
         ref = str(devapp._read_rec(project, instance).get("ref") or "").strip()
         checkout = {"name": "checking out", "timeout": 600, "env": {}, "argv": [
@@ -282,9 +297,7 @@ def _plan(project, instance, action, extra=None):
             'rm -rf "$2"; mv "$2.new" "$2"; echo "a build tree, not a project" > "$2/.bbignore"',
             "sh", str(devapp.WORKSPACE / project), str(at), ref]}
         rebuild = [checkout] + rebuild
-        up = [checkout, up]
-    else:
-        up = [up]
+        up = [checkout] + up
     # The project's own test command, inside its running instance (roadmap
     # R48): `exec` into the service the project builds, with the command the
     # settings dialog recorded and nothing else, and the caller's arguments

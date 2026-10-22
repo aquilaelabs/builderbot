@@ -42,7 +42,8 @@ forget_runners = None
 FILE = None
 
 # key -> its default, its shape, and when a change takes: "now", applied by
-# set_many. Every key is a switch.
+# set_many. A switch, a text, a secret, or a whole number between its min
+# and max.
 KEYS = {
     # Off, the pickers offer only what has been proven: the git hosts, the
     # hypervisors and the provisioner's OS families that carry a vetting
@@ -89,6 +90,14 @@ KEYS = {
     # from the page, a phone or a session; every other account is told why
     # and stays signed in for after. Nodes are not accounts and keep running.
     "maintenance_mode": {"default": False, "kind": "bool", "applied": "now"},
+    # The room a node keeps for itself (R110): the disk left free under
+    # which the bell warns and a build, a test or a container's rebuild is
+    # refused (a tenth of a disk smaller than ten times this), the memory
+    # in use over ten minutes past which the bell warns, and a memory limit
+    # every container gets when its compose file sets none (0: none).
+    "room_floor_gb": {"default": 10, "kind": "number", "min": 1, "max": 1000, "applied": "now"},
+    "room_mem_pct": {"default": 92, "kind": "number", "min": 50, "max": 99, "applied": "now"},
+    "container_mem_gb": {"default": 0, "kind": "number", "min": 0, "max": 1024, "applied": "now"},
 }
 
 
@@ -146,7 +155,16 @@ def _parse(key, raw):
     unset rather than as an error on every read. A switch is true or false;
     a text is one line with the shape its key asks for (a hostname); a
     secret is one line, empty meaning none."""
-    kind = KEYS.get(key, {}).get("kind", "bool")
+    spec = KEYS.get(key, {})
+    kind = spec.get("kind", "bool")
+    if kind == "number":
+        if isinstance(raw, bool) or raw is None:
+            return None
+        try:
+            v = int(str(raw).strip())
+        except ValueError:
+            return None
+        return v if spec["min"] <= v <= spec["max"] else None
     if kind == "text":
         if isinstance(raw, bool) or raw is None:
             return None
@@ -215,6 +233,7 @@ def set_many(changes):
             kind = KEYS[key]["kind"]
             return {"error": f"{key} takes true or false" if kind == "bool"
                     else f"{key} is a hostname like bb.example.com" if kind == "text"
+                    else f"{key} is a whole number from {KEYS[key]['min']} to {KEYS[key]['max']}" if kind == "number"
                     else f"{key} is one line"}
         parsed[key] = v
     with _lock:
@@ -226,7 +245,8 @@ def set_many(changes):
 
 def payload():
     return {"settings": effective(), "debug_available": debug_available(),
-            "meta": {k: {"applied": s["applied"]} for k, s in KEYS.items()}}
+            "meta": {k: {"applied": s["applied"]} | ({"min": s["min"], "max": s["max"]} if s["kind"] == "number" else {})
+                     for k, s in KEYS.items()}}
 
 
 def reset_state(state):

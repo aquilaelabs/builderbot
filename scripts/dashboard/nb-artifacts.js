@@ -54,7 +54,11 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     viewGlance(hint, [
       {label: "in dist/", value: rows.length, sub: rows.length ? humanBytes(rows.reduce((n, a) => n + (a.size || 0), 0)) : ""},
       {label: "built on branches", value: onBranches, omit: !onBranches},
-      {label: caps.length === 1 ? "capture" : "captures", value: caps.length, omit: !caps.length}]);
+      {label: caps.length === 1 ? "capture" : "captures", value: caps.length, omit: !caps.length},
+      // What the last build took on its node, workspace and cache (R110
+      // step 7): the room the next one is checked against.
+      {label: "last build took", value: humanBytes(art.build?.took?.workspace || 0),
+       sub: art.build?.took?.cache ? `cache ${humanBytes(art.build.took.cache)}` : "", omit: !art.build?.took?.workspace}]);
     {
       // Where this project compiles, as a section rather than a loose band:
       // this tab is three subjects stacked, where it builds, what it is

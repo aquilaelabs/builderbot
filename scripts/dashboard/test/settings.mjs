@@ -101,8 +101,22 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Logs|Claude sessions|Storage|Apps|Reach from outside|Maintenance|Debugging|Reset',
-   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the home tunnel the controller runs itself (R176), maintenance mode (the owner's), debugging, and the reset (${groups.join(', ')})`);
+ok(groups.join('|') === 'Logs|Claude sessions|Storage|Apps|Reach from outside|Room on the nodes|Maintenance|Debugging|Reset',
+   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the home tunnel the controller runs itself (R176), the room a node keeps (R110), maintenance mode (the owner's), debugging, and the reset (${groups.join(', ')})`);
+{
+  // The room a node keeps (R110 steps 1 and 5): whole numbers held to their
+  // range by the server, the browser's own min and max beside them.
+  const room = await page.$eval('[data-group="Room on the nodes"]', g => [...g.querySelectorAll('input[type=number]')]
+    .map(i => `${i.dataset.set}=${i.value}:${i.min}-${i.max}`).join(' '));
+  const set = async v => (await page.evaluate(async b => (await fetch('/api/settings', {method: 'POST',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({set: b})})).json(), v));
+  const good = await set({room_floor_gb: 25, container_mem_gb: 4});
+  const bad = await set({room_mem_pct: 120});
+  await set({room_floor_gb: 10, container_mem_gb: 0});
+  ok(room === 'room_floor_gb=10:1-1000 room_mem_pct=92:50-99 container_mem_gb=0:0-1024' && good.ok
+     && /whole number from 50 to 99/.test(bad.error || ''),
+     `Room on the nodes is three numbers with their ranges, saved in range and refused out of it (${room}; ${JSON.stringify(bad)})`);
+}
 // Sections, and a page of settings (the operator, 16 Oct): a list of them
 // beside the one picked, each row saying what is in it, and Revert beside
 // each Apply putting the section's fields back to what is saved.

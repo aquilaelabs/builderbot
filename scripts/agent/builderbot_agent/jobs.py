@@ -567,6 +567,13 @@ class Job(threading.Thread):
             project = re.sub(r"[^A-Za-z0-9._-]", "_", str(src.get("project") or spec.get("project") or "project"))
             cache = os.path.join(stores.get("cache") or "/tmp", project)
             self.agent.own_dir(cache, who)
+            # Its last use, which the room keeper's prune by age reads
+            # (cache_clear's older_days): a directory's own mtime moves only
+            # when an entry is added, not when a build reads what is there.
+            with contextlib.suppress(OSError):
+                with open(os.path.join(cache, ".used"), "a"):
+                    pass
+                os.utime(os.path.join(cache, ".used"))
             env["BUILDERBOT_CACHE"] = cache
             env["BUILDERBOT_PROJECT"] = project
             self.say(f"workspace {ws} ({src.get('files', '?')} files); cache {cache}\n")

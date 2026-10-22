@@ -178,8 +178,11 @@ function storageBody(n, where){
     : n.age_s < 3600 ? `measured ${Math.round(n.age_s / 60)} min ago` : `measured ${Math.round(n.age_s / 3600)} h ago`;
   const pill = `<span class="pill${n.measured ? "" : " warn"}">${esc(age)}</span>`;
   // The walk as facts beside its pill (R218 step 27), and the one hint.
-  const facts = n.measured ? [n.took_s ? `the walk took ${n.took_s}s` : "", "walked every hour"].filter(Boolean).join(" · ")
-    : "walked an hour after the agent starts, then every hour";
+  // ...and the memory BuilderBot's work is kept to there (R110 step 4).
+  const fence = !("fence" in n) ? "" : n.fence ? `its work kept to ${humanBytes(n.fence[0] * 1048576)} of memory, ${humanBytes(n.fence[1] * 1048576)} in use`
+    : "its work is not fenced from the system's memory: run its setup again";
+  const facts = [...(n.measured ? [n.took_s ? `the walk took ${n.took_s}s` : "", "walked every hour"]
+    : ["walked an hour after the agent starts, then every hour"]), fence].filter(Boolean).join(" · ");
   return `<div data-stnode="${esc(n.node)}">
     ${headLine(`${pill} <span class="sub">${esc(facts)}</span>`, "", "toolstate")}
     ${hint}

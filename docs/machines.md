@@ -1,8 +1,8 @@
 # Machines: the controller, nodes and storage
 
-The Machines group on the rail: **Controller settings**, what the controller
-owns and applies live; **Nodes**, every machine work runs on; and
-**Storage**, what a node's disks hold. **Jobs**, the queue of work placed on
+The Machines group on the rail: **Nodes**, every machine work runs on, and
+**Storage**, what a node's disks hold; with them here, **Controller
+settings**, in the Home group, what the controller owns and applies live. **Jobs**, the queue of work placed on
 the nodes, is a page of its own on the rail. This doc covers enrolling and
 running nodes, their stores and their network, the controller's settings and
 logs, and the jobs. The design behind nodes is
@@ -294,6 +294,10 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   and switched once all of it is there, while the records, the database,
   the signing keys and the git credentials stay in the state directory
   (`paths.py`).
+- **Room on the nodes**: the disk a node keeps free (a build, a test or a
+  container rebuild is refused under it, and the bell says so), the memory
+  level past which the bell warns, and a memory limit for every container
+  whose compose file sets none ([nodes.md](nodes.md#room-a-node-keeps-for-itself)).
 - **Apps**: which of the apps a person installs this controller offers on
   the Apps page ([reference.md](reference.md#the-apps-a-person-installs)).
 - **Reach from outside**: the home tunnel the controller runs itself (R176,

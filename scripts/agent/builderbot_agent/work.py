@@ -8,6 +8,7 @@ import re
 import shutil
 import stat
 import subprocess
+import time
 import urllib.request
 import zipfile
 from . import storage
@@ -22,6 +23,16 @@ from .gpu import DRIVER_PKG, _gpu_card
 # batch to trim.
 TC_NAMES_MAX = 64
 
+
+
+def cache_age_days(path):
+    """Days since a job last used a project's cache directory: its .used
+    stamp, else the directory's own time; 0 for one that cannot be read,
+    so a prune by age leaves it alone."""
+    for p in (os.path.join(path, ".used"), path):
+        with contextlib.suppress(OSError):
+            return max(0.0, (time.time() - os.stat(p).st_mtime) / 86400)
+    return 0.0
 
 class WorkMixin:
     """Agent's project-work jobs: one of the parts class Agent (agent.py) is made of."""
@@ -216,7 +227,10 @@ class WorkMixin:
     def cache_clear(self, job, spec):
         """Drop this node's build caches: one project's, or all of them.
         The one thing that goes wrong with caches is a full disk, and this
-        is the button for it (docs/nodes.md §6)."""
+        is the button for it (docs/nodes.md §6). With older_days, only the
+        ones no job has used for that long (the controller's room keeper,
+        R110 step 7), read off the stamp a job leaves (.used), else the
+        directory's own time."""
         root = (self.state.get("stores") or {}).get("cache") or ""
         if not root or not os.path.isdir(root):
             job.say("no cache store here\n")
@@ -224,8 +238,14 @@ class WorkMixin:
         project = re.sub(r"[^A-Za-z0-9._-]", "_", str(spec.get("project") or ""))
         targets = [os.path.join(root, project)] if project else \
                   [os.path.join(root, d) for d in os.listdir(root)]
+        try:
+            days = float(spec.get("older_days") or 0)
+        except (TypeError, ValueError):
+            days = 0
         n = 0
         for t in targets:
+            if days > 0 and cache_age_days(t) < days:
+                continue
             if os.path.isdir(t):
                 shutil.rmtree(t, ignore_errors=True)
                 job.say(f"removed {t}\n")
