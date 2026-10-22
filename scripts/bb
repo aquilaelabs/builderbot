@@ -5711,7 +5711,7 @@ cmd_version() {
     # its HEAD, its VERSION file, its ordinal (version.py root()). The relay
     # runs this in the caller's cwd, so a node's session gets the same.
     local top; top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-    case "$top" in "$BB_WORKTREES/$proj"/*) export BB_VERSION_TREE="$top" ;; esac
+    case "$top" in "$BB_WORKTREES/$proj"/*|"$WORKSPACE/$proj/.claude/worktrees"/*) export BB_VERSION_TREE="$top" ;; esac
     # A release is the controller's to make (R138): the verb asks it, with
     # this session's credential.
     case " $* " in *" release "*) export BB_VERSION_AUTH; BB_VERSION_AUTH="$(bb_auth_or_die)" ;; esac
@@ -5736,7 +5736,7 @@ cmd_changelog() {
     # its HEAD, its VERSION file, its ordinal (version.py root()). The relay
     # runs this in the caller's cwd, so a node's session gets the same.
     local top; top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-    case "$top" in "$BB_WORKTREES/$proj"/*) export BB_VERSION_TREE="$top" ;; esac
+    case "$top" in "$BB_WORKTREES/$proj"/*|"$WORKSPACE/$proj/.claude/worktrees"/*) export BB_VERSION_TREE="$top" ;; esac
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
     BB_WORKSPACE="$WORKSPACE" python3 "$BB_LIB/changelog-verbs.py" "$py" "$proj" "$@"
 }

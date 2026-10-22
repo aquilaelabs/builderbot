@@ -165,12 +165,16 @@ def root(project):
     named after a commit that did not hold its code (24 Sep): the branch's
     own commits, VERSION file and ordinal are what a build there is about.
     Checked to lie under the project's worktrees, so the variable cannot
-    point this at another project's tree."""
+    point this at another project's tree: bb's own, or the ones Claude Code
+    makes for an agent under the project's .claude/worktrees (B212), whose
+    changelog line went to the main checkout's file."""
     want = os.environ.get("BB_VERSION_TREE") or ""
     if want:
         try:
             p = Path(want).resolve()
-            if p.is_dir() and (WORKSPACE / ".worktrees" / project).resolve() in p.parents:
+            homes = [(WORKSPACE / ".worktrees" / project).resolve(),
+                     (WORKSPACE / project / ".claude" / "worktrees").resolve()]
+            if p.is_dir() and any(h in p.parents for h in homes):
                 return p
         except OSError:
             pass
