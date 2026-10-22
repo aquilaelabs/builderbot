@@ -2934,11 +2934,6 @@ cmd_root() {
     esac
 }
 
-# bb container: ask for a container (roadmap R71). The root shape applied to
-# docker: the session writes the compose file, hands it over with a reason,
-# and an administrator reads it on the bell and allows or denies. Allow gives
-# the file to the Docker tab's own New container path and starts the build;
-# nothing here runs docker, and nothing runs until somebody has read it.
 # bb vm: this project's VMs (R91), under its Make VMs setting: deny refuses,
 # ask holds each for the administrators' bell, auto does it now.
 cmd_vm() {
@@ -2949,6 +2944,11 @@ cmd_vm() {
         exec python3 "$BB_LIB/vm-verbs.py" "$@"
 }
 
+# bb container: ask for a container (roadmap R71). The root shape applied to
+# docker: the session writes the compose file, hands it over with a reason,
+# and an administrator reads it on the bell and allows or denies. Allow gives
+# the file to the Docker tab's own New container path and starts the build;
+# nothing here runs docker, and nothing runs until somebody has read it.
 cmd_container() {
     local sub="${1:-status}" why="" name="" compose="" envf="" node="" forp="" auth
     auth="$(bb_auth_or_die)"
