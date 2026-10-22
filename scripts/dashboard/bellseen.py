@@ -81,7 +81,7 @@ def filter_rows(uid, rows):
     out, hidden = [], 0
     for r in rows:
         r = dict(r)
-        if r.get("kind") == "toolchain":
+        if r.get("kind") in ("toolchain", "agents"):
             tools = []
             for t in r.get("tools") or []:
                 t = dict(t, key=f"tc:{r['id']}:{t['name']}@{t.get('to') or ''}")

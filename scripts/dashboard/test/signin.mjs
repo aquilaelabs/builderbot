@@ -319,8 +319,8 @@ await call('/api/users', { action: 'edit', name: 's.user', profile: { full_name:
      'Cancel stops the flow and the row is back to where it was');
   // ...and the settings it can see are refused by the server too, not only
   // ghosted on the page.
-  const denied = await up.evaluate(async id => (await fetch('/api/toolchains', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'install', node: id, names: ['claude-code'] }) })).status, box.id);
+  const denied = await up.evaluate(async id => (await fetch('/api/agents', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'install', node: id, agent: 'claude' }) })).status, box.id);
   ok(denied === 403, `the verbs behind the ghosted controls are an administrator's on the server as well (${denied})`);
   up.errors = [];
   await up.context().close();

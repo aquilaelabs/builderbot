@@ -62,12 +62,12 @@ async function loadAgents(){
     return;
   }
   try{
-    const r = await fetch(`/api/toolchains?node=${encodeURIComponent(n.id)}`);
+    const r = await fetch(`/api/agents?node=${encodeURIComponent(n.id)}`);
     if (!r.ok) throw new Error("HTTP " + r.status);
     const got = await r.json();
     if (asked !== agSeq) return;
     agErr = got.error || "";
-    agRows = (got.machine || []).filter(m => TC_AGENT_TOOLS.has(m.name));
+    agRows = got.rows || [];
     agYours = got.yours || {plugins: [], mcp: {}};
   }catch(e){
     if (asked !== agSeq) return;
@@ -96,7 +96,7 @@ function agSection(a, n, m){
   let status, cls;
   if (!up) [status, cls] = ["no session account", "warn"];
   else if (running) [status, cls] = [doing, "warn"];
-  else if (!m.installed) [status, cls] = ["not installed", a.id === "claude" ? "bad" : ""];
+  else if (!m.installed) [status, cls] = ["not installed", a.id === "claude" ? "warn" : ""];
   else if (m.state === "update") [status, cls] = [`${m.installed}, ${m.latest} is out`, "warn"];
   else [status, cls] = [m.latest ? `${m.installed}, up to date` : m.installed, "ok"];
   if (a.provider && m?.installed && up && !running && !agentOn(a.id, n.id)) [status, cls] = [`${status}, not signed in`, "warn"];
@@ -191,7 +191,7 @@ function wireAgentsTab(root){
     if (act === "remove" && !confirm(`Remove ${m?.label || tool} from ${agPick()?.name || "this node"}? Its ${who} sessions end, and none starts there until it is installed again.`)) return;
     if (act === "install" && m?.installed && !confirm(`Update ${m.label} on ${agPick()?.name || "this node"}? Its ${who} sessions there end first; they start again from the project rows.`)) return;
     busy(b, act === "remove" ? "Removing" : "Asking");
-    const j = await (await postJSON("/api/toolchains", {action: act, node: agNode, names: [tool]})).json().catch(() => ({error: "no answer"}));
+    const j = await (await postJSON("/api/agents", {action: act, node: agNode, agent: m?.agent || ""})).json().catch(() => ({error: "no answer"}));
     if (j.error) notify(j.error, true);
     await loadAgents();
   });

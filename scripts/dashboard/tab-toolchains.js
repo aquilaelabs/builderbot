@@ -637,10 +637,9 @@ function tcToolkitRow(m, busy, job){
   </div>`;
 }
 
-// The coding agents, the session account's (R145, R95): Claude Code, Codex
-// CLI and Copilot CLI arrive with a node's machine rows, and are drawn,
-// installed and updated on the Agents page (tab-agents.js), not here.
-const TC_AGENT_TOOLS = new Set(["claude-code", "codex-cli", "copilot-cli"]);
+// The coding agents (Claude Code, Codex CLI, Copilot CLI) are not here: the
+// Agents page (tab-agents.js) installs, updates and removes them (R95, the
+// operator 22 Oct), and this page keeps one line saying so.
 
 // The page's two lists under their heads (the operator, 18 Oct: Toolchains
 // had none): what belongs to the machine itself (its NVIDIA driver and
@@ -772,7 +771,7 @@ function renderToolchainsInto(i){
       // This machine's rows count too (the driver, the toolkit). The
       // coding agents are the Agents page's to count (R95 step 15).
       const due = items.filter(x => x.state === "update").length
-        + (onNode ? (d.machine || []).filter(m => !TC_AGENT_TOOLS.has(m.name) && !!m.newer).length : 0);
+        + (onNode ? (d.machine || []).filter(m => !!m.newer).length : 0);
       const need = items.filter(x => (x.pinned_by || []).length && !x.installed).length;
       return statTiles([
         {label: "installed", value: items.filter(x => x.installed).length, sub: `of ${items.length} offered`},
@@ -808,16 +807,16 @@ function renderToolchainsInto(i){
                  title="install these on ${esc(d.name || "the node")} without reinstalling the toolchains">Install system packages</button>`
             : `This node's owner installs them: the agent does not administer the machine.`}</div></div>`;
     })()}
-    ${tcSections(onNode && (d.machine || []).some(m => !TC_AGENT_TOOLS.has(m.name)) ? `<div class="tcs tcmachine">${
-      d.machine.filter(m => !TC_AGENT_TOOLS.has(m.name)).map(m => (m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : "",
+    ${tcSections(onNode && (d.machine || []).length ? `<div class="tcs tcmachine">${
+      d.machine.map(m => (m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : "",
       tblWrap(TC_COLS, (d.items || []).filter(i => !i.wrong_platform)
       .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join(""), "tcs"),
       `${(d.items || []).filter(i => i.installed).length} installed`)}
     ${
     // The coding agents arrive with the machine's rows and are the Agents
     // page's (R95 step 15): one line at the foot says where.
-    onNode && (d.machine || []).some(m => TC_AGENT_TOOLS.has(m.name)) ? `<div class="field tcagents"><div class="hint">The coding agents (${
-      esc((d.machine || []).filter(m => TC_AGENT_TOOLS.has(m.name)).map(m => m.label).join(", "))}) are installed and updated on the ${pageLink("agents", "Agents page", `#/build/agents/${encodeURIComponent(d.node || tcNode)}`)}.</div></div>` : ""}
+    onNode ? `<div class="field tcagents"><div class="hint">The coding agents (${
+      esc(AGENTS.filter(a => a.live).map(a => a.product).join(", "))}) are installed and updated on the ${pageLink("agents", "Agents page", `#/build/agents/${encodeURIComponent(d.node || tcNode)}`)}.</div></div>` : ""}
     ${state?.can?.admin ? tpSection(d.items) : ""}
 `;
 

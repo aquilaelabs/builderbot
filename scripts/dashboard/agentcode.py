@@ -28,6 +28,7 @@ import agents
 VER = re.compile(r"(\d+\.\d+\.\d+)")
 
 nodes = None               # nodes.py
+claudecode = None          # claudecode.py: Claude Code's own row (R145) beside the others
 node_sessions = None       # server.node_tmux_sessions
 tmux_base = None           # server.tmux_base
 audit = None
@@ -36,9 +37,9 @@ _latest = {}               # {agent id: {version, at, error, checking}}
 _pressed = {}              # {(agent id, node id): when}, as claudecode's
 
 
-def configure(*, nodes_module, node_sessions, tmux_base, audit=None):
+def configure(*, nodes_module, node_sessions, tmux_base, audit=None, claude=None):
     globals().update(nodes=nodes_module, node_sessions=node_sessions,
-                     tmux_base=tmux_base, audit=audit)
+                     tmux_base=tmux_base, audit=audit, claudecode=claude)
 
 
 def tracked():
@@ -226,6 +227,63 @@ def row(n, agent_id):
             "running": running, "action": ((job or {}).get("spec") or {}).get("action") or "install",
             "error": str((job or {}).get("error") or "")[:200] if failed else "",
             "checked": int(cur.get("at") or 0), "check_error": cur.get("error") or ""}
+
+
+def claude_row(n):
+    """Claude Code as a row of the node's Agents page (R145, R95), or None on
+    a node that runs no session account: what a Claude session there runs,
+    installed on purpose rather than by the provisioner. The version is the
+    census's (claude --version as the session account); the latest is
+    claudecode's check; the job behind install, update and remove is
+    claudecode's, which ends the node's Claude sessions first."""
+    se = (n.get("reported") or {}).get("session") or {}
+    # A hosting-only node runs no session, so nothing there runs Claude
+    # Code: no row, whatever its census says (the operator, 11 Oct).
+    if not claudecode or n.get("kind") != "agent" or not se.get("up") or (n.get("config") or {}).get("host_only"):
+        return None
+    inst = claudecode.installed(n)
+    cur = claudecode.latest()
+    job = next(iter(nodes.jobs_for(node_id=n["id"], type=claudecode.JOB, n=1) or []), None) if nodes else None
+    running = claudecode.updating(n["id"])
+    failed = (job or {}).get("state") == "failed" and not running
+    return {"name": "claude-code", "agent": "claude", "label": "Claude Code", "for": "Claude", "installed": inst,
+            "latest": cur.get("version") or "",
+            "state": ("absent" if not inst else "update" if claudecode.behind(n) else "current"),
+            "managed": bool((n.get("reported") or {}).get("sandbox")), "here": bool(inst),
+            "running": running, "action": ((job or {}).get("spec") or {}).get("action") or "install",
+            "error": str((job or {}).get("error") or "")[:200] if failed else "",
+            "checked": int(cur.get("at") or 0), "check_error": cur.get("error") or ""}
+
+
+def rows(n):
+    """Every coding agent's row on a node's Agents page, Claude's first."""
+    return [r for r in (claude_row(n), *(row(n, a.id) for a in tracked())) if r]
+
+
+def verb(principal, req):
+    """The Agents page's presses (R95, the operator 22 Oct: the one way an
+    agent is installed): install (or update), remove or check, for one
+    agent on one node. The caller has decided who may. (payload, status)."""
+    action = str(req.get("action") or "")
+    nid = str(req.get("node") or "")
+    if action == "check":
+        out = {"ok": True}
+        if claudecode:
+            c = claudecode.check()
+            out["claude"] = {"version": c.get("version") or "", "error": c.get("error") or ""}
+        for aid, c in check_all().items():
+            out[aid] = {"version": c.get("version") or "", "error": c.get("error") or ""}
+        return out, 200
+    a = agents.get(req.get("agent"))
+    if action not in ("install", "remove") or not a or not a.tool:
+        return {"error": "install, remove or check, for one of the coding agents"}, 400
+    if a.id == "claude":
+        if not claudecode:
+            return {"error": "Claude Code is not managed here"}, 400
+        r = claudecode.update(principal, nid) if action == "install" else claudecode.remove(principal, nid)
+    else:
+        r = update(principal, nid, a.id) if action == "install" else remove(principal, nid, a.id)
+    return r, (400 if r.get("error") else 200)
 
 
 def start(delay=None):

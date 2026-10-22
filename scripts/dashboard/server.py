@@ -1475,7 +1475,7 @@ def _attention(who):
             + ([] if users.may(who, "node") else nodes.room_attention(
                 room_floor_gb(), room_mem_pct(),
                 label=lambda r: {"root": "its root filesystem", "docker": "Docker's images and build cache"}.get(r, f"its {r} store")))
-            + [a for a in toolchains.attention(where)
+            + [a for a in toolchains.attention(where) + toolchains.agent_attention(where)
                if not users.may_node(who, "toolchains-write", a["id"])]
             # ...and a node's nginx behind the newest line (nginxproxy.attention,
             # R192), for whoever may act on the Docker tab, which Update is.
@@ -3815,7 +3815,7 @@ if not NODES_OK:
     claudecode.configure(nodes_module=nodes, node_sessions=node_tmux_sessions,
                          tmux_base=tmux_base, audit=nodes.audit)
     agentcode.configure(nodes_module=nodes, node_sessions=node_tmux_sessions,
-                        tmux_base=tmux_base, audit=nodes.audit)
+                        tmux_base=tmux_base, audit=nodes.audit, claude=claudecode)
 
 # Every account's sessions on a project, for its settings dialog, and an
 # administrator ending one (projsessions.py): the rows the Sessions card is
@@ -4631,6 +4631,7 @@ GET_ROUTES = (
     ("prefix", "/api/phone/wait", "_get_phone_wait"),
     ("prefix", "/api/phone", "_get_phone"),
     ("prefix", "/api/toolchains", "_get_toolchains"),
+    ("prefix", "/api/agents", "_get_agents"),
     ("prefix", "/api/emulator", "_get_emulator"),
     ("prefix", "/api/roles", "_get_roles"),
     ("prefix", "/api/users", "_get_users"),
@@ -4722,6 +4723,7 @@ POST_ROUTES = (
     ("prefix", "/api/roles", "_roles"),
     ("prefix", "/api/users", "_users"),
     ("prefix", "/api/toolchains", "_toolchains"),
+    ("exact", "/api/agents", "_agents"),
     ("exact", "/api/toolpacks", "_toolpacks"),
     ("prefix", "/api/emulator", "_emulator"),
     ("prefix", "/api/logs", "_logs"),
@@ -6102,12 +6104,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": why, "toolchains": []})
         if nid and nid != "local" and not NODES_OK:
             d = toolchains.payload_for_node(nid)
-            # The asking account's own plugins and MCP servers there, per
-            # agent, for the Agents page (R95 step 15): theirs alone.
-            me = self._who() or {}
-            if users.uid_of(me) and not me.get("session"):
-                mine = next((x for x in plugins.of(users.uid_of(me)) if x["node"] == nid), {})
-                d["yours"] = {"plugins": mine.get("plugins") or [], "mcp": mine.get("mcp") or {}}
             # A toolchain job's output is the node's, read by a session only
             # with its project's diagnostics grant, as bb jobs reads it (the
             # operator, 12 Oct): the rows and what failed stay, the log lines
@@ -6118,6 +6114,33 @@ class Handler(BaseHTTPRequestHandler):
                 d["job"]["hidden"] = why
             return self._json(d)
         return self._json(toolchains.payload())
+
+    def _get_agents(self):
+        """GET /api/agents?node=ID: the coding agents on one node (R95, the
+        Agents page): each agent's row, the version against the latest and
+        any job of its own, and the asking account's own plugins and MCP
+        servers there. Answered for the nodes this account may look at."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        nid, why = self._node_asked(q.get("node", [""])[0])
+        if why or not nid or nid == "local":
+            return self._json({"error": why or "which node?", "rows": []})
+        n = nodes.node(nid) if not NODES_OK else None
+        if not n:
+            return self._json({"error": "no such node", "rows": []}, 404)
+        out = {"node": nid, "name": n.get("name") or nid, "live": bool(n.get("live")), "rows": agentcode.rows(n)}
+        me = self._who() or {}
+        if users.uid_of(me) and not me.get("session"):
+            mine = next((x for x in plugins.of(users.uid_of(me)) if x["node"] == nid), {})
+            out["yours"] = {"plugins": mine.get("plugins") or [], "mcp": mine.get("mcp") or {}}
+        return self._json(out)
+
+    def _agents(self, req):
+        """POST /api/agents: install (or update), remove or check one coding
+        agent on one node (agentcode.verb), the one way an agent is managed
+        (R95, the operator 22 Oct): whoever may install toolchains there."""
+        if (why := users.may_node(self._who(), "toolchains-write", field(req, "node"))):
+            return self._json({"error": why}, 403)
+        return self._json(*agentcode.verb(self._principal(), req))
 
     def _get_emulator(self):
         """GET /api/emulator?node=ID: that node's system images, what could be

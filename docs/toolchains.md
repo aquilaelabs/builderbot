@@ -374,7 +374,11 @@ is a bin on the row. A recipe that gives a session commands says under
 which name: they live under `bb tool NAME` (`bb tool graphics`, `bb tool
 diagrams`), one name per recipe, so the row says what installing it adds,
 two toolchains may both have a `render`, and none can shadow a verb of
-bb's own; the suite holds the catalog to the script. Each row also names the system packages its tool puts
+bb's own; the suite holds the catalog to the script. The page holds build
+toolchains alone: the coding agents a session runs (Claude Code, Codex CLI,
+Copilot CLI) are installed, updated and removed on the **Agents** page beside
+it (`POST /api/agents`), and on a node this page says so in one line with the
+way there. Each row also names the system packages its tool puts
 on the picked machine, in that machine's package manager's names, and for
 one already installed which of them are missing there. They install with
 the tool and only then; uninstalling a tool leaves them, since another may
@@ -545,7 +549,8 @@ names packages another project left there, removed on its first boot.
 - **Claude Code plugins**: `/plugin` inside a session installs one for that
   person alone, in their own `~/.claude` on the node; a project's committed
   `.claude/settings.json` can name plugins everybody on it is offered. Each
-  person's are listed on their **Profile** page and every account's in
+  person's, and the MCP servers they added to each coding agent, are listed
+  under that agent on the node's **Agents** page, and every account's in
   `bb diag plugins`, since a plugin adds its own hooks and instructions beside
   BuilderBot's and a session that behaves oddly may be carrying one. The
   language-server plugins run a server a session cannot `npm install -g`

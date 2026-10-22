@@ -1290,11 +1290,11 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
        'a hosting-only node is not offered as a project\'s primary, only under Also works on, marked Hosting only');
     await page.click('#rnCancel');
     // Nothing on it runs Claude Code (the operator, 11 Oct): no section on
-    // its row, no row on its Toolchains tab.
+    // its row, no row on its Agents page.
     await page.waitForFunction(sel => !document.querySelector(sel + ' details[data-sect="nodes:agents"]'), ROW, { timeout: 10000 }).catch(() => {});
-    const tcHost = await napi('/api/toolchains?node=' + minted.id);
-    ok(!(await page.$(`${ROW} details[data-sect="nodes:agents"]`)) && !(tcHost.machine || []).some(m => m.name === 'claude-code'),
-       `a hosting-only node's row has no Claude Code section, and its Toolchains page no Claude Code row (${JSON.stringify((tcHost.machine || []).map(m => m.name))})`);
+    const tcHost = await napi('/api/agents?node=' + minted.id);
+    ok(!(await page.$(`${ROW} details[data-sect="nodes:agents"]`)) && !(tcHost.rows || []).some(m => m.name === 'claude-code'),
+       `a hosting-only node's row has no Claude Code section, and its Agents page no Claude Code row (${JSON.stringify((tcHost.rows || []).map(m => m.name))})`);
     // A root command on it, by name, for a project that hosts containers
     // there (the operator, 11 Oct): refused for a project that does not,
     // asked for one that does, and refused where the row's switch is off.
@@ -3499,15 +3499,19 @@ ok(page.errors.length === 0,
   const me = (await napi('/api/v1/nodes')).nodes.find(n => n.id === en.id);
   ok(!!me?.live && me.reported?.session?.claude === '1.0.0 (Claude Code)',
      `the node dials in reporting its Claude Code (hello: ${JSON.stringify(hi).slice(0, 80)}; row: live=${me?.live} session=${JSON.stringify(me?.reported?.session || null).slice(0, 120)})`);
-  // Claude Code is a toolchain of the node (R145): the Toolchains tab's
-  // Check for updates asks its latest with the rest, in the same answer.
+  // Claude Code is a coding agent of the node (R145, R95): the Agents
+  // page's check asks its latest; the Toolchains page's asks the node's
+  // toolchains alone.
+  const ack = await napi('/api/agents', { action: 'check' });
+  ok(ack.claude?.version === '1.2.0', `Check for updates asks the installer's latest and gets it (${ack.claude?.version || ack.claude?.error || ack.error})`);
   const chk = await napi('/api/toolchains', { action: 'check', node: en.id });
-  ok(chk.claude?.version === '1.2.0', `Check for updates asks the installer's latest and gets it (${chk.claude?.version || chk.claude?.error || chk.error})`);
-  // The node's own toolchain check it queued beside: the fake agent takes it
-  // and answers the way bb toolchains versions does, Go behind, so the tab
-  // is not busy with it and the agent is handed the update next.
+  ok(!('claude' in chk), `...and the Toolchains page's check asks nothing of a coding agent (${Object.keys(chk).join(', ')})`);
+  // The node's own toolchain check it queued: the fake agent takes it and
+  // answers the way bb toolchains versions does, Go behind, so the tab is
+  // not busy with it and the agent is handed the update next.
   const tcRowOf = st => (st.attention || []).find(a => a.kind === 'toolchain' && a.id === en.id);
-  const claudeIn = st => (tcRowOf(st)?.tools || []).find(t => t.name === 'claude-code');
+  const agRowOf = st => (st.attention || []).find(a => a.kind === 'agents' && a.id === en.id);
+  const claudeIn = st => (agRowOf(st)?.tools || []).find(t => t.name === 'claude-code');
   if (chk.job) {
     const AH = { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' };
     const w = await fetch(base + '/api/v1/agent/work', { method: 'POST', headers: AH,
@@ -3520,66 +3524,63 @@ ok(page.errors.length === 0,
     } else await napi('/api/v1/jobs', { action: 'cancel', id: chk.job });
   }
   const st = await napi('/api/status');
-  const row = tcRowOf(st);
+  const row = tcRowOf(st), agRow = agRowOf(st);
   const cl = claudeIn(st), goRow = (row?.tools || []).find(t => t.name === 'go');
   ok(cl?.from === '1.0.0' && cl.to === '1.2.0' && cl.label === 'Claude Code',
-     `a node behind is a bell row naming both versions (${JSON.stringify(row || st.attention)})`);
-  ok(goRow?.from === '1.27.0' && goRow.to === '1.28.0' && row.tools.length === 2
-     && (st.attention || []).filter(a => a.id === en.id && a.kind === 'toolchain').length === 1,
-     `...the same row as a store toolchain's update, one per node, Claude Code first (${JSON.stringify(row?.tools)})`);
-  // The row's link opens the node's Toolchains tab, where each is updated
-  // (the operator, 9 Oct), from whichever node that tab was on.
-  await page.waitForFunction(id => (state?.attention || []).some(a => a.kind === 'toolchain' && a.id === id), en.id, { timeout: 15000 });
+     `a node behind is a bell row naming both versions (${JSON.stringify(agRow || st.attention)})`);
+  ok(goRow?.from === '1.27.0' && goRow.to === '1.28.0' && row.tools.length === 1
+     && (st.attention || []).filter(a => a.id === en.id && a.kind === 'toolchain').length === 1
+     && (st.attention || []).filter(a => a.id === en.id && a.kind === 'agents').length === 1,
+     `...a row of its own, beside the toolchains' row, one each per node (${JSON.stringify(row?.tools)})`);
+  // Each row's link opens its own page on the node (the operator, 9 and
+  // 22 Oct), from whichever node that page was on.
+  await page.waitForFunction(id => (state?.attention || []).some(a => a.kind === 'agents' && a.id === id)
+                                   && (state?.attention || []).some(a => a.kind === 'toolchain' && a.id === id), en.id, { timeout: 15000 });
   await page.evaluate(() => { tcNode = 'local'; });
   await page.click('#bBell');
+  await page.waitForSelector(`#bellPanel [data-bag="${en.id}"]`, { timeout: 10000 });
   await page.waitForSelector(`#bellPanel [data-btc="${en.id}"]`, { timeout: 10000 });
-  // The panel draws from the page's own poll, which can be a poll behind the
-  // status read above, and a poll under load can be a long way off: ask for
-  // it until the page's row carries both (B662), then read the drawer.
-  await refreshUntil(page, `((state?.attention || []).find(a => a.kind === 'toolchain'
-    && a.id === ${JSON.stringify(en.id)})?.tools || []).length === 2`, { timeout: 30000 }).catch(() => {});
-  await page.waitForFunction(id => /2 toolchain updates/.test(document.querySelector(`#bellPanel [data-btc="${id}"]`)?.closest('.bnote')?.textContent || ''),
-                             en.id, { timeout: 10000 }).catch(() => {});
+  const agBell = await page.$eval(`#bellPanel [data-bag="${en.id}"]`, a => a.closest('.bnote').textContent.replace(/\s+/g, ' '));
   const tcBell = await page.$eval(`#bellPanel [data-btc="${en.id}"]`, a => a.closest('.bnote').textContent.replace(/\s+/g, ' '));
-  ok(/2 toolchain updates on clbox/.test(tcBell) && /Claude Code, Go/.test(tcBell)
-     && /Claude Code: 1\.0\.0 → 1\.2\.0/.test(tcBell) && /Go: 1\.27\.0 → 1\.28\.0/.test(tcBell),
-     `the bell says it in a line, every toolchain behind on the node in one row, the versions under its fold (${tcBell.slice(0, 160)})`);
+  ok(/1 coding agent update on clbox/.test(agBell) && /Claude Code: 1\.0\.0 → 1\.2\.0/.test(agBell) && /Agents page/.test(agBell)
+     && /1 toolchain update on clbox/.test(tcBell) && /Go: 1\.27\.0 → 1\.28\.0/.test(tcBell) && !/Claude Code/.test(tcBell),
+     `the bell says each in a line, the coding agents on their row and the toolchains on theirs, the versions under the fold (${agBell.slice(0, 100)} | ${tcBell.slice(0, 80)})`);
   // B57: what the update ends is the Claude sessions running there, counted,
   // not the projects bound to the node.
-  const ends = /ends the Claude sessions there \((\d+) running\)/.exec(tcBell);
-  ok(typeof row.sessions === 'number' && (row.sessions ? ends && +ends[1] === row.sessions : !ends && !/ends the Claude/.test(tcBell)),
-     `...and its warning counts the Claude sessions running there (${row.sessions}: ${ends?.[0] || 'none said'})`);
+  const ends = /ends the Claude sessions there \((\d+) running\)/.exec(agBell);
+  ok(typeof agRow.sessions === 'number' && (agRow.sessions ? ends && +ends[1] === agRow.sessions : !ends && !/ends the Claude/.test(agBell)),
+     `...and its warning counts the Claude sessions running there (${agRow.sessions}: ${ends?.[0] || 'none said'})`);
   // Dismiss puts that version away for this account (bellseen.py, R144),
   // with the drawer left open; Show again brings it back.
-  await page.click(`#bellPanel [data-bdismiss]`);
-  await page.waitForFunction(id => !(state?.attention || []).some(a => a.kind === 'toolchain' && a.id === id)
-                                   && state.bell_hidden === 2, en.id, { timeout: 15000 });
+  await page.click(`#bellPanel .bnote:has([data-bag="${en.id}"]) [data-bdismiss]`);
+  await page.waitForFunction(id => !(state?.attention || []).some(a => a.kind === 'agents' && a.id === id)
+                                   && state.bell_hidden === 1, en.id, { timeout: 15000 });
   await page.waitForSelector('#bellRestore', { timeout: 10000 });
-  ok(!(await page.$eval('#bellPanel', e => e.hidden)) && /2 updates dismissed/.test(await page.textContent('#bellPanel')),
-     'Dismiss puts both updates away, leaves the drawer open, and says how many are put away');
+  ok(!(await page.$eval('#bellPanel', e => e.hidden)) && /1 update dismissed/.test(await page.textContent('#bellPanel')),
+     'Dismiss puts the update away, leaves the drawer open, and says how many are put away');
   await page.click('#bellRestore');
-  await page.waitForFunction(id => state.bell_hidden === 0 && (state?.attention || []).some(a => a.kind === 'toolchain' && a.id === id),
+  await page.waitForFunction(id => state.bell_hidden === 0 && (state?.attention || []).some(a => a.kind === 'agents' && a.id === id),
                              en.id, { timeout: 15000 });
-  await page.waitForSelector(`#bellPanel [data-btc="${en.id}"]`, { timeout: 15000 });
-  ok(true, '...and Show again brings them back');
+  await page.waitForSelector(`#bellPanel [data-bag="${en.id}"]`, { timeout: 15000 });
+  ok(true, '...and Show again brings it back');
   // The node was enrolled through the API, so the page may not have listed
-  // it yet; the tab still opens on it, not on another (B754).
+  // it yet; the page still opens on it, not on another (B754).
   // The drawer is drawn anew on every poll, so a press can straddle a
   // redraw: the mousedown on one link and the mouseup on its replacement,
   // and the click goes to the drawer, which runs no link's handler (B748).
   // Pressed again while the drawer is still open on the link.
-  const tcLink = `#bellPanel [data-btc="${en.id}"]`;
+  const agLink = `#bellPanel [data-bag="${en.id}"]`;
   let went = '';
   for (let i = 0; i < 3; i++){
-    if (await page.isVisible(tcLink)) await page.click(tcLink, { timeout: 5000 }).catch(() => {});
-    went = await page.waitForFunction(id => tcNode === id && document.getElementById('bellPanel').hidden, en.id, { timeout: patience(8000) })
+    if (await page.isVisible(agLink)) await page.click(agLink, { timeout: 5000 }).catch(() => {});
+    went = await page.waitForFunction(id => agNode === id && document.getElementById('bellPanel').hidden, en.id, { timeout: patience(8000) })
       .then(() => '', async () => JSON.stringify({ want: en.id, press: i + 1,
-        ...await page.evaluate(() => ({ tcNode, bell: document.getElementById('bellPanel').hidden })) }));
+        ...await page.evaluate(() => ({ agNode, bell: document.getElementById('bellPanel').hidden })) }));
     if (!went) break;
   }
   ok(!went, `the bell's link names the node and shuts the bell${went ? ` (${went})` : ''}`);
-  await page.waitForSelector('.tctab .tcagents a.pagelink', { timeout: 30000 });
-  ok(true, '...and its link opens the Toolchains page on that node, which points at the Agents page for Claude Code (R95)');
+  await page.waitForSelector(`.agentstab [data-agnode="${en.id}"] [data-sect="agents:claude"]`, { timeout: 30000 });
+  ok(true, '...and its link opens the Agents page on that node');
   ok(st.claude_code?.nodes?.[en.id]?.behind === true && st.claude_code.latest === '1.2.0',
      '...and the status payload says which node is behind');
   await page.evaluate(() => openNodesTab());
@@ -3610,9 +3611,9 @@ def wj(path, d):
 m.configure(state=${JSON.stringify(`${DIR}/state`)}, write_json=wj)
 print(m.mint_session('alpha'))
 `], { encoding: 'utf8' }).trim();
-  const asSession = await fetch(base + '/api/toolchains', { method: 'POST',
+  const asSession = await fetch(base + '/api/agents', { method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
-    body: JSON.stringify({ action: 'install', node: en.id, names: ['claude-code'] }) });
+    body: JSON.stringify({ action: 'install', node: en.id, agent: 'claude' }) });
   ok(asSession.status === 403, `a session's token cannot ask for the update (${asSession.status})`);
   // The update: the node's project is bound, a Claude session is reported
   // there, and the press ends it, queues the job and holds the row.
@@ -3623,7 +3624,7 @@ print(m.mint_session('alpha'))
     // there, the owner included; an unprefixed name is nobody's and dropped.
     body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512,
       sessions: [{ name: `${JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid}~claude-beta` }] }, running: [], wait: 0 }) });
-  const up = await napi('/api/toolchains', { action: 'install', node: en.id, names: ['claude-code'] });
+  const up = await napi('/api/agents', { action: 'install', node: en.id, agent: 'claude' });
   const job = up.job ? await napi(`/api/v1/jobs?id=${up.job}`) : null;
   ok(up.ok && job?.type === 'claude-update' && job.node === en.id && job.spec?.to === '1.2.0' && (up.ended || []).length === 1,
      `Update ends the Claude session there and queues the job naming the version (${up.job || up.error}; ended ${JSON.stringify(up.ended)})`);
@@ -3656,7 +3657,7 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
   }
   ok(!claudeIn(await napi('/api/status')),
      '...and Claude Code leaves the bell row while the update is queued');
-  const again = await napi('/api/toolchains', { action: 'install', node: en.id, names: ['claude-code'] });
+  const again = await napi('/api/agents', { action: 'install', node: en.id, agent: 'claude' });
   ok(/already queued/.test(again.error || ''), '...and a second press is refused while one is queued');
   // The fake agent takes the job and finishes it the way the real one does,
   // naming what it installed on its last line. The row and the bell read

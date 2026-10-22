@@ -128,7 +128,7 @@ function wireSetup(el, s){
   const cl = el.querySelector("[data-setclaude]");
   if (cl) cl.onclick = async () => {
     busy(cl, "Starting");
-    const r = await postJSON("/api/toolchains", {action: "install", names: ["claude-code"], node: s.node.id});
+    const r = await postJSON("/api/agents", {action: "install", agent: "claude", node: s.node.id});
     const j = await r.json().catch(() => ({}));
     if (!r.ok){ unbusy(cl, "Install"); return notify(j.error || `could not start (HTTP ${r.status})`, true); }
     notifyJob(j.job, `installing Claude Code on ${s.node.name}`);

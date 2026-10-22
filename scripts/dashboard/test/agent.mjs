@@ -3194,9 +3194,9 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     // loop now rather than before the next job is taken (B644), so for a few
     // seconds the row is behind the machine.
     await until(async () => (await nodeById(minted.id))?.reported?.session?.up ? true : null, 30000);
-    // From the node's Toolchains tab, where Claude Code is a row (R145).
-    const cu = await api('/api/toolchains', { action: 'install', node: minted.id, names: ['claude-code'] });
-    ok(cu.ok && /^j_/.test(cu.job), `Install on the Toolchains page queues the claude-update job on this node (${cu.job || cu.error})`);
+    // From the node's Agents page, where Claude Code is a row (R145, R95).
+    const cu = await api('/api/agents', { action: 'install', node: minted.id, agent: 'claude' });
+    ok(cu.ok && /^j_/.test(cu.job), `Install on the Agents page queues the claude-update job on this node (${cu.job || cu.error})`);
     const cfin = await until(async () => {
       const r = await api(`/api/v1/jobs?id=${cu.job}`);
       return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
@@ -3218,11 +3218,16 @@ mkdir -p "$CODEX_INSTALL_DIR"
 printf '#!/bin/sh\necho codex-cli 0.163.0\n' > "$CODEX_INSTALL_DIR/codex"
 chmod +x "$CODEX_INSTALL_DIR/codex"
 `, { mode: 0o755 });
+    const ag = await api(`/api/agents?node=${encodeURIComponent(minted.id)}`);
+    const row = (ag.rows || []).find(m => m.name === 'codex-cli');
+    ok(row && row.label === 'Codex CLI' && row.for === 'ChatGPT' && (ag.rows || [])[0]?.agent === 'claude',
+       `the node's Agents page has a Codex CLI row after Claude Code's (${row ? row.state : (ag.rows || []).map(m => m.name).join(', ')})`);
     const tc = await api(`/api/toolchains?node=${encodeURIComponent(minted.id)}`);
-    const row = (tc.machine || []).find(m => m.name === 'codex-cli');
-    ok(row && row.label === 'Codex CLI' && row.for === 'ChatGPT',
-       `the node's Toolchains page has a Codex CLI row beside Claude Code's (${row ? row.state : (tc.machine || []).map(m => m.name).join(', ')})`);
-    const cx = await api('/api/toolchains', { action: 'install', node: minted.id, names: ['codex-cli'] });
+    ok(!(tc.machine || []).some(m => ['claude-code', 'codex-cli', 'copilot-cli'].includes(m.name)),
+       `...and its Toolchains page draws no coding agent (${(tc.machine || []).map(m => m.name).join(', ')})`);
+    const refused = await api('/api/toolchains', { action: 'install', node: minted.id, names: ['codex-cli'] });
+    ok(/Agents page/.test(refused.error || ''), `...nor installs one, naming the way there (${refused.error || 'queued'})`);
+    const cx = await api('/api/agents', { action: 'install', node: minted.id, agent: 'codex' });
     ok(cx.ok && /^j_/.test(cx.job), `Install queues the codex-update job on this node (${cx.job || cx.error})`);
     const xfin = await until(async () => {
       const r = await api(`/api/v1/jobs?id=${cx.job}`);
@@ -3232,8 +3237,8 @@ chmod +x "$CODEX_INSTALL_DIR/codex"
        && /Codex CLI 0\.163\.0 is what a session here runs now/.test(xfin.log || ''),
        `the agent runs the installer as the session account and reads the version back (${xfin?.state}: ${(xfin?.log || '').trim().split('\n').slice(-1)[0]?.slice(0, 90)})`);
     const after = await until(async () => {
-      const t = await api(`/api/toolchains?node=${encodeURIComponent(minted.id)}`);
-      const m = (t.machine || []).find(x => x.name === 'codex-cli');
+      const t = await api(`/api/agents?node=${encodeURIComponent(minted.id)}`);
+      const m = (t.rows || []).find(x => x.name === 'codex-cli');
       return m?.installed === '0.163.0' ? m : null;
     }, 30000);
     ok(after, `...and the row says what is installed the moment the job ends (${after?.installed || 'not yet'})`);
