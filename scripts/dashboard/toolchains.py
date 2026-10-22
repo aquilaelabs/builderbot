@@ -19,6 +19,7 @@ import platform
 import re
 import signal
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
@@ -291,6 +292,38 @@ def sdk_root_path():
         r = run([BB, "toolchains", "root"], timeout=15)
         _sdk_root_cache.append(r["out"].strip() if r["code"] == 0 else "")
     return _sdk_root_cache[0]
+
+
+_runs = {}
+
+
+def tool_roots(rel_check):
+    """Toolchain directories the controller may run a tool from, in the order
+    worth trying: its own scope in the store, then each node's beside it
+    (<store>/<node id>, R196), since a toolchain is installed on a node and
+    never on the controller (the operator, 22 Oct: signing found no jdk while
+    every node had one). Only those where `rel_check` (a path under the root,
+    say jdk/bin/java) runs here: a node of another system's build (musl, arm)
+    does not. Each answer kept for the controller's life."""
+    root = sdk_root_path()
+    if not root:
+        return []
+    store = os.path.dirname(root)
+    cands = [root] + sorted(str(p) for p in Path(store).glob("n_*") if p.is_dir())
+    out = []
+    for c in cands:
+        exe = os.path.join(c, rel_check)
+        if exe not in _runs:
+            ok = os.access(exe, os.X_OK)
+            if ok:
+                try:
+                    ok = subprocess.run([exe, "-version"], capture_output=True, timeout=20).returncode == 0
+                except (OSError, subprocess.SubprocessError):
+                    ok = False
+            _runs[exe] = ok
+        if _runs[exe]:
+            out.append(c)
+    return out
 
 
 def _tc_cands(probe):

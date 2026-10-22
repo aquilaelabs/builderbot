@@ -3144,9 +3144,11 @@ import signing                                                   # noqa: E402
 def _keytool():
     """The store's keytool, which checks a keystore before it is kept
     (signing.inspect), or None while no jdk is installed."""
-    root = toolchains.sdk_root_path()
-    p = os.path.join(root, "jdk", "bin", "keytool") if root else ""
-    return p if p and os.access(p, os.X_OK) else None
+    for root in toolchains.tool_roots(os.path.join("jdk", "bin", "java")):
+        p = os.path.join(root, "jdk", "bin", "keytool")
+        if os.access(p, os.X_OK):
+            return p
+    return None
 
 
 signing.configure(state=STATE, project_name=PROJECT_NAME, keytool=_keytool)
@@ -3163,15 +3165,15 @@ except OSError as e:
 def _apksigner():
     """The store's newest apksigner and the java it runs on, for a proof of
     rotation (signing.rotate), or (None, {})."""
-    root = toolchains.sdk_root_path()
-    if not root:
-        return None, {}
-    tools = sorted(glob.glob(os.path.join(root, "android", "build-tools", "*", "apksigner")),
-                   key=lambda p: [int(x) if x.isdigit() else 0 for x in re.split(r"[.-]", os.path.basename(os.path.dirname(p)))])
-    jdk = os.path.join(root, "jdk")
-    if not tools or not os.access(os.path.join(jdk, "bin", "java"), os.X_OK):
-        return None, {}
-    return tools[-1], {"JAVA_HOME": jdk, "PATH": os.path.join(jdk, "bin") + os.pathsep + os.environ.get("PATH", "")}
+    # Its own scope, then each node's in the store (toolchains.tool_roots):
+    # the build-tools and a jdk that runs here, from one root.
+    for root in toolchains.tool_roots(os.path.join("jdk", "bin", "java")):
+        tools = sorted(glob.glob(os.path.join(root, "android", "build-tools", "*", "apksigner")),
+                       key=lambda p: [int(x) if x.isdigit() else 0 for x in re.split(r"[.-]", os.path.basename(os.path.dirname(p)))])
+        if tools:
+            jdk = os.path.join(root, "jdk")
+            return tools[-1], {"JAVA_HOME": jdk, "PATH": os.path.join(jdk, "bin") + os.pathsep + os.environ.get("PATH", "")}
+    return None, {}
 
 
 signing.apksigner_path = _apksigner
