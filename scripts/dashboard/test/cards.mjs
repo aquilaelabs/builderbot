@@ -1882,6 +1882,11 @@ await page.click('#rnCancel');
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.waitForSelector('#rnFtpField:not([hidden])', { timeout: 10000 });
   await page.evaluate(() => { const d = document.querySelector('details[data-sect="rn:files"]'); d.open = true; });
+  // The editor's and the apps' door is on unless a project closed it
+  // (R104, the operator, 22 Oct): switched off here, the section is shut.
+  const editorOn = await page.$eval('#rnFtpEditor', c => c.checked);
+  ok(editorOn, '...a project is open to its people\'s editors and apps until its owner closes it (R104)');
+  await page.click('#rnFtpEditor');
   const shut = await page.$eval('#rnFtp', e => ({ port: e.querySelector('.logdays').hidden,
     people: e.querySelector('.rnftppeople').hidden }));
   await page.click('#rnFtpOn');
@@ -1905,7 +1910,7 @@ await page.click('#rnCancel');
   const ed = await page.$eval('#rnFtp', e => ({ port: e.querySelector('.logdays').hidden,
     people: e.querySelector('.rnftppeople').hidden, noNode: /no node to run on/.test(e.textContent) }));
   const edDraft = await page.evaluate(() => rnFtpChange());
-  ok(ed.port && !ed.people && !ed.noNode && edDraft?.editor === true && !edDraft.on,
+  ok(ed.port && !ed.people && !ed.noNode && edDraft?.editor !== false && !edDraft?.on,
      `...and opening it in an editor is a switch of its own: the same people, no port, no node needed (${JSON.stringify({ ...ed, ...edDraft })})`);
   await page.click('#rnCancel');
   const set = await api('/api/project-ftp', { action: 'set', project: 'alpha', access: { [uid]: 'r' } });
@@ -2333,7 +2338,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   await page.click('#uiProfile');
   await page.waitForSelector('.profiletab .setrow', { timeout: 15000 });
   ok(true, "the gear's door opens the account's Profile page");
-  await page.evaluate(() => railGo('machines', 'settings'));
+  await page.evaluate(() => railGo('home', 'settings'));
   await page.waitForSelector('.settingstab #logApply');
   await page.fill('.settingstab #logDays', '3');
   await page.click('.settingstab #logApply');

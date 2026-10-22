@@ -3053,9 +3053,9 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
     status: document.querySelector(sel + ' > summary .sst')?.textContent.trim(),
     prunes: document.querySelectorAll(sel + ' [data-dmprune]').length }), imgSect);
   ok(imgs.tiles.some(t => /^2 images/.test(t)) && imgs.rows.some(r => /ep-silon-img:latest.*in use/i.test(r)) && imgs.rows.some(r => /dangling.*unused/i.test(r))
-     && imgs.vols.includes('orphan-vol') && /2 images, 2 volumes/.test(imgs.status || '') && imgs.prunes === 2
+     && imgs.vols.includes('orphan-vol') && /2 images, 2 volumes/.test(imgs.status || '') && imgs.prunes === 4
      && imgs.heads[0] === 'Image State ID Size Created' && imgs.heads[1] === 'Volume Driver' && imgs.off === 0,
-     `the Images and volumes section lists the daemon's images in use or not and its volumes, as two tables, and offers the two prunes (${JSON.stringify(imgs)})`);
+     `the Images and volumes section lists the daemon's images in use or not and its volumes, as two tables, and offers the four prunes (R110: unused images and the build cache too) (${JSON.stringify(imgs)})`);
   // The confirmation is accepted by the page's own dialog handler (lib.mjs).
   await page.click(`${imgSect} [data-dmprune="volumes"]`);
   await page.waitForFunction(() => /pruned volumes/.test(document.body.textContent), null, { timeout: 15000 });
