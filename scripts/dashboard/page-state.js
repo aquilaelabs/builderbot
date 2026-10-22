@@ -148,7 +148,9 @@ const mayToolchains = nid => state?.can?.["toolchains-write"] !== false
 // worktree of their own, so the name has to say whose conversation it is,
 // and the name is then the only record of that, with no file to go stale.
 // Every "is it running" question below is about the asker's own.
-const myClaude = proj => myTmux(tmuxName("claude-" + proj));
+// Which agent's session it is, the agent table says (R95): Claude's here.
+const myAgentSession = (id, proj) => myTmux(tmuxName((agentById(id) || AGENTS[0]).id + "-" + proj));
+const myClaude = proj => myAgentSession("claude", proj);
 // A name with somebody's prefix taken off, for the questions that are about
 // the session rather than about whose it is.
 const tmuxBase = s => String(s).replace(/^u_[0-9a-f]{8}~/, "");
@@ -157,7 +159,8 @@ function sessionOf(arg){
     const [, n, proj] = arg.split(":");
     return myTmux(tmuxName(proj ? `shell-${proj}-${n}` : `shell-${n}`));
   }
-  if (arg.startsWith("claude:")) return myClaude(arg.slice(7).split(":")[0]);
+  const ag = agentOfArg(arg);
+  if (ag) return myAgentSession(ag.agent.id, ag.project);
   if (arg.startsWith("shell:"))  return myTmux(tmuxName("shell-"  + arg.slice(6)));
   // ctr:NAME:INSTANCE:CONTAINER, named by its container (bb-tty's ctr-).
   if (arg.startsWith("ctr:"))    return myTmux(tmuxName("ctr-" + arg.split(":")[3]));
@@ -171,11 +174,11 @@ function sessionOf(arg){
 const projFor = n =>
   (state?.projects || []).find(p => tmuxName(p.name) === n)?.name ?? null;
 
-const isClaude = t => t.kind === "term" && tmuxBase(sessionOf(t.arg)).startsWith("claude-");
+const isClaude = t => t.kind === "term" && !!agentOfSession(tmuxBase(sessionOf(t.arg)));
 const liveSessions = () => new Set((state?.sessions || []).map(s => s.name));
 // Named from the session rather than the tab: a Claude session with no tab
 // is still a conversation.
-const claudeSessions = () => [...liveSessions()].filter(n => n.startsWith("claude-"));
+const claudeSessions = () => [...liveSessions()].filter(n => agentOfSession(n));
 
 // What a Claude session is doing ({state: "working"|"waiting", task}) read
 // from the pane title the server collected, or null for anything else. The

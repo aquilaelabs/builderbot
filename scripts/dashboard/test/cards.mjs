@@ -1559,7 +1559,7 @@ ok(/Folder: \/workspace\/alpha · project #\d+/.test(await page.$eval('#rnHint',
   ok(!shut(gear) && gear.filter(f => f.shown).length > 3,
      `the settings are sections, every one open (${shut(gear) || 'none shut'})`);
   const jumps = await page.$$eval('#rnmodal .sectjump a', as => as.map(a => a.textContent));
-  ok(jumps.includes('General') && jumps.includes('Claude may'),
+  ok(jumps.includes('General') && jumps.includes('Agents may'),
      `...with a jump bar naming them (${jumps.join(', ')})`);
   await page.$eval('details[data-sect="rn:claude"] > summary', s => s.click());
   await page.waitForFunction(() => !document.querySelector('details[data-sect="rn:claude"]').open, null, { timeout: 5000 }).catch(() => {});
@@ -1572,7 +1572,7 @@ ok(/Folder: \/workspace\/alpha · project #\d+/.test(await page.$eval('#rnHint',
   await page.evaluate(() => { closeRename(); renameProject('alpha'); });
   ok(shut(await folds()) === 'rn:claude', `...and the gear opens again with the one this person shut, shut (${shut(await folds())})`);
   await page.$eval('#rnmodal .sectjump a:last-child', a => a.click()).catch(() => {});
-  await page.$$eval('#rnmodal .sectjump a', as => as.find(a => a.textContent === 'Claude may')?.click());
+  await page.$$eval('#rnmodal .sectjump a', as => as.find(a => a.textContent === 'Agents may')?.click());
   await page.waitForFunction(() => document.querySelector('details[data-sect="rn:claude"]').open, null, { timeout: 5000 }).catch(() => {});
   ok(!shut(await folds()), '...and its name in the jump bar opens it again');
   // A phone: every section open there too.
@@ -1611,11 +1611,11 @@ ok(await page.$eval('#rnPeopleField', f => f.closest('details')?.dataset.sect ==
    && await page.$eval('.rnbar[data-rnbar="project"] [data-rnsave]', b => b.disabled),
    '...in a People section of its own, whose Save it wakes and The project\'s not');
 await page.click('#rnInviteOnly');
-// ...and Claude may reads the Git view's session dials too, set there.
+// ...and Agents may reads the Git view's session dials too, set there.
 const gp = await page.evaluate(() => ({ text: document.getElementById('rnGitPol')?.textContent, hidden: document.getElementById('rnGitPolField')?.hidden,
   sect: document.getElementById('rnGitPolField')?.closest('details')?.dataset.sect, pol: (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.gitpol }));
 ok(/its branches allow · to main deny · a sensitive push held for you/.test(gp.text || '') && !gp.hidden && gp.sect === 'rn:claude',
-   `Claude may shows the Git view's push dials, with the way to where they are set (${JSON.stringify(gp)})`);
+   `Agents may shows the Git view's push dials, with the way to where they are set (${JSON.stringify(gp)})`);
 await page.click('#rnCancel');
 
 // Its Android signing keys (R106) are a view of the notebook's own, Signing,

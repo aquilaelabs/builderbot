@@ -635,10 +635,12 @@ print(u.mint_session(sys.argv[2], uid=sys.argv[3]))
 PY
 }
 
-    local dir out tmp base_resumes=0 a
+    local dir out tmp base_resumes=0 a ag="${LAUNCH_AGENT:-claude}"
     for a in "$@"; do [ "$a" = "--resume" ] && base_resumes=1; done
     dir="$(cache_project_dir "$proj")"
-    out="$dir/claude-run.sh"
+    # Named for its agent (claude-run.sh, codex-run.sh), which is what the
+    # session-is-really-this-agent check reads off the pane.
+    out="$dir/$ag-run.sh"
     tmp="$out.new"
     # %q so the command survives being written down and read back as shell:
     # the system prompt is somebody's prose, with quotes and newlines in it.
@@ -667,6 +669,10 @@ PY
         # direction: bb then says it has no credential rather than falling
         # back to the operator's.
         printf 'unset DASHBOARD_AUTH\n'
+        # Which coding agent this session is (R95): what bb reads to know a
+        # session asked, whichever agent it is (Claude Code also sets its
+        # own CLAUDECODE), and what a held change names as its asker.
+        printf 'export BB_AGENT=%q\n' "$ag"
         local tok; tok="$(session_token "$proj")"
         [ -z "$tok" ] || printf 'export BB_TOKEN=%q\n' "$tok"
         # ...and beside the launcher, where `bb` can read it at the moment it
@@ -706,8 +712,33 @@ PY
         printf '  m="$(jq -r %q <<<"$s" 2>/dev/null)"\n' '.model // empty'
         printf '  e="$(jq -r %q <<<"$s" 2>/dev/null)"\n' '.effort // empty'
         printf 'fi\n'
-        printf 'case "$m" in opus|sonnet|haiku|fable) extra+=(--model "$m") ;; esac\n'
-        printf 'case "$e" in low|medium|high|xhigh|max) extra+=(--effort "$e") ;; esac\n'
+        # The model and effort are Claude's names; another agent's are its
+        # own (R95 step 9), so it starts on its default until then.
+        if [ "$ag" = claude ]; then
+            printf 'case "$m" in opus|sonnet|haiku|fable) extra+=(--model "$m") ;; esac\n'
+            printf 'case "$e" in low|medium|high|xhigh|max) extra+=(--effort "$e") ;; esac\n'
+        fi
+        # Another agent's model and effort, as picked at Start (bb-tty has
+        # held each to the agent's own list).
+        if [ "$ag" = codex ]; then
+            [ -z "${LAUNCH_MODEL:-}" ] || printf 'extra+=(-m %q)\n' "$LAUNCH_MODEL"
+            [ -z "${LAUNCH_EFFORT:-}" ] || printf 'extra+=(-c %q)\n' "model_reasoning_effort=\"$LAUNCH_EFFORT\""
+        elif [ "$ag" = copilot ]; then
+            [ -z "${LAUNCH_MODEL:-}" ] || printf 'extra+=(--model %q)\n' "$LAUNCH_MODEL"
+            [ -z "${LAUNCH_EFFORT:-}" ] || printf 'extra+=(--reasoning-effort %q)\n' "$LAUNCH_EFFORT"
+        fi
+        # Codex CLI's briefing, read from its file at exec as a TOML string
+        # (jq writes the JSON string, which TOML reads as its own), handed
+        # over as developer instructions: added to Codex's own, never in
+        # place of them, and never written into the project's tree.
+        if [ "$ag" = codex ] && [ -n "${BB_AGENT_BRIEFING:-}" ]; then
+            printf 'bf=%q\n' "$BB_AGENT_BRIEFING"
+            printf 'if [ -s "$bf" ]; then extra+=(-c "developer_instructions=$(jq -Rs . < "$bf")"); fi\n'
+        fi
+        # Copilot CLI's, the folder it reads an AGENTS.md from.
+        if [ "$ag" = copilot ] && [ -n "${COPILOT_CUSTOM_INSTRUCTIONS_DIRS:-}" ]; then
+            printf 'export COPILOT_CUSTOM_INSTRUCTIONS_DIRS=%q\n' "$COPILOT_CUSTOM_INSTRUCTIONS_DIRS"
+        fi
         # A new project's brief, handed over once: bb-tty took it as this
         # session was made and left it beside this file, and the first exec
         # that is not a respawn gives it to claude as the first prompt and
@@ -719,7 +750,7 @@ PY
         # Only when the base command does not already name one: a session
         # opened from the resume chooser carries its own --resume, and claude
         # would be handed the flag twice.
-        if [ "$base_resumes" -eq 0 ]; then
+        if [ "$base_resumes" -eq 0 ] && [ "$ag" = claude ]; then
             printf 'if [ "${1:-}" = --respawn ]; then\n'
             printf '  n="$(ls -1t %q/*.jsonl 2>/dev/null | head -1)"\n' "$tdir"
             printf '  if [ -n "$n" ]; then n="${n##*/}"; extra+=(--resume "${n%%.jsonl}"); fi\n'
@@ -727,7 +758,14 @@ PY
         fi
         printf 'exec'
         printf ' %q' "$@"
-        printf ' "${extra[@]}" ${first:+--} ${first:+"$first"}\n'
+        # A first prompt in each agent's way: after `--` for Claude Code
+        # and Codex CLI (a brief can open with a dash), -i for Copilot CLI,
+        # which keeps the session open after it.
+        if [ "$ag" = copilot ]; then
+            printf ' "${extra[@]}" ${first:+-i} ${first:+"$first"}\n'
+        else
+            printf ' "${extra[@]}" ${first:+--} ${first:+"$first"}\n'
+        fi
     } > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
     chmod +x "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
     mv -f "$tmp" "$out" 2>/dev/null || { rm -f "$tmp"; return 1; }
@@ -781,6 +819,30 @@ claude_first_run() {
     [ "$now" = true ] || return 1
     [ "$was" = true ] || CLAUDE_TRUST_ADDED=1
     return 0
+}
+
+# agent_first_run AGENT DIR: another coding agent's "trust this folder?",
+# answered for the session's own tree where it is not answered already (R95),
+# the way claude_first_run answers Claude Code's. Codex CLI keeps it in its
+# config.toml ([projects."DIR"] trust_level), Copilot CLI in its config.json
+# (trustedFolders); appended or merged, never replacing what is there.
+# Checked against Codex CLI 0.163.0 and Copilot CLI 1.0.102 (22 Oct).
+agent_first_run() {
+    local ag="$1" dir="$2" f
+    case "$ag" in
+        codex)
+            f="${CODEX_HOME:-$HOME/.codex}/config.toml"
+            ( umask 077; mkdir -p "${f%/*}" ) 2>/dev/null || return 1
+            grep -qF "[projects.\"$dir\"]" "$f" 2>/dev/null && return 0
+            printf '\n[projects."%s"]\ntrust_level = "trusted"\n' "$dir" >> "$f" ;;
+        copilot)
+            f="${COPILOT_HOME:-$HOME/.copilot}/config.json"
+            ( umask 077; mkdir -p "${f%/*}" ) 2>/dev/null || return 1
+            [ -s "$f" ] || printf '{}\n' > "$f"
+            jq -e --arg d "$dir" '(.trustedFolders // []) | index($d)' "$f" >/dev/null 2>&1 && return 0
+            jq --arg d "$dir" '.trustedFolders = ((.trustedFolders // []) + [$d])' "$f" > "$f.new" \
+                && mv -f "$f.new" "$f" ;;
+    esac
 }
 
 # bad MESSAGE...: fail visibly. ttyd closes the connection the moment this
@@ -1058,15 +1120,47 @@ case "$target" in
         start "$(sess "shell-${proj}-${num}")" "$dir" "${RUN[@]}"
         ;;
 
-    claude:*)
-        rest="${target#claude:}"
+    claude:*|codex:*|copilot:*)
+        # The coding agent this session runs (R95): the argument's prefix,
+        # by the agent table's ids (scripts/dashboard/agents.py), each with
+        # what a person reads it as. Claude's is the path this branch has
+        # always been; the others share its checks, its launcher and its
+        # view, and skip what is Claude Code's own (its first-run answers,
+        # its settings file with the hooks, its transcripts).
+        agent="${target%%:*}"
+        rest="${target#*:}"
+        case "$agent" in
+            claude)  agent_name=Claude;  agent_product="Claude Code" ;;
+            codex)   agent_name=ChatGPT; agent_product="Codex CLI" ;;
+            copilot) agent_name=Copilot; agent_product="Copilot CLI" ;;
+        esac
         # claude:PROJECT                  a fresh conversation
-        # claude:PROJECT:r:UUID           resume that transcript
+        # claude:PROJECT:r:UUID           resume that transcript (Claude's)
         # ...:b:BOOT                      and which run of the container asked
-        resume="" want_boot=""
+        resume="" want_boot="" want_model="" want_effort=""
         case "$rest" in
             *:b:*) want_boot="${rest##*:b:}"; rest="${rest%:b:*}" ;;
         esac
+        # ...:m:MODEL:e:EFFORT            another agent's model and effort,
+        # picked at Start (R95 step 9), each passed on only when it is one
+        # of that agent's own (agents.py MODELS, EFFORTS): a table lookup.
+        case "$rest" in
+            *:e:*) want_effort="${rest##*:e:}"; rest="${rest%:e:*}" ;;
+        esac
+        case "$rest" in
+            *:m:*) want_model="${rest##*:m:}"; rest="${rest%:m:*}" ;;
+        esac
+        case "$agent:$want_model" in
+            *:|codex:gpt-6.1-sol|codex:gpt-6-sol|codex:gpt-6-astra|codex:gpt-6-luna|codex:gpt-5.6-sol|codex:gpt-5.6-terra|codex:gpt-5.6-luna|codex:gpt-5.5 \
+            |copilot:auto|copilot:claude-sonnet-5.5|copilot:claude-opus-5.5|copilot:claude-haiku-5.5|copilot:gpt-6.1-sol|copilot:gpt-6-sol|copilot:gpt-5.6-sol|copilot:gpt-5-mini|copilot:gemini-4-argon|copilot:gemini-3.8-flash|copilot:grok-4.7) ;;
+            *) bad "Not a model ${agent_name} offers here: ${want_model}" ;;
+        esac
+        case "$agent:$want_effort" in
+            *:|codex:low|codex:medium|codex:high|codex:xhigh|codex:max \
+            |copilot:low|copilot:medium|copilot:high|copilot:xhigh|copilot:max) ;;
+            *) bad "Not an effort ${agent_name} offers here: ${want_effort}" ;;
+        esac
+        export LAUNCH_MODEL="$want_model" LAUNCH_EFFORT="$want_effort"
         case "$rest" in
             *:r:*) resume="${rest##*:r:}"; proj="${rest%%:r:*}" ;;
             *)     proj="$rest" ;;
@@ -1104,10 +1198,10 @@ case "$target" in
         #
         # First of the checks, so a tab that is going to be refused anyway
         # does not first fetch a login it will not use.
-        if ! tmux has-session -t "=$(sess "claude-${proj//[.:]/_}")" 2>/dev/null \
+        if ! tmux has-session -t "=$(sess "${agent}-${proj//[.:]/_}")" 2>/dev/null \
            && [ "$want_boot" != "$(boot_id)" ]; then
             bad "This tab is from before ${BB_NODE:-the container} restarted." \
-                "Its conversation is still on disk. Open Claude on ${proj} from" \
+                "Its conversation is still on disk. Open ${agent_name} on ${proj} from" \
                 "the dashboard's Projects card to pick it up again. Starting a" \
                 "session is a decision, and a reconnecting tab is not one."
         fi
@@ -1118,15 +1212,15 @@ case "$target" in
         # that was there all along (the operator, 6 Oct: the Claude tab took
         # a long time to load though it was running). Not for a resume, which
         # names a transcript, nor on a locked project, which says so below.
-        fast="$(sess "claude-${proj//[.:]/_}")"
+        fast="$(sess "${agent}-${proj//[.:]/_}")"
         if [ -z "$resume" ] && ! is_locked "$proj" \
-           && tmux list-panes -t "=$fast" -F '#{pane_start_command}' 2>/dev/null | grep -qi claude; then
+           && tmux list-panes -t "=$fast" -F '#{pane_start_command}' 2>/dev/null | grep -qi "$agent"; then
             # The trust flag is still put back (a few jq calls), and the
             # running session is still told it started on the old answer.
             # On the session's own tree, which for anybody but the owner is
             # their worktree (session_dir, already there for a running one).
-            dir="$(session_dir "$proj" "$account")"
-            if claude_first_run "$dir" && [ "${CLAUDE_TRUST_ADDED:-0}" = 1 ]; then
+            dir="$(session_dir "$proj" "$account" "$agent")"
+            if [ "$agent" = claude ] && claude_first_run "$dir" && [ "${CLAUDE_TRUST_ADDED:-0}" = 1 ]; then
                 echo "NOTE: ${dir} was not trusted in ${HOME}/.claude.json; it is now." >&2
                 echo "The session already running here started on the old answer, so it" >&2
                 echo "will keep asking about every command until it is restarted." >&2
@@ -1139,8 +1233,22 @@ case "$target" in
         # gets the benefit of the doubt, because a wrong refusal here is worse
         # than a confusing message.
         logged_in() {
-            [ "$(claude auth status --json 2>/dev/null \
-                 | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != false ]
+            case "$agent" in
+                claude)
+                    [ "$(claude auth status --json 2>/dev/null \
+                         | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != false ] ;;
+                # Codex CLI 0.163.0 says "Not logged in" and exits 1; refused
+                # on those words, not on the exit alone.
+                codex)
+                    local said
+                    said="$(codex login status 2>&1)" || true
+                    ! grep -qi '^not logged in' <<<"$said" ;;
+                # Copilot CLI 1.0.102 has no status verb: a token in the
+                # environment, or the login its config remembers.
+                copilot)
+                    [ -n "${COPILOT_GITHUB_TOKEN:-}${GH_TOKEN:-}${GITHUB_TOKEN:-}" ] \
+                        || jq -e '.lastLoggedInUser.login // empty' "${COPILOT_HOME:-$HOME/.copilot}/config.json" >/dev/null 2>&1 ;;
+            esac
         }
         # EACH MACHINE KEEPS ITS OWN LOGIN, and opening a tab is when this
         # one says so (R47). `bb login --check` carries one sentence and no
@@ -1153,33 +1261,43 @@ case "$target" in
         # in from its own row on the Nodes tab, and a tab opened here before
         # that is told where. Never fatal and silent when nothing moved: a
         # controller that is down costs a session nothing.
-        if on_node; then
+        if on_node && [ "$agent" = claude ]; then
             bb login --check >/dev/null 2>&1 || true
         fi
-        # Installed on purpose, from the node's Toolchains tab, never by the
+        # Installed on purpose, from the node's Agents page, never by the
         # provisioner (R145): without it there is nothing for a session to run.
-        if ! command -v claude >/dev/null 2>&1; then
-            bad "Claude Code is not installed on ${BB_NODE:-this node}: its Toolchains tab installs it." \
-                "Open the Toolchains tab, pick ${BB_NODE:-this node}, tick Claude Code and press" \
-                "Install selected; then open this again."
+        if ! command -v "$agent" >/dev/null 2>&1; then
+            bad "${agent_product} is not installed on ${BB_NODE:-this node}: its Agents page installs it." \
+                "Open the Agents page, pick ${BB_NODE:-this node}, and press Install under" \
+                "${agent_name}; then open this again."
         fi
         if ! logged_in; then
             if on_node; then
-                bad "This account is not signed in to Claude on ${BB_NODE:-this node}." \
-                    "Open the Nodes tab, pick ${BB_NODE:-this node}, and press Sign in under" \
-                    "Claude Code; then open this again. A login on another node does not travel."
+                bad "This account is not signed in to ${agent_name} on ${BB_NODE:-this node}." \
+                    "Open the Agents page, pick ${BB_NODE:-this node}, and press Sign in under" \
+                    "${agent_name}; then open this again. A login on another node does not travel."
             fi
-            bad "This container is not signed in to Claude, and carries no Claude Code:" \
-                "a session runs on a node, signed in from its row on the Nodes tab."
+            bad "This container is not signed in to ${agent_name}, and carries no ${agent_product}:" \
+                "a session runs on a node, signed in from that node's Agents page."
         fi
         if is_locked "$proj"; then
-            bad "'${proj}' is locked: the operator runs this one, so no Claude" \
+            bad "'${proj}' is locked: the operator runs this one, so no ${agent_name}" \
                 "session starts here. Unlock it from the Projects card if that" \
                 "was not what you meant."
         fi
         git_identity "$proj"
-        need_author "a Claude session"
-        cmd=(claude --remote-control "$proj")
+        need_author "a ${agent_name} session"
+        case "$agent" in
+            claude)  cmd=(claude --remote-control "$proj") ;;
+            # Its own alternate screen off, so tmux keeps what scrolled by.
+            codex)   cmd=(codex --no-alt-screen) ;;
+            # Its own updater off: the copy on the node is the one its
+            # Agents page installed (agentcode.py).
+            copilot) cmd=(copilot --no-auto-update) ;;
+        esac
+        if [ -n "$resume" ] && [ "$agent" != claude ]; then
+            bad "Resuming a ${agent_name} conversation is not offered yet: start a new one."
+        fi
         if [ -n "$resume" ]; then
             # Checked against a transcript that actually exists, so a mistyped
             # URL cannot turn into an argument claude tries to interpret.
@@ -1225,7 +1343,7 @@ case "$target" in
         # folder: the name is what the Claude app lists the session under,
         # as "builderbot (P3)".
         shown="$(printf '%s' "$pre" | jq -r 'if (.name // "") == "" then "" elif (.id // "") != "" then "\(.name) (\(.id))" else .name end' 2>/dev/null || true)"
-        [ -n "$shown" ] && cmd[2]="$shown"
+        [ -n "$shown" ] && [ "$agent" = claude ] && cmd[2]="$shown"
         # The block goes in a file, so the kernel's argv ceiling is not the
         # limit; what bounds it is what a session should be asked to read,
         # since every conversation pays for all of it. Each part keeps to a
@@ -1246,7 +1364,22 @@ case "$target" in
         if [ -n "$roadmap_block" ]; then
             pref="$(cache_project_dir "$proj")/preamble.txt"
             if ( umask 077; printf '%s\n' "$roadmap_block" > "$pref.new" ) && mv -f "$pref.new" "$pref"; then
-                prompt=(--append-system-prompt-file "$pref")
+                # Each agent takes it the way it reads instructions (R95
+                # step 5), never written into the project's tree: Claude
+                # Code as a system prompt file; Codex CLI as developer
+                # instructions, which add to its own rather than replace
+                # them, read from the file by the launcher at exec; Copilot
+                # CLI from a folder of its own named in its environment
+                # (COPILOT_CUSTOM_INSTRUCTIONS_DIRS), as AGENTS.md there.
+                case "$agent" in
+                    claude) prompt=(--append-system-prompt-file "$pref") ;;
+                    codex)  export BB_AGENT_BRIEFING="$pref" ;;
+                    copilot)
+                        idir="$(cache_project_dir "$proj")/copilot-instructions"
+                        if ( umask 077; mkdir -p "$idir" ) && cp -f "$pref" "$idir/AGENTS.md" 2>/dev/null; then
+                            export COPILOT_CUSTOM_INSTRUCTIONS_DIRS="$idir"
+                        fi ;;
+                esac
             else
                 echo "WARNING: could not write this session's briefing to ${pref};" >&2
                 echo "it starts without the rules, roadmap and bugs." >&2
@@ -1261,7 +1394,7 @@ case "$target" in
         # directory; anybody else gets a worktree of their own on a branch of
         # their own, so two people on one project cannot overwrite each other,
         # commit each other's half-finished work, or share a dist/.
-        dir="$(session_dir "$proj" "$account")"
+        dir="$(session_dir "$proj" "$account" "$agent")"
         # Claude Code's first run asks three things at the keyboard (a
         # text theme, whether to trust the folder, and the onboarding
         # screens), and a home this dashboard made has never answered them:
@@ -1276,7 +1409,11 @@ case "$target" in
         # onboarding done. Merged into whatever is there, never replacing a
         # file a person has already shaped, and only when the answer is
         # missing: a theme somebody set with /theme stays theirs.
-        if ! claude_first_run "$dir"; then
+        if [ "$agent" != claude ]; then
+            # The other agents ask whether to trust the folder too; the
+            # session's own tree is answered for them the same way.
+            agent_first_run "$agent" "$dir" || true
+        elif ! claude_first_run "$dir"; then
             echo "WARNING: could not record ${dir} as trusted in ${HOME}/.claude.json." >&2
             echo "Claude Code ignores a workspace's own permission rules until it is," >&2
             echo "so this session will ask about every command and keep none of the" >&2
@@ -1290,7 +1427,9 @@ case "$target" in
         # to it: the same file in two worktrees has to be one name, or
         # comparing across them compares nothing.
         export BB_TREE="$dir"
-        if scope="$(claude_scope "$proj" "$dir")"; then
+        if [ "$agent" != claude ]; then
+            :   # its guards are the view and bb's own (R95 step 6)
+        elif scope="$(claude_scope "$proj" "$dir")"; then
             cmd+=(--settings "$scope")
         else
             # Say so rather than starting an unconfined session that looks
@@ -1312,11 +1451,11 @@ case "$target" in
         # as subprocesses, so a session busy running a build reports `bash`
         # and would have been killed here, mid-conversation. The start command
         # is what the pane was created with and does not move.
-        mysess="$(sess "claude-${proj//[.:]/_}")"
+        mysess="$(sess "${agent}-${proj//[.:]/_}")"
         if tmux has-session -t "=$mysess" 2>/dev/null \
            && ! tmux list-panes -t "=$mysess" -F '#{pane_start_command}' 2>/dev/null \
-                | grep -qi claude; then
-            log "${mysess}: session is not running claude; replacing it"
+                | grep -qi "$agent"; then
+            log "${mysess}: session is not running ${agent}; replacing it"
             tmux kill-session -t "=$mysess" 2>/dev/null || true
         fi
         # The flag was missing and has just been put back. A session already
@@ -1357,11 +1496,11 @@ case "$target" in
         # until a notebook grows. If the file cannot be written, the command
         # goes to tmux directly, which is what used to happen and is still
         # right for a short one.
-        if launcher="$(claude_launcher "$proj" \
+        if launcher="$(LAUNCH_AGENT="$agent" claude_launcher "$proj" \
                           "$HOME/.claude/projects/${dir//\//-}" \
                           "${cmd[@]}" "${prompt[@]}")"; then
             in_view "$proj" "$dir" "$launcher"
-            start "$(sess "claude-${proj}")" "$dir" "${RUN[@]}"
+            start "$(sess "${agent}-${proj}")" "$dir" "${RUN[@]}"
         else
             # Nowhere to write it. The command without the block still fits on
             # tmux's command line, and a session that starts knowing less is
@@ -1373,7 +1512,7 @@ case "$target" in
             echo "Everything else about it is the same. Check that ${HOME:-\$HOME}/.cache" >&2
             echo "is writable." >&2
             in_view "$proj" "$dir" "${cmd[@]}"
-            start "$(sess "claude-${proj}")" "$dir" "${RUN[@]}"
+            start "$(sess "${agent}-${proj}")" "$dir" "${RUN[@]}"
         fi
         ;;
     # ctr:NAME:INSTANCE:CONTAINER: a shell inside one container of a dev

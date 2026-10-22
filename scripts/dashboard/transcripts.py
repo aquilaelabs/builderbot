@@ -134,8 +134,9 @@ def visible(uid, project, name_of=lambda u: u):
             st = f.stat()
         except OSError:
             continue
+        # ...each marked with its agent, as the account's own rows are (R95).
         rows.append({"project": project, "id": sid, "at": int(st.st_mtime), "bytes": st.st_size,
-                     "first": _first_prompt(f), "by": name_of(o)})
+                     "first": _first_prompt(f), "by": name_of(o), "agent": "claude"})
     rows.sort(key=lambda r: r["at"], reverse=True)
     return rows[:MAX_LIST]
 
@@ -211,9 +212,13 @@ def mine(uid, projects):
                     continue
                 if st.st_size == 0:
                     continue
+                # Which coding agent's (R95): Claude Code's files are
+                # these; another agent's join the list, marked with theirs,
+                # as their sessions' logs are kept (its step 8). Only ever
+                # this account's own, whichever agent it used.
                 rows.append({"project": project, "id": f.stem, "at": int(st.st_mtime),
                              "bytes": st.st_size, "first": _first_prompt(f),
-                             "shared": f.stem in on})
+                             "shared": f.stem in on, "agent": "claude"})
     rows.sort(key=lambda r: r["at"], reverse=True)
     return rows[:MAX_LIST]
 

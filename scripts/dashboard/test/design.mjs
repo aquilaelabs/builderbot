@@ -64,7 +64,7 @@ const api = (path, body) => page.evaluate(async ([p, b]) => {
   const pre0 = await api(`/api/preamble?project=${P}`);
   ok(/The notebook's Design view is empty: no theme, no page, no design rule\. Build as you would and choose the look yourself; then put what you arrived at into the design with `bb design save`/.test(pre0.text)
      && /the type, corners, space and motion you settled on/.test(pre0.text)
-     && /Under the project's dial Claude may: Add to the design, a save of yours lands\./.test(pre0.text),
+     && /Under the project's dial Agents may: Add to the design, a save of yours lands\./.test(pre0.text),
      'the briefing of an undesigned project says to build as usual and put the look into the design afterwards, and what the dial does with that');
   ok(d.presets.schemes[0].key === 'default' && d.presets.schemes.slice(1).map(s => s.key).join()
        === d.presets.schemes.slice(1).map(s => s.key).sort().join(),
@@ -758,8 +758,8 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   const dials = execFileSync('bash', [`${REPO}/scripts/bb`, 'settings'], { encoding: 'utf8',
     env: { ...process.env, BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: P }, cwd: `${DIR}/ws/${P}` });
   ok(['Add to roadmap', 'File bugs', 'Add rules', 'Fill in build and test', 'Add to the design', 'Run its container', 'Report BuilderBot bugs']
-       .every(d => new RegExp(`Claude may: ${d}\\s+(auto|ask|deny)`).test(dials)),
-     `bb settings lists every dial as it stands, Add to the design among them (${(dials.match(/Claude may: [^\n]+/g) || []).length} of 7)`);
+       .every(d => new RegExp(`Agents may: ${d}\\s+(auto|ask|deny)`).test(dials)),
+     `bb settings lists every dial as it stands, Add to the design among them (${(dials.match(/Agents may: [^\n]+/g) || []).length} of 7)`);
 
   // ---- a theme's own rules and a page's own: a Rules section inside each ------------------
   // The Nostromo scheme has needs no other theme shares (the operator, 28
@@ -840,7 +840,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   ok(!gone2.language.themes[1].rules.some(r => r.name === 'hull') && gone2.pages[0].rules.length === 0, 'Remove rule under a theme or a page takes it out');
 }
 
-// ---- the dial: Claude may: Add to the design -------------------------------------------
+// ---- the dial: Agents may: Add to the design -------------------------------------------
 // A session's save goes through the project's setting: auto lands it (as
 // above), ask holds it for the operator's approval, deny refuses it by name.
 {
@@ -852,7 +852,7 @@ ok(/no page, theme or rule here called 'nowhere'/.test(err), `...and a page that
   await gate('deny');
   let refused = '';
   try { bb('save', tmp); } catch (e) { refused = String(e.stderr); }
-  ok(/Claude may: Add to the design is deny/.test(refused), `under deny a session's save is refused naming the setting (${refused.trim().slice(0, 80)})`);
+  ok(/Agents may: Add to the design is deny/.test(refused), `under deny a session's save is refused naming the setting (${refused.trim().slice(0, 80)})`);
   await gate('ask');
   const held = bb('save', tmp);
   const queue = await api(`/api/pending?project=${P}`);

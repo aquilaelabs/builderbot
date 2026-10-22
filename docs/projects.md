@@ -172,7 +172,7 @@ bare button on the card.
 
 **Settings** in each project's menu opens that project's own settings, which
 are also the Settings view of its page, in sections: General (its name),
-People, Claude may (what a session may enter into the notebook, and how much
+People, Agents may (what a session may enter into the notebook, and how much
 of the tree it may change without asking), Just for you (how Claude replies
 to you there, and the name and email your commits carry), Repository, Nodes,
 Build and test, What sessions reach, File access, Snapshots and Running

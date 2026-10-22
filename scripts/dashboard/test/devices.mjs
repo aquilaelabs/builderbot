@@ -167,7 +167,7 @@ ok(woke.status === 200 && (woke.changes || []).some(c => c[0] === 'from-laptop.t
     ok(down && readFileSync(`${folder}/made-elsewhere.txt`, 'utf8') === 'from another device\n',
        '...and one made elsewhere comes down into the folder within seconds, woken by its long poll');
     // A session on alpha asks for them with bb pc, under the project's
-    // Claude may: Use a lent PC: refused on Deny, run on Auto with the PC's
+    // Agents may: Use a lent PC: refused on Deny, run on Auto with the PC's
     // folder written as the project's path, and on Ask refused by an app
     // with no window to ask in.
     const stok = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'dv.rw'], { encoding: 'utf8', env }).trim();

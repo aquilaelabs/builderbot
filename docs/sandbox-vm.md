@@ -170,7 +170,7 @@ at `/workspace` for any of it to have a tree to work in: one more row in
 the node's mounts on the Nodes page (Storage).
 
 **A Claude login is one account's, on one node.** Each person signs in on
-each node they work on, from that node's Claude Code section on the Nodes page
+each node they work on, from the Claude section of that node's Agents page
 (Sign in), and the login stays in that account's home on that machine: two
 accounts on one node are two homes and two logins, and a login on one node
 does nothing for another. Nothing is copied between machines and the

@@ -11,7 +11,7 @@ import threading
 import time
 import traceback
 import urllib.request
-from .base import log
+from .base import AGENT_INSTALLS, AGENT_LOGINS, AGENT_LOGOUTS, log
 from .toolchains import sdk_env
 
 
@@ -257,16 +257,21 @@ class Job(threading.Thread):
                 state, code = self.agent.cache_clear(self, spec)
             elif self.job.get("type") == "storage":
                 state, code = self.agent.storage_measure(self, spec)
-            elif self.job.get("type") == "claude-login":
-                state, code = self.claude_login(spec)
+            elif self.job.get("type") in ("claude-login", *AGENT_LOGINS):
+                # Claude's, or another coding agent's (R95 step 3): the same
+                # pty and the same channel, `bb login --flow` told which.
+                state, code = self.claude_login(spec, AGENT_LOGINS.get(self.job.get("type"), ""))
                 # Said on the next heartbeat rather than in five minutes:
                 # the row that asked is waiting to read who signed in.
                 self.agent._logins_at = 0
-            elif self.job.get("type") == "claude-logout":
-                state, code = self.claude_logout(spec)
+            elif self.job.get("type") in ("claude-logout", *AGENT_LOGOUTS):
+                state, code = self.claude_logout(spec, AGENT_LOGOUTS.get(self.job.get("type"), ""))
                 self.agent._logins_at = 0
             elif self.job.get("type") == "claude-update":
                 state, code = self.agent.claude_update(self, spec)
+            elif self.job.get("type") in AGENT_INSTALLS:
+                # The other coding agents' installs (R95 step 2).
+                state, code = self.agent.agent_update(self, spec)
             elif self.job.get("type") == "tell":
                 state, code = self.agent.tell(self, spec)
             else:
@@ -338,7 +343,7 @@ class Job(threading.Thread):
             time.sleep(delay)
             delay = min(delay * 2, 60)
 
-    def claude_login(self, spec):
+    def claude_login(self, spec, agent=""):
         """`claude auth login` on this machine, under a pty, as the SESSION
         account (roadmap R47).
 
@@ -384,9 +389,9 @@ class Job(threading.Thread):
         env.setdefault("BB_CONTROLLER", str(self.agent.state.get("controller") or ""))
         env.setdefault("BUILDERBOT_ROLE", "node")
         env.setdefault("BB_NODE", str(self.agent.state.get("name") or ""))
-        argv = ["bash", os.path.join(into, "scripts", "bb"), "login", "--flow"]
+        argv = ["bash", os.path.join(into, "scripts", "bb"), "login", "--flow"] + (["--agent", agent] if agent else [])
         master, slave = pty.openpty()
-        self.say("signing in to Claude on this machine; the URL follows\n")
+        self.say(f"signing in to {agent or 'Claude'} on this machine; the URL follows\n")
         try:
             self.proc = subprocess.Popen(
                 argv, stdin=slave, stdout=slave, stderr=slave,
@@ -438,7 +443,7 @@ class Job(threading.Thread):
         code = self.proc.wait()
         return ("succeeded" if code == 0 else "failed"), code
 
-    def claude_logout(self, spec):
+    def claude_logout(self, spec, agent=""):
         """`claude auth logout` on this machine for one BuilderBot account,
         as the SESSION account and in that account's home here: the other
         half of claude_login. The login is this machine's, so this machine
@@ -467,9 +472,9 @@ class Job(threading.Thread):
         env["BB_ACCOUNT_UID"] = uid
         env.setdefault("BUILDERBOT_ROLE", "node")
         env.setdefault("BB_NODE", str(self.agent.state.get("name") or ""))
-        self.say("signing out of Claude on this machine\n")
+        self.say(f"signing out of {agent or 'Claude'} on this machine\n")
         try:
-            p = subprocess.run(["bash", os.path.join(into, "scripts", "bb"), "login", "--out"],
+            p = subprocess.run(["bash", os.path.join(into, "scripts", "bb"), "login", "--out"] + (["--agent", agent] if agent else []),
                                env=env, cwd="/tmp", capture_output=True, text=True,
                                timeout=int(spec.get("timeout") or 120), check=False, **who)
         except (OSError, subprocess.SubprocessError) as e:

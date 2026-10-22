@@ -56,7 +56,7 @@ function nbHistoryView({$, nb, project}){
   // "claude", with its account's name when that is not this one's. "you ·
   // stencil" said a person twice.
   const whoSays = e => e.by === "claude"
-    ? `claude${e.who && e.who !== state?.me ? ` · ${e.who}` : ""}`
+    ? `${agentAsker(e).toLowerCase()}${e.who && e.who !== state?.me ? ` · ${e.who}` : ""}`
     : e.who && e.who !== state?.me ? e.who : (e.by || "");
   const idLink = id => `<a href="#" class="hid" data-hid="${esc(id)}" title="open ${esc(id)}">${esc(id)}</a>`;
   const wireIds = pane => pane.querySelectorAll("[data-hid]").forEach(a => a.onclick = e => {

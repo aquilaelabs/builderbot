@@ -77,7 +77,7 @@ bb version unbump      take the last unreleased bump or set back; its
 bb version release --why "..."
                    tag this commit and publish the release, as Release on the
                    Artifacts view does, on the controller with the project's own
-                   credentials. The project's settings say whether Claude may
+                   credentials. The project's settings say whether an agent may
                    (Tag and publish a release): auto releases, ask waits for
                    the project's owner, with --why as the reason
 bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...
@@ -99,7 +99,7 @@ bb version line [X.Y.Z|none]   the release this branch works toward: a branch
                    a dev build heads for it (0.7.0-dev.N), a bump moves only
                    to it, and on a patch line bb lint refuses a new migration
 bb version policy  what a session may move here, and who decides. A
-                   person picks it in the project's settings (Claude may:
+                   person picks it in the project's settings (Agents may:
                    Move the version) or on the Artifacts view, before or after
                    there is a version: locked (theirs entirely), may start
                    one (a session writes the FIRST version and moves nothing
@@ -247,7 +247,7 @@ bb devapp probe [--port N] [--path /x]
                    so no root ask; --container NAME for another of the project's
 bb devapp rebuild [--why "..."]
                    build it and bring it up. Only where the project has handed that
-                   over: Claude may: Run its container, in its settings dialog and
+                   over: Agents may: Run its container, in its settings dialog and
                    the new-project dialog, reads deny (the default, refused with the
                    sentence that names it), ask (the reason goes to a person and the
                    command waits for Approve) or auto. Up, Down and a container of
@@ -297,7 +297,7 @@ bb sign FILE [--for play|sideload] [--why "..."]
                    its password never reach the session. --for play is the Play
                    upload key (the default for an .aab), sideload the app signing
                    key (the default for an .apk). The project's settings say
-                   whether Claude may (Sign a build): auto signs, ask waits for
+                   whether an agent may (Sign a build): auto signs, ask waits for
                    the project's owner to allow it, with --why as the reason.
                    Arrives in dist/ as NAME-signed.apk or .aab. --key NAME signs
                    with that key; without it, the key the build's package is
@@ -308,7 +308,7 @@ bb sign key new NAME --for play|sideload --why "..."
 bb sign map PACKAGE KEY --why "..."
 bb sign rotate OLD NEW --why "..."
                    a new key made on the controller, or an app's package mapped
-                   to a key (KEY "" unmaps it), under Claude may: Manage signing
+                   to a key (KEY "" unmaps it), under Agents may: Manage signing
                    keys: auto does it, ask waits for the project's owner. rotate
                    moves the apps OLD's sideload key signs to NEW's: builds go out
                    signed with both and a proof, Android 9 and newer take NEW,
@@ -374,7 +374,7 @@ bb devapp test [ARGS]  the project's test command inside its running dev instanc
                    where "Tests run" in the project's settings says the dev instance, so a suite that
                    tests BuilderBot cannot disturb the BuilderBot it runs on (roadmap R48). Only for an
                    image that carries its tests: one built to ship has none, and a run inside it finds
-                   nothing and passes. Claude may: Run its container is not asked: a test runs in a
+                   nothing and passes. Agents may: Run its container is not asked: a test runs in a
                    container that is already up
 bb tests unit      the python unit tier (scripts/dashboard/unit): the modules' rules without a server
                    or a browser, in under a second; preflight runs it before any suite
@@ -426,14 +426,15 @@ bb wiki            the project's wiki, from the notebook's Wiki view: its pages,
                    who changed each last, and where it is pushed
 bb wiki show NAME [--rev]   one page's Markdown (--rev: the revision a save checks)
 bb wiki save NAME FILE|- [--why "..."]   write a page whole, new or rewritten,
-                   under Claude may: Write the wiki: auto lands it, ask holds it
+                   under Agents may: Write the wiki: auto lands it, ask holds it
                    for the operator, deny refuses it, hidden keeps the whole
                    wiki from a session, reading included. A page changed since the
                    save began is refused rather than overwritten
 bb wiki rm NAME [--why "..."]   take a page out, under the same setting
 bb wiki mv OLD NEW   rename one; bb wiki history: the last changes
-bb transcripts     your own conversations with Claude on this project, newest
-                   first, as the Profile page lists them (bb -p NAME for one it reads)
+bb transcripts     your own conversations on this project, from every coding agent
+                   you use, each marked with its agent, newest first, as the
+                   Profile page lists them (bb -p NAME for one it reads)
 bb transcripts show ID [--tz ZONE] [--all]   one of them as text: what was said,
                    every command Claude ran and what it answered; the newest
                    16 MB of a longer one, the whole of it with --all
@@ -510,7 +511,7 @@ bb vm ip NAME | ssh NAME [COMMAND...]
 bb container       what container asks are waiting on an administrator
 bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
                    a container built from a compose file the session wrote,
-                   under the project's *Claude may: Run its container*: refused
+                   under the project's *Agents may: Run its container*: refused
                    at deny, asked at ask (an administrator reads the file on
                    the bell, and Approve registers it through the Containers page's own
                    New container path and starts its build), and at auto made
@@ -575,7 +576,7 @@ bb report "..." [--area A] [--repro "..."]
                    says so), redacted like the diagnostics, and nothing comes
                    back to follow up. A `bb bug add` whose words name
                    BuilderBot or a `bb` command is not filed but sent here,
-                   unless `--here` says it is the project's own. *Claude may: Report
+                   unless `--here` says it is the project's own. *Agents may: Report
                    BuilderBot bugs* in a project's settings turns all of it off
                    for that project, rule and nudge included: BuilderBot's own
                    project, whose tracker those bugs belong in, has it off
@@ -587,7 +588,7 @@ bb pc [VERB] [--why "..."]
                    (editor-start, editor-stop, game-start, game-stop, build,
                    shot, log, editor-call METHOD PATH) runs on the PC as its
                    person set it up there and waits for what it did, a
-                   picture landing in dist/pc/. Under *Claude may: Use a lent
+                   picture landing in dist/pc/. Under *Agents may: Use a lent
                    PC* (Deny by default; Ask puts each use in front of the
                    person at the PC); never a command string
 bb doctor          check everything that usually goes wrong
@@ -836,6 +837,37 @@ cmd_login() {
         BB_USERS_DIR="$BUILDER_USERS" python3 "$BB_LIB/login-list.py"
         return 0
     fi
+    # `--flow --agent ID` and `--out --agent ID` are the same two for another
+    # coding agent (R95 step 3): its own device login in the account's home
+    # on this machine, the binary found where a session finds it (the
+    # agent's pinned copy, then the session account's own). Each prints its
+    # link and its one-time code and waits for the person to enter the code
+    # on the provider's page; nothing is typed back here. Checked against
+    # Codex CLI 0.163.0 and Copilot CLI 1.0.102 (22 Oct).
+    if { [ "${1:-}" = --flow ] || [ "${1:-}" = --out ]; } && [ "${2:-}" = --agent ]; then
+        local uid="${BB_ACCOUNT_UID:-}" base="${BUILDER_HOME:-$HOME}" ag="${3:-}"
+        local pinned="${BB_AGENTS_PINNED:-/usr/local/lib/builderbot/agents}"
+        case "$ag" in
+            codex|copilot) ;;
+            *) die "no coding agent called '${ag}' signs in here" ;;
+        esac
+        [ -n "$uid" ] || die "a sign-in names the account it is for"
+        HOME="$(user_home "$uid")" && export HOME
+        PATH="$pinned/$ag:$base/.local/bin:$base/.npm-global/bin:$HOME/.local/bin:$PATH"; export PATH
+        command -v "$ag" >/dev/null 2>&1 \
+            || die "$ag is not installed on this machine: Install under its section on the node's Agents page puts one down"
+        case "$1:$ag" in
+            --flow:codex)   codex login --device-auth || die "the sign-in did not complete" ;;
+            --flow:copilot) COPILOT_AUTO_UPDATE=false copilot login --device-code || die "the sign-in did not complete" ;;
+            --out:codex)    codex logout || die "codex logout did not complete" ;;
+            # Copilot CLI 1.0.102 has no logout of its own outside a session
+            # (its /logout): the account it signed in as is forgotten from
+            # its config, and the token with it where it was kept there.
+            --out:copilot)  python3 "$BB_LIB/login-list.py" --forget-copilot "$HOME" || die "the sign-out did not complete" ;;
+        esac
+        log "signed ${1#--} ${ag} on ${BB_NODE:-this machine}"
+        return 0
+    fi
     # `--out` is the sign-out run BY THE AGENT, in a claude-logout job, for
     # the account the dashboard asked about: `claude auth logout` in that
     # account's home on this machine, found the way --flow finds it.
@@ -876,7 +908,7 @@ cmd_login() {
         # installed on a machine whose sessions ran it fine (24 Sep).
         PATH="$pinned:$base/.local/bin:$base/.npm-global/bin:$HOME/.local/bin:$PATH"; export PATH
         command -v claude >/dev/null 2>&1 \
-            || die "Claude Code is not installed on this machine (looked on PATH, at $pinned and in $base/.local/bin): Update in the Nodes page's Claude Code section installs one copy every account runs"
+            || die "Claude Code is not installed on this machine (looked on PATH, at $pinned and in $base/.local/bin): Install under Claude on the node's Agents page puts down one copy every account runs"
         claude auth login || die "the sign-in did not complete"
         claude_login_check --loud || true
         return 0
@@ -895,7 +927,7 @@ cmd_login() {
     # where sessions are, which is a node (R47). Sign in on a node's row
     # starts the flow there and takes the code back; this says the same.
     command -v claude >/dev/null 2>&1 \
-        || die "this machine carries no Claude Code: a sign-in runs on a node, from Sign in on its row on the Nodes page (Claude Code), or by running this on the node itself"
+        || die "this machine carries no Claude Code: a sign-in runs on a node, from Sign in under Claude on that node's Agents page, or by running this on the node itself"
     # `claude auth login` is the flow built for this and does not leave a
     # session behind afterwards. The older path (start a session and use its
     # slash command) is the fallback for an image whose claude predates the
@@ -2354,7 +2386,7 @@ cmd_wiki() {
 cmd_transcripts() {
     local verb="${1:-list}" auth proj
     case "$verb" in list|show|fetch) ;; -h|--help)
-        echo "bb transcripts [list | show ID [--tz ZONE] [--all] | fetch ID [--into DIR]]: your own conversations with Claude on this project, from the controller"; return 0 ;;
+        echo "bb transcripts [list | show ID [--tz ZONE] [--all] | fetch ID [--into DIR]]: your own conversations on this project, every agent's, from the controller"; return 0 ;;
         *) die "bb transcripts [list | show ID [--tz ZONE] [--all] | fetch ID [--into DIR]]" ;; esac
     proj="$(bb_project)" || die "not inside a project under ${WORKSPACE}; cd into one first"
     auth="$(bb_auth_or_die)"
@@ -2998,7 +3030,7 @@ cmd_container() {
 # over it.
 #
 # Up, Down and a container of any other shape are the operator's. What a
-# project can hand over, with one setting in its settings dialog (Claude may:
+# project can hand over, with one setting in its settings dialog (Agents may:
 # Run its container), is sending it to Docker (its own container, or another
 # beside it: 24 and 26 Sep), rebuilding its containers, changing their env
 # and removing one, because a project whose work IS the container has a loop
@@ -3100,7 +3132,7 @@ cmd_devapp() {
                     -h|--help) cat <<'EOT'
 bb devapp rebuild [--why "what it is for"]
   build this project's dev instance from its compose file and bring it up,
-  under the project's dial (Claude may: Run its container). The build sees
+  under the project's dial (Agents may: Run its container). The build sees
   BB_BUILD_REV, BB_BUILD_AT and BB_BUILD_VERSION in its environment (the
   commit, when, the version), so a compose whose build.args interpolate them
   (GIT_SHA: ${BB_BUILD_REV}) stamps the image without reading .git, and
@@ -3126,7 +3158,7 @@ EOT
             # container made from its own compose file, named NAME or, unnamed,
             # its own while it has none and one beside it after; pinned to a
             # branch with --branch; then built and started, with this waiting
-            # for the verdict. Under the same setting as rebuild (Claude may:
+            # for the verdict. Under the same setting as rebuild (Agents may:
             # Run its container): on `ask` one request carries it all and
             # Allow makes and builds it.
             local why="" file="" ref="" compose="" override="" host="" tmp="" rc=0
@@ -3156,7 +3188,7 @@ EOT
             ;;
         env|remove)
             # Its env, and removing it, under the same setting as rebuild
-            # (Claude may: Run its container). On `ask` Allow removes it, or
+            # (Agents may: Run its container). On `ask` Allow removes it, or
             # writes the env and builds nothing; on `auto` it is done, and bb
             # devapp rebuild applies an env.
             local verb="$sub" why="" file="" setting=0 tmp=""
@@ -4506,7 +4538,7 @@ is not running; see bb logs."
             # caller has. The dashboard inheriting that variable makes its own
             # Install button refuse, quoting a message that tells the operator
             # to use the dashboard.
-            nohup env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT "${envs[@]}" \
+            nohup env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u BB_AGENT "${envs[@]}" \
                 python3 -u "$dir/server.py" 2>&1 \
                 | "$(dirname "$(readlink -f "$0")")/lib/log-split.sh" \
                     "$(bb_log_dir)/dashboard.log" dashboard &

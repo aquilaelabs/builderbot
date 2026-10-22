@@ -366,10 +366,10 @@ function askSignOut(){
   const m = $("outModal");
   if (!m) { location.href = "/logout"; return; }
   const ss = state?.sessions || [];
-  const claude = ss.filter(s => tmuxBase(s.name).startsWith("claude-")).length;
+  const agentSs = ss.filter(s => agentOfSession(tmuxBase(s.name))), claude = agentSs.length;
   $("outEndRow").hidden = !ss.length;
   $("outEnd").checked = false;
-  $("outEndSaid").textContent = `Also end my sessions (${ss.length} running${claude ? `, ${claude} of them Claude` : ""})`;
+  $("outEndSaid").textContent = `Also end my sessions (${ss.length} running${claude ? `, ${claude} of them ${agentsWord(agentSs.map(s => s.name))}` : ""})`;
   const go = $("outGo");
   unbusy(go, "Sign out");
   go.onclick = async () => {

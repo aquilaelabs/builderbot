@@ -19,7 +19,7 @@ let nodesList = null;            // last answer, or null before the first
 // its dialog opened still has its nodes.
 let nodesStale = false;
 // The pages that draw the list: a node picker each, or the rows themselves.
-const NODE_READERS = ["nodes", "toolchains", "emulator", "docker", "projects", "settings"];
+const NODE_READERS = ["nodes", "toolchains", "agents", "emulator", "docker", "projects", "settings"];
 let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
 let nodesAgent = null;           // the agent this controller ships: {digest, version}
@@ -800,36 +800,32 @@ function nodeSessDirty(n){
     || (c.workersText !== undefined && String(Number(c.workersText) || 0) !== String(conf.test_workers || 0));
 }
 
-// Claude Code on this node: this account's sign-in here (a login is one
-// account's on one node, page-signin.js), and where the copy the session
-// account runs stands, with the way to the node's Toolchains tab, which
-// installs, updates and removes it (R145).
-function nodeClaudeSection(n){
+// The coding agents on this node, in one line (R95 step 15): which are
+// installed, and which of them this account is signed in to here, with the
+// way to the Agents page, where each is installed, updated and signed in to.
+function nodeAgentsSection(n){
   const cc = state?.claude_code || {};
   const me = cc.nodes?.[n.id] || {};
   const se = n.reported?.session;
-  const inst = me.installed || "";
-  const latest = cc.latest || "";
+  const up = !!(se && typeof se === "object" && se.up);
+  // What the census says each agent's version is here, by the table's key.
+  const have = AGENTS.filter(a => a.id === "claude" ? !!me.installed : !!se?.[a.id]);
+  const signed = have.filter(a => a.id === "claude" && claudeOn(n.id));
   let status, cls;
-  if (!se || typeof se !== "object" || !se.up) [status, cls] = ["no session account", "warn"];
+  if (!up) [status, cls] = ["no session account", "warn"];
   else if (me.updating) [status, cls] = ["updating", "warn"];
-  else if (!inst) [status, cls] = ["not installed", "bad"];
-  else if (me.behind) [status, cls] = [`${inst}, ${latest} is out`, "warn"];
-  else [status, cls] = [latest ? `${inst}, up to date` : inst, "ok"];
-  // ...and whether the person looking is signed in here, which a folded
-  // section would otherwise keep to itself.
-  if (inst && se?.up && !me.updating && !claudeOn(n.id)) [status, cls] = [`${status}, not signed in`, "warn"];
-  // Installed, updated and removed on the node's Toolchains tab like any
-  // toolchain (R145); what stays here is the account's sign-in.
+  else if (!have.length) [status, cls] = ["none installed", "bad"];
+  else if (!signed.length) [status, cls] = ["not signed in", "warn"];
+  else [status, cls] = [`signed in to ${signed.map(a => a.name).join(", ")}`, "ok"];
+  const said = !up ? "No session account here, so no coding agent runs."
+    : !have.length ? "No coding agent is installed here: a session cannot start until one is."
+    : `${have.map(a => a.name).join(", ")} installed; ${signed.length ? `you are signed in to ${signed.map(a => a.name).join(", ")}` : "you are signed in to none of them"} here.`;
   const body = `
-    ${signinBlock(n)}
     <div class="actbar">
-      <span class="state">${!se?.up ? "No session account here, so nothing runs Claude Code."
-        : inst ? `Claude Code ${esc(inst)}${me.behind ? `; ${esc(latest)} is out` : ""}: the ${pageLink("toolchains", "Toolchains page")} updates it.`
-        : `Not installed: a Claude session cannot start here until the ${pageLink("toolchains", "Toolchains page")} installs it.`}</span>
-      ${se?.up && mayToolchains(n.id) ? `<button type="button" data-ndtc="${esc(n.id)}" title="install, update or remove it there">Toolchains</button>` : ""}
+      <span class="state">${esc(said)}</span>
+      ${up && railAllows("agents") ? `<button type="button" data-ndag="${esc(n.id)}" title="install, update and sign in to each on the Agents page">Agents</button>` : ""}
     </div>`;
-  return docSection("nodes", "claude", ndTitle("claude"), status, body, {cls});
+  return docSection("nodes", "agents", ndTitle("agents"), status, body, {cls});
 }
 
 // Whether each session here reaches only its own project's containers, the
@@ -1429,7 +1425,7 @@ function nodeCharts(n){
 // is a change to both; given null, each draws the placeholder's.
 // A node's sections, in their order, by the titles they are drawn under.
 const ND_SECTS = [["health", "Health"], ["projects", "Projects"], ["sessions", "Sessions"], ["gpu", "GPU"],
-                  ["features", "Features"], ["claude", "Claude Code"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
+                  ["features", "Features"], ["agents", "Coding agents"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
 function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
 // Why Create sandbox VM and Enroll node are dead, when this install switched
 // enrolling off (R81): under the bar, since a reason in a tooltip is nothing
@@ -1624,7 +1620,7 @@ function renderNodesInto(i){
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeFeaturesSection(n) : ""}
-        ${n.kind === "agent" && !pending && !n.config?.host_only ? nodeClaudeSection(n) : ""}
+        ${n.kind === "agent" && !pending && !n.config?.host_only ? nodeAgentsSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
       </div>
@@ -2221,6 +2217,7 @@ function wireNodesTab(root){
     const id = box.dataset.node;
     // The driver is the Toolchains tab's row (R102): this opens it on the node.
     box.querySelectorAll("[data-ndtc]").forEach(b => b.onclick = () => openToolchainsOn(b.dataset.ndtc));
+    box.querySelectorAll("[data-ndag]").forEach(b => b.onclick = () => openAgentsOn(b.dataset.ndag));
     box.querySelectorAll("[data-nd]").forEach(b => b.onclick = () => pressing(b, async () => {
       const act = b.dataset.nd;
       if (act === "disable" || act === "enable"){
@@ -2258,10 +2255,10 @@ function wireNodesTab(root){
       if (act === "reboot" || act === "poweroff"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
         const here = (state?.sessions || []).filter(x => x.node_id === id);
-        const mine = here.filter(x => tmuxBase(x.name).startsWith("claude-"));
+        const mine = here.filter(x => agentOfSession(tmuxBase(x.name)));
         const open = here.length
           ? `It ends the ${here.length} session${here.length === 1 ? "" : "s"} open there`
-            + `${mine.length ? ` (${mine.length} of them a Claude conversation)` : ""}; transcripts are kept. `
+            + `${mine.length ? ` (${mine.length} of them a ${agentsWord(mine.map(x => x.name))} conversation)` : ""}; transcripts are kept. `
           : "";
         if (!confirm(act === "reboot"
               ? `Reboot ${name}?\n\n${open}Whatever is running there stops; the agent dials in again when the machine is back up.`
@@ -2275,13 +2272,13 @@ function wireNodesTab(root){
       // who pressed this lost two conversations mid-work with no warning.
       if (act === "update-agent"){
         const here = (state?.sessions || []).filter(x => x.node_id === id);
-        const mine = here.filter(x => tmuxBase(x.name).startsWith("claude-"));
+        const mine = here.filter(x => agentOfSession(tmuxBase(x.name)));
         if (here.length && !confirm(
               `Update the agent on ${
                 (nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
               + `This ends the ${here.length} session`
               + `${here.length === 1 ? "" : "s"} open there`
-              + `${mine.length ? ` (${mine.length} of them a Claude conversation)` : ""}`
+              + `${mine.length ? ` (${mine.length} of them a ${agentsWord(mine.map(x => x.name))} conversation)` : ""}`
               + `. Transcripts are kept; whatever they were running stops.`)) return;
       }
       if (act === "gpu-display"

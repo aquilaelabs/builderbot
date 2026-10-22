@@ -1132,7 +1132,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
        `Send to Claude asks first, naming the session, and sends nothing when the answer is no (${asked.split('\n')[0]}; ${asks.length} sent)`);
   }
   // What a session may do, in one view of its own beside Overview and
-  // Settings (the operator, 22 Oct): the settings form's Claude may section
+  // Settings (the operator, 22 Oct): the settings form's Agents may section
   // lent to it, and the push policy under it, staged until Apply.
   await page.evaluate(() => openNotebook('beta', 'permissions'));
   await page.waitForSelector('.nb .nbview[data-view="permissions"] [data-gitpol="push"]', { state: 'visible', timeout: 10000 });
@@ -1140,12 +1140,12 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     dials: !!el.querySelector('details[data-sect="rn:claude"] #rnGateRoadmap'), pol: el.querySelectorAll('[data-gitpol]').length,
     apply: el.querySelector('.permGitApply')?.disabled }));
   ok(perm.dials && perm.pol === 3 && perm.apply === true,
-     `Permissions holds Claude may and the push policy, its Apply asleep (${JSON.stringify(perm)})`);
+     `Permissions holds Agents may and the push policy, its Apply asleep (${JSON.stringify(perm)})`);
   await page.selectOption('.nb .nbview[data-view="permissions"] [data-gitpol="push"]', 'deny');
   ok(await page.$eval('.nb .nbview[data-view="permissions"] .permGitApply', b => !b.disabled),
      '...picking a policy wakes Apply and saves nothing yet');
   await page.selectOption('.nb .nbview[data-view="permissions"] [data-gitpol="push"]', 'allow');
-  // ...and the section goes home: Settings has the form whole, Claude may
+  // ...and the section goes home: Settings has the form whole, Agents may
   // in it but not in its list.
   await page.evaluate(() => openNotebook('beta', 'settings'));
   await page.waitForSelector('.nb .nbview[data-view="settings"] .nbsettings > .box', { timeout: 10000 });
@@ -1154,7 +1154,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     listed: [...el.querySelectorAll('.snav [data-spick]')].map(b => b.dataset.spick).includes('claude'),
     left: !!document.querySelector('.nb .nbview[data-view="permissions"] details[data-sect="rn:claude"]') }));
   ok(home.inForm && !home.listed && !home.left,
-     `leaving Permissions hands Claude may back to the form, which Settings does not list (${JSON.stringify(home)})`);
+     `leaving Permissions hands Agents may back to the form, which Settings does not list (${JSON.stringify(home)})`);
   await page.evaluate(() => openNotebook('beta', 'git'));
   execFileSync('git', ['-C', B, 'checkout', '-q', '--', 'a.txt']);
 }

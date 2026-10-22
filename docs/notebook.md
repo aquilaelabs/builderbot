@@ -423,7 +423,7 @@ first, since an arrangement is work.
 
 ## What a session may add
 
-**How much of what a session adds lands on its own** is the *Claude may*
+**How much of what a session adds lands on its own** is the *Agents may*
 section of the project's settings: add to the roadmap, file bugs, add rules
 and fill in build and test, each **auto**, **ask** or **deny**. Auto: an item, report or
 rule a session adds lands at once, marked as its own. Ask holds it instead: the
@@ -692,7 +692,7 @@ Containers page. How those containers are built and run is
 
 The **Wiki** is the project's wiki, for whoever uses or works on it: pages
 of Markdown that a person writes on the view or a session writes with
-`bb wiki save`, under the project's dial Claude may: Write the wiki (auto
+`bb wiki save`, under the project's dial Agents may: Write the wiki (auto
 lands a page, ask holds it on the notebook for approval with its text, deny
 refuses it, and hidden keeps the wiki from sessions altogether, reading
 included, for notes that are the people's alone). It reads like an encyclopedia: one article at a time, its title over a

@@ -30,6 +30,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fields import field  # noqa: E402
 from names import tmux_name  # noqa: E402
+import agents  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 
@@ -41,6 +42,7 @@ write_json = None
 STATE = None
 nodes = None          # the node store, once the server has opened it (phase 6)
 claudecode = None     # claudecode.py, set by the server: Claude Code as a node's toolchain (R145)
+agentcode = None      # agentcode.py, set by the server: the other coding agents' rows (R95 step 2)
 CLAUDE = "claude-code"
 
 
@@ -994,6 +996,11 @@ def attention(project_nodes):
         if claudecode and claudecode.behind(n) and not claudecode.updating(n["id"]):
             tools.insert(0, {"name": CLAUDE, "label": "Claude Code",
                              "from": claudecode.installed(n), "to": claudecode.latest()["version"]})
+        # ...and each other coding agent installed there (R95 step 2).
+        for i, a in enumerate(agentcode.tracked() if agentcode else (), start=1):
+            if agentcode.behind(n, a.id) and not agentcode.updating(n["id"], a.id):
+                tools.insert(i, {"name": a.tool, "label": a.product,
+                                 "from": agentcode.installed(n, a.id), "to": agentcode.latest(a.id)["version"]})
         if tools:
             live = claude_running(n["id"], project_nodes)
             out.append({"kind": "toolchain", "node": n["name"], "id": n["id"], "tools": tools,
@@ -1004,7 +1011,7 @@ def attention(project_nodes):
 _OWNER = re.compile(r"^u_[0-9a-f]{8}~")
 
 
-def claude_running(node_id, project_nodes):
+def claude_running(node_id, project_nodes, agent="claude"):
     """The project of each Claude session running on a node now, one entry
     per session, from its last heartbeat. What an update of Claude Code
     there ends (B57): the projects bound to the node said 5, 6 or 7 with
@@ -1014,8 +1021,8 @@ def claude_running(node_id, project_nodes):
     out = []
     for r in rows:
         base = _OWNER.sub("", str((r or {}).get("name") or ""))
-        if base.startswith("claude-"):
-            stem = base[len("claude-"):]
+        a, stem = agents.of_session(base)
+        if a and a.id == agent:
             out.append(by_tmux.get(stem, stem))
     return out
 
@@ -1418,6 +1425,11 @@ def payload_for_node(nid):
     cl = claude_row(n)
     if cl:
         machine.append(cl)
+    # ...and the other coding agents beside it, each its own job (R95 step 2).
+    for a in agentcode.tracked() if agentcode else ():
+        ar = agentcode.row(n, a.id)
+        if ar:
+            machine.append(ar)
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             # What is this machine's rather than the store's: the NVIDIA
             # driver and the container toolkit, where the node has the card
@@ -1929,7 +1941,7 @@ def claude_row(n):
     job = next(iter(nodes.jobs_for(node_id=n["id"], type=claudecode.JOB, n=1) or []), None) if nodes else None
     running = claudecode.updating(n["id"])
     failed = (job or {}).get("state") == "failed" and not running
-    return {"name": CLAUDE, "label": "Claude Code", "installed": inst, "latest": cur.get("version") or "",
+    return {"name": CLAUDE, "agent": "claude", "label": "Claude Code", "for": "Claude", "installed": inst, "latest": cur.get("version") or "",
             "state": ("absent" if not inst else "update" if claudecode.behind(n) else "current"),
             "managed": bool((n.get("reported") or {}).get("sandbox")), "here": bool(inst),
             "running": running, "action": ((job or {}).get("spec") or {}).get("action") or "install",
@@ -2242,6 +2254,11 @@ def node_checks_due(now=None):
     if claudecode and (queued or now - int(claudecode.latest().get("at") or 0) >= TC_CHECK_EVERY):
         with contextlib.suppress(Exception):
             claudecode.check()
+    # The other coding agents on the same clock (R95 step 2).
+    for a in agentcode.tracked() if agentcode else ():
+        if queued or now - int(agentcode.latest(a.id).get("at") or 0) >= TC_CHECK_EVERY:
+            with contextlib.suppress(Exception):
+                agentcode.check(a.id)
     return queued
 
 
@@ -2305,9 +2322,28 @@ def verb(action, req, principal):
             if not rest or claude_r.get("error"):
                 return claude_r, (400 if claude_r.get("error") else 200)
             req = dict(req, names=rest)
+        # The other coding agents the same way, each its own job (R95 step
+        # 2): Codex CLI and Copilot CLI ticked beside the store's recipes.
+        agent_rs = []
+        for a in agentcode.tracked() if agentcode and action in ("install", "remove") else ():
+            if a.tool not in [str(x) for x in (req.get("names") or [])]:
+                continue
+            ar = agentcode.update(principal, nid, a.id) if action == "install" else agentcode.remove(principal, nid, a.id)
+            if ar.get("error"):
+                return ar, 400
+            agent_rs.append(ar)
+            req = dict(req, names=[x for x in (req.get("names") or []) if x != a.tool])
+        agent_jobs = [ar.get("job") or "" for ar in agent_rs]
+        # Nothing of the store's ticked beside them: the agents' own answer,
+        # the first job named as `job` the way one alone is.
+        if not req.get("names") and (claude_r or agent_rs):
+            return (claude_r or agent_rs[0]) | {"agent_jobs": agent_jobs}, 200
         # A press of Check for updates asks Claude Code's latest too, in the
-        # same answer, like the store's recipes (R145).
+        # same answer, like the store's recipes (R145), and the other
+        # coding agents' (R95 step 2).
         claude_said = claudecode.check() if action == "check" and claudecode else None
+        if action == "check" and agentcode:
+            agentcode.check_all()
         if action == "check":
             # Every row, or the ones named: the question a check answers
             # is "is any of this out of date", and an uninstalled row's
@@ -2334,6 +2370,8 @@ def verb(action, req, principal):
         if claude_r is not None:
             # Both jobs queued: the recipes' and Claude Code's, said together.
             r = r | {"claude_job": claude_r.get("job") or "", "note": "Claude Code is its own job beside this one"}
+        if agent_jobs:
+            r = r | {"agent_jobs": agent_jobs}
         return r, (400 if r.get("error") else 200)
     if action == "abort":
         return {"ok": abort_job()}, 200

@@ -3,10 +3,12 @@
 Three rules several modules and a shell script each spelled for themselves
 until this file (R60): what a project may be called, what tmux will call a
 session, and the name a project's Claude session runs under. No imports
-from the rest of the dashboard, so nodes.py and the doctor's probes can use
-it standalone.
+from the rest of the dashboard but agents.py, which has none, so nodes.py
+and the doctor's probes can use it standalone.
 """
 import re
+
+import agents
 
 # A repo name, near enough: what a project directory may be called.
 PROJECT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
@@ -27,5 +29,11 @@ def tmux_name(s):
 
 def claude_session(project):
     """The tmux session a project's Claude conversation runs in, before the
-    account prefix a node puts in front of it."""
-    return tmux_name("claude-" + project)
+    account prefix a node puts in front of it: the agent table's name for
+    it (R95)."""
+    return agents.session_name("claude", project)
+
+
+def agent_session(agent_id, project):
+    """The tmux session an agent's conversation on a project runs in."""
+    return agents.session_name(agent_id, project)

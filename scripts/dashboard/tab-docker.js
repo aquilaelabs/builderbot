@@ -841,7 +841,7 @@ function dmOverrideLine(d){
 
 function dmClaudeSaid(d, other = false){
   // What a Claude session may do with it, in a pill's few words: the
-  // setting of the PROJECT it belongs to (Claude may: Run its container),
+  // setting of the PROJECT it belongs to (Agents may: Run its container),
   // the words linking there. `other` is a container BuilderBot did not
   // start, which is started and stopped rather than rebuilt.
   if (!d.owner || !mayDocker() || d.owner === "System") return "";
@@ -850,7 +850,7 @@ function dmClaudeSaid(d, other = false){
   const says = other ? {auto: "start · stop", ask: "asks first", deny: "reads its log"}
     : own ? {auto: "rebuild · env · create", ask: "asks first", deny: "may not rebuild"}
     : {auto: "rebuild · env", ask: "asks first", deny: "may not rebuild"};
-  return `<a href="#" data-dmtestgo="${esc(d.owner)}" title="the project's settings, where Claude may: Run its container is set">${esc(says[mode] || says.deny)}</a>`;
+  return `<a href="#" data-dmtestgo="${esc(d.owner)}" title="the project's settings, where Agents may: Run its container is set">${esc(says[mode] || says.deny)}</a>`;
 }
 
 // The row's settings as one grid with one Apply at its foot (R210, the
@@ -981,7 +981,7 @@ function dmSetPills(pills){
 }
 // An instance's settings as pills: whose it is, what it is built from when
 // that is another project, its branch, where it is reached, whether it
-// starts on boot, what Claude may do and where tests run.
+// starts on boot, what an agent may do and where tests run.
 function dmInstPills(d, managed){
   const r = d.route;
   const mode = {lan: "LAN", funnel: "public link", public: "public"}[r?.mode] || "";
@@ -1682,7 +1682,7 @@ function dmShellWhy(d){
     return `${n.name} hosts containers only and runs no terminal, so a shell in this one opens on a node that runs sessions`;
   const owner = d.owner || d.project;
   if (!state?.admin && (state?.projects || []).find(p => p.name === owner)?.prefs?.devbuild === "deny")
-    return `${projLabel(owner)}'s Claude may: Run its container is Deny, so a shell in its containers is an administrator's`;
+    return `${projLabel(owner)}'s Agents may: Run its container is Deny, so a shell in its containers is an administrator's`;
   return "";
 }
 function dmShell(project, instance, ctr){

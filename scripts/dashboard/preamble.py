@@ -193,7 +193,7 @@ def reads_line(project):
             f"`bb tests` or `bb map` makes the verb answer for it, so its notebook and its code "
             f"are yours to read, and its containers answer from here on this project's nodes, so "
             f"`bb -p NAME devapp` says where its page is and `bb capture shot` photographs it; "
-            f"`bb -p NAME transcripts` lists this account's own conversations with Claude there "
+            f"`bb -p NAME transcripts` lists this account's own conversations there, every agent's, "
             f"and `show ID` prints one, and their files are under ~/.claude/projects read-only. "
             f"Nothing there is yours to change: a write to its tree fails, a write to its notebook is "
             f"refused, and its containers are not yours to start or stop; a session on that project is "
@@ -226,7 +226,7 @@ def design_line(project):
                 "`bb design save` (the themes with their colors as tokens, the type, corners, space and "
                 "motion you settled on, the pages you built, the rules you followed; `bb design schema` "
                 "prints the shape) so the next session finds it there. "
-                f"Under the project's dial Claude may: Add to the design, {fill}.")
+                f"Under the project's dial Agents may: Add to the design, {fill}.")
     lang, pages = rec["language"], rec["pages"]
     themes = ", ".join(t["name"] for t in lang["themes"])
     own = sum(len(t.get("rules") or []) for t in lang["themes"]) + sum(len(p.get("rules") or []) for p in pages)
@@ -257,7 +257,7 @@ def design_line(project):
 
 
 def _design_dial(project):
-    """The project's dial Claude may: Add to the design, as pending reads it."""
+    """The project's dial Agents may: Add to the design, as pending reads it."""
     try:
         import pending                                   # beside this module
         return pending.mode(project, "design") or "auto"

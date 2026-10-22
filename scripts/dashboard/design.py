@@ -1293,7 +1293,7 @@ def schema_text():
         "A rule of a theme's or a page's own reaches a session as HOLDER/NAME.",
         "",
         "A save is refused whole, with every problem it found listed; nothing is dropped silently. "
-        "A session's save goes through the project's dial, Claude may: Add to the design.",
+        "A session's save goes through the project's dial, Agents may: Add to the design.",
     ])
 
 
@@ -1352,7 +1352,7 @@ def verb(project, req, who, session):
         return {"error": "a session reads the design with bb design and writes the file with "
                          "bb design file; Write the file is the tab's"}, 403
     if act == "save":
-        # A session's save is the project's dial, Claude may: Add to the
+        # A session's save is the project's dial, Agents may: Add to the
         # design (auto lands it, ask holds it for the operator, deny refuses
         # it by name); a person's from the tab always lands.
         if session and not pending.replaying():

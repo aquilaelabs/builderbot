@@ -180,7 +180,7 @@ by name on its node, so the same container recreated keeps it. The project it
 belongs to lists it in its notebook's Docker view, and that project's Claude
 sessions are the only ones that can see it: `bb devapp ls` lists them and `bb
 devapp log NAME` reads one, while rebuilding, changing the env, starting and
-stopping follow that project's *Claude may: Run its container*. An account
+stopping follow that project's *Agents may: Run its container*. An account
 that is not an administrator sees what belongs to its projects.
 
 ## A dev instance built from a project

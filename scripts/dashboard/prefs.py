@@ -27,7 +27,16 @@ respawned onto the same transcript.
 import json
 import re
 import threading
+import os
+import sys
 from pathlib import Path
+
+# Loaded by path too (bb's dash.load), so its own directory is put on the
+# path for what it imports beside itself.
+_here = os.path.dirname(os.path.abspath(__file__))
+if _here not in sys.path:
+    sys.path.insert(0, _here)
+import agents  # noqa: E402
 
 write_json = None
 FILE = None
@@ -78,7 +87,7 @@ def _vm_caps(v):
         x = v.get(k)
         out[k] = x if isinstance(x, int) and not isinstance(x, bool) and 0 <= x <= VM_CAPS_MAX[k] else d
     return out
-# Claude may: Sign a build (R106). Ask by default: a signed build is
+# Agents may: Sign a build (R106). Ask by default: a signed build is
 # something that leaves, and a person reads which build and which key.
 SIGN_MODES = ("deny", "ask", "auto")
 # Where `bb test` runs a project's tests (roadmap R48, B241): on the node and
@@ -281,6 +290,9 @@ def _clean(rec):
             # toolchains are on and packs off until somebody says otherwise,
             # so adding a pack hands it to no project by itself.
             "tc_off": _toolchain_names(rec, "tc_off"),
+            # The coding agents beside Claude its sessions may not run
+            # (R95): every live one allowed until somebody says otherwise.
+            "agents_off": _agents_off(rec),
             "packs_on": _toolchain_names(rec, "packs_on"),
             # The places on its node a session here is shown besides its own
             # project: a share it works with. A session's view is built from
@@ -342,20 +354,20 @@ def _clean(rec):
             "test_change": rec.get("test_change") if rec.get("test_change") in TEST_CHANGE else "wait",
             # May compute on the node's NVIDIA card: one of GPU.
             "gpu": rec.get("gpu") if rec.get("gpu") in GPU else "on",
-            # Claude may: Report BuilderBot bugs. Off takes `bb report` and
+            # Agents may: Report BuilderBot bugs. Off takes `bb report` and
             # the rule that points at it away from this project's sessions.
             "report": "deny" if rec.get("report") == "deny" else "auto",
-            # Claude may: Sign a build, one of SIGN_MODES (bb sign, R106).
+            # Agents may: Sign a build, one of SIGN_MODES (bb sign, R106).
             "sign": rec.get("sign") if rec.get("sign") in SIGN_MODES else "ask",
-            # Claude may: Manage signing keys, one of SIGN_MODES: a new
+            # Agents may: Manage signing keys, one of SIGN_MODES: a new
             # generated key or a package mapped to a key (R106 step 6).
             "keys": rec.get("keys") if rec.get("keys") in SIGN_MODES else "ask",
-            # Claude may: Tag and publish a release, one of SIGN_MODES (bb
+            # Agents may: Tag and publish a release, one of SIGN_MODES (bb
             # version release): the tag and the forge's release, made on the
             # controller with the project's own credentials, which no session
             # holds. Ask by default: the operator, 5 Oct.
             "release": rec.get("release") if rec.get("release") in SIGN_MODES else "ask",
-            # Claude may: Use a lent PC, one of SIGN_MODES (bb pc, R270
+            # Agents may: Use a lent PC, one of SIGN_MODES (bb pc, R270
             # step 6): the verbs a person's Windows companion lends this
             # project. Deny by default: it is somebody's own machine.
             "pc": rec.get("pc") if rec.get("pc") in SIGN_MODES else "deny",
@@ -470,6 +482,14 @@ def all_projects(workspace=None):
     """
     d = _load()["projects"]
     return {k: _clean(v) for k, v in d.items() if isinstance(k, str)}
+
+
+def _agents_off(rec):
+    """The coding agents switched off for a project, as stored: ids of the
+    agent table's other than Claude's, which a project always runs."""
+    got = rec.get("agents_off") if isinstance(rec.get("agents_off"), list) else []
+    ids = [a.id for a in agents.TABLE if a.id != "claude"]
+    return [i for i in ids if i in {str(x) for x in got}]
 
 
 def _toolchain_names(rec, key):
@@ -659,7 +679,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
               snapshot_days=None, snapshots_on=None,
               release=None, log_from=None, diag=None, build_local=None, reaches=None, hosts=None,
-              pc=None, tc_off=None, packs_on=None, makevms=None, vm_caps=None):
+              pc=None, tc_off=None, packs_on=None, makevms=None, vm_caps=None, agents_off=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -680,6 +700,12 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             cur["node"] = str(node)[:40]
             if cur["node"] and cur["node"] not in cur["nodes"]:
                 cur["nodes"] = [cur["node"]] + cur["nodes"]
+        if agents_off is not None:
+            got = agents_off if isinstance(agents_off, list) else [x for x in str(agents_off).split(",") if x]
+            bad = [x for x in got if x not in {a.id for a in agents.TABLE if a.id != "claude"}]
+            if bad:
+                return {"error": f"agents_off names coding agents other than Claude's, not {', '.join(map(str, bad))}"}
+            cur["agents_off"] = _agents_off({"agents_off": got})
         for key, val in (("tc_off", tc_off), ("packs_on", packs_on)):
             if val is not None:
                 got = val if isinstance(val, list) else str(val).split(",")
@@ -823,7 +849,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
         if (cur["node"] or cur["hosts"] or cur["color"] or cur["reads"] or cur["sees"] or cur["reaches"]
-                or cur["tc_off"] or cur["packs_on"]
+                or cur["tc_off"] or cur["packs_on"] or cur["agents_off"]
                 or cur["log_from"] or cur["diag"]
                 or not cur["build_local"]
                 or cur["build"] or cur["test"] or cur["outputs"]
@@ -874,7 +900,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("dev_keep", None)
             if cur["build_local"]:
                 rec.pop("build_local", None)
-            for k in ("tc_off", "packs_on"):
+            for k in ("tc_off", "packs_on", "agents_off"):
                 if not cur[k]:
                     rec.pop(k, None)
             d["projects"][project] = rec
@@ -1029,6 +1055,7 @@ def dialog_save(name, req, uid):
                   color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
                   reaches=req.get("reaches"), hosts=req.get("hosts"),
                   tc_off=req.get("tc_off"), packs_on=req.get("packs_on"),
+                  agents_off=req.get("agents_off"),
                   log_from=req.get("log_from"), diag=req.get("diag") if isinstance(req.get("diag"), bool) else None,
                   build_local=req.get("build_local") if isinstance(req.get("build_local"), bool) else None,
                   workspace=WORKSPACE)

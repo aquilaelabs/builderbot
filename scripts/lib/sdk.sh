@@ -119,7 +119,7 @@ sdkmgr() {
 sdk_android_licenses() {
     local root; root="${ANDROID_HOME:-$(sdk_dir android)}"
     [ ! -d "$root/licenses" ] || return 0
-    [ -z "${CLAUDECODE:-}" ] \
+    [ -z "${CLAUDECODE:-}${BB_AGENT:-}" ] \
         || die "the Android SDK installs under Google's terms, which a person accepts: install it from the Toolchains page, which asks"
     log "recording the android SDK licenses accepted on the Toolchains page, for ${root}"
     mkdir -p "$root"
@@ -910,7 +910,9 @@ sdk_update() {
 # Installing an SDK is the operator's call, not a session's.
 #
 # CLAUDECODE is in the environment of anything a Claude session runs, and
-# absent from the dashboard's, which is the whole distinction: these are
+# BB_AGENT in anything any coding agent's session runs (bb-tty's launcher,
+# R95), and both are absent from the dashboard's, which is the whole
+# distinction: these are
 # gigabytes on somebody else's disk, and the decision belongs to the person
 # who pays for it. The CLAUDE.md template has always said "offer the command,
 # do not run it". This is that rule with teeth.
@@ -920,11 +922,11 @@ sdk_update() {
 # wrong thing deliberate, and the message says exactly how to override it for
 # the human who is holding the keyboard.
 sdk_operator_only() {
-    [ -n "${CLAUDECODE:-}" ] || return 0
-    die "installing SDKs is the operator's decision, and this is a Claude session.
+    [ -n "${CLAUDECODE:-}${BB_AGENT:-}" ] || return 0
+    die "installing SDKs is the operator's decision, and this is an agent's session.
 Ask them to do it from the dashboard's Toolchains page, or to
 run: bb toolchains $*
-If you ARE the operator at this keyboard: env -u CLAUDECODE bb toolchains $*"
+If you ARE the operator at this keyboard: env -u CLAUDECODE -u BB_AGENT bb toolchains $*"
 }
 
 # Put back any package directory sdkmanager turned into a real directory.
@@ -1694,10 +1696,10 @@ cmd_emu_images() {
             local verb="${1:-}" id="${2:-}"
             [ -n "$id" ] || die "usage: bb emu image add|remove ID (bb emu images --available lists them, bb emu flavors names the short ones)"
             sdk_is_image "$id" || die "${id} is not a system image: bb emu images --available lists them"
-            [ -z "${CLAUDECODE:-}" ] || die "a system image is the operator's to add or remove, and this is a Claude session.
+            [ -z "${CLAUDECODE:-}${BB_AGENT:-}" ] || die "a system image is the operator's to add or remove, and this is an agent's session.
 Ask them to do it from the dashboard's Emulator page, or to
 run: bb emu image ${verb} ${id}
-If you ARE the operator at this keyboard: env -u CLAUDECODE bb emu image ${verb} ${id}"
+If you ARE the operator at this keyboard: env -u CLAUDECODE -u BB_AGENT bb emu image ${verb} ${id}"
             case "$verb" in
                 add)    sdk_install "android:${id#android:}"; sdk_write_env ;;
                 remove) sdk_remove "android:${id#android:}"; sdk_write_env ;;

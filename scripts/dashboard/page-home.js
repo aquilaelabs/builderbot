@@ -73,7 +73,8 @@ function homeTiles(){
   // opens say one number (B59): every session of this account's, Claude's
   // and the terminals.
   const ss = state?.sessions || [];
-  const sessions = ss.length, claudes = ss.filter(s => tmuxBase(s.name).startsWith("claude-")).length;
+  const agentSs = ss.filter(s => agentOfSession(tmuxBase(s.name)));
+  const sessions = ss.length, claudes = agentSs.length;
   const updates = homeUpdates(), red = (state?.ci_red || []).length;
   const jobs = h.jobs || {};
   const c = h.containers;
@@ -89,7 +90,7 @@ function homeTiles(){
     {key: "jobs", label: "jobs running", value: jobs.running ?? "–",
      sub: jobs.failed_today ? `${jobs.failed_today} failed today` : jobs.waiting ? `${jobs.waiting} waiting` : "none failed today",
      subTone: jobs.failed_today ? "bad" : ""},
-    {key: "sessions", label: "sessions open", value: sessions, sub: claudes ? `${claudes} of them Claude` : ""},
+    {key: "sessions", label: "sessions open", value: sessions, sub: claudes ? `${claudes} of them ${agentsWord(agentSs.map(s => s.name))}` : ""},
     {key: "updates", label: updates === 1 ? "update due" : "updates due", value: updates, tone: updates ? "warn" : ""},
     {key: "ci", label: "CI red", value: red, tone: red ? "bad" : "", sub: red === 1 ? projLabel(state.ci_red[0].project) : ""},
   ].filter(Boolean);

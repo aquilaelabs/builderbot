@@ -84,7 +84,7 @@ it back (taking File access off it, say) holds for whoever owns the project.
 
 A person may do what their roles give and nothing else: an account on a
 project's list with no role there works on nothing. A Claude session does no
-more than the person behind it: what its own rules (its project's Claude may
+more than the person behind it: what its own rules (its project's Agents may
 dials, a session's limits) allow and what its account's roles give on the
 project, whichever is less, the projects it reads included, so a session of
 somebody who may only read a project can only read it.
@@ -191,7 +191,7 @@ own worktree, so two people editing one function are making two commits rather
 than corrupting one tree, and that is what a merge is for.
 
 Each account signs in to Claude for itself, on each node it works on, from
-that node's Claude Code section. Which Anthropic account that is is the person's own choice:
+that node's Agents page (Build, then Agents, with that node picked). Which Anthropic account that is is the person's own choice:
 the Users page says when two BuilderBot accounts are on one, since Anthropic's
 terms allow one person per Claude account, and nothing is refused for it.
 

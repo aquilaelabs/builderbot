@@ -32,6 +32,7 @@ import sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 from names import claude_session   # noqa: E402
 from fields import field   # noqa: E402
+import agents
 import json
 import os
 import sys
@@ -209,7 +210,7 @@ def _log(d, project, by, ev):
     # batched or not: see revisions() for why a length is not enough.
     d.setdefault("revn", {})[project] = int(d.get("revn", {}).get(project) or 0) + 1
     ev = {"at": int(time.time()),
-          "by": "claude" if by == "claude" else "you",
+          "by": "claude" if by == "claude" else "you", **agents.asker(by),
           **_by_whom(),
           **({"approved": True} if pending.replaying() else {}), **ev}
     b = d.get("batch", {}).get(project)
@@ -481,7 +482,7 @@ def add(project, title, by="you", severity="medium", **fields):
                              "this stops being a tracker and starts being a log"}
         bug = {"id": number or _next_id(d, project),
                "title": title, "severity": severity, "status": "open", "rev": 1,
-               "by": "claude" if by == "claude" else "you",
+               "by": "claude" if by == "claude" else "you", **agents.asker(by),
           **_by_whom(),
                "at": int(time.time()),
                # Never backfilled onto older reports: a made-up "first seen

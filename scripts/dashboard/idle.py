@@ -25,6 +25,8 @@ import sys
 import threading
 import time
 
+import agents
+
 _state = None
 _write_json = None
 _changed = lambda: None          # noqa: E731  (the server nudges the nodes)
@@ -78,9 +80,10 @@ def payload():
 
 
 def is_claude(name):
-    """A Claude session by name: claude-<project>, or an account's
-    u_xxxx~claude-<project>."""
-    return name.startswith("claude-") or "~claude-" in name
+    """An agent's session by name: claude-<project>, or an account's
+    u_xxxx~claude-<project>, for every live agent in the table (R95), so
+    the idle rule ends a Codex session as it ends a Claude one."""
+    return agents.is_session(name.split("~", 1)[1] if "~" in name else name)
 
 
 def idle_sessions(list_output, limit_min, now=None):

@@ -1371,7 +1371,7 @@ def ask(repo, project, kind, args, sessions=(), session=""):
     else:
         return {"error": "nothing picked"}
     line = f"From the operator, on the Git view of {project}: {about}; {what}."
-    session = session or TMUX_NAME("claude-" + project)
+    session = session or claude_session(project)
     r = TELL(session, line, sessions)
     if r.get("error"):
         return r

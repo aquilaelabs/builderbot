@@ -23,7 +23,7 @@ function argForSession(name){
   // Matched through tmuxName (a session's name is the project's with `.` and
   // `:` rewritten), and by exact project first, so a project genuinely called
   // "web-2" is not read as terminal 2 of a project called "web".
-  for (const [prefix, arg] of [["claude-", "claude:"], ["shell-", "shell:"]]){
+  for (const [prefix, arg] of [...agentsLive().map(a => [a.id + "-", a.id + ":"]), ["shell-", "shell:"]]){
     const p = name.startsWith(prefix) ? projFor(name.slice(prefix.length)) : null;
     if (p) return arg + p;
   }
@@ -65,16 +65,16 @@ function renderSessionsInto(i){
     paint(d.list, skTpl(skTable(SESS_COLS, 3, "sesstbl", "row sessrow")));
     return;
   }
-  const claudes = ss.filter(s => tmuxBase(s.name).startsWith("claude-")).length;
+  const agentSs = ss.filter(s => agentOfSession(tmuxBase(s.name))), claudes = agentSs.length;
   d.setBar(`<span class="dim">${ss.length} session${ss.length === 1 ? "" : "s"}${
-    claudes ? `, ${claudes} of them Claude` : ""}</span>`);
+    claudes ? `, ${claudes} of them ${agentsWord(agentSs.map(s => s.name))}` : ""}</span>`);
   // Named exactly as its tab is: the tmux name and the full path are in the
   // name's description, where the detail belongs.
   const names = sessionLabels();
   const tabFor = new Map(tabs.filter(t => t.kind === "term").map(t => [sessionOf(t.arg), t]));
   const rows = ss.map(s => {
     const t = tabFor.get(s.name);
-    const claude = tmuxBase(s.name).startsWith("claude-");
+    const claude = !!agentOfSession(tmuxBase(s.name));
     const tip = tabTitle(t || {kind: "term", arg: argForSession(s.name), label: s.name});
     const proj = sessionProject(s.name);
     // Only while it IS working: the task comes off the pane title, which
@@ -111,10 +111,10 @@ function renderSessionsInto(i){
 // the same name can exist here and there: a project unbound from a node
 // while a session was still open on it, and the row knows which it meant.
 async function killSession(name, node = ""){
-  const claude = tmuxBase(name).startsWith("claude-");
+  const ag = agentOfSession(tmuxBase(name)), claude = !!ag;
   // Named as its row and its tab are, never by its tmux name (B58).
   const proj = sessionProject(name);
-  const said = claude ? `the Claude session on ${proj ? projLabel(proj) : name}`
+  const said = claude ? `the ${ag.agent.name} session on ${proj ? projLabel(proj) : name}`
     : `the session "${sessionLabels().get(name) || name}"`;
   if (!confirm(claude
         ? `End ${said}?\n\nThe transcript is kept and can be `

@@ -50,7 +50,7 @@ second node can be started from the same place. Where this account is
 signed in on the project's node, the press starts the session or opens the
 chooser with Resume and New conversation, as it always has. Where
 it is not, the chooser offers **Sign in on** that node in their place, which
-opens the Nodes page on that node with its Claude Code section unfolded. A
+opens the Agents page on that node with its Claude section unfolded. A
 project on several nodes lists each under its name: Resume and New
 conversation for a node this account is signed in on, the sign-in for one it
 is not, and the reason alone for one where a session cannot start.
@@ -72,30 +72,31 @@ conversation does not.
 
 **Claude Code is a toolchain of each node, installed on purpose, and by
 nothing a session can do.** The provisioner does not install it: a node's
-Toolchains page has a Claude Code row, with the version its session account
+Agents page (under Build, beside Toolchains) has a Claude section, with the version its session account
 runs against the latest the controller knows, asked on the toolchains' own
 clock (weekly, when a node starts, and on **Check for updates**). Until it
 is installed no Claude session starts there: the project's Start Claude
 is ghosted with the reason, and the terminal refuses with the same
-sentence. Tick it and press **Install selected** to install or update it:
+sentence. Press **Install** or **Update** there to install or update it:
 that ends every Claude session on the node first, then the agent runs the
 installer as the session account and, on a managed node, pins the binary
 where the account cannot write it, so `claude update` typed in a session
-changes nothing that runs (the auto-updater is off there too). The bin
-removes it. Nothing starts again on its own: a project's Start Claude does,
+changes nothing that runs (the auto-updater is off there too). **Remove**
+takes it off. Nothing starts again on its own: a project's Start Claude does,
 when you press it, and until the job ends it is held with the reason. A
 node behind is a row in the bell, and stays on what it has until you
 install the update: nothing updates it before a session starts (a switch
-that did went on 7 Oct). The node's Claude Code section on the Nodes page
-keeps each account's sign-in, and a button to the Toolchains page.
+that did went on 7 Oct). The same section keeps each account's sign-in;
+the Nodes page keeps one line per node saying which agents are installed and
+signed in there, with a button to the Agents page.
 
 **A Claude sign-in is one account's, on one node.** A person signs in on
 each node they work on, and the login stays in that account's home on that
 machine: nothing carries it to another node, and the controller holds no
 credential, only what each node reported. A refresh rotates the refresh
 token, so one login on two machines signs each of them out in turn; a login
-per machine is the shape Claude supports. The sign-in is at the top of the
-node's Claude Code section on the Nodes page, for whoever is looking: *You
+per machine is the shape Claude supports. The sign-in is in the Claude
+section of the node's Agents page, for whoever is looking: *You
 are signed in here as* the Anthropic account that node reported, with **Sign
 out**, or *You are not signed in to Claude on* that node, with **Sign in**.
 **There is no terminal in it.** `claude auth login` is interactive, printing

@@ -40,7 +40,7 @@ person, and BuilderBot does not make them.
 
 ## The dial, the area and the limits
 
-- **Make VMs**, under Claude may in the project's settings, reads as Run its
+- **Make VMs**, under Agents may in the project's settings, reads as Run its
   container does: deny (the default) refuses a session's `bb vm`, ask holds
   each for the administrators' bell with Allow and Deny, auto does it. A
   person may always do from the page what the dial holds a session to

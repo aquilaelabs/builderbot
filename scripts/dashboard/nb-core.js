@@ -577,7 +577,7 @@ function makeNotebook(project){
     ghostOut(away);
     // The settings form comes into this view while it is on screen, and goes
     // back to the dialog when another view is picked (page-projsettings.js).
-    // ...and its Claude may section into Permissions, which hands it back
+    // ...and its Agents may section into Permissions, which hands it back
     // first whenever another view is shown.
     if (v !== "permissions") leavePerms();
     if (v === "settings") settingsInto(project, root.querySelector('.nbview[data-view="settings"] .nbsettings'));
@@ -1056,7 +1056,7 @@ function projectActions(p, extra = ""){
   // running everywhere).
   const inst = claudeInstall(p);
   return `${isBroken(p) || forbid ? "" : inst ? `<button type="button" data-tcinst="${esc(inst)}" title="${
-        esc(`Claude Code is not installed on ${p.node_name || "its node"}: open its Toolchains to install it`)}">Install Claude</button>`
+        esc(`Claude Code is not installed on ${p.node_name || "its node"}: open its Agents page to install it`)}">Install Claude</button>`
       : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(name)}"${dead ? " disabled" : ""} title="${esc(say)}">${
         mine ? "Open Claude" : "Start Claude"}</button>`}
     ${mayShell() && !notMine(p) ? `<button type="button" data-s="${esc(name)}"${!gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}

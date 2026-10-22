@@ -37,7 +37,7 @@ Start a build, a test run, a probe or a dev instance's rebuild in the
 background and answer while it runs; its notification
 says when it ends, so never wait for it with a foreground loop over its log,
 which holds every reply the same way. What a change
-asked for meanwhile does is this project's setting (Claude may, "While a
+asked for meanwhile does is this project's setting (Agents may, "While a
 test runs: a change asked for"):
 <!-- BUILDERBOT:TESTCHANGE -->
 
@@ -282,7 +282,7 @@ thing that does the job, and the answer comes back through the same verb:
 own root-asks switch decides, and the ask says so when it is off); `bb phone
 run` for a phone connected here; `bb container new --why "..." --name NAME
 --compose FILE` for a container that does not exist yet. Every one of the
-project's dials (Claude may: add to the roadmap, file bugs, add rules, fill
+project's dials (Agents may: add to the roadmap, file bugs, add rules, fill
 in build and test, add to the design, write the wiki, run its container,
 report BuilderBot bugs, sign a release, manage signing keys, use a lent PC)
 reads the same way: auto lands it, ask holds it for a person (the project's
@@ -309,8 +309,10 @@ what the project looks like as the operator laid it out on the notebook's
 Design view: `bb design show NAME` for one page, theme or rule
 (`nostromo/hull` for a theme's or a page's own), and `bb design file` prints
 the docs/design-language.md it writes. `bb transcripts` lists this account's
-own earlier conversations with Claude here, and `bb transcripts show ID`
-prints one whole, every command and its answer included.
+own earlier conversations here, from every coding agent it uses (Claude,
+ChatGPT, Copilot), each marked with its agent and never another account's,
+and `bb transcripts show ID` prints one whole, every command and its answer
+included.
 
 The project's wiki is the notebook's Wiki view, for the people who use or
 work on the project: `bb wiki` lists its pages, `bb wiki show NAME` prints
@@ -358,13 +360,13 @@ tree), the verb refuses and `bb bug add --here` files it here.
 <!-- BUILDERBOT:TOPIC versions: bb version, bb changelog, releases and their edits, what goes in dist/ -->
 
 `bb version` is this project's identity; `bb version policy` says what you
-may move, usually nothing (Claude may: Move the version); `bb version bump`
+may move, usually nothing (Agents may: Move the version); `bb version bump`
 moves it where the policy lets you, and `bb version set X.Y.Z` to a later
 version in one step where that allows the part it changes. `bb changelog add
 "..." --cat NAME` records what a change means for the person using the
 product, under Added, Changed, Deprecated, Removed, Fixed or Security; with
 no category it says when each applies. Tagging and publishing the release is
-`bb version release --why "..."` under Claude may: Tag and publish a
+`bb version release --why "..."` under Agents may: Tag and publish a
 release, which asks the project's owner by default and runs on the
 controller with the project's own credentials, never yours. A published
 release is changed with `bb version release --edit --why "..." [--notes
@@ -501,7 +503,7 @@ fingerprint, on the Artifacts view. `bb sign keys` lists the keys and the
 package each signs; a build takes its package's key unless `--key` names
 one; `bb sign key new NAME --for ...`, `bb sign map PACKAGE KEY` and `bb
 sign rotate OLD NEW` (an app moving to another sideload key, signed with
-both so Android 9 and newer update across it) change them, under Claude may:
+both so Android 9 and newer update across it) change them, under Agents may:
 Sign a build; Manage signing keys. No key is made until the owner has set
 the project's backup password.
 <!-- BUILDERBOT:END -->
@@ -547,7 +549,7 @@ one; `bb devapp probe [--container NAME] [--port N] [--path /x]` says
 whether one answers on its node's loopback, each published port open or
 refused and the HTTP status of the path, a read with no root ask, the way to
 check a container nginx reaches before a route goes in. Acting on one is the
-project's dial (Claude may: Run its container):
+project's dial (Agents may: Run its container):
 `bb devapp start|stop|restart NAME`, and `--container NAME` on `bb devapp
 rebuild` or `bb devapp env` for one written for this project. You have no
 Docker socket of your own. A container that does not exist yet is an ask

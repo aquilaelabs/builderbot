@@ -1463,6 +1463,7 @@ rm -rf "$S/agentsrc"; cp -r "$DASH/../agent" "$S/agentsrc"
     BB_COVERAGE_SUITE="${BB_COVERAGE_SUITE:-server}" \
     BB_ARCHIVE_SPOOL="$S/spool" \
     BB_CLAUDE_LATEST_URL="file://$S/claude-latest" BB_CLAUDE_CHECK_DELAY=3600 \
+    BB_CODEX_LATEST_URL="file://$S/codex-latest.json" BB_COPILOT_LATEST_URL="file://$S/copilot-latest.json" \
     BB_NGINX_TAGS_URL="file://$S/nginx-tags.json" BB_NGINX_CHECK_DELAY=3600 \
     BB_APPS_RELEASES_URL="file://$S/releases.json" BB_APPS_BOOT_DELAY=3600 \
     BB_TOOLPACKS_FILE_URLS=1 \

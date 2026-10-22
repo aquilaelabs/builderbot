@@ -149,10 +149,10 @@ def show():
         if k in ("node", "nodes"):
             v = [named.get(x, x) for x in v] if isinstance(v, list) else named.get(v, v)
         print(f"  {k:<8} {', '.join(v) if isinstance(v, list) else v}")
-    # The Claude settings as the dialog names them, so a session can read
+    # The agents' settings as the dialog names them, so a session can read
     # its own dials (the review of 26 Sep: the briefing said the refusal
     # names the setting, and nothing here showed it).
-    print("  Claude settings:")
+    print("  Agents' settings:")
     print(f"    While a test runs: a change asked for   {rec.get('test_change') or 'wait'}")
     print(f"    Tests run                               {rec.get('tests_in') or 'node'}")
     print(f"    Captures kept (days; 0 keeps them)      {rec.get('capture_days', 7)}")
@@ -167,7 +167,7 @@ def show():
     for label, key in (("Add to roadmap", "roadmap"), ("File bugs", "bugs"), ("Add rules", "rules"),
                        ("Fill in build and test", "settings"), ("Add to the design", "design"),
                        ("Write the wiki", "wiki")):
-        print(f"    Claude may: {label:<28} {gate.get(key) or 'auto'}")
+        print(f"    Agents may: {label:<28} {gate.get(key) or 'auto'}")
     for label, key, dflt in (("Run its container", "devbuild", "deny"),
                              # R91: its VMs, bb vm.
                              ("Make VMs", "makevms", "deny"),
@@ -179,7 +179,7 @@ def show():
                              ("Tag and publish a release", "release", "ask"),
                              # R270 step 6: a person's PC lent by the companion.
                              ("Use a lent PC", "pc", "deny")):
-        print(f"    Claude may: {label:<28} {rec.get(key) or dflt}")
+        print(f"    Agents may: {label:<28} {rec.get(key) or dflt}")
     # Who may move the version is version.py's policy rather than a prefs
     # dial, and an owner who set every dial above to auto still found it
     # locked (report #48): printed with them, in the dial's own words.
@@ -187,9 +187,9 @@ def show():
         version = dash.load("version", here)
         version.configure(workspace=os.environ.get("WORKSPACE", "/workspace"), state=state,
                           write_json=lambda *a: None)
-        print(f"    Claude may: {'Move the version':<28} {version.policy(proj)}")
+        print(f"    Agents may: {'Move the version':<28} {version.policy(proj)}")
     except Exception as e:  # noqa: BLE001 (an unreadable policy is said, not a crash)
-        print(f"    Claude may: {'Move the version':<28} unknown ({str(e)[:60]})")
+        print(f"    Agents may: {'Move the version':<28} unknown ({str(e)[:60]})")
 
 
 def set_node():

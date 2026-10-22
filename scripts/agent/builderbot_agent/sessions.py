@@ -12,6 +12,9 @@ import threading
 import time
 from .jobs import pump
 from .base import (
+    AGENT_INSTALLS,
+    AGENT_PREFIXES,
+    AGENTS_DIR,
     CLAUDE_DIR,
     DOCKER_BIN,
     FIREWALL_CMD,
@@ -214,6 +217,9 @@ class SessionsMixin:
         # root-owned, so `claude update` typed in a session changes nothing
         # that runs here, and the auto-updater is off (bb-tty).
         pinned = [CLAUDE_DIR] if os.access(os.path.join(CLAUDE_DIR, "claude"), os.X_OK) else []
+        # ...and each other coding agent's pinned copy the same way (R95).
+        pinned += [os.path.join(AGENTS_DIR, s["id"]) for s in AGENT_INSTALLS.values()
+                   if os.access(os.path.join(AGENTS_DIR, s["id"], s["command"]), os.X_OK)]
         env["PATH"] = ":".join([os.path.join(bbdir, "scripts")] + pinned
                                + [os.path.join(home, ".local", "bin"),
                                   os.path.join(home, ".npm-global", "bin"), env["PATH"]])
@@ -714,6 +720,104 @@ class SessionsMixin:
             argv[argv.index("-t") + 1] = sess
             self._tmux(argv)
 
+    def agent_update(self, job, spec):
+        """Install, update or remove one of the other coding agents for the
+        SESSION account (R95 step 2), as claude_update does Claude Code:
+        the vendor's installer run as the account, into its home, then the
+        binary pinned root-owned under AGENTS_DIR where the agent is root.
+        Which agent and how is AGENT_INSTALLS's row for this job's type,
+        never anything the controller sent."""
+        how = AGENT_INSTALLS.get(job.job.get("type") or "")
+        if not how:
+            job.say("refused: no coding agent is installed by this job\n")
+            return "failed", 78
+        product, cmd = how["product"], how["command"]
+        who_name = self.session_account()
+        env = dict(sdk_env(self.state))
+        try:
+            who = self.as_user(env, who_name)
+        except RuntimeError as e:
+            job.say(f"refused: {e}\n")
+            return "failed", 78
+        if not who_name:
+            job.say(f"refused: this node reports no session account, so there is nowhere for {product} to go\n")
+            return "failed", 78
+        if not who:
+            env.update({"HOME": os.path.expanduser("~"), "USER": who_name, "LOGNAME": who_name})
+        home = env.get("HOME") or os.path.expanduser("~")
+        pin_dir = os.path.join(AGENTS_DIR, how["id"])
+        if spec.get("action") == "remove":
+            gone = []
+            for path in (os.path.join(pin_dir, cmd), os.path.join(home, how["bin"])):
+                if os.path.lexists(path):
+                    with contextlib.suppress(OSError):
+                        os.unlink(path)
+                        gone.append(path)
+            job.say(("removed " + ", ".join(gone)) if gone else f"{product} was not installed here")
+            job.say("\n")
+            self.hello_again(f"{product} was removed")
+            return "succeeded", 0
+        env["PATH"] = ":".join([os.path.join(home, ".local", "bin"), env.get("PATH") or "/usr/local/bin:/usr/bin:/bin"])
+        env.setdefault("LANG", "C.UTF-8")
+        for k, v in how["env"].items():
+            env[k] = v.format(home=home)
+        want = str(spec.get("to") or "")
+        if want and re.fullmatch(r"\d+\.\d+\.\d+", want):
+            env[how["pin"][0]] = how["pin"][1].format(v=want)
+        stub = os.environ.get(f"BUILDERBOT_{how['id'].upper()}_INSTALLER")
+        argv = ["bash", stub] if stub else ["bash", "-c", how["script"]]
+        job.say(f"installing {product} for {who_name}" + (f" ({want} is out)" if want else "") + "\n")
+        try:
+            job.proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                        cwd=home if os.path.isdir(home) else "/tmp", env=env,
+                                        start_new_session=True, close_fds=True, **who)
+        except (OSError, ValueError) as e:
+            job.say(f"could not start the installer: {e}\n")
+            return "failed", 70
+        deadline = time.monotonic() + int(spec.get("timeout") or 900)
+        reader = pump(job, job.proc.stdout)
+        while reader.is_alive():
+            reader.join(0.5)
+            if job.pending:
+                job.flush()
+            if time.monotonic() > deadline:
+                job.say("the installer did not finish in time\n")
+                job.cancel()
+                return "failed", 75
+        code = job.proc.wait()
+        job.proc = None
+        if code != 0:
+            job.say(f"the installer exited {code}\n")
+            return "failed", code
+        exe = os.path.join(home, how["bin"])
+        src = os.path.realpath(exe) if os.access(exe, os.X_OK) else ""
+        if not src:
+            job.say(f"installed, but no {cmd} to run at ~/{how['bin']}\n")
+            return "failed", 70
+        out, dead = _probe([src, "--version"], timeout=20)
+        if dead:
+            job.say(f"installed, but it does not run: {dead}\n")
+            return "failed", 70
+        m = re.search(r"(\d+\.\d+\.\d+)", out)
+        ver = m.group(1) if m else out.split("\n")[0].strip()[:40]
+        if os.geteuid() == 0:
+            try:
+                os.makedirs(pin_dir, mode=0o755, exist_ok=True)
+                tmp = os.path.join(pin_dir, cmd + ".new")
+                shutil.copy2(src, tmp)
+                os.chown(tmp, 0, 0)
+                os.chmod(tmp, 0o755)
+                os.replace(tmp, os.path.join(pin_dir, cmd))
+                job.say(f"pinned {ver} at {pin_dir}/{cmd}, root-owned: a session runs this copy and cannot change it\n")
+            except OSError as e:
+                job.say(f"installed {ver} for {who_name}, but could not pin it: {e}\n")
+        else:
+            job.say(f"installed {ver} for {who_name} (the agent is not root here, so the account's own copy is what runs)\n")
+        self.session_renew()
+        job.say(f"{product} {ver} is what a session here runs now\n")
+        self.hello_again(f"{product} was updated")
+        return "succeeded", 0
+
     def claude_update(self, job, spec):
         """Install the current Claude Code for the SESSION account, and pin it
         (claudecode.py on the controller). Queued by an administrator's press
@@ -1012,10 +1116,11 @@ class SessionsMixin:
                 f"{', '.join(sorted(have)) or '?'}); firewalld rules replaced")
 
     def session_idle_reap(self):
-        """End this node's Claude sessions past the idle rule: the
-        controller's idle.py, enforced here from node.json. Claude sessions
-        by name (claude-<project>, u_xxxx~claude-<project>), by tmux's own
-        session_activity, once per minute."""
+        """End this node's agent sessions past the idle rule: the
+        controller's idle.py, enforced here from node.json. An agent's
+        sessions by name (claude-<project>, u_xxxx~claude-<project>, the
+        prefixes in AGENT_PREFIXES), by tmux's own session_activity, once
+        per minute."""
         limit = self.state.get("session_idle_minutes") or 0
         if limit <= 0 or time.time() - getattr(self, "_idle_at", 0) < IDLE_UNIT:
             return
@@ -1029,8 +1134,8 @@ class SessionsMixin:
                 last = float(act.strip())
             except ValueError:
                 continue
-            claude = name.startswith("claude-") or "~claude-" in name
-            if claude and time.time() - last > limit * IDLE_UNIT:
+            base = name.split("~", 1)[1] if "~" in name else name
+            if base.startswith(AGENT_PREFIXES) and time.time() - last > limit * IDLE_UNIT:
                 log(f"sessions: ending {name} (idle {limit} minute(s), the controller's rule)")
                 self._tmux(["kill-session", "-t", "=" + name])
 

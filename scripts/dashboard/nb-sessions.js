@@ -27,10 +27,10 @@ function convRows(project, rows, theirs = false){
   return `<div class="cvlogs">${rows.map(r => `
     <div class="artrow">
       <div class="grow">
-        <div class="top"><b>${esc(fmtTime(r.at * 1000))}</b> <span class="dim">${esc(ago(r.at))} · ${esc(size(r.bytes))}${
+        <div class="top"><b>${esc(fmtTime(r.at * 1000))}</b> <span class="pill cvagent" title="the coding agent this conversation is with">${esc(agentById(r.agent)?.name || "Claude")}</span> <span class="dim">${esc(ago(r.at))} · ${esc(size(r.bytes))}${
           theirs ? ` · ${esc(r.by || "")}'s` : ""}</span>${r.shared ? ` <span class="pill">visible to every session</span>` : ""}</div>
         ${r.first ? `<div class="dim first">${esc(r.first)}</div>` : ""}</div>
-      <div class="acts actbar">${theirs ? "" : `<button type="button" data-cvresume="${esc(r.id)}" data-cvat="${esc(String(r.at))}">Resume</button>`}<button type="button" data-cvread="${esc(r.id)}">Read</button><a class="btn" href="/api/transcript?project=${encodeURIComponent(project)}&id=${encodeURIComponent(r.id)}&tz=${encodeURIComponent(tz)}" download>Download</a>${
+      <div class="acts actbar">${theirs ? "" : `<button type="button" data-cvresume="${esc(r.id)}" data-cvat="${esc(String(r.at))}" data-cvagent="${esc(r.agent || "claude")}">Resume</button>`}<button type="button" data-cvread="${esc(r.id)}">Read</button><a class="btn" href="/api/transcript?project=${encodeURIComponent(project)}&id=${encodeURIComponent(r.id)}&tz=${encodeURIComponent(tz)}" download>Download</a>${
         theirs ? "" : actMore([
           `<button type="button" data-cvshare="${esc(r.id)}" data-on="${r.shared ? "" : "1"}">${r.shared ? "Make private" : "Make visible"}</button>`,
           `<button type="button" class="danger" data-cvdel="${esc(r.id)}">Delete</button>`], true)}</div>
@@ -83,7 +83,7 @@ function nbSessionsView({$, nb, project, root}){
     });
     list.querySelectorAll("[data-cvread]").forEach(b => b.onclick = () => openConversation(project, b.dataset.cvread));
     // Go on with this one: the project's chooser opens on it (resumeConversation).
-    list.querySelectorAll("[data-cvresume]").forEach(b => b.onclick = ev => resumeConversation(project, b.dataset.cvresume, +b.dataset.cvat, ev));
+    list.querySelectorAll("[data-cvresume]").forEach(b => b.onclick = ev => resumeConversation(project, b.dataset.cvresume, +b.dataset.cvat, ev, b.dataset.cvagent));
   }
   // Delete, Make visible and Make private: a person's, on the press.
   async function act(b, id, action){

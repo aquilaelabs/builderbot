@@ -1,6 +1,6 @@
 // The notebook's Permissions view: everything a session may do on this
 // project, in one place (the operator, 22 Oct: the dials were split between
-// the Settings view's Claude may and the Git view's push policy). Beside
+// the Settings view's Agents may and the Git view's push policy). Beside
 // Overview and Settings in the Overview group.
 // One classic script beside index.html, the shape tab-*.js has (docs/nodes.md
 // §13): same page, same global scope, one file per notebook view (R60).

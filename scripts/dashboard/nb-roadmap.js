@@ -162,10 +162,11 @@ function nbRoadmapView({$, nb}){
     // ...and the release it is meant for, where one is set (the operator,
     // 21 Oct).
     // A step meant for a release of its own says so (R108); one with none
-    // goes with its item and carries no tag.
+    // goes with its item and carries no tag. An item an agent put here
+    // names that agent (R95).
     const tags = idx >= 0 ? (st.target ? `<span class="tag ver" title="this step is meant to ship in ${esc(st.target)}">for ${esc(st.target)}</span>` : "")
       : (r.target ? `<span class="tag ver" title="meant to ship in ${esc(r.target)}">for ${esc(r.target)}</span>` : "")
-      + (r.by === "claude" ? `<span class="tag who" title="Claude put this here">claude</span>` : "");
+      + (r.by === "claude" ? `<span class="tag who" title="${esc(agentAsker(r))} put this here">${esc(agentAsker(r).toLowerCase())}</span>` : "");
     // In reorder mode the row's three controls are replaced rather than joined:
     // five buttons and a number do not fit a phone, and moving things about is
     // not something anybody does at the same time as sending them.
@@ -1141,7 +1142,7 @@ function nbRoadmapView({$, nb}){
       <summary><div class="roadmap"><span class="n id">R${r.id}</span> <span class="body"><span class="txt">${esc(r.text || "")}</span>
         <span class="sub dim">done ${r.done_at ? esc(when(r.done_at)) : ""}${(() => { const v = shippedIn(r.done_at, nb.roadmapReleases);
           return v ? ` · in ${esc(v)}` : ""; })()}</span></span></div></summary>
-      ${factGrid([["Added", r.added ? `${rmDay(r.added)}, by ${r.by === "claude" ? "Claude" : "you"}` : ""],
+      ${factGrid([["Added", r.added ? `${rmDay(r.added)}, by ${r.by === "claude" ? agentAsker(r) : "you"}` : ""],
                   ["Target", r.target || ""],
                   ["Finished", r.done_at ? `${rmDay(r.done_at)}${r.done_by ? `, by ${r.done_by === "claude" ? "Claude" : r.done_by === "you" ? "you" : r.done_by}` : ""}` : ""],
                   ["Shipped in", (() => { const v = shippedIn(r.done_at, nb.roadmapReleases);

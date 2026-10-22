@@ -13,6 +13,7 @@ answers (payload, status), a file as {path or body, ctype, headers}.
 import base64
 import re
 
+import agents
 import claudegrant
 import db
 import ftp
@@ -442,11 +443,25 @@ def _logins(nid, rows):
         home = home_for(uid)
         if not home:
             continue
-        email = " ".join(str(r.get("email") or "").split())[:120]
-        on = claudegrant.on(home, nid)
-        if email:
-            if on.get("email") == email:
-                continue                       # already what we have
-            claudegrant.report(home, nid, email, str(r.get("plan") or ""))
-        elif on:
-            claudegrant.report(home, nid, "", signed_in=False)
+        _login(home, nid, "claude", r.get("email"), r.get("plan"))
+        # ...and the other coding agents' (R95 step 3), on an agent recent
+        # enough to say: a row without the key says nothing about them.
+        if isinstance(r.get("agents"), dict):
+            for a in agents.TABLE:
+                if a.id == "claude" or not a.login_job:
+                    continue
+                got = r["agents"].get(a.id) if isinstance(r["agents"].get(a.id), dict) else {}
+                _login(home, nid, a.id, got.get("email"), got.get("plan"))
+
+
+def _login(home, nid, agent, email, plan):
+    """One account's sign-in to one agent on one node, written only when it
+    moved."""
+    email = " ".join(str(email or "").split())[:120]
+    on = claudegrant.on(home, nid, agent)
+    if email:
+        if on.get("email") == email:
+            return                             # already what we have
+        claudegrant.report(home, nid, email, str(plan or ""), agent=agent)
+    elif on:
+        claudegrant.report(home, nid, "", signed_in=False, agent=agent)

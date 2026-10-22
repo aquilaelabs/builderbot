@@ -1291,9 +1291,9 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     await page.click('#rnCancel');
     // Nothing on it runs Claude Code (the operator, 11 Oct): no section on
     // its row, no row on its Toolchains tab.
-    await page.waitForFunction(sel => !document.querySelector(sel + ' details[data-sect="nodes:claude"]'), ROW, { timeout: 10000 }).catch(() => {});
+    await page.waitForFunction(sel => !document.querySelector(sel + ' details[data-sect="nodes:agents"]'), ROW, { timeout: 10000 }).catch(() => {});
     const tcHost = await napi('/api/toolchains?node=' + minted.id);
-    ok(!(await page.$(`${ROW} details[data-sect="nodes:claude"]`)) && !(tcHost.machine || []).some(m => m.name === 'claude-code'),
+    ok(!(await page.$(`${ROW} details[data-sect="nodes:agents"]`)) && !(tcHost.machine || []).some(m => m.name === 'claude-code'),
        `a hosting-only node's row has no Claude Code section, and its Toolchains page no Claude Code row (${JSON.stringify((tcHost.machine || []).map(m => m.name))})`);
     // A root command on it, by name, for a project that hosts containers
     // there (the operator, 11 Oct): refused for a project that does not,
@@ -3578,23 +3578,24 @@ ok(page.errors.length === 0,
     if (!went) break;
   }
   ok(!went, `the bell's link names the node and shuts the bell${went ? ` (${went})` : ''}`);
-  await page.waitForSelector('#tcClaudeTick', { timeout: 30000 });
-  ok(true, '...and its link opens the Toolchains page on that node, Claude Code\'s row there');
+  await page.waitForSelector('.tctab .tcagents a.pagelink', { timeout: 30000 });
+  ok(true, '...and its link opens the Toolchains page on that node, which points at the Agents page for Claude Code (R95)');
   ok(st.claude_code?.nodes?.[en.id]?.behind === true && st.claude_code.latest === '1.2.0',
      '...and the status payload says which node is behind');
   await page.evaluate(() => openNodesTab());
   await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
   await pickNode(page, en.id);
   const ROWC = `.nodestab .ndrow[data-node="${en.id}"]`;
-  await page.waitForFunction(sel => /1\.0\.0, 1\.2\.0 is out/.test(document.querySelector(sel)?.textContent || ''), ROWC, { timeout: 15000 });
-  ok(!await page.$(`${ROWC} [data-nd="claude-update"]`) && !!await page.$(`${ROWC} [data-ndtc="${en.id}"]`),
-     'the Nodes page says the version against the latest and points at the Toolchains page, with no update of its own');
-  await page.evaluate(id => openToolchainsOn(id), en.id);
-  await page.waitForSelector('#tcClaudeTick', { timeout: 15000 });
-  const tcRowText = await page.$eval('#tcClaudeTick', i => i.closest('.tc').textContent.replace(/\s+/g, ' '));
-  ok(/Claude Code/.test(tcRowText) && /1\.0\.0/.test(tcRowText) && /update available: 1\.2\.0/.test(tcRowText)
-     && await page.$eval('#tcClaudeTick', i => !i.disabled),
-     `the node's Toolchains page has a Claude Code row: its version, the update out, and a tick to install it (${tcRowText.slice(0, 120)})`);
+  await page.waitForFunction(sel => /Claude installed/.test(document.querySelector(sel + ' [data-sect="nodes:agents"]')?.textContent || ''), ROWC, { timeout: 15000 });
+  ok(!await page.$(`${ROWC} [data-nd="claude-update"]`) && !!await page.$(`${ROWC} [data-ndag="${en.id}"]`),
+     'the Nodes page says which coding agents are installed there in one line and points at the Agents page, with no update of its own (R95)');
+  await page.evaluate(id => openAgentsOn(id), en.id);
+  const AGC = `.agentstab [data-agnode="${en.id}"] [data-sect="agents:claude"]`;
+  await page.waitForSelector(`${AGC} [data-agact="install"]`, { timeout: 15000 });
+  const tcRowText = await page.$eval(AGC, s => s.textContent.replace(/\s+/g, ' '));
+  ok(/Claude Code/.test(tcRowText) && /1\.0\.0, 1\.2\.0 is out/.test(tcRowText)
+     && await page.$eval(`${AGC} [data-agact="install"]`, b => !b.disabled && b.textContent.trim() === 'Update'),
+     `the node's Agents page has a Claude section: its version, the update out, and Update (${tcRowText.slice(0, 120)})`);
   await page.evaluate(() => openNodesTab());
   // A session's token gets nowhere near it.
   const tok = execFileSync('python3', ['-c', `
@@ -3697,7 +3698,7 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
   census.session.claude = '';
   await hello();
   const none = (await napi('/api/status')).projects.find(p => p.name === 'beta')?.held || '';
-  ok(/Claude Code is not installed on clbox: its Toolchains page installs it/.test(none),
+  ok(/Claude Code is not installed on clbox: its Agents page installs it/.test(none),
      `a node with no Claude Code holds its projects' Claude button, saying where to install it (${none.slice(0, 80)})`);
   // ...and the button is Install Claude, opening that node's Toolchains,
   // with no line under it (the operator, 21 Oct).
@@ -3714,8 +3715,8 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
   });
   ok(inst.label === 'Install Claude' && inst.node === en.id && !inst.start && !inst.note,
      `...its button is Install Claude in place of Start Claude, nothing under it (${JSON.stringify(inst)})`);
-  await page.waitForFunction(id => tcNode === id && tabs.some(t => t.kind === 'toolchains'), en.id, { timeout: 15000 });
-  ok(true, '...and a press opens the Toolchains page on that node');
+  await page.waitForFunction(id => agNode === id && tabs.some(t => t.kind === 'agents'), en.id, { timeout: 15000 });
+  ok(true, '...and a press opens the Agents page on that node (R95)');
   await napi('/api/prefs', { project: 'beta', node: '' });
   await napi('/api/v1/nodes', { action: 'retire', id: en.id });
 }

@@ -37,11 +37,11 @@ and a session keeps going.
    identity your commits will carry. No session starts until these are set,
    because a commit with no author is a mess somebody else has to clean up.
 3. **Install Claude Code, then sign in to Claude**, on each machine your
-   projects work on. A node has no Claude Code until the **Toolchains**
-   page (under Build, with that node picked) installs it: tick Claude Code,
-   press Install selected. Then press a project's **Start Claude**: where you are not signed in on its node yet,
-   it offers **Sign in on** that node, which opens the node's page at its
-   Claude Code section. Press Sign in there, open the link, and paste the
+   projects work on. A node has no Claude Code until the **Agents**
+   page (under Build, with that node picked) installs it: press Install
+   under Claude. Then press a project's **Start Claude**: where you are not signed in on its node yet,
+   it offers **Sign in on** that node, which opens that node's Agents page at
+   its Claude section. Press Sign in there, open the link, and paste the
    code back. The login stays on that machine and is yours: it is not
    shared with the other people here, nobody else's sessions use it, and
    another node asks for its own the first time you work there.
