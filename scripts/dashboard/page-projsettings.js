@@ -867,7 +867,7 @@ function rnDrawFtp(){
   if (!v.may_set){
     $("rnFtpField").hidden = !v.on && !v.editor;
     box.innerHTML = `${v.on ? `<div>Served over FTPS${where ? `, at ${esc(where)}` : ""}.</div>` : ""}
-      ${v.editor ? `<div>Open in an editor with BuilderBot for VS Code.</div>` : ""}
+      ${v.editor ? `<div>Open from your own machine: BuilderBot for VS Code and the Windows companion.</div>` : ""}
       <div class="hint">Sign in with your BuilderBot name and password, if you were given access.
         Who may is set by BuilderBot's owner, or a role that grants ftp.</div>`;
     return;
@@ -883,8 +883,8 @@ function rnDrawFtp(){
     : `<div class="hint">Starting on its node.</div>`;
   box.innerHTML = `
     <label class="ndcap"><input type="checkbox" id="rnFtpOn"${on ? " checked" : ""}> Serve this project's files over FTPS</label>
-    <label class="ndcap"><input type="checkbox" id="rnFtpEditor"${editor ? " checked" : ""}> Open them in an editor with BuilderBot for VS Code</label>
-    ${editor ? `<div class="hint">Through this controller, as each person's own account: no share and no port of its own.</div>` : ""}
+    <label class="ndcap"><input type="checkbox" id="rnFtpEditor"${editor ? " checked" : ""}> Open them from people's own machines: BuilderBot for VS Code and the Windows companion</label>
+    ${editor ? `<div class="hint">Through this controller, as each person's own account: everyone on the project gets what their roles' File access gives, and a choice on the list below narrows it.</div>` : ""}
     ${v.node || !on ? "" : `<div class="hint bad">It has no node to run on: pick one under Nodes.</div>`}
     <div class="logdays setrow ctlrow"${on ? "" : " hidden"}><label class="ndcap" for="rnFtpPort">Port<span class="help" data-help="the port and the ${v.span - 1} after it, which carry the data; projects on one node are kept ${v.span} ports apart" tabindex="0">?</span></label>
       <input id="rnFtpPort" type="number" min="1024" max="65526" step="1" inputmode="numeric" value="${esc(String(port))}" aria-label="the port its FTP server listens on">

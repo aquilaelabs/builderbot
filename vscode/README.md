@@ -8,15 +8,12 @@ nothing the dashboard would not let you do.
 
 ## Before you start
 
-A project opens in an editor only when its settings allow it. In the
-project's settings, under **File access**:
-
-1. Tick **Open them in an editor with BuilderBot for VS Code**.
-2. Give each person **Read** or **Read and write**.
-
-Your roles must also include **File access** on that project. A role that
-gives only Read keeps you read-only whatever the list says. Only BuilderBot's
-owner, or a role that grants ftp, can change these settings.
+Every project you are on opens, as far as your roles' **File access** on it
+goes: a role with Write opens it read and write, one with Read opens it
+read-only, and a role without File access does not open it. A project's
+owner can close it to editors in the project's settings, under **File
+access**, and a choice made for a person on that list narrows what their
+roles give.
 
 ## Install
 

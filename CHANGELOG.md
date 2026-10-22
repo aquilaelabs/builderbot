@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Being on a project is enough for BuilderBot for VS Code and the Windows companion to open it, as far as your roles' File access goes: no grant of your own on the project's list is needed any more, and the companion lists every project you are on, each synced to a folder or not. A project's switch for them is on by default and closes them when turned off. (a0f86af)
+
+### Upgrading
+
+- Every project's switch for VS Code and the Windows companion (Settings, Files) is turned on by the upgrade, so everyone on a project with File access in their roles can open it from their own machine; turn it off on a project that should not be. (a0f86af)
+
 ## 0.6.1: 2026-10-22
 
 ### Added
