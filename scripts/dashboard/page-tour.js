@@ -217,10 +217,30 @@ function tourSampleCard(){
         <span class="more"><button type="button" class="moreb" aria-label="More">⋯</button></span></div></div></div></div></section>`;
 }
 
+// A page that redraws itself on its own poll, not through the panes' draw
+// (VMs), wiped a step's example and left the ring around where it had been
+// (B215): while a step with one shows, a redraw that takes it away puts it
+// back and the ring with it.
+let tourWatch = null;
+function tourKeepSample(on){
+  tourWatch?.disconnect();
+  tourWatch = null;
+  const pane = document.querySelector(TOUR_PANE);
+  if (!on || !pane) return;
+  let queued = false;
+  tourWatch = new MutationObserver(() => {
+    if (queued || !tourKind || $("tourSample") || tourTarget(tourSteps[tourI]?.at)) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; if (tourKind && !$("tourSample")) tourDraw(); });
+  });
+  tourWatch.observe(pane, {childList: true, subtree: true});
+}
+
 function tourDraw(){
   const ring = $("tourRing"), card = $("tourCard");
   const s = tourSteps[tourI], last = tourI === tourSteps.length - 1;
   const el = tourSample(s) || tourTarget(s.at);
+  tourKeepSample(!!s.sample);
   card.innerHTML = `<div class="tourstep">${tourI + 1} of ${tourSteps.length}</div>
     <div class="toursay">${esc(s.say)}</div>
     <label class="ndcap tourall"><input type="checkbox" id="tourAll"> Skip the tour on every page</label>
@@ -275,6 +295,7 @@ function tourGo(d){
 function tourEnd(all){
   const kind = tourKind;
   tourKind = "";
+  tourKeepSample(false);
   $("tourCard").hidden = $("tourRing").hidden = true;
   $("tourSample")?.remove();
   if (!state?.me) return;
