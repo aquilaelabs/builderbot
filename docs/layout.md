@@ -169,6 +169,7 @@ scripts/
     changelog.py                 the user-facing record beside it: categories, and the editor's writes
     artifacts.py                 what a project built: dist/, and what a row may offer
     signing.py                   a project's Android signing keys, kept by the controller, never a session's (R106)
+    releasesign.py               a release's unsigned APK from CI, signed on the controller with the project's sideload key and attached (R106)
     membership.py                a project's owner, whether it is invite only, and the invitations to it
     registry.py                  projects by id (R154): each directory's permanent number and the name it is shown under, in projects.json; a directory is never handed out twice
     busy.py                      whether a node is quiet enough to time anything on, and why not (R108)
