@@ -1720,6 +1720,9 @@ dialog.modal::backdrop{background:transparent}
   margin-bottom:calc(var(--label-gap) - var(--field-gap))}
 .field .field{padding:0}
 .prefrow{gap:var(--field-gap)}
+/* A row of fields straight in a dialog is a band like a .field, inset the
+   same, rather than flush against the dialog's edge (B192). */
+.modal .prefrow:not(.field .prefrow){padding:var(--row-y) var(--row-x)}
 .modal label,.nb label{display:block;font:var(--f-ui);color:var(--dim);
   margin-bottom:var(--label-gap)}
 /* The field skin, once, for EVERY control. This was an allowlist of container
