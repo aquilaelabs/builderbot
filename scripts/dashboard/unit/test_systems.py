@@ -17,6 +17,7 @@ class Offered(unittest.TestCase):
         forges.unvetted_ok = lambda: True
         got = {s["id"]: s for s in systems.offered()}
         self.assertIn("no cloud image", got["void"]["why"])
+        self.assertIn("rolling", got["gentoo"]["why"])
         self.assertIn("subscription", got["rhel"]["why"])
         self.assertNotIn("why", got["ubuntu"])
         forges.unvetted_ok = lambda: False

@@ -35,11 +35,12 @@ SYSTEMS = [
      "vetted": "2026-10-21, R97 on the dev pair: a VM made a node from its cloud image, enrolled; VM host installed and removed; a toolchain installed and removed; nginx run as a container from a compose file; a project synced and a terminal opened through the controller; Uninstall, the machine's own account kept (Arch, kernel 7.2)"},
     {"id": "opensuse", "name": "openSUSE Leap or Tumbleweed", "family": "suse",
      "ids": ["opensuse", "opensuse-leap", "opensuse-tumbleweed", "suse", "sles"],
-     "vetted": "2026-10-21, R97 on the dev pair: a VM made a node from its cloud image, enrolled; a toolchain installed and removed; nginx run as a container from a compose file; a project synced and a terminal opened through the controller; Uninstall, the machine's own account kept (Leap 16.0; VM host wants its full kernel, kernel-default, as its cloud image boots kernel-default-base)"},
+     "vetted": "2026-10-21, R97 on the dev pair: a VM made a node from its cloud image, enrolled; a toolchain installed and removed; nginx run as a container from a compose file; a project synced and a terminal opened through the controller; Uninstall, the machine's own account kept (Leap 16.0 and Tumbleweed, 2026-10-22; VM host wants its full kernel, kernel-default, as its cloud image boots kernel-default-base)"},
     {"id": "alpine", "name": "Alpine Linux", "family": "alpine", "ids": ["alpine"], "vetted": ""},
     {"id": "void", "name": "Void Linux", "family": "void", "ids": ["void"], "vetted": "",
      "why": "not walked: Void publishes no cloud image for a VM to be made from, so it is walked only on a machine of its own"},
-    {"id": "gentoo", "name": "Gentoo", "family": "gentoo", "ids": ["gentoo"], "vetted": ""},
+    {"id": "gentoo", "name": "Gentoo", "family": "gentoo", "ids": ["gentoo"], "vetted": "",
+     "why": "not vetted: a rolling, source-built system whose image changes under it, so a walk would not hold from one release to the next"},
 ]
 DEFAULT = "ubuntu"
 
