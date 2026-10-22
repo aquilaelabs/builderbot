@@ -29,6 +29,14 @@ class Room(unittest.TestCase):
         self.assertEqual([x["what"] for x in r["short"]], ["root"], "the same filesystem is said once")
         self.assertEqual((r["short"][0]["free_gb"], r["mem"], r["key"]), (4.0, None, "room:n1:root"))
 
+    def test_a_vm_s_own_disk_filling_and_the_pool_under_its_reserve(self):
+        n = node("n1", {})
+        n["reported"].update({"vms": [{"name": "bbvm-web-db", "root_fs": [9300, 10000]},
+                                      {"name": "bbvm-web-ok", "root_fs": [2000, 10000]}],
+                              "vm_pool": {"free_mb": 5 * 1024, "total_mb": 200 * 1024}})
+        [r] = self.rows([n])
+        self.assertEqual([x["what"] for x in r["short"]], ["the VM web-db's disk", "where its VM disks grow"])
+
     def test_room_enough_says_nothing_and_an_away_node_is_skipped(self):
         smp = {"disks": {"root": [50 * 1024, 100 * 1024]}, "stores": {}, "store_totals": {}}
         self.assertEqual(self.rows([node("n1", smp), node("n2", {"disks": {"root": [1, 100]}}, live=False)]), [])

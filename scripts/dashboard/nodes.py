@@ -1292,6 +1292,11 @@ def _census(c):
                                # its host (R100), whitelisted field by field.
                                "autostart": v.get("autostart") is True,
                                "hw": _vm_hw(v.get("hw")),
+                               # Its root filesystem as its guest agent says (R110):
+                               # [used MB, total MB], for the bell as it fills.
+                               **({"root_fs": [int(v["root_fs"][0]), int(v["root_fs"][1])]}
+                                  if isinstance(v.get("root_fs"), list) and len(v["root_fs"]) == 2
+                                  and all(isinstance(x, int) and x >= 0 for x in v["root_fs"]) else {}),
                                "iso": str(v.get("iso") or "") if VM_ISO_RE.fullmatch(str(v.get("iso") or "")) else ""})
     vp = c.get("vm_pool") if isinstance(c.get("vm_pool"), dict) else None
     if vp:
@@ -2351,7 +2356,7 @@ def room_short(nid, floor_gb):
             f"under the {floor_gb} GB a node keeps for itself: free some first (its Storage page says what holds it)")
 
 
-def room_attention(floor_gb, mem_pct, label=None):
+def room_attention(floor_gb, mem_pct, label=None, vm_pct=90, pool_keep_gb=10):
     """The bell's rows for a node short of room (R110, the operator, 22
     Oct): a live agent node whose root filesystem, Docker's or a store has
     less free than `floor_gb`, or whose memory has stayed at `mem_pct` or
@@ -2375,6 +2380,19 @@ def room_attention(floor_gb, mem_pct, label=None):
             seen.add((free, total))
             short.append({"what": (label(role) if label else role), "free_gb": round(free / 1024, 1),
                           "total_gb": round(total / 1024, 1)})
+        # ...and its VMs (R110 step 6): one whose own disk is `vm_pct` full
+        # as its guest agent says, and the pool their disks grow into, under
+        # what VM create keeps free there.
+        rep = n.get("reported") or {}
+        for v in rep.get("vms") or []:
+            used, total = (v.get("root_fs") or [0, 0])
+            if total and used * 100 >= total * vm_pct:
+                short.append({"what": f"the VM {v['name'].removeprefix('bbvm-')}'s disk", "free_gb": round((total - used) / 1024, 1),
+                              "total_gb": round(total / 1024, 1)})
+        pool = rep.get("vm_pool") or {}
+        if pool.get("total_mb") and pool.get("free_mb", 0) < pool_keep_gb * 1024 and (pool["free_mb"], pool["total_mb"]) not in seen:
+            short.append({"what": "where its VM disks grow", "free_gb": round(pool["free_mb"] / 1024, 1),
+                          "total_gb": round(pool["total_mb"] / 1024, 1)})
         now = time.time()
         recent = [x for x in samples(n["id"]) if (x.get("at") or 0) >= now - 600 and x.get("mem_mb")]
         mem = None

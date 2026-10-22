@@ -52,6 +52,23 @@ def _state_word(s):
             "crashed": "crashed", "pmsuspended": "suspended"}.get(s, s or "unknown")
 
 
+def guest_root(name):
+    """[used MB, total MB] of a running VM's root filesystem as its guest
+    agent says (R110: a VM's disk watched as it fills), or None where the
+    agent does not answer. libvirt's guestinfo lines: fs.N.mountpoint,
+    fs.N.used-bytes, fs.N.total-bytes."""
+    fs = {}
+    for line in _run(VIRSH + ["guestinfo", name, "--filesystem"], timeout=10).splitlines():
+        k, _, v = line.partition(":")
+        m = re.fullmatch(r"fs\.(\d+)\.(mountpoint|used-bytes|total-bytes)", k.strip())
+        if m:
+            fs.setdefault(m.group(1), {})[m.group(2)] = v.strip()
+    for f in fs.values():
+        if f.get("mountpoint") == "/" and f.get("used-bytes", "").isdigit() and f.get("total-bytes", "").isdigit():
+            return [int(f["used-bytes"]) // 2**20, int(f["total-bytes"]) // 2**20]
+    return None
+
+
 def vms_now():
     """The VMs this machine runs that BuilderBot made (their name prefix), as
     libvirt says, for the census: name, state, the address its network
@@ -91,7 +108,8 @@ def vms_now():
         # Its hardware beyond size (R100), read off its own XML, and whether
         # it starts with its host.
         hw = vmhw.read(_run(VIRSH + ["dumpxml", name, "--inactive"], timeout=10))
-        out.append({"hw": hw, "autostart": info.get("autostart") == "enable",
+        root = guest_root(name) if info.get("state") == "running" else None
+        out.append({"hw": hw, "autostart": info.get("autostart") == "enable", **({"root_fs": root} if root else {}),
                     "screen": bool(screen), "iso": iso if ISO_RE.fullmatch(iso) else "",
                     "name": name, "state": _state_word(info.get("state", "")), "ip": ip,
                     "vcpus": int(info["cpu(s)"]) if info.get("cpu(s)", "").isdigit() else 0,

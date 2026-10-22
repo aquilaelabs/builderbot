@@ -315,6 +315,16 @@ class Agent(unittest.TestCase):
         self.assertEqual(self.av.sums_lookup("d" * 128 + "\n", "alpine.qcow2"), "d" * 128)
         self.assertEqual(self.av.sums_lookup(f"{h} *other.img\n", "missing.img"), "")
 
+    def test_a_running_vm_s_root_filesystem_from_its_guest_agent(self):
+        from unittest import mock
+        said = ("fs.count             : 2\nfs.0.name            : vda15\nfs.0.mountpoint      : /boot/efi\n"
+                "fs.0.used-bytes      : 6\nfs.0.total-bytes     : 10\nfs.1.name            : vda1\n"
+                "fs.1.mountpoint      : /\nfs.1.used-bytes      : 3221225472\nfs.1.total-bytes     : 10737418240\n")
+        with mock.patch.object(self.av, "_run", return_value=said):
+            self.assertEqual(self.av.guest_root("bbvm-web-db"), [3072, 10240])
+        with mock.patch.object(self.av, "_run", return_value="error: Guest agent is not responding"):
+            self.assertIsNone(self.av.guest_root("bbvm-web-db"))
+
     def test_an_image_s_size_is_read_so_a_disk_is_never_smaller(self):
         from unittest import mock
         ran = mock.Mock(stdout=json.dumps({"virtual-size": 21474836480}))
