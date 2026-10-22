@@ -52,6 +52,11 @@ USAGE = ("bb version [--for DIR] "
          "                                     before it stays)\n"
          "bb version [--for DIR] init X.Y.Z    give one its first VERSION\n"
          "bb version policy                    what a session may move here\n"
+         "bb version forward BRANCH            merge a released patch line (0.6.2) into this branch's\n"
+         "                                     later line: its fixes carried, this line's number kept,\n"
+         "                                     the changelog's sections placed by version\n"
+         "bb version backport COMMIT           a fix from a later line onto this patch line, its\n"
+         "                                     changelog entries under this line's Unreleased\n"
          "bb version [--for DIR] release --why \"...\"   tag this commit and publish the release, as\n"
          "                                     Release on the Artifacts view does (Claude may: Tag and\n"
          "                                     publish a release)\n"
@@ -205,6 +210,30 @@ if argv and argv[0] == "line":
     print(f"{b or 'HEAD'}: " + (f"works toward {ln}, so a build here is {version.render(proj)['forms']['semver']}"
                                if ln else f"no line: builds take {tgt or 'no version'} from {version.VERSION_FILE}")
           + ("" if not ln else ("; its bump goes to " + ln)))
+    raise SystemExit(0)
+
+if argv and argv[0] == "forward":
+    # A released patch line merged into this branch's later line (R112 step
+    # 3): its fixes carried, this line's number kept, the changelog stitched.
+    r = version.forward(proj, argv[1] if len(argv) > 1 else "")
+    if r.get("error"):
+        fail(r["error"])
+    print(r.get("said") or "done")
+    for c in r.get("carried", [])[:20]:
+        print(f"  {c}")
+    if r.get("commit"):
+        print(f"committed {r['commit']}")
+    raise SystemExit(0)
+
+if argv and argv[0] == "backport":
+    # A fix made on a later line carried back onto this patch line (R112
+    # step 4), its changelog entries with it.
+    r = version.backport(proj, argv[1] if len(argv) > 1 else "")
+    if r.get("error"):
+        fail(r["error"])
+    print(r.get("said") or "done")
+    if r.get("commit"):
+        print(f"committed {r['commit']}")
     raise SystemExit(0)
 
 if argv and argv[0] == "policy":

@@ -317,6 +317,7 @@ docs/building.md                 builds, tests, CI runners and logs, the scanner
 docs/toolchains.md               the toolchain store, the Toolchains and Emulator pages, the NVIDIA card, Android, the Phone page
 docs/tool-packs.md               tool packs: adding one, a project's Toolchains setting, and writing a bbtool.json
 docs/containers.md               the Containers page and nginx: dev instances, how one is reached, networks, image updates
+docs/versions.md                 versions and release lines: bb version line, forward, backport, a patch line's rules
 docs/vms.md                      the VMs page and bb vm: VM host, the OS catalog, the dial, the limits, the network, snapshots, a VM made a node
 docs/machines.md                 Controller settings, Nodes, Storage, the logs, the Jobs page, a Mac as a node
 docs/people.md                   the first account, Users and Roles, owners and invitations, the chat, your Profile

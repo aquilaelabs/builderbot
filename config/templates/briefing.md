@@ -380,6 +380,15 @@ copy alone, and a release or anything a person pinned; a build named with no
 version is never removed by itself, so name every build with `bb version
 --file`.
 
+A branch works toward a release, its line: a branch named for one
+(claude/0.7.0) by its name, any other by `bb version line X.Y.Z`; builds
+there head for it, and `bb roadmap --target X.Y.Z` lists what is meant for
+it. A line ending above 0 is a patch: only the patch moves, and the
+project's rules named patch say what it may not change, which `bb tests
+preflight` holds. `bb version forward BRANCH` merges a released patch line
+into this later one (its changelog stitched), and `bb version backport
+COMMIT` carries a later line's fix onto the patch line (docs/versions.md).
+
 ## Git
 <!-- BUILDERBOT:TOPIC git: bb git push and its policy, credentials, bb ci-log, what the controller watches in CI -->
 

@@ -435,6 +435,124 @@ def line(project):
     return m[1] if m else ""
 
 
+def line_of(project, branch):
+    """The line another branch works toward, as line() reads this one's."""
+    said = (_git(project, "config", f"branch.{branch}.bbline") or "").strip()
+    if _VER.fullmatch(said):
+        return said
+    m = LINE_RE.search(branch)
+    return m[1] if m else ""
+
+
+def forward(project, source, env=None):
+    """Merge a released patch line into this branch's later line (R112 step
+    3): `source` is the patch line's branch (or its release tag). The merge
+    keeps this line's VERSION, stitches the changelog (changelog.stitch:
+    the patch's dated sections placed by version, its released entries not
+    repeated in this line's Unreleased), and commits naming what it carried.
+    A conflict anywhere else is left in the tree for a person, named."""
+    here = line(project)
+    if not here:
+        return {"error": "this branch has no line: bb version line X.Y.Z first"}
+    src = (source or "").strip()
+    if not src or src.startswith("-"):
+        return {"error": "forward which branch? bb version forward BRANCH"}
+    if _git(project, "rev-parse", "--verify", "--quiet", src + "^{commit}") is None:
+        return {"error": f"{src} is not a branch or tag here"}
+    there = line_of(project, src) or (src.lstrip("vV") if _VER.fullmatch(src.lstrip("vV")) else "")
+    if not there:
+        return {"error": f"{src} has no line: say which with bb version line on it, or forward its tag (v0.6.2)"}
+    if vkey(there) >= vkey(here):
+        return {"error": f"{src} works toward {there}, not before this branch's {here}: forward goes from an older line to a newer one"}
+    if _git(project, "status", "--porcelain", "--untracked-files=no"):
+        return {"error": "the tree has changes not committed: commit or stash them first"}
+    carried = [x for x in (_git(project, "log", "--format=%h %s", f"HEAD..{src}", timeout=30) or "").splitlines() if x.strip()]
+    if not carried:
+        return {"ok": True, "carried": [], "said": f"nothing on {src} that this branch does not have"}
+    cl = changelog.FILE if changelog is not None else "CHANGELOG.md"
+    theirs = _git(project, "show", f"{src}:{cl}") or ""
+    if changelog is not None and changelog.unreleased_text(theirs):
+        return {"error": f"{src} has changelog entries not released yet: release {there} first, "
+                         "so what it carries is dated under its own number"}
+    ours = _git(project, "show", f"HEAD:{cl}")
+    _git(project, "merge", "--no-ff", "--no-commit", src, timeout=120, env=env)
+    if _git(project, "rev-parse", "--verify", "--quiet", "MERGE_HEAD") is None:
+        return {"error": f"git would not start the merge of {src}"}
+    tree = root(project)
+    # This line's number, whatever the patch line's says.
+    if _git(project, "cat-file", "-e", f"HEAD:{VERSION_FILE}") is not None:
+        _git(project, "checkout", "HEAD", "--", VERSION_FILE)
+    carried_titles, dropped = [], []
+    if ours is not None and changelog is not None:
+        text, carried_titles, dropped = changelog.stitch(ours, theirs)
+        (tree / cl).write_text(text, encoding="utf-8")
+        _git(project, "add", "--", cl)
+    left = [f for f in (_git(project, "diff", "--name-only", "--diff-filter=U") or "").splitlines() if f.strip()]
+    said = (f"carried {len(carried)} commit{'s' if len(carried) != 1 else ''} from {src} ({there}) into {here}"
+            + (f"; the changelog gains {', '.join(carried_titles)}" if carried_titles else "")
+            + (f"; {len(dropped)} Unreleased entr{'y' if len(dropped) == 1 else 'ies'} {there} already released taken out" if dropped else ""))
+    if left:
+        return {"ok": False, "carried": carried, "conflicts": left,
+                "error": said + f". The merge is open with conflicts in {', '.join(left)}: resolve them, git add, then git commit"}
+    msg = (f"The {there} line merged forward into {here} (bb version forward)\n\n"
+           + "\n".join(f"- {c}" for c in carried[:60]) + ("\n- ..." if len(carried) > 60 else ""))
+    if _git(project, "commit", "-m", msg, timeout=60, env=env) is None:
+        return {"error": said + ", but the commit failed: the merge is open, commit it by hand"}
+    return {"ok": True, "carried": carried, "sections": carried_titles, "dropped": dropped, "said": said,
+            "commit": _git(project, "rev-parse", "--short=7", "HEAD") or ""}
+
+
+def backport(project, commit, env=None):
+    """A commit from a later line carried back onto this patch line (R112
+    step 4): cherry-picked, this line's VERSION kept, and the changelog
+    entries the commit added put under this line's Unreleased in their own
+    categories rather than merged as text (the two files differ by every
+    release between them). A conflict anywhere else is left for a person."""
+    here = line(project)
+    if not here:
+        return {"error": "this branch has no line: bb version line X.Y.Z on the patch line first"}
+    sha = _git(project, "rev-parse", "--verify", "--quiet", (commit or "").strip() + "^{commit}")
+    if not commit or not sha:
+        return {"error": f"{commit or 'which commit'}? bb version backport COMMIT"}
+    if _git(project, "merge-base", "--is-ancestor", sha, "HEAD") is not None:
+        return {"error": f"{commit} is already on this branch"}
+    if _git(project, "status", "--porcelain", "--untracked-files=no"):
+        return {"error": "the tree has changes not committed: commit or stash them first"}
+    cl = changelog.FILE if changelog is not None else "CHANGELOG.md"
+    added = []
+    if changelog is not None:
+        def unrel(rev):
+            secs = changelog.sections(_git(project, "show", f"{rev}:{cl}") or "")
+            return [(e["text"], e["cat"]) for s in secs if s["title"] == "Unreleased" for e in s["entries"]]
+        before = set(unrel(f"{sha}^"))
+        added = [e for e in unrel(sha) if e not in before]
+    _git(project, "cherry-pick", "--no-commit", sha, timeout=120, env=env)
+    tree = root(project)
+    for f in (VERSION_FILE, cl):
+        if _git(project, "cat-file", "-e", f"HEAD:{f}") is not None:
+            _git(project, "checkout", "HEAD", "--", f)
+    short = _git(project, "rev-parse", "--short=7", sha) or sha[:7]
+    for text, cat in added:
+        changelog.add(tree, text, sha="", cat=cat)
+    if added:
+        _git(project, "add", "--", cl)
+    left = [f for f in (_git(project, "diff", "--name-only", "--diff-filter=U") or "").splitlines() if f.strip()]
+    said = (f"{short} carried back onto {here}"
+            + (f", its {len(added)} changelog entr{'y' if len(added) == 1 else 'ies'} under Unreleased" if added else ""))
+    if left:
+        return {"ok": False, "conflicts": left,
+                "error": said + f". Conflicts in {', '.join(left)}: resolve them, git add, then git commit"}
+    if not _git(project, "diff", "--cached", "--name-only"):
+        _git(project, "cherry-pick", "--abort")
+        return {"error": f"{short} changes nothing on {here}: it is here already in another form"}
+    msg = (_git(project, "log", "-1", "--format=%B", sha) or f"Backport {short}").rstrip()
+    msg += f"\n\n(cherry picked from commit {sha}, bb version backport)"
+    if _git(project, "commit", "-m", msg, timeout=60, env=env) is None:
+        return {"error": said + ", but the commit failed: commit it by hand"}
+    return {"ok": True, "said": said, "entries": [t for t, _ in added],
+            "commit": _git(project, "rev-parse", "--short=7", "HEAD") or ""}
+
+
 def set_line(project, version):
     """Say which release this branch works toward; "" goes back to its name's."""
     b = branch_of(project)
