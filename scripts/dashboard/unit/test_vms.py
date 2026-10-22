@@ -392,7 +392,8 @@ class Agent(unittest.TestCase):
                               "devices": [{"type": "usb", "vendor": "0x046d", "product": "0xc52b"},
                                           {"type": "pci", "addr": "0000:01:00.0", "rom": "0000-01-00.0.rom"}]}, 2, 2048)
         self.assertEqual(why, "")
-        out = hw.apply(x, want, 2, 2048, "enp1s0", "bbvm-n00", "/v/vbios").replace('"', "'").replace(" />", "/>")
+        out = hw.apply(x, want, 2, 2048, "enp1s0", "bbvm-n00", "/v/vbios", fsd=hw.VIRTIOFSD_WRAP).replace('"', "'").replace(" />", "/>")
+        self.assertIn(f"<binary path='{hw.VIRTIOFSD_WRAP}'/>", out, "VM host's wrapper, which maps the VM's uids to the folder's owner")
         self.assertIn("<vcpupin vcpu='0' cpuset='2'/>", out)
         self.assertIn("<memballoon model='virtio'", out)
         self.assertIn("<mac address='52:54:00:12:34:56'/>", out, "its MAC kept, so a DHCP reservation holds")
@@ -442,6 +443,7 @@ class Agent(unittest.TestCase):
         self.assertNotIn("bbvm-n00", n)
         ud = self.av.user_data("db", "builder", [KEY])
         self.assertIn("ssh_pwauth: false", ud)
+        self.assertIn("    uid: 2000", ud, "one uid on every image, the one a shared folder's files are inside")
         # bash brought in where the image has none (Alpine), and the enroll
         # started from sh, which every image has.
         self.assertIn("apk add --no-cache bash sudo", ud)

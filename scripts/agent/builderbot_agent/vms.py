@@ -214,6 +214,9 @@ def user_data(hostname, user, keys, enroll=""):
     boot, then removed, since the token in it is spent."""
     lines = ["#cloud-config", f"hostname: {hostname}", "ssh_pwauth: false", "users:",
              f"  - name: {user}", "    sudo: ALL=(ALL) NOPASSWD:ALL", "    shell: /bin/bash",
+             # One uid on every image, which a shared folder's files are
+             # inside the VM (R100, vmhw.GUEST_UID).
+             f"    uid: {vmhw.GUEST_UID}",
              "    ssh_authorized_keys:"]
     lines += [f"      - {json.dumps(k)}" for k in keys]
     # bash where the image has none (Alpine's): the account's shell, and
@@ -586,7 +589,7 @@ class VmsMixin:
             return "failed", 64
         if hw:
             text = vmhw.apply(text, hw, vcpus, mem, lan=lan or lan_iface(), network=str(spec.get("network") or ""),
-                              vbios_dir=os.path.join(VM_DIR, vmhw.VBIOS_DIR))
+                              vbios_dir=os.path.join(VM_DIR, vmhw.VBIOS_DIR), fsd=vmhw.virtiofsd())
         with open(xml, "w") as f:
             f.write(text)
         job.step("starting it")
@@ -694,8 +697,8 @@ class VmsMixin:
             job.say("refused: this machine's LAN is Wi-Fi, which will not carry a second machine's address\n")
             return False
         if hw.get("share") and not vmhw.virtiofsd():
-            job.say("refused: a shared folder needs virtiofsd, which is not on this machine: "
-                    "press Bring in virtiofsd on VM host's row in the node's Features section\n")
+            job.say("refused: a shared folder needs virtiofsd and VM host's wrapper for it, which are not all on this machine: "
+                    "press Bring in shared folders on VM host's row in the node's Features section\n")
             return False
         if hw.get("share") and not os.path.isdir(hw["share"]["path"]):
             job.say(f"refused: {hw['share']['path']} is not a folder on this node\n")
@@ -725,7 +728,7 @@ class VmsMixin:
             return "failed", 64
         try:
             text = vmhw.apply(xml, hw, vcpus, mem, lan=lan_iface(), network=str(spec.get("network") or ""),
-                              vbios_dir=os.path.join(VM_DIR, vmhw.VBIOS_DIR))
+                              vbios_dir=os.path.join(VM_DIR, vmhw.VBIOS_DIR), fsd=vmhw.virtiofsd())
         except ValueError as e:
             job.say(f"refused: {e}\n")
             return "failed", 65

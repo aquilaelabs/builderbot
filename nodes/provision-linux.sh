@@ -2697,6 +2697,34 @@ vmhost_pkgs() {
         alpine:x86_64) echo "qemu-system-x86_64 qemu-img libvirt-daemon libvirt-qemu ovmf xorriso dnsmasq virtiofsd" ;;
     esac
 }
+# A VM's shared folder (R100) through virtiofsd, which libvirt runs as root
+# and which hands the guest's uids straight through: a file root wrote in
+# the VM was root's in the project, and the VM's own account could write
+# nothing. libvirt starts this in its place: every uid in the VM writes as
+# the folder's owner here, and the folder's files are the VM's account's
+# (uid 2000, which the agent's cloud-init gives it) inside.
+VIRTIOFSD_WRAP=/usr/local/libexec/builderbot-virtiofsd
+vmhost_virtiofsd() {
+    install -d -m 0755 /usr/local/libexec
+    cat > "$VIRTIOFSD_WRAP" <<'WRAP'
+#!/bin/sh
+# BuilderBot's virtiofsd for a VM's shared folder: see vmhost_virtiofsd in
+# provision-linux.sh. libvirt passes --shared-dir; the rest goes through.
+real=$(command -v virtiofsd || ls /usr/libexec/virtiofsd /usr/lib/qemu/virtiofsd 2>/dev/null | head -n 1)
+dir="" prev=""
+for a in "$@"; do
+    [ "$prev" = "--shared-dir" ] && dir="$a"
+    case "$a" in --shared-dir=*) dir="${a#*=}" ;; esac
+    prev="$a"
+done
+[ -n "$dir" ] || exec "$real" "$@"
+u=$(stat -c %u "$dir") g=$(stat -c %g "$dir")
+exec "$real" "$@" \
+    --translate-uid "squash-guest:0:$u:4294967295" --translate-gid "squash-guest:0:$g:4294967295" \
+    --translate-uid "squash-host:0:2000:4294967295" --translate-gid "squash-host:0:2000:4294967295"
+WRAP
+    chmod 0755 "$VIRTIOFSD_WRAP"
+}
 feature_vmhost() {
     local fam pkgs added n
     fam="$(os_family)"
@@ -2729,6 +2757,7 @@ feature_vmhost() {
             # The cached cloud images and each VM's disk, the jobs account's;
             # 0755 so libvirt's own account reaches the disks it is handed.
             install -d -m 0755 -o "$DOCKER_USER" /var/lib/builderbot/vms /var/lib/builderbot/vms/images /var/lib/builderbot/vms/disks
+            vmhost_virtiofsd
             # Run again on a machine that has it (a package the feature has
             # gained since, UEFI's firmware), what it added before is kept.
             [ -f "$FEATURES_DIR/vmhost" ] && added="$(sed -n 's/^packages=//p' "$FEATURES_DIR/vmhost") $added"
@@ -2743,6 +2772,7 @@ feature_vmhost() {
                 [ "${n:-0}" -eq 0 ] || die "${n} VM(s) are on this machine: remove them first, then VM host"
             fi
             say "taking VM host off"
+            rm -f "$VIRTIOFSD_WRAP"
             getent group libvirt >/dev/null 2>&1 && gpasswd -d "$DOCKER_USER" libvirt >/dev/null 2>&1 || true
             rm -rf /var/lib/builderbot/vms
             added="$(sed -n 's/^packages=//p' "$FEATURES_DIR/vmhost")"

@@ -154,7 +154,11 @@ says what it was given.
   carry it).
 - **Shared folder**: a folder of the project, read-only if ticked, seen
   inside the VM through virtiofs: `mount -t virtiofs project /mnt`. It is
-  always inside the project; a dot shares the whole of it.
+  always inside the project; a dot shares the whole of it. Inside, its files
+  are the VM's own account's (uid 2000), and what anyone in the VM writes is
+  the folder owner's on the node, so nothing in the project turns root's.
+  A node whose VM host was installed before this asks for **Bring in shared
+  folders** on its Features row.
 - **Devices passed through**: a USB device by its vendor and product, or a
   PCI device (a GPU, its sound, a controller) by its address. These are an
   administrator's alone, and a PCI device needs the IOMMU on in the node's

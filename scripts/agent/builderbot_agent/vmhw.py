@@ -138,11 +138,19 @@ def _need(parent, tag):
     return el
 
 
+VIRTIOFSD_WRAP = "/usr/local/libexec/builderbot-virtiofsd"
+GUEST_UID = 2000   # the VM's account, whose the shared folder's files are inside (the wrapper's squash-host)
+
+
 def virtiofsd():
-    """Where virtiofsd is, which a shared folder needs, or "": on the PATH
-    on some systems, in libexec or qemu's own folder on others."""
-    return shutil.which("virtiofsd") or next((p for p in ("/usr/libexec/virtiofsd", "/usr/lib/qemu/virtiofsd")
+    """What libvirt runs for a shared folder, or "" when this machine lacks
+    a part: VM host's wrapper (provision-linux.sh, vmhost_virtiofsd), which
+    maps every uid in the VM to the folder's owner here, and virtiofsd
+    itself, on the PATH on some systems, in libexec or qemu's folder on
+    others."""
+    real = shutil.which("virtiofsd") or next((p for p in ("/usr/libexec/virtiofsd", "/usr/lib/qemu/virtiofsd")
                                               if os.path.exists(p)), "")
+    return VIRTIOFSD_WRAP if real and os.access(VIRTIOFSD_WRAP, os.X_OK) else ""
 
 
 def rom_name(addr):
@@ -150,7 +158,7 @@ def rom_name(addr):
     return addr.replace(":", "-") + ".rom"
 
 
-def apply(xml, hw, vcpus, mem_mb, lan="", network="", vbios_dir=""):
+def apply(xml, hw, vcpus, mem_mb, lan="", network="", vbios_dir="", fsd=""):
     """The domain's XML with `hw` in it: each key given replaces what the XML
     had of it, each left out keeps it."""
     ET.register_namespace("bb", "https://builderbot.dev/vm/1")
@@ -205,6 +213,8 @@ def apply(xml, hw, vcpus, mem_mb, lan="", network="", vbios_dir=""):
             root.insert(list(root).index(vcpu_el), mb)
             fs = ET.SubElement(dev, "filesystem", type="mount", accessmode="passthrough")
             ET.SubElement(fs, "driver", type="virtiofs")
+            if fsd:
+                ET.SubElement(fs, "binary", path=fsd)
             ET.SubElement(fs, "source", dir=hw["share"]["path"])
             ET.SubElement(fs, "target", dir=hw["share"]["tag"])
             if hw["share"]["ro"]:
