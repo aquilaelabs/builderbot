@@ -173,7 +173,7 @@ function homeStartHtml(){
   const steps = [
     canNodes ? ["Your first node", !!s.node, `<button type="button" data-hstart="node">Nodes page</button>`] : null,
     ["Your name and email", s.git, `<button type="button" data-hstart="git">Profile</button>`],
-    canNodes ? ["Claude Code on your node", !!s.claude, `<button type="button" data-hstart="claude"${s.node ? "" : " disabled"}>Toolchains</button>`] : null,
+    canNodes ? ["Claude Code on your node", !!s.claude, `<button type="button" data-hstart="claude"${s.node ? "" : " disabled"}>Agents page</button>`] : null,
     ["A first project", s.project, `<button type="button" data-hstart="project">New project</button>`],
   ].filter(Boolean);
   const left = steps.filter(x => !x[1]).length;
@@ -241,7 +241,7 @@ function renderHomeInto(i){
     const k = b.dataset.hstart, s = setupSteps();
     if (k === "node") railGo("machines");
     else if (k === "git") openProfileTab();
-    else if (k === "claude" && s.node) openToolchainsOn(s.node.id);
+    else if (k === "claude" && s.node) openNodeClaude(s.node.id);
     else if (k === "project") openNewProject();
     else if (k === "hide"){ homeStartHidden = true; try{ localStorage.setItem("bb.gsHidden", "1"); }catch(e){ /* private */ } drawPanes(); }
   });
