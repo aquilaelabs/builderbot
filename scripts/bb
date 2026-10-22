@@ -425,8 +425,9 @@ bb wiki save NAME FILE|- [--why "..."]   write a page whole, new or rewritten,
                    save began is refused rather than overwritten
 bb wiki rm NAME [--why "..."]   take a page out, under the same setting
 bb wiki mv OLD NEW   rename one; bb wiki history: the last changes
-bb transcripts     your own conversations with Claude on this project, newest
-                   first, as the Profile page lists them (bb -p NAME for one it reads)
+bb transcripts     your own conversations on this project, from every coding agent
+                   you use, each marked with its agent, newest first, as the
+                   Profile page lists them (bb -p NAME for one it reads)
 bb transcripts show ID [--tz ZONE] [--all]   one of them as text: what was said,
                    every command Claude ran and what it answered; the newest
                    16 MB of a longer one, the whole of it with --all
@@ -2378,7 +2379,7 @@ cmd_wiki() {
 cmd_transcripts() {
     local verb="${1:-list}" auth proj
     case "$verb" in list|show|fetch) ;; -h|--help)
-        echo "bb transcripts [list | show ID [--tz ZONE] [--all] | fetch ID [--into DIR]]: your own conversations with Claude on this project, from the controller"; return 0 ;;
+        echo "bb transcripts [list | show ID [--tz ZONE] [--all] | fetch ID [--into DIR]]: your own conversations on this project, every agent's, from the controller"; return 0 ;;
         *) die "bb transcripts [list | show ID [--tz ZONE] [--all] | fetch ID [--into DIR]]" ;; esac
     proj="$(bb_project)" || die "not inside a project under ${WORKSPACE}; cd into one first"
     auth="$(bb_auth_or_die)"

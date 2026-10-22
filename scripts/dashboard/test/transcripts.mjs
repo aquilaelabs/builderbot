@@ -138,12 +138,12 @@ ok(notRead.status === 400, `a project alpha does not read is not a project to th
 const cli = (...a) => execFileSync('bash', [`${REPO}/scripts/bb`, ...a], { encoding: 'utf8',
   env: { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: token, BB_PROJECT: 'alpha', XDG_CACHE_HOME: `${DIR}/cache-transcripts` } });
 const listed = cli('-p', 'beta', 'transcripts');
-ok(/^your conversations with Claude on beta, newest first:\n  beta-chat-1  /.test(listed) && /Make the beta page blue/.test(listed),
-   `bb -p NAME transcripts lists the account's conversations on a read project (${listed.split('\n')[1]?.trim()})`);
+ok(/^your conversations on beta, every agent's, newest first:\n  beta-chat-1  Claude /.test(listed) && /Make the beta page blue/.test(listed),
+   `bb -p NAME transcripts lists the account's conversations on a read project, each marked with its agent (${listed.split('\n')[1]?.trim()})`);
 const shown = cli('-p', 'beta', 'transcripts', 'show', 'beta-chat-1', '--tz', 'Asia/Tokyo');
 ok(/^Conversation on beta, session beta-chat-1/.test(shown) && /You \(2026-09-28 19:15\):\nMake the beta page blue/.test(shown),
    'bb transcripts show ID prints one, stamped in the zone asked for');
-ok(/^your conversations with Claude on alpha/.test(cli('transcripts', 'list')), 'and with no -p it is the session\'s own project');
+ok(/^your conversations on alpha, every agent's/.test(cli('transcripts', 'list')), 'and with no -p it is the session\'s own project');
 await page.evaluate(async () => { await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', reads: [] }) }); });
 await page.close();
 await done(browser);

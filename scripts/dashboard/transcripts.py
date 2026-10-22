@@ -107,8 +107,12 @@ def mine(uid, projects):
                     continue
                 if st.st_size == 0:
                     continue
+                # Which coding agent's (R95): Claude Code's files are
+                # these; another agent's join the list, marked with theirs,
+                # as their sessions' logs are kept (its step 8). Only ever
+                # this account's own, whichever agent it used.
                 rows.append({"project": project, "id": f.stem, "at": int(st.st_mtime),
-                             "bytes": st.st_size, "first": _first_prompt(f)})
+                             "bytes": st.st_size, "first": _first_prompt(f), "agent": "claude"})
     rows.sort(key=lambda r: r["at"], reverse=True)
     return rows[:MAX_LIST]
 

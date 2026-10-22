@@ -309,8 +309,10 @@ what the project looks like as the operator laid it out on the notebook's
 Design view: `bb design show NAME` for one page, theme or rule
 (`nostromo/hull` for a theme's or a page's own), and `bb design file` prints
 the docs/design-language.md it writes. `bb transcripts` lists this account's
-own earlier conversations with Claude here, and `bb transcripts show ID`
-prints one whole, every command and its answer included.
+own earlier conversations here, from every coding agent it uses (Claude,
+ChatGPT, Copilot), each marked with its agent and never another account's,
+and `bb transcripts show ID` prints one whole, every command and its answer
+included.
 
 The project's wiki is the notebook's Wiki view, for the people who use or
 work on the project: `bb wiki` lists its pages, `bb wiki show NAME` prints

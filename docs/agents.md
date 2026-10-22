@@ -90,6 +90,14 @@ The Nodes page keeps one line per node saying which agents are installed
 there and which you are signed in to, with **Agents**, the way here. A
 project's Start sends a person here when they have no sign-in on its node.
 
+## Your conversations, every agent's
+
+`bb transcripts` in a session lists the asking account's own conversations
+on the project, from every coding agent that account uses, each marked with
+its agent, and never another account's: the controller looks under that
+account's transcripts and nowhere else. Claude Code's are listed today;
+Codex's and Copilot's session logs join the list as R95's step 8 keeps them.
+
 ## What the node reports
 
 The node's agent probes each agent's `--version` as the session account on

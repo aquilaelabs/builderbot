@@ -47,11 +47,13 @@ if verb == "list":
     if not rows:
         print(f"no conversations of yours on {proj} yet")
         raise SystemExit(0)
-    print(f"your conversations with Claude on {proj}, newest first:")
+    print(f"your conversations on {proj}, every agent's, newest first:")
+    names = {"claude": "Claude", "codex": "ChatGPT", "copilot": "Copilot", "open": "Any model"}
     for row in rows:
         when = time.strftime("%d %b %H:%M", time.localtime(int(row.get("at") or 0)))
-        print(f"  {row['id']}  {when}  {size(int(row.get('bytes') or 0)):>7}  {row.get('first') or ''}")
-    print("bb transcripts show ID prints one: what was said, every command Claude ran and what it answered")
+        who = names.get(row.get("agent") or "claude", row.get("agent") or "")
+        print(f"  {row['id']}  {who:<9} {when}  {size(int(row.get('bytes') or 0)):>7}  {row.get('first') or ''}")
+    print("bb transcripts show ID prints one: what was said, every command it ran and what it answered")
     raise SystemExit(0)
 
 if verb == "audit":

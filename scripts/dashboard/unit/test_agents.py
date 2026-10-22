@@ -121,6 +121,29 @@ class Asker(unittest.TestCase):
         self.assertIn("Agents may: Add to roadmap", pending.refusal("roadmap"))
 
 
+class Transcripts(unittest.TestCase):
+    """bb transcripts (the operator, 22 Oct): the asking account's own
+    conversations on the project, each marked with its agent, and never
+    another account's."""
+
+    def test_an_account_lists_its_own_marked_with_the_agent(self):
+        import tempfile
+        import transcripts
+        root = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, root, True)
+        ws = os.path.join(root, "ws")
+        homes = {u: os.path.join(root, "share", u, "projects") for u in ("u_0000aaaa", "u_0000bbbb")}
+        transcripts.configure(workspace=ws, root_for=lambda uid: homes[uid])
+        for uid, sid in (("u_0000aaaa", "mine-1"), ("u_0000bbbb", "theirs-1")):
+            d = os.path.join(homes[uid], (ws + "/alpha").replace("/", "-"))
+            os.makedirs(d)
+            with open(os.path.join(d, sid + ".jsonl"), "w") as f:
+                f.write('{"type":"user","message":{"content":"hello"}}\n')
+        rows = transcripts.mine("u_0000aaaa", ["alpha"])
+        self.assertEqual([(r["id"], r["agent"]) for r in rows], [("mine-1", "claude")])
+        self.assertIsNone(transcripts.raw("u_0000aaaa", "alpha", "theirs-1"))
+
+
 class Copies(unittest.TestCase):
     def test_the_page_s_table_is_this_one(self):
         with open(os.path.join(HERE, "..", "page-agents.js")) as f:
