@@ -74,6 +74,13 @@ function vmRow(v){
     // guest agent inside it tells the node.
     : up && v.hw?.net === "lan" && !v.node_id ? "on the LAN: its address shows once QEMU's guest agent runs inside it"
     : up ? "taking its address" : "";
+  // What its guest agent says of it (R110 step 8, the operator, 22 Oct:
+  // like VMware Tools): its own name, system and kernel, who is signed in,
+  // and its addresses when it has more than the one the reach line says.
+  const g = up ? v.guest || {} : {};
+  const more = (g.ips || []).filter(ip => ip !== v.ip);
+  const inside = [g.hostname, g.os, g.kernel && `kernel ${g.kernel}`, g.users ? `${g.users} signed in` : "",
+                  more.length ? `also at ${more.join(", ")}` : ""].filter(Boolean).map(esc).join(`<span class="sep"></span>`);
   // Made a node (step 14): its row on the Nodes page.
   const asNode = v.node_id ? `<div class="sub dmorigin">a node too: ${pageLink("nodes", "on the Nodes page", `#/machines/nodes/${encodeURIComponent(v.node_id)}`)}</div>` : "";
   const snaps = v.snapshots || [];
@@ -108,6 +115,7 @@ function vmRow(v){
           <div class="name">${esc(v.name)}${vmPill(v)}</div>
           ${origin ? `<div class="sub dmorigin">${origin}</div>` : ""}
           ${reach ? `<div class="sub dmstate${v.ip ? " ok" : ""}">${reach}</div>` : ""}
+          ${inside ? `<div class="sub dmorigin vmguest">${inside}</div>` : ""}
           ${asNode}
           ${vmHwLine(v)}
           ${onLine}

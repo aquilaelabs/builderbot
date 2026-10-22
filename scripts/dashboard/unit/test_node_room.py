@@ -37,6 +37,15 @@ class Room(unittest.TestCase):
         [r] = self.rows([n])
         self.assertEqual([x["what"] for x in r["short"]], ["the VM web-db's disk", "where its VM disks grow"])
 
+    def test_a_vm_s_every_filesystem_and_its_memory_over_ten_minutes(self):
+        now = time.time()
+        n = node("n1", {})
+        n["reported"]["vms"] = [{"name": "bbvm-web-db", "guest": {"fs": [["/", 1000, 10000], ["/var/lib/data", 950, 1000]]}}]
+        ring = [{"at": now - 60 * i, "vm_mem": {"bbvm-web-db": [50, 1000]}} for i in range(4)]
+        [r] = self.rows([n], {"n1": ring})
+        self.assertEqual([x["what"] for x in r["short"]], ["the VM web-db's /var/lib/data", "the VM web-db's memory"])
+        self.assertEqual(r["short"][1]["used_pct"], 95)
+
     def test_room_enough_says_nothing_and_an_away_node_is_skipped(self):
         smp = {"disks": {"root": [50 * 1024, 100 * 1024]}, "stores": {}, "store_totals": {}}
         self.assertEqual(self.rows([node("n1", smp), node("n2", {"disks": {"root": [1, 100]}}, live=False)]), [])

@@ -52,21 +52,59 @@ def _state_word(s):
             "crashed": "crashed", "pmsuspended": "suspended"}.get(s, s or "unknown")
 
 
-def guest_root(name):
-    """[used MB, total MB] of a running VM's root filesystem as its guest
-    agent says (R110: a VM's disk watched as it fills), or None where the
-    agent does not answer. libvirt's guestinfo lines: fs.N.mountpoint,
-    fs.N.used-bytes, fs.N.total-bytes."""
+def guest_facts(name):
+    """What a running VM's QEMU guest agent says of it, the way VMware Tools
+    would (R110 step 8, the operator, 22 Oct): {hostname, os, kernel, ips,
+    users, fs: [[mount, used MB, total MB], ...]}, or {} where the agent does
+    not answer. One guestinfo call; libvirt's lines are key : value."""
+    got = {}
+    for ln in _run(VIRSH + ["guestinfo", name, "--os", "--hostname", "--interface", "--user", "--filesystem"],
+                   timeout=10).splitlines():
+        k, _, v = ln.partition(":")
+        if v:
+            got[k.strip()] = v.strip()
+    if not got:
+        return {}
     fs = {}
-    for line in _run(VIRSH + ["guestinfo", name, "--filesystem"], timeout=10).splitlines():
-        k, _, v = line.partition(":")
-        m = re.fullmatch(r"fs\.(\d+)\.(mountpoint|used-bytes|total-bytes)", k.strip())
+    for k, v in got.items():
+        m = re.fullmatch(r"fs\.(\d+)\.(mountpoint|used-bytes|total-bytes)", k)
         if m:
-            fs.setdefault(m.group(1), {})[m.group(2)] = v.strip()
-    for f in fs.values():
-        if f.get("mountpoint") == "/" and f.get("used-bytes", "").isdigit() and f.get("total-bytes", "").isdigit():
-            return [int(f["used-bytes"]) // 2**20, int(f["total-bytes"]) // 2**20]
-    return None
+            fs.setdefault(m.group(1), {})[m.group(2)] = v
+    ips = [v for k, v in got.items() if re.fullmatch(r"if\.\d+\.addr\.\d+\.addr", k)
+           and not v.startswith(("127.", "::1", "fe80"))]
+    return {"hostname": got.get("hostname", "")[:64], "os": got.get("os.pretty-name", "")[:80],
+            "kernel": got.get("os.kernel-release", "")[:64], "ips": ips[:8],
+            "users": int(got["user.count"]) if got.get("user.count", "").isdigit() else 0,
+            "fs": [[f["mountpoint"][:64], int(f["used-bytes"]) // 2**20, int(f["total-bytes"]) // 2**20]
+                   for f in fs.values() if f.get("mountpoint") and f.get("used-bytes", "").isdigit()
+                   and f.get("total-bytes", "").isdigit() and int(f["total-bytes"]) > 0][:16]}
+
+
+def guest_root(name):
+    """[used MB, total MB] of a running VM's root filesystem, or None."""
+    return next(([u, t] for m, u, t in guest_facts(name).get("fs", []) if m == "/"), None)
+
+
+def vm_memory():
+    """{domain: [usable MB, available MB]} for every running VM BuilderBot
+    made, from the balloon's statistics in one domstats call, for the
+    heartbeat (R110 step 8). A VM whose balloon has no stats period yet is
+    given one, so its next heartbeat has them."""
+    out, cur = {}, ""
+    for ln in _run(VIRSH + ["domstats", "--balloon", "--state-running"], timeout=15).splitlines():
+        m = re.match(r"Domain: '([^']+)'", ln.strip())
+        if m:
+            cur = m.group(1) if DOMAIN_RE.fullmatch(m.group(1)) else ""
+            if cur:
+                out[cur] = {}
+            continue
+        k, _, v = ln.strip().partition("=")
+        if cur and k in ("balloon.usable", "balloon.available") and v.isdigit():
+            out[cur][k.split(".")[1]] = int(v) // 1024
+    for d, st in list(out.items())[:32]:
+        if "usable" not in st:
+            _run(VIRSH + ["dommemstat", d, "--period", "10", "--live"], timeout=10)
+    return {d: [st["usable"], st["available"]] for d, st in out.items() if "usable" in st and st.get("available")}
 
 
 def vms_now():
@@ -108,8 +146,10 @@ def vms_now():
         # Its hardware beyond size (R100), read off its own XML, and whether
         # it starts with its host.
         hw = vmhw.read(_run(VIRSH + ["dumpxml", name, "--inactive"], timeout=10))
-        root = guest_root(name) if info.get("state") == "running" else None
+        facts = guest_facts(name) if info.get("state") == "running" else {}
+        root = next(([u, t] for m, u, t in facts.get("fs", []) if m == "/"), None)
         out.append({"hw": hw, "autostart": info.get("autostart") == "enable", **({"root_fs": root} if root else {}),
+                    **({"guest": facts} if facts else {}),
                     "screen": bool(screen), "iso": iso if ISO_RE.fullmatch(iso) else "",
                     "name": name, "state": _state_word(info.get("state", "")), "ip": ip,
                     "vcpus": int(info["cpu(s)"]) if info.get("cpu(s)", "").isdigit() else 0,
@@ -875,7 +915,7 @@ class VmsMixin:
 
     def _vm_stop(self, job, spec, name, who):
         # Asked to shut down, as a power button; --force pulls the plug.
-        return self._vm_simple(job, name, who, ["destroy", name] if spec.get("force") else ["shutdown", name])
+        return self._vm_simple(job, name, who, ["destroy", name] if spec.get("force") else ["shutdown", name, "--mode", "agent,acpi"])
 
     def _vm_restart(self, job, spec, name, who):
         return self._vm_simple(job, name, who, ["reboot", name])

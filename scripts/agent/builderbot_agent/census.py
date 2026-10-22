@@ -41,7 +41,7 @@ from .sessnet import SESSNET_STATUS, isolation_now
 from .runners import _runner_state, runner_dirs
 from . import storage
 from . import vmhw
-from .vms import isos_now, vm_pool, vms_now
+from .vms import isos_now, vm_memory, vm_pool, vms_now
 
 
 def _sshd_listening():
@@ -735,5 +735,6 @@ class Sampler:
         return {"cpu_pct": round(100.0 * (dt - di) / dt, 1) if dt > 0 else 0.0,
                 "load1": round(load1, 2), "mem_mb": tot, "mem_used_mb": used,
                 "stores": _stores(state.get("stores")), "disks": self._disks(), "running": running,
+                **({"vm_mem": vm_memory()} if shutil.which("virsh") else {}),
                 "cores": os.cpu_count() or 0, "kinds": _proc_kinds(),
                 **gpu_cached()}

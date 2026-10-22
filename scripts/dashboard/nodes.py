@@ -1297,6 +1297,10 @@ def _census(c):
                                **({"root_fs": [int(v["root_fs"][0]), int(v["root_fs"][1])]}
                                   if isinstance(v.get("root_fs"), list) and len(v["root_fs"]) == 2
                                   and all(isinstance(x, int) and x >= 0 for x in v["root_fs"]) else {}),
+                               # ...and the rest its guest agent says (R110 step 8):
+                               # hostname, OS, kernel, addresses, who is signed in,
+                               # every filesystem, whitelisted field by field.
+                               **({"guest": _vm_guest(v["guest"])} if isinstance(v.get("guest"), dict) else {}),
                                "iso": str(v.get("iso") or "") if VM_ISO_RE.fullmatch(str(v.get("iso") or "")) else ""})
     vp = c.get("vm_pool") if isinstance(c.get("vm_pool"), dict) else None
     if vp:
@@ -2340,6 +2344,17 @@ def attention(project_nodes):
     return out
 
 
+def _vm_guest(g):
+    """A VM's guest-agent facts, kept to their shapes."""
+    s = lambda k, n: re.sub(r"[^\w .:+()/@-]", "", str(g.get(k) or ""))[:n]
+    fs = [[re.sub(r"[^\w ./@-]", "", str(f[0]))[:64], int(f[1]), int(f[2])]
+          for f in (g.get("fs") or [])[:16]
+          if isinstance(f, list) and len(f) == 3 and all(isinstance(x, int) and x >= 0 for x in f[1:])]
+    return {"hostname": s("hostname", 64), "os": s("os", 80), "kernel": s("kernel", 64),
+            "ips": [ip for ip in (str(x) for x in (g.get("ips") or [])[:8]) if re.fullmatch(r"[0-9a-fA-F.:]{3,45}", ip)],
+            "users": int(g["users"]) if isinstance(g.get("users"), int) and g["users"] >= 0 else 0, "fs": fs}
+
+
 def room_short(nid, floor_gb):
     """Why a build on `nid` would run out of disk, or "" (R110): Docker's
     filesystem, or the root's where the node did not say Docker's, under
@@ -2369,6 +2384,8 @@ def room_attention(floor_gb, mem_pct, label=None, vm_pct=90, pool_keep_gb=10):
             continue
         smp = (n.get("reported") or {}).get("sample") or {}
         short, seen = [], set()
+        now = time.time()
+        recent_all = [x for x in samples(n["id"]) if (x.get("at") or 0) >= now - 600]
         places = [(r, f, t) for r, (f, t) in (smp.get("disks") or {}).items()]
         places += [(r, f, (smp.get("store_totals") or {}).get(r)) for r, f in (smp.get("stores") or {}).items()]
         for role, free, total in places:
@@ -2385,16 +2402,28 @@ def room_attention(floor_gb, mem_pct, label=None, vm_pct=90, pool_keep_gb=10):
         # what VM create keeps free there.
         rep = n.get("reported") or {}
         for v in rep.get("vms") or []:
-            used, total = (v.get("root_fs") or [0, 0])
-            if total and used * 100 >= total * vm_pct:
-                short.append({"what": f"the VM {v['name'].removeprefix('bbvm-')}'s disk", "free_gb": round((total - used) / 1024, 1),
-                              "total_gb": round(total / 1024, 1)})
+            vn = v["name"].removeprefix("bbvm-")
+            # Every filesystem its guest agent names (R110 step 8), else the
+            # root one an older agent said.
+            fss = (v.get("guest") or {}).get("fs") or ([["/", *v["root_fs"]]] if v.get("root_fs") else [])
+            for mount, used, total in fss:
+                if total and used * 100 >= total * vm_pct:
+                    short.append({"what": f"the VM {vn}'s {'disk' if mount == '/' else mount}",
+                                  "free_gb": round((total - used) / 1024, 1), "total_gb": round(total / 1024, 1)})
+        # ...and a VM's memory as its balloon says, over the same ten minutes.
+        vm_mem = {}
+        for x in recent_all:
+            for d, (usable, avail) in (x.get("vm_mem") or {}).items():
+                if avail:
+                    vm_mem.setdefault(d, []).append(100 - usable * 100 / avail)
+        for d, pcts in sorted(vm_mem.items()):
+            if len(pcts) >= 3 and sum(pcts) / len(pcts) >= mem_pct:
+                short.append({"what": f"the VM {d.removeprefix('bbvm-')}'s memory", "used_pct": round(sum(pcts) / len(pcts))})
         pool = rep.get("vm_pool") or {}
         if pool.get("total_mb") and pool.get("free_mb", 0) < pool_keep_gb * 1024 and (pool["free_mb"], pool["total_mb"]) not in seen:
             short.append({"what": "where its VM disks grow", "free_gb": round(pool["free_mb"] / 1024, 1),
                           "total_gb": round(pool["total_mb"] / 1024, 1)})
-        now = time.time()
-        recent = [x for x in samples(n["id"]) if (x.get("at") or 0) >= now - 600 and x.get("mem_mb")]
+        recent = [x for x in recent_all if x.get("mem_mb")]
         mem = None
         if len(recent) >= 3:
             pct = sum(x.get("mem_used_mb", 0) / x["mem_mb"] for x in recent) / len(recent) * 100
@@ -3372,6 +3401,12 @@ def heartbeat(nid, sample, addr, running=0):
     clean["disks"] = {r: [_mb((disks.get(r) or {}).get("free_mb")), _mb((disks.get(r) or {}).get("total_mb"))]
                       for r in ("root", "docker") if isinstance(disks.get(r), dict)}
     clean["store_totals"] = totals
+    # A running VM's memory as its balloon says, [usable MB, available MB],
+    # for the bell's ten minutes (R110 step 8).
+    vm = s.get("vm_mem") if isinstance(s.get("vm_mem"), dict) else {}
+    clean["vm_mem"] = {str(d)[:63]: [int(v[0]), int(v[1])] for d, v in list(vm.items())[:32]
+                       if re.fullmatch(r"bbvm-[a-z0-9][a-z0-9-]{0,62}", str(d)) and isinstance(v, list) and len(v) == 2
+                       and all(isinstance(x, int) and x >= 0 for x in v)}
     ag = n.get("agent") or {}
     ag["last_seen"] = clean["at"]
     rep = n.get("reported") or {}

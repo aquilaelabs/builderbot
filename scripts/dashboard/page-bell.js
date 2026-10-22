@@ -256,7 +256,8 @@ function attRow(a){
   // A node short of disk or memory (R110): what is short and how much is
   // left, to that node's Storage page, which says what is taking the room.
   if (a.kind === "room"){
-    const parts = [...(a.short || []).map(x => `${x.what} has ${x.free_gb} GB free of ${x.total_gb} GB`),
+    const parts = [...(a.short || []).map(x => x.used_pct != null ? `${x.what} has been ${x.used_pct}% used for ten minutes`
+                                                                  : `${x.what} has ${x.free_gb} GB free of ${x.total_gb} GB`),
                    ...(a.mem != null ? [`its memory has been ${a.mem}% used for ten minutes`] : [])];
     return `<div class="bnote att warn">
       <div class="bt">${esc(a.node)} is running short of room</div>
