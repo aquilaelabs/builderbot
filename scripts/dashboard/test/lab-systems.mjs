@@ -14,6 +14,7 @@
 //
 // Skipped in one line without them, like every lab suite. Slow by nature:
 // each system boots, provisions itself and walks for ten to twenty minutes.
+import { get } from 'node:http';
 import { ok, done, sleep } from './lib.mjs';
 
 const CTL = (process.env.BB_LAB_CONTROLLER || '').replace(/\/$/, '');
@@ -90,7 +91,11 @@ for (const os of SYSTEMS){
       .some(([k, v]) => k === PROJECT && v?.ready), 20 * 60000);
     ok(!!synced, `[${os}] ${PROJECT} syncs there`);
     ok(/README|\.git/.test(await exec(nid, ['sh', '-c', `ls -a /workspace/${PROJECT}`])), `[${os}] ...and its files are on the machine`);
-    const page = await fetch(`${CTL}/term/?arg=sh:1:${PROJECT}`, { headers: { Authorization: auth } }).then(r => r.text()).catch(e => String(e));
+    // node:http, not fetch: undici asserts and takes the process down on ttyd's
+    // large Connection: close page, before the VM below is removed (B196).
+    const page = await new Promise(res => get(`${CTL}/term/?arg=sh:1:${PROJECT}`, { headers: { Authorization: auth } }, r => {
+      let b = ''; r.setEncoding('utf8'); r.on('data', c => { b += c; }); r.on('end', () => res(b)); r.on('error', e => res(String(e)));
+    }).on('error', e => res(String(e))));
     ok(/xterm|ttyd|<html/i.test(page), `[${os}] a terminal there opens through the controller`);
     await api('/api/prefs', { project: PROJECT, node: home, nodes: [home] });
     // Uninstall: the row retired, nothing of BuilderBot's left.
