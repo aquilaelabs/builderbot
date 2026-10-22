@@ -673,6 +673,9 @@ PY
         # session asked, whichever agent it is (Claude Code also sets its
         # own CLAUDECODE), and what a held change names as its asker.
         printf 'export BB_AGENT=%q\n' "$ag"
+        # ...and whose, for the hooks another agent runs (bb-agent-hook),
+        # as claude_scope names it in Claude's.
+        printf 'export BB_AGENT_WHO=%q\n' "${account:-owner}"
         local tok; tok="$(session_token "$proj")"
         [ -z "$tok" ] || printf 'export BB_TOKEN=%q\n' "$tok"
         # ...and beside the launcher, where `bb` can read it at the moment it
@@ -726,6 +729,11 @@ PY
         elif [ "$ag" = copilot ]; then
             [ -z "${LAUNCH_MODEL:-}" ] || printf 'extra+=(--model %q)\n' "$LAUNCH_MODEL"
             [ -z "${LAUNCH_EFFORT:-}" ] || printf 'extra+=(--reasoning-effort %q)\n' "$LAUNCH_EFFORT"
+        fi
+        # Codex trusts a hook by its hash, after a person reviews it; BuilderBot's
+        # own are its guards and run unreviewed, where this Codex has the flag.
+        if [ "$ag" = codex ]; then
+            printf 'if codex --help 2>/dev/null | grep -q -- --dangerously-bypass-hook-trust; then extra+=(--dangerously-bypass-hook-trust); fi\n'
         fi
         # Codex CLI's briefing, read from its file at exec as a TOML string
         # (jq writes the JSON string, which TOML reads as its own), handed
@@ -819,6 +827,50 @@ claude_first_run() {
     [ "$now" = true ] || return 1
     [ "$was" = true ] || CLAUDE_TRUST_ADDED=1
     return 0
+}
+
+# agent_hooks AGENT: BuilderBot's guards as the agent's own hooks (R95 step
+# 6), in the account's home for it, where its every session reads them:
+# Codex CLI's hooks.json, Copilot CLI's hooks/builderbot.json. Each hook is
+# bb-agent-hook with the agent and the event; it takes the project and the
+# account from the session's environment (BB_PROJECT, BB_AGENT_WHO, which
+# the launcher sets), so a session BuilderBot did not start runs none of
+# them. Merged into a hooks file somebody else wrote, never replacing it.
+# The hooks by the name that outlives this bundle, as claude_scope's are.
+agent_hooks() {
+    local ag="$1" hooks bundle f cmd
+    hooks="$(dirname "$(readlink -f "$0")")"
+    case "$hooks" in
+        */.bb/*/scripts/dashboard)
+            bundle="${hooks%/scripts/dashboard}"
+            [ "$(readlink -f "${bundle%/*}/current" 2>/dev/null)" = "$bundle" ] \
+                && hooks="${bundle%/*}/current/scripts/dashboard" ;;
+    esac
+    cmd="$hooks/bb-agent-hook $ag"
+    case "$ag" in
+        codex)
+            f="${CODEX_HOME:-$HOME/.codex}/hooks.json"
+            ( umask 077; mkdir -p "${f%/*}" ) 2>/dev/null || return 1
+            [ -s "$f" ] || printf '{}\n' > "$f"
+            jq --arg c "$cmd" '
+              def ours(ev; t): {hooks: [{type: "command", command: "\($c) \(ev)", timeout: t}]};
+              def mine: (.hooks // []) | any(.command // "" | contains("bb-agent-hook"));
+              .hooks = ((.hooks // {}) | with_entries(.value |= map(select(mine | not))))
+              | .hooks.PreToolUse += [ours("pre"; 120)]
+              | .hooks.UserPromptSubmit += [ours("prompt"; 900)]
+              | .hooks.Stop += [ours("stop"; 3600)]
+              | .hooks.PermissionRequest += [ours("asking"; 15)]
+              | .hooks.PostCompact += [ours("recall"; 30)]' "$f" > "$f.new" 2>/dev/null \
+                && mv -f "$f.new" "$f" ;;
+        copilot)
+            f="${COPILOT_HOME:-$HOME/.copilot}/hooks/builderbot.json"
+            ( umask 077; mkdir -p "${f%/*}" ) 2>/dev/null || return 1
+            jq -n --arg c "$cmd" '
+              def ours(ev; t): [{type: "command", bash: "\($c) \(ev)", timeoutSec: t}];
+              {version: 1, hooks: {preToolUse: ours("pre"; 120), userPromptSubmitted: ours("prompt"; 900),
+                                   agentStop: ours("stop"; 3600), permissionRequest: ours("asking"; 15)}}' \
+                > "$f.new" 2>/dev/null && mv -f "$f.new" "$f" ;;
+    esac
 }
 
 # agent_first_run AGENT DIR: another coding agent's "trust this folder?",
@@ -1428,7 +1480,11 @@ case "$target" in
         # comparing across them compares nothing.
         export BB_TREE="$dir"
         if [ "$agent" != claude ]; then
-            :   # its guards are the view and bb's own (R95 step 6)
+            # Its guards are its own hooks, holding Claude's (R95 step 6).
+            if ! agent_hooks "$agent"; then
+                echo "WARNING: could not write ${agent_product}'s hooks; this session is held by" >&2
+                echo "its view and bb's own checks alone, not by BuilderBot's guards." >&2
+            fi
         elif scope="$(claude_scope "$proj" "$dir")"; then
             cmd+=(--settings "$scope")
         else

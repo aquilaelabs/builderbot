@@ -99,6 +99,27 @@ The Nodes page keeps one line per node saying which agents are installed
 there and which you are signed in to, with **Agents**, the way here. A
 project's Start sends a person here when they have no sign-in on its node.
 
+## The guards
+
+Every guard a Claude session is held by holds for Codex and Copilot too,
+through their own hooks rather than Claude Code's: BuilderBot writes them
+into the account's hooks file for each (Codex's `hooks.json`, Copilot's
+`hooks/builderbot.json`), each calling `bb-agent-hook` with the agent and
+the event, which says the agent's payload again in Claude's shape and runs
+the same hooks in the same order: before a tool the hold while BuilderBot
+updates, the house rules' command guard and the work note; on a prompt the
+relay, the rules and the node's turn limit; at the stop the house rules'
+checks and the turn handed back; on the agent's own permission prompt the
+asking mark. A refusal reaches Codex as Claude's does (exit 2) and Copilot
+as its own `deny`. The hooks act only in a session BuilderBot started; the
+same agent run by hand is untouched. Codex's own hook trust is passed over
+for BuilderBot's where its version has the flag for it.
+
+Not every guard has a place on every agent, and the project's settings
+(Agents may, Coding agents) say which hold for which: Copilot has no hook
+after a summary, so the house rules are not said again then, and neither
+has a search tool for the code map's hint.
+
 ## Your conversations, every agent's
 
 `bb transcripts` in a session lists the asking account's own conversations
@@ -120,9 +141,8 @@ credential of any of them.
 
 ## Not built yet
 
-Resuming a Codex or Copilot conversation, the guards mapped to their hooks, their state in the dock and their
+Resuming a Codex or Copilot conversation, their state in the dock and their
 transcripts, a model and effort kept per agent, the model router and the
-open agent: R95's later steps. Until the guards land, a Codex or Copilot
-session is held by its view and by bb's own checks, not by Claude's hooks.
+open agent: R95's later steps.
 A sign-in with real ChatGPT and GitHub accounts has been walked against
 stubs only; the walk on a real account is the operator's.

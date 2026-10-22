@@ -425,6 +425,9 @@ function rnFillAgents(off = rnPrefWas.agents_off, dflt = rnPrefWas.agent_default
   const was = new Set(String(off || "").split(",").filter(Boolean));
   box.innerHTML = agentsLive().filter(a => a.id !== "claude")
     .map(a => lrow(a.id, a.name, a.product, !was.has(a.id))).join("");
+  // Which guards hold for which agent (R95 step 6), said rather than implied.
+  const g = $("rnAgentGuards");
+  if (g) g.innerHTML = agentsLive().map(a => `<div><b>${esc(a.name)}</b>: ${esc(AGENT_GUARDS[a.id] || "")}</div>`).join("");
   // The one Start opens (R95 step 4): an agent left ticked, Claude first.
   const sel = $("rnAgentDefault");
   const offer = () => {

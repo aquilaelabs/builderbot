@@ -575,6 +575,16 @@ sleep 60
       const toml = existsSync(join(HOMEDIR, '.codex', 'config.toml')) ? readFileSync(join(HOMEDIR, '.codex', 'config.toml'), 'utf8') : '';
       ok(toml.includes(`[projects."${cwt}"]`) && /trust_level = "trusted"/.test(toml),
          '...and its tree answered as trusted, so its first run asks nothing a read-only console cannot answer');
+      // Its guards are its own hooks (R95 step 6): BuilderBot's, for every
+      // event a Claude session has them on, in the account's hooks file.
+      const hk = existsSync(join(HOMEDIR, '.codex', 'hooks.json')) ? JSON.parse(readFileSync(join(HOMEDIR, '.codex', 'hooks.json'), 'utf8')) : {};
+      const cmdOf = ev => (hk.hooks?.[ev] || []).flatMap(e => e.hooks || []).map(h => h.command).join(' ');
+      ok(/bb-agent-hook codex pre$/.test(cmdOf('PreToolUse')) && /bb-agent-hook codex prompt$/.test(cmdOf('UserPromptSubmit'))
+         && /bb-agent-hook codex stop$/.test(cmdOf('Stop')) && /bb-agent-hook codex asking$/.test(cmdOf('PermissionRequest')),
+         `...its guards are Codex's own hooks, written into the account's hooks.json (${Object.keys(hk.hooks || {}).join(', ')})`);
+      const cxRun = readFileSync(join(HOMEDIR, '.cache', 'builderbot', 'u', ownerUid, 'project', proj, 'codex-run.sh'), 'utf8');
+      ok(/export BB_AGENT=codex/.test(cxRun) && /export BB_AGENT_WHO=/.test(cxRun),
+         '...and the launcher names the agent and the account its hooks act for');
       // The model and effort picked at Start ride the argument, each held
       // to Codex's own list (R95 step 9).
       tmuxKill(`codex-${proj}`);
@@ -602,6 +612,11 @@ sleep 60
       const dirs = existsSync(`${cpArgv}.dirs`) ? readFileSync(`${cpArgv}.dirs`, 'utf8') : '';
       ok(alive(`copilot-${proj}`) && cp[0] === '--no-auto-update',
          `signed in, a Copilot session starts, its own updater off (${cp.slice(0, 1).join(' ')})`);
+      const cph = existsSync(join(HOMEDIR, '.copilot', 'hooks', 'builderbot.json'))
+        ? JSON.parse(readFileSync(join(HOMEDIR, '.copilot', 'hooks', 'builderbot.json'), 'utf8')) : {};
+      ok(cph.version === 1 && /bb-agent-hook copilot pre$/.test(cph.hooks?.preToolUse?.[0]?.bash || '')
+         && /bb-agent-hook copilot stop$/.test(cph.hooks?.agentStop?.[0]?.bash || ''),
+         `...and its guards are Copilot's own hooks, in a file of BuilderBot's in its hooks folder (${Object.keys(cph.hooks || {}).join(', ')})`);
       ok(dirs && existsSync(join(dirs, 'AGENTS.md')) && /THE HOUSE RULES/.test(readFileSync(join(dirs, 'AGENTS.md'), 'utf8'))
          && !dirs.startsWith(src),
          `...handed the briefing as an AGENTS.md in a folder of its own, outside the project's tree (${dirs})`);
