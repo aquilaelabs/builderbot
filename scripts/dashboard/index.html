@@ -3431,6 +3431,8 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
   /* ...and one alone is the row (B822): spanning two of six it sat in the
      left third. */
   .tiles > .tile:only-child{grid-column:1 / -1}
+  /* ...over the odd count's span of two, which outranked it (B222). */
+  .tiles:has(> .tile:last-child:nth-child(odd)) > .tile:only-child{grid-column:1 / -1}
   .tiles:has(> .tile:last-child:nth-child(odd)) .tl,
   .tiles:has(> .tile:last-child:nth-child(odd)) .ts{overflow-wrap:anywhere}
   /* ...and a number with its unit wraps at the space rather than being cut
