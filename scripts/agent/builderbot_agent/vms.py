@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import tempfile
 import urllib.request
-from xml.sax.saxutils import escape, quoteattr
+from xml.sax.saxutils import escape, quoteattr  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml (escaping for XML this file writes; nothing is parsed)
 
 from . import vmhw
 from .base import _run
@@ -472,7 +472,7 @@ class VmsMixin:
             return path
         self.own_dir(os.path.dirname(path), who)
         try:
-            with urllib.request.urlopen(sums, timeout=60) as r:  # noqa: S310 (https, checked above)
+            with urllib.request.urlopen(sums, timeout=60) as r:  # noqa: S310 (https, checked above)  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
                 want = sums_lookup(r.read(2_000_000).decode("utf-8", "replace"), fname)
         except OSError as e:
             job.say(f"could not read {iid}'s checksums from {sums}: {e}\n")
@@ -484,7 +484,7 @@ class VmsMixin:
         part = path + ".part"
         job.step(f"downloading {iid}")
         try:
-            with urllib.request.urlopen(url, timeout=60) as r, open(part, "wb") as f:  # noqa: S310
+            with urllib.request.urlopen(url, timeout=60) as r, open(part, "wb") as f:  # noqa: S310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
                 total = int(r.headers.get("Content-Length") or 0)
                 got, said = 0, 0
                 while True:
@@ -878,7 +878,7 @@ class VmsMixin:
     def _vm_iso_download(job, fname, url, part):
         job.step(f"downloading {fname}")
         try:
-            with urllib.request.urlopen(url, timeout=60) as r, open(part, "wb") as f:  # noqa: S310 (https, checked by the caller)
+            with urllib.request.urlopen(url, timeout=60) as r, open(part, "wb") as f:  # noqa: S310 (https, checked by the caller)  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
                 total = int(r.headers.get("Content-Length") or 0)
                 got, said = 0, 0
                 for chunk in iter(lambda: r.read(1 << 20), b""):

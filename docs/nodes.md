@@ -749,6 +749,39 @@ cache size per node with a button to drop it, because the first thing that
 goes wrong with caches is a full disk, and at fleet scale the second thing is
 "which of forty nodes has the poisoned one".
 
+### Room a node keeps for itself
+
+A node is a machine somebody also needs to keep running, so BuilderBot's
+work on it is held short of the whole of it. Controller settings, *Room on
+the nodes*, sets the numbers:
+
+- **Disk kept free** (10 GB by default, or a tenth of a disk smaller than
+  ten times that). Under it, on the root filesystem, Docker's or a store,
+  the bell names the node and what is short, and a build, a test or a
+  container's rebuild there is refused with the numbers. `bb run` is not:
+  it is how room is made. A build also wants as much free as the project's
+  last one took (its workspace, measured by the agent as the job ends and
+  shown on the Artifacts view and the job's row).
+- **Memory warning** (92%): a node or a VM using more than that over ten
+  minutes is on the bell.
+- **Default container memory** (off): a container whose compose file sets
+  no limit gets this one right after it starts.
+
+Every hour a node under twice the floor has Docker's build cache a week old
+and its unused images two weeks old pruned, and the projects' build caches
+no job has used for two weeks cleared (a `cache-clear` job with an age).
+
+**The fence.** The provisioner puts everything BuilderBot runs on a node in
+one cgroup whose memory stops short of the machine's: on systemd,
+`builderbot.slice` (the agent's unit, and with it the sessions and jobs it
+starts, and Docker's containers through `cgroup-parent`); on OpenRC, a
+cgroup of that name made at boot and the agent's own limit; runit has none
+and is said to be unfenced. The reserve outside is a tenth of the memory or
+2 GB, whichever is more, so a runaway build or app is killed inside the
+fence and the system keeps running. A container made before the fence keeps
+its cgroup until it is next recreated. The Storage page says each node's
+fence and what is in it.
+
 ### Toolchains and the toolchain store
 
 Caches answered "how does a node avoid re-downloading what a build pulls";

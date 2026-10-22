@@ -115,6 +115,9 @@ main() {
     # this is the environment of the dashboard, ttyd and every process under
     # the builder account, and it carried every one of them until the review
     # of 26 Sep read this file.
+    # The one secret the dashboard itself needs, as a file only it reads
+    # (lib/boot.sh), written before the rest go from the environment.
+    signing_secret_file
     unset "${SECRET_VARS[@]}"
     if [ "$privileged" -eq 1 ]; then
         exec gosu builder env HOME="$BUILDER_HOME" USER=builder "${cmd[@]}"

@@ -21,6 +21,16 @@ const fileB64 = f => new Promise((ok, bad) => {
   r.readAsDataURL(f);
 });
 
+// How the controller keeps a project's keys (R111 step 2), the Signing
+// view's status line: sealed under the install's signing secret, kept open
+// for want of one, or sealed under one this controller does not have.
+const AT_REST = {
+  sealed: "sealed on the controller under the install's signing secret",
+  mixed: "being sealed under the install's signing secret",
+  open: `<span class="warn">kept unsealed on the controller: SIGNING_SECRET in the secrets folder seals them</span>`,
+  locked: `<span class="bad">sealed under a signing secret this controller does not have: set it as it was, or import each key's backup</span>`,
+};
+
 function nbSigningView({$, nb, project}){
   // Named keys (default first), each with a Play upload slot and a sideload
   // slot, and which of the project's apps (by package) signs with which key.
@@ -28,7 +38,8 @@ function nbSigningView({$, nb, project}){
   // only ever sees aliases and fingerprints. An upload, a removal and a
   // mapping are staged behind their section's Save; Generate, Rotate,
   // Download backup and the backup password act on the press.
-  let keys = null, map = {}, tool = false, why = "", mayBackup = false, locked = false, mayLock = false;
+  let keys = null, map = {}, tool = false, why = "", mayBackup = false, locked = false, mayLock = false, rel = null;
+  let atRest = "";                              // sealed, open, mixed or locked (signing.at_rest)
   let draft = {}, mapDraft = {}, fresh = [], lockOpen = false, pw = {}, adding = false, gen = 0;
 
   async function loadSigning(){
@@ -48,7 +59,8 @@ function nbSigningView({$, nb, project}){
     }
     keys = j.keys || {}; map = j.map || {}; tool = !!j.keytool;
     why = j.why || ""; mayBackup = !!j.may_backup;
-    locked = !!j.backup_locked; mayLock = !!j.may_lock;
+    locked = !!j.backup_locked; mayLock = !!j.may_lock; atRest = j.at_rest || "";
+    rel = j.release || null;
     drawSigning();
   }
 
@@ -113,9 +125,11 @@ function nbSigningView({$, nb, project}){
     // The glance (R109): the keys held and the apps mapped to one, none
     // while it holds no key, whose empty state is said where the keys are.
     const mappedN = Object.values({...map, ...mapDraft}).filter(k => k !== null).length;
+    // ...and under them how the controller keeps them (R111 step 2).
     viewGlance($("sgHint"), !held ? [] : [
       {label: held === 1 ? "key" : "keys", value: held},
-      {label: mappedN === 1 ? "app" : "apps", value: mappedN, omit: !mappedN}]);
+      {label: mappedN === 1 ? "app" : "apps", value: mappedN, omit: !mappedN}],
+      !held ? "" : AT_REST[atRest] || "");
     // Import a backup and New key, the view's adds, the control row's
     // actions with New key the primary (a-notebook/views, R109), the form
     // either opens unrolling under the row.
@@ -179,6 +193,26 @@ function nbSigningView({$, nb, project}){
           aria-label="an app's package"><select id="sgMapKey" aria-label="the key it signs with">${
           names.map(k => `<option>${esc(k)}</option>`).join("")}</select>
         <button type="button" class="link" id="sgMapGo">Map it</button></div>`}</div>`;
+    // Releases (R106): a release's APK is built unsigned in CI and signed
+    // here with the sideload key its app maps to; which key that is, what
+    // would stop it, and how the newest went.
+    const r = rel || {};
+    const relBody = !r.wanted
+      ? `<div class="field"><div class="sub dim">This project's workflows hand over no unsigned APK, so BuilderBot signs none of its releases.
+          A workflow that uploads its unsigned release APK as an artifact named <code>bb-release-apk-TAG</code> has it signed here
+          with the sideload key and attached to the release, with no key or password on GitHub.</div></div>`
+      : `<div class="field" id="sgRel">
+          ${(r.keys || []).map(k => `<div class="rninvite" data-relkey="${esc(k.key)}">${k.package ? `<code>${esc(k.package)}</code> ` : ""}<span class="dim">releases sign with</span>
+            <b>${esc(k.key)}</b> <span class="dim">${esc(signFp(k.sha256))}${k.rotated_from ? `, rotated from ${esc(k.rotated_from)}` : ""}</span></div>`).join("")}
+          ${r.why ? `<div class="notice warn">${esc(r.why)}</div>` : ""}
+          ${(r.failed || []).map(f => `<div class="notice bad">${esc(f.tag)}: ${esc(f.why)}${f.at ? ` <span class="dim">${esc(ago(f.at))}</span>` : ""}</div>`).join("")}
+          ${(r.signed || []).slice(0, 3).map(x => `<div class="sub">${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.tag)}</a>` : esc(x.tag)}:
+            ${esc((x.files || []).join(", "))} signed with ${esc(x.key)} <span class="dim">${esc(signFp(x.cert))}, ${esc(ago(x.at))}</span></div>`).join("")}
+          <div class="sub dim">The release's APK is built unsigned by its workflow and signed here, never in CI: no keystore or password is a GitHub secret.</div>
+          ${why ? "" : `<div class="rnsignbar actbar"><button type="button" class="link" id="sgRelGo">Look for unsigned APKs now</button></div>`}
+        </div>`;
+    const relStatus = !r.wanted ? "off" : r.why ? "blocked" : (r.failed || []).length ? "failed"
+      : (r.keys || []).map(k => k.key).filter((k, i, a) => a.indexOf(k) === i).join(", ") || "ready";
     const keyStatus = key => {
       const s = keys[key] || {}, n = SIGN_ROUTES.filter(([r]) => s[r]).length;
       return n ? `${n} of 2` : "none";
@@ -192,7 +226,9 @@ function nbSigningView({$, nb, project}){
           keyStatus(key), `<div class="field">${SIGN_ROUTES.map(([route, word, about]) => slot(key, route, word, about)).join("")}</div>`
             + (why ? "" : nb.sectBar(`signing:key:${key}`)))).join("")
       + docSection("signing", "apps", "Apps", mapped.length ? `${mapped.length}` : "none",
-          apps + (why ? "" : nb.sectBar("signing:apps")));
+          apps + (why ? "" : nb.sectBar("signing:apps")))
+      + docSection("signing", "releases", "Releases", relStatus, relBody,
+          {cls: r.wanted && (r.why || (r.failed || []).length) ? "warn" : ""});
     wireSections($("sgBox"));
     wire();
     nb.syncSave();
@@ -258,6 +294,13 @@ function nbSigningView({$, nb, project}){
         }
       }
     }
+    const rg = $("sgRelGo");
+    if (rg) rg.onclick = () => pressing(rg, async () => {
+      const j = await (await postJSON("/api/signing", {action: "release-sign", project})).json();
+      if (j.error) return notify(j.error, true);
+      notify(`${projLabel(project)}: looking for unsigned release APKs to sign`);
+      setTimeout(loadSigning, 4000);
+    });
     const lo = $("sgLockOpen");
     if (lo) lo.onclick = () => { lockOpen = !lockOpen; drawSigning(); };
     const lg = $("sgLockGo");

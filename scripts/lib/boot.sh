@@ -38,7 +38,26 @@ BB_RUN_DIR="${BB_RUN_DIR:-/run/builderbot}"
 # inherits, always: there is no switch (SHIELD_SECRETS went with b218077).
 # The publishing tokens a shell on the controller uses; a git token is a
 # project's own, and a runner's is typed on the Nodes tab.
-SECRET_VARS=(NPM_TOKEN UV_PUBLISH_TOKEN)
+# SIGNING_SECRET seals the projects' signing keys at rest (R111): handed to
+# the dashboard as a file of its own in /run below, never kept in /config.
+SECRET_VARS=(NPM_TOKEN UV_PUBLISH_TOKEN SIGNING_SECRET)
+
+# The one secret the dashboard itself needs, the signing secret, as a file
+# only the controller's account reads, in /run (never the state, so a copy
+# of the state holds nothing that opens the keys sealed there), written
+# fresh each start. On a bare-metal install it is among what the wall
+# covers (R90).
+signing_secret_file() {
+    local f=/run/builderbot-signing
+    rm -f "$f"
+    [ -n "${SIGNING_SECRET:-}" ] || return 0
+    if [ "${#SIGNING_SECRET}" -lt 16 ]; then
+        warn "SIGNING_SECRET is shorter than 16 characters, so the signing keys stay unsealed: openssl rand -hex 32 makes one"
+        return 0
+    fi
+    ( umask 077; printf '%s' "$SIGNING_SECRET" > "$f" )
+    chown "$BB_ACCOUNT" "$f" 2>/dev/null || true
+}
 
 # as_account CMD...: CMD as the controller's account, with its groups. gosu
 # where the image has it; setpriv, which every distribution's util-linux

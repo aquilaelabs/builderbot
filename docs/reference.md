@@ -753,6 +753,17 @@ administrator who works on the project.
 | Play upload key | Google Play with Play App Signing: you sign the `.aab` with it, Google re-signs what users download with the key it holds | Play Console resets it |
 | Sideload signing key | an APK you hand out yourself, or that F-Droid publishes from a reproducible build | gone for good: no update reaches an existing install, or anybody can ship one over it |
 
+On the controller every key is sealed at rest once the install has a
+**signing secret**: `SIGNING_SECRET=` (16 characters or more; `openssl rand
+-hex 32` makes one) in an `*.env` file in the root-only secrets folder, as
+`NPM_TOKEN` is. Each keystore and its passwords under `/config/signing` are
+then ciphertext, so a copy of `/config`, or a backup of it, opens no key;
+keys kept from before are sealed at the next start. The secret is never
+written into `/config`: keep it with your other secrets. Lost or changed, the
+sealed keys cannot be opened, the Signing view says so, and each key comes
+back by **Import a backup**; without a secret, the keys are kept unsealed and
+the view says that too. Root on the running controller can still read them.
+
 So a sideload key is downloaded once with **Download backup** and kept
 offline, with its password somewhere apart from it; its row says so in red
 until it has been. A lost backup password is not reset from the dashboard:

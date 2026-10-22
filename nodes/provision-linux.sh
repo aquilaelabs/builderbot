@@ -1121,15 +1121,95 @@ stamp_daemon() {
 }
 have_jq() { command -v jq >/dev/null 2>&1; }
 
+# The fence (R110 step 4): everything BuilderBot runs here (its containers,
+# and the agent with the sessions and jobs it starts) inside one cgroup
+# whose memory stops short of the machine's, so a runaway build or app is
+# killed inside it and the system itself keeps running. The reserve left
+# outside is a tenth of the memory or 2 GB, whichever is more (the 2 GB a
+# VM create already keeps for the node). On systemd, builderbot.slice; on
+# OpenRC, a cgroup of the same name made at boot; runit has no cgroups of
+# its own and is said to be unfenced.
+FENCE=builderbot.slice
+fence_bytes() {
+    local kb keep
+    kb="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null)"
+    [ -n "$kb" ] || return 1
+    keep=$(( kb / 10 > 2097152 ? kb / 10 : 2097152 ))
+    [ "$kb" -gt "$keep" ] || return 1
+    printf '%s' $(( (kb - keep) * 1024 ))
+}
+write_fence() {
+    local max
+    max="$(fence_bytes)" || { warn "could not read this machine's memory: BuilderBot's work is not fenced"; return 1; }
+    case "$INIT" in
+        systemd)
+            cat > "/etc/systemd/system/${FENCE}" <<UNIT
+[Unit]
+Description=BuilderBot: its containers, sessions and jobs, kept short of the whole machine's memory
+
+[Slice]
+MemoryAccounting=yes
+MemoryMax=${max}
+UNIT
+            systemctl daemon-reload ;;
+        openrc)
+            [ -f /sys/fs/cgroup/cgroup.controllers ] || { warn "cgroups v2 is not mounted: BuilderBot's work is not fenced"; return 1; }
+            install -d -m 0755 /etc/local.d
+            cat > "/etc/local.d/${FENCE}.start" <<START
+#!/bin/sh
+# BuilderBot's fence (R110): its containers' cgroup, kept short of the machine.
+mkdir -p /sys/fs/cgroup/${FENCE}
+echo "+memory +pids" > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null
+echo ${max} > /sys/fs/cgroup/${FENCE}/memory.max
+echo "+memory +pids" > /sys/fs/cgroup/${FENCE}/cgroup.subtree_control 2>/dev/null
+exit 0
+START
+            chmod 0755 "/etc/local.d/${FENCE}.start"
+            rc-update add local default >/dev/null 2>&1 || true
+            "/etc/local.d/${FENCE}.start"
+            # The agent's own cgroup, held to the same number by OpenRC.
+            install -d -m 0755 /etc/conf.d
+            printf 'rc_cgroup_settings="memory.max %s"\n' "$max" > /etc/conf.d/builderbot-agent ;;
+        *)
+            warn "${INIT} has no cgroups of its own: BuilderBot's work is not fenced from the system's memory here"
+            return 1 ;;
+    esac
+    say "BuilderBot's work is fenced at $(( max >> 30 )) GB of memory"
+}
+# Docker puts its containers in the fence: by the slice's name where it
+# drives cgroups through systemd, by its path where it writes them itself.
+# Merged into daemon.json as the label is; a container made before this
+# keeps its cgroup until it is next recreated (a rebuild).
+fence_daemon() {
+    local f=/etc/docker/daemon.json parent tmp
+    case "$INIT" in systemd) parent="$FENCE" ;; openrc) parent="/$FENCE" ;; *) return 1 ;; esac
+    [ -s "$f" ] && grep -q "\"cgroup-parent\": *\"$parent\"" "$f" && return 1
+    have_jq || pkg jq >/dev/null 2>&1 || true
+    have_jq || { warn "jq is not available to add cgroup-parent to $f: containers are not fenced"; return 1; }
+    tmp="$(mktemp)"
+    { if [ -s "$f" ]; then cat "$f"; else echo '{}'; fi; } | jq --arg p "$parent" '."cgroup-parent" = $p' > "$tmp" \
+        && install -m 0644 "$tmp" "$f"
+    rm -f "$tmp"
+}
+
+fenced=""
+write_fence && fenced=1
+stamped=""
 if [ "$BESIDE_CONTROLLER" = 1 ]; then
     # The controller's own machine is not a box to be wrecked, and the
-    # manager's root-on-the-far-side actions are not for it (R90).
+    # manager's root-on-the-far-side actions are not for it (R90): the
+    # fence, yes; the sandbox's label, no.
     printf '   not stamped as a sandbox: the controller is on this machine\n'
 elif stamp_daemon; then
+    stamped=1
+fi
+if [ -n "$fenced" ] && fence_daemon; then stamped=1; fi
+if [ -n "$stamped" ]; then
     # Only when it moved: a restart bounces every container on this machine,
     # and doing that on a re-run that changed nothing would be rude.
-    svc_restart docker || warn "docker did not restart; restart it by hand so the label is read"
-    say "stamped this daemon as BuilderBot's sandbox"
+    svc_restart docker || warn "docker did not restart; restart it by hand so its settings are read"
+    if [ "$BESIDE_CONTROLLER" = 1 ]; then say "this daemon's containers are fenced"
+    else say "stamped this daemon as BuilderBot's sandbox"; fi
 fi
 
 # The journal kept across boots (R185): a fresh VPS keeps it in memory only,
@@ -2092,6 +2172,18 @@ cmd_uninstall() {
         fi
         rm -f "$f"
     fi
+    # The fence (R110 step 4): Docker's parent for it out of daemon.json,
+    # then the slice or the boot script and the agent's OpenRC limit.
+    if [ -f /etc/docker/daemon.json ] && have jq && grep -q '"cgroup-parent": *"/\?builderbot.slice"' /etc/docker/daemon.json; then
+        f="$(mktemp)"
+        if jq 'del(."cgroup-parent")' /etc/docker/daemon.json > "$f" 2>/dev/null; then
+            cat "$f" > /etc/docker/daemon.json
+            say "BuilderBot's fence is out of /etc/docker/daemon.json (it takes at docker's next restart)"
+        fi
+        rm -f "$f"
+    fi
+    rm -f /etc/systemd/system/builderbot.slice /etc/local.d/builderbot.slice.start /etc/conf.d/builderbot-agent
+    have systemctl && systemctl daemon-reload >/dev/null 2>&1 || true
     say "removing the accounts and their homes"
     for u in "$session_user" "$DOCKER_USER"; do
         id -u "$u" >/dev/null 2>&1 || continue
@@ -3082,6 +3174,14 @@ AGENT=/usr/local/sbin/builderbot-agent
 # agent's own shutdown already stops what is its to stop: its ttyds, and now
 # its jobs. KillMode=process makes systemd's half match that.
 AGENT_KILLMODE='KillMode=process'
+# The agent in the fence (R110 step 4) with the sessions and jobs it starts,
+# and first for the kernel to take if the machine itself runs out: it comes
+# back by Restart=always, where the system's own services may not.
+if [ "$INIT" = systemd ] && [ -n "${fenced:-}" ]; then
+    AGENT_KILLMODE="${AGENT_KILLMODE}
+Slice=${FENCE}
+OOMScoreAdjust=200"
+fi
 
 AGENT_DESC="BuilderBot node agent - dials in to the controller and runs its jobs"
 if [ -n "$CONTROLLER" ]; then

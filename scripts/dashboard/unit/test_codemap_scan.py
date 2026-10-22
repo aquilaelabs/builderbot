@@ -219,7 +219,7 @@ class Fingerprint(unittest.TestCase):
     def test_the_scanners_version_is_this_files_own_fingerprint(self):
         import hashlib
         self.assertEqual(codemap.SCANNER,
-                         hashlib.sha1(Path(codemap.__file__).read_bytes()).hexdigest()[:12])
+                         hashlib.sha256(Path(codemap.__file__).read_bytes()).hexdigest()[:12])
         with tempfile.TemporaryDirectory() as d:
             Path(d, "a.py").write_text("def f():\n    pass\n")
             idx = codemap.build(d)

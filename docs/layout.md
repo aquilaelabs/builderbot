@@ -173,6 +173,7 @@ scripts/
     changelog.py                 the user-facing record beside it: categories, and the editor's writes
     artifacts.py                 what a project built: dist/, and what a row may offer
     signing.py                   a project's Android signing keys, kept by the controller, never a session's (R106)
+    releasesign.py               a release's unsigned APK from CI, signed on the controller with the project's sideload key and attached (R106)
     membership.py                a project's owner, whether it is invite only, and the invitations to it
     registry.py                  projects by id (R154): each directory's permanent number and the name it is shown under, in projects.json; a directory is never handed out twice
     busy.py                      whether a node is quiet enough to time anything on, and why not (R108)
@@ -213,7 +214,7 @@ scripts/
     hooks.py                     what a node session's hooks post: overlap notes, the chat feed, the catch-up, the turn queue
     macros.py                    what the page may type into a terminal: the command and key tables, the pins, custom lists
     profiletab.py                an account's own settings, the Profile page
-    transcripts.py               an account's conversations with Claude as a text to download, from the Profile page
+    transcripts.py               an account's conversations with Claude as a text to download, from a notebook's Sessions view
     fields.py                    one field out of a request body, read one way by the server and the modules it calls
     timing.py                    where a request's time went: named parts and its own CPU, for bb dashboard trace
     share.py                     a part's share of what a session is sent: the rules, the roadmap and the bugs say less per row before they leave one out
@@ -305,6 +306,7 @@ tools/upgrade-snapshot.py        a lived-in /config made by this tree's controll
 tools/vscode-vsix.py             packages vscode/ as a .vsix with python's zipfile, BuilderBot's version inside (R159)
 tools/companion-build.py         builds the Windows companion as one .pyz with the four agent modules its sync is (R270)
 tools/ratchet.txt                those ceilings, one per file
+tools/scan.sh                    the static analysis stack, run once with plain docker run: Semgrep, Trivy and mobsfscan, versions pinned, SARIF into the reports folder (docs/scanners.md)
 pyrightconfig.json               how pyright (the pyright-lsp plugin, or the CLI) reads this repo: each directory's imports and Python
                                  version, with the None checks off, since a module's configure() fills what it declares as None
 tools/version-stamp              this repo's own stamp hook: a bump moves the compatibility
@@ -324,6 +326,8 @@ docs/building.md                 builds, tests, CI runners and logs, the scanner
 docs/toolchains.md               the toolchain store, the Toolchains and Emulator pages, the NVIDIA card, Android, the Phone page
 docs/tool-packs.md               tool packs: adding one, a project's Toolchains setting, and writing a bbtool.json
 docs/containers.md               the Containers page and nginx: dev instances, how one is reached, networks, image updates
+docs/scanners.md                 setting up the static analysis stack and running it (tools/scan.sh)
+docs/versions.md                 versions and release lines: bb version line, forward, backport, a patch line's rules
 docs/vms.md                      the VMs page and bb vm: VM host, the OS catalog, the dial, the limits, the network, snapshots, a VM made a node
 docs/machines.md                 Controller settings, Nodes, Storage, the logs, the Jobs page, a Mac as a node
 docs/people.md                   the first account, Users and Roles, owners and invitations, the chat, your Profile

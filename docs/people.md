@@ -227,8 +227,7 @@ account's own page, in sections. **Who you are** holds the account name,
 their name and email, and the name and email their commits carry (blank means
 the ones above); **What you may do** is what their roles add up to;
 **Password** is a change that asks for the current one first; **Claude
-plugins** lists the plugins they installed; **Conversation logs** is below;
-and **Signed in as you**, last, is the devices signed in as this account (a
+plugins** lists the plugins they installed; and **Signed in as you**, last, is the devices signed in as this account (a
 line a device, with when it last called and **Disconnect**, which signs that
 one out).
 
@@ -236,9 +235,15 @@ Neither a Claude session nor a shell starts for an account with no
 name and email for commits, and `bb git` refuses for it: every project is a
 repository, and a shell is where git is typed, and the project's Start Claude
 and Shell say so until the Profile has them. Blank git fields fall back to the name and email
-above and to nothing else; no address is ever made up. **Conversation logs**
-on the same page lists the account's own conversations with Claude, newest
-first with the first thing typed, and each downloads as a text file: what
+above and to nothing else; no address is ever made up. A project's
+notebook has **Sessions** beside Overview: the account's own conversations
+with Claude on that project, newest first with the first thing typed, each
+with **Resume**, which opens the Start chooser on that conversation (the
+project's Claude button resumes only the last), **Read**, **Download**, and
+behind its ⋯ **Make visible**, which lets every session on the project read
+it with `bb transcripts` until **Make private**, and **Delete**, for good (one
+still being written by a running session is refused). A session never
+deletes or shares one. The download is a text file: what
 was said on both sides, every command Claude ran and what the command
 answered, `bb roadmap` and its reply included, from the transcript Claude
 Code writes as the session goes (transcripts.py reads the account's

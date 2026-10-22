@@ -6,20 +6,29 @@
 
 - A roadmap step can be meant for a release of its own, set from its Reword box or with bb roadmap target N.M: it says so on the step, the release chips count it, and bb roadmap --target lists its item under that release. (ab9d0d2)
 - A day of a project's snapshots can be pinned from its row, and is then kept whatever the days kept say until it is unpinned; and daily snapshots have their own switch in Build and test, on as before, where 0 days used to be the only way to stop them. (77189ff)
+- Controller settings has Room on the nodes: the disk a node keeps free, the memory level the bell warns at, and a memory limit for every container whose compose file sets none; a build also wants the room its last one took, and the hourly keeper clears build caches unused for two weeks (640b6ab)
+- A node's setup fences BuilderBot's containers, sessions and jobs inside a share of its memory (builderbot.slice on systemd), so a runaway build or app is stopped before the system itself runs out; the Storage page says each node's fence (640b6ab)
+- bb version forward and bb version backport move fixes between two release lines with the changelog kept right, and a project's patch rules hold what a patch release may change (640b6ab)
+- tools/scan.sh runs the static analysis stack (Semgrep, Trivy, mobsfscan) with plain docker run, and docs/scanners.md says how to set it up (4ec0aa7)
 
 ### Changed
 
 - Being on a project is enough for BuilderBot for VS Code and the Windows companion to open it, as far as your roles' File access goes: no grant of your own on the project's list is needed any more, and the companion lists every project you are on, each synced to a folder or not. A project's switch for them is on by default and closes them when turned off. (a0f86af)
 - Android signing keys are now a project's own Signing view under Ship, out of its settings, and a key's downloaded backup can be imported there into the same project or another, its password and alias read from the backup
 - Every notebook view now opens the way the Containers page does: one row with its search, its toggles and its actions (the Add last, as the main button), its numbers as tiles under it (the Roadmap's to send, shelved and finished, Bugs' open by severity, Git's changes and branches, Tests' passing and failing), a status line under those that holds the Roadmap's Save and Revert while something is staged, and every row of filter chips in one band
+- A project's notebook has Sessions beside Overview: your own conversations there, any one to resume, read, download, make visible to every session on the project, or delete; they are no longer listed on your Profile (4ec0aa7)
+- A project's notebook has Permissions beside Overview: everything a session may do on its own, asks first, or may not, with what it may push, in one place out of Settings and the Git view (4ec0aa7)
+- Controller settings is a rail group of its own, Controller, after Containers; old links to it still land there (4ec0aa7)
 
 ### Upgrading
 
 - Every project's switch for VS Code and the Windows companion (Settings, Files) is turned on by the upgrade, so everyone on a project with File access in their roles can open it from their own machine; turn it off on a project that should not be. (a0f86af)
+- Set SIGNING_SECRET (16 characters or more) in an *.env file in the secrets folder to seal the signing keys, and keep a copy of it with your other secrets: without it the keys stay as they were; lost, each key comes back by Import a backup (4ec0aa7)
 
 ### Security
 
 - A signing key's backup downloaded from a project with a backup password is now wrapped under that password: the zip holds no password, and the key opens only with it. A backup downloaded before this holds its key's password in password.txt in plain text: keep those copies somewhere only you can reach, or delete them and download again. (3fe7f38)
+- With SIGNING_SECRET in the secrets folder, every Android signing key and its passwords are sealed at rest, so a copy of /config opens no key; keys kept from before are sealed at the next start (4ec0aa7)
 
 ## 0.6.1: 2026-10-22
 

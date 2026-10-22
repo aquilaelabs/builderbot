@@ -104,6 +104,12 @@ def filter_rows(uid, rows):
             if r["key"] in gone:
                 hidden += 1
                 continue
+        elif r.get("kind") == "release-sign":
+            # Keyed on what it says (R106): put away until it says another
+            # thing, or another signing fails.
+            if r.get("key") in gone:
+                hidden += 1
+                continue
         elif r.get("kind") == "held":
             # To the hold (R251): put away until the session is held again.
             if r.get("key") in gone:

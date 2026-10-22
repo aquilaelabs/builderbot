@@ -30,7 +30,7 @@ const TOUR_STEPS = {
   ],
   notebook: [
     {say: "A project's notebook: everything about it in one place, shared by the people and the Claude sessions working on it."},
-    {at: `${TOUR_PANE} .nbtabs .nbgroups`, say: "Five groups: Overview, Plan (the roadmap and bugs), Code, Ship (artifacts, containers and VMs) and Docs. Each opens its views in the row under it."},
+    {at: `${TOUR_PANE} .nbtabs .nbgroups`, say: "Five groups: Overview (with your sessions here, what a session may do, and the settings), Plan (the roadmap and bugs), Code, Ship (artifacts, containers and VMs) and Docs. Each opens its views in the row under it."},
     {at: `${TOUR_PANE} .phead, ${TOUR_PANE} .bar.proj`, say: "Start Claude opens a session on this project; Shell a terminal in it. The menu holds its settings, its link and more."},
   ],
   findings: [
@@ -77,7 +77,7 @@ const TOUR_STEPS = {
     {at: TOUR_FIRST, say: "Hostnames, routes, certificates and the image each have a section. A route sends a hostname to a port a container publishes."},
   ],
   settings: [
-    {say: "Controller settings: how this BuilderBot itself behaves. Each section says what it changes."},
+    {say: "The controller's settings: how this BuilderBot itself behaves, the room it keeps on the nodes among them. Each section says what it changes."},
     {at: TOUR_FIRST, say: "A section's changes are saved with its own Save, never another's."},
   ],
   nodes: [

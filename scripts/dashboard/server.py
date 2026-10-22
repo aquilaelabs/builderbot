@@ -1398,9 +1398,17 @@ def _held_rows(who):
 
 # A node is short of room under this much free on its root filesystem,
 # Docker's or a store, or with this much of its memory used over ten
-# minutes (R110): the bell says so before the machine stops.
-ROOM_FLOOR_GB = 10
-ROOM_MEM_PCT = 92
+# minutes (R110): the bell says so before the machine stops. Controller
+# settings, Room.
+def room_floor_gb():
+    return settings.get("room_floor_gb")
+
+
+def room_mem_pct():
+    return settings.get("room_mem_pct")
+
+
+CACHE_KEEP_DAYS = 14      # a project's build cache no job has used this long goes when its store is short
 
 
 def _room_loop():
@@ -1409,14 +1417,23 @@ def _room_loop():
     for two weeks pruned (R110 step 3), before the bell's floor is reached;
     what Docker said it freed goes to the controller's log (bb logs), the
     prune itself to the audit log. Nothing a container
-    uses is touched, and a node with room is left alone."""
+    uses is touched, and a node with room is left alone. A node whose cache
+    store is as short gets the projects' build caches (Gradle's, npm's,
+    pub's: whatever a build keeps under BUILDERBOT_CACHE) that no job has
+    used for two weeks cleared by a cache-clear job (R110 step 7), its log
+    on the Jobs page."""
     while True:
         time.sleep(3600)
         try:
             for n in nodes.node_list():
                 if n["kind"] != "agent" or not n.get("live"):
                     continue
-                why = nodes.room_short(n["id"], ROOM_FLOOR_GB * 2)
+                if nodes.room_short(n["id"], room_floor_gb() * 2, ("cache",)):
+                    r = nodes.job_add("operator", {"node": n["id"]}, "cache-clear",
+                                      {"older_days": CACHE_KEEP_DAYS})
+                    print(f"[room] {n.get('name') or n['id']}: build caches unused for "
+                          f"{CACHE_KEEP_DAYS} days: {r.get('error') or 'clearing'}", flush=True)
+                why = nodes.room_short(n["id"], room_floor_gb() * 2)
                 if not why:
                     continue
                 with devapp.on_node(n["id"]):
@@ -1434,8 +1451,12 @@ def _attention(who):
     (nodes.attention) for whoever manages nodes, and a node with a
     toolchain behind what is out, Claude Code among them
     (toolchains.attention), for whoever may install toolchains on it."""
+    # A release's APK the controller could not sign, or would not be able
+    # to (releasesign.attention, R106), for whoever sees the project: said
+    # before the release, not after it went out without one.
+    signs = releasesign.attention([p for p in releasesign.projects_fn() if users.may_see(who, p)])
     if NODES_OK:
-        return [], 0
+        return bellseen.filter_rows(users.uid_of(who), signs)
     where = {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}
     # The sessions an outage of this controller held come first (R251), for
     # their own account or an administrator: stopped work waiting on a
@@ -1446,7 +1467,7 @@ def _attention(who):
             # ...and a node short of disk or memory (R110), for whoever
             # manages nodes: what is short, on the Storage page's terms.
             + ([] if users.may(who, "node") else nodes.room_attention(
-                ROOM_FLOOR_GB, ROOM_MEM_PCT,
+                room_floor_gb(), room_mem_pct(),
                 label=lambda r: {"root": "its root filesystem", "docker": "Docker's images and build cache"}.get(r, f"its {r} store")))
             + [a for a in toolchains.attention(where)
                if not users.may_node(who, "toolchains-write", a["id"])]
@@ -1459,7 +1480,8 @@ def _attention(who):
                                       allowed=lambda p: users.may(who, "docker-write", p) == ""
                                       if p and users.may_work(who, p) else users.is_admin(who))
                # ...and a copy or move that did not happen (relocate.py).
-               + relocate.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid)))
+               + relocate.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid))
+            + signs)
     # ...less what this account has put away (bellseen.py, R144): an update
     # to a version it dismissed, until a newer one is out.
     return bellseen.filter_rows(users.uid_of(who), rows)
@@ -2678,8 +2700,8 @@ def _seen_now(project, who):
         dz = ""
     return {"bug": str(r.get(f"bug:{project}") or ""), "rules": str(r.get(f"rules:{project}") or ""),
             "mem": str(edits.get(project) or 0),
-            "prefs": hashlib.sha1(pf.encode(), usedforsecurity=False).hexdigest()[:12] if pf else "",
-            "design": hashlib.sha1(dz.encode(), usedforsecurity=False).hexdigest()[:12] if dz not in ("", "{}") else ""}
+            "prefs": hashlib.sha256(pf.encode()).hexdigest()[:12] if pf else "",
+            "design": hashlib.sha256(dz.encode()).hexdigest()[:12] if dz not in ("", "{}") else ""}
 
 
 def _memory_written(req, held):
@@ -3127,6 +3149,14 @@ def _keytool():
 
 
 signing.configure(state=STATE, project_name=PROJECT_NAME, keytool=_keytool)
+# Keys kept open before the install had a signing secret, sealed now that it
+# has one (R111 step 2); a key that cannot be opened is left as it is and
+# said on its project's Signing view.
+try:
+    if (_sealed := signing.seal_all()):
+        print(f"dashboard: sealed {_sealed} signing key(s) under the install's signing secret", flush=True)
+except OSError as e:
+    print(f"dashboard: signing keys left as they were, not sealed: {e}", flush=True)
 
 
 def _apksigner():
@@ -3205,7 +3235,10 @@ def build_state(name):
             "why": "" if n else no_node_advice(name),
             # Its agent behind or out of window: a build is refused until
             # the node is updated, and the tab says so before the refusal.
-            "gap": nodes.agent_stale(n) if n else ""}
+            "gap": nodes.agent_stale(n) if n else "",
+            # What its last build took there, so the next one's room is
+            # known before it is refused for it (R110 step 7).
+            "took": nodes.last_took(name)}
 
 
 def artifacts_of(name):
@@ -3522,7 +3555,8 @@ import transcripts                                               # noqa: E402
 
 transcripts.configure(workspace=WORKSPACE,
                       root_for=lambda uid: (Path(home_for(uid)) / ".claude" / "projects")
-                      if home_for(uid) else CLAUDE_PROJECTS)
+                      if home_for(uid) else CLAUDE_PROJECTS,
+                      state=STATE, write_json=write_json)
 profiletab.configure(users=users,
                      claude_email=lambda uid: ", ".join(sorted(
                          {v["email"] for v in claudegrant.nodes_of(home_for(uid)).values()}, key=str.lower)),
@@ -3553,8 +3587,9 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
 devactions.configure(runner=jobs if not NODES_OK else None)
 home.configure(nodes_mod=nodes, devapp_mod=devapp)
 devapp.gpu_why = gpu_container_why
-devapp.room_why = lambda nid: nodes.room_short(nid, ROOM_FLOOR_GB) if nid else ""
-nodes.room_floor_gb = ROOM_FLOOR_GB
+devapp.room_why = lambda nid: nodes.room_short(nid, room_floor_gb()) if nid else ""
+nodes.room_floor_gb = room_floor_gb
+devapp.container_mem_gb = lambda: settings.get("container_mem_gb")
 # ...and what its request() needs about who is asking, and who hears.
 devactions.users = users
 devactions.ask_rebuild = phone.ask_rebuild
@@ -3723,9 +3758,26 @@ changelog.component_dir = version._sub
 import forgerelease                                              # noqa: E402
 import featuresoff                                               # noqa: E402
 forgerelease.configure(state=STATE, workspace=WORKSPACE, write_json_fn=write_json)
+# A release's APK, built unsigned in CI and signed here with the project's
+# sideload key (R106): a release made from the panel is looked for at once.
+import releasesign                                               # noqa: E402
+releasesign.configure(state=STATE, workspace=WORKSPACE, write_json_fn=write_json,
+                      projects=lambda: sorted(d.name for d in WORKSPACE.iterdir()
+                                              if d.is_dir() and not d.name.startswith(".")))
+
+
+def _forge_release(project, tag, version_, sha, comp=""):
+    """forgerelease.publish, and the release's unsigned APK expected for
+    signing once a release was made (releasesign.expect)."""
+    r = forgerelease.publish(project, tag, version_, sha, comp)
+    if r.get("url") and not r.get("error"):
+        releasesign.expect(project, tag)
+    return r
+
+
 version.configure_verbs(PANEL=version_payload, GIT_ENV=users.git_env, CREDS_ENV=projects._git_env,
                         MAY_PUSH=projects.may_push, SESSIONS=sessions_anywhere,
-                        FORGE=forgerelease.publish,
+                        FORGE=_forge_release,
                         AUDIT=lambda *row: None if NODES_OK else db.audit(*row))
 
 
@@ -4647,6 +4699,7 @@ POST_ROUTES = (
     ("prefix", "/api/idle", "_idle"),
     ("prefix", "/api/paths", "_paths"),
     ("prefix", "/api/snapshots", "_snapshots"),
+    ("exact", "/api/transcripts", "_transcripts"),
     ("prefix", "/api/settings", "_settings_post"),
     ("prefix", "/api/rules", "_rules"),
     ("prefix", "/api/global-rules", "_global_rules"),
@@ -7993,6 +8046,14 @@ class Handler(BaseHTTPRequestHandler):
                                                            str(req.get("new") or ""), by=str(who.get("name") or "")))
         if field(req, "action") != "list" and self._refused("signing", name):
             return None
+        if field(req, "action") == "release-sign":
+            # Look for the project's unsigned release APKs now, and sign a
+            # failed one again (releasesign.check, R106), on its own thread.
+            if not releasesign.wants(name):
+                return self._json({"error": f"{name}'s workflows hand over no unsigned APK to sign "
+                                            f"(an artifact named {releasesign.MARK}TAG)"}, 400)
+            started = releasesign.check_soon(name, force=True)
+            return self._json({"ok": True, "started": started, "release": releasesign.status(name)})
         got, status = signing.verb(req, by=str(who.get("name") or ""))
         # Whether this person may take a backup, so the dialog offers it only
         # where it would be handed over.
@@ -8002,6 +8063,8 @@ class Handler(BaseHTTPRequestHandler):
             got["why"] = users.may(who, "signing", name)
             got["may_backup"] = not got["why"]
             got["may_lock"] = users.uid_of(who) == membership.owner_of(name)
+            # Which key signs the releases, and how the last ones went (R106).
+            got["release"] = releasesign.status(name)
         return self._json(got, status)
 
     def _get_node_busy(self):
@@ -8375,7 +8438,36 @@ class Handler(BaseHTTPRequestHandler):
                 hit = rulehook.refused(guards, cmd, background)
                 return hit[0]["name"] if hit else ""
             return self._json({"project": name, "audit": transcripts.audit(uid, name, judge, days)})
-        return self._json({"project": name, "rows": transcripts.mine(uid, [name])})
+        # ...and the ones other accounts made visible to every session on
+        # the project, each with whose it is (the Sessions view's Make visible).
+        names = {u["uid"]: u["name"] for u in users.all_users()}
+        return self._json({"project": name, "rows": transcripts.mine(uid, [name]),
+                           "visible": transcripts.visible(uid, name, lambda u: names.get(u, u))})
+
+    def _transcripts(self, req):
+        """POST /api/transcripts {project, id, action}: one of the signed-in
+        person's own conversations deleted, or made visible to every session
+        on the project (share) or private again (unshare). A person's, from
+        the notebook's Sessions view: never a session's, which reads them."""
+        me = self._who()
+        uid = users.uid_of(me) if me else ""
+        if not me or not uid:
+            return self._json({"error": "not an account"}, 403)
+        if me.get("session"):
+            return self._json({"error": "a conversation is deleted or shared by its person, from the "
+                                        "project's Sessions view, not by a session"}, 403)
+        name, sid, act = field(req, "project"), field(req, "id"), field(req, "action")
+        if self._not_project(name):
+            return
+        if act == "delete":
+            r, st = transcripts.delete(uid, name, sid)
+        elif act in ("share", "unshare"):
+            r, st = transcripts.set_shared(uid, name, sid, act == "share")
+        else:
+            return self._json({"error": "delete, share or unshare"}, 400)
+        if st == 200:
+            db.audit(me["name"], f"conversation-{act}", name, {"id": sid})
+        return self._json(r, st)
 
     def _get_transcript(self):
         """GET /api/transcript?project=NAME&id=SESSION: one of the signed-in
@@ -8396,6 +8488,9 @@ class Handler(BaseHTTPRequestHandler):
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
+        # Another account's, made visible to every session on the project,
+        # is read as its owner's; anything else of theirs is not found.
+        uid = transcripts.owner_of(uid, name, q.get("id", [""])[0]) or uid
         if q.get("as", [""])[0] == "raw":
             # The file as Claude Code wrote it, for bb transcripts fetch: a
             # synced node resuming a conversation it does not have (B613).
@@ -9484,6 +9579,7 @@ def main():
     if not NODES_OK:
         threading.Thread(target=_room_loop, name="room", daemon=True).start()
     ciwatch.start()           # a project's CI, once a day (R117)
+    releasesign.start()       # a release's unsigned APK, signed here (R106)
     if "tunnel" not in featuresoff.off():
         tunnel.apply()        # the home tunnel, where the settings say so (R176)
     if toolchains.AUTOCHECK:

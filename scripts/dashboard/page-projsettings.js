@@ -607,13 +607,29 @@ const RN_LIST = {
 };
 
 function rnSplit(box, name){
-  splitSects(box, "rn:" + name, {says: RN_LIST, sel: ":scope > details.rngroup", back: "Settings",
+  // Claude may is the Permissions view's (the operator, 22 Oct), and not
+  // listed here; the dialog still carries it under its jump bar.
+  splitSects(box, "rn:" + name, {says: RN_LIST, sel: ':scope > details.rngroup:not([data-sect="rn:claude"])', back: "Settings",
     marks: k => RN_SECTS.includes(k) && rnSectChanges(k).said.length > 0});
 }
 // A project's settings: its notebook's Settings view.
 function openProjectSettings(name){ openNotebook(name, "settings"); }
 
+// The Claude may section, lent to a notebook's Permissions view
+// (nb-permissions.js), goes back to its place in the form, marked by this
+// comment, before the form is used anywhere else.
+const RN_DIALS_MARK = "rn:claude lent to Permissions";
+function rnDialsHome(){
+  const box = $("rnmodal").querySelector(":scope > .box") || rnHost?.querySelector(":scope > .box");
+  const at = box && [...box.childNodes].find(n => n.nodeType === Node.COMMENT_NODE && n.data === RN_DIALS_MARK);
+  if (!at) return;
+  const sect = document.querySelector('details[data-sect="rn:claude"]');
+  if (sect) at.parentNode.insertBefore(sect, at);
+  at.remove();
+}
+
 function renameProject(name, mode = "all"){
+  rnDialsHome();
   settingsOut();
   rnFor = name;
   rnMode = mode;

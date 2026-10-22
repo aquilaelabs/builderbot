@@ -2601,6 +2601,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 }
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
 .nbview[hidden]{display:none}
+/* Claude may is the Permissions view's; the Settings view leaves it out of
+   its page while the form is there (nb-permissions.js). */
+.nbsettings details[data-sect="rn:claude"]{display:none}
 /* The lent phone's screen as a session last saw it (tab-phone.js, R113): a
    picture at a phone's proportions, never wider than a row wants. */
 .phshot{display:block;max-width:min(260px,60vw);height:auto;margin:8px 0 4px;
@@ -5147,6 +5150,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button type="button" data-v="signing" data-in="ship">Signing</button>
         <button type="button" data-v="wiki" data-in="docs">Wiki</button>
         <button type="button" data-v="design" data-in="docs">Design</button>
+        <button type="button" data-v="sessions" data-in="overview">Sessions</button>
+        <button type="button" data-v="permissions" data-in="overview">Permissions</button>
         <button type="button" data-v="settings" data-in="overview">Settings</button>
       </div>
     </div>
@@ -5378,7 +5383,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <span class="actbar"><button type="button" id="artSource" title="the code base as a zip, without build output">Download source</button></span></div>
       <!-- The glance (R109): what is in dist/ and its size, what was built
            on a branch, the captures kept. -->
-      <div class="nbglance" id="artHint" data-tiles="3" data-said></div>
+      <div class="nbglance" id="artHint" data-tiles="4" data-said></div>
       <!-- Where this project's compiling happens, or that it has nowhere.
            On this tab because it is the one somebody opens when a build did
            not appear; a project with no node is a legitimate state, so the
@@ -5418,7 +5423,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="field nbhead vbar docbarrow"><span class="sp"></span><span class="actbar" id="sgActs"></span></div>
       <div id="sgAdd"></div>
       <!-- The glance (R109): the keys held and the apps mapped to them. -->
-      <div class="nbglance" id="sgHint" data-tiles="2"></div>
+      <div class="nbglance" id="sgHint" data-tiles="2" data-said></div>
       <div id="sgBox" data-skel="rows"></div>
     </div>
     <div class="nbview dkview" data-view="docker" hidden>
@@ -5524,8 +5529,24 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          form and one set of handlers. .modal.inline lets every dialog rule
          style it where it is. -->
     <div class="nbview" data-view="settings" hidden>
-      <div class="field nbhead vbar docbarrow"><span class="nbsum">how this project runs, and what Claude may do here</span><span class="sp"></span></div>
+      <div class="field nbhead vbar docbarrow"><span class="nbsum">how this project runs</span><span class="sp"></span></div>
       <div class="modal inline nbsettings"></div>
+    </div>
+    <!-- Your own conversations on this project (the operator, 22 Oct: out
+         of Profile), each to resume, read or download (nb-sessions.js). -->
+    <div class="nbview" data-view="sessions" hidden>
+      <div class="field nbhead vbar docbarrow"><span class="sp"></span></div>
+      <div class="nbglance" id="sessHint" data-tiles="3" data-said></div>
+      <div class="sesslist"></div>
+    </div>
+    <!-- What a session may do here, in one place (the operator, 22 Oct):
+         the settings form's Claude may section, lent while this view is on
+         screen (nb-permissions.js), and what it may push. -->
+    <div class="nbview" data-view="permissions" hidden>
+      <div class="field nbhead vbar docbarrow"><span class="nbsum">what a session may do here on its own, asks first, or may not</span><span class="sp"></span></div>
+      <div class="nbglance" id="permHint" data-tiles="3" data-said></div>
+      <div class="modal inline permdials"><div class="box"></div></div>
+      <div class="permgit"></div>
     </div>
     <!-- The reading room. A history and the changelog are things you READ,
          and they were opening in place of whatever you were looking at: the
@@ -6736,6 +6757,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="tab-findings.js"></script>
 <script src="tab-projects.js"></script>
 <script src="nb-git.js"></script>
+<script src="nb-permissions.js"></script>
+<script src="nb-sessions.js"></script>
 <script src="nb-artifacts.js"></script>
 <script src="nb-signing.js"></script>
 <script src="nb-analysis.js"></script>

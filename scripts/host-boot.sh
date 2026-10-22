@@ -67,6 +67,7 @@ main() {
     local -a cmd=()
     mapfile -d '' -t cmd < <(resolve_command "$@")
     log "starting: ${cmd[*]} as ${BB_ACCOUNT}"
+    signing_secret_file
     unset "${SECRET_VARS[@]}"
     exec setpriv --reuid="$BB_ACCOUNT" --regid="$PGID" --init-groups \
         env HOME="$BUILDER_HOME" USER="$BB_ACCOUNT" LOGNAME="$BB_ACCOUNT" "${cmd[@]}"

@@ -42,22 +42,26 @@ const ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const browser = await launch();
 const page = await newPage(browser);
 await page.goto(URL); await ready(page);
+// Your conversations are the project's notebook's, in its Sessions view
+// beside Overview (the operator, 22 Oct), no longer a section of Profile.
 await page.evaluate(() => openProfileTab());
-// Profile is a page of settings: its logs are a section picked from its list.
-await page.waitForSelector('.profiletab .snav [data-spick="logs"]', { timeout: 15000 });
-await splitPick(page, 'logs');
-await page.waitForSelector('.profiletab .cvlogs .artrow', { timeout: 15000 });
-const rows = await page.$$eval('.profiletab .cvlogs .artrow', els => els.map(e => ({
+await page.waitForSelector('.profiletab .snav [data-spick]', { timeout: 15000 });
+ok(!(await page.$('.profiletab .snav [data-spick="logs"]')) && !(await page.$('.profiletab .cvlogs')),
+   'Profile no longer lists conversations');
+await page.evaluate(() => openNotebook('alpha', 'sessions'));
+await page.waitForSelector('.nb .nbview[data-view="sessions"] .cvlogs .artrow', { timeout: 15000 });
+const SESS = '.nb .nbview[data-view="sessions"]';
+const rows = await page.$$eval(`${SESS} .cvlogs .artrow`, els => els.map(e => ({
   text: e.textContent.replace(/\s+/g, ' ').trim(), href: e.querySelector('a.btn')?.getAttribute('href') || '' })));
-ok(rows.length >= 2, `the Profile lists the account's conversations (${rows.length})`);
-ok(/^alpha .*Please tick the roadmap item off/.test(rows[0].text), `the newest first, with the first thing typed: ${rows[0].text.slice(0, 70)}`);
+ok(rows.length >= 2, `the Sessions view lists the account's conversations on the project (${rows.length})`);
+ok(/Please tick the roadmap item off/.test(rows[0].text), `the newest first, with the first thing typed: ${rows[0].text.slice(0, 70)}`);
 ok(rows[0].href === `/api/transcript?project=alpha&id=conv-one-2026&tz=${encodeURIComponent(ZONE)}`, `its Download is the transcript by project and id, in this browser's zone: ${rows[0].href}`);
 ok(rows.some(r => /An earlier chat from the worktree/.test(r.text)), 'a worktree session of the same project is listed with it');
 const i1 = rows.findIndex(r => /conv-one-2026/.test(r.href)), i2 = rows.findIndex(r => /conv-two-2025/.test(r.href));
 ok(i1 >= 0 && i2 > i1, 'newest first');
-ok(await page.$eval('.profiletab .cvlogs .artrow a.btn', a => a.hasAttribute('download') && a.getBoundingClientRect().height >= 30),
+ok(await page.$eval(`${SESS} .cvlogs .artrow a.btn`, a => a.hasAttribute('download') && a.getBoundingClientRect().height >= 30),
   'the download is a link dressed as a button, a tap tall');
-ok(await page.$$eval('.profiletab .cvlogs .artrow', els => els.length > 1 && els.slice(0, -1).every(e => getComputedStyle(e).borderBottomWidth === '1px')),
+ok(await page.$$eval(`${SESS} .cvlogs .artrow`, els => els.length > 1 && els.slice(0, -1).every(e => getComputedStyle(e).borderBottomWidth === '1px')),
   "the rows are the Artifacts view's: a hairline between each");
 
 const got = await page.evaluate(async href => {
@@ -80,7 +84,7 @@ ok(!/not a turn/.test(got.text), 'a summary line is not in it');
 
 // Read here (R83): the same conversation as turns in a dialog, Claude's
 // commands folded under its turn with what each answered.
-await page.click('.profiletab .cvlogs .artrow [data-cvread="conv-one-2026"]');
+await page.click(`${SESS} .cvlogs .artrow [data-cvread="conv-one-2026"]`);
 await page.waitForSelector('#cvModal:not([hidden]) .cvturn', { timeout: 15000 });
 const read = await page.evaluate(() => ({
   turns: [...document.querySelectorAll('#cvBody .cvturn')].map(t => ({
@@ -97,6 +101,22 @@ ok(toolsAll.some(c => c.call === '$ bb roadmap show R4' && /R4  The thing to do/
    `...Claude's commands folded under its turn, each with what it answered, a failed one marked (${toolsAll.map(c => c.call).join(' | ').slice(0, 120)})`);
 ok(!read.turns.some(t => /SECRET REASONING|SIDECHAIN WORDS/.test(t.text)), "...and neither Claude's reasoning nor a side chain is in it");
 await page.click('#cvClose');
+// Any one of them resumed (the operator, 22 Oct: the Claude button resumes
+// only the last): Resume opens the chooser on that conversation, at the
+// model and effort step, and nothing starts until Start.
+await page.click(`${SESS} .cvlogs .artrow [data-cvresume="conv-two-2025"]`);
+await page.waitForSelector('.resumemenu .rmhead', { state: 'attached', timeout: 10000 }).catch(() => {});
+const rm = await page.evaluate(() => ({ head: document.querySelector('.resumemenu .rmhead')?.textContent.replace(/\s+/g, ' ').trim() || '',
+  pick: typeof resumePick === 'object' && resumePick ? resumePick.sessionId : null,
+  anchor: !!document.querySelector('[data-c="alpha"]'),
+  said: (typeof notes !== 'undefined' ? notes : []).map(n => n.msg).join(' '),
+  started: tabs.some(t => /:r:conv-two-2025/.test(String(t.arg))) }));
+// With Start Claude on show it opens the chooser there; without (Claude Code
+// not installed on this fixture's node) it says why rather than doing nothing.
+ok(!rm.started && (rm.anchor ? /Resume the conversation/.test(rm.head) && rm.pick === 'conv-two-2025'
+                             : /not installed|cannot start/.test(rm.said)),
+   `Resume opens the chooser on the conversation picked, or says why it cannot, starting nothing yet (${JSON.stringify(rm)})`);
+await page.evaluate(() => { resumePick = null; resumeFor = null; drawProjects(state.projects); });
 
 const tokyo = await page.evaluate(async () => (await fetch('/api/transcript?project=alpha&id=conv-one-2026&tz=Asia/Tokyo')).text());
 ok(/You \(2026-09-28 19:15\):/.test(tokyo), 'the stamps follow the zone the link names');
@@ -126,6 +146,29 @@ const sfetch = (path, opts = {}) => fetch(URL.replace(/\/$/, '') + path, { ...op
 await page.evaluate(async () => { await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', reads: ['beta'] }) }); });
 const own = await (await sfetch('/api/transcripts?project=alpha')).json();
 ok(own.rows?.some(r => r.id === 'conv-one-2026'), `a session lists the account's conversations on its own project (${(own.rows || []).length})`);
+// Make visible and Delete are the person's, from the Sessions view's ⋯
+// (the operator, 22 Oct): a session reads conversations, it does not share
+// or delete them.
+const bySession = await (await sfetch('/api/transcripts', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ project: 'alpha', id: 'conv-two-2025', action: 'share' }) })).json();
+ok(/not by a session/.test(bySession.error || ''), `a session cannot make a conversation visible (${bySession.error})`);
+await page.evaluate(() => openNotebook('alpha', 'sessions'));
+await page.waitForSelector(`${SESS} [data-cvresume="conv-two-2025"]`, { timeout: 15000 });
+const rowOf = id => `${SESS} .artrow:has([data-cvresume="${id}"])`;
+await page.click(`${rowOf('conv-two-2025')} .more > button`);
+await page.click(`${rowOf('conv-two-2025')} [data-cvshare]`);
+await page.waitForSelector(`${rowOf('conv-two-2025')} .pill`, { timeout: 10000 }).catch(() => {});
+const shared = await page.evaluate(async () => ((await (await fetch('/api/transcripts?project=alpha')).json()).rows || [])
+  .find(r => r.id === 'conv-two-2025')?.shared);
+ok(shared === true && /visible to every session/.test(await page.$eval(rowOf('conv-two-2025'), e => e.textContent)),
+   `Make visible marks it visible to every session on the project (${shared})`);
+await page.evaluate(() => { window.__c = window.confirm; window.confirm = () => true; });
+await page.click(`${rowOf('conv-two-2025')} .more > button`);
+await page.click(`${rowOf('conv-two-2025')} [data-cvdel]`);
+await page.waitForFunction(id => !document.querySelector(`[data-cvresume="${id}"]`), 'conv-two-2025', { timeout: 10000 }).catch(() => {});
+await page.evaluate(() => { window.confirm = window.__c; });
+const gone = await page.evaluate(async () => ((await (await fetch('/api/transcripts?project=alpha')).json()).rows || []).map(r => r.id));
+ok(!gone.includes('conv-two-2025') && gone.includes('conv-one-2026'), `Delete removes that conversation and no other (${gone.join(', ')})`);
 const onRead = await (await sfetch('/api/transcripts?project=beta')).json();
 ok(onRead.rows?.length === 1 && onRead.rows[0].id === 'beta-chat-1' && /Make the beta page blue/.test(onRead.rows[0].first),
    `...and on a project its own reads (${JSON.stringify(onRead.rows?.[0] || onRead)})`);

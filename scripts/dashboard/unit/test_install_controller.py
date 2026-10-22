@@ -220,6 +220,7 @@ class TheWall(unittest.TestCase):
             cover = re.search(r"^COVER=(.*)$", r.stdout, re.M).group(1).split(":")
             self.assertEqual(sorted(cover), sorted([
                 f"{d}/var/lib/builderbot-controller", f"{d}/etc/builderbot-controller", "/run/builderbot",
+                "/run/builderbot-signing",
                 "/run/builderbot-controller", "/mnt/sdk", "/srv/builderbot/projects"]))
             self.assertIn("ACCOUNT=builderbot\nJOBS_USER=bb\n", r.stdout)
             self.assertIn("PORTS=7681,7682\n", r.stdout)

@@ -101,8 +101,22 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Logs|Claude sessions|Storage|Apps|Reach from outside|Maintenance|Debugging|Reset',
-   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the home tunnel the controller runs itself (R176), maintenance mode (the owner's), debugging, and the reset (${groups.join(', ')})`);
+ok(groups.join('|') === 'Logs|Claude sessions|Storage|Apps|Reach from outside|Room on the nodes|Maintenance|Debugging|Reset',
+   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the home tunnel the controller runs itself (R176), the room a node keeps (R110), maintenance mode (the owner's), debugging, and the reset (${groups.join(', ')})`);
+{
+  // The room a node keeps (R110 steps 1 and 5): whole numbers held to their
+  // range by the server, the browser's own min and max beside them.
+  const room = await page.$eval('[data-group="Room on the nodes"]', g => [...g.querySelectorAll('input[type=number]')]
+    .map(i => `${i.dataset.set}=${i.value}:${i.min}-${i.max}`).join(' '));
+  const set = async v => (await page.evaluate(async b => (await fetch('/api/settings', {method: 'POST',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({set: b})})).json(), v));
+  const good = await set({room_floor_gb: 25, container_mem_gb: 4});
+  const bad = await set({room_mem_pct: 120});
+  await set({room_floor_gb: 10, container_mem_gb: 0});
+  ok(room === 'room_floor_gb=10:1-1000 room_mem_pct=92:50-99 container_mem_gb=0:0-1024' && good.ok
+     && /whole number from 50 to 99/.test(bad.error || ''),
+     `Room on the nodes is three numbers with their ranges, saved in range and refused out of it (${room}; ${JSON.stringify(bad)})`);
+}
 // Sections, and a page of settings (the operator, 16 Oct): a list of them
 // beside the one picked, each row saying what is in it, and Revert beside
 // each Apply putting the section's fields back to what is saved.
@@ -470,10 +484,10 @@ ok(elsewhere.git_name === 'T. Person',
     ok(!blank.length && /Linked to GitHub/.test(repo.say) && /GitHub settings/.test(repo.go) && !repo.bar,
        `...every section listed opens on something, Repository saying what its remote is with the door to it and no Save of its own (${blank.join(', ') || 'none blank'}; ${repo.say} ${repo.go})`);
   }
-  await rnSect(page, 'claude');
+  await rnSect(page, 'yours');
   const one = await page.evaluate(() => [...document.querySelectorAll('.nbsettings details.rngroup')]
     .filter(d => d.checkVisibility()).map(d => d.dataset.sect));
-  ok(one.join() === 'rn:claude', `...a row pressed shows its section alone (${one.join()})`);
+  ok(one.join() === 'rn:yours', `...a row pressed shows its section alone (${one.join()})`);
   ok(!(await page.$eval('.nbsettings .sectjump', e => e.checkVisibility()).catch(() => false)),
      '...with no jump bar over it: the list is how a section is found');
   // People stays when the view is asked for again (B: the form was put back
@@ -482,7 +496,7 @@ ok(elsewhere.git_name === 'T. Person',
   await page.waitForTimeout(300);
   const still = await page.evaluate(() => ({ people: !document.querySelector('details[data-sect="rn:people"]').hidden,
     pick: document.querySelector('.nbsettings .snav .rrow.on')?.dataset.spick }));
-  ok(still.people && still.pick === 'claude', `...and asked for again it keeps People and the section picked (${JSON.stringify(still)})`);
+  ok(still.people && still.pick === 'yours', `...and asked for again it keeps People and the section picked (${JSON.stringify(still)})`);
   // The box borrowed from the dialog brings no dialog shadow into the view
   // (B702): the scroll-hint class it wore in the dialog is dropped on the way
   // in, and an inline box gets no shadow from that class however it arrives.
@@ -501,24 +515,25 @@ ok(elsewhere.git_name === 'T. Person',
   // stays typed (the operator, 10 Oct: one Save for eleven sections).
   await rnSect(page, 'build');
   await page.fill('#rnBuildCmd', 'make one');
-  await rnSect(page, 'claude');
-  await page.selectOption('#rnGateRoadmap', 'deny');
+  await rnSect(page, 'yours');
+  const nameWas = await page.evaluate(() => $('rnGitName').value);
+  await page.fill('#rnGitName', 'Typed Not Saved');
   const marks = await page.evaluate(() => [...document.querySelectorAll('.nbsettings .snav [data-spick]')]
     .filter(b => !b.querySelector('.sunsaved').hidden).map(b => b.dataset.spick).sort().join());
-  ok(marks === 'build,claude', `...each section holding a change says unsaved on its row (${marks})`);
+  ok(marks === 'build,yours', `...each section holding a change says unsaved on its row (${marks})`);
   const err = await sectSave(page, 'build');
   await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.build === 'make one', { timeout: 20000 });
-  const after = await page.evaluate(() => ({ gate: (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.gate?.roadmap || 'auto',
-    typed: $('rnGateRoadmap').value, claude: !document.querySelector('.rnbar[data-rnbar="claude"] [data-rnsave]').disabled,
+  const after = await page.evaluate(() => ({
+    typed: $('rnGitName').value, yours: !document.querySelector('.rnbar[data-rnbar="yours"] [data-rnsave]').disabled,
     build: document.querySelector('.rnbar[data-rnbar="build"] [data-rnsave]').disabled }));
-  ok(!err && after.gate === 'auto' && after.typed === 'deny' && after.claude && after.build,
-     `...Build and test's Save stores the build command and nothing of Claude may, whose change stays typed and unsaved (${JSON.stringify(after)})`);
-  await rnSect(page, 'claude');
-  await page.click('.rnbar[data-rnbar="claude"] [data-rnrevert]');
-  ok(await page.evaluate(() => $('rnGateRoadmap').value === 'auto'
-       && document.querySelector('.rnbar[data-rnbar="claude"] [data-rnrevert]').disabled
-       && $('rnBuildCmd').value === 'make one'),
-     '...and its Revert puts Claude may back alone');
+  ok(!err && after.typed === 'Typed Not Saved' && after.yours && after.build,
+     `...Build and test's Save stores the build command and nothing of Yours on this project, whose change stays typed and unsaved (${JSON.stringify(after)})`);
+  await rnSect(page, 'yours');
+  await page.click('.rnbar[data-rnbar="yours"] [data-rnrevert]');
+  ok(await page.evaluate(was => $('rnGitName').value === was
+       && document.querySelector('.rnbar[data-rnbar="yours"] [data-rnrevert]').disabled
+       && $('rnBuildCmd').value === 'make one', nameWas),
+     '...and its Revert puts Yours on this project back alone');
   // A section's Save is its own fields alone, and refuses one somebody else
   // saved since these settings were opened (the operator, 17 Oct: a save in
   // one section put back another section's change, and a session's change

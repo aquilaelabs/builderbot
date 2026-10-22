@@ -108,6 +108,8 @@ function makeNotebook(project){
   // defines functions, and the names it hands back are what the rest of
   // this closure calls by name.
   const {loadGit} = nbGitView({$, nb, project});
+  const {loadPerms, leavePerms, drawPush} = nbPermsView({$, nb, project, root});
+  const {loadSessions} = nbSessionsView({$, nb, project, root});
   // Each section's Save and Revert (see sectBar): published before the views
   // are made, since they register their sections as they are.
   nb.stagers = {}; nb.sectBar = sectBar; nb.stage = stage;
@@ -575,8 +577,13 @@ function makeNotebook(project){
     ghostOut(away);
     // The settings form comes into this view while it is on screen, and goes
     // back to the dialog when another view is picked (page-projsettings.js).
+    // ...and its Claude may section into Permissions, which hands it back
+    // first whenever another view is shown.
+    if (v !== "permissions") leavePerms();
     if (v === "settings") settingsInto(project, root.querySelector('.nbview[data-view="settings"] .nbsettings'));
     else if (rnHost && root.contains(rnHost)) settingsOut();
+    if (v === "permissions") loadPerms();
+    if (v === "sessions") loadSessions();
     // A view still waiting on its data waits as its markup declares (R109).
     glanceWaiting(root.querySelector(`.nbview[data-view="${v}"] .nbglance`));
     if (v === "git") loadGit();
@@ -904,6 +911,8 @@ function makeNotebook(project){
       // knows, which for a notebook is the batch note and who else is in here.
       // A scan re-ran while the Analysis view is up: re-read. The cache was
       // dropped by refresh() when the mtime moved, so this is one fetch.
+      // What a person changed of the push policy elsewhere, on Permissions.
+      if (!root.querySelector('[data-view="permissions"]').hidden) drawPush();
       if (!root.querySelector('[data-view="analysis"]').hidden
           && nb.anaStamp !== (state?.reports_mtime ?? null))
         loadAnalysis();
@@ -917,6 +926,7 @@ function makeNotebook(project){
       // The settings form is one element lent to whichever Settings view
       // shows it: handed back before this notebook's elements go, or it
       // goes with them and every later Settings view is empty.
+      leavePerms();
       if (typeof rnHost !== "undefined" && rnHost && root.contains(rnHost)) settingsOut();
       beat(true);
       unwatch.forEach(off => off());

@@ -834,7 +834,7 @@ WALL_NFT="$P/etc/builderbot-controller/wall.nft"
 # each once and none inside another.
 wall_cover() {
     local p out=() kept=()
-    for p in "$VAR" "$ETC" /run/builderbot "$(dirname "$(env_get SSH_AUTH_SOCK)")" \
+    for p in "$VAR" "$ETC" /run/builderbot /run/builderbot-signing "$(dirname "$(env_get SSH_AUTH_SOCK)")" \
              "$(env_get DASHBOARD_STATE)" "$(env_get BUILDER_HOME)" "$(env_get SDK_ROOT)" \
              "$(env_get WORKSPACE)" "$(env_get BB_SECRETS_DIR)"; do
         case "$p" in /?*) out+=("${p%/}") ;; esac
