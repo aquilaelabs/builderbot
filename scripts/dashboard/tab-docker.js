@@ -2000,11 +2000,16 @@ async function loadDockerImages(det){
   + `
     ${mayDocker() ? `<div class="actbar"><span class="state">a prune removes only what no container uses</span>
       <button type="button" class="danger" data-dmprune="images" title="docker image prune: dangling images">Prune images</button>
-      <button type="button" class="danger" data-dmprune="volumes" title="docker volume prune: volumes no container uses">Prune volumes</button></div>` : ""}`;
+      <button type="button" class="danger" data-dmprune="volumes" title="docker volume prune: volumes no container uses">Prune volumes</button>
+      <button type="button" class="danger" data-dmprune="unused" title="docker image prune -a: images no container uses, two weeks old">Prune unused images</button>
+      <button type="button" class="danger" data-dmprune="cache" title="docker builder prune: the build cache, a week old">Prune build cache</button></div>` : ""}`;
   box.querySelectorAll("[data-dmprune]").forEach(b => b.onclick = async () => {
     const kind = b.dataset.dmprune;
-    if (!confirm(`Prune ${kind} on ${dockerList?.name || "this node"}?\n\n${kind === "images"
-        ? "Dangling images go; images a container uses stay." : "Volumes no container uses go, with their data."}`)) return;
+    const what = {images: "Dangling images go; images a container uses stay.",
+                  volumes: "Volumes no container uses go, with their data.",
+                  unused: "Images no container uses and two weeks old go; a rebuild pulls or builds them again.",
+                  cache: "The build cache a week old goes; the next build of what used it is slower."}[kind];
+    if (!confirm(`Prune ${kind === "cache" ? "the build cache" : kind === "unused" ? "unused images" : kind} on ${dockerList?.name || "this node"}?\n\n${what}`)) return;
     busy(b, "Pruning");
     const r = await (await postJSON("/api/dockerctl", {action: "prune", container: kind, node})).json().catch(() => ({error: "no answer"}));
     if (r.error) notify(r.error, true);

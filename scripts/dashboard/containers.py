@@ -639,8 +639,8 @@ def admin_verb(act, name, nid, under):
         # The two prunes the Images and volumes section offers (R216):
         # `name` is which, images or volumes, and nothing is named.
         if act == "prune":
-            if name not in ("images", "volumes"):
-                return {"error": "prune images or volumes"}, 400
+            if name not in devapp.PRUNES:
+                return {"error": "prune images, volumes, unused or cache"}, 400
             return _answer(devapp.prune(name))
         return _answer(container_ctl(name, act))
 

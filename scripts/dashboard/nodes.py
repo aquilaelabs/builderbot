@@ -2335,6 +2335,60 @@ def attention(project_nodes):
     return out
 
 
+def room_short(nid, floor_gb):
+    """Why a build on `nid` would run out of disk, or "" (R110): Docker's
+    filesystem, or the root's where the node did not say Docker's, under
+    the floor. A node that has not said either is not refused."""
+    n = node(nid) or {}
+    disks = ((n.get("reported") or {}).get("sample") or {}).get("disks") or {}
+    role = "docker" if "docker" in disks else "root" if "root" in disks else ""
+    if not role:
+        return ""
+    free, total = disks[role]
+    if free is None or not total or free >= floor_gb * 1024:
+        return ""
+    return (f"{n.get('name') or nid} has {round(free / 1024, 1)} GB free for Docker's images and build cache, "
+            f"under the {floor_gb} GB a node keeps for itself: free some first (its Storage page says what holds it)")
+
+
+def room_attention(floor_gb, mem_pct, label=None):
+    """The bell's rows for a node short of room (R110, the operator, 22
+    Oct): a live agent node whose root filesystem, Docker's or a store has
+    less free than `floor_gb`, or whose memory has stayed at `mem_pct` or
+    more over its last ten minutes of samples. One row per node, naming
+    what is short, keyed by that so a dismissal holds until it changes.
+    `label` names a store's role for a person."""
+    out = []
+    for n in node_list():
+        if n["kind"] != "agent" or not n.get("live"):
+            continue
+        smp = (n.get("reported") or {}).get("sample") or {}
+        short, seen = [], set()
+        places = [(r, f, t) for r, (f, t) in (smp.get("disks") or {}).items()]
+        places += [(r, f, (smp.get("store_totals") or {}).get(r)) for r, f in (smp.get("stores") or {}).items()]
+        for role, free, total in places:
+            if free is None or not total or free >= floor_gb * 1024:
+                continue
+            # A store on the root filesystem reads the same numbers: said once.
+            if (free, total) in seen:
+                continue
+            seen.add((free, total))
+            short.append({"what": (label(role) if label else role), "free_gb": round(free / 1024, 1),
+                          "total_gb": round(total / 1024, 1)})
+        now = time.time()
+        recent = [x for x in samples(n["id"]) if (x.get("at") or 0) >= now - 600 and x.get("mem_mb")]
+        mem = None
+        if len(recent) >= 3:
+            pct = sum(x.get("mem_used_mb", 0) / x["mem_mb"] for x in recent) / len(recent) * 100
+            if pct >= mem_pct:
+                mem = round(pct)
+        if short or mem is not None:
+            out.append({"kind": "room", "node": n["name"], "id": n["id"], "short": short, "mem": mem,
+                        "floor_gb": floor_gb, "key": "room:" + n["id"] + ":" + ",".join(sorted(x["what"] for x in short))
+                        + (":mem" if mem is not None else "")})
+    return out
+
+
 def held_attention(uid, admin):
     """The bell's rows for the sessions an outage stopped (R251): one per
     session a node's gates held, for that session's account or an
@@ -3294,6 +3348,12 @@ def heartbeat(nid, sample, addr, running=0):
                        for r, v in list(stores.items())[:8]}
     totals = {str(r)[:20]: _mb((v or {}).get("total_mb"))
               for r, v in list(stores.items())[:8]}
+    # The root filesystem and Docker's, where a node fills that is no
+    # store's (R110): [free MB, total MB] each, for the bell's room check.
+    disks = s.get("disks") if isinstance(s.get("disks"), dict) else {}
+    clean["disks"] = {r: [_mb((disks.get(r) or {}).get("free_mb")), _mb((disks.get(r) or {}).get("total_mb"))]
+                      for r in ("root", "docker") if isinstance(disks.get(r), dict)}
+    clean["store_totals"] = totals
     ag = n.get("agent") or {}
     ag["last_seen"] = clean["at"]
     rep = n.get("reported") or {}

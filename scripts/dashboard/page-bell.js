@@ -253,6 +253,18 @@ function attRow(a){
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bdocker="${esc(a.id)}">Containers page</a></span></div></div>`;
   }
+  // A node short of disk or memory (R110): what is short and how much is
+  // left, to that node's Storage page, which says what is taking the room.
+  if (a.kind === "room"){
+    const parts = [...(a.short || []).map(x => `${x.what} has ${x.free_gb} GB free of ${x.total_gb} GB`),
+                   ...(a.mem != null ? [`its memory has been ${a.mem}% used for ten minutes`] : [])];
+    return `<div class="bnote att warn">
+      <div class="bt">${esc(a.node)} is running short of room</div>
+      <div class="bsum">${parts.map(esc).join("; ")}</div>
+      <div class="bfoot"><span>${(a.short || []).length ? `under ${esc(String(a.floor_gb))} GB is short` : "before it starts killing processes"}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bstorage="${esc(a.id)}">Storage page</a></span></div></div>`;
+  }
   // A node's nginx behind the newest line (R192): its own note, to the
   // nginx tab on that node, where Update is.
   if (a.kind === "nginx"){
@@ -648,6 +660,12 @@ function wireNeeds(root, after = () => {}){
     e.preventDefault();
     after();
     openToolchainsOn(a.dataset.btc);
+  });
+  // ...and a node short of room to its Storage page.
+  root.querySelectorAll("[data-bstorage]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    openStorageTab(a.dataset.bstorage || "");
   });
   // ...and a container update to the Docker tab on that node.
   root.querySelectorAll("[data-bdocker]").forEach(a => a.onclick = e => {

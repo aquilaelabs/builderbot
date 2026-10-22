@@ -1,4 +1,5 @@
 """The census and the sample: what the node says about itself on every hello."""
+import contextlib
 import errno
 import hashlib
 import ipaddress
@@ -698,6 +699,30 @@ class Sampler:
         except (OSError, ValueError, IndexError):
             return 0, 0
 
+    # Where Docker keeps its images and build cache, asked once an hour (a
+    # heartbeat is too often to run docker for it): with the root
+    # filesystem, the two places a node fills that are no store's (R110).
+    _droot = ("", 0.0)
+
+    def _disks(self):
+        if time.time() - self._droot[1] > 3600:
+            root = ""
+            with contextlib.suppress(OSError, subprocess.SubprocessError):
+                root = subprocess.run(["docker", "info", "--format", "{{.DockerRootDir}}"], capture_output=True,
+                                      text=True, timeout=15, check=False).stdout.strip()
+            if not root and os.path.isdir("/var/lib/docker"):
+                root = "/var/lib/docker"
+            type(self)._droot = (root, time.time())
+        out = {}
+        for role, path in (("root", "/"), ("docker", self._droot[0])):
+            if not path:
+                continue
+            with contextlib.suppress(OSError):
+                st = os.statvfs(path)
+                out[role] = {"path": path, "free_mb": st.f_bavail * st.f_frsize // (1024 * 1024),
+                             "total_mb": st.f_blocks * st.f_frsize // (1024 * 1024)}
+        return out
+
     def sample(self, state, running):
         now = self._stat()
         dt, di = now[0] - self.last[0], now[1] - self.last[1]
@@ -709,6 +734,6 @@ class Sampler:
             load1 = 0.0
         return {"cpu_pct": round(100.0 * (dt - di) / dt, 1) if dt > 0 else 0.0,
                 "load1": round(load1, 2), "mem_mb": tot, "mem_used_mb": used,
-                "stores": _stores(state.get("stores")), "running": running,
+                "stores": _stores(state.get("stores")), "disks": self._disks(), "running": running,
                 "cores": os.cpu_count() or 0, "kinds": _proc_kinds(),
                 **gpu_cached()}

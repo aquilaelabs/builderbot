@@ -1357,7 +1357,8 @@ def rebuild(project, instance=devapp.MAIN, ack="", gate=True, beside=""):
     # What it ships beside the app is a person's to say yes to whoever
     # pressed it (devapp._beside_gate): a session's build carries no yes.
     return _submit(project, instance, "rebuild",
-                   check=lambda: devapp.gpu_gate(project, instance) or _env_gate(project, instance)
+                   check=lambda: devapp.room_gate(project, instance) or devapp.gpu_gate(project, instance)
+                   or _env_gate(project, instance)
                    or devapp._beside_gate(project, instance, beside if gate else "")
                    or (devapp._risk_gate(project, instance, ack) if gate else ""))
 

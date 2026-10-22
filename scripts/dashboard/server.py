@@ -1396,6 +1396,39 @@ def _held_rows(who):
     return rows
 
 
+# A node is short of room under this much free on its root filesystem,
+# Docker's or a store, or with this much of its memory used over ten
+# minutes (R110): the bell says so before the machine stops.
+ROOM_FLOOR_GB = 10
+ROOM_MEM_PCT = 92
+
+
+def _room_loop():
+    """Every hour, a node whose Docker disk has fallen under twice the floor
+    gets its build cache a week old and its images no container has used
+    for two weeks pruned (R110 step 3), before the bell's floor is reached;
+    what Docker said it freed goes to the controller's log (bb logs), the
+    prune itself to the audit log. Nothing a container
+    uses is touched, and a node with room is left alone."""
+    while True:
+        time.sleep(3600)
+        try:
+            for n in nodes.node_list():
+                if n["kind"] != "agent" or not n.get("live"):
+                    continue
+                why = nodes.room_short(n["id"], ROOM_FLOOR_GB * 2)
+                if not why:
+                    continue
+                with devapp.on_node(n["id"]):
+                    said = {k: devapp.prune(k) for k in ("cache", "unused")}
+                db.audit("builderbot", "room-prune", n.get("name") or n["id"], {"kinds": sorted(said)})
+                for k, v in said.items():
+                    print(f"[room] {n.get('name') or n['id']}: pruned {k}: "
+                          f"{v.get('error') or (v.get('out') or 'nothing').splitlines()[-1][:200]}", flush=True)
+        except Exception as e:                                       # noqa: BLE001 (the loop must live)
+            print(f"[room] {type(e).__name__}: {e}", flush=True)
+
+
 def _attention(who):
     """The bell's rows about nodes: an agent behind or from another window
     (nodes.attention) for whoever manages nodes, and a node with a
@@ -1410,6 +1443,11 @@ def _attention(who):
     # the fold of the bell, in the walk of 15 Oct).
     rows = (_held_rows(who)
             + ([] if users.may(who, "node") else nodes.attention(where))
+            # ...and a node short of disk or memory (R110), for whoever
+            # manages nodes: what is short, on the Storage page's terms.
+            + ([] if users.may(who, "node") else nodes.room_attention(
+                ROOM_FLOOR_GB, ROOM_MEM_PCT,
+                label=lambda r: {"root": "its root filesystem", "docker": "Docker's images and build cache"}.get(r, f"its {r} store")))
             + [a for a in toolchains.attention(where)
                if not users.may_node(who, "toolchains-write", a["id"])]
             # ...and a node's nginx behind the newest line (nginxproxy.attention,
@@ -3485,6 +3523,7 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
 devactions.configure(runner=jobs if not NODES_OK else None)
 home.configure(nodes_mod=nodes, devapp_mod=devapp)
 devapp.gpu_why = gpu_container_why
+devapp.room_why = lambda nid: nodes.room_short(nid, ROOM_FLOOR_GB) if nid else ""
 # ...and what its request() needs about who is asking, and who hears.
 devactions.users = users
 devactions.ask_rebuild = phone.ask_rebuild
@@ -9402,6 +9441,8 @@ def main():
     threading.Thread(target=_compat_loop, name="compat", daemon=True).start()
     threading.Thread(target=log_sweep_loop, name="log-sweep", daemon=True).start()
     artifacts.start()         # every project's dist/ to its newest builds, every few minutes
+    if not NODES_OK:
+        threading.Thread(target=_room_loop, name="room", daemon=True).start()
     ciwatch.start()           # a project's CI, once a day (R117)
     if "tunnel" not in featuresoff.off():
         tunnel.apply()        # the home tunnel, where the settings say so (R176)

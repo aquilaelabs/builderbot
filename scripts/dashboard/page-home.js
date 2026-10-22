@@ -55,11 +55,11 @@ async function loadHome(light = false){
 
 // The updates due across the install, each thing behind counted once: each
 // toolchain behind on a node, each container with a newer image, nginx
-// behind, an agent behind. A move (relocate) is not an update, and a CI run
-// has its own tile.
+// behind, an agent behind. A move (relocate) is not an update, nor a node
+// short of room (R110), and a CI run has its own tile.
 function homeUpdates(){
   return (state?.attention || []).reduce((n, a) =>
-    a.kind === "relocate" ? n : n + (a.kind === "toolchain" ? (a.tools || []).length || 1
+    a.kind === "relocate" || a.kind === "room" ? n : n + (a.kind === "toolchain" ? (a.tools || []).length || 1
       : a.kind === "image" ? (a.containers || []).length || 1 : 1), 0);
 }
 
