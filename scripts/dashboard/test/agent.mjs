@@ -1258,6 +1258,19 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
        `a node signed in to a different Anthropic account is recorded as that, without the last one's plan (${two.error || two.plan})`);
     await api({ email: 'tester@example.com', plan: 'max', signed_in: true });
 
+    // The other coding agents say theirs the same way, from the same check,
+    // into their own record (R95 step 3): never Claude's.
+    const agentsAt = async () => (await (await fetch(URL.replace(/\/$/, '') + '/api/status', { headers: auth })).json()).agent_auth || {};
+    const cx = await api({ agent: 'codex', email: 'tester@example.com', plan: 'plus', signed_in: true });
+    ok(cx.ok && (await agentsAt()).codex?.nodes?.[minted.id]?.email === 'tester@example.com'
+       && (await where())[minted.id]?.email === 'tester@example.com',
+       `a node reports a Codex sign-in the way it reports Claude's, into Codex's record (${cx.error || 'ok'})`);
+    await api({ agent: 'codex', signed_in: false });
+    ok(!(await agentsAt()).codex?.nodes?.[minted.id] && (await where())[minted.id]?.email === 'tester@example.com',
+       '...and its sign-out takes Codex off that node and leaves Claude signed in');
+    const odd = await api({ agent: 'nonesuch', email: 'x@example.invalid', signed_in: true });
+    ok(odd.status === 400 && /nonesuch/.test(odd.error || ''), 'an agent BuilderBot does not sign in to is refused by name');
+
     // The flow itself finds Claude Code where a SESSION finds it: the session
     // account's own ~/.local/bin (the provisioner's install) and the pinned
     // copy, not only the signing-in account's home. The owner's home is the

@@ -122,10 +122,6 @@ def mcp_of(home):
     return out
 
 
-if len(sys.argv) == 3 and sys.argv[1] == "--forget-copilot":
-    sys.exit(forget_copilot(sys.argv[2]))
-
-
 def plugins_of(home):
     """The Claude Code plugins this account installed here: what `claude
     plugin list --json` prints, read from the same two files it reads, so a
@@ -160,27 +156,35 @@ def plugins_of(home):
 # Every account's home on this machine. The owner has no bare directory here:
 # on a node every account is prefixed and homed under users/ (common.sh's
 # owner_uid says why), so the uid is simply the directory's name.
-out = []
-root = os.environ.get("BB_USERS_DIR") or ""
-try:
-    names = sorted(os.listdir(root))
-except OSError:
-    names = []
-for name in names[:64]:
-    if not re.fullmatch(r"u_[0-9a-f]{8}", name):
-        continue
-    home = os.path.join(root, name)
-    email = ""
+def main():
+    out = []
+    root = os.environ.get("BB_USERS_DIR") or ""
     try:
-        d = json.load(open(os.path.join(home, ".claude.json")))
-        email = str(((d.get("oauthAccount") or {}).get("emailAddress")) or "")[:120]
-    except (OSError, ValueError, AttributeError, TypeError):
+        names = sorted(os.listdir(root))
+    except OSError:
+        names = []
+    for name in names[:64]:
+        if not re.fullmatch(r"u_[0-9a-f]{8}", name):
+            continue
+        home = os.path.join(root, name)
         email = ""
-    # The credential is what makes it a login rather than a leftover name: a
-    # signed-out home keeps .claude.json and loses this file, and reporting
-    # the stale name would keep the card claiming a login that is gone.
-    if email and not os.path.exists(os.path.join(home, ".claude", ".credentials.json")):
-        email = ""
-    agents = {k: v for k, v in (("codex", codex_of(home)), ("copilot", copilot_of(home))) if v}
-    out.append({"uid": name, "email": email, "plugins": plugins_of(home), "agents": agents, "mcp": mcp_of(home)})
-print(json.dumps(out))
+        try:
+            d = json.load(open(os.path.join(home, ".claude.json")))
+            email = str(((d.get("oauthAccount") or {}).get("emailAddress")) or "")[:120]
+        except (OSError, ValueError, AttributeError, TypeError):
+            email = ""
+        # The credential is what makes it a login rather than a leftover name: a
+        # signed-out home keeps .claude.json and loses this file, and reporting
+        # the stale name would keep the card claiming a login that is gone.
+        if email and not os.path.exists(os.path.join(home, ".claude", ".credentials.json")):
+            email = ""
+        agents = {k: v for k, v in (("codex", codex_of(home)), ("copilot", copilot_of(home))) if v}
+        out.append({"uid": name, "email": email, "plugins": plugins_of(home), "agents": agents, "mcp": mcp_of(home)})
+    print(json.dumps(out))
+
+
+# Imported by login-check.py for the agents' readers, run by `bb login --list`.
+if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--forget-copilot":
+        sys.exit(forget_copilot(sys.argv[2]))
+    main()

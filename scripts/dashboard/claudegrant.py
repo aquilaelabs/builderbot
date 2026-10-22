@@ -103,6 +103,10 @@ def report(home, node_id, email, plan="", signed_in=True, agent="claude"):
     rows = d.get("nodes") if isinstance(d.get("nodes"), dict) else {}
     email = " ".join(str(email or "").split())[:120]
     if not signed_in:
+        # Said on every terminal's connection, for every agent: a node that
+        # was not signed in is not written again.
+        if str(node_id) not in rows:
+            return {"ok": True}
         rows.pop(str(node_id), None)
         _write(home, {"nodes": rows}, agent)
         return {"ok": True}

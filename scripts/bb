@@ -813,7 +813,7 @@ cmd_projects() {
 claude_login_check() {
     on_node || return 0
     [ -n "${BB_TOKEN:-}" ] || return 0
-    BB_LOGIN_AUTH="$(bb_auth_header)" python3 "$BB_LIB/login-check.py" "${1:-}" || true
+    BB_LOGIN_AUTH="$(bb_auth_header)" python3 "$BB_LIB/login-check.py" "${1:-}" "${2:-claude}" || true
 }
 
 cmd_login() {
@@ -866,6 +866,8 @@ cmd_login() {
             --out:copilot)  python3 "$BB_LIB/login-list.py" --forget-copilot "$HOME" || die "the sign-out did not complete" ;;
         esac
         log "signed ${1#--} ${ag} on ${BB_NODE:-this machine}"
+        # ...and said to the controller at once, as Claude's flow says its own.
+        claude_login_check --loud "$ag" || true
         return 0
     fi
     # `--out` is the sign-out run BY THE AGENT, in a claude-logout job, for
@@ -881,6 +883,7 @@ cmd_login() {
             || die "Claude Code is not installed on this machine, so there is no login here to sign out of"
         claude auth logout || die "claude auth logout did not complete"
         log "signed out of Claude on ${BB_NODE:-this machine}"
+        claude_login_check --loud || true
         return 0
     fi
     # `--flow` is the sign-in run BY THE AGENT, in a claude-login job, with

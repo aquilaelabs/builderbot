@@ -1312,8 +1312,9 @@ case "$target" in
         # So signing in on one node does NOT sign in another: each is signed
         # in from its own row on the Nodes tab, and a tab opened here before
         # that is told where. Never fatal and silent when nothing moved: a
-        # controller that is down costs a session nothing.
-        if on_node && [ "$agent" = claude ]; then
+        # controller that is down costs a session nothing. Every agent's
+        # session says it, and the check says every agent's sign-in.
+        if on_node; then
             bb login --check >/dev/null 2>&1 || true
         fi
         # Installed on purpose, from the node's Agents page, never by the

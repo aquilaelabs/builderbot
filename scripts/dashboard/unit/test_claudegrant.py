@@ -43,6 +43,17 @@ class Record(unittest.TestCase):
         self.assertTrue(claudegrant.report(self.home, "n1", "", signed_in=False)["ok"])
         self.assertEqual(sorted(claudegrant.nodes_of(self.home)), ["n2"])
 
+    def test_a_sign_out_where_there_was_none_writes_nothing(self):
+        self.assertTrue(claudegrant.report(self.home, "n1", "", signed_in=False, agent="codex")["ok"])
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".config", "builderbot", "codex-grant.json")))
+
+    def test_another_agents_sign_in_is_its_own_record(self):
+        claudegrant.report(self.home, "n1", "me@example.com", "max")
+        claudegrant.report(self.home, "n1", "me@example.com", "plus", agent="codex")
+        claudegrant.report(self.home, "n1", "", signed_in=False, agent="codex")
+        self.assertEqual(claudegrant.nodes_of(self.home, "codex"), {})
+        self.assertEqual(claudegrant.on(self.home, "n1")["plan"], "max")
+
     def test_an_empty_plan_keeps_the_stored_one_and_the_answer_carries_it(self):
         claudegrant.report(self.home, "n1", "me@example.com", "max")
         self.assertEqual(claudegrant.report(self.home, "n1", "me@example.com")["plan"], "max")

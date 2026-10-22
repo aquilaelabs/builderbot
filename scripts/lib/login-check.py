@@ -6,10 +6,17 @@ signed in here". The login itself stays on this machine, which signed in
 for itself and is the one that signs out. Never fatal, and quiet: bb-tty
 runs this on every connection.
 
-Argument: `--loud` for the interactive verb, or nothing. BB_LOGIN_AUTH is
+The other coding agents' sign-ins go up beside Claude's, read by the same
+readers `bb login --list` uses (R95 step 3): the heartbeat carries them too,
+but a sign-in made in a job or a terminal is said at once, as Claude's is.
+
+Arguments: `--loud` for the interactive verb, or nothing; then the agent
+whose flow just ran (claude, the default, codex or copilot), which is the
+one the loud lines are about. BB_LOGIN_AUTH is
 the session's auth header; HOME and BB_NODE are the machine's, and BB_NODE_ID its id as bb-tty
 was told it.
 """
+import importlib.util
 import json
 import os
 import shutil
@@ -19,7 +26,8 @@ import sys
 import bbapi
 
 
-loud = sys.argv[1] == "--loud"
+loud = len(sys.argv) > 1 and sys.argv[1] == "--loud"
+FOR = sys.argv[2] if len(sys.argv) > 2 else "claude"
 auth = os.environ["BB_LOGIN_AUTH"]
 NODE = os.environ.get("BB_NODE", "this node")
 # Which machine this is, by id: a project may work on several nodes, and the
@@ -101,6 +109,33 @@ def plan_now():
         return ""
 
 
+def others():
+    """Codex's and Copilot's sign-ins here, each said to the controller,
+    signed in or not. login-list.py holds the one reading of their files."""
+    spec = importlib.util.spec_from_file_location(
+        "login_list", os.path.join(os.path.dirname(os.path.abspath(__file__)), "login-list.py"))
+    ll = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ll)
+    home = os.environ.get("HOME") or ""
+    for agent, read in (("codex", ll.codex_of), ("copilot", ll.copilot_of)):
+        got = read(home) if home else None
+        if got:
+            w = bbapi.call("/api/v1/claude-login", {"agent": agent, "email": got["email"], "plan": got["plan"],
+                                                    "signed_in": True, "node": NODE_ID}, auth=auth)
+        else:
+            w = bbapi.call("/api/v1/claude-login", {"agent": agent, "signed_in": False, "node": NODE_ID}, auth=auth)
+        if loud and agent == FOR:
+            if w.get("error"):
+                warn(f"could not tell the controller about this machine's {agent} login: {w['error']}")
+            elif got:
+                say(f"{agent} signed in on {NODE} as {got['email']}" + (f" · {got['plan']}" if got["plan"] else ""))
+            else:
+                say(f"{agent} is not signed in on {NODE}")
+
+
+others()
+if FOR != "claude":
+    loud = False
 here, mine = whoami()
 if not here:
     if loud:

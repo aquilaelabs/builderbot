@@ -7104,8 +7104,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._result(jobs.cancel(self._principal(), field(req, "id")))
 
     def _claude_login(self, req):
-        """A node saying what this account is signed in to Claude AS there
-        (R47), or that it is not: never the login itself, which stays on the
+        """A node saying what this account is signed in to Claude, or another
+        coding agent, AS there (R47), or that it is not: never the login itself, which stays on the
         machine that made it (claudegrant.py says why).
 
         Only a session token minted FOR an account speaks here (the one the
@@ -7137,8 +7137,13 @@ class Handler(BaseHTTPRequestHandler):
         if not nid:
             return self._json({"error": "a sign-in is reported by a session on the "
                                         "node it happened on"}, 400)
+        # ...and the other coding agents' beside Claude's (R95 step 3): the
+        # same report, said from the same check, kept in their own record.
+        agent = str(req.get("agent") or "claude")
+        if agent != "claude" and not any(a.id == agent and a.login_job for a in agents.TABLE):
+            return self._json({"error": f"no coding agent called '{agent[:20]}' signs in"}, 400)
         r = claudegrant.report(home_for(uid), nid, req.get("email") or "", req.get("plan") or "",
-                               signed_in=bool(req.get("signed_in", True)))
+                               signed_in=bool(req.get("signed_in", True)), agent=agent)
         return self._json(r, 400 if r.get("error") else 200)
 
     def _tty_grant(self, req):
