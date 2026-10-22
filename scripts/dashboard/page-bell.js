@@ -541,11 +541,13 @@ function drawBell(){
   // A short list (R218 step 6): what waits on an answer, what needs doing,
   // then the latest five of what the page said, and See all for the rest
   // and the account's whole record on the Notifications page.
-  const seeAll = `<div class="bfootbar"><button type="button" id="bellAll">See all</button></div>`;
-  panel.innerHTML = (answer.length + needs.length + said.length
+  // ...headed as the doctor's and the gear's are (the operator, 22 Oct),
+  // See all at the head's right where the eye starts.
+  const head = `<div class="popbar"><b>Notifications</b><button type="button" id="bellAll">See all</button></div>`;
+  panel.innerHTML = head + (answer.length + needs.length + said.length
     ? group("Waiting on you", answer) + group("Needs attention", needs)
       + group("Recent", said.slice(0, 5), `<button type="button" id="bellClear">Clear</button>`, said.length)
-    : `<div class="bempty">nothing to report</div>`) + putAway + seeAll;
+    : `<div class="bempty">nothing to report</div>`) + putAway;
   // Any press in the drawer closes it, after the press's own handler has
   // run (the operator, 7 Oct): Approve, Deny, an invitation's answer, Clear,
   // a link to where a row is about. One listener on the drawer, so a row

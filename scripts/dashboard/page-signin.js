@@ -99,13 +99,13 @@ function signinBlock(n, id = "claude"){
       <div class="actbar"><span class="state">You are signed in here as ${esc(me.email)}${me.plan ? ` · ${esc(me.plan)}` : ""}</span>
         <button type="button" data-si="out"${dead ? " disabled" : ""}>Sign out</button></div>
       ${busy.length ? `<div class="hint warn">End your ${esc(a.name)} session${busy.length === 1 ? "" : "s"} on ${esc(busy.join(", "))} before signing out here.</div>`
-        : cannot ? `<div class="sub bad">${esc(cannot)}.</div>` : ""}`;
+        : cannot ? `<div class="hint warn">${esc(cannot)}.</div>` : ""}`;
   } else {
     const failed = mine && lg.done && !lg.ok;
     inner = `
-      <div class="actbar"><span class="state bad">You are not signed in to ${esc(a.name)} on ${esc(n.name)}: your ${esc(a.name)} sessions will not start here</span>
+      <div class="actbar"><span class="state warn">You are not signed in to ${esc(a.name)} on ${esc(n.name)}: your ${esc(a.name)} sessions will not start here</span>
         <button type="button" class="primary" data-si="in"${cannot ? " disabled" : ""}>${failed ? "Try again" : "Sign in"}</button></div>
-      ${cannot ? `<div class="sub bad">${esc(cannot)}.</div>`
+      ${cannot ? `<div class="hint warn">${esc(cannot)}.</div>`
         : failed ? `<div class="sub bad">${esc(lg.error || "the sign-in did not finish")}</div>` : ""}`;
   }
   return `<div class="ndsignin" data-signin="${esc(n.id)}" data-siagent="${esc(id)}">${inner}${said}

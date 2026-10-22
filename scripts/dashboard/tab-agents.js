@@ -114,10 +114,12 @@ function agSection(a, n, m){
     : running ? `${esc(doing.charAt(0).toUpperCase() + doing.slice(1))} ${esc(a.product)}<span class="dots"></span>`
     : m?.installed ? `${esc(a.product)} ${esc(m.installed)} is what a ${esc(a.name)} session here runs.`
     : `Not installed: a ${esc(a.name)} session cannot start on ${esc(n.name)} until it is.`;
-  const body = `<div class="field">${facts}</div>
-    <div class="field"><div class="actbar"><span class="state">${line}</span>${acts}</div>
+  // Three parts under their own heads (the operator, 22 Oct): the copy
+  // here, this person's sign-in, and what they added to it.
+  const body = `<div class="field agpart"><div class="fsub">On ${esc(n.name)}</div>${facts}
+      <div class="actbar"><span class="state">${line}</span>${acts}</div>
       ${m?.error && !running ? `<div class="sub bad">${esc(m.error)}</div>` : ""}</div>
-    ${a.provider && up && (a.id === "claude" || m?.installed) ? `<div class="field">${signinBlock(n, a.id)}</div>` : ""}
+    ${a.provider && up && (a.id === "claude" || m?.installed) ? `<div class="field agpart"><div class="fsub">Your sign-in</div>${signinBlock(n, a.id)}</div>` : ""}
     ${up && m?.installed ? agExtras(a) : ""}`;
   return docSection("agents", a.id, a.name, status, body, {cls});
 }
@@ -134,7 +136,7 @@ function agExtras(a){
     a.id === "claude" ? ["your plugins", pl.length ? pl.map(one).join(", ") : "none", {html: true}] : null,
     ["your MCP servers", mcp.length ? mcp.map(x => `<code>${esc(x)}</code>`).join(", ") : "none", {html: true}],
   ].filter(Boolean);
-  return `<div class="field">${factGrid(rows, "agextras")}<div class="hint">${
+  return `<div class="field agpart"><div class="fsub">Yours</div>${factGrid(rows, "agextras")}<div class="hint">${
     a.id === "claude" ? "Changed with <code>/plugin</code> and <code>/mcp</code> in a Claude session, for you alone."
       : `Set up in ${esc(a.product)}'s own configuration, for you alone.`}</div></div>`;
 }

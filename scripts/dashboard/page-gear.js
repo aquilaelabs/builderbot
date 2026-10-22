@@ -187,32 +187,33 @@ function drawUiMenu(){
   if (!el || el.hidden) return;
   const cur = currentTheme();
   const mode = currentMode();
-  el.innerHTML = `<h4>Appearance</h4>
+  el.innerHTML = `<div class="popbar"><b>Preferences</b></div>
+    <h4>Appearance</h4><div class="popbody">
     <div class="pseg modeseg" role="group" aria-label="dark or light">${MODES.map(([id, label]) => `
       <button type="button" data-mode="${id}" class="${id === mode ? "on" : ""}"
         role="menuitemradio" aria-checked="${id === mode}">${esc(label)}</button>`).join("")}</div>
     <label class="uimotion"><input type="checkbox" id="uiMotion"${document.documentElement.dataset.motion === "reduce" ? " checked" : ""}> Reduce motion${
-      helpIcon("pages switch, menus open and sections fold at once, in every browser you sign in to; off, the page follows what this device asks for")}</label>
-    <h4>Color scheme</h4>
+      helpIcon("pages switch, menus open and sections fold at once, in every browser you sign in to; off, the page follows what this device asks for")}</label></div>
+    <h4>Color scheme</h4><div class="popbody">
     <div class="swgrid">${THEMES.map(([id, label]) => `
       <button type="button" class="sw${id === cur ? " on" : ""}" data-theme="${id}"
         role="menuitemradio" aria-checked="${id === cur}"
         aria-label="${esc(label)}" title="${esc(label)}">
         <span class="swa"></span><span class="swb"></span><span class="swi"></span>
         <span class="swp"></span><span class="swn">${esc(label)}</span>
-      </button>`).join("")}</div>
-    <h4>Time zone</h4>
+      </button>`).join("")}</div></div>
+    <h4>Time zone</h4><div class="popbody">
     <div class="tzrow">
       <select id="uiTZ" aria-label="this browser's time zone">${tzOptions(tzDraft ?? userTZ())}</select>
       <button type="button" id="uiTZApply"${tzDraft === null || tzDraft === userTZ() ? " disabled" : ""}>Apply</button>
     </div>
-    <div class="tzsaid">times here read ${esc(fmtTime(Date.now(), {hour: "2-digit", minute: "2-digit", timeZoneName: "short"}))}</div>
-    <h4>Account</h4>
+    <div class="tzsaid">times here read ${esc(fmtTime(Date.now(), {hour: "2-digit", minute: "2-digit", timeZoneName: "short"}))}</div></div>
+    <h4>Account</h4><div class="popbody">
     <div class="acctrow">
       <button type="button" id="uiProfile">Profile</button>
       <button type="button" id="uiReport" class="narrowonly" aria-label="report a bug" title="report a bug in BuilderBot: it goes to the diagnostics">${$("bReport")?.querySelector("svg")?.outerHTML || "Report a bug"}</button>
       <button type="button" id="uiOut" class="narrowonly" aria-label="sign out" title="sign out: back to the login page">${$("bOut")?.querySelector("svg")?.outerHTML || "Sign out"}</button>
-    </div>`;
+    </div></div>`;
   el.querySelectorAll(".sw").forEach(b =>
     b.onclick = () => applyTheme(b.dataset.theme));
   el.querySelectorAll("[data-mode]").forEach(b =>

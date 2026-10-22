@@ -706,21 +706,29 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   padding-bottom:calc(10px + env(safe-area-inset-bottom))}
 @media(prefers-reduced-motion:reduce){ .tourring{transition:none} }
 html[data-motion="reduce"] .tourring{transition:none}
-.bellpanel{position:absolute;right:8px;top:100%;z-index:40;
-  width:min(400px,calc(100vw - 16px));max-height:min(60vh,440px);overflow:auto;
+/* The header's pop-outs, the bell's, the doctor's and the gear's: one shape
+   (the operator, 22 Oct). Anchored to the header's bottom edge, one width,
+   a title band on top, banded section heads, and a height that scrolls
+   inside; anything else closes one, Escape closes it. On a phone each runs
+   to the same 8px edges and the page behind dims, so where it ends is plain
+   where its rows look like the page's own. */
+.bellpanel,.uimenu{position:absolute;right:8px;top:100%;z-index:40;
+  width:min(400px,calc(100vw - 16px));max-height:min(70vh,560px);overflow:auto;overscroll-behavior:contain;
   background:var(--panel);border:var(--hair) solid var(--line);border-top:0;
   border-radius:0 0 var(--r-surface) var(--r-surface);box-shadow:0 8px 22px rgba(0,0,0,.45);
   animation:menuIn .22s cubic-bezier(.33,1,.68,1)}
-/* The header's own menu, under the gear. Same shape and the
-   same manners as the bell panel beside it: anchored to the header's bottom
-   edge, anything else closes it, Escape closes it. */
-.uimenu{position:absolute;right:8px;top:100%;z-index:40;
-  width:min(300px,calc(100vw - 16px));
-  background:var(--panel);border:var(--hair) solid var(--line);border-top:0;
-  border-radius:0 0 var(--r-surface) var(--r-surface);box-shadow:0 8px 22px rgba(0,0,0,.45);padding:8px;
-  animation:menuIn .22s cubic-bezier(.33,1,.68,1)}
-.uimenu h4{margin:6px 2px 6px;font:var(--f-tag);letter-spacing:.6px;
-  text-transform:uppercase;color:var(--dim)}
+@media(max-width:600px){
+  .bellpanel,.uimenu{left:8px;right:8px;width:auto}
+  header:has(>.bellpanel:not([hidden]),>.uimenu:not([hidden]))::before{content:"";position:absolute;
+    left:0;right:0;top:100%;height:100vh;z-index:39;background:rgba(0,0,0,.4);pointer-events:none} }
+.popbar{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;
+  min-height:var(--tap);padding:4px 8px 4px 12px;background:var(--panel);
+  border-bottom:var(--hair) solid var(--line)}
+.popbar>b{font:var(--f-ui);font-weight:600;color:var(--ink)}
+.popbar>.popmeta{font:var(--f-pill);color:var(--dim);margin-left:auto}
+.popbar>b+button{margin-left:auto}
+.uimenu h4{margin:0}
+.uimenu .popbody{padding:8px 12px 10px}
 .uimenu>button{width:100%;min-height:var(--tap);justify-content:flex-start}
 /* Profile across the row, and on a narrow phone the header's bug and sign
    out beside it as the square icons they are in the header (the operator,
@@ -962,7 +970,7 @@ html[data-motion="reduce"] .tourring{transition:none}
   display:flex;align-items:center;justify-content:center}
 .sw.on{outline:2px solid var(--accent);outline-offset:1px}
 @media(hover:hover){ .sw:hover{border-color:var(--ink)} }
-.bnote{padding:8px 10px;border-bottom:var(--hair) solid var(--line);font:var(--f-ui)}
+.bnote{padding:8px 12px;border-bottom:var(--hair) solid var(--line);font:var(--f-ui)}
 .bnote:last-of-type{border-bottom:0}
 .bnote .bwhy{overflow-wrap:anywhere}
 .bnote.bad .bwhy{color:var(--bad)}
@@ -1003,7 +1011,7 @@ html[data-motion="reduce"] .tourring{transition:none}
 .bnote.ask.bad .bwhy{color:var(--bad)}
 /* The drawer in three groups, each headed by what it is and how many
    (the operator, 10 Oct: one amber wall). A head is a label, not a row. */
-.bgroup{display:flex;align-items:center;gap:8px;padding:8px 10px 6px;
+.bgroup,.uimenu h4{display:flex;align-items:center;gap:8px;padding:8px 12px 6px;
   font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;color:var(--dim);
   border-bottom:var(--hair) solid var(--line);background:var(--sunk)}
 .bgroup button{margin-left:auto}
@@ -1942,6 +1950,11 @@ select:focus{outline-offset:-2px}
 /* The Agents tab (tab-agents.js, R95): a device sign-in's one-time code,
    what the person types on the provider's page, a short mono fact set
    apart by its weight and spacing, and taken whole by one press. */
+/* An agent's section in parts, each under a small head in the gear's voice,
+   a hairline between them. */
+.fsub{font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;color:var(--dim);margin:2px 0 8px}
+.agentstab .agpart+.agpart{border-top:var(--hair) solid var(--line)}
+.agentstab .agpart>.actbar{margin-top:10px}
 .agentstab .sicode{font:var(--f-data);font-weight:600;letter-spacing:.12em;user-select:all}
 /* The nginx tab (tab-nginx.js): its sections hold field bands, which carry
    their own inset, so the body adds none (as a settings group's does). */
@@ -1962,10 +1975,9 @@ select:focus{outline-offset:-2px}
 .ngfields{display:grid;grid-template-columns:var(--tcols);column-gap:var(--row-x);row-gap:var(--field-gap);min-width:0}
 .ngfields>.setrow.col{margin:0;min-width:0;max-width:none}
 .ngformbar{margin:0;padding:0}
-/* The shared hostname list on the nginx tab: a name, where it is routed,
-   and Delete where it is routed nowhere; the box to add one under it. */
-.nghost{display:flex;align-items:center;gap:8px;margin:2px 0}
-.nghost + .actbar input,.field > .actbar input[data-nghostnew]{flex:1 1 14em;min-width:0}
+/* The shared hostname list on the nginx tab: a record table as Routes is,
+   and the box to add one under it. */
+.field > .actbar input[data-nghostnew]{flex:1 1 14em;min-width:0}
 /* On a phone a route's form stacks: hostname, path and port beside each
    other, the pair under them (the operator, 18 Oct: the fields ran past
    the screen's edge). */
@@ -4479,12 +4491,9 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
 .st.warn{background:var(--warn)}
 .st.bad{background:var(--bad)}
 /* The doctor's panel under its dot in the top bar (R218 step 3). */
-.docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}
-#docWhen{font:var(--f-pill);color:var(--dim);margin-left:auto}
-#doctor:not([hidden]){border-top:var(--hair) solid var(--line)}
-.doctor .probs{padding:7px 10px;display:flex;flex-direction:column;gap:4px}
+.doctor .probs{padding:8px 12px;display:flex;flex-direction:column;gap:4px}
 .doctor .probs:empty{display:none}
-.doctor .chips{display:flex;flex-wrap:wrap;gap:5px;padding:7px 10px}
+.doctor .chips{display:flex;flex-wrap:wrap;gap:5px;padding:8px 12px 10px}
 .doctor .probs:not(:empty)+.chips{border-top:var(--hair) solid var(--line)}
 .doctor .probs .sub.bad{color:var(--bad)}
 .doctor .probs .sub.warn{color:var(--warn)}
@@ -6682,7 +6691,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
   <button id="bDocDot" aria-haspopup="dialog" aria-expanded="false"
           aria-label="bb doctor: the controller's own checks"><span class="st" id="docDot"></span></button>
   <div id="docPanel" class="bellpanel doctor" hidden role="dialog" aria-label="bb doctor">
-    <div class="docbar"><b>Doctor</b><span id="docWhen"></span>
+    <div class="popbar"><b>Doctor</b><span id="docWhen" class="popmeta"></span>
       <button id="bDoctor" title="run bb doctor now" aria-label="run bb doctor now">↻</button></div>
     <div id="doctor"><div class="empty">first run pending…</div></div>
   </div>
