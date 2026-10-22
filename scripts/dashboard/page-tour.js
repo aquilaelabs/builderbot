@@ -152,9 +152,12 @@ function tourTarget(sel){
 // Whether the page in front is still its placeholder, or the page is still
 // booting: a boot draws the saved front tab before it lands on Home, and a
 // tour asked for in between toured Projects instead.
+// Only a placeholder that shows counts: the Containers page keeps one in
+// each section it reads when opened, and a tour that waited for those never
+// came (B216).
 function tourLoading(){
   return document.body.classList.contains("booting")
-    || !!document.querySelector(".doc.on .skel, .doc.on .loading, .doc.on .sk-b");
+    || [...document.querySelectorAll(".doc.on .skel, .doc.on .loading, .doc.on .sk-b")].some(e => e.checkVisibility());
 }
 function tourStart(kind){
   // Still the page in front, and nothing over it: a tour asked for a page
