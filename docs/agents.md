@@ -120,6 +120,16 @@ Not every guard has a place on every agent, and the project's settings
 after a summary, so the house rules are not said again then, and neither
 has a search tool for the code map's hint.
 
+## In the dock, the bell and the turn limit
+
+A Codex or Copilot session's dot in the dock reads from its own hooks, since
+its pane title is not Claude Code's: working from the prompt its turn began
+on, waiting once the turn ended, asking while its own permission prompt is
+up, which the bell shows as it does a Claude session's. Its turn on a node
+with a limit on sessions working at once is its own beside a Claude session
+of the same person, and every agent's working session counts toward the
+limit and Home's sessions tile alike.
+
 ## Your conversations, every agent's
 
 `bb transcripts` in a session lists the asking account's own conversations
@@ -141,8 +151,7 @@ credential of any of them.
 
 ## Not built yet
 
-Resuming a Codex or Copilot conversation, their state in the dock and their
-transcripts, a model and effort kept per agent, the model router and the
+Resuming a Codex or Copilot conversation, their transcripts, a model and effort kept per agent, the model router and the
 open agent: R95's later steps.
 A sign-in with real ChatGPT and GitHub accounts has been walked against
 stubs only; the walk on a real account is the operator's.

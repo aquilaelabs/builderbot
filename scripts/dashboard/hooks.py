@@ -23,6 +23,7 @@ The account is the token's, never the request's: the server checks the
 token and hands verb() the account and project it was minted for, and
 that is who the note is filed under and who the feed says asked.
 """
+import agents
 from fields import field
 
 # The server's, handed over by configure(): the account store, the overlap
@@ -40,6 +41,7 @@ pending = None
 turns = None
 nodes = None
 seen_note = None
+agent_state = None     # (project, uid, agent, state): another agent's working or waiting
 turn_scope = None
 # server.asking_set and asking_clear: a session on its permission prompt (B52).
 asking_set = None
@@ -56,6 +58,10 @@ def verb(kind, req, me, uid, project):
     `project`. (payload, status)."""
     store = users.load()["users"]
     name = next((n for n, u in store.items() if u.get("uid") == uid), "") or uid
+    # Which coding agent's session spoke (R95 step 7): its hooks say so,
+    # Claude's when they do not.
+    ag = agents.get(req.get("agent")) if isinstance(req, dict) else None
+    agent = ag.id if ag and ag.live else "claude"
     if kind == "note":
         path = str(req.get("path") or "")[:400]
         if not path:
@@ -74,12 +80,12 @@ def verb(kind, req, me, uid, project):
         chat.post(project, uid, f"{name} asked: {text}", kind="asked")
         return {"ok": True}, 200
     if kind == "started":
-        chat.event(project, uid, f"{name} started a Claude session on {project}"
+        chat.event(project, uid, f"{name} started a {agents.get(agent).name} session on {project}"
                                  + (f" ({field(req, 'node')})" if field(req, "node") else ""))
         seen_note(project, uid, field(req, "node"), who=me, begin=True)
         return {"ok": True}, 200
     if kind in ("seen", "turn-done") and asking_clear is not None:
-        asking_clear(project, uid)
+        asking_clear(project, uid, agent)
     if kind == "seen":
         # What this session has not been told about the notebook, and
         # marked told (roadmap #27). The answer rides back into the turn
@@ -107,7 +113,7 @@ def verb(kind, req, me, uid, project):
         # Claude Code waits on its own permission prompt (B52): marked until
         # it works again, its turn ends or it is sent a prompt.
         if asking_set is not None:
-            asking_set(project, uid, str(req.get("text") or ""))
+            asking_set(project, uid, str(req.get("text") or ""), agent)
         return {"ok": True}, 200
     if kind == "guards":
         return {"ok": True, "guards": rules.guards(project)}, 200
@@ -118,7 +124,11 @@ def verb(kind, req, me, uid, project):
         # A prompt about to start, or a turn over (turns.py): how many
         # sessions on one node work at once, when an administrator has
         # said. No node to count on, or no limit, and every turn goes.
-        scope = turn_scope(project, uid)
+        # Another agent's session says working and waiting by its turns,
+        # which is all it has to say it with (R95 step 7).
+        if agent_state is not None and agent != "claude":
+            agent_state(project, uid, agent, "working" if kind == "turn" else "waiting")
+        scope = turn_scope(project, uid, agent)
         if not scope:
             return {"ok": True, "go": True}, 200
         nid, key, limit, heart, at = scope

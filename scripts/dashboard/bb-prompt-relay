@@ -90,6 +90,8 @@ def post_hook(body):
     # restarting controller (bbapi.request, R251), it says so at once.
     os.environ["BB_CONTROLLER_WAIT"] = "0"
     import bbapi                                             # noqa: E402
+    # ...naming which agent's session it is (R95 step 7).
+    body = {**body, "agent": os.environ.get("BB_AGENT") or "claude"}
     return bbapi.call("/api/v1/hook", body,
                       auth="Bearer " + os.environ.get("BB_TOKEN", ""), timeout=10) or {}
 

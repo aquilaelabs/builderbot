@@ -157,6 +157,29 @@ class Briefing(unittest.TestCase):
         self.assertEqual(preamble.for_agent("codex", ""), "")
 
 
+class State(unittest.TestCase):
+    """R95 step 7: another agent's session says working, waiting and asking
+    through its hooks, and its turn is its own beside a Claude one's."""
+
+    def test_a_turn_marks_it_working_and_its_end_waiting_under_its_own_name(self):
+        import hooks
+        keep = {k: getattr(hooks, k) for k in ("users", "agent_state", "turn_scope", "asking_set", "asking_clear")}
+        self.addCleanup(lambda: hooks.configure(**keep))
+        said, scoped, asked = [], [], []
+        users_stub = type("U", (), {"load": staticmethod(lambda: {"users": {}})})
+        hooks.configure(users=users_stub, agent_state=lambda *a: said.append(a),
+                        turn_scope=lambda p, u, a="claude": scoped.append(a) or None,
+                        asking_set=lambda *a: asked.append(a), asking_clear=lambda *a: asked.append(("clear",) + a))
+        self.assertEqual(hooks.verb("turn", {"agent": "codex"}, {}, "u_0123abcd", "alpha"), ({"ok": True, "go": True}, 200))
+        hooks.verb("turn-done", {"agent": "codex"}, {}, "u_0123abcd", "alpha")
+        hooks.verb("asking", {"agent": "copilot", "text": "may I?"}, {}, "u_0123abcd", "alpha")
+        hooks.verb("turn", {}, {}, "u_0123abcd", "alpha")
+        self.assertEqual(said, [("alpha", "u_0123abcd", "codex", "working"), ("alpha", "u_0123abcd", "codex", "waiting")])
+        self.assertEqual(scoped, ["codex", "codex", "claude"])
+        self.assertIn(("clear", "alpha", "u_0123abcd", "codex"), asked)
+        self.assertIn(("alpha", "u_0123abcd", "may I?", "copilot"), asked)
+
+
 class ByPath(unittest.TestCase):
     """bb loads the notebook's modules by path (lib/dash.py), with nothing of
     the dashboard on sys.path: each that reads the agent table finds it."""

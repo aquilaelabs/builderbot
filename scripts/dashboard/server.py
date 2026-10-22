@@ -1533,12 +1533,22 @@ ASKING = {}
 ASKING_SETTLE = 4
 
 
-def asking_set(project, uid, text=""):
-    ASKING[(uid, tmux_name(claude_session(project)))] = {"at": time.time(), "text": str(text or "")[:300]}
+def asking_set(project, uid, text="", agent="claude"):
+    ASKING[(uid, tmux_name(agents.session_name(agent, project)))] = {"at": time.time(), "text": str(text or "")[:300]}
 
 
-def asking_clear(project, uid):
-    ASKING.pop((uid, tmux_name(claude_session(project))), None)
+def asking_clear(project, uid, agent="claude"):
+    ASKING.pop((uid, tmux_name(agents.session_name(agent, project))), None)
+
+
+# What another agent's session is doing (R95 step 7), as its hooks said it:
+# working from the prompt its turn began on, waiting once the turn ended.
+# Claude's reads its pane title, which no other agent's carries.
+AGENT_STATE = {}
+
+
+def agent_state_set(project, uid, agent, state):
+    AGENT_STATE[(uid, tmux_name(agents.session_name(agent, project)))] = {"state": state, "at": time.time()}
 
 
 def session_state(uid, name, title):
@@ -1549,7 +1559,11 @@ def session_state(uid, name, title):
     read as waiting when it was working would call a person for nothing."""
     agent, _stem = agents.of_session(tmux_base(name))
     if agent and agent.id != "claude":
-        return "", ""
+        k = (uid, tmux_base(name))
+        a = ASKING.get(k)
+        if a:
+            return "asking", a["text"] or "waiting for you to answer it in its terminal"
+        return (AGENT_STATE.get(k) or {}).get("state", "waiting"), ""
     state, task = claude_state(title)
     k = (uid, tmux_base(name))
     a = ASKING.get(k)
@@ -2252,13 +2266,21 @@ def node_heart(n):
     if n.get("live"):
         for r in rep.get("sessions") or []:
             name = str((r or {}).get("name") or "")
-            if agents.is_session(tmux_base(name)) \
-                    and claude_state(str((r or {}).get("title") or ""))[0] == "working":
+            ag, _stem = agents.of_session(tmux_base(name))
+            if not ag:
+                continue
+            # Claude's by its pane title; another agent's by what its hooks
+            # said (R95 step 7): every agent's working session counts.
+            if ag.id == "claude":
+                busy = claude_state(str((r or {}).get("title") or ""))[0] == "working"
+            else:
+                busy = (AGENT_STATE.get((tmux_owner(name), tmux_base(name))) or {}).get("state") == "working"
+            if busy:
                 heart.add(name)
     return heart, float((rep.get("sample") or {}).get("at") or 0)
 
 
-def turn_scope(project, uid):
+def turn_scope(project, uid, agent="claude"):
     """(node id, key, limit, heart, at) for a turn of `uid`'s session on
     `project` (turns.py), or None when there is no node to count on: the
     project runs on no agent node, so nothing here is the machine a session
@@ -2271,7 +2293,7 @@ def turn_scope(project, uid):
     if not n or n["kind"] != "agent":
         return None
     heart, at = node_heart(n)
-    return nid, f"{uid}~{claude_session(project)}", nodes.turn_limit(nid), heart, at
+    return nid, f"{uid}~{agents.session_name(agent, project)}", nodes.turn_limit(nid), heart, at
 
 
 def node_turns(n):
@@ -3877,7 +3899,8 @@ import hooks                                                     # noqa: E402
 
 hooks.configure(users=users, rules=rules, preamble=preamble, overlap=overlap, chat=chat, roadmap=roadmap, pending=pending,
                 turns=turns, nodes=nodes, seen_note=session_seen_note, turn_scope=turn_scope,
-                asking_set=asking_set, asking_clear=asking_clear, asked=projsessions.asked)
+                asking_set=asking_set, asking_clear=asking_clear, asked=projsessions.asked,
+                agent_state=agent_state_set)
 
 
 # Written by entrypoint.sh once every startup hook has finished. Named here as
