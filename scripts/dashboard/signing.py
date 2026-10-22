@@ -233,14 +233,20 @@ def inspect(blob, store_pass, alias=""):
         shutil.rmtree(d, ignore_errors=True)
 
 
-def _keep(project, route, key, blob, alias, kind, sha, store_pass, key_pass, by, generated=False):
+def _keep(project, route, key, blob, alias, kind, sha, store_pass, key_pass, by, generated=False, imported=False):
     _write_private(_dir(project, key) / f"{route}.ks", blob)
     was = _record(project, route, key) or {}
     rec = {"route": route, "key": key, "alias": alias, "type": kind, "sha256": sha,
            "by": by, "at": int(time.time()), "generated": bool(generated),
-           # A replaced key has not been backed up, whatever the last one was.
-           "backed_up": 0 if was.get("sha256") != sha else int(was.get("backed_up") or 0),
+           # A replaced key has not been backed up, whatever the last one was;
+           # one brought back from a backup is one somebody already holds.
+           "backed_up": int(time.time()) if imported
+           else 0 if was.get("sha256") != sha else int(was.get("backed_up") or 0),
            "store_pass": store_pass, "key_pass": key_pass or store_pass}
+    if imported:
+        # Its password came in a backup's password.txt and is in no head
+        # either, so its own backup carries the two together again.
+        rec["imported"] = True
     _write_private(_dir(project, key) / f"{route}.json", json.dumps(rec).encode())
     return {"ok": True, "project": project, "key": _public(rec)}, 200
 
@@ -251,7 +257,7 @@ def needs_lock(project):
     can leave the dashboard without it from the first one on."""
     if backup_locked(project):
         return None
-    return {"error": f"{project} has no backup password yet: its owner sets one under Signing keys first, "
+    return {"error": f"{project} has no backup password yet: its owner sets one in its Signing view first, "
                      "and every key's backup asks for it from then on"}, 409
 
 
@@ -460,7 +466,7 @@ def backup(project, route, key=DEFAULT):
     _write_private(_dir(project, key) / f"{route}.json", json.dumps(rec).encode())
     ext = "jks" if str(rec.get("type") or "").upper() == "JKS" else "p12"
     base = f"{project}-{key}-{route}"
-    if rec.get("generated"):
+    if rec.get("generated") or rec.get("imported"):
         # Its password was made here and is in no head, so a keystore alone
         # would be a backup nobody could open: the two travel together.
         buf = io.BytesIO()
@@ -470,6 +476,95 @@ def backup(project, route, key=DEFAULT):
                                        f"alias: {rec.get('alias')}\nSHA-256: {rec.get('sha256')}\n")
         return (f"{base}.zip", buf.getvalue()), 200
     return (f"{base}.{ext}", blob), 200
+
+
+# ---- a backup brought back (R103, the operator 22 Oct) ----------------------
+# What Download backup hands over goes back in, to this project or another:
+# the zip a generated key's backup is (the keystore and password.txt, which
+# says its password and alias, so nothing is retyped), or a bare keystore
+# with the password its owner types. Checked as an upload is, and against the
+# fingerprint password.txt names.
+BACKUP_KS = re.compile(r"[A-Za-z0-9._-]{1,200}\.(p12|jks|pfx|keystore)")
+BACKUP_ROUTE = re.compile(r"-(play|sideload)\.(p12|jks|pfx|keystore|zip)$")
+
+
+def _read_backup(blob):
+    """(keystore bytes, password, alias, sha256, keystore's name, error) from
+    a backup zip: exactly a keystore and password.txt, each under the cap."""
+    def no(why):
+        return b"", "", "", "", "", why
+    try:
+        z = zipfile.ZipFile(io.BytesIO(blob))
+        infos = z.infolist()
+    except (zipfile.BadZipFile, OSError, ValueError):
+        return no("that is not a key's backup: the zip did not open")
+    names = sorted(i.filename for i in infos)
+    stores = [n for n in names if BACKUP_KS.fullmatch(n)]
+    if len(infos) != 2 or "password.txt" not in names or len(stores) != 1:
+        return no("a key's backup is a keystore and password.txt, nothing else: "
+                  f"this one holds {', '.join(names[:6]) or 'nothing'}")
+    if any(i.file_size > MAX_BYTES for i in infos):
+        return no("that is too large to be a key's backup")
+    try:
+        ks = z.read(stores[0])
+        said = z.read("password.txt").decode("utf-8")
+    except (zipfile.BadZipFile, OSError, ValueError, RuntimeError):
+        return no("the backup's files did not read whole")
+
+    def line(k):
+        m = re.search(rf"^{k}:[ \t]*(.*?)[ \t]*$", said, re.M)
+        return m[1] if m else ""
+    pw = line("keystore and key password")
+    if not pw:
+        return no("the backup's password.txt names no password")
+    return ks, pw, line("alias"), line("SHA-256"), stores[0], ""
+
+
+def import_backup(project, route, blob_b64, key="", password="", alias="", filename="", by=""):
+    """Keep a key from a backup: a backup zip, or a bare keystore with its
+    password. An empty route is read off the backup's name, an empty key off
+    a zip's alias (a generated key is aliased by its name), else `default`.
+    Refused over a slot that holds a different key. The password goes into
+    the key's record and nowhere else. (payload, status)."""
+    if not _ok_project(project):
+        return {"error": "unknown project"}, 400
+    if (no := needs_lock(project)):
+        return no
+    try:
+        blob = base64.b64decode(blob_b64 or "", validate=True)
+    except ValueError:
+        return {"error": "the backup did not arrive whole"}, 400
+    if not blob:
+        return {"error": "no backup was given"}, 400
+    if len(blob) > MAX_BYTES:
+        return {"error": "that is too large to be a key's backup"}, 400
+    zipped = blob[:4] == b"PK\x03\x04"
+    want = inner = ""
+    if zipped:
+        blob, password, alias, want, inner, why = _read_backup(blob)
+        if why:
+            return {"error": why}, 400
+        if not key and _ok_key(alias):
+            key = alias
+    elif not password:
+        return {"error": "a keystore on its own needs its password: a generated key's backup is the zip, which carries it"}, 400
+    key = key or DEFAULT
+    if not route:
+        m = BACKUP_ROUTE.search(filename or "") or BACKUP_ROUTE.search(inner)
+        route = m[1] if m else ""
+    if not route:
+        return {"error": "say which slot it goes in, Play upload or sideload: the backup's name does not"}, 400
+    if (no := _check(project, route, key)):
+        return no
+    alias, kind, sha, why = inspect(blob, password, alias.strip())
+    if why:
+        return {"error": why}, 400
+    if want and want != sha:
+        return {"error": "the keystore is not the key its password.txt names: the fingerprints differ"}, 400
+    was = _record(project, route, key)
+    if was and was.get("sha256") != sha:
+        return {"error": f"{key} has a {WORDS[route]} already: remove it first, or import it under another name"}, 409
+    return _keep(project, route, key, blob, alias, kind, sha, password, "", by, imported=zipped)
 
 
 # ---- the backup password (the operator, 1 Oct) ----------------------------
@@ -561,8 +656,8 @@ def refusal(project, rel, route, key=""):
     if key and not _record(project, route, key):
         return {"error": f"{project} has no {WORDS[route]} named {key}"}, 404
     if not key and route not in routes_held(project):
-        return {"error": f"{project} has no {WORDS[route]}: an administrator adds one under "
-                         "Signing keys in its settings"}, 404
+        return {"error": f"{project} has no {WORDS[route]}: an administrator adds one in "
+                         "its Signing view (Ship)"}, 404
     # With no key named, the build's package decides on the node; when no
     # key is called default, several hold the route and none is mapped, no
     # package can find one, so it is refused here rather than after a
@@ -625,4 +720,8 @@ def verb(req, by=""):
         return rotate(project, str(req.get("from") or ""), str(req.get("to") or ""), by=by)
     if act == "remove":
         return remove(project, route, key)
+    if act == "import":
+        return import_backup(project, route, str(req.get("backup") or ""), str(req.get("key") or ""),
+                             str(req.get("password") or ""), str(req.get("alias") or ""),
+                             str(req.get("filename") or ""), by=by)
     return {"error": f"unknown action {act!r}"}, 400

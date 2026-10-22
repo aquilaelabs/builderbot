@@ -173,6 +173,7 @@ def root(project):
         try:
             p = Path(want).resolve()
             if p.is_dir() and ((WORKSPACE / ".worktrees" / project).resolve() in p.parents
+                               or (WORKSPACE / project / ".claude" / "worktrees").resolve() in p.parents
                                or _same_repo(p, WORKSPACE / project)):
                 return p
         except OSError:

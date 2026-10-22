@@ -98,7 +98,7 @@ const nv = await page.evaluate(() => {
   return { ship: [...document.querySelectorAll('.nbsub [data-in="ship"]')].map(b => b.dataset.v).join(),
            row: !!v.querySelector('[data-vm-key="alpha/db"]'), newVm: !v.querySelector('#nvNew').hidden };
 });
-ok(nv.ship === 'artifacts,docker,vms' && nv.row && nv.newVm,
+ok(nv.ship === 'artifacts,docker,vms,signing' && nv.row && nv.newVm,
    `a project's notebook has VMs beside Docker in Ship, its own VM's row and New VM in its head (${JSON.stringify(nv)})`);
 await page.evaluate(() => openVmsTab());
 await page.waitForSelector('.vmtab [data-vm-key="alpha/db"]', { timeout: 10000 });

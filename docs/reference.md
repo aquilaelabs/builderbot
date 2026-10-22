@@ -704,8 +704,8 @@ environment.
 
 ## Signing Android releases
 
-A project keeps its Android keys on the controller, under **Android signing** in
-its settings, and a build is signed on its node as a job no session can look
+A project keeps its Android keys on the controller, in the **Signing** view of
+its page (under Ship), and a build is signed on its node as a job no session can look
 inside: from the Artifacts view, or by a session with `bb sign`, under the
 project's **Claude may: Sign a build**. No key is made or added until the
 project's owner has set its **backup password**, which every download of a
@@ -729,5 +729,6 @@ up there. A project can keep several named keys (one per app, or one shared),
 generated on the controller or uploaded, with each app's package mapped to its
 key, and a sideload key can be **rotated** to another: builds then carry both
 and a proof, Android 9 and newer move to the new key, and the old one is kept
-for the devices before that. [building.md](building.md#android-signing-keys)
+for the devices before that. **Import a backup** takes what Download backup
+gave, in this project or another, as the same key. [building.md](building.md#android-signing-keys)
 has the rest.

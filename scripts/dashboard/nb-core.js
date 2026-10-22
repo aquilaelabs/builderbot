@@ -112,6 +112,7 @@ function makeNotebook(project){
   // are made, since they register their sections as they are.
   nb.stagers = {}; nb.sectBar = sectBar; nb.stage = stage;
   const {loadArtifacts, loadVersion, drawVersion, postArtifacts, postVersion} = Object.assign(nb, nbArtifactsView({$, nb, project, root, sheet}));
+  const {loadSigning} = Object.assign(nb, nbSigningView({$, nb, project}));
   const {loadAnalysis, loadCodebase, codebaseSection, loadPreamble, preambleSection, loadBrief, briefSection} = Object.assign(nb, nbAnalysisView({$, nb, project}));
   const {loadDesign} = Object.assign(nb, nbDesignView({$, nb, project, root}));
   const {loadWiki, wikiDirty, wikiNews} = Object.assign(nb, nbWikiView({$, nb, project}));
@@ -446,6 +447,7 @@ function makeNotebook(project){
             nb.ruleStagedCount() ? "an edited rule" : "",
             nb.designStagedCount() ? "an unsaved design" : "",
             wikiDirty() ? "a wiki page being edited" : "",
+            nb.signStagedCount() ? "a staged signing key change" : "",
             v ? `${v} staged version bump${v === 1 ? "" : "s"}` : ""]
       .filter(Boolean).join(" and ");
   }
@@ -576,6 +578,7 @@ function makeNotebook(project){
     if (v === "git") loadGit();
     if (v === "docker") loadNbDocker();
     if (v === "vms") loadNbVms();
+    if (v === "signing") loadSigning();
     if (v === "bugs" && !nb.bugs) loadBugs();
     if (v === "analysis") loadAnalysis();
     if (v === "design") loadDesign();
@@ -619,6 +622,7 @@ function makeNotebook(project){
     nb.ruleClearStaged();
     nb.designClearStaged();
     nb.wikiClear();
+    nb.signClearStaged();
     nb.roadmapOrdering = false;
     redrawRoadmap();
     nb.memEditing.clear();

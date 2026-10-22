@@ -974,7 +974,7 @@ for (const kind of kinds){
 {
   await bring('notebook');
   const misplaced = [];
-  for (const v of ['roadmap', 'bugs', 'briefing']){
+  for (const v of ['roadmap', 'bugs', 'briefing', 'signing']){
     await page.evaluate(w => getNotebook('alpha').view(w), v);
     await page.waitForFunction(w => document.querySelector(`.nb .nbview[data-view="${w}"] [data-add]`)?.offsetHeight > 0,
                                v, { timeout: 20000 });
@@ -988,6 +988,7 @@ for (const kind of kinds){
         const list = a.dataset.add === 'rule' ? view.querySelector('#rlList')
                    : a.dataset.add === 'memory' ? view.querySelector('#memList')
                    : a.dataset.add === 'bug' ? view.querySelector('#bugList')
+                   : ['key', 'import'].includes(a.dataset.add) ? view.querySelector('#sgBox')
                    : view.querySelector('#roadmapList');
         const row = list?.firstElementChild?.getBoundingClientRect();
         return { add: a.dataset.add, belowHead: box.top >= head.bottom - 1,
@@ -1003,7 +1004,7 @@ for (const kind of kinds){
   // Save and Revert only where something can be staged behind them: a Save
   // under a list that writes through read as a button that did nothing.
   const foots = {};
-  for (const v of ['roadmap', 'briefing', 'artifacts', 'design', 'bugs', 'analysis', 'tests', 'git']){
+  for (const v of ['roadmap', 'briefing', 'artifacts', 'design', 'signing', 'bugs', 'analysis', 'tests', 'git']){
     await page.evaluate(w => getNotebook('alpha').view(w), v);
     await page.waitForFunction(w => document.querySelector(`.nb .nbview[data-view="${w}"]`)?.checkVisibility(),
                                v, { timeout: 20000 });
@@ -1021,7 +1022,7 @@ for (const kind of kinds){
   }
   // Artifacts carries one only where a Version can stage a bump, which this
   // fixture's alpha, with no commits, cannot (version.mjs holds that one).
-  ok(foots.roadmap && foots.briefing && foots.design && !foots.bugs && !foots.analysis && !foots.tests && !foots.git,
+  ok(foots.roadmap && foots.briefing && foots.design && foots.signing && !foots.bugs && !foots.analysis && !foots.tests && !foots.git,
      `a section's own Save and Revert are on the views that stage and on no other (the operator, 5 Oct: there is no foot) (${JSON.stringify(foots)})`);
 }
 

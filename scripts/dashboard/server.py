@@ -7959,8 +7959,11 @@ class Handler(BaseHTTPRequestHandler):
         got, status = signing.verb(req, by=str(who.get("name") or ""))
         # Whether this person may take a backup, so the dialog offers it only
         # where it would be handed over.
+        # `why`: what keeps this person from changing them, which the
+        # Signing view says in place of the controls it leaves out.
         if field(req, "action") == "list" and status == 200:
-            got["may_backup"] = not users.may(who, "signing", name)
+            got["why"] = users.may(who, "signing", name)
+            got["may_backup"] = not got["why"]
             got["may_lock"] = users.uid_of(who) == membership.owner_of(name)
         return self._json(got, status)
 
