@@ -31,12 +31,16 @@ def _claims(jwt):
 
 def codex_of(home):
     """Who this account's Codex CLI is signed in as here, {email, plan}, or
-    None. $CODEX_HOME is ~/.codex for a session (bb-tty sets none)."""
+    None. $CODEX_HOME is ~/.codex for a session (bb-tty sets none). None
+    only when there is no login file: one that could not be read is
+    {"error": why}, which nobody reads as a sign-out (B236)."""
     try:
         with open(os.path.join(home, ".codex", "auth.json")) as f:
             d = json.load(f)
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return None
+    except (OSError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"[:200]}
     if not isinstance(d, dict):
         return None
     toks = d.get("tokens") if isinstance(d.get("tokens"), dict) else {}
@@ -61,8 +65,10 @@ def copilot_of(home):
     try:
         with open(_copilot_config(home)) as f:
             d = json.load(f)
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return None
+    except (OSError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"[:200]}
     u = d.get("lastLoggedInUser") if isinstance(d, dict) else None
     login = str((u or {}).get("login") or "")[:120] if isinstance(u, dict) else ""
     return {"email": login, "plan": ""} if login else None

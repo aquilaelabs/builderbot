@@ -459,6 +459,9 @@ def work(auth, req, addr, alive):
     return None if j is None else (j, 200)
 
 
+_unread = {}        # (node, uid, agent) -> why its login could not be read, logged once
+
+
 def _logins(nid, rows):
     """What a node's agent says each account on it is signed in to Claude
     as (B104). Absent from most heartbeats, and then nothing happens.
@@ -493,6 +496,15 @@ def _logins(nid, rows):
                 if a.id == "claude" or not a.login_job:
                     continue
                 got = r["agents"].get(a.id) if isinstance(r["agents"].get(a.id), dict) else {}
+                # A login the node could not read is not a sign-out (B236):
+                # the record stays, and why is said once in the log.
+                if got.get("error"):
+                    why = str(got["error"])[:200]
+                    if _unread.get((nid, uid, a.id)) != why:
+                        _unread[(nid, uid, a.id)] = why
+                        print(f"[dashboard] {nid} could not read {uid}'s {a.id} login: {why}", flush=True)
+                    continue
+                _unread.pop((nid, uid, a.id), None)
                 _login(home, nid, a.id, got.get("email"), got.get("plan"))
 
 
@@ -506,4 +518,7 @@ def _login(home, nid, agent, email, plan):
             return                             # already what we have
         claudegrant.report(home, nid, email, str(plan or ""), agent=agent)
     elif on:
+        # Said in the log: a sign-out read off a heartbeat is the one a
+        # person cannot see the cause of from the page (B236).
+        print(f"[dashboard] {nid} reports {agent} signed out for {home}", flush=True)
         claudegrant.report(home, nid, "", signed_in=False, agent=agent)

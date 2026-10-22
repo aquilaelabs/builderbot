@@ -119,6 +119,11 @@ def others():
     home = os.environ.get("HOME") or ""
     for agent, read in (("codex", ll.codex_of), ("copilot", ll.copilot_of)):
         got = read(home) if home else None
+        if got and got.get("error"):
+            # Unread is not signed out (B236): nothing is said for it.
+            if loud and agent == FOR:
+                warn(f"could not read this machine's {agent} login: {got['error']}")
+            continue
         if got:
             w = bbapi.call("/api/v1/claude-login", {"agent": agent, "email": got["email"], "plan": got["plan"],
                                                     "signed_in": True, "node": NODE_ID}, auth=auth)
