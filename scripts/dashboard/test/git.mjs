@@ -852,6 +852,21 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   ok(own.status === 200 && own.code === 0
      && execFileSync('git', [`--git-dir=${origin}`, 'branch', '--list', 'topic'], { encoding: 'utf8' }).includes('topic'),
      `...while its own branch goes up (${(own.out || own.err || '').trim().slice(0, 40)})`);
+  // A branch never pushed goes up on a bare bb git push and is given its
+  // upstream there (B220), rather than git's refusal and a hint about
+  // push.autoSetupRemote.
+  {
+    const was = execFileSync('git', ['-C', B, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim();
+    execFileSync('git', ['-C', B, 'checkout', '-q', '-b', 'fresh-b220']);
+    const first = await relay(['git', 'push']);
+    // The relay answers with what the session's own bb applies to its tree:
+    // the branch's new upstream among it.
+    const up = ((first.apply || {}).upstream || []).find(u => u[0] === 'fresh-b220')?.[2] || '';
+    const there = execFileSync('git', [`--git-dir=${origin}`, 'branch', '--list', 'fresh-b220'], { encoding: 'utf8' }).includes('fresh-b220');
+    execFileSync('git', ['-C', B, 'checkout', '-q', was]);
+    ok(first.status === 200 && first.code === 0 && there && up === 'refs/heads/fresh-b220',
+       `a branch never pushed goes up on a bare bb git push, its upstream set (${first.status} code ${first.code} ${there} ${up} ${JSON.stringify((first.err || first.error || '') + ' / ' + (first.out || '')).slice(0, 400)})`);
+  }
   // B191: the policy is about REFS, not about the word `main` appearing in
   // the arguments. "Its branch" is the one the tree is on, so everything
   // else on that remote is somebody's, and a setting naming one branch must
