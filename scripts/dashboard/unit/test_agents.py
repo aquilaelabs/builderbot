@@ -144,6 +144,19 @@ class Transcripts(unittest.TestCase):
         self.assertIsNone(transcripts.raw("u_0000aaaa", "alpha", "theirs-1"))
 
 
+class ByPath(unittest.TestCase):
+    """bb loads the notebook's modules by path (lib/dash.py), with nothing of
+    the dashboard on sys.path: each that reads the agent table finds it."""
+
+    def test_every_module_bb_loads_by_path_loads(self):
+        import subprocess
+        lib = os.path.join(HERE, "..", "..", "lib")
+        for m in ("prefs", "pending", "rules", "testreg", "bugs", "roadmap", "memory", "nodes"):
+            code = f"import sys; sys.path.insert(0, {lib!r}); import dash; dash.load({m!r}, {os.path.join(HERE, '..')!r})"
+            p = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True, cwd="/")
+            self.assertEqual(p.returncode, 0, (m, p.stderr[-300:]))
+
+
 class Copies(unittest.TestCase):
     def test_the_page_s_table_is_this_one(self):
         with open(os.path.join(HERE, "..", "page-agents.js")) as f:

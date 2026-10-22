@@ -27,9 +27,16 @@ respawned onto the same transcript.
 import json
 import re
 import threading
+import os
+import sys
 from pathlib import Path
 
-import agents
+# Loaded by path too (bb's dash.load), so its own directory is put on the
+# path for what it imports beside itself.
+_here = os.path.dirname(os.path.abspath(__file__))
+if _here not in sys.path:
+    sys.path.insert(0, _here)
+import agents  # noqa: E402
 
 write_json = None
 FILE = None
