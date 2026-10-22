@@ -72,6 +72,18 @@ class Room(unittest.TestCase):
         self.assertIn("2.0 GB", short({"root": [2 * 1024, 100 * 1024]}), "the root's where it does not")
         self.assertEqual(short({}), "", "a node that said neither is not refused")
 
+    def test_a_project_build_is_held_to_the_data_store(self):
+        # R110 step 7: the data store's room, then the cache's, then the root's.
+        n = node("n1", {"disks": {"root": [50 * 1024, 100 * 1024]}, "stores": {"data": 3 * 1024, "cache": 80 * 1024},
+                        "store_totals": {"data": 200 * 1024, "cache": 200 * 1024}})
+        with mock.patch.object(nodes, "node", lambda nid: n):
+            said = nodes.room_short("n1", 10, roles=("data", "cache", "root"))
+            self.assertIn("3.0 GB free for its builds and their outputs", said)
+            n["reported"]["sample"]["stores"]["data"] = 30 * 1024
+            self.assertEqual(nodes.room_short("n1", 10, roles=("data", "cache", "root")), "")
+            del n["reported"]["sample"]["stores"]["data"]
+            self.assertEqual(nodes.room_short("n1", 10, roles=("data", "cache", "root")), "", "the cache store next, with room")
+
 
 
 class Prune(unittest.TestCase):

@@ -2355,20 +2355,32 @@ def _vm_guest(g):
             "users": int(g["users"]) if isinstance(g.get("users"), int) and g["users"] >= 0 else 0, "fs": fs}
 
 
-def room_short(nid, floor_gb):
-    """Why a build on `nid` would run out of disk, or "" (R110): Docker's
-    filesystem, or the root's where the node did not say Docker's, under
-    the floor. A node that has not said either is not refused."""
+ROOM_WHAT = {"docker": "Docker's images and build cache", "root": "its root filesystem",
+             "data": "its builds and their outputs", "cache": "its build caches"}
+
+
+def room_short(nid, floor_gb, roles=("docker", "root")):
+    """Why work on `nid` would run out of disk, or "" (R110): the first of
+    `roles` the node says (a disk, or a store) under the floor. Docker's
+    for a container build, the data store's for a project's build or test.
+    A node that has said none of them is not refused."""
     n = node(nid) or {}
-    disks = ((n.get("reported") or {}).get("sample") or {}).get("disks") or {}
-    role = "docker" if "docker" in disks else "root" if "root" in disks else ""
-    if not role:
-        return ""
-    free, total = disks[role]
-    if free is None or not total or free >= floor_gb * 1024:
-        return ""
-    return (f"{n.get('name') or nid} has {round(free / 1024, 1)} GB free for Docker's images and build cache, "
-            f"under the {floor_gb} GB a node keeps for itself: free some first (its Storage page says what holds it)")
+    smp = (n.get("reported") or {}).get("sample") or {}
+    disks, stores, totals = smp.get("disks") or {}, smp.get("stores") or {}, smp.get("store_totals") or {}
+    for role in roles:
+        free, total = disks[role] if role in disks else (stores.get(role), totals.get(role)) if role in stores else (None, None)
+        if free is None or not total:
+            continue
+        if free >= floor_gb * 1024:
+            return ""
+        return (f"{n.get('name') or nid} has {round(free / 1024, 1)} GB free for {ROOM_WHAT.get(role, role)}, "
+                f"under the {floor_gb} GB a node keeps for itself: free some first (its Storage page says what holds it)")
+    return ""
+
+
+# Set by server.py (R110): the floor a build or test on a node is held to, 0
+# for none.
+room_floor_gb = 0
 
 
 def room_attention(floor_gb, mem_pct, label=None, vm_pct=90, pool_keep_gb=10):
@@ -5577,6 +5589,13 @@ def run_job(name, req, principal):
         if r.get("error"):
             return r, 400
         return r | {"node": nid}, 200
+    # A build or a test held to the node's room (R110 step 7): it writes its
+    # outputs and caches to the data store, and one started under the floor
+    # fills the disk partway. bb run is left alone: it is how room is made.
+    if room_floor_gb and field(req, "role") in ("build", "test"):
+        why = room_short(nid, room_floor_gb, roles=("data", "cache", "root"))
+        if why:
+            return {"error": why}, 400
     snap = workspace.snapshot(name)
     if snap.get("error"):
         return snap, 400

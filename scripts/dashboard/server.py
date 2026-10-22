@@ -3534,6 +3534,7 @@ devactions.configure(runner=jobs if not NODES_OK else None)
 home.configure(nodes_mod=nodes, devapp_mod=devapp)
 devapp.gpu_why = gpu_container_why
 devapp.room_why = lambda nid: nodes.room_short(nid, ROOM_FLOOR_GB) if nid else ""
+nodes.room_floor_gb = ROOM_FLOOR_GB
 # ...and what its request() needs about who is asking, and who hears.
 devactions.users = users
 devactions.ask_rebuild = phone.ask_rebuild
