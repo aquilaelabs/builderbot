@@ -78,7 +78,8 @@ for (const os of SYSTEMS){
     }
     // A container from a compose file: nginx, deployed and taken off.
     for (const action of ['deploy', 'remove']){
-      await api('/api/nginx', { action, node: nid });
+      const asked = await api('/api/nginx', { action, node: nid });
+      if (asked.error){ ok(false, `[${os}] nginx ${action === 'deploy' ? 'runs as a container there' : 'comes off again'} (${asked.error})`); continue; }
       const x = await wait(async () => {
         const n = ((await api('/api/nginx')).nodes || []).find(v => v.node === nid) || {};
         return !(n.state?.job?.running) && (action === 'deploy') === !!n.deployed ? n : null;
