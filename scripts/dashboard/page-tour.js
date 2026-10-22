@@ -301,6 +301,9 @@ function tourEnd(all){
   if (!state?.me) return;
   const seen = [...new Set([...tourSeen(), kind])].slice(-64);
   state.tour = {seen, off: !!state?.tour?.off || all};
+  // A poll already out answers with the list from before this: dropped, as
+  // an action's own answer drops it (B217).
+  adoptSeq++;
   fetch("/api/users", {method: "POST", headers: {"Content-Type": "application/json"},
                        body: JSON.stringify({action: "prefs", prefs: {tour_seen: seen, tour_off: state.tour.off}})}).catch(() => {});
 }
@@ -309,9 +312,16 @@ function tourEnd(all){
 async function tourReset(){
   tourAsked.clear();
   state.tour = {seen: [], off: false};
+  // ...and a reset the same way: a poll in flight put the old list back,
+  // and the tours waited for a reload (B217).
+  adoptSeq++;
   const r = await fetch("/api/users", {method: "POST", headers: {"Content-Type": "application/json"},
                                        body: JSON.stringify({action: "prefs", prefs: {tour_seen: [], tour_off: false}})});
   const j = await r.json().catch(() => ({}));
   if (j.error) notify(j.error, true);
-  else notify("The tours show again, on each page the next time you open it");
+  else {
+    notify("The tours show again, on each page the next time you open it");
+    // ...starting with the page in front, without waiting for a draw.
+    tourSoon(tabOf(panes[0])?.kind);
+  }
 }

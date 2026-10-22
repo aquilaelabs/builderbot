@@ -129,6 +129,53 @@ const sample = await page.evaluate(async () => {
 ok(sample.empty && sample.shown && sample.inert && sample.example && sample.row && sample.gone,
    `an empty VMs page's tour shows an example VM, inert and marked, gone after (${JSON.stringify(sample)})`);
 
+// The page redrawing itself under the step (its own poll, not the panes'
+// draw) puts the example back and the ring around it (B215, the operator,
+// 22 Oct: a ring around nothing after Reset tours); a placeholder the page
+// keeps hidden does not hold the tour back (B216: Containers had none); and
+// a poll answering with the old list after Reset does not undo it (B217).
+const tours = await page.evaluate(async () => {
+  const seen = state.tour;
+  const wait = async f => { for (let i = 0; i < 40 && !f(); i++) await new Promise(r => setTimeout(r, 100)); return f(); };
+  state.tour = { seen: [], off: false };
+  openVmsTab();
+  await new Promise(r => setTimeout(r, 1500));
+  tourAsked.clear(); tourSoon('vms');
+  await wait(() => tourKind);
+  while (tourKind && tourI < tourSteps.length - 1 && !$('tourSample')) tourGo(1);
+  $('tourSample')?.remove();
+  const back = await wait(() => $('tourSample'));
+  const b = $('tourSample')?.getBoundingClientRect(), r = $('tourRing').getBoundingClientRect();
+  const ringed = !!b && Math.abs(r.top - (b.top - 4)) < 2 && Math.abs(r.height - (b.height + 8)) < 2;
+  tourEnd(false);
+  await new Promise(r => setTimeout(r, 1000));
+  state.tour = { seen: [], off: false };
+  openDocker();
+  await new Promise(r => setTimeout(r, 1500));
+  const hid = document.createElement('div');
+  hid.className = 'loading skel'; hid.hidden = true;
+  document.querySelector('.doc.on')?.appendChild(hid);
+  tourAsked.clear(); tourSoon('docker');
+  const docker = await wait(() => tourKind === 'docker');
+  hid.remove();
+  tourEnd(false);
+  await new Promise(r => setTimeout(r, 1000));
+  // A poll that left before the reset, answering after it.
+  const poll = refresh();
+  await tourReset();
+  await poll;
+  await new Promise(r => setTimeout(r, 1500));
+  const kept = !tourSeen().has('vms') && !tourSeen().has('docker');
+  tourEnd(false);
+  await new Promise(r => setTimeout(r, 1000));
+  state.tour = seen;
+  openHome();
+  return { back: !!back, ringed, docker, kept };
+});
+ok(tours.back && tours.ringed, `a page's own redraw under a step puts its example back, and the ring around it (${JSON.stringify(tours)})`);
+ok(tours.docker, `...a placeholder the page keeps hidden does not hold the Containers tour back (${tours.docker})`);
+ok(tours.kept, `...and a poll with the old list after Show the tours again does not undo it (${tours.kept})`);
+
 // On a phone the card is a sheet from the bottom edge.
 await prefs({ tour_seen: [], tour_off: false });
 const phone = await newPage(browser, { tour: true, viewport: { width: 393, height: 852 }, isMobile: true, hasTouch: true });
