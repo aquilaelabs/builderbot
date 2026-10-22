@@ -14,6 +14,15 @@ const AGENTS = [
   {id: "open", name: "Any model", product: "OpenCode", command: "opencode", provider: "", live: false},
 ];
 
+// Each agent's own models and efforts beside Claude's (agents.py MODELS,
+// EFFORTS; R95 step 9), what Start's model and effort step offers for it.
+const AGENT_MODELS = {
+  codex: {models: ["gpt-6.1-sol", "gpt-6-sol", "gpt-6-astra", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"],
+          efforts: ["low", "medium", "high", "xhigh", "max"]},
+  copilot: {models: ["auto", "claude-sonnet-5.5", "claude-opus-5.5", "claude-haiku-5.5", "gpt-6.1-sol", "gpt-6-sol", "gpt-5.6-sol", "gpt-5-mini", "gemini-4-argon", "gemini-3.8-flash", "grok-4.7"],
+            efforts: ["low", "medium", "high", "xhigh", "max"]},
+};
+
 // ---- reading names ----
 // The agents a session may run today, Claude first.
 function agentsLive(){ return AGENTS.filter(a => a.live); }

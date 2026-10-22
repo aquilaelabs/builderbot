@@ -212,7 +212,7 @@ function startClaude(name, sessionId, node){
 // its own (session_dir), so one person may run both on a project at once.
 const agentLiveOn = (id, name, n) => (state?.sessions || []).some(s => s.name === myAgentSession(id, name)
   && (!n.id || s.node_id === n.id));
-function launchAgent(id, name, node){
+function launchAgent(id, name, node, model = "", effort = ""){
   const a = agentById(id);
   if (!a) return;
   resumeFor = null;
@@ -220,7 +220,10 @@ function launchAgent(id, name, node){
   if (state) drawProjects(state.projects);
   const p = (state?.projects || []).find(x => x.name === name);
   const nn = node ? (p?.session_nodes || []).find(x => x.id === node)?.name || node : "";
-  openTab({kind: "term", arg: agentArg(id, name) + (node ? `:n:${node}` : ""),
+  // Its model and effort ride the argument (R95 step 9), which bb-tty
+  // holds to the agent's own lists.
+  const me = (model ? `:m:${model}` : "") + (effort ? `:e:${effort}` : "");
+  openTab({kind: "term", arg: agentArg(id, name) + me + (node ? `:n:${node}` : ""),
            label: `${a.name}: ${projLabel(name)}` + (nn ? ` (${nn})` : "")});
 }
 async function agentEnd(id, name, n, several){
@@ -342,6 +345,7 @@ let resumeModelNow = {project: "", model: ""};
 function resumePicker(p, m, card, anchor, ns, several){
   const r = resumePick;
   const n = ns.find(x => x.id === r.node) || ns[0] || {};
+  if (r.agent && r.agent !== "claude") return agentPicker(p, m, card, anchor, n, several);
   const opts = (table, cur) => table.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${
     esc(v === "" && table === MODELS && resumeModelNow.project === p.name && resumeModelNow.model
       ? `Claude's default (last session: ${(MODELS.find(([x]) => x === resumeModelNow.model) || [])[1] || resumeModelNow.model})` : l)}</option>`).join("");
@@ -393,6 +397,32 @@ function resumePicker(p, m, card, anchor, ns, several){
       })
       .catch(() => {});
   }
+  floatAt(m, anchor);
+}
+
+// The same step for another agent's new conversation (R95 step 9): which
+// agent, on which node, and that agent's own models and efforts, its
+// default first; Start opens it. Nothing is saved: the pick rides the
+// terminal's argument.
+function agentPicker(p, m, card, anchor, n, several){
+  const r = resumePick, a = agentById(r.agent), t = AGENT_MODELS[r.agent] || {models: [], efforts: []};
+  const opts = (xs, cur) => [`<option value="">${esc(a.name)}'s default</option>`]
+    .concat(xs.map(v => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(v)}</option>`)).join("");
+  m.innerHTML = `<div class="rmhead"><b>A new ${esc(a.name)} conversation</b><span class="rmfacts">${esc(a.product)}${
+      several || n.name ? ` on ${esc(n.name || "")}` : ""}</span></div>
+    <div class="rmfields">
+      <div class="setrow col ctlrow"><label class="lbl" for="rmModel">Model</label><select id="rmModel" aria-label="model this session starts on">${opts(t.models, r.model)}</select></div>
+      <div class="setrow col ctlrow"><label class="lbl" for="rmEffort">Effort</label><select id="rmEffort" aria-label="effort this session starts on">${opts(t.efforts, r.effort)}</select></div>
+    </div>
+    <div class="actbar rmacts"><span class="state" id="rmSay"></span><span class="sp"></span>
+      <button type="button" data-back>Back</button>
+      <button type="button" class="primary" data-start>Start</button></div>`;
+  m.dataset.pick = p.name;
+  card.appendChild(m);
+  m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; };
+  m.querySelector("#rmEffort").onchange = e => { r.effort = e.target.value; };
+  m.querySelector("[data-back]").onclick = () => { resumePick = null; drawProjects(state.projects); };
+  m.querySelector("[data-start]").onclick = () => launchAgent(r.agent, p.name, r.node, r.model, r.effort);
   floatAt(m, anchor);
 }
 
@@ -493,8 +523,13 @@ function placeResumeMenu(){
     claudeEnd(p.name, ns.find(n => n.id === b.dataset.end) || {id: "", name: ""}, several));
   m.querySelectorAll("[data-restart]").forEach(b => b.onclick = () =>
     claudeRestart(p.name, ns.find(n => n.id === b.dataset.restart) || {id: "", name: ""}, several));
-  m.querySelectorAll("[data-anew], [data-aopen]").forEach(b => b.onclick = () =>
-    launchAgent(b.dataset.anew || b.dataset.aopen, p.name, b.dataset.node));
+  m.querySelectorAll("[data-aopen]").forEach(b => b.onclick = () =>
+    launchAgent(b.dataset.aopen, p.name, b.dataset.node));
+  // A new conversation of another agent turns to its model and effort.
+  m.querySelectorAll("[data-anew]").forEach(b => b.onclick = () => {
+    resumePick = {project: p.name, sessionId: null, node: b.dataset.node, agent: b.dataset.anew, model: "", effort: ""};
+    drawProjects(state.projects);
+  });
   m.querySelectorAll("[data-aend]").forEach(b => b.onclick = () =>
     agentEnd(b.dataset.aend, p.name, ns.find(n => n.id === b.dataset.nid) || {id: "", name: ""}, several));
   m.querySelectorAll("[data-asignin]").forEach(b => b.onclick = () => {

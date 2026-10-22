@@ -154,6 +154,19 @@ class Copies(unittest.TestCase):
         self.assertEqual(rows, [(a.id, a.name, a.product, a.command, a.provider, "true" if a.live else "false")
                                 for a in agents.TABLE])
 
+    def test_each_agent_s_models_are_the_same_in_all_three_places(self):
+        with open(os.path.join(HERE, "..", "page-agents.js")) as f:
+            js = f.read()
+        with open(os.path.join(HERE, "..", "bb-tty")) as f:
+            tty = f.read()
+        for kind, key in (("MODELS", "models"), ("EFFORTS", "efforts")):
+            for ag, xs in getattr(agents, kind).items():
+                m = re.search(ag + r": \{models: \[(.*?)\],\s*efforts: \[(.*?)\]\}", js, re.S)
+                got = re.findall(r'"([^"]+)"', m.group(1 if key == "models" else 2))
+                self.assertEqual(tuple(got), xs, (ag, kind))
+                for x in xs:
+                    self.assertIn(f"{ag}:{x}", tty, (ag, x))
+
     def test_the_node_agent_s_prefixes_are_the_live_rows(self):
         self.assertEqual(tuple(node.AGENT_PREFIXES), agents.prefixes())
 

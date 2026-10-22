@@ -575,6 +575,19 @@ sleep 60
       const toml = existsSync(join(HOMEDIR, '.codex', 'config.toml')) ? readFileSync(join(HOMEDIR, '.codex', 'config.toml'), 'utf8') : '';
       ok(toml.includes(`[projects."${cwt}"]`) && /trust_level = "trusted"/.test(toml),
          '...and its tree answered as trusted, so its first run asks nothing a read-only console cannot answer');
+      // The model and effort picked at Start ride the argument, each held
+      // to Codex's own list (R95 step 9).
+      tmuxKill(`codex-${proj}`);
+      shell(`u:${ownerUid}:codex:${proj}:m:gpt-5.5:e:high:b:${boot}`);
+      await sleep(400);
+      const cx2 = existsSync(cxArgv) ? readFileSync(cxArgv, 'utf8').split('\0') : [];
+      const mi = cx2.indexOf('-m');
+      ok(alive(`codex-${proj}`) && mi >= 0 && cx2[mi + 1] === 'gpt-5.5' && cx2.includes('model_reasoning_effort="high"'),
+         `a model and an effort picked at Start reach Codex as its own flags (${cx2.slice(0, 6).join(' ')})`);
+      tmuxKill(`codex-${proj}`);
+      const odd = shell(`u:${ownerUid}:codex:${proj}:m:opus;rm:b:${boot}`);
+      ok(/Not a model ChatGPT offers here/.test(odd) && !alive(`codex-${proj}`),
+         '...and a model not on its list opens nothing');
       // Copilot: no status verb of its own, so the login its config
       // remembers is what says it is signed in.
       rmSync(join(HOMEDIR, '.copilot'), { recursive: true, force: true });

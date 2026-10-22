@@ -102,6 +102,23 @@ TABLE = (
 _BY_ID = {a.id: a for a in TABLE}
 
 
+# Each agent's own models and reasoning efforts, what Start's model and
+# effort step offers for it (R95 step 9) and the only words bb-tty passes on
+# (a table lookup, never a word from the URL): read off Codex CLI 0.163.0's
+# `codex debug models` and Copilot CLI 1.0.102's `copilot help config` on
+# 22 Oct. Claude's are the project dialog's (MODELS, EFFORTS) as before.
+# page-agents.js and bb-tty carry the same lists, held to these by
+# unit/test_agents.py.
+MODELS = {
+    "codex": ('gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-astra', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5'),
+    "copilot": ('auto', 'claude-sonnet-5.5', 'claude-opus-5.5', 'claude-haiku-5.5', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-5.6-sol', 'gpt-5-mini', 'gemini-4-argon', 'gemini-3.8-flash', 'grok-4.7'),
+}
+EFFORTS = {
+    "codex": ('low', 'medium', 'high', 'xhigh', 'max'),
+    "copilot": ('low', 'medium', 'high', 'xhigh', 'max'),
+}
+
+
 def get(agent_id):
     """The adapter called this, or None."""
     return _BY_ID.get(str(agent_id or ""))

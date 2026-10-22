@@ -718,6 +718,15 @@ PY
             printf 'case "$m" in opus|sonnet|haiku|fable) extra+=(--model "$m") ;; esac\n'
             printf 'case "$e" in low|medium|high|xhigh|max) extra+=(--effort "$e") ;; esac\n'
         fi
+        # Another agent's model and effort, as picked at Start (bb-tty has
+        # held each to the agent's own list).
+        if [ "$ag" = codex ]; then
+            [ -z "${LAUNCH_MODEL:-}" ] || printf 'extra+=(-m %q)\n' "$LAUNCH_MODEL"
+            [ -z "${LAUNCH_EFFORT:-}" ] || printf 'extra+=(-c %q)\n' "model_reasoning_effort=\"$LAUNCH_EFFORT\""
+        elif [ "$ag" = copilot ]; then
+            [ -z "${LAUNCH_MODEL:-}" ] || printf 'extra+=(--model %q)\n' "$LAUNCH_MODEL"
+            [ -z "${LAUNCH_EFFORT:-}" ] || printf 'extra+=(--reasoning-effort %q)\n' "$LAUNCH_EFFORT"
+        fi
         # Codex CLI's briefing, read from its file at exec as a TOML string
         # (jq writes the JSON string, which TOML reads as its own), handed
         # over as developer instructions: added to Codex's own, never in
@@ -1128,10 +1137,30 @@ case "$target" in
         # claude:PROJECT                  a fresh conversation
         # claude:PROJECT:r:UUID           resume that transcript (Claude's)
         # ...:b:BOOT                      and which run of the container asked
-        resume="" want_boot=""
+        resume="" want_boot="" want_model="" want_effort=""
         case "$rest" in
             *:b:*) want_boot="${rest##*:b:}"; rest="${rest%:b:*}" ;;
         esac
+        # ...:m:MODEL:e:EFFORT            another agent's model and effort,
+        # picked at Start (R95 step 9), each passed on only when it is one
+        # of that agent's own (agents.py MODELS, EFFORTS): a table lookup.
+        case "$rest" in
+            *:e:*) want_effort="${rest##*:e:}"; rest="${rest%:e:*}" ;;
+        esac
+        case "$rest" in
+            *:m:*) want_model="${rest##*:m:}"; rest="${rest%:m:*}" ;;
+        esac
+        case "$agent:$want_model" in
+            *:|codex:gpt-6.1-sol|codex:gpt-6-sol|codex:gpt-6-astra|codex:gpt-6-luna|codex:gpt-5.6-sol|codex:gpt-5.6-terra|codex:gpt-5.6-luna|codex:gpt-5.5 \
+            |copilot:auto|copilot:claude-sonnet-5.5|copilot:claude-opus-5.5|copilot:claude-haiku-5.5|copilot:gpt-6.1-sol|copilot:gpt-6-sol|copilot:gpt-5.6-sol|copilot:gpt-5-mini|copilot:gemini-4-argon|copilot:gemini-3.8-flash|copilot:grok-4.7) ;;
+            *) bad "Not a model ${agent_name} offers here: ${want_model}" ;;
+        esac
+        case "$agent:$want_effort" in
+            *:|codex:low|codex:medium|codex:high|codex:xhigh|codex:max \
+            |copilot:low|copilot:medium|copilot:high|copilot:xhigh|copilot:max) ;;
+            *) bad "Not an effort ${agent_name} offers here: ${want_effort}" ;;
+        esac
+        export LAUNCH_MODEL="$want_model" LAUNCH_EFFORT="$want_effort"
         case "$rest" in
             *:r:*) resume="${rest##*:r:}"; proj="${rest%%:r:*}" ;;
             *)     proj="$rest" ;;

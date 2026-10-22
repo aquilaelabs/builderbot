@@ -54,6 +54,11 @@ agent's section.
   in the agent's own config (Codex's `[projects."DIR"]`, Copilot's
   `trustedFolders`), so a read-only console never meets a question it cannot
   answer.
+- **Its model and effort.** New conversation for Codex or Copilot turns to
+  that agent's own models and reasoning efforts, its default first (Codex
+  CLI's from `codex debug models`, Copilot CLI's from `copilot help config`,
+  read on 22 Oct); the pick rides the terminal's argument and bb-tty passes
+  only a word on that agent's list. Nothing is saved for the next start.
 - **Which agents a project allows.** Its settings' Agents may section has
   Coding agents, a tick for each agent beside Claude; one left unticked is
   not offered there and its terminal refuses. Claude always may.
@@ -112,9 +117,9 @@ credential of any of them.
 ## Not built yet
 
 Resuming a Codex or Copilot conversation, a project's default agent, the
-guards mapped to their hooks, their state in the
-dock and their transcripts, their models and effort, the model router and
-the open agent: R95's later steps. Until the guards land, a Codex or Copilot
-session is held by its view and by bb's own checks, not by Claude's hooks. A sign-in with real ChatGPT and
-GitHub accounts has been walked against stubs only; the walk on a real
-account is the operator's.
+guards mapped to their hooks, their state in the dock and their
+transcripts, a model and effort kept per agent, the model router and the
+open agent: R95's later steps. Until the guards land, a Codex or Copilot
+session is held by its view and by bb's own checks, not by Claude's hooks.
+A sign-in with real ChatGPT and GitHub accounts has been walked against
+stubs only; the walk on a real account is the operator's.
