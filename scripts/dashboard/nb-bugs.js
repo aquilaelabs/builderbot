@@ -220,7 +220,7 @@ function nbBugsView({$, nb, project}){
     const list = $("bugList"), hint = $("bugHint");
     if (!nb.bugs){
       // Waiting as it lands: Report a bug above the list, which needs no list.
-      viewGlance(hint, [], skel("word")); list.innerHTML = skel("rows");
+      glanceWaiting(hint); list.innerHTML = skel("rows");
       drawBugAdd();
       return;
     }

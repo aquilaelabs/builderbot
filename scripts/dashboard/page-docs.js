@@ -969,9 +969,29 @@ const GHOST = Object.freeze({ghost: true});
 // so a poll's redraw leaves it still; an empty view passes no tiles, its
 // empty state being the hint where its list would be.
 // `tiles` may be a page's own drawing of them (the Docker view's, dmTiles).
+// The same glance while a view's data is on its way: the shape that view's
+// glance had the last time it was drawn (in any notebook: flipping between
+// projects, each settles as the last one did), else what its markup
+// declares on its .nbglance (data-tiles, data-said) for a first open. The
+// markup is the one place a view's waiting shape is written, so it cannot
+// drift from a view's own code (the operator, 22 Oct); templates.mjs holds
+// both. A glance a view has drawn for real, empty included, is never
+// overdrawn: an empty roadmap kept placeholder tiles over its empty state.
+const glanceSeen = {};
+function glanceWaiting(el){
+  if (!el || el.dataset.drawn) return false;
+  const was = glanceSeen[el.id];
+  const n = was ? was.tiles : +el.dataset.tiles || 0;
+  const said = was ? was.said : "said" in el.dataset;
+  return paint(el, statTiles(Array.from({length: n}, () => ({value: GHOST, label: "\u00a0"})))
+               + headLine(said ? skel("word") : "", "", "nbsaid"));
+}
 function viewGlance(el, tiles = [], said = "", actions = ""){
   if (!el) return false;
-  return paint(el, (Array.isArray(tiles) ? statTiles(tiles) : tiles || "") + headLine(said, actions, "nbsaid"));
+  const wrote = paint(el, (Array.isArray(tiles) ? statTiles(tiles) : tiles || "") + headLine(said, actions, "nbsaid"));
+  el.dataset.drawn = "1";
+  glanceSeen[el.id] = {tiles: el.querySelectorAll(".tile").length, said: !!el.querySelector(".nbsaid")};
+  return wrote;
 }
 
 // What a card's settings are, read (the operator's concept, 17 Oct): one

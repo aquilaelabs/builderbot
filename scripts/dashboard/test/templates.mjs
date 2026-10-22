@@ -199,6 +199,14 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
     await page.waitForFunction(() => { const n = [...document.querySelectorAll('.nb .nbview:not([hidden])')].find(e => e.checkVisibility({ visibilityProperty: true, opacityProperty: true }));
       return n && !n.querySelector('.loading'); }, null, { timeout: 15000 }).catch(() => {});
     const got = await settled(page, '.nb .nbview:not([hidden])');
+    // The waiting shape is the markup's (data-tiles on the view's glance):
+    // the loaded view never draws more tiles than its markup declares.
+    const decl = await page.evaluate(() => {
+      const g = [...document.querySelectorAll('.nb .nbview:not([hidden]) .nbglance')].find(e => e.checkVisibility());
+      return g ? { declared: +g.dataset.tiles || 0, drawn: g.querySelectorAll('.tile').length } : null;
+    });
+    ok(!decl || decl.drawn <= decl.declared,
+       `the notebook's ${v} view draws no more tiles than its markup declares for its waiting shape ${where} (${JSON.stringify(decl)})`);
     await page.route(HELD, () => {});
     await page.evaluate(([p, v]) => openNotebook(p, v), [waiting, v]);
     await sleep(600);

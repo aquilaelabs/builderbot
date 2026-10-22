@@ -12,7 +12,7 @@ function nbAnalysisView({$, nb, project}){
     const hint = $("anaHint"), list = $("anaList");
     if (!findings || findings.error) await loadFindings(!!findings?.error);
     nb.anaStamp = state?.reports_mtime ?? null;
-    if (!findings || findings.loading){ viewGlance(hint, [], skel("word")); list.innerHTML = skel("rows"); return; }
+    if (!findings || findings.loading){ glanceWaiting(hint); list.innerHTML = skel("rows"); return; }
     if (findings.error){ viewGlance(hint, [], esc("analysis: " + findings.error)); return; }
     if (!findings.available){
       viewGlance(hint, [], "no scan results: the report folder is not mounted here");

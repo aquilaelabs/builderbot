@@ -577,6 +577,8 @@ function makeNotebook(project){
     // back to the dialog when another view is picked (page-projsettings.js).
     if (v === "settings") settingsInto(project, root.querySelector('.nbview[data-view="settings"] .nbsettings'));
     else if (rnHost && root.contains(rnHost)) settingsOut();
+    // A view still waiting on its data waits as its markup declares (R109).
+    glanceWaiting(root.querySelector(`.nbview[data-view="${v}"] .nbglance`));
     if (v === "git") loadGit();
     if (v === "docker") loadNbDocker();
     if (v === "vms") loadNbVms();

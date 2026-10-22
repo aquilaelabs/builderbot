@@ -5189,7 +5189,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       </div>
     </div>
     <!-- The glance: to send, shelved and finished as tiles (viewGlance)... -->
-    <div class="nbglance" id="roadmapHint"></div>
+    <div class="nbglance" id="roadmapHint" data-tiles="3"></div>
     <!-- ...and the status line, which is the list's own Save and Revert
          (the operator, 5 Oct: each section saves its own changes, and the
          list's are the reorders, edits and steps staged on its rows): what
@@ -5257,7 +5257,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <span class="sp"></span>
       </div>
       <!-- The glance (R109): the rules and the memories, counted. -->
-      <div class="nbglance" id="memWhere"></div>
+      <div class="nbglance" id="memWhere" data-tiles="2"></div>
       <div id="rulesBox" data-skel="briefing"></div>
       <div class="field histbar ctlrow" id="memHistBar" hidden>
         <input maxlength="80" autocomplete="off" placeholder="search the memory log">
@@ -5310,7 +5310,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       </div>
       <div class="field nbaddf" id="bugAdd" hidden></div>
       <!-- The glance: open by severity, and closed, as tiles. -->
-      <div class="nbglance" id="bugHint"></div>
+      <div class="nbglance" id="bugHint" data-tiles="6" data-said></div>
       <!-- The band that narrows the list (R254 step 1): chips for All, Open
            and Closed and the release a report was seen in, and the order.
            Open before closed is not one of the orders: a tracker is read to
@@ -5360,7 +5360,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <span class="actbar"><button type="button" id="tstOut" title="the last run's output in this project's shell, following it while it runs">Open the run's output</button></span></div>
       <!-- The glance (R109): passing, failing, the time in tests, what is
            flagged and undescribed, and a run going on the line under them. -->
-      <div class="nbglance" id="tstHint"></div>
+      <div class="nbglance" id="tstHint" data-tiles="5"></div>
       <div class="field" id="tstStats" hidden></div>
       <div id="tstFolds"></div>
       <div class="field histbar ctlrow" id="tstBar" hidden>
@@ -5376,7 +5376,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <span class="actbar"><button type="button" id="artSource" title="the code base as a zip, without build output">Download source</button></span></div>
       <!-- The glance (R109): what is in dist/ and its size, what was built
            on a branch, the captures kept. -->
-      <div class="nbglance" id="artHint"></div>
+      <div class="nbglance" id="artHint" data-tiles="3" data-said></div>
       <!-- Where this project's compiling happens, or that it has nowhere.
            On this tab because it is the one somebody opens when a build did
            not appear; a project with no node is a legitimate state, so the
@@ -5405,7 +5405,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="field nbhead vbar docbarrow"><span class="sp"></span>
         <span class="actbar"><button type="button" id="nvOpen">VMs<span class="lng"> page</span></button><button type="button" id="nvNew" class="primary" hidden>New VM</button></span></div>
       <!-- The glance (R109): what runs of the project's VMs. -->
-      <div class="nbglance" id="nvHint"></div>
+      <div class="nbglance" id="nvHint" data-tiles="1"></div>
       <div id="nvList" data-skel="rows"></div>
     </div>
     <!-- This project's Android signing keys (R106), a view of their own in
@@ -5416,7 +5416,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="field nbhead vbar docbarrow"><span class="sp"></span><span class="actbar" id="sgActs"></span></div>
       <div id="sgAdd"></div>
       <!-- The glance (R109): the keys held and the apps mapped to them. -->
-      <div class="nbglance" id="sgHint"></div>
+      <div class="nbglance" id="sgHint" data-tiles="2"></div>
       <div id="sgBox" data-skel="rows"></div>
     </div>
     <div class="nbview dkview" data-view="docker" hidden>
@@ -5424,7 +5424,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <span class="actbar"><button type="button" id="dkCheck" hidden>Check<span class="lng"> for updates</span></button><button type="button" id="dkOpen">Containers<span class="lng"> page</span></button></span></div>
       <!-- The glance (R109): the Containers page's tiles for the project, and
            its node and when the images were checked on the line under them. -->
-      <div class="nbglance" id="dkHint"></div>
+      <div class="nbglance" id="dkHint" data-tiles="4"></div>
       <div id="dkList" data-skel="rows"></div>
     </div>
     <div class="nbview" data-view="git" hidden>
@@ -5448,7 +5448,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       </div>
       <!-- The glance: not committed, the branches, what is to push and to
            pull as tiles, and the remote's state under them. -->
-      <div class="nbglance" id="gitHint"></div>
+      <div class="nbglance" id="gitHint" data-tiles="4" data-said></div>
       <div id="gitBody" data-skel="git"></div>
       <!-- A branch against main, its own page (R269 step 2): drawn in
            place of the sections above while the address names it. -->
@@ -5465,7 +5465,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <span class="actbar"><button type="button" id="dsWrite"
           title="write docs/design-language.md into the project from what is saved here; a session commits it with the work">Write the file</button></span></div>
       <!-- The glance (R109): its pages and themes, and the file's state. -->
-      <div class="nbglance" id="dsHint"></div>
+      <div class="nbglance" id="dsHint" data-tiles="2" data-said></div>
       <!-- Why Write the file and every control below are dead (B101). -->
       <!-- Add page is the Pages section's own (the operator, 29 Sep):
            nb-design.js draws it at the top of that section. -->
@@ -5488,7 +5488,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            wiki goes and holds Export for every project, Pull and Push where
            there is a forge, so the control row fits a phone; why Push is dead
            when it is, said under the line rather than in a tooltip. -->
-      <div class="nbglance" id="wkHint"></div>
+      <div class="nbglance" id="wkHint" data-tiles="1"></div>
       <div class="field headline nbsaid" id="wkNet"><div class="actbar">
         <span class="state" id="wkNetState"></span>
         <button type="button" id="wkExport" title="every page as Markdown in a zip, with or without a remote">Export</button>
@@ -5505,7 +5505,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <span class="sp"></span>
       </div>
       <!-- The glance (R109): the findings by level. -->
-      <div class="nbglance" id="anaHint"></div>
+      <div class="nbglance" id="anaHint" data-tiles="6" data-said></div>
       <div class="field histbar ctlrow" id="anaHistBar" hidden>
         <input maxlength="80" autocomplete="off" placeholder="search the findings log">
         <select class="hwhen" aria-label="how far back">
