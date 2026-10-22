@@ -311,6 +311,55 @@ def migrate(state, ctx, version=None):
     return ran
 
 
+def restore(state, version):
+    """Put back the copy a build took before it migrated `state`
+    (backups/before-VERSION), for a rollback to the build before it (a
+    bare-metal install's --rollback, R90 step 5). With the controller
+    stopped: what the state holds of what the copy kept is moved aside, into
+    backups/rolled-back-TIME, never deleted, and the copy's own is put in its
+    place; what the copy leaves out on purpose (SKIP: the logs, the
+    snapshots, the backups themselves) stays where it is. The folder the
+    rest went to, or a ValueError saying why nothing moved."""
+    state = Path(state)
+    name = "before-" + re.sub(r"[^A-Za-z0-9._+-]", "_", version or "")
+    src = state / BACKUPS / name
+    if not version or not src.is_dir():
+        raise ValueError(f"there is no copy of {state} from before {version or 'that build'} "
+                         f"({src}) to put back")
+    aside = state / BACKUPS / time.strftime("rolled-back-%Y%m%d-%H%M%S")
+    aside.mkdir(parents=True)
+    for p in sorted(state.iterdir()):
+        if _skipped(p.name):
+            continue
+        os.replace(p, aside / p.name)
+    for p in sorted(src.iterdir()):
+        if p.name == "NOT-COPIED.txt":
+            continue
+        dst = state / p.name
+        if p.is_dir() and not p.is_symlink():
+            shutil.copytree(p, dst, symlinks=True)
+        else:
+            shutil.copy2(p, dst, follow_symlinks=False)
+    # ...and what the copy could not read is still in what was moved aside:
+    # brought back rather than lost (a root-only file, B109), a file inside
+    # a folder the copy took the rest of included.
+    for rel in _not_copied(src):
+        was, now = aside / rel, state / rel
+        if (was.exists() or was.is_symlink()) and not (now.exists() or now.is_symlink()):
+            now.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(was, now)
+    return aside
+
+
+def _not_copied(src):
+    """The paths, relative to the state, a copy names as left out."""
+    try:
+        lines = (Path(src) / "NOT-COPIED.txt").read_text().splitlines()[1:]
+    except OSError:
+        return []
+    return [ln.strip() for ln in lines if ln.strip() and ".." not in ln.strip().split("/")]
+
+
 def _load(path):
     import importlib.util
     spec = importlib.util.spec_from_file_location(f"statemigrations.m{path.name[:4]}", path)
@@ -323,12 +372,22 @@ def main(argv):
     """`stateversion.py check [STATE]`: the gate's question alone, for the
     entrypoint: exit 0 when this build may start, else the sentence and 78.
     `stateversion.py policy`: the state this build writes and the oldest it
-    migrates from, as JSON, for the upgrade suite and the snapshot tool."""
+    migrates from, as JSON, for the upgrade suite and the snapshot tool.
+    `stateversion.py restore STATE VERSION`: the copy VERSION took before it
+    migrated, put back (restore())."""
     if argv[:1] == ["policy"]:
         print(json.dumps({"current": current(), "supported_from": SUPPORTED_FROM}))
         return 0
+    if argv[:1] == ["restore"] and len(argv) == 3:
+        try:
+            aside = restore(argv[1], argv[2])
+        except (ValueError, OSError) as e:
+            print(e, file=sys.stderr)
+            return 1
+        print(f"{argv[1]} is back to the copy from before {argv[2]}; what it held is in {aside}")
+        return 0
     if argv[:1] != ["check"]:
-        print("usage: stateversion.py check [STATE] | policy", file=sys.stderr)
+        print("usage: stateversion.py check [STATE] | policy | restore STATE VERSION", file=sys.stderr)
         return 2
     why = refusal(argv[1] if len(argv) > 1 else os.environ.get("DASHBOARD_STATE", "/config"))
     if why:

@@ -18,10 +18,13 @@
 #
 set -euo pipefail
 
+[ "$(id -u)" -eq 0 ] || { echo "host-boot.sh runs as root, from the builderbot-controller service" >&2; exit 1; }
+# The environment the image's ENV gives the container, the release's stamp
+# and the env file, before anything reads a path.
+# shellcheck source=lib/host-env.sh
+. /opt/builderbot/scripts/lib/host-env.sh
 # shellcheck source=lib/common.sh
 . /opt/builderbot/scripts/lib/common.sh
-
-[ "$(id -u)" -eq 0 ] || die "host-boot.sh runs as root, from the builderbot-controller unit"
 
 BB_ACCOUNT="${BB_ACCOUNT:-builderbot}"
 # Exported with the ids below: a root hook (46-playwright.root.sh) is a
