@@ -193,6 +193,20 @@ if argv and argv[0] == "release":
         print(f"no release on the forge: {forge['error']}")
     raise SystemExit(0)
 
+if argv and argv[0] == "line":
+    # The release this branch works toward (R112): read, set, or `none` back
+    # to what the branch's name says.
+    if len(argv) > 1:
+        r = version.set_line(proj, "" if argv[1].lower() == "none" else argv[1])
+        if r.get("error"):
+            fail(r["error"])
+    b, ln = version.branch_of(proj), version.line(proj)
+    tgt = (version.target(proj)[0] or "")
+    print(f"{b or 'HEAD'}: " + (f"works toward {ln}, so a build here is {version.render(proj)['forms']['semver']}"
+                               if ln else f"no line: builds take {tgt or 'no version'} from {version.VERSION_FILE}")
+          + ("" if not ln else ("; its bump goes to " + ln)))
+    raise SystemExit(0)
+
 if argv and argv[0] == "policy":
     # Read-only on purpose: a session should be able to see the limit it is
     # held to and never to move it.

@@ -404,9 +404,63 @@ def _repo(project):
             "tags": (_git(project, "tag", "--points-at", "HEAD") or "").splitlines()}
 
 
+# A branch's line (R112): the release it is working toward, said with
+# `bb version line X.Y.Z` (the branch's own git config) or read off a branch
+# named for it, claude/0.7.0 or release/v0.6.2.
+LINE_RE = re.compile(r"(?:^|/)v?(\d{1,4}\.\d{1,5}\.\d{1,6})$")
+_VER = re.compile(r"\d{1,4}\.\d{1,5}\.\d{1,6}")
+
+
+def vkey(v):
+    """A version as a tuple that sorts as versions do."""
+    return tuple(int(x) for x in v.split("."))
+
+
+def branch_of(project):
+    b = (_git(project, "rev-parse", "--abbrev-ref", "HEAD") or "").strip()
+    return "" if b in ("", "HEAD") else b
+
+
+def line(project):
+    """The release this branch is working toward, or "": its own setting,
+    else its name's version (R112, the operator, 22 Oct: some work toward
+    0.7.0, some toward 0.6.2, at once)."""
+    b = branch_of(project)
+    if not b:
+        return ""
+    said = (_git(project, "config", f"branch.{b}.bbline") or "").strip()
+    if _VER.fullmatch(said):
+        return said
+    m = LINE_RE.search(b)
+    return m[1] if m else ""
+
+
+def set_line(project, version):
+    """Say which release this branch works toward; "" goes back to its name's."""
+    b = branch_of(project)
+    if not b:
+        return {"error": "HEAD is not on a branch, so there is no line to set"}
+    v = (version or "").strip().lstrip("vV")
+    if v and not _VER.fullmatch(v):
+        return {"error": f"{version!r} is not a version: a line is X.Y.Z, as 0.7.0"}
+    if v:
+        ok = _git(project, "config", f"branch.{b}.bbline", v) is not None
+    else:
+        _git(project, "config", "--unset", f"branch.{b}.bbline")
+        ok = True
+    return {"ok": ok, "branch": b, "line": line(project)} if ok else {"error": "git would not keep it"}
+
+
 def parts(project, comp="", repo=None):
     """Everything the renderings are built from, plus why any of it is missing."""
     tgt, err = target(project, comp)
+    # A line newer than VERSION is what a dev build here heads for: after
+    # 0.6.1 shipped, a 0.7.0 branch built as 0.6.1-dev.N, sorting before
+    # the release it came after (R112).
+    if not comp and tgt and _VER.fullmatch(tgt):
+        ln = line(project)
+        if ln and vkey(ln) > vkey(tgt):
+            tgt = ln
     repo = _repo(project) if repo is None else repo
     if repo is None:
         return {"target": tgt, "error": err or no_history(project),
@@ -1137,6 +1191,13 @@ def bump(project, part, by="claude", comp="", env=None, to=None, fold=False):
     if why:
         return {"error": why}
     new = to or next_version(tgt, part)
+    # A branch working toward a release moves only to it (R112): a patch
+    # bump on the 0.7.0 line, or a minor on the 0.6.2 line, is the other
+    # line's number.
+    ln = line(project) if not comp else ""
+    if ln and new != ln:
+        return {"error": f"this branch works toward {ln} (bb version line), so its version moves to {ln}, "
+                         f"not {new}: the other line's work goes on its own branch"}
     # A set (jump) renumbers: "it is 0.5.0, not 0.2.0". When the number being
     # left was never released (no tag, unbump's own test), its dated section
     # is notes for a release that will not happen under that number, so they
