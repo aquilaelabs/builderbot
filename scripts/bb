@@ -3782,7 +3782,7 @@ cmd_jobs() {
 # provenance beside it. Through the dashboard's API rather than the store
 # directly, because the snapshot is the dashboard's to make.
 cmd_run() {
-    local role=build node="" timeout=3600 outs=() proj auth
+    local role=run node="" timeout=3600 outs=() proj auth
     while [ $# -gt 0 ]; do
         case "$1" in
             --role) role="${2:-}"; shift 2 ;;     # build|test: which command bb build/test are
