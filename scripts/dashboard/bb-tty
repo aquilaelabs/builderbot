@@ -1119,12 +1119,14 @@ start() {
     # Mouse mode decides who owns a drag. Off, the browser makes an ordinary
     # selection and the terminal copies it as the button comes up. On, tmux
     # takes the drag and the text reaches a tmux buffer the browser cannot see.
-    # Shells want the clipboard; Claude's interface wants the mouse.
+    # Shells want the clipboard; a coding agent's interface wants the mouse,
+    # whoever's session it is: the name read past the account's prefix
+    # (u_...~), which a second person's Claude session missed (R95 step 19).
     # Plain name, not tmux's `=exact` prefix: set-option rejects that form
     # ("no such session: =shell"), and the session was just created here, so an
     # exact match is the one it resolves to anyway.
-    case "$s" in
-        claude-*) tmux set-option -t "$s" mouse on ;;
+    case "${s#*~}" in
+        claude-*|codex-*|copilot-*) tmux set-option -t "$s" mouse on ;;
         *)        tmux set-option -t "$s" mouse off ;;
     esac
 
