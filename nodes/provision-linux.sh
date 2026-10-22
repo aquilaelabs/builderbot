@@ -78,6 +78,8 @@ declare -a FEATURES_WANT=()
 # --machine HASH: the script was made for a node that enrolled from one
 # machine (R177), and runs on that one alone.
 MACHINE=""
+# --beside-controller: the controller is on this machine too (R90).
+BESIDE_CONTROLLER=0
 
 usage() {
     cat <<'EOF'
@@ -171,6 +173,12 @@ it, which is a paste rather than a questionnaire.
                        with no sessions.
   --machine HASH       made for one machine (the Nodes page's Enroll script
                        on a node's row): runs there and nowhere else.
+  --beside-controller  this machine is also the controller, installed bare
+                       metal (install-controller.sh passes it, R90): the
+                       docker account is kept OUT of the docker group and the
+                       daemon is not stamped a sandbox, since docker is root
+                       here and the controller's state is on this disk. The
+                       node runs builds and sessions, not containers.
   --door cloudflared   a door in for SSH, switched on and off from the
   --door tailscale     node's row on the Nodes page. cloudflared publishes
                        this machine's port 22 at --door-host HOST (a
@@ -269,6 +277,7 @@ while [ $# -gt 0 ]; do
         --firewall) FIREWALL=1; FEATURES_WANT+=(firewall); shift ;;
         --feature) FEATURES_WANT+=("$2"); shift 2 ;;
         --machine) MACHINE="$2"; shift 2 ;;
+        --beside-controller) BESIDE_CONTROLLER=1; shift ;;
         --data)  STORE_DATA="$2"; STORE_DATA_SET=1; shift 2 ;;
         --toolchains) STORE_TOOLCHAINS="$2"; STORE_TOOLCHAINS_SET=1; shift 2 ;;
         --cache) STORE_CACHE="$2"; STORE_CACHE_SET=1; shift 2 ;;
@@ -1112,7 +1121,11 @@ stamp_daemon() {
 }
 have_jq() { command -v jq >/dev/null 2>&1; }
 
-if stamp_daemon; then
+if [ "$BESIDE_CONTROLLER" = 1 ]; then
+    # The controller's own machine is not a box to be wrecked, and the
+    # manager's root-on-the-far-side actions are not for it (R90).
+    printf '   not stamped as a sandbox: the controller is on this machine\n'
+elif stamp_daemon; then
     # Only when it moved: a restart bounces every container on this machine,
     # and doing that on a re-run that changed nothing would be rude.
     svc_restart docker || warn "docker did not restart; restart it by hand so the label is read"
@@ -1189,7 +1202,17 @@ if id -u "$USER_NAME" >/dev/null 2>&1; then
 else
     useradd -m -s /bin/bash "$USER_NAME"
 fi
-usermod -aG docker "$USER_NAME"
+if [ "$BESIDE_CONTROLLER" = 1 ]; then
+    # Docker is root on this machine, and root here holds the controller's
+    # state: the job account stays out, as the session account does
+    # everywhere (R90, the wall). Taken out if a run before put it in.
+    if id -nG "$USER_NAME" | tr ' ' '\n' | grep -qx docker; then
+        gpasswd -d "$USER_NAME" docker >/dev/null 2>&1 || true
+    fi
+    printf '   %s is in no docker group: the controller is on this machine\n' "$USER_NAME"
+else
+    usermod -aG docker "$USER_NAME"
+fi
 # ...and kvm, where the host exposes it. Without this the Android emulator on
 # this node runs with no hardware acceleration and is unusably slow, measured
 # on bb-sandbox, where /dev/kvm is present and root:kvm 0660, and a job as the

@@ -96,10 +96,12 @@ def labels():
 def enroll_token():
     """A node's enrollment token for a setup scripted from a shell (R84):
     the row and the token Enroll node's Just a token makes, printed once.
-    Its run user is --user's, bb by default."""
+    Its run user is --user's, bb by default. --own makes the row the
+    controller's own machine, which nodes/install-controller.sh enrolls on a
+    controller installed bare metal (R90)."""
     rest = sys.argv[3:]
     if not rest or rest[0].startswith("-"):
-        sys.exit("[builderbot] ERROR: bb nodes enroll-token NAME [--user U]: which name?")
+        sys.exit("[builderbot] ERROR: bb nodes enroll-token NAME [--user U] [--own]: which name?")
     name, user = rest[0], "bb"
     if "--user" in rest:
         i = rest.index("--user")
@@ -107,7 +109,7 @@ def enroll_token():
             sys.exit("[builderbot] ERROR: --user needs the account the node's jobs run as")
         user = rest[i + 1]
     nodes.configure(state=os.environ["DASHBOARD_STATE"])
-    r = nodes.enroll_mint("user:shell", name, user=user)
+    r = nodes.enroll_mint("user:shell", name, user=user, own="--own" in rest)
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")
     print(r["token"])

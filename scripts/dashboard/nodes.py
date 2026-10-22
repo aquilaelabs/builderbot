@@ -634,6 +634,12 @@ def node_update(principal, node_id, fields):
             # run beside /config and the dashboard credential, and a docker
             # socket is not something this container mounts by default.
             return {"error": "the local node cannot be a docker host"}
+        if own_machine(n) and "docker-host" in caps:
+            # Nor is the controller's own machine, installed bare metal
+            # (R90): its job account is out of the docker group, since docker
+            # is root there and root holds the controller's state.
+            return {"error": "this machine is the controller's own, so it runs no containers as a node: "
+                             "docker is root here, and the wall keeps the controller's state from the node's accounts"}
         sets.append("capabilities = ?"); args.append(json.dumps(caps))
     if "labels" in fields and isinstance(fields["labels"], dict):
         clean = {str(k)[:40]: str(v)[:120]
@@ -897,8 +903,15 @@ def revoke_tokens(node_id, kinds=("node", "enroll")):
 # ---------------------------------------------------------------------------
 # enrollment
 
+def own_machine(n):
+    """Whether a node is the machine the controller itself runs on, a
+    controller installed bare metal enrolling itself (R90): an ordinary
+    agent row in every other way, and marked as this machine."""
+    return bool(n) and n.get("kind") == "agent" and bool((n.get("config") or {}).get("own"))
+
+
 def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host_only=False, nginx=False, door=None,
-                existing=None):
+                existing=None, own=False):
     """Add node, agent kind: a pending row and the one token that fills it.
     With `existing` (R177), no row: a node already here gets a new enroll
     token, its config brought to the answers, and the row's id and state
@@ -911,9 +924,18 @@ def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host
     intended are on the row, so enrollment adds nothing the operator did not
     ask for. The id is minted now and kept; a token that expires unused
     leaves a pending row the tab offers to remove, never a reused id.
+
+    With `own` (R90), the row is the controller's own machine, installed
+    bare metal: builds and sessions and no containers (its job account is
+    out of the docker group), and each session in a network of its own from
+    its first hello, since the wall a session there meets needs one.
     """
     name = (name or "").strip()[:60] or "node"
     caps = [c for c in (capabilities or CAPABILITIES) if c in CAPABILITIES]
+    if own and not existing:
+        if any(own_machine(o) and o.get("state") != "retired" for o in node_list()):
+            return {"error": "this controller's own machine is a node already: Enroll script on its row runs it again"}
+        caps, host_only, nginx, tunnel, door = ["package-build"], False, False, None, None
     user = re.sub(r"[^a-z0-9_-]", "", (user or "bb").lower())[:32] or "bb"
     if existing:
         n = node(existing)
@@ -965,7 +987,9 @@ def enroll_mint(principal, name, capabilities=None, user="bb", tunnel=None, host
                    **({"nginx": True} if nginx else {}),
                    # The door in for SSH the script sets up (R174): its kind
                    # and name, so the row knows before the machine reports.
-                   **({"door": door} if door else {})},
+                   **({"door": door} if door else {}),
+                   # The controller's own machine (R90).
+                   **({"own": True, "session_net": True} if own else {})},
     })
     tid, secret = _token_mint("enroll", nid, ENROLL_TTL)
     _touch(nid, principal, "node-enroll-mint", {"token": tid, "caps": caps})
@@ -1800,6 +1824,12 @@ def node_session_net(principal, node_id, on):
         return {"error": "no such node"}
     if n["kind"] != "agent":
         return {"error": "only an agent node runs sessions"}
+    if own_machine(n) and not on:
+        # The wall (R90): on the controller's own machine a session's own
+        # network is what keeps it off the controller's loopback ports, and
+        # bb-session starts none without it.
+        return {"error": "this is the controller's own machine: its sessions run only in a network of their own, "
+                         "which is what keeps them off the controller's own ports"}
     conf = dict(n.get("config") or {})
     conf["session_net"] = bool(on)
     _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))

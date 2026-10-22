@@ -769,8 +769,43 @@ cmd_remove() {
     fi
 }
 
-# ---- the controller's own node (step 6) and the wall (step 7) ----------------
-own_node() { :; }
+# ---- the controller's own node --------------------------------------------------
+# own_node: this machine as an ordinary agent node of its own controller,
+# made the way any node is: a token minted from a shell on the controller
+# (bb nodes enroll-token --own), then provision-linux.sh run as it is, from
+# the release, with --beside-controller. It dials the controller at the
+# address a remote node would (this machine's own on its network), so a
+# session there reaches it by that address and port and by nothing else.
+# A machine that is a node already is left as it is: of this controller,
+# provisioned again for a newer agent and bb-session; of another, said.
+OWN_MARK="$ETC/own-node"
+own_node() {
+    local ip name tok ctl prov="$OPT/nodes/provision-linux.sh"
+    local -a dev=()
+    [ "$DEV" = 1 ] && dev=(--dev)
+    say "this machine as a node of its own controller"
+    ip="$(lan_ip)" || true
+    [ -n "$ip" ] || { warn "this machine has no address on a network, so it cannot be a node of itself: --install again once it has one"; return 1; }
+    ctl="http://${ip}:${PORT}"
+    if [ -f /etc/builderbot/node.json ]; then
+        if [ -f "$OWN_MARK" ]; then
+            bash "$prov" --session-user "$SESSION_USER" --user "$JOBS_USER" --beside-controller "${dev[@]}" \
+                || warn "provisioning this machine's node again did not finish (above)"
+        else
+            warn "this machine is a node already, enrolled by another run or another controller: left as it is (provision-linux.sh --remove takes it away, and --install then makes it this controller's)"
+        fi
+        return 0
+    fi
+    name="$(hostname -s 2>/dev/null || hostname)"
+    tok="$("$BB_BIN" nodes enroll-token "$name" --user "$JOBS_USER" --own)" \
+        || { warn "the controller would not mint this machine a token (above)"; return 1; }
+    bash "$prov" --controller "$ctl" --token "$tok" --user "$JOBS_USER" --session-user "$SESSION_USER" \
+        --beside-controller "${dev[@]}" || { warn "this machine did not enroll as a node (above); --install again tries again"; return 1; }
+    printf '%s\n' "$ctl" > "$OWN_MARK"
+    printf '   enrolled as %s, at %s\n' "$name" "$ctl"
+    printf '   Give this machine a fixed address: the node reaches its controller at %s.\n' "$ip"
+}
+
 wall_remove() { :; }
 
 main() {
