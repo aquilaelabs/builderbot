@@ -7,6 +7,7 @@
 - A VM's hardware beyond its size, at New VM and in a stopped VM's new Hardware… dialog: its vCPUs pinned to host threads, a memory ceiling it balloons up to, the project's network or the LAN, a folder of the project shared in by virtiofs, and USB and PCI devices passed through by an administrator, with Dump vBIOS beside a GPU. A VM can start with its host, switched on its row. (d9995cd)
 - A release's notes can show a committed picture from the repository with (file:PATH) in bb version release --edit, so a screenshot no longer has to be attached and listed among the release's downloads. (9c5be84)
 - A Claude session's bb vm does what a VM's row does: grow a disk, add one, eject an installer's ISO, pin its CPUs, give it a memory ceiling and a shared folder, and switch whether it starts with its host, each under the project's Make VMs setting; putting a VM on the LAN and passing a device through stay a person's. (1d90383)
+- Alpine Linux can be picked in Enroll node without Offer dev features, walked on a real machine: a node there runs containers, CI runners and synced projects, and a toolchain that publishes a musl build, as Node does. Gentoo stays a dev system, and Enroll node says why when it is picked. (0851011)
 
 ### Fixed
 
@@ -15,6 +16,8 @@
 - Reopening the dashboard on a phone no longer asks whether to leave the page over unsaved data: a terminal's own leave warning is off, since nothing in a terminal is lost by leaving. (b0b6e58)
 - A VM whose job its node refused says why on its row, as the node said it, instead of an exit code. (4383554)
 - New VM's rows of fields are inset like the rest of the dialog instead of sitting against its edge. (ac9e0d8)
+- A VM made from an image bigger than the disk asked for boots, its disk made the image's size, where it stopped at an emergency shell; a Gentoo VM boots under UEFI, where it stopped at Booting from Hard Disk (0851011)
+- nginx deploys on a machine enrolled again under its old name, where Deploy said it was already on the Containers page (0851011)
 
 ## 0.6.0: 2026-10-21
 
