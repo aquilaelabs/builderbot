@@ -86,6 +86,15 @@ class Gpu(unittest.TestCase):
         with open(prefs.FILE) as f:
             self.assertNotIn("agent_default", f.read(), "Claude is the default and is never written")
 
+    def test_each_agent_keeps_its_own_model_and_effort_per_person(self):
+        # R95 step 9: Codex's and Copilot's picks beside Claude's, each from
+        # its own list, and a word on no list read as unset.
+        got = prefs.set_for_user("u_0000aaaa", "alpha", {"codex_model": "gpt-5.5", "codex_effort": "high",
+                                                         "copilot_model": "opus"})
+        self.assertEqual((got["codex_model"], got["codex_effort"], got["copilot_model"]), ("gpt-5.5", "high", ""))
+        self.assertEqual(prefs.for_user("u_0000aaaa", "alpha")["codex_model"], "gpt-5.5")
+        self.assertEqual(prefs.for_user("u_0000bbbb", "alpha")["codex_model"], "")
+
     def test_daily_snapshots_on_by_default_and_stored_only_when_off(self):
         # R105: a project with nothing said takes one a day, as before.
         self.assertTrue(prefs.get("alpha")["snapshots_on"])

@@ -156,7 +156,12 @@ def configure(*, write_json, state):
 # `asks`: how often Claude puts a question to this person on this project,
 # "" (Claude's own), fewer or rarely. Theirs too: it is their attention.
 USER_CHOICES = {"model": MODELS, "effort": EFFORTS, "reply": ("minimal",),
-                "asks": ("more", "fewer", "rarely")}
+                "asks": ("more", "fewer", "rarely"),
+                # Each other agent's model and effort, this person's on this
+                # project, from that agent's own lists (R95 step 9): what
+                # Start's step opens on next time.
+                **{f"{a}_{k}": tuple(getattr(agents, k.upper() + "S")[a])
+                   for a in agents.MODELS for k in ("model", "effort")}}
 USER_TEXT = {"git_name": 120, "git_email": 200}
 
 
@@ -1014,7 +1019,8 @@ def configure_dialog(**parts):
 
 # The dialog's fields that are the asking account's own on the project, not
 # the project's: anybody on it sets these for themselves.
-YOURS = ("model", "effort", "git_name", "git_email", "reply", "asks")
+YOURS = ("model", "effort", "git_name", "git_email", "reply", "asks",
+         *(f"{a}_{k}" for a in agents.MODELS for k in ("model", "effort")))
 
 
 def project_changes(name, req):

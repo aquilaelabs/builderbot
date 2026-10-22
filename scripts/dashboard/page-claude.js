@@ -202,7 +202,8 @@ function resumeConversation(name, id, when, ev, agent = "claude"){
     const ns = claudeNodes(p), several = ns.length > 1;
     resumeFor = name;
     resumeHost = null;
-    resumePick = {project: name, sessionId: id, when, node: several ? (ns[0]?.id || "") : "", agent, model: "", effort: ""};
+    resumePick = {project: name, sessionId: id, when, node: several ? (ns[0]?.id || "") : "", agent,
+                  model: p.yours?.[`${agent}_model`] || "", effort: p.yours?.[`${agent}_effort`] || ""};
     drawProjects(state.projects);
     syncResumeMenu();
     if (resumeFor !== name) notify("a session cannot start on this project now: its Start says why", true);
@@ -468,7 +469,18 @@ function agentPicker(p, m, card, anchor, n, several){
   m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; };
   m.querySelector("#rmEffort").onchange = e => { r.effort = e.target.value; };
   m.querySelector("[data-back]").onclick = () => { resumePick = null; drawProjects(state.projects); };
-  m.querySelector("[data-start]").onclick = () => launchAgent(r.agent, p.name, r.node, r.model, r.effort, r.sessionId || "");
+  m.querySelector("[data-start]").onclick = async e => {
+    // Kept as this person's for the project, per agent (R95 step 9), so the
+    // step opens on it next time; the session starts on it either way.
+    const mk = `${r.agent}_model`, ek = `${r.agent}_effort`;
+    if (r.model !== (p.yours?.[mk] || "") || r.effort !== (p.yours?.[ek] || "")){
+      busy(e.target, "Starting");
+      const j = await (await postJSON("/api/prefs", {project: p.name, [mk]: r.model, [ek]: r.effort})).json().catch(() => ({error: "no answer"}));
+      if (j.error){ unbusy(e.target, "Start"); m.querySelector("#rmSay").textContent = j.error; return; }
+      if (p.yours) Object.assign(p.yours, {[mk]: r.model, [ek]: r.effort});
+    }
+    launchAgent(r.agent, p.name, r.node, r.model, r.effort, r.sessionId || "");
+  };
   floatAt(m, anchor);
 }
 
@@ -573,7 +585,9 @@ function placeResumeMenu(){
     launchAgent(b.dataset.aopen, p.name, b.dataset.node));
   // A new conversation of another agent turns to its model and effort.
   m.querySelectorAll("[data-anew]").forEach(b => b.onclick = () => {
-    resumePick = {project: p.name, sessionId: null, node: b.dataset.node, agent: b.dataset.anew, model: "", effort: ""};
+    const ag = b.dataset.anew;
+    resumePick = {project: p.name, sessionId: null, node: b.dataset.node, agent: ag,
+                  model: p.yours?.[`${ag}_model`] || "", effort: p.yours?.[`${ag}_effort`] || ""};
     drawProjects(state.projects);
   });
   m.querySelectorAll("[data-aend]").forEach(b => b.onclick = () =>
