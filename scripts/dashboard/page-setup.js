@@ -26,19 +26,29 @@ function setupNeeded(){
 // 12 Oct). That is also why the first node reaches the controller over the
 // LAN or WireGuard, never only through a public hostname.
 function setupNode(){
+  const own = setupOwn();
   return (nodesList || []).find(n => n.kind === "agent" && n.state === "online" && n.live !== false
-                                     && !n.config?.host_only) || null;
+                                     && !n.config?.host_only && (!own || n === own)) || null;
+}
+
+// On a controller installed bare metal (R90), its own machine, which the
+// installer enrolled: the first node is that one, and Finish waits for it
+// rather than for one the person enrolls. Told by the install's own marker
+// (the status read's bare_metal), never guessed; where the installer made
+// no node of it (--no-node), the step is the container's.
+function setupOwn(){
+  return state?.bare_metal ? (nodesList || []).find(n => n.config?.own && n.state !== "retired") || null : null;
 }
 
 // Where each of the four stands, read from what the page already holds: the
 // nodes list, the status read's git_ready and projects. Home's Getting
 // started card reads the same, so the two never disagree.
 function setupSteps(){
-  const node = setupNode();
-  const waiting = !node && (nodesList || []).find(n => n.kind === "agent" && n.state !== "retired" && !n.config?.host_only);
+  const node = setupNode(), own = setupOwn();
+  const waiting = !node && (own || (nodesList || []).find(n => n.kind === "agent" && n.state !== "retired" && !n.config?.host_only));
   const claude = node?.reported?.session?.claude || "";
   return {
-    node, waiting,
+    node, waiting, own,
     git: state?.git_ready !== false,
     claude,
     project: (state?.projects || []).length > 0,
@@ -64,7 +74,8 @@ function drawSetup(){
   const s = setupSteps();
   // Drawn again only when what it shows has moved: a poll landing mid-type
   // would otherwise take what was typed with it.
-  const sig = JSON.stringify([s.node?.name || "", s.waiting?.name || "", s.git, s.claude, s.project]);
+  const sig = JSON.stringify([s.node?.name || "", s.waiting?.name || "", s.waiting?.state || "", s.waiting?.live,
+                              s.git, s.claude, s.project]);
   if (sig === setupSig) return;
   setupSig = sig;
   const pill = (done, wait) => done ? `<span class="pill ok">done</span>`
@@ -78,7 +89,14 @@ function drawSetup(){
       <h2>Set up BuilderBot</h2>
       <p>BuilderBot works on nodes: machines you enroll, where projects are kept, built and worked on. One is all it needs to start.</p>
     </div>
-    ${card(1, "Your first node", !!s.node, !!s.waiting, s.node
+    ${s.own ? card(1, "This machine", !!s.node, !s.node, s.node
+      ? `<p><b>${nodeName}</b>, the machine this controller runs on, is enrolled and answering: it is your first node.</p>`
+      : `<p>The machine this controller runs on is its first node, set up by the installer: ${
+          s.own.state === "pending" ? "its agent is being installed and enrolled"
+          : s.own.live === false ? "enrolled, and waiting for it to answer"
+          : "enrolled, and setting up its sessions"}. This turns to done by itself.</p>`,
+      `<button type="button" data-setenroll${featureOff("enroll") ? " disabled" : ""}>Enroll another machine</button>`)
+    : card(1, "Your first node", !!s.node, !!s.waiting, s.node
       ? `<p><b>${nodeName}</b> is enrolled and answering.</p>`
       : s.waiting
       ? `<p>Waiting for <b>${esc(s.waiting.name)}</b> to dial in: run its enroll script on the machine. This turns to done by itself.</p>`

@@ -112,7 +112,7 @@ CONTAINER_NAME="${HOST_CONTAINERNAME:-${HOSTNAME:-}}"
 # ...and on a controller installed bare metal (R90) there is no container to
 # exec into: the installer's bb on the PATH runs as the controller's account,
 # with its env file, for anybody who may sudo.
-if [ "${BUILDERBOT_INSTALL:-}" = bare-metal ]; then
+if [ "${BB_INSTALL:-}" = bare-metal ]; then
     SHELL_HOW="sudo bb shell"
     SHELL_WHO="the controller's account (${USER:-builderbot})"
 else

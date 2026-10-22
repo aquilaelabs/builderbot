@@ -3848,11 +3848,12 @@ print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}
     const proj = [...document.getElementById('rnNode').options].map(o => o.textContent.trim());
     const sel = document.createElement('select'), wrap = document.createElement('div');
     fillNodeSelect(sel, wrap, '', null, null);
-    return { proj, ctr: [...sel.options].map(o => o.textContent.trim()) };
+    return { proj, ctr: [...sel.options].map(o => o.textContent.trim()),
+             list: (nodesList || []).map(n => `${n.name}:${n.kind}:${n.state}:${n.live}:${!!n.config?.host_only}`) };
   });
   await page.keyboard.press('Escape');
   ok(opts.proj.some(o => /^nasbox \(this machine, agent/.test(o)),
-     `a project's node picker offers it, saying it is this machine (${JSON.stringify(opts.proj)})`);
+     `a project's node picker offers it, saying it is this machine (${JSON.stringify(opts.proj)}; nodes ${JSON.stringify(opts.list)})`);
   ok(!opts.ctr.some(o => /nasbox/.test(o)), `the container picker does not offer it (${JSON.stringify(opts.ctr)})`);
   // A session there with the wall down is refused before anything starts,
   // in bb-session's own words, though the node's session half is up and

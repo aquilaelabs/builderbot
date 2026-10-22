@@ -25,7 +25,9 @@ set -a
 [ -r "$BB_CONTROLLER_ENV" ] && . "$BB_CONTROLLER_ENV"
 set +a
 
-export BUILDERBOT_INSTALL=bare-metal
+# What kind of install this is, as the installer wrote it in the env file
+# (BB_INSTALL=bare-metal): read by the dashboard and the supervisor, never guessed.
+export BB_INSTALL="${BB_INSTALL:-}"
 export LANG="${LANG:-C.UTF-8}" LC_ALL="${LC_ALL:-C.UTF-8}"
 export TZ="${TZ:-Etc/UTC}"
 export NPM_CONFIG_FUND=false PIP_DISABLE_PIP_VERSION_CHECK=1 PYTHONDONTWRITEBYTECODE=1

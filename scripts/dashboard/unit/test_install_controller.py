@@ -159,9 +159,9 @@ class TheEnvironment(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "controller.env")
             with open(p, "w") as f:
-                f.write('DASHBOARD_STATE=/x/config\nDASHBOARD_PORT=7700\nBANNER_TEXT="Back at six"\n')
+                f.write('DASHBOARD_STATE=/x/config\nDASHBOARD_PORT=7700\nBANNER_TEXT="Back at six"\nBB_INSTALL=bare-metal\n')
             r = subprocess.run(["bash", "-c", f'. "{ROOT}/scripts/lib/host-env.sh"; '
-                                'echo "$DASHBOARD_STATE|$DASHBOARD_PORT|$BANNER_TEXT|$BUILDERBOT_INSTALL|$WORKSPACE|$PATH"'],
+                                'echo "$DASHBOARD_STATE|$DASHBOARD_PORT|$BANNER_TEXT|$BB_INSTALL|$WORKSPACE|$PATH"'],
                                capture_output=True, text=True, timeout=30, check=False,
                                env={"BB_CONTROLLER_ENV": p, "PATH": "/usr/bin:/bin"})
             state, port, banner, kind, ws, path = r.stdout.strip().split("|")

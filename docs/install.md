@@ -253,7 +253,10 @@ writes `/etc/builderbot-controller/controller.env` (yours to edit; every
 setting is in [reference.md](reference.md#a-controller-installed-bare-metal-its-env-file)),
 starts `builderbot-controller`, and then makes this machine a node of
 itself. Open `http://ADDRESS:7680` and make the owner account, as on a
-container install. `sudo bb ...` is the container's `docker exec -it
+container install. The setup page's first step is then **This machine**,
+the node the installer set up, with where it stands, and Finish waits for
+it to answer rather than for a node you enroll; Enroll another machine is
+there for more, and none is needed. `sudo bb ...` is the container's `docker exec -it
 BuilderBot bb ...`.
 
 Options worth knowing: `--workspace PATH` (the projects folder, by default

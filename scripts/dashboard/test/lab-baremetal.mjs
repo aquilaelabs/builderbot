@@ -82,7 +82,7 @@ const inVm = async (ip, script) => {
 // path or a port and whether it was refused.
 const TRIES = String.raw`
 st="$(sed -n 's/^DASHBOARD_STATE=//p' /etc/builderbot-controller/controller.env 2>/dev/null)"
-st="${'$'}{st:-/var/lib/builderbot-controller/config}"
+[ -n "$st" ] || st=/var/lib/builderbot-controller/config
 try() { if "$@" >/dev/null 2>&1; then echo "REACHED $*"; else echo "refused $*"; fi; }
 try cat "$st/users.json"
 try ls "$st"
@@ -94,6 +94,27 @@ try sh -c 'SSH_AUTH_SOCK=/run/builderbot-controller/ssh-agent.sock ssh-add -l; [
 try curl -s -m 5 --unix-socket /run/docker.sock http://localhost/version
 try curl -s -m 5 -o /dev/null http://127.0.0.1:7681/
 try curl -s -m 5 -o /dev/null http://127.0.0.1:7682/
+`;
+
+// The same tries from inside a session's view, built as a session's is, and
+// every folder the wall names seen empty there.
+const VIEW_HEAD = String.raw`
+set -e
+mkdir -p /workspace/labp && chown builder: /workspace/labp
+acct=u_0000a9a9
+d=/home/builder/.cache/builderbot/u/$acct/project/labp
+sudo -u builder mkdir -p "$d"
+sudo -u builder sh -c "printf 'PATH=/usr/local/bin:/usr/bin:/bin\0' > $d/env"
+cat > /tmp/inview.sh <<'EOF'
+`;
+const VIEW_TAIL = String.raw`
+for p in $(sed -n 's/^COVER=//p' /etc/bb-session.wall | tr ':' ' '); do
+  if [ -e "$p" ] && [ -n "$(ls -A "$p" 2>/dev/null)" ]; then echo "REACHED $p (not empty)"; else echo "refused $p"; fi
+done
+EOF
+chmod 755 /tmp/inview.sh
+cd /tmp && sudo -u builder sudo -n /usr/local/sbin/bb-session enter --project labp --account $acct --home /home/builder \
+  --cwd /workspace/labp --env "$d/env" -- /bin/bash /tmp/inview.sh 2>&1 || echo "enter-rc=$?"
 `;
 
 for (const os of SYSTEMS){
@@ -153,22 +174,7 @@ systemctl is-active builderbot-controller; readlink /opt/builderbot; id builderb
     }
 
     // Inside a session's view, built the way a session's is.
-    const view = await inVm(ip, String.raw`
-set -e
-mkdir -p /workspace/labp && chown builder: /workspace/labp
-acct=u_0000a9a9
-d=/home/builder/.cache/builderbot/u/$acct/project/labp
-sudo -u builder mkdir -p "$d"
-sudo -u builder sh -c "printf 'PATH=/usr/local/bin:/usr/bin:/bin\0' > $d/env"
-cat > /tmp/inview.sh <<'EOF'
-${TRIES}
-for p in $(sed -n 's/^COVER=//p' /etc/bb-session.wall | tr ':' ' '); do
-  if [ -e "$p" ] && [ -n "$(ls -A "$p" 2>/dev/null)" ]; then echo "REACHED $p (not empty)"; else echo "refused $p"; fi
-done
-EOF
-chmod 755 /tmp/inview.sh
-cd /tmp && sudo -u builder sudo -n /usr/local/sbin/bb-session enter --project labp --account $acct --home /home/builder \
-  --cwd /workspace/labp --env "$d/env" -- /bin/bash /tmp/inview.sh 2>&1 || echo "enter-rc=$?"`);
+    const view = await inVm(ip, VIEW_HEAD + TRIES + VIEW_TAIL);
     const reachedIn = view.split('\n').filter(l => l.startsWith('REACHED'));
     const refusedIn = view.split('\n').filter(l => l.startsWith('refused')).length;
     ok(refusedIn >= 12 && !reachedIn.length && !/enter-rc=/.test(view),

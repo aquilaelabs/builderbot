@@ -53,6 +53,7 @@ mounts it names the folders:
 | `BB_SECRETS_DIR` | `/etc/builderbot-controller/secrets` | The root-only secrets folder, compose's `/secrets`: `*.env` files and `ssh/` |
 | `SSH_AUTH_SOCK` | `/run/builderbot-controller/ssh-agent.sock` | The deploy-key agent's socket, in a folder only the controller's account enters |
 | `BB_ACCOUNT` | `builderbot` | The account the controller runs as, written by the installer (`--account`); change it by running the installer again |
+| `BB_INSTALL` | `bare-metal` | What the install is, written by the installer and read by the controller, never guessed: on a bare-metal install the first run's node is the machine's own, set up by the installer, and Finish waits for it |
 
 A value with spaces in it goes in double quotes. After an edit, `sudo
 systemctl restart builderbot-controller`. The file is root's and readable by
