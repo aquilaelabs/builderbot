@@ -97,7 +97,7 @@ class App(tk.Tk):
         self.tree.pack(fill="both", expand=True, padx=12)
         bar = ttk.Frame(f)
         bar.pack(fill="x", **PAD)
-        ttk.Button(bar, text="Sync to a folder…", command=self.add).pack(side="left")
+        ttk.Button(bar, text="Sync to a folder", command=self.add).pack(side="left")
         ttk.Button(bar, text="Stop syncing", command=self.remove).pack(side="left", padx=6)
         ttk.Button(bar, text="Open folder", command=self.open_folder).pack(side="left")
         ttk.Button(bar, text="Conflicts", command=self.show_conflicts).pack(side="right")
