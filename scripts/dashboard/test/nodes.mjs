@@ -3842,7 +3842,11 @@ print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}
     // The dialog fills its picker once the project's settings are read, and
     // the options of the last opening are there until then: waited on by
     // what this one draws, for as long as a loaded box takes.
+    // The dialog may still be open on alpha from the block above, whose
+    // Escape a held key can miss, and opening the same project again draws
+    // nothing new: the picker is filled again from the list as it is now.
     openProjectSettings('alpha');
+    rnFillNode();
     const has = () => [...(document.getElementById('rnNode')?.options || [])].some(o => /nasbox/.test(o.textContent));
     for (let i = 0; i < 100 && !has(); i++) await new Promise(r => setTimeout(r, 100));
     const proj = [...document.getElementById('rnNode').options].map(o => o.textContent.trim());

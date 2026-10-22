@@ -23,6 +23,8 @@
 // Skipped in one line without them, like every lab suite. Slow by nature:
 // an install is the image's packages and tools, ten to twenty minutes.
 import { ok, done, sleep } from './lib.mjs';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const CTL = (process.env.BB_LAB_CONTROLLER || '').replace(/\/$/, '');
 const CRED = process.env.BB_LAB_TOKEN || '';
@@ -78,44 +80,9 @@ const inVm = async (ip, script) => {
   return r.log;
 };
 
-// What a session must never reach, tried as an account: each line is a
-// path or a port and whether it was refused.
-const TRIES = String.raw`
-st="$(sed -n 's/^DASHBOARD_STATE=//p' /etc/builderbot-controller/controller.env 2>/dev/null)"
-[ -n "$st" ] || st=/var/lib/builderbot-controller/config
-try() { if "$@" >/dev/null 2>&1; then echo "REACHED $*"; else echo "refused $*"; fi; }
-try cat "$st/users.json"
-try ls "$st"
-try cat /etc/builderbot-controller/controller.env
-try ls /etc/builderbot-controller/secrets
-try cat /run/builderbot/secrets.env
-try ls /run/builderbot
-try sh -c 'SSH_AUTH_SOCK=/run/builderbot-controller/ssh-agent.sock ssh-add -l; [ $? -ne 2 ]'
-try curl -s -m 5 --unix-socket /run/docker.sock http://localhost/version
-try curl -s -m 5 -o /dev/null http://127.0.0.1:7681/
-try curl -s -m 5 -o /dev/null http://127.0.0.1:7682/
-`;
-
-// The same tries from inside a session's view, built as a session's is, and
-// every folder the wall names seen empty there.
-const VIEW_HEAD = String.raw`
-set -e
-mkdir -p /workspace/labp && chown builder: /workspace/labp
-acct=u_0000a9a9
-d=/home/builder/.cache/builderbot/u/$acct/project/labp
-sudo -u builder mkdir -p "$d"
-sudo -u builder sh -c "printf 'PATH=/usr/local/bin:/usr/bin:/bin\0' > $d/env"
-cat > /tmp/inview.sh <<'EOF'
-`;
-const VIEW_TAIL = String.raw`
-for p in $(sed -n 's/^COVER=//p' /etc/bb-session.wall | tr ':' ' '); do
-  if [ -e "$p" ] && [ -n "$(ls -A "$p" 2>/dev/null)" ]; then echo "REACHED $p (not empty)"; else echo "refused $p"; fi
-done
-EOF
-chmod 755 /tmp/inview.sh
-cd /tmp && sudo -u builder sudo -n /usr/local/sbin/bb-session enter --project labp --account $acct --home /home/builder \
-  --cwd /workspace/labp --env "$d/env" -- /bin/bash /tmp/inview.sh 2>&1 || echo "enter-rc=$?"
-`;
+// The VM's half, in a shell file of its own: tries(), covers(), outside
+// WHO and inside, run by name.
+const SH = readFileSync(fileURLToPath(new globalThis.URL('./lab-baremetal.sh', import.meta.url)), 'utf8');
 
 for (const os of SYSTEMS){
   const name = `lab-bm-${os.replace(/[^a-z0-9]+/g, '-')}`.slice(0, 31).replace(/-+$/, '');
@@ -134,12 +101,7 @@ for (const os of SYSTEMS){
 
     // The install, from the ref's archive, in the background in the VM, and
     // waited on by its exit file.
-    await inVm(ip, `set -e
-mkdir -p /root/bb && cd /root/bb
-curl -fsSL "https://github.com/aquilaelabs/builderbot/archive/${REF}.tar.gz" | tar -xz --strip-components=1
-bash nodes/install-controller.sh --check > /root/check.log 2>&1; echo $? > /root/check.rc
-setsid bash -c 'bash nodes/install-controller.sh --install > /root/install.log 2>&1; echo $? > /root/install.rc' < /dev/null > /dev/null 2>&1 &
-echo started`);
+    await inVm(ip, SH + '\nstart_install ' + REF + '\n');
     const rc = await wait(async () => {
       const out = await inVm(ip, 'cat /root/install.rc 2>/dev/null || true');
       return /^\d+$/m.test(out) ? out.match(/^(\d+)$/m)[1] : null;
@@ -148,8 +110,7 @@ echo started`);
     ok(rc === '0', `[${os}] install-controller.sh --install finishes (exit ${rc ?? 'none in 45 minutes'}): ${tail.slice(-600)}`);
     if (rc !== '0') continue;
 
-    const up = await inVm(ip, `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:7680/; echo
-systemctl is-active builderbot-controller; readlink /opt/builderbot; id builderbot; bb nodes 2>&1 | tail -3`);
+    const up = await inVm(ip, SH + '\nstatus\n');
     ok(/^(200|302)$/m.test(up) && /^active$/m.test(up), `[${os}] the controller answers on its port, under its service (${up.replace(/\n/g, ' | ').slice(0, 300)})`);
     ok(/online/.test(up), `[${os}] its own machine is a node of it, online`);
 
@@ -167,14 +128,14 @@ systemctl is-active builderbot-controller; readlink /opt/builderbot; id builderb
     // Outside a view: the session account and the job account, each refused
     // every one.
     for (const who of ['builder', 'bb']){
-      const out = await inVm(ip, `cat > /tmp/tries.sh <<'EOF'\n${TRIES}\nEOF\nchmod 755 /tmp/tries.sh; sudo -u ${who} bash /tmp/tries.sh`);
+      const out = await inVm(ip, SH + '\noutside ' + who + '\n');
       const reached = out.split('\n').filter(l => l.startsWith('REACHED'));
       const refused = out.split('\n').filter(l => l.startsWith('refused')).length;
       ok(refused >= 10 && !reached.length, `[${os}] as ${who}, outside a view: ${refused} refused, reached ${JSON.stringify(reached)}`);
     }
 
     // Inside a session's view, built the way a session's is.
-    const view = await inVm(ip, VIEW_HEAD + TRIES + VIEW_TAIL);
+    const view = await inVm(ip, SH + '\ninside\n');
     const reachedIn = view.split('\n').filter(l => l.startsWith('REACHED'));
     const refusedIn = view.split('\n').filter(l => l.startsWith('refused')).length;
     ok(refusedIn >= 12 && !reachedIn.length && !/enter-rc=/.test(view),
