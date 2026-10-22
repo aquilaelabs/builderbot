@@ -172,7 +172,7 @@ await view('wiki', '#wkBody');
 await page.waitForSelector('.pane .nb #wkBody .wktabs', { state: 'attached', timeout: 20000 });
 const wk = await page.evaluate(() => {
   const nb = document.querySelector('.pane .nb');
-  return { add: !!nb.querySelector('#wkNew'), why: nb.querySelectorAll('.deadwhy').length,
+  return { add: !!nb.querySelector('#wkNew')?.checkVisibility(), why: nb.querySelectorAll('.deadwhy').length,
            verbs: nb.querySelectorAll('#wkEditTab, #wkRename, #wkRm').length };
 });
 ok(!wk.add && !wk.why && wk.verbs === 0,

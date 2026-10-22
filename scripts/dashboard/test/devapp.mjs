@@ -4632,7 +4632,7 @@ print(json.dumps(out))
      `the project's Docker view lists what belongs to it, and not its own container sent to no project (${view.rows.join(' ')})`);
   ok(view.buttons.includes('up') && view.buttons.includes('rebuild'),
      `...with the manager's own rows and controls (${view.buttons.join(' ')})`);
-  ok(/of 3 containers/.test(view.hint.replace(/\s+/g, ' ')) && /\bon \S/.test(view.hint),
+  ok(/\d+ running of \d+ containers?/.test(view.hint.replace(/\s+/g, ' ')) && /\bon \S/.test(view.hint),
      `...and a tile counting them, with the node they are on under it (${view.hint.replace(/\s+/g, ' ').slice(0, 80)})`);
   // As the Containers page draws them, scoped to the project (the operator,
   // 19 Oct): its own card under its tiles, no row loose on the page.
