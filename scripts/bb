@@ -393,7 +393,10 @@ bb tests lab       the lab suites (test/lab-*.mjs) against real services rather 
                    one you are willing to have that happen to. A VM host there as well
                    (`BB_LAB_VMHOST`, with `BB_LAB_KEY` an ssh public key) walks every Linux
                    system Enroll node offers as a VM made a node, enrolled to Uninstall
-                   (lab-systems, slow: each system takes its ten to twenty minutes)
+                   (lab-systems, slow: each system takes its ten to twenty minutes);
+                   with `BB_LAB_SSH` (that key's private half, a path on the VM host) and
+                   `BB_LAB_REF` (a pushed ref) it installs a controller bare metal in a VM
+                   and tries the wall around its own node (lab-baremetal)
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
 bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
 bb rules           the house rules for this project: the operator's and yours
@@ -2645,6 +2648,10 @@ cmd_tests() {
         if [ -n "${BB_LAB_CONTROLLER:-}" ] && [ -n "${BB_LAB_VMHOST:-}" ] && [ -n "${BB_LAB_TOKEN:-}" ] \
            && [ -n "${BB_LAB_KEY:-}" ]; then
             export BB_LAB_CONTROLLER BB_LAB_VMHOST BB_LAB_TOKEN BB_LAB_KEY
+            # ...and with the key's private half on the VM host and a ref of
+            # the repository, a controller installed bare metal (lab-baremetal).
+            [ -n "${BB_LAB_SSH:-}" ] && export BB_LAB_SSH
+            [ -n "${BB_LAB_REF:-}" ] && export BB_LAB_REF
             ok_vmhost="$BB_LAB_CONTROLLER ($BB_LAB_VMHOST)"
             # Each system boots and provisions itself: hours for all of them,
             # where a suite is otherwise given twenty-five minutes.
