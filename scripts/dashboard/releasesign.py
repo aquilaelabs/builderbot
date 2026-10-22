@@ -72,12 +72,14 @@ NOTE = "Signed by BuilderBot:"
 _lock = threading.Lock()
 _busy = set()
 _cache = {}
+_bare = set()        # (project, run id): finished runs that handed over no APK
 
 
 def configure(*, state, workspace, write_json_fn, projects=None):
     globals().update(STATE=Path(state), WORKSPACE=Path(workspace), write_json=write_json_fn,
                      projects_fn=projects)
     _cache.clear()
+    _bare.clear()
 
 
 def _file():
@@ -238,14 +240,21 @@ def _waiting(project, repo, token):
             t = calendar.timegm(time.strptime(at[:19], "%Y-%m-%dT%H:%M:%S"))
         except ValueError:
             t = 0
-        if not rid or (t and time.time() - t > RUN_AGE_S):
+        if not rid or (t and time.time() - t > RUN_AGE_S) or (project, rid) in _bare:
             continue
         arts = cilogs._get(f"/repos/{repo}/actions/runs/{rid}/artifacts?per_page=50", token)
+        found = False
         for a in (arts.get("artifacts") or [])[:50]:
             name = str(a.get("name") or "")
             tag = name[len(MARK):]
             if name.startswith(MARK) and TAG.fullmatch(tag) and not a.get("expired"):
                 out.append((rid, int(a.get("id") or 0), tag))
+                found = True
+        # A finished run's artifacts do not change: one that handed over
+        # nothing is not asked about again (a look every few minutes for a
+        # release's twelve hours would otherwise ask about thirty runs each).
+        if not found:
+            _bare.add((project, rid))
     return out
 
 
@@ -378,6 +387,9 @@ def check(project, force=False):
     rec["runs"] = {k: v for k, v in rec["runs"].items() if now - int((v or {}).get("at") or 0) < 2 * RUN_AGE_S}
     with _lock:
         whole = _load()
+        # A release expected while this look ran is kept for the next.
+        was = (whole.get(project) or {}).get("expect") or {}
+        rec["expect"].update({t: a for t, a in was.items() if int(a or 0) >= now and t not in rec["signed"]})
         whole[project] = rec
         _save(whole)
     return done

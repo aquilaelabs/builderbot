@@ -211,8 +211,11 @@ class Signs(Base):
     def test_a_second_look_signs_nothing_twice(self):
         releasesign.check("app")
         n = len(self.signed)
+        asked = len([p for m, p, a in SEEN if "/runs/20/artifacts" in p])
         self.assertEqual(releasesign.check("app")["signed"], [])
         self.assertEqual(len(self.signed), n)
+        # ...and a run that handed over nothing is not asked about again.
+        self.assertEqual(len([p for m, p, a in SEEN if "/runs/20/artifacts" in p]), asked)
 
     def test_a_failed_signing_is_said_on_the_bell_and_signed_again_on_a_press(self):
         self.fail_why = "app-0.7.0-unsigned.apk: no key"
