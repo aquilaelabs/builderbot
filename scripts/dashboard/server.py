@@ -2627,8 +2627,13 @@ SESSION_SEEN = "session-seen.json"
 # (session_mark_own), so only somebody else's move is said.
 SEEN_HALVES = (("bug", "bugs", "`bb bug`"), ("rules", "rules", "`bb rules`"),
                ("mem", "memories", "the notebook's Memory view"),
-               ("prefs", "settings", "`bb settings`"))
-OWN_WRITE_ROUTES = ("/api/roadmap", "/api/rules", "/api/bugs", "/api/memory", "/api/prefs")
+               ("prefs", "settings", "`bb settings`"),
+               # ...and the design, which the house rules' fingerprint does
+               # not cover (B218): a session styling a page went on with the
+               # old one, and docs/design-language.md was never written again.
+               ("design", "design", "`bb design show`, and write docs/design-language.md again with "
+                                    "`bb design file` before committing it"))
+OWN_WRITE_ROUTES = ("/api/roadmap", "/api/rules", "/api/bugs", "/api/memory", "/api/prefs", "/api/design")
 _seen_lock = threading.Lock()
 
 
@@ -2661,9 +2666,14 @@ def _seen_now(project, who):
         pf = ""
     edits = _seen_load().get("_mem_edits")
     edits = edits if isinstance(edits, dict) else {}
+    try:
+        dz = json.dumps(design.saved(project) or {}, sort_keys=True)
+    except Exception:                                                     # noqa: BLE001
+        dz = ""
     return {"bug": str(r.get(f"bug:{project}") or ""), "rules": str(r.get(f"rules:{project}") or ""),
             "mem": str(edits.get(project) or 0),
-            "prefs": hashlib.sha1(pf.encode(), usedforsecurity=False).hexdigest()[:12] if pf else ""}
+            "prefs": hashlib.sha1(pf.encode(), usedforsecurity=False).hexdigest()[:12] if pf else "",
+            "design": hashlib.sha1(dz.encode(), usedforsecurity=False).hexdigest()[:12] if dz not in ("", "{}") else ""}
 
 
 def _memory_written(req, held):
