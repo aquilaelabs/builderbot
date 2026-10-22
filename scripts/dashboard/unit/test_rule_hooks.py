@@ -240,9 +240,12 @@ class Store(unittest.TestCase):
         rules.add("alpha", "agent-compat", "Add, do not change.", by="you",
                   words="agent", paths="scripts/agent")
 
+        import overlap as real_overlap
         class Overlap:
             others_touching = staticmethod(lambda *a: [])
             note = staticmethod(lambda *a: None)
+            # The notes' key per account and agent (R95), the real one.
+            key = staticmethod(real_overlap.key)
 
         class Users:
             load = staticmethod(lambda: {"users": {"t": {"uid": "u_t"}}})
