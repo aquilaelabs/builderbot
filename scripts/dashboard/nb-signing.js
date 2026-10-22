@@ -89,7 +89,7 @@ function nbSigningView({$, nb, project}){
       <div>${now}</div>
       <div class="sub dim">${esc(about)}${k && !d.remove && !d.file
         ? ` ${k.backed_up ? `Backed up ${esc(ago(k.backed_up))}.` : "Not backed up yet."}` : ""}</div>
-      ${never ? `<div class="sub bad">Never backed up: ${mayBackup ? "download a copy and keep it offline"
+      ${never ? `<div class="notice bad">Never backed up: ${mayBackup ? "download a copy and keep it offline"
         : "an administrator on this project downloads a copy to keep offline"}, since losing it is final.</div>` : ""}
       ${retired ? `<div class="sub">Retired: rotated to ${esc(k.retired_for)}. Kept, since the proof and every device before Android 9 still need it.</div>` : ""}
       ${rotated ? `<div class="sub">Rotated from ${esc(k.rotated_from)}: Android 9 and newer see this key, older devices still see ${esc(k.rotated_from)}.</div>` : ""}
@@ -129,15 +129,17 @@ function nbSigningView({$, nb, project}){
           <div class="sub dim">A backup this dashboard made as a zip carries its password and alias; a keystore on its own needs the password it was made with.</div>
           <div class="actbar"><button type="button" id="sgAddCancel">Cancel</button><button type="button" class="primary" id="sgImpGo" disabled>Import</button></div>
         </div></div>`
-      : `<div class="field"><div class="addbar actbar ctlrow" data-add="key"><button type="button" id="sgNew">New key</button><button type="button" id="sgImp"${
-          locked ? "" : ` disabled title="no key can be added until the backups have a password"`}>Import a backup</button></div></div>`;
+      // Two adds, each the one shape an add band has, side by side.
+      : `<div class="field"><div class="sgadds"><div class="addbar ctlrow" data-add="key"><button type="button" id="sgNew">New key</button></div>
+          <div class="addbar ctlrow" data-add="import"><button type="button" id="sgImp"${
+          locked ? "" : ` disabled title="no key can be added until the backups have a password"`}>Import a backup</button></div></div></div>`;
     // The backup password (the operator, 1 Oct): the project's owner's to
     // set, and every download's to give, BuilderBot's owner's included.
     const lock = `<div class="field"><div class="rnsign rnsignlock">
       <div>Backup password: ${locked ? "set" : "none"}</div>
       <div class="sub dim">${locked ? "Every key backup asks for it, whoever downloads it."
         : "Every key backup will ask for it, whoever downloads it."}${mayLock ? "" : " The project's owner sets it."}</div>
-      ${locked ? "" : `<div class="sub warn">No key can be added or made until it has one${mayLock ? ": set it first" : ""}.</div>`}
+      ${locked ? "" : `<div class="notice warn">No key can be added or made until it has one${mayLock ? ": set it first" : ""}.</div>`}
       ${mayLock && lockOpen ? `<div class="rnsignform">
         ${locked ? `<input type="password" id="sgLockCur" autocomplete="current-password" placeholder="the backup password now" aria-label="the backup password now">` : ""}
         <input type="password" id="sgLockNew" autocomplete="new-password" placeholder="${locked ? "a new one, or empty to remove it" : "at least ten characters"}" aria-label="the new backup password">

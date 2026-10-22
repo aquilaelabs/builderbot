@@ -988,7 +988,7 @@ for (const kind of kinds){
         const list = a.dataset.add === 'rule' ? view.querySelector('#rlList')
                    : a.dataset.add === 'memory' ? view.querySelector('#memList')
                    : a.dataset.add === 'bug' ? view.querySelector('#bugList')
-                   : a.dataset.add === 'key' ? view.querySelector('#sgBox')
+                   : ['key', 'import'].includes(a.dataset.add) ? view.querySelector('#sgBox')
                    : view.querySelector('#roadmapList');
         const row = list?.firstElementChild?.getBoundingClientRect();
         return { add: a.dataset.add, belowHead: box.top >= head.bottom - 1,

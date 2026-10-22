@@ -1644,7 +1644,7 @@ await page.click('#rnCancel');
   // ...under the backup password's line, the project's owner's to set (the
   // fixture's owner owns alpha).
   ok(/Backup password: none/.test(await page.$eval(`${V} .rnsignlock`, e => e.textContent))
-     && /No key can be added or made until it has one: set it first/.test(await page.$eval(`${V} .rnsignlock .sub.warn`, e => e.textContent))
+     && /No key can be added or made until it has one: set it first/.test(await page.$eval(`${V} .rnsignlock .notice.warn`, e => e.textContent))
      && await page.$(`${V} #sgLockOpen`) !== null && await page.$(`${V} [data-signopen]`) === null,
      'the signing keys open on whether their backups have a password, and with none no key can be added, the owner told to set it first');
   await page.click(`${V} #sgLockOpen`);

@@ -1892,7 +1892,9 @@ select:focus{outline-offset:-2px}
 .sgview .link{background:none;border:0;color:var(--warn);padding:2px 0;
   font:12px/1.4 system-ui,sans-serif;min-height:var(--tap);text-align:left;
   text-decoration:underline;cursor:pointer}
-.sgview a.link{display:inline-flex;align-items:center}@media(hover:hover){ .sgview .link:hover{color:var(--accent)} }
+.sgview a.link{display:inline-flex;align-items:center}
+.sgview .sub{font:var(--f-note);color:var(--dim)}
+.sgadds{display:flex;flex-wrap:wrap;gap:var(--field-gap)}@media(hover:hover){ .sgview .link:hover{color:var(--accent)} }
 /* A project's people (membership.py): a pending invitation per line, and
    the picker with its Invite. */
 .rninvite{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
