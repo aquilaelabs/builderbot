@@ -232,7 +232,7 @@ tab stays, its pane blank with **Reattach**, and closing the window brings
 it back on its own. The window is the terminal's
 own address, so closing the dashboard leaves it working.
 
-- **Start Claude** on a project opens *one* session per project. If it is
+- **Start agent** on a project opens *one* session per project. If it is
   already running the button reads **Open Claude**, in green, and takes you
   to its tab. If it is not but the project has a previous conversation, you
   are asked whether to **resume** it or start a **new** one: the tmux session
@@ -256,7 +256,7 @@ than holding a dead terminal until somebody closes it. Shells too: one you
 typed `exit` in is just as dead.
 
 Nothing is lost by closing it. The transcript is on disk and the project's
-Start Claude offers to resume it, which is a better way back than a corpse in
+Start agent offers to resume it, which is a better way back than a corpse in
 a tab: the project knows the transcript id and the dead tab does not.
 
 The rule is *seen alive, then gone*, and the transition is load-bearing: "has
@@ -345,7 +345,7 @@ split one inside tmux, only the active pane's contents are kept.
 
 **Claude sessions do not come back.** The conversation ended with the container,
 and a session wearing its old name would be a new one pretending otherwise. Its
-tab is dropped at boot too, and the project's **Start Claude** offers to resume
+tab is dropped at boot too, and the project's **Start agent** offers to resume
 the transcript, which is still on disk.
 
 ## Commands run in the terminal

@@ -559,7 +559,7 @@ print(json.dumps(out))
                 session_why: "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes page" });
   ok(await line() === "no node to run a Claude session on: pick one in the project's settings, or enroll one on the Nodes page",
      `a project with no node says so on the card, with what to do (${await line()})`);
-  ok(await page.$eval(`${C} [data-c]`, b => /^no node to run a Claude session on: pick one/.test(saidOf(b))),
+  ok(await page.$eval(`${C} [data-c]`, b => /^Claude: no node to run a Claude session on: pick one/.test(saidOf(b))),
      '...while the button carries the fix');
   await plant({ session_at: 'shed', node_name: 'shed', session_why: '',
                 held: 'shed runs agent 0.5.0 and this controller ships 0.6.93: a different compatibility window, so nothing sent to it is promised to work. Update it from the Nodes page' });
@@ -2504,20 +2504,34 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
   await page.evaluate(() => { resumeFor = null; openClaude('alpha'); });
   // Read in the one evaluation that waits for it: the card repaints, and a
   // read after a separate wait found the menu mid-rebuild.
-  const menu = JSON.parse(await (await page.waitForFunction(() => {
+  // One node at a time (the operator, 22 Oct): a switch of the nodes' names,
+  // the one the project works on picked, its facts on a quiet line, and a
+  // line per agent there with its presses.
+  const readMenu = () => page.waitForFunction(() => {
     const m = document.getElementById('resumemenu');
-    if (!m || m.querySelectorAll('.rmnode').length < 3) return null;
-    return JSON.stringify({ lines: [...m.querySelectorAll('.rmnode')].map(n => [...n.querySelectorAll('.rmhead b, .rmfacts, .rmstate')].map(e => e.textContent.replace(/\s+/g, ' ').trim()).join(' | ')),
-      buttons: [...m.querySelectorAll('button')].map(b => ({ text: b.textContent.trim(), node: b.dataset.node || b.dataset.signinNode,
+    if (!m || !m.querySelector('#rmNodeSel')) return null;
+    return JSON.stringify({ nodes: [...m.querySelectorAll('#rmNodeSel option')].map(o => `${o.selected ? '*' : ''}${o.textContent.trim()}`),
+      facts: m.querySelector('.rmfacts')?.textContent.trim() || '', state: m.querySelector('.rmstate')?.textContent.trim() || '',
+      lines: [...m.querySelectorAll('.rmline')].map(l => `${[...l.querySelector('.rmwho').children].map(e => e.textContent.trim()).join(' ')}: ${
+        [...l.querySelectorAll('button')].map(b => b.textContent.trim()).join('/')}`),
+      buttons: [...m.querySelectorAll('.rmline button')].map(b => ({ text: b.textContent.trim(), node: b.dataset.node || b.dataset.signinNode,
         kind: b.dataset.r ? 'resume' : b.dataset.n ? 'new' : b.dataset.signinNode ? 'signin' : '?', dead: b.disabled })) });
-  }, null, { timeout: 10000 })).jsonValue());
-  ok(/^ubu \| cpu 7%/.test(menu.lines[0]) && /RTX A2000/.test(menu.lines[0]) && /^fresh( \|.*)? \| You are not signed in to Claude here$/.test(menu.lines[1])
-     && /^rh \| rh is offline/.test(menu.lines[2]),
-     `pressing Claude on a project with several nodes lists each under its name, with what it has (${menu.lines.join(' | ').slice(0, 120)})`);
-  ok(menu.buttons.map(b => `${b.kind}:${b.node}`).join() === 'resume:n_ubu,new:n_ubu,signin:n_new' && menu.buttons.every(b => !b.dead)
-     && /^Resume: 2 h ago$/.test(menu.buttons[0].text) && menu.buttons[2].text === 'Sign in on fresh',
-     `...Resume and New conversation for the node this account is signed in on, a sign-in for the one it is not, and no press for one that cannot start a session (${
-        menu.buttons.map(b => b.text).join(' | ')})`);
+  }, null, { timeout: 10000 }).then(h => h.jsonValue()).then(JSON.parse);
+  const menu = await readMenu();
+  ok(menu.nodes.join() === '*ubu,fresh,rh' && /^cpu 7%/.test(menu.facts) && /RTX A2000/.test(menu.facts),
+     `pressing Start on a project with several nodes shows them in the node picker, its own node picked, with what that node has (${menu.nodes.join()}; ${menu.facts})`);
+  ok(menu.buttons.map(b => `${b.kind}:${b.node}`).join() === 'resume:n_ubu,new:n_ubu' && menu.buttons.every(b => !b.dead)
+     && menu.lines[0] === 'Claude: Resume 2 h ago/New',
+     `...and a line for Claude there: Resume and New where this account is signed in (${menu.lines.join(' | ')})`);
+  await page.selectOption('#rmNodeSel', 'n_new');
+  const other = await readMenu();
+  ok(other.nodes[1] === '*fresh' && other.lines[0] === 'Claude not signed in here: Sign in' && other.buttons[0].node === 'n_new',
+     `...another node picked shows its own line: its sign-in where this account has none (${other.lines.join(' | ')})`);
+  await page.selectOption('#rmNodeSel', 'n_rh');
+  const gone = await readMenu();
+  ok(/^rh is offline/.test(gone.state) && !gone.lines.length,
+     `...and one where no session can start, only its reason (${gone.state})`);
+  await page.selectOption('#rmNodeSel', 'n_ubu');
   // The last session here answered on Fable: the next step's Model names it
   // on "Claude's default", read from the newest transcript.
   const slug = `${DIR}/ws/alpha`.replace(/\//g, '-');
@@ -2577,11 +2591,12 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
     resumeFor = null; openClaude('alpha');
     const m = document.getElementById('resumemenu');
     if (!m || !m.querySelector('[data-end]')) return null;
-    return JSON.stringify({ lines: [...m.querySelectorAll('.rmnode')].map(n => [...n.querySelectorAll('.rmhead b, .rmfacts, .rmstate')].map(e => e.textContent.replace(/\s+/g, ' ').trim()).join(' | ')),
-      buttons: [...m.querySelectorAll('button')].map(b => `${b.textContent.trim()}:${b.dataset.node || b.dataset.restart || b.dataset.end || b.dataset.signinNode || ''}`) });
+    return JSON.stringify({ nodes: [...m.querySelectorAll('#rmNodeSel option')].map(o => `${o.selected ? '*' : ''}${o.textContent.trim()}`),
+      line: [...(m.querySelector('.rmline .rmwho')?.children || [])].map(e => e.textContent.trim()).join(' '),
+      buttons: [...m.querySelectorAll('.rmline button')].map(b => `${b.textContent.trim()}:${b.dataset.node || b.dataset.restart || b.dataset.end || b.dataset.signinNode || ''}`) });
   }, null, { timeout: 10000 })).jsonValue());
-  ok(/Your session is running here/.test(live.lines[0]) && live.buttons.join() === 'Open tab:n_ubu,Restart:n_ubu,End session:n_ubu,Sign in on fresh:n_new',
-     `with a session running on one node the press opens the chooser: Open tab, Restart and End session there, the other nodes still offered (${live.buttons.join(' | ')})`);
+  ok(live.nodes.join() === '*ubu · yours running,fresh' && live.line === 'Claude running' && live.buttons.join() === 'Open:n_ubu,Restart:n_ubu,End:n_ubu',
+     `with a session running on one node the press opens the chooser on that node, marked in the picker: Open, Restart and End there, the other node still in it (${live.nodes.join()}; ${live.buttons.join(' | ')})`);
   const ended = await page.evaluate(async () => {
     const real = endSession; let asked = null;
     window.endSession = async (name, node) => { asked = { name, node }; return { ok: true }; };

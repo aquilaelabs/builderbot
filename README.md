@@ -198,7 +198,7 @@ account, so do this before anyone else can reach it. Then:
 3. **Install Claude Code on the node**: Build, then Toolchains, with that
    node picked.
 4. **Add a project** on the Projects page (clone one, start an empty one,
-   or upload an archive), and press **Start Claude**. The first time, it walks you
+   or upload an archive), and press **Start agent**. The first time, it walks you
    through signing in to Claude on that node.
 
 The full checklist, with every option and the Unraid way, is

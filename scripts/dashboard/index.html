@@ -708,17 +708,19 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 html[data-motion="reduce"] .tourring{transition:none}
 /* The header's pop-outs, the bell's, the doctor's and the gear's: one shape
    (the operator, 22 Oct). Anchored to the header's bottom edge, one width,
-   a title band on top, banded section heads, and a height that scrolls
-   inside; anything else closes one, Escape closes it. On a phone each runs
+   a title band on top, banded section heads, and as tall as the screen
+   has room for, scrolling inside past that; anything else closes one, Escape closes it. On a phone each runs
    to the same 8px edges and the page behind dims, so where it ends is plain
    where its rows look like the page's own. */
 .bellpanel,.uimenu{position:absolute;right:8px;top:100%;z-index:40;
-  width:min(400px,calc(100vw - 16px));max-height:min(70vh,560px);overflow:auto;overscroll-behavior:contain;
+  width:min(400px,calc(100vw - 16px));max-height:calc(100dvh - 72px);overflow:auto;overscroll-behavior:contain;
   background:var(--panel);border:var(--hair) solid var(--line);border-top:0;
   border-radius:0 0 var(--r-surface) var(--r-surface);box-shadow:0 8px 22px rgba(0,0,0,.45);
   animation:menuIn .22s cubic-bezier(.33,1,.68,1)}
 @media(max-width:600px){
-  .bellpanel,.uimenu{left:8px;right:8px;width:auto}
+  /* ...and on a phone it stops above the dock's line and the bottom bar, so
+     the gear's whole menu shows where the screen has room for it. */
+  .bellpanel,.uimenu{left:8px;right:8px;width:auto;max-height:calc(100dvh - 190px)}
   header:has(>.bellpanel:not([hidden]),>.uimenu:not([hidden]))::before{content:"";position:absolute;
     left:0;right:0;top:100%;height:100vh;z-index:39;background:rgba(0,0,0,.4);pointer-events:none} }
 .popbar{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;
@@ -4737,6 +4739,18 @@ html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
 .resumemenu .rmstate.ok::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--pass);flex:0 0 auto}
 .resumemenu .rmstate.bad{color:var(--bad)}
 .resumemenu .rmacts{padding:0;border:0;background:none;gap:8px;flex-wrap:wrap}
+/* The first step: a node switch, its facts, then one line per agent with its
+   name and how you stand at the left and its presses at the right (the
+   operator, 22 Oct). On a narrow menu the presses go under the name. */
+.resumemenu .rmnodes .pick{display:flex;align-items:center;gap:8px;max-width:100%}
+.resumemenu .rmnodes select{flex:1 1 auto;min-width:0}
+.resumemenu .rmline{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;
+  padding-top:8px;border-top:var(--hair) solid var(--line)}
+.resumemenu .rmline .rmwho{display:flex;align-items:baseline;gap:8px;min-width:0}
+.resumemenu .rmline .rmwho b{font:var(--f-ui);font-weight:600;color:var(--ink)}
+.resumemenu .rmline .rmsays{font:var(--f-note);color:var(--dim)}
+.resumemenu .rmline.live .rmsays{color:var(--pass)}
+.resumemenu .rmline .rmacts{margin-left:auto}
 .resumemenu .rmacts button{white-space:nowrap}
 .resumemenu .rmfields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .resumemenu .rmfields select{width:100%;min-width:0}

@@ -12,7 +12,7 @@ each one keeps.
 
 **The page's header** wears the project's color and carries its name, the
 branch and the node, the session's state as a dot and a word, and its
-actions: **Start Claude** (**Open Claude**, in green, while your session
+actions: **Start agent** (**Open** and the agent's name, in green, while your session
 runs) with the chooser under it, **Shell**, and the rest behind one menu,
 the same menu its card has ([projects.md](projects.md#a-projects-card-and-its-menu)).
 

@@ -146,7 +146,10 @@ function renderAgentsInto(i){
   if (!d) return;
   if (agRows === null){
     d.setBar(nodeBar(nodePick("", null)));
-    d.list.innerHTML = skTpl(`${skRows(2)}${skRows(2)}`);
+    // The page's own shape (the operator, 22 Oct): the sentence over it,
+    // then a section per agent by name, each folded as the page folds it.
+    d.list.innerHTML = skTpl(`<div class="field">${skRows(1)}</div>`
+      + AGENTS.filter(a => a.live).map(a => docSection("agents", a.id, a.name, "", skRows(2))).join(""));
     loadAgents();
     return;
   }

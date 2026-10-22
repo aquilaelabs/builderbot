@@ -10,7 +10,7 @@ in [dashboard.md](dashboard.md#the-dock-and-its-terminals).
 ## Starting a session
 
 **The model and effort are picked when a session starts** (the operator, 12
-Oct), not kept in the project's settings: pressing Start Claude opens a menu
+Oct), not kept in the project's settings: pressing Start agent opens a menu
 (the node, Resume or New conversation), and that choice turns the menu to
 Model and Effort with Start, opening on the last ones picked here and naming
 on *Claude's default* the model the last session answered on. Start keeps
@@ -31,7 +31,7 @@ node, and what its briefing says (replies, questions, how a test run meets
 a change, how long captures are kept). Save with one of those changed while
 your session is running and the settings name the changes and put two
 answers at their foot: *Save and end it*, which ends the session so the next
-press of Start Claude starts it on the new setting with the conversation resumed,
+press of Start agent starts it on the new setting with the conversation resumed,
 or *Save, keep it running*, which saves and leaves the session on what it
 started with until you end it yourself. The setting lands either way;
 only the interruption is asked about. Anything mid-turn is lost when it is
@@ -39,7 +39,7 @@ ended, which is the whole reason it asks. Everything else in the settings
 (the build and test commands, the dials, where tests run) is read when it
 is used, so those save without a question.
 
-**A project's Start Claude knows which node it is about.** Where this
+**A project's Start agent knows which node it is about.** Where this
 account's session is already running, the press opens the chooser rather
 than jumping to the tab: **Open tab**, a red **Restart** and **End session**
 for the node it runs on (Restart ends the session, asks the model and effort
@@ -57,13 +57,13 @@ is not, and the reason alone for one where a session cannot start.
 
 **A Claude tab does not come back on its own after a restart.** The
 conversation ended with the container; the transcript did not, so the
-project's Start Claude offers to resume it and that stays a decision you
+project's Start agent offers to resume it and that stays a decision you
 make. Enforcing it takes two halves: the saved layout drops Claude tabs at
 boot, and, because a browser left open still holds its own copy, and a phone
 waking up reloads the terminal iframe, which spawns whatever its URL names:
 each Claude terminal's URL carries the run of the container it was opened in.
 One from a previous run is refused where the session would have been created,
-with a line saying to open it from its project's Start Claude instead.
+with a line saying to open it from its project's Start agent instead.
 Shell tabs carry no such marker and never needed one: a shell is safe to
 recreate in the same directory, which is why it survives a restart and a
 conversation does not.
@@ -75,14 +75,14 @@ nothing a session can do.** The provisioner does not install it: a node's
 Agents page (under Build, beside Toolchains) has a Claude section, with the version its session account
 runs against the latest the controller knows, asked on the toolchains' own
 clock (weekly, when a node starts, and on **Check for updates**). Until it
-is installed no Claude session starts there: the project's Start Claude
+is installed no Claude session starts there: the project's Start agent
 is ghosted with the reason, and the terminal refuses with the same
 sentence. Press **Install** or **Update** there to install or update it:
 that ends every Claude session on the node first, then the agent runs the
 installer as the session account and, on a managed node, pins the binary
 where the account cannot write it, so `claude update` typed in a session
 changes nothing that runs (the auto-updater is off there too). **Remove**
-takes it off. Nothing starts again on its own: a project's Start Claude does,
+takes it off. Nothing starts again on its own: a project's Start agent does,
 when you press it, and until the job ends it is held with the reason. A
 node behind is a row in the bell, and stays on what it has until you
 install the update: nothing updates it before a session starts (a switch

@@ -172,7 +172,7 @@ async function liveRefresh(){
   // Your own sessions starting or ending are what the cards' Open Claude,
   // a project's header and its settings read off the status read's session
   // list, which this light read does not carry and keeps putting off: so a
-  // change in yours reads it at once (the operator, 17 Oct: Start Claude
+  // change in yours reads it at once (the operator, 17 Oct: Start agent
   // stayed until a reload).
   const yours = w => Object.entries(w || {}).filter(([, ns]) => (ns || []).includes(state.me)).map(([k]) => k).sort().join(",");
   const moved = yours(j.claude_with) !== yours(state.claude_with);

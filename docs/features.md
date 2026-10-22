@@ -55,7 +55,7 @@ works there ([notebook.md](notebook.md)).
 
 ([sessions.md](sessions.md))
 
-- **Start Claude** opens a Claude Code session on the project's node, in a
+- **Start agent** opens a Claude Code session on the project's node, in a
   real terminal in the dock. Resume it later, restart it, and pick the model
   and effort.
 - Each session starts **briefed**: the project's house rules, roadmap and

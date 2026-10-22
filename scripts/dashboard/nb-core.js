@@ -942,7 +942,7 @@ function makeNotebook(project){
 // A project is a page: its pane's bar is the header the design names (the
 // a-notebook/project-page rule): the name large, the branch and the node in
 // the data face, the session's state as the dot and a word, and at the
-// right its actions: Start Claude, or Open
+// right its actions: Start agent, or Open
 // Claude in green while yours runs (the chooser under it), Shell, and the rest behind one menu (link, phone, report,
 // lock, pin, settings). Drawn by paintBar on every pass like every bar; the
 // chooser sits on the pane, not in the bar, so a repaint leaves it up.
@@ -976,7 +976,7 @@ function projectNote(p){
   // (B826: a copy going up was said and the missing Claude Code that really
   // held it never was).
   const held = p.held && !state?.mapping?.[p.name]?.running ? p.held : "";
-  // Not this account's to change: nothing is said and Start Claude is not
+  // Not this account's to change: nothing is said and Start agent is not
   // drawn (the operator, 21 Oct: a role somebody lacks is not advertised to
   // them, and a reason a button is off is not an error, so no line is red).
   if (!p.locked && writeWhy(p)) return "";
@@ -985,7 +985,7 @@ function projectNote(p){
   if (claudeInstall(p)) return "";
   const said = held || p.session_why;
   if (said && !p.locked && !here) return `<div class="pnote dim">${esc(said)}</div>`;
-  // ...and otherwise why Start Claude is dead, whatever made it so (B88):
+  // ...and otherwise why Start agent is dead, whatever made it so (B88):
   // a Profile with no commit author, somebody else's node. An archived one
   // says so by its mark, and is left out.
   const dead = p.locked ? "" : claudeDeadWhy(p);
@@ -996,7 +996,7 @@ function projectNote(p){
 // (the operator, 21 Oct: the button opens that node's Toolchains).
 const claudeInstall = p => !p.locked && !liveSessions().has(myClaude(p.name)) && p.claude_missing
   && mayToolchains(p.claude_missing) ? p.claude_missing : "";
-// Why Start Claude is dead on this project, or "" when it is live: the one
+// Why Start agent is dead on this project, or "" when it is live: the one
 // answer the button, its description and the line under it all read.
 function claudeDeadWhy(p){
   const mine = liveSessions().has(myClaude(p.name));
@@ -1045,7 +1045,9 @@ function projectActions(p, extra = ""){
   // What a press does, or why it is dead, in the button's own words: a
   // screen reader hears it, and a press on a dead one is told.
   const live = liveSessions();
-  const say = dead ? dead
+  // Named for the agent it opens, whatever it says: the button's own word is
+  // Start agent for every one of them.
+  const said = dead ? dead
     : p.session_why ? p.session_why
     : othersOn(name).length ? `${othersOn(name).join(", ")} also working here, in a checkout of their own: start yours`
     : p.session_node && !agentOn(ag.id, p.session_node) && !live.has(myAgentSession(ag.id, name))
@@ -1054,14 +1056,16 @@ function projectActions(p, extra = ""){
     : mine ? `${ag.name}: your session is running; open its tab or end it`
     : p.last_claude ? `${ag.name}: no session running; resume or start one`
     : `${ag.name}: start a session here`;
-  // Green only while your session runs, and then it opens it; otherwise a
-  // plain Start Claude (the operator, 16 Oct: green on every card read as
-  // running everywhere).
+  const say = said.startsWith(`${ag.name}:`) ? said : `${ag.name}: ${said}`;
+  // Green only while your session runs, and then it opens it, naming the
+  // agent; otherwise a plain Start agent, the chooser under it picking which
+  // (the operator, 16 Oct: green on every card read as running everywhere;
+  // 22 Oct: one word for every agent).
   const inst = ag.id === "claude" ? claudeInstall(p) : "";
   return `${isBroken(p) || forbid ? "" : inst ? `<button type="button" data-tcinst="${esc(inst)}" title="${
         esc(`Claude Code is not installed on ${p.node_name || "its node"}: open its Agents page to install it`)}">Install Claude</button>`
       : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(name)}"${dead ? " disabled" : ""} title="${esc(say)}">${
-        `${mine ? "Open" : "Start"} ${esc(ag.name)}`}</button>`}
+        mine ? `Open ${esc(ag.name)}` : "Start agent"}</button>`}
     ${mayShell() && !notMine(p) ? `<button type="button" data-s="${esc(name)}"${!gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}
     <span class="more"><button type="button" data-pmore aria-label="more" aria-expanded="false">${DOTS}</button><div class="actmenu" hidden>${menu}</div></span>`;
 }

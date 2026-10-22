@@ -185,7 +185,7 @@ function bootPage(hash){
     const view = parts[2] || "overview", grp = GROUPS.find(x => x[2].some(([v]) => v === view)) || GROUPS[0];
     const btn = (on, w) => `<button type="button" disabled class="${on ? "on" : ""}">${w}</button>`;
     bar = `<span class="phead"><span class="pname">${skv(6)}</span><span class="pfacts">${skv(14)}</span><span class="sp"></span>
-      <button type="button" disabled>Open Claude</button><button type="button" disabled>Shell</button></span>`;
+      <button type="button" disabled>Start agent</button><button type="button" disabled>Shell</button></span>`;
     body = `<div class="doc on nbhost"><div class="nb"><div class="nbtabs"><div class="nbgroups">${GROUPS.map(([k, w]) => btn(k === grp[0], w)).join("")}</div>
       <div class="nbsub">${grp[2].map(([v, w]) => btn(v === view, w)).join("")}</div></div>
       ${bootView(view) || `<div class="nbview"><div class="field">${skRows(5)}</div></div>`}</div></div>`;
@@ -852,7 +852,7 @@ function floatPlace(m, anchor){
   const up = h > below && above > below;
   const room = Math.max(40, up ? above : below);
   m.style.maxHeight = room + "px";
-  // Lined up with its button on the side it opens from: Start Claude at a
+  // Lined up with its button on the side it opens from: Start agent at a
   // card's left opens rightward from its left edge, a ⋯ at its right
   // leftward from its right edge.
   const left = Math.max(8, Math.min((a.left + a.right) / 2 < innerWidth / 2 ? a.left : a.right - w, innerWidth - w - 8));

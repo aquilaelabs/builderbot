@@ -476,7 +476,7 @@ routine) from *out of window* (the promise was never made, update before
 relying on it). Refusing would strand a node on a guess. The one thing an
 out-of-window agent does stop is Claude sessions on the projects bound to
 that node: the controller ends the running ones and ghosts each such
-project's Start Claude until the node is updated, per project, so a
+project's Start agent until the node is updated, per project, so a
 project on a current node is untouched.
 
 What a session is briefed with is no longer in this window, or in any
@@ -647,7 +647,7 @@ controller is.
   `.git` and `dist/` are synced: a session commits on the node, and a build
   there lands its artifacts where the Artifacts view reads them.
 - **A session waits** for its project's first copy: the node reports each
-  project as copying or ready, and Start Claude says which. Binding a
+  project as copying or ready, and Start agent says which. Binding a
   project to a synced node, or changing what it reads, tells every synced
   node at once (`wssync.held_changed`), so the first copy starts on the
   save rather than at the node's next look of its own, half a minute
@@ -2336,7 +2336,7 @@ refused with the reason (offline, no session half, no mount) rather than
 quietly started on the wrong machine, and `_term_proxy` dials the node's
 ttyd on the address it enrolled from, stamping `tok:` and `name:` after the
 account. The project's card carries the same decision (`session_at`,
-`session_why`), so Start Claude is dead with the sentence before
+`session_why`), so Start agent is dead with the sentence before
 anything is asked. Two of its refusals are passing and say to wait rather
 than to unbind: the agent not answering (a reboot, an update), and a node
 that came up under ten minutes ago whose network mount has not landed;

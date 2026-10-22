@@ -128,7 +128,7 @@ the Anthropic API are checked on a node, where sessions run.
 
 Each person signs in to Claude on each node they work on, from the Claude
 section of that node's Agents page (under Build): **Sign in**, which a project's
-**Start Claude** offers the first time. The flow runs on that node, the
+**Start agent** offers the first time. The flow runs on that node, the
 machine Claude Code is installed on, and the code is pasted back in the
 section. Each node keeps the login it alone refreshes; the controller holds no
 credential, only which Anthropic account each node reported for you.
@@ -155,7 +155,7 @@ the same reason; they make a job look routable when nothing will pick it up.
 
 ### 7. Daily use and updating
 
-A Claude session is opened from the dashboard, with **Start Claude** on the
+A Claude session is opened from the dashboard, with **Start agent** on the
 project's card or page, and runs on that project's node. There is no `claude` in this container to exec into.
 
 ```bash

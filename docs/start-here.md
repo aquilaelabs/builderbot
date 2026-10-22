@@ -39,7 +39,7 @@ and a session keeps going.
 3. **Install Claude Code, then sign in to Claude**, on each machine your
    projects work on. A node has no Claude Code until the **Agents**
    page (under Build, with that node picked) installs it: press Install
-   under Claude. Then press a project's **Start Claude**: where you are not signed in on its node yet,
+   under Claude. Then press a project's **Start agent**: where you are not signed in on its node yet,
    it offers **Sign in on** that node, which opens that node's Agents page at
    its Claude section. Press Sign in there, open the link, and paste the
    code back. The login stays on that machine and is yours: it is not

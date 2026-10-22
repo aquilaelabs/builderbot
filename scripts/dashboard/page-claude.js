@@ -43,6 +43,8 @@ function syncResumeMenu(){
 // settings. Kept here as they are picked, since the menu is drawn again on
 // every poll. null while the menu offers its first step.
 let resumePick = null;
+// Which node the chooser's first step shows, of a project on several.
+let rmNode = {project: "", node: ""};
 
 // `ps -o etime=` gives MM:SS under an hour, HH:MM:SS under a day, and
 // D-HH:MM:SS beyond one. Rendered raw in a header with four buttons beside it
@@ -215,7 +217,7 @@ function resumeConversation(name, id, when, ev, agent = "claude"){
   // The press goes no further: the page's click-away closes the chooser,
   // as the Claude button's own press keeps it open (openClaude).
   ev?.stopPropagation();
-  // Under the project's own Start Claude where it is on show (the notebook's
+  // Under the project's own Start agent where it is on show (the notebook's
   // header), not the box the row's button sits in, which holds no Start.
   resumeHost = null;
   resumePick = {project: name, sessionId: id, when, node: live && several ? live.id : "",
@@ -223,11 +225,11 @@ function resumeConversation(name, id, when, ev, agent = "claude"){
                 ...(live ? {restart: {id: live.id || "", name: live.name || "", several}} : {})};
   drawProjects(state.projects);
   syncResumeMenu();
-  // Nowhere to start it (placeResumeMenu found no Start Claude to open under):
+  // Nowhere to start it (placeResumeMenu found no Start agent to open under):
   // said, rather than a press that does nothing.
   if (resumeFor !== name)
     notify(claudeInstall(p) ? `Claude Code is not installed on ${p.node_name || "this project's node"}: install it from its Agents page, then resume`
-      : "a session cannot start on this project now: its Start Claude says why", true);
+      : "a session cannot start on this project now: its Start agent says why", true);
 }
 
 // A button that sends something to a project's Claude session asks first
@@ -499,57 +501,62 @@ function placeResumeMenu(){
     resumePicker(p, m, card, anchor, ns, several);
     return;
   }
-  // What one node offers: Open tab and End session where this account's
-  // session runs there; its sign-in where this account has none there;
-  // else Resume and New conversation, or the one press when there is
-  // nothing to resume; and only its reason where a session cannot start.
-  const offer = n => {
-    const node = several ? n.id : "";
-    // In one action bar (the design 2.0 pass, the operator, 17 Oct): Open
-    // tab the filled press, Restart plain since it resumes, End session the
-    // one destructive verb and last.
-    const bar = html => `<div class="actbar rmacts">${html}</div>`;
+  // One node at a time and one line per agent (the operator, 22 Oct: nodes
+  // times agents was a tall stack of bars): with several nodes, the node
+  // picker on top, and the node's facts on a quiet line under it; then each agent installed there
+  // on a line of its own, its name and how you stand on it at the left and
+  // its presses at the right, in short words with the full ones in their
+  // titles. The project's default agent first.
+  const at = several ? n => n.id : () => "";
+  const runsOn = n => claudeLiveOn(p.name, n) || agentsLive().some(a => a.id !== "claude" && agentLiveOn(a.id, p.name, n));
+  if (rmNode.project !== p.name || !ns.some(n => n.id === rmNode.node))
+    rmNode = {project: p.name, node: (ns.find(runsOn) || ns.find(n => n.id === p.session_node) || ns[0] || {}).id || ""};
+  const n = ns.find(x => x.id === rmNode.node) || ns[0];
+  const line = (a, state, presses, cls = "") => `<div class="rmline${cls}"><span class="rmwho"><b>${esc(a.name)}</b>${
+      state ? `<span class="rmsays">${esc(state)}</span>` : ""}</span><div class="actbar rmacts">${presses}</div></div>`;
+  const claudeLine = () => {
+    const a = agentById("claude"), node = at(n);
     if (claudeLiveOn(p.name, n))
-      return bar(`<button data-open="1" data-node="${esc(node)}" class="primary">Open tab</button>`
-        + `<button data-restart="${esc(n.id)}">Restart</button>`
-        + `<button data-end="${esc(n.id)}" class="danger">End session</button>`);
-    if (n.where !== "node") return `<div class="rmstate bad">${esc(n.why)}</div>`;
+      return line(a, "running", `<button data-open="1" data-node="${esc(node)}" class="primary" title="open your session's tab">Open</button>`
+        + `<button data-restart="${esc(n.id)}" title="end it and resume the same conversation">Restart</button>`
+        + `<button data-end="${esc(n.id)}" class="danger" title="end your session here">End</button>`, " live");
     if (!claudeSigned(n))
-      return bar(`<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its Claude sign-in">Sign in on ${esc(n.name)}</button>`);
-    return bar((p.last_claude ? `<button data-r="1" data-node="${esc(node)}">Resume: ${esc(ago(p.last_claude.when))}</button>` : "")
-      + `<button data-n="1" data-node="${esc(node)}"${p.last_claude ? "" : ' class="primary"'}>New conversation</button>`);
+      return line(a, "not signed in here", `<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its Claude sign-in">Sign in</button>`);
+    return line(a, "", (p.last_claude ? `<button data-r="1" data-node="${esc(node)}" title="resume the last conversation">Resume ${esc(ago(p.last_claude.when))}</button>` : "")
+      + `<button data-n="1" data-node="${esc(node)}"${p.last_claude ? "" : ' class="primary"'} title="a new conversation">New</button>`);
   };
-  // The other coding agents installed on a node (R95 step 4), each a line
-  // of its own under Claude's: Open tab and End session where this
-  // account's session of it runs there, its sign-in where there is none,
-  // else New conversation. Nothing where a session there cannot start.
-  const agentOffers = n => n.where !== "node" ? "" : agentsLive().filter(a => a.id !== "claude" && (n.agents || []).includes(a.id)
-      && !(p.prefs?.agents_off || []).includes(a.id))
-    .map(a => {
-      const node = several ? n.id : "";
-      const bar = html => `<div class="actbar rmacts"><span class="state">${esc(a.name)}</span>${html}</div>`;
-      if (agentLiveOn(a.id, p.name, n))
-        return bar(`<button data-aopen="${esc(a.id)}" data-node="${esc(node)}">Open tab</button>`
-          + `<button data-aend="${esc(a.id)}" data-nid="${esc(n.id)}" class="danger">End session</button>`);
-      if (n.id && !agentOn(a.id, n.id))
-        return bar(`<button data-asignin="${esc(a.id)}" data-nid="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its ${esc(a.name)} sign-in">Sign in on ${esc(n.name)}</button>`);
-      return bar(`<button data-anew="${esc(a.id)}" data-node="${esc(node)}">New conversation</button>`);
-    }).join("");
-  // A node's head: its name, and what it has on a quiet line under it.
-  const head = n => `<div class="rmhead"><b>${esc(n.name || "")}</b>${
-      claudeNodeFacts(n) ? `<span class="rmfacts">${esc(claudeNodeFacts(n))}</span>` : ""}</div>`;
+  const otherLine = a => {
+    const node = at(n);
+    if (agentLiveOn(a.id, p.name, n))
+      return line(a, "running", `<button data-aopen="${esc(a.id)}" data-node="${esc(node)}" class="primary" title="open your session's tab">Open</button>`
+        + `<button data-aend="${esc(a.id)}" data-nid="${esc(n.id)}" class="danger" title="end your session here">End</button>`, " live");
+    if (n.id && !agentOn(a.id, n.id))
+      return line(a, "not signed in here", `<button data-asignin="${esc(a.id)}" data-nid="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its ${esc(a.name)} sign-in">Sign in</button>`);
+    return line(a, "", `<button data-anew="${esc(a.id)}" data-node="${esc(node)}" title="a new conversation">New</button>`);
+  };
+  const lines = () => {
+    if (n.where !== "node") return `<div class="rmstate bad">${esc(n.why)}</div>`;
+    const first = p.prefs?.agent_default || "claude";
+    const here = agentsLive().filter(a => (a.id === "claude" || (n.agents || []).includes(a.id))
+        && !(p.prefs?.agents_off || []).includes(a.id))
+      .sort((x, y) => (y.id === first) - (x.id === first));
+    return here.map(a => a.id === "claude" ? claudeLine() : otherLine(a)).join("");
+  };
+  const facts = n && claudeNodeFacts(n);
   const html = !ns.length
     // No node, or one that refused, and there is nowhere else: a session
     // runs on a node and this container carries no Claude Code. The reason,
     // and no choice under it: a menu with nothing in it would be a button
     // that lies.
     ? `<div class="rmstate bad">${esc(p.session_why)}</div>`
-    // Each node (several under R82, or the one): its head, how this account
-    // stands there, and what it offers.
-    : ns.map(n => `<div class="rmnode">${n.name ? head(n) : ""}${
-        claudeLiveOn(p.name, n) ? `<div class="rmstate ok">Your session is running here</div>`
-        : n.where === "node" && !claudeSigned(n) ? `<div class="rmstate">You are not signed in to Claude here</div>` : ""}${
-        offer(n)}${agentOffers(n)}</div>`).join("");
+    // Several nodes are the house's node picker (nodePick, the node-switcher
+    // rule), which holds any number of them; one where a session of yours
+    // runs says so after its name.
+    : `<div class="rmnode">${several ? `<div class="rmnodes">${nodePick("rmNodeSel",
+          ns.map(x => ({id: x.id, name: runsOn(x) ? `${x.name} · yours running` : x.name})), n.id)}</div>`
+        + (facts ? `<div class="rmfacts">${esc(facts)}</div>` : "")
+        : n.name ? `<div class="rmhead"><b>${esc(n.name)}</b>${facts ? `<span class="rmfacts">${esc(facts)}</span>` : ""}</div>` : ""}${
+        lines()}</div>`;
   // The same menu as the one up already is left where it is (the operator,
   // 12 Oct): drawn again on every poll, its buttons were replaced under the
   // pointer and its entrance played again, so a press that began on one
@@ -561,6 +568,8 @@ function placeResumeMenu(){
   m.dataset.sig = html;
   m.innerHTML = html;
   card.appendChild(m);
+  const nsel = m.querySelector("#rmNodeSel");
+  if (nsel) nsel.onchange = () => { rmNode = {project: p.name, node: nsel.value}; placeResumeMenu(); };
   m.querySelectorAll("[data-signin-node]").forEach(b => b.onclick = () => {
     resumeFor = null;
     drawProjects(state.projects);

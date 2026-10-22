@@ -65,14 +65,15 @@ const before = await terms();
 await page.evaluate(() => openProjectsTab());
 await page.click(PC);
 await page.waitForSelector('#resumemenu [data-signin-node]', { timeout: 20000 });
-const menu = await page.$eval('#resumemenu', m => ({ text: [...m.querySelectorAll('.rmhead b, .rmfacts, div.rmstate')].map(e => e.textContent.trim()).join(' | '),
-  buttons: [...m.querySelectorAll('button:not([data-asignin])')].map(b => b.textContent.trim()),
-  // Codex CLI is installed there too (R95 step 4): its own line, its own sign-in.
-  codex: [...m.querySelectorAll('[data-asignin="codex"]')].map(b => b.closest('.actbar').textContent.replace(/\s+/g, ' ').trim()) }));
-ok(/^signbox \|[\s\S]*You are not signed in to Claude here$/.test(menu.text) && menu.buttons.join() === 'Sign in on signbox',
-   `pressing it opens the chooser with that node's sign-in as its one press, in place of Resume and New conversation (${menu.text}; ${menu.buttons.join(' | ')})`);
-ok(menu.codex.length === 1 && /^ChatGPT\s*Sign in on signbox$/.test(menu.codex[0]),
-   `...and a line for ChatGPT under it, Codex CLI being installed there, offering its own sign-in (${menu.codex.join(' | ')})`);
+const menu = await page.$eval('#resumemenu', m => ({ head: m.querySelector('.rmhead b')?.textContent.trim() || '',
+  lines: [...m.querySelectorAll('.rmline')].map(l => `${[...l.querySelector('.rmwho').children].map(e => e.textContent.trim()).join(' ')}: ${
+    [...l.querySelectorAll('button')].map(b => b.textContent.trim()).join('/')}`) }));
+// One line per agent installed there (the operator, 22 Oct): Claude's sign-in
+// in place of Resume and New, and ChatGPT's own, Codex CLI being there too.
+ok(menu.head === 'signbox' && menu.lines.includes('Claude not signed in here: Sign in'),
+   `pressing it opens the chooser with that node's sign-in as Claude's one press, in place of Resume and New (${menu.head}; ${menu.lines.join(' | ')})`);
+ok(menu.lines.includes('ChatGPT not signed in here: Sign in'),
+   `...and a line for ChatGPT beside it, Codex CLI being installed there, offering its own sign-in (${menu.lines.join(' | ')})`);
 await page.click('#resumemenu [data-signin-node]');
 await page.waitForFunction(id => {
   const s = document.querySelector(`.agentstab [data-agnode="${id}"] [data-sect="agents:claude"]`);
@@ -231,14 +232,16 @@ await call('/api/v1/nodes', { action: 'online', id: box.id });
 {
   const set = await call('/api/prefs', { project: 'beta', agent_default: 'codex' });
   await page.evaluate(() => openProjectsTab());
-  await refreshUntil(page, () => document.querySelector('.pgrid .pcard[data-row="beta"] [data-c]')?.textContent.trim() === 'Start ChatGPT');
-  ok(!set.error && await page.$eval(PC, b => b.textContent.trim()) === 'Start ChatGPT',
-     `a project whose settings name ChatGPT says Start ChatGPT on its card (${set.error || 'saved'})`);
+  // One word on every card (the operator, 22 Oct): Start agent, the agent it
+  // opens named in its title and first in its chooser.
+  await refreshUntil(page, () => (b => !!b && /^ChatGPT:/.test(saidOf(b)))(document.querySelector('.pgrid .pcard[data-row="beta"] [data-c]')));
+  ok(!set.error && await page.$eval(PC, b => b.textContent.trim() === 'Start agent' && /^ChatGPT:/.test(saidOf(b))),
+     `a project whose settings name ChatGPT says Start agent on its card, its title naming ChatGPT (${set.error || 'saved'})`);
   const refused = await call('/api/prefs', { project: 'beta', agent_default: 'open' });
   ok(refused.status === 400 || /agent_default is one of/.test(refused.error || ''),
      `...and an agent that cannot start a session is refused as the one Start opens (${refused.error})`);
   await call('/api/prefs', { project: 'beta', agent_default: 'claude' });
-  await refreshUntil(page, () => document.querySelector('.pgrid .pcard[data-row="beta"] [data-c]')?.textContent.trim() === 'Start Claude');
+  await refreshUntil(page, () => (b => !!b && /^Claude:/.test(saidOf(b)))(document.querySelector('.pgrid .pcard[data-row="beta"] [data-c]')));
   // Who may (R95 step 10): an agent a project switches off is offered
   // nowhere there, and its terminal is refused on the server whoever asks.
   await call('/api/prefs', { project: 'beta', agents_off: 'codex' });

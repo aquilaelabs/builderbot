@@ -26,12 +26,12 @@ const TOUR_STEPS = {
   projects: [
     {say: "Every project you work on. A project is a git repository with its own notebook: a roadmap, bugs, tests, its containers and VMs."},
     {at: TOUR_BAR, say: "Search and the view switch are here, and New project at the right."},
-    {at: `${TOUR_PANE} .pcard`, say: "A project's card: its branch, its sessions, and Start Claude. Its name opens the notebook."},
+    {at: `${TOUR_PANE} .pcard`, say: "A project's card: its branch, its sessions, and Start agent. Its name opens the notebook."},
   ],
   notebook: [
     {say: "A project's notebook: everything about it in one place, shared by the people and the Claude sessions working on it."},
     {at: `${TOUR_PANE} .nbtabs .nbgroups`, say: "Five groups: Overview (with your sessions here, what a session may do, and the settings), Plan (the roadmap and bugs), Code, Ship (artifacts, containers and VMs) and Docs. Each opens its views in the row under it."},
-    {at: `${TOUR_PANE} .phead, ${TOUR_PANE} .bar.proj`, say: "Start Claude opens a session on this project; Shell a terminal in it. The menu holds its settings, its link and more."},
+    {at: `${TOUR_PANE} .phead, ${TOUR_PANE} .bar.proj`, say: "Start agent opens a session on this project; Shell a terminal in it. The menu holds its settings, its link and more."},
   ],
   findings: [
     {say: "Analysis is what the linters and the code map found across your projects, worst first."},

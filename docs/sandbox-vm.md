@@ -540,7 +540,7 @@ Then what differs from Unraid's placeholder, each for a reason:
   together: change the rule first, then the address. Done the other way
   round the host refuses the mount ("access denied by server"), `nofail`
   lets the boot go on without it, and every project bound to the node loses
-  its Start Claude: the node's page and the button say what the server
+  its Start agent: the node's page and the button say what the server
   said. Apply network on the Nodes page asks each server first and refuses
   an address the exports do not admit.
 

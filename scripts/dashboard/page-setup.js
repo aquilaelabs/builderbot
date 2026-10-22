@@ -91,7 +91,7 @@ function drawSetup(){
            <div class="setrow col ctlrow">${lbl("setEmail", "Your email")}<input id="setEmail" type="email" autocomplete="email" placeholder="ada@example.com"></div></div>`,
       s.git ? "" : `<button type="button" class="primary" data-setgit disabled>Save</button>`)}
     ${card(3, "Claude Code on your node", !!s.claude, false, s.claude
-      ? `<p>${esc(s.claude)} on ${nodeName}. A project's Start Claude signs you in there the first time.</p>`
+      ? `<p>${esc(s.claude)} on ${nodeName}. A project's Start agent signs you in there the first time.</p>`
       : s.node
       ? `<p>What a Claude session on ${nodeName} runs. It installs as a job on the node, a minute or two.</p>`
       : `<p>What a Claude session runs, installed on the node.</p><div class="sub bad setwhy">Once your node answers.</div>`,

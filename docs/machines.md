@@ -98,7 +98,7 @@ account has) and how far each copy is; `bb roadmap`, `bb bug`, `bb version` and 
 whose state is this container's are relayed back here over the API with the
 session's own token. The terminal proxy sends a bound project's session to
 that node when its census says the half is up and the project's copy is there, and
-refuses with the reason (on the project's Start Claude and in the terminal) when
+refuses with the reason (on the project's Start agent and in the terminal) when
 the node cannot take one, rather than starting it on the wrong machine. A
 project with **no** node has no Claude session at all: this container carries
 no Claude Code, so the button says so and names what to do. Its shell still

@@ -22,6 +22,7 @@
 - A project's notebook has Permissions beside Overview: everything a session may do on its own, asks first, or may not, with what it may push, in one place out of Settings and the Git view (4ec0aa7)
 - Controller settings is a rail group of its own, Controller, after Containers; old links to it still land there (4ec0aa7)
 - Signing keys are checked, generated, wrapped for a backup and rotated, and a release's APK is signed, on the project's node with its own jdk and Android SDK Build-Tools, never on the controller: install both on that node's Toolchains, and the Signing view and the bell say which node it is and what it lacks when it cannot
+- A project's Start Claude is Start agent, opening a chooser of one node at a time (picked by name) with a line per coding agent there; Open names the agent whose session is running (acc4dfa)
 
 ### Upgrading
 

@@ -262,7 +262,7 @@ The Projects page is a card for each project in the projects share, and it
 says what is wrong with each one rather than hiding it: an error in red (no
 git repository, or ownership the container cannot work with), a warning in
 amber, because it is asking for something. A card with an error carries no
-Start Claude, since a session cannot start there; an *archived* one
+Start agent, since a session cannot start there; an *archived* one
 (**Archive** in its menu) is folded under Archived at the foot of the page.
 A directory with a `.bbignore` file in it is not treated as a project: the
 container marks its own paths that way (the toolchain store, if you put it inside
@@ -288,7 +288,7 @@ ports: live on any shell) and **git**, which grays out when the active
 shell's directory is not a git repository.
 
 The dock starts with one workspace terminal; every terminal, that one
-included, can be minimized. **Start Claude** opens one session per project:
+included, can be minimized. **Start agent** opens one session per project:
 resumable if a previous conversation exists, and **Shell** opens another
 terminal each time you click it. Terminals are named for where they are
 (`sh: <directory>`, following a `cd`; `Claude: <project>`), with the full path

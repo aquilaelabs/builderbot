@@ -10,7 +10,7 @@ is reached: push rights, tokens, deploy keys and FTP.
 ## The Projects page
 
 The **Projects** page shows every project under `/workspace` as a card with
-its branch and node, and **Start Claude** (**Open Claude**, in green, while
+its branch and node, and **Start agent** (**Open** and the agent's name, in green, while
 your session runs), **Shell** and a menu on each. The bar holds a search,
 **New project** and the bin; the cards can be kept together in groups of your
 own (**Group**, in a card's menu), and archived projects are folded under
@@ -38,7 +38,7 @@ built. The brief is not the project's `CLAUDE.md`, which every session
 reads as standing instructions and which would go on asserting the first
 day's decisions after the project moved past them. It is kept in the tree
 as `BUILDERBOT-BRIEF.md`, out of git through the repository's own exclude
-file, for the first Claude session: pressing Start Claude on the project opens
+file, for the first Claude session: pressing Start agent on the project opens
 it in a dialog, editable, beside the model and effort that session starts
 on. **Build it** starts the session with the brief as its first prompt;
 **Start without it** starts one that was not given it. Either way the
@@ -136,7 +136,7 @@ render, and a row that flashes up for one frame is worse than none.
 ## A project's card and its menu
 
 A card, and the header of the project's own page, carry two actions,
-**Start Claude** and **Shell**, and a menu for the rest: **Link to a git
+**Start agent** and **Shell**, and a menu for the rest: **Link to a git
 host** (or the host's settings, once linked), **Lend your phone** when your
 phone is connected on its node, **Report a BuilderBot bug**, **Archive**,
 **Pin**, **Group**, **Color**, **Settings**, and, on the card, **Delete**.
@@ -147,7 +147,7 @@ projects together on the Projects page, and nothing else follows from it.
 
 **The node** beside the branch on every project's card and in its page's
 header is the node its work runs on. A project with none says nothing more;
-its Start Claude is ghosted with where to pick one.
+its Start agent is ghosted with where to pick one.
 
 **A pin** per project, **Pin** or **Unpin** in its menu, decides whether
 Home's glance shows it.

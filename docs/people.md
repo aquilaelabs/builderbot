@@ -236,7 +236,7 @@ are on the Agents page, per agent on each node.
 
 Neither a Claude session nor a shell starts for an account with no
 name and email for commits, and `bb git` refuses for it: every project is a
-repository, and a shell is where git is typed, and the project's Start Claude
+repository, and a shell is where git is typed, and the project's Start agent
 and Shell say so until the Profile has them. Blank git fields fall back to the name and email
 above and to nothing else; no address is ever made up. A project's
 notebook has **Sessions** beside Overview: the account's own conversations

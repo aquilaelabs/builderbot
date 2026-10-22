@@ -257,8 +257,8 @@ ok(await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-c]', b => b.textCo
 {
   const idle = await page.evaluate(() => [...document.querySelectorAll('.pgrid .pcard [data-c]')]
     .filter(b => !liveSessions().has(myClaude(b.dataset.c))).map(b => [b.textContent.trim(), b.classList.contains('primary')]));
-  ok(idle.length > 0 && idle.every(([t, green]) => t === 'Start Claude' && !green),
-     `...and one with no session of yours says Start Claude, not green (${JSON.stringify(idle.slice(0, 3))})`);
+  ok(idle.length > 0 && idle.every(([t, green]) => t === 'Start agent' && !green),
+     `...and one with no session of yours says Start agent, not green (${JSON.stringify(idle.slice(0, 3))})`);
 }
 await page.evaluate(() => railGo('sessions'));
 await page.click('.sesstbl [data-go="claude-ep_silon"]');
@@ -504,7 +504,7 @@ await phone.waitForSelector('.resumemenu', { timeout: 5000 }).catch(async () => 
 });
 const chooser = await phone.$eval('.resumemenu', el => ({ shown: getComputedStyle(el).display !== 'none',
   buttons: [...el.querySelectorAll('button')].map(b => b.textContent.trim()), text: el.textContent.trim().slice(0, 120) }));
-ok(chooser.shown && chooser.buttons.length === 2 && /^Resume/.test(chooser.buttons[0]) && chooser.buttons[1] === 'New conversation',
+ok(chooser.shown && chooser.buttons.length === 2 && /^Resume/.test(chooser.buttons[0]) && chooser.buttons[1] === 'New',
    `phone: Claude on a project with history shows the Resume/New chooser (${chooser.buttons.join(' | ') || chooser.text})`);
 // ...where it can be seen. The sidebar scrolls, the chooser is placed inside
 // the card, and pressing Claude on a project whose session has ended opens
