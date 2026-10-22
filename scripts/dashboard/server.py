@@ -1761,6 +1761,12 @@ def session_target(project, claude=False, node="", uid=""):
         why = (f"your worktree of {project} is being copied to {name}; "
                "the session starts once it is there")
         passing = waiting = True
+    elif nodes.own_machine(n) and not (rep.get("isolation") or {}).get("sessions"):
+        # The controller's own machine (R90): a session there runs inside
+        # the wall around the controller or not at all, and bb-session's
+        # check, which its census carries, says what keeps the wall down.
+        why = (f"{name} is this controller's own machine, and the wall between its sessions and the controller "
+               f"is not in force: {((rep.get('isolation') or {}).get('why') or 'not reported yet').rstrip('.')}")
     elif not se.get("boot"):
         # Without the node's boot the page would stamp this container's into
         # the tab, and bb-tty there would refuse every reconnect as a stale

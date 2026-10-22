@@ -187,5 +187,46 @@ class TheView(unittest.TestCase):
         session.wall_covered({"COVER": [f"{self.d}/ctl", "/dev/null"]})
 
 
+class NoFallback(unittest.TestCase):
+    """bb-tty runs a session without a view on a node that cannot build one
+    (a Mac, a guest); on the controller's own machine it never does: a
+    failing check there is a refusal, in bb-session's words (R90)."""
+
+    def run_in_view(self, marks):
+        src = open(os.path.join(ROOT, "scripts", "dashboard", "bb-tty"), encoding="utf-8").read()
+        fn = src[src.index("\nin_view() {") + 1:]
+        fn = fn[:fn.index("\n}\n") + 3]
+        script = ("set -euo pipefail\n"
+                  "on_node() { return 0; }\n"
+                  "isolating() { return 1; }\n"
+                  "sudo() { echo 'bb-session: the wall around this machine'\"'\"'s controller does not hold: "
+                  "the job account (bb) is in the docker group' >&2; return 2; }\n"
+                  "bad() { for l in \"$@\"; do echo \"$l\"; done; exit 1; }\n"
+                  "SESSION_BIN=/usr/local/sbin/bb-session\n"
+                  f"CONTROLLER_MARKS=({' '.join(marks)})\n"
+                  + fn + 'in_view proj /workspace/proj claude; echo "ran: ${RUN[*]}"\n')
+        import subprocess
+        return subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=30, check=False)
+
+    def test_a_node_without_views_runs_the_session_as_it_always_has(self):
+        r = self.run_in_view(["/nonexistent/a", "/nonexistent/b"])
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("ran: claude", r.stdout)
+
+    def test_the_controllers_own_machine_refuses(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = self.run_in_view(["/nonexistent/a", d])
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("This machine is the controller's own", r.stdout)
+        self.assertIn("the job account (bb) is in the docker group", r.stdout)
+        self.assertNotIn("ran:", r.stdout)
+
+    def test_the_marks_are_bb_sessions(self):
+        src = open(os.path.join(ROOT, "scripts", "dashboard", "bb-tty"), encoding="utf-8").read()
+        line = next(ln for ln in src.splitlines() if ln.startswith("CONTROLLER_MARKS=("))
+        for m in line[len("CONTROLLER_MARKS=("):-1].split():
+            self.assertTrue(m == session.WALL or m in session.CONTROLLER_MARKS, m)
+
+
 if __name__ == "__main__":
     unittest.main()
