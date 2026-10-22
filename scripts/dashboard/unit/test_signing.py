@@ -117,6 +117,38 @@ class Signing(unittest.TestCase):
         signing.remove("app", "sideload", "watch")
         self.assertEqual(signing.mapping("app"), {})
 
+    def test_a_backup_made_with_the_password_is_wrapped_under_it(self):
+        # R111: Download backup with the project's backup password wraps the
+        # keystore under that password, password.txt holding none, so a
+        # copy of the zip is no key without it; Import takes it typed in.
+        import io
+        import subprocess
+        import zipfile
+        signing.generate("app", "sideload", "watch")
+        sha = signing.listing("app")[0]["keys"]["watch"]["sideload"]["sha256"]
+        (name, data), st = signing.backup("app", "sideload", "watch", password="a-backup-password")
+        self.assertEqual(st, 200)
+        z = zipfile.ZipFile(io.BytesIO(data))
+        said = z.read("password.txt").decode()
+        self.assertIn("this project's backup password", said)
+        rec = signing._record("app", "sideload", "watch")
+        self.assertNotIn(rec["store_pass"], said, "the key's own password is not in the backup")
+        ks = next(n for n in z.namelist() if n.endswith(".p12"))
+        tmp = self.tmp / "w.p12"
+        tmp.write_bytes(z.read(ks))
+        opens = lambda pw: subprocess.run([KT, "-list", "-keystore", str(tmp), "-storepass", pw],
+                                          capture_output=True).returncode == 0
+        self.assertTrue(opens("a-backup-password") and not opens(rec["store_pass"]),
+                        "the keystore opens with the backup password and not with the key's own")
+        signing.set_backup_password("other", "", "another-password")
+        b64 = base64.b64encode(data).decode()
+        r, st = signing.import_backup("other", "", b64, filename=name)
+        self.assertEqual(st, 400)
+        self.assertIn("type that password", r["error"])
+        r, st = signing.import_backup("other", "", b64, filename=name, password="a-backup-password")
+        self.assertEqual(st, 200, r)
+        self.assertEqual(signing.listing("other")[0]["keys"]["watch"]["sideload"]["sha256"], sha)
+
     def test_a_backup_imports_into_another_project(self):
         # R103: Download backup's zip goes into a second project as the same
         # key, its password and alias read from password.txt.

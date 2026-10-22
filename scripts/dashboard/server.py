@@ -8035,7 +8035,7 @@ class Handler(BaseHTTPRequestHandler):
         no = signing.backup_refusal(name, password or "")
         if no:
             return self._json(*no)
-        got, status = signing.backup(name, route, key)
+        got, status = signing.backup(name, route, key, password or "")
         if status != 200:
             return self._json(got, status)
         return self._attachment(*got, "application/zip" if got[0].endswith(".zip") else "application/octet-stream")

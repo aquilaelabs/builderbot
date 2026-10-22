@@ -450,9 +450,42 @@ def remove(project, route, key=DEFAULT):
     return {"ok": True, "project": project, "key": key, "route": route}, 200
 
 
-def backup(project, route, key=DEFAULT):
+def _rewrap(blob, store_pass, key_pass, alias, new_pass):
+    """(PKCS12 bytes, error): the keystore's key under `new_pass`, as its
+    store and key password both, by keytool -importkeystore, the keystore's
+    own encryption (R111). The passwords ride the environment, never argv."""
+    kt = keytool_path() if keytool_path else None
+    if not kt:
+        return b"", "there is no keytool to wrap it with: install the jdk toolchain (Toolchains page)"
+    d = tempfile.mkdtemp(prefix="bb-sign-")
+    try:
+        os.chmod(d, 0o700)
+        src, dst = os.path.join(d, "src"), os.path.join(d, "dst.p12")
+        with os.fdopen(os.open(src, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
+            f.write(blob)
+        env = dict(os.environ, BB_SRC_PASS=store_pass, BB_SRC_KEY=key_pass or store_pass, BB_NEW_PASS=new_pass)
+        argv = [kt, "-importkeystore", "-noprompt", "-srckeystore", src, "-srcstorepass:env", "BB_SRC_PASS",
+                "-srckeypass:env", "BB_SRC_KEY", "-srcalias", alias, "-destkeystore", dst, "-deststoretype", "PKCS12",
+                "-deststorepass:env", "BB_NEW_PASS", "-destkeypass:env", "BB_NEW_PASS"]
+        try:
+            p = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=60, check=False)
+        except (OSError, subprocess.SubprocessError) as e:
+            return b"", f"keytool did not run: {e}"
+        if p.returncode != 0 or not os.path.isfile(dst):
+            said = [ln for ln in ((p.stdout or "") + (p.stderr or "")).splitlines() if ln.strip()]
+            return b"", "keytool could not wrap it: " + (said[-1][:200] if said else f"exit {p.returncode}")
+        with open(dst, "rb") as f:
+            return f.read(), ""
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def backup(project, route, key=DEFAULT, password=""):
     """(filename, bytes) of the keystore for an administrator's own copy, and
-    the record marks it backed up; (error payload, status) otherwise."""
+    the record marks it backed up; (error payload, status) otherwise. With
+    the project's backup password (checked by the caller), the keystore in
+    the zip is wrapped under it and password.txt never holds a password, so
+    a copy of the file is no key without it (R111)."""
     if not _ok_project(project) or route not in ROUTES or not _ok_key(key):
         return {"error": "unknown project, key or route"}, 400
     rec = _record(project, route, key)
@@ -462,10 +495,22 @@ def backup(project, route, key=DEFAULT):
         blob = b""
     if not rec or not blob:
         return {"error": f"{project}'s {key} has no {WORDS[route]}"}, 404
-    rec["backed_up"] = int(time.time())
-    _write_private(_dir(project, key) / f"{route}.json", json.dumps(rec).encode())
     ext = "jks" if str(rec.get("type") or "").upper() == "JKS" else "p12"
     base = f"{project}-{key}-{route}"
+    if password:
+        wrapped, why = _rewrap(blob, rec.get("store_pass") or "", rec.get("key_pass") or "", rec.get("alias") or "", password)
+        if why:
+            return {"error": why}, 500
+        rec["backed_up"] = int(time.time())
+        _write_private(_dir(project, key) / f"{route}.json", json.dumps(rec).encode())
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr(f"{base}.p12", wrapped)
+            z.writestr("password.txt", "keystore and key password: this project's backup password\n"
+                                       f"alias: {rec.get('alias')}\nSHA-256: {rec.get('sha256')}\n")
+        return (f"{base}.zip", buf.getvalue()), 200
+    rec["backed_up"] = int(time.time())
+    _write_private(_dir(project, key) / f"{route}.json", json.dumps(rec).encode())
     if rec.get("generated") or rec.get("imported"):
         # Its password was made here and is in no head, so a keystore alone
         # would be a backup nobody could open: the two travel together.
@@ -517,6 +562,9 @@ def _read_backup(blob):
     pw = line("keystore and key password")
     if not pw:
         return no("the backup's password.txt names no password")
+    # Wrapped under its project's backup password (R111): the one typed in.
+    if pw == "this project's backup password":
+        pw = ""
     return ks, pw, line("alias"), line("SHA-256"), stores[0], ""
 
 
@@ -541,9 +589,14 @@ def import_backup(project, route, blob_b64, key="", password="", alias="", filen
     zipped = blob[:4] == b"PK\x03\x04"
     want = inner = ""
     if zipped:
+        typed = password
         blob, password, alias, want, inner, why = _read_backup(blob)
         if why:
             return {"error": why}, 400
+        if not password:
+            if not typed:
+                return {"error": "this backup is wrapped under its project's backup password: type that password to import it"}, 400
+            password = typed
         if not key and _ok_key(alias):
             key = alias
     elif not password:

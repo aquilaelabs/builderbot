@@ -118,15 +118,17 @@ function nbSigningView({$, nb, project}){
           <input id="sgNewName" autocomplete="off" spellcheck="false" placeholder="name, e.g. watch" aria-label="a new key's name">
           <button type="button" id="sgNewGo">Add it</button><button type="button" id="sgAddCancel">Cancel</button></div></div>`
       // A backup brought back (R103, the operator 22 Oct): Download
-      // backup's zip carries its password and alias, so only a bare
-      // keystore asks for one; the key and the slot default to the backup's.
+      // backup's zip carries its alias, and its password unless it was
+      // wrapped under a project's backup password (R111), which is then
+      // typed here, as a bare keystore's is; the key and the slot default
+      // to the backup's.
       : adding === "import" ? `<div class="field"><div class="rnsignform" data-add="import">
           <input type="file" id="sgImpFile" accept=".zip,.jks,.p12,.pfx,.keystore" aria-label="the backup">
           <input id="sgImpKey" autocomplete="off" spellcheck="false" placeholder="key name, or the backup's" aria-label="the key it becomes">
           <select id="sgImpRoute" aria-label="the slot it goes in"><option value="">the slot the backup names</option>${
             SIGN_ROUTES.map(([r, w]) => `<option value="${r}">${w}</option>`).join("")}</select>
-          <input type="password" id="sgImpPass" autocomplete="off" placeholder="its password, for a keystore on its own" aria-label="the keystore's password">
-          <div class="sub dim">A backup this dashboard made as a zip carries its password and alias; a keystore on its own needs the password it was made with.</div>
+          <input type="password" id="sgImpPass" autocomplete="off" placeholder="the backup password it was made under, or a keystore's own" aria-label="the backup's or the keystore's password">
+          <div class="sub dim">A backup from a project with a backup password is wrapped under that password: type it here. A keystore on its own needs the password it was made with.</div>
           <div class="actbar"><button type="button" id="sgAddCancel">Cancel</button><button type="button" class="primary" id="sgImpGo" disabled>Import</button></div>
         </div></div>`
       // Two adds, each the one shape an add band has, side by side.
