@@ -302,6 +302,7 @@ tools/no-net-growth.sh           the everything-files against their ceilings in 
 tools/upgrade-snapshot.py        a lived-in /config made by this tree's controller through its API, written to scripts/dashboard/test/upgrade/VERSION/ for the upgrade suite; a release runs it
 tools/vscode-vsix.py             packages vscode/ as a .vsix with python's zipfile, BuilderBot's version inside (R159)
 tools/companion-build.py         builds the Windows companion as one .pyz with the four agent modules its sync is (R270)
+tools/app-schemes.py             writes the Android app's twelve color schemes, both halves, from the design record (bb design json | tools/app-schemes.py)
 tools/ratchet.txt                those ceilings, one per file
 tools/scan.sh                    the static analysis stack, run once with plain docker run: Semgrep, Trivy and mobsfscan, versions pinned, SARIF into the reports folder (docs/scanners.md)
 pyrightconfig.json               how pyright (the pyright-lsp plugin, or the CLI) reads this repo: each directory's imports and Python

@@ -907,14 +907,23 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
         // The look: the dashboard's own schemes, by their names. Kept on
         // this device, as the dashboard keeps its own per browser.
         SectionHead("Colors", inset = false)
+        // Dark, Light or System beside the scheme, as the dashboard's gear
+        // has them (R50 step 16); each swatch shows the half that is on.
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (m in Schemes.modes)
+                androidx.compose.material3.FilterChip(selected = Schemes.mode == m,
+                    onClick = { Schemes.pickMode(m); store.mode = m }, label = { Text(m) })
+        }
+        Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (sc in Schemes.all) {
-                val on = Schemes.current.name == sc.name
+            for (scheme in Schemes.all) {
+                val on = Schemes.current.name == scheme.name
+                val sc = if (Schemes.half.light) scheme.light else scheme.dark
                 Column(Modifier
                     .background(sc.panel, RoundedCornerShape(8.dp))
                     .border(if (on) 2.dp else 1.dp, if (on) sc.accent else sc.line, RoundedCornerShape(8.dp))
-                    .clickable { Schemes.pick(sc.name); store.scheme = sc.name }
+                    .clickable { Schemes.pick(scheme.name); store.scheme = scheme.name }
                     .padding(10.dp, 8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                         for (c in listOf(sc.accent, sc.warn, sc.bad, sc.note))
@@ -922,7 +931,7 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
                                 Modifier.size(10.dp).background(c, RoundedCornerShape(99.dp)))
                     }
                     Spacer(Modifier.height(4.dp))
-                    Text(sc.name, color = sc.ink, style = MaterialTheme.typography.labelMedium)
+                    Text(scheme.name, color = sc.ink, style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

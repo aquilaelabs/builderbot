@@ -11,6 +11,7 @@
 - bb version forward and bb version backport move fixes between two release lines with the changelog kept right, and a project's patch rules hold what a patch release may change (640b6ab)
 - tools/scan.sh runs the static analysis stack (Semgrep, Trivy, mobsfscan) with plain docker run, and docs/scanners.md says how to set it up (4ec0aa7)
 - Codex CLI (ChatGPT) and Copilot CLI (GitHub) run beside Claude Code: the new Agents page installs, updates and signs in to each on a node, a project's Start offers each one signed in there, and its settings say which agents may run and which one Start opens. Every Agents may dial, house rule and guard holds for them as for Claude, and their conversations are kept, read, shared and resumed on the Sessions view. (8f65c9b)
+- The Android app has the dashboard's light half of every color scheme, and Dark, Light or System beside the schemes under More; its colors are the dashboard's own, written from the design (ee34178)
 
 ### Changed
 
