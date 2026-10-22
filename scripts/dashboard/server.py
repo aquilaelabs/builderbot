@@ -6102,6 +6102,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": why, "toolchains": []})
         if nid and nid != "local" and not NODES_OK:
             d = toolchains.payload_for_node(nid)
+            # The asking account's own plugins and MCP servers there, per
+            # agent, for the Agents page (R95 step 15): theirs alone.
+            me = self._who() or {}
+            if users.uid_of(me) and not me.get("session"):
+                mine = next((x for x in plugins.of(users.uid_of(me)) if x["node"] == nid), {})
+                d["yours"] = {"plugins": mine.get("plugins") or [], "mcp": mine.get("mcp") or {}}
             # A toolchain job's output is the node's, read by a session only
             # with its project's diagnostics grant, as bb jobs reads it (the
             # operator, 12 Oct): the rows and what failed stay, the log lines

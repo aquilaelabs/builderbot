@@ -58,7 +58,6 @@ const PROFILE_FIELDS = [
 const PROFILE_SAYS = {
   you: "your name, email and commit author", may: "what your roles let you do",
   password: "change it, signing out everywhere",
-  plugins: "what you added with /plugin",
   devices: "your apps, to disconnect",
 };
 // The apps signed in as this account on its own machines (R272 step 1), the
@@ -89,7 +88,7 @@ function renderProfileInto(i){
     d.setBar(`<span class="barfacts">${skv(16)}</span>`);
     splitOff(d.list);                   // drawn before: its grid is the template's to bring
     d.list.innerHTML = skTpl(skSplit([["Who you are", PROFILE_SAYS.you], ["What you may do", PROFILE_SAYS.may],
-      ["Password", PROFILE_SAYS.password], ["Claude plugins", PROFILE_SAYS.plugins]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join("")));
+      ["Password", PROFILE_SAYS.password]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join("")));
     return;
   }
   const p = {...(profile.profile || {}), account: profile.name}, g = profile.git || {};
@@ -146,25 +145,11 @@ function renderProfileInto(i){
             <button type="button" id="pfPasswd" disabled>Change password</button>
           </div>
         </div>`)}
-    ${sec("plugins", "Claude plugins", `
-        <div class="logset">${profilePlugins(profile.plugins || [])}</div>`)}
     ${docSection("profile", "devices", "Signed in as you", "", profileDevices(profile.devices || []))}`;
   wireSections(d.list);
   splitSects(d.list, "profile", {says: PROFILE_SAYS, back: "Profile"});
   wireProfile(d.el);
   wireDeviceOut(d.el);
-}
-
-// What you installed with /plugin in your own sessions, per node, as each
-// node last said (plugins.py): read here, changed only in a session, where
-// a plugin takes effect.
-function profilePlugins(rows){
-  if (!rows.length) return `<div class="dim">None installed. <code>/plugin</code> in a Claude session adds one, for you alone.</div>`;
-  const one = p => `<code>${esc(p.id.replace(/@claude-plugins-official$/, ""))}</code>${
-    p.version ? ` ${esc(p.version)}` : ""}${p.scope === "project" ? ` (${esc(p.project ? projLabel(p.project) : "a project")})` : ""}${
-    p.enabled === false ? ` <span class="dim">off</span>` : ""}`;
-  return rows.map(n => `<div class="sub">On ${esc(n.name)}: ${n.plugins.map(one).join(", ")}</div>`).join("")
-    + `<div class="dim">Change them with <code>/plugin</code> in a Claude session.</div>`;
 }
 
 // Disconnect: asked, then that device signed out; the app finds its token

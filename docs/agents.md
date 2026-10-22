@@ -99,6 +99,11 @@ bar, and a section per coding agent installed there.
   GitHub's page; nothing is pasted back. Codex's device login has to be
   switched on in the ChatGPT account's security settings first.
 
+- **Your plugins and MCP servers.** Each section lists what you added to
+  that agent on the node, as the node last said: Claude Code's plugins, and
+  every agent's MCP servers by name (never their settings). They are changed
+  in a session, for you alone; Profile no longer lists them.
+
 The Nodes page keeps one line per node saying which agents are installed
 there and which you are signed in to, with **Agents**, the way here. A
 project's Start sends a person here when they have no sign-in on its node.

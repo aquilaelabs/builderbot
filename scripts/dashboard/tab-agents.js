@@ -20,6 +20,7 @@ let agErr = "";
 let agRev = 0;
 let agSeq = 0;
 let agFollow = null;          // the one follow-up read while a job runs
+let agYours = {plugins: [], mcp: {}};   // this account's plugins and MCP servers on the node
 
 function openAgentsTab(node){
   if (node && node !== agNode){ agNode = node; agRows = null; }
@@ -67,6 +68,7 @@ async function loadAgents(){
     if (asked !== agSeq) return;
     agErr = got.error || "";
     agRows = (got.machine || []).filter(m => TC_AGENT_TOOLS.has(m.name));
+    agYours = got.yours || {plugins: [], mcp: {}};
   }catch(e){
     if (asked !== agSeq) return;
     agErr = String(e);
@@ -115,8 +117,26 @@ function agSection(a, n, m){
   const body = `<div class="field">${facts}</div>
     <div class="field"><div class="actbar"><span class="state">${line}</span>${acts}</div>
       ${m?.error && !running ? `<div class="sub bad">${esc(m.error)}</div>` : ""}</div>
-    ${a.provider && up && (a.id === "claude" || m?.installed) ? `<div class="field">${signinBlock(n, a.id)}</div>` : ""}`;
+    ${a.provider && up && (a.id === "claude" || m?.installed) ? `<div class="field">${signinBlock(n, a.id)}</div>` : ""}
+    ${up && m?.installed ? agExtras(a) : ""}`;
   return docSection("agents", a.id, a.name, status, body, {cls});
+}
+
+// What this account added to an agent on the node (R95 step 15, moved here
+// from Profile): Claude Code's plugins, and each agent's MCP servers, by
+// name, as the node last said. Read here; changed in a session.
+function agExtras(a){
+  const pl = a.id === "claude" ? (agYours.plugins || []) : [];
+  const mcp = (agYours.mcp || {})[a.id] || [];
+  const one = p => `<code>${esc(p.id.replace(/@claude-plugins-official$/, ""))}</code>${p.version ? ` ${esc(p.version)}` : ""}${
+    p.scope === "project" ? ` (${esc(p.project ? projLabel(p.project) : "a project")})` : ""}${p.enabled === false ? ` <span class="dim">off</span>` : ""}`;
+  const rows = [
+    a.id === "claude" ? ["your plugins", pl.length ? pl.map(one).join(", ") : "none", {html: true}] : null,
+    ["your MCP servers", mcp.length ? mcp.map(x => `<code>${esc(x)}</code>`).join(", ") : "none", {html: true}],
+  ].filter(Boolean);
+  return `<div class="field">${factGrid(rows, "agextras")}<div class="hint">${
+    a.id === "claude" ? "Changed with <code>/plugin</code> and <code>/mcp</code> in a Claude session, for you alone."
+      : `Set up in ${esc(a.product)}'s own configuration, for you alone.`}</div></div>`;
 }
 
 function renderAgentsInto(i){

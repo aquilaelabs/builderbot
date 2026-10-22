@@ -226,10 +226,11 @@ entry, **Profile**, which is also **Settings** on the rail: the signed-in
 account's own page, in sections. **Who you are** holds the account name,
 their name and email, and the name and email their commits carry (blank means
 the ones above); **What you may do** is what their roles add up to;
-**Password** is a change that asks for the current one first; **Claude
-plugins** lists the plugins they installed; and **Signed in as you**, last, is the devices signed in as this account (a
+**Password** is a change that asks for the current one first; and
+**Signed in as you**, last, is the devices signed in as this account (a
 line a device, with when it last called and **Disconnect**, which signs that
-one out).
+one out). The plugins and MCP servers a person added to each coding agent
+are on the Agents page, per agent on each node.
 
 Neither a Claude session nor a shell starts for an account with no
 name and email for commits, and `bb git` refuses for it: every project is a
