@@ -13,7 +13,6 @@ code that looks fine until it deadlocks.
 import base64
 import contextlib
 from html import escape as html_escape
-import glob
 import gzip
 import datetime
 import hashlib
@@ -345,6 +344,8 @@ MAX_BODY = 64 * 1024
 MAX_BODY_FOR = {"/api/design": 4 * 1024 * 1024, "/api/wiki": 1024 * 1024,
                 "/api/v1/files": 28 * 1024 * 1024,
                 "/api/v1/agent/log": 512 * 1024,
+                # A keystore a node made or wrapped, as base64 (signing.RESULT).
+                "/api/v1/agent/signing-result": 3 * 1024 * 1024,
                 "/api/vms": 3 * 1024 * 1024}   # a GPU's .rom given on the VMs page (R100)
 
 # One field out of a request body, read the one way here and in every
@@ -3162,18 +3163,7 @@ WORKTREES = Path(os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees")
 artifacts.configure(workspace=WORKSPACE, worktrees=WORKTREES, state=STATE, write_json=write_json)
 import signing                                                   # noqa: E402
 
-
-def _keytool():
-    """The store's keytool, which checks a keystore before it is kept
-    (signing.inspect), or None while no jdk is installed."""
-    for root in toolchains.tool_roots(os.path.join("jdk", "bin", "java")):
-        p = os.path.join(root, "jdk", "bin", "keytool")
-        if os.access(p, os.X_OK):
-            return p
-    return None
-
-
-signing.configure(state=STATE, project_name=PROJECT_NAME, keytool=_keytool)
+signing.configure(state=STATE, project_name=PROJECT_NAME)
 # Keys kept open before the install had a signing secret, sealed now that it
 # has one (R111 step 2); a key that cannot be opened is left as it is and
 # said on its project's Signing view.
@@ -3182,23 +3172,6 @@ try:
         print(f"dashboard: sealed {_sealed} signing key(s) under the install's signing secret", flush=True)
 except OSError as e:
     print(f"dashboard: signing keys left as they were, not sealed: {e}", flush=True)
-
-
-def _apksigner():
-    """The store's newest apksigner and the java it runs on, for a proof of
-    rotation (signing.rotate), or (None, {})."""
-    # Its own scope, then each node's in the store (toolchains.tool_roots):
-    # the build-tools and a jdk that runs here, from one root.
-    for root in toolchains.tool_roots(os.path.join("jdk", "bin", "java")):
-        tools = sorted(glob.glob(os.path.join(root, "android", "build-tools", "*", "apksigner")),
-                       key=lambda p: [int(x) if x.isdigit() else 0 for x in re.split(r"[.-]", os.path.basename(os.path.dirname(p)))])
-        if tools:
-            jdk = os.path.join(root, "jdk")
-            return tools[-1], {"JAVA_HOME": jdk, "PATH": os.path.join(jdk, "bin") + os.pathsep + os.environ.get("PATH", "")}
-    return None, {}
-
-
-signing.apksigner_path = _apksigner
 import membership                                                # noqa: E402
 import roles                                                     # noqa: E402
 import registry                                                  # noqa: E402
@@ -3706,6 +3679,12 @@ signing.node_of = lambda name: prefs.get(name)["node"]
 signing.node_refuses = lambda nid: nodes.agent_stale(nodes.node(nid)) if nid and not NODES_OK else ""
 signing.job_add = nodes.job_add
 signing.file_path = workspace.file_path
+# What needs a jdk or build-tools is a sign-key job on that node too, waited
+# for (signing._on_node): the controller runs no keytool or apksigner.
+signing.node_get = nodes.node
+signing.job_get = nodes.job
+signing.job_cancel = nodes.job_cancel
+signing.node_tools = toolchains.node_has
 phone.signer = signing.start
 
 
@@ -3787,8 +3766,8 @@ changelog.component_dir = version._sub
 import forgerelease                                              # noqa: E402
 import featuresoff                                               # noqa: E402
 forgerelease.configure(state=STATE, workspace=WORKSPACE, write_json_fn=write_json)
-# A release's APK, built unsigned in CI and signed here with the project's
-# sideload key (R106): a release made from the panel is looked for at once.
+# A release's APK, built unsigned in CI and signed on the project's node with
+# its sideload key (R106): a release made from the panel is looked for at once.
 import releasesign                                               # noqa: E402
 releasesign.configure(state=STATE, workspace=WORKSPACE, write_json_fn=write_json,
                       projects=lambda: sorted(d.name for d in WORKSPACE.iterdir()
@@ -7318,7 +7297,7 @@ class Handler(BaseHTTPRequestHandler):
             if status != 200:
                 return self._json(got, status)
             return self._send_file(got)
-        if verb in ("artifact", "sync-put", "claude-put", "devimage-put", "devdata-put"):
+        if verb in ("artifact", "sync-put", "claude-put", "devimage-put", "devdata-put", "signing-put"):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
@@ -7331,6 +7310,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(*channel.devimage_put(auth, q, self.rfile, length))
             if verb == "devdata-put":
                 return self._json(*channel.devdata_put(auth, q, self.rfile, length))
+            if verb == "signing-put":
+                return self._json(*channel.signing_put(auth, q, self.rfile, length))
             return self._json(*channel.artifact(auth, q, self.rfile, length))
         if verb in ("sync-file", "sync-tar", "claude-file", "devimage", "devdata"):
             got, status = {"sync-file": channel.sync_file, "sync-tar": channel.sync_tar,
@@ -9654,7 +9635,7 @@ def main():
     if not NODES_OK:
         threading.Thread(target=_room_loop, name="room", daemon=True).start()
     ciwatch.start()           # a project's CI, once a day (R117)
-    releasesign.start()       # a release's unsigned APK, signed here (R106)
+    releasesign.start()       # a release's unsigned APK, signed on its node (R106)
     if "tunnel" not in featuresoff.off():
         tunnel.apply()        # the home tunnel, where the settings say so (R176)
     if toolchains.AUTOCHECK:

@@ -39,6 +39,7 @@ function nbSigningView({$, nb, project}){
   // mapping are staged behind their section's Save; Generate, Rotate,
   // Download backup and the backup password act on the press.
   let keys = null, map = {}, tool = false, why = "", mayBackup = false, locked = false, mayLock = false, rel = null;
+  let nodeWhy = "";                             // what keeps the project's node from working on a key (signing.signer)
   let atRest = "";                              // sealed, open, mixed or locked (signing.at_rest)
   let draft = {}, mapDraft = {}, fresh = [], lockOpen = false, pw = {}, adding = false, gen = 0;
 
@@ -57,7 +58,7 @@ function nbSigningView({$, nb, project}){
       $("sgBox").innerHTML = `<div class="field"><div class="hint nbempty">${esc(j.error)}</div></div>`;
       return;
     }
-    keys = j.keys || {}; map = j.map || {}; tool = !!j.keytool;
+    keys = j.keys || {}; map = j.map || {}; nodeWhy = j.node_why || ""; tool = !nodeWhy;
     why = j.why || ""; mayBackup = !!j.may_backup;
     locked = !!j.backup_locked; mayLock = !!j.may_lock; atRest = j.at_rest || "";
     rel = j.release || null;
@@ -77,7 +78,7 @@ function nbSigningView({$, nb, project}){
     const k = (keys[key] || {})[route], d = draft[`${key}:${route}`] || {};
     const now = d.remove ? `${word}: removed when you Save`
       : d.file ? `${word}: ${esc(d.file.name)}, kept when you Save`
-      : k ? `${word}: ${esc(k.alias)} <span class="dim">${esc(signFp(k.sha256))}${k.generated ? ", made here" : ""}</span>`
+      : k ? `${word}: ${esc(k.alias)} <span class="dim">${esc(signFp(k.sha256))}${k.generated ? ", generated" : ""}</span>`
       : `${word}: none`;
     const never = k && !d.remove && !d.file && route === "sideload" && !k.backed_up;
     // Rotation (R106 step 7): what this key was rotated to or from, and the
@@ -194,13 +195,13 @@ function nbSigningView({$, nb, project}){
           names.map(k => `<option>${esc(k)}</option>`).join("")}</select>
         <button type="button" class="link" id="sgMapGo">Map it</button></div>`}</div>`;
     // Releases (R106): a release's APK is built unsigned in CI and signed
-    // here with the sideload key its app maps to; which key that is, what
+    // on the project's node with the sideload key its app maps to; which key that is, what
     // would stop it, and how the newest went.
     const r = rel || {};
     const relBody = !r.wanted
       ? `<div class="field"><div class="sub dim">This project's workflows hand over no unsigned APK, so BuilderBot signs none of its releases.
-          A workflow that uploads its unsigned release APK as an artifact named <code>bb-release-apk-TAG</code> has it signed here
-          with the sideload key and attached to the release, with no key or password on GitHub.</div></div>`
+          A workflow that uploads its unsigned release APK as an artifact named <code>bb-release-apk-TAG</code> has it signed
+          on the project's node with the sideload key and attached to the release, with no key or password on GitHub.</div></div>`
       : `<div class="field" id="sgRel">
           ${(r.keys || []).map(k => `<div class="rninvite" data-relkey="${esc(k.key)}">${k.package ? `<code>${esc(k.package)}</code> ` : ""}<span class="dim">releases sign with</span>
             <b>${esc(k.key)}</b> <span class="dim">${esc(signFp(k.sha256))}${k.rotated_from ? `, rotated from ${esc(k.rotated_from)}` : ""}</span></div>`).join("")}
@@ -208,7 +209,7 @@ function nbSigningView({$, nb, project}){
           ${(r.failed || []).map(f => `<div class="notice bad">${esc(f.tag)}: ${esc(f.why)}${f.at ? ` <span class="dim">${esc(ago(f.at))}</span>` : ""}</div>`).join("")}
           ${(r.signed || []).slice(0, 3).map(x => `<div class="sub">${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.tag)}</a>` : esc(x.tag)}:
             ${esc((x.files || []).join(", "))} signed with ${esc(x.key)} <span class="dim">${esc(signFp(x.cert))}, ${esc(ago(x.at))}</span></div>`).join("")}
-          <div class="sub dim">The release's APK is built unsigned by its workflow and signed here, never in CI: no keystore or password is a GitHub secret.</div>
+          <div class="sub dim">The release's APK is built unsigned by its workflow and signed on ${r.node ? `the project's node, ${esc(r.node)}` : "the project's node"}, never in CI: no keystore or password is a GitHub secret.</div>
           ${why ? "" : `<div class="rnsignbar actbar"><button type="button" class="link" id="sgRelGo">Look for unsigned APKs now</button></div>`}
         </div>`;
     const relStatus = !r.wanted ? "off" : r.why ? "blocked" : (r.failed || []).length ? "failed"
@@ -219,7 +220,9 @@ function nbSigningView({$, nb, project}){
     };
     $("sgBox").innerHTML =
       (why ? `<div class="field"><div class="hint">${esc(why)}</div></div>` : "")
-      + (!tool && !why ? `<div class="field"><div class="hint">No keytool here to check or make a key with: install the jdk toolchain, then add one.</div></div>` : "")
+      // A key is checked and made on the project's node, never here: what
+      // keeps that node from it is said in its words (B232).
+      + (!tool && !why ? `<div class="field"><div class="hint" id="sgNode">${esc(nodeWhy)}</div></div>` : "")
       + (!held && !why ? `<div class="field"><div class="hint nbempty">No keys yet: bb sign signs this project's builds on its node with the keys kept here, and a session never sees one.</div></div>` : "")
       + docSection("signing", "lock", "Backup password", locked ? "set" : "none", lock, {cls: locked ? "" : "warn"})
       + names.map(key => docSection("signing", `key:${key}`, key === "default" ? "Default key" : `Key: ${key}`,

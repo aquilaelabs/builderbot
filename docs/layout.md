@@ -170,8 +170,8 @@ scripts/
     version.py                   one version identity per project, rendered for whatever is asking
     changelog.py                 the user-facing record beside it: categories, and the editor's writes
     artifacts.py                 what a project built: dist/, and what a row may offer
-    signing.py                   a project's Android signing keys, kept by the controller, never a session's (R106)
-    releasesign.py               a release's unsigned APK from CI, signed on the controller with the project's sideload key and attached (R106)
+    signing.py                   a project's Android signing keys, kept by the controller, never a session's, and the sign-key jobs that work on them on the project's node (R106)
+    releasesign.py               a release's unsigned APK from CI, signed on the project's node with its sideload key and attached (R106)
     membership.py                a project's owner, whether it is invite only, and the invitations to it
     registry.py                  projects by id (R154): each directory's permanent number and the name it is shown under, in projects.json; a directory is never handed out twice
     busy.py                      whether a node is quiet enough to time anything on, and why not (R108)
@@ -250,6 +250,7 @@ scripts/
     sessions.py                  the session half (#24): ttyds, tokens, firewall and upkeep, as Agent's methods
     workspace.py                 a job's source on disk, its artifacts, and the bundle of bb
     work.py                      compose, toolchains, signing, images and system packages, as Agent's methods
+    keyops.py                    the controller's signing key work on this node: a keystore checked, a key made or wrapped, a rotation's proof, a release's APK signed (R106)
     configplane.py               the configuration plane: the node's system, storage and network, as root
     agent.py                     Agent: hello, the loop and self-update, made of the parts above
     cli.py                       enroll, run, status, sample

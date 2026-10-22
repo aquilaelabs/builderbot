@@ -253,6 +253,8 @@ class Job(threading.Thread):
                 state, code = self.agent.image(self, spec)
             elif self.job.get("type") == "sign":
                 state, code = self.agent.sign(self, spec)
+            elif self.job.get("type") == "sign-key":
+                state, code = self.agent.sign_key(self, spec)
             elif self.job.get("type") == "cache-clear":
                 state, code = self.agent.cache_clear(self, spec)
             elif self.job.get("type") == "storage":

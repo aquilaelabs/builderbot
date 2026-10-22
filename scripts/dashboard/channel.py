@@ -83,6 +83,13 @@ def fetch(verb, auth, q, authed):
         j = nodes.job(q.get("job", [""])[0], with_log=False)
         if not j or j["node"] != auth["node"] or j["state"] not in nodes.JOB_ACTIVE:
             return {"error": "not this node's running job"}, 403
+        if j.get("type") == "sign-key":
+            # A release's unsigned APK, handed to the sign-key job signing
+            # it (R106) from the controller's own fetch, never dist/.
+            path = signing.handover_file((j.get("spec") or {}).get("handover"), j["id"])
+            if path is None:
+                return {"error": "this job was handed no file"}, 404
+            return {"path": path, "ctype": "application/octet-stream", "headers": {}}, 200
         path = workspace.file_path(j.get("project") or "", q.get("path", [""])[0])
         if path is None:
             return {"error": "no such file in the project's dist/"}, 404
@@ -136,6 +143,25 @@ def fetch(verb, auth, q, authed):
         return {"error": "this controller ships no agent"}, 404
     return {"body": f["body"], "ctype": "text/x-python; charset=utf-8",
             "headers": {"X-Agent-Digest": f["digest"]}}, 200
+
+
+def _sign_key_job(auth, jid):
+    """The running sign-key job `jid` of this node, or None."""
+    j = nodes.job(jid, with_log=False)
+    ok = j and j.get("type") == "sign-key" and j["node"] == auth.get("node") and j["state"] in nodes.JOB_ACTIVE
+    return j if ok else None
+
+
+def signing_put(auth, q, stream, length):
+    """The APK a sign-key job signed, raw in the body, for the caller
+    waiting on it (signing.put_signed): only the job's own node, while it
+    runs, and never into a project."""
+    if (no := _node_only(auth)):
+        return no
+    j = _sign_key_job(auth, q.get("job", [""])[0])
+    if not j:
+        return {"error": "not this node's running sign-key job"}, 403
+    return signing.put_signed((j.get("spec") or {}).get("handover"), j["id"], stream, length)
 
 
 def artifact(auth, q, stream, length):
@@ -306,6 +332,22 @@ def verb(name, auth, req, addr):
         r = runners.mint(kind, nid, slot, field(req, "runner_id"))
         db.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
         return _answer(r)
+    if name in ("signing-key", "signing-result") and \
+            (nodes.job(field(req, "job"), with_log=False) or {}).get("type") == "sign-key":
+        # The key work a sign-key job does on this node for the controller
+        # (signing._on_node): what it needs, once, and what it made. Only
+        # that job's own node, only while it runs; the spec carries a token
+        # and never a secret.
+        j = _sign_key_job(auth, field(req, "job"))
+        if not j:
+            return {"error": "not this node's running sign-key job"}, 403
+        tok = (j.get("spec") or {}).get("handover")
+        if name == "signing-result":
+            return signing.take_result(tok, j["id"], req)
+        got, status, said = signing.hand_over(tok, j["id"], field(req, "package"))
+        if status == 200:
+            db.audit(auth["principal"], "signing-key", j["id"], said)
+        return got, status
     if name == "signing-key":
         # A project's signing key for the sign job running on this node
         # (R106): only that job's own node, only while it runs, once. The

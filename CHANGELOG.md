@@ -20,6 +20,7 @@
 - A project's notebook has Sessions beside Overview: your own conversations there, any one to resume, read, download, make visible to every session on the project, or delete; they are no longer listed on your Profile (4ec0aa7)
 - A project's notebook has Permissions beside Overview: everything a session may do on its own, asks first, or may not, with what it may push, in one place out of Settings and the Git view (4ec0aa7)
 - Controller settings is a rail group of its own, Controller, after Containers; old links to it still land there (4ec0aa7)
+- Signing keys are checked, generated, wrapped for a backup and rotated, and a release's APK is signed, on the project's node with its own jdk and Android SDK Build-Tools, never on the controller: install both on that node's Toolchains, and the Signing view and the bell say which node it is and what it lacks when it cannot
 
 ### Upgrading
 

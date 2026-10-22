@@ -712,7 +712,14 @@ environment.
 A project keeps its Android keys on the controller, in the **Signing** view of
 its page (under Ship), and a build is signed on its node as a job no session can look
 inside: from the Artifacts view, or by a session with `bb sign`, under the
-project's **Agents may: Sign a build**. No key is made or added until the
+project's **Agents may: Sign a build**. Everything that needs a jdk or the
+build-tools happens on the project's node too, never on the controller:
+checking an uploaded keystore, Generate, a wrapped backup, a rotation's proof
+and a release's APK are each a job there, handed the key for that job alone.
+So the node the project's settings choose needs the **jdk** and **Android SDK
+Build-Tools** (with android-tools, which installs them) from its Toolchains,
+and the Signing view says which node it is and what it lacks when it cannot.
+No key is made or added until the
 project's owner has set its **backup password**, which every download of a
 key's backup asks for, BuilderBot's owner included; a backup goes only to an
 administrator who works on the project.
@@ -742,7 +749,7 @@ row gives the certificate's whole fingerprint, with **Copy for F-Droid** for
 its metadata. Using one key on Play, F-Droid and your own downloads (so users
 can move between them) means giving Play that key when the app is first set
 up there. A project can keep several named keys (one per app, or one shared),
-generated on the controller or uploaded, with each app's package mapped to its
+generated on the project's node or uploaded, with each app's package mapped to its
 key, and a sideload key can be **rotated** to another: builds then carry both
 and a proof, Android 9 and newer move to the new key, and the old one is kept
 for the devices before that. **Import a backup** takes what Download backup

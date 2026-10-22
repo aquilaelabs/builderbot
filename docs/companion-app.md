@@ -87,9 +87,10 @@ node's toolchain store, the same environment every `bb` job gets, on a push
 to `main` that touches `android/`, names it by `bb version --file`, drops it
 into BuilderBot's `dist/` where the runner's machine mounts the projects
 share. For a release it is handed to the controller as the artifact
-`bb-release-apk-TAG`, which the controller signs with BuilderBot's own
-sideload key and attaches to the release (docs/building.md, "A release's APK
-is signed by the controller"); no key or password is a GitHub secret.
+`bb-release-apk-TAG`, which the controller has signed on BuilderBot's node
+with its own sideload key and attaches to the release (docs/building.md, "A
+release's APK is signed on the project's node"); no key or password is a
+GitHub secret.
 Nothing else is kept as a workflow artifact: one artifact per push filled
 the account's Actions storage in a month (B669). Locally, `cd android && ./gradlew
 assembleDebug` with `JAVA_HOME` and `ANDROID_HOME` pointed at a node's store.

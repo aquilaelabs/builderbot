@@ -3677,7 +3677,11 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-cle
              # A build in dist/ signed with one of the project's keys
              # (signing.py, R106): the key fetched over the channel for this
              # job alone, used as the enrolled account, never a session's.
-             "sign")
+             "sign",
+             # What the controller's signing keys need a jdk or build-tools
+             # for (signing._on_node): a keystore checked, a key made, a
+             # backup wrapped, a rotation's proof, a release's APK signed.
+             "sign-key")
 JOB_END = ("succeeded", "failed", "canceled")
 
 # Probe jobs (run_wait's `forget`): a read the page makes to draw itself,
