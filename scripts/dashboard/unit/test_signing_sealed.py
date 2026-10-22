@@ -2,8 +2,6 @@
 keystore and its passwords are ciphertext in /config, opened in memory for
 the one who signs; a key sealed under another secret is locked and says so;
 without one they are kept as before; keys from before are sealed at start."""
-import base64
-import json
 import os
 import shutil
 import sys
