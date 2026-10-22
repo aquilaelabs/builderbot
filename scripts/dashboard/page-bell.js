@@ -262,7 +262,7 @@ function attRow(a){
     return `<div class="bnote att warn">
       <div class="bt">${esc(a.node)} is running short of room</div>
       <div class="bsum">${parts.map(esc).join("; ")}</div>
-      <div class="bfoot"><span>${(a.short || []).length ? `under ${esc(String(a.floor_gb))} GB is short` : "before it starts killing processes"}</span>
+      <div class="bfoot"><span>${(a.short || []).length ? `a disk keeps ${esc(String(a.floor_gb))} GB free, or a tenth of a small one` : "before it starts killing processes"}</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bstorage="${esc(a.id)}">Storage page</a></span></div></div>`;
   }

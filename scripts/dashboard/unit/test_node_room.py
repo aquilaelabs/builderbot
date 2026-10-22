@@ -46,6 +46,16 @@ class Room(unittest.TestCase):
         self.assertEqual([x["what"] for x in r["short"]], ["the VM web-db's /var/lib/data", "the VM web-db's memory"])
         self.assertEqual(r["short"][1]["used_pct"], 95)
 
+    def test_a_small_disk_keeps_a_tenth_of_itself_not_ten_gb(self):
+        # A 16 GB VM node is not short of room the day it is made.
+        smp = {"disks": {"root": [6 * 1024, 16 * 1024]}, "stores": {}, "store_totals": {}}
+        self.assertEqual(self.rows([node("n1", smp)]), [])
+        smp["disks"]["root"] = [1024, 16 * 1024]
+        [r] = self.rows([node("n1", smp)])
+        self.assertEqual(r["short"][0]["free_gb"], 1.0)
+        with mock.patch.object(nodes, "node", lambda nid: node("n1", smp)):
+            self.assertIn("under the 1.6 GB", nodes.room_short("n1", 10, roles=("root",)))
+
     def test_room_enough_says_nothing_and_an_away_node_is_skipped(self):
         smp = {"disks": {"root": [50 * 1024, 100 * 1024]}, "stores": {}, "store_totals": {}}
         self.assertEqual(self.rows([node("n1", smp), node("n2", {"disks": {"root": [1, 100]}}, live=False)]), [])

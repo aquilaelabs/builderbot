@@ -2355,6 +2355,13 @@ def _vm_guest(g):
             "users": int(g["users"]) if isinstance(g.get("users"), int) and g["users"] >= 0 else 0, "fs": fs}
 
 
+def floor_mb(floor_gb, total_mb):
+    """The room a disk keeps, in MB: the floor, or a tenth of the disk where
+    that is less, so a 16 GB VM is not short of room from the day it is
+    made (R110)."""
+    return min(floor_gb * 1024, int((total_mb or 0) * 0.1)) if total_mb else floor_gb * 1024
+
+
 ROOM_WHAT = {"docker": "Docker's images and build cache", "root": "its root filesystem",
              "data": "its builds and their outputs", "cache": "its build caches"}
 
@@ -2371,10 +2378,11 @@ def room_short(nid, floor_gb, roles=("docker", "root")):
         free, total = disks[role] if role in disks else (stores.get(role), totals.get(role)) if role in stores else (None, None)
         if free is None or not total:
             continue
-        if free >= floor_gb * 1024:
+        keep = floor_mb(floor_gb, total)
+        if free >= keep:
             return ""
         return (f"{n.get('name') or nid} has {round(free / 1024, 1)} GB free for {ROOM_WHAT.get(role, role)}, "
-                f"under the {floor_gb} GB a node keeps for itself: free some first (its Storage page says what holds it)")
+                f"under the {round(keep / 1024, 1):g} GB a node keeps for itself: free some first (its Storage page says what holds it)")
     return ""
 
 
@@ -2401,7 +2409,7 @@ def room_attention(floor_gb, mem_pct, label=None, vm_pct=90, pool_keep_gb=10):
         places = [(r, f, t) for r, (f, t) in (smp.get("disks") or {}).items()]
         places += [(r, f, (smp.get("store_totals") or {}).get(r)) for r, f in (smp.get("stores") or {}).items()]
         for role, free, total in places:
-            if free is None or not total or free >= floor_gb * 1024:
+            if free is None or not total or free >= floor_mb(floor_gb, total):
                 continue
             # A store on the root filesystem reads the same numbers: said once.
             if (free, total) in seen:
