@@ -83,7 +83,9 @@ for (const os of SYSTEMS){
         const n = ((await api('/api/nginx')).nodes || []).find(v => v.node === nid) || {};
         return !(n.state?.job?.running) && (action === 'deploy') === !!n.deployed ? n : null;
       }, 20 * 60000);
-      ok(!!x, `[${os}] nginx ${action === 'deploy' ? 'runs as a container there' : 'comes off again'}`);
+      // deployed says the container is this node's; running, that it runs.
+      const up = !!x?.state?.running;
+      ok(!!x && up === (action === 'deploy'), `[${os}] nginx ${action === 'deploy' ? 'runs as a container there' : 'comes off again'}${x && up !== (action === 'deploy') ? ` (running ${up})` : ''}`);
     }
     // A project there: synced, and a terminal through the controller.
     await api('/api/prefs', { project: PROJECT, node: nid });
