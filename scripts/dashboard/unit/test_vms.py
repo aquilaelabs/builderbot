@@ -94,6 +94,9 @@ class Controller(unittest.TestCase):
                            ("AlmaLinux 9", "almalinux-9"), ("centos stream", "centos-9"), ("arch", "arch-latest"),
                            ("leap 16", "opensuse-16.0"), ("tumbleweed", "opensuse-tumbleweed"), ("gentoo", "gentoo-latest")):
             self.assertEqual((vms.find_os(said)[0] or {}).get("id"), want, said)
+        # Images with no BIOS boot partition hang under SeaBIOS (B198).
+        for said in ("debian", "gentoo"):
+            self.assertEqual(vms.find_os(said)[0].get("boot"), "uefi", said)
         img, why = vms.find_os("debain 13")
         self.assertIsNone(img)
         self.assertIn("nearest: debian-13", why)

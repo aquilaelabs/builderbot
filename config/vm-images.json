@@ -47,7 +47,7 @@
     {"id": "opensuse-tumbleweed", "name": "openSUSE Tumbleweed", "family": "opensuse", "aliases": ["tumbleweed"],
      "arch": {"x86_64": {"url": "https://download.opensuse.org/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2",
                          "sums": "https://download.opensuse.org/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2.sha256"}}},
-    {"id": "gentoo-latest", "name": "Gentoo", "family": "gentoo", "aliases": ["gentoo"],
+    {"id": "gentoo-latest", "name": "Gentoo", "family": "gentoo", "aliases": ["gentoo"], "boot": "uefi",
      "arch": {"x86_64": {"url": "https://distfiles.gentoo.org/releases/amd64/autobuilds/20261018T124555Z/di-amd64-cloudinit-20261018T124555Z.qcow2",
                          "sums": "https://distfiles.gentoo.org/releases/amd64/autobuilds/20261018T124555Z/di-amd64-cloudinit-20261018T124555Z.qcow2.sha256"}}},
     {"id": "alpine-3.24", "name": "Alpine 3.24", "family": "alpine", "aliases": ["alpine"],
