@@ -126,8 +126,8 @@ only CUDA), each stored **runner token** is still accepted by its host, and
 **SSH auth against GitHub** works (agent key or file key). Claude Code and
 the Anthropic API are checked on a node, where sessions run.
 
-Each person signs in to Claude on each node they work on, from that node's
-Claude Code section on the Nodes page: **Sign in**, which a project's
+Each person signs in to Claude on each node they work on, from the Claude
+section of that node's Agents page (under Build): **Sign in**, which a project's
 **Start Claude** offers the first time. The flow runs on that node, the
 machine Claude Code is installed on, and the code is pasted back in the
 section. Each node keeps the login it alone refreshes; the controller holds no

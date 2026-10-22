@@ -125,7 +125,7 @@ dropdown pick **builderbot**. You get a form with everything already wired:
   person picks the zone the dashboard shows times in under the gear menu
 
 Claude Code is not configured here: it runs on the nodes, and each person
-signs in on each node (its Claude Code section on the Nodes page) with their own Claude account.
+signs in on each node (its Agents page, under Build) with their own Claude account.
 Each account's commit identity is set on its Profile page. Hit **Apply**. Unraid pulls the image and starts it.
 
 **Unraid never applies new template values to a container that already

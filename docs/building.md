@@ -351,7 +351,7 @@ the default for a package with no line, unless the signing named one
 sensible for apps meant to trust each other; a key of their own keeps one
 app's lost key from being every app's. A session reads which keys exist and
 proposes a new one or a mapping (`bb sign keys`, `bb sign key new NAME --for
-sideload`, `bb sign map PACKAGE KEY`) under **Claude may: Manage signing
+sideload`, `bb sign map PACKAGE KEY`) under **Agents may: Manage signing
 keys**, ask by default, which puts it in front of the project's owner.
 
 **Moving an app to another sideload key.** **Rotate to it** on a key's
@@ -383,7 +383,7 @@ such key, no such build, no node) is refused before anybody is asked.
 **A release from a session.** `bb version release --why "..."` tags the
 commit and publishes the release the way **Release** on the Artifacts view
 does, on the controller and with the project's own credentials, which the
-session never holds (R138). It is its own dial, **Claude may: Tag and
+session never holds (R138). It is its own dial, **Agents may: Tag and
 publish a release**, named apart from signing, which makes a build rather
 than a release: auto releases at once, **ask** (the default) puts the tag
 and the commit it would mark in front of the project's owner in their bell

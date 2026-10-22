@@ -162,6 +162,9 @@ const TOOL_ICONS = {
   toolchains: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <path d="M2.5 5.2 8 2.6l5.5 2.6v5.6L8 13.4l-5.5-2.6z"/>
     <path d="M2.5 5.2 8 7.8l5.5-2.6"/><path d="M8 7.8v5.6"/></svg>`,
+  // A prompt's chevron and cursor in a box: a coding agent at work (R95).
+  agents: `<svg viewBox="0 0 16 16" aria-hidden="true">
+    <rect x="2" y="2.5" width="12" height="11" rx="1.6"/><path d="M4.8 6.2l2.2 1.8-2.2 1.8"/><path d="M8.6 10.4h2.8"/></svg>`,
   // A handset with a play mark on its screen: a phone that is software.
   emulator: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <rect x="4.5" y="2" width="7" height="12" rx="1.4"/><path d="M7 6.2v3.6l2.8-1.8z"/></svg>`,
@@ -210,6 +213,12 @@ const TABKINDS = {
               icon: TOOL_ICONS.toolchains,
               render: (i) => renderToolchainsInto(i), live: () => tcRev,
               open: () => loadToolchains() },
+  // The coding agents on a node (R95 step 15): its own read, the node
+  // list, and the sign-in, which rides the status poll.
+  agents:   { multi: false, label: () => "Agents",
+              icon: TOOL_ICONS.agents,
+              render: (i) => renderAgentsInto(i), live: () => agentsLiveKey(),
+              open: () => loadAgents() },
   // nodesRev and jobsRev as well as its own: a node's images arrive on its
   // census, and an image job moves the queue.
   emulator: { multi: false, label: () => "Emulator",

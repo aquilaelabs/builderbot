@@ -206,6 +206,40 @@ function startClaude(name, sessionId, node){
   launchClaude(name, sessionId, node);
 }
 
+// Another coding agent's session (R95 step 4): Codex CLI or Copilot CLI on
+// one of the project's nodes, a new conversation in a tab of its own, named
+// for the agent. Its session is its own beside a Claude one, in a tree of
+// its own (session_dir), so one person may run both on a project at once.
+const agentLiveOn = (id, name, n) => (state?.sessions || []).some(s => s.name === myAgentSession(id, name)
+  && (!n.id || s.node_id === n.id));
+function launchAgent(id, name, node){
+  const a = agentById(id);
+  if (!a) return;
+  resumeFor = null;
+  resumePick = null;
+  if (state) drawProjects(state.projects);
+  const p = (state?.projects || []).find(x => x.name === name);
+  const nn = node ? (p?.session_nodes || []).find(x => x.id === node)?.name || node : "";
+  openTab({kind: "term", arg: agentArg(id, name) + (node ? `:n:${node}` : ""),
+           label: `${a.name}: ${projLabel(name)}` + (nn ? ` (${nn})` : "")});
+}
+async function agentEnd(id, name, n, several){
+  const a = agentById(id);
+  const where = n.name ? ` on ${n.name}` : "";
+  if (!confirm(`End your ${a.name} session on ${projLabel(name)}${where}?\n\nThe conversation stops now.`)) return;
+  resumeFor = null;
+  if (state) drawProjects(state.projects);
+  try{
+    const j = await endSession(myAgentSession(id, name), n.id);
+    if (j.error) return notify(j.error, true);
+    const arg = agentArg(id, name) + (several && n.id ? `:n:${n.id}` : "");
+    const t = tabs.find(x => x.kind === "term" && String(x.arg) === arg);
+    if (t) dropTab(t.id);
+    notify(`ended your ${a.name} session on ${projLabel(name)}${where}`);
+  }catch(e){ notify("could not end it: " + e, true); }
+  refresh();
+}
+
 function launchClaude(name, sessionId, node){
   resumeFor = null;
   resumePick = null;
@@ -393,10 +427,26 @@ function placeResumeMenu(){
         + `<button data-end="${esc(n.id)}" class="danger">End session</button>`);
     if (n.where !== "node") return `<div class="rmstate bad">${esc(n.why)}</div>`;
     if (!claudeSigned(n))
-      return bar(`<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Nodes page, at its Claude sign-in">Sign in on ${esc(n.name)}</button>`);
+      return bar(`<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its Claude sign-in">Sign in on ${esc(n.name)}</button>`);
     return bar((p.last_claude ? `<button data-r="1" data-node="${esc(node)}">Resume: ${esc(ago(p.last_claude.when))}</button>` : "")
       + `<button data-n="1" data-node="${esc(node)}"${p.last_claude ? "" : ' class="primary"'}>New conversation</button>`);
   };
+  // The other coding agents installed on a node (R95 step 4), each a line
+  // of its own under Claude's: Open tab and End session where this
+  // account's session of it runs there, its sign-in where there is none,
+  // else New conversation. Nothing where a session there cannot start.
+  const agentOffers = n => n.where !== "node" ? "" : agentsLive().filter(a => a.id !== "claude" && (n.agents || []).includes(a.id)
+      && !(p.prefs?.agents_off || []).includes(a.id))
+    .map(a => {
+      const node = several ? n.id : "";
+      const bar = html => `<div class="actbar rmacts"><span class="state">${esc(a.name)}</span>${html}</div>`;
+      if (agentLiveOn(a.id, p.name, n))
+        return bar(`<button data-aopen="${esc(a.id)}" data-node="${esc(node)}">Open tab</button>`
+          + `<button data-aend="${esc(a.id)}" data-nid="${esc(n.id)}" class="danger">End session</button>`);
+      if (n.id && !agentOn(a.id, n.id))
+        return bar(`<button data-asignin="${esc(a.id)}" data-nid="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its ${esc(a.name)} sign-in">Sign in on ${esc(n.name)}</button>`);
+      return bar(`<button data-anew="${esc(a.id)}" data-node="${esc(node)}">New conversation</button>`);
+    }).join("");
   // A node's head: its name, and what it has on a quiet line under it.
   const head = n => `<div class="rmhead"><b>${esc(n.name || "")}</b>${
       claudeNodeFacts(n) ? `<span class="rmfacts">${esc(claudeNodeFacts(n))}</span>` : ""}</div>`;
@@ -411,7 +461,7 @@ function placeResumeMenu(){
     : ns.map(n => `<div class="rmnode">${n.name ? head(n) : ""}${
         claudeLiveOn(p.name, n) ? `<div class="rmstate ok">Your session is running here</div>`
         : n.where === "node" && !claudeSigned(n) ? `<div class="rmstate">You are not signed in to Claude here</div>` : ""}${
-        offer(n)}</div>`).join("");
+        offer(n)}${agentOffers(n)}</div>`).join("");
   // The same menu as the one up already is left where it is (the operator,
   // 12 Oct): drawn again on every poll, its buttons were replaced under the
   // pointer and its entrance played again, so a press that began on one
@@ -443,6 +493,16 @@ function placeResumeMenu(){
     claudeEnd(p.name, ns.find(n => n.id === b.dataset.end) || {id: "", name: ""}, several));
   m.querySelectorAll("[data-restart]").forEach(b => b.onclick = () =>
     claudeRestart(p.name, ns.find(n => n.id === b.dataset.restart) || {id: "", name: ""}, several));
+  m.querySelectorAll("[data-anew], [data-aopen]").forEach(b => b.onclick = () =>
+    launchAgent(b.dataset.anew || b.dataset.aopen, p.name, b.dataset.node));
+  m.querySelectorAll("[data-aend]").forEach(b => b.onclick = () =>
+    agentEnd(b.dataset.aend, p.name, ns.find(n => n.id === b.dataset.nid) || {id: "", name: ""}, several));
+  m.querySelectorAll("[data-asignin]").forEach(b => b.onclick = () => {
+    resumeFor = null;
+    drawProjects(state.projects);
+    sectOpen[`agents:${b.dataset.asignin}`] = true;
+    openAgentsOn(b.dataset.nid);
+  });
   // Over the page under its button, above it near the screen's foot, a
   // sheet on a phone (floatAt), so it is never placed where it cannot be
   // seen: a chooser out of sight read as a press that did nothing (bug #65).

@@ -25,6 +25,7 @@ import sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 from names import claude_session   # noqa: E402
 from fields import field   # noqa: E402
+import agents
 import functools
 import hashlib
 import inspect
@@ -100,7 +101,7 @@ def _log(project, by, ev):
             d = {"projects": {}}
         h = d["projects"].setdefault(project, [])
         h.append({"at": int(time.time()),
-                  "by": "claude" if by == "claude" else "you",
+                  "by": "claude" if by == "claude" else "you", **agents.asker(by),
                   **_by_whom(), **ev})
         del h[:-MAX_HISTORY]
         try:

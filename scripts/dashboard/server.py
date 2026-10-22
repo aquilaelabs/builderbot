@@ -403,6 +403,7 @@ import helpdocs                                                  # noqa: E402
 # remember, because the failure looks like the dashboard refusing to obey the
 # operator and quoting its own name as the workaround.
 os.environ.pop("CLAUDECODE", None)
+os.environ.pop("BB_AGENT", None)     # ...and any coding agent's mark (R95)
 
 
 def run(cmd, cwd=None, timeout=120, env=None, split_err=False, register=None):
@@ -755,7 +756,11 @@ def _session_nodes(name):
         out.append({"id": nid, "name": n.get("name") or t.get("name") or nid,
                     "where": t["where"], "why": t.get("why") or "", "boot": t.get("boot") or "",
                     "sample": rep.get("sample") or {}, "gpu": rep.get("gpu") or "",
-                    "tools": sorted((rep.get("toolchains") or {}).keys())[:6]})
+                    "tools": sorted((rep.get("toolchains") or {}).keys())[:6],
+                    # The coding agents beside Claude installed there, which
+                    # the chooser offers a session of (R95 step 4).
+                    "agents": [a.id for a in agents.live() if a.id != "claude"
+                               and ((rep.get("session") or {}).get(a.reported) or "")]})
     return out
 
 
@@ -1478,7 +1483,13 @@ def asking_clear(project, uid):
 
 def session_state(uid, name, title):
     """(state, task) for a Claude session: claude_state's, or "asking" while
-    it waits on its permission prompt, the prompt's words as the task."""
+    it waits on its permission prompt, the prompt's words as the task.
+    Another agent's session says nothing yet (R95 step 7 reads its own
+    events): Claude Code's pane title is no other agent's, and a session
+    read as waiting when it was working would call a person for nothing."""
+    agent, _stem = agents.of_session(tmux_base(name))
+    if agent and agent.id != "claude":
+        return "", ""
     state, task = claude_state(title)
     k = (uid, tmux_base(name))
     a = ASKING.get(k)
@@ -2875,6 +2886,15 @@ def claude_auth(home=""):
                       for nid, v in claudegrant.nodes_of(home).items()}}
 
 
+def agent_auth(home=""):
+    """{agent id: {"nodes": {node id: {email, plan}}}} for every coding agent
+    with a sign-in of its own but Claude's (R95 step 3): what each node
+    reported this account is signed in to it as, from the same record."""
+    return {a.id: {"nodes": {nid: {"email": v["email"], "plan": v["plan"]}
+                             for nid, v in claudegrant.nodes_of(home, a.id).items()}}
+            for a in agents.TABLE if a.id != "claude" and a.login_job}
+
+
 # ---- toolchains ------------------------------------------------------------
 # All of it (the catalog, the probes, the sizes, the versions and the worker
 # that installs) lives in toolchains.py, which is handed the two helpers it
@@ -3305,6 +3325,7 @@ import storage                                                   # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
 import claudecode                                                # noqa: E402
+import agentcode                                                 # noqa: E402
 import projsessions                                              # noqa: E402
 import turns                                                     # noqa: E402
 
@@ -3386,12 +3407,15 @@ if not NODES_OK:
     jobs.configure(nodes_module=nodes)
     toolchains.nodes = nodes
     toolchains.claudecode = claudecode
+    toolchains.agentcode = agentcode
     emulator.nodes = nodes
     phone.nodes = nodes            # every adb command is a job on a node
     # A compose action the AGENT ran still has records to write here; this is
     # where the module that queued it finishes it (roadmap #18).
     nodes.on_done("compose", devactions.compose_done)
     nodes.on_done(claudecode.JOB, claudecode.update_done)
+    for _a in agentcode.tracked():
+        nodes.on_done(_a.update_job, agentcode.update_done)
 # What Allow on a rebuild request actually starts (the Docker row's `ask`).
 # Outside the block above: the ask has nothing to do with the node registry,
 # and a controller without one still has projects whose containers run.
@@ -3666,6 +3690,8 @@ version.configure_verbs(PANEL=version_payload, GIT_ENV=users.git_env, CREDS_ENV=
 if not NODES_OK:
     claudecode.configure(nodes_module=nodes, node_sessions=node_tmux_sessions,
                          tmux_base=tmux_base, audit=nodes.audit)
+    agentcode.configure(nodes_module=nodes, node_sessions=node_tmux_sessions,
+                        tmux_base=tmux_base, audit=nodes.audit)
 
 # Every account's sessions on a project, for its settings dialog, and an
 # administrator ending one (projsessions.py): the rows the Sessions card is
@@ -4011,7 +4037,7 @@ apps.unvetted_ok = channel.unvetted_ok      # the Windows companion and the VS C
 devices.configure_apps(apps)
 
 # A person's PC lent to a project (R270 step 6): the companion lends a
-# table of verbs, a session asks with bb pc under Claude may: Use a lent PC.
+# table of verbs, a session asks with bb pc under Agents may: Use a lent PC.
 import pcwork                                                    # noqa: E402
 pcwork.configure(workspace=WORKSPACE, mode_fn=lambda p: (prefs.get(p) or {}).get("pc") or "deny",
                  notify_fn=lambda uid, text, level: notices.act(uid, {"action": "add", "text": text,
@@ -4323,6 +4349,8 @@ def _snapshot(who):
         # Which nodes report this account signed in to Claude, and the
         # sign-in of theirs that is running, if one is.
         "claude_auth": _timed("status:claude_auth", lambda: claude_auth(home_for(users.uid_of(who)))),
+        # ...and the other coding agents' the same way (R95 step 3).
+        "agent_auth": _timed("status:agent_auth", lambda: agent_auth(home_for(users.uid_of(who)))),
         "signin": login,
         # A clone or a first push runs in the background now, so the card can
         # say what it is doing without the dialog being open.
@@ -5001,6 +5029,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._vm_con_refused(arg, me)
         if agents.of_arg(arg)[0]:
             project = agents.project_of_arg(arg)
+            # An agent the project's settings switched off starts nothing
+            # there (R95), whoever asks.
+            ag = agents.of_arg(arg)[0]
+            if ag.id in ((prefs.get(project) or {}).get("agents_off") or []):
+                return f"{project}'s settings do not allow {ag.name} sessions: its Agents may section says which agents may run"
             # Terminal Read is the shielded Claude console; without it there
             # is no terminal on the project at all (R152 (e)).
             return users.may(me, "claude", project) or self._area_read_why("terminal", project, me)
@@ -5032,7 +5065,7 @@ class Handler(BaseHTTPRequestHandler):
         a ctr: argument names, and "" when it may (R218 step 4, the operator,
         14 Oct): a person with a shell who may run that container, which is
         its project's account or an administrator, as for Start and Stop on
-        the Containers page; an administrator alone when the project's Claude may:
+        the Containers page; an administrator alone when the project's Agents may:
         Run its container is Deny; and the container one of the instance's
         running ones, asked of its daemon now, never taken from the URL."""
         m = _ARG_CTR.match(arg)
@@ -5053,7 +5086,7 @@ class Handler(BaseHTTPRequestHandler):
             if why:
                 return why
             if (prefs.get(owner) or {}).get("devbuild") == "deny":
-                return (f"{owner}'s Claude may: Run its container is Deny, so a shell in its containers "
+                return (f"{owner}'s Agents may: Run its container is Deny, so a shell in its containers "
                         "is an administrator's")
         t = ctr_target(name, inst)
         if t["where"] == "refused":
@@ -5811,7 +5844,7 @@ class Handler(BaseHTTPRequestHandler):
     def _pc(self, req):
         """POST /api/pc: a session's word with a PC lent to its project
         (pcwork.py, bb pc): lent (which PCs lend which verbs), run (ask
-        one, under the project's Claude may: Use a lent PC) and result (an
+        one, under the project's Agents may: Use a lent PC) and result (an
         ask's answer, held a while). A session's alone: its project is the
         one its token was minted for."""
         me = self._who() or {}
@@ -6237,7 +6270,7 @@ class Handler(BaseHTTPRequestHandler):
                                                  asker_name=(me.get("name") or "")))
             mode = prefs.get(sess)["makevms"]
             if mode == "deny":
-                return self._json({"error": f"{sess}'s settings say Claude may not make or change VMs "
+                return self._json({"error": f"{sess}'s settings say an agent may not make or change VMs "
                                             "(Make VMs is deny): a person changes that in the project's settings"}, 403)
             if mode == "ask":
                 r = phone.ask_vm(field(req, "why") or f"{action} {field(req, 'name')}", sess, req,
@@ -6473,7 +6506,7 @@ class Handler(BaseHTTPRequestHandler):
         """POST /api/wiki: a page saved, removed or renamed, and the wiki
         pushed to or pulled from the forge's (wiki.verb), for an account
         that works on the project. A session's writes go through the
-        project's dial, Claude may: Write the wiki."""
+        project's dial, Agents may: Write the wiki."""
         name = field(req, "project")
         if self._not_project(name) or self._readonly(name):
             return
@@ -7262,6 +7295,12 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(got["body"])
         return None
 
+    def _signin_agent(self, req):
+        """The coding agent a sign-in or a sign-out is for (R95 step 3):
+        Claude when none is named, and only one with a sign-in of its own."""
+        a = agents.get(field(req, "agent") or "claude")
+        return a if a and a.login_job else None
+
     def _signin_node(self, req):
         """(node id, refusal) for a sign-in or a sign-out: a person's, never
         a session's, on a node this account may look at, which for an
@@ -7269,10 +7308,12 @@ class Handler(BaseHTTPRequestHandler):
         me = self._who() or {}
         if me.get("session"):
             return "", ({"error": "a session does not sign an account in or out"}, 403)
+        if not self._signin_agent(req):
+            return "", ({"error": "no such coding agent, or one with no sign-in of its own"}, 400)
         nid = field(req, "node")
         if not nid:
-            return "", ({"error": "which node? A Claude sign-in is made on one node, "
-                                  "from its row on the Nodes page"}, 400)
+            return "", ({"error": "which node? A sign-in is made on one node, "
+                                  "from its Agents page"}, 400)
         nid, why = self._node_asked(nid)
         if why:
             return "", ({"error": why}, 403)
@@ -7294,7 +7335,7 @@ class Handler(BaseHTTPRequestHandler):
         nid, no = self._signin_node(req)
         if no:
             return self._json(*no)
-        return self._json(*signin.verb("", nid, uid))
+        return self._json(*signin.verb("", nid, uid, self._signin_agent(req).id))
 
     def _login_code(self, req):
         """Hand the code from the browser to the sign-in flow: signin.take_code,
@@ -7307,11 +7348,13 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*signin.take_code(field(req, "code")))
 
     def _signout(self, req):
-        """Sign this account out of Claude on one node (signin.sign_out):
-        the login is that machine's, so that machine lets go of it."""
+        """Sign this account out of a coding agent on one node
+        (signin.sign_out): the login is that machine's, so that machine lets
+        go of it."""
         nid, no = self._signin_node(req)
         if no:
             return self._json(*no)
+        agent = self._signin_agent(req)
         # Not while a conversation of THIS account's is running there.
         # Signing out pulls the ground from under the sessions it started,
         # and a page that has not polled for fifteen seconds can offer a
@@ -7322,7 +7365,7 @@ class Handler(BaseHTTPRequestHandler):
         me = users.uid_of(self._who())
         busy = sorted(x["name"] for x in node_tmux_sessions()
                       if x.get("node_id") == nid
-                      and agents.of_session(tmux_base(x["name"]))[0] is agents.get("claude")
+                      and agents.of_session(tmux_base(x["name"]))[0] is agent
                       and (tmux_owner(x["name"]) or users.uid_of(
                           users.get(users.owner_name() or ""))) == me)
         if busy:
@@ -7330,14 +7373,14 @@ class Handler(BaseHTTPRequestHandler):
             # named nothing a person recognizes, and every one listed is
             # the asker's own.
             projs = sorted({agents.of_session(tmux_base(n))[1] for n in busy})
-            return self._json({"error": "end your Claude session"
+            return self._json({"error": f"end your {agent.name} session"
                                + ("s" if len(projs) > 1 else "") + " on "
                                + ", ".join(projs) + " first (Sessions, or the tab's Close)"}, 409)
-        payload, status = signin.sign_out(nid, me)
+        payload, status = signin.sign_out(nid, me, agent.id)
         if status == 200:
             # The row says so at once; the node's own report, which the job
             # prompts, is what keeps it true.
-            claudegrant.report(home_for(me), nid, "", signed_in=False)
+            claudegrant.report(home_for(me), nid, "", signed_in=False, agent=agent.id)
         return self._json(payload, status)
 
     def _roadmap(self, req):
@@ -7645,7 +7688,7 @@ class Handler(BaseHTTPRequestHandler):
                                             "operator uses or removes it from the Docker "
                                             "manager"}, 403)
         if act not in ("starter", "state", "probe", "test") and session:
-            # The dial is the project's (Claude may: Run its container, in its
+            # The dial is the project's (Agents may: Run its container, in its
             # settings) and covers rebuilding its containers, changing their
             # env and sending the project to Docker, its own container or
             # another beside it: the operator's widenings of 24 and 26 Sep, so
@@ -7747,7 +7790,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "a session releases its own project and no other"}, 403)
             mode = (prefs.get(name) or {}).get("release") or "ask"
             if mode == "deny":
-                return self._json({"error": f"{name}'s settings say Claude does not release it (Claude may: "
+                return self._json({"error": f"{name}'s settings say Claude does not release it (Agents may: "
                                             "Tag and publish a release); a person cuts it with Release on "
                                             "the Artifacts view"}, 403)
             comp = field(req, "component") or ""
@@ -7776,7 +7819,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": why}, 400)
             mode = (prefs.get(name) or {}).get("release") or "ask" if who.get("session") else "auto"
             if mode == "deny":
-                return self._json({"error": f"{name}'s settings say Claude does not release it (Claude may: "
+                return self._json({"error": f"{name}'s settings say Claude does not release it (Agents may: "
                                             "Tag and publish a release), which taking a file off its release is "
                                             "part of; a person removes it on the forge"}, 403)
             names = req.get("remove") if isinstance(req.get("remove"), list) else []
@@ -7808,7 +7851,7 @@ class Handler(BaseHTTPRequestHandler):
             notes = req.get("notes") if isinstance(req.get("notes"), str) else None
             mode = (prefs.get(name) or {}).get("release") or "ask" if who.get("session") else "auto"
             if mode == "deny":
-                return self._json({"error": f"{name}'s settings say Claude does not release it (Claude may: "
+                return self._json({"error": f"{name}'s settings say Claude does not release it (Agents may: "
                                             "Tag and publish a release), which an edit of its release is part of; "
                                             "a person edits it on the forge"}, 403)
             plan = forgerelease.edit_plan(name, tag, notes, attach)
@@ -7852,7 +7895,7 @@ class Handler(BaseHTTPRequestHandler):
         name = field(req, "project")
         who = self._who() or {}
         if who.get("session"):
-            # bb sign: its own project's build, under its dial (Claude may:
+            # bb sign: its own project's build, under its dial (Agents may:
             # Sign a build). It never receives the key, the list, or a
             # backup; asking to sign is all a session does here.
             act = field(req, "action")
@@ -7868,7 +7911,7 @@ class Handler(BaseHTTPRequestHandler):
                 kmode = (prefs.get(name) or {}).get("keys") or "ask"
                 if kmode == "deny":
                     return self._json({"error": f"{name}'s settings say Claude does not manage its signing "
-                                                "keys (Claude may: Manage signing keys)"}, 403)
+                                                "keys (Agents may: Manage signing keys)"}, 403)
                 if act == "keys":
                     return self._json(*signing.listing(name))
                 # Said before anybody is asked to allow a key that could not
@@ -7887,7 +7930,7 @@ class Handler(BaseHTTPRequestHandler):
             mode = (prefs.get(name) or {}).get("sign") or "ask"
             if mode == "deny":
                 return self._json({"error": f"{name}'s settings say Claude does not sign its builds "
-                                            "(Claude may: Sign a build); a person signs from the "
+                                            "(Agents may: Sign a build); a person signs from the "
                                             "Artifacts view"}, 403)
             file, route, key = field(req, "file"), field(req, "route"), field(req, "key")
             no = signing.refusal(name, file, route, key)
@@ -8770,11 +8813,11 @@ class Handler(BaseHTTPRequestHandler):
             if not sess and not users.may_work(me, proj):
                 return self._json({"error": f"you are not on {proj}, so a bug from there is not yours to "
                                             "report: ask to be added, or report from a project you work on"}, 403)
-            # The dial is Claude's (Claude may: Report BuilderBot bugs): a
+            # The dial is Claude's (Agents may: Report BuilderBot bugs): a
             # person reporting from a project's row is always heard.
             if sess and prefs.get(proj)["report"] == "deny":
                 return self._json({"error": f"reporting BuilderBot bugs is off for {proj}: its "
-                                            "settings, Claude may: Report BuilderBot bugs. A "
+                                            "settings, Agents may: Report BuilderBot bugs. A "
                                             "problem goes into this project's tracker"}, 403)
             # The person's latest conversation on the project, when they
             # ticked Include it (the operator, 2 Oct): theirs only, found and
@@ -9388,6 +9431,7 @@ def main():
     idle.start()
     if not NODES_OK:
         claudecode.start()        # the first check soon after the start, then every six hours
+        agentcode.start()         # ...and the other coding agents' (R95 step 2)
     # The seed file once, before the first look at the release (R272 step 4).
     try:
         if seeded := apps.seed(settings.set_many):

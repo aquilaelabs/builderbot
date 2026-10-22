@@ -1038,7 +1038,7 @@ the pieces stack:
    and runs no session). The project's sessions may then
    make a container there (`bb devapp new --node NAME`, built on the
    project's own node and shipped) and rebuild and remove the ones there,
-   under its Claude may: Run its container, as on its own node; a node not
+   under its Agents may: Run its container, as on its own node; a node not
    named stays a person's to send to.
 4z. *One name, one row.* A script made with a name a row already wears,
    waiting or enrolled, is refused rather than a second row made
@@ -2249,8 +2249,8 @@ above, in order:
    session half up, the session is relayed there; otherwise it is this
    container's, as it always was.
 3. **The login is per node and per account**, in that account's home on the
-   node, and it is made there: Sign in in the node's Claude Code section (Nodes
-   page) runs `claude auth login` on that machine as a job, with the code
+   node, and it is made there: Sign in in the Claude section of the node's
+   Agents page runs `claude auth login` on that machine as a job, with the code
    pasted back in that section, and Sign out there runs `claude auth logout` the
    same way. Nothing fetches a login from anywhere: one machine, one
    account, one login. **Transcripts and memories are one place**: every
@@ -2379,7 +2379,7 @@ The account's CLAUDE LOGIN NEVER TRAVELS (R47). Each machine signs in for
 itself and keeps the grant it alone refreshes, because a refresh rotates the
 refresh token and two machines holding copies of one grant sign each other
 out, which is what a day of node sessions produced twice (bug #64, B100).
-So a login is one account's on one node: signed in from that node's Claude Code section,
+So a login is one account's on one node: signed in from that node's Agents page,
 signed out there, and no business of any other node's. What crosses the
 wire is one sentence and no secret: "this account is signed in here as X",
 or that it is not. `bb login --check` sends it on every connection, the

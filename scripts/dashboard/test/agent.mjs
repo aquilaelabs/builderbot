@@ -345,6 +345,10 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   BUILDERBOT_IDLE_UNIT: '1',
   // The Claude Code installer, stood in for: the real one fetches a binary.
   BUILDERBOT_CLAUDE_INSTALLER: `${DIR}/bin/claude-installer`,
+  // ...and Codex CLI's (R95 step 2), which leaves a stub codex in the
+  // account's ~/.local/bin that prints its version.
+  BUILDERBOT_CODEX_INSTALLER: `${DIR}/bin/codex-installer`,
+  BUILDERBOT_AGENTS_DIR: `${DIR}/agents-pinned`,
   BUILDERBOT_SESSION_RETRY_S: '2',   // the restart cooldown, which a test waits out
   BUILDERBOT_SYSTEMD: '1',      // this agent takes the service path whichever box runs the suite
   BUILDERBOT_TAILSCALE_BIN: `${DIR}/bin/tailscale`,
@@ -1298,8 +1302,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          '...and with no account named it signs nobody out');
       rmSync(`${base}/.local/bin/claude`);
       const none = run('u_0badf00d');
-      ok(none.code !== 0 && /Update in the Nodes page/.test(none.out),
-         '...and with none anywhere the refusal names the Nodes page as the way out');
+      ok(none.code !== 0 && /on the node's Agents page/.test(none.out),
+         '...and with none anywhere the refusal names the Agents page as the way out');
     }
 
     // A token for the project alone (a relayed verb's) is nobody's account,
@@ -3201,6 +3205,38 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
        `the agent runs the installer as the session account and streams its words (${cfin?.state})`);
     ok(cfin?.state === 'failed' ? /does not run|no claude in|no claude to run/.test(cfin.log || '') : /is what a session here runs now/.test(cfin?.log || ''),
        `...and says what runs afterwards, or why nothing does (${(cfin?.log || '').trim().split('\n').slice(-1)[0]?.slice(0, 90)})`);
+  }
+
+  // ---- Codex CLI installed by the real agent (agentcode.py, R95 step 2) ----
+  // The same row and the same shape of job as Claude Code's: the vendor's
+  // installer stood in for, the version asked for handed to it, and the
+  // binary it leaves read back, which the census then reports.
+  {
+    writeFileSync(`${DIR}/bin/codex-installer`, `#!/bin/sh
+echo "Installing Codex CLI (stub) $CODEX_RELEASE into $CODEX_INSTALL_DIR"
+mkdir -p "$CODEX_INSTALL_DIR"
+printf '#!/bin/sh\necho codex-cli 0.163.0\n' > "$CODEX_INSTALL_DIR/codex"
+chmod +x "$CODEX_INSTALL_DIR/codex"
+`, { mode: 0o755 });
+    const tc = await api(`/api/toolchains?node=${encodeURIComponent(minted.id)}`);
+    const row = (tc.machine || []).find(m => m.name === 'codex-cli');
+    ok(row && row.label === 'Codex CLI' && row.for === 'ChatGPT',
+       `the node's Toolchains page has a Codex CLI row beside Claude Code's (${row ? row.state : (tc.machine || []).map(m => m.name).join(', ')})`);
+    const cx = await api('/api/toolchains', { action: 'install', node: minted.id, names: ['codex-cli'] });
+    ok(cx.ok && /^j_/.test(cx.job), `Install queues the codex-update job on this node (${cx.job || cx.error})`);
+    const xfin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${cx.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 60000);
+    ok(xfin?.state === 'succeeded' && /Installing Codex CLI \(stub\)/.test(xfin.log || '')
+       && /Codex CLI 0\.163\.0 is what a session here runs now/.test(xfin.log || ''),
+       `the agent runs the installer as the session account and reads the version back (${xfin?.state}: ${(xfin?.log || '').trim().split('\n').slice(-1)[0]?.slice(0, 90)})`);
+    const after = await until(async () => {
+      const t = await api(`/api/toolchains?node=${encodeURIComponent(minted.id)}`);
+      const m = (t.machine || []).find(x => x.name === 'codex-cli');
+      return m?.installed === '0.163.0' ? m : null;
+    }, 30000);
+    ok(after, `...and the row says what is installed the moment the job ends (${after?.installed || 'not yet'})`);
   }
 
   // ---- Send to Claude reaches a session on a node -------------------------

@@ -1004,7 +1004,7 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
 
 def ask_sign(why, project, file, route, to_uid, to_name, asker_name="", principal="", key=""):
     """A session asking to sign a build with one of its project's keys, on a
-    project whose dial is `ask` (Claude may: Sign a build, R106). It goes
+    project whose dial is `ask` (Agents may: Sign a build, R106). It goes
     to the project's owner, who reads which build and which key; Allow
     queues the signing as the session's own."""
     why = " ".join(str(why or "").split())[:300]
@@ -1020,7 +1020,7 @@ def ask_sign(why, project, file, route, to_uid, to_name, asker_name="", principa
 
 def ask_release(why, project, comp, plan, to_uid, to_name, asker_name="", principal=""):
     """A session asking to tag and publish a release, on a project whose
-    dial is `ask` (Claude may: Tag and publish a release, R138). It goes to
+    dial is `ask` (Agents may: Tag and publish a release, R138). It goes to
     the project's owner, who reads the tag and the commit it would mark;
     Allow runs Release as the Artifacts view does, with the project's own
     credentials, which the session never holds."""
@@ -1101,7 +1101,7 @@ def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
                 asker_admin=False, env=None, create=False, target="", ctl="",
                 node="", remove=False, ref="", compose="", host="", host_name="", override=""):
     """A session asking to rebuild its project's dev instance, for a project
-    whose dial is on `ask` (Claude may: Run its container, in the project's
+    whose dial is on `ask` (Agents may: Run its container, in the project's
     settings).
 
     The phone's shape applied to a build: the reason and what it would do go
@@ -1707,7 +1707,7 @@ def verb(action, req, who, fresh):
                 if why:
                     return {"error": why}, 400
                 target = nodes.node(un) if nodes is not None else None
-            # A session's is under its project's dial, Claude may: Run
+            # A session's is under its project's dial, Agents may: Run
             # its container, like every other container verb (B250, the
             # operator, 24 Sep: at auto it was still asked). Refused at
             # deny; at auto, its own project's on its own node is made

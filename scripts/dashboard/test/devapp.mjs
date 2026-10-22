@@ -3811,7 +3811,7 @@ ok(await page.$('#devSend'),
   // The tab is named as well as the switch: the controls moved from the
   // artifact row to the Docker tab and this sentence stayed behind, pointing
   // a session at a tab that no longer has it.
-  ok(off.status === 403 && /project's settings, Claude may: Run its container/.test(off.error || ''),
+  ok(off.status === 403 && /project's settings, Agents may: Run its container/.test(off.error || ''),
      `a session cannot rebuild until the project says so, and is told where the setting is (${
         JSON.stringify(off).slice(0, 90)})`);
   // The two verbs that make and unmake a container are not on the dial at
@@ -4126,7 +4126,7 @@ ok(await page.$('#devSend'),
       G('branch', '-D', 'sendbranch');
     }
   }
-  // The setting lives in the project's settings with the other Claude may
+  // The setting lives in the project's settings with the other Agents may
   // dials (the operator, 24 Sep), because it covers creating the container,
   // which has to be decidable before there is a row. The row says what it is
   // set to and links there, the way the tests-run line does.
@@ -4141,15 +4141,15 @@ ok(await page.$('#devSend'),
   await page.waitForSelector('#rnmodal:not([hidden]) #rnGateDocker', { timeout: 15000 });
   ok(await page.$eval('#rnGateDocker', e => e.value === 'auto' && !e.closest('label').hidden
                         && [...e.options].map(o => o.value).join() === 'auto,ask,deny'),
-     "the project's settings carry it, on auto, with the other Claude may dials");
+     "the project's settings carry it, on auto, with the other Agents may dials");
   // The Claude section holds the test-run setting too (25 Sep): what a
   // change asked for during a run does, saved with the rest of the dialog,
   // under the section's heading since the dialog was put in sections (1 Oct).
-  ok(await page.$eval('#rnGateField', e => e.closest('.rngroup').querySelector('summary .t').textContent) === 'Claude may'
+  ok(await page.$eval('#rnGateField', e => e.closest('.rngroup').querySelector('summary .t').textContent) === 'Agents may'
      && await page.$eval('#rnGateLabel', e => e.textContent) === 'While a test runs'
      && await page.$eval('#rnTestChange', e => e.value === 'wait' && [...e.options].map(o => o.value).join() === 'wait,restart')
      && await page.$eval('#rnReply', e => e.value === ''),
-     'the dialog groups what Claude may do under its Claude may heading, with what a change does during a test run; replies are the person\'s own pick');
+     'the dialog groups what an agent may do under its Agents may heading, with what a change does during a test run; replies are the person\'s own pick');
   await page.selectOption('#rnTestChange', 'restart');
   await page.selectOption('#rnReply', 'minimal');
   await page.selectOption('#rnAsks', 'fewer');
@@ -4724,7 +4724,7 @@ print(json.dumps(out))
   if (!wasUp) rmSync(`${DIR}/dockerstate/helper-for-eps.up`, { force: true });
   await dial('deny');
   const denied = await as('/api/dockerctl', { action: 'restart', container: 'someone-elses' });
-  ok(denied.status === 403 && /Claude may: Run its container/.test(denied.error || ''),
+  ok(denied.status === 403 && /Agents may: Run its container/.test(denied.error || ''),
      `...and on deny may not restart it, told where the setting is (${String(denied.error).slice(0, 60)})`);
   await dial('auto');
   const was = readFileSync(`${DIR}/dockerstate/ctl.log`, 'utf8').length;

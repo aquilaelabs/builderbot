@@ -462,7 +462,7 @@ A problem with BuilderBot itself goes to the **diagnostics**, where whoever
 looks after this BuilderBot reads it (`bb diag reports`). It is a log, not a
 conversation: nothing goes back to whoever sent it, and **Clear reports**
 empties it. A session sends one with `bb report "what happened"`, under the
-project's **Claude may: Report BuilderBot bugs**. A person sends one from a
+project's **Agents may: Report BuilderBot bugs**. A person sends one from a
 project's menu: **Report a BuilderBot bug** opens **Report a bug**, with a category to
 pick, what happened and how to make it happen, and **Send** puts it in the
 diagnostics under that project with its node and the build it was seen on,

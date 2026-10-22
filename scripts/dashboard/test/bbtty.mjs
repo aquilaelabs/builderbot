@@ -531,6 +531,77 @@ tmuxKill('claude-alpha');
     ok(/branch refs\/heads\/claude\//.test(branch),
        `...on a branch of its own, so the work merges rather than collides (${
           (branch.match(/branch \S+/g) || []).join(", ")})`);
+
+    // ---- another coding agent beside Claude (R95 step 4) -------------------
+    // Codex CLI and Copilot CLI stood in for: a session of each starts from
+    // its own argument, in a tree of its own beside the owner's Claude one,
+    // handed the same briefing the way each reads instructions.
+    {
+      const cxArgv = join(bin, 'codex-argv'), cpArgv = join(bin, 'copilot-argv');
+      writeFileSync(join(bin, 'codex'), `#!/usr/bin/env bash
+if [ "\${1:-}" = login ] && [ "\${2:-}" = status ]; then
+  if [ -n "\${FAKE_CODEX_OUT:-}" ]; then echo "Not logged in"; exit 1; fi
+  echo "Logged in using ChatGPT"; exit 0
+fi
+printf '%s\\0' "$@" > "${cxArgv}"
+sleep 60
+`, { mode: 0o755 });
+      writeFileSync(join(bin, 'copilot'), `#!/usr/bin/env bash
+printf '%s\\0' "$@" > "${cpArgv}"
+printf '%s' "\${COPILOT_CUSTOM_INSTRUCTIONS_DIRS:-}" > "${cpArgv}.dirs"
+sleep 60
+`, { mode: 0o755 });
+      tmuxKill(`codex-${proj}`); tmuxKill(`copilot-${proj}`);
+      const refused = shell(`u:${ownerUid}:codex:${proj}:b:${boot}`, { FAKE_CODEX_OUT: '1' });
+      ok(/not signed in to ChatGPT/.test(refused) && /Agents page/.test(refused) && !alive(`codex-${proj}`),
+         `signed out of ChatGPT, a Codex session is refused with where to sign in (${refused.trim().split('\n')[0]})`);
+      shell(`u:${ownerUid}:codex:${proj}:b:${boot}`);
+      await sleep(400);
+      ok(alive(`codex-${proj}`) && alive(`claude-${proj}`),
+         'the owner opens a Codex session beside their Claude one on the same project: two agents at once');
+      const cwt = join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-codex`);
+      ok(tmuxFmt(`codex-${proj}`, '#{pane_start_path}') === cwt && existsSync(join(cwt, 'README.md')),
+         `...in a worktree of its own, not the project directory the Claude session is in (${cwt})`);
+      ok(/branch refs\/heads\/codex\//.test(git(['worktree', 'list', '--porcelain'])),
+         '...on a codex/ branch of its own, so the two meet through git as two people do');
+      ok(/project\/wtproj\/codex-run\.sh$/.test(tmuxFmt(`codex-${proj}`, '#{pane_start_command}')),
+         '...started through a launcher named for its agent');
+      const cx = existsSync(cxArgv) ? readFileSync(cxArgv, 'utf8').split('\0') : [];
+      const di = cx.find(a => a.startsWith('developer_instructions=')) || '';
+      let said = '';
+      try { said = JSON.parse(di.slice('developer_instructions='.length)); } catch { said = ''; }
+      ok(cx[0] === '--no-alt-screen' && cx.includes('-c') && /THE HOUSE RULES/.test(said),
+         `...handed the briefing as developer instructions, added to Codex's own (${cx.slice(0, 2).join(' ')} ${di.slice(0, 40)})`);
+      const toml = existsSync(join(HOMEDIR, '.codex', 'config.toml')) ? readFileSync(join(HOMEDIR, '.codex', 'config.toml'), 'utf8') : '';
+      ok(toml.includes(`[projects."${cwt}"]`) && /trust_level = "trusted"/.test(toml),
+         '...and its tree answered as trusted, so its first run asks nothing a read-only console cannot answer');
+      // Copilot: no status verb of its own, so the login its config
+      // remembers is what says it is signed in.
+      rmSync(join(HOMEDIR, '.copilot'), { recursive: true, force: true });
+      const cpRefused = shell(`u:${ownerUid}:copilot:${proj}:b:${boot}`);
+      ok(/not signed in to Copilot/.test(cpRefused) && !alive(`copilot-${proj}`),
+         'a Copilot session with no GitHub login remembered is refused the same way');
+      mkdirSync(join(HOMEDIR, '.copilot'), { recursive: true });
+      writeFileSync(join(HOMEDIR, '.copilot', 'config.json'), JSON.stringify({ lastLoggedInUser: { host: 'https://github.com', login: 'octo' } }));
+      shell(`u:${ownerUid}:copilot:${proj}:b:${boot}`);
+      await sleep(400);
+      const cp = existsSync(cpArgv) ? readFileSync(cpArgv, 'utf8').split('\0') : [];
+      const dirs = existsSync(`${cpArgv}.dirs`) ? readFileSync(`${cpArgv}.dirs`, 'utf8') : '';
+      ok(alive(`copilot-${proj}`) && cp[0] === '--no-auto-update',
+         `signed in, a Copilot session starts, its own updater off (${cp.slice(0, 1).join(' ')})`);
+      ok(dirs && existsSync(join(dirs, 'AGENTS.md')) && /THE HOUSE RULES/.test(readFileSync(join(dirs, 'AGENTS.md'), 'utf8'))
+         && !dirs.startsWith(src),
+         `...handed the briefing as an AGENTS.md in a folder of its own, outside the project's tree (${dirs})`);
+      const cpConf = JSON.parse(readFileSync(join(HOMEDIR, '.copilot', 'config.json'), 'utf8'));
+      ok((cpConf.trustedFolders || []).includes(join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-copilot`))
+         && cpConf.lastLoggedInUser?.login === 'octo',
+         '...its tree trusted in its config, and what was there kept');
+      tmuxKill(`codex-${proj}`); tmuxKill(`copilot-${proj}`);
+      // Their trees go, so what follows counts the two people's alone.
+      for (const ag of ['codex', 'copilot']){
+        try { git(['worktree', 'remove', '--force', join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-${ag}`)]); } catch { /* not made */ }
+      }
+    }
     // TWO ACCOUNTS ON ONE PROJECT KEEP THEIR OWN CACHE (B159). Every session
     // file lives under the account's id, because on a node the cache folder is
     // one folder for everybody: without that level the second session to start

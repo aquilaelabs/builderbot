@@ -1500,6 +1500,9 @@ def _census(c):
             # copy is the node's own directory (R163).
             "writable": None if "writable" not in se else bool(se.get("writable")),
             "claude": str(se.get("claude") or "")[:40],
+            # ...and each other coding agent's version as it printed it,
+            # under the agent table's census key (R95).
+            **{a.reported: str(se.get(a.reported) or "")[:40] for a in agents.installable() if a.id != "claude"},
             "bundle": str(se.get("bundle") or "")[:80],
             # The agent's own sentence for a half that is down (no session
             # account, no ttyd, a port taken), which the row's dead button
@@ -2783,7 +2786,7 @@ def node_gpu_compute(principal, node_id, on):
 
 # The jobs a Reboot or a Shut down waits for, and how the refusal names each.
 POWER_WAITS = {"toolchain": "a toolchain install or removal", "image": "a system image install",
-               **{a.update_job: f"a {a.product} update" for a in agents.live()}}
+               **{a.update_job: f"a {a.product} update" for a in agents.installable()}}
 
 
 def node_power(principal, node_id, what):
@@ -3503,7 +3506,8 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-cle
              # where the account cannot write it, claudecode.py). An install
              # is queued by an administrator's press and nothing else; the
              # agent's sessions on the node are ended first.
-             *(j for a in agents.live() for j in (a.login_job, a.logout_job, a.update_job) if j),
+             *(j for a in agents.TABLE for j in (a.login_job, a.logout_job) if j),
+             *(a.update_job for a in agents.installable()),
              # A line typed into a Claude session on the node, Enter pressed
              # only once the pane echoes it (notify.py's rule, run where the
              # pane is): the roadmap's and the tracker's Send to Claude.

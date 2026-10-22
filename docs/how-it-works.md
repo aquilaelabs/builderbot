@@ -19,6 +19,7 @@ edge:
 | Projects | Every project as a card; making, linking, archiving and deleting one | [projects.md](projects.md) |
 | A project's page | Its notebook: Overview, Roadmap, Bugs, Git, Tests, Analysis, Artifacts, Docker, Wiki, Design | [notebook.md](notebook.md) |
 | Build | Toolchains, Emulator and Phone | [toolchains.md](toolchains.md) |
+| Build | Agents: the coding agents on each node, their versions and your sign-in there | [agents.md](agents.md) |
 | Build | CI runner, builds, tests, the scanner's findings, signing and releases | [building.md](building.md) |
 | Containers | The Docker manager and nginx | [containers.md](containers.md) |
 | Machines, Jobs | Controller settings, Nodes, Storage and the job queue | [machines.md](machines.md) |

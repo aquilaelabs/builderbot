@@ -1341,7 +1341,7 @@ def rebuild(project, instance=devapp.MAIN, ack="", gate=True, beside=""):
     `gate` is False for a build its project's setting has already answered
     for: a session's on auto, or a person's Allow on a session's question.
     The confirmation of what a compose asks for is a person's own press of
-    Build; a session's build follows Claude may: Run its container like
+    Build; a session's build follows Agents may: Run its container like
     every other (the operator, 26 Sep: auto does it, ask asks, deny
     refuses)."""
     if devapp.compose_file(project) is None:

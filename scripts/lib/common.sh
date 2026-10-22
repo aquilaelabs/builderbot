@@ -639,17 +639,30 @@ BB_WORKTREES="${BB_WORKTREES:-${WORKSPACE:-/workspace}/.worktrees}"
 # a worktree can never be mistaken for a project, land on the sibling deny list
 # or appear in the picker.
 
-# session_dir PROJECT UID: where that account's session on that project works.
+# session_dir PROJECT UID [AGENT]: where that account's session of that coding
+# agent on that project works.
 #
-# Prints the path. The project's own directory for the owner and for no account
-# at all; a worktree for anybody else, made on first use and reused after, so
-# somebody coming back to a project finds the branch they left.
+# Prints the path. The project's own directory for the owner's Claude and for
+# no account at all; a worktree for anybody else, made on first use and reused
+# after, so somebody coming back to a project finds the branch they left.
+#
+# EACH AGENT ITS OWN TREE (R95, the operator, 22 Oct). One person may run a
+# Claude session and a Codex session on one project at once, and in one tree
+# they would trample each other exactly as two people would. So an agent
+# other than Claude works in a worktree of its own on a branch of its own,
+# <agent>/<name>, the owner's included; Claude keeps claude/<name> and the
+# owner's project directory, so nothing that exists moves. Their work meets
+# through git, as two people's does.
 session_dir() {
-    local proj="${1:-}" uid="${2:-}" src="${WORKSPACE:-/workspace}/$1" wt branch
+    local proj="${1:-}" uid="${2:-}" agent="${3:-claude}" src="${WORKSPACE:-/workspace}/$1" wt branch
     [ -d "$src" ] || { printf '%s' "$src"; return 0; }
     case "$uid" in
         u_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
         *) printf '%s' "$src"; return 0 ;;
+    esac
+    case "$agent" in
+        claude|'') agent=claude ;;
+        *[!a-z]*) printf '%s' "$src"; return 0 ;;
     esac
     # THE TREE RULE IS THE SAME ON BOTH MACHINES, unlike the home and the
     # session names: the project directory is on the share, so the owner
@@ -660,8 +673,8 @@ session_dir() {
     # transcripts would not line up. A node has no users.json to say who the
     # owner is, so the controller says it in the terminal's URL (owner:1)
     # and bb-tty exports BB_TREE_OWNER.
-    if [ "$uid" = "${BB_OWNER_UID:-$(owner_uid)}" ] \
-       || { on_node && [ "${BB_TREE_OWNER:-}" = 1 ] && [ "${BB_ACCOUNT_UID:-}" = "$uid" ]; }; then
+    if [ "$agent" = claude ] && { [ "$uid" = "${BB_OWNER_UID:-$(owner_uid)}" ] \
+       || { on_node && [ "${BB_TREE_OWNER:-}" = 1 ] && [ "${BB_ACCOUNT_UID:-}" = "$uid" ]; }; }; then
         printf '%s' "$src"; return 0
     fi
     # Not a git repo: there is no worktree to make, and refusing would be worse
@@ -669,8 +682,9 @@ session_dir() {
     # in through git either.
     git -C "$src" rev-parse --git-dir >/dev/null 2>&1 || { printf '%s' "$src"; return 0; }
     wt="$BB_WORKTREES/$proj/$uid"
+    [ "$agent" = claude ] || wt="$wt-$agent"
     if [ -d "$wt" ]; then printf '%s' "$wt"; return 0; fi
-    branch="claude/$(account_name "$uid" || printf '%s' "$uid")"
+    branch="$agent/$(account_name "$uid" || printf '%s' "$uid")"
     mkdir -p "$(dirname "$wt")" 2>/dev/null || { printf '%s' "$src"; return 0; }
     # An existing branch is checked out rather than recreated: this is somebody
     # returning to work they left, and -b on a branch that exists fails.

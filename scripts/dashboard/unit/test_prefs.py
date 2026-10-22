@@ -62,6 +62,16 @@ class Gpu(unittest.TestCase):
     def test_anything_else_is_refused(self):
         self.assertIn("error", prefs.set_prefs("alpha", gpu="maybe"))
 
+    def test_coding_agents_are_allowed_until_switched_off(self):
+        # R95: every live agent beside Claude may run until the project
+        # says otherwise; Claude is not one to switch off.
+        self.assertEqual((prefs.get("alpha") or {}).get("agents_off", []), [])
+        self.assertNotIn("error", prefs.set_prefs("alpha", agents_off="copilot,codex"))
+        self.assertEqual(prefs.get("alpha")["agents_off"], ["codex", "copilot"])
+        self.assertIn("error", prefs.set_prefs("alpha", agents_off=["claude"]))
+        prefs.set_prefs("alpha", agents_off="")
+        self.assertEqual((prefs.get("alpha") or {}).get("agents_off", []), [])
+
 
 class NodeChanged(unittest.TestCase):
     """B488: the dialog sends every field on every save, so only a change

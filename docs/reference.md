@@ -80,7 +80,7 @@ bb version unbump      take the last unreleased bump or set back; its
 bb version release --why "..."
                    tag this commit and publish the release, as Release on the
                    Artifacts view does, on the controller with the project's own
-                   credentials. The project's settings say whether Claude may
+                   credentials. The project's settings say whether an agent may
                    (Tag and publish a release): auto releases, ask waits for
                    the project's owner, with --why as the reason
 bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...
@@ -98,7 +98,7 @@ bb version release --remove NAME [--remove NAME]... --why "..." [--tag TAG]
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component: a directory with its own VERSION
 bb version policy  what a session may move here, and who decides. A
-                   person picks it in the project's settings (Claude may:
+                   person picks it in the project's settings (Agents may:
                    Move the version) or on the Artifacts view, before or after
                    there is a version: locked (theirs entirely), may start
                    one (a session writes the FIRST version and moves nothing
@@ -246,7 +246,7 @@ bb devapp probe [--port N] [--path /x]
                    so no root ask; --container NAME for another of the project's
 bb devapp rebuild [--why "..."]
                    build it and bring it up. Only where the project has handed that
-                   over: Claude may: Run its container, in its settings dialog and
+                   over: Agents may: Run its container, in its settings dialog and
                    the new-project dialog, reads deny (the default, refused with the
                    sentence that names it), ask (the reason goes to a person and the
                    command waits for Approve) or auto. Up, Down and a container of
@@ -296,7 +296,7 @@ bb sign FILE [--for play|sideload] [--why "..."]
                    its password never reach the session. --for play is the Play
                    upload key (the default for an .aab), sideload the app signing
                    key (the default for an .apk). The project's settings say
-                   whether Claude may (Sign a build): auto signs, ask waits for
+                   whether an agent may (Sign a build): auto signs, ask waits for
                    the project's owner to allow it, with --why as the reason.
                    Arrives in dist/ as NAME-signed.apk or .aab. --key NAME signs
                    with that key; without it, the key the build's package is
@@ -307,7 +307,7 @@ bb sign key new NAME --for play|sideload --why "..."
 bb sign map PACKAGE KEY --why "..."
 bb sign rotate OLD NEW --why "..."
                    a new key made on the controller, or an app's package mapped
-                   to a key (KEY "" unmaps it), under Claude may: Manage signing
+                   to a key (KEY "" unmaps it), under Agents may: Manage signing
                    keys: auto does it, ask waits for the project's owner. rotate
                    moves the apps OLD's sideload key signs to NEW's: builds go out
                    signed with both and a proof, Android 9 and newer take NEW,
@@ -370,7 +370,7 @@ bb devapp test [ARGS]  the project's test command inside its running dev instanc
                    where "Tests run" in the project's settings says the dev instance, so a suite that
                    tests BuilderBot cannot disturb the BuilderBot it runs on (roadmap R48). Only for an
                    image that carries its tests: one built to ship has none, and a run inside it finds
-                   nothing and passes. Claude may: Run its container is not asked: a test runs in a
+                   nothing and passes. Agents may: Run its container is not asked: a test runs in a
                    container that is already up
 bb tests unit      the python unit tier (scripts/dashboard/unit): the modules' rules without a server
                    or a browser, in under a second; preflight runs it before any suite
@@ -422,7 +422,7 @@ bb wiki            the project's wiki, from the notebook's Wiki view: its pages,
                    who changed each last, and where it is pushed
 bb wiki show NAME [--rev]   one page's Markdown (--rev: the revision a save checks)
 bb wiki save NAME FILE|- [--why "..."]   write a page whole, new or rewritten,
-                   under Claude may: Write the wiki: auto lands it, ask holds it
+                   under Agents may: Write the wiki: auto lands it, ask holds it
                    for the operator, deny refuses it, hidden keeps the whole
                    wiki from a session, reading included. A page changed since the
                    save began is refused rather than overwritten
@@ -506,7 +506,7 @@ bb vm ip NAME | ssh NAME [COMMAND...]
 bb container       what container asks are waiting on an administrator
 bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
                    a container built from a compose file the session wrote,
-                   under the project's *Claude may: Run its container*: refused
+                   under the project's *Agents may: Run its container*: refused
                    at deny, asked at ask (an administrator reads the file on
                    the bell, and Approve registers it through the Containers page's own
                    New container path and starts its build), and at auto made
@@ -571,7 +571,7 @@ bb report "..." [--area A] [--repro "..."]
                    says so), redacted like the diagnostics, and nothing comes
                    back to follow up. A `bb bug add` whose words name
                    BuilderBot or a `bb` command is not filed but sent here,
-                   unless `--here` says it is the project's own. *Claude may: Report
+                   unless `--here` says it is the project's own. *Agents may: Report
                    BuilderBot bugs* in a project's settings turns all of it off
                    for that project, rule and nudge included: BuilderBot's own
                    project, whose tracker those bugs belong in, has it off
@@ -583,7 +583,7 @@ bb pc [VERB] [--why "..."]
                    (editor-start, editor-stop, game-start, game-stop, build,
                    shot, log, editor-call METHOD PATH) runs on the PC as its
                    person set it up there and waits for what it did, a
-                   picture landing in dist/pc/. Under *Claude may: Use a lent
+                   picture landing in dist/pc/. Under *Agents may: Use a lent
                    PC* (Deny by default; Ask puts each use in front of the
                    person at the PC); never a command string
 bb doctor          check everything that usually goes wrong
@@ -704,7 +704,7 @@ environment.
 A project keeps its Android keys on the controller, under **Android signing** in
 its settings, and a build is signed on its node as a job no session can look
 inside: from the Artifacts view, or by a session with `bb sign`, under the
-project's **Claude may: Sign a build**. No key is made or added until the
+project's **Agents may: Sign a build**. No key is made or added until the
 project's owner has set its **backup password**, which every download of a
 key's backup asks for, BuilderBot's owner included; a backup goes only to an
 administrator who works on the project.

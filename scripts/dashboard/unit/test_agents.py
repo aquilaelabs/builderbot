@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import unittest
+import unittest.mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
@@ -20,9 +21,9 @@ node = agentpkg.load("builderbot_agent")
 
 
 class Table(unittest.TestCase):
-    def test_four_agents_with_claude_first_and_the_only_live_one(self):
+    def test_four_agents_with_claude_first_and_the_open_one_not_live_yet(self):
         self.assertEqual([a.id for a in agents.TABLE], ["claude", "codex", "copilot", "open"])
-        self.assertEqual([a.id for a in agents.live()], ["claude"])
+        self.assertEqual([a.id for a in agents.live()], ["claude", "codex", "copilot"])
         self.assertIs(agents.default(), agents.get("claude"))
 
     def test_every_row_is_well_formed(self):
@@ -61,11 +62,17 @@ class Names(unittest.TestCase):
         self.assertEqual(agents.of_session(""), (None, ""))
 
     def test_a_planned_agent_s_names_are_not_read_as_its_yet(self):
-        # A scratch session somebody called codex-x stays a scratch session
-        # until Codex is wired.
-        self.assertEqual(agents.of_session("codex-alpha"), (None, ""))
-        self.assertEqual(agents.of_arg("codex:alpha"), (None, ""))
-        self.assertFalse(idle.is_claude("codex-alpha"))
+        # A scratch session somebody called open-x stays a scratch session
+        # until the open agent is wired.
+        self.assertEqual(agents.of_session("open-alpha"), (None, ""))
+        self.assertEqual(agents.of_arg("open:alpha"), (None, ""))
+        self.assertFalse(idle.is_claude("open-alpha"))
+
+    def test_codex_and_copilot_sessions_are_read_as_theirs(self):
+        a, stem = agents.of_session("codex-alpha")
+        self.assertEqual((a.id, stem), ("codex", "alpha"))
+        self.assertEqual(agents.of_arg("copilot:alpha")[0].id, "copilot")
+        self.assertTrue(idle.is_claude("u_0123abcd~copilot-alpha"))
 
     def test_an_argument_reads_back_its_agent_and_project(self):
         a, rest = agents.of_arg("claude:alpha:r:abc-123:n:n1")
@@ -85,6 +92,35 @@ class Names(unittest.TestCase):
         self.assertFalse(idle.is_claude("shell-claude-alpha"))
 
 
+class Asker(unittest.TestCase):
+    """The dials hold for every agent's session alike; which agent asked is
+    named on the record beside `by`, for display (the operator, 22 Oct)."""
+
+    def test_a_session_s_record_names_its_agent(self):
+        with unittest.mock.patch.dict(os.environ, {"BB_AGENT": "codex"}):
+            self.assertEqual(agents.asker("claude"), {"agent": "codex"})
+            self.assertEqual(agents.asker("you"), {})
+
+    def test_no_agent_or_an_unknown_one_adds_nothing(self):
+        with unittest.mock.patch.dict(os.environ, {"BB_AGENT": "nonsense"}):
+            self.assertEqual(agents.asker("claude"), {})
+        env = {k: v for k, v in os.environ.items() if k != "BB_AGENT"}
+        with unittest.mock.patch.dict(os.environ, env, clear=True):
+            self.assertEqual(agents.asker("claude"), {})
+
+    def test_a_held_change_names_the_agent_that_asked(self):
+        import pending
+        import tempfile
+        import statefile
+        d = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, d, True)
+        pending.configure(write_json=statefile.write_json, state=d)
+        with unittest.mock.patch.dict(os.environ, {"BB_AGENT": "copilot"}):
+            r = pending.hold("alpha", "roadmap", "add", {}, "an item", number=3)
+        self.assertEqual((r["held"]["by"], r["held"]["agent"]), ("claude", "copilot"))
+        self.assertIn("Agents may: Add to roadmap", pending.refusal("roadmap"))
+
+
 class Copies(unittest.TestCase):
     def test_the_page_s_table_is_this_one(self):
         with open(os.path.join(HERE, "..", "page-agents.js")) as f:
@@ -98,6 +134,19 @@ class Copies(unittest.TestCase):
     def test_the_node_agent_s_prefixes_are_the_live_rows(self):
         self.assertEqual(tuple(node.AGENT_PREFIXES), agents.prefixes())
 
+    def test_each_live_agent_s_launcher_may_be_respawned(self):
+        for a in agents.live():
+            line = f"/home/x/.cache/builderbot/u/u_0000abcd/project/p/{a.id}-run.sh"
+            self.assertIsNotNone(re.fullmatch(node.RESPAWNABLE, line), a.id)
+        self.assertIsNone(re.fullmatch(node.RESPAWNABLE, "/home/x/.cache/builderbot/project/p/sh-run.sh"))
+
+    def test_an_agent_s_own_worktree_syncs_as_its_account_s(self):
+        import wssync
+        self.assertEqual(wssync.worktree_of(".worktrees/alpha/u_0123abcd-codex"), ("alpha", "u_0123abcd", "u_0123abcd-codex"))
+        self.assertEqual(wssync.worktree_of(".worktrees/alpha/u_0123abcd"), ("alpha", "u_0123abcd", "u_0123abcd"))
+        self.assertIsNone(wssync.worktree_of(".worktrees/alpha/u_0123abcd-Codex"))
+        self.assertTrue(node.module("wssync").WT_UNIT.fullmatch(".worktrees/alpha/u_0123abcd-copilot"))
+
 
 class Sessions(unittest.TestCase):
     def setUp(self):
@@ -106,7 +155,7 @@ class Sessions(unittest.TestCase):
             {"name": "u_0123abcd~claude-alpha", "claude": {"state": "asking"}},
             {"name": "shell-alpha"},
             {"name": "shell-alpha-2"},
-            {"name": "codex-alpha"},
+            {"name": "open-alpha"},
         ]
         projsessions.configure(
             sessions=lambda: self.rows,

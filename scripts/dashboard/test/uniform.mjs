@@ -43,6 +43,12 @@ const DRIVERS = {
     open: () => page.evaluate(() => openToolchains()),
     readyWhen: '.tctab .tc',
   },
+  // The coding agents on a node (R95 step 15): a section per agent, or the
+  // empty band on a box with no agent node.
+  agents: {
+    open: () => page.evaluate(() => openAgentsTab()),
+    readyWhen: '.agentstab [data-agnode] details.sect, .agentstab .empty',
+  },
   emulator: {
     // The harness's sandbox node reports a store, so the tab draws its head.
     open: () => page.evaluate(() => openEmulator()),

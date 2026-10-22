@@ -1935,6 +1935,10 @@ select:focus{outline-offset:-2px}
 .storagetab .ndmeter .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .storagetab .ndmeter .val{white-space:normal;overflow-wrap:anywhere;text-align:right}
 @media (max-width:600px){.storagetab .ndmeter{grid-template-columns:6em minmax(0,1fr) 7.5em}}
+/* The Agents tab (tab-agents.js, R95): a device sign-in's one-time code,
+   what the person types on the provider's page, a short mono fact set
+   apart by its weight and spacing, and taken whole by one press. */
+.agentstab .sicode{font:var(--f-data);font-weight:600;letter-spacing:.12em;user-select:all}
 /* The nginx tab (tab-nginx.js): its sections hold field bands, which carry
    their own inset, so the body adds none (as a settings group's does). */
 /* ...and its routes, a table of records (the record-lists rule): a row
@@ -2169,7 +2173,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .macros button svg{width:14px;height:14px;fill:none;stroke:currentColor;
   stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;
   vertical-align:-2px;margin-right:5px}
-/* A group of picks (Claude may, Yours on this project, the new-project
+/* A group of picks (Agents may, Yours on this project, the new-project
    dialog's): a grid of equal columns, each pick its label above its control
    (the design language, Controls), so every select starts at the same x and
    is the same width whatever its label says. The label was beside the
@@ -5451,7 +5455,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          form and one set of handlers. .modal.inline lets every dialog rule
          style it where it is. -->
     <div class="nbview" data-view="settings" hidden>
-      <div class="field nbhead vbar"><span>how this project runs, and what Claude may do here</span><span class="sp"></span></div>
+      <div class="field nbhead vbar"><span>how this project runs, and what an agent may do here</span><span class="sp"></span></div>
       <div class="modal inline nbsettings"></div>
     </div>
     <!-- The reading room. A history and the changelog are things you READ,
@@ -5578,7 +5582,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     <!-- In sections, each titled and each hiding itself when none of its
          fields is shown (the chain's door shows the remote alone): what
          the project is and who it belongs to, where it runs, what a
-         session sees, how it builds, its signing keys, what Claude may
+         session sees, how it builds, its signing keys, what an agent may
          do, what is yours, and who is in it now (the operator, 1 Oct). -->
     <details class="sect rngroup" data-sect="rn:project"><summary><span class="t">General</span></summary><div class="body">
     <div class="field" id="rnNameField">
@@ -5590,7 +5594,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     </div></details>
     <!-- People, a section of its own (R255 step 7): who the project is for
          is not what it is called, and the dialog reads People (who) apart
-         from Claude may (what its sessions do). -->
+         from Agents may (what its sessions do). -->
     <details class="sect rngroup" data-sect="rn:people" hidden><summary><span class="t">People</span></summary><div class="body">
     <!-- Who the project belongs to and who joins it (membership.py): the
          owner and Invite only are staged until Save; Invite and Withdraw are
@@ -5600,11 +5604,11 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div id="rnPeople" role="group" aria-labelledby="rnPeopleLabel"></div>
     </div>
     </div></details>
-    <details class="sect rngroup" data-sect="rn:claude"><summary><span class="t">Claude may</span></summary><div class="body">
+    <details class="sect rngroup" data-sect="rn:claude"><summary><span class="t">Agents may</span></summary><div class="body">
     <!-- How much the operator wants to be in the loop on what a session
          ENTERS into the notebook (roadmap #27). Creation only: what is
          already on a list a session may still tick, note and reword. -->
-    <!-- Everything Claude may or may not do on this project, in one place
+    <!-- Everything Agents may or may not do on this project, in one place
          (the operator, 25 Sep): what a session enters, what it runs, and
          what a change asked for does while a test run is going. -->
     <div class="field" id="rnGateField">
@@ -5681,6 +5685,13 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           aria-label="reporting problems with BuilderBot itself, from a session"></select></label>
       </div>
       <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
+    </div>
+    <!-- The coding agents beside Claude its sessions may run (R95): each
+         installed and signed in on a node, ticked here to be offered. -->
+    <div class="field" id="rnAgentsField">
+      <label id="rnAgentsLabel">Coding agents</label>
+      <div class="lbox" id="rnAgents" role="group" aria-labelledby="rnAgentsLabel"></div>
+      <div class="hint">A session of an agent left unticked does not start on this project. Claude always may.</div>
     </div>
         <!-- The Git view's session dials, shown here with the rest of what its
          sessions may do (R255 step 7) and set there, where the push they
@@ -5815,7 +5826,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            the rest prefs.nodes. Drawn by rnFillNodesMore. -->
       <label id="rnNodesLabel" hidden>Also works on</label>
       <div class="lbox" id="rnNodesMore" role="group" aria-labelledby="rnNodesLabel" hidden></div>
-      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them. One marked Hosting only takes containers alone, built on the project's node and sent there; its sessions may make, rebuild and remove them there under Claude may: Run its container. A hosting node not ticked is yours to copy to and rebuild on from the Docker tab.</div>
+      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them. One marked Hosting only takes containers alone, built on the project's node and sent there; its sessions may make, rebuild and remove them there under Agents may: Run its container. A hosting node not ticked is yours to copy to and rebuild on from the Docker tab.</div>
       <!-- What the project may use there (R102): the card, and where its
            tests run when it has a dev instance. -->
       <div class="prefrow ctlrow">
@@ -6348,7 +6359,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          whoever makes the project rather than found later. Auto by default;
          the settings dialog changes it afterwards. -->
     <div class="field" id="pGateField" hidden>
-      <label id="pGateLabel">Claude may</label>
+      <label id="pGateLabel">Agents may</label>
       <!-- The dials start at their defaults and live on the project's
            Settings view (R245): a dialog is for what cannot wait. The
            selects stay, hidden, since the submit reads them. -->
@@ -6368,7 +6379,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           aria-label="the build, test and outputs fields from a session"></select></label>
         <label class="pick">Run its container <select id="pGateDocker"
           aria-label="rebuilding, changing the env of or creating this project's container, from a session"></select></label>
-        <!-- The rest of the project settings' Claude may, so a project is
+        <!-- The rest of the project settings' Agents may, so a project is
              born with every one of them chosen rather than found later. -->
         <label class="pick">Sign a build <select id="pGateSign"
           aria-label="signing an APK or bundle with this project's keys, from a session"></select></label>
@@ -6656,6 +6667,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="tab-profile.js"></script>
 <script src="tab-apps.js"></script>
 <script src="tab-toolchains.js"></script>
+<script src="tab-agents.js"></script>
 <script src="tab-emulator.js"></script>
 <script src="tab-docker.js"></script>
 <script src="page-welcome.js"></script>  <!-- a part of the page that is no tab: same rule -->
@@ -7378,6 +7390,8 @@ onRev("settings", () => refresh());
 // is a third clock for a fact the poll already carries.
 onRev("toolchains", () => {
   if (tabs.some(t => t.kind === "toolchains")) loadToolchains();
+  // ...and the Agents page, whose rows are a node's toolchain rows (R95).
+  if (shown("agents")) loadAgents();
 });
 // Google's image index landing, for the Emulator tab's picker.
 onRev("emulator", () => {
@@ -7413,6 +7427,8 @@ onRev("nodes", () => {
   // ...and Storage, whose walk lands with a node's census: the numbers a
   // Measure now asked for arrive with no Refresh (the operator, 17 Oct).
   if (shown("storage")) loadStorage();
+  // ...and the Agents page, whose versions ride a node's census (R95).
+  if (shown("agents")) loadAgents();
   if (shown("emulator") && emu?.nonode) loadEmulator();
   // ...and Home's Getting started, which says whether a node is online.
   if (shown("home") && homeStartReadsNodes()) loadNodes().then(() => drawPanes());

@@ -1949,7 +1949,7 @@ def create_from_dialog(req, *, env, account, may_node):
         r = set_prefs(name, devbuild=str(devbuild))
         if r.get("error"):
             body["note"] = f"{body.get('note') or 'ready'}; Run its container not set: {r['error']}"
-    # ...and the rest of Claude may, each only where it differs from the
+    # ...and the rest of Agents may, each only where it differs from the
     # default a project gets anyway.
     for key, dflt, label in (("sign", "ask", "Sign a build"), ("keys", "ask", "Manage signing keys"),
                              ("release", "ask", "Tag and publish a release"),

@@ -30,7 +30,7 @@ Each project is a git repository ([projects.md](projects.md)).
 - Groups, pins, a color of your own, rename, archive, and a trash that
   keeps a deleted project until it is purged.
 - A per-project **Settings** page: its node, build and test commands, what
-  Claude may do, the toolchains its sessions may use, signing keys, file
+  an agent may do, the toolchains its sessions may use, signing keys, file
   access and who is on it.
 
 ## A project's page
@@ -60,7 +60,7 @@ works there ([notebook.md](notebook.md)).
   and effort.
 - Each session starts **briefed**: the project's house rules, roadmap and
   open bugs, so you ask for the thing rather than explain the place.
-- **What Claude may do is a dial per project**: add to the roadmap, file
+- **What an agent may do is a dial per project**: add to the roadmap, file
   bugs, add rules, write the wiki, run its container, sign a build, publish
   a release. Each is allowed, asked of a person, or refused.
 - **A session sees only its own project** on disk, with your git identity on

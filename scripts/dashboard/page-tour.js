@@ -38,9 +38,13 @@ const TOUR_STEPS = {
     {at: TOUR_BAR, say: "Narrow it by project or by kind here."},
   ],
   toolchains: [
-    {say: "Toolchains are the SDKs and tools a node has for builds, tests and sessions: Android, Flutter, Node and the rest, Claude Code among them."},
+    {say: "Toolchains are the SDKs and tools a node has for builds, tests and sessions: Android, Flutter, Node and the rest."},
     {at: TOUR_BAR, say: "Pick the node here. Install and Remove act on what you tick; Check for updates reads what is newer."},
     {at: TOUR_FIRST, say: "Each toolchain says what is installed and whether a newer one is out. Some ask you to accept a license first, and that is always yours to accept."},
+  ],
+  agents: [
+    {say: "The coding agents a session on a node can run: Claude Code, and Codex CLI and Copilot CLI beside it, each installed for the node's session account."},
+    {at: TOUR_BAR, say: "Pick the node here. Each agent's section says its version and updates it, and holds your sign-in on that node: a sign-in is one node's, never carried to another."},
   ],
   emulator: [
     {say: "The Android emulator on a node: the system images it holds and the virtual devices made from them."},

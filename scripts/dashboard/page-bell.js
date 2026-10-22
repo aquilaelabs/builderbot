@@ -210,6 +210,9 @@ function attRow(a){
     // the projects bound to the node.
     const cc = a.tools.some(t => t.name === "claude-code") && a.sessions > 0;
     const n = a.tools.length;
+    // Only coding agents behind: their page is the Agents page (R95 step 15).
+    const ag = a.tools.every(t => TC_AGENT_TOOLS.has(t.name));
+    const where = ag ? "Agents page" : "Toolchains page";
     return `<div class="bnote att">
       <div class="bt">${n} toolchain update${n === 1 ? "" : "s"} on ${esc(a.node)}</div>
       <div class="bsum">${a.tools.map(t => esc(t.label)).join(", ")}</div>
@@ -218,9 +221,9 @@ function attRow(a){
       <details class="bdetail"${sectAttr("bell:tc:" + a.id)}><summary>versions${cc ? " and sessions" : ""}</summary><pre>${
         a.tools.map(t => `${esc(t.label)}: ${esc(t.from || "?")} → ${t.to === "newer" ? "a newer version" : esc(t.to)}`).join("\n")}${
         cc ? `\n\nsessions there: ${a.projects.map(esc).join(", ")}` : ""}</pre></details>
-      <div class="bfoot"><span>on its Toolchains page</span>
+      <div class="bfoot"><span>on its ${where}</span>
         <span class="acts">${keys ? `<a href="#" data-bdismiss="${esc(keys)}">Dismiss</a>` : ""}
-          <a href="#" data-btc="${esc(a.id)}">Toolchains page</a></span></div></div>`;
+          <a href="#" ${ag ? "data-bag" : "data-btc"}="${esc(a.id)}">${where}</a></span></div></div>`;
   }
   // A session the controller's outage held (R251): it was told to write
   // where it was and stop; Resume tells it to pick up from that note.
@@ -648,6 +651,12 @@ function wireNeeds(root, after = () => {}){
     e.preventDefault();
     after();
     openToolchainsOn(a.dataset.btc);
+  });
+  // ...and a coding agent's update to that node's Agents page (R95).
+  root.querySelectorAll("[data-bag]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    openAgentsOn(a.dataset.bag);
   });
   // ...and a container update to the Docker tab on that node.
   root.querySelectorAll("[data-bdocker]").forEach(a => a.onclick = e => {

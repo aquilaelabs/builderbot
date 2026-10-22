@@ -22,7 +22,7 @@ page-agents.js, held to this one by unit/test_agents.py; the node agent's
 prefixes (builderbot_agent/sessions.py AGENT_PREFIXES) by the same test.
 """
 import re
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -41,8 +41,8 @@ class Agent:
     state: str              # where working, waiting and asking are read from
     transcripts: str        # its conversations, under the account's home
     live: bool = False      # wired end to end: parsed, offered, started
-    version: str = r"(\d+\.\d+\.\d+)"
-    notes: tuple = field(default=())
+    tool: str = ""          # its row on a node's Toolchains page, "" when it has none yet
+    latest_url: str = ""    # where the newest release is asked (an npm registry `latest`)
 
     @property
     def arg(self):
@@ -55,6 +55,14 @@ class Agent:
         return self.id + "-"
 
 
+# What each was checked against when R95 began (22 Oct): Codex CLI 0.163.0,
+# Copilot CLI 1.0.102 and OpenCode 1.19.4, their help and docs read. Codex
+# and Copilot both carry hooks now (Codex's SessionStart, PreToolUse,
+# PermissionRequest, UserPromptSubmit and Stop; Copilot's sessionStart,
+# preToolUse, permissionRequest, userPromptSubmitted and agentStop), so
+# their guards and their state are hooks as Claude's are; OpenCode's are a
+# plugin's.
+#
 # How each takes the briefing: a system prompt file on its command line
 # (Claude's --append-system-prompt-file), or an instructions file in the
 # session's view that the agent reads the way it reads a project's own.
@@ -62,30 +70,33 @@ BRIEFING = {"system-prompt-file", "instructions-file"}
 # What holds the guards: the agent's own hooks (Claude's seven), or its
 # approval policy and sandbox with the bb-session view and the bb wrapper
 # holding what it has no hook for.
-GUARDS = {"hooks", "approval"}
-STATES = {"hooks", "session-log"}
+GUARDS = {"hooks", "plugin", "approval"}
+STATES = {"hooks", "plugin", "session-log"}
 
 TABLE = (
     Agent(id="claude", name="Claude", product="Claude Code", command="claude",
           provider="Anthropic", reported="claude", update_job="claude-update",
           login_job="claude-login", logout_job="claude-logout",
           briefing="system-prompt-file", guards="hooks", state="hooks",
-          transcripts=".claude/projects", live=True),
+          transcripts=".claude/projects", live=True, tool="claude-code"),
     Agent(id="codex", name="ChatGPT", product="Codex CLI", command="codex",
           provider="OpenAI", reported="codex", update_job="codex-update",
           login_job="codex-login", logout_job="codex-logout",
-          briefing="instructions-file", guards="approval", state="session-log",
-          transcripts=".codex/sessions"),
+          briefing="instructions-file", guards="hooks", state="hooks",
+          transcripts=".codex/sessions", tool="codex-cli", live=True,
+          latest_url="https://registry.npmjs.org/@openai/codex/latest"),
     Agent(id="copilot", name="Copilot", product="Copilot CLI", command="copilot",
           provider="GitHub", reported="copilot", update_job="copilot-update",
           login_job="copilot-login", logout_job="copilot-logout",
-          briefing="instructions-file", guards="approval", state="session-log",
-          transcripts=".copilot/session-state"),
+          briefing="instructions-file", guards="hooks", state="hooks",
+          transcripts=".copilot/session-state", tool="copilot-cli", live=True,
+          latest_url="https://registry.npmjs.org/@github/copilot/latest"),
     Agent(id="open", name="Any model", product="OpenCode", command="opencode",
           provider="", reported="opencode", update_job="opencode-update",
           login_job="", logout_job="",
-          briefing="instructions-file", guards="approval", state="session-log",
-          transcripts=".local/share/opencode"),
+          briefing="instructions-file", guards="plugin", state="plugin",
+          transcripts=".local/share/opencode",
+          latest_url="https://registry.npmjs.org/opencode-ai/latest"),
 )
 
 _BY_ID = {a.id: a for a in TABLE}
@@ -145,19 +156,33 @@ def session_name(agent_id, project):
     return re.sub(r"[.:]", "_", a.session + str(project))
 
 
+def installable():
+    """The agents a node's Toolchains page installs, Claude first: every
+    row with a toolchain row of its own, live or not yet, since an agent
+    is installed before a session can start it."""
+    return tuple(a for a in TABLE if a.tool)
+
+
+def asked_by():
+    """The agent whose session is asking, from BB_AGENT, which bb-tty's
+    launcher sets for every agent and the relay carries from a node: its
+    id, or "" when it is none of the table's. For what a record names as
+    its asker, never for whether it may: every gate holds for every agent's
+    session alike."""
+    import os
+    a = get(os.environ.get("BB_AGENT", ""))
+    return a.id if a else ""
+
+
+def asker(by):
+    """{"agent": id} for a record made by a session ("claude", the stored
+    word for any session's), {} otherwise: added beside `by`, which keeps
+    its stored values."""
+    a = asked_by() if by == "claude" else ""
+    return {"agent": a} if a else {}
+
+
 def prefixes():
     """The live agents' session prefixes, for a reader that only needs to
     say whether a name is an agent's (the node agent, idle.py)."""
     return tuple(a.session for a in live())
-
-
-def table():
-    """The table as plain data, in the shape page-agents.js declares."""
-    out = []
-    for a in TABLE:
-        d = asdict(a)
-        d.pop("version", None)
-        d.pop("notes", None)
-        d["arg"], d["session"] = a.arg, a.session
-        out.append(d)
-    return out

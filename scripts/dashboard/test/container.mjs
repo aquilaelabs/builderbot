@@ -137,7 +137,7 @@ ok((await api('/api/docker')).body.instances.some(i => i.project === 'sonarr-for
   const row = (await api('/api/phone')).body.asks.find(a => a.id === bySession.body.id);
   ok(row && row.for === 'alpha', `a session's ask belongs to its own project when it names none (${row?.for})`);
   await api('/api/phone', { action: 'deny', id: bySession.body.id });
-  // ...and it is under the project's Claude may: Run its container (B250,
+  // ...and it is under the project's Agents may: Run its container (B250,
   // the operator, 24 Sep): refused at deny, made at once at auto when it is
   // the project's own on its own node, and asked at auto all the same for
   // another project or a node it names.

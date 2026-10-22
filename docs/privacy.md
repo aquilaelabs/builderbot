@@ -63,7 +63,7 @@ projects share and each node's store.
 ## If you run BuilderBot for other people
 
 The data above is yours as the operator: you decide who has an account,
-which projects they see and what Claude may do, and any duty to tell the
+which projects they see and what an agent may do, and any duty to tell the
 people you give accounts to how their data is handled is yours. This page is
 meant as the basis for that notice. A BuilderBot that is reachable from the
 internet holds the same data, so it also needs the care any service holding

@@ -30,7 +30,12 @@ if tree:
                  "(the Nodes page's Sessions section says each project's state)")
 r = bbapi.call("/api/v1/bb", {"argv": argv, "project": project,
                               "cwd": os.getcwd(),
-                              "from": "session" if os.environ.get("CLAUDECODE") else "operator"},
+                              # A session of any coding agent (R95): Claude
+                              # Code sets CLAUDECODE, bb-tty's launcher sets
+                              # BB_AGENT for every agent, and which one rides
+                              # along for the record to name.
+                              "from": "session" if os.environ.get("CLAUDECODE") or os.environ.get("BB_AGENT") else "operator",
+                              "agent": os.environ.get("BB_AGENT", "")},
                auth=auth, timeout=200)
 if r.get("error") and "code" not in r:
     # The controller's own sentence, and nothing of how it traveled (B58).

@@ -12,7 +12,7 @@
 // under: the view and its placeholder (page-docs.js SKTPLS.git) both read
 // them, so neither falls behind the other (R218, the operator 18 Oct). CI
 // and a README come only with what the repository holds.
-const GIT_SECTS = [["changes", "Changes"], ["history", "History"], ["branches", "Branches"], ["policy", "Claude may"]];
+const GIT_SECTS = [["changes", "Changes"], ["history", "History"], ["branches", "Branches"], ["policy", "Agents may"]];
 const gitTitle = k => (GIT_SECTS.find(s => s[0] === k) || [k, k])[1];
 // The branches table's columns (R269 step 1), read by the view and by its
 // placeholder (page-docs.js SKTPLS.git), so the wait draws the same table.

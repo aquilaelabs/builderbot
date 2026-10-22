@@ -1,5 +1,5 @@
 // A project's settings dialog: its name, its nodes, the model and effort
-// every session starts on, its color, the dials of what Claude may do
+// every session starts on, its color, the dials of what an agent may do
 // there, the git credential, and the submit that applies each change in
 // turn. Unlinking and deleting a project start here too.
 //
@@ -98,6 +98,7 @@ function rnPrefsOf(p){
                hosts: (p?.prefs?.hosts || []).join(","),
                reads: (p?.prefs?.reads || []).join(","),
                tc_off: (p?.prefs?.tc_off || []).join(","), packs_on: (p?.prefs?.packs_on || []).join(","),
+               agents_off: (p?.prefs?.agents_off || []).join(","),
                sees: (p?.prefs?.sees || []).join(", "),
                reaches: JSON.stringify(p?.prefs?.reaches || []),
                debug: rnDebugKey(p?.prefs?.diag, p?.prefs?.log_from),
@@ -143,6 +144,7 @@ function rnFillPrefs(p){
   rnFillNode();
   rnFillPrefsRest(p);
   rnFillReads();
+  rnFillAgents();
   rnFillDebug();
   rnLoadTools(p);
   rnLockSettings(p);
@@ -413,6 +415,19 @@ function rnRowsList(saved, inputs, says){
   return [...was.filter(n => !drawn.has(n) || now.includes(n)), ...now.filter(n => !was.includes(n))].join(",");
 }
 
+// The coding agents beside Claude a session here may run (R95), each a
+// row to tick, from the agent table; ticked is allowed.
+function rnFillAgents(off = rnPrefWas.agents_off){
+  const box = $("rnAgents");
+  if (!box) return;
+  const was = new Set(String(off || "").split(",").filter(Boolean));
+  box.innerHTML = agentsLive().filter(a => a.id !== "claude")
+    .map(a => lrow(a.id, a.name, a.product, !was.has(a.id))).join("");
+  // Drawn again on a revert, after rnLockSettings ran: held the same way.
+  if ((state?.projects || []).find(x => x.name === rnFor)?.may_settings === false)
+    box.querySelectorAll("input").forEach(i => { i.disabled = true; i.dataset.rnlock = "1"; });
+}
+
 function rnFillReads(){
   const box = $("rnReads"), wrap = $("rnReadsField");
   if (!box) return;
@@ -622,7 +637,7 @@ function renameProject(name, mode = "all"){
   const where = p?.forge_name || "its remote";
   $("rnTitle").textContent = git ? `${where} settings for ${projLabel(name)}` : projLabel(name);
   for (const id of ["rnNameField", "rnMineField",
-                    "rnGateField", "rnBuildField", "rnReadsField"])
+                    "rnGateField", "rnBuildField", "rnReadsField", "rnAgentsField"])
     $(id).hidden = git;
   // The node picker and the two credential blocks have hidden rules of their
   // own further down, and each of those consults the mode too.
@@ -1505,9 +1520,9 @@ const RN_WAS = {
   tc_off: ["tools", "Toolchains"], packs_on: ["tools", "Tool packs"],
   build: ["build", "Build"], test: ["build", "Test"], outputs: ["build", "Outputs"],
   capture_days: ["build", "Captures kept"], snapshot_days: ["build", "Snapshots kept"], dev_keep: ["build", "Dev builds kept"],
-  gate: ["claude", "Claude may"], test_change: ["claude", "During a test run, a change asked for"],
-  devbuild: ["claude", "Claude may"], makevms: ["claude", "Claude may"], vm_caps: ["claude", "Its VMs may hold"], report: ["claude", "Claude may"], sign: ["claude", "Claude may"],
-  keys: ["claude", "Claude may"], release: ["claude", "Claude may"], pc: ["claude", "Claude may"], version: ["claude", "Move the version"],
+  gate: ["claude", "Agents may"], test_change: ["claude", "During a test run, a change asked for"], agents_off: ["claude", "Coding agents"],
+  devbuild: ["claude", "Agents may"], makevms: ["claude", "Agents may"], vm_caps: ["claude", "Its VMs may hold"], report: ["claude", "Agents may"], sign: ["claude", "Agents may"],
+  keys: ["claude", "Agents may"], release: ["claude", "Agents may"], pc: ["claude", "Agents may"], version: ["claude", "Move the version"],
   reply: ["yours", "Replies"], asks: ["yours", "Questions"],
   git_name: ["yours", "Commit name and email"], git_email: ["yours", "Commit name and email"],
 };
@@ -1539,6 +1554,7 @@ function rnEnc(){
             : rnRowsList(rnPrefWas.tc_off, $("rnTools").querySelectorAll("input[data-shipped]"), i => !i.checked),
           packs_on: rnToolsList === null ? rnPrefWas.packs_on
             : rnRowsList(rnPrefWas.packs_on, $("rnTools").querySelectorAll("input[data-pack]"), i => i.checked),
+          agents_off: [...$("rnAgents").querySelectorAll("input:not(:checked)")].map(i => i.value).join(","),
           sees: $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean).join(", "),
           reaches: JSON.stringify(rnReachNow()),
           debug: dbg ? rnDebugKey(dbg.diag, dbg.log_from) : rnPrefWas.debug,
@@ -1660,6 +1676,7 @@ function rnRevertSect(sect){
     const g = String(w.gate).split(",");
     Object.values(GATE_IDS).forEach((id, i) => { $(id).value = g[i] || "auto"; });
     $("rnTestChange").value = w.test_change; $("rnGateDocker").value = w.devbuild; $("rnGateVms").value = w.makevms; rnVmCapsSet(w.vm_caps);
+    rnFillAgents(w.agents_off);
     $("rnGateReport").value = w.report; $("rnGateSign").value = w.sign;
     $("rnGateRelease").value = w.release; $("rnGateKeys").value = w.keys;
     $("rnGatePc").value = w.pc; $("rnGateVersion").value = w.version;
@@ -1770,7 +1787,7 @@ async function rnSubmit(sect, end = false){
       const r = await fetch("/api/prefs", {method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify({project: name, restart: restartNow, ...pick({git_name: v.git_name, git_email: v.git_email,
                               node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
-                              tc_off: v.tc_off, packs_on: v.packs_on,
+                              tc_off: v.tc_off, packs_on: v.packs_on, agents_off: v.agents_off,
                               build: v.build, test: v.test, gate: v.gate, ...(v.dbg || {}),
                               tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks,
                               devbuild: v.devbuild, makevms: v.makevms, vm_caps: JSON.parse(v.vm_caps || "{}"), report: v.report, sign: v.sign, keys: v.keys, release: v.release, pc: v.pc,

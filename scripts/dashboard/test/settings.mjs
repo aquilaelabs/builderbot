@@ -489,13 +489,13 @@ ok(elsewhere.git_name === 'T. Person',
     typed: $('rnGateRoadmap').value, claude: !document.querySelector('.rnbar[data-rnbar="claude"] [data-rnsave]').disabled,
     build: document.querySelector('.rnbar[data-rnbar="build"] [data-rnsave]').disabled }));
   ok(!err && after.gate === 'auto' && after.typed === 'deny' && after.claude && after.build,
-     `...Build and test's Save stores the build command and nothing of Claude may, whose change stays typed and unsaved (${JSON.stringify(after)})`);
+     `...Build and test's Save stores the build command and nothing of Agents may, whose change stays typed and unsaved (${JSON.stringify(after)})`);
   await rnSect(page, 'claude');
   await page.click('.rnbar[data-rnbar="claude"] [data-rnrevert]');
   ok(await page.evaluate(() => $('rnGateRoadmap').value === 'auto'
        && document.querySelector('.rnbar[data-rnbar="claude"] [data-rnrevert]').disabled
        && $('rnBuildCmd').value === 'make one'),
-     '...and its Revert puts Claude may back alone');
+     '...and its Revert puts Agents may back alone');
   // A section's Save is its own fields alone, and refuses one somebody else
   // saved since these settings were opened (the operator, 17 Oct: a save in
   // one section put back another section's change, and a session's change

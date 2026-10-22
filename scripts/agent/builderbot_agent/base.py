@@ -104,6 +104,33 @@ TOOLS_DIR = os.environ.get("BUILDERBOT_TOOLS_DIR", "/var/lib/builderbot/agent/to
 ROOT_TOOLS = ("nodes/provision-linux.sh", "nodes/bb-session")
 # Where an updated Claude Code is pinned, root-owned, for the sessions (claude_update).
 CLAUDE_DIR = "/usr/local/lib/builderbot/claude"
+# ...and the other coding agents (R95 step 2), each in a folder of its own
+# under this one: AGENTS_DIR/codex/codex, AGENTS_DIR/copilot/copilot.
+AGENTS_DIR = os.environ.get("BUILDERBOT_AGENTS_DIR", "/usr/local/lib/builderbot/agents")
+# How each is installed, by the job the controller's agent table names for
+# it (scripts/dashboard/agents.py update_job): a table lookup, never a
+# command from the controller. Each vendor's own installer, run as the
+# session account into its home: `script` fetched fresh each time, the
+# version asked for in `pin` (formatted with the version), `env` formatted
+# with the home, and the binary it leaves at `bin` under the home. A test
+# stands its own script in with BUILDERBOT_<ID>_INSTALLER. Checked against
+# Codex CLI 0.163.0 and Copilot CLI 1.0.102 (22 Oct).
+# Each coding agent's sign-in and sign-out jobs, by the controller's agent
+# table (agents.py login_job, logout_job), to the agent `bb login --flow` and
+# `bb login --out` are run for. Claude's are the claude-login and
+# claude-logout of old, which name no agent.
+AGENT_LOGINS = {"codex-login": "codex", "copilot-login": "copilot"}
+AGENT_LOGOUTS = {"codex-logout": "codex", "copilot-logout": "copilot"}
+AGENT_INSTALLS = {
+    "codex-update": {"id": "codex", "command": "codex", "product": "Codex CLI", "reported": "codex",
+                     "script": "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+                     "pin": ("CODEX_RELEASE", "{v}"), "env": {"CODEX_INSTALL_DIR": "{home}/.local/bin"},
+                     "bin": ".local/bin/codex"},
+    "copilot-update": {"id": "copilot", "command": "copilot", "product": "Copilot CLI", "reported": "copilot",
+                       "script": "curl -fsSL https://gh.io/copilot-install | bash",
+                       "pin": ("VERSION", "v{v}"), "env": {"PREFIX": "{home}/.local"},
+                       "bin": ".local/bin/copilot"},
+}
 SESSION_CONF = os.environ.get("BUILDERBOT_SESSION_CONF", "/etc/bb-session.conf")
 SESSION_SUDOERS = os.environ.get("BUILDERBOT_SESSION_SUDOERS", "/etc/sudoers.d/builderbot-session")
 # Each session kept to its own project's network (R79): the folder this agent
@@ -127,12 +154,13 @@ SESSNET_LOCAL = ("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169
 # session works in. The seam is for the suite: it runs its agent as a session account, and inside a
 # session's view /workspace is the view's own read-only root.
 SHARE = os.environ.get("BUILDERBOT_SHARE", "/workspace")
-# The pane a respawn may run again: bb-tty's claude launcher, in the project's
+# The pane a respawn may run again: bb-tty's launcher of a coding agent
+# (claude-run.sh, codex-run.sh, copilot-run.sh, R95), in the project's
 # cache folder and started inside the project's view when the node builds one.
 _PATHCH = r"[A-Za-z0-9._/@+-]"
 RESPAWNABLE = (rf"(?:sudo -n {re.escape(SESSION_BIN)} enter(?: --[a-z]+ {_PATHCH}+)* -- )?"
                rf"{_PATHCH}*/builderbot/(?:u/u_[0-9a-f]{{8}}/)?"
-               rf"project/[A-Za-z0-9._-]+/claude-run\.sh")
+               rf"project/[A-Za-z0-9._-]+/(?:claude|codex|copilot)-run\.sh")
 NETPLAN_DIR = os.environ.get("BUILDERBOT_NETPLAN_DIR", "/etc/netplan")
 NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
 NETPLAN_FILE = "90-builderbot.yaml"
@@ -156,7 +184,7 @@ IDLE_UNIT = float(os.environ.get("BUILDERBOT_IDLE_UNIT", "60"))
 # rows of the controller's agent table (scripts/dashboard/agents.py, R95),
 # copied rather than imported since the agent carries no dashboard module;
 # unit/test_agents.py holds the two to each other.
-AGENT_PREFIXES = ("claude-",)
+AGENT_PREFIXES = ("claude-", "codex-", "copilot-")
 
 
 def has_systemd():

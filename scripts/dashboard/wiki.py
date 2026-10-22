@@ -17,7 +17,7 @@ from the push rights the operator granted (projects.load_push) or, for a
 public pull, from the tree's origin read as data, and nothing in this
 repository's config names a program.
 
-A session writes under the project's dial, Claude may: Write the wiki
+A session writes under the project's dial, Agents may: Write the wiki
 (pending.py): auto lands it, ask holds it for the operator, deny refuses
 it. Pushing and pulling are a person's, from the view: they reach outside.
 """
@@ -57,9 +57,9 @@ class Refused(Exception):
     pass
 
 
-# What a session is told under Claude may: Write the wiki is hidden, for a
+# What a session is told under Agents may: Write the wiki is hidden, for a
 # read as for a write: the wiki is the people's alone on this project.
-HIDDEN = ("this project's wiki is hidden from Claude (Claude may: Write the wiki is hidden), "
+HIDDEN = ("this project's wiki is hidden from its agents (Agents may: Write the wiki is hidden), "
           "so it can be neither read nor written from a session; ask the person if you need what is in it")
 
 
@@ -503,7 +503,7 @@ def verb(project, req, who, session):
                 return {"error": pending.refusal("wiki")}, 403
             if g == "ask":
                 if act == "rename":
-                    return {"error": "a rename is a person's while Claude may: Write the wiki is ask"}, 403
+                    return {"error": "a rename is a person's while Agents may: Write the wiki is ask"}, 403
                 file = file_of(name)
                 why = " ".join(str(req.get("why") or "").split())[:200]
                 if act == "save":

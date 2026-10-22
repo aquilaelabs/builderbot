@@ -33,6 +33,7 @@ import sys as _sys
 # modules by path, where a plain sibling import finds nothing.
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 from names import claude_session   # noqa: E402
+import agents
 import copy
 import json
 import os
@@ -294,7 +295,7 @@ def _log(d, project, by, ev):
     """
     name = str((actor() if actor else "") or "")[:60]
     ev = {"at": int(time.time()),
-          "by": "claude" if by == "claude" else "you",
+          "by": "claude" if by == "claude" else "you", **agents.asker(by),
           # The account behind it, where one is known, including behind a
           # session, whose author is the person it was minted for.
           **({"who": name} if name else {}),
@@ -717,7 +718,7 @@ def add(project, text, by="you", steps=(), who="", number=None, target=""):
         nid = _int(number) or _next_id(rows, d, project)
         _took(d, project, nid)
         row = {"id": nid, "text": text,
-               "added": int(time.time()), "by": "claude" if by == "claude" else "you",
+               "added": int(time.time()), "by": "claude" if by == "claude" else "you", **agents.asker(by),
                "sent": 0,
                "steps": [{"text": x, "sent": 0} for x in steps],
                **({"target": target} if target else {})}

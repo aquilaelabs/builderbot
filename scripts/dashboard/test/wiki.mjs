@@ -1,7 +1,7 @@
 // The notebook's Wiki view (wiki.py, nb-wiki.js, R112): pages as rows that
 // open to be read, New page at the top, Edit on a row, written through with
 // no notebook foot; Export as a zip; and bb wiki for a session, under
-// Claude may: Write the wiki. Pushing to a forge is wiki.py's unit tier,
+// Agents may: Write the wiki. Pushing to a forge is wiki.py's unit tier,
 // against a repository on disk: the harness has no forge.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
@@ -167,8 +167,8 @@ const hid = await api('/api/prefs', { project: P, gate: { wiki: 'hidden' } });
 ok(hid.status === 200 && hid.gate?.wiki === 'hidden', `the dial takes hidden for the wiki (${hid.status} ${JSON.stringify(hid.gate || hid.error)})`);
 const nope = await api('/api/prefs', { project: P, gate: { bugs: 'hidden' } });
 ok(nope.status >= 400, `...and for nothing else (${nope.error})`);
-ok(/hidden from Claude/.test(bbErr()) && /hidden from Claude/.test(bbErr('show', 'Home'))
-   && /hidden from Claude/.test(bbErr('save', 'Other', src)),
+ok(/hidden from its agents/.test(bbErr()) && /hidden from its agents/.test(bbErr('show', 'Home'))
+   && /hidden from its agents/.test(bbErr('save', 'Other', src)),
    'hidden keeps the wiki from a session: no list, no page, no save');
 ok((await api(`/api/wiki?project=${P}`)).pages?.length >= 2, '...while a person still reads it');
 await api('/api/prefs', { project: P, gate: { wiki: 'auto' } });

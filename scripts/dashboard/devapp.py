@@ -93,11 +93,11 @@ DOCKER = os.environ.get("BB_DOCKER_BIN", "docker")
 # The instance a project has always had, before instances were a thing. Every
 # call that does not name one means this, which is what keeps the migration
 # from being visible anywhere but here.
-# What a session is told when its project's dial (Claude may: Run its
+# What a session is told when its project's dial (Agents may: Run its
 # container) says deny, wherever the refusal is made.
 RUN_DENIED = ("running this project's containers is the operator's: rebuilding, "
               "starting and stopping them, changing their env, creating one and removing "
-              "one are handed over in the project's settings, Claude may: Run its container")
+              "one are handed over in the project's settings, Agents may: Run its container")
 
 MAIN = "main"
 # The owner of a container BuilderBot deploys itself (R180): the nginx tab's

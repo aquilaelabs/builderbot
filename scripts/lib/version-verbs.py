@@ -53,7 +53,7 @@ USAGE = ("bb version [--for DIR] "
          "bb version [--for DIR] init X.Y.Z    give one its first VERSION\n"
          "bb version policy                    what a session may move here\n"
          "bb version [--for DIR] release --why \"...\"   tag this commit and publish the release, as\n"
-         "                                     Release on the Artifacts view does (Claude may: Tag and\n"
+         "                                     Release on the Artifacts view does (Agents may: Tag and\n"
          "                                     publish a release)\n"
          "A section dated under the wrong number: unbump, then set the number you meant.")
 
@@ -138,7 +138,7 @@ if argv and argv[0] == "init":
 if argv and argv[0] == "release":
     # bb version release (R138): the tag on this commit and the forge's
     # release, made on the controller with the project's own credentials,
-    # which this session never holds. Under Claude may: Tag and publish a
+    # which this session never holds. Under Agents may: Tag and publish a
     # release: auto releases at once, ask waits for the project's owner.
     import bbapi
     import waits
@@ -149,7 +149,7 @@ if argv and argv[0] == "release":
     if "-h" in rest or "--help" in rest:
         print('bb version [--for DIR] release --why "..."   tag this commit, push the tag and publish the\n'
               "    forge's release (GitHub, Gitea or GitLab), as Release on the Artifacts view does. Under\n"
-              "    Claude may: Tag and publish a release: auto releases at once, ask waits for the\n"
+              "    Agents may: Tag and publish a release: auto releases at once, ask waits for the\n"
               "    project's owner, deny refuses.\n"
               'bb version [--for DIR] release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...\n'
               "    change the published release: its notes replaced whole (- reads stdin), a file from\n"
@@ -197,7 +197,7 @@ if argv and argv[0] == "policy":
     # Read-only on purpose: a session should be able to see the limit it is
     # held to and never to move it.
     print(f"{proj}: {policy_line()}")
-    print("a person changes this with Claude may: Move the version in the project's settings,"
+    print("a person changes this with Agents may: Move the version in the project's settings,"
           " or on its Artifacts view; bb version set X.Y.Z moves to a later version in one step")
     raise SystemExit(0)
 
@@ -263,7 +263,7 @@ if v["released"]:
     print(f"  tag               {v['tag']}  (on this commit)")
 elif v["target"]:
     print("  not released yet  Release on the Artifacts view, or bb version release "
-          "--why under Claude may: Tag and publish a release, tags this commit and "
+          "--why under Agents may: Tag and publish a release, tags this commit and "
           "pushes it")
 if v["ordinal"] is not None:
     print(f"  ordinal           {v['ordinal']}")

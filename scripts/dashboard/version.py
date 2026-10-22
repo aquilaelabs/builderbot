@@ -979,7 +979,7 @@ def init(project, value, by="claude", comp="", env=None):
     """
     if by != "operator" and policy(project) not in _MAY_INIT:
         return {"error": f"{project}'s version is locked to the operator. They can "
-                         f"give it one on the project's Artifacts view, or set Claude "
+                         f"give it one on the project's Artifacts view, or set an agent's "
                          f"access there to 'may start one'."}
     value = str(value or "").strip()
     if not TARGET_RE.match(value):
@@ -1528,7 +1528,7 @@ def verb(name, act, req, who, principal):
         # The other half of a release, and the outward-facing one: the
         # bump decided the number, this says it happened and pushes the
         # tag. A person's from here; a session asks through its own
-        # dial (Claude may: Tag and publish a release, R138), whose Allow
+        # dial (Agents may: Tag and publish a release, R138), whose Allow
         # comes back through this same branch.
         r = release(name, comp=comp, env={**CREDS_ENV(), **GIT_ENV(who, name)},
                     may_push=MAY_PUSH(name))

@@ -337,7 +337,7 @@ function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpt
 
 // A pointer to another page is a link to it (R256 step 2): the address that
 // page answers at, so a press goes there as the rail does and Back returns.
-const PAGE_AT = {nodes: "#/machines/nodes", docker: "#/containers", jobs: "#/jobs", toolchains: "#/build/toolchains",
+const PAGE_AT = {nodes: "#/machines/nodes", docker: "#/containers", jobs: "#/jobs", toolchains: "#/build/toolchains", agents: "#/build/agents",
   users: "#/people/users", roles: "#/people/roles", apps: "#/build/apps"};
 // A page this account may not open is its words and no link (B114): the
 // address of one a grant forbids landed on the group's first page instead.

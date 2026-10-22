@@ -35,6 +35,7 @@ import subprocess
 import threading
 from pathlib import Path
 
+import agents
 from fields import field
 
 HERE = Path(__file__).resolve().parent
@@ -293,8 +294,16 @@ def run(me, req, project):
         env.pop("BB_ACCOUNT_UID", None)
     if field(req, "from") == "session":
         env["CLAUDECODE"] = "1"
+        # Which agent's session asked (R95), for what its record names:
+        # one of the agent table's, or none.
+        ag = agents.get(field(req, "agent"))
+        if ag:
+            env["BB_AGENT"] = ag.id
+        else:
+            env.pop("BB_AGENT", None)
     else:
         env.pop("CLAUDECODE", None)
+        env.pop("BB_AGENT", None)
     # git's network half never runs in the tree a session can write
     # (B148): the controller does it in a repository of its own and
     # hands the tree's half back to the node's bb as `apply`.

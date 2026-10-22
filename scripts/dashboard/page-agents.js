@@ -9,8 +9,8 @@
 // ---- the table ----
 const AGENTS = [
   {id: "claude", name: "Claude", product: "Claude Code", command: "claude", provider: "Anthropic", live: true},
-  {id: "codex", name: "ChatGPT", product: "Codex CLI", command: "codex", provider: "OpenAI", live: false},
-  {id: "copilot", name: "Copilot", product: "Copilot CLI", command: "copilot", provider: "GitHub", live: false},
+  {id: "codex", name: "ChatGPT", product: "Codex CLI", command: "codex", provider: "OpenAI", live: true},
+  {id: "copilot", name: "Copilot", product: "Copilot CLI", command: "copilot", provider: "GitHub", live: true},
   {id: "open", name: "Any model", product: "OpenCode", command: "opencode", provider: "", live: false},
 ];
 
@@ -43,5 +43,9 @@ function agentsWord(names){
   const ids = new Set(names.map(n => agentOfSession(tmuxBase(n))?.agent.id).filter(Boolean));
   return ids.size === 1 ? agentById([...ids][0]).name : "coding agents";
 }
+// Who a record says asked, when it was a session ("claude", the stored word
+// for any session's): the agent it names (R95), or Claude, whose sessions
+// were the only ones before a record named its agent.
+function agentAsker(rec){ return agentById(rec?.agent)?.name || "Claude"; }
 // The argument that opens an agent's session on a project: `claude:alpha`.
 function agentArg(id, project){ return `${(agentById(id) || AGENTS[0]).id}:${project}`; }
