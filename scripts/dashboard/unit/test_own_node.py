@@ -70,6 +70,52 @@ class OwnRow(unittest.TestCase):
         self.assertEqual(self.row("nas")["capabilities"], ["package-build"])
 
 
+class TheDoctorSaysTheWall(unittest.TestCase):
+    """bb doctor (and so the Doctor card) on a controller whose own machine is
+    a node: whether the wall holds there, from that node's bb-session check,
+    in red when it does not (R90 step 8)."""
+
+    def setUp(self):
+        self.state = tempfile.mkdtemp()
+        sys.path.insert(0, DASH)
+        import nodes
+        self.nodes = nodes
+        mint(self.state, "nas", "--own")
+        nodes.configure(state=self.state)
+        self.nid = next(n["id"] for n in nodes.node_list(all=True) if n["name"] == "nas")
+
+    def report(self, iso):
+        import json
+        import time
+        self.nodes._exec("UPDATE nodes SET state = 'online', reported = ?, agent = ? WHERE id = ?",
+                         (json.dumps({"isolation": iso, "session": {"up": bool(iso.get("sessions"))}}),
+                          json.dumps({"last_seen": int(time.time()), "version": "0.6.1"}), self.nid))
+
+    def doctor(self):
+        r = subprocess.run([sys.executable, os.path.join(LIB, "doctor-probes.py"), "node", os.path.join(DASH, "nodes.py")],
+                           env=dict(os.environ, DASHBOARD_STATE=self.state), capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_not_reported_yet(self):
+        self.assertIn("[warn] the wall on this controller's own node (nas) is not known", self.doctor())
+
+    def test_holding(self):
+        self.report({"sessions": True, "why": ""})
+        self.assertIn("[ok]   the wall holds on this controller's own node (nas)", self.doctor())
+
+    def test_not_in_force_says_why_in_red(self):
+        self.report({"sessions": False, "why": "bb-session: the wall around this machine's controller does not hold: "
+                                               "the job account (bb) is in the docker group"})
+        out = self.doctor()
+        self.assertIn("[FAIL] the wall on this controller's own node (nas) is not in force", out)
+        self.assertIn("the job account (bb) is in the docker group", out)
+
+    def test_a_node_that_is_not_this_machine_says_nothing_of_it(self):
+        mint(self.state, "box1")
+        self.assertNotIn("box1", self.doctor().split("can run a session")[-1])
+
+
 class TheProvisionerBesideAController(unittest.TestCase):
     def test_the_flag_keeps_docker_from_the_job_account_and_the_stamp_off(self):
         text = open(os.path.join(ROOT, "nodes", "provision-linux.sh"), encoding="utf-8").read()

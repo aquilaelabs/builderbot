@@ -477,8 +477,12 @@ const dockerSlug = (s) => (s || "").toLowerCase()
 function fillNodeSelect(sel, wrap, prefer, again, allow){
   // Every node when nothing narrows: a node does everything for the
   // projects bound to it (docs/nodes.md §13).
+  // ...but the controller's own machine, installed bare metal (R90), whose
+  // job account is out of the docker group behind the wall: it runs no
+  // containers as a node.
   const dnodes = (nodesList || []).filter(n =>
-    n.kind !== "local" && n.state !== "retired" && n.state !== "disabled" && (!allow || allow.includes(n.id)));
+    n.kind !== "local" && n.state !== "retired" && n.state !== "disabled" && !n.config?.own
+    && (!allow || allow.includes(n.id)));
   // ...and drawn again when they land: loadNodes repaints only a Nodes tab,
   // so a draw here during a node-list reload lost the picker until something
   // else moved dockerRev (B69's nodes.mjs sibling).
