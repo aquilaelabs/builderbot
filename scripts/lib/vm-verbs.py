@@ -21,9 +21,13 @@ AUTH = os.environ.get("BB_VM_AUTH", "")
 PROJECT = os.environ.get("BB_VM_PROJECT", "")
 USAGE = """usage: bb vm [list]
        bb vm os
-       bb vm new NAME --os OS [--vcpus N] [--mem 4G] [--disk 20] [--node NODE] [--key FILE] [--node-agent] --why "what it is for"
+       bb vm new NAME --os OS [--vcpus N] [--mem 4G] [--disk 20] [--disks 100,500] [--node NODE] [--key FILE]
+                 [--pin 2,3] [--mem-max 8G] [--share PATH [--ro]] [--autostart] [--node-agent] --why "what it is for"
        bb vm start|stop|restart|rm NAME [--force]
        bb vm snapshot NAME SNAP [--note "..."] | revert NAME SNAP | snapshot-rm NAME SNAP
+       bb vm grow NAME [vda|vdb|vdc|vdd] GB | disk-add NAME GB | eject NAME
+       bb vm hardware NAME [--pin 2,3|none] [--share-cpus] [--mem-max 8G|none] [--share PATH|none] [--ro]
+       bb vm autostart NAME on|off
        bb vm ip NAME | ssh NAME [COMMAND...]"""
 
 
@@ -55,7 +59,28 @@ def cmd_list(_args):
         print(f"{v['name']:<20} {v.get('state', '?'):<9} {v.get('os', ''):<13} {v.get('node_name', ''):<16} "
               f"{v.get('ip') or '-':<15} {v.get('vcpus')} vCPU {v.get('mem_mb')} MB {v.get('disk_gb')} GB"
               + (f"  snapshots: {', '.join(snaps)}" if snaps else "")
+              + (f"\n    {said}" if (said := hw_said(v)) else "")
               + (f"\n    {v['error']}" if v.get("error") else ""))
+
+
+def hw_said(v):
+    """What a VM was given beyond its size (R100), in the words its row uses."""
+    hw, bits = v.get("hw") or {}, []
+    if hw.get("cpuset"):
+        bits.append(f"pinned to threads {', '.join(map(str, hw['cpuset']))}")
+    if hw.get("mem_max_mb"):
+        bits.append(f"memory up to {hw['mem_max_mb']} MB")
+    if hw.get("net") == "lan":
+        bits.append("on the LAN")
+    if (hw.get("share") or {}).get("path"):
+        sh = hw["share"]
+        bits.append(f"sees {sh['path']}{' read-only' if sh.get('ro') else ''} as \"{sh.get('tag')}\" "
+                    f"(mount -t virtiofs {sh.get('tag')} /mnt)")
+    if hw.get("devices"):
+        bits.append(f"{len(hw['devices'])} device(s) passed through")
+    if v.get("autostart"):
+        bits.append("starts with its host")
+    return " · ".join(bits)
 
 
 def cmd_os(_args):
@@ -126,13 +151,46 @@ def wait_state(name, until, minutes=30):
     die(f"{name} is still {said} after {minutes} minutes: the job on the Jobs page says where it is")
 
 
+def hw_opts(rest, flags):
+    """The hardware words of new and hardware: (the record to send, what is
+    left). An option given is sent; one not given leaves the VM as it is."""
+    hw, left = {}, []
+    while rest:
+        k = rest.pop(0)
+        if k == "--ro":
+            hw.setdefault("share", {})["ro"] = True
+        elif k == "--share-cpus":
+            hw["share_cpus"] = True
+        elif k in ("--pin", "--mem-max", "--share", "--net") and rest:
+            v = rest.pop(0)
+            if k == "--pin":
+                if v != "none" and not re.fullmatch(r"\d+(,\d+)*", v):
+                    die(f"--pin is host threads like 2,3, or none: not {v}")
+                hw["cpuset"] = [] if v == "none" else [int(c) for c in v.split(",")]
+            elif k == "--mem-max":
+                hw["mem_max_mb"] = 0 if v == "none" else mem_mb(v)
+            elif k == "--share":
+                hw["share"] = {} if v == "none" else {**hw.get("share", {}), "path": v.strip("/") or "."}
+            else:
+                hw["net"] = v
+        elif k in flags:
+            left.append(k)
+        else:
+            left += [k, rest.pop(0)] if rest and not rest[0].startswith("--") else [k]
+    if "share" in hw and hw["share"] and "path" not in hw["share"]:
+        die("--ro goes with --share PATH")
+    return hw, left
+
+
 def cmd_new(args):
     if not args or args[0].startswith("-"):
         die(USAGE)
     name, rest = args[0], args[1:]
-    opts = {"os": "", "vcpus": "", "mem": "", "disk": "", "node": "", "key": "", "why": "", "user": ""}
+    opts = {"os": "", "vcpus": "", "mem": "", "disk": "", "disks": "", "node": "", "key": "", "why": "", "user": ""}
+    hw, rest = hw_opts(rest, ("--node-agent", "--autostart"))
     agent = "--node-agent" in rest
-    rest = [a for a in rest if a != "--node-agent"]
+    autostart = "--autostart" in rest
+    rest = [a for a in rest if a not in ("--node-agent", "--autostart")]
     while rest:
         k = rest.pop(0)
         if k.lstrip("-") not in opts or not rest:
@@ -150,6 +208,12 @@ def cmd_new(args):
         body["mem_mb"] = mem_mb(opts["mem"])
     if opts["disk"]:
         body["disk_gb"] = int(re.sub(r"[Gg][Bb]?$", "", opts["disk"]))
+    if opts["disks"]:
+        body["disks"] = [int(re.sub(r"[Gg][Bb]?$", "", d)) for d in opts["disks"].split(",") if d.strip()]
+    if hw:
+        body["hw"] = hw
+    if autostart:
+        body["autostart"] = True
     answered(post(body), f"a new VM, {name}")
     v = wait_state(name, ("making",))
     if not v or v.get("state") == "failed":
@@ -172,6 +236,45 @@ def cmd_action(verb, args):
         body["force"] = True
     job = answered(post(body), f"{verb} {name}")
     print(f"[builderbot] {verb} {name}: queued" + (f" as {job}" if job else ""))
+
+
+def cmd_disk(verb, args):
+    """grow NAME [DEV] GB, disk-add NAME GB, eject NAME: a stopped VM's
+    disks and an installer's drive, as its row's More does."""
+    if not args:
+        die(USAGE)
+    name, rest = args[0], args[1:]
+    body = {"action": {"grow": "disk-grow"}.get(verb, verb), "name": name, "why": f"{verb} {name}"}
+    if verb in ("grow", "disk-add"):
+        if not rest or not re.fullmatch(r"\d+[Gg]?[Bb]?", rest[-1]):
+            die(USAGE)
+        body["gb"] = int(re.sub(r"[Gg]?[Bb]?$", "", rest[-1]))
+        if verb == "grow":
+            body["disk"] = rest[0] if len(rest) > 1 else "vda"
+    job = answered(post(body), f"{verb} {name}")
+    print(f"[builderbot] {verb} {name}: queued" + (f" as {job}" if job else ""))
+
+
+def cmd_hardware(args):
+    """A stopped VM's hardware beyond its size (R100), what is named and no
+    more: --pin, --mem-max, --share, each none to take it off."""
+    if not args or args[0].startswith("-"):
+        die(USAGE)
+    name = args[0]
+    hw, left = hw_opts(list(args[1:]), ())
+    if left or not hw:
+        die(USAGE)
+    job = answered(post({"action": "hardware", "name": name, "hw": hw, "why": f"hardware of {name}"}), f"{name}'s hardware")
+    print(f"[builderbot] {name}'s hardware: queued" + (f" as {job}" if job else "") + "; it takes effect at its next start")
+
+
+def cmd_autostart(args):
+    if len(args) != 2 or args[1] not in ("on", "off"):
+        die(USAGE)
+    on = args[1] == "on"
+    answered(post({"action": "autostart", "name": args[0], "on": on, "why": f"autostart {args[1]} for {args[0]}"}),
+             f"{args[0]} starting with its host")
+    print(f"[builderbot] {args[0]} {'starts' if on else 'no longer starts'} with its host")
 
 
 def cmd_ip(args):
@@ -201,6 +304,12 @@ def main():
         return cmd_new(args)
     if verb in ("start", "stop", "restart", "rm", "remove", "snapshot", "revert", "snapshot-rm"):
         return cmd_action("rm" if verb == "remove" else verb, args)
+    if verb in ("grow", "disk-add", "eject"):
+        return cmd_disk(verb, args)
+    if verb == "hardware":
+        return cmd_hardware(args)
+    if verb == "autostart":
+        return cmd_autostart(args)
     if verb == "ip":
         return cmd_ip(args)
     if verb == "ssh":

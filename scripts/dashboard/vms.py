@@ -12,6 +12,7 @@ says ("debian", "ubuntu 24.04", "rocky-10"); one with a license to accept is
 a person's to make, never a session's. Each project has a network of its own
 on each node, a /24 out of VM_NET, given once and kept.
 """
+import base64
 import difflib
 import ipaddress
 import json
@@ -31,7 +32,8 @@ KEY_RE = re.compile(r"(ssh-(ed25519|rsa)|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0
 # 192.168.122.0/24.
 VM_NET = ipaddress.ip_network("10.232.0.0/16")
 DEFAULTS = {"vcpus": 2, "mem_mb": 2048, "disk_gb": 20}
-ACTIONS = ("start", "stop", "restart", "remove", "snapshot", "revert", "snapshot-rm", "eject", "disk-grow", "disk-add")
+ACTIONS = ("start", "stop", "restart", "remove", "snapshot", "revert", "snapshot-rm", "eject", "disk-grow", "disk-add",
+           "hardware", "autostart")
 # R99: an installer's ISO on a node, a VM's further disks, its MAC and the
 # password its screen asks for (VNC takes eight characters at most).
 ISO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,100}\.iso")
@@ -56,17 +58,29 @@ enroll_script = None       # nodes.enroll_script, for a VM made a node (step 14)
 node_retire = None         # (principal, node id): its node retired with it
 node_mark = None           # (node id, host node id): the row says it is a VM there
 node_discard = None        # (principal, node id): a waiting row taken off when its VM is refused
+job_tail = None            # (job id): the end of its log, where the agent says why it refused
 _lock = threading.Lock()
 _rev = [0]
 _seen = {"nodes": None, "sig": 0}
 
 
 def configure(*, state, write_json, node, node_list, job_add, audit, prefs_get, nodes_rev=lambda: 0,
-              enroll_script=None, node_retire=None, node_mark=None, node_discard=None):
+              enroll_script=None, node_retire=None, node_mark=None, node_discard=None, job_tail=None):
     globals().update(STATE=Path(state), write_json=write_json, node=node, node_list=node_list,
                      job_add=job_add, audit=audit, prefs_get=prefs_get, nodes_rev=nodes_rev,
                      enroll_script=enroll_script, node_retire=node_retire, node_mark=node_mark,
-                     node_discard=node_discard)
+                     node_discard=node_discard, job_tail=job_tail)
+
+
+def _why(job, fallback):
+    """Why a vm job failed, for its row: the agent's own refusal from the
+    job's log when it said one, not the bare exit code (B191)."""
+    said = job.get("error") or ""
+    if (not said or said.startswith("exit ")) and job_tail and job.get("id"):
+        refused = [ln for ln in job_tail(job["id"]).splitlines() if ln.startswith("refused: ")]
+        if refused:
+            return refused[-1].removeprefix("refused: ")
+    return said or fallback
 
 
 def rev():
@@ -244,7 +258,8 @@ def view(projects=None):
             row.update(state=live.get("state") or "unknown", ip=live.get("ip") or "", snapshots=snaps,
                        # Its screen, and what its drive holds now (R99): the
                        # node says, after an Eject or a person's own change.
-                       screen=bool(live.get("screen")), iso=live.get("iso") or "")
+                       screen=bool(live.get("screen")), iso=live.get("iso") or "",
+                       hw=live.get("hw") or {}, autostart=bool(live.get("autostart")))
             # A node VM is on the LAN, where the host sees no lease of its:
             # its address is the one its agent dials in from.
             if rec.get("node_id") and not row["ip"]:
@@ -269,6 +284,7 @@ def payload(projects=None):
                        "arch": (n.get("reported") or {}).get("arch") or "",
                        "pool": (n.get("reported") or {}).get("vm_pool") or {},
                        "isos": (n.get("reported") or {}).get("vm_isos") or [],
+                       "hw": (n.get("reported") or {}).get("vm_host") or {},
                        "mem_mb": (n.get("reported") or {}).get("mem_mb") or 0} for n in hosts()]}
 
 
@@ -324,7 +340,7 @@ def _size(req):
     return out, ""
 
 
-def create(principal, project, req, nodes_allowed, session=False):
+def create(principal, project, req, nodes_allowed, session=False, admin=False):
     """A new VM for `project`: checked, recorded as making, and its create
     job queued on its node. `nodes_allowed` are the nodes the asker may put
     it on (a session: its project's own). The OS is a catalog name; one
@@ -403,6 +419,9 @@ def create(principal, project, req, nodes_allowed, session=False):
     elif not src:
         return {"error": f"{img['name']} has no image for {arch}, which {pick['name']} is"}
     key = f"{project}/{name}"
+    hw, why = hardware(req, project, pick["id"], admin and not session, size["mem_mb"], person=not session)
+    if hw is None:
+        return {"error": why}
     # Every disk counts against the caps and the pool, not the first alone.
     size = dict(size, disk_gb=size["disk_gb"] + sum(disks))
     # What refuses it, asked before a node row is made for it below: a
@@ -441,7 +460,8 @@ def create(principal, project, req, nodes_allowed, session=False):
         spec = {"action": "create", "domain": dom, "project": project, "user": user, "keys": keys, **size,
                 # Named by its subnet's place in VM_NET, which is the
                 # project's alone on this node; short enough for a bridge.
-                "network": f"bbvm-n{list(VM_NET.subnets(new_prefix=24)).index(ipaddress.ip_network(subnet)):02x}",
+                "network": _net_name(subnet),
+                **({"hw": hw} if hw else {}), "autostart": req.get("autostart") is True,
                 "subnet": subnet,
                 **({"installer": {"iso": iso}} if iso else
                    {"image": {"id": img["id"] + "-" + arch, "url": src["url"], "sums": src["sums"],
@@ -551,6 +571,100 @@ def iso(principal, action, req):
     return {"ok": True, "job": r["job"], "iso": name, "node": pick["name"]}
 
 
+def _net_name(subnet):
+    """A project network's bridge name: its subnet's place in VM_NET, short
+    enough for a bridge."""
+    return f"bbvm-n{list(VM_NET.subnets(new_prefix=24)).index(ipaddress.ip_network(subnet)):02x}"
+
+
+def hardware(req, project, node_id, admin, mem_mb, but="", person=True):
+    """A VM's hardware beyond size from what New VM, the Hardware dialog or
+    bb vm asked (R100): (record, "") or (None, why). A device passed through
+    is an administrator's; the LAN is a person's, since it takes the VM past
+    the firewall that keeps a project's VMs off it; a shared folder is one of
+    the project's own; a CPU thread another VM on the node is pinned to is
+    refused unless asked for (`share_cpus`)."""
+    hw = req.get("hw") if isinstance(req.get("hw"), dict) else {}
+    out = {}
+    if "cpuset" in hw:
+        try:
+            cs = sorted({int(c) for c in hw["cpuset"] or []})
+        except (TypeError, ValueError):
+            return None, "pin it to host CPU threads by number"
+        if cs and not hw.get("share_cpus"):
+            taken = {}
+            for v in _live(node(node_id) or {}).values():
+                if v.get("name") != but:
+                    for c in (v.get("hw") or {}).get("cpuset") or []:
+                        taken.setdefault(c, v.get("name"))
+            clash = sorted({taken[c] for c in cs if c in taken})
+            if clash:
+                return None, (f"{', '.join(clash)} {'is' if len(clash) == 1 else 'are'} pinned to some of those threads "
+                              "already: pick others, or tick Share them to pin both")
+        out["cpuset"] = cs
+    if hw.get("mem_max_mb") not in (None, ""):
+        try:
+            mx = int(hw["mem_max_mb"])
+        except (TypeError, ValueError):
+            return None, "the memory ceiling is a whole number of MB"
+        mx = mx or mem_mb          # none: it keeps what it starts with
+        if mx < mem_mb:
+            return None, f"the memory ceiling ({mx} MB) is under what it starts with ({mem_mb} MB)"
+        out["mem_max_mb"] = mx
+    if hw.get("net") is not None:
+        if hw["net"] not in ("project", "lan"):
+            return None, "a VM's network is its project's or the LAN"
+        if hw["net"] == "lan" and not person:
+            return None, ("putting a VM on the LAN is a person's: it takes it past the firewall that keeps a project's "
+                          "VMs off the LAN; its Hardware dialog on the VMs page does it")
+        out["net"] = hw["net"]
+    if hw.get("share") is not None:
+        sh = hw["share"] if isinstance(hw["share"], dict) else {}
+        if sh:
+            sub = str(sh.get("path") or "").strip().strip("/")
+            if ".." in sub.split("/"):
+                return None, "a shared folder is inside the project, not above it"
+            out["share"] = {"path": f"/workspace/{project}" + (f"/{sub}" if sub else ""), "tag": "project",
+                            "ro": sh.get("ro") is True}
+        else:
+            out["share"] = {}
+    if hw.get("devices") is not None:
+        if hw["devices"] and not admin:
+            return None, "passing a device through to a VM is an administrator's"
+        out["devices"] = [d for d in hw["devices"] if isinstance(d, dict)][:8]
+    return out, ""
+
+
+def vbios(principal, req, admin):
+    """A GPU's vBIOS dumped on its node (R100): an administrator's, queued as
+    the node's vm job, which reads it as root."""
+    if not admin:
+        return {"error": "dumping a GPU's vBIOS is an administrator's"}
+    nid = str(req.get("node") or "")
+    pick = next((n for n in hosts() if n["id"] == nid or n["name"] == nid), None)
+    if not pick:
+        return {"error": f"{nid or 'no node'} is not a node with VM host installed"}
+    addr = str(req.get("addr") or "")
+    if not re.fullmatch(r"[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]", addr):
+        return {"error": f"not a PCI address: {addr}"}
+    spec = {"action": "vbios", "domain": "bbvm-iso", "addr": addr, "timeout": 300}
+    if req.get("rom"):
+        # A .rom given instead of dumped: the card maker's, or one from a
+        # collection, checked to be an option ROM before its node keeps it.
+        try:
+            rom = base64.b64decode(str(req["rom"]), validate=True)
+        except ValueError:
+            return {"error": "the .rom did not arrive whole"}
+        if not 2_000 <= len(rom) <= 2 * 1024 * 1024 or rom[:2] != b"\x55\xaa":
+            return {"error": "that is not a vBIOS: an option ROM starts 55 AA and is 2 KB to 2 MB"}
+        spec["rom"] = base64.b64encode(rom).decode()
+    r = job_add(principal, {"node": pick["id"]}, "vm", spec, "")
+    if r.get("error"):
+        return r
+    audit(principal, "vm-vbios", f"{pick['name']}/{addr}", {"job": r["job"]})
+    return {"ok": True, "job": r["job"]}
+
+
 def _refused(project, key, name, node_id, size, d=None):
     """Why a new VM may not be made, or "": its name taken, a cap, or no
     room for the project's network."""
@@ -613,6 +727,15 @@ def act(principal, project, name, action, req=None):
             if why:
                 return {"error": why}
             spec.update(disk=dev, gb=gb)
+        if action == "hardware":
+            hw, why = hardware(req, project, rec["node"], bool(req.get("_admin")), int(rec.get("mem_mb") or 0),
+                               but=rec["domain"], person=not req.get("_session"))
+            if hw is None:
+                return {"error": why}
+            sub = (d["nets"].get(rec["node"]) or {}).get(project)
+            spec.update(hw=hw, **({"network": _net_name(sub)} if sub else {}))
+        if action == "autostart":
+            spec["on"] = req.get("on") is True
         if action == "disk-add":
             try:
                 gb = int(req.get("gb") or 0)
@@ -662,7 +785,7 @@ def vm_done(job, state):
         elif spec.get("action") == "create":
             rec["state"] = "made" if ok else "failed"
             rec["made_at"] = int(time.time())
-            rec["error"] = "" if ok else (job.get("error") or f"its create job {state}; the job's log says why")[:300]
+            rec["error"] = "" if ok else _why(job, f"its create job {state}; the job's log says why")[:300]
         elif ok and spec.get("action") == "disk-grow":
             i = DISK_DEVS.index(spec.get("disk") or "vda")
             if i == 0:
@@ -684,5 +807,5 @@ def vm_done(job, state):
         elif not ok:
             if spec.get("action") == "remove":
                 rec["state"] = "made"
-            rec["error"] = (job.get("error") or f"{spec.get('action')} {state}; the job's log says why")[:300]
+            rec["error"] = _why(job, f"{spec.get('action')} {state}; the job's log says why")[:300]
         _save(d)

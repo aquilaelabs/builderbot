@@ -26,6 +26,7 @@ Usage (all output is plain, and empty means "not set"):
     sdkmeta.py resolve NAME                 -> version <TAB> url
     sdkmeta.py size    NAME                 -> bytes of the download, if knowable
 """
+import glob
 import hashlib
 import json
 import os
@@ -178,6 +179,11 @@ def for_platform(value):
     if not isinstance(value, dict):
         return value
     plat = this_platform()
+    # A musl system (Alpine) cannot load a glibc build, so a recipe that
+    # publishes a musl one says so under linux-musl/<arch>, tried first.
+    musl = "linux-musl/" + plat.partition("/")[2]
+    if musl in value and glob.glob("/lib/ld-musl-*.so.1"):
+        return value[musl]
     if plat in value:
         return value[plat]
     o = plat.partition("/")[0]

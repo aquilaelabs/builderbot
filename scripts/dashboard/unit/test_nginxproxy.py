@@ -234,6 +234,10 @@ class FakeDevapp:
     def _read_rec(self, name, inst):
         return {"node": {"nginx-vps": "n1", "nginx-box": "n2"}.get(name, "")}
 
+    def forget_container(self, name):
+        self.deployed.discard(name)
+        return []
+
 
 class FakeContainers:
     def __init__(self):
@@ -345,6 +349,23 @@ class Image(unittest.TestCase):
         mk = Making()
         self.assertEqual(npx.deploy("n2", mk, da, FakeDevapp(set()))["job"], "j-2")
         self.assertIn("image: nginx:1.29-alpine@sha256:" + "b" * 64, mk.written["nginx-box"])
+
+    def test_deploy_takes_the_name_of_an_uninstalled_node_s_nginx(self):
+        class Making(FakeContainers):
+            def create_container(self, name, text, env, node="", for_project=""):
+                self.written[name] = node
+                return {"ok": True}
+        # n2 "box" was uninstalled with its nginx still recorded; n3 is the
+        # machine enrolled again under the same name (B204).
+        self.nodes[1]["state"] = "retired"
+        self.nodes.append({"id": "n3", "name": "box", "kind": "agent", "state": "online"})
+        npx.node_name = lambda nid: {"n1": "vps", "n2": "box", "n3": "box"}.get(nid, nid)
+        dv, mk = FakeDevapp({"nginx-vps", "nginx-box"}), Making()
+        self.assertEqual(npx.deploy("n3", mk, FakeDevactions(), dv)["job"], "j-1")
+        self.assertEqual(mk.written, {"nginx-box": "n3"})
+        # One whose node is still enrolled keeps its name.
+        self.nodes[1]["state"] = "offline"
+        self.assertIn("already on the Containers page", npx.deploy("n3", Making(), FakeDevactions(), FakeDevapp({"nginx-box"}))["error"])
 
 
 class DaemonMemo(unittest.TestCase):

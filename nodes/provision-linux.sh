@@ -788,6 +788,9 @@ esac
 # 7. what Docker needs from the kernel: cgroups, and the overlay filesystem
 if [ -f /sys/fs/cgroup/cgroup.controllers ]; then chk ok "cgroups v2"
 elif [ -d /sys/fs/cgroup/memory ]; then chk warn "cgroups v1: Docker still runs, but current distributions and the emulator's memory accounting expect v2"
+# OpenRC mounts them with its cgroups service, which Alpine's cloud image
+# leaves off until something asks (R97's walk): started below, before Docker.
+elif [ "$INIT" = openrc ] && [ -x /etc/init.d/cgroups ]; then chk warn "cgroups are not mounted yet: OpenRC's cgroups service mounts them, and it is started below"
 else chk fail "no cgroup filesystem is mounted, so Docker cannot start containers here"; fi
 if grep -qw overlay /proc/filesystems 2>/dev/null || modprobe -n overlay 2>/dev/null; then chk ok "overlay filesystem"
 else chk warn "the overlay filesystem is not available, so Docker will fall back to a slower storage driver"; fi
@@ -994,6 +997,11 @@ docker_suite() {
 
 if ! command -v docker >/dev/null 2>&1; then
     docker_install
+fi
+# Docker's cgroups on OpenRC, mounted by its own service, at boot from now on.
+if [ "$INIT" = openrc ] && [ ! -f /sys/fs/cgroup/cgroup.controllers ] && [ -x /etc/init.d/cgroups ]; then
+    rc-update add cgroups boot >/dev/null 2>&1 || true
+    rc-service cgroups start >/dev/null 2>&1 || warn "OpenRC's cgroups service did not start, so Docker may not start containers here"
 fi
 command -v docker >/dev/null 2>&1 && svc_enable docker
 
@@ -2689,13 +2697,51 @@ pkgs_drop() {
 }
 vmhost_pkgs() {
     case "$1:$(uname -m)" in
-        deb:x86_64)  echo "qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils ovmf" ;;
-        deb:aarch64) echo "qemu-system-arm qemu-efi-aarch64 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils" ;;
-        rhel:*)      echo "qemu-kvm qemu-img libvirt-daemon-kvm libvirt-client edk2-ovmf xorriso" ;;
-        arch:x86_64) echo "qemu-base libvirt dnsmasq edk2-ovmf libisoburn" ;;
-        suse:x86_64) echo "qemu-kvm libvirt-daemon-qemu libvirt-client qemu-ovmf-x86_64 xorriso" ;;
-        alpine:x86_64) echo "qemu-system-x86_64 qemu-img libvirt-daemon libvirt-qemu ovmf xorriso dnsmasq" ;;
+        deb:x86_64)  echo "qemu-system-x86 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils ovmf virtiofsd" ;;
+        deb:aarch64) echo "qemu-system-arm qemu-efi-aarch64 qemu-utils libvirt-daemon-system libvirt-clients cloud-image-utils virtiofsd" ;;
+        rhel:*)      echo "qemu-kvm qemu-img libvirt-daemon-kvm libvirt-client edk2-ovmf xorriso virtiofsd" ;;
+        arch:x86_64) echo "qemu-base libvirt dnsmasq edk2-ovmf libisoburn virtiofsd" ;;
+        suse:x86_64) echo "qemu-kvm libvirt-daemon-qemu libvirt-client qemu-ovmf-x86_64 xorriso virtiofsd" ;;
+        alpine:x86_64) echo "qemu-system-x86_64 qemu-img libvirt-daemon libvirt-qemu ovmf xorriso dnsmasq virtiofsd" ;;
     esac
+}
+# A VM's shared folder (R100) through virtiofsd, which libvirt runs as root
+# and which hands the guest's uids straight through: a file root wrote in
+# the VM was root's in the project, and the VM's own account could write
+# nothing. libvirt starts this in its place: every uid in the VM writes as
+# the folder's owner here, and the folder's files are the VM's account's
+# (uid 2000, which the agent's cloud-init gives it) inside.
+VIRTIOFSD_WRAP=/usr/local/libexec/builderbot-virtiofsd
+vmhost_virtiofsd() {
+    install -d -m 0755 /usr/local/libexec
+    cat > "$VIRTIOFSD_WRAP" <<'WRAP'
+#!/bin/sh
+# BuilderBot's virtiofsd for a VM's shared folder: see vmhost_virtiofsd in
+# provision-linux.sh. libvirt passes --shared-dir; the rest goes through.
+real=$(command -v virtiofsd || ls /usr/libexec/virtiofsd /usr/lib/qemu/virtiofsd 2>/dev/null | head -n 1)
+dir="" prev=""
+for a in "$@"; do
+    [ "$prev" = "--shared-dir" ] && dir="$a"
+    case "$a" in --shared-dir=*) dir="${a#*=}" ;; esac
+    prev="$a"
+done
+[ -n "$dir" ] || exec "$real" "$@"
+u=$(stat -c %u "$dir") g=$(stat -c %g "$dir")
+exec "$real" "$@" \
+    --translate-uid "squash-guest:0:$u:4294967295" --translate-gid "squash-guest:0:$g:4294967295" \
+    --translate-uid "squash-host:0:2000:4294967295" --translate-gid "squash-host:0:2000:4294967295"
+WRAP
+    chmod 0755 "$VIRTIOFSD_WRAP"
+    # AppArmor (Ubuntu, openSUSE) lets libvirt run virtiofsd by its own paths
+    # alone: the wrapper is let in through the profile's local include, run
+    # under libvirt's own profile, which hands virtiofsd its own as before.
+    local prof
+    for prof in usr.sbin.libvirtd usr.sbin.virtqemud; do
+        [ -f "/etc/apparmor.d/$prof" ] && [ -d /etc/apparmor.d/local ] || continue
+        grep -qs "$VIRTIOFSD_WRAP" "/etc/apparmor.d/local/$prof" \
+            || printf '%s rix,\n' "$VIRTIOFSD_WRAP" >> "/etc/apparmor.d/local/$prof"
+        have apparmor_parser && { apparmor_parser -r "/etc/apparmor.d/$prof" >/dev/null 2>&1 || warn "AppArmor did not reload $prof: a VM's shared folder may not start until the machine restarts"; }
+    done
 }
 feature_vmhost() {
     local fam pkgs added n
@@ -2729,6 +2775,7 @@ feature_vmhost() {
             # The cached cloud images and each VM's disk, the jobs account's;
             # 0755 so libvirt's own account reaches the disks it is handed.
             install -d -m 0755 -o "$DOCKER_USER" /var/lib/builderbot/vms /var/lib/builderbot/vms/images /var/lib/builderbot/vms/disks
+            vmhost_virtiofsd
             # Run again on a machine that has it (a package the feature has
             # gained since, UEFI's firmware), what it added before is kept.
             [ -f "$FEATURES_DIR/vmhost" ] && added="$(sed -n 's/^packages=//p' "$FEATURES_DIR/vmhost") $added"
@@ -2743,6 +2790,11 @@ feature_vmhost() {
                 [ "${n:-0}" -eq 0 ] || die "${n} VM(s) are on this machine: remove them first, then VM host"
             fi
             say "taking VM host off"
+            rm -f "$VIRTIOFSD_WRAP"
+            local prof
+            for prof in usr.sbin.libvirtd usr.sbin.virtqemud; do
+                [ -f "/etc/apparmor.d/local/$prof" ] && sed -i "\#$VIRTIOFSD_WRAP#d" "/etc/apparmor.d/local/$prof"
+            done
             getent group libvirt >/dev/null 2>&1 && gpasswd -d "$DOCKER_USER" libvirt >/dev/null 2>&1 || true
             rm -rf /var/lib/builderbot/vms
             added="$(sed -n 's/^packages=//p' "$FEATURES_DIR/vmhost")"
@@ -2873,6 +2925,8 @@ case "${1-}" in
     *) die "unknown command: $1. Try: bb-sandbox --help" ;;
 esac
 BBSANDBOX
+# Alpine's cloud image has no /usr/local/sbin until something makes it.
+install -d -m 0755 /usr/local/sbin
 install -m 0750 "$BBSANDBOX_TMP" /usr/local/sbin/bb-sandbox
 rm -f "$BBSANDBOX_TMP"
 # Root's, and nobody else's: 0750 root:root. Anyone the operator has given

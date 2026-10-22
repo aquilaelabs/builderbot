@@ -14,6 +14,7 @@
 //
 // Skipped in one line without them, like every lab suite. Slow by nature:
 // each system boots, provisions itself and walks for ten to twenty minutes.
+import { get } from 'node:http';
 import { ok, done, sleep } from './lib.mjs';
 
 const CTL = (process.env.BB_LAB_CONTROLLER || '').replace(/\/$/, '');
@@ -68,20 +69,24 @@ for (const os of SYSTEMS){
   if (row){
     const nid = row.id;
     // Toolchains in and out.
-    for (const [action, want] of [['install', s => s !== 'absent'], ['remove', s => s === 'absent']]){
+    for (const [action, want] of [['install', true], ['remove', false]]){
       await api('/api/toolchains', { action, names: ['node'], node: nid });
       const d = await wait(async () => { const t = await api(`/api/toolchains?node=${nid}`); return t.job?.running ? null : t; }, 30 * 60000);
-      const st = (d?.items || []).find(i => i.name === 'node')?.state;
-      ok(want(st), `[${os}] a toolchain ${action}s (${st})`);
+      // An item says whether it is installed (B194: it has no state).
+      const it = (d?.items || []).find(i => i.name === 'node');
+      ok(it?.installed === want, `[${os}] a toolchain ${action}s (${it ? `installed ${it.installed}${it.version ? ` ${it.version}` : ''}` : 'no node item'}${d?.job?.errors ? `; ${JSON.stringify(d.job.errors).slice(0, 200)}` : ''})`);
     }
     // A container from a compose file: nginx, deployed and taken off.
     for (const action of ['deploy', 'remove']){
-      await api('/api/nginx', { action, node: nid });
+      const asked = await api('/api/nginx', { action, node: nid });
+      if (asked.error){ ok(false, `[${os}] nginx ${action === 'deploy' ? 'runs as a container there' : 'comes off again'} (${asked.error})`); continue; }
       const x = await wait(async () => {
         const n = ((await api('/api/nginx')).nodes || []).find(v => v.node === nid) || {};
         return !(n.state?.job?.running) && (action === 'deploy') === !!n.deployed ? n : null;
       }, 20 * 60000);
-      ok(!!x, `[${os}] nginx ${action === 'deploy' ? 'runs as a container there' : 'comes off again'}`);
+      // deployed says the container is this node's; running, that it runs.
+      const up = !!x?.state?.running;
+      ok(!!x && up === (action === 'deploy'), `[${os}] nginx ${action === 'deploy' ? 'runs as a container there' : 'comes off again'}${x && up !== (action === 'deploy') ? ` (running ${up})` : ''}`);
     }
     // A project there: synced, and a terminal through the controller.
     await api('/api/prefs', { project: PROJECT, node: nid });
@@ -89,7 +94,11 @@ for (const os of SYSTEMS){
       .some(([k, v]) => k === PROJECT && v?.ready), 20 * 60000);
     ok(!!synced, `[${os}] ${PROJECT} syncs there`);
     ok(/README|\.git/.test(await exec(nid, ['sh', '-c', `ls -a /workspace/${PROJECT}`])), `[${os}] ...and its files are on the machine`);
-    const page = await fetch(`${CTL}/term/?arg=sh:1:${PROJECT}`, { headers: { Authorization: auth } }).then(r => r.text()).catch(e => String(e));
+    // node:http, not fetch: undici asserts and takes the process down on ttyd's
+    // large Connection: close page, before the VM below is removed (B196).
+    const page = await new Promise(res => get(`${CTL}/term/?arg=sh:1:${PROJECT}`, { headers: { Authorization: auth } }, r => {
+      let b = ''; r.setEncoding('utf8'); r.on('data', c => { b += c; }); r.on('end', () => res(b)); r.on('error', e => res(String(e)));
+    }).on('error', e => res(String(e))));
     ok(/xterm|ttyd|<html/i.test(page), `[${os}] a terminal there opens through the controller`);
     await api('/api/prefs', { project: PROJECT, node: home, nodes: [home] });
     // Uninstall: the row retired, nothing of BuilderBot's left.

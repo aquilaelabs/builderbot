@@ -146,8 +146,11 @@ class WorkMixin:
             # job: docker on this node should behave as it does for the
             # account that runs it, since a proxy, a DOCKER_CONFIG, a rootless
             # socket are all the node's own arrangement, and a compose that
-            # ignored them would work by luck.
-            env = dict(os.environ)
+            # ignored them would work by luck. Not who it is, though: the
+            # job's drop gives HOME, USER and LOGNAME their account's, and
+            # OpenRC hands a root service HOME=/root, which docker run as
+            # another account cannot read and then finds no compose plugin.
+            env = {k: v for k, v in os.environ.items() if k not in ("HOME", "USER", "LOGNAME")}
             env.update(sdk_env(self.state))
             env.update({k: str(v).replace("{cdir}", cdir)
                         for k, v in (stp.get("env") or {}).items()})

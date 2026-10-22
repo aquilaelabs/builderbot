@@ -39,6 +39,7 @@ from .gpu import (
 from .sessnet import SESSNET_STATUS, isolation_now
 from .runners import _runner_state, runner_dirs
 from . import storage
+from . import vmhw
 from .vms import isos_now, vm_pool, vms_now
 
 
@@ -219,6 +220,7 @@ def features_now():
     return {
         "vmhost": {"installed": os.path.exists(os.path.join(FEATURES_DIR, "vmhost")),
                    "kvm": kvm, **({"nokvm": nokvm} if nokvm else {}),
+                   "virtiofs": bool(vmhw.virtiofsd()),
                    "libvirt": _run([virsh, "--version"], timeout=10) if virsh else ""},
         "firewall": {"installed": os.path.exists("/etc/builderbot/hosting-fw.nft")},
     }
@@ -290,6 +292,8 @@ def census(state):
         "vm_pool": vm_pool(),
         # The installer ISOs fetched onto this node (R99).
         "vm_isos": isos_now(),
+        # What a VM here could be given (R100): CPU threads, USB and PCI devices.
+        "vm_host": vmhw.host_hw() if shutil.which("virsh") else {},
         "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,
         "store_dirs": store_dirs(state),

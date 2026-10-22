@@ -138,6 +138,43 @@ disk** on a stopped VM makes one of its disks larger, never smaller; the
 partition inside is the system's own to grow. **Add disk** gives a stopped
 VM the next of vdb to vdd, there at its next start.
 
+## Hardware
+
+New VM's **More**, and **Hardware…** under a stopped VM's More, set what
+a VM has beyond its size; a change lands at its next start, and the row
+says what it was given.
+
+- **CPU threads**: its vCPUs pinned to host threads, picked in each core's
+  pair as the node reports them. A thread another VM on the node is pinned
+  to is refused unless **Share them** is ticked.
+- **Memory ceiling**: it starts with its memory and may balloon up to
+  this, through a virtio balloon; empty for none.
+- **Network**: its project's own network, or the LAN as a machine of its
+  own through the node's wired interface (refused on Wi-Fi, which cannot
+  carry it).
+- **Shared folder**: a folder of the project, read-only if ticked, seen
+  inside the VM through virtiofs: `mount -t virtiofs project /mnt`. It is
+  always inside the project; a dot shares the whole of it. Inside, its files
+  are the VM's own account's (uid 2000), and what anyone in the VM writes is
+  the folder owner's on the node, so nothing in the project turns root's.
+  A node whose VM host was installed before this asks for **Bring in shared
+  folders** on its Features row.
+- **Devices passed through**: a USB device by its vendor and product, or a
+  PCI device (a GPU, its sound, a controller) by its address. These are an
+  administrator's alone, and a PCI device needs the IOMMU on in the node's
+  firmware and kernel (`intel_iommu=on` or `amd_iommu=on`); the dialog says
+  when it is off. A card the node's own display runs on is refused.
+- **Dump vBIOS**, beside a GPU: reads the card's ROM on the node as root
+  and keeps it, so passing it through hands the VM a clean copy, which
+  some cards need before a VM will start with them. A card that reads
+  short is woken by a moment in a throwaway VM and read again. **Give a
+  .rom…** keeps one from the card's maker, or from a collection of them,
+  instead. libvirt hands a passed-through PCI device to vfio-pci when its VM
+  starts and gives it back when it stops.
+
+**Starts with its host**, on the row and at New VM, starts the VM whenever
+its node boots; a VM made a node always does.
+
 ## From a session
 
 ```
@@ -147,5 +184,13 @@ bb vm new db --os debian --mem 4G --disk 30 --why "a database to test the migrat
 bb vm ssh db                in, as builder, with the session's own key (made when there is none)
 bb vm snapshot db clean     before changing it
 bb vm revert db clean       and back
+bb vm stop db && bb vm grow db 60          a larger disk; the system inside grows its partition
+bb vm hardware db --pin 2,3 --mem-max 8G --share data --ro
+bb vm autostart db on       it starts when its node boots
 bb vm rm db
 ```
+
+Each is under the same Make VMs setting as making one. A session's
+hardware stops at its own project: it may pin, give a memory ceiling and
+share a folder of the project, while putting a VM on the LAN and passing a
+device through are a person's, from the VMs page.

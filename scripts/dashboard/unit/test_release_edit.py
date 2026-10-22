@@ -129,6 +129,21 @@ class Plan(Base):
         self.assertIn("empty", fr.edit_plan("app", "v0.5.4", "  \n", [])["error"])
         self.assertIn("not a tag here", fr.edit_plan("app", "v9.9.9", "x", [])["error"])
 
+    def test_a_picture_from_the_repository_is_pinned_to_its_pushed_commit(self):
+        # (file:PATH): shown from the history, never one of the downloads.
+        n = "![Shot](file:docs/shot.png)"
+        self.assertIn("not pushed", fr.edit_plan("app", "v0.5.4", n, []).get("error", ""))
+        git(self.app, "update-ref", "refs/remotes/origin/main", "HEAD")
+        p = fr.edit_plan("app", "v0.5.4", n, [])
+        sha = subprocess.run(["git", "-C", str(self.app), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        self.assertEqual((p.get("pinned"), p.get("files")), ({"docs/shot.png": sha}, []), p)
+        self.assertEqual(fr._with_files(n, p["pinned"], lambda c, r: f"https://x/raw/{c}/{r}"),
+                         f"![Shot](https://x/raw/{sha}/docs/shot.png)")
+        (self.app / "docs" / "shot.png").write_bytes(b"\x89PNG changed")
+        self.assertIn("not committed as it is now", fr.edit_plan("app", "v0.5.4", n, []).get("error", ""))
+        self.assertIn("not a picture", fr.edit_plan("app", "v0.5.4", "(file:tool.sh)", []).get("error", ""))
+        self.assertIn("not a picture", fr.edit_plan("app", "v0.5.4", "(file:../secret.txt)", []).get("error", ""))
+
 
 class Edit(Base):
     KIND, REPO = "github", "o/app"

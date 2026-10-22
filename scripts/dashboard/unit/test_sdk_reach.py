@@ -19,6 +19,15 @@ class Reach(unittest.TestCase):
         self.assertEqual(sdkmeta.source_host(sdkmeta.toolchain("android:ndk")), "dl.google.com")
         self.assertEqual(sdkmeta.source_host({"source": {"kind": "command"}}), "")
 
+    def test_a_musl_system_takes_the_musl_build_where_there_is_one(self):
+        url = {"linux/amd64": "glibc", "linux-musl/amd64": "musl", "linux/arm64": "arm"}
+        with mock.patch.object(sdkmeta, "this_platform", return_value="linux/amd64"):
+            with mock.patch.object(sdkmeta.glob, "glob", return_value=["/lib/ld-musl-x86_64.so.1"]):
+                self.assertEqual(sdkmeta.for_platform(url), "musl")
+                self.assertEqual(sdkmeta.for_platform({"linux/amd64": "glibc"}), "glibc")
+            with mock.patch.object(sdkmeta.glob, "glob", return_value=[]):
+                self.assertEqual(sdkmeta.for_platform(url), "glibc")
+
     def test_a_name_that_does_not_resolve_is_said(self):
         with mock.patch("socket.getaddrinfo", side_effect=OSError("no")):
             self.assertIn("could not be looked up", sdkmeta.unreachable("nodejs.org"))

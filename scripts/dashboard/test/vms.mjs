@@ -200,5 +200,36 @@ const inst = await (async () => { for (let i = 0; i < 40; i++){
 } return null; })();
 ok(inst?.spec?.installer?.iso === 'ubuntu-26.04-live-server-amd64.iso' && inst.spec.boot === 'uefi' && !inst.spec.image,
    `...and Make it queues a create from the ISO, UEFI, with no image (${JSON.stringify(inst?.spec?.installer)})`);
+
+// A VM's hardware beyond size (R100): the row says what it was given and
+// carries the autostart switch; Hardware… on a stopped VM draws the host's
+// thread pairs and devices, and Save queues the node's hardware job.
+const took2 = await agent('work', { running: [], wait: 0 });
+await agent('result', { job: took2.id, state: 'succeeded', exit: 0 });
+await agent('hello', { census: { ...CENSUS, vm_host: { cpus: [[0, 4], [1, 5]], iommu: true,
+    usb: [{ vendor: '0x046d', product: '0xc52b', name: 'Logitech Receiver' }],
+    pci: [{ addr: '0000:01:00.0', class: '0x030000', vendor: '0x10de', device: '0x2484', group: '14', driver: 'nvidia' }] },
+  vms: [{ name: 'bbvm-alpha-inst', state: 'stopped', vcpus: 2, mem_mb: 2048, snapshots: [], autostart: true,
+          hw: { cpuset: [0, 4], net: 'project', devices: [] } }] }, version: shipped.version, digest: shipped.digest });
+await page.evaluate(async () => { await loadVms(); });
+await page.waitForFunction(() => /pinned to threads 0, 4/.test(document.querySelector('.vmtab [data-vm-key="alpha/inst"]')?.textContent || ''), null, { timeout: 15000 });
+ok(await page.$eval('.vmtab [data-vm-key="alpha/inst"] [data-vmauto]', c => c.checked),
+   'a VM pinned to host threads says so on its row, and its starts-with-its-host switch is on');
+await page.evaluate(() => openVmHardware(vmsData.vms.find(v => v.name === 'inst')));
+await page.waitForSelector('#vmhwmodal:not([hidden]) #vmHwCpus', { timeout: 10000 });
+const hwd = await page.$eval('#vmhwmodal', m => ({ pairs: [...m.querySelectorAll('[data-cpus]')].map(c => c.dataset.cpus + (c.checked ? '*' : '')),
+  usb: !!m.querySelector('[data-usb="0x046d:0xc52b"]'), dump: !!m.querySelector('[data-vbios="0000:01:00.0"]') }));
+ok(hwd.pairs.join() === '0,4*,1,5' && hwd.usb && hwd.dump,
+   `Hardware… draws the host's thread pairs with its own ticked, its USB device, and Dump vBIOS beside the GPU (${JSON.stringify(hwd)})`);
+await page.click('#vmhwmodal [data-cpus="0,4"]');
+await page.fill('#vmHwMemMax', '4');
+await page.click('#vmHwGo');
+const hwj = await (async () => { for (let i = 0; i < 40; i++){
+  const j = ((await call('/api/v1/jobs?active=1')).jobs || []).find(x => x.type === 'vm' && x.spec?.action === 'hardware');
+  if (j) return j;
+  await sleep(250);
+} return null; })();
+ok(hwj && hwj.spec.hw.cpuset.length === 0 && hwj.spec.hw.mem_max_mb === 4096 && hwj.spec.hw.net === 'project',
+   `Save queues the hardware job: unpinned, a 4 GB ceiling, its project's network (${JSON.stringify(hwj?.spec?.hw)})`);
 await call('/api/v1/nodes', { action: 'retire', id: minted.id });
 await done(browser);

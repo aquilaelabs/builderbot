@@ -1195,9 +1195,29 @@ def ask_vm(why, project, req, asker_name=""):
     shown = (["vm", "new", name] + [x for pair in flags for x in pair]
              if action == "new" else ["vm", action, name] + ([str(req.get("snapshot"))] if req.get("snapshot") else []))
     keep = {k: req.get(k) for k in ("action", "name", "os", "vcpus", "mem_mb", "disk_gb", "keys", "user", "node",
-                                     "snapshot", "note", "force", "node_agent", "ctl") if req.get(k) not in (None, "")}
+                                     "snapshot", "note", "force", "node_agent", "ctl", "hw", "autostart", "on",
+                                     "disks", "disk", "gb")
+            if req.get(k) not in (None, "")}
     if keep.get("node_agent"):
         shown.append("--node-agent")
+    # What the person allowing reads on the bell: the hardware as bb vm's
+    # own words (R100), a disk's size, autostart's way.
+    hw = keep.get("hw") if isinstance(keep.get("hw"), dict) else {}
+    if "cpuset" in hw:
+        shown += ["--pin", ",".join(map(str, hw["cpuset"])) or "none"]
+    if "mem_max_mb" in hw:
+        shown += ["--mem-max", f"{hw['mem_max_mb']}M" if hw["mem_max_mb"] else "none"]
+    if "net" in hw:
+        shown += ["--net", str(hw["net"])]
+    if "share" in hw:
+        sh = hw["share"] if isinstance(hw["share"], dict) else {}
+        shown += ["--share", str(sh.get("path") or "none")] + (["--ro"] if sh.get("ro") else [])
+    if keep.get("gb"):
+        shown += [str(keep["disk"])] * bool(keep.get("disk")) + [f"{keep['gb']}G"]
+    if action == "autostart":
+        shown.append("on" if keep.get("on") else "off")
+    if keep.get("autostart") is True and action == "new":
+        shown.append("--autostart")
     return _queue("vm", why, [a for a in shown if a], str(req.get("node") or ""), str(req.get("node") or ""), project,
                   "claude", "admins", "the administrators", asker_name, extra={"vm": keep})
 

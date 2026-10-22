@@ -14,6 +14,7 @@ import tempfile
 import urllib.request
 from xml.sax.saxutils import escape, quoteattr
 
+from . import vmhw
 from .base import _run
 
 VIRSH = ["virsh", "-c", "qemu:///system"]
@@ -28,7 +29,7 @@ SNAP_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,40}")
 USER_RE = re.compile(r"[a-z_][a-z0-9_-]{0,31}")
 KEY_RE = re.compile(r"(ssh-(ed25519|rsa)|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0-9+/=]{20,800}( [^\n]{0,100})?")
 ACTIONS = ("create", "start", "stop", "restart", "remove", "snapshot", "revert", "snapshot-rm",
-           "eject", "disk-grow", "disk-add", "iso-add", "iso-rm")
+           "eject", "disk-grow", "disk-add", "iso-add", "iso-rm", "hardware", "autostart", "vbios")
 # An installer ISO a person fetched onto this node (R99), by its own name.
 ISO_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,100}\.iso")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -67,10 +68,15 @@ def vms_now():
             info[k.strip().lower()] = v.strip()
         ip = ""
         if info.get("state") == "running":
-            for line in _run(VIRSH + ["domifaddr", name, "--source", "lease"], timeout=10).splitlines():
-                m = re.search(r"ipv4\s+([0-9.]+)/", line)
-                if m:
-                    ip = m.group(1)
+            # Its project's network's lease, else what its guest agent says
+            # (a VM on the LAN, R100), the loopback aside.
+            for src in ("lease", "agent"):
+                for line in _run(VIRSH + ["domifaddr", name, "--source", src], timeout=10).splitlines():
+                    m = re.search(r"ipv4\s+([0-9.]+)/", line)
+                    if m and not m.group(1).startswith("127."):
+                        ip = m.group(1)
+                        break
+                if ip:
                     break
         snaps = [s for s in _run(VIRSH + ["snapshot-list", name, "--name"], timeout=10).split() if SNAP_RE.fullmatch(s)]
         mem = re.match(r"(\d+)", info.get("max memory", ""))
@@ -82,7 +88,11 @@ def vms_now():
             p = line.split(None, 1)
             if len(p) == 2 and p[0] == "sda" and p[1].strip().startswith(iso_dir() + "/"):
                 iso = os.path.basename(p[1].strip())
-        out.append({"screen": bool(screen), "iso": iso if ISO_RE.fullmatch(iso) else "",
+        # Its hardware beyond size (R100), read off its own XML, and whether
+        # it starts with its host.
+        hw = vmhw.read(_run(VIRSH + ["dumpxml", name, "--inactive"], timeout=10))
+        out.append({"hw": hw, "autostart": info.get("autostart") == "enable",
+                    "screen": bool(screen), "iso": iso if ISO_RE.fullmatch(iso) else "",
                     "name": name, "state": _state_word(info.get("state", "")), "ip": ip,
                     "vcpus": int(info["cpu(s)"]) if info.get("cpu(s)", "").isdigit() else 0,
                     "mem_mb": int(mem.group(1)) // 1024 if mem else 0, "snapshots": snaps[:32]})
@@ -204,6 +214,9 @@ def user_data(hostname, user, keys, enroll=""):
     boot, then removed, since the token in it is spent."""
     lines = ["#cloud-config", f"hostname: {hostname}", "ssh_pwauth: false", "users:",
              f"  - name: {user}", "    sudo: ALL=(ALL) NOPASSWD:ALL", "    shell: /bin/bash",
+             # One uid on every image, which a shared folder's files are
+             # inside the VM (R100, vmhw.GUEST_UID).
+             f"    uid: {vmhw.GUEST_UID}",
              "    ssh_authorized_keys:"]
     lines += [f"      - {json.dumps(k)}" for k in keys]
     # bash where the image has none (Alpine's): the account's shell, and
@@ -213,6 +226,13 @@ def user_data(hostname, user, keys, enroll=""):
     # ...and Alpine's sshd turns a key away for an account whose password is
     # locked (!), which cloud-init leaves; no password (*) lets the key in.
     bash += f'; if command -v apk >/dev/null; then sed -i "s/^{user}:!/{user}:*/" /etc/shadow; fi'
+    # ...and QEMU's guest agent, which says a VM's address when it is on the
+    # LAN (R100), where the LAN's DHCP gives it and libvirt keeps no lease.
+    bash += ("; command -v qemu-ga >/dev/null || { apk add --no-cache qemu-guest-agent || "
+             "{ apt-get update -qq && apt-get install -y -qq qemu-guest-agent; } || dnf install -y -q qemu-guest-agent || "
+             "zypper -n -q in qemu-guest-agent || pacman -S --noconfirm qemu-guest-agent; } >/dev/null 2>&1; "
+             "{ systemctl enable --now qemu-guest-agent || { rc-update add qemu-guest-agent && rc-service qemu-guest-agent start; }; } "
+             ">/dev/null 2>&1 || true")
     if enroll:
         import base64
         lines += ["write_files:", "  - path: /root/bb-enroll.sh", "    permissions: '0700'", "    encoding: b64",
@@ -233,6 +253,15 @@ OVMF_PAIRS = (("/usr/share/OVMF/OVMF_CODE_4M.fd", "/usr/share/OVMF/OVMF_VARS_4M.
               ("/usr/share/edk2/x64/OVMF_CODE.4m.fd", "/usr/share/edk2/x64/OVMF_VARS.4m.fd"),
               ("/usr/share/qemu/ovmf-x86_64-code.bin", "/usr/share/qemu/ovmf-x86_64-vars.bin"),
               ("/usr/share/OVMF/OVMF_CODE.fd", "/usr/share/OVMF/OVMF_VARS.fd"))
+
+
+def image_bytes(path):
+    """The virtual size of a disk image, or 0 if it cannot be read."""
+    try:
+        out = subprocess.run(["qemu-img", "info", "-U", "--output=json", path], capture_output=True, text=True, timeout=60).stdout
+        return int(json.loads(out).get("virtual-size") or 0)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return 0
 
 
 def ovmf():
@@ -355,7 +384,7 @@ class VmsMixin:
         if action not in ACTIONS:
             job.say(f"refused: {action or 'no action'} is not a VM action (one of {', '.join(ACTIONS)})\n")
             return "failed", 64
-        if not DOMAIN_RE.fullmatch(name) and not action.startswith("iso-"):
+        if not DOMAIN_RE.fullmatch(name) and not action.startswith("iso-") and action != "vbios":
             job.say(f"refused: {name or 'no name'} is not a BuilderBot VM's name\n")
             return "failed", 64
         if not shutil.which("virsh") or not os.path.isdir(VM_DIR):
@@ -526,6 +555,13 @@ class VmsMixin:
         self.own_dir(ddir, who)
         disk = os.path.join(ddir, name + ".qcow2")
         job.step("making its disk")
+        # Never smaller than the image under it, or its last partition runs
+        # past the disk's end and the system cannot find its root (Gentoo's
+        # image is 20 GB).
+        need = 0 if iso else -(-image_bytes(base) // 2**30)
+        if need > disk_gb:
+            job.say(f"its disk is {need} GB rather than {disk_gb}: the image it starts from is that size already\n")
+            disk_gb = need
         made = ["qemu-img", "create", "-f", "qcow2", disk, f"{disk_gb}G"] if iso else \
             ["qemu-img", "create", "-f", "qcow2", "-F", "qcow2", "-b", base, disk, f"{disk_gb}G"]
         if self._vm_run(job, made, who, say=False) != 0:
@@ -559,14 +595,26 @@ class VmsMixin:
         nvram = os.path.join(ddir, name + "_VARS.qcow2")
         if fw and self._vm_run(job, ["qemu-img", "convert", "-f", "raw", "-O", "qcow2", fw[1], nvram], who, say=False) != 0:
             return "failed", 70
+        text = domain_xml(name, project, vcpus, mem, disk, seed, str(spec.get("network") or ""), boot, fw,
+                          nvram, lan, extra=extra, installer=bool(iso), mac=mac, vnc_pw=vnc_pw)
+        # Its hardware beyond size (R100), where New VM gave any.
+        hw, why = vmhw.clean(spec.get("hw"), vcpus, mem)
+        if hw is None or (hw and not self._vm_hw_ok(job, hw)):
+            if why:
+                job.say(f"refused: {why}\n")
+            return "failed", 64
+        if hw:
+            text = vmhw.apply(text, hw, vcpus, mem, lan=lan or lan_iface(), network=str(spec.get("network") or ""),
+                              vbios_dir=os.path.join(VM_DIR, vmhw.VBIOS_DIR), fsd=vmhw.virtiofsd())
         with open(xml, "w") as f:
-            f.write(domain_xml(name, project, vcpus, mem, disk, seed, str(spec.get("network") or ""), boot, fw,
-                               nvram, lan, extra=extra, installer=bool(iso),
-                               mac=mac, vnc_pw=vnc_pw))
+            f.write(text)
         job.step("starting it")
         if self._vm_run(job, VIRSH + ["define", xml], who) != 0:
             return "failed", 70
-        self._vm_run(job, VIRSH + ["autostart", name], who, say=False)
+        # Starting with its host is asked for (R100), but for a node, whose
+        # whole point is to be there.
+        if spec.get("autostart") is True or enroll:
+            self._vm_run(job, VIRSH + ["autostart", name], who, say=False)
         if self._vm_run(job, VIRSH + ["start", name], who) != 0:
             return "failed", 70
         job.say(f"{name} is running: {vcpus} vCPU, {mem} MB, {disk_gb} GB; it takes its address once it has booted\n")
@@ -640,6 +688,93 @@ class VmsMixin:
             return "failed", 70
         job.say(f"{DISK_DEVS[i]}: a {gb} GB disk, there at its next start\n")
         return "succeeded", 0
+
+    def _vm_hw_ok(self, job, hw):
+        """What the host must hold for `hw`: a passed device not the host's own
+        display's, PCI ones under an IOMMU, a LAN that is wired, virtiofsd for
+        a share. Said and False when it does not."""
+        host = vmhw.host_hw()
+        for d in hw.get("devices") or []:
+            if d["type"] == "pci":
+                if not host["iommu"]:
+                    job.say("refused: this machine's IOMMU is off (intel_iommu=on or amd_iommu=on on its kernel's "
+                            "command line, and VT-d or AMD-Vi in its firmware), so no PCI device can be passed through\n")
+                    return False
+                row = next((p for p in host["pci"] if p["addr"] == d["addr"]), None)
+                if not row:
+                    job.say(f"refused: no PCI device {d['addr']} here\n")
+                    return False
+                if row["driver"] == "nvidia" and subprocess.run(["systemctl", "is-active", "--quiet", "builderbot-gpu-display"],
+                                                                check=False).returncode == 0:
+                    job.say(f"refused: {d['addr']} is the card the host's own display runs on (the emulators' GPU); "
+                            "switch the GPU display off on the node's page first\n")
+                    return False
+        if hw.get("net") == "lan" and os.path.isdir(f"/sys/class/net/{lan_iface()}/wireless"):
+            job.say("refused: this machine's LAN is Wi-Fi, which will not carry a second machine's address\n")
+            return False
+        if hw.get("share") and not vmhw.virtiofsd():
+            job.say("refused: a shared folder needs virtiofsd and VM host's wrapper for it, which are not all on this machine: "
+                    "press Bring in shared folders on VM host's row in the node's Features section\n")
+            return False
+        if hw.get("share") and not os.path.isdir(hw["share"]["path"]):
+            job.say(f"refused: {hw['share']['path']} is not a folder on this node\n")
+            return False
+        return True
+
+    def _vm_hardware(self, job, spec, name, who):
+        """A stopped VM's hardware beyond size, changed: its own XML read,
+        the record applied, defined again."""
+        if not self._vm_exists(name, who):
+            job.say(f"{name} is not on this machine\n")
+            return "failed", 66
+        if "shut off" not in subprocess.run(VIRSH + ["domstate", name], capture_output=True, text=True,
+                                            check=False, **who).stdout:
+            job.say("refused: stop the VM first; its hardware changes while it is off\n")
+            return "failed", 75
+        xml = subprocess.run(VIRSH + ["dumpxml", name, "--inactive"], capture_output=True, text=True,
+                             check=False, **who).stdout
+        m_v = re.search(r"<vcpu[^>]*>(\d+)</vcpu>", xml)
+        cur = re.search(r"<currentMemory unit='KiB'>(\d+)</currentMemory>", xml) or re.search(r"<memory unit='KiB'>(\d+)</memory>", xml)
+        vcpus, mem = int(m_v.group(1)) if m_v else 1, int(cur.group(1)) // 1024 if cur else 1024
+        hw, why = vmhw.clean(spec.get("hw"), vcpus, mem)
+        if hw is None:
+            job.say(f"refused: {why}\n")
+            return "failed", 64
+        if not self._vm_hw_ok(job, hw):
+            return "failed", 64
+        try:
+            text = vmhw.apply(xml, hw, vcpus, mem, lan=lan_iface(), network=str(spec.get("network") or ""),
+                              vbios_dir=os.path.join(VM_DIR, vmhw.VBIOS_DIR), fsd=vmhw.virtiofsd())
+        except ValueError as e:
+            job.say(f"refused: {e}\n")
+            return "failed", 65
+        path = os.path.join(VM_DIR, "disks", name + ".xml")
+        with open(path, "w") as f:
+            f.write(text)
+        if self._vm_run(job, VIRSH + ["define", path], who) != 0:
+            return "failed", 70
+        job.say(f"{name}'s hardware changed: " + ", ".join(sorted(hw)) + "\n")
+        return "succeeded", 0
+
+    def _vm_autostart(self, job, spec, name, who):
+        on = spec.get("on") is True
+        if self._vm_run(job, VIRSH + ["autostart", name] + ([] if on else ["--disable"]), who) != 0:
+            return "failed", 70
+        job.say(f"{name} {'starts' if on else 'no longer starts'} with its host\n")
+        return "succeeded", 0
+
+    def _vm_vbios(self, job, spec, name, who):
+        """A GPU's vBIOS dumped through sysfs, as root, or a .rom given on
+        the VMs page kept in its place (R100)."""
+        if spec.get("rom"):
+            got = vmhw.vbios_keep(str(spec.get("addr") or ""), str(spec["rom"]),
+                                  os.path.join(VM_DIR, vmhw.VBIOS_DIR), job.say)
+            return ("succeeded", 0) if got else ("failed", 70)
+        if os.geteuid() != 0:
+            job.say("refused: dumping a vBIOS is root's, and this agent is not\n")
+            return "failed", 77
+        got = vmhw.vbios_dump(str(spec.get("addr") or ""), os.path.join(VM_DIR, vmhw.VBIOS_DIR), job.say)
+        return ("succeeded", 0) if got else ("failed", 70)
 
     def _vm_iso_add(self, job, spec, name, who):
         """An installer's ISO onto this node, kept only when it matches the

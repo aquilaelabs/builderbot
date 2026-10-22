@@ -42,12 +42,61 @@ class Controller(unittest.TestCase):
     def new(self, **kw):
         return vms.create("user:test", "web", {"name": "db", "os": "debian 13", "keys": [KEY], **kw}, ["n1"])
 
+    def test_a_vm_s_hardware_is_checked_before_its_node_sees_it(self):
+        # R100: a thread another VM is pinned to is refused unless shared, a
+        # memory ceiling under its start is refused (none is its start), the
+        # shared folder is the project's own, and a device is an
+        # administrator's.
+        self.f.nodes["n1"]["reported"]["vms"] = [{"name": "bbvm-web-a", "hw": {"cpuset": [2, 3]}}]
+        hw, why = vms.hardware({"hw": {"cpuset": [3, 4]}}, "web", "n1", False, 2048)
+        self.assertIsNone(hw)
+        self.assertIn("bbvm-web-a is pinned", why)
+        self.assertEqual(vms.hardware({"hw": {"cpuset": [3, 4]}}, "web", "n1", False, 2048, but="bbvm-web-a")[0]["cpuset"], [3, 4])
+        self.assertEqual(vms.hardware({"hw": {"cpuset": [4, 3], "share_cpus": True}}, "web", "n1", False, 2048)[0]["cpuset"], [3, 4])
+        self.assertIn("under what it starts", vms.hardware({"hw": {"mem_max_mb": 1024}}, "web", "n1", False, 2048)[1])
+        self.assertEqual(vms.hardware({"hw": {"mem_max_mb": 0}}, "web", "n1", False, 2048)[0]["mem_max_mb"], 2048)
+        sh = vms.hardware({"hw": {"share": {"path": "data/in", "ro": True}}}, "web", "n1", False, 2048)[0]["share"]
+        self.assertEqual(sh, {"path": "/workspace/web/data/in", "tag": "project", "ro": True})
+        self.assertIn("inside the project", vms.hardware({"hw": {"share": {"path": "../api"}}}, "web", "n1", False, 2048)[1])
+        dev = {"devices": [{"type": "usb", "vendor": "046d", "product": "c52b"}]}
+        self.assertIn("administrator", vms.hardware({"hw": dev}, "web", "n1", False, 2048)[1])
+        self.assertEqual(vms.hardware({"hw": dev}, "web", "n1", True, 2048)[0]["devices"], dev["devices"])
+        self.assertIn("administrator", vms.vbios("user:test", {"node": "n1", "addr": "0000:01:00.0"}, False)["error"])
+        import base64
+        self.f.nodes["n1"]["reported"]["features"]["vmhost"]["installed"] = True
+        self.assertIn("not a vBIOS", vms.vbios("user:test", {"node": "n1", "addr": "0000:01:00.0",
+                                                            "rom": base64.b64encode(b"MZ" + b"\0" * 4000).decode()}, True).get("error", ""))
+        ok = vms.vbios("user:test", {"node": "n1", "addr": "0000:01:00.0", "rom": base64.b64encode(b"\x55\xaa" + b"\0" * 4000).decode()}, True)
+        self.assertTrue(ok.get("ok"), ok)
+        self.assertTrue(self.f.jobs[-1][2]["rom"])
+        # The LAN is a person's: a session's own VM stays behind its
+        # project's firewall.
+        self.assertIn("a person's", vms.hardware({"hw": {"net": "lan"}}, "web", "n1", False, 2048, person=False)[1])
+        self.assertEqual(vms.hardware({"hw": {"net": "project"}}, "web", "n1", False, 2048, person=False)[0], {"net": "project"})
+        r = self.new(hw={"cpuset": [0, 1], "net": "lan"}, autostart=True)
+        self.assertTrue(r.get("ok"), r)
+        spec = self.f.jobs[-1][2]
+        self.assertEqual((spec["hw"], spec["autostart"]), ({"cpuset": [0, 1], "net": "lan"}, True))
+
+    def test_a_refused_job_leaves_the_agent_s_reason_on_the_row(self):
+        # B191: the agent's refusal from the job's log, not "exit 64".
+        self.new()
+        vms.vm_done({"id": "j1", "node": "n1", "spec": {"action": "create", "domain": "bbvm-web-db"}, "error": "exit 64"}, "failed")
+        self.assertEqual(vms.view()[0]["error"], "exit 64", "with no log to read, the code is all there is")
+        vms.job_tail = lambda jid: "image: cached\nrefused: /workspace/web/docs is not a folder on this node\n"
+        self.addCleanup(setattr, vms, "job_tail", None)
+        vms.vm_done({"id": "j1", "node": "n1", "spec": {"action": "create", "domain": "bbvm-web-db"}, "error": "exit 64"}, "failed")
+        self.assertEqual(vms.view()[0]["error"], "/workspace/web/docs is not a folder on this node")
+
     def test_the_os_is_found_however_it_is_said(self):
         for said, want in (("Debian 12", "debian-12"), ("debian", "debian-13"), ("ubuntu-24.04", "ubuntu-24.04"),
                            ("rocky", "rocky-10"), ("Ubuntu 26.04 LTS", "ubuntu-26.04"), ("noble", "ubuntu-24.04"),
                            ("AlmaLinux 9", "almalinux-9"), ("centos stream", "centos-9"), ("arch", "arch-latest"),
                            ("leap 16", "opensuse-16.0"), ("tumbleweed", "opensuse-tumbleweed"), ("gentoo", "gentoo-latest")):
             self.assertEqual((vms.find_os(said)[0] or {}).get("id"), want, said)
+        # Images with no BIOS boot partition hang under SeaBIOS (B198).
+        for said in ("debian", "gentoo"):
+            self.assertEqual(vms.find_os(said)[0].get("boot"), "uefi", said)
         img, why = vms.find_os("debain 13")
         self.assertIsNone(img)
         self.assertIn("nearest: debian-13", why)
@@ -246,7 +295,8 @@ class Census(unittest.TestCase):
                                      {"name": "someone-elses", "state": "running"}],
                              "vm_pool": {"free_mb": 39000, "total_mb": 60000, "path": "/x"}})
         self.assertEqual(got["vms"], [{"name": "bbvm-web-db", "state": "running", "ip": "10.232.0.12", "vcpus": 2,
-                                       "mem_mb": 2048, "snapshots": ["clean"], "screen": False, "iso": ""}])
+                                       "mem_mb": 2048, "snapshots": ["clean"], "screen": False, "iso": "",
+                                   "autostart": False, "hw": {"cpuset": [], "devices": [], "net": "project"}}])
         self.assertEqual(got["vm_pool"], {"free_mb": 39000, "total_mb": 60000})
 
 
@@ -264,6 +314,14 @@ class Agent(unittest.TestCase):
         self.assertEqual(self.av.sums_lookup(f"# x\nSHA256 (Rocky.qcow2) = {h}\n", "Rocky.qcow2"), h)
         self.assertEqual(self.av.sums_lookup("d" * 128 + "\n", "alpine.qcow2"), "d" * 128)
         self.assertEqual(self.av.sums_lookup(f"{h} *other.img\n", "missing.img"), "")
+
+    def test_an_image_s_size_is_read_so_a_disk_is_never_smaller(self):
+        from unittest import mock
+        ran = mock.Mock(stdout=json.dumps({"virtual-size": 21474836480}))
+        with mock.patch.object(self.av.subprocess, "run", return_value=ran):
+            self.assertEqual(self.av.image_bytes("/v/gentoo.qcow2"), 20 * 2**30)
+        with mock.patch.object(self.av.subprocess, "run", side_effect=OSError):
+            self.assertEqual(self.av.image_bytes("/v/none.qcow2"), 0)
 
     def test_nothing_outside_the_shapes_reaches_a_command(self):
         a = object.__new__(self.agent.Agent)
@@ -335,6 +393,38 @@ class Agent(unittest.TestCase):
         self.assertEqual(fr.feed(frame[:5]), [])
         self.assertEqual(fr.feed(frame[5:]), [(2, payload)])
 
+    def test_a_vm_s_hardware_lands_in_its_domain_and_reads_back(self):
+        # R100: what clean() lets through, apply() writes, and read() finds
+        # again, so the row says what the VM has.
+        hw = sys.modules[self.av.__name__.rsplit(".", 1)[0] + ".vmhw"]
+        x = self.av.domain_xml("bbvm-web-db", "web", 2, 2048, "/v/d.qcow2", "/v/s.iso", "bbvm-n00", mac="52:54:00:12:34:56")
+        want, why = hw.clean({"cpuset": [3, 2], "mem_max_mb": 4096, "net": "lan",
+                              "share": {"path": "/workspace/web/data", "tag": "project", "ro": True},
+                              "devices": [{"type": "usb", "vendor": "0x046d", "product": "0xc52b"},
+                                          {"type": "pci", "addr": "0000:01:00.0", "rom": "0000-01-00.0.rom"}]}, 2, 2048)
+        self.assertEqual(why, "")
+        out = hw.apply(x, want, 2, 2048, "enp1s0", "bbvm-n00", "/v/vbios", fsd=hw.VIRTIOFSD_WRAP).replace('"', "'").replace(" />", "/>")
+        self.assertIn(f"<binary path='{hw.VIRTIOFSD_WRAP}'/>", out, "VM host's wrapper, which maps the VM's uids to the folder's owner")
+        self.assertIn("<vcpupin vcpu='0' cpuset='2'/>", out)
+        self.assertIn("<memballoon model='virtio'", out)
+        self.assertIn("<mac address='52:54:00:12:34:56'/>", out, "its MAC kept, so a DHCP reservation holds")
+        self.assertIn("<source dev='enp1s0' mode='bridge'/>", out)
+        self.assertIn("<driver type='virtiofs'", out)
+        self.assertIn("<readonly/>", out)
+        self.assertIn("<vendor id='0x046d'/>", out)
+        self.assertIn("<rom file='/v/vbios/0000-01-00.0.rom'/>", out)
+        self.assertEqual(hw.rom_name("0000:01:00.0"), "0000-01-00.0.rom", "the name vbios_dump writes is one clean() takes")
+        back = hw.read(out)
+        self.assertEqual((back["cpuset"], back["mem_max_mb"], back["net"], back["share"]["path"], len(back["devices"])),
+                         ([2, 3], 4096, "lan", "/workspace/web/data", 2))
+        # Taken off again: an empty record clears what it set.
+        bare = hw.read(hw.apply(out, {"cpuset": [], "mem_max_mb": 2048, "net": "project", "share": {}, "devices": []},
+                                2, 2048, "enp1s0", "bbvm-n00", "/v/vbios"))
+        self.assertEqual((bare["cpuset"], bare.get("mem_max_mb"), bare["net"], bare.get("share"), bare["devices"]),
+                         ([], None, "project", None, []))
+        self.assertIsNone(hw.clean({"share": {"path": "/etc", "tag": "project"}}, 2, 2048)[0])
+        self.assertIsNone(hw.clean({"devices": [{"type": "pci", "addr": "1:2"}]}, 2, 2048)[0])
+
     def test_the_domain_carries_its_marker_and_a_screen_on_the_loopback(self):
         x = self.av.domain_xml("bbvm-web-db", "web", 2, 2048, "/v/d.qcow2", "/v/s.iso", "bbvm-n00")
         self.assertIn("<bb:vm xmlns:bb='https://builderbot.dev/vm/1' project='web'/>", x.replace('"', "'"))
@@ -364,6 +454,7 @@ class Agent(unittest.TestCase):
         self.assertNotIn("bbvm-n00", n)
         ud = self.av.user_data("db", "builder", [KEY])
         self.assertIn("ssh_pwauth: false", ud)
+        self.assertIn("    uid: 2000", ud, "one uid on every image, the one a shared folder's files are inside")
         # bash brought in where the image has none (Alpine), and the enroll
         # started from sh, which every image has.
         self.assertIn("apk add --no-cache bash sudo", ud)
@@ -383,3 +474,42 @@ class Agent(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Verbs(unittest.TestCase):
+    """bb vm's hardware words (R100): what is named is sent, none takes it
+    off, and what is not a hardware word is left for the verb."""
+
+    def setUp(self):
+        import importlib.util
+        lib = os.path.join(HERE, "..", "..", "lib")
+        sys.path.insert(0, lib)
+        spec = importlib.util.spec_from_file_location("vm_verbs", os.path.join(lib, "vm-verbs.py"))
+        self.v = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.v)
+
+    def test_hardware_words(self):
+        hw, left = self.v.hw_opts(["--os", "debian", "--pin", "2,3", "--mem-max", "8G", "--share", "/data/", "--ro",
+                                   "--autostart", "--why", "x"], ("--autostart",))
+        self.assertEqual(hw, {"cpuset": [2, 3], "mem_max_mb": 8192, "share": {"path": "data", "ro": True}})
+        self.assertEqual(left, ["--os", "debian", "--autostart", "--why", "x"])
+        self.assertEqual(self.v.hw_opts(["--pin", "none", "--mem-max", "none", "--share", "none"], ())[0],
+                         {"cpuset": [], "mem_max_mb": 0, "share": {}})
+        self.assertEqual(self.v.hw_said({"hw": {"cpuset": [2, 3], "net": "lan"}, "autostart": True}),
+                         "pinned to threads 2, 3 · on the LAN · starts with its host")
+
+
+class Ask(unittest.TestCase):
+    """A session's VM change asked of the administrators shows them the
+    hardware in bb vm's own words, and keeps what the Allow will need."""
+
+    def test_the_bell_says_what_is_asked(self):
+        import phone
+        seen = {}
+        self.addCleanup(setattr, phone, "_queue", phone._queue)
+        phone._queue = lambda kind, why, shown, *a, **kw: seen.update(shown=shown, extra=kw.get("extra")) or {"id": 1}
+        phone.ask_vm("pin it", "web", {"action": "hardware", "name": "db", "hw": {"cpuset": [2, 3], "mem_max_mb": 0,
+                                                                                  "share": {"path": "data", "ro": True}}}, "s")
+        self.assertEqual(seen["shown"][-7:], ["--pin", "2,3", "--mem-max", "none", "--share", "data", "--ro"])
+        phone.ask_vm("bigger", "web", {"action": "disk-grow", "name": "db", "disk": "vdb", "gb": 60}, "s")
+        self.assertEqual((seen["shown"][-2:], seen["extra"]["vm"]["gb"], seen["extra"]["vm"]["disk"]), (["vdb", "60G"], 60, "vdb"))

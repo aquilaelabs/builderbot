@@ -13,12 +13,17 @@ FAMILY_IDS="gentoo"
 FAMILY_NEED="emerge"
 
 # pkg_refresh: the package index, once, before the first install.
+# Gentoo's cloud image ships with no Portage tree at all: a snapshot first,
+# then the binary host's keys, so pkg takes the binaries it lists.
 pkg_refresh() {
-    :
+    [ -d /var/db/repos/gentoo/profiles ] || emerge-webrsync -q
+    command -v getuto >/dev/null 2>&1 && getuto >/dev/null 2>&1
+    return 0
 }
-# pkg NAME...: install what is named, quietly.
+# pkg NAME...: install what is named, quietly, from the binary host where it
+# has the package and from source where it does not.
 pkg() {
-    emerge --quiet --noreplace "$@"
+    emerge --quiet --noreplace --getbinpkg "$@"
 }
 # pkg_names KEY: what a package is called here, for the handful the core
 # installs itself. A recipe's system packages are the recipe's business,

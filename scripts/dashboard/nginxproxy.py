@@ -774,7 +774,13 @@ def deploy(nid, containers, devactions, devapp):
     the node has enrolled."""
     name = container_name(nid)
     if devapp.is_file_source(name):
-        return {"error": f"{name} is already on the Containers page"}
+        # The name is the node's name: one left by an uninstalled node of the
+        # same name, whose machine is gone, is this node's to take.
+        was = devapp._read_rec(name, devapp.MAIN).get("node")
+        live = {n["id"] for n in node_list() if n.get("state") != "retired"}
+        if was == nid or was in live:
+            return {"error": f"{name} is already on the Containers page"}
+        devapp.forget_container(name)
     # A new one is the newest line the registry listed, pinned (R192).
     pin_latest(nid)
     rec = record(nid)

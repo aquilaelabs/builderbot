@@ -543,8 +543,12 @@ function nodeFeaturesSection(n){
       // Where its VMs may go (R91 step 8): the internet, the controller and
       // their own project's network, and the LAN only when ticked, inside
       // the row it is about.
-      vm.installed ? `<label class="ndcap ndvmlan"><input type="checkbox" data-ndvmlan${n.config?.vm_lan ? " checked" : ""}${why ? " disabled" : ""}>
-        its VMs may reach this machine's LAN too</label>` : "")];
+      (vm.installed ? `<label class="ndcap ndvmlan"><input type="checkbox" data-ndvmlan${n.config?.vm_lan ? " checked" : ""}${why ? " disabled" : ""}>
+        its VMs may reach this machine's LAN too</label>` : "")
+      // A shared folder needs virtiofsd, which an install from before it did
+      // not bring; installing again adds what is missing and keeps the rest.
+      + (vm.installed && vm.virtiofs === false ? `<div class="sub">A VM's shared folder needs virtiofsd and VM host's wrapper for it, which are not all here yet.
+        ${why || job ? "" : `<button type="button" data-nd="feature" data-feature="vmhost" data-op="install">Bring in shared folders</button>`}</div>` : ""))];
   if (n.config?.host_only)
     rows.push(row("firewall", "Hosting firewall", !!fe?.firewall?.installed,
       "Takes in only 80 and 443, a port a container publishes included; port 22 as the SSH door leaves it.", ""));
@@ -1836,6 +1840,7 @@ function ndDialogs(){
             <select id="ndEnSystem">${optionList((nodesSystems.length ? nodesSystems : [{id: "ubuntu", name: "Ubuntu 24.04 or later", vetted: true}])
               .map(s => [s.id, `${s.name}${s.vetted ? "" : " (dev)"}`]))}</select></div>
         </div>
+        <div class="hint" id="ndEnSysWhy" hidden></div>
         <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
         <label class="ndcap"><input type="checkbox" id="ndEnHost"> Hosting only: it runs containers sent to it, and nothing of it comes back</label>
         <div class="hint" id="ndEnHostHint" hidden>No project's code, no sessions and no bb go to it; its agent may ask the controller for its own jobs and nothing else. For a public box such as a cloud VPS.</div>
@@ -1900,6 +1905,13 @@ function ndDialogs(){
     // Hosting only takes sessions with it: the box is to run containers.
     // Through a public hostname it is so by construction (R170): the
     // switch is ticked and held, and the address field asks for the name.
+    // Why a system marked dev is not walked, when it cannot be here (R97).
+    const sysWhy = () => {
+      const s = nodesSystems.find(x => x.id === $b("#ndEnSystem")?.value);
+      $b("#ndEnSysWhy").textContent = s?.why || "";
+      $b("#ndEnSysWhy").hidden = !s?.why;
+    };
+    if ($b("#ndEnSystem")){ $b("#ndEnSystem").addEventListener("change", sysWhy); sysWhy(); }
     const host = $b("#ndEnHost"), sess = $b("#ndEnSess");
     const showHost = () => {
       const cf = reach.value === "public";

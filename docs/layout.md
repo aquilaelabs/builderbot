@@ -232,6 +232,7 @@ scripts/
     storage.py                   what the disks hold, by filesystem, store and project: an hourly walk on its own thread, for the Storage page (R169)
     backends.py                  the machine's package manager and network configuration backends
     vms.py                       the VMs a node runs (R91): the vm job's fixed table of virsh and qemu-img commands, cloud-init, the census of them, and their network's firewall
+    vmhw.py                      a VM's hardware beyond size (R100): the host's CPUs and devices, pinning, the balloon, the network, a virtiofs folder, passthrough, the vBIOS dump
     screen.py                    a VM's screen for the dock (R99): a websocket relay on 7684 to the VM's VNC on the loopback, signed by the controller
     toolchains.py                the toolchain store (R19): what is installed, who uses it, a session's environment
     gpu.py                       the NVIDIA card: its sample, its memory's holders, the driver and container toolkit

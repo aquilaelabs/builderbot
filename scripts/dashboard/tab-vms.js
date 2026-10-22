@@ -69,7 +69,11 @@ function vmRow(v){
   // account of BuilderBot's to ssh in as.
   const reach = up && v.iso ? `installing from ${esc(v.iso)}: its Screen shows the installer`
     : up && v.ip && v.os !== "installer" ? `ssh ${esc(v.user || "builder")}@${esc(v.ip)}`
-    : up && v.ip ? `at ${esc(v.ip)}` : up ? "taking its address" : "";
+    : up && v.ip ? `at ${esc(v.ip)}`
+    // On the LAN (R100) its address is the LAN's DHCP's, which only QEMU's
+    // guest agent inside it tells the node.
+    : up && v.hw?.net === "lan" && !v.node_id ? "on the LAN: its address shows once QEMU's guest agent runs inside it"
+    : up ? "taking its address" : "";
   // Made a node (step 14): its row on the Nodes page.
   const asNode = v.node_id ? `<div class="sub dmorigin">a node too: ${pageLink("nodes", "on the Nodes page", `#/machines/nodes/${encodeURIComponent(v.node_id)}`)}</div>` : "";
   const snaps = v.snapshots || [];
@@ -94,6 +98,7 @@ function vmRow(v){
       v.iso && !busy ? `<button type="button" data-vm="eject" title="take ${esc(v.iso)} out of its drive, so it boots from its disk">Eject ISO</button>` : "",
       v.state === "stopped" ? `<button type="button" data-vm="disk-grow" title="make one of its disks larger; it never shrinks">Grow disk…</button>` : "",
       v.state === "stopped" && (v.disks || []).length < 3 ? `<button type="button" data-vm="disk-add" title="another disk, there at its next start">Add disk…</button>` : "",
+      v.state === "stopped" ? `<button type="button" data-vmhw title="CPU threads, memory ceiling, network, a shared folder, devices">Hardware…</button>` : "",
       `<button type="button" class="danger" data-vm="remove"${v.state === "removing" ? " disabled" : ""}
         title="destroy it, with its disk and its snapshots">Remove</button>`])}`;
   return `<div class="row stack2" data-vm-key="${esc(v.key)}">
@@ -104,7 +109,9 @@ function vmRow(v){
           ${origin ? `<div class="sub dmorigin">${origin}</div>` : ""}
           ${reach ? `<div class="sub dmstate${v.ip ? " ok" : ""}">${reach}</div>` : ""}
           ${asNode}
+          ${vmHwLine(v)}
           ${onLine}
+          ${may && v.state !== "making" ? `<label class="ndcap vmauto"><input type="checkbox" data-vmauto${v.autostart ? " checked" : ""}> starts with its host</label>` : ""}
           ${v.error ? `<div class="sub dmstate bad">${esc(v.error)}</div>` : ""}
         </div>
         <div class="actbar dmacts">${acts}</div>
@@ -183,6 +190,12 @@ function wireVms(el){
       }
       openTab({kind: "term", arg: `vm:${v.project}:${v.name}`, label: `console ${v.name}`});
     });
+    row.querySelectorAll("[data-vmhw]").forEach(b => b.onclick = () => openVmHardware(v));
+    row.querySelectorAll("[data-vmauto]").forEach(c => c.onchange = () => pressing(c, async () => {
+      const j = await (await postJSON("/api/vms", {action: "autostart", project: v.project, name: v.name, on: c.checked})).json();
+      if (j.error){ notify(j.error, true); c.checked = !c.checked; }
+      else notify(`${v.name} ${c.checked ? "starts" : "no longer starts"} with its host`);
+    }));
     row.querySelectorAll("[data-vmscreen]").forEach(b => b.onclick = () =>
       openTab({kind: "term", arg: `screen:${v.project}:${v.name}`, label: `screen ${v.name}`}));
     row.querySelectorAll("[data-vm]").forEach(b => b.onclick = () => pressing(b, async () => {
@@ -284,7 +297,7 @@ function openNewVm(forProject = ""){
       <div class="setrow col ctlrow">${lbl("vmFw", "Firmware", "UEFI for most current installers (and Windows 11); BIOS for an older one")}
         <select id="vmFw">${optionList([["uefi", "UEFI"], ["bios", "BIOS"]], "uefi")}</select></div>
     </div>
-    <details class="vmmore"><summary>More: disks, network address, screen password</summary>
+    <details class="vmmore"><summary>More: disks, network, screen password, hardware</summary>
       <div class="field">${lbl("vmDisks", "Further disks, GB", "up to three more, each its own virtio disk (vdb, vdc, vdd), comma-separated: 100, 500")}
         <input id="vmDisks" spellcheck="false" autocomplete="off" placeholder="none"></div>
       <div class="prefrow ctlrow">
@@ -293,6 +306,8 @@ function openNewVm(forProject = ""){
         <div class="setrow col ctlrow">${lbl("vmPw", "Screen password", "asked when its Screen opens; one to eight characters, VNC's limit")}
           <input id="vmPw" type="password" maxlength="8" autocomplete="new-password"></div>
       </div>
+      <label class="ndcap"><input type="checkbox" id="vmAuto"> Starts with its host</label>
+      <div id="vmHwBox"></div>
     </details>
     <div class="field" id="vmWhyF" hidden><div class="hint bad" id="vmWhy"></div></div>
     ${dlgFoot(`<button type="button" id="vmCancel">Cancel</button>`, `<button type="button" id="vmGo" class="primary">Make it</button>`)}</div>`;
@@ -306,7 +321,14 @@ function openNewVm(forProject = ""){
     $m("#vmFwRow").hidden = !v.startsWith("iso:");
     $m("#vmGo").disabled = v === "iso-add";
   };
-  $m("#vmNode").onchange = () => { $m("#vmOs").innerHTML = fromOptions($m("#vmNode").value); from(); };
+  const hwBox = () => {
+    const nid = $m("#vmNode").value;
+    document.getElementById("vmhwmodal")?.replaceChildren();   // one set of the fields' ids on the page
+    $m("#vmHwBox").innerHTML = vmHwFields((vmsData?.hosts || []).find(h => h.id === nid), {}, !!state?.can?.admin);
+    vmHwWire($m("#vmHwBox"), nid, $m("#vmProject").value);
+  };
+  hwBox();
+  $m("#vmNode").onchange = () => { $m("#vmOs").innerHTML = fromOptions($m("#vmNode").value); from(); hwBox(); };
   $m("#vmOs").onchange = from;
   $m("#vmCancel").onclick = () => { m.hidden = true; };
   $m("#vmAgent").onchange = () => { $m("#vmAgentHint").hidden = !$m("#vmAgent").checked; };
@@ -344,7 +366,8 @@ function openNewVm(forProject = ""){
                                                   node_agent: $m("#vmAgent").checked}),
       vcpus: +$m("#vmCpu").value, mem_mb: Math.round(+$m("#vmMem").value * 1024), disk_gb: +$m("#vmDisk").value,
       ...(disks.length ? {disks} : {}), ...($m("#vmMac").value.trim() ? {mac: $m("#vmMac").value.trim()} : {}),
-      ...($m("#vmPw").value ? {console_password: $m("#vmPw").value} : {})})).json();
+      ...($m("#vmPw").value ? {console_password: $m("#vmPw").value} : {}),
+      hw: vmHwRead($m("#vmHwBox")), autostart: $m("#vmAuto").checked})).json();
     if (j.error){ say(j.error); $m("#vmGo").disabled = false; $m("#vmGo").textContent = "Make it"; return; }
     m.hidden = true;
     notify(iso ? `${j.key}: starting from ${iso} on ${j.node}; open its Screen to install`
@@ -352,4 +375,112 @@ function openNewVm(forProject = ""){
     await loadVms();
   });
   from();
+}
+
+// ---- a VM's hardware beyond size (R100) -----------------------------------
+// One set of fields for New VM's More and the Hardware dialog of a stopped VM:
+// CPU threads in their core pairs (as Unraid draws them), a memory ceiling it
+// may balloon to, its network, a folder of the project shared in, and the
+// host's devices passed through, which only an administrator is shown.
+function vmHwLine(v){
+  const hw = v.hw || {}, bits = [];
+  if ((hw.cpuset || []).length) bits.push(`pinned to threads ${hw.cpuset.join(", ")}`);
+  if (hw.mem_max_mb) bits.push(`memory up to ${+(hw.mem_max_mb / 1024).toFixed(1)} GB`);
+  if (hw.net === "lan" && !v.node_id) bits.push("on the LAN");
+  if (hw.share?.path) bits.push(`sees ${hw.share.path.replace(/^\/workspace\//, "")}${hw.share.ro ? " read-only" : ""} as "${hw.share.tag}"`);
+  if ((hw.devices || []).length) bits.push(`${hw.devices.length} device${hw.devices.length > 1 ? "s" : ""} passed through`);
+  return bits.length ? `<div class="sub dmorigin">${esc(bits.join(" · "))}</div>` : "";
+}
+function vmHwFields(host, hw, admin){
+  const pin = new Set(hw?.cpuset || []);
+  const cpus = (host?.hw?.cpus || []).map(pair => `<label class="ndcap vmcpu"><input type="checkbox" data-cpus="${pair.join(",")}"${
+    pair.every(c => pin.has(c)) ? " checked" : ""}> ${pair.map(c => `cpu ${c}`).join(" / ")}</label>`).join("");
+  const sh = hw?.share || {};
+  const devs = admin ? [
+    ...(host?.hw?.usb || []).map(u => `<label class="ndcap"><input type="checkbox" data-usb="${esc(u.vendor)}:${esc(u.product)}"${
+      (hw?.devices || []).some(d => d.type === "usb" && d.vendor === u.vendor && d.product === u.product) ? " checked" : ""}> USB: ${esc(u.name)}</label>`),
+    ...(host?.hw?.pci || []).map(p => `<label class="ndcap"><input type="checkbox" data-pci="${esc(p.addr)}"${
+      (hw?.devices || []).some(d => d.type === "pci" && d.addr === p.addr) ? " checked" : ""}${host?.hw?.iommu ? "" : " disabled"}> PCI ${esc(p.addr)} (${
+      esc(p.class.startsWith("0x03") ? "display" : p.class.startsWith("0x04") ? "sound" : p.class.startsWith("0x0c03") ? "USB controller" : p.class.startsWith("0x02") ? "network" : "storage")}, ${esc(p.driver || "no driver")}${p.group ? `, group ${esc(p.group)}` : ""})${
+      p.class.startsWith("0x0300") ? ` <button type="button" data-vbios="${esc(p.addr)}" title="read this card's vBIOS, which passing a GPU through may need">Dump vBIOS</button>
+        <button type="button" data-vbiosgive="${esc(p.addr)}" title="the card maker's .rom, or one from a collection, used instead of a dump">Give a .rom…</button>` : ""}</label>`)] : [];
+  return `<div class="field">${lbl("vmHwCpus", "CPU threads", "pin its vCPUs to these host threads, each core's pair together; none ticked leaves the host to schedule it")}
+      <div class="vmcpus" id="vmHwCpus">${cpus || `<span class="sub">the node has not said its CPUs yet</span>`}</div>
+      <label class="ndcap"><input type="checkbox" id="vmHwShareCpus"> Share them with another VM pinned there</label></div>
+    <div class="prefrow ctlrow">
+      <div class="setrow col ctlrow">${lbl("vmHwMemMax", "Memory ceiling, GB", "it starts with its memory and may balloon up to this; empty for none")}
+        <input id="vmHwMemMax" type="number" min="1" max="256" step="0.5" value="${hw?.mem_max_mb ? +(hw.mem_max_mb / 1024).toFixed(1) : ""}"></div>
+      <div class="setrow col ctlrow">${lbl("vmHwNet", "Network", "its project's own network, or your LAN as a machine of its own")}
+        <select id="vmHwNet">${optionList([["project", "Its project's network"], ["lan", "The LAN"]], hw?.net || "project")}</select></div>
+    </div>
+    <div class="prefrow ctlrow">
+      <div class="setrow col ctlrow">${lbl("vmHwShare", "Shared folder", "a folder of the project, seen inside the VM by: mount -t virtiofs project /mnt; empty for none, a dot for the whole project")}
+        <input id="vmHwShare" spellcheck="false" autocomplete="off" placeholder="none" value="${esc(sh.path ? sh.path.replace(/^\/workspace\/[^/]+\/?/, "") || "." : "")}"></div>
+      <label class="ndcap"><input type="checkbox" id="vmHwShareRo"${sh.ro ? " checked" : ""}> read-only</label>
+    </div>
+    ${admin ? `<div class="field">${lbl("vmHwDevs", "Devices passed through", "the host's own, given to this VM alone while it runs; a PCI device needs the IOMMU on")}
+      <div id="vmHwDevs">${devs.join("") || `<span class="sub">none on this node</span>`}${host?.hw?.iommu ? "" : `<div class="sub warn">The IOMMU is off on this node, so no PCI device can be passed through.</div>`}</div></div>` : ""}`;
+}
+function vmHwRead(root){
+  const cpus = [...root.querySelectorAll("[data-cpus]:checked")].flatMap(c => c.dataset.cpus.split(",").map(Number));
+  const mx = +root.querySelector("#vmHwMemMax")?.value || 0;
+  const share = root.querySelector("#vmHwShare")?.value.trim() || "";
+  const devices = [...root.querySelectorAll("[data-usb]:checked")].map(c => { const [vendor, product] = c.dataset.usb.split(":"); return {type: "usb", vendor, product}; })
+    .concat([...root.querySelectorAll("[data-pci]:checked")].map(c => ({type: "pci", addr: c.dataset.pci})));
+  return {cpuset: cpus, share_cpus: !!root.querySelector("#vmHwShareCpus")?.checked, mem_max_mb: Math.round(mx * 1024),
+          net: root.querySelector("#vmHwNet")?.value || "project",
+          share: share ? {path: share === "." ? "" : share, ro: !!root.querySelector("#vmHwShareRo")?.checked} : {},
+          ...(root.querySelector("#vmHwDevs") ? {devices} : {})};
+}
+function vmHwWire(root, nodeId, project){
+  root.querySelectorAll("[data-vbios]").forEach(b => b.onclick = e => { e.preventDefault(); pressing(b, async () => {
+    busy(b, "Asking");
+    const j = await (await postJSON("/api/vms", {action: "vbios", project, node: nodeId, addr: b.dataset.vbios})).json();
+    b.disabled = false; b.textContent = "Dump vBIOS";
+    notify(j.error || `reading ${b.dataset.vbios}'s vBIOS on the node; the job says how it went`, !!j.error);
+  }); });
+  root.querySelectorAll("[data-vbiosgive]").forEach(b => b.onclick = e => {
+    e.preventDefault();
+    const pick = document.createElement("input");
+    pick.type = "file"; pick.accept = ".rom,.bin";
+    pick.onchange = () => pressing(b, async () => {
+      const f = pick.files[0];
+      if (!f) return;
+      if (f.size > 2 * 1024 * 1024) return notify("a vBIOS is 2 MB at most", true);
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode(...bytes.subarray(i, i + 32768));
+      const j = await (await postJSON("/api/vms", {action: "vbios", project, node: nodeId, addr: b.dataset.vbiosgive, rom: btoa(bin)})).json();
+      notify(j.error || `${f.name}: kept on the node for ${b.dataset.vbiosgive}`, !!j.error);
+    });
+    pick.click();
+  });
+}
+function openVmHardware(v){
+  let m = document.getElementById("vmhwmodal");
+  if (!m){
+    m = document.createElement("div");
+    m.id = "vmhwmodal"; m.className = "modal"; m.hidden = true;
+    m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true");
+    document.body.appendChild(m);
+    armModal(m);
+  }
+  const host = (vmsData?.hosts || []).find(h => h.id === v.node);
+  document.getElementById("vmHwBox")?.replaceChildren();   // New VM's, so the fields' ids are this dialog's alone
+  m.innerHTML = `<div class="box"><h3>${esc(v.name)}'s hardware</h3>
+    ${vmHwFields(host, v.hw || {}, !!state?.can?.admin)}
+    <div class="field" id="vmHwWhyF" hidden><div class="hint bad" id="vmHwWhy"></div></div>
+    ${dlgFoot(`<button type="button" id="vmHwCancel">Cancel</button>`, `<button type="button" id="vmHwGo" class="primary">Save</button>`)}</div>`;
+  m.hidden = false;
+  vmHwWire(m, v.node, v.project);
+  m.querySelector("#vmHwCancel").onclick = () => { m.hidden = true; };
+  m.querySelector("#vmHwGo").onclick = () => pressing(m.querySelector("#vmHwGo"), async () => {
+    busy(m.querySelector("#vmHwGo"), "Saving");
+    const j = await (await postJSON("/api/vms", {action: "hardware", project: v.project, name: v.name, hw: vmHwRead(m)})).json();
+    if (j.error){ m.querySelector("#vmHwWhy").textContent = j.error; m.querySelector("#vmHwWhyF").hidden = false;
+                  m.querySelector("#vmHwGo").disabled = false; m.querySelector("#vmHwGo").textContent = "Save"; return; }
+    m.hidden = true;
+    notify(`${v.name}: its hardware changes on the node; it takes effect at its next start`);
+    await loadVms();
+  });
 }
