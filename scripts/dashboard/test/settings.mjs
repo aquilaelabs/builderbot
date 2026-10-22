@@ -633,6 +633,34 @@ ok(elsewhere.git_name === 'T. Person',
      'Restore file asks, then puts the file back as it was that day');
   const kept = (await page.evaluate(async () => (await (await fetch('/api/snapshots?project=alpha')).json()).days));
   ok(kept.some(d => /before-restore/.test(d.day)), '...having snapshotted the tree first, so the restore can be undone');
+  // A day pinned from its row is kept and says so; Unpin lets it go again
+  // (R105, the operator, 22 Oct).
+  {
+    await page.evaluate(() => { openProjectSettings('alpha'); });
+    await openFold(page, 'details.sect[data-sect="rn:snapshots"]');
+    await page.waitForSelector('#rnSnapRows .rnsnap [data-snappin="pin"]', { timeout: 15000 });
+    const day = await page.$eval('#rnSnapRows .rnsnap', r => r.dataset.day);
+    await page.click(`#rnSnapRows .rnsnap[data-day="${day}"] [data-snappin]`);
+    await page.waitForSelector(`#rnSnapRows .rnsnap[data-day="${day}"] [data-snappin="unpin"]`, { timeout: 15000 });
+    const marked = await page.$eval(`#rnSnapRows .rnsnap[data-day="${day}"]`, r => /pinned/.test(r.textContent));
+    const listed = (await page.evaluate(async () => (await (await fetch('/api/snapshots?project=alpha')).json())));
+    const hint = await page.$eval('#rnSnapHint', h => h.textContent);
+    await page.click(`#rnSnapRows .rnsnap[data-day="${day}"] [data-snappin]`);
+    await page.waitForSelector(`#rnSnapRows .rnsnap[data-day="${day}"] [data-snappin="pin"]`, { timeout: 15000 });
+    ok(marked && listed.days.find(d => d.day === day)?.pinned === true && listed.on === true && /1 pinned/.test(hint),
+       `Pin keeps a day and its row says pinned, Unpin lets it go again (${day} ${hint})`);
+  }
+  // Daily snapshots switched off from Build and test, staged and saved like
+  // the days kept, and back on (R105).
+  {
+    await rnSect(page, 'rn:build');
+    await openFold(page, 'details.sect[data-sect="rn:build"]');
+    const on = await page.$eval('#rnSnapOn', c => c.checked);
+    const r = await post('/api/prefs', { project: 'alpha', snapshots_on: false });
+    const off = (await page.evaluate(async () => (await (await fetch('/api/snapshots?project=alpha')).json()))).on;
+    await post('/api/prefs', { project: 'alpha', snapshots_on: true });
+    ok(on && r.status === 200 && off === false, `daily snapshots are on by default and can be switched off (${on} ${r.status} ${off})`);
+  }
   // From outside the page, which carries no sign-in: nothing is listed.
   const anon = (await fetch(URL.replace(/\/$/, '') + '/api/snapshots?project=alpha')).status;
   ok(anon === 401 || anon === 403, `...and nothing is listed to a caller who is not signed in (${anon})`);

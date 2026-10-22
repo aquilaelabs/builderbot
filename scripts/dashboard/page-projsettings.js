@@ -37,7 +37,7 @@ const EFFORTS = [["", "Claude's default"], ["low", "low"], ["medium", "medium"],
 // a menu.
 let rnPrefWas = {git_name: "", git_email: "",
                  node: "", nodes: "", hosts: "", reads: "", tc_off: "", packs_on: "", sees: "", reaches: "", build: "", test: "", outputs: "",
-                 capture_days: "7", snapshot_days: "14", dev_keep: "3", gate: "", debug: ""};
+                 capture_days: "7", snapshot_days: "14", snapshots_on: "1", dev_keep: "3", gate: "", debug: ""};
 // The colors a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
 // tone can be retuned for a scheme without touching what anybody saved.
@@ -105,6 +105,7 @@ function rnPrefsOf(p){
                outputs: (p?.prefs?.outputs || []).join(", "),
                capture_days: String(p?.prefs?.capture_days ?? 7),
                snapshot_days: String(p?.prefs?.snapshot_days ?? 14),
+               snapshots_on: p?.prefs?.snapshots_on === false ? "0" : "1",
                dev_keep: String(p?.prefs?.dev_keep ?? 3),
                gate: gateKey(p?.prefs?.gate),
                tests_in: p?.prefs?.tests_in || "node",
@@ -444,6 +445,7 @@ function rnFillPrefsRest(p){
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   $("rnCaptureDays").value = String(p?.prefs?.capture_days ?? 7);
   $("rnSnapDays").value = String(p?.prefs?.snapshot_days ?? 14);
+  $("rnSnapOn").checked = p?.prefs?.snapshots_on !== false;
   $("rnDevKeep").value = String(p?.prefs?.dev_keep ?? 3);
   // Every dial here is a select filled once with its words and set to the
   // project's value: one helper for all of them (consistency pass), where
@@ -966,18 +968,23 @@ function rnDrawSnapshots(){
   const days = rnSnap.days || [];
   const when = d => d.at ? new Date(d.at * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : d.day;
   $("rnSnapRows").innerHTML = (days.length ? days.map(d => `<div class="rnsnap actbar" data-day="${esc(d.day)}">
-      <span class="grow">${esc(when(d))}${d.why ? ` <span class="dim">(${esc(d.why.replace(/-/g, " "))})</span>` : ""}
+      <span class="grow">${esc(when(d))}${d.pinned ? ` <span class="pill note" title="kept whatever the days kept say">pinned</span>` : ""}${d.why ? ` <span class="dim">(${esc(d.why.replace(/-/g, " "))})</span>` : ""}
         <span class="dim">· ${d.files} files · ${esc(humanBytes(d.bytes))}</span></span>
       <input type="text" data-snapfile placeholder="a file, from the tree's top" spellcheck="false" autocomplete="off"
              aria-label="the file to restore from this day">
       <button type="button" data-snapone disabled>Restore file</button>
       <button type="button" data-snapall>Restore all</button>
+      <button type="button" data-snappin="${d.pinned ? "unpin" : "pin"}" title="${d.pinned ? "let it go with the rest when it is older than the days kept" : "keep this day whatever the days kept say"}">${d.pinned ? "Unpin" : "Pin"}</button>
     </div>`).join("")
     : `<div class="dim">none yet: the first is taken within half an hour of the setting being above 0</div>`)
     + `<div class="actbar"><button type="button" data-snaptake>Take one now</button></div>`;
-  $("rnSnapHint").textContent = rnSnap.keep
+  const pinned = days.filter(d => d.pinned).length;
+  $("rnSnapHint").textContent = (rnSnap.on === false
+    ? "Daily snapshots are off, so none are taken; the ones here go as they pass the days kept."
+    : rnSnap.keep
     ? `One a day, kept ${rnSnap.keep} day${rnSnap.keep === 1 ? "" : "s"}. A restore snapshots the tree first, so it can be undone from the line it leaves.`
-    : "Snapshots kept is 0, so none are taken; the ones here go at the next daily look.";
+    : "Snapshots kept is 0, so none are taken; the ones here go at the next daily look.")
+    + (pinned ? ` ${pinned} pinned, kept until unpinned.` : "");
   const act = async (b, body, ask) => {
     if (ask && !confirm(ask)) return;
     await pressing(b, async () => {
@@ -985,6 +992,8 @@ function rnDrawSnapshots(){
       const j = await r.json();
       if (j.error) return notify(j.error, true);
       notify(body.action === "take" ? `snapshot taken: ${j.files} files`
+        : body.action === "pin" ? `${j.day} pinned: kept until unpinned`
+        : body.action === "unpin" ? `${j.day} unpinned: it goes with the rest when it is old enough`
         : `restored: ${j.wrote} written, ${j.removed} removed; undo from ${j.undo}`);
       rnLoadSnapshots(name);
     });
@@ -993,6 +1002,8 @@ function rnDrawSnapshots(){
     const day = row.dataset.day;
     row.querySelector("[data-snapall]").onclick = e => act(e.target, {action: "restore", day},
       `Put all of ${name} back as it was on ${day}?\n\nFiles changed since are written back and files added since are removed, on the controller and then every node. The tree as it is now is snapshotted first.`);
+    const pin = row.querySelector("[data-snappin]");
+    pin.onclick = e => act(e.target, {action: pin.dataset.snappin, day}, "");
     // Restore file wakes once a file is typed (the operator, 18 Oct).
     const one = row.querySelector("[data-snapone]"), file = row.querySelector("[data-snapfile]");
     file.oninput = () => { one.disabled = !file.value.trim(); };
@@ -1255,7 +1266,7 @@ const RN_WAS = {
   reads: ["sees", "Reads"], sees: ["sees", "Also sees"], reaches: ["sees", "Also reaches"], debug: ["sees", "Debugging"],
   tc_off: ["tools", "Toolchains"], packs_on: ["tools", "Tool packs"],
   build: ["build", "Build"], test: ["build", "Test"], outputs: ["build", "Outputs"],
-  capture_days: ["build", "Captures kept"], snapshot_days: ["build", "Snapshots kept"], dev_keep: ["build", "Dev builds kept"],
+  capture_days: ["build", "Captures kept"], snapshot_days: ["build", "Snapshots kept"], snapshots_on: ["build", "Daily snapshots"], dev_keep: ["build", "Dev builds kept"],
   gate: ["claude", "Claude may"], test_change: ["claude", "During a test run, a change asked for"],
   devbuild: ["claude", "Claude may"], makevms: ["claude", "Claude may"], vm_caps: ["claude", "Its VMs may hold"], report: ["claude", "Claude may"], sign: ["claude", "Claude may"],
   keys: ["claude", "Claude may"], release: ["claude", "Claude may"], pc: ["claude", "Claude may"], version: ["claude", "Move the version"],
@@ -1265,7 +1276,7 @@ const RN_WAS = {
 // What a running session takes only when it starts (the briefing, the launch
 // flags, the view it runs in); everything else is read when it is used.
 const RN_AT_START = new Set(["reply", "asks", "git_name", "git_email", "node", "nodes",
-                             "reads", "sees", "test_change", "gpu", "capture_days", "snapshot_days", "dev_keep",
+                             "reads", "sees", "test_change", "gpu", "capture_days", "snapshot_days", "snapshots_on", "dev_keep",
                              "tc_off", "packs_on"]);
 
 // The fields as they stand, in rnPrefWas's own shape, so each compares with
@@ -1296,6 +1307,7 @@ function rnEnc(){
           build: $("rnBuildCmd").value.trim(), test: $("rnTestCmd").value.trim(),
           outputs: $("rnOutputs").value.trim(),
           capture_days: $("rnCaptureDays").value.trim(), snapshot_days: $("rnSnapDays").value.trim(),
+          snapshots_on: $("rnSnapOn").checked ? "1" : "0",
           dev_keep: $("rnDevKeep").value.trim(), gate: gateKey(rnGateNow()),
           tests_in: $("rnDevTest").value || "node", test_change: $("rnTestChange").value || "wait",
           gpu: $("rnGpu").value || "on", reply: $("rnReply").value || "", asks: $("rnAsks").value || "",
@@ -1403,6 +1415,7 @@ function rnRevertSect(sect){
   } else if (sect === "build"){
     $("rnBuildCmd").value = w.build; $("rnTestCmd").value = w.test; $("rnOutputs").value = w.outputs;
     $("rnCaptureDays").value = w.capture_days; $("rnSnapDays").value = w.snapshot_days;
+    $("rnSnapOn").checked = w.snapshots_on !== "0";
     $("rnDevKeep").value = w.dev_keep;
   } else if (sect === "claude"){
     const g = String(w.gate).split(",");
@@ -1519,6 +1532,7 @@ async function rnSubmit(sect, end = false){
                               outputs: v.outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(v.capture_days !== "" ? {capture_days: +v.capture_days} : {}),
                               ...(v.snapshot_days !== "" ? {snapshot_days: +v.snapshot_days} : {}),
+                              snapshots_on: v.snapshots_on !== "0",
                               ...(v.dev_keep !== "" ? {dev_keep: +v.dev_keep} : {})})})});
       const j = await r.json();
       if (j.error) return stop(j.error);

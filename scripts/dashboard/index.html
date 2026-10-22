@@ -5874,6 +5874,9 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            compromised, through its synced copy is undone from. -->
       <div class="logdays setrow ctlrow"><label class="ndcap" for="rnSnapDays">Snapshots kept for<span class="help" data-help="the project's tree is snapshotted once a day on the controller, where no node reaches, and each day is kept this long; 0 takes none. Restored from Snapshots below" tabindex="0">?</span></label>
         <input id="rnSnapDays" type="number" min="0" max="3650" step="1" inputmode="numeric" aria-label="days a snapshot is kept"> <span class="dim">days</span></div>
+      <!-- ...and whether one is taken each day (R105): on unless switched
+           off; off takes none, and what is kept ages out by the days. -->
+      <div class="logdays setrow ctlrow"><label class="ndcap"><input type="checkbox" id="rnSnapOn"> Take a snapshot every day<span class="help" data-help="off, none is taken and the days kept here go as they pass the days kept; a pinned day stays either way" tabindex="0">?</span></label></div>
       <div class="logdays setrow ctlrow"><label class="ndcap" for="rnDevKeep">Dev builds kept<span class="help" data-help="of each product in dist/, every file of its newest this many builds stays and older builds are removed, a signed build keeping its signed copy alone; a release and anything pinned always stay; 0 keeps everything" tabindex="0">?</span></label>
         <input id="rnDevKeep" type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="dev builds kept of each product"> <span class="dim">builds</span></div>
     </div>
