@@ -71,11 +71,29 @@ update cannot touch. See [the toolchain store lives outside the image](toolchain
 
 Full discussion: [unraid.md](unraid.md#notes-and-gotchas).
 
+## Without the container
+
+The controller can also be installed on a machine of its own, bare metal
+(`nodes/install-controller.sh`, [install.md](install.md#bare-metal)): the
+same files under `/opt/builderbot`, laid out from the Dockerfile's own
+`COPY` lines; the same packages, read from one list
+(`config/controller-packages.tsv`) by both; the same boot, whose steps are
+`scripts/lib/boot.sh` for the container's entrypoint and for
+`scripts/host-boot.sh` alike; and the same state, with its version checked
+before an update lays a release out. Its one difference is that the
+machine can be a node of its own controller, an ordinary agent row on the
+Nodes page marked as this machine, whose sessions are walled off from the
+controller: out of its state, secrets and ports, in a network of their own,
+and refused to start when any of that does not hold
+([decisions.md](decisions.md#a-controller-installed-bare-metal-and-its-own-node)).
+
 ## Startup hooks
 
 The entrypoint runs as root: stash/scrub secrets, remap `builder` to
 `PUID:PGID`, seed the home volume (never overwriting), start the ssh-agent,
-then executes hooks and drops privileges:
+then executes hooks and drops privileges (on a bare-metal install,
+`host-boot.sh` takes the same steps without the remap, under the service
+manager, and drops to its own account):
 
 | Hook | Does |
 |---|---|

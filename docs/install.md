@@ -222,6 +222,81 @@ notes, and anything removed was marked deprecated a release before.
 came from, replace `/config` with `/config/backups/before-VERSION`, and start
 it.
 
+## Bare metal
+
+The same controller can be installed on a Linux machine of its own, without
+the container: the same dashboard, state, `bb` and updates, laid out under
+`/opt/builderbot` the way the image lays it out, run by the machine's own
+service manager (systemd, OpenRC or runit) with an env file in place of
+compose's. It is for a machine that is only BuilderBot, a small server or
+a NAS, and it can use that machine as one of its own nodes, so one box runs
+the dashboard and the builds and sessions with it.
+
+**What it runs on.** Every system Enroll node offers for a node is one a
+controller installs on, with the same `dev` tag for the ones not walked yet
+(the installer is built on the node provisioner, and runs its pre-flight).
+It needs Python 3.12 or newer; on a RHEL 9 rebuild it installs `python3.12`
+beside the system's 3.9.
+
+**Install**, from a checkout or an unpacked release, as root:
+
+```bash
+git clone https://github.com/aquilaelabs/builderbot.git && cd builderbot
+sudo bash nodes/install-controller.sh --check        # changes nothing
+sudo bash nodes/install-controller.sh --install
+```
+
+It installs the packages the image carries (`config/controller-packages.tsv`,
+one list for both), makes an account for the controller (`builderbot`, no
+password, no sudo but the image's two root helpers), lays the release out,
+writes `/etc/builderbot-controller/controller.env` (yours to edit; every
+setting is in [reference.md](reference.md#a-controller-installed-bare-metal-its-env-file)),
+starts `builderbot-controller`, and then makes this machine a node of
+itself. Open `http://ADDRESS:7680` and make the owner account, as on a
+container install. `sudo bb ...` is the container's `docker exec -it
+BuilderBot bb ...`.
+
+Options worth knowing: `--workspace PATH` (the projects folder, by default
+`/srv/builderbot/projects`), `--port N`, `--no-node` (the controller alone),
+`--docker` (the controller's account in the docker group, the bare-metal
+form of mounting the docker socket into the container: containers can then
+run on this machine's daemon from the controller; docker is root here).
+Give the machine a fixed address: its own node reaches the controller at
+it.
+
+**Its own node, and the wall.** The node half is `provision-linux.sh` run
+as it is, with `--beside-controller`: a job account (`bb`) and a session
+account (`builder`), neither of which can read the controller's state, env
+file or secrets, reach its loopback ports or use docker. A session there is
+covered from all of it and runs in a network of its own, and none starts
+when any of that does not hold: the Doctor and the node's row say why. The
+node builds and runs sessions, and runs no containers (its job account is
+out of the docker group, since docker is root on the machine that holds the
+controller). The reasons and the threat model are in
+[decisions.md](decisions.md#a-controller-installed-bare-metal-and-its-own-node).
+
+**Updating** is the image pull's equivalent:
+
+```bash
+sudo bash /opt/builderbot/nodes/install-controller.sh --update                 # the newest release
+sudo bash /opt/builderbot/nodes/install-controller.sh --update --release v0.7.0
+sudo bash /opt/builderbot/nodes/install-controller.sh --rollback               # the release before
+```
+
+An update fetches the release, asks its own state check whether it would
+start on this install's state (and changes nothing when it would not),
+lays it out beside the one in use, switches to it and restarts; the
+release before is kept. The controller moves the state forward as it does
+in the container, with the same copy first, and `--rollback` puts that
+copy back when the newer release had moved the state on (what the state
+held then is kept under its `backups/`). The [Upgrading](#upgrading) policy
+is the same.
+
+**Taking it away.** `--remove` stops the controller and takes away its
+release, service, `bb` and wall, and this machine's node; the state, the
+env file, the secrets, the account and the projects stay, and `--install`
+puts it back on them. `--remove --purge` takes all but the projects.
+
 ## Building locally instead of pulling
 
 ```bash

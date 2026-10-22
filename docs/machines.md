@@ -17,7 +17,12 @@ takes no toolchains, and has nothing any section here configures, so with
 nothing enrolled the page says so and offers the one thing there is to do.
 (It does keep a node record of its own, which is how a share it mounts is
 recognized as the same store a node mounts; that is plumbing, not a node on
-the page.) The page shows one node, picked in its bar beside **Create
+the page.) A controller installed bare metal can be a node of itself
+([install.md](install.md#bare-metal)): its machine is then an ordinary row
+here, marked **this machine**, offered in a project's node pickers as such
+and in no container picker, its session network always on, and the Doctor
+says whether the wall between its sessions and the controller holds. The
+page shows one node, picked in its bar beside **Create
 sandbox VM** and **Enroll node**: a header with its state, and where it dials in from, which is the address of its
 last hello, so a node whose address moves is followed within a minute, its
 terminals rebound onto the new address by its agent and the session-ports

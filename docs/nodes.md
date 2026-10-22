@@ -1573,6 +1573,15 @@ as a plain builder never shows the mounts-and-network panel at all, which is
 the capability rule (§2) applied to the most privileged thing the agent
 does.
 
+*On the controller's own machine* (a controller installed bare metal that
+is a node of itself, R90, §18) the provisioner runs as it does anywhere,
+bb-sandbox and its stamp included, with `--beside-controller`: the docker
+daemon is not labeled a sandbox and the job account is kept out of the
+docker group, so the row is offered builds, sessions and the
+mounts-and-network panel and never containers. That panel there changes
+the controller's own machine, its address included, and the node reaches
+its controller at that address: a new one there is the controller moving.
+
 *Where phase 5 landed it:* the desired config lives on the node record
 (`config.desired`: mounts, stores, network), validated to its shape when it
 is saved; the agent's census carries the reported half (`mounts` as
