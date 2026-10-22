@@ -244,5 +244,11 @@ def sign_in(url, username, password, name, pin=""):
     ctl.headers.update(update.headers())
     st, r = ctl.call("signin", {"username": username, "password": password, "name": name, "kind": "pc"})
     if st != 200:
-        return {"error": (r or {}).get("error") or f"the controller answered {st}"}
+        said = (r or {}).get("error") or f"the controller answered {st}"
+        # A TLS hello to a plain HTTP server, which each OpenSSL names its own way.
+        if url.lower().startswith("https://") and "SSL" in said and any(
+                w in said for w in ("WRONG_VERSION_NUMBER", "RECORD_LAYER_FAILURE", "HTTP_REQUEST")):
+            said = ("that address answers in plain HTTP, not HTTPS: use http:// in front of it "
+                    "(https:// is for an address behind nginx with a certificate)")
+        return {"error": said}
     return r

@@ -122,3 +122,26 @@ class Handshake(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SignIn(unittest.TestCase):
+    """https:// to a controller that serves plain HTTP is said as that, not as OpenSSL's words (B210)."""
+
+    def said(self, url, error):
+        from bbcompanion import core
+
+        class Plain:
+            def __init__(self, *a, **k):
+                self.headers = {}
+
+            def call(self, verb, body=None, **_):
+                return 0, {"error": error}
+        with mock.patch.object(core._controller, "Controller", Plain):
+            return core.sign_in(url, "me", "pw", "pc")["error"]
+
+    def test_a_tls_hello_to_plain_http_says_use_http(self):
+        for e in ("SSLError: [SSL: WRONG_VERSION_NUMBER] wrong version number (_ssl.c:1010)",
+                  "SSLError: [SSL: RECORD_LAYER_FAILURE] record layer failure (_ssl.c:1081)"):
+            self.assertIn("use http://", self.said("https://ctl:7680", e))
+        self.assertIn("RECORD_LAYER", self.said("http://ctl:7680", "SSLError: [SSL: RECORD_LAYER_FAILURE] x"))
+        self.assertEqual(self.said("https://ctl", "wrong username or password"), "wrong username or password")
