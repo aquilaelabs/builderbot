@@ -2604,6 +2604,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   .nbtabs button{flex:1 1 0;text-align:center;padding:9px 2px;min-width:0}
 }
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
+/* New VM's More (tab-vms.js): its line at the dialog's inset, as a field's
+   label is, and the rows it opens in bands of their own. */
+.vmmore>summary{padding:var(--row-y) var(--row-x);cursor:pointer;color:var(--dim)}
+.vmmore[open]>summary{color:var(--ink)}
 .nbview[hidden]{display:none}
 /* Agents may is the Permissions view's; the Settings view leaves it out of
    its page while the form is there (nb-permissions.js). */
@@ -2726,7 +2730,12 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 @media(max-width:600px){
   .wkreader{display:block}
   .wknav{display:none}
-  .wkreader>.wkpick{display:flex;align-items:center;gap:var(--field-gap);margin-bottom:10px}
+  /* The picker as a bar's is on a phone: its word left to the screen reader
+     and the box ending where the search above it ends, both capped as every
+     control is (the operator, 22 Oct: two boxes of two widths, one with a
+     word beside it, read as a mess). */
+  .wkreader>.wkpick{display:flex;align-items:center;gap:var(--field-gap);margin-bottom:10px;max-width:min(var(--ctl-w),88%)}
+  .wkreader>.wkpick>.pickw{display:none}
   .wktitle{font-size:1.5em}
 }
 
@@ -3305,12 +3314,19 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    row of buttons the card holds: its actions and a box it asks in (Group),
    so a form opened on it is the card's too (B863); and a project page's
    header's, as its card's. */
-:is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc .phead)>button,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button{background:color-mix(in srgb, var(--pc) 22%, var(--btn));
+:is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button{background:color-mix(in srgb, var(--pc) 22%, var(--btn));
   border-color:color-mix(in srgb, var(--pc) 50%, var(--line));color:var(--ink)}
-:is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc .phead)>button.primary{background:color-mix(in srgb, var(--pc) 50%, var(--btn));border-color:var(--pc)}
+:is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button.primary{background:color-mix(in srgb, var(--pc) 50%, var(--btn));border-color:var(--pc)}
+/* A word asked in a colored card or a project's header (askInline: Group,
+   Rename) wears the same color as its buttons, its field tinted and its focus
+   ring the project's, where the page's plain skin read as a hole in the card
+   (the operator, 22 Oct). */
+:is(.pcard.pc,.pane .bar.proj.pc) .askrow input{background:color-mix(in srgb, var(--pc) 10%, var(--sunk));
+  border-color:color-mix(in srgb, var(--pc) 45%, var(--line))}
+:is(.pcard.pc,.pane .bar.proj.pc) .askrow input:focus{outline:2px solid color-mix(in srgb, var(--pc) 60%, var(--panel));outline-offset:-1px}
 @media(hover:hover){
-  :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc .phead)>button:hover,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button:hover{background:color-mix(in srgb, var(--pc) 34%, var(--btn))}
-  :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc .phead)>button.primary:hover{background:color-mix(in srgb, var(--pc) 62%, var(--btn))}
+  :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button:hover,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button:hover{background:color-mix(in srgb, var(--pc) 34%, var(--btn))}
+  :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button.primary:hover{background:color-mix(in srgb, var(--pc) 62%, var(--btn))}
 }
 /* The whole card opens the project's page (the operator, 18 Oct), so the
    whole card answers the pointer, as a tile that is a link does. */
@@ -4309,12 +4325,16 @@ button[aria-busy="true"]{opacity:.75}
 /* Its Sessions section (the operator, 18 Oct): the facts, its settings as
    one group over its Save and Revert, then its actions. */
 .ndsettings{display:flex;flex-direction:column;gap:2px;margin-top:6px;border-top:var(--hair) solid var(--line);padding-top:6px}
-.ndsettings>.field{padding:2px 0;margin:0}
+/* The bands' own inset kept: only their height is tightened (the
+   operator, 22 Oct: on a phone the switches ran to the edge under the inset
+   facts). */
+.ndsettings>.field{padding:2px var(--row-x);margin:0}
 .ndsettings>.field>.ndcap{min-height:32px}
 .ndsettings>.field>.sub{margin-top:2px}
 /* ...its two numbers side by side, a phone stacking them. */
 .ndsettings>.logdays.setrow.col{display:inline-flex;width:auto}
-.ndsettings .ndnums{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:8px}
+.ndsettings .ndnums{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:8px;padding:0 var(--row-x)}
+.ndsettings>.actbar{padding:0 var(--row-x)}
 /* A mouse needs no 38px box around a 16px tick, which spread the switches
    a blank line apart; a finger keeps the tap height. */
 @media(pointer:fine){ .ndsettings>.field>.ndcap>input[type=checkbox]{min-height:0;margin-block:0} }
@@ -5074,6 +5094,18 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
    in a project row and a toolchain row only, and the dialog's "never backed
    up", the Claude chooser's reasons and a sign-in's refusals were not. */
 .sub.bad{color:var(--bad)}
+/* ...and a warning the same everywhere: what has to happen first (end the
+   sessions before signing out) is a warning, never red, which is for what
+   failed (the operator, 22 Oct). */
+.sub.warn{color:var(--warn)}
+/* Agents may's groups (the notebook, building, shipping): a heading over
+   each row of pickers, the gap above it a band's, and the VM limits as
+   number and unit pairs, two to a line on a phone. */
+.rnsub{display:block;margin-top:14px}
+.vmcaps{display:grid;grid-template-columns:repeat(4,max-content);gap:8px 16px;align-items:center}
+.vmcap{display:inline-flex;align-items:center;gap:8px}
+.vmcap>input{width:6em}
+@media(max-width:600px){ .vmcaps{grid-template-columns:repeat(2,max-content)} }
 </style>
 </head>
 <body class="booting">
@@ -5712,8 +5744,12 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           <option value="restart">interrupts any test run for the new ask</option>
         </select></label>
       </div>
-      <label id="rnGateMayLabel">On its own, asked first, or not at all</label>
-      <div class="prefrow ctlrow" role="group" aria-labelledby="rnGateMayLabel">
+      <!-- What a session may do on its own, ask first, or not at all, in
+           the groups a person looks for it under (the operator, 22 Oct: one
+           grid of fifteen read as a heap). -->
+      <div class="hint" id="rnGateMayLabel">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
+      <label id="rnGateNbLabel" class="rnsub">The notebook</label>
+      <div class="prefrow ctlrow" role="group" aria-labelledby="rnGateNbLabel">
         <label class="pick">Add to roadmap <select id="rnGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
         <label class="pick">File bugs <select id="rnGateBugs"
@@ -5724,6 +5760,9 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           aria-label="the design language and pages saved from a session"></select></label>
         <label class="pick">Write the wiki <select id="rnGateWiki"
           aria-label="wiki pages written or removed by a session"></select></label>
+      </div>
+      <label id="rnGateRunLabel" class="rnsub">Building and running</label>
+      <div class="prefrow ctlrow" role="group" aria-labelledby="rnGateRunLabel">
         <label class="pick">Fill in build and test <select id="rnGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
         <!-- The project's container: rebuild it, change its env, create it
@@ -5735,37 +5774,41 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
              session, read as Run its container is. Deny by default. -->
         <label class="pick">Make VMs <select id="rnGateVms"
           aria-label="making, starting, stopping, snapshotting and removing this project's VMs, from a session"></select></label>
-        <!-- What its VMs may hold in all, whoever makes them (R91 step 7). -->
-        <div class="logdays setrow ctlrow" id="rnVmCapsRow"><label class="ndcap" for="rnVmCount">Its VMs may hold<span class="help" data-help="in all, whoever makes them: a VM that would pass one of these is refused with the limit named. Each node also keeps 2 GB of memory and 10 GB of disk for itself" tabindex="0">?</span></label>
-          <input id="rnVmCount" type="number" min="0" max="64" step="1" inputmode="numeric" aria-label="VMs at most"> <span class="dim">VMs,</span>
-          <input id="rnVmCpus" type="number" min="0" max="256" step="1" inputmode="numeric" aria-label="vCPUs in all"> <span class="dim">vCPUs,</span>
-          <input id="rnVmMem" type="number" min="0" max="1024" step="1" inputmode="numeric" aria-label="GB of memory in all"> <span class="dim">GB memory,</span>
-          <input id="rnVmDisk" type="number" min="0" max="16384" step="1" inputmode="numeric" aria-label="GB of disk in all"> <span class="dim">GB disk</span></div>
-        <!-- bb report, which sends BuilderBot's own problems to its
-             maintainers rather than this project's tracker. Off for the
-             project that IS BuilderBot, whose tracker they belong in. -->
-        <!-- bb sign (R106): a build signed with one of the project's keys,
-             which the session never receives. Ask by default; Ask waits for
-             the project's owner. -->
-        <label class="pick">Sign a build <select id="rnGateSign"
-          aria-label="signing an APK or bundle with this project's keys, from a session"></select></label>
-        <!-- bb version release (R138): the tag on this commit and the
-             forge's release, made on the controller with the project's
-             credentials. Ask by default; Ask waits for the project's owner.
-             Named apart from signing, which is a build, not a release. -->
-        <label class="pick">Tag and publish a release <select id="rnGateRelease"
-          aria-label="tagging this commit and publishing the release, from a session"></select></label>
-        <!-- A new generated key, or an app's package mapped to a key, from a
-             session (R106 step 6). Ask by default: a new sideload key is an
-             app's identity for good. -->
-        <label class="pick">Manage signing keys <select id="rnGateKeys"
-          aria-label="making a signing key or mapping an app to one, from a session"></select></label>
         <!-- bb pc (R270 step 6): the verbs a person's Windows companion
              lends this project (its editor, its game, its build, a picture,
              a log). Deny by default: it is somebody's own machine; Ask puts
              each use in front of the person at that PC. -->
         <label class="pick">Use a lent PC <select id="rnGatePc"
           aria-label="asking a person's Windows PC to run its lent verbs, from a session"></select></label>
+      </div>
+      <!-- What its VMs may hold in all, whoever makes them (R91 step 7):
+           each number with its unit, two to a line on a phone. -->
+      <div id="rnVmCapsRow">
+      <label class="rnsub" for="rnVmCount">Its VMs may hold<span class="help" data-help="in all, whoever makes them: a VM that would pass one of these is refused with the limit named. Each node also keeps 2 GB of memory and 10 GB of disk for itself" tabindex="0">?</span></label>
+      <div class="vmcaps ctlrow">
+        <label class="vmcap"><input id="rnVmCount" type="number" min="0" max="64" step="1" inputmode="numeric" aria-label="VMs at most"><span class="dim">VMs</span></label>
+        <label class="vmcap"><input id="rnVmCpus" type="number" min="0" max="256" step="1" inputmode="numeric" aria-label="vCPUs in all"><span class="dim">vCPUs</span></label>
+        <label class="vmcap"><input id="rnVmMem" type="number" min="0" max="1024" step="1" inputmode="numeric" aria-label="GB of memory in all"><span class="dim">GB memory</span></label>
+        <label class="vmcap"><input id="rnVmDisk" type="number" min="0" max="16384" step="1" inputmode="numeric" aria-label="GB of disk in all"><span class="dim">GB disk</span></label>
+      </div></div>
+      <label id="rnGateShipLabel" class="rnsub">Shipping</label>
+      <div class="prefrow ctlrow" role="group" aria-labelledby="rnGateShipLabel">
+        <!-- bb sign (R106): a build signed with one of the project's keys,
+             which the session never receives. Ask by default; Ask waits for
+             the project's owner. -->
+        <label class="pick">Sign a build <select id="rnGateSign"
+          aria-label="signing an APK or bundle with this project's keys, from a session"></select></label>
+        <!-- A new generated key, or an app's package mapped to a key, from a
+             session (R106 step 6). Ask by default: a new sideload key is an
+             app's identity for good. -->
+        <label class="pick">Manage signing keys <select id="rnGateKeys"
+          aria-label="making a signing key or mapping an app to one, from a session"></select></label>
+        <!-- bb version release (R138): the tag on this commit and the
+             forge's release, made on the controller with the project's
+             credentials. Ask by default; Ask waits for the project's owner.
+             Named apart from signing, which is a build, not a release. -->
+        <label class="pick">Tag and publish a release <select id="rnGateRelease"
+          aria-label="tagging this commit and publishing the release, from a session"></select></label>
         <!-- Who may move the version: version.py's policy, the same setting
              the Artifacts tab's version row writes. Here too, because an
              owner who set every dial on this panel to auto still found the
@@ -5773,10 +5816,15 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
              Auto/Ask/Deny: a policy says how far, not whether to ask. -->
         <label class="pick">Move the version <select id="rnGateVersion"
           aria-label="moving the project's version, from a session"></select></label>
+      </div>
+      <label id="rnGateBbLabel" class="rnsub">BuilderBot itself</label>
+      <div class="prefrow ctlrow" role="group" aria-labelledby="rnGateBbLabel">
+        <!-- bb report, which sends BuilderBot's own problems to its
+             maintainers rather than this project's tracker. Off for the
+             project that IS BuilderBot, whose tracker they belong in. -->
         <label class="pick">Report BuilderBot bugs <select id="rnGateReport"
           aria-label="reporting problems with BuilderBot itself, from a session"></select></label>
       </div>
-      <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
     </div>
     <!-- The coding agents beside Claude its sessions may run (R95): each
          installed and signed in on a node, ticked here to be offered. -->
@@ -6977,6 +7025,10 @@ let floatFrame = 0;
 const floatSoon = e => { if (e?.target?.closest?.(".floatm") || floatFrame) return;
   floatFrame = requestAnimationFrame(() => { floatFrame = 0; floatFollow(); }); };
 document.addEventListener("scroll", floatSoon, {capture: true, passive: true});
+// A chip row's scroll, kept as it moves and put back when it is drawn again
+// (page-docs.js chipsRestore).
+document.addEventListener("scroll", chipsScrolled, {capture: true, passive: true});
+new MutationObserver(chipsRestore).observe(document.body, {childList: true, subtree: true});
 addEventListener("resize", floatSoon);
 
 // ---- panes -----------------------------------------------------------

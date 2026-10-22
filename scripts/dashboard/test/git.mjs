@@ -1152,7 +1152,7 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   const home = await page.$eval('.nb .nbview[data-view="settings"]', el => ({
     inForm: !!el.querySelector('.nbsettings > .box > details[data-sect="rn:claude"]'),
     listed: [...el.querySelectorAll('.snav [data-spick]')].map(b => b.dataset.spick).includes('claude'),
-    left: !!document.querySelector('.nb .nbview[data-view="permissions"] details[data-sect="rn:claude"]') }));
+    left: !!document.querySelector('.nb .nbview[data-view="permissions"]:not(.fghost) details[data-sect="rn:claude"]') }));
   ok(home.inForm && !home.listed && !home.left,
      `leaving Permissions hands Agents may back to the form, which Settings does not list (${JSON.stringify(home)})`);
   await page.evaluate(() => openNotebook('beta', 'git'));

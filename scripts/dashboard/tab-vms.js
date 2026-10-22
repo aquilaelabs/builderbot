@@ -298,8 +298,8 @@ function openNewVm(forProject = ""){
     <div id="vmCloud">
       <div class="field">${lbl("vmKey", "SSH public key", "who may log in: yours, as in ~/.ssh/id_ed25519.pub. The account is builder (admin on a VM made a node), with sudo")}
         <textarea id="vmKey" rows="3" spellcheck="false" autocomplete="off" placeholder="ssh-ed25519 AAAA… you@laptop"></textarea></div>
-      <label class="ndcap"><input type="checkbox" id="vmAgent"> Make it a node: enroll it with an agent at its first boot</label>
-      <div class="hint" id="vmAgentHint" hidden>It joins your LAN as its own machine and appears on the Nodes page once it has booted, a node like any other, marked as a VM on its host; removing the VM retires the node and revokes its credential.</div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="vmAgent"> Make it a node: enroll it with an agent at its first boot</label>
+      <div class="hint" id="vmAgentHint" hidden>It joins your LAN as its own machine and appears on the Nodes page once it has booted, a node like any other, marked as a VM on its host; removing the VM retires the node and revokes its credential.</div></div>
     </div>
     <div class="prefrow ctlrow" id="vmFwRow" hidden>
       <div class="setrow col ctlrow">${lbl("vmFw", "Firmware", "UEFI for most current installers (and Windows 11); BIOS for an older one")}
@@ -314,13 +314,15 @@ function openNewVm(forProject = ""){
         <div class="setrow col ctlrow">${lbl("vmPw", "Screen password", "asked when its Screen opens; one to eight characters, VNC's limit")}
           <input id="vmPw" type="password" maxlength="8" autocomplete="new-password"></div>
       </div>
-      <label class="ndcap"><input type="checkbox" id="vmAuto"> Starts with its host</label>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="vmAuto"> Starts with its host</label></div>
       <div id="vmHwBox"></div>
     </details>
     <div class="field" id="vmWhyF" hidden><div class="hint bad" id="vmWhy"></div></div>
     ${dlgFoot(`<button type="button" id="vmCancel">Cancel</button>`, `<button type="button" id="vmGo" class="primary">Make it</button>`)}</div>`;
   m.hidden = false;
   const $m = s => m.querySelector(s);
+  // More opens as every fold here does, slid rather than snapped.
+  $m(".vmmore > summary").onclick = e => { e.preventDefault(); const d = e.currentTarget.parentElement; slideDetails(d, !d.open); };
   const say = t => { $m("#vmWhy").textContent = t; $m("#vmWhyF").hidden = !t; };
   const from = () => {
     const v = $m("#vmOs").value;

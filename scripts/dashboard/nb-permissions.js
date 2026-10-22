@@ -19,7 +19,8 @@ function nbPermsView({$, nb, project, root}){
   // own Save and Revert, as the Settings view lends the whole form.
   function lendDials(){
     const host = view()?.querySelector(".permdials > .box");
-    const sect = document.querySelector('details[data-sect="rn:claude"]');
+    // Not a fading view's still copy of it (ghostOf), which holds one too.
+    const sect = [...document.querySelectorAll('details[data-sect="rn:claude"]')].find(d => !d.closest(".fghost"));
     if (!host || !sect) return;
     if (sect.parentElement === host && rnFor === project) return;
     rnDialsHome();

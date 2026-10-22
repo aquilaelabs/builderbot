@@ -1672,14 +1672,18 @@ function dmUnrouted(d){
     loop.length === 1 ? "at it" : "at them"} yet: <a href="#" data-dmnginx="${esc(dockerList.node || "")}">add a route on the nginx page</a></div>`;
 }
 
+// A hosting-only node runs no terminal, so its containers draw no Shell, and
+// the page says so once on its status line rather than under every row: it
+// is the node's policy, not a fault (the operator, 22 Oct).
+function dmHostOnly(){
+  const n = (nodesList || []).find(x => x.id === (dockerList?.node || dockerNode));
+  return n?.config?.host_only ? n : null;
+}
 // A shell inside one of the instance's running containers, in the dock
-// (R218 step 4): why it cannot open here, or "" when it can. Said under the
-// row in red when it cannot (the operator, 14 Oct); the server asks the same
+// (R218 step 4): why it cannot open here, or "" when it can, said under the
+// row as a setting switched off (warn), never red; the server asks the same
 // questions again, and of the daemon, before anything runs (_ctr_refused).
 function dmShellWhy(d){
-  const n = (nodesList || []).find(x => x.id === (dockerList?.node || dockerNode));
-  if (n?.config?.host_only)
-    return `${n.name} hosts containers only and runs no terminal, so a shell in this one opens on a node that runs sessions`;
   const owner = d.owner || d.project;
   if (!state?.admin && (state?.projects || []).find(p => p.name === owner)?.prefs?.devbuild === "deny")
     return `${projLabel(owner)}'s Agents may: Run its container is Deny, so a shell in its containers is an administrator's`;
@@ -1729,7 +1733,7 @@ function dmRowsHtml(ins, job, blind){
       : d.running ? ["running", "ok"] : d.exists ? ["stopped", "off"] : ["down", "off"];
     // Its running containers, for the Shell (R218 step 4), and why one
     // cannot open, said under the row.
-    const shellAt = !blind && mayShell() && mayDocker() && (d.services || []).filter(c => c.state === "running").length
+    const shellAt = !blind && mayShell() && mayDocker() && !dmHostOnly() && (d.services || []).filter(c => c.state === "running").length
       ? (d.services || []).filter(c => c.state === "running") : null;
     const shellWhy = shellAt ? dmShellWhy(d) : "";
     const key = `inst:${d.project}|${d.instance}`;
@@ -1827,7 +1831,7 @@ function dmRowsHtml(ins, job, blind){
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>`
           : (d.missing_env || []).length ? `<div class="sub warn dmenv">the env is missing ${esc(d.missing_env.join(", "))}: press Env</div>` : ""}
         ${d.nginx_to ? `<div class="sub warn dmnginx">nginx:${esc(d.nginx_to)} is out: Update pins it and rebuilds</div>` : ""}
-        ${shellWhy ? `<div class="sub bad dmshellwhy">No shell here: ${esc(shellWhy)}</div>` : ""}
+        ${shellWhy ? `<div class="sub warn dmshellwhy">No shell here: ${esc(shellWhy)}</div>` : ""}
         ${dockerList?.ports_local && (d.open_ports || []).length ? `<div class="sub bad dmopen">${esc(d.open_ports.join(", "))} ${
           d.open_ports.length === 1 ? "is" : "are"} published on every address of this node, so the internet reaches ${
           d.open_ports.length === 1 ? "it" : "them"} past nginx: ${dmOpenWhy(d, d.open_ports.length === 1 ? "it" : "them")}</div>`
@@ -2586,7 +2590,10 @@ function dmStatus(d){
   // Image updates switched off on this install (R81): its sentence where
   // the line says when they were checked.
   if (featureOff("image-updates")) return `<div class="field">${deadWhy(featureOff("image-updates"))}</div>`;
-  return headLine(!d ? `images checked ${skv(4)}` : d.images_at ? `images checked ${esc(ago(d.images_at))}` : "images not checked yet",
+  const host = dmHostOnly();
+  return headLine((!d ? `images checked ${skv(4)}` : d.images_at ? `images checked ${esc(ago(d.images_at))}` : "images not checked yet")
+    // ...and, once, why its containers have no Shell.
+    + (host && mayShell() ? ` · ${esc(host.name)} hosts containers only, so a shell in one opens from a node that runs sessions` : ""),
     "", "dmimgbar");
 }
 

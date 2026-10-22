@@ -777,7 +777,7 @@ function actMore(items, always = false){
   // ⋯, as a project's header has it (the operator, 17 Oct): the rest of a
   // row's verbs behind one small press, named for a screen reader.
   return `<span class="more"><button type="button" class="moreb" aria-haspopup="menu" aria-expanded="false" aria-label="More"
-      title="the rest of what can be done to it">⋯</button>
+      title="the rest of what can be done to it">${DOTS}</button>
     <div class="actmenu" hidden role="menu">${have.join("")}</div></span>`;
 }
 function wireMore(root){
@@ -1205,7 +1205,30 @@ function noNodeYet(what, cls = ""){
 // `all` All's count where the groups overlap (chipButtons).
 function chipBar(groups, on, attr, all){
   const chips = chipButtons(groups, on, attr, all);
-  return chips ? `<div class="field"><div class="chips">${chips}</div></div>` : "";
+  return chips ? `<div class="field"><div class="chips" data-chips="${esc(attr)}">${chips}</div></div>` : "";
+}
+// A row of chips keeps where it was scrolled across the redraws a press or
+// a poll brings (the operator, 22 Oct: pressing a chip far along the row
+// sent it back to its start): its scroll kept by the row's attribute as it
+// moves, and put back on the row drawn in its place.
+const chipScroll = {};
+function chipsScrolled(e){
+  const c = e.target;
+  if (c?.matches?.(".chips[data-chips]")) chipScroll[c.dataset.chips] = c.scrollLeft;
+}
+function chipsRestore(muts){
+  for (const m of muts) for (const n of m.addedNodes){
+    if (n.nodeType !== 1) continue;
+    for (const c of n.matches(".chips[data-chips]") ? [n] : n.querySelectorAll(".chips[data-chips]")){
+      const x = chipScroll[c.dataset.chips];
+      if (x && c.scrollLeft !== x){
+        c.scrollLeft = x;
+        // ...and once more after layout, for a row not laid out yet when
+        // it was added (inside a view fading in).
+        requestAnimationFrame(() => { if (c.isConnected && c.scrollLeft !== x) c.scrollLeft = x; });
+      }
+    }
+  }
 }
 // Chips by release (the operator, 21 Oct: the Roadmap's by an item's target,
 // Bugs' by the version a report was seen in): [{key, label, count}], one per

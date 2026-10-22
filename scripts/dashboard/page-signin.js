@@ -98,7 +98,7 @@ function signinBlock(n, id = "claude"){
     inner = `
       <div class="actbar"><span class="state">You are signed in here as ${esc(me.email)}${me.plan ? ` · ${esc(me.plan)}` : ""}</span>
         <button type="button" data-si="out"${dead ? " disabled" : ""}>Sign out</button></div>
-      ${busy.length ? `<div class="sub bad">End your ${esc(a.name)} session${busy.length === 1 ? "" : "s"} on ${esc(busy.join(", "))} before signing out here.</div>`
+      ${busy.length ? `<div class="hint warn">End your ${esc(a.name)} session${busy.length === 1 ? "" : "s"} on ${esc(busy.join(", "))} before signing out here.</div>`
         : cannot ? `<div class="sub bad">${esc(cannot)}.</div>` : ""}`;
   } else {
     const failed = mine && lg.done && !lg.ok;

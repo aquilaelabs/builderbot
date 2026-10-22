@@ -221,7 +221,7 @@ function tourSampleCard(){
       <div class="sub dmorigin">nginx:1.31-alpine<span class="sep"></span>your-node</div>
       <div class="sub dmstate ok">answers at http://your-node:8080/</div></div>
       <div class="actbar dmacts"><button type="button">Shell</button><button type="button">Rebuild</button>
-        <span class="more"><button type="button" class="moreb" aria-label="More">⋯</button></span></div></div></div></div></section>`;
+        <span class="more"><button type="button" class="moreb" aria-label="More">${DOTS}</button></span></div></div></div></div></section>`;
 }
 
 // A page that redraws itself on its own poll, not through the panes' draw

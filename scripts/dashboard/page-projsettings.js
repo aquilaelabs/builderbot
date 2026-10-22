@@ -638,7 +638,7 @@ function rnDialsHome(){
   const box = $("rnmodal").querySelector(":scope > .box") || rnHost?.querySelector(":scope > .box");
   const at = box && [...box.childNodes].find(n => n.nodeType === Node.COMMENT_NODE && n.data === RN_DIALS_MARK);
   if (!at) return;
-  const sect = document.querySelector('details[data-sect="rn:claude"]');
+  const sect = [...document.querySelectorAll('details[data-sect="rn:claude"]')].find(d => !d.closest(".fghost"));
   if (sect) at.parentNode.insertBefore(sect, at);
   at.remove();
 }

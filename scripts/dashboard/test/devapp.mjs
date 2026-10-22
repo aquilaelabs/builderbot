@@ -2272,14 +2272,15 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
   // Put away, and the dock down again: up, it takes the page's room, and the
   // blocks below this one read the Docker page's own controls.
   await page.evaluate(() => { hideTab(panes[1]); dockToggle(false); });
-  // Why it is dead, said under the row: a hosting-only node runs no
-  // terminal, and a project whose Run its container is Deny keeps its
-  // containers' shells to an administrator.
+  // A hosting-only node runs no terminal: its rows draw no Shell, and the
+  // page's status line says why once, not in red under every row (the
+  // operator, 22 Oct). A project whose Run its container is Deny keeps its
+  // containers' shells to an administrator, said under its own row.
   const why = await page.evaluate(() => {
     const keepN = nodesList, keepL = dockerList, keepA = state.admin;
     nodesList = [{ id: 'n_host', name: 'hostbox', config: { host_only: true } }];
     dockerList = { ...(dockerList || {}), node: 'n_host' };
-    const host = dmShellWhy({ project: 'ep.silon', instance: 'main' });
+    const host = (dmHostOnly() ? 'policy ' : '') + dmStatus(dockerList);
     nodesList = keepN; dockerList = keepL;
     const p = state.projects.find(x => x.name === 'ep.silon'), keepB = p.prefs?.devbuild;
     p.prefs = { ...(p.prefs || {}), devbuild: 'deny' }; state.admin = false;
@@ -2288,8 +2289,8 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
     p.prefs.devbuild = keepB; state.admin = keepA;
     return { host, deny, admin };
   });
-  ok(/hostbox hosts containers only/.test(why.host) && /Run its container is Deny/.test(why.deny) && why.admin === '',
-     `a dead Shell says why: a hosting-only node, or Deny for anybody but an administrator (${JSON.stringify(why)})`);
+  ok(/^policy /.test(why.host) && /hostbox hosts containers only/.test(why.host) && /Run its container is Deny/.test(why.deny) && why.admin === '',
+     `no Shell says why: a hosting-only node once on the page's line, or Deny under its row for anybody but an administrator (${JSON.stringify(why).slice(0, 300)})`);
   rmSync(`${ST}/ep-silon.svcs`, { force: true });
   if (!wasUp) rmSync(`${ST}/ep-silon.up`, { force: true });
   await dmRefresh();
@@ -3076,6 +3077,24 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
     await page.click('.dmtab .chips .chip[data-dmchip=""]');
     await page.waitForFunction(() => document.querySelector('.dmtab .chip.on')?.dataset.dmchip === '', null, { timeout: 5000 });
     ok(await page.$$eval('.dmtab .dmgroup', gs => gs.length) > 1, '...and All puts every group back');
+    // A row scrolled along keeps its place when a chip is pressed (the
+    // operator, 22 Oct: it jumped back to its start on every press). Made
+    // narrow so it scrolls whatever the fixture's chips.
+    const kept = await page.evaluate(async () => {
+      const row = () => [...document.querySelectorAll('.dmtab .chips')].find(c => !c.closest('.fghost'));
+      const css = document.createElement('style'); css.textContent = '.dmtab .chips{max-width:160px}'; document.head.append(css);
+      const r = row(); r.scrollLeft = 60; r.dispatchEvent(new Event('scroll'));
+      const at = r.scrollLeft;
+      [...r.querySelectorAll('.chip')].pop().click();
+      for (let i = 0; i < 40 && row() === r; i++) await new Promise(res => setTimeout(res, 50));
+      await new Promise(res => setTimeout(res, 300));
+      const now = row(), was = now.scrollLeft;
+      css.remove();
+      return { at, now: was, redrawn: now !== r };
+    });
+    await page.click('.dmtab .chips .chip[data-dmchip=""]');
+    ok(kept.at > 0 && Math.abs(kept.now - kept.at) <= 1,
+       `...and a chip row scrolled along stays where it was when a chip is pressed (${JSON.stringify(kept)})`);
   } else {
     ok(true, 'one project here, so no chips: a chip row of one is not drawn');
   }
