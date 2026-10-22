@@ -602,6 +602,9 @@ cmd_install() {
     wait_up || die "the controller did not answer on port ${PORT}: journalctl -u ${SERVICE} (or $(env_get DASHBOARD_STATE)/logs/builderbot.log) says why"
     printf '   up: http://%s:%s\n' "$(lan_ip || echo localhost)" "$PORT"
     if [ "$NODE" = 1 ]; then
+        # The wall before the node: its first hello asks bb-session whether
+        # a session may start, and the answer has to be this one.
+        wall_write
         own_node
     fi
     stamp="$(lan_ip || echo localhost)"
@@ -691,6 +694,10 @@ cmd_update() {
     # added; the service is written again, then restarted on the new release.
     TREE="$t" env_file
     bb_wrapper
+    # The wall again, for the folders the env file may name now.
+    if [ -f "$OWN_MARK" ]; then
+        wall_write
+    fi
     service
     if wait_up; then
         printf '   %s is up; %s --rollback goes back to %s\n' "$ver" "$OPT/nodes/install-controller.sh" "${cur:-the one before}"
@@ -806,7 +813,121 @@ own_node() {
     printf '   Give this machine a fixed address: the node reaches its controller at %s.\n' "$ip"
 }
 
-wall_remove() { :; }
+# ---- the wall ---------------------------------------------------------------------
+# What a session on this machine's node never reaches (docs/decisions.md, "A
+# controller installed bare metal, and its own node"): /etc/bb-session.wall
+# names the controller's folders, which bb-session covers in every view and
+# holds to their owners and modes before it starts a session, and the
+# controller's loopback ports, which an nftables table of the wall's own
+# refuses to every account but the controller's and root, a job's above
+# all (a session's own network has a loopback of its own already).
+WALL_PORTS="7681,7682"
+# The name bb-session asks nftables for (its WALL_TABLE).
+WALL_TABLE=builderbot_wall
+WALL_NFT="$P/etc/builderbot-controller/wall.nft"
+
+# wall_cover: the folders, from the env file as the controller reads it,
+# each once and none inside another.
+wall_cover() {
+    local p out=() kept=()
+    for p in "$VAR" "$ETC" /run/builderbot "$(dirname "$(env_get SSH_AUTH_SOCK)")" \
+             "$(env_get DASHBOARD_STATE)" "$(env_get BUILDER_HOME)" "$(env_get SDK_ROOT)" \
+             "$(env_get WORKSPACE)" "$(env_get BB_SECRETS_DIR)"; do
+        case "$p" in /?*) out+=("${p%/}") ;; esac
+    done
+    while read -r p; do
+        local inside=0 k
+        for k in "${kept[@]}"; do
+            case "$p" in "$k"|"$k"/*) inside=1 ;; esac
+        done
+        [ "$inside" = 1 ] || kept+=("$p")
+    done < <(printf '%s\n' "${out[@]}" | awk '{print length, $0}' | sort -n | cut -d' ' -f2- | awk '!seen[$0]++')
+    (IFS=:; printf '%s' "${kept[*]}")
+}
+
+wall_write() {
+    local uid
+    say "the wall: what a session on this machine never reaches"
+    uid="$(id -u "$ACCOUNT")"
+    {
+        printf '# Written by BuilderBot'"'"'s install-controller.sh (R90): this machine is a BuilderBot\n'
+        printf '# controller, and a session on its node is kept out of what follows. bb-session\n'
+        printf '# covers every folder in COVER in a session'"'"'s view and starts none unless the\n'
+        printf '# session and job accounts reach none of it, and the ports refuse them.\n'
+        printf 'ACCOUNT=%s\nJOBS_USER=%s\nCOVER=%s\nPORTS=%s\n' "$ACCOUNT" "$JOBS_USER" "$(wall_cover)" "$WALL_PORTS"
+    } > "$WALL_FILE.new"
+    chmod 0644 "$WALL_FILE.new"
+    mv -f "$WALL_FILE.new" "$WALL_FILE"
+    cat > "$WALL_NFT" <<EOF
+# Written by BuilderBot's install-controller.sh (R90): the controller's loopback ports
+# (its terminals' ttyd, which takes no credential: the dashboard is its gate) for the
+# controller's account and root, and refused to every other account on this machine.
+table inet ${WALL_TABLE}
+delete table inet ${WALL_TABLE}
+table inet ${WALL_TABLE} {
+    chain output {
+        type filter hook output priority -10; policy accept;
+        ip daddr 127.0.0.0/8 tcp dport { ${WALL_PORTS//,/, } } meta skuid 0 accept
+        ip daddr 127.0.0.0/8 tcp dport { ${WALL_PORTS//,/, } } meta skuid ${uid} accept
+        ip daddr 127.0.0.0/8 tcp dport { ${WALL_PORTS//,/, } } reject with tcp reset
+        ip6 daddr ::1 tcp dport { ${WALL_PORTS//,/, } } meta skuid 0 accept
+        ip6 daddr ::1 tcp dport { ${WALL_PORTS//,/, } } meta skuid ${uid} accept
+        ip6 daddr ::1 tcp dport { ${WALL_PORTS//,/, } } reject with tcp reset
+    }
+}
+EOF
+    chmod 0644 "$WALL_NFT"
+    [ -n "$P" ] && return 0
+    nft -f "$WALL_NFT" || die "nftables would not take the wall's table ($WALL_NFT), so the controller's ports are not refused to the node's accounts"
+    boot_oneshot builderbot-wall "BuilderBot: the controller's loopback ports, for the controller alone" \
+        "$(command -v nft) -f $WALL_NFT"
+    printf '   %s: %s\n' "$WALL_FILE" "$(wall_cover)"
+}
+
+# boot_oneshot NAME DESC CMD: run once now and at every boot, the way this
+# init runs a one-shot (the provisioner's session ports, the same three).
+boot_oneshot() {
+    local name="$1" desc="$2" cmd="$3"
+    case "$INIT" in
+        systemd)
+            cat > "/etc/systemd/system/${name}.service" <<EOF
+[Unit]
+Description=${desc}
+After=network-pre.target
+Wants=network-pre.target
+Before=network.target ${SERVICE}.service builderbot-agent.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=${cmd}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+            systemctl daemon-reload
+            systemctl enable "$name" >/dev/null 2>&1 || true ;;
+        openrc)
+            install -d -m 0755 /etc/local.d
+            printf '#!/bin/sh\n# %s\n%s\n' "$desc" "$cmd" > "/etc/local.d/${name}.start"
+            chmod 0755 "/etc/local.d/${name}.start"
+            rc-update add local default >/dev/null 2>&1 || true ;;
+        runit)
+            touch /etc/rc.local; chmod 0755 /etc/rc.local
+            grep -qF "$cmd" /etc/rc.local || printf '%s\n' "$cmd" >> /etc/rc.local ;;
+    esac
+}
+
+wall_remove() {
+    rm -f "$WALL_FILE"
+    command -v nft >/dev/null 2>&1 && nft delete table inet "${WALL_TABLE}" >/dev/null 2>&1 || true
+    case "$INIT" in
+        systemd) systemctl disable builderbot-wall >/dev/null 2>&1 || true
+                 rm -f /etc/systemd/system/builderbot-wall.service ;;
+        openrc)  rm -f /etc/local.d/builderbot-wall.start ;;
+        runit)   [ -f /etc/rc.local ] && sed -i '\|wall.nft|d' /etc/rc.local ;;
+    esac
+}
 
 main() {
     [ $# -gt 0 ] || { usage; exit 0; }

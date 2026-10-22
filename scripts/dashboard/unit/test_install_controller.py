@@ -200,6 +200,48 @@ class TheEnvironment(unittest.TestCase):
             self.assertIn("# Added by an update, at its default:\n# DASHBOARD_PORT=7680\n", r.stdout)
 
 
+class TheWall(unittest.TestCase):
+    """What the installer writes for bb-session (R90 step 7): every folder of
+    the controller's the env file names, each once and none inside another,
+    and the loopback ports for the controller's account and root alone."""
+
+    def test_written_from_the_env_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            etc = os.path.join(d, "etc", "builderbot-controller")
+            os.makedirs(etc)
+            with open(os.path.join(etc, "controller.env"), "w") as f:
+                f.write(f"DASHBOARD_STATE={d}/var/lib/builderbot-controller/config\n"
+                        f"BUILDER_HOME={d}/var/lib/builderbot-controller/home\n"
+                        "SDK_ROOT=/mnt/sdk/\nWORKSPACE=/srv/builderbot/projects\n"
+                        f"BB_SECRETS_DIR={d}/etc/builderbot-controller/secrets\n"
+                        "SSH_AUTH_SOCK=/run/builderbot-controller/ssh-agent.sock\n")
+            r = sh('id() { echo 990; }; JOBS_USER=bb; wall_write; cat "$WALL_FILE"; cat "$WALL_NFT"', root=d)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            cover = re.search(r"^COVER=(.*)$", r.stdout, re.M).group(1).split(":")
+            self.assertEqual(sorted(cover), sorted([
+                f"{d}/var/lib/builderbot-controller", f"{d}/etc/builderbot-controller", "/run/builderbot",
+                "/run/builderbot-controller", "/mnt/sdk", "/srv/builderbot/projects"]))
+            self.assertIn("ACCOUNT=builderbot\nJOBS_USER=bb\n", r.stdout)
+            self.assertIn("PORTS=7681,7682\n", r.stdout)
+            self.assertIn("tcp dport { 7681, 7682 } meta skuid 990 accept", r.stdout)
+            self.assertIn("tcp dport { 7681, 7682 } reject with tcp reset", r.stdout)
+            self.assertIn("table inet builderbot_wall {", r.stdout)
+
+    def test_the_table_is_the_one_bb_session_asks_for(self):
+        text = open(os.path.join(ROOT, "nodes", "bb-session"), encoding="utf-8").read()
+        self.assertIn('WALL_TABLE = "builderbot_wall"', text)
+        self.assertIn('WALL = "/etc/bb-session.wall"', text)
+        inst = open(INSTALLER, encoding="utf-8").read()
+        self.assertIn("WALL_TABLE=builderbot_wall", inst)
+        self.assertIn('WALL_FILE="$P/etc/bb-session.wall"', inst)
+
+    def test_the_wall_is_up_before_the_node_enrolls(self):
+        text = open(INSTALLER, encoding="utf-8").read()
+        body = text[text.index("cmd_install() {"):]
+        body = body[:body.index("\n}\n")]
+        self.assertLess(body.index("wall_write"), body.index("own_node"))
+
+
 class TheImagesOtherTools(unittest.TestCase):
     def test_everything_the_image_fetches_is_fetched_here_too(self):
         text = open(INSTALLER, encoding="utf-8").read()
