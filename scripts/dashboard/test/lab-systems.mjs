@@ -68,11 +68,12 @@ for (const os of SYSTEMS){
   if (row){
     const nid = row.id;
     // Toolchains in and out.
-    for (const [action, want] of [['install', s => s !== 'absent'], ['remove', s => s === 'absent']]){
+    for (const [action, want] of [['install', true], ['remove', false]]){
       await api('/api/toolchains', { action, names: ['node'], node: nid });
       const d = await wait(async () => { const t = await api(`/api/toolchains?node=${nid}`); return t.job?.running ? null : t; }, 30 * 60000);
-      const st = (d?.items || []).find(i => i.name === 'node')?.state;
-      ok(want(st), `[${os}] a toolchain ${action}s (${st})`);
+      // An item says whether it is installed (B194: it has no state).
+      const it = (d?.items || []).find(i => i.name === 'node');
+      ok(it?.installed === want, `[${os}] a toolchain ${action}s (${it ? `installed ${it.installed}${it.version ? ` ${it.version}` : ''}` : 'no node item'}${d?.job?.errors ? `; ${JSON.stringify(d.job.errors).slice(0, 200)}` : ''})`);
     }
     // A container from a compose file: nginx, deployed and taken off.
     for (const action of ['deploy', 'remove']){
