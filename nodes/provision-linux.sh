@@ -788,6 +788,9 @@ esac
 # 7. what Docker needs from the kernel: cgroups, and the overlay filesystem
 if [ -f /sys/fs/cgroup/cgroup.controllers ]; then chk ok "cgroups v2"
 elif [ -d /sys/fs/cgroup/memory ]; then chk warn "cgroups v1: Docker still runs, but current distributions and the emulator's memory accounting expect v2"
+# OpenRC mounts them with its cgroups service, which Alpine's cloud image
+# leaves off until something asks (R97's walk): started below, before Docker.
+elif [ "$INIT" = openrc ] && [ -x /etc/init.d/cgroups ]; then chk warn "cgroups are not mounted yet: OpenRC's cgroups service mounts them, and it is started below"
 else chk fail "no cgroup filesystem is mounted, so Docker cannot start containers here"; fi
 if grep -qw overlay /proc/filesystems 2>/dev/null || modprobe -n overlay 2>/dev/null; then chk ok "overlay filesystem"
 else chk warn "the overlay filesystem is not available, so Docker will fall back to a slower storage driver"; fi
@@ -994,6 +997,11 @@ docker_suite() {
 
 if ! command -v docker >/dev/null 2>&1; then
     docker_install
+fi
+# Docker's cgroups on OpenRC, mounted by its own service, at boot from now on.
+if [ "$INIT" = openrc ] && [ ! -f /sys/fs/cgroup/cgroup.controllers ] && [ -x /etc/init.d/cgroups ]; then
+    rc-update add cgroups boot >/dev/null 2>&1 || true
+    rc-service cgroups start >/dev/null 2>&1 || warn "OpenRC's cgroups service did not start, so Docker may not start containers here"
 fi
 command -v docker >/dev/null 2>&1 && svc_enable docker
 
