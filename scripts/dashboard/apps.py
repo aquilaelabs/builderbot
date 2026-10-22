@@ -123,7 +123,7 @@ def view():
         h = held.get(name) or {}
         if a.get("dev") and not unvetted_ok():
             continue
-        out.append({"name": name, "title": a["title"], "does": a["does"], "offered": offered(name),
+        out.append({"name": name, "title": a["title"], "does": a["does"], "offered": offered(name), "dev": bool(a.get("dev")),
                     "version": h.get("version", ""), "absent": (idx.get("absent") or {}).get(name, ""),
                     "files": [{"file": f["file"], "sha256": f["sha256"], "size": f["size"],
                                "url": f"/apps/{name}/{f['file']}"}

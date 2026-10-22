@@ -50,7 +50,7 @@ function devAppRow(a){
   const [first, ...rest] = a.files || [];
   const behind = a.version && v && !v.startsWith(a.version);
   return `<div class="row stack2 devapp" data-devapp="${esc(a.name)}"><div class="grow">
-      <div class="name">${esc(a.title)}${a.version ? ` <span class="pill${behind ? " warn" : ""}">${esc(a.version)}</span>` : ""}</div>
+      <div class="name">${esc(a.title)}${a.dev ? devMark() : ""}${a.version ? ` <span class="pill${behind ? " warn" : ""}">${esc(a.version)}</span>` : ""}</div>
       <div class="hint">${esc(a.does)}</div>
       ${first ? `<div class="sub">${devHow(a.name)}</div>`
         : a.absent ? `<div class="sub warn">Not in ${esc(a.absent)}: that release does not carry it.</div>`

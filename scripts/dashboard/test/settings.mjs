@@ -46,6 +46,19 @@ await post('/api/settings', { set: { offer_unvetted: true } });
 await page.waitForFunction(() => !document.querySelector('#devtag')?.hidden, null, { timeout: 30000 });
 ok(await page.$eval('#devtag', e => e.textContent.trim() === 'dev'),
    '...and says dev once it is on, so two dashboards are never confused');
+// ...and each dev feature it offers says so where it is offered (R102, the
+// operator, 22 Oct: the Apps page hid two rows with it off and nothing said
+// why): the two dev apps' rows and their switches, never the Android app.
+await page.evaluate(() => openAppsTab());
+await page.waitForSelector('.pane .doc.on [data-devapp="vscode"]', { timeout: 15000 });
+const marked = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.pane .doc.on [data-devapp]')]
+  .map(r => [r.dataset.devapp, !!r.querySelector('.name .pill.devmark')])));
+await page.evaluate(() => openSettingsTab());
+await page.waitForSelector('.settingstab [data-set="apps_vscode"]', { state: 'attached', timeout: 15000 });
+const switches = await page.evaluate(() => ['apps_android', 'apps_vscode', 'apps_companion']
+  .map(k => !!document.querySelector(`.settingstab [data-set="${k}"]`)?.closest('label')?.querySelector('.pill.devmark')));
+ok(marked.vscode && marked.companion && marked.android === false && switches.join() === 'false,true,true',
+   `...and a dev feature says dev where it is offered: the VS Code and companion rows and switches, not Android's (${JSON.stringify({ marked, switches })})`);
 await post('/api/settings', { set: { offer_unvetted: false } });
 await page.waitForFunction(() => document.querySelector('#devtag')?.hidden, null, { timeout: 30000 });
 // Reset BuilderBot: a red verb at the foot of the tab behind a typed word,

@@ -492,7 +492,7 @@ function settingsSections(){
             // left empty it is left alone, and its own tick takes it off.
             if (f.type === "text" || f.type === "secret"){
               const isSet = f.type === "secret" ? !!s.settings[f.key]?.set : !!v;
-              return `<div class="setrow col ctlrow"><label for="${id}">${esc(f.label)}${helpIcon(f.hint)}${
+              return `<div class="setrow col ctlrow"><label for="${id}">${esc(f.label)}${f.dev ? devMark() : ""}${helpIcon(f.hint)}${
                   f.type === "secret" ? (isSet ? ` <span class="pill ok">set</span>` : ` <span class="pill">not set</span>`) : src(f.key)}</label>
                 <input id="${id}" type="${f.type === "secret" ? "password" : "text"}" data-set="${f.key}"${
                   f.type === "secret" ? ' data-secret="1"' : ""} value="${esc(f.type === "secret" ? "" : sdVal(id, v || ""))}"
@@ -505,7 +505,7 @@ function settingsSections(){
             // the way the Tests bar's are, with what the label cannot say on
             // the ? (docs/design-language.md, Controls).
             return `<div class="logdays setrow ctlrow"><label class="ndcap">
-                <input id="${id}" type="checkbox" data-set="${f.key}"${sdVal(id, !!v) ? " checked" : ""}> ${esc(f.label)}${helpIcon(f.hint)}</label>${src(f.key)}
+                <input id="${id}" type="checkbox" data-set="${f.key}"${sdVal(id, !!v) ? " checked" : ""}> ${esc(f.label)}${f.dev ? devMark() : ""}${helpIcon(f.hint)}</label>${src(f.key)}
               </div>`;
     };
     // The button is a real control only while debug mode is SAVED on: what
