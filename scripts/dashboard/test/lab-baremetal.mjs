@@ -90,7 +90,7 @@ try cat /etc/builderbot-controller/controller.env
 try ls /etc/builderbot-controller/secrets
 try cat /run/builderbot/secrets.env
 try ls /run/builderbot
-try env SSH_AUTH_SOCK=/run/builderbot-controller/ssh-agent.sock ssh-add -l
+try sh -c 'SSH_AUTH_SOCK=/run/builderbot-controller/ssh-agent.sock ssh-add -l; [ $? -ne 2 ]'
 try curl -s -m 5 --unix-socket /run/docker.sock http://localhost/version
 try curl -s -m 5 -o /dev/null http://127.0.0.1:7681/
 try curl -s -m 5 -o /dev/null http://127.0.0.1:7682/
