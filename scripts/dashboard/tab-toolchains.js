@@ -808,13 +808,16 @@ function renderToolchainsInto(i){
                  title="install these on ${esc(d.name || "the node")} without reinstalling the toolchains">Install system packages</button>`
             : `This node's owner installs them: the agent does not administer the machine.`}</div></div>`;
     })()}
-    ${onNode && (d.machine || []).some(m => TC_AGENT_TOOLS.has(m.name)) ? `<div class="field tcagents"><div class="hint">The coding agents (${
-      esc((d.machine || []).filter(m => TC_AGENT_TOOLS.has(m.name)).map(m => m.label).join(", "))}) are installed and updated on the ${pageLink("agents", "Agents page", `#/build/agents/${encodeURIComponent(d.node || tcNode)}`)}.</div></div>` : ""}
     ${tcSections(onNode && (d.machine || []).some(m => !TC_AGENT_TOOLS.has(m.name)) ? `<div class="tcs tcmachine">${
       d.machine.filter(m => !TC_AGENT_TOOLS.has(m.name)).map(m => (m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : "",
       tblWrap(TC_COLS, (d.items || []).filter(i => !i.wrong_platform)
       .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join(""), "tcs"),
       `${(d.items || []).filter(i => i.installed).length} installed`)}
+    ${
+    // The coding agents arrive with the machine's rows and are the Agents
+    // page's (R95 step 15): one line at the foot says where.
+    onNode && (d.machine || []).some(m => TC_AGENT_TOOLS.has(m.name)) ? `<div class="field tcagents"><div class="hint">The coding agents (${
+      esc((d.machine || []).filter(m => TC_AGENT_TOOLS.has(m.name)).map(m => m.label).join(", "))}) are installed and updated on the ${pageLink("agents", "Agents page", `#/build/agents/${encodeURIComponent(d.node || tcNode)}`)}.</div></div>` : ""}
     ${state?.can?.admin ? tpSection(d.items) : ""}
 `;
 

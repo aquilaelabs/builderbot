@@ -71,7 +71,7 @@ const menu = await page.$eval('#resumemenu', m => ({ text: [...m.querySelectorAl
   codex: [...m.querySelectorAll('[data-asignin="codex"]')].map(b => b.closest('.actbar').textContent.replace(/\s+/g, ' ').trim()) }));
 ok(/^signbox \|[\s\S]*You are not signed in to Claude here$/.test(menu.text) && menu.buttons.join() === 'Sign in on signbox',
    `pressing it opens the chooser with that node's sign-in as its one press, in place of Resume and New conversation (${menu.text}; ${menu.buttons.join(' | ')})`);
-ok(menu.codex.length === 1 && /^ChatGPT Sign in on signbox$/.test(menu.codex[0]),
+ok(menu.codex.length === 1 && /^ChatGPT\s*Sign in on signbox$/.test(menu.codex[0]),
    `...and a line for ChatGPT under it, Codex CLI being installed there, offering its own sign-in (${menu.codex.join(' | ')})`);
 await page.click('#resumemenu [data-signin-node]');
 await page.waitForFunction(id => {
@@ -218,7 +218,9 @@ await call('/api/v1/nodes', { action: 'online', id: box.id });
      '...and the node\'s report names the ChatGPT account, which is no Claude sign-in');
   const n0 = page.dialogs.length;
   await page.click(`${CX} [data-si="out"]`);
-  const xo = await beat();
+  // The press asks first and then queues the job: taken once it is there.
+  let xo = {};
+  for (let i = 0; i < 40 && !xo?.type; i++){ xo = await beat(); if (!xo?.type) await sleep(250); }
   ok(page.dialogs.length === n0 + 1 && /Sign out of ChatGPT on signbox\?/.test(page.dialogs[n0])
      && xo.type === 'codex-logout' && xo.spec?.uid === me,
      `Sign out asks first and is a codex-logout job there for this account (${xo.type || xo.error})`);
@@ -266,7 +268,7 @@ await call('/api/users', { action: 'edit', name: 's.user', profile: { full_name:
   ok(Object.keys(cc.nodes || {}).join() === box.id && 'latest' in cc,
      `the Claude Code versions it is sent are those nodes' too, so the section reads what an administrator's does (${Object.keys(cc.nodes || {}).length} node)`);
   ok(seen.picker.join() === 'signbox', `its node picker lists the nodes its own projects are on, and no others (${seen.picker.join()})`);
-  ok(seen.open && seen.live.includes('in') && seen.live.includes('ndPick'),
+  ok(seen.open && seen.live.includes('in') && seen.live.includes('agNodeSel'),
      `its chooser's sign-in lands on the same section, where its own Sign in is live (${seen.live.join()})`);
   ok(seen.installs === 0 && !/administrator/i.test(seen.said),
      `it is offered no install, update or removal, and nothing says why (the operator, 21 Oct: a role somebody lacks is not advertised) (${seen.installs})`);
