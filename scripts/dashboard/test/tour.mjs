@@ -176,6 +176,32 @@ ok(tours.back && tours.ringed, `a page's own redraw under a step puts its exampl
 ok(tours.docker, `...a placeholder the page keeps hidden does not hold the Containers tour back (${tours.docker})`);
 ok(tours.kept, `...and a poll with the old list after Show the tours again does not undo it (${tours.kept})`);
 
+// With other pages kept in the pane before it (Home, Containers), the
+// example goes into the page on show, not the first kept (B223, the
+// operator, 22 Oct: a ring around an empty box on VMs after Home).
+const after = await page.evaluate(async () => {
+  const seen = state.tour;
+  const wait = async f => { for (let i = 0; i < 40 && !f(); i++) await new Promise(r => setTimeout(r, 100)); return f(); };
+  state.tour = { seen: ['home', 'docker'], off: false };
+  openHome(); await new Promise(r => setTimeout(r, 800));
+  openDocker(); await new Promise(r => setTimeout(r, 1200));
+  tourEnd(false);
+  state.tour = { seen: ['home', 'docker'], off: false };
+  openVmsTab(); await new Promise(r => setTimeout(r, 1500));
+  tourAsked.clear(); tourSoon('vms');
+  await wait(() => tourKind === 'vms');
+  while (tourKind && tourI < tourSteps.length - 1 && !$('tourSample')) tourGo(1);
+  const sm = $('tourSample');
+  const out = { kept: document.querySelectorAll('#pane0 .doctab').length, inVms: !!sm?.closest('.vmtab'), shown: !!sm?.checkVisibility() };
+  tourEnd(false);
+  await new Promise(r => setTimeout(r, 1000));
+  state.tour = seen;
+  openHome();
+  return out;
+});
+ok(after.kept >= 2 && after.inVms && after.shown,
+   `with Home and Containers kept in the pane, the VMs page's example goes into the VMs page and shows (${JSON.stringify(after)})`);
+
 // On a phone the card is a sheet from the bottom edge.
 await prefs({ tour_seen: [], tour_off: false });
 const phone = await newPage(browser, { tour: true, viewport: { width: 393, height: 852 }, isMobile: true, hasTouch: true });

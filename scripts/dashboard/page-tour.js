@@ -198,7 +198,10 @@ function tourStart(kind){
 function tourSample(s){
   $("tourSample")?.remove();
   if (!s?.sample || (s.at && tourTarget(s.at))) return null;
-  const doc = document.querySelector(`${TOUR_PANE} .doctab`);
+  // The page on show's, not the first the pane keeps: after Home, the
+  // example went into Home's hidden page and the ring wrapped an empty box
+  // over the VMs page (B223).
+  const doc = document.querySelector(`${TOUR_PANE} .doc.on .doctab`) || document.querySelector(`${TOUR_PANE} .doctab`);
   if (!doc) return null;
   const box = document.createElement("div");
   box.id = "tourSample"; box.className = "toursample"; box.inert = true;
