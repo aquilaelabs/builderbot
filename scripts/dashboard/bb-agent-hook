@@ -82,6 +82,46 @@ def as_claude(agent, raw):
     return out
 
 
+SID = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,99}")
+UUID_TAIL = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$")
+
+
+def keep(agent, raw):
+    """The conversation's log, copied where Claude Code's are (R95 step 8):
+    ~/.claude/projects/<the session's tree, slashes as dashes>/<agent>/<id>.jsonl,
+    which the projects share or claudesync carries to the controller, where
+    bb transcripts and the Sessions view read it. At the end of every turn,
+    so the copy is never more than a turn behind. The path the agent named
+    when it names one, else where it keeps it; nothing when neither is there."""
+    d = raw if isinstance(raw, dict) else {}
+    tree, home = os.environ.get("BB_TREE", ""), os.environ.get("HOME", "")
+    if not tree or not home:
+        return
+    if agent == "copilot":
+        sid = str(d.get("sessionId") or "")
+        src = str(d.get("transcriptPath") or "") or os.path.join(
+            os.environ.get("COPILOT_HOME") or os.path.join(home, ".copilot"), "session-state", sid, "events.jsonl")
+    else:
+        src = str(d.get("transcript_path") or "")
+        m = UUID_TAIL.search(src)
+        sid = str(d.get("session_id") or (m.group(1) if m else ""))
+    if not SID.fullmatch(sid) or not os.path.isfile(src):
+        return
+    # Named as Claude Code names a tree's folder (every character not a
+    # letter or a digit a dash), which claudesync knows a project's by.
+    dest_dir = os.path.join(home, ".claude", "projects", re.sub(r"[^A-Za-z0-9]", "-", tree), agent)
+    try:
+        os.makedirs(dest_dir, mode=0o700, exist_ok=True)
+        tmp = os.path.join(dest_dir, f".bbsync-{sid}")  # claudesync passes these over
+        with open(src, "rb") as a, open(tmp, "wb") as b:
+            while chunk := a.read(1 << 20):
+                b.write(chunk)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, os.path.join(dest_dir, f"{sid}.jsonl"))
+    except OSError:
+        pass
+
+
 def run(argv, payload, timeout):
     try:
         p = subprocess.run(argv, input=json.dumps(payload), capture_output=True, text=True,
@@ -129,6 +169,8 @@ def main(argv):
     except ValueError:
         raw = {}
     call = as_claude(agent, raw)
+    if event == "stop":
+        keep(agent, raw)
     said = []
     for cmd, timeout in plan(event, call, proj, who):
         code, out, err = run(cmd, call, timeout)

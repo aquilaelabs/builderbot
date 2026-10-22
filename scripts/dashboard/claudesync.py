@@ -51,7 +51,7 @@ def project_of(entry, projects):
     the end), so a project whose name starts another's never claims it."""
     for p in projects:
         if entry == slug(WORKSPACE / p) or re.fullmatch(
-                re.escape(slug(WORKSPACE / ".worktrees" / p) + "-") + r"u-[0-9a-f]{8}", entry):
+                re.escape(slug(WORKSPACE / ".worktrees" / p) + "-") + r"u-[0-9a-f]{8}(?:-[a-z]+)?", entry):
             return p
     return ""
 

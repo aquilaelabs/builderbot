@@ -1348,9 +1348,13 @@ case "$target" in
             copilot) cmd=(copilot --no-auto-update) ;;
         esac
         if [ -n "$resume" ] && [ "$agent" != claude ]; then
-            bad "Resuming a ${agent_name} conversation is not offered yet: start a new one."
+            # Another agent's conversation resumes below, once its tree is
+            # known: its log is kept in that tree's folder (R95 step 8).
+            case "$resume" in
+                *[!0-9A-Za-z-]*|"") bad "Not a session id: ${resume}" ;;
+            esac
         fi
-        if [ -n "$resume" ]; then
+        if [ -n "$resume" ] && [ "$agent" = claude ]; then
             # Checked against a transcript that actually exists, so a mistyped
             # URL cannot turn into an argument claude tries to interpret.
             case "$resume" in
@@ -1447,6 +1451,39 @@ case "$target" in
         # their own, so two people on one project cannot overwrite each other,
         # commit each other's half-finished work, or share a dist/.
         dir="$(session_dir "$proj" "$account" "$agent")"
+        # Another agent's conversation, resumed in that agent and no other
+        # (R95 step 8): its log is the copy its Stop hook keeps in the tree's
+        # folder of the account's transcripts (bb-agent-hook keep), fetched
+        # first on a node that has not got it, and put back where the agent
+        # itself looks for it when it is not there (a node it never ran on).
+        if [ -n "$resume" ] && [ "$agent" != claude ]; then
+            kd="$HOME/.claude/projects/$(printf '%s' "$dir" | sed 's/[^A-Za-z0-9]/-/g')/$agent"
+            if on_node && [ ! -f "$kd/$resume.jsonl" ]; then
+                ( umask 077; mkdir -p "$kd" ) 2>/dev/null || true
+                ( cd "$dir" 2>/dev/null && BB_PROJECT="$proj" bb transcripts fetch "$resume" \
+                      --into "$kd" >/dev/null 2>&1 ) || true
+            fi
+            [ -f "$kd/$resume.jsonl" ] \
+                || bad "No ${agent_name} conversation ${resume} for ${proj}." \
+                       "It may have been deleted; start a new one instead."
+            case "$agent" in
+                codex)
+                    cs="${CODEX_HOME:-$HOME/.codex}/sessions"
+                    if ! find "$cs" -name "rollout-*-${resume}.jsonl" 2>/dev/null | grep -q .; then
+                        cd_="$cs/$(date +%Y/%m/%d)"
+                        ( umask 077; mkdir -p "$cd_" && cp -f "$kd/$resume.jsonl" "$cd_/rollout-$(date +%Y-%m-%dT%H-%M-%S)-${resume}.jsonl" ) \
+                            || bad "Could not put ${resume} back where Codex keeps its conversations."
+                    fi
+                    cmd+=(resume "$resume") ;;
+                copilot)
+                    sd="${COPILOT_HOME:-$HOME/.copilot}/session-state/$resume"
+                    if [ ! -f "$sd/events.jsonl" ]; then
+                        ( umask 077; mkdir -p "$sd" && cp -f "$kd/$resume.jsonl" "$sd/events.jsonl" ) \
+                            || bad "Could not put ${resume} back where Copilot keeps its sessions."
+                    fi
+                    cmd+=(--resume "$resume") ;;
+            esac
+        fi
         # Claude Code's first run asks three things at the keyboard (a
         # text theme, whether to trust the folder, and the onboarding
         # screens), and a home this dashboard made has never answered them:

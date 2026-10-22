@@ -2,6 +2,7 @@
 the one live row, and every name and argument reads as it did before the
 table; the page's copy (page-agents.js) and the node agent's prefixes are
 held to the table here."""
+import json
 import os
 import re
 import sys
@@ -191,6 +192,90 @@ class ByPath(unittest.TestCase):
             code = f"import sys; sys.path.insert(0, {lib!r}); import dash; dash.load({m!r}, {os.path.join(HERE, '..')!r})"
             p = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True, cwd="/")
             self.assertEqual(p.returncode, 0, (m, p.stderr[-300:]))
+
+
+class OtherTranscripts(unittest.TestCase):
+    """R95 step 8: Codex's and Copilot's logs, kept by their Stop hook in
+    an <agent>/ folder of the tree's transcripts folder, listed, read and
+    shown as Claude's are, each marked with its agent."""
+
+    CODEX = [
+        {"timestamp": "2026-10-22T10:00:00Z", "type": "session_meta", "payload": {"cwd": "/w"}},
+        {"timestamp": "2026-10-22T10:00:01Z", "type": "response_item",
+         "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "<environment_context>x</environment_context>"}]}},
+        {"timestamp": "2026-10-22T10:00:02Z", "type": "response_item",
+         "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Make the page blue"}]}},
+        {"timestamp": "2026-10-22T10:00:03Z", "type": "response_item",
+         "payload": {"type": "function_call", "name": "shell", "call_id": "c1",
+                     "arguments": json.dumps({"command": ["bash", "-lc", "bb roadmap"]})}},
+        {"timestamp": "2026-10-22T10:00:04Z", "type": "response_item",
+         "payload": {"type": "function_call_output", "call_id": "c1", "output": {"output": "R1 the page"}}},
+        {"timestamp": "2026-10-22T10:00:05Z", "type": "response_item",
+         "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Done."}]}},
+    ]
+    COPILOT = [
+        {"type": "user.message", "data": {"content": "Fix the build"}, "timestamp": "2026-10-22T11:00:00Z"},
+        {"type": "tool.execution_start", "data": {"toolName": "bash", "toolCallId": "t1", "arguments": {"command": "make"}}},
+        {"type": "tool.execution_complete", "data": {"toolCallId": "t1", "result": {"content": "ok"}}},
+        {"type": "assistant.message", "data": {"content": "Built."}},
+    ]
+
+    def setUp(self):
+        import tempfile
+        import transcripts
+        self.t = transcripts
+        self.root = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.root, True)
+        self.ws = os.path.join(self.root, "ws")
+        self.home = os.path.join(self.root, "share", "u_0000aaaa", "projects")
+        transcripts.configure(workspace=self.ws, root_for=lambda uid: self.home)
+
+    def put(self, tree, agent, sid, records):
+        d = os.path.join(self.home, re.sub(r"[^A-Za-z0-9]", "-", tree), agent)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, sid + ".jsonl"), "w") as f:
+            f.write("\n".join(json.dumps(r) for r in records) + "\n")
+
+    def test_codex_and_copilot_conversations_are_listed_with_their_agent(self):
+        self.put(f"{self.ws}/.worktrees/alpha/u_0000aaaa-codex", "codex", "0199aaaa-bbbb-cccc-dddd-eeeeffff0000", self.CODEX)
+        self.put(f"{self.ws}/.worktrees/alpha/u_0000aaaa-copilot", "copilot", "cop-1", self.COPILOT)
+        rows = {r["id"]: (r["agent"], r["first"]) for r in self.t.mine("u_0000aaaa", ["alpha"])}
+        self.assertEqual(rows, {"0199aaaa-bbbb-cccc-dddd-eeeeffff0000": ("codex", "Make the page blue"),
+                                "cop-1": ("copilot", "Fix the build")})
+
+    def test_a_codex_conversation_reads_as_turns_and_as_text(self):
+        self.put(f"{self.ws}/.worktrees/alpha/u_0000aaaa-codex", "codex", "cx-1", self.CODEX)
+        got, st = self.t.turns("u_0000aaaa", "alpha", "cx-1")
+        self.assertEqual(st, 200)
+        self.assertEqual(got["agent_name"], "ChatGPT")
+        self.assertEqual([(t["who"], t["text"]) for t in got["turns"]],
+                         [("you", "Make the page blue"), ("claude", ""), ("claude", "Done.")])
+        self.assertEqual(got["turns"][1]["tools"][0]["call"], "shell: $ bb roadmap")
+        self.assertEqual(got["turns"][1]["tools"][0]["result"], "R1 the page")
+        text, name = self.t.render("u_0000aaaa", "alpha", "cx-1")
+        self.assertIn("ChatGPT", text)
+        self.assertIn("$ bb roadmap", text)
+        self.assertTrue(name.startswith("codex-alpha-"))
+
+    def test_the_stop_hook_keeps_the_log_where_the_list_reads_it(self):
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("bbah", os.path.join(HERE, "..", "bb-agent-hook"))
+        spec = importlib.util.spec_from_loader("bbah", loader)
+        h = importlib.util.module_from_spec(spec)
+        loader.exec_module(h)
+        src = os.path.join(self.root, "rollout-2026-10-22T10-00-00-0199aaaa-bbbb-cccc-dddd-eeeeffff0001.jsonl")
+        with open(src, "w") as f:
+            f.write("\n".join(json.dumps(r) for r in self.CODEX) + "\n")
+        home = os.path.join(self.root, "home")
+        os.makedirs(os.path.join(home, ".claude"))
+        os.makedirs(self.home, exist_ok=True)
+        os.symlink(self.home, os.path.join(home, ".claude", "projects"))
+        tree = f"{self.ws}/.worktrees/alpha/u_0000aaaa-codex"
+        with unittest.mock.patch.dict(os.environ, {"BB_TREE": tree, "HOME": home}):
+            h.keep("codex", {"transcript_path": src})
+        rows = [(r["id"], r["agent"]) for r in self.t.mine("u_0000aaaa", ["alpha"])]
+        self.assertEqual(rows, [("0199aaaa-bbbb-cccc-dddd-eeeeffff0001", "codex")])
 
 
 class Copies(unittest.TestCase):

@@ -194,11 +194,19 @@ function openClaude(name, ev){
 function resumeConversation(name, id, when, ev, agent = "claude"){
   const p = (state?.projects || []).find(x => x.name === name);
   if (!p) return;
-  // A conversation resumes in the agent it is with, and in no other (R95):
-  // Claude's in the chooser below; another agent's resume is not built yet.
+  // A conversation resumes in the agent it is with, and in no other (R95
+  // step 8): another agent's turns the chooser to that agent's own step,
+  // its model and effort, on the project's node.
   if (agent && agent !== "claude"){
     ev?.stopPropagation();
-    return notify(`resuming a ${agentById(agent)?.name || agent} conversation is not offered yet: start a new one from the project's chooser`, true);
+    const ns = claudeNodes(p), several = ns.length > 1;
+    resumeFor = name;
+    resumeHost = null;
+    resumePick = {project: name, sessionId: id, when, node: several ? (ns[0]?.id || "") : "", agent, model: "", effort: ""};
+    drawProjects(state.projects);
+    syncResumeMenu();
+    if (resumeFor !== name) notify("a session cannot start on this project now: its Start says why", true);
+    return;
   }
   const ns = claudeNodes(p), several = ns.length > 1;
   const live = ns.find(n => claudeLiveOn(name, {id: n.id}));
@@ -247,7 +255,7 @@ function startClaude(name, sessionId, node){
 // its own (session_dir), so one person may run both on a project at once.
 const agentLiveOn = (id, name, n) => (state?.sessions || []).some(s => s.name === myAgentSession(id, name)
   && (!n.id || s.node_id === n.id));
-function launchAgent(id, name, node, model = "", effort = ""){
+function launchAgent(id, name, node, model = "", effort = "", sessionId = ""){
   const a = agentById(id);
   if (!a) return;
   resumeFor = null;
@@ -258,7 +266,7 @@ function launchAgent(id, name, node, model = "", effort = ""){
   // Its model and effort ride the argument (R95 step 9), which bb-tty
   // holds to the agent's own lists.
   const me = (model ? `:m:${model}` : "") + (effort ? `:e:${effort}` : "");
-  openTab({kind: "term", arg: agentArg(id, name) + me + (node ? `:n:${node}` : ""),
+  openTab({kind: "term", arg: agentArg(id, name) + (sessionId ? `:r:${sessionId}` : "") + me + (node ? `:n:${node}` : ""),
            label: `${a.name}: ${projLabel(name)}` + (nn ? ` (${nn})` : "")});
 }
 async function agentEnd(id, name, n, several){
@@ -445,7 +453,8 @@ function agentPicker(p, m, card, anchor, n, several){
   const r = resumePick, a = agentById(r.agent), t = AGENT_MODELS[r.agent] || {models: [], efforts: []};
   const opts = (xs, cur) => [`<option value="">${esc(a.name)}'s default</option>`]
     .concat(xs.map(v => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(v)}</option>`)).join("");
-  m.innerHTML = `<div class="rmhead"><b>A new ${esc(a.name)} conversation</b><span class="rmfacts">${esc(a.product)}${
+  m.innerHTML = `<div class="rmhead"><b>${r.sessionId ? `Resume the ${esc(a.name)} conversation` : `A new ${esc(a.name)} conversation`}</b><span class="rmfacts">${
+      r.sessionId && r.when ? `from ${esc(ago(r.when))} · ` : ""}${esc(a.product)}${
       several || n.name ? ` on ${esc(n.name || "")}` : ""}</span></div>
     <div class="rmfields">
       <div class="setrow col ctlrow"><label class="lbl" for="rmModel">Model</label><select id="rmModel" aria-label="model this session starts on">${opts(t.models, r.model)}</select></div>
@@ -459,7 +468,7 @@ function agentPicker(p, m, card, anchor, n, several){
   m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; };
   m.querySelector("#rmEffort").onchange = e => { r.effort = e.target.value; };
   m.querySelector("[data-back]").onclick = () => { resumePick = null; drawProjects(state.projects); };
-  m.querySelector("[data-start]").onclick = () => launchAgent(r.agent, p.name, r.node, r.model, r.effort);
+  m.querySelector("[data-start]").onclick = () => launchAgent(r.agent, p.name, r.node, r.model, r.effort, r.sessionId || "");
   floatAt(m, anchor);
 }
 

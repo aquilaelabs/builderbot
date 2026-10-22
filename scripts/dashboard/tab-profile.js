@@ -200,7 +200,8 @@ async function openConversation(project, id){
     j = await (await fetch(`/api/transcript?project=${encodeURIComponent(project)}&id=${encodeURIComponent(id)}&as=turns&tz=${encodeURIComponent(tz)}`)).json();
   }catch(e){ j = {error: "could not reach the controller: " + e}; }
   if (j.error){ body.innerHTML = `<div class="notice bad">${esc(j.error)}</div>`; return; }
-  const WHO = {you: "You", claude: "Claude", system: "System"};
+  // The agent the conversation is with (R95): Claude, or the one it names.
+  const WHO = {you: "You", claude: j.agent_name || "Claude", system: "System"};
   body.innerHTML = (j.turns || []).map(t => `<div class="cvturn ${esc(t.who)}">
       <div class="cvwho">${esc(WHO[t.who] || t.who)}${t.at ? ` · ${esc(t.at)}` : ""}</div>
       ${t.text ? `<div class="cvtext">${esc(t.text)}</div>` : ""}

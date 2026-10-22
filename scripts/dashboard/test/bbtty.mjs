@@ -594,7 +594,24 @@ sleep 60
       const mi = cx2.indexOf('-m');
       ok(alive(`codex-${proj}`) && mi >= 0 && cx2[mi + 1] === 'gpt-5.5' && cx2.includes('model_reasoning_effort="high"'),
          `a model and an effort picked at Start reach Codex as its own flags (${cx2.slice(0, 6).join(' ')})`);
+      // A Codex conversation resumes in Codex (R95 step 8): its kept log is
+      // put back where Codex looks for it, and Codex is told to resume it.
       tmuxKill(`codex-${proj}`);
+      {
+        const sid = '0199aaaa-bbbb-cccc-dddd-eeeeffff0042';
+        const kd = join(HOMEDIR, '.claude', 'projects', cwt.replace(/[^A-Za-z0-9]/g, '-'), 'codex');
+        mkdirSync(kd, { recursive: true });
+        writeFileSync(join(kd, `${sid}.jsonl`), '{"type":"session_meta","payload":{}}\n');
+        shell(`u:${ownerUid}:codex:${proj}:r:${sid}:b:${boot}`);
+        await sleep(400);
+        const rx = existsSync(cxArgv) ? readFileSync(cxArgv, 'utf8').split('\0') : [];
+        const back = execFileSync('find', [join(HOMEDIR, '.codex', 'sessions'), '-name', `rollout-*-${sid}.jsonl`], { encoding: 'utf8' }).trim();
+        ok(alive(`codex-${proj}`) && rx.includes('resume') && rx[rx.indexOf('resume') + 1] === sid && back,
+           `a kept Codex conversation resumes in Codex, put back where Codex keeps its own (${rx.slice(0, 4).join(' ')})`);
+        tmuxKill(`codex-${proj}`);
+        const none = shell(`u:${ownerUid}:codex:${proj}:r:0199aaaa-0000-0000-0000-000000000000:b:${boot}`);
+        ok(/No ChatGPT conversation/.test(none) && !alive(`codex-${proj}`), '...and one not kept here opens nothing, saying so');
+      }
       const odd = shell(`u:${ownerUid}:codex:${proj}:m:opus;rm:b:${boot}`);
       ok(/Not a model ChatGPT offers here/.test(odd) && !alive(`codex-${proj}`),
          '...and a model not on its list opens nothing');

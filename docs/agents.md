@@ -134,9 +134,16 @@ limit and Home's sessions tile alike.
 
 `bb transcripts` in a session lists the asking account's own conversations
 on the project, from every coding agent that account uses, each marked with
-its agent, and never another account's: the controller looks under that
-account's transcripts and nowhere else. Claude Code's are listed today;
-Codex's and Copilot's session logs join the list as R95's step 8 keeps them.
+its agent, and never another account's (unless its person made one visible
+on the Sessions view): the controller looks under that account's transcripts
+and nowhere else. Codex's and Copilot's are kept by their Stop hook at the
+end of every turn, copied from the agent's own log into an `<agent>/` folder
+of the tree's folder in the account's transcripts, which the projects share
+or claudesync carries to the controller as it carries Claude Code's. The
+Sessions view shows each row's agent, reads and downloads it, shares and
+deletes it, and Resume opens that agent and no other: the log is put back
+where the agent looks for it on a node that never ran it (Codex's
+`sessions/`, Copilot's `session-state/`) and the agent is told to resume it.
 
 ## What the node reports
 
@@ -151,7 +158,7 @@ credential of any of them.
 
 ## Not built yet
 
-Resuming a Codex or Copilot conversation, their transcripts, a model and effort kept per agent, the model router and the
+A model and effort kept per agent, the model router and the
 open agent: R95's later steps.
 A sign-in with real ChatGPT and GitHub accounts has been walked against
 stubs only; the walk on a real account is the operator's.
