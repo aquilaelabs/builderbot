@@ -130,6 +130,22 @@ jobs:
           if [ -n "$BB_APP_KEYSTORE_B64" ] && [ -n "$BB_APP_KEYSTORE_PASSWORD" ] && [ -n "$BB_APP_KEY_ALIAS" ]; then
             ks="$RUNNER_TEMP/bb-app.keystore"
             printf '%s' "$BB_APP_KEYSTORE_B64" | base64 -d > "$ks"
+            # The alias checked before Gradle, which prints a wrong one in
+            # full: a value pasted into the wrong secret is said by its name,
+            # with the aliases the keystore has, never by what it holds.
+            for v in "$BB_APP_KEY_ALIAS" "$BB_APP_KEYSTORE_PASSWORD" "$BB_APP_KEY_PASSWORD"; do
+              [ -n "$v" ] && echo "::add-mask::$v"
+            done
+            kt="$(command -v keytool || echo "${JAVA_HOME:-}/bin/keytool")"
+            if [ -x "$kt" ]; then
+              has="$("$kt" -list -keystore "$ks" -storepass "$BB_APP_KEYSTORE_PASSWORD" 2>/dev/null | sed -n 's/^\([^,]*\),.*PrivateKeyEntry.*/\1/p' | paste -sd, -)"
+              if [ -z "$has" ]; then
+                echo "::error::BB_APP_KEYSTORE_PASSWORD does not open the keystore in BB_APP_KEYSTORE_B64"; rm -f "$ks"; exit 1
+              fi
+              if ! printf '%s\n' "$has" | tr ',' '\n' | grep -qixF -- "$BB_APP_KEY_ALIAS"; then
+                echo "::error::BB_APP_KEY_ALIAS is not a key in the keystore, whose keys are: $has"; rm -f "$ks"; exit 1
+              fi
+            fi
             BB_APP_KEYSTORE_FILE="$ks" ./gradlew --no-daemon --console=plain assembleRelease \
               -PbbVersion='${{ steps.v.outputs.semver }}' -PbbCode='${{ steps.v.outputs.code }}'
             rm -f "$ks"
