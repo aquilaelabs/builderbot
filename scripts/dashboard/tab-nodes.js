@@ -1840,6 +1840,7 @@ function ndDialogs(){
             <select id="ndEnSystem">${optionList((nodesSystems.length ? nodesSystems : [{id: "ubuntu", name: "Ubuntu 24.04 or later", vetted: true}])
               .map(s => [s.id, `${s.name}${s.vetted ? "" : " (dev)"}`]))}</select></div>
         </div>
+        <div class="hint" id="ndEnSysWhy" hidden></div>
         <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
         <label class="ndcap"><input type="checkbox" id="ndEnHost"> Hosting only: it runs containers sent to it, and nothing of it comes back</label>
         <div class="hint" id="ndEnHostHint" hidden>No project's code, no sessions and no bb go to it; its agent may ask the controller for its own jobs and nothing else. For a public box such as a cloud VPS.</div>
@@ -1904,6 +1905,13 @@ function ndDialogs(){
     // Hosting only takes sessions with it: the box is to run containers.
     // Through a public hostname it is so by construction (R170): the
     // switch is ticked and held, and the address field asks for the name.
+    // Why a system marked dev is not walked, when it cannot be here (R97).
+    const sysWhy = () => {
+      const s = nodesSystems.find(x => x.id === $b("#ndEnSystem")?.value);
+      $b("#ndEnSysWhy").textContent = s?.why || "";
+      $b("#ndEnSysWhy").hidden = !s?.why;
+    };
+    if ($b("#ndEnSystem")){ $b("#ndEnSystem").addEventListener("change", sysWhy); sysWhy(); }
     const host = $b("#ndEnHost"), sess = $b("#ndEnSess");
     const showHost = () => {
       const cf = reach.value === "public";

@@ -25,7 +25,8 @@ SYSTEMS = [
      "vetted": "2026-10-21, R97 on the dev pair: a VM made a node from its cloud image, enrolled; VM host installed and removed; a toolchain installed and removed; nginx run as a container from a compose file; a project synced and a terminal opened through the controller; Uninstall, the machine's own account kept (Debian 13)"},
     {"id": "almalinux", "name": "AlmaLinux 9", "family": "rhel", "ids": ["almalinux"],
      "vetted": "2026-10-21, R97 on the dev pair: a VM made a node from its cloud image, enrolled; VM host installed and removed; a toolchain installed and removed; nginx run as a container from a compose file; a project synced and a terminal opened through the controller; Uninstall, the machine's own account kept (AlmaLinux 9.8)"},
-    {"id": "rhel", "name": "Red Hat Enterprise Linux 9", "family": "rhel", "ids": ["rhel"], "vetted": ""},
+    {"id": "rhel", "name": "Red Hat Enterprise Linux 9", "family": "rhel", "ids": ["rhel"], "vetted": "",
+     "why": "not walked: its image needs a Red Hat subscription. Rocky Linux and AlmaLinux are its rebuilds, and both are"},
     {"id": "centos", "name": "CentOS Stream 9", "family": "rhel", "ids": ["centos"],
      "vetted": "2026-10-21, R97 on the dev pair: a VM made a node from its cloud image, enrolled; VM host installed and removed; a toolchain installed and removed; nginx run as a container from a compose file; a project synced and a terminal opened through the controller; Uninstall, the machine's own account kept (CentOS Stream 9)"},
     {"id": "fedora", "name": "Fedora", "family": "rhel", "ids": ["fedora"],
@@ -36,7 +37,8 @@ SYSTEMS = [
      "ids": ["opensuse", "opensuse-leap", "opensuse-tumbleweed", "suse", "sles"],
      "vetted": "2026-10-21, R97 on the dev pair: a VM made a node from its cloud image, enrolled; a toolchain installed and removed; nginx run as a container from a compose file; a project synced and a terminal opened through the controller; Uninstall, the machine's own account kept (Leap 16.0; VM host wants its full kernel, kernel-default, as its cloud image boots kernel-default-base)"},
     {"id": "alpine", "name": "Alpine Linux", "family": "alpine", "ids": ["alpine"], "vetted": ""},
-    {"id": "void", "name": "Void Linux", "family": "void", "ids": ["void"], "vetted": ""},
+    {"id": "void", "name": "Void Linux", "family": "void", "ids": ["void"], "vetted": "",
+     "why": "not walked: Void publishes no cloud image for a VM to be made from, so it is walked only on a machine of its own"},
     {"id": "gentoo", "name": "Gentoo", "family": "gentoo", "ids": ["gentoo"], "vetted": ""},
 ]
 DEFAULT = "ubuntu"
@@ -56,7 +58,8 @@ def allowed(sid):
 def offered():
     """The pulldown's entries: every vetted one, and the rest when Offer dev
     features is on, each saying whether it is vetted."""
-    return [{"id": s["id"], "name": s["name"], "family": s["family"], "vetted": bool(s["vetted"])}
+    return [{"id": s["id"], "name": s["name"], "family": s["family"], "vetted": bool(s["vetted"]),
+             **({"why": s["why"]} if s.get("why") and not s["vetted"] else {})}
             for s in SYSTEMS if allowed(s["id"])]
 
 
