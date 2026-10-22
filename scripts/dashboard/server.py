@@ -1451,8 +1451,12 @@ def _attention(who):
     (nodes.attention) for whoever manages nodes, and a node with a
     toolchain behind what is out, Claude Code among them
     (toolchains.attention), for whoever may install toolchains on it."""
+    # A release's APK the controller could not sign, or would not be able
+    # to (releasesign.attention, R106), for whoever sees the project: said
+    # before the release, not after it went out without one.
+    signs = releasesign.attention([p for p in releasesign.projects_fn() if users.may_see(who, p)])
     if NODES_OK:
-        return [], 0
+        return bellseen.filter_rows(users.uid_of(who), signs)
     where = {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}
     # The sessions an outage of this controller held come first (R251), for
     # their own account or an administrator: stopped work waiting on a
@@ -1476,7 +1480,8 @@ def _attention(who):
                                       allowed=lambda p: users.may(who, "docker-write", p) == ""
                                       if p and users.may_work(who, p) else users.is_admin(who))
                # ...and a copy or move that did not happen (relocate.py).
-               + relocate.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid)))
+               + relocate.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid))
+            + signs)
     # ...less what this account has put away (bellseen.py, R144): an update
     # to a version it dismissed, until a newer one is out.
     return bellseen.filter_rows(users.uid_of(who), rows)
@@ -3724,9 +3729,26 @@ changelog.component_dir = version._sub
 import forgerelease                                              # noqa: E402
 import featuresoff                                               # noqa: E402
 forgerelease.configure(state=STATE, workspace=WORKSPACE, write_json_fn=write_json)
+# A release's APK, built unsigned in CI and signed here with the project's
+# sideload key (R106): a release made from the panel is looked for at once.
+import releasesign                                               # noqa: E402
+releasesign.configure(state=STATE, workspace=WORKSPACE, write_json_fn=write_json,
+                      projects=lambda: sorted(d.name for d in WORKSPACE.iterdir()
+                                              if d.is_dir() and not d.name.startswith(".")))
+
+
+def _forge_release(project, tag, version_, sha, comp=""):
+    """forgerelease.publish, and the release's unsigned APK expected for
+    signing once a release was made (releasesign.expect)."""
+    r = forgerelease.publish(project, tag, version_, sha, comp)
+    if r.get("url") and not r.get("error"):
+        releasesign.expect(project, tag)
+    return r
+
+
 version.configure_verbs(PANEL=version_payload, GIT_ENV=users.git_env, CREDS_ENV=projects._git_env,
                         MAY_PUSH=projects.may_push, SESSIONS=sessions_anywhere,
-                        FORGE=forgerelease.publish,
+                        FORGE=_forge_release,
                         AUDIT=lambda *row: None if NODES_OK else db.audit(*row))
 
 
@@ -7988,6 +8010,14 @@ class Handler(BaseHTTPRequestHandler):
                                                            str(req.get("new") or ""), by=str(who.get("name") or "")))
         if field(req, "action") != "list" and self._refused("signing", name):
             return None
+        if field(req, "action") == "release-sign":
+            # Look for the project's unsigned release APKs now, and sign a
+            # failed one again (releasesign.check, R106), on its own thread.
+            if not releasesign.wants(name):
+                return self._json({"error": f"{name}'s workflows hand over no unsigned APK to sign "
+                                            f"(an artifact named {releasesign.MARK}TAG)"}, 400)
+            started = releasesign.check_soon(name, force=True)
+            return self._json({"ok": True, "started": started, "release": releasesign.status(name)})
         got, status = signing.verb(req, by=str(who.get("name") or ""))
         # Whether this person may take a backup, so the dialog offers it only
         # where it would be handed over.
@@ -7997,6 +8027,8 @@ class Handler(BaseHTTPRequestHandler):
             got["why"] = users.may(who, "signing", name)
             got["may_backup"] = not got["why"]
             got["may_lock"] = users.uid_of(who) == membership.owner_of(name)
+            # Which key signs the releases, and how the last ones went (R106).
+            got["release"] = releasesign.status(name)
         return self._json(got, status)
 
     def _get_node_busy(self):
@@ -9479,6 +9511,7 @@ def main():
     if not NODES_OK:
         threading.Thread(target=_room_loop, name="room", daemon=True).start()
     ciwatch.start()           # a project's CI, once a day (R117)
+    releasesign.start()       # a release's unsigned APK, signed here (R106)
     if "tunnel" not in featuresoff.off():
         tunnel.apply()        # the home tunnel, where the settings say so (R176)
     if toolchains.AUTOCHECK:

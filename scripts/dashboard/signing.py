@@ -699,6 +699,145 @@ def secret(project, route, key=DEFAULT):
     return (blob, rec) if rec else None
 
 
+# ---- a release's APK, signed here (R106: the operator, 22 Oct) --------------
+# Four keystore secrets set by hand on GitHub failed three ways and one put a
+# password in a public log. A release's APK is built unsigned in CI and
+# signed by the controller, which holds the key already: the same steps the
+# node's sign job takes (zipalign, apksigner with the proof of a rotation,
+# verify, the certificate checked against the kept key), with the store's
+# own tools, in a 0700 directory removed whatever happens. Sessions run on
+# nodes, never here, so no session can read the key while it is used.
+
+def release_key(project, package=""):
+    """(key name, its sideload record, "") for the key a release of
+    `package` signs with: the one it is mapped to, else default, else the
+    only sideload key, followed through a rotation to the newest; or
+    ("", None, why) said in words when there is none to use."""
+    if not _ok_project(project):
+        return "", None, "unknown project"
+    held = [k for k in key_names(project) if _record(project, "sideload", k)]
+    if not held:
+        return "", None, (f"{project} has no sideload signing key, which signs its releases: an "
+                          "administrator adds or makes one in its Signing view (Ship)")
+    mapped = mapping(project).get(package or "")
+    key = key_for(project, package, "sideload")
+    if mapped and not _record(project, "sideload", mapped):
+        return "", None, f"{package} is mapped to {mapped}, which holds no sideload signing key"
+    if not mapped and not _record(project, "sideload", key):
+        return "", None, (f"{package or 'the app'} is mapped to no key, and {project} has {len(held)} sideload "
+                          f"keys ({', '.join(held)}) and none named default: map it in the Signing view's Apps")
+    key = successor(project, key)
+    return key, _record(project, "sideload", key), ""
+
+
+def build_tools():
+    """{apksigner, zipalign, aapt2, env} from the store's newest build-tools
+    beside its apksigner, or {} when android-tools or the jdk is missing."""
+    tool, env = apksigner_path() if apksigner_path else (None, {})
+    if not tool:
+        return {}
+    d = os.path.dirname(tool)
+    out = {"apksigner": tool, "env": dict(env)}
+    for name in ("zipalign", "aapt2"):
+        p = os.path.join(d, name)
+        if not os.access(p, os.X_OK):
+            return {}
+        out[name] = p
+    return out
+
+
+def package_of(apk, tools=None):
+    """The package an APK declares, read with aapt2, or ""."""
+    tools = tools or build_tools()
+    if not tools:
+        return ""
+    try:
+        p = subprocess.run([tools["aapt2"], "dump", "packagename", str(apk)], capture_output=True,
+                           text=True, timeout=60, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    got = (p.stdout or "").strip().splitlines()[0] if p.returncode == 0 and (p.stdout or "").strip() else ""
+    return got if PACKAGE.fullmatch(got) else ""
+
+
+def sign_here(project, src, out):
+    """Sign the unsigned APK at `src` into `out` with the project's sideload
+    key for its package, on this controller. {key, cert, schemes, package,
+    rotated_from} or {error}."""
+    tools = build_tools()
+    if not tools:
+        return {"error": "this controller has no apksigner to sign with: install android-tools and "
+                         "the jdk (Toolchains page), which it reads from the shared store"}
+    package = package_of(src, tools)
+    key, rec, why = release_key(project, package)
+    if why:
+        return {"error": why}
+    got = secret(project, "sideload", key)
+    if not got:
+        return {"error": f"{project} has no sideload signing key named {key}"}
+    blob, rec = got
+    prev = None
+    if rec.get("rotated_from"):
+        p = secret(project, "sideload", rec["rotated_from"])
+        proof = lineage(project, key)
+        prev = (p, proof) if p and proof else None
+    d = tempfile.mkdtemp(prefix="bb-sign-")
+    try:
+        os.chmod(d, 0o700)
+
+        def private(name, data):
+            path = os.path.join(d, name)
+            with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
+                f.write(data)
+            return path
+        ks = private("key", blob)
+        env = dict(os.environ, **tools["env"], BB_KS_PASS=str(rec.get("store_pass") or ""),
+                   BB_KEY_PASS=str(rec.get("key_pass") or rec.get("store_pass") or ""))
+        first, tail = [], []
+        if prev:
+            (pblob, prec), proof = prev
+            pks, lin = private("previous", pblob), private("lineage", proof)
+            env.update(BB_PREV_KS=str(prec.get("store_pass") or ""),
+                       BB_PREV_KEY=str(prec.get("key_pass") or prec.get("store_pass") or ""))
+            first = ["--ks", pks, "--ks-key-alias", str(prec.get("alias") or ""),
+                     "--ks-pass", "env:BB_PREV_KS", "--key-pass", "env:BB_PREV_KEY", "--next-signer"]
+            tail = ["--lineage", lin, "--rotation-min-sdk-version", "28"]
+
+        def step(argv, what):
+            try:
+                p = subprocess.run(argv, env=env, cwd=d, capture_output=True, text=True, timeout=600, check=False)
+            except (OSError, subprocess.SubprocessError) as e:
+                return None, f"{what} did not run: {e}"
+            said = ((p.stdout or "") + (p.stderr or "")).strip()
+            if p.returncode != 0:
+                lines = [ln for ln in said.splitlines() if ln.strip()]
+                return None, f"{what} failed: " + (lines[-1][:300] if lines else f"exit {p.returncode}")
+            return said, ""
+        aligned, signed = os.path.join(d, "aligned.apk"), os.path.join(d, "signed.apk")
+        _, why = step([tools["zipalign"], "-p", "-f", "4", str(src), aligned], "zipalign")
+        if why:
+            return {"error": why}
+        _, why = step([tools["apksigner"], "sign", *first, "--ks", ks, "--ks-key-alias", str(rec.get("alias") or ""),
+                       "--ks-pass", "env:BB_KS_PASS", "--key-pass", "env:BB_KEY_PASS", *tail,
+                       "--out", signed, aligned], "apksigner sign")
+        if why:
+            return {"error": why}
+        said, why = step([tools["apksigner"], "verify", "--verbose", "--print-certs", signed], "apksigner verify")
+        if why:
+            return {"error": why}
+        m = re.search(r"SHA-256 digest:\s*([0-9a-fA-F]{64})", said)
+        cert = m.group(1).upper() if m else ""
+        want = str(rec.get("sha256") or "").replace(":", "").upper()
+        if not cert or (want and cert != want):
+            return {"error": "the signed APK carries another certificate than the key that was kept"}
+        shutil.copyfile(signed, out)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    return {"key": key, "cert": str(rec.get("sha256") or ""), "package": package,
+            "schemes": re.findall(r"Verified using (v\d(?:\.\d)?) scheme[^:]*:\s*true", said),
+            **({"rotated_from": rec["rotated_from"]} if prev else {})}
+
+
 def refusal(project, rel, route, key=""):
     """(error payload, status) when this signing cannot happen, else None:
     asked before a person is asked to allow one (step 3) as well as before

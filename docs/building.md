@@ -347,6 +347,26 @@ the key while it is used.
 Picking a keystore, typing its password and marking one for removal are staged
 like everything else in the settings: nothing is sent until Save.
 
+**A release's APK is signed by the controller, never in CI.** A workflow
+builds the release APK unsigned (no `signingConfig` for the release build
+type) and uploads it as a workflow artifact named `bb-release-apk-TAG`, kept a
+few days. The controller that made the release (Release on the version row)
+looks for that artifact every few minutes for twelve hours, and once an hour
+otherwise; it fetches it with the project's GitHub token, signs each APK in it
+on the controller with the sideload key the app's package maps to (the same
+steps a sign job takes: `zipalign`, `apksigner` with the proof of a rotation,
+`verify`, the kept certificate checked), and attaches it to the release under
+its name less `-unsigned`, with its `.sha256` file and a line in the notes
+naming the key and its certificate's SHA-256 fingerprint. So no keystore,
+alias or password is ever a GitHub secret, and the key never leaves the
+controller. The Signing view's **Releases** section names which key signs each
+app's releases and how the newest went, and **Look for unsigned APKs now**
+signs a failed one again. What would stop a release's signing (no sideload
+key, an app mapped to none of several, no `apksigner` on the controller, a
+project not on GitHub) is a bell row before the release, and a signing that
+failed after one is a red bell row until it is signed or put away. GitHub
+only: a Gitea or GitLab workflow's artifacts are not fetched.
+
 **Several apps, several keys.** A project keeps as many named keys as it needs,
 each with both slots; the first is **default**, which is where keys from
 before there were names went. **Generate** makes one on the controller with

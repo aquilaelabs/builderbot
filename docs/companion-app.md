@@ -81,14 +81,17 @@ the newer APK in BuilderBot's own Artifacts view. A field may be added at any
 time; one is removed only in the release after the app stopped reading it,
 with the file, the constant and a changelog line moved in that change.
 
-**Building it.** `.github/workflows/android-app.yml` builds the debug APK on
-a node's runner: the JDK and the Android SDK come from the node's toolchain
-store, the same environment every `bb` job gets, on a push to `main` that
-touches `android/`, names it by `bb version --file`, drops it into
-BuilderBot's `dist/` where the runner's machine mounts the projects share.
-It is not kept as a workflow artifact: the builds worth keeping are the
-releases, whose files hang off the GitHub release, and one artifact per
-push filled the account's Actions storage in a month (B669). Locally, `cd android && ./gradlew
+**Building it.** `.github/workflows/android-app.yml` builds the unsigned
+release APK on a node's runner: the JDK and the Android SDK come from the
+node's toolchain store, the same environment every `bb` job gets, on a push
+to `main` that touches `android/`, names it by `bb version --file`, drops it
+into BuilderBot's `dist/` where the runner's machine mounts the projects
+share. For a release it is handed to the controller as the artifact
+`bb-release-apk-TAG`, which the controller signs with BuilderBot's own
+sideload key and attaches to the release (docs/building.md, "A release's APK
+is signed by the controller"); no key or password is a GitHub secret.
+Nothing else is kept as a workflow artifact: one artifact per push filled
+the account's Actions storage in a month (B669). Locally, `cd android && ./gradlew
 assembleDebug` with `JAVA_HOME` and `ANDROID_HOME` pointed at a node's store.
 On a node the build writes under the node's own disk rather than the
 projects share (a job's cache folder, or the account's `~/.cache/builderbot/gradle`),
