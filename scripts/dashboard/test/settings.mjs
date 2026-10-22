@@ -423,6 +423,16 @@ ok(elsewhere.git_name === 'T. Person',
     bars: [...document.querySelectorAll('.nbsettings .rnbar')].filter(b => b.checkVisibility()).length }));
   ok(inView.name === 'alpha' && inView.modal && inView.close && inView.shown && inView.bars === 1,
      `the notebook's Settings view holds the form, the dialog shut, the section on show with its own Save and Revert (${JSON.stringify(inView)})`);
+  // The notebook taken down while it holds the form (B211, the operator,
+  // 22 Oct: Settings empty after leaving the project and coming back): the
+  // form is handed back first, so the next Settings view has it.
+  await page.evaluate(() => getNotebook('alpha').destroy());
+  const back = await page.evaluate(() => !!document.querySelector('#rnmodal > .box') && rnHost === null);
+  await page.evaluate(() => openProjectSettings('alpha'));
+  await page.waitForSelector('.nb .nbview[data-view="settings"]:not([hidden]) .nbsettings #rnName', { timeout: 15000 }).catch(() => {});
+  const again = await page.evaluate(() => ({ name: $('rnName').value, shown: $('rnName').checkVisibility() }));
+  ok(back && again.name === 'alpha' && again.shown,
+     `a notebook taken down hands the form back, and Settings opened again holds it (${back} ${JSON.stringify(again)})`);
   // The sections a list beside the one picked (the operator, 16 Oct: too
   // many open at once to find a setting in): each row names what is in it,
   // a press shows that section alone, and People is on the list.

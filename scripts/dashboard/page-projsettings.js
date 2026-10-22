@@ -566,6 +566,9 @@ function settingsInto(name, host){
     if (typeof rnSessionsLoad === "function") rnSessionsLoad(name);
     return;
   }
+  // Lent to another view still: taken back first, so the form is the
+  // dialog's again before it moves here.
+  if (rnHost && rnHost !== host) settingsOut();
   renameProject(name);
   $("rnmodal").hidden = true;
   const box = $("rnmodal").querySelector(":scope > .box");

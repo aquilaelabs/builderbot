@@ -901,6 +901,10 @@ function makeNotebook(project){
     // the page is going (see the pagehide listener by getNotebook).
     leave(){ return beat(true, true); },
     destroy(){
+      // The settings form is one element lent to whichever Settings view
+      // shows it: handed back before this notebook's elements go, or it
+      // goes with them and every later Settings view is empty.
+      if (typeof rnHost !== "undefined" && rnHost && root.contains(rnHost)) settingsOut();
       beat(true);
       unwatch.forEach(off => off());
       nbViewMemo.keep(project, null);
