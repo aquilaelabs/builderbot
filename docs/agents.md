@@ -62,6 +62,10 @@ agent's section.
 - **Which agents a project allows.** Its settings' Agents may section has
   Coding agents, a tick for each agent beside Claude; one left unticked is
   not offered there and its terminal refuses. Claude always may.
+- **Who may.** A role's Terminal area covers every agent alike: an account
+  that may start a Claude session on a project may start any agent the
+  project allows, and one that may not is offered none, the server refusing
+  the same whoever asks.
 - **The one Start opens.** Under the same ticks, *Start opens* names the
   agent the project's card and header say (Start ChatGPT, Open Copilot);
   Claude unless it names another. Its chooser still offers every allowed

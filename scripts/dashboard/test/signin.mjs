@@ -239,6 +239,22 @@ await call('/api/v1/nodes', { action: 'online', id: box.id });
      `...and an agent that cannot start a session is refused as the one Start opens (${refused.error})`);
   await call('/api/prefs', { project: 'beta', agent_default: 'claude' });
   await refreshUntil(page, () => document.querySelector('.pgrid .pcard[data-row="beta"] [data-c]')?.textContent.trim() === 'Start Claude');
+  // Who may (R95 step 10): an agent a project switches off is offered
+  // nowhere there, and its terminal is refused on the server whoever asks.
+  await call('/api/prefs', { project: 'beta', agents_off: 'codex' });
+  await refreshUntil(page, () => ((state?.projects || []).find(p => p.name === 'beta')?.prefs?.agents_off || []).includes('codex'));
+  const term = await page.evaluate(async () => {
+    const r = await fetch('/term/?arg=' + encodeURIComponent('codex:beta'), { headers: { Accept: 'application/json' } });
+    return { status: r.status, error: (await r.json().catch(() => ({}))).error || '' };
+  });
+  await page.evaluate(() => openProjectsTab());
+  await page.click(PC);
+  await page.waitForSelector('#resumemenu', { timeout: 15000 });
+  const offeredCodex = await page.$('#resumemenu [data-asignin="codex"], #resumemenu [data-anew="codex"]');
+  await page.evaluate(() => { resumeFor = null; drawProjects(state.projects); });
+  ok(term.status >= 400 && /do not allow ChatGPT sessions/.test(term.error) && !offeredCodex,
+     `an agent the project switches off is refused at its terminal and missing from its chooser (${term.status} ${term.error.slice(0, 60)})`);
+  await call('/api/prefs', { project: 'beta', agents_off: '' });
 }
 
 // ---- an account that does not administer ------------------------------------
