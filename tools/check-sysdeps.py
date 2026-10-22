@@ -17,6 +17,7 @@ when any of them is in the index. The release column says which one it is.
     tools/check-sysdeps.py              every recipe, every release
     tools/check-sysdeps.py playwright   one recipe
     tools/check-sysdeps.py --fresh      fetch the indexes again
+    tools/check-sysdeps.py --controller the controller's own list (config/controller-packages.tsv)
 
 Network, so not part of bb lint or CI: run it after changing a `system` list
 and before a release. Exits 1 when a name is missing somewhere it is listed.
@@ -51,6 +52,7 @@ MAX_AGE = 7 * 86400
 UBU = "http://archive.ubuntu.com/ubuntu/dists/{}/{}/binary-amd64/Packages.gz"
 DEB = "http://deb.debian.org/debian/dists/{}/{}/binary-amd64/Packages.xz"
 ROCKY = "https://dl.rockylinux.org/pub/rocky/{}/{}/x86_64/os/"
+EPEL = "https://dl.fedoraproject.org/pub/epel/{}/Everything/x86_64/"
 # What each package manager is checked against: the releases a node is
 # likeliest to be, oldest supported first.
 RELEASES = {
@@ -160,9 +162,36 @@ def index(manager, urls, fresh):
     return got
 
 
+# The provisioner family each package manager is the column of, in the
+# controller's own package list (config/controller-packages.tsv, R90).
+FAMILY_OF = {"apt": "deb", "dnf": "rhel", "pacman": "arch", "zypper": "suse", "apk": "alpine"}
+
+
+def controller_lists():
+    """The controller's package list as {manager: [entry]}: every row a
+    bare-metal install takes (not the image's alone), and not what a
+    family's docker_install brings."""
+    head, out = None, {m: [] for m in FAMILY_OF}
+    for line in (ROOT / "config" / "controller-packages.tsv").read_text().splitlines():
+        if not line or line.startswith("#"):
+            continue
+        cells = line.split("\t")
+        if head is None:
+            head = cells
+            continue
+        row = dict(zip(head, cells, strict=True))
+        if row["need"] in ("image", "docker"):
+            continue
+        for manager, fam in FAMILY_OF.items():
+            out[manager] += [e for e in row[fam].split() if e not in ("-",) and not e.startswith("@")]
+    return out
+
+
 def main(argv):
     fresh = "--fresh" in argv
     only = [a for a in argv if not a.startswith("-")]
+    if "--controller" in argv:
+        return main_controller(fresh)
     cat = json.loads((ROOT / "config" / "toolchains.json").read_text())["toolchains"]
     recipes = [p for p in cat if p.get("system") and (not only or p["name"] in only)]
     bad = 0
@@ -198,6 +227,33 @@ def main(argv):
         for manager in p["system"]:
             if manager not in RELEASES:
                 print(f"{manager:7} {'(not checked)':20} {p['name']:18} no index this tool reads")
+    return 1 if bad else 0
+
+
+def main_controller(fresh):
+    """`--controller`: the controller's own list, per family column, against
+    the same indexes (R90 step 2)."""
+    lists, bad = controller_lists(), 0
+    for manager, releases in RELEASES.items():
+        entries = lists.get(manager) or []
+        for label, urls in releases:
+            # A RHEL rebuild's tools come from EPEL as well, which the
+            # installer puts there first (the rhel family's epel_here).
+            if label.startswith("Rocky "):
+                urls = urls + [EPEL.format(label.split()[1])]
+            try:
+                have = index(manager, urls, fresh)
+            except Exception as e:                  # noqa: BLE001 - say it and carry on
+                print(f"{manager:7} {label:20} could not read the index: {e}")
+                continue
+            missing = [e for e in entries if not any(a in have for a in e.split("|"))]
+            if missing:
+                bad += 1
+                print(f"{manager:7} {label:20} controller         MISSING {' '.join(missing)}")
+            else:
+                print(f"{manager:7} {label:20} controller         ok, {len(entries)} named")
+    print("xbps    (not checked)        controller         no index this tool reads (void)")
+    print("emerge  (not checked)        controller         no index this tool reads (gentoo)")
     return 1 if bad else 0
 
 

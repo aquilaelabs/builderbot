@@ -26,6 +26,7 @@ scripts/
   bb                             in-container helper CLI
   as-builder                     privilege-dropping wrapper for docker exec
   lib/common.sh                  shared shell helpers
+  lib/controller-packages.sh     the controller's package list read one way, for the Dockerfile and a bare-metal install (R90)
   lib/relay-verbs                the bb verbs a node relays to the controller (bb and bbrelay.py both read it)
   lib/sdk.sh                     the toolchain manager: `bb toolchains`, sourced by bb
   lib/preflight.sh               `bb tests preflight`, sourced by bb
@@ -280,12 +281,13 @@ nodes/cloud-init/                the seed a cloud image boots from: meta-data an
 config/skel/                     home directory skeleton
 config/icon.png                  the icon the Unraid template shows
 config/toolchains.json           the toolchains the Toolchains page offers, and how to install each
+config/controller-packages.tsv   what the controller needs installed, per provisioner family: the image and a bare-metal install read this one list (R90)
 config/vm-images.json            the operating systems a VM is made from: each publisher's cloud image and its checksum file (R91)
 config/templates/                briefing.md, assembled per session by preamble.py; nothing is copied into a project
 tools/readme-shots.mjs           the README's pictures (dashboard, notebook, nodes, toolchains, the phone's dashboard and terminal) from a running dashboard, normally the dev instance: default scheme, addresses scrubbed, nothing saved
 tools/bb-ref.sh                  writes the bb block of docs/reference.md from bb help; bb lint holds the two equal
 tools/api-doc.py                 writes docs/api.md from server.py's route tables; bb lint holds the two equal
-tools/check-sysdeps.py           checks every recipe's system packages against each distribution's package index
+tools/check-sysdeps.py           checks every recipe's system packages, and with --controller the controller's own list, against each distribution's package index
 tools/agent-version.sh           the lint check that the agent's version moved with its file
 tools/no-em-dash.sh              the house rule voice's check: no em dash on a line this branch adds
 test/nettest/compose.yml         the network probe (R178's proof): a container shipped to a node that tries what a project's container may and may not reach
