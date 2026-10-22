@@ -319,13 +319,17 @@ packages() {
 # python3 in the controller's own PATH folder points at that one.
 PY_MIN=12
 py_minor() { "$1" -c 'import sys; print(sys.version_info[1] if sys.version_info[0] == 3 else 0)' 2>/dev/null || echo 0; }
-pick_python() {
-    local c best=""
+find_python() {
+    local c
     for c in python3 python3.14 python3.13 python3.12; do
         command -v "$c" >/dev/null 2>&1 || continue
-        if [ "$(py_minor "$c")" -ge "$PY_MIN" ]; then best="$(command -v "$c")"; break; fi
+        if [ "$(py_minor "$c")" -ge "$PY_MIN" ]; then command -v "$c"; return 0; fi
     done
-    [ -n "$best" ] || return 1
+    return 1
+}
+pick_python() {
+    local best
+    best="$(find_python)" || return 1
     install -d -m 0755 "$SHIM"
     if [ "$(command -v python3 2>/dev/null)" = "$best" ]; then
         rm -f "$SHIM/python3"
@@ -455,7 +459,7 @@ env_file() {
         while IFS= read -r line; do
             k="${line%%=*}"
             case "$line" in [A-Z]*=*) ;; *) continue ;; esac
-            grep -q "^#\?\s*${k}=" "$ENV_FILE" || printf '# Added by an update, at its default:\n# %s\n' "$line" >> "$ENV_FILE"
+            grep -Eq "^#?[[:space:]]*${k}=" "$ENV_FILE" || printf '# Added by an update, at its default:\n# %s\n' "$line" >> "$ENV_FILE"
         done < "$tmpl"
     fi
     chown "root:$(id -gn "$ACCOUNT")" "$ENV_FILE"
@@ -550,7 +554,7 @@ checks() {
     say "checking this machine as a controller"
     local py fail=0
     case "$INIT" in systemd|openrc|runit) chk ok "a service manager the controller runs under: ${INIT}" ;; esac
-    if py="$(pick_python 2>/dev/null)"; then chk ok "python: $py (3.$(py_minor "$py"))"
+    if py="$(find_python)"; then chk ok "python: $py (3.$(py_minor "$py"))"
     elif command -v python3 >/dev/null 2>&1; then
         chk warn "python3 here is 3.$(py_minor python3) and the controller reads 3.${PY_MIN} or newer: the packages step installs one where the family has it, and stops when it does not"
     else chk warn "no python3 yet: the packages step installs it"; fi

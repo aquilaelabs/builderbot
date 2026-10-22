@@ -387,8 +387,9 @@ def wall_hold(c):
     w = wall_conf()
     faults = wall_faults(c, w)
     if faults:
-        raise Refused("bb-session: this machine is a BuilderBot controller, and a session here would not be "
-                      "walled off from it: " + "; ".join(faults))
+        # Short ahead of the faults: the node's census keeps 200 characters
+        # of it, and the faults are what says what to mend.
+        raise Refused("bb-session: the wall around this machine's controller does not hold: " + "; ".join(faults))
     return w
 
 
