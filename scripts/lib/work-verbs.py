@@ -41,4 +41,4 @@ if notes:
     print("\nwhat each session last touched (a guess at the symbol, from the edit):")
     for sess, rec in sorted(notes.items()):
         for f, syms in sorted((rec.get("files") or {}).items()):
-            print(f"  {names.get(sess, sess):<20} {f}" + (f"  [{', '.join(syms)}]" if syms else ""))
+            print(f"  {o.said(sess, names):<20} {f}" + (f"  [{', '.join(syms)}]" if syms else ""))

@@ -186,7 +186,9 @@ is exact: a file changed in two trees at once is a collision whatever anybody
 intended, and it needs nothing recorded, while a **PreToolUse hook** adds the
 finer grain, naming the definition an edit lands in, which is a guess and is
 labeled as one. The hook also tells the second session, before its edit, that
-somebody else has that file open. It does not refuse it: each session is in its
+somebody else has that file open. A session is an account and a coding agent:
+your own Claude and Codex sessions on one project are two, each told of the
+other, and every session is named with its agent, "sam (Codex CLI)". It does not refuse it: each session is in its
 own worktree, so two people editing one function are making two commits rather
 than corrupting one tree, and that is what a merge is for.
 
@@ -226,10 +228,11 @@ entry, **Profile**, which is also **Settings** on the rail: the signed-in
 account's own page, in sections. **Who you are** holds the account name,
 their name and email, and the name and email their commits carry (blank means
 the ones above); **What you may do** is what their roles add up to;
-**Password** is a change that asks for the current one first; **Claude
-plugins** lists the plugins they installed; and **Signed in as you**, last, is the devices signed in as this account (a
+**Password** is a change that asks for the current one first; and
+**Signed in as you**, last, is the devices signed in as this account (a
 line a device, with when it last called and **Disconnect**, which signs that
-one out).
+one out). The plugins and MCP servers a person added to each coding agent
+are on the Agents page, per agent on each node.
 
 Neither a Claude session nor a shell starts for an account with no
 name and email for commits, and `bb git` refuses for it: every project is a

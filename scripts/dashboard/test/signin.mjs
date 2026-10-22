@@ -227,6 +227,36 @@ await call('/api/v1/nodes', { action: 'online', id: box.id });
   await call('/api/v1/agent/result', { job: xo.id, state: 'succeeded', exit: 0 }, asNode);
 }
 
+// ---- the agent a project's Start opens (R95 step 4) --------------------------
+{
+  const set = await call('/api/prefs', { project: 'beta', agent_default: 'codex' });
+  await page.evaluate(() => openProjectsTab());
+  await refreshUntil(page, () => document.querySelector('.pgrid .pcard[data-row="beta"] [data-c]')?.textContent.trim() === 'Start ChatGPT');
+  ok(!set.error && await page.$eval(PC, b => b.textContent.trim()) === 'Start ChatGPT',
+     `a project whose settings name ChatGPT says Start ChatGPT on its card (${set.error || 'saved'})`);
+  const refused = await call('/api/prefs', { project: 'beta', agent_default: 'open' });
+  ok(refused.status === 400 || /agent_default is one of/.test(refused.error || ''),
+     `...and an agent that cannot start a session is refused as the one Start opens (${refused.error})`);
+  await call('/api/prefs', { project: 'beta', agent_default: 'claude' });
+  await refreshUntil(page, () => document.querySelector('.pgrid .pcard[data-row="beta"] [data-c]')?.textContent.trim() === 'Start Claude');
+  // Who may (R95 step 10): an agent a project switches off is offered
+  // nowhere there, and its terminal is refused on the server whoever asks.
+  await call('/api/prefs', { project: 'beta', agents_off: 'codex' });
+  await refreshUntil(page, () => ((state?.projects || []).find(p => p.name === 'beta')?.prefs?.agents_off || []).includes('codex'));
+  const term = await page.evaluate(async () => {
+    const r = await fetch('/term/?arg=' + encodeURIComponent('codex:beta'), { headers: { Accept: 'application/json' } });
+    return { status: r.status, error: (await r.json().catch(() => ({}))).error || '' };
+  });
+  await page.evaluate(() => openProjectsTab());
+  await page.click(PC);
+  await page.waitForSelector('#resumemenu', { timeout: 15000 });
+  const offeredCodex = await page.$('#resumemenu [data-asignin="codex"], #resumemenu [data-anew="codex"]');
+  await page.evaluate(() => { resumeFor = null; drawProjects(state.projects); });
+  ok(term.status >= 400 && /do not allow ChatGPT sessions/.test(term.error) && !offeredCodex,
+     `an agent the project switches off is refused at its terminal and missing from its chooser (${term.status} ${term.error.slice(0, 60)})`);
+  await call('/api/prefs', { project: 'beta', agents_off: '' });
+}
+
 // ---- an account that does not administer ------------------------------------
 // It is shown the nodes its own projects work on, no install or update, and
 // its own sign-in live: the one thing on the page that is its to change.
@@ -289,8 +319,8 @@ await call('/api/users', { action: 'edit', name: 's.user', profile: { full_name:
      'Cancel stops the flow and the row is back to where it was');
   // ...and the settings it can see are refused by the server too, not only
   // ghosted on the page.
-  const denied = await up.evaluate(async id => (await fetch('/api/toolchains', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'install', node: id, names: ['claude-code'] }) })).status, box.id);
+  const denied = await up.evaluate(async id => (await fetch('/api/agents', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'install', node: id, agent: 'claude' }) })).status, box.id);
   ok(denied === 403, `the verbs behind the ghosted controls are an administrator's on the server as well (${denied})`);
   up.errors = [];
   await up.context().close();

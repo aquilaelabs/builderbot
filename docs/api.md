@@ -35,6 +35,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/phone/wait` | prefix | `_get_phone_wait` | GET /api/phone/wait?since=T: the companion app's live connection (R125). |  |
 | GET | `/api/phone` | prefix | `_get_phone` | GET /api/phone. |  |
 | GET | `/api/toolchains` | prefix | `_get_toolchains` | GET /api/toolchains. |  |
+| GET | `/api/agents` | prefix | `_get_agents` | GET /api/agents?node=ID: the coding agents on one node (R95, the Agents page): each agent's row, the version against the latest and any job of its own, and the asking account's own plugins and MCP servers there. |  |
 | GET | `/api/emulator` | prefix | `_get_emulator` | GET /api/emulator?node=ID: that node's system images, what could be added, and the image job there. |  |
 | GET | `/api/roles` | prefix | `_get_roles` | GET /api/roles: the Roles page (R152): the areas, every role, and each account with its Global roles, the roles it holds on each project and the projects it is on. |  |
 | GET | `/api/users` | prefix | `_get_users` | GET /api/users. |  |
@@ -113,6 +114,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/roles` | prefix | `_roles` | POST /api/roles: assign (an account's Everywhere roles and its roles on each project, as far as the asker may, R152 and R155), set (make or change a role: its scope, its areas and note) or remove one; owner and admin are | refused: admin |
 | POST | `/api/users` | prefix | `_users` | The Users page's verbs. | refused: admin |
 | POST | `/api/toolchains` | prefix | `_toolchains` | Queue installs or removals of the toolchains the Tools card offers: an administrator's, and toolchains.verb says what each action does with which names. |  |
+| POST | `/api/agents` | exact | `_agents` | POST /api/agents: install (or update), remove or check one coding agent on one node (agentcode.verb), the one way an agent is managed (R95, the operator 22 Oct): whoever may install toolchains there. |  |
 | POST | `/api/toolpacks` | exact | `_toolpacks` | POST /api/toolpacks: look at a tool pack by its repository's address, or at one made here from a pasted manifest or an uploaded archive (/api/upload-archive's id); add it as it was shown; read a pack made here's manifest | refused: admin |
 | POST | `/api/emulator` | prefix | `_emulator` | Add system images to a node, or remove one: a job there, against its toolchain store. | refused: toolchains-write |
 | POST | `/api/logs` | prefix | `_logs` | The log policy, and the two things that can be done to the pile: logs.verb. | refused: controller |

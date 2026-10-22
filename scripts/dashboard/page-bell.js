@@ -204,21 +204,22 @@ function logNote(msg, bad){
 // way there and Dismiss on the row. Out of window is red and cannot be put
 // away: work there is stopped until it is updated.
 function attRow(a){
-  if (a.kind === "toolchain"){
+  if (a.kind === "toolchain" || a.kind === "agents"){
     const keys = a.tools.map(t => t.key).filter(Boolean).join(" ");
     // The Claude sessions running there now, which an update ends (B57), not
     // the projects bound to the node.
     const cc = a.tools.some(t => t.name === "claude-code") && a.sessions > 0;
     const n = a.tools.length;
-    // Only coding agents behind: their page is the Agents page (R95 step 15).
-    const ag = a.tools.every(t => TC_AGENT_TOOLS.has(t.name));
+    // A coding agent's update is the Agents page's (R95), a toolchain's the
+    // Toolchains page's: each its own row.
+    const ag = a.kind === "agents";
     const where = ag ? "Agents page" : "Toolchains page";
     return `<div class="bnote att">
-      <div class="bt">${n} toolchain update${n === 1 ? "" : "s"} on ${esc(a.node)}</div>
+      <div class="bt">${n} ${ag ? "coding agent" : "toolchain"} update${n === 1 ? "" : "s"} on ${esc(a.node)}</div>
       <div class="bsum">${a.tools.map(t => esc(t.label)).join(", ")}</div>
       ${cc ? `<div class="bwarn">Updating Claude Code ends the Claude sessions there
         (${a.sessions} running)</div>` : ""}
-      <details class="bdetail"${sectAttr("bell:tc:" + a.id)}><summary>versions${cc ? " and sessions" : ""}</summary><pre>${
+      <details class="bdetail"${sectAttr((ag ? "bell:ag:" : "bell:tc:") + a.id)}><summary>versions${cc ? " and sessions" : ""}</summary><pre>${
         a.tools.map(t => `${esc(t.label)}: ${esc(t.from || "?")} → ${t.to === "newer" ? "a newer version" : esc(t.to)}`).join("\n")}${
         cc ? `\n\nsessions there: ${a.projects.map(esc).join(", ")}` : ""}</pre></details>
       <div class="bfoot"><span>on its ${where}</span>

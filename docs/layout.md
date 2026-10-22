@@ -113,6 +113,7 @@ scripts/
     page-*.js                    one per part of the page that is neither: the state, the tabs, the panes and the dock, a project's rows, the polls, the bell, the doctor and the rest
     static/                      the favicon set and the SVG marks the page draws
     bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
+    bb-agent-hook                Codex's and Copilot's own hooks holding Claude's guards: their payload in Claude's shape, the same hooks run (R95)
     bb-check-relay               the relay's own check, run by bb tests preflight
     bb-gate                      the hook every tool call asks before it runs, on a node
     bb-prompt-relay              a node session's prompts and answers, back to the controller

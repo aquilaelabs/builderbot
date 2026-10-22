@@ -72,6 +72,29 @@ class Gpu(unittest.TestCase):
         prefs.set_prefs("alpha", agents_off="")
         self.assertEqual((prefs.get("alpha") or {}).get("agents_off", []), [])
 
+    def test_start_opens_claude_unless_the_project_names_another_it_allows(self):
+        # R95 step 4: the default agent is Claude's and is never written.
+        self.assertEqual(prefs.get("alpha")["agent_default"], "claude")
+        self.assertNotIn("error", prefs.set_prefs("alpha", agent_default="codex"))
+        self.assertEqual(prefs.get("alpha")["agent_default"], "codex")
+        self.assertIn("error", prefs.set_prefs("alpha", agent_default="open"))
+        # Switching it off puts Start back on Claude.
+        prefs.set_prefs("alpha", agents_off="codex")
+        self.assertEqual(prefs.get("alpha")["agent_default"], "claude")
+        self.assertIn("switched off", prefs.set_prefs("alpha", agent_default="codex")["error"])
+        prefs.set_prefs("alpha", agents_off="", agent_default="claude")
+        with open(prefs.FILE) as f:
+            self.assertNotIn("agent_default", f.read(), "Claude is the default and is never written")
+
+    def test_each_agent_keeps_its_own_model_and_effort_per_person(self):
+        # R95 step 9: Codex's and Copilot's picks beside Claude's, each from
+        # its own list, and a word on no list read as unset.
+        got = prefs.set_for_user("u_0000aaaa", "alpha", {"codex_model": "gpt-5.5", "codex_effort": "high",
+                                                         "copilot_model": "opus"})
+        self.assertEqual((got["codex_model"], got["codex_effort"], got["copilot_model"]), ("gpt-5.5", "high", ""))
+        self.assertEqual(prefs.for_user("u_0000aaaa", "alpha")["codex_model"], "gpt-5.5")
+        self.assertEqual(prefs.for_user("u_0000bbbb", "alpha")["codex_model"], "")
+
     def test_daily_snapshots_on_by_default_and_stored_only_when_off(self):
         # R105: a project with nothing said takes one a day, as before.
         self.assertTrue(prefs.get("alpha")["snapshots_on"])

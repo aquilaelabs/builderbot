@@ -41,6 +41,10 @@ stage(owner, {
   'pyright-lsp@claude-plugins-official': inst('user'),
   'feature-dev@claude-plugins-official': inst('project', { projectPath: '/workspace/alpha' }),
 }, { 'code-simplifier@claude-plugins-official': true, 'pyright-lsp@claude-plugins-official': false });
+// ...and the MCP servers each agent is set up with (R95 step 15), by name.
+writeFileSync(join(homes, owner, '.claude.json'), JSON.stringify({ mcpServers: { github: { command: 'gh-mcp', env: { TOKEN: 'never-read' } } } }));
+mkdirSync(join(homes, owner, '.codex'), { recursive: true });
+writeFileSync(join(homes, owner, '.codex', 'config.toml'), '[mcp_servers.docs]\ncommand = "docs-mcp"\n');
 stage('u_0000beef', null, null);
 const listed = JSON.parse(execFileSync('bash', [BB, 'login', '--list'],
   { encoding: 'utf8', env: { ...process.env, BUILDER_USERS: homes } }));
@@ -53,11 +57,14 @@ ok(mine && byId['code-simplifier']?.enabled === true && byId['pyright-lsp']?.ena
 ok(!JSON.stringify(mine).includes('/x') && !JSON.stringify(mine).includes('c447c32'),
    '...and not where they live on the disk or what commit they came from');
 ok(none && none.plugins === null, 'an account that never installed one says none');
+ok(JSON.stringify(mine?.mcp) === JSON.stringify({ claude: ['github'], codex: ['docs'] }) && !JSON.stringify(mine).includes('never-read'),
+   `...and each agent's MCP servers by name, never their settings (${JSON.stringify(mine?.mcp)})`);
 
 // ---- up the heartbeat, onto the Profile tab ---------------------------------
 const shipped = (await call('/api/v1/nodes')).agent || {};
 const minted = await call('/api/v1/nodes', { action: 'enroll', name: 'plugbox' });
-const en = await call('/api/v1/agent/enroll', { census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux' },
+const en = await call('/api/v1/agent/enroll', { census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux',
+    session: { up: true, port: 7681, user: 'bb', claude: '1.0.0 (Claude Code)', codex: 'codex-cli 0.163.0' } },
   version: shipped.version, digest: shipped.digest, user: 'bb' }, bearer(minted.token));
 const beat = logins => call('/api/v1/agent/work', { sample: { cpu_pct: 1, logins }, running: 0, wait: 0 }, bearer(en.token));
 await beat([{ ...mine, email: '' }]);
@@ -71,28 +78,32 @@ await sleep(1100);
 await beat([{ ...mine, email: '' }]);
 ok(store()[owner][minted.id].at === at, 'the same list again is not a write: a heartbeat must not cost one');
 
-// The Profile tab says it, and says where they are changed.
+// The Agents page says them, per agent on that node (R95 step 15, moved
+// there from Profile), and says where they are changed.
 {
   const browser = await launch();
   const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
   await page.goto(URL); await ready(page);
+  const read = sect => page.evaluate(s => (document.querySelector(`.agentstab [data-sect="${s}"] .agextras`)?.closest('.field')?.textContent || '').replace(/\s+/g, ' ').trim(), sect);
+  await page.evaluate(id => openAgentsOn(id), minted.id);
+  await page.waitForFunction(id => document.querySelector(`.agentstab [data-agnode="${id}"] [data-sect="agents:claude"] .agextras`), minted.id, { timeout: 15000 });
+  const text = await read('agents:claude');
+  ok(/your plugins\s*code-simplifier 1\.0\.0, feature-dev 1\.0\.0 \(alpha\), pyright-lsp 1\.0\.0 off/.test(text)
+     && /your MCP servers\s*github/.test(text) && /\/plugin and \/mcp in a Claude session/.test(text),
+     `the Agents page lists your plugins and MCP servers under Claude on that node, a project's plugin with its name and one switched off marked so (${text.slice(0, 140)})`);
+  const cx = await read('agents:codex');
+  ok(/your MCP servers\s*docs/.test(cx), `...and Codex's MCP servers under ChatGPT (${cx.slice(0, 80)})`);
   await page.evaluate(() => { profile = null; openProfileTab(); loadProfile(); });
-  // The page itself (its Save), not its template, which names the section
-  // too while the profile is on its way.
-  await page.waitForFunction(() => document.querySelector('.doc.on #pfSave') && /Claude plugins/.test(document.querySelector('.doc.on')?.textContent || ''), null, { timeout: 15000 });
-  // A section of Profile, a page of settings now (the operator, 16 Oct).
-  const text = await page.evaluate(() => (document.querySelector('.doc.on [data-sect="profile:plugins"] .logset')?.textContent || '').replace(/\s+/g, ' ').trim());
-  ok(/On plugbox: code-simplifier 1\.0\.0, feature-dev 1\.0\.0 \(alpha\), pyright-lsp 1\.0\.0 off/.test(text)
-     && /\/plugin in a Claude session/.test(text),
-     `Profile lists them per node, a project's with its name and one switched off marked so (${text.slice(0, 110)})`);
+  await page.waitForSelector('.doc.on #pfSave', { timeout: 15000 });
+  ok(!await page.$('.doc.on [data-sect="profile:plugins"]'), 'Profile no longer has a plugins section of its own');
   ok(page.errors.length === 0, `no console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
 
-  // Taken off the node: gone from the profile, and the empty state says how
-  // to add one.
-  await beat([{ uid: owner, email: '', plugins: null }]);
-  await page.evaluate(() => loadProfile()); await sleep(500);
-  const empty = await page.evaluate(() => (document.querySelector('.doc.on [data-sect="profile:plugins"] .logset')?.textContent || '').replace(/\s+/g, ' ').trim());
-  ok(/None installed/.test(empty) || !/plugbox/.test(empty),
+  // Taken off the node: gone from the page.
+  await beat([{ uid: owner, email: '', plugins: null, mcp: {} }]);
+  await page.evaluate(id => openAgentsOn(id), minted.id);
+  await page.evaluate(() => loadAgents()); await sleep(800);
+  const empty = await read('agents:claude');
+  ok(/your plugins\s*none/.test(empty) && /your MCP servers\s*none/.test(empty),
      `a node that says the account has none takes them off (${empty.slice(0, 60)})`);
   await browser.close();
 }

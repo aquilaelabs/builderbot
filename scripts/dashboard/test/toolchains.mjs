@@ -892,8 +892,9 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   });
   ok(/Remove takes off the store what no node uses: n_0ldd0ne1 \(gone's, a node since retired/.test(seen.clean) && seen.rm,
      `a retired node's directory on the store is offered with Remove (R196) (${seen.clean.slice(0, 60)})`);
-  // The updates-due tile counts This machine's rows as Home and the bell do (B24),
-  // the coding agents aside: they are the Agents page's (R95 step 15).
+  // The updates-due tile counts This machine's rows as Home and the bell do
+  // (B24). No coding agent is a row here: they are the Agents page's, which
+  // the page names in one line (R95, the operator 22 Oct).
   const due = await page.evaluate(() => {
     const was = { tcNode, toolchains };
     toolchains = { node: 'n_shared', name: 'sandbox', live: true, root: '/mnt/store/x', checked: 1,
@@ -901,9 +902,7 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
                            { name: 'android:emulator', label: 'Android Emulator', installed: true, version: 'present',
                              latest: '', state: 'current', terms: [] },
                            { name: 'gradle', label: 'Gradle', installed: '9', latest: '9', state: 'current', terms: [] }],
-                   machine: [{ name: 'claude-code', agent: 'claude', label: 'Claude Code', here: true, installed: '2.1.302',
-                               latest: '2.1.303', state: 'update' },
-                             { name: 'nvidia-driver', label: 'NVIDIA driver', here: true, managed: true, installed: '550.1',
+                   machine: [{ name: 'nvidia-driver', label: 'NVIDIA driver', here: true, managed: true, installed: '550.1',
                                newer: '560.2', card: 'NVIDIA [GeForce RTX 3060]', state: 'current', options: [] }],
                    job: { running: false } };
     tcNode = 'n_shared'; tcRev++; drawPanes();
@@ -913,10 +912,15 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
     const emu = [...document.querySelectorAll('.tctab label.tc')].find(r => /Android Emulator/.test(r.textContent));
     const emuSaid = emu?.querySelector('.where')?.textContent.trim() || '';
     const hint = document.querySelector('.tctab .tcdrv .upd')?.innerHTML || '';
+    const agents = document.querySelector('.tctab .tcagents')?.textContent.replace(/\s+/g, ' ').trim() || '';
+    const agLink = !!document.querySelector('.tctab .tcagents a.pagelink');
+    const agRows = [...document.querySelectorAll('.tctab .tcmachine > *')].filter(r => /Claude Code|Codex|Copilot/.test(r.textContent)).length;
     tcNode = was.tcNode; toolchains = was.toolchains; tcRev++; drawPanes();
-    return { v, emuSaid, hint };
+    return { v, emuSaid, hint, agents, agLink, agRows };
   });
-  ok(due.v === '2', `the updates-due tile counts This machine's driver beside the store's rows, and Claude Code is the Agents page's to count (R95) (${due.v})`);
+  ok(due.v === '2', `the updates-due tile counts This machine's driver beside the store's rows (${due.v})`);
+  ok(/^The coding agents \(Claude Code, Codex CLI, Copilot CLI\) are installed and updated on the Agents page\.$/.test(due.agents) && due.agLink && !due.agRows,
+     `a node's Toolchains page keeps no coding agent, and one line with the way to the Agents page (${due.agents})`);
   ok(due.emuSaid === 'installed', `a tool the census calls "present" reads installed (B31) (${due.emuSaid})`);
   ok(/press Install<span class="lng"> selected<\/span>/.test(due.hint),
      `a row's hint names Install as the bar's button says it at each width (B31) (${due.hint.slice(-80)})`);

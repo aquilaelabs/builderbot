@@ -62,6 +62,14 @@ agent's section.
 - **Which agents a project allows.** Its settings' Agents may section has
   Coding agents, a tick for each agent beside Claude; one left unticked is
   not offered there and its terminal refuses. Claude always may.
+- **Who may.** A role's Terminal area covers every agent alike: an account
+  that may start a Claude session on a project may start any agent the
+  project allows, and one that may not is offered none, the server refusing
+  the same whoever asks.
+- **The one Start opens.** Under the same ticks, *Start opens* names the
+  agent the project's card and header say (Start ChatGPT, Open Copilot);
+  Claude unless it names another. Its chooser still offers every allowed
+  agent installed on each node.
 - **Signed in or refused.** A terminal that would start a Codex or Copilot
   session with no sign-in there says so and where to sign in, as Claude's
   does.
@@ -91,17 +99,60 @@ bar, and a section per coding agent installed there.
   GitHub's page; nothing is pasted back. Codex's device login has to be
   switched on in the ChatGPT account's security settings first.
 
+- **Your plugins and MCP servers.** Each section lists what you added to
+  that agent on the node, as the node last said: Claude Code's plugins, and
+  every agent's MCP servers by name (never their settings). They are changed
+  in a session, for you alone; Profile no longer lists them.
+
 The Nodes page keeps one line per node saying which agents are installed
 there and which you are signed in to, with **Agents**, the way here. A
 project's Start sends a person here when they have no sign-in on its node.
+
+## The guards
+
+Every guard a Claude session is held by holds for Codex and Copilot too,
+through their own hooks rather than Claude Code's: BuilderBot writes them
+into the account's hooks file for each (Codex's `hooks.json`, Copilot's
+`hooks/builderbot.json`), each calling `bb-agent-hook` with the agent and
+the event, which says the agent's payload again in Claude's shape and runs
+the same hooks in the same order: before a tool the hold while BuilderBot
+updates, the house rules' command guard and the work note; on a prompt the
+relay, the rules and the node's turn limit; at the stop the house rules'
+checks and the turn handed back; on the agent's own permission prompt the
+asking mark. A refusal reaches Codex as Claude's does (exit 2) and Copilot
+as its own `deny`. The hooks act only in a session BuilderBot started; the
+same agent run by hand is untouched. Codex's own hook trust is passed over
+for BuilderBot's where its version has the flag for it.
+
+Not every guard has a place on every agent, and the project's settings
+(Agents may, Coding agents) say which hold for which: Copilot has no hook
+after a summary, so the house rules are not said again then, and neither
+has a search tool for the code map's hint.
+
+## In the dock, the bell and the turn limit
+
+A Codex or Copilot session's dot in the dock reads from its own hooks, since
+its pane title is not Claude Code's: working from the prompt its turn began
+on, waiting once the turn ended, asking while its own permission prompt is
+up, which the bell shows as it does a Claude session's. Its turn on a node
+with a limit on sessions working at once is its own beside a Claude session
+of the same person, and every agent's working session counts toward the
+limit and Home's sessions tile alike.
 
 ## Your conversations, every agent's
 
 `bb transcripts` in a session lists the asking account's own conversations
 on the project, from every coding agent that account uses, each marked with
-its agent, and never another account's: the controller looks under that
-account's transcripts and nowhere else. Claude Code's are listed today;
-Codex's and Copilot's session logs join the list as R95's step 8 keeps them.
+its agent, and never another account's (unless its person made one visible
+on the Sessions view): the controller looks under that account's transcripts
+and nowhere else. Codex's and Copilot's are kept by their Stop hook at the
+end of every turn, copied from the agent's own log into an `<agent>/` folder
+of the tree's folder in the account's transcripts, which the projects share
+or claudesync carries to the controller as it carries Claude Code's. The
+Sessions view shows each row's agent, reads and downloads it, shares and
+deletes it, and Resume opens that agent and no other: the log is put back
+where the agent looks for it on a node that never ran it (Codex's
+`sessions/`, Copilot's `session-state/`) and the agent is told to resume it.
 
 ## What the node reports
 
@@ -116,10 +167,7 @@ credential of any of them.
 
 ## Not built yet
 
-Resuming a Codex or Copilot conversation, a project's default agent, the
-guards mapped to their hooks, their state in the dock and their
-transcripts, a model and effort kept per agent, the model router and the
-open agent: R95's later steps. Until the guards land, a Codex or Copilot
-session is held by its view and by bb's own checks, not by Claude's hooks.
+A model and effort kept per agent, the model router and the
+open agent: R95's later steps.
 A sign-in with real ChatGPT and GitHub accounts has been walked against
 stubs only; the walk on a real account is the operator's.

@@ -52,7 +52,7 @@ def project_of(entry, ws, projects):
     controller's claudesync.project_of)."""
     for p in projects:
         if entry == slug(f"{ws}/{p}") or re.fullmatch(
-                re.escape(slug(f"{ws}/.worktrees/{p}") + "-") + r"u-[0-9a-f]{8}", entry):
+                re.escape(slug(f"{ws}/.worktrees/{p}") + "-") + r"u-[0-9a-f]{8}(?:-[a-z]+)?", entry):
             return p
     return ""
 

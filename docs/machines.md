@@ -31,8 +31,9 @@ answers, and each store's room; the toolchains its census found, which is what a
 build), Projects (the projects bound to it), Sessions (whether it runs them,
 and which are open), GPU (where it has a card), Features (what the machine has
 beyond the base, each with **Install** or **Uninstall**: VM host, and the
-hosting firewall on a hosting-only node), Claude Code (each account's
-sign-in there), Storage (mounts and stores), Network, and Advanced, which
+hosting firewall on a hosting-only node), Coding agents (one line saying
+which are installed there, with the way to the node's **Agents** page, where
+each is installed, updated, removed and signed in to), Storage (mounts and stores), Network, and Advanced, which
 holds the node's **name** (Rename changes what it is called everywhere here:
 the pickers, the project cards and the label a runner installed from then on registers
 with; a runner already installed keeps the label it registered with until
@@ -114,7 +115,7 @@ full set, so it is a mechanism rather than a setting.)
 **An account that does not administer sees the Nodes page and changes
 nothing on it but its own sign-in.** Its picker lists the nodes its own
 projects work on and no others; every control on the node's page is
-ghosted for it, updating Claude Code and enrolling included, and a line on
+ghosted for it, enrolling included, and a line on
 the page says so; the verbs behind those controls are an administrator's on
 the server as well.
 

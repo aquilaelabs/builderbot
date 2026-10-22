@@ -156,7 +156,12 @@ def configure(*, write_json, state):
 # `asks`: how often Claude puts a question to this person on this project,
 # "" (Claude's own), fewer or rarely. Theirs too: it is their attention.
 USER_CHOICES = {"model": MODELS, "effort": EFFORTS, "reply": ("minimal",),
-                "asks": ("more", "fewer", "rarely")}
+                "asks": ("more", "fewer", "rarely"),
+                # Each other agent's model and effort, this person's on this
+                # project, from that agent's own lists (R95 step 9): what
+                # Start's step opens on next time.
+                **{f"{a}_{k}": tuple(getattr(agents, k.upper() + "S")[a])
+                   for a in agents.MODELS for k in ("model", "effort")}}
 USER_TEXT = {"git_name": 120, "git_email": 200}
 
 
@@ -293,6 +298,9 @@ def _clean(rec):
             # The coding agents beside Claude its sessions may not run
             # (R95): every live one allowed until somebody says otherwise.
             "agents_off": _agents_off(rec),
+            # The agent its Start opens (R95 step 4): Claude's unless the
+            # project says another, which must be one it allows.
+            "agent_default": _agent_default(rec),
             "packs_on": _toolchain_names(rec, "packs_on"),
             # The places on its node a session here is shown besides its own
             # project: a share it works with. A session's view is built from
@@ -482,6 +490,14 @@ def all_projects(workspace=None):
     """
     d = _load()["projects"]
     return {k: _clean(v) for k, v in d.items() if isinstance(k, str)}
+
+
+def _agent_default(rec):
+    """The coding agent a project's Start names: a live agent's id it does
+    not switch off, Claude's when it names none (or one it switched off)."""
+    a = agents.get(rec.get("agent_default"))
+    off = _agents_off(rec)
+    return a.id if a and a.live and a.id not in off else "claude"
 
 
 def _agents_off(rec):
@@ -679,7 +695,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
               snapshot_days=None, snapshots_on=None,
               release=None, log_from=None, diag=None, build_local=None, reaches=None, hosts=None,
-              pc=None, tc_off=None, packs_on=None, makevms=None, vm_caps=None, agents_off=None):
+              pc=None, tc_off=None, packs_on=None, makevms=None, vm_caps=None, agents_off=None,
+              agent_default=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -706,6 +723,16 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
             if bad:
                 return {"error": f"agents_off names coding agents other than Claude's, not {', '.join(map(str, bad))}"}
             cur["agents_off"] = _agents_off({"agents_off": got})
+        if agent_default is not None:
+            a = agents.get(str(agent_default or "claude"))
+            if not a or not a.live:
+                return {"error": f"agent_default is one of {', '.join(x.id for x in agents.live())}, not {agent_default}"}
+            if a.id in cur["agents_off"]:
+                return {"error": f"{a.name} is switched off for {project}: allow it before making it the one Start opens"}
+            cur["agent_default"] = a.id
+        # An agent switched off is no longer the one Start opens.
+        if cur.get("agent_default") in cur["agents_off"]:
+            cur["agent_default"] = "claude"
         for key, val in (("tc_off", tc_off), ("packs_on", packs_on)):
             if val is not None:
                 got = val if isinstance(val, list) else str(val).split(",")
@@ -849,7 +876,7 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
         if (cur["node"] or cur["hosts"] or cur["color"] or cur["reads"] or cur["sees"] or cur["reaches"]
-                or cur["tc_off"] or cur["packs_on"] or cur["agents_off"]
+                or cur["tc_off"] or cur["packs_on"] or cur["agents_off"] or cur["agent_default"] != "claude"
                 or cur["log_from"] or cur["diag"]
                 or not cur["build_local"]
                 or cur["build"] or cur["test"] or cur["outputs"]
@@ -900,6 +927,8 @@ def set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("dev_keep", None)
             if cur["build_local"]:
                 rec.pop("build_local", None)
+            if cur["agent_default"] == "claude":
+                rec.pop("agent_default", None)
             for k in ("tc_off", "packs_on", "agents_off"):
                 if not cur[k]:
                     rec.pop(k, None)
@@ -990,7 +1019,8 @@ def configure_dialog(**parts):
 
 # The dialog's fields that are the asking account's own on the project, not
 # the project's: anybody on it sets these for themselves.
-YOURS = ("model", "effort", "git_name", "git_email", "reply", "asks")
+YOURS = ("model", "effort", "git_name", "git_email", "reply", "asks",
+         *(f"{a}_{k}" for a in agents.MODELS for k in ("model", "effort")))
 
 
 def project_changes(name, req):
@@ -1055,7 +1085,7 @@ def dialog_save(name, req, uid):
                   color=req.get("color"), reads=req.get("reads"), sees=req.get("sees"),
                   reaches=req.get("reaches"), hosts=req.get("hosts"),
                   tc_off=req.get("tc_off"), packs_on=req.get("packs_on"),
-                  agents_off=req.get("agents_off"),
+                  agents_off=req.get("agents_off"), agent_default=req.get("agent_default"),
                   log_from=req.get("log_from"), diag=req.get("diag") if isinstance(req.get("diag"), bool) else None,
                   build_local=req.get("build_local") if isinstance(req.get("build_local"), bool) else None,
                   workspace=WORKSPACE)

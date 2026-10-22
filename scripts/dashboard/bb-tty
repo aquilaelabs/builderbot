@@ -673,6 +673,9 @@ PY
         # session asked, whichever agent it is (Claude Code also sets its
         # own CLAUDECODE), and what a held change names as its asker.
         printf 'export BB_AGENT=%q\n' "$ag"
+        # ...and whose, for the hooks another agent runs (bb-agent-hook),
+        # as claude_scope names it in Claude's.
+        printf 'export BB_AGENT_WHO=%q\n' "${account:-owner}"
         local tok; tok="$(session_token "$proj")"
         [ -z "$tok" ] || printf 'export BB_TOKEN=%q\n' "$tok"
         # ...and beside the launcher, where `bb` can read it at the moment it
@@ -726,6 +729,11 @@ PY
         elif [ "$ag" = copilot ]; then
             [ -z "${LAUNCH_MODEL:-}" ] || printf 'extra+=(--model %q)\n' "$LAUNCH_MODEL"
             [ -z "${LAUNCH_EFFORT:-}" ] || printf 'extra+=(--reasoning-effort %q)\n' "$LAUNCH_EFFORT"
+        fi
+        # Codex trusts a hook by its hash, after a person reviews it; BuilderBot's
+        # own are its guards and run unreviewed, where this Codex has the flag.
+        if [ "$ag" = codex ]; then
+            printf 'if codex --help 2>/dev/null | grep -q -- --dangerously-bypass-hook-trust; then extra+=(--dangerously-bypass-hook-trust); fi\n'
         fi
         # Codex CLI's briefing, read from its file at exec as a TOML string
         # (jq writes the JSON string, which TOML reads as its own), handed
@@ -819,6 +827,50 @@ claude_first_run() {
     [ "$now" = true ] || return 1
     [ "$was" = true ] || CLAUDE_TRUST_ADDED=1
     return 0
+}
+
+# agent_hooks AGENT: BuilderBot's guards as the agent's own hooks (R95 step
+# 6), in the account's home for it, where its every session reads them:
+# Codex CLI's hooks.json, Copilot CLI's hooks/builderbot.json. Each hook is
+# bb-agent-hook with the agent and the event; it takes the project and the
+# account from the session's environment (BB_PROJECT, BB_AGENT_WHO, which
+# the launcher sets), so a session BuilderBot did not start runs none of
+# them. Merged into a hooks file somebody else wrote, never replacing it.
+# The hooks by the name that outlives this bundle, as claude_scope's are.
+agent_hooks() {
+    local ag="$1" hooks bundle f cmd
+    hooks="$(dirname "$(readlink -f "$0")")"
+    case "$hooks" in
+        */.bb/*/scripts/dashboard)
+            bundle="${hooks%/scripts/dashboard}"
+            [ "$(readlink -f "${bundle%/*}/current" 2>/dev/null)" = "$bundle" ] \
+                && hooks="${bundle%/*}/current/scripts/dashboard" ;;
+    esac
+    cmd="$hooks/bb-agent-hook $ag"
+    case "$ag" in
+        codex)
+            f="${CODEX_HOME:-$HOME/.codex}/hooks.json"
+            ( umask 077; mkdir -p "${f%/*}" ) 2>/dev/null || return 1
+            [ -s "$f" ] || printf '{}\n' > "$f"
+            jq --arg c "$cmd" '
+              def ours(ev; t): {hooks: [{type: "command", command: "\($c) \(ev)", timeout: t}]};
+              def mine: (.hooks // []) | any(.command // "" | contains("bb-agent-hook"));
+              .hooks = ((.hooks // {}) | with_entries(.value |= map(select(mine | not))))
+              | .hooks.PreToolUse += [ours("pre"; 120)]
+              | .hooks.UserPromptSubmit += [ours("prompt"; 900)]
+              | .hooks.Stop += [ours("stop"; 3600)]
+              | .hooks.PermissionRequest += [ours("asking"; 15)]
+              | .hooks.PostCompact += [ours("recall"; 30)]' "$f" > "$f.new" 2>/dev/null \
+                && mv -f "$f.new" "$f" ;;
+        copilot)
+            f="${COPILOT_HOME:-$HOME/.copilot}/hooks/builderbot.json"
+            ( umask 077; mkdir -p "${f%/*}" ) 2>/dev/null || return 1
+            jq -n --arg c "$cmd" '
+              def ours(ev; t): [{type: "command", bash: "\($c) \(ev)", timeoutSec: t}];
+              {version: 1, hooks: {preToolUse: ours("pre"; 120), userPromptSubmitted: ours("prompt"; 900),
+                                   agentStop: ours("stop"; 3600), permissionRequest: ours("asking"; 15)}}' \
+                > "$f.new" 2>/dev/null && mv -f "$f.new" "$f" ;;
+    esac
 }
 
 # agent_first_run AGENT DIR: another coding agent's "trust this folder?",
@@ -1296,9 +1348,13 @@ case "$target" in
             copilot) cmd=(copilot --no-auto-update) ;;
         esac
         if [ -n "$resume" ] && [ "$agent" != claude ]; then
-            bad "Resuming a ${agent_name} conversation is not offered yet: start a new one."
+            # Another agent's conversation resumes below, once its tree is
+            # known: its log is kept in that tree's folder (R95 step 8).
+            case "$resume" in
+                *[!0-9A-Za-z-]*|"") bad "Not a session id: ${resume}" ;;
+            esac
         fi
-        if [ -n "$resume" ]; then
+        if [ -n "$resume" ] && [ "$agent" = claude ]; then
             # Checked against a transcript that actually exists, so a mistyped
             # URL cannot turn into an argument claude tries to interpret.
             case "$resume" in
@@ -1337,7 +1393,7 @@ case "$target" in
         # starts; the else below is what says so, because an empty answer used
         # to be an ordinary state (a project with nothing on its lists) and
         # since the briefing joined it, empty means the fetch failed (B160).
-        pre="$(BB_PROJECT="$proj" BB_UID="$account" bb preamble --json 2>/dev/null || true)"
+        pre="$(BB_PROJECT="$proj" BB_UID="$account" BB_AGENT="$agent" bb preamble --json 2>/dev/null || true)"
         roadmap_block="$(printf '%s' "$pre" | jq -r '.text // ""' 2>/dev/null || true)"
         # Named as the dashboard shows the project, with its id, not by its
         # folder: the name is what the Claude app lists the session under,
@@ -1395,6 +1451,39 @@ case "$target" in
         # their own, so two people on one project cannot overwrite each other,
         # commit each other's half-finished work, or share a dist/.
         dir="$(session_dir "$proj" "$account" "$agent")"
+        # Another agent's conversation, resumed in that agent and no other
+        # (R95 step 8): its log is the copy its Stop hook keeps in the tree's
+        # folder of the account's transcripts (bb-agent-hook keep), fetched
+        # first on a node that has not got it, and put back where the agent
+        # itself looks for it when it is not there (a node it never ran on).
+        if [ -n "$resume" ] && [ "$agent" != claude ]; then
+            kd="$HOME/.claude/projects/$(printf '%s' "$dir" | sed 's/[^A-Za-z0-9]/-/g')/$agent"
+            if on_node && [ ! -f "$kd/$resume.jsonl" ]; then
+                ( umask 077; mkdir -p "$kd" ) 2>/dev/null || true
+                ( cd "$dir" 2>/dev/null && BB_PROJECT="$proj" bb transcripts fetch "$resume" \
+                      --into "$kd" >/dev/null 2>&1 ) || true
+            fi
+            [ -f "$kd/$resume.jsonl" ] \
+                || bad "No ${agent_name} conversation ${resume} for ${proj}." \
+                       "It may have been deleted; start a new one instead."
+            case "$agent" in
+                codex)
+                    cs="${CODEX_HOME:-$HOME/.codex}/sessions"
+                    if ! find "$cs" -name "rollout-*-${resume}.jsonl" 2>/dev/null | grep -q .; then
+                        cd_="$cs/$(date +%Y/%m/%d)"
+                        ( umask 077; mkdir -p "$cd_" && cp -f "$kd/$resume.jsonl" "$cd_/rollout-$(date +%Y-%m-%dT%H-%M-%S)-${resume}.jsonl" ) \
+                            || bad "Could not put ${resume} back where Codex keeps its conversations."
+                    fi
+                    cmd+=(resume "$resume") ;;
+                copilot)
+                    sd="${COPILOT_HOME:-$HOME/.copilot}/session-state/$resume"
+                    if [ ! -f "$sd/events.jsonl" ]; then
+                        ( umask 077; mkdir -p "$sd" && cp -f "$kd/$resume.jsonl" "$sd/events.jsonl" ) \
+                            || bad "Could not put ${resume} back where Copilot keeps its sessions."
+                    fi
+                    cmd+=(--resume "$resume") ;;
+            esac
+        fi
         # Claude Code's first run asks three things at the keyboard (a
         # text theme, whether to trust the folder, and the onboarding
         # screens), and a home this dashboard made has never answered them:
@@ -1428,7 +1517,11 @@ case "$target" in
         # comparing across them compares nothing.
         export BB_TREE="$dir"
         if [ "$agent" != claude ]; then
-            :   # its guards are the view and bb's own (R95 step 6)
+            # Its guards are its own hooks, holding Claude's (R95 step 6).
+            if ! agent_hooks "$agent"; then
+                echo "WARNING: could not write ${agent_product}'s hooks; this session is held by" >&2
+                echo "its view and bb's own checks alone, not by BuilderBot's guards." >&2
+            fi
         elif scope="$(claude_scope "$proj" "$dir")"; then
             cmd+=(--settings "$scope")
         else

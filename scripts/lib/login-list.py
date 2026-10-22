@@ -91,6 +91,37 @@ def forget_copilot(home):
     return 0
 
 
+def mcp_of(home):
+    """The MCP servers each coding agent of this account's is set up with
+    here (R95 step 15), by name only: a server's settings can carry its own
+    keys, and nothing here reads them. Claude Code's from ~/.claude.json,
+    Codex's from its config.toml ([mcp_servers.NAME]), Copilot's from its
+    mcp-config.json. {agent: [names]}, an agent with none left out."""
+    out = {}
+    try:
+        with open(os.path.join(home, ".claude.json")) as f:
+            got = (json.load(f) or {}).get("mcpServers")
+        if isinstance(got, dict) and got:
+            out["claude"] = sorted(str(k)[:80] for k in got)[:32]
+    except (OSError, ValueError, AttributeError):
+        pass
+    try:
+        with open(os.path.join(home, ".codex", "config.toml")) as f:
+            names = sorted({m.group(1).strip('"')[:80] for m in re.finditer(r'^\[mcp_servers\.("?[^\]."]+"?)\]', f.read(), re.M)})
+        if names:
+            out["codex"] = names[:32]
+    except OSError:
+        pass
+    try:
+        with open(os.path.join(home, ".copilot", "mcp-config.json")) as f:
+            got = (json.load(f) or {}).get("mcpServers")
+        if isinstance(got, dict) and got:
+            out["copilot"] = sorted(str(k)[:80] for k in got)[:32]
+    except (OSError, ValueError, AttributeError):
+        pass
+    return out
+
+
 if len(sys.argv) == 3 and sys.argv[1] == "--forget-copilot":
     sys.exit(forget_copilot(sys.argv[2]))
 
@@ -151,5 +182,5 @@ for name in names[:64]:
     if email and not os.path.exists(os.path.join(home, ".claude", ".credentials.json")):
         email = ""
     agents = {k: v for k, v in (("codex", codex_of(home)), ("copilot", copilot_of(home))) if v}
-    out.append({"uid": name, "email": email, "plugins": plugins_of(home), "agents": agents})
+    out.append({"uid": name, "email": email, "plugins": plugins_of(home), "agents": agents, "mcp": mcp_of(home)})
 print(json.dumps(out))

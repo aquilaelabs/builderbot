@@ -199,6 +199,11 @@ def asker(by):
     return {"agent": a} if a else {}
 
 
+def by_tool(name):
+    """The agent whose row on its node's Agents page is called this, or None."""
+    return next((a for a in TABLE if a.tool and a.tool == str(name)), None)
+
+
 def prefixes():
     """The live agents' session prefixes, for a reader that only needs to
     say whether a name is an agent's (the node agent, idle.py)."""

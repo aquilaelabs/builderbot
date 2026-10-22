@@ -543,6 +543,8 @@ if [ "\${1:-}" = login ] && [ "\${2:-}" = status ]; then
   if [ -n "\${FAKE_CODEX_OUT:-}" ]; then echo "Not logged in"; exit 1; fi
   echo "Logged in using ChatGPT"; exit 0
 fi
+# Its help, which the launcher reads for the hook-trust flag, as 0.163.0's.
+if [ "\${1:-}" = --help ]; then echo "  --dangerously-bypass-hook-trust  run hooks without review"; exit 0; fi
 printf '%s\\0' "$@" > "${cxArgv}"
 sleep 60
 `, { mode: 0o755 });
@@ -570,11 +572,21 @@ sleep 60
       const di = cx.find(a => a.startsWith('developer_instructions=')) || '';
       let said = '';
       try { said = JSON.parse(di.slice('developer_instructions='.length)); } catch { said = ''; }
-      ok(cx[0] === '--no-alt-screen' && cx.includes('-c') && /THE HOUSE RULES/.test(said),
+      ok(cx[0] === '--no-alt-screen' && cx.includes('-c') && cx.includes('--dangerously-bypass-hook-trust') && /THE HOUSE RULES/.test(said),
          `...handed the briefing as developer instructions, added to Codex's own (${cx.slice(0, 2).join(' ')} ${di.slice(0, 40)})`);
       const toml = existsSync(join(HOMEDIR, '.codex', 'config.toml')) ? readFileSync(join(HOMEDIR, '.codex', 'config.toml'), 'utf8') : '';
       ok(toml.includes(`[projects."${cwt}"]`) && /trust_level = "trusted"/.test(toml),
          '...and its tree answered as trusted, so its first run asks nothing a read-only console cannot answer');
+      // Its guards are its own hooks (R95 step 6): BuilderBot's, for every
+      // event a Claude session has them on, in the account's hooks file.
+      const hk = existsSync(join(HOMEDIR, '.codex', 'hooks.json')) ? JSON.parse(readFileSync(join(HOMEDIR, '.codex', 'hooks.json'), 'utf8')) : {};
+      const cmdOf = ev => (hk.hooks?.[ev] || []).flatMap(e => e.hooks || []).map(h => h.command).join(' ');
+      ok(/bb-agent-hook codex pre$/.test(cmdOf('PreToolUse')) && /bb-agent-hook codex prompt$/.test(cmdOf('UserPromptSubmit'))
+         && /bb-agent-hook codex stop$/.test(cmdOf('Stop')) && /bb-agent-hook codex asking$/.test(cmdOf('PermissionRequest')),
+         `...its guards are Codex's own hooks, written into the account's hooks.json (${Object.keys(hk.hooks || {}).join(', ')})`);
+      const cxRun = readFileSync(join(HOMEDIR, '.cache', 'builderbot', 'u', ownerUid, 'project', proj, 'codex-run.sh'), 'utf8');
+      ok(/export BB_AGENT=codex/.test(cxRun) && /export BB_AGENT_WHO=/.test(cxRun),
+         '...and the launcher names the agent and the account its hooks act for');
       // The model and effort picked at Start ride the argument, each held
       // to Codex's own list (R95 step 9).
       tmuxKill(`codex-${proj}`);
@@ -584,7 +596,24 @@ sleep 60
       const mi = cx2.indexOf('-m');
       ok(alive(`codex-${proj}`) && mi >= 0 && cx2[mi + 1] === 'gpt-5.5' && cx2.includes('model_reasoning_effort="high"'),
          `a model and an effort picked at Start reach Codex as its own flags (${cx2.slice(0, 6).join(' ')})`);
+      // A Codex conversation resumes in Codex (R95 step 8): its kept log is
+      // put back where Codex looks for it, and Codex is told to resume it.
       tmuxKill(`codex-${proj}`);
+      {
+        const sid = '0199aaaa-bbbb-cccc-dddd-eeeeffff0042';
+        const kd = join(HOMEDIR, '.claude', 'projects', cwt.replace(/[^A-Za-z0-9]/g, '-'), 'codex');
+        mkdirSync(kd, { recursive: true });
+        writeFileSync(join(kd, `${sid}.jsonl`), '{"type":"session_meta","payload":{}}\n');
+        shell(`u:${ownerUid}:codex:${proj}:r:${sid}:b:${boot}`);
+        await sleep(400);
+        const rx = existsSync(cxArgv) ? readFileSync(cxArgv, 'utf8').split('\0') : [];
+        const back = execFileSync('find', [join(HOMEDIR, '.codex', 'sessions'), '-name', `rollout-*-${sid}.jsonl`], { encoding: 'utf8' }).trim();
+        ok(alive(`codex-${proj}`) && rx.includes('resume') && rx[rx.indexOf('resume') + 1] === sid && back,
+           `a kept Codex conversation resumes in Codex, put back where Codex keeps its own (${rx.slice(0, 4).join(' ')})`);
+        tmuxKill(`codex-${proj}`);
+        const none = shell(`u:${ownerUid}:codex:${proj}:r:0199aaaa-0000-0000-0000-000000000000:b:${boot}`);
+        ok(/No ChatGPT conversation/.test(none) && !alive(`codex-${proj}`), '...and one not kept here opens nothing, saying so');
+      }
       const odd = shell(`u:${ownerUid}:codex:${proj}:m:opus;rm:b:${boot}`);
       ok(/Not a model ChatGPT offers here/.test(odd) && !alive(`codex-${proj}`),
          '...and a model not on its list opens nothing');
@@ -602,6 +631,11 @@ sleep 60
       const dirs = existsSync(`${cpArgv}.dirs`) ? readFileSync(`${cpArgv}.dirs`, 'utf8') : '';
       ok(alive(`copilot-${proj}`) && cp[0] === '--no-auto-update',
          `signed in, a Copilot session starts, its own updater off (${cp.slice(0, 1).join(' ')})`);
+      const cph = existsSync(join(HOMEDIR, '.copilot', 'hooks', 'builderbot.json'))
+        ? JSON.parse(readFileSync(join(HOMEDIR, '.copilot', 'hooks', 'builderbot.json'), 'utf8')) : {};
+      ok(cph.version === 1 && /bb-agent-hook copilot pre$/.test(cph.hooks?.preToolUse?.[0]?.bash || '')
+         && /bb-agent-hook copilot stop$/.test(cph.hooks?.agentStop?.[0]?.bash || ''),
+         `...and its guards are Copilot's own hooks, in a file of BuilderBot's in its hooks folder (${Object.keys(cph.hooks || {}).join(', ')})`);
       ok(dirs && existsSync(join(dirs, 'AGENTS.md')) && /THE HOUSE RULES/.test(readFileSync(join(dirs, 'AGENTS.md'), 'utf8'))
          && !dirs.startsWith(src),
          `...handed the briefing as an AGENTS.md in a folder of its own, outside the project's tree (${dirs})`);

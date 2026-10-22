@@ -573,6 +573,20 @@ def mentioned(project, text, told=()):
             + "\n".join(f"- {line}" for _, _, _, line in keep)), [name for _, _, name, _ in keep]
 
 
+def for_agent(agent_id, text):
+    """The block as a session of this coding agent reads it (R95 step 5):
+    Claude's as it is; another agent's with one line ahead of it saying
+    what it is, and that this briefing, the house rules and bb hold for it
+    as for any agent's session here."""
+    import agents
+    a = agents.get(agent_id)
+    if not a or a.id == "claude" or not text:
+        return text
+    return (f"This session runs {a.product}, BuilderBot's {a.name} agent. Everything below holds for it "
+            "as for a Claude session: where this briefing says Claude, read the session you are; "
+            "the house rules, the project's Agents may settings and bb apply to you alike.\n\n" + text)
+
+
 def block(project, reply="", asks=""):
     """The whole thing, as a session is sent it."""
     return "\n\n".join(t for _, t, _ in parts(project, reply, asks))

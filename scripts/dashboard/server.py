@@ -1475,7 +1475,7 @@ def _attention(who):
             + ([] if users.may(who, "node") else nodes.room_attention(
                 room_floor_gb(), room_mem_pct(),
                 label=lambda r: {"root": "its root filesystem", "docker": "Docker's images and build cache"}.get(r, f"its {r} store")))
-            + [a for a in toolchains.attention(where)
+            + [a for a in toolchains.attention(where) + toolchains.agent_attention(where)
                if not users.may_node(who, "toolchains-write", a["id"])]
             # ...and a node's nginx behind the newest line (nginxproxy.attention,
             # R192), for whoever may act on the Docker tab, which Update is.
@@ -1533,12 +1533,22 @@ ASKING = {}
 ASKING_SETTLE = 4
 
 
-def asking_set(project, uid, text=""):
-    ASKING[(uid, tmux_name(claude_session(project)))] = {"at": time.time(), "text": str(text or "")[:300]}
+def asking_set(project, uid, text="", agent="claude"):
+    ASKING[(uid, tmux_name(agents.session_name(agent, project)))] = {"at": time.time(), "text": str(text or "")[:300]}
 
 
-def asking_clear(project, uid):
-    ASKING.pop((uid, tmux_name(claude_session(project))), None)
+def asking_clear(project, uid, agent="claude"):
+    ASKING.pop((uid, tmux_name(agents.session_name(agent, project))), None)
+
+
+# What another agent's session is doing (R95 step 7), as its hooks said it:
+# working from the prompt its turn began on, waiting once the turn ended.
+# Claude's reads its pane title, which no other agent's carries.
+AGENT_STATE = {}
+
+
+def agent_state_set(project, uid, agent, state):
+    AGENT_STATE[(uid, tmux_name(agents.session_name(agent, project)))] = {"state": state, "at": time.time()}
 
 
 def session_state(uid, name, title):
@@ -1549,7 +1559,11 @@ def session_state(uid, name, title):
     read as waiting when it was working would call a person for nothing."""
     agent, _stem = agents.of_session(tmux_base(name))
     if agent and agent.id != "claude":
-        return "", ""
+        k = (uid, tmux_base(name))
+        a = ASKING.get(k)
+        if a:
+            return "asking", a["text"] or "waiting for you to answer it in its terminal"
+        return (AGENT_STATE.get(k) or {}).get("state", "waiting"), ""
     state, task = claude_state(title)
     k = (uid, tmux_base(name))
     a = ASKING.get(k)
@@ -2252,13 +2266,21 @@ def node_heart(n):
     if n.get("live"):
         for r in rep.get("sessions") or []:
             name = str((r or {}).get("name") or "")
-            if agents.is_session(tmux_base(name)) \
-                    and claude_state(str((r or {}).get("title") or ""))[0] == "working":
+            ag, _stem = agents.of_session(tmux_base(name))
+            if not ag:
+                continue
+            # Claude's by its pane title; another agent's by what its hooks
+            # said (R95 step 7): every agent's working session counts.
+            if ag.id == "claude":
+                busy = claude_state(str((r or {}).get("title") or ""))[0] == "working"
+            else:
+                busy = (AGENT_STATE.get((tmux_owner(name), tmux_base(name))) or {}).get("state") == "working"
+            if busy:
                 heart.add(name)
     return heart, float((rep.get("sample") or {}).get("at") or 0)
 
 
-def turn_scope(project, uid):
+def turn_scope(project, uid, agent="claude"):
     """(node id, key, limit, heart, at) for a turn of `uid`'s session on
     `project` (turns.py), or None when there is no node to count on: the
     project runs on no agent node, so nothing here is the machine a session
@@ -2271,7 +2293,7 @@ def turn_scope(project, uid):
     if not n or n["kind"] != "agent":
         return None
     heart, at = node_heart(n)
-    return nid, f"{uid}~{claude_session(project)}", nodes.turn_limit(nid), heart, at
+    return nid, f"{uid}~{agents.session_name(agent, project)}", nodes.turn_limit(nid), heart, at
 
 
 def node_turns(n):
@@ -3795,7 +3817,7 @@ if not NODES_OK:
     claudecode.configure(nodes_module=nodes, node_sessions=node_tmux_sessions,
                          tmux_base=tmux_base, audit=nodes.audit)
     agentcode.configure(nodes_module=nodes, node_sessions=node_tmux_sessions,
-                        tmux_base=tmux_base, audit=nodes.audit)
+                        tmux_base=tmux_base, audit=nodes.audit, claude=claudecode)
 
 # Every account's sessions on a project, for its settings dialog, and an
 # administrator ending one (projsessions.py): the rows the Sessions card is
@@ -3879,7 +3901,8 @@ import hooks                                                     # noqa: E402
 
 hooks.configure(users=users, rules=rules, preamble=preamble, overlap=overlap, chat=chat, roadmap=roadmap, pending=pending,
                 turns=turns, nodes=nodes, seen_note=session_seen_note, turn_scope=turn_scope,
-                asking_set=asking_set, asking_clear=asking_clear, asked=projsessions.asked)
+                asking_set=asking_set, asking_clear=asking_clear, asked=projsessions.asked,
+                agent_state=agent_state_set)
 
 
 # Written by entrypoint.sh once every startup hook has finished. Named here as
@@ -4610,6 +4633,7 @@ GET_ROUTES = (
     ("prefix", "/api/phone/wait", "_get_phone_wait"),
     ("prefix", "/api/phone", "_get_phone"),
     ("prefix", "/api/toolchains", "_get_toolchains"),
+    ("prefix", "/api/agents", "_get_agents"),
     ("prefix", "/api/emulator", "_get_emulator"),
     ("prefix", "/api/roles", "_get_roles"),
     ("prefix", "/api/users", "_get_users"),
@@ -4701,6 +4725,7 @@ POST_ROUTES = (
     ("prefix", "/api/roles", "_roles"),
     ("prefix", "/api/users", "_users"),
     ("prefix", "/api/toolchains", "_toolchains"),
+    ("exact", "/api/agents", "_agents"),
     ("exact", "/api/toolpacks", "_toolpacks"),
     ("prefix", "/api/emulator", "_emulator"),
     ("prefix", "/api/logs", "_logs"),
@@ -6091,6 +6116,33 @@ class Handler(BaseHTTPRequestHandler):
                 d["job"]["hidden"] = why
             return self._json(d)
         return self._json(toolchains.payload())
+
+    def _get_agents(self):
+        """GET /api/agents?node=ID: the coding agents on one node (R95, the
+        Agents page): each agent's row, the version against the latest and
+        any job of its own, and the asking account's own plugins and MCP
+        servers there. Answered for the nodes this account may look at."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        nid, why = self._node_asked(q.get("node", [""])[0])
+        if why or not nid or nid == "local":
+            return self._json({"error": why or "which node?", "rows": []})
+        n = nodes.node(nid) if not NODES_OK else None
+        if not n:
+            return self._json({"error": "no such node", "rows": []}, 404)
+        out = {"node": nid, "name": n.get("name") or nid, "live": bool(n.get("live")), "rows": agentcode.rows(n)}
+        me = self._who() or {}
+        if users.uid_of(me) and not me.get("session"):
+            mine = next((x for x in plugins.of(users.uid_of(me)) if x["node"] == nid), {})
+            out["yours"] = {"plugins": mine.get("plugins") or [], "mcp": mine.get("mcp") or {}}
+        return self._json(out)
+
+    def _agents(self, req):
+        """POST /api/agents: install (or update), remove or check one coding
+        agent on one node (agentcode.verb), the one way an agent is managed
+        (R95, the operator 22 Oct): whoever may install toolchains there."""
+        if (why := users.may_node(self._who(), "toolchains-write", field(req, "node"))):
+            return self._json({"error": why}, 403)
+        return self._json(*agentcode.verb(self._principal(), req))
 
     def _get_emulator(self):
         """GET /api/emulator?node=ID: that node's system images, what could be
