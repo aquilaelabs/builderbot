@@ -140,7 +140,13 @@ jobs:
             ./gradlew --no-daemon --console=plain assembleDebug \
               -PbbVersion='${{ steps.v.outputs.semver }}' -PbbCode='${{ steps.v.outputs.code }}'
             echo "apk=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
-            echo "::warning::no BB_APP_KEYSTORE_B64 secret: this is a DEBUG build signed with this runner's own key; set the four BB_APP_* secrets for a release; a debug build is never attached to one"
+            # Each one named: a secret that exists but is empty (a keystore
+            # piped from a file that was not there) reads the same as none.
+            empty=""
+            for v in BB_APP_KEYSTORE_B64 BB_APP_KEYSTORE_PASSWORD BB_APP_KEY_ALIAS; do
+              [ -n "${!v}" ] || empty="$empty $v"
+            done
+            echo "::warning::empty or not set:$empty. This is a DEBUG build signed with this runner's own key, and a debug build is never attached to a release; set those repository secrets under Actions"
           fi
 
       - name: Name it by the repository's version
