@@ -698,6 +698,7 @@
         },
         "url": {
           "linux/amd64": "https://nodejs.org/dist/{version}/node-{version}-linux-x64.tar.xz",
+          "linux-musl/amd64": "https://unofficial-builds.nodejs.org/download/release/{version}/node-{version}-linux-x64-musl.tar.xz",
           "linux/arm64": "https://nodejs.org/dist/{version}/node-{version}-linux-arm64.tar.xz",
           "darwin/arm64": "https://nodejs.org/dist/{version}/node-{version}-darwin-arm64.tar.gz",
           "darwin/amd64": "https://nodejs.org/dist/{version}/node-{version}-darwin-x64.tar.gz"
