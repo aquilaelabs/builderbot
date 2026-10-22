@@ -1702,6 +1702,41 @@ await page.click('#rnCancel');
      && now && /Rotated from default: Android 9 and newer see this key, older devices still see default/.test(now.text) && !now.rotate
      && /^2 keys\b/.test(await page.$eval(`${V} #sgHint`, e => e.textContent.replace(/\s+/g, ' ').trim())),
      'a retired sideload key says why it is kept and offers no Remove, the key it went to says who still sees the old one, and a tile counts them');
+  // Releases (R106): a workflow that hands over its unsigned APK has it
+  // signed here, and the view names the key each app's releases sign with,
+  // a retired key's successor; the bell says what would stop it before the
+  // release, and its row opens this view.
+  const wsA = `${DIR}/ws/alpha`;
+  mkdirSync(`${wsA}/.github/workflows`, { recursive: true });
+  mkdirSync(`${wsA}/app`, { recursive: true });
+  writeFileSync(`${wsA}/.github/workflows/r106-apk.yml`, 'name: apk\non: {release: {types: [published]}}\n'
+    + 'jobs: {b: {runs-on: ubuntu-24.04, steps: [{uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9, '
+    + 'with: {name: "bb-release-apk-${{ github.event.release.tag_name }}"}}]}}\n');
+  writeFileSync(`${wsA}/app/build.gradle.kts`, 'android { defaultConfig { applicationId = "dev.example.alpha" } }\n');
+  await page.evaluate(() => getNotebook('alpha').view('signing'));
+  await page.waitForSelector(`${V} #sgRel [data-relkey]`, { timeout: 10000 });
+  const relLine = await page.$eval(`${V} #sgRel [data-relkey]`, e => e.textContent.replace(/\s+/g, ' ').trim());
+  const relApi = (await api('/api/signing', { project: 'alpha', action: 'list' })).body.release || {};
+  ok(/^dev\.example\.alpha releases sign with watch AB:AB:AB/.test(relLine) && relApi.wanted
+     && relApi.keys?.[0]?.key === 'watch' && /no GitHub token|no apksigner|not on GitHub|^$/.test(relApi.why || ''),
+     `the Signing view's Releases names the key an app's releases sign with, a retired key's successor (${relLine}; ${relApi.why || 'ready'})`);
+  ok(await page.$(`${V} #sgRelGo`) !== null && /signed here, never in CI/.test(await page.$eval(`${V} #sgRel`, e => e.textContent)),
+     '...says the APK is signed here and not in CI, and offers a look now');
+  // The bell's row before a release, drawn from the poll's own shape.
+  await holdPoll(page);
+  await page.evaluate(() => { state.attention = [...(state.attention || []), {kind: 'release-sign', id: 'alpha', project: 'alpha',
+    why: 'alpha has no sideload signing key, which signs its releases', bad: false, key: 'rsign:alpha@x'}];
+    toggleBell(true); drawBell(); });
+  const bellRow = await page.$eval('#bellPanel', e => e.textContent.replace(/\s+/g, ' '));
+  ok(/alpha's next release cannot be signed/.test(bellRow) && /has no sideload signing key/.test(bellRow)
+     && await page.$('#bellPanel [data-bsign="alpha"]') !== null && await page.$('#bellPanel [data-bdismiss="rsign:alpha@x"]') !== null,
+     'a release that could not be signed is said on the bell before it, with Dismiss and the way to the Signing view');
+  await page.click('#bellPanel [data-bsign="alpha"]');
+  await page.waitForFunction(() => /\/projects\/alpha\/signing$/.test(location.hash), null, { timeout: 10000 });
+  ok(true, '...whose Signing view link opens it');
+  await freePoll(page);
+  rmSync(`${wsA}/.github/workflows/r106-apk.yml`, { force: true });
+  rmSync(`${wsA}/app/build.gradle.kts`, { force: true });
   rmSync(sd, { recursive: true, force: true });
   // Back to the Projects page, where the rest of this file presses.
   await page.evaluate(() => openProjectsTab());
