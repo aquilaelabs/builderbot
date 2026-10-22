@@ -21,6 +21,16 @@ const fileB64 = f => new Promise((ok, bad) => {
   r.readAsDataURL(f);
 });
 
+// How the controller keeps a project's keys (R111 step 2), the Signing
+// view's status line: sealed under the install's signing secret, kept open
+// for want of one, or sealed under one this controller does not have.
+const AT_REST = {
+  sealed: "sealed on the controller under the install's signing secret",
+  mixed: "being sealed under the install's signing secret",
+  open: `<span class="warn">kept unsealed on the controller: SIGNING_SECRET in the secrets folder seals them</span>`,
+  locked: `<span class="bad">sealed under a signing secret this controller does not have: set it as it was, or import each key's backup</span>`,
+};
+
 function nbSigningView({$, nb, project}){
   // Named keys (default first), each with a Play upload slot and a sideload
   // slot, and which of the project's apps (by package) signs with which key.
@@ -29,6 +39,7 @@ function nbSigningView({$, nb, project}){
   // mapping are staged behind their section's Save; Generate, Rotate,
   // Download backup and the backup password act on the press.
   let keys = null, map = {}, tool = false, why = "", mayBackup = false, locked = false, mayLock = false, rel = null;
+  let atRest = "";                              // sealed, open, mixed or locked (signing.at_rest)
   let draft = {}, mapDraft = {}, fresh = [], lockOpen = false, pw = {}, adding = false, gen = 0;
 
   async function loadSigning(){
@@ -48,7 +59,7 @@ function nbSigningView({$, nb, project}){
     }
     keys = j.keys || {}; map = j.map || {}; tool = !!j.keytool;
     why = j.why || ""; mayBackup = !!j.may_backup;
-    locked = !!j.backup_locked; mayLock = !!j.may_lock;
+    locked = !!j.backup_locked; mayLock = !!j.may_lock; atRest = j.at_rest || "";
     rel = j.release || null;
     drawSigning();
   }
@@ -114,9 +125,11 @@ function nbSigningView({$, nb, project}){
     // The glance (R109): the keys held and the apps mapped to one, none
     // while it holds no key, whose empty state is said where the keys are.
     const mappedN = Object.values({...map, ...mapDraft}).filter(k => k !== null).length;
+    // ...and under them how the controller keeps them (R111 step 2).
     viewGlance($("sgHint"), !held ? [] : [
       {label: held === 1 ? "key" : "keys", value: held},
-      {label: mappedN === 1 ? "app" : "apps", value: mappedN, omit: !mappedN}]);
+      {label: mappedN === 1 ? "app" : "apps", value: mappedN, omit: !mappedN}],
+      !held ? "" : AT_REST[atRest] || "");
     // Import a backup and New key, the view's adds, the control row's
     // actions with New key the primary (a-notebook/views, R109), the form
     // either opens unrolling under the row.
