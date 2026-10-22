@@ -2724,6 +2724,16 @@ exec "$real" "$@" \
     --translate-uid "squash-host:0:2000:4294967295" --translate-gid "squash-host:0:2000:4294967295"
 WRAP
     chmod 0755 "$VIRTIOFSD_WRAP"
+    # AppArmor (Ubuntu, openSUSE) lets libvirt run virtiofsd by its own paths
+    # alone: the wrapper is let in through the profile's local include, run
+    # under libvirt's own profile, which hands virtiofsd its own as before.
+    local prof
+    for prof in usr.sbin.libvirtd usr.sbin.virtqemud; do
+        [ -f "/etc/apparmor.d/$prof" ] && [ -d /etc/apparmor.d/local ] || continue
+        grep -qs "$VIRTIOFSD_WRAP" "/etc/apparmor.d/local/$prof" \
+            || printf '%s rix,\n' "$VIRTIOFSD_WRAP" >> "/etc/apparmor.d/local/$prof"
+        have apparmor_parser && { apparmor_parser -r "/etc/apparmor.d/$prof" >/dev/null 2>&1 || warn "AppArmor did not reload $prof: a VM's shared folder may not start until the machine restarts"; }
+    done
 }
 feature_vmhost() {
     local fam pkgs added n
@@ -2773,6 +2783,10 @@ feature_vmhost() {
             fi
             say "taking VM host off"
             rm -f "$VIRTIOFSD_WRAP"
+            local prof
+            for prof in usr.sbin.libvirtd usr.sbin.virtqemud; do
+                [ -f "/etc/apparmor.d/local/$prof" ] && sed -i "\#$VIRTIOFSD_WRAP#d" "/etc/apparmor.d/local/$prof"
+            done
             getent group libvirt >/dev/null 2>&1 && gpasswd -d "$DOCKER_USER" libvirt >/dev/null 2>&1 || true
             rm -rf /var/lib/builderbot/vms
             added="$(sed -n 's/^packages=//p' "$FEATURES_DIR/vmhost")"
