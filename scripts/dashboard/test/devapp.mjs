@@ -4626,13 +4626,14 @@ print(json.dumps(out))
     buttons: [...v.querySelectorAll('#dkList .row[data-inst="helper-for-eps|main"] [data-dm]')].map(b => b.dataset.dm),
     cards: [...v.querySelectorAll('#dkList > .dmcard')].map(c => c.querySelector('.dmgroup b')?.textContent),
     loose: v.querySelectorAll('#dkList > .row').length,
-    tiles: [...v.querySelectorAll('#dkTop .tile')].map(t => t.textContent.replace(/\s+/g, ' ').trim()) }));
+    tiles: [...v.querySelectorAll('#dkHint .tile')].map(t => t.textContent.replace(/\s+/g, ' ').trim()) }));
   ok(view.rows.includes('helper-for-eps|main') && view.rows.includes('ep.silon|main')
      && view.rows.includes('someone-elses') && !view.rows.includes('ep.silon|loose'),
      `the project's Docker view lists what belongs to it, and not its own container sent to no project (${view.rows.join(' ')})`);
   ok(view.buttons.includes('up') && view.buttons.includes('rebuild'),
      `...with the manager's own rows and controls (${view.buttons.join(' ')})`);
-  ok(/3 containers on/.test(view.hint), `...and a line counting them (${view.hint.slice(0, 80)})`);
+  ok(/of 3 containers/.test(view.hint.replace(/\s+/g, ' ')) && /\bon \S/.test(view.hint),
+     `...and a tile counting them, with the node they are on under it (${view.hint.replace(/\s+/g, ' ').slice(0, 80)})`);
   // As the Containers page draws them, scoped to the project (the operator,
   // 19 Oct): its own card under its tiles, no row loose on the page.
   ok(view.cards.length === 1 && view.loose === 0 && view.tiles.some(t => /running/.test(t)) && !view.tiles.some(t => /projects/.test(t)),

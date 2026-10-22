@@ -2316,7 +2316,6 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .gbpicklist button{font:var(--f-data);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .gbpicklist button.on{color:var(--lit, var(--accent));font-weight:600}
 .gbpicknew{text-align:left;overflow-wrap:anywhere}
-.gitnet{border-bottom:var(--hair) solid var(--line)}
 /* A diff: one fold per file, the lines colored, and it scrolls inside its
    own box on a phone rather than the pane. */
 .dfile{border-top:var(--hair) solid var(--line);margin-top:6px}
@@ -2806,7 +2805,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .nb.ro .sectbar,.nb.ro #roadmapAdd,.nb.ro #roadmapText,
 .nb.ro #bugAdd,.nb.ro #memAdd,.nb.ro .addstep,.nb.ro .memadd,
 .nb.ro .bug .macts,.nb.ro .mem .macts,.nb.ro .roadmap .go,.nb.ro .roadmap .mv,
-.nb.ro .vbar .sp ~ button:not(#nbHistory){
+.nb.ro .vbar .actbar button{
   opacity:.4;pointer-events:none}
 .nb.ro textarea,.nb.ro input:not([type="checkbox"]){pointer-events:none;opacity:.6}
 .nb .nbhead{color:var(--dim);font:var(--f-ui)}
@@ -2818,6 +2817,22 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    section put above the head on one tab is how it was broken once. */
 .nb .vbar{display:flex;gap:8px;align-items:center}
 .nb .vbar .sp{flex:1}
+/* A view's control row (R109) is a page's bar, one control high on every
+   view whatever it holds, and words never sit on it (Settings' one line
+   aside); a view's glance under it is its tiles and its status line. */
+.nb .nbview>.field.nbhead{min-height:calc(var(--ctl) + 2 * var(--row-y))}
+.nb .nbhead>.actbar{flex:0 1 auto;flex-wrap:nowrap;align-items:center}
+.nb .nbhead>.actbar>button{flex:0 0 auto;white-space:nowrap}
+.nb .nbhead>.actbar:empty{display:none}
+/* A glance's tiles keep a tile's width at a desk rather than one or two
+   stretching across the reading width. */
+@media(min-width:901px){ .nbglance .tiles{grid-template-columns:repeat(auto-fill,minmax(9.5rem,1fr))} }
+/* The Roadmap's status line is its bar: what is staged, then the session. */
+.nbsaid .stg:not(:empty)::after{content:" · "}
+.nbsaid .stg{color:var(--ink)}
+/* On a phone a status line's words take their own line and its buttons
+   the one under it together, never one alone. */
+@media(max-width:600px){ .nbsaid>.actbar>.state{flex-basis:100%} }
 /* A head's toggle standing on (History) is lit as a switch's pick is
    (.pseg), never the accent fill of a main action. */
 .nb .vbar button.on{background:color-mix(in srgb, var(--ink) 11%, var(--btn));border-color:var(--line);color:var(--ink);
@@ -3108,7 +3123,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   .nbview :is(#bugList, #roadmapList, #memList, #tstList, #roadmapHist)>:last-child{border-bottom:0}
   /* A band's line under it is the card's edge now: a notebook view's head
      row and a jump bar float like the rest. */
-  .nbview .nbhead,.nbview .sectjump,.doctab .sectjump,.nbview .gitnet{border-bottom:0}
+  .nbview .nbhead,.nbview .sectjump,.doctab .sectjump{border-bottom:0}
   .nbview :is(#artList, #artBranches){border-top:0}
   /* The Toolchains and Emulator pages: a head line floats, and a list of
      their rows (the machine's own, the images to add, the images held) is
@@ -3603,18 +3618,18 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    at the right, the search taking the whole width under them on a phone.
    A row the band leaves out wears .off, so paging counts only what is shown. */
 .lfilter{display:flex;align-items:center;gap:var(--field-gap);flex-wrap:wrap}
-.lfilter .chips{flex:1 1 auto;min-width:0}
+/* Every group of chips shares the one band (R109: the Roadmap's state and
+   release, Bugs' state and seen-in), side by side, wrapping group by group
+   where the width runs out; a group wider than the line scrolls inside it.
+   Each keeps the room its fading edge takes, which also sets the groups
+   apart. */
+.lfilter .chips{flex:0 1 auto;min-width:0;padding-inline-end:16px}
 /* With no chips to draw (one kind of row), the search starts the band. */
 .lfilter .chips:empty{display:none}
-/* The chips by release (the Roadmap's targets, Bugs' seen-in): a line of
-   their own under the others, which they would otherwise share a wrap with. */
-.lfilter .chips.relchips{flex:1 1 100%;order:3}
-/* On a phone, where the search wraps under the chips, it comes after both
-   lines of them rather than between. */
-@media(max-width:900px){ .lfilter:has(.relchips:not(:empty)) :is(input[type=search],.lsort){order:4} }
 .lfilter input[type=search]{flex:0 1 16rem;min-width:10rem}
-/* A band's order (Sort on Bugs) keeps its label beside its menu. */
-.lfilter .lsort{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+/* A band's order (Sort on Bugs) keeps its label beside its menu, at the
+   band's end. */
+.lfilter .lsort{display:flex;align-items:center;gap:6px;flex:0 0 auto;margin-inline-start:auto}
 @media(max-width:900px){
   .lfilter input[type=search]{flex:1 1 100%}
   .lfilter .lsort{flex:1 1 100%}
@@ -3907,9 +3922,9 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    picker's word to its left. Containers' bar alone gives its search a line
    of its own under 440px (.dmpick, below). */
 .docbarrow{display:flex;gap:var(--field-gap);align-items:center;flex-wrap:nowrap}
-.doctab .field.docbarrow{min-height:calc(var(--ctl) + 2 * var(--row-y))}
-.doctab .field.docbarrow>label.pick{display:inline-flex;align-items:center;gap:var(--field-gap);margin:0}
-.doctab .field.docbarrow>label.pick>.pickw{font:var(--f-ui);color:var(--dim)}
+:is(.doctab,.nb) .field.docbarrow{min-height:calc(var(--ctl) + 2 * var(--row-y))}
+:is(.doctab,.nb) .field.docbarrow>label.pick{display:inline-flex;align-items:center;gap:var(--field-gap);margin:0}
+:is(.doctab,.nb) .field.docbarrow>label.pick>.pickw{font:var(--f-ui);color:var(--dim)}
 /* A page bar's search, one size on every page (Projects, Containers, Help
    each sized their own: 220px, 12rem with a cap of their own, 85%), capped
    with every bar control below. */
@@ -4075,11 +4090,11 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    the page (a row's buttons, a section's status) lines up on the tab's
    right edge. The controls inside it are still capped one by one.
    Three classes deep to outrank the cap above. */
-.doctab .field.docbarrow{max-width:none}
+:is(.doctab,.nb) .field.docbarrow{max-width:none}
 /* ...and because the bar is not capped, the controls in it are, one by one:
    a search box in a band that spans the tab is exactly the full-width
    control the rule above forbids everywhere else. */
-.doctab .field.docbarrow :is(input:not([type=checkbox]):not([type=radio]),select,textarea){
+:is(.doctab,.nb) .field.docbarrow :is(input:not([type=checkbox]):not([type=radio]),select,textarea){
   max-width:min(var(--ctl-w),88%)}
 /* A bar button's short words (barSaid): kept for a phone. */
 .shrt{display:none}
@@ -4093,38 +4108,38 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   /* Half the bar at most: Firefox and Safari size a picker to its longest
      option, a disabled one's reason included, where Chrome sizes it to the
      one chosen. */
-  .doctab .field.docbarrow>label.pick{flex:0 1 auto;min-width:0;max-width:50%;display:inline-flex;align-items:center;margin-inline-end:auto}
-  .doctab .field.docbarrow>label.pick>.pickw{display:none}
+  :is(.doctab,.nb) .field.docbarrow>label.pick{flex:0 1 auto;min-width:0;max-width:50%;display:inline-flex;align-items:center;margin-inline-end:auto}
+  :is(.doctab,.nb) .field.docbarrow>label.pick>.pickw{display:none}
   /* ...and a placeholder's picker box loses the gap it kept after the word. */
-  .doctab .field.docbarrow>label.pick>.skv{margin-left:0}
+  :is(.doctab,.nb) .field.docbarrow>label.pick>.skv{margin-left:0}
   /* :not() twice: the cap on every bar control above is (0,5,1). */
-  .doctab .field.docbarrow>label.pick>select:not([multiple]):not([size]){min-width:0;max-width:none;width:auto;flex:0 1 auto}
-  .doctab .field.docbarrow>.sp{display:none}
-  .doctab .field.docbarrow>.actbar{flex:0 1 auto;min-width:0;flex-wrap:nowrap;justify-content:flex-end;margin-inline-start:auto}
+  :is(.doctab,.nb) .field.docbarrow>label.pick>select:not([multiple]):not([size]){min-width:0;max-width:none;width:auto;flex:0 1 auto}
+  :is(.doctab,.nb) .field.docbarrow>.sp{display:none}
+  :is(.doctab,.nb) .field.docbarrow>.actbar{flex:0 1 auto;min-width:0;flex-wrap:nowrap;justify-content:flex-end;margin-inline-start:auto}
   /* The buttons keep their words whole; the picker is what gives up width
      (the operator's phone, 18 Oct: "Re-ch…" and "Rem…" beside a picker
      half the bar wide). */
-  .doctab .field.docbarrow>.actbar>button{flex:0 0 auto;white-space:nowrap}
-  .doctab .field.docbarrow>label.pick{min-width:6.5em}
+  :is(.doctab,.nb) .field.docbarrow>.actbar>button{flex:0 0 auto;white-space:nowrap}
+  :is(.doctab,.nb) .field.docbarrow>label.pick{min-width:6.5em}
   /* While a job runs on Toolchains, Abort is the bar's one live button and
      the three it holds dead step aside rather than crowd it. */
-  .doctab .field.docbarrow>.actbar>button.tcidle{display:none}
-  .doctab .field.docbarrow>input{flex:1 1 0;min-width:7em}
+  :is(.doctab,.nb) .field.docbarrow>.actbar>button.tcidle{display:none}
+  :is(.doctab,.nb) .field.docbarrow>input{flex:1 1 0;min-width:7em}
   /* Containers is one line too (the operator, 18 Oct, reversing the second
      line it had): the picker, the search taking what is left, Cards and List
      as their pictures, and the buttons in their short words. Where the line
      leaves the search too little to type into, a fold's cover, it wraps to
      the next line rather than shrinking to nothing. */
-  .doctab .field.docbarrow.dmpick{flex-wrap:wrap;gap:6px}
+  :is(.doctab,.nb) .field.docbarrow.dmpick{flex-wrap:wrap;gap:6px}
   /* The node's name read whole (up to 11em) and the search taking what is
      left from a small floor, so the line is laid out on that floor and not
      the search's full width, which had put the buttons on a line of their
      own; its hint is a word there. */
-  .doctab .field.docbarrow.dmpick>label.pick{flex:0 1 auto;min-width:5em;max-width:11em;margin-inline-end:0}
+  :is(.doctab,.nb) .field.docbarrow.dmpick>label.pick{flex:0 1 auto;min-width:5em;max-width:11em;margin-inline-end:0}
   /* (the id's rule too, a desk's 12rem base and 8rem floor) */
-  .doctab .field.docbarrow.dmpick>input{flex:1 1 0;min-width:4em}
-  .doctab .field.docbarrow.dmpick>.pseg>button{min-width:var(--tap);padding:4px 8px}
-  .doctab .field.docbarrow.dmpick>.pseg svg{display:block}
+  :is(.doctab,.nb) .field.docbarrow.dmpick>input{flex:1 1 0;min-width:4em}
+  :is(.doctab,.nb) .field.docbarrow.dmpick>.pseg>button{min-width:var(--tap);padding:4px 8px}
+  :is(.doctab,.nb) .field.docbarrow.dmpick>.pseg svg{display:block}
   /* A runner's three actions, in their short words, on the row's one line. */
   .ndrun .actbar{flex-wrap:nowrap}
   .ndrun .actbar>button{flex:0 1 auto;min-width:0;white-space:nowrap}
@@ -4136,11 +4151,15 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    picker, the views and the buttons, rather than a sliver, stopping short
    of the edge as every control does. */
 @media(max-width:440px){
-  .doctab .field.docbarrow.dmpick>input{order:9;flex:0 1 100%;max-width:88%}
+  :is(.doctab,.nb) .field.docbarrow.dmpick>input{order:9;flex:0 1 100%;max-width:88%}
+  /* A notebook view's search the same (R109): under its toggles and its
+     actions, which keep the line they share. */
+  .nb .field.docbarrow:has(>input[type=search]:not([hidden])){flex-wrap:wrap}
+  .nb .field.docbarrow>input[type=search]{order:9;flex:0 1 100%;max-width:88%}
   /* The picker is what gives up width on the line above it, from a zero
      basis, so a long node name never puts Check and New under it. */
-  .doctab .field.docbarrow.dmpick>label.pick{flex:1 1 0;min-width:0;max-width:none}
-  .doctab .field.docbarrow.dmpick>label.pick>select:not([multiple]):not([size]){width:100%;text-overflow:ellipsis}
+  :is(.doctab,.nb) .field.docbarrow.dmpick>label.pick{flex:1 1 0;min-width:0;max-width:none}
+  :is(.doctab,.nb) .field.docbarrow.dmpick>label.pick>select:not([multiple]):not([size]){width:100%;text-overflow:ellipsis}
 }
 :is(.doctab,.nb) :is(input:not([type=checkbox]):not([type=radio]),select,textarea):not(:is(.ctlrow,.ctlown,.actbar,.setgrid,.actmenu,.dsrow) *){
   max-width:min(var(--ctl-w),88%)}
@@ -5136,35 +5155,30 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          panel: everything else here is one-way. Its open items are appended
          to every Claude session the dashboard starts, so an item added on
          Tuesday is read on Thursday without anybody remembering to say so. -->
-    <!-- The same header the other three views open with: the view's own
-         one-line summary on the left, its History on the right. It sits above
-         the add row rather than under it so all four tabs start the same way:
-         the eye should not have to look in a different place per tab. -->
-    <div class="field nbhead vbar"><span class="nbsum"><span id="roadmapHint" data-skel="word">loading…</span> <span id="roadmapRead" class="dim"></span></span>
-      <span class="sp"></span>
+    <!-- Every view's top is the Containers page's (R109, a-notebook/views):
+         the control row (a search over the items, their steps and their
+         details at the left, which reaches the Finished section too; History;
+         then Reorder and Add to roadmap, the primary, at the right), the
+         glance (the numbers as tiles, the status line under them), then the
+         chips. -->
+    <div class="field nbhead vbar docbarrow">
+      <input id="roadmapFind" type="search" maxlength="80" autocomplete="off" hidden
+             placeholder="search the roadmap" aria-label="search the roadmap">
       <button id="roadmapLog" type="button"
         title="every change to this list, by either of you, with when"
         >History</button>
-    </div>
-    <!-- The list's own Save and Revert, under its head (the operator, 5 Oct):
-         each section saves its own changes, and the list's are the reorders,
-         edits and steps staged on its rows. -->
-    <div class="field"><div class="actbar sectbar" data-bar="roadmap">
-      <span class="state" id="roadmapMoved"></span><span class="sp"></span>
-      <button id="roadmapSaveQuiet" type="button" data-ssave="roadmap" disabled>Save</button>
-      <button id="roadmapRevert" class="caution" type="button" data-srevert="roadmap" disabled>Revert</button>
-    </div></div>
-    <div class="field">
-      <!-- The add band every view adds with (R119 step 4): a button named for
-           what it adds, beside Reorder, the other thing done TO the list; it
-           unrolls the box in its place, which stays open for the next line
-           until Cancel or Escape. -->
-      <div class="addbar ctlrow" data-add="roadmap" id="roadmapAddBar">
-        <button id="roadmapShow" type="button">Add to roadmap</button>
+      <span class="sp"></span>
+      <span class="actbar">
         <button id="roadmapOrder" type="button" hidden
           title="reorder; the send controls come back after"
           >Reorder</button>
-      </div>
+        <button id="roadmapShow" type="button" class="primary" data-add="roadmap"><span class="lng">Add to roadmap</span><span class="shrt">Add</span></button>
+      </span>
+    </div>
+    <!-- Add to roadmap's box, unrolled under the control row (the first band
+         under it, as every view's add form is), and open for the next line
+         until Cancel or Escape. -->
+    <div class="field nbaddf" id="roadmapAddBar" hidden>
       <div class="roadmapadd ctlrow" id="roadmapForm" hidden>
         <textarea id="roadmapText" class="proseline" rows="1" maxlength="500"
                placeholder="something for the roadmap"></textarea>
@@ -5172,15 +5186,24 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <button id="roadmapAdd" class="primary" type="button">Add</button>
       </div>
     </div>
-    <!-- Narrowing the list (R254 step 1): chips for All, Open and Shelved,
-         a line of them by the release an item is meant for,
-         and a search over the items, their steps and their details, which
-         reaches the Finished section too. A view, never a setting. -->
+    <!-- The glance: to send, shelved and finished as tiles (viewGlance)... -->
+    <div class="nbglance" id="roadmapHint"></div>
+    <!-- ...and the status line, which is the list's own Save and Revert
+         (the operator, 5 Oct: each section saves its own changes, and the
+         list's are the reorders, edits and steps staged on its rows): what
+         is staged first, then the session's state and when one last read the
+         list, Save and Revert at the right while something is staged. -->
+    <div class="field headline nbsaid"><div class="actbar sectbar" data-bar="roadmap">
+      <span class="state"><span class="stg" id="roadmapMoved"></span><span id="roadmapSess"></span><span id="roadmapRead"></span></span>
+      <button id="roadmapSaveQuiet" type="button" data-ssave="roadmap" disabled hidden>Save</button>
+      <button id="roadmapRevert" class="caution" type="button" data-srevert="roadmap" disabled hidden>Revert</button>
+    </div></div>
+    <!-- Narrowing the list (R254 step 1): chips for All, Open and Shelved and
+         the release an item is meant for, every group in this one band. A
+         view, never a setting. -->
     <div class="field lfilter" id="roadmapFilter" hidden>
       <div class="chips" id="roadmapChips"></div>
       <div class="chips relchips" id="roadmapVers"></div>
-      <input id="roadmapFind" type="search" maxlength="80" autocomplete="off"
-             placeholder="search the roadmap" aria-label="search the roadmap">
     </div>
     <div class="field" id="roadmapEmpty" hidden>
       <div class="hint nbempty">What goes here is read at the start of every Claude session in this project.</div>
@@ -5226,11 +5249,13 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          view opens with its one-line summary and its History at the same
          height, and this tab is not the exception (uniform.mjs measures it). -->
     <div class="nbview" data-view="briefing" hidden>
-      <div class="field nbhead vbar"><span id="memWhere">what every session here starts with</span>
-        <span class="sp"></span>
+      <div class="field nbhead vbar docbarrow">
         <button type="button" id="memLog"
           title="every change to this notebook, with when">History</button>
+        <span class="sp"></span>
       </div>
+      <!-- The glance (R109): the rules and the memories, counted. -->
+      <div class="nbglance" id="memWhere"></div>
       <div id="rulesBox" data-skel="briefing"></div>
       <div class="field histbar ctlrow" id="memHistBar" hidden>
         <input maxlength="80" autocomplete="off" placeholder="search the memory log">
@@ -5270,30 +5295,28 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          a bug report is a form submitted once, not a list curated in place,
          so staging it behind Save would only delay the record. -->
     <div class="nbview" data-view="bugs" hidden>
-      <div class="field nbhead vbar"><span id="bugHint" data-skel="word">loading…</span>
-        <span class="sp"></span>
+      <!-- The control row (R109): a search over a report's words at the
+           left, History, and Report a bug, the primary, at the right; its
+           form unrolls under the row. -->
+      <div class="field nbhead vbar docbarrow">
+        <input id="bugFind" type="search" maxlength="80" autocomplete="off" hidden
+               placeholder="search the tracker" aria-label="search the tracker">
         <button type="button" id="bugLog"
           title="every change to the tracker, by either of you, with when">History</button>
+        <span class="sp"></span>
+        <span class="actbar"><button type="button" id="bugNew" class="primary" data-add="bug" hidden><span class="lng">Report a bug</span><span class="shrt">Report</span></button></span>
       </div>
-      <div class="field histbar ctlrow" id="bugHistBar" hidden>
-        <input maxlength="80" autocomplete="off" placeholder="search the tracker's log">
-        <select class="hwhen" aria-label="how far back">
-          <option value="0">all time</option><option value="1">today</option>
-          <option value="7" selected>7 days</option><option value="30">30 days</option>
-        </select>
-      </div>
-      <div class="field" id="bugHist" hidden></div>
-      <div class="field" id="bugAdd"></div>
+      <div class="field nbaddf" id="bugAdd" hidden></div>
+      <!-- The glance: open by severity, and closed, as tiles. -->
+      <div class="nbglance" id="bugHint"></div>
       <!-- The band that narrows the list (R254 step 1): chips for All, Open
-           and Closed, a search over a report's words, and the order. Open
-           before closed is not one of the orders: a tracker is read to find
-           what is outstanding, so that stays the primary key and this orders
-           within it. -->
+           and Closed and the release a report was seen in, and the order.
+           Open before closed is not one of the orders: a tracker is read to
+           find what is outstanding, so that stays the primary key and this
+           orders within it. -->
       <div class="field lfilter" id="bugSortBar">
         <div class="chips" id="bugChips"></div>
         <div class="chips relchips" id="bugVers"></div>
-        <input id="bugFind" type="search" maxlength="80" autocomplete="off"
-               placeholder="search the tracker" aria-label="search the tracker">
         <span class="lsort"><label for="bugSort">Sort</label>
         <select id="bugSort">
           <option value="severity" selected>severity</option>
@@ -5303,6 +5326,14 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           <option value="title">title A–Z</option>
         </select></span>
       </div>
+      <div class="field histbar ctlrow" id="bugHistBar" hidden>
+        <input maxlength="80" autocomplete="off" placeholder="search the tracker's log">
+        <select class="hwhen" aria-label="how far back">
+          <option value="0">all time</option><option value="1">today</option>
+          <option value="7" selected>7 days</option><option value="30">30 days</option>
+        </select>
+      </div>
+      <div class="field" id="bugHist" hidden></div>
       <div class="field" id="bugList" data-skel="rows"></div>
     </div>
     <!-- The scanner's findings for this project, read-only: the scan runs on
@@ -5323,8 +5354,11 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          useful answer more often: one file dominating is a fact about the
          suite, where one slow test is a fact about one test. -->
     <div class="nbview" data-view="tests" hidden>
-      <div class="field nbhead vbar"><span id="tstHint" data-skel="word">loading…</span><span class="sp"></span>
-        <button type="button" id="tstOut" title="the last run's output in this project's shell, following it while it runs">Open the run's output</button></div>
+      <div class="field nbhead vbar docbarrow"><span class="sp"></span>
+        <span class="actbar"><button type="button" id="tstOut" title="the last run's output in this project's shell, following it while it runs">Open the run's output</button></span></div>
+      <!-- The glance (R109): passing, failing, the time in tests, what is
+           flagged and undescribed, and a run going on the line under them. -->
+      <div class="nbglance" id="tstHint"></div>
       <div class="field" id="tstStats" hidden></div>
       <div id="tstFolds"></div>
       <div class="field histbar ctlrow" id="tstBar" hidden>
@@ -5336,8 +5370,11 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="field" id="tstList" data-skel="rows"></div>
     </div>
     <div class="nbview" data-view="artifacts" hidden>
-      <div class="field nbhead vbar"><span id="artHint" data-skel="word">loading…</span><span class="sp"></span>
-        <button type="button" id="artSource" title="the code base as a zip, without build output">Download source</button></div>
+      <div class="field nbhead vbar docbarrow"><span class="sp"></span>
+        <span class="actbar"><button type="button" id="artSource" title="the code base as a zip, without build output">Download source</button></span></div>
+      <!-- The glance (R109): what is in dist/ and its size, what was built
+           on a branch, the captures kept. -->
+      <div class="nbglance" id="artHint"></div>
       <!-- Where this project's compiling happens, or that it has nowhere.
            On this tab because it is the one somebody opens when a build did
            not appear; a project with no node is a legitimate state, so the
@@ -5363,23 +5400,29 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     <!-- This project's VMs as the VMs page draws them, scoped to it (R96, the
          operator, 21 Oct): its card, with New VM and the VMs page in its head. -->
     <div class="nbview vmtab" data-view="vms" hidden>
-      <div class="field nbhead vbar"><span id="nvHint" data-skel="word">loading…</span><span class="sp"></span>
-        <span class="actbar"><button type="button" id="nvNew" hidden>New VM</button><button type="button" id="nvOpen">VMs<span class="lng"> page</span></button></span></div>
+      <div class="field nbhead vbar docbarrow"><span class="sp"></span>
+        <span class="actbar"><button type="button" id="nvOpen">VMs<span class="lng"> page</span></button><button type="button" id="nvNew" class="primary" hidden>New VM</button></span></div>
+      <!-- The glance (R109): what runs of the project's VMs. -->
+      <div class="nbglance" id="nvHint"></div>
       <div id="nvList" data-skel="rows"></div>
     </div>
     <!-- This project's Android signing keys (R106), a view of their own in
          Ship (R103, the operator, 22 Oct), drawn by nb-signing.js: a section
-         per key and the apps mapped to them, New key and Import a backup the
-         band under the head. -->
+         per key and the apps mapped to them, Import a backup and New key the
+         control row's actions, the form either opens unrolling under it. -->
     <div class="nbview sgview" data-view="signing" hidden>
-      <div class="field nbhead vbar"><span id="sgHint" data-skel="word">loading…</span><span class="sp"></span></div>
+      <div class="field nbhead vbar docbarrow"><span class="sp"></span><span class="actbar" id="sgActs"></span></div>
       <div id="sgAdd"></div>
+      <!-- The glance (R109): the keys held and the apps mapped to them. -->
+      <div class="nbglance" id="sgHint"></div>
       <div id="sgBox" data-skel="rows"></div>
     </div>
     <div class="nbview dkview" data-view="docker" hidden>
-      <div class="field nbhead vbar"><span id="dkHint" data-skel="word">loading…</span><span class="sp"></span>
-        <span id="dkSeg"></span><span class="actbar"><button type="button" id="dkCheck" hidden>Check<span class="lng"> for updates</span></button><button type="button" id="dkOpen">Containers<span class="lng"> page</span></button></span></div>
-      <div id="dkTop"></div>
+      <div class="field nbhead vbar docbarrow"><span id="dkSeg"></span><span class="sp"></span>
+        <span class="actbar"><button type="button" id="dkCheck" hidden>Check<span class="lng"> for updates</span></button><button type="button" id="dkOpen">Containers<span class="lng"> page</span></button></span></div>
+      <!-- The glance (R109): the Containers page's tiles for the project, and
+           its node and when the images were checked on the line under them. -->
+      <div class="nbglance" id="dkHint"></div>
       <div id="dkList" data-skel="rows"></div>
     </div>
     <div class="nbview" data-view="git" hidden>
@@ -5387,20 +5430,23 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            committed, the history as a graph, and the branches with whose
            worktree sits on which. Reads only in this step; every action a
            later one adds is a fixed git command on the controller. -->
-      <div class="field nbhead vbar"><span id="gitHint" data-skel="word">loading…</span>
-        <span class="sp"></span>
+      <!-- The control row (R109): the branch the tree is on at the left, a
+           picker where the search would be, and the network half at the
+           right: fetch and pull bring the remote's commits down, push sends
+           this branch up through the controller's own credentials, the same
+           path bb git push takes. -->
+      <div class="field nbhead vbar docbarrow">
         <span class="gbpicker" id="gitPicker" hidden></span>
-
+        <span class="sp"></span>
+        <span class="actbar" id="gitNet" hidden>
+          <button type="button" data-gitact="fetch" title="bring the remote's branches down without touching this one">Fetch</button>
+          <button type="button" data-gitact="pull" title="fast-forward this branch to its upstream">Pull</button>
+          <button type="button" data-gitact="push" class="primary" title="send this branch up, with the project's credentials">Push</button>
+        </span>
       </div>
-      <!-- The network half, one bar: fetch and pull bring the remote's
-           commits down, push sends this branch up through the controller's
-           own credentials: the same path bb git push takes. -->
-      <div class="field actbar gitnet" id="gitNet" hidden>
-        <span class="state" id="gitNetState"></span>
-        <button type="button" data-gitact="fetch" title="bring the remote's branches down without touching this one">Fetch</button>
-        <button type="button" data-gitact="pull" title="fast-forward this branch to its upstream">Pull</button>
-        <button type="button" data-gitact="push" class="primary" title="send this branch up, with the project's credentials">Push</button>
-      </div>
+      <!-- The glance: not committed, the branches, what is to push and to
+           pull as tiles, and the remote's state under them. -->
+      <div class="nbglance" id="gitHint"></div>
       <div id="gitBody" data-skel="git"></div>
       <!-- A branch against main, its own page (R269 step 2): drawn in
            place of the sections above while the address names it. -->
@@ -5413,9 +5459,11 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            the notebook's Save like the roadmap; the prompts and the file
            are generated on the server, so the tab, bb design and
            docs/design-language.md say one thing. -->
-      <div class="field nbhead vbar"><span id="dsHint" data-skel="word">loading…</span><span class="sp"></span>
-        <button type="button" id="dsWrite"
-          title="write docs/design-language.md into the project from what is saved here; a session commits it with the work">Write the file</button></div>
+      <div class="field nbhead vbar docbarrow"><span class="sp"></span>
+        <span class="actbar"><button type="button" id="dsWrite"
+          title="write docs/design-language.md into the project from what is saved here; a session commits it with the work">Write the file</button></span></div>
+      <!-- The glance (R109): its pages and themes, and the file's state. -->
+      <div class="nbglance" id="dsHint"></div>
       <!-- Why Write the file and every control below are dead (B101). -->
       <!-- Add page is the Pages section's own (the operator, 29 Sep):
            nb-design.js draws it at the top of that section. -->
@@ -5426,30 +5474,36 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            to be read, written through like Bugs, kept by the controller as a
            forge-shaped repository so Export is a zip of Markdown and Push is
            the repository's own wiki. -->
-      <div class="field nbhead vbar"><span id="wkHint" data-skel="word">loading…</span><span class="sp"></span>
+      <!-- The control row (R109): History, and New page, the primary, whose
+           form unrolls under the row, as every view adds (B457). -->
+      <div class="field nbhead vbar docbarrow">
         <button type="button" id="wkLogBtn" title="the wiki's last changes, by either of you">History</button>
+        <span class="sp"></span>
+        <span class="actbar"><button type="button" id="wkNew" class="primary" data-add="wiki" hidden>New page</button></span>
       </div>
-      <!-- Where the wiki goes, an action bar of its own as the Git view's is,
-           so the head row keeps its one control and fits a phone: Export for
-           every project, Pull and Push where there is a forge, and why Push
-           is dead when it is, said under the bar rather than in a tooltip. -->
-      <!-- Adding first, under the head, as every view adds (B457). -->
       <div id="wkAddBox"></div>
-      <div class="field actbar" id="wkNet">
+      <!-- The glance: its pages, and its status line, which says where the
+           wiki goes and holds Export for every project, Pull and Push where
+           there is a forge, so the control row fits a phone; why Push is dead
+           when it is, said under the line rather than in a tooltip. -->
+      <div class="nbglance" id="wkHint"></div>
+      <div class="field headline nbsaid" id="wkNet"><div class="actbar">
         <span class="state" id="wkNetState"></span>
         <button type="button" id="wkExport" title="every page as Markdown in a zip, with or without a remote">Export</button>
         <button type="button" id="wkPull" hidden title="take in what changed on the forge's wiki">Pull</button>
-        <button type="button" id="wkPush" class="primary" hidden title="send the wiki to the repository's own wiki">Push</button>
-      </div>
+        <button type="button" id="wkPush" hidden title="send the wiki to the repository's own wiki">Push</button>
+      </div></div>
       <div class="field" id="wkWhy" hidden></div>
       <div id="wkBody" data-skel="lines"></div>
     </div>
     <div class="nbview" data-view="analysis" hidden>
-      <div class="field nbhead vbar"><span id="anaHint" data-skel="word">loading…</span>
-        <span class="sp"></span>
+      <div class="field nbhead vbar docbarrow">
         <button type="button" id="anaLog"
           title="what changed between the last two scans">History</button>
+        <span class="sp"></span>
       </div>
+      <!-- The glance (R109): the findings by level. -->
+      <div class="nbglance" id="anaHint"></div>
       <div class="field histbar ctlrow" id="anaHistBar" hidden>
         <input maxlength="80" autocomplete="off" placeholder="search the findings log">
         <select class="hwhen" aria-label="how far back">
@@ -5466,7 +5520,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          form and one set of handlers. .modal.inline lets every dialog rule
          style it where it is. -->
     <div class="nbview" data-view="settings" hidden>
-      <div class="field nbhead vbar"><span>how this project runs, and what Claude may do here</span><span class="sp"></span></div>
+      <div class="field nbhead vbar docbarrow"><span class="nbsum">how this project runs, and what Claude may do here</span><span class="sp"></span></div>
       <div class="modal inline nbsettings"></div>
     </div>
     <!-- The reading room. A history and the changelog are things you READ,

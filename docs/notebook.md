@@ -378,14 +378,18 @@ choice: a session about to act on a step is exactly who wants to know the plan
 around it moved, and by the time anything can be sent there is nothing unsaved
 left to keep quiet about, which is the next rule.
 
-The view opens the way the others do: its one-line summary on the left
-and **History** on the right, with the field, **Add** and **Reorder** together
-on the row under it. Those three are the things that change the list; History
-only reads it.
+The view opens the way every view does, the way the Containers page does
+(R109): one row with the search and **History** at the left and **Reorder**
+and **Add to roadmap** at the right, the box Add unrolls opening under it;
+then what is left to send, shelved and finished as tiles; then a status line
+saying whether a session is running and when one last read the list, with
+**Save** and **Revert** at its right while something is staged; then the
+chips that narrow the list, by state and by release, in one band. Reorder and
+Add are the things that change the list; History only reads it.
 
 **Nothing can be sent while the view is holding unsaved work.** The arrows go
-down, and the line above the list says which change is not on disk and that
-Save or Revert will clear it. The reason is what a step *is*: a line typed into
+down, and the status line above the list says which change is not on disk and
+that Save or Revert will clear it. The reason is what a step *is*: a line typed into
 a session, which then goes and reads the list for itself. Send a step off a
 list that exists only in this browser and the two are describing different
 plans: the session is working from the file, and the file has never heard of
@@ -520,7 +524,8 @@ The view acts too, each button one fixed git command with checked arguments,
 run under your author and the project's own credentials: **Fetch**, **Pull**
 (fast-forward only, refused with uncommitted changes) and **Push** (through
 the same path `bb git push` takes, offered only to a project with push
-rights) on the bar under the head row; **Commit all** with a message at the
+rights) at the right of the view's control row, the branch picker at its
+left, what is to push or pull counted in the tiles under it; **Commit all** with a message at the
 top of Changes and **Discard** on each file; **New branch** at the top of
 Branches, **Merge into main** on a branch (from any branch, the way a pull
 request's button merges: it lands in a temporary worktree on `main`, so the

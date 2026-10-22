@@ -108,8 +108,8 @@ await page.evaluate(() => openNotebook('beta', 'git'));
 await page.waitForFunction(() => !!document.querySelector('.nb .nbview[data-view="git"] #gitPicker:not([hidden]) .gbpickname')?.textContent,
                            null, { timeout: 20000 });
 const NB = '.nb .nbview[data-view="git"]';
-ok(new RegExp(`${st.files.length} changes not committed`).test(await page.$eval(`${NB} #gitHint`, e => e.textContent)),
-   'the head row says the branch, the uncommitted count and the branches');
+ok(new RegExp(`${st.files.length} changes? not committed`).test(await page.$eval(`${NB} #gitHint`, e => e.textContent.replace(/\s+/g, ' '))),
+   'the glance counts what is not committed and the branches, the branch the picker beside them');
 ok(await page.$eval(`${NB}`, e => e.querySelectorAll('.gfile').length) === st.files.length,
    'Changes lists each uncommitted file as a fold');
 // Opened, not clicked: every fold opens by default (d890eda), and a click

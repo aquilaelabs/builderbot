@@ -92,10 +92,10 @@ await nbShown(page);
 await nbTab(page, 'roadmap');
 ok(await page.$eval('#memTitle', el => el.textContent === 'Notebook: alpha'),
    'the panel opens on the list');
-await page.waitForFunction(() => document.getElementById('roadmapHint').textContent.length > 0);
-ok((await page.$eval('#roadmapHint', el => el.textContent)) === 'nothing yet'
+await page.waitForFunction(() => document.getElementById('roadmapSess').textContent.length > 0);
+ok(!(await page.$('#roadmapHint .tile'))
    && await page.$eval('#roadmapEmpty', el => !el.hidden && /every Claude session/.test(el.textContent)),
-   '...and says where the items end up, as its empty state under a head that counts (R119 step 4)');
+   '...and says where the items end up, as its empty state, with no tiles of zeros over it (R119 step 4, R109)');
 
 await unroll(page); await page.fill('#roadmapText', 'make the picker wrap properly');
 await page.keyboard.press('Enter');
@@ -302,8 +302,9 @@ await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .tx
   .some(t => t.textContent.includes('staged, deliberately')));
 ok(await page.$$eval('#roadmapList .roadmap .go', gs => gs.every(g => g.getAttribute('aria-disabled') === 'true')),
    'an unsaved change puts every arrow down');
-ok(/not saved/.test(await page.$eval('#roadmapHint', h => h.textContent)),
-   '...and the line above the list says which, and what to do about it');
+ok(/unsaved/.test(await page.$eval('#roadmapMoved', h => h.textContent))
+   && await page.$eval('#roadmapSaveQuiet', b => b.checkVisibility()),
+   '...and the status line above the list says which, with its Save beside it');
 ok((await page.$eval('#roadmapList .roadmap .go', g => saidOf(g))).includes('save or revert'),
    '...and so does the arrow itself');
 // dispatched rather than clicked: a real click cannot reach a disabled
@@ -1028,7 +1029,7 @@ await page.waitForFunction(() => { const s = document.querySelector('.nb #roadma
   return s && !s.hidden && /^\d+$/.test(document.querySelector('.nb #roadmapDoneN')?.textContent || ''); }, null, { timeout: 10000 });
 ok(await page.$eval('.nb #roadmapDoneSect', e => !e.open) && !(await page.$('.nb #roadmapDoneList .grp')),
    'the finished items are a section shut until asked for');
-ok(/\d+ finished/.test(await page.$eval('.nb #roadmapHint', h => h.textContent)), '...and the head counts them');
+ok(/\d+ finished/.test(await page.$eval('.nb #roadmapHint', h => h.textContent.replace(/\s+/g, ' '))), '...and a tile counts them');
 await page.click('.nb #roadmapDoneSect > summary');
 await page.waitForSelector(`.nb #roadmapDoneList .grp.done[data-done="${finId}"]`, { timeout: 10000 });
 ok(await page.$eval(`.nb #roadmapDoneList .grp.done[data-done="${finId}"] .txt`, e => e.textContent) === 'a job to finish',
@@ -1630,7 +1631,7 @@ tmuxKill('claude-alpha');
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .roadmap .go')]
   .every(g => g.getAttribute('aria-disabled') === 'true'), null, { timeout: 15000 });
-ok(/no session running/.test(await page.$eval('#roadmapHint', h => h.textContent)),
+ok(/no session running/.test(await page.$eval('#roadmapSess', h => h.textContent)),
    'the session going away puts the arrows down, without touching the tab');
 // ...and a dead arrow says why when pressed (B213). It used to be a disabled
 // button, which swallows the press: the reason lived in a hover title a
@@ -1644,7 +1645,7 @@ await page.evaluate(() => refresh());
 await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .roadmap .go')]
   .some(g => g.getAttribute('aria-disabled') !== 'true'), null, { timeout: 15000 });
 ok(/claude-alpha running/.test(
-     await page.$eval('#roadmapHint', h => h.textContent)),
+     await page.$eval('#roadmapSess', h => h.textContent)),
    '...and starting one brings them back, with the notebook left open the whole time');
 
 const phone = await newPage(browser, { viewport: { width: 400, height: 860 },
@@ -1655,20 +1656,23 @@ await phone.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(phone);
 await nbTab(phone, 'roadmap');
 await phone.waitForSelector('#roadmapList .roadmap', { timeout: 20000 });
-// The head reads the same way the other three tabs do: the view's own summary
-// and its History first, then the row of things that change the list.
+// The control row reads the way every view's does (R109): the search and
+// History, then the things that change the list, Add to roadmap last as the
+// primary, its box rolled up under the row until asked for, and the glance
+// under that.
 ok(await phone.evaluate(() => {
      const head = document.querySelector('[data-view="roadmap"] .nbhead');
-     const add = document.getElementById('roadmapAddBar');
-     return !!head && !!add && add.classList.contains('addbar')
-       && head.contains(document.getElementById('roadmapHint'))
+     const show = document.getElementById('roadmapShow');
+     const acts = [...head.querySelectorAll('.actbar > button')].filter(b => !b.hidden);
+     return !!head && head.contains(document.getElementById('roadmapFind'))
        && head.contains(document.getElementById('roadmapLog'))
-       && /^Add to roadmap$/.test(document.getElementById('roadmapShow').textContent.trim())
-       && add.contains(document.getElementById('roadmapOrder'))
-       && document.getElementById('roadmapForm').hidden
-       && head.compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING;
+       && head.contains(document.getElementById('roadmapOrder'))
+       && acts[acts.length - 1] === show && show.classList.contains('primary') && show.dataset.add === 'roadmap'
+       && show.querySelector('.lng').textContent === 'Add to roadmap'
+       && document.getElementById('roadmapForm').hidden && document.getElementById('roadmapAddBar').hidden
+       && !!(head.compareDocumentPosition(document.getElementById('roadmapHint')) & Node.DOCUMENT_POSITION_FOLLOWING);
    }),
-   'the summary and History sit above the add band: Add to roadmap and Reorder, the box rolled up until asked for (R119 step 4)');
+   'the control row holds the search, History, Reorder and Add to roadmap last, the box rolled up until asked for (R119 step 4, R109)');
 // The strip does not spill off a phone. Five labels are wider than 360px and
 // flex items will not shrink below their text, so it scrolls sideways
 // instead, and the tab that is current has to be inside the visible part of it.
@@ -2049,7 +2053,7 @@ ok(clashText() === 'read again, then written',
 // On the Roadmap's own head row (R222), not over every view.
 await refreshUntil(page, () => /read by a session/.test(
   document.getElementById('roadmapRead')?.textContent || ''));
-ok(true, "the Roadmap's head row says when a session here last read it");
+ok(true, "the Roadmap's status line says when a session here last read it");
 
 // ---- the view comes back with a reload; closing the tab forgets it --------
 // The strip and the active pane are the saved layout's; which view a

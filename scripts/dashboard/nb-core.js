@@ -86,7 +86,7 @@ function makeNotebook(project){
   // to go back to. A row with no entry here is one Add made: canceling
   // that is removing it.
   nb.ruleWas = new Map();
-  // How many memories the tab found (null until read), for the head row that
+  // How many memories the tab found (null until read), for the glance that
   // sums both halves of the briefing: set by drawMemory, read by both draws.
   nb.memN = null;
   // The approval queue (roadmap #27): what the band and the tab counts draw
@@ -205,7 +205,7 @@ function makeNotebook(project){
     $("histFind").value = "";
     cancelSend();
     $("roadmapText").value = "";
-    $("roadmapForm").hidden = true; $("roadmapAddBar").hidden = false; $("roadmapShow").hidden = false;
+    $("roadmapForm").hidden = true; $("roadmapAddBar").hidden = true; $("roadmapShow").setAttribute("aria-expanded", "false");
     $("roadmapList").innerHTML = `${skel("rows")}`;
     // Opening it is a re-read: both halves come off disk again, and the card
     // gets the same treatment so the number on the row you just pressed is not
@@ -376,15 +376,17 @@ function makeNotebook(project){
       const save = bar.querySelector("[data-ssave]"), rv = bar.querySelector("[data-srevert]");
       if (!st || !save || !rv || save.getAttribute("aria-busy")) return;
       const b = barSays(key);
-      // The Roadmap's bar is the one that sat dead most of the time (R224):
-      // it appears with a reorder or an edit staged, and goes with the Save.
-      // The rest stay, dead, so they do not move under a thumb.
-      if (key === "roadmap") setHidden(bar.closest(".field"), b.hide);
+      // The Roadmap's bar is its status line (R109), and its Save and Revert
+      // are the ones that sat dead most of the time (R224): they appear with
+      // a reorder or an edit staged, and go with the Save. The rest stay,
+      // dead, so they do not move under a thumb.
+      if (key === "roadmap"){ setHidden(save, b.hide); setHidden(rv, b.hide); }
       setDisabled(save, b.saveDead);
       setDisabled(rv, b.rvDead);
       setTitle(rv, b.rvTitle);
       setTitle(save, b.saveTitle);
-      setText(bar.querySelector(".state"), b.state);
+      // ...its words what is staged, before the session's (.stg).
+      setText(bar.querySelector(".state .stg") || bar.querySelector(".state"), b.state);
     });
   }
 
@@ -426,15 +428,15 @@ function makeNotebook(project){
   // Who else has the notebook open is no longer said (the operator, 17 Oct:
   // not necessary): two windows writing one item are caught at the save,
   // which refuses the second and shows both. The heartbeat stays for what a
-  // session has read, said on the Roadmap's head row.
+  // session has read, said on the Roadmap's status line.
   function drawHere(){
     // A session that has gone and read the list, which is a different claim
     // from having been told: being told rides in on its next prompt (#27), and
     // what the operator wants to know after changing something is whether it
-    // has actually looked. The Roadmap's fact, on its head row (R222): it
+    // has actually looked. The Roadmap's fact, on its status line (R222): it
     // stood over every view.
     const rd = $("roadmapRead");
-    if (rd) rd.textContent = nb.nbRead ? `· read by a session ${ago(nb.nbRead)}` : "";
+    if (rd) rd.textContent = nb.nbRead ? ` · read by a session ${ago(nb.nbRead)}` : "";
   }
 
   // What is unsaved here, in the words the buttons use. Both halves, because
@@ -768,10 +770,11 @@ function makeNotebook(project){
   async function loadNbVms(){
     try{
       vmsData = await (await fetch("/api/vms")).json();
-    }catch(e){ $("nvHint").textContent = "VMs: " + e; return; }
+    }catch(e){ viewGlance($("nvHint"), [], esc("VMs: " + e)); return; }
     const rows = (vmsData.vms || []).filter(v => v.project === project);
     const up = rows.filter(v => v.state === "running").length;
-    $("nvHint").textContent = rows.length ? `${up} running of ${rows.length}` : "no VMs yet";
+    // The glance (R109): what runs of how many, as the VMs page counts.
+    viewGlance($("nvHint"), rows.length ? [{label: "running", value: up, sub: `of ${rows.length} VM${rows.length === 1 ? "" : "s"}`}] : []);
     const may = (vmsData.can || {})[project] === "write";
     const nb = $("nvNew");
     nb.hidden = !may;
@@ -797,7 +800,7 @@ function makeNotebook(project){
     const node = p?.prefs?.node || dockerNode || "";
     try{
       dkGot = await (await fetch("/api/docker" + (node ? "?node=" + encodeURIComponent(node) : ""))).json();
-    }catch(e){ $("dkHint").textContent = "docker: " + e; return; }
+    }catch(e){ viewGlance($("dkHint"), [], esc("docker: " + e)); return; }
     dockerSeen[dkGot.node || node || ""] = dkGot;
     drawNbDocker();
   }
@@ -810,8 +813,15 @@ function makeNotebook(project){
     const blind = !!(got.blind || got.error || got.on === false);
     const where = (nodesList || []).find(n => n.id === node)?.name || "its node";
     const n = mine.length + others.length;
-    $("dkHint").textContent = `${n} container${n === 1 ? "" : "s"} on ${where}${
-      blind && n ? ": the daemon did not answer, so the rows cannot say what is running" : ""}`;
+    // The glance (R109): the Containers page's tiles for the project's own,
+    // then its node and when the images were checked, or why the rows
+    // cannot say what runs.
+    const imgs = !mine.length || !mayDocker() || featureOff("image-updates") ? ""
+      : got.images_at ? ` · images checked ${esc(ago(got.images_at))}` : " · images not checked yet";
+    viewGlance($("dkHint"), blind || !n ? "" : dmTiles({running: mine.filter(d => d.running).length, all: mine.length,
+      behind: mine.filter(d => (d.images_behind || []).length || d.nginx_to).length, checked: !!got.images_at}),
+      blind && n ? `on ${esc(where)}: the daemon did not answer, so the rows cannot say what is running`
+        : n ? `on ${esc(where)}${imgs}` : "");
     const key = JSON.stringify([mine, others, job && job.step, job && job.running, job && (job.log || "").length,
                                 dmView, got.images_at, blind]);
     if (key === dkSeen) return;
@@ -821,9 +831,6 @@ function makeNotebook(project){
     const ck = $("dkCheck");
     ck.hidden = blind || !mayDocker() || !mine.length;
     ck.onclick = () => dmCheck(ck, node, () => { unbusy(ck, "Check"); ck.insertAdjacentHTML("beforeend", `<span class="lng"> for updates</span>`); loadNbDocker(); });
-    $("dkTop").innerHTML = blind || !n ? "" : dmTiles({running: mine.filter(d => d.running).length, all: mine.length,
-      behind: mine.filter(d => (d.images_behind || []).length || d.nginx_to).length, checked: !!got.images_at})
-      + (mine.length ? dmStatus(got) : "");
     // What the view is for, as its empty state (R119 step 4).
     $("dkList").innerHTML = dmGroupsHtml(mine, others, job, blind, project)
       || `<div class="field"><div class="hint nbempty">Send ${esc(projLabel(project))} from ${pageLink("", "Artifacts", `#/projects/${encodeURIComponent(project)}/artifacts`)}, or pick it on a container's row on the ${pageLink("docker", "Containers page")}.</div></div>`;

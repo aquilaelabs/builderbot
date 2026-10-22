@@ -33,8 +33,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     try{
       const r = await fetch("/api/artifacts?project=" + encodeURIComponent(project));
       art = await r.json();
-    }catch(e){ hint.textContent = "artifacts: " + e; return; }
-    if (art.error){ hint.textContent = "artifacts: " + art.error; return; }
+    }catch(e){ viewGlance(hint, [], esc("artifacts: " + e)); return; }
+    if (art.error){ viewGlance(hint, [], esc("artifacts: " + art.error)); return; }
     const rows = art.artifacts || [], job = art.push || {}, dev = art.phone;
     const groups = art.branches || [];
     // The code base itself, as a zip through the browser: a navigation, so
@@ -47,9 +47,14 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       : !art.mine ? `connected by ${art.owner?.name || "somebody else"}: only they can push to it or install on it`
       : "";
     const inst = art.install || {};
-    hint.textContent = rows.length
-      ? `${rows.length} in dist/: what this project ships, newest first`
-      : groups.length ? "0 in dist/; built on a branch, below" : "0 in dist/";
+    // The glance (R109): what this project ships, in dist/, and its size;
+    // what was built on a branch, in each account's worktree; and the
+    // captures sessions looked with, kept apart from both.
+    const caps = art.captures || [], onBranches = groups.reduce((n, g) => n + (g.artifacts || []).length, 0);
+    viewGlance(hint, [
+      {label: "in dist/", value: rows.length, sub: rows.length ? humanBytes(rows.reduce((n, a) => n + (a.size || 0), 0)) : ""},
+      {label: "built on branches", value: onBranches, omit: !onBranches},
+      {label: caps.length === 1 ? "capture" : "captures", value: caps.length, omit: !caps.length}]);
     {
       // Where this project compiles, as a section rather than a loose band:
       // this tab is three subjects stacked, where it builds, what it is
@@ -240,7 +245,6 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // session is still reading one. Hidden when there are none: nothing to
     // act on.
     const capBox = $("artCaptures");
-    const caps = art.captures || [];
     if (capBox){
       capBox.hidden = !caps.length;
       const days = art.capture_days ?? 7;

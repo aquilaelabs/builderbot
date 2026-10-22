@@ -967,21 +967,30 @@ for (const kind of kinds){
 }
 
 // ---- adding goes at the top ------------------------------------------------
-// The control that adds to a notebook view is the first band under its head
-// row, above the list, at both widths, never at the foot, where a phone
-// scrolled past every row to find it. Measured on each view that has one,
-// against its head row and the first row of its list.
+// The control that adds to a notebook view is the last button on its control
+// row, the primary (R109), its form unrolling under that row; one that adds
+// to a section is the first band inside it, above the list. Never at the
+// foot, where a phone scrolled past every row to find it. Measured on each
+// view that has one, against its head row and the first row of its list.
 {
   await bring('notebook');
   const misplaced = [];
-  for (const v of ['roadmap', 'bugs', 'briefing', 'signing']){
+  for (const v of ['roadmap', 'bugs', 'briefing', 'signing', 'wiki']){
     await page.evaluate(w => getNotebook('alpha').view(w), v);
     await page.waitForFunction(w => document.querySelector(`.nb .nbview[data-view="${w}"] [data-add]`)?.offsetHeight > 0,
                                v, { timeout: 20000 });
     const r = await page.evaluate(w => {
       const view = document.querySelector(`.nb .nbview[data-view="${w}"]`);
-      const head = view.querySelector(':scope > .nbhead').getBoundingClientRect();
-      return [...view.querySelectorAll('[data-add]')].map(a => {
+      const headEl = view.querySelector(':scope > .nbhead');
+      const head = headEl.getBoundingClientRect();
+      const acts = [...headEl.querySelectorAll('.actbar > button')].filter(b => b.checkVisibility());
+      return [...view.querySelectorAll('[data-add]')].filter(a => a.checkVisibility()).map(a => {
+        if (headEl.contains(a)){
+          const last = acts[acts.length - 1];
+          // The view's own add: on the control row, the primary last.
+          return { add: a.dataset.add, belowHead: true, aboveList: true, button: a.tagName === 'BUTTON',
+                   last: !!last && last.dataset.add !== undefined && last.classList.contains('primary') };
+        }
         const box = a.getBoundingClientRect();
         // The list this control adds to: the nearest following sibling band
         // holding rows, or the section's own list for a rule.
@@ -993,13 +1002,13 @@ for (const kind of kinds){
         const row = list?.firstElementChild?.getBoundingClientRect();
         return { add: a.dataset.add, belowHead: box.top >= head.bottom - 1,
                  aboveList: !row || box.bottom <= row.top + 1,
-                 button: !!a.querySelector('button') };
+                 button: !!a.querySelector('button'), last: true };
       });
     }, v);
-    r.filter(x => !(x.belowHead && x.aboveList && x.button)).forEach(x => misplaced.push(`${v}:${x.add} ${JSON.stringify(x)}`));
+    r.filter(x => !(x.belowHead && x.aboveList && x.button && x.last)).forEach(x => misplaced.push(`${v}:${x.add} ${JSON.stringify(x)}`));
   }
   ok(misplaced.length === 0,
-     `every add control sits under its head row and above its list, as a button${
+     `every view's add is the primary last on its control row, and a section's sits under the head row and above its list, as a button${
        misplaced.length ? `; not: ${misplaced.join('; ')}` : ''}`);
   // Save and Revert only where something can be staged behind them: a Save
   // under a list that writes through read as a button that did nothing.
@@ -1068,13 +1077,38 @@ for (const kind of kinds){
       return { first: first ? (first.className || first.tagName).split(/\s+/)[0] : '(nothing)',
                isHead: !!first && first.classList.contains('nbhead'),
                top: head ? Math.round(head.getBoundingClientRect().top) : null,
-               // Not every view has a log (Tests and Artifacts open with a
-               // summary and nothing else), but where a head has controls
-               // they sit right of the summary, after its spacer.
-               right: !head || [...head.querySelectorAll('button')].every(b => {
-                 const sp = head.querySelector('.sp');
-                 return sp && (sp.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-               }) };
+               height: head ? Math.round(head.getBoundingClientRect().height) : null,
+               // The control row (R109): its search and its toggles at the
+               // left, its actions in an action bar after its spacer, the
+               // primary, where there is one, last.
+               right: !head || (() => {
+                 const sp = head.querySelector(':scope > .sp');
+                 const acts = [...head.querySelectorAll(':scope > .actbar button')].filter(b => b.checkVisibility());
+                 const prim = acts.filter(b => b.classList.contains('primary'));
+                 return !!sp && acts.every(b => sp.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+                   && prim.length <= 1 && (!prim.length || prim[0] === acts[acts.length - 1]);
+               })(),
+               // Words on the row: any text outside its controls (Settings,
+               // a page of settings, keeps its one line of what it is).
+               words: !head || w === 'settings' ? '' : [...head.childNodes].filter(n =>
+                 (n.nodeType === 3 && n.textContent.trim()) || (n.nodeType === 1 && n.checkVisibility()
+                   && !n.matches('button, input, select, .actbar, .sp, .gbpicker, #dkSeg'))).map(n => n.textContent.trim()).join(' ').slice(0, 60),
+               glance: (() => {
+                 const bad = [];
+                 // Tiles only in the glance's .tiles, the Containers page's shape.
+                 const g = view.querySelector(':scope > .nbglance');
+                 if (w !== 'settings' && !g) bad.push('no glance');
+                 if (g) for (const t of g.querySelectorAll('.tile')) if (!t.closest('.tiles') || !t.querySelector('.tv') || !t.querySelector('.tl')) bad.push('a tile out of shape');
+                 // Every group of chips the view narrows by in one band.
+                 const bands = [...view.querySelectorAll(':scope > .lfilter')].filter(b => b.checkVisibility());
+                 if (bands.length > 1) bad.push(`${bands.length} chip bands`);
+                 // A Save or Revert on a row of its own straight under the view.
+                 for (const b of view.querySelectorAll(':scope > .field > .sectbar'))
+                   if (b.checkVisibility() && !b.closest('.nbsaid')) bad.push('a loose Save row');
+                 // The glance comes after the control row and before the chips.
+                 if (g && bands[0] && !(g.compareDocumentPosition(bands[0]) & Node.DOCUMENT_POSITION_FOLLOWING)) bad.push('chips above the tiles');
+                 return bad.join(', ');
+               })() };
     }, v);
   }
   const notFirst = Object.entries(heads).filter(([, h]) => !h.isHead).map(([v, h]) => `${v} opens with ${h.first}`);
@@ -1087,7 +1121,18 @@ for (const kind of kinds){
      `...and the head row sits at one height on every view (${JSON.stringify(
        Object.fromEntries(Object.entries(heads).map(([v, h]) => [v, h.top])))})`);
   ok(Object.values(heads).every(h => h.right),
-     '...with its controls, where it has any, to the right of the summary');
+     '...with its actions, where it has any, at the right of the row, the primary last');
+  ok(Object.values(heads).every(h => !h.words),
+     `...and no words on it, the counts being the glance's tiles under it (R109; ${JSON.stringify(
+       Object.fromEntries(Object.entries(heads).filter(([, h]) => h.words).map(([v, h]) => [v, h.words])))})`);
+  const hs = Object.values(heads).map(h => h.height);
+  ok(Math.max(...hs) - Math.min(...hs) <= 1,
+     `...one control high on every view, the Containers page's bar (${JSON.stringify(
+       Object.fromEntries(Object.entries(heads).map(([v, h]) => [v, h.height])))})`);
+  const glance = Object.entries(heads).filter(([, h]) => h.glance).map(([v, h]) => `${v}: ${h.glance}`);
+  ok(glance.length === 0,
+     `...and under it the glance: tiles in the tiles' shape, then a status line, then one band of chips, and no loose Save row (R109)${
+       glance.length ? `; not: ${glance.join('; ')}` : ''}`);
 }
 ok(seenSects.size <= 1,
    `a section heading wears one skin everywhere (${JSON.stringify([...seenSects])})`);

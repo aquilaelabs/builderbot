@@ -23,7 +23,8 @@ const api = (path, body) => page.evaluate(async ([p, b]) => {
 
 // ---- the view, empty, then a page made from it --------------------------------
 await page.evaluate(n => openNotebook(n, 'wiki'), P);
-await page.waitForFunction(() => /0 pages/.test(document.querySelector('.nb #wkHint')?.textContent || ''), null, { timeout: 20000 });
+await page.waitForFunction(() => /waits for a page/.test(document.querySelector('.nb #wkNetState')?.textContent || '')
+  && !document.querySelector('.nb #wkHint .tile'), null, { timeout: 20000 });
 ok(!(await page.$(`${NB} .nbview[data-view="wiki"] .sectbar`))
    && await page.$eval(`${NB} #wkExport`, e => e.disabled),
    'the wiki opens empty, with no Save of its own (it writes through) and Export dead until there is a page');
@@ -45,7 +46,7 @@ ok(/<h3 id="wk-welcome">Welcome<\/h3>/.test(html) && /<strong>this<\/strong>/.te
 ok(await page.$eval(`${NB} .wkpage .wklink[data-page="Build and test"]`, a => a.classList.contains('wkmissing')
      && getComputedStyle(a).color !== getComputedStyle(document.querySelector('.nb .wknav .wklink')).color),
    'a link to a page that is not there is drawn apart from a live one');
-ok(/1 page/.test(await page.$eval(`${NB} #wkHint`, e => e.textContent)), 'the head row counts it');
+ok(/1 page/.test(await page.$eval(`${NB} #wkHint`, e => e.textContent.replace(/\s+/g, ' '))), 'a tile counts it');
 // Read like an encyclopedia (the operator, 2 Oct): the title over a rule,
 // said once though the page opens with it, a Contents box for its
 // sections, and the pages listed beside the article.

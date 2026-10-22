@@ -30,7 +30,7 @@ function nbGitView({$, nb, project}){
   // The branch whose comparison with main is on show, its own page (R269
   // step 2: #/projects/NAME/git/compare/BRANCH), "" for the view itself;
   // and what that page last read, by the two heads it was read at.
-  let gitCmp = "", gitCmpData = null, gitHintText = "";
+  let gitCmp = "", gitCmpData = null, gitGlance = null;
   // Which branches the table shows (R269 step 1): a chip, Active until one
   // is pressed, and the search typed beside it; a view, never saved.
   let gitBranchChip = "active", gitBranchFind = "";
@@ -107,10 +107,10 @@ function nbGitView({$, nb, project}){
     try{
       const r = await fetch("/api/git?project=" + encodeURIComponent(project) + "&what=all");
       git = await r.json();
-    }catch(e){ hint.textContent = "git: " + e; return; }
+    }catch(e){ viewGlance(hint, [], esc("git: " + e)); return; }
     if (git.error){
       const none = git.error === "not a git repository";
-      hint.textContent = none ? "no repository yet" : "git: " + git.error;
+      viewGlance(hint, [], none ? "no repository yet" : esc("git: " + git.error));
       // The way on, where the dead end was: Init makes the repository here
       // (a project adopted from a directory, or unpacked from an archive
       // without one), and a session then commits and pushes as anywhere.
@@ -124,27 +124,31 @@ function nbGitView({$, nb, project}){
     const st = git.status || {}, files = st.files || [], commits = git.commits || [];
     const local = (git.branches || []).filter(b => !b.remote);
     const tree = treeOf();
-    // The branch is the picker's to say beside it (R269 step 3); the words
-    // name one only when there is none to pick.
-    gitHintText = hint.textContent = `${tree.notMine ? `${tree.owner}'s working tree, ` : ""}${st.branch ? "" : "on no branch · "}${files.length
-      ? `${files.length} change${files.length === 1 ? "" : "s"} not committed` : "nothing uncommitted"} · ${
-      // A branch with no commit is not listed by git, so "0 branches" sat
-      // beside "on master" (B456): the honest word is that nothing is
-      // committed yet.
-      !commits.length ? "no commits yet" : `${local.length} branch${local.length === 1 ? "" : "es"}`}${
-      st.upstream ? (st.ahead || st.behind
-        ? ` · ${st.ahead ? st.ahead + " to push" : ""}${st.ahead && st.behind ? ", " : ""}${st.behind ? st.behind + " to pull" : ""} (${git.host?.name || "the remote"})`
-        : ` · in step with ${git.host?.name || "the remote"}`) : ""}`;
+    // The glance (R109): what is not committed, the branches, and what is to
+    // push and to pull against the upstream, as tiles. A branch with no
+    // commit is not listed by git, so "0 branches" sat beside "on master"
+    // (B456): the honest word, on the line under them, is that nothing is
+    // committed yet. The branch is the picker's to say (R269 step 3); the
+    // words name one only when there is none to pick.
+    const host = git.host?.name || "the remote";
+    const said = [tree.notMine ? `${tree.owner}'s working tree` : "", st.branch ? "" : "on no branch",
+      commits.length ? "" : "no commits yet",
+      !git.remote ? "" : !git.push
+        ? "no push rights: fetch and pull only; rights are granted in the clone dialog"
+        : st.upstream ? (st.ahead && st.behind
+          ? `pull first: ${host} has ${st.behind} commit${st.behind === 1 ? "" : "s"} this branch does not, and this branch has ${st.ahead} to push (${st.upstream})`
+          : st.ahead || st.behind ? `${host}, ${st.upstream}` : `in step with ${host}, ${st.upstream}`)
+        : "no upstream yet: Push sets one"].filter(Boolean).map(esc).join(" · ");
+    gitGlance = [[
+      {label: files.length === 1 ? "change" : "changes", value: files.length, sub: "not committed"},
+      {label: local.length === 1 ? "branch" : "branches", value: local.length, omit: !commits.length},
+      {label: "to push", value: st.ahead || 0, omit: !st.upstream},
+      {label: "to pull", value: st.behind || 0, omit: !st.upstream, tone: st.ahead && st.behind ? "warn" : ""}], said];
+    viewGlance(hint, ...gitGlance);
     const net = $("gitNet");
     if (net){
       const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
       net.hidden = locked || !git.remote;
-      $("gitNetState").textContent = !git.remote ? "" : !git.push
-        ? "no push rights: fetch and pull only; rights are granted in the clone dialog"
-        : st.upstream ? (st.ahead && st.behind
-          ? `pull first: ${git.host?.name || "the remote"} has ${st.behind} commit${st.behind === 1 ? "" : "s"} this branch does not, and this branch has ${st.ahead} to push (${st.upstream})`
-          : `${git.host?.name || "the remote"}, ${st.upstream}${st.ahead ? ` · ${st.ahead} to push` : ""}${st.behind ? ` · ${st.behind} to pull` : ""}`)
-        : "no upstream yet: Push sets one";
       // A role that only reads the project is shown none of them (the
       // operator, 21 Oct: what a role does not give is not drawn).
       const ro = !!projWriteWhy(project);
@@ -248,7 +252,7 @@ function nbGitView({$, nb, project}){
     // at a time is chosen among the sections drawn, not the hidden ones.
     if (gitCmp){ body.innerHTML = ""; drawCompare(); return; }
     const cmpBox = $("gitCmp"); if (cmpBox) cmpBox.innerHTML = "";
-    if (gitHintText) $("gitHint").textContent = gitHintText;
+    if (gitGlance) viewGlance($("gitHint"), ...gitGlance);
     drawPicker();
     const st = git.status || {}, files = st.files || [], commits = git.commits || [];
     const local = (git.branches || []).filter(b => !b.remote), remote = (git.branches || []).filter(b => b.remote);
@@ -527,7 +531,7 @@ function nbGitView({$, nb, project}){
       "/api/git?project=" + encodeURIComponent(project) + "&what=diff&path=" + encodeURIComponent(path), j => renderDiff(j.diff));
   }
 
-  // The branch the tree is on, in the view's head row as a picker, as
+  // The branch the tree is on, in the view's control row as a picker, as
   // GitHub's (R269 step 3): a press opens the local branches with a box to
   // find one, a press on one switches the tree to it, and a name nobody has
   // yet offers to create it from the commit the tree is on and switch to it.
@@ -654,7 +658,7 @@ function nbGitView({$, nb, project}){
     // The head says where this is, Branches a link to the view's own
     // address (a pointer to a page is a link to its address), as GitHub's
     // compare page names the two branches over it.
-    $("gitHint").innerHTML = `<a href="${esc(routeOf({kind: "notebook", arg: project}).replace(/\/compare\/.*$/, ""))}" data-gitcmpback>Branches</a> › ${esc(name)} into ${esc(main)}`;
+    viewGlance($("gitHint"), [], `<a href="${esc(routeOf({kind: "notebook", arg: project}).replace(/\/compare\/.*$/, ""))}" data-gitcmpback>Branches</a> › ${esc(name)} into ${esc(main)}`);
     const back = "";
     if (!b){
       box.innerHTML = back + `<div class="field"><div class="empty">no branch called ${esc(name)} here now</div></div>`;

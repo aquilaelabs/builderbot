@@ -36,13 +36,13 @@ function nbSigningView({$, nb, project}){
     let j;
     try{
       j = await (await postJSON("/api/signing", {action: "list", project})).json();
-    }catch(e){ $("sgHint").textContent = "signing: " + e; return; }
+    }catch(e){ viewGlance($("sgHint"), [], esc("signing: " + e)); return; }
     if (mine !== gen) return;
     if (j.error){
       // The server's own words, where the keys would be (R255 step 4).
       keys = null;
-      $("sgHint").textContent = "no keys";
-      $("sgAdd").innerHTML = "";
+      viewGlance($("sgHint"), []);
+      $("sgAdd").innerHTML = ""; $("sgActs").innerHTML = "";
       $("sgBox").innerHTML = `<div class="field"><div class="hint nbempty">${esc(j.error)}</div></div>`;
       return;
     }
@@ -110,11 +110,19 @@ function nbSigningView({$, nb, project}){
     if (!keys) return;
     const names = keyNames();
     const held = Object.values(keys).filter(s => SIGN_ROUTES.some(([r]) => s[r])).length;
-    $("sgHint").textContent = held ? `${held} key${held === 1 ? "" : "s"}` : "no keys";
-    // New key and Import a backup, the view's adds (a-notebook/views: the
-    // first band under the head row, the form unrolling in its place).
+    // The glance (R109): the keys held and the apps mapped to one, none
+    // while it holds no key, whose empty state is said where the keys are.
+    const mappedN = Object.values({...map, ...mapDraft}).filter(k => k !== null).length;
+    viewGlance($("sgHint"), !held ? [] : [
+      {label: held === 1 ? "key" : "keys", value: held},
+      {label: mappedN === 1 ? "app" : "apps", value: mappedN, omit: !mappedN}]);
+    // Import a backup and New key, the view's adds, the control row's
+    // actions with New key the primary (a-notebook/views, R109), the form
+    // either opens unrolling under the row.
+    $("sgActs").innerHTML = why ? "" : `<button type="button" id="sgImp" data-add="import" aria-expanded="${adding === "import"}"${
+        locked ? "" : ` disabled title="no key can be added until the backups have a password"`}><span class="lng">Import a backup</span><span class="shrt">Import</span></button><button type="button" class="primary" id="sgNew" data-add="key" aria-expanded="${adding === "key"}">New key</button>`;
     $("sgAdd").innerHTML = why ? ""
-      : adding === "key" ? `<div class="field"><div class="addbar actbar ctlrow" data-add="key">
+      : adding === "key" ? `<div class="field"><div class="addbar actbar ctlrow">
           <input id="sgNewName" autocomplete="off" spellcheck="false" placeholder="name, e.g. watch" aria-label="a new key's name">
           <button type="button" id="sgNewGo">Add it</button><button type="button" id="sgAddCancel">Cancel</button></div></div>`
       // A backup brought back (R103, the operator 22 Oct): Download
@@ -122,7 +130,7 @@ function nbSigningView({$, nb, project}){
       // wrapped under a project's backup password (R111), which is then
       // typed here, as a bare keystore's is; the key and the slot default
       // to the backup's.
-      : adding === "import" ? `<div class="field"><div class="rnsignform" data-add="import">
+      : adding === "import" ? `<div class="field"><div class="rnsignform">
           <input type="file" id="sgImpFile" accept=".zip,.jks,.p12,.pfx,.keystore" aria-label="the backup">
           <input id="sgImpKey" autocomplete="off" spellcheck="false" placeholder="key name, or the backup's" aria-label="the key it becomes">
           <select id="sgImpRoute" aria-label="the slot it goes in"><option value="">the slot the backup names</option>${
@@ -131,10 +139,7 @@ function nbSigningView({$, nb, project}){
           <div class="sub dim">A backup from a project with a backup password is wrapped under that password: type it here. A keystore on its own needs the password it was made with.</div>
           <div class="actbar"><button type="button" id="sgAddCancel">Cancel</button><button type="button" class="primary" id="sgImpGo" disabled>Import</button></div>
         </div></div>`
-      // Two adds, each the one shape an add band has, side by side.
-      : `<div class="field"><div class="sgadds"><div class="addbar ctlrow" data-add="key"><button type="button" id="sgNew">New key</button></div>
-          <div class="addbar ctlrow" data-add="import"><button type="button" id="sgImp"${
-          locked ? "" : ` disabled title="no key can be added until the backups have a password"`}>Import a backup</button></div></div></div>`;
+      : "";
     // The backup password (the operator, 1 Oct): the project's owner's to
     // set, and every download's to give, BuilderBot's owner's included.
     const lock = `<div class="field"><div class="rnsign rnsignlock">
@@ -278,9 +283,9 @@ function nbSigningView({$, nb, project}){
       lockOpen = false;
       loadSigning();
     };
-    const nw = add.querySelector("#sgNew");
+    const nw = $("sgNew");
     if (nw) nw.onclick = () => { adding = "key"; drawSigning(); add.querySelector("#sgNewName")?.focus(); };
-    const im = add.querySelector("#sgImp");
+    const im = $("sgImp");
     if (im) im.onclick = () => { adding = "import"; drawSigning(); };
     const nc = add.querySelector("#sgAddCancel");
     if (nc) nc.onclick = () => { adding = false; drawSigning(); };

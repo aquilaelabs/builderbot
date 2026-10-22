@@ -11,6 +11,7 @@
 
 - Being on a project is enough for BuilderBot for VS Code and the Windows companion to open it, as far as your roles' File access goes: no grant of your own on the project's list is needed any more, and the companion lists every project you are on, each synced to a folder or not. A project's switch for them is on by default and closes them when turned off. (a0f86af)
 - Android signing keys are now a project's own Signing view under Ship, out of its settings, and a key's downloaded backup can be imported there into the same project or another, its password and alias read from the backup
+- Every notebook view now opens the way the Containers page does: one row with its search, its toggles and its actions (the Add last, as the main button), its numbers as tiles under it (the Roadmap's to send, shelved and finished, Bugs' open by severity, Git's changes and branches, Tests' passing and failing), a status line under those that holds the Roadmap's Save and Revert while something is staged, and every row of filter chips in one band
 
 ### Upgrading
 
