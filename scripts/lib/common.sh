@@ -221,12 +221,18 @@ sdk_find() {
     return 1
 }
 
-# run_as_builder CMD...: drop privileges when we happen to be root.
+# run_as_builder CMD...: drop privileges when we happen to be root, to the
+# controller's account: the image's builder through gosu, or the account a
+# bare-metal install made through setpriv (BB_ACCOUNT and BB_DROP, set by
+# lib/boot.sh's caller, R90).
 run_as_builder() {
-    if [ "$(id -u)" -eq 0 ]; then
-        gosu builder "$@"
-    else
+    if [ "$(id -u)" -ne 0 ]; then
         "$@"
+    elif [ "${BB_DROP:-gosu}" = setpriv ]; then
+        setpriv --reuid="${BB_ACCOUNT:-builder}" --regid="${PGID:-$(id -g "${BB_ACCOUNT:-builder}")}" \
+            --init-groups "$@"
+    else
+        gosu "${BB_ACCOUNT:-builder}" "$@"
     fi
 }
 
@@ -246,7 +252,7 @@ bb_log_dir() {
         [ -r "${DASHBOARD_STATE:-/config}/paths.json" ] && moved="$(python3 -c \
             'import json,sys; print(json.load(open(sys.argv[1])).get("logs") or "")' \
             "${DASHBOARD_STATE:-/config}/paths.json" 2>/dev/null || true)"
-        printf '%s' "${moved:-/config/logs}"
+        printf '%s' "${moved:-${DASHBOARD_STATE:-/config}/logs}"
     fi
 }
 
@@ -260,7 +266,28 @@ bb_log_dir() {
 #
 # /config, because the file has to survive the update it exists to record.
 bb_image_log() {
-    printf '%s' "${BB_IMAGE_LOG:-/config/image-log.tsv}"
+    printf '%s' "${BB_IMAGE_LOG:-${DASHBOARD_STATE:-/config}/image-log.tsv}"
+}
+
+# bb_root_state: the state folder as a root helper reached through sudo
+# (deploy-key, mint-runner-token) may believe it. sudo hands it no
+# environment worth trusting, so a bare-metal install's is read from its env
+# file, and only when that file is root's and nobody else may write it (R90);
+# anywhere else it is the container's /config.
+BB_CONTROLLER_ENV="${BB_CONTROLLER_ENV:-/etc/builderbot-controller/controller.env}"
+bb_root_state() {
+    local f="$BB_CONTROLLER_ENV" v="" mode
+    if [ -f "$f" ] && [ "$(stat -c %u "$f" 2>/dev/null)" = 0 ]; then
+        mode="$(stat -c %a "$f" 2>/dev/null || echo 777)"
+        if [ $(( 8#$mode & 8#022 )) -eq 0 ]; then
+            v="$(sed -n 's/^DASHBOARD_STATE=//p' "$f" | tail -1)"
+            v="${v//\"/}"
+        fi
+    fi
+    case "$v" in
+        /*) printf '%s' "$v" ;;
+        *)  printf '/config' ;;
+    esac
 }
 
 # git_branch DIR: current branch name, or '?'. Handles a freshly-init'd repo

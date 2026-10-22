@@ -18,7 +18,8 @@ lab/compose.yml                  the lab's Gitea and Forgejo for bb tests lab, a
 lab/.env.example                 the lab's one setting: the address other machines reach it at
 unraid/builderbot.xml            Unraid Docker template (one-click updates)
 scripts/
-  entrypoint.sh                  secrets shield, uid remap, hooks, ssh-agent
+  entrypoint.sh                  the container's boot: uid remap, the timezone, then lib/boot.sh's steps and gosu
+  host-boot.sh                   a bare-metal install's boot under systemd: lib/boot.sh's steps, then setpriv to its account (R90)
   supervisor.sh                  keeps the box alive; the graceful shutdown
   mint-runner-token              root-only token helper (one of the two sudo commands)
   deploy-key                     root-only deploy key helper: make, keep, forget, load (the other)
@@ -26,6 +27,7 @@ scripts/
   bb                             in-container helper CLI
   as-builder                     privilege-dropping wrapper for docker exec
   lib/common.sh                  shared shell helpers
+  lib/boot.sh                    the boot's steps both installs take: secrets shield, ssh-agent, home seed, hooks, state gate (R90)
   lib/controller-packages.sh     the controller's package list read one way, for the Dockerfile and a bare-metal install (R90)
   lib/relay-verbs                the bb verbs a node relays to the controller (bb and bbrelay.py both read it)
   lib/sdk.sh                     the toolchain manager: `bb toolchains`, sourced by bb

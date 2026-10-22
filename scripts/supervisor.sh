@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 #
-# PID 1 payload (running as `builder`).
+# PID 1 payload (running as `builder`), or a bare-metal install's main
+# process under systemd (running as its account, R90): the same loop either
+# way, since a `systemctl stop` is the SIGTERM a `docker stop` is.
 #
 # Keeps the container alive and owns the graceful shutdown below. Neither CI
 # nor a Claude session runs here any more: every runner is on a node
@@ -106,14 +108,24 @@ trap shutdown TERM INT
 # Unraid names the container BuilderBot while the hostname is builderbot, and
 # docker matches names case-sensitively. Unraid exports HOST_CONTAINERNAME;
 # fall back to the hostname elsewhere.
-CONTAINER_NAME="${HOST_CONTAINERNAME:-${HOSTNAME}}"
+CONTAINER_NAME="${HOST_CONTAINERNAME:-${HOSTNAME:-}}"
+# ...and on a controller installed bare metal (R90) there is no container to
+# exec into: the installer's bb on the PATH runs as the controller's account,
+# with its env file, for anybody who may sudo.
+if [ "${BUILDERBOT_INSTALL:-}" = bare-metal ]; then
+    SHELL_HOW="sudo bb shell"
+    SHELL_WHO="the controller's account (${USER:-builderbot})"
+else
+    SHELL_HOW="docker exec -it ${CONTAINER_NAME} bb shell"
+    SHELL_WHO="the builder user"
+fi
 
 cat <<EOF
 [builderbot] ready.
 
   A Claude session runs on its project's node, opened from the dashboard.
-  A shell as the builder user:
-      docker exec -it ${CONTAINER_NAME} bb shell
+  A shell as ${SHELL_WHO}:
+      ${SHELL_HOW}
 
   Projects are mounted under ${WORKSPACE}:
 $(find "$WORKSPACE" -maxdepth 1 -mindepth 1 -type d -printf '      %p\n' 2>/dev/null || true)

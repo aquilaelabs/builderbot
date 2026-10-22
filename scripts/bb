@@ -1561,7 +1561,7 @@ cmd_emu() {
 # on a controller because it survives an image update, then the home.
 ci_log_dir() {
     if [ -n "${BB_CI_LOG_DIR:-}" ]; then printf '%s' "$BB_CI_LOG_DIR"
-    elif [ -w /config ]; then printf '/config/ci-logs'
+    elif [ -w "${DASHBOARD_STATE:-/config}" ]; then printf '%s/ci-logs' "${DASHBOARD_STATE:-/config}"
     else printf '%s/ci-logs' "$HOME"; fi
 }
 

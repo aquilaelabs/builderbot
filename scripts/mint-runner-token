@@ -28,7 +28,7 @@ set -euo pipefail
 # Under /config rather than /run so a token survives the container being
 # recreated; root-only, so the dashboard and every session reach it only
 # through this script.
-STORE=/config/runner-tokens
+STORE="$(bb_root_state)/runner-tokens"   # /config in the container (R90)
 
 [ "$(id -u)" -eq 0 ] || die "must run as root (via sudo)"
 
