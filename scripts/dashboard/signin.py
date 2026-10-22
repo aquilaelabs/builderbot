@@ -46,10 +46,13 @@ PROMPT = "Paste code"
 # (`copilot login --device-code`, 1.0.102) show one.
 FLOWS = {
     "claude": {"url": AUTH_URL, "code": None, "prompt": PROMPT},
-    "codex": {"url": re.compile(r"https://auth\.openai\.com/\S+"),
+    # The link ends at a space or at the color code Codex prints around it
+    # (\x1b[...m): taken with \S+ the reset came along, the link opened a
+    # page that said the session had ended.
+    "codex": {"url": re.compile(r"https://auth\.openai\.com/[^\s\x1b]+"),
               "code": re.compile(r"one-time code[^\n]*\n\s*(?:\x1b\[[0-9;]*m)*([A-Z0-9]{4,}(?:-[A-Z0-9]{4,})+)"),
               "prompt": None},
-    "copilot": {"url": re.compile(r"https://github\.com/login/device\S*"),
+    "copilot": {"url": re.compile(r"https://github\.com/login/device[^\s\x1b]*"),
                 "code": re.compile(r"enter code\s+([A-Z0-9]{4}-[A-Z0-9]{4})"),
                 "prompt": None},
 }
