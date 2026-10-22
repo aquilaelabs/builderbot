@@ -2694,8 +2694,8 @@ def _seen_now(project, who):
         dz = ""
     return {"bug": str(r.get(f"bug:{project}") or ""), "rules": str(r.get(f"rules:{project}") or ""),
             "mem": str(edits.get(project) or 0),
-            "prefs": hashlib.sha1(pf.encode(), usedforsecurity=False).hexdigest()[:12] if pf else "",
-            "design": hashlib.sha1(dz.encode(), usedforsecurity=False).hexdigest()[:12] if dz not in ("", "{}") else ""}
+            "prefs": hashlib.sha256(pf.encode()).hexdigest()[:12] if pf else "",
+            "design": hashlib.sha256(dz.encode()).hexdigest()[:12] if dz not in ("", "{}") else ""}
 
 
 def _memory_written(req, held):
@@ -3129,6 +3129,14 @@ def _keytool():
 
 
 signing.configure(state=STATE, project_name=PROJECT_NAME, keytool=_keytool)
+# Keys kept open before the install had a signing secret, sealed now that it
+# has one (R111 step 2); a key that cannot be opened is left as it is and
+# said on its project's Signing view.
+try:
+    if (_sealed := signing.seal_all()):
+        print(f"dashboard: sealed {_sealed} signing key(s) under the install's signing secret", flush=True)
+except OSError as e:
+    print(f"dashboard: signing keys left as they were, not sealed: {e}", flush=True)
 
 
 def _apksigner():
@@ -3527,7 +3535,8 @@ import transcripts                                               # noqa: E402
 
 transcripts.configure(workspace=WORKSPACE,
                       root_for=lambda uid: (Path(home_for(uid)) / ".claude" / "projects")
-                      if home_for(uid) else CLAUDE_PROJECTS)
+                      if home_for(uid) else CLAUDE_PROJECTS,
+                      state=STATE, write_json=write_json)
 profiletab.configure(users=users,
                      claude_email=lambda uid: ", ".join(sorted(
                          {v["email"] for v in claudegrant.nodes_of(home_for(uid)).values()}, key=str.lower)),
@@ -4667,6 +4676,7 @@ POST_ROUTES = (
     ("prefix", "/api/idle", "_idle"),
     ("prefix", "/api/paths", "_paths"),
     ("prefix", "/api/snapshots", "_snapshots"),
+    ("exact", "/api/transcripts", "_transcripts"),
     ("prefix", "/api/settings", "_settings_post"),
     ("prefix", "/api/rules", "_rules"),
     ("prefix", "/api/global-rules", "_global_rules"),
@@ -8402,7 +8412,36 @@ class Handler(BaseHTTPRequestHandler):
                 hit = rulehook.refused(guards, cmd, background)
                 return hit[0]["name"] if hit else ""
             return self._json({"project": name, "audit": transcripts.audit(uid, name, judge, days)})
-        return self._json({"project": name, "rows": transcripts.mine(uid, [name])})
+        # ...and the ones other accounts made visible to every session on
+        # the project, each with whose it is (the Sessions view's Make visible).
+        names = {u["uid"]: u["name"] for u in users.all_users()}
+        return self._json({"project": name, "rows": transcripts.mine(uid, [name]),
+                           "visible": transcripts.visible(uid, name, lambda u: names.get(u, u))})
+
+    def _transcripts(self, req):
+        """POST /api/transcripts {project, id, action}: one of the signed-in
+        person's own conversations deleted, or made visible to every session
+        on the project (share) or private again (unshare). A person's, from
+        the notebook's Sessions view: never a session's, which reads them."""
+        me = self._who()
+        uid = users.uid_of(me) if me else ""
+        if not me or not uid:
+            return self._json({"error": "not an account"}, 403)
+        if me.get("session"):
+            return self._json({"error": "a conversation is deleted or shared by its person, from the "
+                                        "project's Sessions view, not by a session"}, 403)
+        name, sid, act = field(req, "project"), field(req, "id"), field(req, "action")
+        if self._not_project(name):
+            return
+        if act == "delete":
+            r, st = transcripts.delete(uid, name, sid)
+        elif act in ("share", "unshare"):
+            r, st = transcripts.set_shared(uid, name, sid, act == "share")
+        else:
+            return self._json({"error": "delete, share or unshare"}, 400)
+        if st == 200:
+            db.audit(me["name"], f"conversation-{act}", name, {"id": sid})
+        return self._json(r, st)
 
     def _get_transcript(self):
         """GET /api/transcript?project=NAME&id=SESSION: one of the signed-in
@@ -8423,6 +8462,9 @@ class Handler(BaseHTTPRequestHandler):
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
+        # Another account's, made visible to every session on the project,
+        # is read as its owner's; anything else of theirs is not found.
+        uid = transcripts.owner_of(uid, name, q.get("id", [""])[0]) or uid
         if q.get("as", [""])[0] == "raw":
             # The file as Claude Code wrote it, for bb transcripts fetch: a
             # synced node resuming a conversation it does not have (B613).

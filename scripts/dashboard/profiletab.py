@@ -34,6 +34,8 @@ def view(me):
         claude = claude_email(uid)
     with timed("profile:plugins"):
         plugs = plugins_of(uid, node_names())
+    # Still in the read the phone app's contract names (test/device-api.json),
+    # though the page lists them in each notebook's Sessions view now.
     with timed("profile:logs"):
         logs = logs_of(me)
     acct = users.get(me["name"]) or {}
@@ -48,8 +50,9 @@ def view(me):
             # The Claude plugins this account installed, per
             # node, as the nodes last said (plugins.py).
             "plugins": plugs,
-            # The account's own conversations with Claude, newest first,
-            # each a download of the whole exchange (transcripts.py).
+            # The account's own conversations with Claude, newest first
+            # (transcripts.py): the phone app's; the page reads them per
+            # project.
             "logs": logs,
             # The apps signed in as this account on its own machines
             # (R272), newest call first: what Disconnect acts on.

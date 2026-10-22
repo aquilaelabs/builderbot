@@ -381,7 +381,7 @@ version is never removed by itself, so name every build with `bb version
 --file`.
 
 A branch works toward a release, its line: a branch named for one
-(claude/0.7.0) by its name, any other by `bb version line X.Y.Z`; builds
+(claude/X.Y.Z) by its name, any other by `bb version line X.Y.Z`; builds
 there head for it, and `bb roadmap --target X.Y.Z` lists what is meant for
 it. A line ending above 0 is a patch: only the patch moves, and the
 project's rules named patch say what it may not change, which `bb tests

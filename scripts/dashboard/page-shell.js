@@ -23,21 +23,25 @@ const RAIL_ICONS = {
   people: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.2" cy="5.6" r="2.3"/><path d="M2.4 13c.3-2.6 1.9-4 3.8-4s3.5 1.4 3.8 4"/><circle cx="11.2" cy="6.2" r="1.8"/><path d="M10.4 9.6c1.9 0 3 1.3 3.2 3.4"/></svg>`,
   settings: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.6 1.9h2.8l.35 1.72 1.2.7 1.66-.57 1.4 2.42-1.3 1.16v1.4l1.3 1.16-1.4 2.42-1.66-.57-1.2.7-.35 1.72H6.6l-.35-1.72-1.2-.7-1.66.57-1.4-2.42 1.3-1.16v-1.4L1.99 6.17l1.4-2.42 1.66.57 1.2-.7z"/><circle cx="8" cy="8" r="2.1"/></svg>`,
   more: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg>`,
+  // A server: two units in a rack, each with its light.
+  controller: `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.8" width="11" height="4.4" rx="1"/><rect x="2.5" y="8.8" width="11" height="4.4" rx="1"/><circle cx="5" cy="5" r=".6"/><circle cx="5" cy="11" r=".6"/><path d="M8 5h3.5M8 11h3.5"/></svg>`,
   help: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M6.3 6.4a1.75 1.75 0 1 1 2.5 1.6c-.55.27-.8.66-.8 1.2v.3"/><path d="M8 11.3v.1"/></svg>`,
 };
 
-// The ten groups, in the rail's order (the design's rail rule); Help, the
+// The eleven groups, in the rail's order (the design's rail rule); Help, the
 // docs, last (R258). A group's
 // tools are the tab kinds it holds, the first the one its button opens; a
 // group with several draws them as the page's sub-nav.
 const RAIL = [
-  // Controller settings beside Home rather than under Machines (the
-  // operator, 22 Oct): how this BuilderBot behaves is about the whole
-  // install, which is what Home is.
-  {key: "home", label: "Home", icon: "home", tools: [["home", "Home"], ["settings", "Controller"]]},
+  {key: "home", label: "Home", icon: "home", tools: [["home", "Home"]]},
   {key: "projects", label: "Projects", icon: "projects", tools: [["projects", "Projects"], ["findings", "Analysis"]]},
   {key: "build", label: "Build", icon: "toolchains", tools: [["toolchains", "Toolchains"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"], ["apps", "Apps"]]},
   {key: "containers", label: "Containers", icon: "docker", tools: [["docker", "Containers"], ["vms", "VMs"], ["nginx", "nginx"]]},
+  // The controller, a group of its own (the operator, 22 Oct): how this
+  // BuilderBot behaves, with room for the pages a bare-metal install and
+  // the USB edition add beside Settings (R90, R56). After Containers, so a
+  // phone's bar keeps its four.
+  {key: "controller", label: "Controller", icon: "controller", tools: [["settings", "Settings"]]},
   {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"]]},
   {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
   {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"]]},
@@ -216,8 +220,9 @@ function openRoute(hash){
   }
   let g = RAIL.find(x => x.key === key);
   if (!g) return false;
-  // A page that moved group keeps its old address: #/machines/settings, a
-  // bookmark from before Controller settings went to Home, opens it there.
+  // A page that moved group keeps its old address: #/machines/settings and
+  // #/home/settings, bookmarks from before Controller settings had a group
+  // of its own, open it there.
   if (a && !(g.tools || []).some(([k]) => k === a) && groupOf(a)) g = groupOf(a);
   const multi = (g.tools || []).length > 1;
   // A group of one tool names its node second (#/group/NODE), as routeOf

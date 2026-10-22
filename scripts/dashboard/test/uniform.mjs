@@ -1090,7 +1090,7 @@ for (const kind of kinds){
                })(),
                // Words on the row: any text outside its controls (Settings,
                // a page of settings, keeps its one line of what it is).
-               words: !head || w === 'settings' ? '' : [...head.childNodes].filter(n =>
+               words: !head || w === 'settings' || w === 'permissions' ? '' : [...head.childNodes].filter(n =>
                  (n.nodeType === 3 && n.textContent.trim()) || (n.nodeType === 1 && n.checkVisibility()
                    && !n.matches('button, input, select, .actbar, .sp, .gbpicker, #dkSeg'))).map(n => n.textContent.trim()).join(' ').slice(0, 60),
                glance: (() => {
@@ -2104,12 +2104,12 @@ const DIALOGS = {
   // real shape rather than an error band.
   dockerlog: async () => { openDocker(); await new Promise(r => setTimeout(r, 1200));
                            dmLogs('someone-elses'); },
-  // A conversation read on the Profile page (R83): the account's newest if
-  // it has one, else the same box with nothing said in it, never a 404 the
-  // console would count.
+  // A conversation read from a notebook's Sessions view (R83): the
+  // account's newest on alpha if it has one, else the same box with nothing
+  // said in it, never a 404 the console would count.
   conversation: async () => {
-    const c = ((await (await fetch('/api/profile')).json()).logs || [])[0];
-    if (c) return openConversation(c.project, c.id);
+    const c = ((await (await fetch('/api/transcripts?project=alpha')).json()).rows || [])[0];
+    if (c) return openConversation('alpha', c.id);
     $('cvBody').innerHTML = '<div class="empty">Nothing said in it yet.</div>';
     $('cvModal').hidden = false;
   },

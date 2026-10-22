@@ -253,20 +253,27 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
   await api('/api/roles', { action: 'remove', name: 'tc-viewer' });
 }
 
-// Controller settings is Home's second page, not Machines' (the operator,
-// 22 Oct), and an address from before the move still finds it.
+// Controller is a rail group of its own (the operator, 22 Oct), after
+// Containers so a phone's bar keeps its four, and an address from before
+// either move still finds it.
 {
   const before = await page.evaluate(() => location.hash);
   await page.evaluate(() => railGo('home'));
   await page.waitForFunction(() => tabOf(panes[0])?.kind === 'home', null, { timeout: 10000 });
-  const homeNav = await page.evaluate(() => [...document.querySelectorAll('#pane0 > .bar .subnav button')].map(b => b.textContent.trim()).join());
   const homeAt = await page.evaluate(() => location.hash);
-  await page.evaluate(() => openRoute('#/machines/settings'));
-  await page.waitForFunction(() => tabOf(panes[0])?.kind === 'settings', null, { timeout: 10000 });
-  const moved = await page.evaluate(() => ({ at: location.hash, on: document.querySelector('#rail .ritem.on')?.dataset.rail,
-    machines: RAIL.find(g => g.key === 'machines').tools.map(([k]) => k).join() }));
-  ok(homeNav === 'Home,Controller' && homeAt === '#/home' && moved.at === '#/home/settings' && moved.on === 'home' && moved.machines === 'nodes,storage',
-     `Home's group holds Home and Controller settings, Home still at #/home, and #/machines/settings lands on it under Home (${JSON.stringify({ homeNav, homeAt, ...moved })})`);
+  const rail = await page.evaluate(() => RAIL.map(g => g.key).join());
+  const at = {};
+  for (const old of ['#/machines/settings', '#/home/settings']){
+    await page.evaluate(h => openRoute(h), old);
+    await page.waitForFunction(() => tabOf(panes[0])?.kind === 'settings', null, { timeout: 10000 });
+    at[old] = await page.evaluate(() => `${location.hash} ${document.querySelector('#rail .ritem.on')?.dataset.rail}`);
+    await page.evaluate(() => railGo('home'));
+    await page.waitForFunction(() => tabOf(panes[0])?.kind === 'home', null, { timeout: 10000 });
+  }
+  const phone = await page.evaluate(() => RAIL_PHONE.join());
+  ok(homeAt === '#/home' && rail.startsWith('home,projects,build,containers,controller,machines') && phone === 'home,projects,build,containers'
+     && Object.values(at).every(v => v === '#/controller controller'),
+     `Controller is its own group after Containers, a phone's four unchanged, and both old addresses land on it (${JSON.stringify({ homeAt, rail, phone, at })})`);
   if (before) await page.evaluate(h => openRoute(h), before);
 }
 

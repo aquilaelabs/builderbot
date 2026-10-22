@@ -484,10 +484,10 @@ ok(elsewhere.git_name === 'T. Person',
     ok(!blank.length && /Linked to GitHub/.test(repo.say) && /GitHub settings/.test(repo.go) && !repo.bar,
        `...every section listed opens on something, Repository saying what its remote is with the door to it and no Save of its own (${blank.join(', ') || 'none blank'}; ${repo.say} ${repo.go})`);
   }
-  await rnSect(page, 'claude');
+  await rnSect(page, 'yours');
   const one = await page.evaluate(() => [...document.querySelectorAll('.nbsettings details.rngroup')]
     .filter(d => d.checkVisibility()).map(d => d.dataset.sect));
-  ok(one.join() === 'rn:claude', `...a row pressed shows its section alone (${one.join()})`);
+  ok(one.join() === 'rn:yours', `...a row pressed shows its section alone (${one.join()})`);
   ok(!(await page.$eval('.nbsettings .sectjump', e => e.checkVisibility()).catch(() => false)),
      '...with no jump bar over it: the list is how a section is found');
   // People stays when the view is asked for again (B: the form was put back
@@ -496,7 +496,7 @@ ok(elsewhere.git_name === 'T. Person',
   await page.waitForTimeout(300);
   const still = await page.evaluate(() => ({ people: !document.querySelector('details[data-sect="rn:people"]').hidden,
     pick: document.querySelector('.nbsettings .snav .rrow.on')?.dataset.spick }));
-  ok(still.people && still.pick === 'claude', `...and asked for again it keeps People and the section picked (${JSON.stringify(still)})`);
+  ok(still.people && still.pick === 'yours', `...and asked for again it keeps People and the section picked (${JSON.stringify(still)})`);
   // The box borrowed from the dialog brings no dialog shadow into the view
   // (B702): the scroll-hint class it wore in the dialog is dropped on the way
   // in, and an inline box gets no shadow from that class however it arrives.
@@ -515,24 +515,25 @@ ok(elsewhere.git_name === 'T. Person',
   // stays typed (the operator, 10 Oct: one Save for eleven sections).
   await rnSect(page, 'build');
   await page.fill('#rnBuildCmd', 'make one');
-  await rnSect(page, 'claude');
-  await page.selectOption('#rnGateRoadmap', 'deny');
+  await rnSect(page, 'yours');
+  const nameWas = await page.evaluate(() => $('rnGitName').value);
+  await page.fill('#rnGitName', 'Typed Not Saved');
   const marks = await page.evaluate(() => [...document.querySelectorAll('.nbsettings .snav [data-spick]')]
     .filter(b => !b.querySelector('.sunsaved').hidden).map(b => b.dataset.spick).sort().join());
-  ok(marks === 'build,claude', `...each section holding a change says unsaved on its row (${marks})`);
+  ok(marks === 'build,yours', `...each section holding a change says unsaved on its row (${marks})`);
   const err = await sectSave(page, 'build');
   await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.build === 'make one', { timeout: 20000 });
-  const after = await page.evaluate(() => ({ gate: (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.gate?.roadmap || 'auto',
-    typed: $('rnGateRoadmap').value, claude: !document.querySelector('.rnbar[data-rnbar="claude"] [data-rnsave]').disabled,
+  const after = await page.evaluate(() => ({
+    typed: $('rnGitName').value, yours: !document.querySelector('.rnbar[data-rnbar="yours"] [data-rnsave]').disabled,
     build: document.querySelector('.rnbar[data-rnbar="build"] [data-rnsave]').disabled }));
-  ok(!err && after.gate === 'auto' && after.typed === 'deny' && after.claude && after.build,
-     `...Build and test's Save stores the build command and nothing of Claude may, whose change stays typed and unsaved (${JSON.stringify(after)})`);
-  await rnSect(page, 'claude');
-  await page.click('.rnbar[data-rnbar="claude"] [data-rnrevert]');
-  ok(await page.evaluate(() => $('rnGateRoadmap').value === 'auto'
-       && document.querySelector('.rnbar[data-rnbar="claude"] [data-rnrevert]').disabled
-       && $('rnBuildCmd').value === 'make one'),
-     '...and its Revert puts Claude may back alone');
+  ok(!err && after.typed === 'Typed Not Saved' && after.yours && after.build,
+     `...Build and test's Save stores the build command and nothing of Yours on this project, whose change stays typed and unsaved (${JSON.stringify(after)})`);
+  await rnSect(page, 'yours');
+  await page.click('.rnbar[data-rnbar="yours"] [data-rnrevert]');
+  ok(await page.evaluate(was => $('rnGitName').value === was
+       && document.querySelector('.rnbar[data-rnbar="yours"] [data-rnrevert]').disabled
+       && $('rnBuildCmd').value === 'make one', nameWas),
+     '...and its Revert puts Yours on this project back alone');
   // A section's Save is its own fields alone, and refuses one somebody else
   // saved since these settings were opened (the operator, 17 Oct: a save in
   // one section put back another section's change, and a session's change

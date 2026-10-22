@@ -1,5 +1,6 @@
 // The notebook's Git view: the repository read out, its branches, its
-// commits, the policy that says what a session may push, and Send to Claude.
+// commits, and Send to Claude; what a session may push is the Permissions
+// view's (nb-permissions.js).
 // One classic script beside index.html, the shape tab-*.js has (docs/nodes.md
 // §13): same page, same global scope, one file per notebook view (R60).
 //
@@ -12,7 +13,7 @@
 // under: the view and its placeholder (page-docs.js SKTPLS.git) both read
 // them, so neither falls behind the other (R218, the operator 18 Oct). CI
 // and a README come only with what the repository holds.
-const GIT_SECTS = [["changes", "Changes"], ["history", "History"], ["branches", "Branches"], ["policy", "Claude may"]];
+const GIT_SECTS = [["changes", "Changes"], ["history", "History"], ["branches", "Branches"]];
 const gitTitle = k => (GIT_SECTS.find(s => s[0] === k) || [k, k])[1];
 // The branches table's columns (R269 step 1), read by the view and by its
 // placeholder (page-docs.js SKTPLS.git), so the wait draws the same table.
@@ -67,8 +68,6 @@ function nbGitView({$, nb, project}){
   // change below the fold. A redraw from a poll leaves the page where it is.
   let gitReveal = "";
   let gitMsgDraft = "";                            // typed and not sent, across redraws
-  let gitPolDraft = {};                            // the policy picked and not applied
-  const GITPOL_DEFAULT = {push: "allow", main: "deny", scan: "hold"};   // prefs.GITPOL_DEFAULT
 
   // Send to Claude: the thing picked and what is asked of it, composed on
   // the controller and typed into the project's session the way a roadmap
@@ -405,30 +404,12 @@ function nbGitView({$, nb, project}){
         <button type="button" class="primary" data-gitask="conflicts"
           title="hand the merge to the project's Claude session to finish">Resolve with Claude</button>
       </div>` : "";
-    // What a session may do with the remote (roadmap R36): the answers,
-    // staged until Apply like every setting on the page. Enforced on the
-    // relay; a local commit or merge cannot be forbidden, and the bar says so.
-    // The third is whether a push with lines that look sensitive waits on
-    // the bell for a person (R219) or goes without the hold.
-    const pol = {...((state?.projects || []).find(p => p.name === project)?.prefs?.gitpol || {}), ...gitPolDraft};
-    const polDirty = Object.keys(gitPolDraft).length > 0;
-    const policy = locked ? "" : `<div class="row stack2 gpolicy"><div class="grow">
-        <div class="prefrow ctlrow">
-          <label class="pick">Push its branches <select data-gitpol="push">${optionList(["allow", "deny"], pol.push || "allow")}</select></label>
-          <label class="pick">Push to ${esc(git.main || "main")} <select data-gitpol="main">${optionList(["allow", "deny"], pol.main || "deny")}</select></label>
-          <label class="pick">Hold a push that looks sensitive <select data-gitpol="scan">${optionList(["hold", "off"], pol.scan || "hold")}</select></label>
-        </div>
-        <div class="actbar">
-          <span class="state">its own branches, one at a time ${helpIcon("Applies to pushes only. Tags, deletions and remote-only branches stay yours; commits and merges here are always allowed.")}</span>
-          <button type="button" id="gitPolApply"${polDirty ? "" : " disabled"}>Apply</button>
-        </div></div></div>`;
     body.innerHTML = docSection("git", "changes", gitTitle("changes"), files.length ? String(files.length) : "none",
         conflictBar + (files.length ? treeNote : "") + commitBar + (files.length ? fileRows : `<div class="empty">nothing changed since the last commit</div>`))
       + docSection("git", "history", gitTitle("history"), commits.length ? `${commits.length}${commits.length >= 100 ? "+" : ""}` : "none",
         graph + `<div id="gitDetail"${gitPick ? "" : " hidden"}></div>`)
       + docSection("git", "branches", gitTitle("branches"), String(local.length), (branchRows || `<div class="empty">no branches</div>`))
-      + ciSection()
-      + (policy ? docSection("git", "policy", gitTitle("policy"), `${pol.push || "allow"} · ${pol.main || "deny"}${pol.scan === "off" ? " · unheld" : ""}`, policy) : "");
+      + ciSection();
     wireSections(body);
     wireMore(body);
     gitBranchShow(body);
@@ -451,25 +432,6 @@ function nbGitView({$, nb, project}){
         else { git.ci = j; drawGit(); }
       }catch(e){ notify("could not reach the controller: " + e, true); }
       finally{ if (cl.isConnected) unbusy(cl, "Look now"); }
-    };
-    body.querySelectorAll("[data-gitpol]").forEach(sel => sel.onchange = () => {
-      const saved = (state?.projects || []).find(p => p.name === project)?.prefs?.gitpol || {};
-      if (sel.value === (saved[sel.dataset.gitpol] || GITPOL_DEFAULT[sel.dataset.gitpol])) delete gitPolDraft[sel.dataset.gitpol];
-      else gitPolDraft[sel.dataset.gitpol] = sel.value;
-      const b = $("gitPolApply"); if (b) b.disabled = !Object.keys(gitPolDraft).length;
-    });
-    const pa = $("gitPolApply");
-    if (pa) pa.onclick = async () => {
-      busy(pa, "Applying");
-      try{
-        const r = await postJSON("/api/prefs", {project, gitpol: {...pol, ...gitPolDraft}});
-        const j = await r.json();
-        if (j.error) return notify(j.error, true);
-        gitPolDraft = {};
-        notify("saved");
-        refresh(); drawGit();
-      }catch(e){ notify("policy: " + e, true); }
-      finally{ if (pa.isConnected) unbusy(pa, "Apply"); }
     };
     body.querySelectorAll("[data-gitask]").forEach(b => b.onclick = () => gitAsk(b.dataset.gitask, {}, b));
     const msg = $("gitMsg");

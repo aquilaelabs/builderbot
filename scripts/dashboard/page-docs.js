@@ -177,7 +177,7 @@ function bootPage(hash){
   if (key === "projects" && parts[1] && !g.tools.some(([k]) => k === parts[1])){
     // A project's notebook: its header, its view strip under it the
     // pane's width with the view's group open, then rows.
-    const GROUPS = [["overview", "Overview", [["overview", "Overview"], ["settings", "Settings"]]],
+    const GROUPS = [["overview", "Overview", [["overview", "Overview"], ["sessions", "Sessions"], ["permissions", "Permissions"], ["settings", "Settings"]]],
                     ["plan", "Plan", [["roadmap", "Roadmap"], ["bugs", "Bugs"]]],
                     ["code", "Code", [["git", "Git"], ["tests", "Tests"], ["analysis", "Analysis"]]],
                     ["ship", "Ship", [["artifacts", "Artifacts"], ["docker", "Docker"], ["vms", "VMs"], ["signing", "Signing"]]],
@@ -271,7 +271,8 @@ const SKTPLS = {
   // As the view lands, from the view's own table (nb-git.js GIT_SECTS): its
   // sections' chips, then each steady section; CI and a README come with
   // what the repository holds, so the placeholder promises neither.
-  git: () => skTpl(`<nav class="sectjump">${GIT_SECTS.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav>`
+  // ...its jump bar only from four sections, as sectJump draws it.
+  git: () => skTpl((GIT_SECTS.length >= 4 ? `<nav class="sectjump">${GIT_SECTS.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav>` : "")
     + GIT_SECTS.map(([k, t]) => docSection("git", k, t, "", k === "branches" ? skTable(gitBranchCols("main"), 3, "gbranches", "row gbranch") : skRows(2))).join("")),
   design: () => skTpl(docSection("design", "pages", "Pages", "", skRows(2))
     + docSection("design", "themes", "Themes", "", skRows(2))),
@@ -989,7 +990,8 @@ function glanceWaiting(el){
 function viewGlance(el, tiles = [], said = "", actions = ""){
   if (!el) return false;
   const wrote = paint(el, (Array.isArray(tiles) ? statTiles(tiles) : tiles || "") + headLine(said, actions, "nbsaid"));
-  el.dataset.drawn = "1";
+  // Marked once: a poll that brings nothing new writes nothing (uniform).
+  if (!el.dataset.drawn) el.dataset.drawn = "1";
   glanceSeen[el.id] = {tiles: el.querySelectorAll(".tile").length, said: !!el.querySelector(".nbsaid")};
   return wrote;
 }

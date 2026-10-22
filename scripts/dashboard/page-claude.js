@@ -186,6 +186,35 @@ function openClaude(name, ev){
   syncResumeMenu();
 }
 
+// One conversation picked to go on with (the notebook's Sessions view, the
+// operator, 22 Oct: the project's Claude button resumes only the last): the
+// chooser opens on it at the model and effort step. With a session of yours
+// running here it is a restart into that conversation, which ends the one
+// running first and asks before it does.
+function resumeConversation(name, id, when, ev){
+  const p = (state?.projects || []).find(x => x.name === name);
+  if (!p) return;
+  const ns = claudeNodes(p), several = ns.length > 1;
+  const live = ns.find(n => claudeLiveOn(name, {id: n.id}));
+  resumeFor = name;
+  // The press goes no further: the page's click-away closes the chooser,
+  // as the Claude button's own press keeps it open (openClaude).
+  ev?.stopPropagation();
+  // Under the project's own Start Claude where it is on show (the notebook's
+  // header), not the box the row's button sits in, which holds no Start.
+  resumeHost = null;
+  resumePick = {project: name, sessionId: id, when, node: live && several ? live.id : "",
+                model: p.yours?.model || "", effort: p.yours?.effort || "",
+                ...(live ? {restart: {id: live.id || "", name: live.name || "", several}} : {})};
+  drawProjects(state.projects);
+  syncResumeMenu();
+  // Nowhere to start it (placeResumeMenu found no Start Claude to open under):
+  // said, rather than a press that does nothing.
+  if (resumeFor !== name)
+    notify(claudeInstall(p) ? `Claude Code is not installed on ${p.node_name || "this project's node"}: install it from its Toolchains, then resume`
+      : "a session cannot start on this project now: its Start Claude says why", true);
+}
+
 // A button that sends something to a project's Claude session asks first
 // (the operator, 6 Oct): what it sends arrives as a prompt and Claude starts
 // on it at once, so a stray tap is work begun. The bug and roadmap sends ask
@@ -315,7 +344,8 @@ function resumePicker(p, m, card, anchor, ns, several){
   // side by side, and Back and the press at its foot (the design 2.0 pass).
   m.innerHTML = `<div class="rmhead"><b>${r.restart ? "Restart your session"
       : r.sessionId ? "Resume the conversation" : "A new conversation"}</b><span class="rmfacts">${
-      r.restart ? "resuming its conversation" : r.sessionId ? `from ${esc(ago(p.last_claude?.when))}` : "a fresh start"}${
+      r.restart ? (r.when ? `ending the one running, resuming the one from ${esc(ago(r.when))}` : "resuming its conversation")
+        : r.sessionId ? `from ${esc(ago(r.when ?? p.last_claude?.when))}` : "a fresh start"}${
       several || n.name ? ` on ${esc(n.name || "")}` : ""}</span></div>
     <div class="rmfields">
       <div class="setrow col ctlrow"><label class="lbl" for="rmModel">Model</label><select id="rmModel" aria-label="model this session starts on">${opts(MODELS, r.model)}</select></div>
@@ -332,7 +362,8 @@ function resumePicker(p, m, card, anchor, ns, several){
   m.querySelector("[data-start]").onclick = async e => {
     const label = r.restart ? "Restart" : "Start";
     if (r.restart && !confirm(`Restart your Claude session on ${projLabel(p.name)}${r.restart.name ? ` on ${r.restart.name}` : ""}?\n\n`
-        + "It ends now and resumes the same conversation, starting fresh so it sees what changed since it started.")) return;
+        + (r.when ? "It ends now, and the conversation you picked is resumed in its place."
+                  : "It ends now and resumes the same conversation, starting fresh so it sees what changed since it started."))) return;
     busy(e.target, r.restart ? "Restarting" : "Starting");
     if (r.model !== (p.yours?.model || "") || r.effort !== (p.yours?.effort || "")){
       const j = await (await postJSON("/api/prefs", {project: p.name, model: r.model, effort: r.effort})).json()
