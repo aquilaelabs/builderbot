@@ -132,7 +132,7 @@ class Signing(unittest.TestCase):
         self.assertEqual(got["alias"], "watch")
         self.assertGreater(got["backed_up"], 0)
         self.assertNotIn("store_pass", repr(r))
-        # ...its own backup is a zip again, its password travelling with it.
+        # ...its own backup is a zip again, its password traveling with it.
         (name2, _), _ = signing.backup("other", "sideload", "watch")
         self.assertTrue(name2.endswith(".zip"))
         # Again is a no-op; a different key over it is refused.
