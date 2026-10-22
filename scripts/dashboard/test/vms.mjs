@@ -92,7 +92,7 @@ ok(/running/.test(row.text) && /ok/.test(row.pill) && /ssh builder@10\.232\.0\.1
 // The notebook's VMs view (R96): the project's own VMs, beside Docker in
 // its Ship group, drawn from the page's rows, with New VM in its head.
 await page.evaluate(() => openNotebook('alpha', 'vms'));
-await page.waitForFunction(() => /1 running of 1/.test(document.querySelector('.nbview[data-view="vms"] #nvHint')?.textContent || ''), null, { timeout: 15000 });
+await page.waitForFunction(() => /1 running of 1/.test((document.querySelector('.nbview[data-view="vms"] #nvHint')?.textContent || '').replace(/\s+/g, ' ')), null, { timeout: 15000 });
 const nv = await page.evaluate(() => {
   const v = document.querySelector('.nbview[data-view="vms"]');
   return { ship: [...document.querySelectorAll('.nbsub [data-in="ship"]')].map(b => b.dataset.v).join(),

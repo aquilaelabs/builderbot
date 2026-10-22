@@ -962,6 +962,17 @@ function statTiles(tiles){
 // What a placeholder passes where a value will go (statTiles, a page's own
 // builders): drawn as a shimmer in the real markup.
 const GHOST = Object.freeze({ghost: true});
+// A notebook view's glance (R109, the a-notebook/views rule): the band under
+// its control row, in the Containers page's order: the numbers the view is
+// about as tiles, then its status line, words alone (`said`, markup) with the
+// buttons those words are about at its right. Painted only when it changed,
+// so a poll's redraw leaves it still; an empty view passes no tiles, its
+// empty state being the hint where its list would be.
+// `tiles` may be a page's own drawing of them (the Docker view's, dmTiles).
+function viewGlance(el, tiles = [], said = "", actions = ""){
+  if (!el) return false;
+  return paint(el, (Array.isArray(tiles) ? statTiles(tiles) : tiles || "") + headLine(said, actions, "nbsaid"));
+}
 
 // What a card's settings are, read (the operator's concept, 17 Oct): one
 // wrapping line of pills, each its label in the quiet voice and its value,

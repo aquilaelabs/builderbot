@@ -292,11 +292,7 @@ function nbRoadmapView({$, nb}){
     const left = rows.reduce((n, r) =>
       n + (r.shelved || nextStep(r) === null ? 0 : 1), 0);
     const parked = rows.filter(r => r.shelved).length;
-    const held = nb.nbUnsaved();
-    // Count first, in fragments (R254 step 1, the a-notebook/views rule);
-    // what the list is for is its empty state (R119 step 4). Whether a step
-    // can be sent is the last fragment: unsaved changes or no session hold
-    // the arrows, a running session lights them.
+    // What the list is for is its empty state (R119 step 4).
     $("roadmapEmpty").hidden = !!rows.length;
     // The finished count rides a read; a redraw from the page's own state
     // (the search, a chip) keeps the last one.
@@ -304,24 +300,36 @@ function nbRoadmapView({$, nb}){
     if (j.releases !== undefined) nb.roadmapReleases = j.releases;
     if (j.changelog !== undefined) nb.roadmapChangelog = j.changelog;
     const finishedN = nb.roadmapFinishedN || 0;
-    const frags = [`${left} to send`, parked ? `${parked} shelved` : "", finishedN ? `${finishedN} finished` : "",
-                   held ? `${held} not saved` : live ? `${j.session} running` : "no session running"].filter(Boolean);
-    setText($("roadmapHint"), !rows.length && !finishedN ? "nothing yet" : frags.join(" · "));
+    // The glance (R109, the Containers page's top): what is left to send,
+    // shelved and finished as tiles, none while the list is empty, whose
+    // empty state is the hint where it would be...
+    viewGlance($("roadmapHint"), !rows.length && !finishedN ? [] : [
+      {label: "to send", value: left},
+      {label: "shelved", value: parked, omit: !parked},
+      {label: "finished", value: finishedN, omit: !finishedN}]);
+    // ...and its status line: whether a step can be sent, after what is
+    // staged (the bar's own words, syncSave's). No session holds the arrows,
+    // a running one lights them.
+    setText($("roadmapSess"), live ? `${j.session} running` : "no session running");
     $("roadmapField").hidden = !rows.length && !finishedN;
-    // The band that narrows it: All, Open and Shelved, and a search.
+    // The band that narrows it: All, Open and Shelved, and the search on
+    // the control row.
     nb.roadmapChip = ["", "open", "shelved"].includes(nb.roadmapChip) ? nb.roadmapChip : "";
     const chips = chipButtons([{key: "open", label: "Open", count: rows.length - parked},
                                {key: "shelved", label: "Shelved", count: parked}], nb.roadmapChip, "data-rmchip");
     if (paint($("roadmapChips"), chips, true))
       $("roadmapChips").querySelectorAll("[data-rmchip]").forEach(b => b.onclick = () => {
         fadeThrough(() => [$("roadmapList")], () => { nb.roadmapChip = b.dataset.rmchip; redrawRoadmap(); }); });
-    setHidden($("roadmapFilter"), rows.length + finishedN < 2);
+    setHidden($("roadmapFind"), rows.length + finishedN < 2 && !nb.roadmapFind);
     // ...and by the release an item is meant for (the operator, 21 Oct): a
     // chip per target, oldest first, and No target; the Finished section
     // narrows by it too, so what went into a release can be read back.
     const vers = versionChips(rows, rmVers, "No target");
     if (nb.roadmapVer && !vers.some(v => v.key === nb.roadmapVer)) nb.roadmapVer = "";
-    if (paint($("roadmapVers"), chipButtons(vers, nb.roadmapVer, "data-rmver"), true))
+    const verChips = chipButtons(vers, nb.roadmapVer, "data-rmver");
+    // One band for every group (R109), drawn while any group has two.
+    setHidden($("roadmapFilter"), !chips && !verChips);
+    if (paint($("roadmapVers"), verChips, true))
       $("roadmapVers").querySelectorAll("[data-rmver]").forEach(b => b.onclick = () => {
         fadeThrough(() => [$("roadmapList"), $("roadmapDoneList")], () => {
           nb.roadmapVer = b.dataset.rmver; redrawRoadmap(); if (nb.roadmapDone) nb.drawFinished(); }); });
@@ -442,11 +450,8 @@ function nbRoadmapView({$, nb}){
     $("roadmapOrder").hidden = !rows.length || !!ro;
     // No Add to roadmap for a role that only reads (B86; the operator, 21
     // Oct: what a role does not give is not drawn), and its box shut.
-    if (ro && !$("roadmapForm").hidden) $("roadmapForm").hidden = true;
-    if (ro) $("roadmapShow").hidden = true;
-    else if ($("roadmapForm").hidden) $("roadmapShow").hidden = false;
-    // An empty band (the box open, nothing to reorder) is not drawn.
-    $("roadmapAddBar").hidden = !!ro || (!$("roadmapForm").hidden && $("roadmapOrder").hidden);
+    if (ro && !$("roadmapForm").hidden) roadmapForm(false);
+    $("roadmapShow").hidden = !!ro;
     $("roadmapOrder").classList.toggle("on", nb.roadmapOrdering);
     $("roadmapLog").classList.toggle("on", nb.roadmapLogOn);
     drawSendBox(live);
@@ -867,15 +872,16 @@ function nbRoadmapView({$, nb}){
 
 
   $("roadmapAdd").onclick = addRoadmap;
-  // The add band unrolls the box under it, and Cancel (or Escape in an
-  // empty box) rolls it back; a line half typed keeps the box open. Only
-  // Add to roadmap steps aside: Reorder stays in the band, live.
-  const roadmapForm = on => {
+  // Add to roadmap, the control row's primary, unrolls the box under that
+  // row (R109), and Cancel (or Escape in an empty box) rolls it back; a line
+  // half typed keeps the box open. The button stays where it is, a press
+  // while the box is open taking the caret back to it.
+  function roadmapForm(on){
     $("roadmapForm").hidden = !on;
-    $("roadmapShow").hidden = on;
-    $("roadmapAddBar").hidden = on && $("roadmapOrder").hidden;
+    $("roadmapAddBar").hidden = !on;
+    $("roadmapShow").setAttribute("aria-expanded", String(!!on));
     if (on) $("roadmapText").focus();
-  };
+  }
   nb.roadmapForm = roadmapForm;
   $("roadmapShow").onclick = () => roadmapForm(true);
   $("roadmapCancel").onclick = () => { $("roadmapText").value = ""; roadmapForm(false); };

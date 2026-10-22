@@ -1635,11 +1635,11 @@ await page.click('#rnCancel');
   await page.waitForSelector(`${V} .rnsign[data-route="sideload"]`, { timeout: 15000 });
   const where = await page.evaluate(v => ({ ship: [...document.querySelectorAll('.pane .nb .nbsub [data-in="ship"]')].map(b => b.dataset.v).join(),
     sect: !!document.querySelector('details.rngroup[data-sect="rn:signing"]'), hash: location.hash,
-    head: document.querySelector(`${v} #sgHint`)?.textContent,
+    head: (document.querySelector(`${v} #sgHint`)?.textContent || '').replace(/\s+/g, ' ').trim(),
     empty: document.querySelector(`${v} .hint.nbempty`)?.textContent || '' }), V);
   ok(where.ship === 'artifacts,docker,vms,signing' && !where.sect && /\/projects\/alpha\/signing$/.test(where.hash)
-     && where.head === 'no keys' && /No keys yet/.test(where.empty),
-     `the keys are the notebook's Signing view, last in Ship, at its own address, its head "no keys" over one hint line, and the settings have no signing section (${JSON.stringify(where)})`);
+     && where.head === '' && /No keys yet/.test(where.empty),
+     `the keys are the notebook's Signing view, last in Ship, at its own address, no tiles over its one hint line, and the settings have no signing section (${JSON.stringify(where)})`);
   const signRows = await page.$$eval(`${V} .rnsign[data-key]`, rs => rs.map(r => r.firstElementChild.textContent.trim()));
   // ...under the backup password's line, the project's owner's to set (the
   // fixture's owner owns alpha).
@@ -1700,8 +1700,8 @@ await page.click('#rnCancel');
   const old = rows.find(r => r.key === 'default'), now = rows.find(r => r.key === 'watch');
   ok(old && /Retired: rotated to watch\. Kept, since the proof and every device before Android 9 still need it/.test(old.text) && !old.remove && !old.rotate
      && now && /Rotated from default: Android 9 and newer see this key, older devices still see default/.test(now.text) && !now.rotate
-     && await page.$eval(`${V} #sgHint`, e => e.textContent) === '2 keys',
-     'a retired sideload key says why it is kept and offers no Remove, the key it went to says who still sees the old one, and the head counts them');
+     && /^2 keys\b/.test(await page.$eval(`${V} #sgHint`, e => e.textContent.replace(/\s+/g, ' ').trim())),
+     'a retired sideload key says why it is kept and offers no Remove, the key it went to says who still sees the old one, and a tile counts them');
   rmSync(sd, { recursive: true, force: true });
   // Back to the Projects page, where the rest of this file presses.
   await page.evaluate(() => openProjectsTab());
