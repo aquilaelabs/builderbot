@@ -1718,10 +1718,17 @@ await page.click('#rnCancel');
   const relLine = await page.$eval(`${V} #sgRel [data-relkey]`, e => e.textContent.replace(/\s+/g, ' ').trim());
   const relApi = (await api('/api/signing', { project: 'alpha', action: 'list' })).body.release || {};
   ok(/^dev\.example\.alpha releases sign with watch AB:AB:AB/.test(relLine) && relApi.wanted
-     && relApi.keys?.[0]?.key === 'watch' && /no GitHub token|no apksigner|not on GitHub|^$/.test(relApi.why || ''),
+     && relApi.keys?.[0]?.key === 'watch' && /no node to sign on|is offline|has no jdk|has no Android SDK|no GitHub token|not on GitHub|^$/.test(relApi.why || ''),
      `the Signing view's Releases names the key an app's releases sign with, a retired key's successor (${relLine}; ${relApi.why || 'ready'})`);
-  ok(await page.$(`${V} #sgRelGo`) !== null && /signed here, never in CI/.test(await page.$eval(`${V} #sgRel`, e => e.textContent)),
-     '...says the APK is signed here and not in CI, and offers a look now');
+  ok(await page.$(`${V} #sgRelGo`) !== null && /signed on the project's node.*never in CI/s.test(await page.$eval(`${V} #sgRel`, e => e.textContent)),
+     '...says the APK is signed on the project\'s node and not in CI, and offers a look now');
+  // What keeps the project's node from a key's work is said in its words,
+  // naming the node and what it lacks, never the controller's keytool (B232).
+  const signList = (await api('/api/signing', { project: 'alpha', action: 'list' })).body;
+  const nodeLine = await page.$eval(`${V} #sgNode`, e => e.textContent.trim()).catch(() => '');
+  ok(!/keytool/i.test(await page.$eval(V, e => e.textContent)) && typeof signList.node_why === 'string'
+     && (signList.node_why ? nodeLine === signList.node_why : nodeLine === ''),
+     `the Signing view says what keeps the project's node from checking or making a key, in the node's words (${signList.node_why || 'ready'})`);
   // The bell's row before a release, drawn from the poll's own shape.
   await holdPoll(page);
   await page.evaluate(() => { state.attention = [...(state.attention || []), {kind: 'release-sign', id: 'alpha', project: 'alpha',

@@ -245,7 +245,7 @@ function attRow(a){
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bdocker="${esc(a.node_id)}">Containers page</a></span></div></div>`;
   }
-  // A release's APK the controller signs (R106): what would stop it, said
+  // A release's APK signed on its project's node (R106): what would stop it, said
   // before the release in amber, and a signing that failed after one in red.
   if (a.kind === "release-sign"){
     return `<div class="bnote att${a.bad ? " bad" : ""}">

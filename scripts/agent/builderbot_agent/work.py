@@ -11,7 +11,7 @@ import subprocess
 import time
 import urllib.request
 import zipfile
-from . import storage
+from . import keyops, storage
 from .base import DRIVER, SANDBOX_BIN, TOOLKIT
 from .stores import tc_root, tc_scope
 from .backends import pkg_backend
@@ -594,6 +594,113 @@ class WorkMixin:
             job.outputs.append({"kind": "artifact", "path": r["path"], "size": r.get("size"),
                                 "sha256": r.get("sha256"), "signed": route,
                                 "cert": k.get("sha256") or ""})
+            return "succeeded", 0
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
+    def sign_key(self, job, spec):
+        """The controller's signing key work, on this node (R106, the
+        operator 22 Oct: the controller runs nothing): a keystore checked, a
+        key made, a key wrapped under a backup's password, a rotation's
+        proof, or a release's APK signed (keyops.py). What the job needs
+        comes over this agent's channel for it alone (signing-key) and what
+        it made goes back the same way (signing-result, and signing-put for
+        a signed APK); none of it is written but into a 0700 directory of the
+        enrolled account, removed whatever happens. Refused where a session
+        could read it, as a sign job is."""
+        jid = job.job["id"]
+
+        def answer(r):
+            st, got = self.ctl.call("signing-result", {"job": jid, **r}, timeout=60)
+            if st != 200:
+                job.say(f"the controller did not take the answer: {(got or {}).get('error') or st}\n")
+            return st == 200
+        enrolled = str(self.state.get("user") or "")
+        if os.geteuid() != 0 or not enrolled or enrolled == "root" or enrolled == self.session_account():
+            why = ("jobs and Claude sessions run as one account on this node, so a session could read "
+                   "the key while it is used: sign on a node provisioned as a sandbox")
+            job.say(f"refused: {why}\n")
+            answer({"error": why})
+            return "failed", 77
+        op = str(spec.get("op") or "")
+        if op not in ("inspect", "generate", "wrap", "rotate", "release"):
+            job.say("refused: a sign-key job is inspect, generate, wrap, rotate or release\n")
+            return "failed", 64
+        tl, missing = keyops.tools(tc_root(self.state), op in ("rotate", "release"))
+        if missing:
+            job.say(f"no {missing} on this node: install it from the Toolchains page\n")
+            answer({"missing": missing})
+            return "failed", 69
+        env = dict(sdk_env(self.state), **tl["env"])
+        who = self.drop_privileges(env)
+        stores = self.state.get("stores") or {}
+        work = os.path.join(stores.get("data") or "/tmp", "sign-key", re.sub(r"[^A-Za-z0-9_-]", "_", jid))
+        kw = {"work": work, "env": env, "who": who}
+        try:
+            os.makedirs(work, mode=0o700, exist_ok=True)
+            os.chmod(work, 0o700)
+            if who:
+                os.chown(work, who["user"], who["group"])
+            package, src = "", os.path.join(work, "in.apk")
+            if op == "release":
+                st, _ = self.ctl.fetch(f"file?job={jid}&path=release.apk", src)
+                if st != 200:
+                    job.say(f"could not fetch the APK from the controller ({st})\n")
+                    answer({"error": f"the node could not fetch the APK from the controller ({st})"})
+                    return "failed", 69
+                if who:
+                    os.chown(src, who["user"], who["group"])
+                package = keyops.package_of(tl["aapt2"], src, **kw)
+                if package:
+                    job.say(f"the APK is {package}\n")
+            st, k = self.ctl.call("signing-key", {"job": jid, "package": package}, timeout=30)
+            if st != 200 or not isinstance(k, dict):
+                why = (k or {}).get("error") if isinstance(k, dict) else ""
+                job.say(f"the controller handed nothing over: {why or st}\n")
+                answer({"error": why or f"the controller handed nothing over ({st})"})
+                return "failed", 69
+
+            def raw(d):
+                return dict(d, keystore=base64.b64decode(d.get("keystore") or ""))
+            b64 = lambda b: base64.b64encode(b).decode()   # noqa: E731
+            job.say(f"{op} on this node\n")
+            out, why = {}, ""
+            if op == "inspect":
+                alias, kind, sha, why = keyops.inspect(tl["keytool"], base64.b64decode(k.get("keystore") or ""),
+                                                       str(k.get("store_pass") or ""), str(k.get("alias") or ""), **kw)
+                out = {"alias": alias, "type": kind, "sha256": sha}
+            elif op == "generate":
+                pw = str(k.get("password") or "")
+                blob, why = keyops.generate(tl["keytool"], str(k.get("alias") or ""), str(k.get("cn") or ""), pw, **kw)
+                if not why:
+                    alias, kind, sha, why = keyops.inspect(tl["keytool"], blob, pw, str(k.get("alias") or ""), **kw)
+                    out = {"keystore": b64(blob), "alias": alias, "type": kind, "sha256": sha}
+            elif op == "wrap":
+                blob, why = keyops.wrap(tl["keytool"], base64.b64decode(k.get("keystore") or ""),
+                                        str(k.get("store_pass") or ""), str(k.get("key_pass") or ""),
+                                        str(k.get("alias") or ""), str(k.get("new_pass") or ""), **kw)
+                out = {"keystore": b64(blob)}
+            elif op == "rotate":
+                proof, why = keyops.rotate(tl["apksigner"], raw(k.get("old") or {}), raw(k.get("new") or {}), **kw)
+                out = {"lineage": b64(proof)}
+            else:
+                prev = k.get("previous")
+                signed = os.path.join(work, "out.apk")
+                got, why = keyops.sign_apk(tl, src, signed, raw(k), raw(prev) if prev else None,
+                                           base64.b64decode(k.get("lineage") or ""), **kw)
+                if not why:
+                    st, r = self.ctl.upload(f"signing-put?job={jid}", signed)
+                    if st != 200 or (r or {}).get("error"):
+                        why = f"the signed APK did not reach the controller: {(r or {}).get('error') or st}"
+                    out = {**got, "key": k.get("key") or "", "package": package,
+                           "rotated_from": (prev or {}).get("key") or ""}
+            if why:
+                job.say(f"{op} failed: {why}\n")
+                answer({"error": why})
+                return "failed", 1
+            if not answer(out):
+                return "failed", 1
+            job.say(f"{op} done\n")
             return "succeeded", 0
         finally:
             shutil.rmtree(work, ignore_errors=True)

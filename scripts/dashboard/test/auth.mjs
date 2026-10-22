@@ -1638,9 +1638,10 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
         ok(notOwner.status === 403 && short.status === 400 && set.body.backup_locked === true && plain.status === 403
            && wrong.status === 403 && change.status === 403
            // The right one: the backup wrapped under it (R111), or, where the
-           // controller has no keytool to wrap with, said so, never the bare key.
-           && (right.status === 200 || (right.status === 409 && /install the jdk toolchain/.test(rightSaid))),
-           `a backup password is the project owner's to set, and then every download asks for it, a plain link and a wrong one refused (${plain.status}/${wrong.status}/${right.status})`);
+           // project's node cannot wrap it now (B232: which node, and why), said
+           // so, never the bare key.
+           && (right.status === 200 || (right.status === 409 && /no node to sign on|is offline|install (it|them) on its Toolchains|takes no new work/.test(rightSaid))),
+           `a backup password is the project owner's to set, and then every download asks for it, a plain link and a wrong one refused (${plain.status}/${wrong.status}/${right.status} ${rightSaid})`);
         for (let i = 0; i < 5; i++) await dl('nope');
         const held = await dl('a-long-password');
         ok(held.status === 429, `...and five wrong in a row hold the downloads, even for the right one (${held.status})`);

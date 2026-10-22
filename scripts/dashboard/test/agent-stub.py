@@ -292,6 +292,71 @@ def _extra_stamp():
         return 0
 
 
+def _keyops():
+    """The real agent's key work (scripts/agent/builderbot_agent/keyops.py),
+    read by path: standard library only, so it runs here as on a node."""
+    import importlib.util
+    here = os.path.dirname(os.path.abspath(__file__))
+    spec = importlib.util.spec_from_file_location(
+        "stub_keyops", os.path.join(here, "..", "..", "agent", "builderbot_agent", "keyops.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def run_sign_key(j):
+    """A sign-key job (signing._on_node): the controller's key work, done
+    with the real agent's keyops against a toolchain store this machine has
+    (/mnt/SDK or /sdk), or "no jdk" where it has none, as a node says it.
+    A release's APK is the one thing the stub does not sign."""
+    import base64
+    import glob
+    import shutil
+    import tempfile
+    kops = _keyops()
+    spec = j.get("spec") or {}
+    op, jid = spec.get("op") or "", j["id"]
+    store = next((d for d in sorted(glob.glob("/mnt/SDK/*") + glob.glob("/sdk/*"))
+                  if os.access(os.path.join(d, "jdk", "bin", "keytool"), os.X_OK)), "")
+    tl, missing = kops.tools(store, op in ("rotate", "release"))
+    if missing:
+        call("signing-result", {"job": jid, "missing": missing})
+        return "failed", 69, []
+    if op == "release":
+        call("signing-result", {"job": jid, "error": "the harness's stub agent signs no APK"})
+        return "failed", 1, []
+    k = call("signing-key", {"job": jid, "package": ""})
+    if not isinstance(k, dict) or k.get("error"):
+        call("signing-result", {"job": jid, "error": (k or {}).get("error") or "nothing handed over"})
+        return "failed", 69, []
+    work = tempfile.mkdtemp(prefix="stub-sign-key-")
+    kw = {"work": work, "env": dict(os.environ, **tl["env"])}
+    raw = lambda d: dict(d, keystore=base64.b64decode(d.get("keystore") or ""))   # noqa: E731
+    b64 = lambda b: base64.b64encode(b).decode()                                   # noqa: E731
+    try:
+        out, why = {}, ""
+        if op == "inspect":
+            alias, kind, sha, why = kops.inspect(tl["keytool"], base64.b64decode(k.get("keystore") or ""),
+                                                 k.get("store_pass") or "", k.get("alias") or "", **kw)
+            out = {"alias": alias, "type": kind, "sha256": sha}
+        elif op == "generate":
+            blob, why = kops.generate(tl["keytool"], k.get("alias") or "", k.get("cn") or "", k.get("password") or "", **kw)
+            if not why:
+                alias, kind, sha, why = kops.inspect(tl["keytool"], blob, k.get("password") or "", k.get("alias") or "", **kw)
+                out = {"keystore": b64(blob), "alias": alias, "type": kind, "sha256": sha}
+        elif op == "wrap":
+            blob, why = kops.wrap(tl["keytool"], base64.b64decode(k.get("keystore") or ""), k.get("store_pass") or "",
+                                  k.get("key_pass") or "", k.get("alias") or "", k.get("new_pass") or "", **kw)
+            out = {"keystore": b64(blob)}
+        elif op == "rotate":
+            proof, why = kops.rotate(tl["apksigner"], raw(k.get("old") or {}), raw(k.get("new") or {}), **kw)
+            out = {"lineage": b64(proof)}
+        call("signing-result", {"job": jid, **({"error": why} if why else out)})
+        return ("failed", 1, []) if why else ("succeeded", 0, [])
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 running = set()
 
 
@@ -303,6 +368,8 @@ def run_job(j):
             state, code, outputs = run_exec(j)
         elif j.get("type") == "system":
             state, code, outputs = run_system(j)
+        elif j.get("type") == "sign-key":
+            state, code, outputs = run_sign_key(j)
         else:
             state, code, outputs = "failed", 1, []
     except Exception as e:                       # a stub bug is a failed job

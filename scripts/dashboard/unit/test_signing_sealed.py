@@ -20,10 +20,10 @@ class Sealed(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        saved = {k: getattr(signing, k) for k in ("STATE", "PROJECT_NAME", "keytool_path", "MASTER")}
+        saved = {k: getattr(signing, k) for k in ("STATE", "PROJECT_NAME", "MASTER")}
         self.addCleanup(lambda: [setattr(signing, k, v) for k, v in saved.items()])
         self.secret = self.tmp / "secret"
-        signing.configure(state=self.tmp / "state", project_name=re.compile(r"[a-z]+"), keytool=lambda: None,
+        signing.configure(state=self.tmp / "state", project_name=re.compile(r"[a-z]+"),
                           secret_file=str(self.secret))
 
     def keep(self):
