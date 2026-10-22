@@ -1293,6 +1293,15 @@ def _census(c):
                                # its host (R100), whitelisted field by field.
                                "autostart": v.get("autostart") is True,
                                "hw": _vm_hw(v.get("hw")),
+                               # Its root filesystem as its guest agent says (R110):
+                               # [used MB, total MB], for the bell as it fills.
+                               **({"root_fs": [int(v["root_fs"][0]), int(v["root_fs"][1])]}
+                                  if isinstance(v.get("root_fs"), list) and len(v["root_fs"]) == 2
+                                  and all(isinstance(x, int) and x >= 0 for x in v["root_fs"]) else {}),
+                               # ...and the rest its guest agent says (R110 step 8):
+                               # hostname, OS, kernel, addresses, who is signed in,
+                               # every filesystem, whitelisted field by field.
+                               **({"guest": _vm_guest(v["guest"])} if isinstance(v.get("guest"), dict) else {}),
                                "iso": str(v.get("iso") or "") if VM_ISO_RE.fullmatch(str(v.get("iso") or "")) else ""})
     vp = c.get("vm_pool") if isinstance(c.get("vm_pool"), dict) else None
     if vp:
@@ -2339,6 +2348,141 @@ def attention(project_nodes):
     return out
 
 
+def _vm_guest(g):
+    """A VM's guest-agent facts, kept to their shapes."""
+    s = lambda k, n: re.sub(r"[^\w .:+()/@-]", "", str(g.get(k) or ""))[:n]
+    fs = [[re.sub(r"[^\w ./@-]", "", str(f[0]))[:64], int(f[1]), int(f[2])]
+          for f in (g.get("fs") or [])[:16]
+          if isinstance(f, list) and len(f) == 3 and all(isinstance(x, int) and x >= 0 for x in f[1:])]
+    return {"hostname": s("hostname", 64), "os": s("os", 80), "kernel": s("kernel", 64),
+            "ips": [ip for ip in (str(x) for x in (g.get("ips") or [])[:8]) if re.fullmatch(r"[0-9a-fA-F.:]{3,45}", ip)],
+            "users": int(g["users"]) if isinstance(g.get("users"), int) and g["users"] >= 0 else 0, "fs": fs}
+
+
+def floor_mb(floor_gb, total_mb):
+    """The room a disk keeps, in MB: the floor, or a tenth of the disk where
+    that is less, so a 16 GB VM is not short of room from the day it is
+    made (R110)."""
+    return min(floor_gb * 1024, int((total_mb or 0) * 0.1)) if total_mb else floor_gb * 1024
+
+
+ROOM_WHAT = {"docker": "Docker's images and build cache", "root": "its root filesystem",
+             "data": "its builds and their outputs", "cache": "its build caches"}
+
+
+def room_short(nid, floor_gb, roles=("docker", "root"), need_mb=0):
+    """Why work on `nid` would run out of disk, or "" (R110): the first of
+    `roles` the node says (a disk, or a store) under the floor, or under
+    `need_mb` where that is more (what the project's last build took).
+    Docker's for a container build, the data store's for a project's build
+    or test. A node that has said none of them is not refused."""
+    n = node(nid) or {}
+    smp = (n.get("reported") or {}).get("sample") or {}
+    disks, stores, totals = smp.get("disks") or {}, smp.get("stores") or {}, smp.get("store_totals") or {}
+    for role in roles:
+        free, total = disks[role] if role in disks else (stores.get(role), totals.get(role)) if role in stores else (None, None)
+        if free is None or not total:
+            continue
+        keep = floor_mb(floor_gb, total)
+        if free >= max(keep, need_mb):
+            return ""
+        if need_mb > keep:
+            return (f"{n.get('name') or nid} has {round(free / 1024, 1)} GB free for {ROOM_WHAT.get(role, role)}, "
+                    f"and this project's last build took {round(need_mb / 1024, 1):g} GB: free some first "
+                    "(its Storage page says what holds it)")
+        return (f"{n.get('name') or nid} has {round(free / 1024, 1)} GB free for {ROOM_WHAT.get(role, role)}, "
+                f"under the {round(keep / 1024, 1):g} GB a node keeps for itself: free some first (its Storage page says what holds it)")
+    return ""
+
+
+# Set by server.py (R110): the floor in GB a build or test on a node is held
+# to, 0 for none (Controller settings, Room).
+room_floor_gb = lambda: 0  # noqa: E731
+
+
+def last_took(project):
+    """What the project's last build or test took on its node (R110 step 7):
+    {workspace, cache (bytes, or None), node, at}, from the room line the
+    agent adds to a job's outputs, or {} before one has said."""
+    for r in _rows("SELECT node, ended, outputs FROM jobs WHERE project = ? AND type = 'exec' "
+                   "AND outputs LIKE '%\"room\"%' ORDER BY ended DESC LIMIT 1", (project,)):
+        try:
+            outs = json.loads(r["outputs"] or "[]")
+        except ValueError:
+            return {}
+        for o in outs:
+            if isinstance(o, dict) and o.get("kind") == "room" and isinstance(o.get("workspace"), int):
+                cache = o.get("cache")
+                return {"workspace": o["workspace"], "cache": cache if isinstance(cache, int) else None,
+                        "node": r["node"], "at": r["ended"]}
+    return {}
+
+
+def room_attention(floor_gb, mem_pct, label=None, vm_pct=90, pool_keep_gb=10):
+    """The bell's rows for a node short of room (R110, the operator, 22
+    Oct): a live agent node whose root filesystem, Docker's or a store has
+    less free than `floor_gb`, or whose memory has stayed at `mem_pct` or
+    more over its last ten minutes of samples. One row per node, naming
+    what is short, keyed by that so a dismissal holds until it changes.
+    `label` names a store's role for a person."""
+    out = []
+    for n in node_list():
+        if n["kind"] != "agent" or not n.get("live"):
+            continue
+        smp = (n.get("reported") or {}).get("sample") or {}
+        short, seen = [], set()
+        now = time.time()
+        recent_all = [x for x in samples(n["id"]) if (x.get("at") or 0) >= now - 600]
+        places = [(r, f, t) for r, (f, t) in (smp.get("disks") or {}).items()]
+        places += [(r, f, (smp.get("store_totals") or {}).get(r)) for r, f in (smp.get("stores") or {}).items()]
+        for role, free, total in places:
+            if free is None or not total or free >= floor_mb(floor_gb, total):
+                continue
+            # A store on the root filesystem reads the same numbers: said once.
+            if (free, total) in seen:
+                continue
+            seen.add((free, total))
+            short.append({"what": (label(role) if label else role), "free_gb": round(free / 1024, 1),
+                          "total_gb": round(total / 1024, 1)})
+        # ...and its VMs (R110 step 6): one whose own disk is `vm_pct` full
+        # as its guest agent says, and the pool their disks grow into, under
+        # what VM create keeps free there.
+        rep = n.get("reported") or {}
+        for v in rep.get("vms") or []:
+            vn = v["name"].removeprefix("bbvm-")
+            # Every filesystem its guest agent names (R110 step 8), else the
+            # root one an older agent said.
+            fss = (v.get("guest") or {}).get("fs") or ([["/", *v["root_fs"]]] if v.get("root_fs") else [])
+            for mount, used, total in fss:
+                if total and used * 100 >= total * vm_pct:
+                    short.append({"what": f"the VM {vn}'s {'disk' if mount == '/' else mount}",
+                                  "free_gb": round((total - used) / 1024, 1), "total_gb": round(total / 1024, 1)})
+        # ...and a VM's memory as its balloon says, over the same ten minutes.
+        vm_mem = {}
+        for x in recent_all:
+            for d, (usable, avail) in (x.get("vm_mem") or {}).items():
+                if avail:
+                    vm_mem.setdefault(d, []).append(100 - usable * 100 / avail)
+        for d, pcts in sorted(vm_mem.items()):
+            if len(pcts) >= 3 and sum(pcts) / len(pcts) >= mem_pct:
+                short.append({"what": f"the VM {d.removeprefix('bbvm-')}'s memory", "used_pct": round(sum(pcts) / len(pcts))})
+        pool = rep.get("vm_pool") or {}
+        if pool.get("total_mb") and pool.get("free_mb", 0) < pool_keep_gb * 1024 and (pool["free_mb"], pool["total_mb"]) not in seen:
+            short.append({"what": "where its VM disks grow", "free_gb": round(pool["free_mb"] / 1024, 1),
+                          "total_gb": round(pool["total_mb"] / 1024, 1)})
+        recent = [x for x in recent_all if x.get("mem_mb")]
+        mem = None
+        if len(recent) >= 3:
+            pct = sum(x.get("mem_used_mb", 0) / x["mem_mb"] for x in recent) / len(recent) * 100
+            if pct >= mem_pct:
+                mem = round(pct)
+        if short or mem is not None:
+            out.append({"kind": "room", "node": n["name"], "id": n["id"], "short": short, "mem": mem,
+                        "floor_gb": floor_gb, "key": "room:" + n["id"] + ":" + ",".join(sorted(x["what"] for x in short))
+                        + (":mem" if mem is not None else "")})
+    return out
+
+
 def held_attention(uid, admin):
     """The bell's rows for the sessions an outage stopped (R251): one per
     session a node's gates held, for that session's account or an
@@ -3298,6 +3442,24 @@ def heartbeat(nid, sample, addr, running=0):
                        for r, v in list(stores.items())[:8]}
     totals = {str(r)[:20]: _mb((v or {}).get("total_mb"))
               for r, v in list(stores.items())[:8]}
+    # The root filesystem and Docker's, where a node fills that is no
+    # store's (R110): [free MB, total MB] each, for the bell's room check.
+    disks = s.get("disks") if isinstance(s.get("disks"), dict) else {}
+    clean["disks"] = {r: [_mb((disks.get(r) or {}).get("free_mb")), _mb((disks.get(r) or {}).get("total_mb"))]
+                      for r in ("root", "docker") if isinstance(disks.get(r), dict)}
+    clean["store_totals"] = totals
+    # BuilderBot's memory fence (R110 step 4), [max MB, used MB], or None
+    # from an agent that looked and found none; absent from an older one.
+    if "fence" in s:
+        f = s.get("fence")
+        clean["fence"] = ([_mb(f.get("max_mb")), _mb(f.get("used_mb"))]
+                          if isinstance(f, dict) and _mb(f.get("max_mb")) else None)
+    # A running VM's memory as its balloon says, [usable MB, available MB],
+    # for the bell's ten minutes (R110 step 8).
+    vm = s.get("vm_mem") if isinstance(s.get("vm_mem"), dict) else {}
+    clean["vm_mem"] = {str(d)[:63]: [int(v[0]), int(v[1])] for d, v in list(vm.items())[:32]
+                       if re.fullmatch(r"bbvm-[a-z0-9][a-z0-9-]{0,62}", str(d)) and isinstance(v, list) and len(v) == 2
+                       and all(isinstance(x, int) and x >= 0 for x in v)}
     ag = n.get("agent") or {}
     ag["last_seen"] = clean["at"]
     rep = n.get("reported") or {}
@@ -5469,6 +5631,14 @@ def run_job(name, req, principal):
         if r.get("error"):
             return r, 400
         return r | {"node": nid}, 200
+    # A build or a test held to the node's room (R110 step 7): it writes its
+    # outputs and caches to the data store, and one started under the floor
+    # fills the disk partway. bb run is left alone: it is how room is made.
+    if room_floor_gb() and field(req, "role") in ("build", "test"):
+        took = last_took(name).get("workspace") or 0
+        why = room_short(nid, room_floor_gb(), roles=("data", "cache", "root"), need_mb=took >> 20)
+        if why:
+            return {"error": why}, 400
     snap = workspace.snapshot(name)
     if snap.get("error"):
         return snap, 400

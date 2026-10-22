@@ -68,6 +68,11 @@ function postJSON(path, body){
 const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const tabOf = id => tabs.find(t => t.id === id) || null;
+// A dev feature says so wherever it is offered (R102, the badges rule): a
+// gold `dev` pill beside a row's name, a setting's label or a section's
+// title, and " (dev)" after an option's words, since an option holds no pill.
+const devMark = () => ` <span class="pill devmark" title="a dev feature: offered because Offer dev features is on, and not yet walked on a real machine">dev</span>`;
+const devOpt = label => `${label} (dev)`;
 const isSplit = () => panes[1] !== null;
 
 // ---- what a session is called, and whose it is --------------------------

@@ -97,8 +97,10 @@ def show(target=None):
     rows = roadmap.items(proj)
     # `bb roadmap --target 0.6.0`: the items meant for one release, and
     # `--target none` the ones meant for none yet.
+    # An item is for a release by its own target or by any step's (R108).
+    want = None if target is None else (target.lstrip("vV") if target.lower() != "none" else "")
     if target is not None:
-        rows = [r for r in rows if (r.get("target") or "none") == (target.lstrip("vV") or "none")]
+        rows = [r for r in rows if roadmap.for_release(r, want)] if want else [r for r in rows if not r.get("target")]
     # The whole notebook's count, not the roadmap's: one batch covers both,
     # and a banner reporting half of it would read as "nothing much staged"
     # while a dozen tracker changes sat unrecorded.
@@ -124,6 +126,7 @@ def show(target=None):
             print("       details: " + r["info"].replace("\n", "\n                "))
         for i, st in enumerate(r.get("steps") or []):
             print(f"          {i + 1}. {st['text']}"
+                  + (f"  [for {st['target']}]" if st.get("target") else "")
                   + ("  (done)" if st.get("done") else "  (sent)" if st.get("sent") else ""))
             if st.get("info"):
                 print("             details: "
@@ -199,6 +202,7 @@ elif op == "show":
         print("  details: " + r["info"].replace("\n", "\n           "))
     for i, st in enumerate(r.get("steps") or []):
         print(f"    {i + 1}. {st['text']}"
+              + (f"  [for {st['target']}]" if st.get("target") else "")
               + ("  (done)" if st.get("done") else "  (sent)" if st.get("sent") else ""))
         if st.get("info"):
             print("       details: " + st["info"].replace("\n", "\n                "))
@@ -309,8 +313,25 @@ elif op in ("mv", "move"):
 elif op == "target":
     # The release an item is meant to ship in (the operator, 21 Oct):
     # `bb roadmap target N 0.6.0`, and `none` takes it off.
+    # One step's (R108): `bb roadmap target N.M X.Y.Z` or `target N M X.Y.Z`,
+    # and `none` sends the step back to its item's release.
+    usage = "usage: bb roadmap target <n>[.<step>] [<step>] X.Y.Z|none"
     if len(rest) < 2:
-        print("usage: bb roadmap target <n> X.Y.Z|none", file=sys.stderr); sys.exit(1)
+        print(usage, file=sys.stderr); sys.exit(1)
+    head, _, dot = rest[0].partition(".")
+    step = dot or (rest[1] if len(rest) > 2 else "")
+    if step:
+        if not step.isdigit() or len(rest) < (2 if dot else 3):
+            print(usage, file=sys.stderr); sys.exit(1)
+        n = ident(head)
+        v = "" if rest[-1].lower() == "none" else rest[-1]
+        if behind(n, None, None, None):
+            sys.exit(0)
+        r = roadmap.set_step_target(proj, n, int(step) - 1, v, by="claude", who=_who); bail(r)
+        st = r["item"]["steps"][int(step) - 1]
+        print(f"step {step} of {R(n)} is for {st['target']}" if st.get("target")
+              else f"step {step} of {R(n)} goes with its item" + (f" ({r['item']['target']})" if r["item"].get("target") else ""))
+        sys.exit(0)
     n = ident(rest[0])
     v = "" if rest[1].lower() == "none" else rest[1]
     if behind(n, "target", {"item_id": n, "version": v, "who": _who},

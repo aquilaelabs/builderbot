@@ -92,13 +92,13 @@ ok(/running/.test(row.text) && /ok/.test(row.pill) && /ssh builder@10\.232\.0\.1
 // The notebook's VMs view (R96): the project's own VMs, beside Docker in
 // its Ship group, drawn from the page's rows, with New VM in its head.
 await page.evaluate(() => openNotebook('alpha', 'vms'));
-await page.waitForFunction(() => /1 running of 1/.test(document.querySelector('.nbview[data-view="vms"] #nvHint')?.textContent || ''), null, { timeout: 15000 });
+await page.waitForFunction(() => /1 running of 1/.test((document.querySelector('.nbview[data-view="vms"] #nvHint')?.textContent || '').replace(/\s+/g, ' ')), null, { timeout: 15000 });
 const nv = await page.evaluate(() => {
   const v = document.querySelector('.nbview[data-view="vms"]');
   return { ship: [...document.querySelectorAll('.nbsub [data-in="ship"]')].map(b => b.dataset.v).join(),
            row: !!v.querySelector('[data-vm-key="alpha/db"]'), newVm: !v.querySelector('#nvNew').hidden };
 });
-ok(nv.ship === 'artifacts,docker,vms' && nv.row && nv.newVm,
+ok(nv.ship === 'artifacts,docker,vms,signing' && nv.row && nv.newVm,
    `a project's notebook has VMs beside Docker in Ship, its own VM's row and New VM in its head (${JSON.stringify(nv)})`);
 await page.evaluate(() => openVmsTab());
 await page.waitForSelector('.vmtab [data-vm-key="alpha/db"]', { timeout: 10000 });

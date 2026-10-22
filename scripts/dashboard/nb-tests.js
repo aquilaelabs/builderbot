@@ -111,7 +111,7 @@ function nbTestsView({$, nb, project}){
     const ob = $("tstOut");
     if (ob){ ob.onclick = openRunOutput; ob.hidden = !mayShell(); }
     if (j.error){
-      $("tstHint").textContent = "tests: " + j.error;
+      viewGlance($("tstHint"), [], esc("tests: " + j.error));
       $("tstList").innerHTML = ""; $("tstStats").hidden = true;
       $("tstBar").hidden = true; $("tstFolds").innerHTML = "";
       return;
@@ -144,13 +144,13 @@ function nbTestsView({$, nb, project}){
     // already reads the same fact to time its note.
     const going = j.running
       ? `<b>tests running</b>, started ${esc(ago(j.running.since))}${j.running.by ? " by " + esc(j.running.by) : ""}${
-          j.running.cmd ? `: <code>${esc(j.running.cmd)}</code>` : ""} · `
+          j.running.cmd ? `: <code>${esc(j.running.cmd)}</code>` : ""}`
       : "";
     // What has nothing to act on is hidden (R225): the output button
     // appears with the first run.
     $("tstOut").hidden = !all.length;
     if (!all.length){
-      $("tstHint").innerHTML = going + "no runs yet";
+      viewGlance($("tstHint"), [], going);
       $("tstStats").hidden = false;
       $("tstStats").innerHTML = `<div class="hint nbempty">A session records a run with
         <pre class="ndcmd">bb tests run</pre></div>`;
@@ -158,15 +158,19 @@ function nbTestsView({$, nb, project}){
       $("tstFolds").innerHTML = "";
       return;
     }
-    // The header's three numbers. Projected is the sum of every test's last
-    // measured duration: what the suite spends *in* its tests; the last run's
-    // own wall time is shown beside it, and the difference is the harness.
+    // The glance (R109): what passed of every test and what failed in the
+    // last run of each, then the time in tests: the sum of every test's last
+    // measured duration, what the suite spends *in* its tests, with the last
+    // run's own wall time under it, the difference being the harness; then
+    // what is flagged and only waiting, and what nobody described yet.
     const proj = j.total_ms || 0, wall = j.last_wall_ms || 0;
-    $("tstHint").innerHTML = going + `${j.n} tests · <b>${esc(dur(proj))}</b> in tests`
-      + (wall ? ` (last run ${esc(dur(wall))})` : "")
-      + (j.suspect ? ` · <span class="bad">${j.suspect} flagged, ${esc(dur(j.recover_ms))}
-           waiting</span>` : "")
-      + (j.undocumented ? ` · ${j.undocumented} undescribed` : "");
+    const pass = all.filter(t => t.status === "pass").length, fail = all.filter(t => t.status === "fail").length;
+    viewGlance($("tstHint"), [
+      {label: "passing", value: pass, sub: `of ${j.n} tests`},
+      {label: "failing", value: fail, tone: fail ? "bad" : ""},
+      {label: "in tests", value: dur(proj), sub: wall ? `last run ${dur(wall)}` : ""},
+      {label: "flagged", value: j.suspect, omit: !j.suspect, tone: "bad", sub: `${dur(j.recover_ms)} waiting`},
+      {label: "undescribed", value: j.undocumented, omit: !j.undocumented}], going);
     $("tstStats").hidden = true;
     // ---- the folds above the list ------------------------------------------
     // Suites first: one file dominating is a fact about the suite, where one

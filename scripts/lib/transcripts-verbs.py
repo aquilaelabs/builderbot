@@ -43,16 +43,27 @@ if verb == "list":
     r = bbapi.call(f"/api/transcripts?project={urllib.parse.quote(proj)}", auth=auth)
     if not isinstance(r, dict) or r.get("error"):
         fail(r.get("error") if isinstance(r, dict) else "the controller answered something that is not a list")
-    rows = r.get("rows") or []
-    if not rows:
+    rows, seen = r.get("rows") or [], r.get("visible") or []
+    if not rows and not seen:
         print(f"no conversations of yours on {proj} yet")
         raise SystemExit(0)
-    print(f"your conversations on {proj}, every agent's, newest first:")
+    # Each row marked with its agent (R95), in both lists.
     names = {"claude": "Claude", "codex": "ChatGPT", "copilot": "Copilot", "open": "Any model"}
-    for row in rows:
+
+    def line(row, who=""):
         when = time.strftime("%d %b %H:%M", time.localtime(int(row.get("at") or 0)))
-        who = names.get(row.get("agent") or "claude", row.get("agent") or "")
-        print(f"  {row['id']}  {who:<9} {when}  {size(int(row.get('bytes') or 0)):>7}  {row.get('first') or ''}")
+        agent = names.get(row.get("agent") or "claude", row.get("agent") or "")
+        print(f"  {row['id']}  {agent:<9} {when}  {size(int(row.get('bytes') or 0)):>7}  {who}{row.get('first') or ''}")
+    if rows:
+        print(f"your conversations on {proj}, every agent's, newest first:")
+        for row in rows:
+            line(row)
+    # Others' that their person made visible to every session here (the
+    # Sessions view's Make visible), each with whose it is.
+    if seen:
+        print(f"made visible to every session on {proj} by their person:")
+        for row in seen:
+            line(row, f"({row.get('by') or '?'}) ")
     print("bb transcripts show ID prints one: what was said, every command it ran and what it answered")
     raise SystemExit(0)
 

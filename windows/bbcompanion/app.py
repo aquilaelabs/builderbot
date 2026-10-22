@@ -1,5 +1,6 @@
-"""The companion app's window (R270 step 4): sign this machine in, pick the
-projects it keeps and the folder for each, and watch them: in step,
+"""The companion app's window (R270 step 4): sign this machine in, see every
+project its account is on (R104), pick a folder for the ones to keep, and
+watch them: in step,
 copying, waiting to send, or what went wrong; what Windows could not hold;
 the conflict copies. Plain tkinter, so the app needs nothing but Python.
 """
@@ -24,6 +25,9 @@ class App(tk.Tk):
         self.minsize(560, 360)
         self.comp = None
         self.body = None
+        # The projects the account is on, as the controller last said: read
+        # on a thread of its own so the window never waits on the network.
+        self.mine, self.mine_said = {}, ""
         # A lent verb asked under Ask (R270 step 6): the worker waits while
         # the window, on its own thread, puts the question to its person.
         self.asks = queue.Queue()
@@ -93,14 +97,32 @@ class App(tk.Tk):
         self.tree.pack(fill="both", expand=True, padx=12)
         bar = ttk.Frame(f)
         bar.pack(fill="x", **PAD)
-        ttk.Button(bar, text="Add a project", command=self.add).pack(side="left")
-        ttk.Button(bar, text="Remove", command=self.remove).pack(side="left", padx=6)
+        ttk.Button(bar, text="Sync to a folder", command=self.add).pack(side="left")
+        ttk.Button(bar, text="Stop syncing", command=self.remove).pack(side="left", padx=6)
         ttk.Button(bar, text="Open folder", command=self.open_folder).pack(side="left")
         ttk.Button(bar, text="Conflicts", command=self.show_conflicts).pack(side="right")
         self.note = ttk.Label(f, text="", foreground="#7f8c8d", wraplength=520, justify="left")
         self.note.pack(anchor="w", padx=12, pady=(0, 8))
         self.restart(s)
+        threading.Thread(target=self.read_mine, daemon=True).start()
         self.tick()
+
+    def read_mine(self):
+        """Every half minute, the projects this account is on and what it
+        may do in each, for the list; a project added to it shows up on its
+        own (R104)."""
+        while creds.load().get("token"):
+            c = creds.load()
+            try:
+                st, r = core.DeviceDoor(c["url"], c["token"]).ctl.call("projects", {})
+            except Exception as e:  # noqa: BLE001 - said under the list
+                st, r = 0, {"error": f"{type(e).__name__}: {e}"}
+            if st == 200:
+                self.mine = {p["project"]: p for p in r.get("projects") or []}
+                self.mine_said = ""
+            else:
+                self.mine_said = (r or {}).get("error") or f"the controller answered {st}"
+            threading.Event().wait(30)
 
     def restart(self, s=None):
         s = s or settings.load()
@@ -124,16 +146,24 @@ class App(tk.Tk):
         st = self.comp.status() if self.comp else {"error": "", "projects": {}}
         self.tree.delete(*self.tree.get_children())
         left = 0
-        for name, folder in s["picked"].items():
-            p = st["projects"].get(name, {})
-            word = (p.get("error") or ("copying " + str(p.get("copying")) if p.get("copying") else "")
-                    or (f"{p.get('pending')} to send" if p.get("pending") else "")
-                    or ("in step" if p.get("ready") else "starting"))
-            if p.get("access") == "r":
+        keep = self.selected()
+        for name in sorted(set(self.mine) | set(s["picked"]), key=str.lower):
+            folder = s["picked"].get(name, "")
+            if folder:
+                p = st["projects"].get(name, {})
+                word = (p.get("error") or ("copying " + str(p.get("copying")) if p.get("copying") else "")
+                        or (f"{p.get('pending')} to send" if p.get("pending") else "")
+                        or ("in step" if p.get("ready") else "starting"))
+                left += len(p.get("left_out") or {})
+                access = p.get("access") or (self.mine.get(name) or {}).get("access")
+            else:
+                word, access = "not synced", (self.mine.get(name) or {}).get("access")
+            if access == "r":
                 word += ", read-only"
             self.tree.insert("", "end", iid=name, text=name, values=(folder, word))
-            left += len(p.get("left_out") or {})
-        said = st.get("error") or ""
+        if keep and self.tree.exists(keep):
+            self.tree.selection_set(keep)
+        said = st.get("error") or self.mine_said or ""
         up = st.get("update") or {}
         if up.get("pending"):
             said += (" " if said else "") + f"BuilderBot companion {up['pending']} is fetched: it starts the next time this app does."
@@ -143,32 +173,20 @@ class App(tk.Tk):
         self.after(2000, self.tick)
 
     def add(self):
-        c = creds.load()
-        st, r = core.DeviceDoor(c["url"], c["token"]).ctl.call("projects", {})
-        if st != 200:
-            messagebox.showerror("BuilderBot", (r or {}).get("error") or f"the controller answered {st}")
+        """The selected project kept in a folder picked here, or moved to
+        another; with none selected, the first one not synced yet."""
+        s = settings.load()
+        name = self.selected() or next((n for n in sorted(self.mine, key=str.lower) if n not in s["picked"]), "")
+        if not name:
+            messagebox.showinfo("BuilderBot", self.mine_said or "You are not on any project yet: an owner adds you on "
+                                "its People section, and it shows up here.")
             return
-        names = [p["project"] for p in r.get("projects") or []]
-        if not names:
-            messagebox.showinfo("BuilderBot", "No project's editor access lets you in yet: it is set in each project's settings.")
+        folder = filedialog.askdirectory(title=f"The folder {name} is kept in")
+        if not folder:
             return
-        win = tk.Toplevel(self)
-        win.title("Add a project")
-        ttk.Label(win, text="Project").pack(anchor="w", **PAD)
-        pick = ttk.Combobox(win, values=names, state="readonly")
-        pick.current(0)
-        pick.pack(anchor="w", padx=12)
-
-        def go():
-            folder = filedialog.askdirectory(title=f"The folder {pick.get()} is kept in")
-            if not folder:
-                return
-            s = settings.load()
-            s["picked"][pick.get()] = os.path.abspath(folder)
-            settings.save(s)
-            win.destroy()
-            self.restart(s)
-        ttk.Button(win, text="Choose its folder", command=go).pack(anchor="e", **PAD)
+        s["picked"][name] = os.path.abspath(folder)
+        settings.save(s)
+        self.restart(s)
 
     def selected(self):
         sel = self.tree.selection()
@@ -176,7 +194,8 @@ class App(tk.Tk):
 
     def remove(self):
         name = self.selected()
-        if name and messagebox.askyesno("BuilderBot", f"Stop keeping {name} in step? Its folder stays as it is."):
+        if name and name in settings.load()["picked"] and messagebox.askyesno(
+                "BuilderBot", f"Stop keeping {name} in step? Its folder stays as it is."):
             s = settings.load()
             s["picked"].pop(name, None)
             settings.save(s)

@@ -191,6 +191,9 @@ needs setting up, so every BuilderBot and every project gets it. R117.
 
 ## Static analysis reports
 
+Setting up the scanners that write these reports, and the script that
+runs them, is [scanners.md](scanners.md).
+
 If you run a scanner on the host, only its **output** is mounted, read-only,
 from `SCANNER_REPORTS_PATH`:
 
@@ -289,8 +292,8 @@ so and offers Remove.
 
 ## Android signing keys
 
-A project keeps up to two keys, set by an administrator under **Android
-signing** in its settings:
+A project keeps up to two keys per named key, set by an administrator in the
+**Signing** view of its page, under Ship:
 
 - **Play upload key**, for Google Play with Play App Signing. Google holds the
   key the app is really signed with; this one only proves an upload is yours,
@@ -318,10 +321,19 @@ under `/config/signing/PROJECT/`, owner-only, beside the git tokens and like
 them outside every session's view. A key is checked before it is kept: the
 store's own `keytool` (the jdk toolchain) has to open it with the password
 given, find the alias (or the only key in it) and see a private key, and its
-certificate's SHA-256 fingerprint is what the section shows. A session never
+certificate's SHA-256 fingerprint is what the view shows. A session never
 receives the key or a password, and is refused even the list of which keys
 exist: it signs with `bb sign`, which runs on the project's node as a job the
 session cannot look inside. Renaming the project leaves its keys where they are, with it.
+
+**Import a backup** brings a key back from what Download backup gave, into
+the same project or another: a generated key's backup is a zip of the
+keystore and `password.txt`, which carries its password and alias, so nothing
+is retyped and the key keeps its name; an uploaded key's backup is the
+keystore alone, and asks for its password. The slot is read off the backup's
+name unless one is picked. The zip has to hold exactly those two files, the
+keystore has to open and match the fingerprint `password.txt` names, and a
+slot already holding a different key refuses it rather than replace it.
 
 **A signing is a job on the project's node.** It fetches the build from
 `dist/` as a job input and the key over the agent's own channel, which hands
@@ -337,6 +349,26 @@ the key while it is used.
 
 Picking a keystore, typing its password and marking one for removal are staged
 like everything else in the settings: nothing is sent until Save.
+
+**A release's APK is signed by the controller, never in CI.** A workflow
+builds the release APK unsigned (no `signingConfig` for the release build
+type) and uploads it as a workflow artifact named `bb-release-apk-TAG`, kept a
+few days. The controller that made the release (Release on the version row)
+looks for that artifact every few minutes for twelve hours, and once an hour
+otherwise; it fetches it with the project's GitHub token, signs each APK in it
+on the controller with the sideload key the app's package maps to (the same
+steps a sign job takes: `zipalign`, `apksigner` with the proof of a rotation,
+`verify`, the kept certificate checked), and attaches it to the release under
+its name less `-unsigned`, with its `.sha256` file and a line in the notes
+naming the key and its certificate's SHA-256 fingerprint. So no keystore,
+alias or password is ever a GitHub secret, and the key never leaves the
+controller. The Signing view's **Releases** section names which key signs each
+app's releases and how the newest went, and **Look for unsigned APKs now**
+signs a failed one again. What would stop a release's signing (no sideload
+key, an app mapped to none of several, no `apksigner` on the controller, a
+project not on GitHub) is a bell row before the release, and a signing that
+failed after one is a red bell row until it is signed or put away. GitHub
+only: a Gitea or GitLab workflow's artifacts are not fetched.
 
 **Several apps, several keys.** A project keeps as many named keys as it needs,
 each with both slots; the first is **default**, which is where keys from

@@ -1834,7 +1834,7 @@ function ndDialogs(){
           <div class="setrow col ctlrow">${lbl("ndEnSystem", "System",
             "what the machine runs. The script is built for it and refuses another machine by name; a system marked dev has not been walked on a node yet, and is offered with Offer dev features on")}
             <select id="ndEnSystem">${optionList((nodesSystems.length ? nodesSystems : [{id: "ubuntu", name: "Ubuntu 24.04 or later", vetted: true}])
-              .map(s => [s.id, `${s.name}${s.vetted ? "" : " (dev)"}`]))}</select></div>
+              .map(s => [s.id, s.vetted ? s.name : devOpt(s.name)]))}</select></div>
         </div>
         <div class="hint" id="ndEnSysWhy" hidden></div>
         <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
@@ -1847,7 +1847,7 @@ function ndDialogs(){
           <select id="ndEnDoor">
             <option value="">none</option>
             <option value="cloudflared">cloudflared: port 22 at a hostname</option>${dev ? `
-            <option value="tailscale">Tailscale: ssh on the tailnet (dev)</option>` : ""}
+            <option value="tailscale">${devOpt("Tailscale: ssh on the tailnet")}</option>` : ""}
           </select></div>
         <div class="setrow col ctlrow" id="ndEnDoorHostRow" hidden>${lbl("ndEnDoorHost", "The door's hostname",
           "a public hostname of its own on the tunnel (not the controller's), set in Zero Trust to go to ssh://localhost:22")}
@@ -1867,7 +1867,7 @@ function ndDialogs(){
           "how the machine dials in. " + (dev ? "Through WireGuard, the config your router made for it goes inside the script, and only the controller is routed through the tunnel. " : "") + "Through a public hostname, a tunnel at home (Cloudflare Tunnel, Tailscale Funnel, ngrok, frp) publishes the controller at a name and the machine dials that: nothing on your router changes and it never learns your address")}
           <select id="ndEnReach">
             <option value="lan">on this network</option>${dev ? `
-            <option value="wireguard">WireGuard (dev)</option>` : ""}
+            <option value="wireguard">${devOpt("WireGuard")}</option>` : ""}
             <option value="public">a public hostname (a tunnel from home)</option>
           </select></div>
         <div class="setrow col ctlrow">${lbl("ndEnCtl", "Controller's address",
@@ -1901,11 +1901,13 @@ function ndDialogs(){
     // Hosting only takes sessions with it: the box is to run containers.
     // Through a public hostname it is so by construction (R170): the
     // switch is ticked and held, and the address field asks for the name.
-    // Why a system marked dev is not walked, when it cannot be here (R97).
+    // A system marked dev says so under the pulldown, with why it is not
+    // walked where it cannot be here (R97, R102).
     const sysWhy = () => {
       const s = nodesSystems.find(x => x.id === $b("#ndEnSystem")?.value);
-      $b("#ndEnSysWhy").textContent = s?.why || "";
-      $b("#ndEnSysWhy").hidden = !s?.why;
+      const dev = s && !s.vetted;
+      $b("#ndEnSysWhy").innerHTML = dev ? `${devMark().trim()} ${esc(s.why || "not walked on a real machine yet: it may need a hand")}` : "";
+      $b("#ndEnSysWhy").hidden = !dev;
     };
     if ($b("#ndEnSystem")){ $b("#ndEnSystem").addEventListener("change", sysWhy); sysWhy(); }
     const host = $b("#ndEnHost"), sess = $b("#ndEnSess");
@@ -2091,7 +2093,7 @@ builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}${
         <div class="setrow col ctlrow">${lbl("vm_hv", "Runs on")}
           <select id="vm_hv" data-vk="hv">${kinds.map(k =>
             `<option value="${esc(k.id)}"${k.id === kind.id ? " selected" : ""}>${
-              esc(k.label)}${k.dev ? " (dev)" : ""}</option>`).join("")}</select></div>
+              k.dev ? devOpt(esc(k.label)) : esc(k.label)}</option>`).join("")}</select></div>
         <div class="prefrow ctlrow">
           ${f("name", "Name", "the machine's name, and the folder its disk goes in")}
           ${f("cores", "Cores", "", ' type="number" min="1" max="64"')}

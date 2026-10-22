@@ -401,7 +401,7 @@ function pDrawForge(){
   const sel = $("pForge");
   if (sel.dataset.built !== String(pForges.length)){
     sel.innerHTML = `<option value="" hidden>from the address</option>` + pForges.map(f =>
-      `<option value="${esc(f.id)}">${esc(f.name)}${f.dev ? " (dev)" : ""}</option>`).join("");
+      `<option value="${esc(f.id)}">${f.dev ? devOpt(esc(f.name)) : esc(f.name)}</option>`).join("");
     sel.dataset.built = String(pForges.length);
   }
   // One row under the address in both modes, always there, so nothing pops

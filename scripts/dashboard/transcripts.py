@@ -10,9 +10,13 @@ sessions here. This lists an account's own, newest first, and renders one
 as plain text: a turn a line, the tool calls with their command and the
 whole of what the tool answered, so `bb roadmap` and its reply are in it
 as they were. Claude's private reasoning is not conversation and is left
-out. The Profile page offers each as a download; only the account's own.
+out. A notebook's Sessions view offers each to resume, read, download,
+delete, or make visible to every session on the project (shared(); the
+operator, 22 Oct); otherwise only the account's own.
 """
 import json
+import os
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,9 +36,109 @@ MAX_LIST = 60
 MAX_OUT = 256 * 1024 * 1024
 
 
-def configure(*, workspace, root_for):
+# The conversations made visible to every session on their project:
+# {project: {session id: {"uid": whose, "at": when}}}, in the state directory
+# (a file absent is none made visible, so no migration brought it).
+SHARED = None
+write_json = None
+_shared_lock = threading.Lock()
+# A conversation written to this recently is a session still going: not
+# deleted under it.
+BUSY_S = 120
+
+
+def configure(*, workspace, root_for, state=None, write_json=None):
     globals().update(WORKSPACE=Path(workspace), WORKTREES=Path(workspace) / ".worktrees",
                      root_for=root_for)
+    if state is not None:
+        globals().update(SHARED=Path(state) / "transcripts-shared.json", write_json=write_json)
+
+
+def _shared_all():
+    try:
+        with open(SHARED) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def shared(project):
+    """{session id: owner uid} for the conversations on the project made
+    visible to every session there."""
+    return {sid: str(v.get("uid") or "") for sid, v in (_shared_all().get(project) or {}).items()
+            if isinstance(v, dict) and v.get("uid")}
+
+
+def owner_of(uid, project, sid):
+    """Whose conversation `sid` is, as `uid` may read it: its own, or one
+    another account made visible on the project; None when neither."""
+    if _find(uid, project, sid) is not None:
+        return uid
+    o = shared(project).get(sid or "")
+    return o if o and _find(o, project, sid) is not None else None
+
+
+def set_shared(uid, project, sid, on):
+    """Make one of the account's own conversations visible to every session
+    on the project, or private again. (payload, status)."""
+    if _find(uid, project, sid) is None:
+        return {"error": "no such conversation of yours"}, 404
+    with _shared_lock:
+        d = _shared_all()
+        p = d.setdefault(project, {})
+        if on:
+            p[sid] = {"uid": uid, "at": int(time.time())}
+        else:
+            p.pop(sid, None)
+            if not p:
+                d.pop(project, None)
+        write_json(SHARED, d)
+    return {"ok": True, "shared": bool(on)}, 200
+
+
+def delete(uid, project, sid):
+    """Remove one of the account's own conversations, and its visibility
+    with it. One still being written (a session going) is refused: its
+    session would write it again. (payload, status)."""
+    f = _find(uid, project, sid)
+    if f is None:
+        return {"error": "no such conversation of yours"}, 404
+    try:
+        if time.time() - f.stat().st_mtime < BUSY_S:
+            return {"error": "a session is still writing this conversation: end it first"}, 409
+        os.unlink(f)
+    except OSError as e:
+        return {"error": f"could not remove it: {e.strerror}"}, 500
+    with _shared_lock:
+        d = _shared_all()
+        if sid in (d.get(project) or {}):
+            d[project].pop(sid, None)
+            if not d[project]:
+                d.pop(project, None)
+            write_json(SHARED, d)
+    return {"ok": True}, 200
+
+
+def visible(uid, project, name_of=lambda u: u):
+    """Other accounts' conversations on the project made visible to every
+    session there, newest first, each with whose it is."""
+    rows = []
+    for sid, o in shared(project).items():
+        if o == uid:
+            continue
+        f = _find(o, project, sid)
+        if f is None:
+            continue
+        try:
+            st = f.stat()
+        except OSError:
+            continue
+        # ...each marked with its agent, as the account's own rows are (R95).
+        rows.append({"project": project, "id": sid, "at": int(st.st_mtime), "bytes": st.st_size,
+                     "first": _first_prompt(f), "by": name_of(o), "agent": "claude"})
+    rows.sort(key=lambda r: r["at"], reverse=True)
+    return rows[:MAX_LIST]
 
 
 def _slug(path):
@@ -95,6 +199,7 @@ def mine(uid, projects):
     [{project, id, at, bytes, first}]."""
     rows = []
     for project in projects:
+        on = shared(project) if SHARED is not None else {}
         for d in _dirs(uid, project):
             try:
                 files = [f for f in d.glob("*.jsonl") if f.is_file()]
@@ -112,7 +217,8 @@ def mine(uid, projects):
                 # as their sessions' logs are kept (its step 8). Only ever
                 # this account's own, whichever agent it used.
                 rows.append({"project": project, "id": f.stem, "at": int(st.st_mtime),
-                             "bytes": st.st_size, "first": _first_prompt(f), "agent": "claude"})
+                             "bytes": st.st_size, "first": _first_prompt(f),
+                             "shared": f.stem in on, "agent": "claude"})
     rows.sort(key=lambda r: r["at"], reverse=True)
     return rows[:MAX_LIST]
 

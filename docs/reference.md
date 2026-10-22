@@ -97,6 +97,10 @@ bb version release --remove NAME [--remove NAME]... --why "..." [--tag TAG]
                    of an edit, the names checked against the release first
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component: a directory with its own VERSION
+bb version line [X.Y.Z|none]   the release this branch works toward: a branch
+                   named for one (claude/0.7.0) works toward it, or set it here;
+                   a dev build heads for it (0.7.0-dev.N), a bump moves only
+                   to it, and on a patch line bb lint refuses a new migration
 bb version policy  what a session may move here, and who decides. A
                    person picks it in the project's settings (Agents may:
                    Move the version) or on the Artifacts view, before or after
@@ -347,7 +351,10 @@ bb roadmap edit N "..."               reword one; `step add|edit|rm|done` for on
 bb roadmap info N [M] "..."           add the technical details to one, or step M,
                                       under what is there (--replace sets them)
 bb roadmap target N X.Y.Z             the release one is meant for (`none` clears); --target
-                                      on add sets it, `bb roadmap --target X.Y.Z` lists those
+                                      on add sets it, `bb roadmap --target X.Y.Z` lists those;
+                                      `target N.M X.Y.Z` (or N M) is step M's own, `none`
+                                      sends it back to its item's, and --target lists an item
+                                      for any step meant for that release
 bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
 bb roadmap pending    what a session added that is waiting for your approval
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
@@ -702,8 +709,8 @@ environment.
 
 ## Signing Android releases
 
-A project keeps its Android keys on the controller, under **Android signing** in
-its settings, and a build is signed on its node as a job no session can look
+A project keeps its Android keys on the controller, in the **Signing** view of
+its page (under Ship), and a build is signed on its node as a job no session can look
 inside: from the Artifacts view, or by a session with `bb sign`, under the
 project's **Agents may: Sign a build**. No key is made or added until the
 project's owner has set its **backup password**, which every download of a
@@ -714,6 +721,17 @@ administrator who works on the project.
 |---|---|---|
 | Play upload key | Google Play with Play App Signing: you sign the `.aab` with it, Google re-signs what users download with the key it holds | Play Console resets it |
 | Sideload signing key | an APK you hand out yourself, or that F-Droid publishes from a reproducible build | gone for good: no update reaches an existing install, or anybody can ship one over it |
+
+On the controller every key is sealed at rest once the install has a
+**signing secret**: `SIGNING_SECRET=` (16 characters or more; `openssl rand
+-hex 32` makes one) in an `*.env` file in the root-only secrets folder, as
+`NPM_TOKEN` is. Each keystore and its passwords under `/config/signing` are
+then ciphertext, so a copy of `/config`, or a backup of it, opens no key;
+keys kept from before are sealed at the next start. The secret is never
+written into `/config`: keep it with your other secrets. Lost or changed, the
+sealed keys cannot be opened, the Signing view says so, and each key comes
+back by **Import a backup**; without a secret, the keys are kept unsealed and
+the view says that too. Root on the running controller can still read them.
 
 So a sideload key is downloaded once with **Download backup** and kept
 offline, with its password somewhere apart from it; its row says so in red
@@ -727,5 +745,6 @@ up there. A project can keep several named keys (one per app, or one shared),
 generated on the controller or uploaded, with each app's package mapped to its
 key, and a sideload key can be **rotated** to another: builds then carry both
 and a proof, Android 9 and newer move to the new key, and the old one is kept
-for the devices before that. [building.md](building.md#android-signing-keys)
+for the devices before that. **Import a backup** takes what Download backup
+gave, in this project or another, as the same key. [building.md](building.md#android-signing-keys)
 has the rest.

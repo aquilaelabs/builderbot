@@ -202,12 +202,14 @@ const JOB_COLS = [{label: "Job", w: "minmax(0,4fr)"}, {label: "State", w: "6rem"
 // build kept on its node for a look (docs/nodes.md §6).
 function jobOutputs(j){
   const outs = Array.isArray(j.outputs) ? j.outputs : [];
-  if (!outs.length) return "";
-  return `<div class="sub jbouts">${outs.map(o => o.kind === "artifact"
+  const said = outs.map(o => o.kind === "artifact"
     ? `<a href="/api/artifact?project=${encodeURIComponent(j.project)}&path=${
         encodeURIComponent(o.path)}" download>${esc(o.path)}</a>`
-    : o.kind === "workspace" ? `workspace kept at <code>${esc(o.path)}</code>` : "")
-    .filter(Boolean).join(" · ")}</div>`;
+    : o.kind === "workspace" ? `workspace kept at <code>${esc(o.path)}</code>`
+    // What the build took on its node (R110 step 7), its cache beside it.
+    : o.kind === "room" ? `took ${esc(humanBytes(o.workspace || 0))}${o.cache ? `, its cache ${esc(humanBytes(o.cache))}` : ""}` : "")
+    .filter(Boolean);
+  return said.length ? `<div class="sub jbouts">${said.join(" · ")}</div>` : "";
 }
 
 // The list under its head, as every page's sections are (the operator, 18

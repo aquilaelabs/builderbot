@@ -30,7 +30,7 @@ const TOUR_STEPS = {
   ],
   notebook: [
     {say: "A project's notebook: everything about it in one place, shared by the people and the Claude sessions working on it."},
-    {at: `${TOUR_PANE} .nbtabs .nbgroups`, say: "Five groups: Overview, Plan (the roadmap and bugs), Code, Ship (artifacts, containers and VMs) and Docs. Each opens its views in the row under it."},
+    {at: `${TOUR_PANE} .nbtabs .nbgroups`, say: "Five groups: Overview (with your sessions here, what a session may do, and the settings), Plan (the roadmap and bugs), Code, Ship (artifacts, containers and VMs) and Docs. Each opens its views in the row under it."},
     {at: `${TOUR_PANE} .phead, ${TOUR_PANE} .bar.proj`, say: "Start Claude opens a session on this project; Shell a terminal in it. The menu holds its settings, its link and more."},
   ],
   findings: [
@@ -81,7 +81,7 @@ const TOUR_STEPS = {
     {at: TOUR_FIRST, say: "Hostnames, routes, certificates and the image each have a section. A route sends a hostname to a port a container publishes."},
   ],
   settings: [
-    {say: "Controller settings: how this BuilderBot itself behaves. Each section says what it changes."},
+    {say: "The controller's settings: how this BuilderBot itself behaves, the room it keeps on the nodes among them. Each section says what it changes."},
     {at: TOUR_FIRST, say: "A section's changes are saved with its own Save, never another's."},
   ],
   nodes: [
@@ -156,9 +156,12 @@ function tourTarget(sel){
 // Whether the page in front is still its placeholder, or the page is still
 // booting: a boot draws the saved front tab before it lands on Home, and a
 // tour asked for in between toured Projects instead.
+// Only a placeholder that shows counts: the Containers page keeps one in
+// each section it reads when opened, and a tour that waited for those never
+// came (B216).
 function tourLoading(){
   return document.body.classList.contains("booting")
-    || !!document.querySelector(".doc.on .skel, .doc.on .loading, .doc.on .sk-b");
+    || [...document.querySelectorAll(".doc.on .skel, .doc.on .loading, .doc.on .sk-b")].some(e => e.checkVisibility());
 }
 function tourStart(kind){
   // Still the page in front, and nothing over it: a tour asked for a page
@@ -199,7 +202,10 @@ function tourStart(kind){
 function tourSample(s){
   $("tourSample")?.remove();
   if (!s?.sample || (s.at && tourTarget(s.at))) return null;
-  const doc = document.querySelector(`${TOUR_PANE} .doctab`);
+  // The page on show's, not the first the pane keeps: after Home, the
+  // example went into Home's hidden page and the ring wrapped an empty box
+  // over the VMs page (B223).
+  const doc = document.querySelector(`${TOUR_PANE} .doc.on .doctab`) || document.querySelector(`${TOUR_PANE} .doctab`);
   if (!doc) return null;
   const box = document.createElement("div");
   box.id = "tourSample"; box.className = "toursample"; box.inert = true;
@@ -218,10 +224,30 @@ function tourSampleCard(){
         <span class="more"><button type="button" class="moreb" aria-label="More">⋯</button></span></div></div></div></div></section>`;
 }
 
+// A page that redraws itself on its own poll, not through the panes' draw
+// (VMs), wiped a step's example and left the ring around where it had been
+// (B215): while a step with one shows, a redraw that takes it away puts it
+// back and the ring with it.
+let tourWatch = null;
+function tourKeepSample(on){
+  tourWatch?.disconnect();
+  tourWatch = null;
+  const pane = document.querySelector(TOUR_PANE);
+  if (!on || !pane) return;
+  let queued = false;
+  tourWatch = new MutationObserver(() => {
+    if (queued || !tourKind || $("tourSample") || tourTarget(tourSteps[tourI]?.at)) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; if (tourKind && !$("tourSample")) tourDraw(); });
+  });
+  tourWatch.observe(pane, {childList: true, subtree: true});
+}
+
 function tourDraw(){
   const ring = $("tourRing"), card = $("tourCard");
   const s = tourSteps[tourI], last = tourI === tourSteps.length - 1;
   const el = tourSample(s) || tourTarget(s.at);
+  tourKeepSample(!!s.sample);
   card.innerHTML = `<div class="tourstep">${tourI + 1} of ${tourSteps.length}</div>
     <div class="toursay">${esc(s.say)}</div>
     <label class="ndcap tourall"><input type="checkbox" id="tourAll"> Skip the tour on every page</label>
@@ -276,11 +302,15 @@ function tourGo(d){
 function tourEnd(all){
   const kind = tourKind;
   tourKind = "";
+  tourKeepSample(false);
   $("tourCard").hidden = $("tourRing").hidden = true;
   $("tourSample")?.remove();
   if (!state?.me) return;
   const seen = [...new Set([...tourSeen(), kind])].slice(-64);
   state.tour = {seen, off: !!state?.tour?.off || all};
+  // A poll already out answers with the list from before this: dropped, as
+  // an action's own answer drops it (B217).
+  adoptSeq++;
   fetch("/api/users", {method: "POST", headers: {"Content-Type": "application/json"},
                        body: JSON.stringify({action: "prefs", prefs: {tour_seen: seen, tour_off: state.tour.off}})}).catch(() => {});
 }
@@ -289,9 +319,16 @@ function tourEnd(all){
 async function tourReset(){
   tourAsked.clear();
   state.tour = {seen: [], off: false};
+  // ...and a reset the same way: a poll in flight put the old list back,
+  // and the tours waited for a reload (B217).
+  adoptSeq++;
   const r = await fetch("/api/users", {method: "POST", headers: {"Content-Type": "application/json"},
                                        body: JSON.stringify({action: "prefs", prefs: {tour_seen: [], tour_off: false}})});
   const j = await r.json().catch(() => ({}));
   if (j.error) notify(j.error, true);
-  else notify("The tours show again, on each page the next time you open it");
+  else {
+    notify("The tours show again, on each page the next time you open it");
+    // ...starting with the page in front, without waiting for a draw.
+    tourSoon(tabOf(panes[0])?.kind);
+  }
 }

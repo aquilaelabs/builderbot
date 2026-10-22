@@ -236,6 +236,18 @@ const SETTING_GROUPS = [
      hint: "From Zero Trust: Networks, Tunnels, Create a tunnel (Cloudflared), the long eyJ… string in its install command. The controller runs the tunnel itself with it."},
     {key: "cf_api_token", label: "Cloudflare API token (optional)", type: "secret",
      hint: "With Zone DNS Edit and Account Cloudflare Tunnel Edit: the hostname's record and the tunnel's two rules (the agent's API to the controller, everything else 404) are written on Apply rather than clicked."}]},
+  // The room a node keeps for itself (R110): the numbers the bell, the
+  // build gate, a rebuild's check and the hourly prune go by, and a memory
+  // limit for a container whose compose file sets none.
+  {key: "room", title: "Room on the nodes", status: () => "applies at once; a container's limit at its next start",
+   heading: s => `${s?.settings?.room_floor_gb?.value ?? 10} GB kept`,
+   fields: [
+    {key: "room_floor_gb", label: "Disk kept free (GB)", type: "number",
+     hint: "A node under this much free on a disk or a store is on the bell, and a build, a test or a container rebuild there is refused until room is made. A disk smaller than ten times this keeps a tenth of itself instead."},
+    {key: "room_mem_pct", label: "Memory warning (% in use)", type: "number",
+     hint: "A node or a VM using more than this share of its memory over ten minutes is on the bell, before the system starts killing processes."},
+    {key: "container_mem_gb", label: "Default container memory (GB, 0 for none)", type: "number",
+     hint: "A container whose compose file sets no memory limit gets this one when it starts, so one runaway app cannot take the node's memory. A limit the compose file sets is kept."}]},
   // Maintenance mode, the owner's alone (state.can.maintenance): every
   // other account is told why and kept out until it is off, and a band on
   // every page reminds the owner it is on.
@@ -492,7 +504,7 @@ function settingsSections(){
             // left empty it is left alone, and its own tick takes it off.
             if (f.type === "text" || f.type === "secret"){
               const isSet = f.type === "secret" ? !!s.settings[f.key]?.set : !!v;
-              return `<div class="setrow col ctlrow"><label for="${id}">${esc(f.label)}${helpIcon(f.hint)}${
+              return `<div class="setrow col ctlrow"><label for="${id}">${esc(f.label)}${f.dev ? devMark() : ""}${helpIcon(f.hint)}${
                   f.type === "secret" ? (isSet ? ` <span class="pill ok">set</span>` : ` <span class="pill">not set</span>`) : src(f.key)}</label>
                 <input id="${id}" type="${f.type === "secret" ? "password" : "text"}" data-set="${f.key}"${
                   f.type === "secret" ? ' data-secret="1"' : ""} value="${esc(f.type === "secret" ? "" : sdVal(id, v || ""))}"
@@ -501,11 +513,21 @@ function settingsSections(){
                   f.type === "secret" && isSet ? `<label class="ndcap"><input type="checkbox" data-clear="${f.key}"> take it off</label>` : ""}
               </div>`;
             }
+            // A number is a short field beside its label, held to the
+            // range the server keeps (settings.KEYS) by the browser too.
+            if (f.type === "number"){
+              const m = s.meta?.[f.key] || {};
+              return `<div class="setrow col ctlrow"><label for="${id}">${esc(f.label)}${helpIcon(f.hint)}${src(f.key)}</label>
+                <input id="${id}" type="number" inputmode="numeric" data-set="${f.key}" data-num="1"
+                  min="${esc(String(m.min ?? 0))}" max="${esc(String(m.max ?? ""))}" step="1"
+                  value="${esc(String(sdVal(id, v ?? "")))}">
+              </div>`;
+            }
             // Every other setting is a switch: a checkbox inside its label,
             // the way the Tests bar's are, with what the label cannot say on
             // the ? (docs/design-language.md, Controls).
             return `<div class="logdays setrow ctlrow"><label class="ndcap">
-                <input id="${id}" type="checkbox" data-set="${f.key}"${sdVal(id, !!v) ? " checked" : ""}> ${esc(f.label)}${helpIcon(f.hint)}</label>${src(f.key)}
+                <input id="${id}" type="checkbox" data-set="${f.key}"${sdVal(id, !!v) ? " checked" : ""}> ${esc(f.label)}${f.dev ? devMark() : ""}${helpIcon(f.hint)}</label>${src(f.key)}
               </div>`;
     };
     // The button is a real control only while debug mode is SAVED on: what
@@ -549,7 +571,7 @@ function wireSettingsSections(el){
       box.querySelectorAll("[data-set]").forEach(i => {
         // A secret left empty is left as it is; its tick takes it off.
         if (i.dataset.secret && !i.value.trim()) return;
-        set[i.dataset.set] = i.type === "checkbox" ? i.checked : i.value.trim();
+        set[i.dataset.set] = i.type === "checkbox" ? i.checked : i.dataset.num ? Number(i.value) : i.value.trim();
       });
       box.querySelectorAll("[data-clear]:checked").forEach(i => { set[i.dataset.clear] = ""; });
       busy(btn, "Applying");

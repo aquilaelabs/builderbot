@@ -46,6 +46,19 @@ await post('/api/settings', { set: { offer_unvetted: true } });
 await page.waitForFunction(() => !document.querySelector('#devtag')?.hidden, null, { timeout: 30000 });
 ok(await page.$eval('#devtag', e => e.textContent.trim() === 'dev'),
    '...and says dev once it is on, so two dashboards are never confused');
+// ...and each dev feature it offers says so where it is offered (R102, the
+// operator, 22 Oct: the Apps page hid two rows with it off and nothing said
+// why): the two dev apps' rows and their switches, never the Android app.
+await page.evaluate(() => openAppsTab());
+await page.waitForSelector('.pane .doc.on [data-devapp="vscode"]', { timeout: 15000 });
+const marked = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.pane .doc.on [data-devapp]')]
+  .map(r => [r.dataset.devapp, !!r.querySelector('.name .pill.devmark')])));
+await page.evaluate(() => openSettingsTab());
+await page.waitForSelector('.settingstab [data-set="apps_vscode"]', { state: 'attached', timeout: 15000 });
+const switches = await page.evaluate(() => ['apps_android', 'apps_vscode', 'apps_companion']
+  .map(k => !!document.querySelector(`.settingstab [data-set="${k}"]`)?.closest('label')?.querySelector('.pill.devmark')));
+ok(marked.vscode && marked.companion && marked.android === false && switches.join() === 'false,true,true',
+   `...and a dev feature says dev where it is offered: the VS Code and companion rows and switches, not Android's (${JSON.stringify({ marked, switches })})`);
 await post('/api/settings', { set: { offer_unvetted: false } });
 await page.waitForFunction(() => document.querySelector('#devtag')?.hidden, null, { timeout: 30000 });
 // Reset BuilderBot: a red verb at the foot of the tab behind a typed word,
@@ -88,8 +101,22 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Logs|Claude sessions|Storage|Apps|Reach from outside|Maintenance|Debugging|Reset',
-   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the home tunnel the controller runs itself (R176), maintenance mode (the owner's), debugging, and the reset (${groups.join(', ')})`);
+ok(groups.join('|') === 'Logs|Claude sessions|Storage|Apps|Reach from outside|Room on the nodes|Maintenance|Debugging|Reset',
+   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the home tunnel the controller runs itself (R176), the room a node keeps (R110), maintenance mode (the owner's), debugging, and the reset (${groups.join(', ')})`);
+{
+  // The room a node keeps (R110 steps 1 and 5): whole numbers held to their
+  // range by the server, the browser's own min and max beside them.
+  const room = await page.$eval('[data-group="Room on the nodes"]', g => [...g.querySelectorAll('input[type=number]')]
+    .map(i => `${i.dataset.set}=${i.value}:${i.min}-${i.max}`).join(' '));
+  const set = async v => (await page.evaluate(async b => (await fetch('/api/settings', {method: 'POST',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({set: b})})).json(), v));
+  const good = await set({room_floor_gb: 25, container_mem_gb: 4});
+  const bad = await set({room_mem_pct: 120});
+  await set({room_floor_gb: 10, container_mem_gb: 0});
+  ok(room === 'room_floor_gb=10:1-1000 room_mem_pct=92:50-99 container_mem_gb=0:0-1024' && good.ok
+     && /whole number from 50 to 99/.test(bad.error || ''),
+     `Room on the nodes is three numbers with their ranges, saved in range and refused out of it (${room}; ${JSON.stringify(bad)})`);
+}
 // Sections, and a page of settings (the operator, 16 Oct): a list of them
 // beside the one picked, each row saying what is in it, and Revert beside
 // each Apply putting the section's fields back to what is saved.
@@ -423,6 +450,16 @@ ok(elsewhere.git_name === 'T. Person',
     bars: [...document.querySelectorAll('.nbsettings .rnbar')].filter(b => b.checkVisibility()).length }));
   ok(inView.name === 'alpha' && inView.modal && inView.close && inView.shown && inView.bars === 1,
      `the notebook's Settings view holds the form, the dialog shut, the section on show with its own Save and Revert (${JSON.stringify(inView)})`);
+  // The notebook taken down while it holds the form (B211, the operator,
+  // 22 Oct: Settings empty after leaving the project and coming back): the
+  // form is handed back first, so the next Settings view has it.
+  await page.evaluate(() => getNotebook('alpha').destroy());
+  const back = await page.evaluate(() => !!document.querySelector('#rnmodal > .box') && rnHost === null);
+  await page.evaluate(() => openProjectSettings('alpha'));
+  await page.waitForSelector('.nb .nbview[data-view="settings"]:not([hidden]) .nbsettings #rnName', { timeout: 15000 }).catch(() => {});
+  const again = await page.evaluate(() => ({ name: $('rnName').value, shown: $('rnName').checkVisibility() }));
+  ok(back && again.name === 'alpha' && again.shown,
+     `a notebook taken down hands the form back, and Settings opened again holds it (${back} ${JSON.stringify(again)})`);
   // The sections a list beside the one picked (the operator, 16 Oct: too
   // many open at once to find a setting in): each row names what is in it,
   // a press shows that section alone, and People is on the list.
@@ -447,10 +484,10 @@ ok(elsewhere.git_name === 'T. Person',
     ok(!blank.length && /Linked to GitHub/.test(repo.say) && /GitHub settings/.test(repo.go) && !repo.bar,
        `...every section listed opens on something, Repository saying what its remote is with the door to it and no Save of its own (${blank.join(', ') || 'none blank'}; ${repo.say} ${repo.go})`);
   }
-  await rnSect(page, 'claude');
+  await rnSect(page, 'yours');
   const one = await page.evaluate(() => [...document.querySelectorAll('.nbsettings details.rngroup')]
     .filter(d => d.checkVisibility()).map(d => d.dataset.sect));
-  ok(one.join() === 'rn:claude', `...a row pressed shows its section alone (${one.join()})`);
+  ok(one.join() === 'rn:yours', `...a row pressed shows its section alone (${one.join()})`);
   ok(!(await page.$eval('.nbsettings .sectjump', e => e.checkVisibility()).catch(() => false)),
      '...with no jump bar over it: the list is how a section is found');
   // People stays when the view is asked for again (B: the form was put back
@@ -459,7 +496,7 @@ ok(elsewhere.git_name === 'T. Person',
   await page.waitForTimeout(300);
   const still = await page.evaluate(() => ({ people: !document.querySelector('details[data-sect="rn:people"]').hidden,
     pick: document.querySelector('.nbsettings .snav .rrow.on')?.dataset.spick }));
-  ok(still.people && still.pick === 'claude', `...and asked for again it keeps People and the section picked (${JSON.stringify(still)})`);
+  ok(still.people && still.pick === 'yours', `...and asked for again it keeps People and the section picked (${JSON.stringify(still)})`);
   // The box borrowed from the dialog brings no dialog shadow into the view
   // (B702): the scroll-hint class it wore in the dialog is dropped on the way
   // in, and an inline box gets no shadow from that class however it arrives.
@@ -478,24 +515,25 @@ ok(elsewhere.git_name === 'T. Person',
   // stays typed (the operator, 10 Oct: one Save for eleven sections).
   await rnSect(page, 'build');
   await page.fill('#rnBuildCmd', 'make one');
-  await rnSect(page, 'claude');
-  await page.selectOption('#rnGateRoadmap', 'deny');
+  await rnSect(page, 'yours');
+  const nameWas = await page.evaluate(() => $('rnGitName').value);
+  await page.fill('#rnGitName', 'Typed Not Saved');
   const marks = await page.evaluate(() => [...document.querySelectorAll('.nbsettings .snav [data-spick]')]
     .filter(b => !b.querySelector('.sunsaved').hidden).map(b => b.dataset.spick).sort().join());
-  ok(marks === 'build,claude', `...each section holding a change says unsaved on its row (${marks})`);
+  ok(marks === 'build,yours', `...each section holding a change says unsaved on its row (${marks})`);
   const err = await sectSave(page, 'build');
   await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.build === 'make one', { timeout: 20000 });
-  const after = await page.evaluate(() => ({ gate: (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.gate?.roadmap || 'auto',
-    typed: $('rnGateRoadmap').value, claude: !document.querySelector('.rnbar[data-rnbar="claude"] [data-rnsave]').disabled,
+  const after = await page.evaluate(() => ({
+    typed: $('rnGitName').value, yours: !document.querySelector('.rnbar[data-rnbar="yours"] [data-rnsave]').disabled,
     build: document.querySelector('.rnbar[data-rnbar="build"] [data-rnsave]').disabled }));
-  ok(!err && after.gate === 'auto' && after.typed === 'deny' && after.claude && after.build,
-     `...Build and test's Save stores the build command and nothing of Agents may, whose change stays typed and unsaved (${JSON.stringify(after)})`);
-  await rnSect(page, 'claude');
-  await page.click('.rnbar[data-rnbar="claude"] [data-rnrevert]');
-  ok(await page.evaluate(() => $('rnGateRoadmap').value === 'auto'
-       && document.querySelector('.rnbar[data-rnbar="claude"] [data-rnrevert]').disabled
-       && $('rnBuildCmd').value === 'make one'),
-     '...and its Revert puts Agents may back alone');
+  ok(!err && after.typed === 'Typed Not Saved' && after.yours && after.build,
+     `...Build and test's Save stores the build command and nothing of Yours on this project, whose change stays typed and unsaved (${JSON.stringify(after)})`);
+  await rnSect(page, 'yours');
+  await page.click('.rnbar[data-rnbar="yours"] [data-rnrevert]');
+  ok(await page.evaluate(was => $('rnGitName').value === was
+       && document.querySelector('.rnbar[data-rnbar="yours"] [data-rnrevert]').disabled
+       && $('rnBuildCmd').value === 'make one', nameWas),
+     '...and its Revert puts Yours on this project back alone');
   // A section's Save is its own fields alone, and refuses one somebody else
   // saved since these settings were opened (the operator, 17 Oct: a save in
   // one section put back another section's change, and a session's change
@@ -610,6 +648,34 @@ ok(elsewhere.git_name === 'T. Person',
      'Restore file asks, then puts the file back as it was that day');
   const kept = (await page.evaluate(async () => (await (await fetch('/api/snapshots?project=alpha')).json()).days));
   ok(kept.some(d => /before-restore/.test(d.day)), '...having snapshotted the tree first, so the restore can be undone');
+  // A day pinned from its row is kept and says so; Unpin lets it go again
+  // (R105, the operator, 22 Oct).
+  {
+    await page.evaluate(() => { openProjectSettings('alpha'); });
+    await openFold(page, 'details.sect[data-sect="rn:snapshots"]');
+    await page.waitForSelector('#rnSnapRows .rnsnap [data-snappin="pin"]', { timeout: 15000 });
+    const day = await page.$eval('#rnSnapRows .rnsnap', r => r.dataset.day);
+    await page.click(`#rnSnapRows .rnsnap[data-day="${day}"] [data-snappin]`);
+    await page.waitForSelector(`#rnSnapRows .rnsnap[data-day="${day}"] [data-snappin="unpin"]`, { timeout: 15000 });
+    const marked = await page.$eval(`#rnSnapRows .rnsnap[data-day="${day}"]`, r => /pinned/.test(r.textContent));
+    const listed = (await page.evaluate(async () => (await (await fetch('/api/snapshots?project=alpha')).json())));
+    const hint = await page.$eval('#rnSnapHint', h => h.textContent);
+    await page.click(`#rnSnapRows .rnsnap[data-day="${day}"] [data-snappin]`);
+    await page.waitForSelector(`#rnSnapRows .rnsnap[data-day="${day}"] [data-snappin="pin"]`, { timeout: 15000 });
+    ok(marked && listed.days.find(d => d.day === day)?.pinned === true && listed.on === true && /1 pinned/.test(hint),
+       `Pin keeps a day and its row says pinned, Unpin lets it go again (${day} ${hint})`);
+  }
+  // Daily snapshots switched off from Build and test, staged and saved like
+  // the days kept, and back on (R105).
+  {
+    await rnSect(page, 'rn:build');
+    await openFold(page, 'details.sect[data-sect="rn:build"]');
+    const on = await page.$eval('#rnSnapOn', c => c.checked);
+    const r = await post('/api/prefs', { project: 'alpha', snapshots_on: false });
+    const off = (await page.evaluate(async () => (await (await fetch('/api/snapshots?project=alpha')).json()))).on;
+    await post('/api/prefs', { project: 'alpha', snapshots_on: true });
+    ok(on && r.status === 200 && off === false, `daily snapshots are on by default and can be switched off (${on} ${r.status} ${off})`);
+  }
   // From outside the page, which carries no sign-in: nothing is listed.
   const anon = (await fetch(URL.replace(/\/$/, '') + '/api/snapshots?project=alpha')).status;
   ok(anon === 401 || anon === 403, `...and nothing is listed to a caller who is not signed in (${anon})`);

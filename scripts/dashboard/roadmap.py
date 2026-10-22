@@ -90,7 +90,7 @@ def configure(*, write_json, state, tell=None, tmux_name=None, settle=None,
 # through bb is here: add, and the three follow-ups that ride behind a held
 # add. Everything else on a held item is refused by bb with "still waiting".
 _REPLAY = {"add": "add", "info": "set_info", "step-add": "add_step", "edit": "edit",
-           "target": "set_target",
+           "target": "set_target", "target-step": "set_step_target",
            # A session asking for an item back off the shelf (R78): held as a
            # request whatever the gate says, and a person's Approve replays it.
            "unshelve": "shelve"}
@@ -666,6 +666,41 @@ def set_target(project, item_id, version, by="you", who=""):
     return _edit(project, item_id, change, by, who)
 
 
+def set_step_target(project, item_id, step, version, by="you", who=""):
+    """Say which release one step is meant for, or "" for its item's (R108,
+    the operator, 22 Oct): an item split across releases says which part
+    ships when, and a step with none goes with its item."""
+    v, bad = _target(version)
+    if bad:
+        return {"error": bad}
+    if _int(step) is None:
+        return {"error": "not a step"}
+
+    def change(row, rows):
+        steps = row.get("steps") or []
+        i = _int(step)
+        if not 0 <= i < len(steps):
+            return {"error": "no such step"}
+        old = steps[i].get("target", "")
+        if old == v:
+            return {"error": f"that step is already for {v}" if v else "that step goes with its item already"}
+        if v:
+            steps[i]["target"] = v
+        else:
+            steps[i].pop("target", None)
+        return {"ok": True, "item": row,
+                "log": {"act": "target-step", "id": row["id"], "step": i, "text": steps[i].get("text", ""),
+                        "of": row["text"], "target": v, **({"was": old} if old else {})}}
+    return _edit(project, item_id, change, by, who)
+
+
+def for_release(row, version):
+    """Whether an item belongs to a release: its own target, or any step's
+    (a step with none goes with its item)."""
+    own = row.get("target") or ""
+    return own == version or any((st.get("target") or own) == version for st in row.get("steps") or [])
+
+
 # An item is one thing to do, or several in an order that matters. A change
 # that needs three things done in sequence is not three items: put them out
 # of order and the second one lands on a tree the first was supposed to have
@@ -846,6 +881,11 @@ def _rebuilt_row(events, item_id, text):
                 steps[i]["done"] = e.get("at", 0)
             elif act == "undone-step":
                 steps[i].pop("done", None)
+            elif act == "target-step":
+                if e.get("target"):
+                    steps[i]["target"] = e["target"]
+                else:
+                    steps[i].pop("target", None)
         elif act == "edit" and i is None:
             row["text"] = e.get("text") or row["text"]
         elif act == "info" and i is None:
@@ -1944,7 +1984,9 @@ def verb(name, act, req, me, *, live, prefix):
         r = add(name, field(req, "text"), steps=field_list(req, "steps"), who=who,
                 target=field(req, "target"))
     elif act == "target":
-        r = set_target(name, req.get("id"), field(req, "target"), who=who)
+        # A step's own release where one is named (R108), else the item's.
+        r = (set_step_target(name, req.get("id"), req.get("step"), field(req, "target"), who=who)
+             if req.get("step") is not None else set_target(name, req.get("id"), field(req, "target"), who=who))
     elif act == "send":
         r = send(name, req.get("id"), req.get("step"), live,
                  also_told=unsaved(name) if req.get("tell") else False,

@@ -7,7 +7,7 @@ import re
 import shutil
 import tarfile
 from .base import ROOT_TOOLS, TOOLS_DIR, log
-from .stores import tc_root
+from .stores import dir_bytes, tc_root
 
 
 class WorkspaceMixin:
@@ -78,6 +78,15 @@ class WorkspaceMixin:
         a run of failures does not fill the store."""
         jobdir = os.path.dirname(ws)
         project = str((job.job.get("source") or {}).get("project") or "")
+        # What the build took on this node, its workspace and the project's
+        # cache as it left them, measured before the workspace goes: the
+        # Artifacts view shows it and the next build's room check wants at
+        # least that much free (R110 step 7).
+        cache = os.path.join(((self.state.get("stores") or {}).get("cache") or "/tmp"),
+                             re.sub(r"[^A-Za-z0-9._-]", "_", project or "project"))
+        took = {"kind": "room", "workspace": dir_bytes(jobdir), "cache": dir_bytes(cache)}
+        if took["workspace"] is not None:
+            job.outputs.append(took)
         if state == "succeeded":
             self.deliver(job, ws, spec.get("outputs") or [])
             shutil.rmtree(jobdir, ignore_errors=True)

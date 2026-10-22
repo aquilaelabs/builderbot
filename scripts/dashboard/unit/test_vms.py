@@ -315,6 +315,36 @@ class Agent(unittest.TestCase):
         self.assertEqual(self.av.sums_lookup("d" * 128 + "\n", "alpine.qcow2"), "d" * 128)
         self.assertEqual(self.av.sums_lookup(f"{h} *other.img\n", "missing.img"), "")
 
+    def test_a_running_vm_s_root_filesystem_from_its_guest_agent(self):
+        from unittest import mock
+        said = ("fs.count             : 2\nfs.0.name            : vda15\nfs.0.mountpoint      : /boot/efi\n"
+                "fs.0.used-bytes      : 6\nfs.0.total-bytes     : 10\nfs.1.name            : vda1\n"
+                "fs.1.mountpoint      : /\nfs.1.used-bytes      : 3221225472\nfs.1.total-bytes     : 10737418240\n")
+        with mock.patch.object(self.av, "_run", return_value=said):
+            self.assertEqual(self.av.guest_root("bbvm-web-db"), [3072, 10240])
+        with mock.patch.object(self.av, "_run", return_value="error: Guest agent is not responding"):
+            self.assertIsNone(self.av.guest_root("bbvm-web-db"))
+
+    def test_a_vm_s_guest_agent_facts_and_its_balloon_memory(self):
+        from unittest import mock
+        said = ("hostname             : web-db\nos.pretty-name       : Debian GNU/Linux 13 (trixie)\n"
+                "os.kernel-release    : 6.12.48-amd64\nuser.count           : 1\n"
+                "if.0.name            : lo\nif.0.addr.0.addr     : 127.0.0.1\n"
+                "if.1.name            : enp1s0\nif.1.addr.0.addr     : 10.232.0.12\nif.1.addr.1.addr     : fe80::1\n"
+                "fs.0.mountpoint      : /\nfs.0.used-bytes      : 3221225472\nfs.0.total-bytes     : 10737418240\n"
+                "fs.1.mountpoint      : /var/lib/data\nfs.1.used-bytes      : 1048576\nfs.1.total-bytes     : 2097152\n")
+        with mock.patch.object(self.av, "_run", return_value=said):
+            g = self.av.guest_facts("bbvm-web-db")
+        self.assertEqual((g["hostname"], g["os"], g["kernel"], g["users"], g["ips"]),
+                         ("web-db", "Debian GNU/Linux 13 (trixie)", "6.12.48-amd64", 1, ["10.232.0.12"]))
+        self.assertEqual(g["fs"], [["/", 3072, 10240], ["/var/lib/data", 1, 2]])
+        stats = ("Domain: 'bbvm-web-db'\n  balloon.current=2097152\n  balloon.usable=104857\n  balloon.available=2000000\n"
+                 "Domain: 'bbvm-web-new'\n  balloon.current=1048576\n\nDomain: 'someone-else'\n  balloon.usable=1\n")
+        ran = []
+        with mock.patch.object(self.av, "_run", side_effect=lambda argv, timeout=0: ran.append(argv) or (stats if "domstats" in argv else "")):
+            self.assertEqual(self.av.vm_memory(), {"bbvm-web-db": [102, 1953]})
+        self.assertTrue(any("dommemstat" in a and "bbvm-web-new" in a for a in ran), "a VM with no stats period is given one")
+
     def test_an_image_s_size_is_read_so_a_disk_is_never_smaller(self):
         from unittest import mock
         ran = mock.Mock(stdout=json.dumps({"virtual-size": 21474836480}))

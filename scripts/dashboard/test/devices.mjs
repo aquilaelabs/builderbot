@@ -41,7 +41,12 @@ const people = { 'dv.rw': 'dvrwpass1', 'dv.r': 'dvrpass12', 'dv.none': 'dvnonepa
 for (const [n, pw] of Object.entries(people)) addUser(n, pw);
 for (const n of Object.keys(people)) await admin('/api/users', { action: 'projects', name: n, projects: ['alpha'] });
 await admin('/api/roles', { action: 'set', name: 'dv-files-w', scope: 'projects', perms: { projects: 'write', files: 'write' } });
-for (const n of Object.keys(people)) await admin('/api/roles', { action: 'assign', name: n, project_roles: { alpha: ['dv-files-w'] } });
+// dv.none is on alpha with a role that gives no File access: being on the
+// project lets a person's machine in only as far as their roles' File access
+// goes (R104).
+await admin('/api/roles', { action: 'set', name: 'dv-nofiles', scope: 'projects', perms: { projects: 'write' } });
+for (const n of ['dv.rw', 'dv.r']) await admin('/api/roles', { action: 'assign', name: n, project_roles: { alpha: ['dv-files-w'] } });
+await admin('/api/roles', { action: 'assign', name: 'dv.none', project_roles: { alpha: ['dv-nofiles'] } });
 const set = await admin('/api/project-ftp', { action: 'set', project: 'alpha', editor: true,
   access: { [uidOf('dv.rw')]: 'rw', [uidOf('dv.r')]: 'r' } });
 ok(!set.error && set.editor === true, `alpha's editor access set for the devices' people (${set.error || 'ok'})`);

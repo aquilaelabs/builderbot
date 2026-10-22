@@ -1,6 +1,6 @@
 // The notebook's Wiki view (R112): the project's wiki, its pages as rows
 // you open to read, Edit on a row to rewrite it, New page at the top, and
-// the head row's Export, Pull and Push. Writes through, like Bugs: a Save on
+// the status line's Export, Pull and Push. Writes through, like Bugs: a Save on
 // a page is that page written, with no notebook foot behind it. The pages
 // are kept by the controller as a forge-shaped repository (wiki.py), so
 // Export is a zip of Markdown and Push sends them to the repository's own
@@ -246,7 +246,11 @@ function nbWikiView({$, nb, project}){
     const d = nb.wkData || {};
     const n = articles().length;
     const rem = d.remote;
-    $("wkHint").textContent = d.error ? "wiki: " + d.error : `${n} page${n === 1 ? "" : "s"}`;
+    // The glance (R109): its pages, none while it has none, whose empty
+    // state is said where the article would be.
+    viewGlance($("wkHint"), [{label: n === 1 ? "page" : "pages", value: n, omit: !n}], d.error ? esc("wiki: " + d.error) : "");
+    $("wkNew").hidden = !!projWriteWhy(project);
+    $("wkNew").setAttribute("aria-expanded", String(!!nb.wkAdding));
     $("wkExport").disabled = !pages().length;
     $("wkPull").hidden = $("wkPush").hidden = !rem?.label;
     // An empty wiki is its empty state, not a fault: the bar's own line
@@ -331,8 +335,7 @@ function nbWikiView({$, nb, project}){
           <div class="actbar macts"><span class="state">Create writes the page now</span>
             <button type="button" class="stop" id="wkNewCancel">Cancel</button>
             <button type="button" class="primary" id="wkNewSave">Create</button></div></div>`
-      : ro ? ""
-      : `<div class="field"><div class="addbar ctlrow" data-add="wiki"><button type="button" id="wkNew">New page</button></div></div>`;
+      : "";
     const log = !nb.wkLog ? "" : `<div class="field wklog">${(d.history || []).length
         ? (d.history || []).map(h => `<div class="wklogrow"><span class="mono">${esc(h.commit)}</span> ${esc(h.what)} <span class="dim">· ${esc(h.by)} · ${esc(ago(h.at))}</span></div>`).join("")
         : `<span class="dim">nothing yet</span>`}</div>`;
@@ -397,10 +400,6 @@ function nbWikiView({$, nb, project}){
       if (j.relinked) notify(`Renamed; the links to it on ${j.relinked} page${j.relinked === 1 ? "" : "s"} now use its new name`);
       nb.wkCur = j.name; loadWiki();
     });
-    on("wkNew", () => {
-      nb.wkAdding = {name: articles().length ? "" : "Home", text: ""};
-      drawWiki(); box.querySelector("#wkNewName")?.focus();
-    });
     const nn = box.querySelector("#wkNewName"), nt = box.querySelector("#wkNewText");
     if (nn) nn.oninput = () => { nb.wkAdding.name = nn.value; };
     if (nt) nt.oninput = () => { nb.wkAdding.text = nt.value; };
@@ -418,7 +417,13 @@ function nbWikiView({$, nb, project}){
     });
   }
 
-  // The head row's controls: wired once, they live in the markup.
+  // The control row's and the status line's controls: wired once, they
+  // live in the markup.
+  // New page, the control row's primary: its form unrolls under the row.
+  $("wkNew").onclick = () => {
+    if (!nb.wkAdding) nb.wkAdding = {name: articles().length ? "" : "Home", text: ""};
+    drawWiki(); $("wkNewName")?.focus();
+  };
   $("wkExport").onclick = () => { location.href = "/api/wiki-export" + q; };
   $("wkLogBtn").onclick = () => { nb.wkLog = !nb.wkLog; drawWiki(); };
   $("wkPull").onclick = async ev => {

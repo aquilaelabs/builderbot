@@ -30,13 +30,13 @@ const row = n => `.pgrid .pcard[data-row="${n}"]`;   // the project's card on th
 await page.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(page);
 await nbGo(page, 'bugs');
-await page.waitForFunction(() => /^nothing reported$/.test(
-  document.getElementById('bugHint')?.textContent || ''), { timeout: 15000 });
-ok(await page.$eval('#bugList .nbempty', e => /reaches every Claude session/.test(e.textContent)),
-   'the Bugs tab opens empty: its head a fragment, and where reports end up its empty state (R119 step 4)');
+await page.waitForSelector('#bugList .nbempty', { timeout: 15000 });
+ok(await page.$eval('#bugList .nbempty', e => /reaches every Claude session/.test(e.textContent))
+   && !(await page.$('#bugHint .tile')) && await page.$eval('#bugNew', b => b.checkVisibility() && b.classList.contains('primary')),
+   'the Bugs tab opens empty: no tiles of zeros, Report a bug on its control row, and where reports end up its empty state (R119 step 4, R109)');
 
 // ---- reporting one from the panel -----------------------------------------
-await page.click('#bugAdd button');
+await page.click('#bugNew');
 await page.waitForSelector('.bugform', { timeout: 10000 });
 ok(await page.evaluate(() => document.activeElement?.tagName !== 'INPUT'),
    'the form opens without a cursor in it, like everything else here');

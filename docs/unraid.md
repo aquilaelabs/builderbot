@@ -373,6 +373,8 @@ root-only folder:
    # any publishing token a session should use but never read (optional)
    cat > /mnt/user/appdata/BuilderBot/secrets/builderbot.env <<'EOF'
    NPM_TOKEN=npm_xxxxxxxxxxxxxxxx
+   # seals the projects' Android signing keys at rest; keep a copy elsewhere
+   SIGNING_SECRET=paste-the-output-of-openssl-rand-hex-32
    EOF
 
    # any git ssh keys (no passphrase; filename doesn't matter)

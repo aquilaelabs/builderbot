@@ -64,8 +64,27 @@ for (const os of SYSTEMS){
                                        keys: [KEY], node: host.id, node_agent: true, ctl: CTL });
   ok(made.ok, `[${os}] a VM made a node (${made.error || made.domain})`);
   if (!made.ok) continue;
-  const row = await wait(async () => (await nodes()).find(n => n.name === `${PROJECT}-${name}` && n.state === 'online'), 45 * 60000);
-  ok(!!row, `[${os}] it enrolls and dials in on its own address (${row ? row.agent?.addr : 'not online in 45 minutes'})`);
+  // Failed at once, not after 45 minutes, when the VM never takes an
+  // address (R107: Gentoo's image sat at its boot loader, and the walk
+  // waited the whole time): its Screen on the VMs page shows why.
+  const started = Date.now();
+  let stuck = '';
+  const row = await wait(async () => {
+    const r = (await nodes()).find(n => n.name === `${PROJECT}-${name}` && n.state === 'online');
+    if (r) return r;
+    if (Date.now() - started > 15 * 60000){
+      const v = ((await api('/api/vms')).vms || []).find(x => x.name === name) || {};
+      const enrolled = (await nodes()).some(n => n.name === `${PROJECT}-${name}`);
+      if (!v.ip && !enrolled){ stuck = 'no address and no enrollment after 15 minutes: its Screen on the VMs page shows where it stopped'; return { stuck }; }
+    }
+    return null;
+  }, 45 * 60000);
+  ok(!!row && !row.stuck, `[${os}] it enrolls and dials in on its own address (${row?.stuck ? stuck : row ? row.agent?.addr : 'not online in 45 minutes'})`);
+  if (row?.stuck){
+    await api('/api/vms', { action: 'remove', project: PROJECT, name });
+    await wait(async () => !((await api('/api/vms')).vms || []).some(v => v.name === name), 10 * 60000);
+    continue;
+  }
   if (row){
     const nid = row.id;
     // Toolchains in and out.
@@ -88,6 +107,16 @@ for (const os of SYSTEMS){
       const up = !!x?.state?.running;
       ok(!!x && up === (action === 'deploy'), `[${os}] nginx ${action === 'deploy' ? 'runs as a container there' : 'comes off again'}${x && up !== (action === 'deploy') ? ` (running ${up})` : ''}`);
     }
+    // Its disks measured on the Storage page (R107: storage, as R97's step
+    // 2 named): Measure now runs, and the page lists the node's filesystems.
+    const meas = await api('/api/v1/nodes', { action: 'storage', id: nid });
+    if (meas.job) await wait(async () => ['succeeded', 'failed', 'canceled'].includes((await api(`/api/v1/jobs?id=${meas.job}`)).state), 10 * 60000, 5000);
+    const st = await wait(async () => {
+      const v = await api('/api/storage');
+      const n = (v.nodes || []).find(x => x.id === nid || x.node === nid);
+      return n && (n.filesystems || []).length ? n : null;
+    }, 5 * 60000, 10000);
+    ok(!!st, `[${os}] Storage measures its disks (${st ? (st.filesystems || []).length + ' filesystems' : meas.error || 'nothing measured'})`);
     // A project there: synced, and a terminal through the controller.
     await api('/api/prefs', { project: PROJECT, node: nid });
     const synced = await wait(async () => Object.entries((await nodes()).find(n => n.id === nid)?.reported?.sync || {})

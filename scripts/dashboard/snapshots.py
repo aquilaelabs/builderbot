@@ -33,6 +33,7 @@ import wssync
 
 WORKSPACE = Path("/workspace")
 days_of = None            # set by server.py: (project) -> days to keep, 0 for none
+on_of = None              # set by server.py: (project) -> whether one is taken each day (R105)
 projects = None           # set by server.py: () -> [project names]
 audit = None
 CHECK_EVERY = 1800        # seconds between looks for a project with no snapshot today
@@ -40,10 +41,10 @@ DAY = re.compile(r"\d{4}-\d{2}-\d{2}(T\d{6}-before-restore)?")
 _lock = threading.Lock()
 
 
-def configure(*, workspace, days, names, audit_fn=None):
+def configure(*, workspace, days, names, audit_fn=None, on=None):
     """paths.py and wssync.py are configured by the server already; this
     takes what is the project settings' and the audit's."""
-    globals().update(WORKSPACE=Path(workspace), days_of=days, projects=names, audit=audit_fn)
+    globals().update(WORKSPACE=Path(workspace), days_of=days, projects=names, audit=audit_fn, on_of=on)
 
 
 def _store():
@@ -80,7 +81,7 @@ def days(project):
             files = m.get("files") or {}
             out.append({"day": f.stem, "at": int(m.get("at") or 0), "files": len(files),
                         "bytes": sum(int(v[1]) for v in files.values()),
-                        "why": str(m.get("why") or "")})
+                        "why": str(m.get("why") or ""), "pinned": bool(m.get("pinned"))})
     return sorted(out, key=lambda d: (d["at"], d["day"]), reverse=True)
 
 
@@ -141,10 +142,33 @@ def take(project, why=""):
     return {"ok": True, "day": name, "files": len(files)}
 
 
+def pin(project, day, on=True):
+    """Keep one day whatever the days kept say (R105, the operator, 22 Oct),
+    or let it go with the rest again: a mark in the day's own record."""
+    if not DAY.fullmatch(str(day or "")):
+        return {"error": "not a day kept here"}
+    f = _days_dir(project) / f"{day}.json"
+    m = _manifest(project, day)
+    if m is None:
+        return {"error": f"{day} is not kept for {project}"}
+    if bool(m.get("pinned")) == bool(on):
+        return {"error": f"{day} is {'pinned' if on else 'not pinned'} already"}
+    if on:
+        m["pinned"] = True
+    else:
+        m.pop("pinned", None)
+    tmp = f.with_name(f".{f.name}")
+    tmp.write_text(json.dumps(m))
+    os.replace(tmp, f)
+    return {"ok": True, "day": day, "pinned": bool(on)}
+
+
 def prune(project, keep):
-    """Days older than `keep` go; 0 keeps none."""
+    """Days older than `keep` go; 0 keeps none. A pinned day stays."""
     cut = time.time() - keep * 86400
     for d in days(project):
+        if d["pinned"]:
+            continue
         if keep == 0 or d["at"] < cut:
             (_days_dir(project) / f"{d['day']}.json").unlink(missing_ok=True)
 
@@ -179,7 +203,8 @@ def daily():
             except (TypeError, ValueError, KeyError):
                 continue
             try:
-                if keep and not (_days_dir(project) / f"{today}.json").exists():
+                on = bool(on_of(project)) if on_of else True
+                if on and keep and not (_days_dir(project) / f"{today}.json").exists():
                     take(project)
                 prune(project, keep)
             except (OSError, ValueError) as e:

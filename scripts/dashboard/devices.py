@@ -214,7 +214,7 @@ def verb(name, auth, req):
         act, project = str(req.get("action") or ""), str(req.get("project") or "")
         if not _access(auth, project):
             return {"error": f"{project or 'that project'} is not one this account may edit or read from an app: "
-                             "its editor access is set in the project's settings"}, 403
+                             "your roles give no File access there, or its owner closed it to editors and apps"}, 403
         if act == "state":
             return wssync.state(_nid(auth), project)
         if act == "since":

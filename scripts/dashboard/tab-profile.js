@@ -58,7 +58,7 @@ const PROFILE_FIELDS = [
 const PROFILE_SAYS = {
   you: "your name, email and commit author", may: "what your roles let you do",
   password: "change it, signing out everywhere",
-  plugins: "what you added with /plugin", logs: "your conversations with Claude, to download",
+  plugins: "what you added with /plugin",
   devices: "your apps, to disconnect",
 };
 // The apps signed in as this account on its own machines (R272 step 1), the
@@ -89,8 +89,7 @@ function renderProfileInto(i){
     d.setBar(`<span class="barfacts">${skv(16)}</span>`);
     splitOff(d.list);                   // drawn before: its grid is the template's to bring
     d.list.innerHTML = skTpl(skSplit([["Who you are", PROFILE_SAYS.you], ["What you may do", PROFILE_SAYS.may],
-      ["Password", PROFILE_SAYS.password], ["Claude plugins", PROFILE_SAYS.plugins],
-      ["Conversation logs", PROFILE_SAYS.logs]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join("")));
+      ["Password", PROFILE_SAYS.password], ["Claude plugins", PROFILE_SAYS.plugins]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join("")));
     return;
   }
   const p = {...(profile.profile || {}), account: profile.name}, g = profile.git || {};
@@ -156,14 +155,9 @@ function renderProfileInto(i){
         </div>`)}
     ${sec("plugins", "Claude plugins", `
         <div class="logset">${profilePlugins(profile.plugins || [])}</div>`)}
-    ${sec("logs", "Conversation logs", `
-        <div class="logset">${profileLogs(profile.logs || [])}</div>`)}
     ${docSection("profile", "devices", "Signed in as you", "", profileDevices(profile.devices || []))}`;
   wireSections(d.list);
   splitSects(d.list, "profile", {says: PROFILE_SAYS, back: "Profile"});
-  // Paged like every long list here (R218 step 31): one log per
-  // conversation, so the list only grows.
-  paginate(d.list.querySelector(".cvlogs"), ":scope > .artrow", {key: "pfLogs", noun: "conversations"});
   wireProfile(d.el);
   wireDeviceOut(d.el);
 }
@@ -178,28 +172,6 @@ function profilePlugins(rows){
     p.enabled === false ? ` <span class="dim">off</span>` : ""}`;
   return rows.map(n => `<div class="sub">On ${esc(n.name)}: ${n.plugins.map(one).join(", ")}</div>`).join("")
     + `<div class="dim">Change them with <code>/plugin</code> in a Claude session.</div>`;
-}
-
-// Your conversations with Claude, newest first, each as a text file to
-// keep: what you said, what Claude said, every command it ran and what came
-// back (transcripts.py renders the transcript Claude Code wrote). An anchor
-// rather than a button, because a download is a link and the browser knows
-// how to save one; the rows are the Artifacts tab's, divided by hairlines.
-function profileLogs(rows){
-  if (!rows.length) return `<div class="dim">None yet. A Claude session on a project writes one as you talk, and it is listed here for you alone.</div>`;
-  const size = b => b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
-  // The stamps in the text are written in this browser's zone, the one the
-  // times on this page are in, so the log and the page agree.
-  const tz = userTZ() || Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-  // The Artifacts tab's rows, so the two lists read the same.
-  return `<div class="cvlogs">${rows.map(r => `
-    <div class="artrow">
-      <div class="grow">
-        <div class="top"><b>${esc(projLabel(r.project))}</b> <span class="dim">${esc(fmtTime(r.at * 1000))} · ${esc(size(r.bytes))}</span></div>
-        ${r.first ? `<div class="dim first">${esc(r.first)}</div>` : ""}</div>
-      <div class="acts"><button type="button" data-cvread="${esc(r.id)}" data-cvproject="${esc(r.project)}">Read</button><a class="btn" href="/api/transcript?project=${encodeURIComponent(r.project)}&id=${encodeURIComponent(r.id)}&tz=${encodeURIComponent(tz)}" download>Download</a></div>
-    </div>`).join("")}</div>
-    <div class="dim">The text is the whole exchange: your words, Claude's, each command it ran and what the command answered. Claude's private reasoning is not in it.</div>`;
 }
 
 // Disconnect: asked, then that device signed out; the app finds its token
@@ -248,7 +220,6 @@ async function openConversation(project, id){
 function wireProfile(root){
   const tr = root.querySelector("#pfTours");
   if (tr) tr.onclick = () => pressing(tr, async () => { await tourReset(); drawPanes(); });
-  root.querySelectorAll("[data-cvread]").forEach(b => b.onclick = () => openConversation(b.dataset.cvproject, b.dataset.cvread));
   const p = {...(profile?.profile || {}), account: profile?.name};
   root.querySelectorAll("[data-pf]").forEach(inp => inp.oninput = () => {
     const k = inp.dataset.pf;

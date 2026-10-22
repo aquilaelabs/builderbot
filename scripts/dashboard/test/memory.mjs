@@ -57,7 +57,7 @@ ok(!await page.$eval('#roadmapList', el => el.checkVisibility()),
    '...with the roadmap on its own tab, not in the way of it');
 await page.waitForFunction(() => document.getElementById('memList').checkVisibility(),
                            { timeout: 5000 });
-ok((await page.$eval('#memWhere', el => el.textContent)).includes('2 memories'),
+ok((await page.$eval('#memWhere', el => el.textContent.replace(/\s+/g, ' '))).includes('2 memories'),
    'the Memory tab brings them on screen, and says how many there are');
 
 // ---- what it shows -----------------------------------------------------
@@ -182,7 +182,7 @@ ok(page.dialogs.some(d => d.includes('Forget tabs.md')),
 ok(!existsSync(`${MEM}/tabs.md`), 'the file is gone');
 ok(!read('MEMORY.md').includes('tabs.md') && read('MEMORY.md').includes('vanished.md'),
    '...and its index line went with it, leaving the other lines alone');
-ok((await page.$eval('#memWhere', el => el.textContent)).includes('1 memory'),
+ok((await page.$eval('#memWhere', el => el.textContent.replace(/\s+/g, ' '))).includes('1 memory'),
    'the fold redraws without it');
 
 // ---- a line for a memory that is gone, taken out with one press (B455) ----

@@ -37,6 +37,8 @@ dashboard's rail.
 ## Build, test and ship
 
 - [building.md](building.md): builds and tests on a node, CI runners and their logs, the scanner's findings, signing and releases
+- [scanners.md](scanners.md): setting up the static analysis stack (Semgrep, Trivy, mobsfscan) and the script that runs it
+- [versions.md](versions.md): a project's version, release lines (two releases built at once), and moving fixes forward and back between them
 - [toolchains.md](toolchains.md): the Build pages: Toolchains, the NVIDIA card, Android versions and the Emulator, and a Phone lent to a project
 - [agents.md](agents.md): the coding agents a session runs (Claude Code, Codex CLI, Copilot CLI): the Agents page, installing each on a node and signing in to it there
 - [tool-packs.md](tool-packs.md): toolchains you add yourself from a repository, the commands they give Claude, and how to write one

@@ -3053,9 +3053,9 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
     status: document.querySelector(sel + ' > summary .sst')?.textContent.trim(),
     prunes: document.querySelectorAll(sel + ' [data-dmprune]').length }), imgSect);
   ok(imgs.tiles.some(t => /^2 images/.test(t)) && imgs.rows.some(r => /ep-silon-img:latest.*in use/i.test(r)) && imgs.rows.some(r => /dangling.*unused/i.test(r))
-     && imgs.vols.includes('orphan-vol') && /2 images, 2 volumes/.test(imgs.status || '') && imgs.prunes === 2
+     && imgs.vols.includes('orphan-vol') && /2 images, 2 volumes/.test(imgs.status || '') && imgs.prunes === 4
      && imgs.heads[0] === 'Image State ID Size Created' && imgs.heads[1] === 'Volume Driver' && imgs.off === 0,
-     `the Images and volumes section lists the daemon's images in use or not and its volumes, as two tables, and offers the two prunes (${JSON.stringify(imgs)})`);
+     `the Images and volumes section lists the daemon's images in use or not and its volumes, as two tables, and offers the four prunes (R110: unused images and the build cache too) (${JSON.stringify(imgs)})`);
   // The confirmation is accepted by the page's own dialog handler (lib.mjs).
   await page.click(`${imgSect} [data-dmprune="volumes"]`);
   await page.waitForFunction(() => /pruned volumes/.test(document.body.textContent), null, { timeout: 15000 });
@@ -4626,13 +4626,14 @@ print(json.dumps(out))
     buttons: [...v.querySelectorAll('#dkList .row[data-inst="helper-for-eps|main"] [data-dm]')].map(b => b.dataset.dm),
     cards: [...v.querySelectorAll('#dkList > .dmcard')].map(c => c.querySelector('.dmgroup b')?.textContent),
     loose: v.querySelectorAll('#dkList > .row').length,
-    tiles: [...v.querySelectorAll('#dkTop .tile')].map(t => t.textContent.replace(/\s+/g, ' ').trim()) }));
+    tiles: [...v.querySelectorAll('#dkHint .tile')].map(t => t.textContent.replace(/\s+/g, ' ').trim()) }));
   ok(view.rows.includes('helper-for-eps|main') && view.rows.includes('ep.silon|main')
      && view.rows.includes('someone-elses') && !view.rows.includes('ep.silon|loose'),
      `the project's Docker view lists what belongs to it, and not its own container sent to no project (${view.rows.join(' ')})`);
   ok(view.buttons.includes('up') && view.buttons.includes('rebuild'),
      `...with the manager's own rows and controls (${view.buttons.join(' ')})`);
-  ok(/3 containers on/.test(view.hint), `...and a line counting them (${view.hint.slice(0, 80)})`);
+  ok(/\d+ running of \d+ containers?/.test(view.hint.replace(/\s+/g, ' ')) && /\bon \S/.test(view.hint),
+     `...and a tile counting them, with the node they are on under it (${view.hint.replace(/\s+/g, ' ').slice(0, 80)})`);
   // As the Containers page draws them, scoped to the project (the operator,
   // 19 Oct): its own card under its tiles, no row loose on the page.
   ok(view.cards.length === 1 && view.loose === 0 && view.tiles.some(t => /running/.test(t)) && !view.tiles.some(t => /projects/.test(t)),

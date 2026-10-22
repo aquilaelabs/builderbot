@@ -137,7 +137,10 @@ def assets(project, sha):
     d = WORKSPACE / project / "dist"
     if not sha or not d.is_dir():
         return []
-    ships = [f for f in d.iterdir() if f.is_file() and "-dirty" not in f.name and SHIPS.search(f.name)]
+    # An unsigned APK installs nowhere and is the controller's to sign
+    # (releasesign.py, R106): never one of a release's files.
+    ships = [f for f in d.iterdir() if f.is_file() and "-dirty" not in f.name and "-unsigned" not in f.name
+             and SHIPS.search(f.name)]
     files = [f for f in ships if sha in f.name]
     if not files:
         same = _same_tree(project, sha, {m.group(1) for f in ships for m in [BUILD_SHA.search(f.name)] if m})

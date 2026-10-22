@@ -177,10 +177,10 @@ function bootPage(hash){
   if (key === "projects" && parts[1] && !g.tools.some(([k]) => k === parts[1])){
     // A project's notebook: its header, its view strip under it the
     // pane's width with the view's group open, then rows.
-    const GROUPS = [["overview", "Overview", [["overview", "Overview"], ["settings", "Settings"]]],
+    const GROUPS = [["overview", "Overview", [["overview", "Overview"], ["sessions", "Sessions"], ["permissions", "Permissions"], ["settings", "Settings"]]],
                     ["plan", "Plan", [["roadmap", "Roadmap"], ["bugs", "Bugs"]]],
                     ["code", "Code", [["git", "Git"], ["tests", "Tests"], ["analysis", "Analysis"]]],
-                    ["ship", "Ship", [["artifacts", "Artifacts"], ["docker", "Docker"], ["vms", "VMs"]]],
+                    ["ship", "Ship", [["artifacts", "Artifacts"], ["docker", "Docker"], ["vms", "VMs"], ["signing", "Signing"]]],
                     ["docs", "Docs", [["design", "Design"], ["wiki", "Wiki"]]]];
     const view = parts[2] || "overview", grp = GROUPS.find(x => x[2].some(([v]) => v === view)) || GROUPS[0];
     const btn = (on, w) => `<button type="button" disabled class="${on ? "on" : ""}">${w}</button>`;
@@ -271,7 +271,8 @@ const SKTPLS = {
   // As the view lands, from the view's own table (nb-git.js GIT_SECTS): its
   // sections' chips, then each steady section; CI and a README come with
   // what the repository holds, so the placeholder promises neither.
-  git: () => skTpl(`<nav class="sectjump">${GIT_SECTS.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav>`
+  // ...its jump bar only from four sections, as sectJump draws it.
+  git: () => skTpl((GIT_SECTS.length >= 4 ? `<nav class="sectjump">${GIT_SECTS.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav>` : "")
     + GIT_SECTS.map(([k, t]) => docSection("git", k, t, "", k === "branches" ? skTable(gitBranchCols("main"), 3, "gbranches", "row gbranch") : skRows(2))).join("")),
   design: () => skTpl(docSection("design", "pages", "Pages", "", skRows(2))
     + docSection("design", "themes", "Themes", "", skRows(2))),
@@ -962,6 +963,38 @@ function statTiles(tiles){
 // What a placeholder passes where a value will go (statTiles, a page's own
 // builders): drawn as a shimmer in the real markup.
 const GHOST = Object.freeze({ghost: true});
+// A notebook view's glance (R109, the a-notebook/views rule): the band under
+// its control row, in the Containers page's order: the numbers the view is
+// about as tiles, then its status line, words alone (`said`, markup) with the
+// buttons those words are about at its right. Painted only when it changed,
+// so a poll's redraw leaves it still; an empty view passes no tiles, its
+// empty state being the hint where its list would be.
+// `tiles` may be a page's own drawing of them (the Docker view's, dmTiles).
+// The same glance while a view's data is on its way: the shape that view's
+// glance had the last time it was drawn (in any notebook: flipping between
+// projects, each settles as the last one did), else what its markup
+// declares on its .nbglance (data-tiles, data-said) for a first open. The
+// markup is the one place a view's waiting shape is written, so it cannot
+// drift from a view's own code (the operator, 22 Oct); templates.mjs holds
+// both. A glance a view has drawn for real, empty included, is never
+// overdrawn: an empty roadmap kept placeholder tiles over its empty state.
+const glanceSeen = {};
+function glanceWaiting(el){
+  if (!el || el.dataset.drawn) return false;
+  const was = glanceSeen[el.id];
+  const n = was ? was.tiles : +el.dataset.tiles || 0;
+  const said = was ? was.said : "said" in el.dataset;
+  return paint(el, statTiles(Array.from({length: n}, () => ({value: GHOST, label: "\u00a0"})))
+               + headLine(said ? skel("word") : "", "", "nbsaid"));
+}
+function viewGlance(el, tiles = [], said = "", actions = ""){
+  if (!el) return false;
+  const wrote = paint(el, (Array.isArray(tiles) ? statTiles(tiles) : tiles || "") + headLine(said, actions, "nbsaid"));
+  // Marked once: a poll that brings nothing new writes nothing (uniform).
+  if (!el.dataset.drawn) el.dataset.drawn = "1";
+  glanceSeen[el.id] = {tiles: el.querySelectorAll(".tile").length, said: !!el.querySelector(".nbsaid")};
+  return wrote;
+}
 
 // What a card's settings are, read (the operator's concept, 17 Oct): one
 // wrapping line of pills, each its label in the quiet voice and its value,
@@ -1180,7 +1213,10 @@ function chipBar(groups, on, attr, all){
 const relOf = v => (String(v || "").match(/^v?(\d+\.\d+\.\d+)/) || [])[1] || "";
 function versionChips(rows, verOf, none){
   const n = new Map();
-  for (const r of rows){ const k = relOf(verOf(r)) || "none"; n.set(k, (n.get(k) || 0) + 1); }
+  // `verOf` may give several (an item and its steps' own, R108): the row
+  // counts once under each.
+  for (const r of rows)
+    for (const k of new Set([].concat(verOf(r)).map(v => relOf(v) || "none"))) n.set(k, (n.get(k) || 0) + 1);
   const num = v => v.split(".").map(Number);
   const keys = [...n.keys()].filter(k => k !== "none")
     .sort((a, b) => { const x = num(a), y = num(b); return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]; });

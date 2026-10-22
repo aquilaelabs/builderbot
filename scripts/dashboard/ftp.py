@@ -114,7 +114,9 @@ def _clean(rec):
     except (TypeError, ValueError):
         port = 0
     acc = rec.get("access") if isinstance(rec.get("access"), dict) else {}
-    return {"on": bool(rec.get("on")), "port": port, "editor": bool(rec.get("editor")),
+    # The editor's and the apps' door is open unless the project closed it
+    # (R104): being on a project is what lets a person's own machine in.
+    return {"on": bool(rec.get("on")), "port": port, "editor": bool(rec.get("editor", True)),
             "access": {str(k): v for k, v in acc.items() if v in ACCESS}}
 
 
@@ -324,6 +326,12 @@ def access_for(u, project, door):
     # ...and no more than the account's roles give on this project (R152
     # (f)): a role without File access refuses even the project's owner.
     lvl = users.roles.level_of(u, "files", project, users.may_work)
+    # The editor's and the apps' door: someone on the project has what their
+    # roles' File access gives, with no grant of their own needed (R104, the
+    # operator, 22 Oct); a grant on the list still narrows it. FTPS keeps
+    # its list, being a server on the network with passwords of its own.
+    if door == "editor" and not rec["access"].get(users.uid_of(u)) and users.may_see(u, project):
+        access = {"write": "rw", "read": "r"}.get(lvl, "")
     if access and not lvl:
         return "", "Your roles give no file access to this project."
     if access == "rw" and lvl == "read":

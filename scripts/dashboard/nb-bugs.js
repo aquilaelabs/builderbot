@@ -175,25 +175,32 @@ function nbBugsView({$, nb, project}){
             notes: box.querySelector(".bfNotes").value};
   }
 
+  // Report a bug, the control row's primary (R109): its form unrolls under
+  // the row, as every view's add does, and rolls back on Cancel or a send.
+  // Not drawn for a role that only reads the project (the operator, 21 Oct:
+  // what a role does not give is not advertised), and its form shut.
   function drawBugAdd(){
-    const box = $("bugAdd");
-    // Not drawn for a role that only reads the project (the operator, 21
-    // Oct: what a role does not give is not advertised).
-    if (projWriteWhy(project)){ box.innerHTML = ""; return; }
-    box.innerHTML = `<div class="addbar ctlrow" data-add="bug">
-      <button type="button">Report a bug</button></div>`;
+    const box = $("bugAdd"), btn = $("bugNew");
+    const shut = () => swapBox(box, () => {
+      box.innerHTML = ""; box.hidden = true; btn.setAttribute("aria-expanded", "false"); });
+    btn.hidden = !!projWriteWhy(project);
+    if (btn.hidden){ if (!box.hidden) shut(); return; }
     // The same fold the memory writer opens with: the two are the same control
     // on two views of one notebook, and one of them appearing whole while the
     // other unrolled was the kind of difference you cannot unsee.
-    const shut = () => swapBox(box, drawBugAdd);
-    box.querySelector("button").onclick = () => swapBox(box, () => {
-      box.innerHTML = bugForm(null);
-      box.querySelector(".bfCancel").onclick = shut;
-      box.querySelector(".bfGo").onclick = async () => {
-        const j = await postBug({action: "add", ...readBugForm(box)});
-        if (j) shut();
-      };
-    });
+    btn.onclick = () => {
+      if (!box.hidden) return box.querySelector(".bfTitle")?.focus();
+      btn.setAttribute("aria-expanded", "true");
+      swapBox(box, () => {
+        box.hidden = false;
+        box.innerHTML = bugForm(null);
+        box.querySelector(".bfCancel").onclick = shut;
+        box.querySelector(".bfGo").onclick = async () => {
+          const j = await postBug({action: "add", ...readBugForm(box)});
+          if (j) shut();
+        };
+      });
+    };
   }
 
   // `force` is what a deliberate action passes. Without it, a redraw is
@@ -213,21 +220,30 @@ function nbBugsView({$, nb, project}){
     const list = $("bugList"), hint = $("bugHint");
     if (!nb.bugs){
       // Waiting as it lands: Report a bug above the list, which needs no list.
-      hint.innerHTML = skel("word"); list.innerHTML = skel("rows");
-      if (!$("bugAdd").innerHTML.trim()) drawBugAdd();
+      glanceWaiting(hint); list.innerHTML = skel("rows");
+      drawBugAdd();
       return;
     }
-    if (nb.bugs.error){ hint.textContent = "bugs: " + nb.bugs.error; return; }
+    if (nb.bugs.error){ viewGlance(hint, [], esc("bugs: " + nb.bugs.error)); return; }
     if (!force && list.querySelector(".dropbox, .bugform")) return;
     if (nb.bugs.releases !== undefined) nb.bugReleases = nb.bugs.releases;
     const rows = sortedBugs();
     const open = rows.filter(b => b.status === "open").length;
-    // Count first; what the tracker is for is its empty state (R119 step 4).
-    hint.textContent = rows.length ? `${open} open of ${rows.length}` : "nothing reported";
+    // The glance (R109): what is open, each severity among the open ones
+    // from the worst, and what is closed, as tiles; the worst two in their
+    // colors while any is open. What the tracker is for is its empty state
+    // (R119 step 4), so an empty one draws none.
+    const sevN = s => rows.filter(b => b.status === "open" && b.severity === s).length;
+    viewGlance(hint, !rows.length ? [] : [
+      {label: "open", value: open},
+      ...["critical", "high", "medium", "low"].map(s => ({label: s, value: sevN(s), omit: !sevN(s),
+        tone: s === "critical" ? "bad" : s === "high" ? "warn" : ""})),
+      {label: "closed", value: rows.length - open, omit: rows.length === open}]);
     // A sort over nothing is a control that does nothing: it arrives with
-    // the second bug, when there is an order to choose.
+    // the second bug, when there is an order to choose, and the search with it.
     const sortBar = $("bugSortBar");
     if (sortBar) sortBar.hidden = rows.length < 2;
+    setHidden($("bugFind"), rows.length < 2 && !nb.bugFind);
     // Narrowed by a chip (All, Open, Closed) and the search (R254 step 1).
     nb.bugChip = ["", "open", "closed"].includes(nb.bugChip) ? nb.bugChip : "";
     if (paint($("bugChips"), chipButtons([{key: "open", label: "Open", count: open},

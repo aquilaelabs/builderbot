@@ -35,9 +35,10 @@ const as = async (c, project, action, extra = {}) => {
 };
 
 // ---- accounts, and what alpha's settings give each ----------------------------
-const people = { 'ed.rw': 'edrwpass1', 'ed.r': 'edrpass12', 'ed.none': 'ednonepass1', 'ed.out': 'edoutpass1', 'ed.cap': 'edcappass1' };
+const people = { 'ed.rw': 'edrwpass1', 'ed.r': 'edrpass12', 'ed.none': 'ednonepass1', 'ed.out': 'edoutpass1', 'ed.cap': 'edcappass1',
+                 'ed.mem': 'edmempass1' };
 for (const [n, pw] of Object.entries(people)) addUser(n, pw);
-for (const n of ['ed.rw', 'ed.r', 'ed.none', 'ed.cap'])
+for (const n of ['ed.rw', 'ed.r', 'ed.none', 'ed.cap', 'ed.mem'])
   await admin('/api/users', { action: 'projects', name: n, projects: ['alpha'] });
 // Each holds a role on alpha that gives the files area write, but ed.cap's
 // gives read: its rw in the settings is capped at r by the role (R152 (f)).
@@ -45,8 +46,13 @@ await admin('/api/roles', { action: 'set', name: 'ed-files-w', scope: 'projects'
   perms: { projects: 'write', files: 'write' } });
 await admin('/api/roles', { action: 'set', name: 'ed-files-r', scope: 'projects',
   perms: { projects: 'write', files: 'read' } });
-for (const n of ['ed.rw', 'ed.r', 'ed.none'])
+// ed.none is on alpha with a role that gives no File access; ed.mem is on it
+// with File access and no choice of its own on alpha's list, which since
+// R104 is enough: being on the project is what lets a person's editor in.
+await admin('/api/roles', { action: 'set', name: 'ed-nofiles', scope: 'projects', perms: { projects: 'write' } });
+for (const n of ['ed.rw', 'ed.r', 'ed.mem'])
   await admin('/api/roles', { action: 'assign', name: n, project_roles: { alpha: ['ed-files-w'] } });
+await admin('/api/roles', { action: 'assign', name: 'ed.none', project_roles: { alpha: ['ed-nofiles'] } });
 await admin('/api/roles', { action: 'assign', name: 'ed.cap', project_roles: { alpha: ['ed-files-r'] } });
 const set = await admin('/api/project-ftp', { action: 'set', project: 'alpha', editor: true,
   access: { [uidOf('ed.rw')]: 'rw', [uidOf('ed.r')]: 'r', [uidOf('ed.cap')]: 'rw' } });
@@ -74,8 +80,9 @@ const c = Object.fromEntries(Object.keys(people).map(n => [n, new Client(base, c
   for (const n of Object.keys(people)) mine[n] = (await c[n].projects()).projects;
   const acc = n => (mine[n].find(p => p.name === 'alpha') || {}).access || '';
   ok(acc('ed.rw') === 'rw' && acc('ed.r') === 'r' && acc('ed.cap') === 'r' && acc('ed.none') === '' && acc('ed.out') === ''
+     && acc('ed.mem') === 'rw'
      && (await c['ed.rw'].projects()).api === API,
-     `each is offered alpha exactly as far as the settings and roles give: rw, r, r capped by a role, none, not on it (${
+     `each is offered alpha exactly as far as the settings and roles give: rw, r, r capped by a role, none, not on it, and on it with no choice made (${
        Object.keys(people).map(n => `${n}=${acc(n) || '-'}`).join(' ')})`);
 }
 
@@ -151,7 +158,7 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
 
 // ---- access taken away, partway --------------------------------------------------------
 {
-  await admin('/api/project-ftp', { action: 'set', project: 'alpha', access: { [uidOf('ed.r')]: '' } });
+  await admin('/api/roles', { action: 'assign', name: 'ed.r', project_roles: { alpha: ['ed-nofiles'] } });
   const gone = await as(c['ed.r'], 'alpha', 'read', { path: 'editor-probe.txt' });
   await admin('/api/users', { action: 'projects', name: 'ed.cap', projects: [] });
   const off = await as(c['ed.cap'], 'alpha', 'list', { path: '' });
@@ -159,7 +166,7 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
   const shut = await as(c['ed.rw'], 'alpha', 'list', { path: '' });
   await admin('/api/project-ftp', { action: 'set', project: 'alpha', editor: true });
   ok(gone.status === 403 && off.status === 400 && shut.status === 403 && /off in its settings/.test(shut.error),
-     `access taken away holds on the next request with the same sign-in: the access, the project, the editor's switch (${gone.status} ${off.status} ${shut.status})`);
+     `access taken away holds on the next request with the same sign-in: the role's File access, the project, the editor's switch (${gone.status} ${off.status} ${shut.status})`);
   execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'passwd', 'ed.rw'], { input: 'edrwpass2\nedrwpass2\n', encoding: 'utf8', env });
   const out = await as(c['ed.rw'], 'alpha', 'list', { path: '' });
   ok(out.status === 401 && /Sign In/.test(out.error), `...and a password change signs the extension out (${out.status}: ${out.error})`);

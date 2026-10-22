@@ -245,6 +245,17 @@ function attRow(a){
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bdocker="${esc(a.node_id)}">Containers page</a></span></div></div>`;
   }
+  // A release's APK the controller signs (R106): what would stop it, said
+  // before the release in amber, and a signing that failed after one in red.
+  if (a.kind === "release-sign"){
+    return `<div class="bnote att${a.bad ? " bad" : ""}">
+      <div class="bt">${a.bad ? `${esc(a.tag)}'s APK in ${esc(projLabel(a.project))} is not signed`
+        : `${esc(projLabel(a.project))}'s next release cannot be signed`}</div>
+      <div class="bsum">${esc(a.why)}</div>
+      <div class="bfoot"><span>${a.bad ? (a.at ? esc(ago(a.at)) : "after the release") : "before its release"}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bsign="${esc(a.project)}">Signing view</a></span></div></div>`;
+  }
   // A container whose registry image moved (R195): one note per node, to
   // the Docker tab on that node, where Update is on each row.
   if (a.kind === "image"){
@@ -255,6 +266,19 @@ function attRow(a){
       <div class="bfoot"><span>on its Containers page</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bdocker="${esc(a.id)}">Containers page</a></span></div></div>`;
+  }
+  // A node short of disk or memory (R110): what is short and how much is
+  // left, to that node's Storage page, which says what is taking the room.
+  if (a.kind === "room"){
+    const parts = [...(a.short || []).map(x => x.used_pct != null ? `${x.what} has been ${x.used_pct}% used for ten minutes`
+                                                                  : `${x.what} has ${x.free_gb} GB free of ${x.total_gb} GB`),
+                   ...(a.mem != null ? [`its memory has been ${a.mem}% used for ten minutes`] : [])];
+    return `<div class="bnote att warn">
+      <div class="bt">${esc(a.node)} is running short of room</div>
+      <div class="bsum">${parts.map(esc).join("; ")}</div>
+      <div class="bfoot"><span>${(a.short || []).length ? `a disk keeps ${esc(String(a.floor_gb))} GB free, or a tenth of a small one` : "before it starts killing processes"}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bstorage="${esc(a.id)}">Storage page</a></span></div></div>`;
   }
   // A node's nginx behind the newest line (R192): its own note, to the
   // nginx tab on that node, where Update is.
@@ -410,12 +434,12 @@ function drawBell(){
               : fresh.length ? "info" : "";
   const dot = bell.querySelector(".dot");
   const pendingOn = asks.length + waiting.length + invites.length + asking.length;
-  const attOn = att.some(a => a.window || a.kind === "relocate") || ciRed.length ? "bad" : att.length + syncC.length ? "warn" : "";
+  const attOn = att.some(a => a.window || a.kind === "relocate" || a.bad) || ciRed.length ? "bad" : att.length + syncC.length ? "warn" : "";
   // Something new gone wrong: the bell flashes red twice and settles to the
   // red dot, unlike an ask's amber, which keeps on until it is answered.
   const red = new Set([
     ...fresh.filter(n => n.lv === "bad").map(n => "note:" + n.at + ":" + n.msg),
-    ...att.filter(a => a.window || a.kind === "relocate").map(a => "att:" + (a.key || a.id + "@" + (a.at || a.to || ""))),
+    ...att.filter(a => a.window || a.kind === "relocate" || a.bad).map(a => "att:" + (a.key || a.id + "@" + (a.at || a.to || ""))),
     ...ciRed.map(c => "ci:" + JSON.stringify(c))]);
   if (bellRedSeen !== null && [...red].some(k => !bellRedSeen.has(k)) && !noMotion()){
     bell.classList.remove("flash");
@@ -638,6 +662,12 @@ function wireNeeds(root, after = () => {}){
     sectOpen["git:ci"] = true;
     openNotebook(a.dataset.bci, "git");
   });
+  // ...and a release's signing to the project's Signing view (R106).
+  root.querySelectorAll("[data-bsign]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    openNotebook(a.dataset.bsign, "signing");
+  });
   // To the node the row is about, at the control it is about (Update agent
   // in its head bar): the press itself
   // stays there, beside the state line that says what it does.
@@ -657,6 +687,12 @@ function wireNeeds(root, after = () => {}){
     e.preventDefault();
     after();
     openAgentsOn(a.dataset.bag);
+  });
+  // ...and a node short of room to its Storage page.
+  root.querySelectorAll("[data-bstorage]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    openStorageTab(a.dataset.bstorage || "");
   });
   // ...and a container update to the Docker tab on that node.
   root.querySelectorAll("[data-bdocker]").forEach(a => a.onclick = e => {

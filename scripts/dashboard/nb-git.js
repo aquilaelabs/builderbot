@@ -1,5 +1,6 @@
 // The notebook's Git view: the repository read out, its branches, its
-// commits, the policy that says what a session may push, and Send to Claude.
+// commits, and Send to Claude; what a session may push is the Permissions
+// view's (nb-permissions.js).
 // One classic script beside index.html, the shape tab-*.js has (docs/nodes.md
 // §13): same page, same global scope, one file per notebook view (R60).
 //
@@ -12,7 +13,7 @@
 // under: the view and its placeholder (page-docs.js SKTPLS.git) both read
 // them, so neither falls behind the other (R218, the operator 18 Oct). CI
 // and a README come only with what the repository holds.
-const GIT_SECTS = [["changes", "Changes"], ["history", "History"], ["branches", "Branches"], ["policy", "Agents may"]];
+const GIT_SECTS = [["changes", "Changes"], ["history", "History"], ["branches", "Branches"]];
 const gitTitle = k => (GIT_SECTS.find(s => s[0] === k) || [k, k])[1];
 // The branches table's columns (R269 step 1), read by the view and by its
 // placeholder (page-docs.js SKTPLS.git), so the wait draws the same table.
@@ -30,7 +31,7 @@ function nbGitView({$, nb, project}){
   // The branch whose comparison with main is on show, its own page (R269
   // step 2: #/projects/NAME/git/compare/BRANCH), "" for the view itself;
   // and what that page last read, by the two heads it was read at.
-  let gitCmp = "", gitCmpData = null, gitHintText = "";
+  let gitCmp = "", gitCmpData = null, gitGlance = null;
   // Which branches the table shows (R269 step 1): a chip, Active until one
   // is pressed, and the search typed beside it; a view, never saved.
   let gitBranchChip = "active", gitBranchFind = "";
@@ -67,8 +68,6 @@ function nbGitView({$, nb, project}){
   // change below the fold. A redraw from a poll leaves the page where it is.
   let gitReveal = "";
   let gitMsgDraft = "";                            // typed and not sent, across redraws
-  let gitPolDraft = {};                            // the policy picked and not applied
-  const GITPOL_DEFAULT = {push: "allow", main: "deny", scan: "hold"};   // prefs.GITPOL_DEFAULT
 
   // Send to Claude: the thing picked and what is asked of it, composed on
   // the controller and typed into the project's session the way a roadmap
@@ -107,10 +106,10 @@ function nbGitView({$, nb, project}){
     try{
       const r = await fetch("/api/git?project=" + encodeURIComponent(project) + "&what=all");
       git = await r.json();
-    }catch(e){ hint.textContent = "git: " + e; return; }
+    }catch(e){ viewGlance(hint, [], esc("git: " + e)); return; }
     if (git.error){
       const none = git.error === "not a git repository";
-      hint.textContent = none ? "no repository yet" : "git: " + git.error;
+      viewGlance(hint, [], none ? "no repository yet" : esc("git: " + git.error));
       // The way on, where the dead end was: Init makes the repository here
       // (a project adopted from a directory, or unpacked from an archive
       // without one), and a session then commits and pushes as anywhere.
@@ -124,27 +123,31 @@ function nbGitView({$, nb, project}){
     const st = git.status || {}, files = st.files || [], commits = git.commits || [];
     const local = (git.branches || []).filter(b => !b.remote);
     const tree = treeOf();
-    // The branch is the picker's to say beside it (R269 step 3); the words
-    // name one only when there is none to pick.
-    gitHintText = hint.textContent = `${tree.notMine ? `${tree.owner}'s working tree, ` : ""}${st.branch ? "" : "on no branch · "}${files.length
-      ? `${files.length} change${files.length === 1 ? "" : "s"} not committed` : "nothing uncommitted"} · ${
-      // A branch with no commit is not listed by git, so "0 branches" sat
-      // beside "on master" (B456): the honest word is that nothing is
-      // committed yet.
-      !commits.length ? "no commits yet" : `${local.length} branch${local.length === 1 ? "" : "es"}`}${
-      st.upstream ? (st.ahead || st.behind
-        ? ` · ${st.ahead ? st.ahead + " to push" : ""}${st.ahead && st.behind ? ", " : ""}${st.behind ? st.behind + " to pull" : ""} (${git.host?.name || "the remote"})`
-        : ` · in step with ${git.host?.name || "the remote"}`) : ""}`;
+    // The glance (R109): what is not committed, the branches, and what is to
+    // push and to pull against the upstream, as tiles. A branch with no
+    // commit is not listed by git, so "0 branches" sat beside "on master"
+    // (B456): the honest word, on the line under them, is that nothing is
+    // committed yet. The branch is the picker's to say (R269 step 3); the
+    // words name one only when there is none to pick.
+    const host = git.host?.name || "the remote";
+    const said = [tree.notMine ? `${tree.owner}'s working tree` : "", st.branch ? "" : "on no branch",
+      commits.length ? "" : "no commits yet",
+      !git.remote ? "" : !git.push
+        ? "no push rights: fetch and pull only; rights are granted in the clone dialog"
+        : st.upstream ? (st.ahead && st.behind
+          ? `pull first: ${host} has ${st.behind} commit${st.behind === 1 ? "" : "s"} this branch does not, and this branch has ${st.ahead} to push (${st.upstream})`
+          : st.ahead || st.behind ? `${host}, ${st.upstream}` : `in step with ${host}, ${st.upstream}`)
+        : "no upstream yet: Push sets one"].filter(Boolean).map(esc).join(" · ");
+    gitGlance = [[
+      {label: files.length === 1 ? "change" : "changes", value: files.length, sub: "not committed"},
+      {label: local.length === 1 ? "branch" : "branches", value: local.length, omit: !commits.length},
+      {label: "to push", value: st.ahead || 0, omit: !st.upstream},
+      {label: "to pull", value: st.behind || 0, omit: !st.upstream, tone: st.ahead && st.behind ? "warn" : ""}], said];
+    viewGlance(hint, ...gitGlance);
     const net = $("gitNet");
     if (net){
       const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
       net.hidden = locked || !git.remote;
-      $("gitNetState").textContent = !git.remote ? "" : !git.push
-        ? "no push rights: fetch and pull only; rights are granted in the clone dialog"
-        : st.upstream ? (st.ahead && st.behind
-          ? `pull first: ${git.host?.name || "the remote"} has ${st.behind} commit${st.behind === 1 ? "" : "s"} this branch does not, and this branch has ${st.ahead} to push (${st.upstream})`
-          : `${git.host?.name || "the remote"}, ${st.upstream}${st.ahead ? ` · ${st.ahead} to push` : ""}${st.behind ? ` · ${st.behind} to pull` : ""}`)
-        : "no upstream yet: Push sets one";
       // A role that only reads the project is shown none of them (the
       // operator, 21 Oct: what a role does not give is not drawn).
       const ro = !!projWriteWhy(project);
@@ -248,7 +251,7 @@ function nbGitView({$, nb, project}){
     // at a time is chosen among the sections drawn, not the hidden ones.
     if (gitCmp){ body.innerHTML = ""; drawCompare(); return; }
     const cmpBox = $("gitCmp"); if (cmpBox) cmpBox.innerHTML = "";
-    if (gitHintText) $("gitHint").textContent = gitHintText;
+    if (gitGlance) viewGlance($("gitHint"), ...gitGlance);
     drawPicker();
     const st = git.status || {}, files = st.files || [], commits = git.commits || [];
     const local = (git.branches || []).filter(b => !b.remote), remote = (git.branches || []).filter(b => b.remote);
@@ -401,30 +404,12 @@ function nbGitView({$, nb, project}){
         <button type="button" class="primary" data-gitask="conflicts"
           title="hand the merge to the project's Claude session to finish">Resolve with Claude</button>
       </div>` : "";
-    // What a session may do with the remote (roadmap R36): the answers,
-    // staged until Apply like every setting on the page. Enforced on the
-    // relay; a local commit or merge cannot be forbidden, and the bar says so.
-    // The third is whether a push with lines that look sensitive waits on
-    // the bell for a person (R219) or goes without the hold.
-    const pol = {...((state?.projects || []).find(p => p.name === project)?.prefs?.gitpol || {}), ...gitPolDraft};
-    const polDirty = Object.keys(gitPolDraft).length > 0;
-    const policy = locked ? "" : `<div class="row stack2 gpolicy"><div class="grow">
-        <div class="prefrow ctlrow">
-          <label class="pick">Push its branches <select data-gitpol="push">${optionList(["allow", "deny"], pol.push || "allow")}</select></label>
-          <label class="pick">Push to ${esc(git.main || "main")} <select data-gitpol="main">${optionList(["allow", "deny"], pol.main || "deny")}</select></label>
-          <label class="pick">Hold a push that looks sensitive <select data-gitpol="scan">${optionList(["hold", "off"], pol.scan || "hold")}</select></label>
-        </div>
-        <div class="actbar">
-          <span class="state">its own branches, one at a time ${helpIcon("Applies to pushes only. Tags, deletions and remote-only branches stay yours; commits and merges here are always allowed.")}</span>
-          <button type="button" id="gitPolApply"${polDirty ? "" : " disabled"}>Apply</button>
-        </div></div></div>`;
     body.innerHTML = docSection("git", "changes", gitTitle("changes"), files.length ? String(files.length) : "none",
         conflictBar + (files.length ? treeNote : "") + commitBar + (files.length ? fileRows : `<div class="empty">nothing changed since the last commit</div>`))
       + docSection("git", "history", gitTitle("history"), commits.length ? `${commits.length}${commits.length >= 100 ? "+" : ""}` : "none",
         graph + `<div id="gitDetail"${gitPick ? "" : " hidden"}></div>`)
       + docSection("git", "branches", gitTitle("branches"), String(local.length), (branchRows || `<div class="empty">no branches</div>`))
-      + ciSection()
-      + (policy ? docSection("git", "policy", gitTitle("policy"), `${pol.push || "allow"} · ${pol.main || "deny"}${pol.scan === "off" ? " · unheld" : ""}`, policy) : "");
+      + ciSection();
     wireSections(body);
     wireMore(body);
     gitBranchShow(body);
@@ -447,25 +432,6 @@ function nbGitView({$, nb, project}){
         else { git.ci = j; drawGit(); }
       }catch(e){ notify("could not reach the controller: " + e, true); }
       finally{ if (cl.isConnected) unbusy(cl, "Look now"); }
-    };
-    body.querySelectorAll("[data-gitpol]").forEach(sel => sel.onchange = () => {
-      const saved = (state?.projects || []).find(p => p.name === project)?.prefs?.gitpol || {};
-      if (sel.value === (saved[sel.dataset.gitpol] || GITPOL_DEFAULT[sel.dataset.gitpol])) delete gitPolDraft[sel.dataset.gitpol];
-      else gitPolDraft[sel.dataset.gitpol] = sel.value;
-      const b = $("gitPolApply"); if (b) b.disabled = !Object.keys(gitPolDraft).length;
-    });
-    const pa = $("gitPolApply");
-    if (pa) pa.onclick = async () => {
-      busy(pa, "Applying");
-      try{
-        const r = await postJSON("/api/prefs", {project, gitpol: {...pol, ...gitPolDraft}});
-        const j = await r.json();
-        if (j.error) return notify(j.error, true);
-        gitPolDraft = {};
-        notify("saved");
-        refresh(); drawGit();
-      }catch(e){ notify("policy: " + e, true); }
-      finally{ if (pa.isConnected) unbusy(pa, "Apply"); }
     };
     body.querySelectorAll("[data-gitask]").forEach(b => b.onclick = () => gitAsk(b.dataset.gitask, {}, b));
     const msg = $("gitMsg");
@@ -527,7 +493,7 @@ function nbGitView({$, nb, project}){
       "/api/git?project=" + encodeURIComponent(project) + "&what=diff&path=" + encodeURIComponent(path), j => renderDiff(j.diff));
   }
 
-  // The branch the tree is on, in the view's head row as a picker, as
+  // The branch the tree is on, in the view's control row as a picker, as
   // GitHub's (R269 step 3): a press opens the local branches with a box to
   // find one, a press on one switches the tree to it, and a name nobody has
   // yet offers to create it from the commit the tree is on and switch to it.
@@ -654,7 +620,7 @@ function nbGitView({$, nb, project}){
     // The head says where this is, Branches a link to the view's own
     // address (a pointer to a page is a link to its address), as GitHub's
     // compare page names the two branches over it.
-    $("gitHint").innerHTML = `<a href="${esc(routeOf({kind: "notebook", arg: project}).replace(/\/compare\/.*$/, ""))}" data-gitcmpback>Branches</a> › ${esc(name)} into ${esc(main)}`;
+    viewGlance($("gitHint"), [], `<a href="${esc(routeOf({kind: "notebook", arg: project}).replace(/\/compare\/.*$/, ""))}" data-gitcmpback>Branches</a> › ${esc(name)} into ${esc(main)}`);
     const back = "";
     if (!b){
       box.innerHTML = back + `<div class="field"><div class="empty">no branch called ${esc(name)} here now</div></div>`;

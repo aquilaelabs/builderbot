@@ -12,24 +12,26 @@ function nbAnalysisView({$, nb, project}){
     const hint = $("anaHint"), list = $("anaList");
     if (!findings || findings.error) await loadFindings(!!findings?.error);
     nb.anaStamp = state?.reports_mtime ?? null;
-    if (!findings || findings.loading){ hint.innerHTML = skel("word"); list.innerHTML = skel("rows"); return; }
-    if (findings.error){ hint.textContent = "analysis: " + findings.error; return; }
+    if (!findings || findings.loading){ glanceWaiting(hint); list.innerHTML = skel("rows"); return; }
+    if (findings.error){ viewGlance(hint, [], esc("analysis: " + findings.error)); return; }
     if (!findings.available){
-      hint.textContent = "No scan results: the report folder is not mounted here.";
-      list.innerHTML = "";
+      viewGlance(hint, [], "no scan results: the report folder is not mounted here");
+      // What the view is for, and the way to it (docs/scanners.md).
+      list.innerHTML = `<div class="field"><div class="hint nbempty">Findings from the static analysis stack land here once it runs:
+        <a href="#/help/scanners">setting it up</a> says how, with the script that runs it.</div></div>`;
       return;
     }
     const rows = [];
     for (const rep of findings.reports)
       for (const f of rep.findings)
         if (f.project === project) rows.push(f);
+    // The glance (R109): the findings by level, the worst first, an error
+    // in its color; a clean scan said on the line instead.
     const lv = {};
     rows.forEach(f => lv[f.level] = (lv[f.level] || 0) + 1);
-    const stat = Object.keys(lv).sort((a, b) => (LEVEL_ORDER[a] ?? 9) - (LEVEL_ORDER[b] ?? 9))
-      .map(l => `${lv[l]} ${l}${lv[l] === 1 ? "" : "s"}`).join(", ");
-    hint.textContent = rows.length
-      ? `${stat}`
-      : "No findings for this project in the latest scan.";
+    viewGlance(hint, Object.keys(lv).sort((a, b) => (LEVEL_ORDER[a] ?? 9) - (LEVEL_ORDER[b] ?? 9)).slice(0, 6)
+      .map(l => ({label: `${l}${lv[l] === 1 ? "" : "s"}`, value: lv[l], tone: l === "error" ? "bad" : l === "warning" ? "warn" : ""})),
+      rows.length ? "" : "no findings for this project in the latest scan");
     // The same two filters the Analysis tab has, project-fixed: one slice of
     // narrowing shared by both surfaces, so learning one is learning the
     // other. The bar only appears when there is something to narrow.

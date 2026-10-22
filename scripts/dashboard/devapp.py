@@ -87,6 +87,8 @@ field = None                     # server.py's one-string-field reader, for act(
 # card, or "": server.py's, which knows the node's switch, the project's
 # setting and what the node's Toolchains tab holds (R102).
 gpu_why = None
+room_why = None         # set by server.py: (node id) -> why a build there would run out of disk, or "" (R110)
+container_mem_gb = None  # set by server.py: () -> the memory limit in GB a container with none gets, 0 for none (R110)
 
 DOCKER = os.environ.get("BB_DOCKER_BIN", "docker")
 
@@ -1552,11 +1554,22 @@ def images_view():
     return out
 
 
+# What each prune removes (R110 step 3 adds the last two, which are where a
+# busy node's disk goes: images nothing has used for two weeks, and the
+# build cache older than a week). Nothing a container uses is ever touched.
+PRUNES = {"images": ["image", "prune", "-f"],
+          "volumes": ["volume", "prune", "-f"],
+          "unused": ["image", "prune", "-a", "-f", "--filter", "until=336h"],
+          "cache": ["builder", "prune", "-f", "--filter", "until=168h"]}
+
+
 def prune(kind):
-    """`docker image prune -f` or `docker volume prune -f`: dangling images,
-    or volumes no container uses. {"ok", "out"} with docker's own account of
-    what went, or {"error"}."""
-    argv = [DOCKER, "image", "prune", "-f"] if kind == "images" else [DOCKER, "volume", "prune", "-f"]
+    """One of PRUNES: dangling images, volumes no container uses, images no
+    container uses and two weeks old, or the build cache a week old.
+    {"ok", "out"} with docker's own account of what went, or {"error"}."""
+    if kind not in PRUNES:
+        return {"error": "prune images, volumes, unused or cache"}
+    argv = [DOCKER, *PRUNES[kind]]
     r = _run(argv, timeout=120)
     with _stats_lock:
         _stats.pop("img:" + (getattr(_node_ctx, "addr", None) or ""), None)
@@ -4168,6 +4181,16 @@ def gpu_asks(cfg):
         if asks:
             out.append(name)
     return out
+
+
+def room_gate(project, instance=MAIN):
+    """The reason a build on this instance's node would run out of disk, or
+    "" (R110): Docker's images and build cache under the node's floor fail
+    a build partway, with a disk-full error that names neither (set by
+    server.py through room_why)."""
+    if room_why is None:
+        return ""
+    return room_why(_instance_node(project, instance)) or ""
 
 
 def gpu_gate(project, instance=MAIN, cfg=None):

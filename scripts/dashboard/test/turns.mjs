@@ -161,6 +161,17 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
      `a setting the operator changed is named too (${(st.line || 'no line').slice(0, 90)})`);
   await call('/api/prefs', { project: 'alpha', build: '' });
   await sess({ node: 'nodeA' });
+  // ...and the design, which the house rules' fingerprint did not cover
+  // (B218): a person's save in the Design view is news, with where to read
+  // it and the file to write again.
+  const des = await call('/api/design?project=alpha');
+  await call('/api/design', { project: 'alpha', action: 'save', language: des.language, pages: des.pages || [] });
+  const tweak = JSON.parse(JSON.stringify(des.language));
+  tweak.rules = [...(tweak.rules || []), { name: 'b218', text: 'A rule added in the Design view.' }];
+  await call('/api/design', { project: 'alpha', action: 'save', language: tweak, pages: des.pages || [] });
+  const dz = await sess({ node: 'nodeA' });
+  ok(/somebody else changed this project's design: read `bb design show`, and write docs\/design-language.md again with `bb design file`/.test(dz.line || ''),
+     `...and a design saved in the Design view is told the same way, with the file to write again (${(dz.line || 'no line').slice(0, 140)})`);
   // A setting a session takes when it starts says so, once (report #81).
   await call('/api/prefs', { project: 'alpha', reads: ['beta'] });
   const rd = await sess({ node: 'nodeA' });
@@ -218,7 +229,6 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   await call('/api/prefs', { project: 'alpha', diag: false });
   await call('/api/settings', { set: { debug_mode: false } });
 }
-
 {
   const free = await Promise.all([0, 1, 2, 3].map(i => hook(i, 'turn')));
   ok(free.every(r => r.status === 200 && r.go === true), 'with no limit set, four prompts at once all go');

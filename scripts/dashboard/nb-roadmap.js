@@ -161,7 +161,11 @@ function nbRoadmapView({$, nb}){
     // into a column two thirds as wide as the ones under it.
     // ...and the release it is meant for, where one is set (the operator,
     // 21 Oct).
-    const tags = idx >= 0 ? "" : (r.target ? `<span class="tag ver" title="meant to ship in ${esc(r.target)}">for ${esc(r.target)}</span>` : "")
+    // A step meant for a release of its own says so (R108); one with none
+    // goes with its item and carries no tag. An item an agent put here
+    // names that agent (R95).
+    const tags = idx >= 0 ? (st.target ? `<span class="tag ver" title="this step is meant to ship in ${esc(st.target)}">for ${esc(st.target)}</span>` : "")
+      : (r.target ? `<span class="tag ver" title="meant to ship in ${esc(r.target)}">for ${esc(r.target)}</span>` : "")
       + (r.by === "claude" ? `<span class="tag who" title="${esc(agentAsker(r))} put this here">${esc(agentAsker(r).toLowerCase())}</span>` : "");
     // In reorder mode the row's three controls are replaced rather than joined:
     // five buttons and a number do not fit a phone, and moving things about is
@@ -289,11 +293,7 @@ function nbRoadmapView({$, nb}){
     const left = rows.reduce((n, r) =>
       n + (r.shelved || nextStep(r) === null ? 0 : 1), 0);
     const parked = rows.filter(r => r.shelved).length;
-    const held = nb.nbUnsaved();
-    // Count first, in fragments (R254 step 1, the a-notebook/views rule);
-    // what the list is for is its empty state (R119 step 4). Whether a step
-    // can be sent is the last fragment: unsaved changes or no session hold
-    // the arrows, a running session lights them.
+    // What the list is for is its empty state (R119 step 4).
     $("roadmapEmpty").hidden = !!rows.length;
     // The finished count rides a read; a redraw from the page's own state
     // (the search, a chip) keeps the last one.
@@ -301,24 +301,36 @@ function nbRoadmapView({$, nb}){
     if (j.releases !== undefined) nb.roadmapReleases = j.releases;
     if (j.changelog !== undefined) nb.roadmapChangelog = j.changelog;
     const finishedN = nb.roadmapFinishedN || 0;
-    const frags = [`${left} to send`, parked ? `${parked} shelved` : "", finishedN ? `${finishedN} finished` : "",
-                   held ? `${held} not saved` : live ? `${j.session} running` : "no session running"].filter(Boolean);
-    setText($("roadmapHint"), !rows.length && !finishedN ? "nothing yet" : frags.join(" · "));
+    // The glance (R109, the Containers page's top): what is left to send,
+    // shelved and finished as tiles, none while the list is empty, whose
+    // empty state is the hint where it would be...
+    viewGlance($("roadmapHint"), !rows.length && !finishedN ? [] : [
+      {label: "to send", value: left},
+      {label: "shelved", value: parked, omit: !parked},
+      {label: "finished", value: finishedN, omit: !finishedN}]);
+    // ...and its status line: whether a step can be sent, after what is
+    // staged (the bar's own words, syncSave's). No session holds the arrows,
+    // a running one lights them.
+    setText($("roadmapSess"), live ? `${j.session} running` : "no session running");
     $("roadmapField").hidden = !rows.length && !finishedN;
-    // The band that narrows it: All, Open and Shelved, and a search.
+    // The band that narrows it: All, Open and Shelved, and the search on
+    // the control row.
     nb.roadmapChip = ["", "open", "shelved"].includes(nb.roadmapChip) ? nb.roadmapChip : "";
     const chips = chipButtons([{key: "open", label: "Open", count: rows.length - parked},
                                {key: "shelved", label: "Shelved", count: parked}], nb.roadmapChip, "data-rmchip");
     if (paint($("roadmapChips"), chips, true))
       $("roadmapChips").querySelectorAll("[data-rmchip]").forEach(b => b.onclick = () => {
         fadeThrough(() => [$("roadmapList")], () => { nb.roadmapChip = b.dataset.rmchip; redrawRoadmap(); }); });
-    setHidden($("roadmapFilter"), rows.length + finishedN < 2);
+    setHidden($("roadmapFind"), rows.length + finishedN < 2 && !nb.roadmapFind);
     // ...and by the release an item is meant for (the operator, 21 Oct): a
     // chip per target, oldest first, and No target; the Finished section
     // narrows by it too, so what went into a release can be read back.
-    const vers = versionChips(rows, r => r.target, "No target");
+    const vers = versionChips(rows, rmVers, "No target");
     if (nb.roadmapVer && !vers.some(v => v.key === nb.roadmapVer)) nb.roadmapVer = "";
-    if (paint($("roadmapVers"), chipButtons(vers, nb.roadmapVer, "data-rmver"), true))
+    const verChips = chipButtons(vers, nb.roadmapVer, "data-rmver");
+    // One band for every group (R109), drawn while any group has two.
+    setHidden($("roadmapFilter"), !chips && !verChips);
+    if (paint($("roadmapVers"), verChips, true))
       $("roadmapVers").querySelectorAll("[data-rmver]").forEach(b => b.onclick = () => {
         fadeThrough(() => [$("roadmapList"), $("roadmapDoneList")], () => {
           nb.roadmapVer = b.dataset.rmver; redrawRoadmap(); if (nb.roadmapDone) nb.drawFinished(); }); });
@@ -439,11 +451,8 @@ function nbRoadmapView({$, nb}){
     $("roadmapOrder").hidden = !rows.length || !!ro;
     // No Add to roadmap for a role that only reads (B86; the operator, 21
     // Oct: what a role does not give is not drawn), and its box shut.
-    if (ro && !$("roadmapForm").hidden) $("roadmapForm").hidden = true;
-    if (ro) $("roadmapShow").hidden = true;
-    else if ($("roadmapForm").hidden) $("roadmapShow").hidden = false;
-    // An empty band (the box open, nothing to reorder) is not drawn.
-    $("roadmapAddBar").hidden = !!ro || (!$("roadmapForm").hidden && $("roadmapOrder").hidden);
+    if (ro && !$("roadmapForm").hidden) roadmapForm(false);
+    $("roadmapShow").hidden = !!ro;
     $("roadmapOrder").classList.toggle("on", nb.roadmapOrdering);
     $("roadmapLog").classList.toggle("on", nb.roadmapLogOn);
     drawSendBox(live);
@@ -767,9 +776,10 @@ function nbRoadmapView({$, nb}){
     <textarea maxlength="4000" spellcheck="false"></textarea>
     <div class="q qd"><span>Details: the technical half: files, functions, approach</span></div>
     <textarea class="dta" maxlength="20000" spellcheck="false"
-      placeholder="mostly Claude's to write; empty is fine"></textarea>${step < 0 ? `
-    <div class="q qd"><span>Target: the release it is meant to ship in; empty for none</span></div>
-    <input class="tgt" maxlength="24" autocomplete="off" spellcheck="false" inputmode="decimal" placeholder="0.6.0">` : ""}
+      placeholder="mostly Claude's to write; empty is fine"></textarea>
+    <div class="q qd"><span>${step < 0 ? "Target: the release it is meant to ship in; empty for none"
+        : `Target: the release this step ships in; empty goes with the item${r0?.target ? ` (${esc(r0.target)})` : ""}`}</span></div>
+    <input class="tgt" maxlength="24" autocomplete="off" spellcheck="false" inputmode="decimal" placeholder="${step < 0 ? "0.6.0" : esc(r0?.target || "0.6.0")}">
     <div class="actbar">
       <button type="button" class="stop">Cancel</button>
       <button type="button" class="primary">Save</button></div>`;
@@ -779,7 +789,7 @@ function nbRoadmapView({$, nb}){
     ta.value = was;
     const dta = box.querySelector(".dta");
     dta.value = wasInfo;
-    const tgt = box.querySelector(".tgt"), wasTarget = r0?.target || "";
+    const tgt = box.querySelector(".tgt"), wasTarget = (step < 0 ? r0?.target : r0?.steps?.[step]?.target) || "";
     if (tgt) tgt.value = wasTarget;
     const shut = () => box.remove();
     box.querySelector(".stop").onclick = shut;
@@ -792,7 +802,7 @@ function nbRoadmapView({$, nb}){
         return;
       }
       shut();
-      if (tgt && nowTarget !== wasTarget) stageTarget(id, nowTarget);
+      if (tgt && nowTarget !== wasTarget) stageTarget(id, nowTarget, step < 0 ? null : step);
       if (now.trim() && now !== was)
         stageEdit(id, step < 0 ? null : step, now);
       if (nowInfo !== wasInfo)
@@ -863,15 +873,16 @@ function nbRoadmapView({$, nb}){
 
 
   $("roadmapAdd").onclick = addRoadmap;
-  // The add band unrolls the box under it, and Cancel (or Escape in an
-  // empty box) rolls it back; a line half typed keeps the box open. Only
-  // Add to roadmap steps aside: Reorder stays in the band, live.
-  const roadmapForm = on => {
+  // Add to roadmap, the control row's primary, unrolls the box under that
+  // row (R109), and Cancel (or Escape in an empty box) rolls it back; a line
+  // half typed keeps the box open. The button stays where it is, a press
+  // while the box is open taking the caret back to it.
+  function roadmapForm(on){
     $("roadmapForm").hidden = !on;
-    $("roadmapShow").hidden = on;
-    $("roadmapAddBar").hidden = on && $("roadmapOrder").hidden;
+    $("roadmapAddBar").hidden = !on;
+    $("roadmapShow").setAttribute("aria-expanded", String(!!on));
     if (on) $("roadmapText").focus();
-  };
+  }
   nb.roadmapForm = roadmapForm;
   $("roadmapShow").onclick = () => roadmapForm(true);
   $("roadmapCancel").onclick = () => { $("roadmapText").value = ""; roadmapForm(false); };
@@ -991,11 +1002,13 @@ function nbRoadmapView({$, nb}){
 
   // The release an item is meant for: a state like a shelf, so it carries
   // no was; "" clears it.
-  function stageTarget(id, target){
-    return stage({action: "target", id, target}, () => {
+  // A step's own (R108) rides the same action with its step.
+  function stageTarget(id, target, step = null){
+    return stage({action: "target", id, target, ...(step === null ? {} : {step})}, () => {
       const r = findRow(id);
-      if (!r) return false;
-      if (target) r.target = target; else delete r.target;
+      const at = step === null ? r : r?.steps?.[step];
+      if (!at) return false;
+      if (target) at.target = target; else delete at.target;
     });
   }
 
@@ -1203,7 +1216,10 @@ function clRefs(refs){
 // Whether an item answers a search (R254 step 1): its number (R12 or 12), its
 // words, its steps' and their details, case aside. An empty search is all.
 // Whether an item is under the target chip in force ("" is All).
-const rmVer = (r, v) => inRelease(r.target, v);
+// An item is under a release by its own target or by a step's (R108): a
+// step with none goes with its item.
+const rmVers = r => [r.target || "", ...(r.steps || []).filter(st => st.target).map(st => st.target)];
+const rmVer = (r, v) => rmVers(r).some(t => inRelease(t, v));
 
 function rmMatch(r, q){
   if (!q) return true;

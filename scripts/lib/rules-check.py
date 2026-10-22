@@ -15,7 +15,36 @@ import sys
 
 tree, argv = sys.argv[1], sys.argv[2:]
 rules = json.loads(os.environ.get("RULES_JSON") or "[]")
-want = argv[0] if argv and argv[0] != "--all" else None
+
+
+def patch_scope(files):
+    """A patch line's own rules (R112 step 5): a rule named patch, or
+    patch-SOMETHING, says in its paths what a patch release may not change
+    (a migration, the API, a dependency's lock file), and bb tests preflight
+    on a branch whose line is X.Y.Z with Z above 0 fails on any of the files
+    it changed under one. Returns the exit code."""
+    bad = 0
+    for r in rules:
+        name = str(r.get("name") or "")
+        if name != "patch" and not name.startswith("patch-"):
+            continue
+        hit = [f for f in files if covers(r, f)]
+        if hit:
+            bad = 1
+            print(f"  FAIL  {name}: a patch line may not change {', '.join(hit[:8])}"
+                  + (f" and {len(hit) - 8} more" if len(hit) > 8 else "") + f"\n        {r.get('text') or ''}")
+        else:
+            print(f"  PASS  {name}")
+    if not bad and not any(str(r.get("name") or "") == "patch" or str(r.get("name") or "").startswith("patch-") for r in rules):
+        print("  no patch rule here: bb rules add patch \"...\" --files GLOBS says what a patch may not change")
+    return bad
+if argv and argv[0] == "--patch":
+    # The files a patch line's branch changed, judged by patch_scope once
+    # covers() is defined below.
+    PATCH_FILES = argv[1:]
+else:
+    PATCH_FILES = None
+want = argv[0] if argv and argv[0] not in ("--all", "--patch") else None
 everything = "--all" in argv or want is not None
 
 
@@ -40,6 +69,8 @@ def covers(r, path):
     return False
 
 
+if PATCH_FILES is not None:
+    sys.exit(patch_scope(PATCH_FILES))
 due = [r for r in rules if r.get("check") and (want is None or r.get("name") == want)]
 if want is not None and not due:
     sys.exit(f"[builderbot] ERROR: no rule called {want} carries a check")

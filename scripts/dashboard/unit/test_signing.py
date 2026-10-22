@@ -117,6 +117,93 @@ class Signing(unittest.TestCase):
         signing.remove("app", "sideload", "watch")
         self.assertEqual(signing.mapping("app"), {})
 
+    def test_a_backup_made_with_the_password_is_wrapped_under_it(self):
+        # R111: Download backup with the project's backup password wraps the
+        # keystore under that password, password.txt holding none, so a
+        # copy of the zip is no key without it; Import takes it typed in.
+        import io
+        import subprocess
+        import zipfile
+        signing.generate("app", "sideload", "watch")
+        sha = signing.listing("app")[0]["keys"]["watch"]["sideload"]["sha256"]
+        (name, data), st = signing.backup("app", "sideload", "watch", password="a-backup-password")
+        self.assertEqual(st, 200)
+        z = zipfile.ZipFile(io.BytesIO(data))
+        said = z.read("password.txt").decode()
+        self.assertIn("this project's backup password", said)
+        rec = signing._record("app", "sideload", "watch")
+        self.assertNotIn(rec["store_pass"], said, "the key's own password is not in the backup")
+        ks = next(n for n in z.namelist() if n.endswith(".p12"))
+        tmp = self.tmp / "w.p12"
+        tmp.write_bytes(z.read(ks))
+        opens = lambda pw: subprocess.run([KT, "-list", "-keystore", str(tmp), "-storepass", pw],
+                                          capture_output=True).returncode == 0
+        self.assertTrue(opens("a-backup-password") and not opens(rec["store_pass"]),
+                        "the keystore opens with the backup password and not with the key's own")
+        signing.set_backup_password("other", "", "another-password")
+        b64 = base64.b64encode(data).decode()
+        r, st = signing.import_backup("other", "", b64, filename=name)
+        self.assertEqual(st, 400)
+        self.assertIn("type that password", r["error"])
+        r, st = signing.import_backup("other", "", b64, filename=name, password="a-backup-password")
+        self.assertEqual(st, 200, r)
+        self.assertEqual(signing.listing("other")[0]["keys"]["watch"]["sideload"]["sha256"], sha)
+
+    def test_a_backup_imports_into_another_project(self):
+        # R103: Download backup's zip goes into a second project as the same
+        # key, its password and alias read from password.txt.
+        signing.generate("app", "sideload", "watch")
+        sha = signing.listing("app")[0]["keys"]["watch"]["sideload"]["sha256"]
+        (name, data), _ = signing.backup("app", "sideload", "watch")
+        signing.set_backup_password("other", "", "another-password")
+        b64 = base64.b64encode(data).decode()
+        r, st = signing.import_backup("other", "", b64, filename=name, by="sean")
+        self.assertEqual(st, 200, r)
+        got = signing.listing("other")[0]["keys"]["watch"]["sideload"]
+        self.assertEqual(got["sha256"], sha)
+        self.assertEqual(got["alias"], "watch")
+        self.assertGreater(got["backed_up"], 0)
+        self.assertNotIn("store_pass", repr(r))
+        # ...its own backup is a zip again, its password traveling with it.
+        (name2, _), _ = signing.backup("other", "sideload", "watch")
+        self.assertTrue(name2.endswith(".zip"))
+        # Again is a no-op; a different key over it is refused.
+        self.assertEqual(signing.import_backup("other", "sideload", b64, key="watch")[1], 200)
+        r, st = signing.import_backup("other", "sideload", self.b64, key="watch", password="s3cret-pass")
+        self.assertEqual(st, 409, r)
+        # A bare keystore needs its password; a name without a slot needs one said.
+        self.assertEqual(signing.import_backup("other", "play", self.b64)[1], 400)
+        r, st = signing.import_backup("other", "", self.b64, password="s3cret-pass", filename="k.p12")
+        self.assertEqual(st, 400)
+        self.assertIn("slot", r["error"])
+        r, st = signing.import_backup("other", "play", self.b64, key="up", password="s3cret-pass")
+        self.assertEqual(st, 200, r)
+
+    def test_a_backup_zip_holds_only_its_two_files(self):
+        import io
+        import zipfile
+        signing.generate("app", "play")
+        (_, data), _ = signing.backup("app", "play")
+
+        def zipped(extra=None, drop=None, swap=None):
+            src = zipfile.ZipFile(io.BytesIO(data))
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as z:
+                for n in src.namelist():
+                    if n != drop:
+                        z.writestr(n, swap if (swap and n.endswith(".p12")) else src.read(n))
+                for n, b in (extra or {}).items():
+                    z.writestr(n, b)
+            return base64.b64encode(buf.getvalue()).decode()
+        for b64, said in [(zipped(extra={"evil.sh": "x"}), "nothing else"),
+                          (zipped(drop="password.txt"), "nothing else"),
+                          (zipped(swap=self.ks.read_bytes()), "password"),
+                          (base64.b64encode(b"PK\x03\x04junk").decode(), "did not open")]:
+            r, st = signing.import_backup("app", "sideload", b64, key="copy")
+            self.assertEqual(st, 400, r)
+            self.assertIn(said, r["error"])
+        self.assertIsNone(signing.listing("app")[0]["keys"].get("copy"))
+
     def test_no_key_until_the_backups_have_a_password(self):
         signing.set_backup_password("app2", "", "")
         r, st = signing.put("app2", "play", self.b64, "s3cret-pass")

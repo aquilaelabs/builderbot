@@ -330,7 +330,8 @@ def verb(name, auth, req, addr):
             key = signing.successor(project, key)
         got = signing.secret(project, route, key)
         if not got:
-            return {"error": f"{project} has no {signing.WORDS.get(route, route)} named {key}"
+            return {"error": signing.locked(project, route, key)
+                             or f"{project} has no {signing.WORDS.get(route, route)} named {key}"
                              + (f" (what {package} is mapped to)" if package and not spec.get("key") else "")}, 404
         blob, rec = got
         _keys_given.add(j["id"])

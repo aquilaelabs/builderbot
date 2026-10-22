@@ -12,7 +12,10 @@ Two routes, either or both per project:
 
 The keystore and its passwords live under /config/signing/PROJECT/, the
 directory 0700 and every file 0600, beside the git tokens and like them
-outside every session's view. A session never receives either: a signing is
+outside every session's view, and sealed there (R111 step 2) under the
+install's signing secret, which is never in /config: a copied /config, or a
+backup of it, holds ciphertext alone. Root on the running controller still
+reads them, as it reads everything the dashboard can. A session never receives either: a signing is
 a job on the project's node that fetches the key over the agent's own
 channel for that one job (step 2), so what a session can read, print or
 commit holds no key and no password.
@@ -25,6 +28,8 @@ reaches keytool through its environment (-storepass:env), never argv.
 """
 import base64
 import contextlib
+import hashlib
+import hmac
 import io
 import json
 import os
@@ -58,8 +63,151 @@ file_path = None
 apksigner_path = None
 
 
-def configure(*, state, project_name, keytool):
+def configure(*, state, project_name, keytool, secret_file=None):
     globals().update(STATE=Path(state), PROJECT_NAME=project_name, keytool_path=keytool)
+    load_master(secret_file)
+
+
+# ---- sealed at rest (R111 step 2) ------------------------------------------
+# The install's signing secret: SIGNING_SECRET in the container's environment,
+# which the entrypoint shields like every secret and hands the dashboard as a
+# file of its own in /run (never /config). Each keystore and each record's
+# passwords are sealed under it. The standard library has no cipher, so the
+# seal is built from what it has: HMAC-SHA256 as a pseudorandom function in
+# counter mode for the keystream (a fresh 16-byte nonce per seal) and a
+# second HMAC over the whole for its tag, checked before anything is opened
+# (encrypt-then-MAC, two keys derived from the secret apart).
+SECRET_FILE = "/run/builderbot-signing"
+MAGIC = b"BBSEAL1\n"
+MASTER = None
+
+
+class Locked(Exception):
+    """A sealed file this controller cannot open: no signing secret, or not
+    the one it was sealed under."""
+
+
+def load_master(path=None):
+    """Read the signing secret, or none: a missing file is an install that
+    has not set one, and keeps its keys unsealed as before."""
+    f = Path(path or os.environ.get("BB_SIGNING_SECRET_FILE") or SECRET_FILE)
+    try:
+        raw = f.read_bytes().strip()
+    except OSError:
+        raw = b""
+    globals()["MASTER"] = raw if len(raw) >= 16 else None
+    return MASTER is not None
+
+
+def _subkeys():
+    root = hashlib.sha256(b"builderbot signing seal v1\0" + MASTER).digest()
+    return (hmac.new(root, b"encrypt", hashlib.sha256).digest(),
+            hmac.new(root, b"authenticate", hashlib.sha256).digest())
+
+
+def _stream(key, nonce, n):
+    out, i = bytearray(), 0
+    while len(out) < n:
+        out += hmac.new(key, nonce + i.to_bytes(8, "big"), hashlib.sha256).digest()
+        i += 1
+    return bytes(out[:n])
+
+
+def seal(data):
+    """`data` sealed under the signing secret: MAGIC, nonce, ciphertext, tag."""
+    enc, mac = _subkeys()
+    nonce = secrets.token_bytes(16)
+    ct = bytes(a ^ b for a, b in zip(data, _stream(enc, nonce, len(data)), strict=True))
+    return MAGIC + nonce + ct + hmac.new(mac, MAGIC + nonce + ct, hashlib.sha256).digest()
+
+
+def unseal(blob):
+    """The data a seal holds, or Locked: checked whole before it is opened."""
+    if MASTER is None:
+        raise Locked("this controller has no signing secret: set SIGNING_SECRET as it was, or import the key's backup")
+    enc, mac = _subkeys()
+    body, tag = blob[:-32], blob[-32:]
+    if len(blob) < len(MAGIC) + 48 or not hmac.compare_digest(tag, hmac.new(mac, body, hashlib.sha256).digest()):
+        raise Locked("sealed under another signing secret: set SIGNING_SECRET as it was, or import the key's backup")
+    nonce, ct = body[len(MAGIC):len(MAGIC) + 16], body[len(MAGIC) + 16:]
+    return bytes(a ^ b for a, b in zip(ct, _stream(enc, nonce, len(ct)), strict=True))
+
+
+def _read_secret(path):
+    """A keystore's bytes from disk, opened if sealed (Locked if it cannot be)."""
+    data = Path(path).read_bytes()
+    return unseal(data) if data.startswith(MAGIC) else data
+
+
+def _write_secret(path, data):
+    """A keystore written sealed where there is a signing secret."""
+    _write_private(path, seal(data) if MASTER is not None else data)
+
+
+def _save_rec(project, key, route, rec):
+    """A key's record written with its passwords sealed (in `sealed`) where
+    there is a signing secret, and never the opened copy _record hands out."""
+    out = {k: v for k, v in rec.items() if k not in ("store_pass", "key_pass", "sealed", "locked")}
+    pw = {"store_pass": rec.get("store_pass"), "key_pass": rec.get("key_pass")}
+    if rec.get("locked"):
+        out["sealed"] = rec.get("sealed")          # kept as it was: it cannot be opened here
+    elif MASTER is not None:
+        out["sealed"] = base64.b64encode(seal(json.dumps(pw).encode())).decode()
+    else:
+        out.update(pw)
+    _write_private(_dir(project, key) / f"{route}.json", json.dumps(out).encode())
+
+
+def at_rest(project=None):
+    """How the keys are kept: "sealed" (every one), "open" (none sealed, no
+    secret set), "locked" (sealed keys this controller cannot open), or
+    "mixed" (a secret set and keys still to seal, which seal_all does)."""
+    seen = set()
+    for proj in ([project] if project else _projects()):
+        for k in key_names(proj):
+            for r in ROUTES:
+                rec = _record(proj, r, k)
+                if rec:
+                    seen.add("locked" if rec.get("locked") else "sealed" if rec.get("sealed") else "open")
+    if "locked" in seen:
+        return "locked"
+    if not seen:
+        return "sealed" if MASTER is not None else "open"
+    if seen == {"sealed"}:
+        return "sealed"
+    return "mixed" if MASTER is not None else "open"
+
+
+def _projects():
+    top = STATE / "signing" if STATE else None
+    try:
+        return sorted(d.name for d in top.iterdir() if d.is_dir() and _ok_project(d.name))
+    except (OSError, AttributeError):
+        return []
+
+
+def seal_all():
+    """Seal every key kept open, at start and whenever a secret first
+    arrives: its keystore and its record's passwords. Returns how many."""
+    if MASTER is None:
+        return 0
+    n = 0
+    for proj in _projects():
+        for k in key_names(proj):
+            for r in ROUTES:
+                rec = _record(proj, r, k)
+                if not rec or rec.get("sealed") or rec.get("locked"):
+                    continue
+                ks = _dir(proj, k) / f"{r}.ks"
+                try:
+                    data = ks.read_bytes()
+                    if not data.startswith(MAGIC):
+                        _write_private(ks, seal(data))
+                except OSError:
+                    continue
+                _save_rec(proj, k, r, rec)
+                n += 1
+    return n
 
 
 # A project keeps several named keys (step 6), each with its two slots. The
@@ -102,12 +250,23 @@ def _ok_key(key):
 
 
 def _record(project, route, key=DEFAULT):
+    """A key's record, its passwords opened where they were sealed; one this
+    controller cannot open says why in `locked` and carries none."""
     try:
         with open(_dir(project, key) / f"{route}.json", encoding="utf-8") as f:
             d = json.load(f)
-        return d if isinstance(d, dict) else None
     except (OSError, ValueError):
         return None
+    if not isinstance(d, dict):
+        return None
+    if d.get("sealed"):
+        try:
+            d.update(json.loads(unseal(base64.b64decode(d["sealed"]))))
+        except Locked as e:
+            d["locked"] = str(e)
+        except (ValueError, TypeError):
+            d["locked"] = "its sealed passwords are damaged: import the key's backup"
+    return d
 
 
 def _write_private(path, data):
@@ -126,7 +285,7 @@ def _write_private(path, data):
 
 def _public(rec):
     """What may be shown: everything but the passwords."""
-    return {k: v for k, v in rec.items() if k not in ("store_pass", "key_pass")}
+    return {k: v for k, v in rec.items() if k not in ("store_pass", "key_pass", "sealed")}
 
 
 def key_names(project):
@@ -178,7 +337,10 @@ def listing(project):
         keys[k] = {r: (_public(rec) if (rec := _record(project, r, k)) else None) for r in ROUTES}
     return {"project": project, "keys": keys, "map": mapping(project),
             "keytool": bool(keytool_path and keytool_path()),
-            "backup_locked": bool(backup_locked(project))}, 200
+            "backup_locked": bool(backup_locked(project)),
+            # Sealed under the install's signing secret, kept open, or
+            # locked (R111 step 2): the view says which.
+            "at_rest": at_rest(project)}, 200
 
 
 def routes_held(project):
@@ -233,15 +395,21 @@ def inspect(blob, store_pass, alias=""):
         shutil.rmtree(d, ignore_errors=True)
 
 
-def _keep(project, route, key, blob, alias, kind, sha, store_pass, key_pass, by, generated=False):
-    _write_private(_dir(project, key) / f"{route}.ks", blob)
+def _keep(project, route, key, blob, alias, kind, sha, store_pass, key_pass, by, generated=False, imported=False):
+    _write_secret(_dir(project, key) / f"{route}.ks", blob)
     was = _record(project, route, key) or {}
     rec = {"route": route, "key": key, "alias": alias, "type": kind, "sha256": sha,
            "by": by, "at": int(time.time()), "generated": bool(generated),
-           # A replaced key has not been backed up, whatever the last one was.
-           "backed_up": 0 if was.get("sha256") != sha else int(was.get("backed_up") or 0),
+           # A replaced key has not been backed up, whatever the last one was;
+           # one brought back from a backup is one somebody already holds.
+           "backed_up": int(time.time()) if imported
+           else 0 if was.get("sha256") != sha else int(was.get("backed_up") or 0),
            "store_pass": store_pass, "key_pass": key_pass or store_pass}
-    _write_private(_dir(project, key) / f"{route}.json", json.dumps(rec).encode())
+    if imported:
+        # Its password came in a backup's password.txt and is in no head
+        # either, so its own backup carries the two together again.
+        rec["imported"] = True
+    _save_rec(project, key, route, rec)
     return {"ok": True, "project": project, "key": _public(rec)}, 200
 
 
@@ -251,7 +419,7 @@ def needs_lock(project):
     can leave the dashboard without it from the first one on."""
     if backup_locked(project):
         return None
-    return {"error": f"{project} has no backup password yet: its owner sets one under Signing keys first, "
+    return {"error": f"{project} has no backup password yet: its owner sets one in its Signing view first, "
                      "and every key's backup asks for it from then on"}, 409
 
 
@@ -383,6 +551,8 @@ def rotate(project, old, new, by=""):
         return {"error": f"{old} was rotated to {a['retired_for']} already"}, 409
     if b.get("rotated_from") or b.get("retired_for"):
         return {"error": f"{new} is part of a rotation already, so it cannot start another"}, 409
+    if a.get("locked") or b.get("locked"):
+        return {"error": a.get("locked") or b.get("locked")}, 409
     tool, env = apksigner_path() if apksigner_path else (None, {})
     if not tool:
         return {"error": "there is no apksigner here to make the proof with: install android-tools "
@@ -392,7 +562,7 @@ def rotate(project, old, new, by=""):
         os.chmod(d, 0o700)
         for name, k in (("old", old), ("new", new)):
             with open(os.open(os.path.join(d, name), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
-                f.write((_dir(project, k) / "sideload.ks").read_bytes())
+                f.write(_read_secret(_dir(project, k) / "sideload.ks"))
         env = dict(os.environ, **env, BB_OLD_KS=a["store_pass"], BB_OLD_KEY=a.get("key_pass") or a["store_pass"],
                    BB_NEW_KS=b["store_pass"], BB_NEW_KEY=b.get("key_pass") or b["store_pass"])
         out = os.path.join(d, "lineage")
@@ -413,9 +583,9 @@ def rotate(project, old, new, by=""):
         shutil.rmtree(d, ignore_errors=True)
     _write_private(_dir(project, new) / "sideload.lineage", proof)
     b.update(rotated_from=old, rotated_at=int(time.time()), rotated_by=by)
-    _write_private(_dir(project, new) / "sideload.json", json.dumps(b).encode())
+    _save_rec(project, new, "sideload", b)
     a.update(retired_for=new, retired_at=int(time.time()))
-    _write_private(_dir(project, old) / "sideload.json", json.dumps(a).encode())
+    _save_rec(project, old, "sideload", a)
     m = {pkg: (new if k == old else k) for pkg, k in mapping(project).items()}
     _write_private(_root(project) / "map.json", json.dumps(m).encode())
     return listing(project)
@@ -444,23 +614,72 @@ def remove(project, route, key=DEFAULT):
     return {"ok": True, "project": project, "key": key, "route": route}, 200
 
 
-def backup(project, route, key=DEFAULT):
+def _rewrap(blob, store_pass, key_pass, alias, new_pass):
+    """(PKCS12 bytes, error): the keystore's key under `new_pass`, as its
+    store and key password both, by keytool -importkeystore, the keystore's
+    own encryption (R111). The passwords ride the environment, never argv."""
+    kt = keytool_path() if keytool_path else None
+    if not kt:
+        return b"", "there is no keytool to wrap it with: install the jdk toolchain (Toolchains page)"
+    d = tempfile.mkdtemp(prefix="bb-sign-")
+    try:
+        os.chmod(d, 0o700)
+        src, dst = os.path.join(d, "src"), os.path.join(d, "dst.p12")
+        with os.fdopen(os.open(src, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
+            f.write(blob)
+        env = dict(os.environ, BB_SRC_PASS=store_pass, BB_SRC_KEY=key_pass or store_pass, BB_NEW_PASS=new_pass)
+        argv = [kt, "-importkeystore", "-noprompt", "-srckeystore", src, "-srcstorepass:env", "BB_SRC_PASS",
+                "-srckeypass:env", "BB_SRC_KEY", "-srcalias", alias, "-destkeystore", dst, "-deststoretype", "PKCS12",
+                "-deststorepass:env", "BB_NEW_PASS", "-destkeypass:env", "BB_NEW_PASS"]
+        try:
+            p = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=60, check=False)
+        except (OSError, subprocess.SubprocessError) as e:
+            return b"", f"keytool did not run: {e}"
+        if p.returncode != 0 or not os.path.isfile(dst):
+            said = [ln for ln in ((p.stdout or "") + (p.stderr or "")).splitlines() if ln.strip()]
+            return b"", "keytool could not wrap it: " + (said[-1][:200] if said else f"exit {p.returncode}")
+        with open(dst, "rb") as f:
+            return f.read(), ""
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def backup(project, route, key=DEFAULT, password=""):
     """(filename, bytes) of the keystore for an administrator's own copy, and
-    the record marks it backed up; (error payload, status) otherwise."""
+    the record marks it backed up; (error payload, status) otherwise. With
+    the project's backup password (checked by the caller), the keystore in
+    the zip is wrapped under it and password.txt never holds a password, so
+    a copy of the file is no key without it (R111)."""
     if not _ok_project(project) or route not in ROUTES or not _ok_key(key):
         return {"error": "unknown project, key or route"}, 400
     rec = _record(project, route, key)
+    if rec and rec.get("locked"):
+        return {"error": rec["locked"]}, 409
     try:
-        blob = (_dir(project, key) / f"{route}.ks").read_bytes()
-    except OSError:
+        blob = _read_secret(_dir(project, key) / f"{route}.ks")
+    except (OSError, Locked):
         blob = b""
     if not rec or not blob:
         return {"error": f"{project}'s {key} has no {WORDS[route]}"}, 404
-    rec["backed_up"] = int(time.time())
-    _write_private(_dir(project, key) / f"{route}.json", json.dumps(rec).encode())
     ext = "jks" if str(rec.get("type") or "").upper() == "JKS" else "p12"
     base = f"{project}-{key}-{route}"
-    if rec.get("generated"):
+    if password:
+        wrapped, why = _rewrap(blob, rec.get("store_pass") or "", rec.get("key_pass") or "", rec.get("alias") or "", password)
+        if why:
+            # Never the bare key in its place: a backup password promises
+            # the copy is wrapped. No keytool here is a thing to install.
+            return {"error": why}, 409 if "no keytool" in why else 500
+        rec["backed_up"] = int(time.time())
+        _save_rec(project, key, route, rec)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr(f"{base}.p12", wrapped)
+            z.writestr("password.txt", "keystore and key password: this project's backup password\n"
+                                       f"alias: {rec.get('alias')}\nSHA-256: {rec.get('sha256')}\n")
+        return (f"{base}.zip", buf.getvalue()), 200
+    rec["backed_up"] = int(time.time())
+    _save_rec(project, key, route, rec)
+    if rec.get("generated") or rec.get("imported"):
         # Its password was made here and is in no head, so a keystore alone
         # would be a backup nobody could open: the two travel together.
         buf = io.BytesIO()
@@ -470,6 +689,103 @@ def backup(project, route, key=DEFAULT):
                                        f"alias: {rec.get('alias')}\nSHA-256: {rec.get('sha256')}\n")
         return (f"{base}.zip", buf.getvalue()), 200
     return (f"{base}.{ext}", blob), 200
+
+
+# ---- a backup brought back (R103, the operator 22 Oct) ----------------------
+# What Download backup hands over goes back in, to this project or another:
+# the zip a generated key's backup is (the keystore and password.txt, which
+# says its password and alias, so nothing is retyped), or a bare keystore
+# with the password its owner types. Checked as an upload is, and against the
+# fingerprint password.txt names.
+BACKUP_KS = re.compile(r"[A-Za-z0-9._-]{1,200}\.(p12|jks|pfx|keystore)")
+BACKUP_ROUTE = re.compile(r"-(play|sideload)\.(p12|jks|pfx|keystore|zip)$")
+
+
+def _read_backup(blob):
+    """(keystore bytes, password, alias, sha256, keystore's name, error) from
+    a backup zip: exactly a keystore and password.txt, each under the cap."""
+    def no(why):
+        return b"", "", "", "", "", why
+    try:
+        z = zipfile.ZipFile(io.BytesIO(blob))
+        infos = z.infolist()
+    except (zipfile.BadZipFile, OSError, ValueError):
+        return no("that is not a key's backup: the zip did not open")
+    names = sorted(i.filename for i in infos)
+    stores = [n for n in names if BACKUP_KS.fullmatch(n)]
+    if len(infos) != 2 or "password.txt" not in names or len(stores) != 1:
+        return no("a key's backup is a keystore and password.txt, nothing else: "
+                  f"this one holds {', '.join(names[:6]) or 'nothing'}")
+    if any(i.file_size > MAX_BYTES for i in infos):
+        return no("that is too large to be a key's backup")
+    try:
+        ks = z.read(stores[0])
+        said = z.read("password.txt").decode("utf-8")
+    except (zipfile.BadZipFile, OSError, ValueError, RuntimeError):
+        return no("the backup's files did not read whole")
+
+    def line(k):
+        m = re.search(rf"^{k}:[ \t]*(.*?)[ \t]*$", said, re.M)
+        return m[1] if m else ""
+    pw = line("keystore and key password")
+    if not pw:
+        return no("the backup's password.txt names no password")
+    # Wrapped under its project's backup password (R111): the one typed in.
+    if pw == "this project's backup password":
+        pw = ""
+    return ks, pw, line("alias"), line("SHA-256"), stores[0], ""
+
+
+def import_backup(project, route, blob_b64, key="", password="", alias="", filename="", by=""):
+    """Keep a key from a backup: a backup zip, or a bare keystore with its
+    password. An empty route is read off the backup's name, an empty key off
+    a zip's alias (a generated key is aliased by its name), else `default`.
+    Refused over a slot that holds a different key. The password goes into
+    the key's record and nowhere else. (payload, status)."""
+    if not _ok_project(project):
+        return {"error": "unknown project"}, 400
+    if (no := needs_lock(project)):
+        return no
+    try:
+        blob = base64.b64decode(blob_b64 or "", validate=True)
+    except ValueError:
+        return {"error": "the backup did not arrive whole"}, 400
+    if not blob:
+        return {"error": "no backup was given"}, 400
+    if len(blob) > MAX_BYTES:
+        return {"error": "that is too large to be a key's backup"}, 400
+    zipped = blob[:4] == b"PK\x03\x04"
+    want = inner = ""
+    if zipped:
+        typed = password
+        blob, password, alias, want, inner, why = _read_backup(blob)
+        if why:
+            return {"error": why}, 400
+        if not password:
+            if not typed:
+                return {"error": "this backup is wrapped under its project's backup password: type that password to import it"}, 400
+            password = typed
+        if not key and _ok_key(alias):
+            key = alias
+    elif not password:
+        return {"error": "a keystore on its own needs its password: a generated key's backup is the zip, which carries it"}, 400
+    key = key or DEFAULT
+    if not route:
+        m = BACKUP_ROUTE.search(filename or "") or BACKUP_ROUTE.search(inner)
+        route = m[1] if m else ""
+    if not route:
+        return {"error": "say which slot it goes in, Play upload or sideload: the backup's name does not"}, 400
+    if (no := _check(project, route, key)):
+        return no
+    alias, kind, sha, why = inspect(blob, password, alias.strip())
+    if why:
+        return {"error": why}, 400
+    if want and want != sha:
+        return {"error": "the keystore is not the key its password.txt names: the fingerprints differ"}, 400
+    was = _record(project, route, key)
+    if was and was.get("sha256") != sha:
+        return {"error": f"{key} has a {WORDS[route]} already: remove it first, or import it under another name"}, 409
+    return _keep(project, route, key, blob, alias, kind, sha, password, "", by, imported=zipped)
 
 
 # ---- the backup password (the operator, 1 Oct) ----------------------------
@@ -542,11 +858,158 @@ def secret(project, route, key=DEFAULT):
     """(keystore bytes, record with its passwords) for the node signing a
     job, or None. The one caller is the agent's job channel (step 2)."""
     rec = _record(project, route, key)
-    try:
-        blob = (_dir(project, key) / f"{route}.ks").read_bytes()
-    except OSError:
+    if not rec or rec.get("locked"):
         return None
-    return (blob, rec) if rec else None
+    try:
+        blob = _read_secret(_dir(project, key) / f"{route}.ks")
+    except (OSError, Locked):
+        return None
+    return blob, rec
+
+
+def locked(project, route, key=DEFAULT):
+    """Why a key cannot be opened here (its seal), or "": said by whatever
+    asked for it rather than "no such key"."""
+    return str((_record(project, route, key) or {}).get("locked") or "")
+
+
+# ---- a release's APK, signed here (R106: the operator, 22 Oct) --------------
+# Four keystore secrets set by hand on GitHub failed three ways and one put a
+# password in a public log. A release's APK is built unsigned in CI and
+# signed by the controller, which holds the key already: the same steps the
+# node's sign job takes (zipalign, apksigner with the proof of a rotation,
+# verify, the certificate checked against the kept key), with the store's
+# own tools, in a 0700 directory removed whatever happens. Sessions run on
+# nodes, never here, so no session can read the key while it is used.
+
+def release_key(project, package=""):
+    """(key name, its sideload record, "") for the key a release of
+    `package` signs with: the one it is mapped to, else default, else the
+    only sideload key, followed through a rotation to the newest; or
+    ("", None, why) said in words when there is none to use."""
+    if not _ok_project(project):
+        return "", None, "unknown project"
+    held = [k for k in key_names(project) if _record(project, "sideload", k)]
+    if not held:
+        return "", None, (f"{project} has no sideload signing key, which signs its releases: an "
+                          "administrator adds or makes one in its Signing view (Ship)")
+    mapped = mapping(project).get(package or "")
+    key = key_for(project, package, "sideload")
+    if mapped and not _record(project, "sideload", mapped):
+        return "", None, f"{package} is mapped to {mapped}, which holds no sideload signing key"
+    if not mapped and not _record(project, "sideload", key):
+        return "", None, (f"{package or 'the app'} is mapped to no key, and {project} has {len(held)} sideload "
+                          f"keys ({', '.join(held)}) and none named default: map it in the Signing view's Apps")
+    key = successor(project, key)
+    return key, _record(project, "sideload", key), ""
+
+
+def build_tools():
+    """{apksigner, zipalign, aapt2, env} from the store's newest build-tools
+    beside its apksigner, or {} when android-tools or the jdk is missing."""
+    tool, env = apksigner_path() if apksigner_path else (None, {})
+    if not tool:
+        return {}
+    d = os.path.dirname(tool)
+    out = {"apksigner": tool, "env": dict(env)}
+    for name in ("zipalign", "aapt2"):
+        p = os.path.join(d, name)
+        if not os.access(p, os.X_OK):
+            return {}
+        out[name] = p
+    return out
+
+
+def package_of(apk, tools=None):
+    """The package an APK declares, read with aapt2, or ""."""
+    tools = tools or build_tools()
+    if not tools:
+        return ""
+    try:
+        p = subprocess.run([tools["aapt2"], "dump", "packagename", str(apk)], capture_output=True,
+                           text=True, timeout=60, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    got = (p.stdout or "").strip().splitlines()[0] if p.returncode == 0 and (p.stdout or "").strip() else ""
+    return got if PACKAGE.fullmatch(got) else ""
+
+
+def sign_here(project, src, out):
+    """Sign the unsigned APK at `src` into `out` with the project's sideload
+    key for its package, on this controller. {key, cert, schemes, package,
+    rotated_from} or {error}."""
+    tools = build_tools()
+    if not tools:
+        return {"error": "this controller has no apksigner to sign with: install android-tools and "
+                         "the jdk (Toolchains page), which it reads from the shared store"}
+    package = package_of(src, tools)
+    key, rec, why = release_key(project, package)
+    if why:
+        return {"error": why}
+    got = secret(project, "sideload", key)
+    if not got:
+        return {"error": locked(project, "sideload", key) or f"{project} has no sideload signing key named {key}"}
+    blob, rec = got
+    prev = None
+    if rec.get("rotated_from"):
+        p = secret(project, "sideload", rec["rotated_from"])
+        proof = lineage(project, key)
+        prev = (p, proof) if p and proof else None
+    d = tempfile.mkdtemp(prefix="bb-sign-")
+    try:
+        os.chmod(d, 0o700)
+
+        def private(name, data):
+            path = os.path.join(d, name)
+            with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
+                f.write(data)
+            return path
+        ks = private("key", blob)
+        env = dict(os.environ, **tools["env"], BB_KS_PASS=str(rec.get("store_pass") or ""),
+                   BB_KEY_PASS=str(rec.get("key_pass") or rec.get("store_pass") or ""))
+        first, tail = [], []
+        if prev:
+            (pblob, prec), proof = prev
+            pks, lin = private("previous", pblob), private("lineage", proof)
+            env.update(BB_PREV_KS=str(prec.get("store_pass") or ""),
+                       BB_PREV_KEY=str(prec.get("key_pass") or prec.get("store_pass") or ""))
+            first = ["--ks", pks, "--ks-key-alias", str(prec.get("alias") or ""),
+                     "--ks-pass", "env:BB_PREV_KS", "--key-pass", "env:BB_PREV_KEY", "--next-signer"]
+            tail = ["--lineage", lin, "--rotation-min-sdk-version", "28"]
+
+        def step(argv, what):
+            try:
+                p = subprocess.run(argv, env=env, cwd=d, capture_output=True, text=True, timeout=600, check=False)
+            except (OSError, subprocess.SubprocessError) as e:
+                return None, f"{what} did not run: {e}"
+            said = ((p.stdout or "") + (p.stderr or "")).strip()
+            if p.returncode != 0:
+                lines = [ln for ln in said.splitlines() if ln.strip()]
+                return None, f"{what} failed: " + (lines[-1][:300] if lines else f"exit {p.returncode}")
+            return said, ""
+        aligned, signed = os.path.join(d, "aligned.apk"), os.path.join(d, "signed.apk")
+        _, why = step([tools["zipalign"], "-p", "-f", "4", str(src), aligned], "zipalign")
+        if why:
+            return {"error": why}
+        _, why = step([tools["apksigner"], "sign", *first, "--ks", ks, "--ks-key-alias", str(rec.get("alias") or ""),
+                       "--ks-pass", "env:BB_KS_PASS", "--key-pass", "env:BB_KEY_PASS", *tail,
+                       "--out", signed, aligned], "apksigner sign")
+        if why:
+            return {"error": why}
+        said, why = step([tools["apksigner"], "verify", "--verbose", "--print-certs", signed], "apksigner verify")
+        if why:
+            return {"error": why}
+        m = re.search(r"SHA-256 digest:\s*([0-9a-fA-F]{64})", said)
+        cert = m.group(1).upper() if m else ""
+        want = str(rec.get("sha256") or "").replace(":", "").upper()
+        if not cert or (want and cert != want):
+            return {"error": "the signed APK carries another certificate than the key that was kept"}
+        shutil.copyfile(signed, out)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    return {"key": key, "cert": str(rec.get("sha256") or ""), "package": package,
+            "schemes": re.findall(r"Verified using (v\d(?:\.\d)?) scheme[^:]*:\s*true", said),
+            **({"rotated_from": rec["rotated_from"]} if prev else {})}
 
 
 def refusal(project, rel, route, key=""):
@@ -561,8 +1024,8 @@ def refusal(project, rel, route, key=""):
     if key and not _record(project, route, key):
         return {"error": f"{project} has no {WORDS[route]} named {key}"}, 404
     if not key and route not in routes_held(project):
-        return {"error": f"{project} has no {WORDS[route]}: an administrator adds one under "
-                         "Signing keys in its settings"}, 404
+        return {"error": f"{project} has no {WORDS[route]}: an administrator adds one in "
+                         "its Signing view (Ship)"}, 404
     # With no key named, the build's package decides on the node; when no
     # key is called default, several hold the route and none is mapped, no
     # package can find one, so it is refused here rather than after a
@@ -625,4 +1088,8 @@ def verb(req, by=""):
         return rotate(project, str(req.get("from") or ""), str(req.get("to") or ""), by=by)
     if act == "remove":
         return remove(project, route, key)
+    if act == "import":
+        return import_backup(project, route, str(req.get("backup") or ""), str(req.get("key") or ""),
+                             str(req.get("password") or ""), str(req.get("alias") or ""),
+                             str(req.get("filename") or ""), by=by)
     return {"error": f"unknown action {act!r}"}, 400

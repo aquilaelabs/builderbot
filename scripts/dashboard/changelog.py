@@ -750,6 +750,82 @@ def sections(text):
     return out
 
 
+def _blocks(text):
+    """The file as (head, [(title, lines)]): what is above the first
+    section, then each `## ` section with its lines, heading included."""
+    head, out = [], []
+    for line in (text or "").splitlines():
+        if line.startswith("## "):
+            out.append((line[3:].strip(), [line]))
+        elif out:
+            out[-1][1].append(line)
+        else:
+            head.append(line)
+    return head, out
+
+
+_TITLE_VER = re.compile(r"^(\d+\.\d+\.\d+)\b")
+
+
+def stitch(ours, theirs):
+    """A patch line's changelog carried into the next line's (R112 step 3,
+    bb version forward): this line's file with every dated section the patch
+    line has and this one does not, placed among the others by version, and
+    this line's Unreleased without an entry the patch already released (a fix
+    made on both lines is said once, under the release that shipped it).
+    Returns (text, carried titles, entries dropped from Unreleased)."""
+    head, mine = _blocks(ours)
+    _, other = _blocks(theirs)
+    have = {t for t, _ in mine}
+    new = [(t, b) for t, b in other if t not in have and _TITLE_VER.match(t)]
+    shipped = {e["text"] for t, b in new for sec in sections("\n".join(b)) for e in sec["entries"]}
+    dropped = []
+    out = []
+    for t, b in mine:
+        if t == "Unreleased":
+            kept = []
+            for line in b:
+                body = line.strip()[2:].strip() if line.strip().startswith("- ") else None
+                m = _STAMP.search(body) if body else None
+                if body is not None and (body[:m.start()].rstrip() if m else body) in shipped:
+                    dropped.append(body)
+                    continue
+                kept.append(line)
+            b = _tidy_headings(kept)
+        out.append((t, b))
+
+    def key(t):
+        m = _TITLE_VER.match(t)
+        return tuple(int(x) for x in m[1].split(".")) if m else None
+
+    for t, b in sorted(new, key=lambda tb: key(tb[0]), reverse=True):
+        k = key(t)
+        at = next((i for i, (ot, _) in enumerate(out) if key(ot) is not None and key(ot) < k), len(out))
+        if b and b[-1].strip():
+            b = b + [""]
+        out.insert(at, (t, b))
+    lines = list(head)
+    for _, b in out:
+        lines.extend(b)
+    return "\n".join(lines).rstrip("\n") + "\n", [t for t, _ in new], dropped
+
+
+def _tidy_headings(lines):
+    """A section's lines with a `### ` heading left with nothing under it
+    taken out, as a stitch can leave one."""
+    out = []
+    for i, line in enumerate(lines):
+        if line.startswith(CATEGORY):
+            rest = lines[i + 1:]
+            nxt = next((x for x in rest if x.strip()), "")
+            if not nxt.strip().startswith("- "):
+                continue
+        out.append(line)
+    while len(out) > 1 and not out[-1].strip() and not out[-2].strip():
+        out.pop()
+    return out
+
+
 # ---- the editor's writes, one call from the dashboard's /api/changelog -----
 
 def editor_verb(name, req):

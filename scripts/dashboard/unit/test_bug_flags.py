@@ -17,7 +17,7 @@ def lift(name):
         tree = ast.parse(f.read())
     fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name)
     ns = {"sys": sys, "os": os}
-    exec(compile(ast.Module(body=[fn], type_ignores=[]), SRC, "exec"), ns)  # noqa: S102 (our own source)
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), SRC, "exec"), ns)  # noqa: S102 (our own source)  # nosemgrep: python.lang.security.audit.exec-detected.exec-detected
     return ns[name]
 
 

@@ -1616,42 +1616,76 @@ const gp = await page.evaluate(() => ({ text: document.getElementById('rnGitPol'
   sect: document.getElementById('rnGitPolField')?.closest('details')?.dataset.sect, pol: (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.gitpol }));
 ok(/its branches allow · to main deny · a sensitive push held for you/.test(gp.text || '') && !gp.hidden && gp.sect === 'rn:claude',
    `Agents may shows the Git view's push dials, with the way to where they are set (${JSON.stringify(gp)})`);
-// Its Android signing keys (R106), an administrator's: a row per route,
-// a picked keystore staged until Save, its password asked for before
-// anything is sent, and a key the server will not keep refused in the
-// dialog, which stays open.
-await page.waitForSelector('#rnSignField:not([hidden]) .rnsign[data-route="sideload"]', { timeout: 10000 });
-const signRows = await page.$$eval('#rnSignRows .rnsign[data-key]', rs => rs.map(r => r.firstElementChild.textContent.trim()));
-// ...under the backup password's line, the project's owner's to set (the
-// fixture's owner owns alpha).
-ok(/Backup password: none/.test(await page.$eval('#rnSignRows .rnsignlock', e => e.textContent))
-   && /No key can be added or made until it has one: set it first/.test(await page.$eval('#rnSignRows .rnsignlock .sub.warn', e => e.textContent))
-   && await page.$('#rnLockOpen') !== null && await page.$('#rnSignRows [data-signopen]') === null,
-   'the signing keys open on whether their backups have a password, and with none no key can be added, the owner told to set it first');
-// Set, as the owner does it, and the keys can be added.
-await page.click('#rnLockOpen');
-await page.fill('#rnLockNew', 'a-backup-password');
-await page.fill('#rnLockAgain', 'a-backup-password');
-await page.click('#rnLockGo');
-await page.waitForFunction(() => /Backup password: set/.test(document.querySelector('#rnSignRows .rnsignlock')?.textContent || ''), null, { timeout: 10000 });
-await page.waitForSelector('#rnSignRows .rnsign[data-route="sideload"] [data-signopen]', { timeout: 10000 });
-ok(true, '...and once the owner sets one, Upload one is offered');
-ok(signRows.length === 2 && /^Play upload key: none$/.test(signRows[0]) && /^Sideload signing key: none$/.test(signRows[1]),
-   `the gear shows the project's two signing keys, none yet (${signRows.join(' / ')})`);
-await page.click('#rnSignRows .rnsign[data-route="sideload"] [data-signopen]');
-writeFileSync(`${DIR}/not-a-keystore.p12`, 'not a keystore');
-await page.setInputFiles('#rnSignRows .rnsign[data-route="sideload"] [data-signfile]', `${DIR}/not-a-keystore.p12`);
-ok(/type the keystore's password/.test(await sectSave(page, 'signing')),
-   '...a picked keystore with no password is stopped on its section\'s bar before anything is sent');
-await page.fill('#rnSignRows .rnsign[data-route="sideload"] [data-signpass]', 'p');
-const signErr = await sectSave(page, 'signing');
-ok(!await page.$eval('#rnmodal', e => e.hidden)
-   && !(await api('/api/signing', { project: 'alpha', action: 'list' })).body.keys.default?.sideload,
-   `...and one the server will not keep is refused in the dialog, which stays open, with nothing kept (${signErr.slice(0, 90)})`);
-await api('/api/signing', { action: 'backup-password', project: 'alpha', current: 'a-backup-password', new: '' });
-// A rotated key (R106 step 7): the retired one says why it is kept and
-// offers no Remove; the one it went to says who still sees the old.
+await page.click('#rnCancel');
+
+// Its Android signing keys (R106) are a view of the notebook's own, Signing,
+// in Ship after VMs (R103, the operator 22 Oct), and no longer a section of
+// the settings: a section per key with a row per route, a picked keystore
+// staged until its section's Save, its password asked for before anything
+// is sent, and a key the server will not keep refused with nothing kept.
 {
+  const V = '.pane .nb .nbview[data-view="signing"]';
+  const lastBad = () => page.evaluate(() => [...document.querySelectorAll('#toast .tst.bad .tmsg')].pop()?.textContent || '');
+  const keySave = async () => {
+    await page.click(`${V} [data-ssave="signing:key:default"]`);
+    await page.waitForFunction(v => !document.querySelector(`${v} [data-ssave="signing:key:default"][aria-busy]`), V, { timeout: 15000 });
+    return lastBad();
+  };
+  await page.evaluate(() => openNotebook('alpha', 'signing'));
+  await page.waitForSelector(`${V} .rnsign[data-route="sideload"]`, { timeout: 15000 });
+  const where = await page.evaluate(v => ({ ship: [...document.querySelectorAll('.pane .nb .nbsub [data-in="ship"]')].map(b => b.dataset.v).join(),
+    sect: !!document.querySelector('details.rngroup[data-sect="rn:signing"]'), hash: location.hash,
+    head: (document.querySelector(`${v} #sgHint`)?.textContent || '').replace(/\s+/g, ' ').trim(),
+    empty: document.querySelector(`${v} .hint.nbempty`)?.textContent || '' }), V);
+  ok(where.ship === 'artifacts,docker,vms,signing' && !where.sect && /\/projects\/alpha\/signing$/.test(where.hash)
+     && where.head === '' && /No keys yet/.test(where.empty),
+     `the keys are the notebook's Signing view, last in Ship, at its own address, no tiles over its one hint line, and the settings have no signing section (${JSON.stringify(where)})`);
+  const signRows = await page.$$eval(`${V} .rnsign[data-key]`, rs => rs.map(r => r.firstElementChild.textContent.trim()));
+  // ...under the backup password's line, the project's owner's to set (the
+  // fixture's owner owns alpha).
+  ok(/Backup password: none/.test(await page.$eval(`${V} .rnsignlock`, e => e.textContent))
+     && /No key can be added or made until it has one: set it first/.test(await page.$eval(`${V} .rnsignlock .notice.warn`, e => e.textContent))
+     && await page.$(`${V} #sgLockOpen`) !== null && await page.$(`${V} [data-signopen]`) === null,
+     'the signing keys open on whether their backups have a password, and with none no key can be added, the owner told to set it first');
+  await page.click(`${V} #sgLockOpen`);
+  await page.fill(`${V} #sgLockNew`, 'a-backup-password');
+  await page.fill(`${V} #sgLockAgain`, 'a-backup-password');
+  await page.click(`${V} #sgLockGo`);
+  await page.waitForFunction(v => /Backup password: set/.test(document.querySelector(`${v} .rnsignlock`)?.textContent || ''), V, { timeout: 10000 });
+  await page.waitForSelector(`${V} .rnsign[data-route="sideload"] [data-signopen]`, { timeout: 10000 });
+  ok(true, '...and once the owner sets one, Upload one is offered');
+  ok(signRows.length === 2 && /^Play upload key: none$/.test(signRows[0]) && /^Sideload signing key: none$/.test(signRows[1]),
+     `the view shows the default key's two slots, none yet (${signRows.join(' / ')})`);
+  ok(await page.$eval(`${V} [data-ssave="signing:key:default"]`, b => b.disabled),
+     "...its section's Save dead while nothing is staged");
+  await page.click(`${V} .rnsign[data-route="sideload"] [data-signopen]`);
+  writeFileSync(`${DIR}/not-a-keystore.p12`, 'not a keystore');
+  await page.setInputFiles(`${V} .rnsign[data-route="sideload"] [data-signfile]`, `${DIR}/not-a-keystore.p12`);
+  await page.waitForFunction(v => !document.querySelector(`${v} [data-ssave="signing:key:default"]`)?.disabled, V, { timeout: 5000 });
+  ok(/type the keystore's password/.test(await keySave()),
+     '...a picked keystore with no password is stopped at its section\'s Save before anything is sent');
+  await page.fill(`${V} .rnsign[data-route="sideload"] [data-signpass]`, 'p');
+  const signErr = await keySave();
+  ok(signErr && !/type the keystore's password/.test(signErr)
+     && !(await api('/api/signing', { project: 'alpha', action: 'list' })).body.keys.default?.sideload
+     && await page.$eval(`${V} [data-ssave="signing:key:default"]`, b => !b.disabled),
+     `...and one the server will not keep is refused, its draft kept and nothing kept (${signErr.slice(0, 90)})`);
+  await page.click(`${V} [data-srevert="signing:key:default"]`);
+  // Import a backup (R103, the operator 22 Oct): the band under the head,
+  // a zip that is not Download backup's two files refused by name.
+  await page.click(`${V} #sgImp`);
+  execFileSync('python3', ['-I', '-c', 'import sys, zipfile\nwith zipfile.ZipFile(sys.argv[1], "w") as z:\n  z.writestr("alpha-default-sideload.p12", "x")\n  z.writestr("password.txt", "keystore and key password: p\\n")\n  z.writestr("extra.sh", "x")',
+    `${DIR}/backup.zip`]);
+  await page.setInputFiles(`${V} #sgImpFile`, `${DIR}/backup.zip`);
+  await page.click(`${V} #sgImpGo`);
+  await page.waitForFunction(() => /nothing else/.test([...document.querySelectorAll('#toast .tst.bad .tmsg')].pop()?.textContent || ''), null, { timeout: 10000 });
+  ok(!(await api('/api/signing', { project: 'alpha', action: 'list' })).body.keys.default?.sideload
+     && await page.$(`${V} #sgImpGo`) !== null,
+     'Import a backup unrolls under the head, and a zip holding more than the keystore and password.txt is refused by name, the form left open');
+  await page.click(`${V} #sgAddCancel`);
+  await api('/api/signing', { action: 'backup-password', project: 'alpha', current: 'a-backup-password', new: '' });
+  // A rotated key (R106 step 7): the retired one says why it is kept and
+  // offers no Remove; the one it went to says who still sees the old.
   const sd = `${DIR}/state/signing/alpha`;
   for (const [k, rec] of [['default', { retired_for: 'watch' }], ['watch', { rotated_from: 'default' }]]){
     mkdirSync(`${sd}/${k}`, { recursive: true });
@@ -1659,18 +1693,55 @@ await api('/api/signing', { action: 'backup-password', project: 'alpha', current
     writeFileSync(`${sd}/${k}/sideload.json`, JSON.stringify({ route: 'sideload', key: k, alias: k, backed_up: 1,
       sha256: 'AB:'.repeat(31) + 'AB', store_pass: 'x', ...rec }));
   }
-  await page.evaluate(() => rnLoadSigning('alpha'));
-  await page.waitForSelector('.rnsign[data-key="watch"][data-route="sideload"]', { timeout: 10000 });
-  const rows = await page.$$eval('.rnsign[data-route="sideload"]', rs => rs.map(r => ({ key: r.dataset.key,
+  await page.evaluate(() => getNotebook('alpha').view('signing'));
+  await page.waitForSelector(`${V} .rnsign[data-key="watch"][data-route="sideload"]`, { timeout: 10000 });
+  const rows = await page.$$eval(`${V} .rnsign[data-route="sideload"]`, rs => rs.map(r => ({ key: r.dataset.key,
     text: r.textContent.replace(/\s+/g, ' '), remove: !!r.querySelector('[data-signremove]'), rotate: !!r.querySelector('[data-rotate]') })));
   const old = rows.find(r => r.key === 'default'), now = rows.find(r => r.key === 'watch');
   ok(old && /Retired: rotated to watch\. Kept, since the proof and every device before Android 9 still need it/.test(old.text) && !old.remove && !old.rotate
-     && now && /Rotated from default: Android 9 and newer see this key, older devices still see default/.test(now.text) && !now.rotate,
-     'a retired sideload key says why it is kept and offers no Remove, and the key it went to says who still sees the old one');
+     && now && /Rotated from default: Android 9 and newer see this key, older devices still see default/.test(now.text) && !now.rotate
+     && /^2 keys\b/.test(await page.$eval(`${V} #sgHint`, e => e.textContent.replace(/\s+/g, ' ').trim())),
+     'a retired sideload key says why it is kept and offers no Remove, the key it went to says who still sees the old one, and a tile counts them');
+  // Releases (R106): a workflow that hands over its unsigned APK has it
+  // signed here, and the view names the key each app's releases sign with,
+  // a retired key's successor; the bell says what would stop it before the
+  // release, and its row opens this view.
+  const wsA = `${DIR}/ws/alpha`;
+  mkdirSync(`${wsA}/.github/workflows`, { recursive: true });
+  mkdirSync(`${wsA}/app`, { recursive: true });
+  writeFileSync(`${wsA}/.github/workflows/r106-apk.yml`, 'name: apk\non: {release: {types: [published]}}\n'
+    + 'jobs: {b: {runs-on: ubuntu-24.04, steps: [{uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9, '
+    + 'with: {name: "bb-release-apk-${{ github.event.release.tag_name }}"}}]}}\n');
+  writeFileSync(`${wsA}/app/build.gradle.kts`, 'android { defaultConfig { applicationId = "dev.example.alpha" } }\n');
+  await page.evaluate(() => getNotebook('alpha').view('signing'));
+  await page.waitForSelector(`${V} #sgRel [data-relkey]`, { timeout: 10000 });
+  const relLine = await page.$eval(`${V} #sgRel [data-relkey]`, e => e.textContent.replace(/\s+/g, ' ').trim());
+  const relApi = (await api('/api/signing', { project: 'alpha', action: 'list' })).body.release || {};
+  ok(/^dev\.example\.alpha releases sign with watch AB:AB:AB/.test(relLine) && relApi.wanted
+     && relApi.keys?.[0]?.key === 'watch' && /no GitHub token|no apksigner|not on GitHub|^$/.test(relApi.why || ''),
+     `the Signing view's Releases names the key an app's releases sign with, a retired key's successor (${relLine}; ${relApi.why || 'ready'})`);
+  ok(await page.$(`${V} #sgRelGo`) !== null && /signed here, never in CI/.test(await page.$eval(`${V} #sgRel`, e => e.textContent)),
+     '...says the APK is signed here and not in CI, and offers a look now');
+  // The bell's row before a release, drawn from the poll's own shape.
+  await holdPoll(page);
+  await page.evaluate(() => { state.attention = [...(state.attention || []), {kind: 'release-sign', id: 'alpha', project: 'alpha',
+    why: 'alpha has no sideload signing key, which signs its releases', bad: false, key: 'rsign:alpha@x'}];
+    toggleBell(true); drawBell(); });
+  const bellRow = await page.$eval('#bellPanel', e => e.textContent.replace(/\s+/g, ' '));
+  ok(/alpha's next release cannot be signed/.test(bellRow) && /has no sideload signing key/.test(bellRow)
+     && await page.$('#bellPanel [data-bsign="alpha"]') !== null && await page.$('#bellPanel [data-bdismiss="rsign:alpha@x"]') !== null,
+     'a release that could not be signed is said on the bell before it, with Dismiss and the way to the Signing view');
+  await page.click('#bellPanel [data-bsign="alpha"]');
+  await page.waitForFunction(() => /\/projects\/alpha\/signing$/.test(location.hash), null, { timeout: 10000 });
+  ok(true, '...whose Signing view link opens it');
+  await freePoll(page);
+  rmSync(`${wsA}/.github/workflows/r106-apk.yml`, { force: true });
+  rmSync(`${wsA}/app/build.gradle.kts`, { force: true });
   rmSync(sd, { recursive: true, force: true });
-  await page.evaluate(() => rnLoadSigning('alpha'));
+  // Back to the Projects page, where the rest of this file presses.
+  await page.evaluate(() => openProjectsTab());
+  await page.waitForSelector('.doc .projtab .pcard[data-row="alpha"]', { timeout: 15000 });
 }
-await page.click('#rnCancel');
 
 // An invitation waiting on this account sits in the bell with its answer,
 // above the page's own notes, like every other thing waiting on you.
@@ -1846,6 +1917,11 @@ await page.click('#rnCancel');
   await page.waitForSelector('#rnmodal:not([hidden])');
   await page.waitForSelector('#rnFtpField:not([hidden])', { timeout: 10000 });
   await page.evaluate(() => { const d = document.querySelector('details[data-sect="rn:files"]'); d.open = true; });
+  // The editor's and the apps' door is on unless a project closed it
+  // (R104, the operator, 22 Oct): switched off here, the section is shut.
+  const editorOn = await page.$eval('#rnFtpEditor', c => c.checked);
+  ok(editorOn, '...a project is open to its people\'s editors and apps until its owner closes it (R104)');
+  await page.click('#rnFtpEditor');
   const shut = await page.$eval('#rnFtp', e => ({ port: e.querySelector('.logdays').hidden,
     people: e.querySelector('.rnftppeople').hidden }));
   await page.click('#rnFtpOn');
@@ -1869,7 +1945,7 @@ await page.click('#rnCancel');
   const ed = await page.$eval('#rnFtp', e => ({ port: e.querySelector('.logdays').hidden,
     people: e.querySelector('.rnftppeople').hidden, noNode: /no node to run on/.test(e.textContent) }));
   const edDraft = await page.evaluate(() => rnFtpChange());
-  ok(ed.port && !ed.people && !ed.noNode && edDraft?.editor === true && !edDraft.on,
+  ok(ed.port && !ed.people && !ed.noNode && edDraft?.editor !== false && !edDraft?.on,
      `...and opening it in an editor is a switch of its own: the same people, no port, no node needed (${JSON.stringify({ ...ed, ...edDraft })})`);
   await page.click('#rnCancel');
   const set = await api('/api/project-ftp', { action: 'set', project: 'alpha', access: { [uid]: 'r' } });
@@ -2297,7 +2373,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   await page.click('#uiProfile');
   await page.waitForSelector('.profiletab .setrow', { timeout: 15000 });
   ok(true, "the gear's door opens the account's Profile page");
-  await page.evaluate(() => railGo('machines', 'settings'));
+  await page.evaluate(() => railGo('controller'));
   await page.waitForSelector('.settingstab #logApply');
   await page.fill('.settingstab #logDays', '3');
   await page.click('.settingstab #logApply');

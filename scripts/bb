@@ -94,6 +94,10 @@ bb version release --remove NAME [--remove NAME]... --why "..." [--tag TAG]
                    of an edit, the names checked against the release first
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component: a directory with its own VERSION
+bb version line [X.Y.Z|none]   the release this branch works toward: a branch
+                   named for one (claude/0.7.0) works toward it, or set it here;
+                   a dev build heads for it (0.7.0-dev.N), a bump moves only
+                   to it, and on a patch line bb lint refuses a new migration
 bb version policy  what a session may move here, and who decides. A
                    person picks it in the project's settings (Agents may:
                    Move the version) or on the Artifacts view, before or after
@@ -344,7 +348,10 @@ bb roadmap edit N "..."               reword one; `step add|edit|rm|done` for on
 bb roadmap info N [M] "..."           add the technical details to one, or step M,
                                       under what is there (--replace sets them)
 bb roadmap target N X.Y.Z             the release one is meant for (`none` clears); --target
-                                      on add sets it, `bb roadmap --target X.Y.Z` lists those
+                                      on add sets it, `bb roadmap --target X.Y.Z` lists those;
+                                      `target N.M X.Y.Z` (or N M) is step M's own, `none`
+                                      sends it back to its item's, and --target lists an item
+                                      for any step meant for that release
 bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
 bb roadmap pending    what a session added that is waiting for your approval
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
@@ -3807,7 +3814,7 @@ cmd_jobs() {
 # provenance beside it. Through the dashboard's API rather than the store
 # directly, because the snapshot is the dashboard's to make.
 cmd_run() {
-    local role=build node="" timeout=3600 outs=() proj auth
+    local role=run node="" timeout=3600 outs=() proj auth
     while [ $# -gt 0 ]; do
         case "$1" in
             --role) role="${2:-}"; shift 2 ;;     # build|test: which command bb build/test are
@@ -5769,6 +5776,13 @@ cmd_changelog() {
     # runs this in the caller's cwd, so a node's session gets the same.
     local top; top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
     case "$top" in "$BB_WORKTREES/$proj"/*) export BB_VERSION_TREE="$top" ;; esac
+    # ...and any other worktree of the project's repository, wherever it is
+    # (a Claude Code worktree under the project's .claude/worktrees wrote the
+    # main checkout's file, B214): one that shares its .git is its tree.
+    if [ -z "${BB_VERSION_TREE:-}" ] && [ -n "$top" ] && [ "$top" != "$WORKSPACE/$proj" ]; then
+        local common; common="$(cd "$top" && readlink -f "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null || true)"
+        [ "$common" = "$(readlink -f "$WORKSPACE/$proj/.git" 2>/dev/null)" ] && export BB_VERSION_TREE="$top"
+    fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
     BB_WORKSPACE="$WORKSPACE" python3 "$BB_LIB/changelog-verbs.py" "$py" "$proj" "$@"
 }

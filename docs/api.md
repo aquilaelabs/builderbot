@@ -119,6 +119,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/idle` | prefix | `_idle` | The idle rule for Claude sessions (idle.py): minutes, 0 for never. | refused: controller |
 | POST | `/api/paths` | prefix | `_paths` | Where the controller keeps one kind of what grows (paths.py), and what is there moved across. | refused: controller |
 | POST | `/api/snapshots` | prefix | `_snapshots` | POST /api/snapshots: take one now, or restore the whole tree as of a day or one file of it (snapshots.restore, which snapshots the tree first so it can be undone). | refused: settings |
+| POST | `/api/transcripts` | exact | `_transcripts` | POST /api/transcripts {project, id, action}: one of the signed-in person's own conversations deleted, or made visible to every session on the project (share) or private again (unshare). |  |
 | POST | `/api/settings` | prefix | `_settings_post` | POST /api/settings. | refused: controller, refused: debug |
 | POST | `/api/rules` | prefix | `_rules` | The operator's house rules for one project: the whole list, saved (rules.verb). | refused: rules |
 | POST | `/api/global-rules` | prefix | `_global_rules` | The rules that apply to EVERY project (R63): rules.global_verb. | refused: controller |

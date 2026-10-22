@@ -72,6 +72,16 @@ class Gpu(unittest.TestCase):
         prefs.set_prefs("alpha", agents_off="")
         self.assertEqual((prefs.get("alpha") or {}).get("agents_off", []), [])
 
+    def test_daily_snapshots_on_by_default_and_stored_only_when_off(self):
+        # R105: a project with nothing said takes one a day, as before.
+        self.assertTrue(prefs.get("alpha")["snapshots_on"])
+        self.assertNotIn("error", prefs.set_prefs("alpha", snapshots_on="off") or {})
+        self.assertFalse(prefs.get("alpha")["snapshots_on"])
+        prefs.set_prefs("alpha", snapshots_on=True)
+        self.assertTrue(prefs.get("alpha")["snapshots_on"])
+        with open(prefs.FILE) as f:
+            self.assertNotIn("snapshots_on", f.read(), "the default is never written")
+
 
 class NodeChanged(unittest.TestCase):
     """B488: the dialog sends every field on every save, so only a change

@@ -3715,8 +3715,8 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
   });
   ok(inst.label === 'Install Claude' && inst.node === en.id && !inst.start && !inst.note,
      `...its button is Install Claude in place of Start Claude, nothing under it (${JSON.stringify(inst)})`);
-  await page.waitForFunction(id => tcNode === id && tabs.some(t => t.kind === 'toolchains'), en.id, { timeout: 15000 });
-  ok(true, '...and a press opens the Toolchains page on that node');
+  await page.waitForFunction(id => agNode === id && tabs.some(t => t.kind === 'agents'), en.id, { timeout: 15000 });
+  ok(true, '...and a press opens the Agents page on that node (R95)');
   await napi('/api/prefs', { project: 'beta', node: '' });
   await napi('/api/v1/nodes', { action: 'retire', id: en.id });
 }
