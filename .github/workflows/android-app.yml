@@ -171,7 +171,7 @@ jobs:
             if mkdir -p "$proj/dist" && cp "${{ steps.name.outputs.file }}" "$proj/dist/"; then
               echo "in $proj/dist/: ${{ steps.name.outputs.file }}"
             else
-              echo "::warning::could not write $proj/dist/ as $(id -un), so the APK is not kept there; the release still gets it"
+              echo "::warning::could not write $proj/dist/ as $(id -un), so the APK is not kept there${{ steps.build.outputs.signed && '; the release still gets it' || '' }}"
             fi
           else
             echo "::warning::no project on this runner's share has $GITHUB_REPOSITORY as its remote, so the APK went nowhere: it is not kept as a workflow artifact (B669)"
