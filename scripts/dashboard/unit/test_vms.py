@@ -69,6 +69,10 @@ class Controller(unittest.TestCase):
         ok = vms.vbios("user:test", {"node": "n1", "addr": "0000:01:00.0", "rom": base64.b64encode(b"\x55\xaa" + b"\0" * 4000).decode()}, True)
         self.assertTrue(ok.get("ok"), ok)
         self.assertTrue(self.f.jobs[-1][2]["rom"])
+        # The LAN is a person's: a session's own VM stays behind its
+        # project's firewall.
+        self.assertIn("a person's", vms.hardware({"hw": {"net": "lan"}}, "web", "n1", False, 2048, person=False)[1])
+        self.assertEqual(vms.hardware({"hw": {"net": "project"}}, "web", "n1", False, 2048, person=False)[0], {"net": "project"})
         r = self.new(hw={"cpuset": [0, 1], "net": "lan"}, autostart=True)
         self.assertTrue(r.get("ok"), r)
         spec = self.f.jobs[-1][2]
@@ -457,3 +461,42 @@ class Agent(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Verbs(unittest.TestCase):
+    """bb vm's hardware words (R100): what is named is sent, none takes it
+    off, and what is not a hardware word is left for the verb."""
+
+    def setUp(self):
+        import importlib.util
+        lib = os.path.join(HERE, "..", "..", "lib")
+        sys.path.insert(0, lib)
+        spec = importlib.util.spec_from_file_location("vm_verbs", os.path.join(lib, "vm-verbs.py"))
+        self.v = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.v)
+
+    def test_hardware_words(self):
+        hw, left = self.v.hw_opts(["--os", "debian", "--pin", "2,3", "--mem-max", "8G", "--share", "/data/", "--ro",
+                                   "--autostart", "--why", "x"], ("--autostart",))
+        self.assertEqual(hw, {"cpuset": [2, 3], "mem_max_mb": 8192, "share": {"path": "data", "ro": True}})
+        self.assertEqual(left, ["--os", "debian", "--autostart", "--why", "x"])
+        self.assertEqual(self.v.hw_opts(["--pin", "none", "--mem-max", "none", "--share", "none"], ())[0],
+                         {"cpuset": [], "mem_max_mb": 0, "share": {}})
+        self.assertEqual(self.v.hw_said({"hw": {"cpuset": [2, 3], "net": "lan"}, "autostart": True}),
+                         "pinned to threads 2, 3 · on the LAN · starts with its host")
+
+
+class Ask(unittest.TestCase):
+    """A session's VM change asked of the administrators shows them the
+    hardware in bb vm's own words, and keeps what the Allow will need."""
+
+    def test_the_bell_says_what_is_asked(self):
+        import phone
+        seen = {}
+        self.addCleanup(setattr, phone, "_queue", phone._queue)
+        phone._queue = lambda kind, why, shown, *a, **kw: seen.update(shown=shown, extra=kw.get("extra")) or {"id": 1}
+        phone.ask_vm("pin it", "web", {"action": "hardware", "name": "db", "hw": {"cpuset": [2, 3], "mem_max_mb": 0,
+                                                                                  "share": {"path": "data", "ro": True}}}, "s")
+        self.assertEqual(seen["shown"][-7:], ["--pin", "2,3", "--mem-max", "none", "--share", "data", "--ro"])
+        phone.ask_vm("bigger", "web", {"action": "disk-grow", "name": "db", "disk": "vdb", "gb": 60}, "s")
+        self.assertEqual((seen["shown"][-2:], seen["extra"]["vm"]["gb"], seen["extra"]["vm"]["disk"]), (["vdb", "60G"], 60, "vdb"))

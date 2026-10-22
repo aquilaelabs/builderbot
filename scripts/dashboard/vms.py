@@ -419,7 +419,7 @@ def create(principal, project, req, nodes_allowed, session=False, admin=False):
     elif not src:
         return {"error": f"{img['name']} has no image for {arch}, which {pick['name']} is"}
     key = f"{project}/{name}"
-    hw, why = hardware(req, project, pick["id"], admin and not session, size["mem_mb"])
+    hw, why = hardware(req, project, pick["id"], admin and not session, size["mem_mb"], person=not session)
     if hw is None:
         return {"error": why}
     # Every disk counts against the caps and the pool, not the first alone.
@@ -577,12 +577,13 @@ def _net_name(subnet):
     return f"bbvm-n{list(VM_NET.subnets(new_prefix=24)).index(ipaddress.ip_network(subnet)):02x}"
 
 
-def hardware(req, project, node_id, admin, mem_mb, but=""):
-    """A VM's hardware beyond size from what New VM or the Hardware dialog
-    asked (R100): (record, "") or (None, why). A device passed through is an
-    administrator's; a shared folder is one of the project's own; a CPU
-    thread another VM on the node is pinned to is refused unless asked
-    for (`share_cpus`)."""
+def hardware(req, project, node_id, admin, mem_mb, but="", person=True):
+    """A VM's hardware beyond size from what New VM, the Hardware dialog or
+    bb vm asked (R100): (record, "") or (None, why). A device passed through
+    is an administrator's; the LAN is a person's, since it takes the VM past
+    the firewall that keeps a project's VMs off it; a shared folder is one of
+    the project's own; a CPU thread another VM on the node is pinned to is
+    refused unless asked for (`share_cpus`)."""
     hw = req.get("hw") if isinstance(req.get("hw"), dict) else {}
     out = {}
     if "cpuset" in hw:
@@ -613,6 +614,9 @@ def hardware(req, project, node_id, admin, mem_mb, but=""):
     if hw.get("net") is not None:
         if hw["net"] not in ("project", "lan"):
             return None, "a VM's network is its project's or the LAN"
+        if hw["net"] == "lan" and not person:
+            return None, ("putting a VM on the LAN is a person's: it takes it past the firewall that keeps a project's "
+                          "VMs off the LAN; its Hardware dialog on the VMs page does it")
         out["net"] = hw["net"]
     if hw.get("share") is not None:
         sh = hw["share"] if isinstance(hw["share"], dict) else {}
@@ -724,7 +728,8 @@ def act(principal, project, name, action, req=None):
                 return {"error": why}
             spec.update(disk=dev, gb=gb)
         if action == "hardware":
-            hw, why = hardware(req, project, rec["node"], bool(req.get("_admin")), int(rec.get("mem_mb") or 0), but=rec["domain"])
+            hw, why = hardware(req, project, rec["node"], bool(req.get("_admin")), int(rec.get("mem_mb") or 0),
+                               but=rec["domain"], person=not req.get("_session"))
             if hw is None:
                 return {"error": why}
             sub = (d["nets"].get(rec["node"]) or {}).get(project)

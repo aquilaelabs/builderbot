@@ -3534,7 +3534,7 @@ def _vm_do(principal, project, req, session):
     if field(req, "action") == "new":
         allowed = devapp.nodes_of(project) or [] if session else [n["id"] for n in vms.hosts()]
         return vms.create(principal, project, req, allowed, session=session, admin=bool(req.get("_admin")))
-    return vms.act(principal, project, field(req, "name"), field(req, "action"), req)
+    return vms.act(principal, project, field(req, "name"), field(req, "action"), dict(req, _session=session))
 
 
 nginxproxy.configure(state=STATE, write_json=write_json, node_list=nodes.node_list,

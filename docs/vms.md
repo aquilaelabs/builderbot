@@ -180,5 +180,13 @@ bb vm new db --os debian --mem 4G --disk 30 --why "a database to test the migrat
 bb vm ssh db                in, as builder, with the session's own key (made when there is none)
 bb vm snapshot db clean     before changing it
 bb vm revert db clean       and back
+bb vm stop db && bb vm grow db 60          a larger disk; the system inside grows its partition
+bb vm hardware db --pin 2,3 --mem-max 8G --share data --ro
+bb vm autostart db on       it starts when its node boots
 bb vm rm db
 ```
+
+Each is under the same Make VMs setting as making one. A session's
+hardware stops at its own project: it may pin, give a memory ceiling and
+share a folder of the project, while putting a VM on the LAN and passing a
+device through are a person's, from the VMs page.

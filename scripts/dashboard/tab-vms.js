@@ -69,7 +69,11 @@ function vmRow(v){
   // account of BuilderBot's to ssh in as.
   const reach = up && v.iso ? `installing from ${esc(v.iso)}: its Screen shows the installer`
     : up && v.ip && v.os !== "installer" ? `ssh ${esc(v.user || "builder")}@${esc(v.ip)}`
-    : up && v.ip ? `at ${esc(v.ip)}` : up ? "taking its address" : "";
+    : up && v.ip ? `at ${esc(v.ip)}`
+    // On the LAN (R100) its address is the LAN's DHCP's, which only QEMU's
+    // guest agent inside it tells the node.
+    : up && v.hw?.net === "lan" && !v.node_id ? "on the LAN: its address shows once QEMU's guest agent runs inside it"
+    : up ? "taking its address" : "";
   // Made a node (step 14): its row on the Nodes page.
   const asNode = v.node_id ? `<div class="sub dmorigin">a node too: ${pageLink("nodes", "on the Nodes page", `#/machines/nodes/${encodeURIComponent(v.node_id)}`)}</div>` : "";
   const snaps = v.snapshots || [];
