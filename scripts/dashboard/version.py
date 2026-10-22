@@ -164,17 +164,34 @@ def root(project):
     for the main checkout's HEAD, and shipped nothing rather than a file
     named after a commit that did not hold its code (24 Sep): the branch's
     own commits, VERSION file and ordinal are what a build there is about.
-    Checked to lie under the project's worktrees, so the variable cannot
+    Checked to lie under the project's worktrees, or to be a worktree of
+    the project's own repository wherever it is (a Claude Code worktree
+    under the project's .claude/worktrees, B214), so the variable cannot
     point this at another project's tree."""
     want = os.environ.get("BB_VERSION_TREE") or ""
     if want:
         try:
             p = Path(want).resolve()
-            if p.is_dir() and (WORKSPACE / ".worktrees" / project).resolve() in p.parents:
+            if p.is_dir() and ((WORKSPACE / ".worktrees" / project).resolve() in p.parents
+                               or _same_repo(p, WORKSPACE / project)):
                 return p
         except OSError:
             pass
     return WORKSPACE / project
+
+
+def _same_repo(tree, main):
+    """Whether `tree` is a worktree whose .git file points into `main`'s
+    repository: its gitdir under main/.git/worktrees."""
+    try:
+        line = (tree / ".git").read_text().strip()
+    except OSError:
+        return False
+    if not line.startswith("gitdir:"):
+        return False
+    gitdir = Path(line.split(":", 1)[1].strip())
+    gitdir = (tree / gitdir).resolve() if not gitdir.is_absolute() else gitdir.resolve()
+    return (Path(main) / ".git" / "worktrees").resolve() in gitdir.parents
 
 
 # Never treat these as a component. dist/ holds outputs, not sources, and

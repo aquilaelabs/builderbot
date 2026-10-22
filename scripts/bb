@@ -5737,6 +5737,13 @@ cmd_changelog() {
     # runs this in the caller's cwd, so a node's session gets the same.
     local top; top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
     case "$top" in "$BB_WORKTREES/$proj"/*) export BB_VERSION_TREE="$top" ;; esac
+    # ...and any other worktree of the project's repository, wherever it is
+    # (a Claude Code worktree under the project's .claude/worktrees wrote the
+    # main checkout's file, B214): one that shares its .git is its tree.
+    if [ -z "${BB_VERSION_TREE:-}" ] && [ -n "$top" ] && [ "$top" != "$WORKSPACE/$proj" ]; then
+        local common; common="$(cd "$top" && readlink -f "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null || true)"
+        [ "$common" = "$(readlink -f "$WORKSPACE/$proj/.git" 2>/dev/null)" ] && export BB_VERSION_TREE="$top"
+    fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
     BB_WORKSPACE="$WORKSPACE" python3 "$BB_LIB/changelog-verbs.py" "$py" "$proj" "$@"
 }
