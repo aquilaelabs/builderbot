@@ -4542,18 +4542,22 @@ is not running; see bb logs."
 # session asks itself after editing anything here.
 # bb map: the code map (lib/codemap.py, roadmap R75). Over the project tree
 # a session is in (BB_TREE on a node, else the working directory), rebuilt
-# by itself when a source is newer than the index.
+# by itself when a source is newer than the index. BB_REPO first, which is
+# how a worktree of a second branch is named to every test verb: BB_TREE is
+# the project's main checkout, and a worktree's own symbols were "nothing
+# defines" (B228).
 cmd_map() {
+    local root="${BB_REPO:-${BB_TREE:-$PWD}}"
     # `addresses` with nothing to read reads the roadmap: the plan is where
     # a session writes `file ~line`, and where those go stale (item 7).
     if [ "${1:-}" = addresses ] && [ $# -eq 1 ]; then
         # As a command of its own rather than cmd_roadmap in this process:
         # on a node the roadmap is the controller's, and only the dispatch a
         # command starts with relays it there (B293).
-        "$0" roadmap | python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" addresses -
+        "$0" roadmap | python3 "$BB_LIB/codemap.py" --root "$root" addresses -
         return
     fi
-    python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" "$@"
+    python3 "$BB_LIB/codemap.py" --root "$root" "$@"
 }
 
 cmd_drift() {
