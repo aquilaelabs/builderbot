@@ -601,7 +601,7 @@ const RN_LIST = {
   build: "commands, outputs, and what is kept", sees: "other projects, shares, addresses, logs",
   tools: "the toolchains and tool packs its sessions use",
   files: "its files over FTP and in an editor", snapshots: "the days kept, and putting one back",
-  signing: "the keys its builds are signed with", sessions: "every account's sessions here, to end",
+  sessions: "every account's sessions here, to end",
 };
 
 function rnSplit(box, name){
@@ -691,7 +691,6 @@ function renameProject(name, mode = "all"){
   $("rnDelete").hidden = git || !p || !!p?.trash_why;
   $("rnKeyOut").hidden = true; $("rnKeyPaste").hidden = true; $("rnKeyPaste").value = "";
   rnLoadAuth(name);
-  rnLoadSigning(name);
   rnLoadSnapshots(name);
   rnLoadPeople(name);
   rnLoadFtp(name);
@@ -924,21 +923,7 @@ async function rnSaveFtp(name, change){
   return j.error || "";
 }
 
-// ---- signing keys (R106) ----
-// A project's Android keys, an administrator's: named keys (default first),
-// each with a Play upload slot and a sideload signing slot, and which of the
-// project's apps (by package) signs with which key. The controller keeps
-// them and bb sign uses them on the node; the dialog only ever sees aliases
-// and fingerprints. An upload, a removal and a mapping are a draft until
-// Save; Generate and Download backup are actions and act on the press.
-const RN_SIGN = [
-  ["play", "Play upload key",
-   "For Google Play with Play App Signing, which can reset a lost upload key."],
-  ["sideload", "Sideload signing key",
-   "Signs a build handed out directly. Lose it and no update reaches an existing install: keep a copy offline."]];
-let rnSignKeys = null, rnSignTool = false, rnSignDraft = {}, rnSignMap = {}, rnSignMapDraft = {}, rnSignNew = [],
-    rnSignBackup = false, rnSignLocked = false, rnSignMayLock = false, rnSignLockOpen = false, rnSignPw = {};
-
+// ---- what this account may not do here ----
 // Why this account may not read or change the project's settings, sessions
 // and snapshots, from its row, or "" (B89).
 const rnSettingsWhy = name => (state?.projects || []).find(p => p.name === name)?.settings_why || "";
@@ -949,24 +934,6 @@ function rnWhyOff(field, body, why){
   body.innerHTML = `<div class="sub bad">${esc(why)}</div>`;
   field.hidden = false;
 }
-
-function rnLoadSigning(name){
-  rnSignKeys = null; rnSignDraft = {}; rnSignMapDraft = {}; rnSignNew = [];
-  $("rnSignField").hidden = true;
-  if (rnMode === "git") return;
-  postJSON("/api/signing", {action: "list", project: name})
-    .then(r => r.json())
-    .then(j => {
-      if (rnFor !== name || j.error) return;
-      rnSignKeys = j.keys || {}; rnSignMap = j.map || {}; rnSignTool = !!j.keytool;
-      rnSignBackup = !!j.may_backup;
-      rnSignLocked = !!j.backup_locked; rnSignMayLock = !!j.may_lock;
-      rnDrawSigning();
-    })
-    .catch(() => {});
-}
-
-const rnFp = sha => sha ? `${sha.slice(0, 8)}…${sha.slice(-8)}` : "";
 
 // The project's daily snapshots (R165): each day kept, with Restore for the
 // whole tree and a box to restore one file. An administrator's, and acted on
@@ -1037,225 +1004,6 @@ function rnDrawSnapshots(){
   });
   const take = $("rnSnapRows").querySelector("[data-snaptake]");
   if (take) take.onclick = e => act(e.target, {action: "take"}, "");
-}
-
-function rnDrawSigning(){
-  if (!rnSignKeys || rnMode === "git") return;     // the remote's door alone (B539)
-  $("rnSignField").hidden = false;
-  const name = rnFor;
-  const names = [...new Set([...Object.keys(rnSignKeys), ...rnSignNew])];
-  if (!names.includes("default")) names.unshift("default");
-  const slot = (key, route, word, about) => {
-    const k = (rnSignKeys[key] || {})[route], d = rnSignDraft[`${key}:${route}`] || {};
-    const now = d.remove ? `${word}: removed when you Save`
-      : d.file ? `${word}: ${esc(d.file.name)}, kept when you Save`
-      : k ? `${word}: ${esc(k.alias)} <span class="dim">${esc(rnFp(k.sha256))}${k.generated ? ", made here" : ""}</span>`
-      : `${word}: none`;
-    const never = k && !d.remove && !d.file && route === "sideload" && !k.backed_up;
-    // Rotation (R106 step 7): what this key was rotated to or from, and the
-    // keys it could hand an app to.
-    const retired = route === "sideload" && k?.retired_for, rotated = route === "sideload" && k?.rotated_from;
-    const targets = route === "sideload" && k && !retired ? Object.entries(rnSignKeys)
-      .filter(([n, s]) => n !== key && s.sideload && !s.sideload.retired_for && !s.sideload.rotated_from).map(([n]) => n) : [];
-    return `<div class="rnsign" data-key="${esc(key)}" data-route="${route}">
-      <div>${now}</div>
-      <div class="sub dim">${esc(about)}${k && !d.remove && !d.file
-        ? ` ${k.backed_up ? `Backed up ${esc(ago(k.backed_up))}.` : "Not backed up yet."}` : ""}</div>
-      ${never ? `<div class="sub bad">Never backed up: ${rnSignBackup ? "download a copy and keep it offline"
-        : "an administrator on this project downloads a copy to keep offline"}, since losing it is final.</div>` : ""}
-      ${retired ? `<div class="sub">Retired: rotated to ${esc(k.retired_for)}. Kept, since the proof and every device before Android 9 still need it.</div>` : ""}
-      ${rotated ? `<div class="sub">Rotated from ${esc(k.rotated_from)}: Android 9 and newer see this key, older devices still see ${esc(k.rotated_from)}.</div>` : ""}
-      ${rnSignPw[`${key}:${route}`] ? `<div class="rnsignbar">
-        <input type="password" data-signbackuppass autocomplete="current-password" placeholder="the backup password" aria-label="the backup password">
-        <button type="button" class="link" data-signbackupgo>Download</button></div>` : ""}
-      ${d.open ? `<div class="rnsignform">
-        <input type="file" data-signfile accept=".jks,.p12,.pfx,.keystore" aria-label="${esc(word)} keystore">
-        <input type="password" data-signpass autocomplete="new-password" placeholder="keystore password" aria-label="keystore password">
-        <input data-signalias autocomplete="off" spellcheck="false" placeholder="alias, when it holds several" aria-label="key alias">
-        <input type="password" data-signkeypass autocomplete="new-password" placeholder="key password, if not the same" aria-label="key password">
-      </div>` : ""}
-      <div class="rnsignbar">
-        ${rnSignLocked || d.open ? `<button type="button" class="link" data-signopen>${d.open ? "Never mind" : k ? "Replace" : "Upload one"}</button>` : ""}
-        ${!k && !d.open && rnSignTool && rnSignLocked ? `<button type="button" class="link" data-signgen>Generate</button>` : ""}
-        ${k && rnSignBackup ? (rnSignLocked
-          ? `<button type="button" class="link" data-signbackuppw>Download backup</button>`
-          : `<a class="link" data-signbackup href="/api/signing-backup?project=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}&route=${route}" download>Download backup</a>`) : ""}
-        ${k ? `
-        ${retired ? "" : `<button type="button" class="link" data-signremove>${d.remove ? "Keep it after all" : "Remove"}</button>`}` : ""}
-        ${targets.length ? `<select data-rotateto aria-label="the key to rotate ${esc(key)} to">${
-          targets.map(n => `<option>${esc(n)}</option>`).join("")}</select>
-        <button type="button" class="link" data-rotate>Rotate to it</button>` : ""}
-      </div>
-    </div>`;
-  };
-  const maps = {...rnSignMap, ...rnSignMapDraft};
-  // The backup password (the operator, 1 Oct): the project's owner's to set,
-  // and every download's to give, BuilderBot's owner's included.
-  const lockRow = `<div class="rnsign rnsignlock">
-      <div>Backup password: ${rnSignLocked ? "set" : "none"}</div>
-      <div class="sub dim">${rnSignLocked ? "Every key backup asks for it, whoever downloads it."
-        : "Every key backup will ask for it, whoever downloads it."}${rnSignMayLock ? "" : " The project's owner sets it."}</div>
-      ${rnSignLocked ? "" : `<div class="sub warn">No key can be added or made until it has one${rnSignMayLock ? ": set it first" : ""}.</div>`}
-      ${rnSignMayLock && rnSignLockOpen ? `<div class="rnsignform">
-        ${rnSignLocked ? `<input type="password" id="rnLockCur" autocomplete="current-password" placeholder="the backup password now" aria-label="the backup password now">` : ""}
-        <input type="password" id="rnLockNew" autocomplete="new-password" placeholder="${rnSignLocked ? "a new one, or empty to remove it" : "at least ten characters"}" aria-label="the new backup password">
-        <input type="password" id="rnLockAgain" autocomplete="new-password" placeholder="the new one again" aria-label="the new backup password again">
-        <div class="rnsignbar"><button type="button" class="link" id="rnLockGo" disabled>${rnSignLocked ? "Change it" : "Set it"}</button></div>
-      </div>` : ""}
-      ${rnSignMayLock ? `<div class="rnsignbar"><button type="button" class="link" id="rnLockOpen">${
-        rnSignLockOpen ? "Never mind" : rnSignLocked ? "Change or remove" : "Set a backup password"}</button></div>` : ""}
-    </div>`;
-  $("rnSignRows").innerHTML = lockRow + names.map(key => `<div class="rnsignkey">
-      <div class="rnsignname">${key === "default" ? "Default key" : `Key: ${esc(key)}`}</div>
-      ${RN_SIGN.map(([route, word, about]) => slot(key, route, word, about)).join("")}</div>`).join("")
-    + `<div class="rnsignbar"><input id="rnSignNewName" autocomplete="off" spellcheck="false" placeholder="name, e.g. watch"
-         aria-label="a new key's name"><button type="button" class="link" id="rnSignNewGo">New key</button></div>
-    <div class="rnsignname">Apps</div>
-    <div class="sub dim">Which app signs with which key, by its package; one not listed signs with the default key.</div>
-    ${Object.entries(maps).filter(([, k]) => k !== null).map(([pkg, k]) => `<div class="rninvite" data-pkg="${esc(pkg)}">
-      <code>${esc(pkg)}</code> <span class="dim">signs with</span> <b>${esc(k)}</b>
-      <button type="button" class="link" data-unmap>Remove</button></div>`).join("")}
-    <div class="rninvitebar"><input id="rnMapPkg" autocomplete="off" spellcheck="false" placeholder="com.example.app"
-        aria-label="an app's package"><select id="rnMapKey" aria-label="the key it signs with">${
-        names.map(k => `<option>${esc(k)}</option>`).join("")}</select>
-      <button type="button" class="link" id="rnMapGo">Map it</button></div>`;
-  $("rnSignHint").textContent = rnSignTool ? ""
-    : "No keytool here to check or make a key with: install the jdk toolchain, then add one.";
-  for (const row of $("rnSignRows").querySelectorAll(".rnsign[data-key]")){
-    const key = row.dataset.key, route = row.dataset.route;
-    const d = rnSignDraft[`${key}:${route}`] = rnSignDraft[`${key}:${route}`] || {key, route};
-    const op = row.querySelector("[data-signopen]");
-    if (op) op.onclick = () => {
-      d.open = !d.open;
-      if (!d.open){ delete d.file; d.pass = d.alias = d.keypass = ""; }
-      else d.remove = false;
-      rnDrawSigning();
-    };
-    const gen = row.querySelector("[data-signgen]");
-    if (gen) gen.onclick = async () => {
-      if (route === "sideload" && !confirm(`Make a new sideload signing key named ${key}? `
-            + "Once a build signed with it is out, it is that app's identity for good: download a backup straight after."))
-        return;
-      gen.disabled = true;
-      const j = await (await postJSON("/api/signing", {action: "generate", project: name, key, route})).json();
-      if (j.error){ gen.disabled = false; return notify(j.error, true); }
-      notify(`${key}: a ${route === "play" ? "Play upload" : "sideload signing"} key was made; download a backup`);
-      rnSignNew = rnSignNew.filter(n => n !== key);
-      rnLoadSigning(name);
-    };
-    const rot = row.querySelector("[data-rotate]");
-    if (rot) rot.onclick = async () => {
-      const to = row.querySelector("[data-rotateto]").value;
-      if (!confirm(`Rotate ${key}'s sideload key to ${to}? Builds then go out signed with both and a proof: `
-            + `Android 9 and newer move to ${to}, older devices keep checking ${key}, and ${key} is kept for good.`)) return;
-      rot.disabled = true;
-      const j = await (await postJSON("/api/signing", {action: "rotate", project: name, from: key, to})).json();
-      if (j.error){ rot.disabled = false; return notify(j.error, true); }
-      notify(`${key} is rotated to ${to}: the apps it signed now sign with ${to} and the proof`);
-      rnLoadSigning(name);
-    };
-    const rm = row.querySelector("[data-signremove]");
-    if (rm) rm.onclick = () => { d.remove = !d.remove; if (d.remove){ d.open = false; delete d.file; } rnDrawSigning(); };
-    const bp = row.querySelector("[data-signbackuppw]");
-    if (bp) bp.onclick = () => { rnSignPw[`${key}:${route}`] = !rnSignPw[`${key}:${route}`]; rnDrawSigning(); };
-    const bg = row.querySelector("[data-signbackupgo]");
-    if (bg) bg.onclick = async () => {
-      const pw = row.querySelector("[data-signbackuppass]").value;
-      bg.disabled = true;
-      const r = await postJSON("/api/signing-backup", {project: name, key, route, password: pw});
-      if (!r.ok){ bg.disabled = false; return notify((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`, true); }
-      const fname = (r.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/)?.[1] || `${name}-${key}-${route}`;
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(await r.blob()); a.download = fname;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-      delete rnSignPw[`${key}:${route}`];
-      rnLoadSigning(name);
-    };
-    const bk = row.querySelector("[data-signbackup]");
-    if (bk) bk.onclick = () => setTimeout(() => rnLoadSigning(name), 1500);
-    const f = row.querySelector("[data-signfile]");
-    if (f){
-      f.onchange = () => { d.file = f.files[0] || null; };
-      for (const [sel, k] of [["[data-signpass]", "pass"], ["[data-signalias]", "alias"], ["[data-signkeypass]", "keypass"]]){
-        const el = row.querySelector(sel);
-        el.value = d[k] || "";
-        el.oninput = () => { d[k] = el.value; };
-      }
-    }
-  }
-  const lo = $("rnLockOpen");
-  if (lo) lo.onclick = () => { rnSignLockOpen = !rnSignLockOpen; rnDrawSigning(); };
-  const lg = $("rnLockGo");
-  // Wakes once what it sends makes sense (the operator, 18 Oct): the two
-  // new ones alike and a password in them, or, with one set, both empty to
-  // take it off; and the one now typed when there is one.
-  const lockReady = () => {
-    const cur = $("rnLockCur")?.value || "", nw = $("rnLockNew")?.value || "", again = $("rnLockAgain")?.value || "";
-    return nw === again && (nw || rnSignLocked) && (!rnSignLocked || cur);
-  };
-  if (lg) ["rnLockCur", "rnLockNew", "rnLockAgain"].forEach(id => {
-    const el = $(id);
-    if (el) el.oninput = () => { lg.disabled = !lockReady(); };
-  });
-  if (lg) lg.onclick = async () => {
-    const cur = $("rnLockCur")?.value || "", nw = $("rnLockNew").value, again = $("rnLockAgain").value;
-    if (nw !== again) return notify("the two new passwords differ", true);
-    if (!nw && !rnSignLocked) return notify("type a password to set", true);
-    lg.disabled = true;
-    const j = await (await postJSON("/api/signing", {action: "backup-password", project: name, current: cur, new: nw})).json();
-    if (j.error){ lg.disabled = false; return notify(j.error, true); }
-    notify(j.backup_locked ? `${projLabel(name)}'s key backups now ask for the password` : `${projLabel(name)}'s key backups no longer ask for a password`);
-    rnSignLockOpen = false;
-    rnLoadSigning(name);
-  };
-  $("rnSignNewGo").onclick = () => {
-    const n = $("rnSignNewName").value.trim().toLowerCase();
-    if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(n)) return notify("a key's name is lowercase letters, digits and dashes", true);
-    if (!names.includes(n)) rnSignNew.push(n);
-    rnDrawSigning();
-  };
-  $("rnMapGo").onclick = () => {
-    const pkg = $("rnMapPkg").value.trim();
-    if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(pkg)) return notify("a package name looks like com.example.app", true);
-    rnSignMapDraft[pkg] = $("rnMapKey").value;
-    rnDrawSigning();
-  };
-  $("rnSignRows").querySelectorAll("[data-unmap]").forEach(b => b.onclick = () => {
-    const pkg = b.closest("[data-pkg]").dataset.pkg;
-    if (rnSignMap[pkg]) rnSignMapDraft[pkg] = null; else delete rnSignMapDraft[pkg];
-    rnDrawSigning();
-  });
-}
-
-const fileB64 = f => new Promise((ok, bad) => {
-  const r = new FileReader();
-  r.onload = () => ok(String(r.result).split(",")[1] || "");
-  r.onerror = () => bad(r.error);
-  r.readAsDataURL(f);
-});
-
-// What the draft changes, for Save: uploads, removals and mappings.
-const rnSignPending = () => Object.values(rnSignDraft).some(d => d.remove || d.file)
-  || Object.keys(rnSignMapDraft).length > 0;
-
-// The draft's writes, in Save's order; "" when they all landed, else why.
-async function rnSaveSigning(name){
-  for (const d of Object.values(rnSignDraft)){
-    const word = (RN_SIGN.find(([r]) => r === d.route) || [])[1] || d.route;
-    let body = null;
-    if (d.remove) body = {action: "remove", project: name, key: d.key, route: d.route};
-    else if (d.file) body = {action: "put", project: name, key: d.key, route: d.route, keystore: await fileB64(d.file),
-                             password: d.pass || "", alias: (d.alias || "").trim(), key_password: d.keypass || ""};
-    if (!body) continue;
-    const j = await (await postJSON("/api/signing", body)).json();
-    if (j.error) return `${d.key} ${word}: ${j.error}`;
-  }
-  for (const [pkg, key] of Object.entries(rnSignMapDraft)){
-    const j = await (await postJSON("/api/signing", {action: "map", project: name, package: pkg, key: key || ""})).json();
-    if (j.error) return `${pkg}: ${j.error}`;
-  }
-  return "";
 }
 
 let rnAuthNow = null, rnAuthPick = null, rnAuthOpts = null;
@@ -1500,7 +1248,7 @@ function closeRename(){
 // and moved on had saved nothing (Reads on BuilderBot, 10 Oct). Where the
 // section holds something a running session takes only when it starts, its
 // bar offers both answers at once: Save, keep it running and Save and end it.
-const RN_SECTS = ["project", "people", "repo", "runs", "files", "sees", "tools", "build", "signing", "claude", "yours"];
+const RN_SECTS = ["project", "people", "repo", "runs", "files", "sees", "tools", "build", "claude", "yours"];
 // Which section each of rnPrefWas's fields is in, and what it is called.
 const RN_WAS = {
   node: ["runs", "Node"], nodes: ["runs", "Node"], hosts: ["runs", "Hosts its containers on"], gpu: ["runs", "The node's GPU"], tests_in: ["runs", "Where tests run"],
@@ -1579,7 +1327,6 @@ function rnSectChanges(sect, enc = rnEnc()){
     if (!$("rnAddrField").hidden && rnAuthOpts?.url && a && a !== rnAuthOpts.url) said.push("Address");
   }
   if (sect === "files" && rnFtpChange()) said.push("File access");
-  if (sect === "signing" && rnSignPending()) said.push("Signing keys");
   return {said, start};
 }
 
@@ -1657,8 +1404,6 @@ function rnRevertSect(sect){
     $("rnBuildCmd").value = w.build; $("rnTestCmd").value = w.test; $("rnOutputs").value = w.outputs;
     $("rnCaptureDays").value = w.capture_days; $("rnSnapDays").value = w.snapshot_days;
     $("rnDevKeep").value = w.dev_keep;
-  } else if (sect === "signing"){
-    rnSignDraft = {}; rnSignMapDraft = {}; rnSignNew = []; rnDrawSigning();
   } else if (sect === "claude"){
     const g = String(w.gate).split(",");
     Object.values(GATE_IDS).forEach((id, i) => { $(id).value = g[i] || "auto"; });
@@ -1738,12 +1483,6 @@ async function rnSubmit(sect, end = false){
   const address = sect === "repo" && !$("rnAddrField").hidden && rnAuthOpts?.url && addrNow && addrNow !== rnAuthOpts.url
     ? addrNow : "";
   if (!to.trim()) return fail("a new name is needed");
-  if (sect === "signing"){
-    if (Object.values(rnSignDraft).some(d => d.open && !d.file && (d.pass || d.alias)))
-      return fail("pick the keystore file for the key whose password you typed");
-    if (Object.values(rnSignDraft).some(d => d.file && !d.pass))
-      return fail("type the keystore's password: a key is checked with it before it is kept");
-  }
   if (merged.capture_days !== "" && !/^\d{1,3}$/.test(merged.capture_days))
     return fail("captures kept is a number of days, 0 to 365");
   if (merged.snapshot_days !== "" && !/^\d{1,4}$/.test(merged.snapshot_days))
@@ -1810,12 +1549,6 @@ async function rnSubmit(sect, end = false){
       const why = await rnSaveFtp(name, ftpChange);
       if (why) return stop(why);
       rnLoadFtp(name);
-    }
-    if (sect === "signing" && rnSignPending()){
-      const why = await rnSaveSigning(name);
-      if (why) return stop(why);
-      notify(`${projLabel(name)}: signing keys saved`);
-      rnLoadSigning(name);
     }
     if (needRename){
       const r = await postJSON("/api/rename", {name, to, token, auth, clear_token, address});

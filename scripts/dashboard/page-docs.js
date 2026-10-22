@@ -180,7 +180,7 @@ function bootPage(hash){
     const GROUPS = [["overview", "Overview", [["overview", "Overview"], ["settings", "Settings"]]],
                     ["plan", "Plan", [["roadmap", "Roadmap"], ["bugs", "Bugs"]]],
                     ["code", "Code", [["git", "Git"], ["tests", "Tests"], ["analysis", "Analysis"]]],
-                    ["ship", "Ship", [["artifacts", "Artifacts"], ["docker", "Docker"], ["vms", "VMs"]]],
+                    ["ship", "Ship", [["artifacts", "Artifacts"], ["docker", "Docker"], ["vms", "VMs"], ["signing", "Signing"]]],
                     ["docs", "Docs", [["design", "Design"], ["wiki", "Wiki"]]]];
     const view = parts[2] || "overview", grp = GROUPS.find(x => x[2].some(([v]) => v === view)) || GROUPS[0];
     const btn = (on, w) => `<button type="button" disabled class="${on ? "on" : ""}">${w}</button>`;

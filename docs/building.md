@@ -289,8 +289,8 @@ so and offers Remove.
 
 ## Android signing keys
 
-A project keeps up to two keys, set by an administrator under **Android
-signing** in its settings:
+A project keeps up to two keys per named key, set by an administrator in the
+**Signing** view of its page, under Ship:
 
 - **Play upload key**, for Google Play with Play App Signing. Google holds the
   key the app is really signed with; this one only proves an upload is yours,
@@ -318,10 +318,19 @@ under `/config/signing/PROJECT/`, owner-only, beside the git tokens and like
 them outside every session's view. A key is checked before it is kept: the
 store's own `keytool` (the jdk toolchain) has to open it with the password
 given, find the alias (or the only key in it) and see a private key, and its
-certificate's SHA-256 fingerprint is what the section shows. A session never
+certificate's SHA-256 fingerprint is what the view shows. A session never
 receives the key or a password, and is refused even the list of which keys
 exist: it signs with `bb sign`, which runs on the project's node as a job the
 session cannot look inside. Renaming the project leaves its keys where they are, with it.
+
+**Import a backup** brings a key back from what Download backup gave, into
+the same project or another: a generated key's backup is a zip of the
+keystore and `password.txt`, which carries its password and alias, so nothing
+is retyped and the key keeps its name; an uploaded key's backup is the
+keystore alone, and asks for its password. The slot is read off the backup's
+name unless one is picked. The zip has to hold exactly those two files, the
+keystore has to open and match the fingerprint `password.txt` names, and a
+slot already holding a different key refuses it rather than replace it.
 
 **A signing is a job on the project's node.** It fetches the build from
 `dist/` as a job input and the key over the agent's own channel, which hands

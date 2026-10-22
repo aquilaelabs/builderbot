@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Android signing keys are now a project's own Signing view under Ship, out of its settings, and a key's downloaded backup can be imported there into the same project or another, its password and alias read from the backup
+
 ## 0.6.1: 2026-10-22
 
 ### Added

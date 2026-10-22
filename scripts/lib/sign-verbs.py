@@ -31,7 +31,7 @@ def keys_verb(sub, route, why, rest):
         for pkg, k in (d.get("map") or {}).items():
             print(f"  {pkg} -> {k}")
         if not d.get("keys"):
-            print("  no keys yet: an administrator adds one under Signing keys in the project's settings")
+            print("  no keys yet: an administrator adds one in the project's Signing view (Ship)")
         return
     if sub == "--rotate":
         if len(rest) != 2:

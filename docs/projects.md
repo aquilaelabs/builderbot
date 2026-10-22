@@ -175,8 +175,9 @@ are also the Settings view of its page, in sections: General (its name),
 People, Claude may (what a session may enter into the notebook, and how much
 of the tree it may change without asking), Just for you (how Claude replies
 to you there, and the name and email your commits carry), Repository, Nodes,
-Build and test, What sessions reach, File access, Snapshots, Android signing
-and Running sessions. The git credential is not in it; that is the remote, in the
+Build and test, What sessions reach, File access, Snapshots and Running
+sessions; its Android signing keys are a view of their own, Signing, in Ship.
+The git credential is not in it; that is the remote, in the
 same menu, so a credential has one home whether or not the project has a remote
 yet. Renaming changes the name it is shown under and nothing else (R154):
 a project has a permanent id and a directory that is never handed out again,
