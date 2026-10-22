@@ -161,7 +161,10 @@ function nbRoadmapView({$, nb}){
     // into a column two thirds as wide as the ones under it.
     // ...and the release it is meant for, where one is set (the operator,
     // 21 Oct).
-    const tags = idx >= 0 ? "" : (r.target ? `<span class="tag ver" title="meant to ship in ${esc(r.target)}">for ${esc(r.target)}</span>` : "")
+    // A step meant for a release of its own says so (R108); one with none
+    // goes with its item and carries no tag.
+    const tags = idx >= 0 ? (st.target ? `<span class="tag ver" title="this step is meant to ship in ${esc(st.target)}">for ${esc(st.target)}</span>` : "")
+      : (r.target ? `<span class="tag ver" title="meant to ship in ${esc(r.target)}">for ${esc(r.target)}</span>` : "")
       + (r.by === "claude" ? `<span class="tag who" title="Claude put this here">claude</span>` : "");
     // In reorder mode the row's three controls are replaced rather than joined:
     // five buttons and a number do not fit a phone, and moving things about is
@@ -316,7 +319,7 @@ function nbRoadmapView({$, nb}){
     // ...and by the release an item is meant for (the operator, 21 Oct): a
     // chip per target, oldest first, and No target; the Finished section
     // narrows by it too, so what went into a release can be read back.
-    const vers = versionChips(rows, r => r.target, "No target");
+    const vers = versionChips(rows, rmVers, "No target");
     if (nb.roadmapVer && !vers.some(v => v.key === nb.roadmapVer)) nb.roadmapVer = "";
     if (paint($("roadmapVers"), chipButtons(vers, nb.roadmapVer, "data-rmver"), true))
       $("roadmapVers").querySelectorAll("[data-rmver]").forEach(b => b.onclick = () => {
@@ -767,9 +770,10 @@ function nbRoadmapView({$, nb}){
     <textarea maxlength="4000" spellcheck="false"></textarea>
     <div class="q qd"><span>Details: the technical half: files, functions, approach</span></div>
     <textarea class="dta" maxlength="20000" spellcheck="false"
-      placeholder="mostly Claude's to write; empty is fine"></textarea>${step < 0 ? `
-    <div class="q qd"><span>Target: the release it is meant to ship in; empty for none</span></div>
-    <input class="tgt" maxlength="24" autocomplete="off" spellcheck="false" inputmode="decimal" placeholder="0.6.0">` : ""}
+      placeholder="mostly Claude's to write; empty is fine"></textarea>
+    <div class="q qd"><span>${step < 0 ? "Target: the release it is meant to ship in; empty for none"
+        : `Target: the release this step ships in; empty goes with the item${r0?.target ? ` (${esc(r0.target)})` : ""}`}</span></div>
+    <input class="tgt" maxlength="24" autocomplete="off" spellcheck="false" inputmode="decimal" placeholder="${step < 0 ? "0.6.0" : esc(r0?.target || "0.6.0")}">
     <div class="actbar">
       <button type="button" class="stop">Cancel</button>
       <button type="button" class="primary">Save</button></div>`;
@@ -779,7 +783,7 @@ function nbRoadmapView({$, nb}){
     ta.value = was;
     const dta = box.querySelector(".dta");
     dta.value = wasInfo;
-    const tgt = box.querySelector(".tgt"), wasTarget = r0?.target || "";
+    const tgt = box.querySelector(".tgt"), wasTarget = (step < 0 ? r0?.target : r0?.steps?.[step]?.target) || "";
     if (tgt) tgt.value = wasTarget;
     const shut = () => box.remove();
     box.querySelector(".stop").onclick = shut;
@@ -792,7 +796,7 @@ function nbRoadmapView({$, nb}){
         return;
       }
       shut();
-      if (tgt && nowTarget !== wasTarget) stageTarget(id, nowTarget);
+      if (tgt && nowTarget !== wasTarget) stageTarget(id, nowTarget, step < 0 ? null : step);
       if (now.trim() && now !== was)
         stageEdit(id, step < 0 ? null : step, now);
       if (nowInfo !== wasInfo)
@@ -991,11 +995,13 @@ function nbRoadmapView({$, nb}){
 
   // The release an item is meant for: a state like a shelf, so it carries
   // no was; "" clears it.
-  function stageTarget(id, target){
-    return stage({action: "target", id, target}, () => {
+  // A step's own (R108) rides the same action with its step.
+  function stageTarget(id, target, step = null){
+    return stage({action: "target", id, target, ...(step === null ? {} : {step})}, () => {
       const r = findRow(id);
-      if (!r) return false;
-      if (target) r.target = target; else delete r.target;
+      const at = step === null ? r : r?.steps?.[step];
+      if (!at) return false;
+      if (target) at.target = target; else delete at.target;
     });
   }
 
@@ -1203,7 +1209,10 @@ function clRefs(refs){
 // Whether an item answers a search (R254 step 1): its number (R12 or 12), its
 // words, its steps' and their details, case aside. An empty search is all.
 // Whether an item is under the target chip in force ("" is All).
-const rmVer = (r, v) => inRelease(r.target, v);
+// An item is under a release by its own target or by a step's (R108): a
+// step with none goes with its item.
+const rmVers = r => [r.target || "", ...(r.steps || []).filter(st => st.target).map(st => st.target)];
+const rmVer = (r, v) => rmVers(r).some(t => inRelease(t, v));
 
 function rmMatch(r, q){
   if (!q) return true;

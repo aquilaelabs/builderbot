@@ -2169,6 +2169,34 @@ ok(await nbOn() === await page.evaluate(() => document.querySelector('.pane .nb 
      `bb roadmap --target lists what is meant for one release (${listed.trim().replace(/\n/g, ' / ')})`);
 }
 
+// ---- a step's own release (R108, the operator, 22 Oct) ------------------
+{
+  const bbEps = (...a) => execFileSync(BB, ['roadmap', ...a],
+    { env: { ...process.env, BB_ROADMAP_PROJECT: 'ep.silon', DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).toString();
+  const made = await post({ action: 'add', project: 'ep.silon', text: 'split across two', steps: ['now', 'later'], target: '0.6.0' });
+  const id = (made.body || made).item.id;
+  await page.evaluate(n => openNotebook(n, 'roadmap'), 'ep.silon');
+  const step = `.pane .doc.on #roadmapList .roadmap[data-id="${id}"][data-step="1"]`;
+  // The item's group unfolded, so its steps show.
+  await page.waitForSelector(step, { state: 'attached', timeout: 15000 });
+  await page.evaluate(s => { const d = document.querySelector(s)?.closest('details'); if (d) d.open = true; }, step);
+  await page.waitForSelector(step, { timeout: 5000 });
+  await page.click(`${step} .dtog`).catch(() => {});
+  await page.click(`${step} .ed`);
+  const said = await page.$eval('.pane .doc.on .editbox', b => b.textContent);
+  await page.fill('.pane .doc.on .editbox .tgt', '0.8.0');
+  await page.click('.pane .doc.on .editbox .primary');
+  const save = '.pane .doc.on #roadmapSaveQuiet';
+  await page.waitForFunction(s => !document.querySelector(s)?.disabled, save, { timeout: 5000 });
+  await page.click(save);
+  await page.waitForFunction(s => { const b = document.querySelector(s); return b.getAttribute('aria-busy') !== 'true' && b.disabled; }, save, { timeout: 15000 });
+  await page.waitForFunction(() => !!document.querySelector('.pane .doc.on #roadmapVers [data-rmver="0.8.0"]'), null, { timeout: 15000 });
+  const tag = await page.$eval(`${step} .tag.ver`, t => t.textContent.trim()).catch(() => '');
+  const listed = bbEps('--target', '0.8.0');
+  ok(/goes with the item \(0\.6\.0\)/.test(said) && tag === 'for 0.8.0' && /split across two/.test(listed) && /2\. later\s+\[for 0\.8\.0\]/.test(listed),
+     `a step's Reword box sets its own release: the step says it, a chip for it appears, and bb lists the item under it (${tag} | ${listed.trim().replace(/\n/g, ' / ')})`);
+}
+
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 await done(browser);

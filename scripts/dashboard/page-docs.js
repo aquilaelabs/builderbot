@@ -1180,7 +1180,10 @@ function chipBar(groups, on, attr, all){
 const relOf = v => (String(v || "").match(/^v?(\d+\.\d+\.\d+)/) || [])[1] || "";
 function versionChips(rows, verOf, none){
   const n = new Map();
-  for (const r of rows){ const k = relOf(verOf(r)) || "none"; n.set(k, (n.get(k) || 0) + 1); }
+  // `verOf` may give several (an item and its steps' own, R108): the row
+  // counts once under each.
+  for (const r of rows)
+    for (const k of new Set([].concat(verOf(r)).map(v => relOf(v) || "none"))) n.set(k, (n.get(k) || 0) + 1);
   const num = v => v.split(".").map(Number);
   const keys = [...n.keys()].filter(k => k !== "none")
     .sort((a, b) => { const x = num(a), y = num(b); return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]; });

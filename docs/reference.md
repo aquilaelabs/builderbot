@@ -347,7 +347,10 @@ bb roadmap edit N "..."               reword one; `step add|edit|rm|done` for on
 bb roadmap info N [M] "..."           add the technical details to one, or step M,
                                       under what is there (--replace sets them)
 bb roadmap target N X.Y.Z             the release one is meant for (`none` clears); --target
-                                      on add sets it, `bb roadmap --target X.Y.Z` lists those
+                                      on add sets it, `bb roadmap --target X.Y.Z` lists those;
+                                      `target N.M X.Y.Z` (or N M) is step M's own, `none`
+                                      sends it back to its item's, and --target lists an item
+                                      for any step meant for that release
 bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
 bb roadmap pending    what a session added that is waiting for your approval
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
