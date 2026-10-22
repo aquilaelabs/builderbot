@@ -543,6 +543,8 @@ if [ "\${1:-}" = login ] && [ "\${2:-}" = status ]; then
   if [ -n "\${FAKE_CODEX_OUT:-}" ]; then echo "Not logged in"; exit 1; fi
   echo "Logged in using ChatGPT"; exit 0
 fi
+# Its help, which the launcher reads for the hook-trust flag, as 0.163.0's.
+if [ "\${1:-}" = --help ]; then echo "  --dangerously-bypass-hook-trust  run hooks without review"; exit 0; fi
 printf '%s\\0' "$@" > "${cxArgv}"
 sleep 60
 `, { mode: 0o755 });
@@ -570,7 +572,7 @@ sleep 60
       const di = cx.find(a => a.startsWith('developer_instructions=')) || '';
       let said = '';
       try { said = JSON.parse(di.slice('developer_instructions='.length)); } catch { said = ''; }
-      ok(cx[0] === '--no-alt-screen' && cx.includes('-c') && /THE HOUSE RULES/.test(said),
+      ok(cx[0] === '--no-alt-screen' && cx.includes('-c') && cx.includes('--dangerously-bypass-hook-trust') && /THE HOUSE RULES/.test(said),
          `...handed the briefing as developer instructions, added to Codex's own (${cx.slice(0, 2).join(' ')} ${di.slice(0, 40)})`);
       const toml = existsSync(join(HOMEDIR, '.codex', 'config.toml')) ? readFileSync(join(HOMEDIR, '.codex', 'config.toml'), 'utf8') : '';
       ok(toml.includes(`[projects."${cwt}"]`) && /trust_level = "trusted"/.test(toml),
