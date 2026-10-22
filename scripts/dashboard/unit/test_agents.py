@@ -298,8 +298,10 @@ class Copies(unittest.TestCase):
                 m = re.search(ag + r": \{models: \[(.*?)\],\s*efforts: \[(.*?)\]\}", js, re.S)
                 got = re.findall(r'"([^"]+)"', m.group(1 if key == "models" else 2))
                 self.assertEqual(tuple(got), xs, (ag, kind))
-                for x in xs:
-                    self.assertIn(f"{ag}:{x}", tty, (ag, x))
+                fn = "agent_" + key
+                body = tty[tty.index(fn + "() {"):tty.index("}", tty.index(fn + "() {"))]
+                m = re.search(ag + r'\) printf %s "([^"]*)"', body)
+                self.assertEqual(tuple(m.group(1).split()), xs, (ag, kind))
 
     def test_the_node_agent_s_prefixes_are_the_live_rows(self):
         self.assertEqual(tuple(node.AGENT_PREFIXES), agents.prefixes())

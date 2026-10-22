@@ -106,7 +106,7 @@ def verb(kind, req, me, uid, project):
         prompt = str(req.get("prompt") or "")[:20000]
         # ...and what it was asked, for its row's task (B59).
         if asked:
-            asked(uid, project, prompt)
+            asked(uid, project, prompt, agent=str(req.get("agent") or "claude"))
         hit = [r for r in rules.matching(project, prompt=prompt) if r["name"] not in told]
         # ...and the open items and bugs the prompt names (R202), the same way.
         related, rnames = preamble.mentioned(project, prompt, told)

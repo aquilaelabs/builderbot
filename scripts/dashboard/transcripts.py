@@ -19,6 +19,8 @@ import re
 import os
 import threading
 import time
+
+import agents
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -151,7 +153,8 @@ def _slug(path):
 # its Stop hook (bb-agent-hook) into an <agent>/ folder of the transcripts
 # folder of the tree it works in, so the share and claudesync carry it
 # exactly as they carry Claude Code's.
-OTHER_AGENTS = ("codex", "copilot")
+# Read from the agent table, so a new agent is not a second list to keep.
+OTHER_AGENTS = tuple(a.id for a in agents.TABLE if a.id != "claude" and a.live)
 
 
 def _dirs(uid, project):
@@ -413,7 +416,7 @@ def turns(uid, project, sid, tz=None, tail=0):
         got, partial = _agent_turns(f, agent_of(f), tz, tail)
         a = agent_of(f)
         return {"project": project, "id": sid, "partial": partial, "turns": got, "agent": a,
-                "agent_name": {"codex": "ChatGPT", "copilot": "Copilot"}.get(a, a)}, 200
+                "agent_name": (agents.get(a).name if agents.get(a) else a)}, 200
     out, calls, total, partial = [], {}, 0, False
     try:
         size = f.stat().st_size

@@ -36,7 +36,7 @@ import time
 # because write_json is defined from it before any of those load.
 import statefile
 import agents
-from names import PROJECT_NAME, claude_session, tmux_name   # noqa: F401 - re-exported to the modules
+from names import PROJECT_NAME, agent_sessions, claude_session, running_session, tmux_name   # noqa: F401 - re-exported to the modules
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -550,7 +550,7 @@ def compat_reap_once():
     holds = compat_holds(reap=True)
     if not holds:
         return []
-    wanted = {claude_session(p): why for p, why in holds.items()}
+    wanted = {n: why for p, why in holds.items() for n in agent_sessions(p)}
     ended = []
     for s in tmux_sessions():
         why = wanted.get(tmux_base(s["name"]))
@@ -1397,9 +1397,12 @@ def _held_rows(who):
     Resume typed into a session called that, which there never is."""
     names = {u["uid"]: u["name"] for u in users.all_users()}
     rows = nodes.held_attention(users.uid_of(who), users.may(who, "admin") == "")
+    running = {s["name"] for s in tmux_sessions() + node_tmux_sessions()} if rows else set()
     for r in rows:
         r["who"] = names.get(r["uid"], "")
-        r["claude"] = users.tmux_prefix({"uid": r["uid"]}) + claude_session(r["project"])
+        # The agent's that is running, since the mark names the account and
+        # the project, not which agent was held (R95 step 16).
+        r["claude"] = running_session(users.tmux_prefix({"uid": r["uid"]}), r["project"], running)
     return rows
 
 
@@ -2077,11 +2080,12 @@ def tmux_sessions():
     return rows
 
 
-def claude_working(project, uid):
-    """Whether that account's Claude session on this project is mid-prompt,
-    here or on a node, by its pane title (claude_state). The owner's is the
-    bare name, as everywhere else on the page."""
-    want = claude_session(project)
+def claude_working(project, uid, agent="claude"):
+    """Whether that account's session of one agent on this project is
+    mid-prompt, here or on a node (session_state: Claude's pane title,
+    another agent's hooks). The owner's is the bare name, as everywhere
+    else on the page."""
+    want = agents.session_name(agent, project)
     owner = users.uid_of(users.get(users.owner_name() or ""))
     return any(tmux_base(s["name"]) == want and (tmux_owner(s["name"]) or owner) == uid
                and (s.get("claude") or {}).get("state") == "working"
@@ -2113,7 +2117,8 @@ def session_tokens_for(nid, sessions):
     """
     want = {}
     for name in project_names(users.ALL):
-        want[claude_session(name)] = name
+        for n in agent_sessions(name):
+            want[n] = name
     out = []
     seen = set()
     for row in sessions if isinstance(sessions, list) else []:
@@ -2160,7 +2165,7 @@ def node_tmux_sessions():
                 state, task = session_state(who, real, s.get("title", ""))
                 # What it was last asked over the title, which Claude names
                 # from the first turn and keeps (B59).
-                task = projsessions.latest_task(who, stem, row["created"]) or task
+                task = projsessions.latest_task(who, stem, row["created"], agent.id) or task
                 row["claude"] = {"state": state, "task": task}
             rows.append(row)
     return rows
@@ -2215,7 +2220,7 @@ def project_busy(name, verb):
     outside the filesystem: tmux, and the daemon."""
     live = {s["name"] for s in tmux_sessions()}
     held = sorted(s for s in live
-                  if tmux_base(s) == claude_session(name)
+                  if tmux_base(s) in agent_sessions(name)
                   or tmux_base(s).startswith(tmux_name(f"shell-{name}") + "-"))
     if held:
         return ("close its terminals first: " + ", ".join(held[:3])
@@ -5256,9 +5261,11 @@ class Handler(BaseHTTPRequestHandler):
         t = session_target(project, claude=True, node=_arg_node(arg), uid=uid)
         if t["where"] != "node":
             return ""
-        # Claude Code on that node first (claudecode.py): an update running
-        # there holds the start, and with Keep Claude Code current on, a
-        # node behind is updated now and this start waits for it.
+        # The agent on that node first (claudecode.py, agentcode.py): an
+        # update running there holds the start.
+        ag = agents.of_arg(arg)[0]
+        if ag and ag.id != "claude":
+            return agentcode.start_hold(project, t["id"], ag.id) or ""
         return claudecode.start_hold(project, t["id"]) or ""
 
     def _term_notice(self, sentence, code):
@@ -9230,10 +9237,10 @@ class Handler(BaseHTTPRequestHandler):
         # running on a node was a lock that had not taken (the operator,
         # 29 Sep). Named in the answer, so the page can say what went.
         if on and code == 200:
-            want = claude_session(name)
+            want = set(agent_sessions(name))
             ended = []
-            for s in [x for x in tmux_sessions() if tmux_base(x["name"]) == want] \
-                    + [x for x in node_tmux_sessions() if tmux_base(x["name"]) == want]:
+            for s in [x for x in tmux_sessions() if tmux_base(x["name"]) in want] \
+                    + [x for x in node_tmux_sessions() if tmux_base(x["name"]) in want]:
                 r = end_session(s["name"], str(s.get("node_id") or ""))
                 if not r.get("error") and not r.get("gone") and s["name"] not in ended:
                     ended.append(s["name"])
@@ -9516,9 +9523,9 @@ class Handler(BaseHTTPRequestHandler):
         # is somebody else's conversation, and typing into it is the thing a
         # read-only console must not become.
         project = next((name for name in project_names(me)
-                        if users.tmux_prefix(me) + claude_session(name) == want), "")
+                        if want in [users.tmux_prefix(me) + n for n in agent_sessions(name)]), "")
         if not project or users.may(me, "claude", project):
-            return self._json({"error": "not a Claude session of yours"}, 403)
+            return self._json({"error": "not a session of yours"}, 403)
         on_node = self._session_on_node(want, str(req.get("node") or ""))
         if want not in {x["name"] for x in tmux_sessions()} and not on_node:
             return self._json({"error": "that conversation is not running"}, 409)

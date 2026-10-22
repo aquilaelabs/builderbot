@@ -19,6 +19,22 @@ class TmuxName(unittest.TestCase):
         self.assertEqual(names.claude_session("BuilderBot"), "claude-BuilderBot")
 
 
+class EveryAgent(unittest.TestCase):
+    """A check that must see any agent's session on a project, and the one
+    session a message goes to (R95 step 16)."""
+
+    def test_every_live_agent_has_a_session_name_claude_first(self):
+        got = names.agent_sessions("ep.silon")
+        self.assertEqual(got[0], "claude-ep_silon")
+        self.assertIn("codex-ep_silon", got)
+        self.assertIn("copilot-ep_silon", got)
+
+    def test_a_message_goes_to_the_agent_that_is_running(self):
+        self.assertEqual(names.running_session("u_1~", "alpha", {"u_1~codex-alpha"}), "u_1~codex-alpha")
+        self.assertEqual(names.running_session("", "alpha", {"codex-alpha", "claude-alpha"}), "claude-alpha")
+        self.assertEqual(names.running_session("", "alpha", set()), "claude-alpha")
+
+
 class ItemNumbers(unittest.TestCase):
     def test_the_ways_a_person_types_one(self):
         for word in ("12", "R12", "r12", "#12", "R012", " R12 "):

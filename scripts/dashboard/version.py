@@ -81,7 +81,7 @@ import sys as _sys
 # Beside this file, whichever way it was loaded: bb's own Python loads the
 # modules by path, where a plain sibling import finds nothing.
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-from names import claude_session   # noqa: E402
+from names import running_session   # noqa: E402
 from fields import field   # noqa: E402
 import json
 import os
@@ -1647,7 +1647,7 @@ def ask(project, sessions=(), comp=""):
                 f"then propose and ask; do not apply.")
     # No switch ahead of it: a project's model and effort are launch flags now,
     # so the session this reaches is already running on them.
-    session = claude_session(project)
+    session = running_session("", project, set(sessions))
     r = tell(session, line, sessions)
     if r.get("error"):
         return r

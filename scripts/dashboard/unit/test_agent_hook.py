@@ -91,6 +91,25 @@ class Runs(unittest.TestCase):
         self.assertEqual(self.ran()[-1][0], "alpha")
         self.assertEqual(len(self.ran()), 2)
 
+    def test_an_edit_outside_the_sessions_tree_or_to_version_is_walled_as_claudes_are(self):
+        env = {"BB_PROJECT": "alpha", "BB_AGENT_WHO": "u_0123abcd", "WORKSPACE": "/workspace",
+               "BB_TREE": "/workspace/.worktrees/alpha/codex-u_0123abcd", "BB_CLAUDE_SHARE": "/workspace/.claude"}
+        code, _, err = self.call("codex", "pre", {"tool_name": "apply_patch",
+                                                  "tool_input": "*** Update File: /workspace/alpha/main.py\n"}, env)
+        self.assertEqual(code, 2)
+        self.assertIn("outside this session's tree", err)
+        code, out, _ = self.call("copilot", "pre", {"toolName": "edit", "toolArgs": {"path": "VERSION"},
+                                                    "cwd": env["BB_TREE"]}, env)
+        self.assertEqual(json.loads(out)["permissionDecision"], "deny")
+        self.assertEqual(self.call("codex", "pre", {"tool_name": "apply_patch",
+                                                    "tool_input": "*** Update File: src/a.py\n"}, env)[0], 0)
+        self.assertEqual(self.call("codex", "pre", {"tool_name": "apply_patch",
+                                                    "tool_input": "*** Add File: /tmp/scratch.txt\n"}, env)[0], 0)
+
+    def test_a_copilot_search_runs_the_map_hook_as_claudes_grep_does(self):
+        self.assertEqual(self.call("copilot", "pre", {"toolName": "grep", "toolArgs": {"pattern": "def main"}})[0], 0)
+        self.assertEqual(self.ran(), [["alpha", "u_0123abcd"], ["map", "alpha"]])
+
     def test_a_prompt_runs_the_relay_the_rules_and_the_turn_and_passes_on_what_they_said(self):
         code, out, _ = self.call("codex", "prompt", {"prompt": "hello"})
         self.assertEqual(code, 0)

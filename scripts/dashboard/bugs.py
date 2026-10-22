@@ -30,7 +30,7 @@ import sys as _sys
 # Beside this file, whichever way it was loaded: bb's own Python loads the
 # modules by path, where a plain sibling import finds nothing.
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-from names import claude_session   # noqa: E402
+from names import running_session   # noqa: E402
 from fields import field   # noqa: E402
 import agents
 import json
@@ -673,7 +673,7 @@ def send(project, bug_id, sessions=(), note="", prefix=""):
     # so the session this reaches is already running on them.
     # The caller's own session, not the project's bare one: see roadmap.send
     # for why the bare name is the owner's conversation (B194).
-    session = prefix + claude_session(project)
+    session = running_session(prefix, project, set(sessions))
     tag = ids.label("bugs", bug_id)
     line = (f"Please look at bug {tag} in this project's tracker. "
             f"Run `bb bug show {tag}` for the report: the area, how to "

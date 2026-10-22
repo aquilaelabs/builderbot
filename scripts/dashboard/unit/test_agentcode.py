@@ -98,6 +98,13 @@ class Controller(unittest.TestCase):
         self.assertTrue(r["ok"])
         self.assertEqual(ns.added, [("codex-update", {"timeout": 900, "to": "0.163.0", "ended": []})])
 
+    def test_an_update_holds_that_agents_starts_as_claude_codes_does(self):
+        ns = self.use(node())
+        self.assertEqual(agentcode.start_hold("alpha", "n1", "codex"), "")
+        ns.jobs_for = lambda *a, **k: [{"type": "codex-update"}] if k.get("type") == "codex-update" else []
+        self.assertIn("is updating", agentcode.start_hold("alpha", "n1", "codex"))
+        self.assertEqual(agentcode.start_hold("alpha", "n1", "copilot"), "")
+
     def test_a_removal_needs_it_installed(self):
         self.use(node(codex=""))
         self.assertIn("not installed", agentcode.remove("user:admin", "n1", "codex")["error"])

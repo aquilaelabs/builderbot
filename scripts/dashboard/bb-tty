@@ -293,6 +293,23 @@ siblings_of() {
         | { grep -vxF "$WORKSPACE/$1" || true; }   # sole project: no siblings
 }
 
+# agent_models AGENT, agent_efforts AGENT: the models and efforts an agent
+# other than Claude takes, one list each (agents.py MODELS and EFFORTS, held
+# to it by unit/test_agents.py): what Start may pass and what a launcher
+# reads back from a person's kept pick at exec (R95 steps 9 and 19).
+agent_models() {
+    case "$1" in
+        codex) printf %s "gpt-6.1-sol gpt-6-sol gpt-6-astra gpt-6-luna gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna gpt-5.5" ;;
+        copilot) printf %s "auto claude-sonnet-5.5 claude-opus-5.5 claude-haiku-5.5 gpt-6.1-sol gpt-6-sol gpt-5.6-sol gpt-5-mini gemini-4-argon gemini-3.8-flash grok-4.7" ;;
+    esac
+}
+agent_efforts() {
+    case "$1" in
+        codex) printf %s "low medium high xhigh max" ;;
+        copilot) printf %s "low medium high xhigh max" ;;
+    esac
+}
+
 # walls_around PROJECT HERE: every tree this session must not reach into.
 #
 # Every project but its own, and every WORKTREE but its own, including the
@@ -710,25 +727,43 @@ PY
             "$account" "$proj" '.users[$u][$n].model // empty' "$PREFS_FILE"
         printf '  e="$(jq -r --arg u %q --arg n %q %q %q 2>/dev/null)"\n' \
             "$account" "$proj" '.users[$u][$n].effort // empty' "$PREFS_FILE"
+        # Another agent's are its own keys (R95 steps 9 and 19), read at exec
+        # as Claude's are, so a respawn picks up a change for every agent.
+        if [ "$ag" != claude ]; then
+            printf '  am="$(jq -r --arg u %q --arg n %q %q %q 2>/dev/null)"\n' \
+                "$account" "$proj" ".users[\$u][\$n].${ag}_model // empty" "$PREFS_FILE"
+            printf '  ae="$(jq -r --arg u %q --arg n %q %q %q 2>/dev/null)"\n' \
+                "$account" "$proj" ".users[\$u][\$n].${ag}_effort // empty" "$PREFS_FILE"
+        fi
         printf 'else\n'
         printf '  s="$(BB_PROJECT=%q bb settings --json 2>/dev/null)"\n' "$proj"
         printf '  m="$(jq -r %q <<<"$s" 2>/dev/null)"\n' '.model // empty'
         printf '  e="$(jq -r %q <<<"$s" 2>/dev/null)"\n' '.effort // empty'
+        if [ "$ag" != claude ]; then
+            printf '  am="$(jq -r %q <<<"$s" 2>/dev/null)"\n' ".${ag}_model // empty"
+            printf '  ae="$(jq -r %q <<<"$s" 2>/dev/null)"\n' ".${ag}_effort // empty"
+        fi
         printf 'fi\n'
-        # The model and effort are Claude's names; another agent's are its
-        # own (R95 step 9), so it starts on its default until then.
         if [ "$ag" = claude ]; then
             printf 'case "$m" in opus|sonnet|haiku|fable) extra+=(--model "$m") ;; esac\n'
             printf 'case "$e" in low|medium|high|xhigh|max) extra+=(--effort "$e") ;; esac\n'
         fi
-        # Another agent's model and effort, as picked at Start (bb-tty has
-        # held each to the agent's own list).
+        # Another agent's model and effort: as picked at Start when this
+        # session was (bb-tty has held each to the agent's own list), else
+        # the person's kept pick read above; each checked against the
+        # agent's list again here, since the file is read at exec.
+        if [ "$ag" != claude ]; then
+            [ -z "${LAUNCH_MODEL:-}" ] || printf 'am=%q\n' "$LAUNCH_MODEL"
+            [ -z "${LAUNCH_EFFORT:-}" ] || printf 'ae=%q\n' "$LAUNCH_EFFORT"
+            printf 'case " %s " in *" ${am:-} "*) ;; *) am="" ;; esac\n' "$(agent_models "$ag")"
+            printf 'case " %s " in *" ${ae:-} "*) ;; *) ae="" ;; esac\n' "$(agent_efforts "$ag")"
+        fi
         if [ "$ag" = codex ]; then
-            [ -z "${LAUNCH_MODEL:-}" ] || printf 'extra+=(-m %q)\n' "$LAUNCH_MODEL"
-            [ -z "${LAUNCH_EFFORT:-}" ] || printf 'extra+=(-c %q)\n' "model_reasoning_effort=\"$LAUNCH_EFFORT\""
+            printf '[ -z "${am:-}" ] || extra+=(-m "$am")\n'
+            printf '[ -z "${ae:-}" ] || extra+=(-c "model_reasoning_effort=\\"$ae\\"")\n'
         elif [ "$ag" = copilot ]; then
-            [ -z "${LAUNCH_MODEL:-}" ] || printf 'extra+=(--model %q)\n' "$LAUNCH_MODEL"
-            [ -z "${LAUNCH_EFFORT:-}" ] || printf 'extra+=(--reasoning-effort %q)\n' "$LAUNCH_EFFORT"
+            printf '[ -z "${am:-}" ] || extra+=(--model "$am")\n'
+            printf '[ -z "${ae:-}" ] || extra+=(--reasoning-effort "$ae")\n'
         fi
         # Codex trusts a hook by its hash, after a person reviews it; BuilderBot's
         # own are its guards and run unreviewed, where this Codex has the flag.
@@ -1204,16 +1239,10 @@ case "$target" in
         case "$rest" in
             *:m:*) want_model="${rest##*:m:}"; rest="${rest%:m:*}" ;;
         esac
-        case "$agent:$want_model" in
-            *:|codex:gpt-6.1-sol|codex:gpt-6-sol|codex:gpt-6-astra|codex:gpt-6-luna|codex:gpt-5.6-sol|codex:gpt-5.6-terra|codex:gpt-5.6-luna|codex:gpt-5.5 \
-            |copilot:auto|copilot:claude-sonnet-5.5|copilot:claude-opus-5.5|copilot:claude-haiku-5.5|copilot:gpt-6.1-sol|copilot:gpt-6-sol|copilot:gpt-5.6-sol|copilot:gpt-5-mini|copilot:gemini-4-argon|copilot:gemini-3.8-flash|copilot:grok-4.7) ;;
-            *) bad "Not a model ${agent_name} offers here: ${want_model}" ;;
-        esac
-        case "$agent:$want_effort" in
-            *:|codex:low|codex:medium|codex:high|codex:xhigh|codex:max \
-            |copilot:low|copilot:medium|copilot:high|copilot:xhigh|copilot:max) ;;
-            *) bad "Not an effort ${agent_name} offers here: ${want_effort}" ;;
-        esac
+        [ -z "$want_model" ] || case " $(agent_models "$agent") " in *" $want_model "*) ;;
+            *) bad "Not a model ${agent_name} offers here: ${want_model}" ;; esac
+        [ -z "$want_effort" ] || case " $(agent_efforts "$agent") " in *" $want_effort "*) ;;
+            *) bad "Not an effort ${agent_name} offers here: ${want_effort}" ;; esac
         export LAUNCH_MODEL="$want_model" LAUNCH_EFFORT="$want_effort"
         case "$rest" in
             *:r:*) resume="${rest##*:r:}"; proj="${rest%%:r:*}" ;;

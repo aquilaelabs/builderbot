@@ -41,6 +41,9 @@ RULE = os.path.join(HERE, "bb-rule-hook")
 # its hooks hand over.
 SHELL = {"shell", "exec_command", "local_shell", "bash", "run_shell_command", "Bash"}
 EDIT = {"apply_patch", "edit", "create", "write", "str_replace_editor", "write_file", "Edit", "Write"}
+# ...and searches a file's contents with (Codex has none: it runs rg in its
+# shell, which the rule guard reads).
+GREP = {"grep", "Grep", "search_file_content"}
 PATCH_FILE = re.compile(r"^\*\*\* (?:Update|Add|Delete) File: (.+)$", re.M)
 
 
@@ -79,6 +82,9 @@ def as_claude(agent, raw):
             m = PATCH_FILE.search(spec)
             path = m.group(1).strip() if m else ""
         out["tool_name"], out["tool_input"] = "Edit", {"file_path": path}
+    elif name in GREP:
+        pat = spec.get("pattern") or spec.get("query") or "" if isinstance(spec, dict) else str(spec or "")
+        out["tool_name"], out["tool_input"] = "Grep", {"pattern": str(pat)}
     return out
 
 
@@ -122,6 +128,27 @@ def keep(agent, raw):
         pass
 
 
+def wall(path, cwd=""):
+    """Why an edit to this path is refused, or "": the lines Claude's deny
+    list draws (bb-tty's claude_scope) for an agent whose edits come
+    through here (R95 step 17). The session's view already holds no other
+    project; what is left is another tree of this one (another person's or
+    another agent's worktree, or the owner's checkout seen from a worktree)
+    and VERSION, which moves with bb version alone."""
+    tree = os.environ.get("BB_TREE", "")
+    if not path or not tree:
+        return ""
+    ws = os.path.normpath(os.environ.get("WORKSPACE") or "/workspace")
+    share = os.path.normpath(os.environ.get("BB_CLAUDE_SHARE") or os.path.join(ws, ".claude"))
+    p = os.path.normpath(os.path.join(cwd or tree, os.path.expanduser(path)))
+    under = lambda d: p == d or p.startswith(d.rstrip("/") + "/")  # noqa: E731
+    if os.path.basename(p) == "VERSION" and under(tree):
+        return f"{path}: the version moves with bb version, never by an edit (bb version policy says how)"
+    if under(ws) and not under(tree) and not under(share):
+        return f"{path} is outside this session's tree ({tree}): another tree is another person's or another session's"
+    return ""
+
+
 def run(argv, payload, timeout):
     try:
         p = subprocess.run(argv, input=json.dumps(payload), capture_output=True, text=True,
@@ -140,6 +167,8 @@ def plan(event, call, proj, who):
             steps.append(([RULE, "guard", proj, who], 30))
         if call.get("tool_name") == "Edit" and (call.get("tool_input") or {}).get("file_path"):
             steps.append(([NOTE, proj, who], 30))
+        if call.get("tool_name") == "Grep":
+            steps.append(([RULE, "map", proj, who], 30))
         return steps
     if event == "prompt":
         return [([RELAY, proj, who], 30), ([RULE, "prompt", proj, who], 10),
@@ -172,6 +201,14 @@ def main(argv):
     if event == "stop":
         keep(agent, raw)
     said = []
+    why = wall((call.get("tool_input") or {}).get("file_path", ""), call.get("cwd") or "") \
+        if event == "pre" and call.get("tool_name") == "Edit" else ""
+    if why:
+        if agent == "copilot":
+            print(json.dumps({"permissionDecision": "deny", "permissionDecisionReason": why}))
+            return 0
+        print(why, file=sys.stderr)
+        return 2
     for cmd, timeout in plan(event, call, proj, who):
         code, out, err = run(cmd, call, timeout)
         if out.strip():

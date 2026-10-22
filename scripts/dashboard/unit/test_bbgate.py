@@ -123,6 +123,13 @@ class HeldNotes(unittest.TestCase):
         self.assertEqual(code, 0, "its scratchpad")
         code, _ = self.run_gate(lambda home: {"tool_name": "TodoWrite", "tool_input": {}})
         self.assertEqual(code, 0, "its to-do list")
+        # ...and Codex's and Copilot's own, which reach the gate as Edit
+        # through bb-agent-hook (R95 step 18).
+        code, _ = self.run_gate(lambda home: {"tool_name": "Edit", "tool_input": {
+            "file_path": home + "/.codex/notes.md"}})
+        self.assertEqual(code, 0, "Codex's own folder")
+        code, _ = self.run_gate(lambda home: {"tool_name": "update_plan", "tool_input": {}})
+        self.assertEqual(code, 0, "Codex's plan")
 
     def test_a_hold_is_marked_and_cleared(self):
         # R251: the mark its node's agent reports, for the bell's Resume.

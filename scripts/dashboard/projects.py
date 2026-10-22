@@ -40,7 +40,7 @@ import urllib.parse
 import zipfile
 from pathlib import Path
 
-from names import claude_session
+from names import agent_sessions
 
 # Which git host a remote is on, and the two things a host can be asked that
 # git cannot: whether a token is real, and creating an empty repository. A
@@ -2257,10 +2257,11 @@ def lock_verb(name, on):
     # A lock that waits for the current session to end is a lock that
     # did not take, and the button does not say that.
     killed = None
-    sess = claude_session(name)
-    if on and sess in {x["name"] for x in live_sessions()}:
-        run(["tmux", "kill-session", "-t", sess], timeout=10)
-        killed = sess
+    live = {x["name"] for x in live_sessions()}
+    for sess in agent_sessions(name):
+        if on and sess in live:
+            run(["tmux", "kill-session", "-t", sess], timeout=10)
+            killed = killed or sess
     return {"locked": sorted(names), "killed": killed}, 200
 
 

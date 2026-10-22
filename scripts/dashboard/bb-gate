@@ -251,6 +251,11 @@ def held_mark(sf, session, held, now):
 # serves, and refusing them left a session told to wait with nowhere to say
 # where it was.
 NOTE_TOOLS = {"Write", "Edit", "MultiEdit", "Read", "NotebookEdit"}
+# ...each agent's own list of what it is doing (Claude's TodoWrite, Codex's
+# update_plan), and each agent's own folder in the home (R95 step 18): an
+# edit from Codex or Copilot reaches here as Edit, through bb-agent-hook.
+PLAN_TOOLS = {"TodoWrite", "update_plan"}
+NOTE_DIRS = (".claude", ".codex", ".copilot")
 
 
 def own_notes():
@@ -259,14 +264,14 @@ def own_notes():
     except (ValueError, OSError):
         return False
     tool = str(call.get("tool_name") or "")
-    if tool == "TodoWrite":
+    if tool in PLAN_TOOLS:
         return True
     if tool not in NOTE_TOOLS:
         return False
     path = os.path.realpath(str((call.get("tool_input") or {}).get("file_path")
                                 or (call.get("tool_input") or {}).get("notebook_path") or ""))
     home = os.path.realpath(os.environ.get("HOME", "/nonexistent"))
-    return bool(path) and (path.startswith(os.path.join(home, ".claude") + os.sep)
+    return bool(path) and (any(path.startswith(os.path.join(home, d) + os.sep) for d in NOTE_DIRS)
                            or path.startswith("/tmp/claude-"))
 
 

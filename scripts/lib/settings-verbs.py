@@ -75,6 +75,9 @@ def show():
     # nothing set, which is claude's own default.
     _mine = prefs.for_user(os.environ.get("BB_ACCOUNT_UID", ""), proj) if proj else {}
     rec["model"], rec["effort"] = _mine.get("model", ""), _mine.get("effort", "")
+    # ...and each other agent's pair (R95 step 19), which its launcher reads
+    # at exec as Claude's reads these two.
+    rec.update({k: v for k, v in _mine.items() if k.endswith(("_model", "_effort"))})
     try:
         locks = json.load(open(os.path.join(state, "locked-projects.json")))
     except (OSError, ValueError):

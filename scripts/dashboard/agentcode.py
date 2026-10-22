@@ -131,6 +131,20 @@ def updating(node_id, agent_id):
                for j in nodes.jobs_for(node_id, n=20, type=a.update_job, active=True))
 
 
+def start_hold(project, node_id, agent_id):
+    """A sentence when a session of this agent on this node has to wait,
+    or "": its update running there holds every start until it ends, as
+    Claude Code's does (claudecode.start_hold, R95 step 18)."""
+    n = nodes.node(node_id) if nodes else None
+    a = agents.get(agent_id)
+    if not n or not a or n.get("kind") != "agent":
+        return ""
+    if updating(node_id, agent_id):
+        return (f"{a.product} is updating on {n['name']}: start {a.name} on {project} again when its "
+                "row on the Agents page comes back")
+    return ""
+
+
 def _end_sessions(node_id, a):
     """End this agent's sessions on the node, before its binary is swapped."""
     ended = []

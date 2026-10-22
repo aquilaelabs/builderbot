@@ -218,10 +218,10 @@ def live_token():
 # a restart, when the title stands in until the next one.
 TASK_MAX = 120
 SKEW = 120
-_asked = {}           # (uid, tmux name of the project) -> (when, first line)
+_asked = {}           # (uid, agent, tmux name of the project) -> (when, first line)
 
 
-def asked(uid, project, text, now=None):
+def asked(uid, project, text, now=None, agent="claude"):
     """Note what a session was just asked: the first line of what the person
     typed, trimmed. A turn that was all machinery (text "") changes nothing."""
     line = next((x.strip() for x in str(text or "").splitlines() if x.strip()), "")
@@ -229,14 +229,16 @@ def asked(uid, project, text, now=None):
         return
     if len(line) > TASK_MAX:
         line = line[:TASK_MAX - 1].rstrip() + "…"
-    _asked[(uid, tmux_name(project))] = (time.time() if now is None else now, line)
+    # Per agent (R95 step 19): one person's Claude and Codex sessions on a
+    # project are two rows, each with its own task.
+    _asked[(uid, agent or "claude", tmux_name(project))] = (time.time() if now is None else now, line)
 
 
-def latest_task(uid, stem, created=0):
-    """What the session `claude-<stem>` of `uid` was last asked, or "" when
+def latest_task(uid, stem, created=0, agent="claude"):
+    """What the session `<agent>-<stem>` of `uid` was last asked, or "" when
     nothing has been heard since it began (a prompt to an earlier session of
     the same name is not this one's)."""
-    got = _asked.get((uid, stem))
+    got = _asked.get((uid, agent or "claude", stem))
     # `created` is the node's clock and the note this one's: a little slack,
     # so a node running ahead does not lose a session's first prompt.
     if not got or (created and got[0] < created - SKEW):
