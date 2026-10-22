@@ -536,3 +536,78 @@ projects', for the same reason a session is kept to its own containers. A
 software-emulated VM is never offered: a node without /dev/kvm says what to
 change on its host instead.
 
+
+## A controller installed bare metal, and its own node
+
+**A controller may be installed on a machine of its own, without the
+container, and then use that machine as one of its nodes, behind the same
+wall a session meets on any node (the operator, 21 and 22 Oct 2026, R90).**
+The container install stays exactly what it is: the image, compose or the
+Unraid template, a `local` row that runs nothing (§18 of
+[nodes.md](nodes.md)). A bare-metal install is the same controller, run
+the same way: the same dashboard, state, verbs and updates, laid out under
+`/opt/builderbot` as the image lays it out, with systemd in place of tini
+and an env file in place of compose's. It is not a lighter edition, and it
+is not a side door: it is the first step of 0.8.0's NAS work, so the
+installer, the service layout and the update path are what that work
+stands on. The installer is built on the node provisioner rather than
+beside it (`nodes/install-controller.sh` sources `nodes/provision-linux.sh`
+and the same family files), so every system Enroll node vets is a system a
+controller installs on, with the same tag and reasons for the rest. The one
+difference from the container install is that the machine can be a node of
+itself: the installer runs the provisioner as it is and enrolls the machine
+as an ordinary agent row, so session placement, toolchains and the Nodes
+page need no special case. It is the one install where rule 2 of
+[nodes.md](nodes.md) §0 and §18's "the controller runs nothing" do not hold
+whole: the controller's process still runs no session and no build; the
+machine under it does, as a node.
+
+**What a session on that node must never reach**, which is the threat model
+the wall is built against. The adversary is a Claude session on a project
+bound to the controller's own node, and the code it writes that a job then
+runs. It must not read the controller's state (accounts and their password
+hashes, the dashboard's sign-in tokens, the node tokens, git credentials,
+signing keys), its env file, its secrets (the stash in `/run/builderbot`,
+the files the secrets folder holds, the deploy keys and the runner tokens
+root keeps), nor sign with the deploy-key agent; it must not reach the
+controller's process (signals, ptrace), its loopback-only ports (the
+terminals' ttyd, which takes no credential because the dashboard's proxy is
+its gate), nor its Docker. How each is held:
+
+- **Accounts.** The controller runs as a service account of its own
+  (`builderbot`), which owns the state and the workspace. The node's session
+  account and job account are other uids, in none of the controller's
+  groups, in no docker group, with no sudo but the one command that starts a
+  view (`bb-session`). On this node the job account is kept out of the
+  docker group, which every other node puts it in: docker is root on a
+  machine with a daemon, and the root here is the controller's. So this
+  node is enrolled without containers (`package-build` only); a project's
+  containers go where they go on a container install.
+- **Files.** The state is 0700, the env file 0640 root's and the
+  controller's group's, `/run/builderbot` 0700 root's, the deploy-key
+  agent's socket in a folder only the controller's group enters.
+- **The view.** `bb-session` reads the wall the installer wrote
+  (`/etc/bb-session.wall`) and covers every folder it names with an empty,
+  read-only mount, after the covers every node already has (the projects
+  share, other projects, the daemon's socket); the session's PID namespace
+  holds only its own processes.
+- **The network.** A session there runs in a network of its own, which
+  reaches the controller only at the address and port a remote node uses;
+  the loopback it sees is its own. A job runs on the machine's network, so
+  the controller's loopback ports refuse every account but the controller's
+  and root's (an nftables table the installer writes).
+- **Failing closed.** `bb-session check` refuses, and so no session starts
+  and the node says why, when this machine carries a controller and the wall
+  file is missing, when a folder it names is readable by the session or job
+  account, when either account is in the docker group or the controller's,
+  when the session network is off, or when the loopback guard is not in
+  place; `bb-session enter` asks again and checks each cover inside the view
+  before it drops to the session account, the way the bb-sandbox stamp
+  fails closed. The Doctor and the node's row say it in words.
+
+What it does not do: root on the machine is the operator's and holds
+everything, as it does on any node; what the dashboard lets a signed-in
+person ask of the controller's own daemon is what it lets them ask on a
+container install, no more. The record it amends: [nodes.md](nodes.md) §0
+rule 2 and §18 for this install alone, and the provisioner's and
+[sandbox-vm.md](sandbox-vm.md)'s "BuilderBot stays the container".

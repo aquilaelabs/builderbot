@@ -44,7 +44,10 @@ Four rules prevent both, and every section below is written against them:
    defaulted. Enterprise is *configuration*: Postgres instead of SQLite, OIDC
    instead of one password, approval instead of auto-approval. Config, never
    a fork. (This rule used to say "the local node; nothing to set"; §18 says
-   why the local node stopped being a place work runs.)
+   why the local node stopped being a place work runs.) One install bends
+   it: a controller installed bare metal may enroll its own machine as a
+   node, an ordinary agent row behind the node wall (§18, R90); the
+   container install's `local` row still runs nothing.
 3. **Enterprise features are additive planes, not modifications.** Audit is a
    table every mutation writes; RBAC is a check in front of the same handlers;
    metrics are a read-only endpoint. If a feature needs the core to behave
@@ -2156,6 +2159,21 @@ session's environment get the project's default node?") is answered:
 nothing, with everything through `bb`. The self-hosted runner on this
 container, and everything CLAUDE.md says about CI sharing the box, goes with
 phase 7.
+
+**One install where the machine runs work: a controller installed bare
+metal (R90, the operator, 21 and 22 Oct 2026).** `nodes/install-controller.sh`
+lays the controller out on a machine of its own, as the image does, and
+then provisions that machine as a node of itself with
+`provision-linux.sh` as it is (`--beside-controller`), enrolled as an
+ordinary agent row the Nodes page marks as this machine. Everything above
+still holds of the controller's process: it runs no session, no build and
+no runner. What runs them is the node half, under accounts the controller
+is walled off from: its state, env file, secrets and loopback ports are out
+of every session's view and network, its job account is out of the docker
+group, and a session there refuses to start when any of that does not
+check out (the wall, [decisions.md](decisions.md), "A controller installed
+bare metal, and its own node"). The container install is unchanged: its
+`local` row still runs nothing.
 
 ## 19. The session runs on the node
 

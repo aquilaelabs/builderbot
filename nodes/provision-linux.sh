@@ -5,7 +5,9 @@
 #
 # The sandbox exists so that a Claude session can build, run and destroy
 # containers without any of that reaching the server's real ones. BuilderBot
-# itself stays the container it is; this box is only ever a Docker host, and
+# itself stays the container it is (or a controller installed bare metal,
+# nodes/install-controller.sh, which runs this script with --beside-controller
+# to make its own machine a node); this box is only ever a Docker host, and
 # keeping it only that is what makes it disposable.
 #
 # Run it inside the VM, once:
