@@ -1633,9 +1633,13 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
           body: JSON.stringify({ project: 'alpha', route: 'sideload', password: pw }) });
         const wrong = await dl('nope');
         const right = await dl('a-long-password');
+        const rightSaid = right.status === 200 ? '' : (await right.json().catch(() => ({}))).error || '';
         const change = await post(ownerAuth, '/api/signing', { action: 'backup-password', project: 'alpha', current: 'nope', new: '' });
         ok(notOwner.status === 403 && short.status === 400 && set.body.backup_locked === true && plain.status === 403
-           && wrong.status === 403 && right.status === 200 && change.status === 403,
+           && wrong.status === 403 && change.status === 403
+           // The right one: the backup wrapped under it (R111), or, where the
+           // controller has no keytool to wrap with, said so, never the bare key.
+           && (right.status === 200 || (right.status === 409 && /install the jdk toolchain/.test(rightSaid))),
            `a backup password is the project owner's to set, and then every download asks for it, a plain link and a wrong one refused (${plain.status}/${wrong.status}/${right.status})`);
         for (let i = 0; i < 5; i++) await dl('nope');
         const held = await dl('a-long-password');

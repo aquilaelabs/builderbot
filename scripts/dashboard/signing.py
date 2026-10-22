@@ -500,7 +500,9 @@ def backup(project, route, key=DEFAULT, password=""):
     if password:
         wrapped, why = _rewrap(blob, rec.get("store_pass") or "", rec.get("key_pass") or "", rec.get("alias") or "", password)
         if why:
-            return {"error": why}, 500
+            # Never the bare key in its place: a backup password promises
+            # the copy is wrapped. No keytool here is a thing to install.
+            return {"error": why}, 409 if "no keytool" in why else 500
         rec["backed_up"] = int(time.time())
         _write_private(_dir(project, key) / f"{route}.json", json.dumps(rec).encode())
         buf = io.BytesIO()
