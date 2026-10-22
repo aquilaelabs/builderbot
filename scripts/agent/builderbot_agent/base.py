@@ -152,6 +152,11 @@ RUNNER_DIR = os.environ.get("BUILDERBOT_RUNNER_DIR", "/var/lib/builderbot/runner
 APT_BIN = os.environ.get("BUILDERBOT_APT_BIN", "apt-get")
 # Seconds per "minute" of the idle rule; the suite sets 1.
 IDLE_UNIT = float(os.environ.get("BUILDERBOT_IDLE_UNIT", "60"))
+# The session names a coding agent runs under (claude-<project>): the live
+# rows of the controller's agent table (scripts/dashboard/agents.py, R95),
+# copied rather than imported since the agent carries no dashboard module;
+# unit/test_agents.py holds the two to each other.
+AGENT_PREFIXES = ("claude-",)
 
 
 def has_systemd():

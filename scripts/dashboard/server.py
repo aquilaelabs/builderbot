@@ -36,6 +36,7 @@ import time
 # Beside this file. Imported up here rather than with the modules below,
 # because write_json is defined from it before any of those load.
 import statefile
+import agents
 from names import PROJECT_NAME, claude_session, tmux_name   # noqa: F401 - re-exported to the modules
 import urllib.parse
 import urllib.request
@@ -1571,8 +1572,8 @@ def _arg_project(arg):
     m = _ARG_VM.match(arg or "")
     if m:
         return m.group(1)
-    if arg.startswith("claude:"):
-        return arg[len("claude:"):].split(":")[0]
+    if agents.of_arg(arg)[0]:
+        return agents.project_of_arg(arg)
     if arg.startswith("shell:"):
         return arg[len("shell:"):]
     if arg.startswith("sh:"):
@@ -1918,7 +1919,7 @@ def _session_visible(name, mine, seen, all_of_them):
         return True
     # Unowned: a Claude session, or a terminal from before accounts. Judged by
     # the project in its name, which is what the account was or was not given.
-    for pre in ("claude-", "shell-"):
+    for pre in (*agents.prefixes(), "shell-"):
         if base.startswith(pre):
             stem = base[len(pre):]
             return any(tmux_name(p) == stem or stem.startswith(tmux_name(p) + "-")
@@ -1982,7 +1983,7 @@ def tmux_sessions():
                    "created": int(created) if created.strip().isdigit() else 0}
             # By the unprefixed name, the way node rows are read, so another
             # account's session here says whether it is working too.
-            if tmux_base(name).startswith("claude-"):
+            if agents.is_session(tmux_base(name)):
                 uid = tmux_owner(name) or (users.uid_of(users.get(users.owner_name() or "")) if users.owner_name() else "")
                 state, task = session_state(uid, name, info.get("title", ""))
                 row["claude"] = {"state": state, "task": task}
@@ -2068,12 +2069,12 @@ def node_tmux_sessions():
             row = {"name": name, "node_name": real, "node": nname, "node_id": nid,
                    "attached": bool(s.get("attached")), "cwd": s.get("cwd", ""),
                    "created": int(s.get("created") or 0)}
-            if tmux_base(real).startswith("claude-"):
+            agent, stem = agents.of_session(tmux_base(real))
+            if agent:
                 state, task = session_state(who, real, s.get("title", ""))
                 # What it was last asked over the title, which Claude names
                 # from the first turn and keeps (B59).
-                task = projsessions.latest_task(who, tmux_base(real)[len("claude-"):],
-                                                row["created"]) or task
+                task = projsessions.latest_task(who, stem, row["created"]) or task
                 row["claude"] = {"state": state, "task": task}
             rows.append(row)
     return rows
@@ -2180,7 +2181,7 @@ def node_heart(n):
     if n.get("live"):
         for r in rep.get("sessions") or []:
             name = str((r or {}).get("name") or "")
-            if tmux_base(name).startswith("claude-") \
+            if agents.is_session(tmux_base(name)) \
                     and claude_state(str((r or {}).get("title") or ""))[0] == "working":
                 heart.add(name)
     return heart, float((rep.get("sample") or {}).get("at") or 0)
@@ -4998,8 +4999,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._ctr_refused(arg, me)
         if arg.startswith("vm:"):
             return self._vm_con_refused(arg, me)
-        if arg.startswith("claude:"):
-            project = arg[len("claude:"):].split(":")[0]
+        if agents.of_arg(arg)[0]:
+            project = agents.project_of_arg(arg)
             # Terminal Read is the shielded Claude console; without it there
             # is no terminal on the project at all (R152 (e)).
             return users.may(me, "claude", project) or self._area_read_why("terminal", project, me)
@@ -5090,16 +5091,17 @@ class Handler(BaseHTTPRequestHandler):
         # claude:<project>[:r:<id>] and sh:<n>:<project> put it in different
         # places, so the shape decides rather than a fixed index.
         bits = arg.split(":")
-        want = (bits[1] if arg.startswith("claude:") and len(bits) > 1
+        is_agent = agents.of_arg(arg)[0] is not None
+        want = (bits[1] if is_agent and len(bits) > 1
                 else bits[2] if arg.startswith("sh:") and len(bits) > 2 else "")
-        if uid and (arg == "shell" or arg.startswith("sh:") or arg.startswith("claude:")) \
+        if uid and (arg == "shell" or arg.startswith("sh:") or is_agent) \
                 and not users.git_ready(me, want):
             return (f"{me['name']} has no name and email for commits yet: set them on your "
                     "Profile (the gear in the header), or for one project in its settings "
                     "dialog, and open this again")
-        if not arg.startswith("claude:"):
+        if not is_agent:
             return ""
-        project = arg[len("claude:"):].split(":")[0]
+        project = agents.project_of_arg(arg)
         # A project whose map is still building (mapping.py): its first
         # session waits the few seconds, so its first question about the
         # tree is answered from an index rather than by building one. The
@@ -5308,7 +5310,7 @@ class Handler(BaseHTTPRequestHandler):
         vmm = _ARG_VM.match(arg0)
         target = ctr_target(ctr.group(1), ctr.group(2)) if ctr else vm_target(*vmm.groups()) if vmm else \
             session_target(_arg_project(arg0),
-                           claude=arg0.startswith("claude:"),
+                           claude=agents.of_arg(arg0)[0] is not None,
                            node=_arg_node(arg0),
                            uid=users.uid_of(self._who() or {}) or "")
         if target["where"] == "refused":
@@ -7319,14 +7321,15 @@ class Handler(BaseHTTPRequestHandler):
         # another machine.
         me = users.uid_of(self._who())
         busy = sorted(x["name"] for x in node_tmux_sessions()
-                      if x.get("node_id") == nid and tmux_base(x["name"]).startswith("claude-")
+                      if x.get("node_id") == nid
+                      and agents.of_session(tmux_base(x["name"]))[0] is agents.get("claude")
                       and (tmux_owner(x["name"]) or users.uid_of(
                           users.get(users.owner_name() or ""))) == me)
         if busy:
             # Said as projects, not tmux names: "u_3deb3420~claude-hello"
             # named nothing a person recognizes, and every one listed is
             # the asker's own.
-            projs = sorted({tmux_base(n)[len("claude-"):] for n in busy})
+            projs = sorted({agents.of_session(tmux_base(n))[1] for n in busy})
             return self._json({"error": "end your Claude session"
                                + ("s" if len(projs) > 1 else "") + " on "
                                + ", ".join(projs) + " first (Sessions, or the tab's Close)"}, 409)

@@ -30,6 +30,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fields import field  # noqa: E402
 from names import tmux_name  # noqa: E402
+import agents  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 
@@ -1004,7 +1005,7 @@ def attention(project_nodes):
 _OWNER = re.compile(r"^u_[0-9a-f]{8}~")
 
 
-def claude_running(node_id, project_nodes):
+def claude_running(node_id, project_nodes, agent="claude"):
     """The project of each Claude session running on a node now, one entry
     per session, from its last heartbeat. What an update of Claude Code
     there ends (B57): the projects bound to the node said 5, 6 or 7 with
@@ -1014,8 +1015,8 @@ def claude_running(node_id, project_nodes):
     out = []
     for r in rows:
         base = _OWNER.sub("", str((r or {}).get("name") or ""))
-        if base.startswith("claude-"):
-            stem = base[len("claude-"):]
+        a, stem = agents.of_session(base)
+        if a and a.id == agent:
             out.append(by_tmux.get(stem, stem))
     return out
 

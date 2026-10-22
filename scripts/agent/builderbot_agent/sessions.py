@@ -12,6 +12,7 @@ import threading
 import time
 from .jobs import pump
 from .base import (
+    AGENT_PREFIXES,
     CLAUDE_DIR,
     DOCKER_BIN,
     FIREWALL_CMD,
@@ -1012,10 +1013,11 @@ class SessionsMixin:
                 f"{', '.join(sorted(have)) or '?'}); firewalld rules replaced")
 
     def session_idle_reap(self):
-        """End this node's Claude sessions past the idle rule: the
-        controller's idle.py, enforced here from node.json. Claude sessions
-        by name (claude-<project>, u_xxxx~claude-<project>), by tmux's own
-        session_activity, once per minute."""
+        """End this node's agent sessions past the idle rule: the
+        controller's idle.py, enforced here from node.json. An agent's
+        sessions by name (claude-<project>, u_xxxx~claude-<project>, the
+        prefixes in AGENT_PREFIXES), by tmux's own session_activity, once
+        per minute."""
         limit = self.state.get("session_idle_minutes") or 0
         if limit <= 0 or time.time() - getattr(self, "_idle_at", 0) < IDLE_UNIT:
             return
@@ -1029,8 +1031,8 @@ class SessionsMixin:
                 last = float(act.strip())
             except ValueError:
                 continue
-            claude = name.startswith("claude-") or "~claude-" in name
-            if claude and time.time() - last > limit * IDLE_UNIT:
+            base = name.split("~", 1)[1] if "~" in name else name
+            if base.startswith(AGENT_PREFIXES) and time.time() - last > limit * IDLE_UNIT:
                 log(f"sessions: ending {name} (idle {limit} minute(s), the controller's rule)")
                 self._tmux(["kill-session", "-t", "=" + name])
 

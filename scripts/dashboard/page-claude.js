@@ -101,7 +101,7 @@ async function claudeEnd(name, n, several){
   try{
     const j = await endSession(myClaude(name), n.id);
     if (j.error) return notify(j.error, true);
-    const arg = `claude:${name}` + (several && n.id ? `:n:${n.id}` : "");
+    const arg = agentArg("claude", name) + (several && n.id ? `:n:${n.id}` : "");
     const t = tabs.find(x => x.kind === "term" && String(x.arg).replace(/:r:[^:]*/, "") === arg);
     if (t) dropTab(t.id);
     notify(`ended your Claude session on ${projLabel(name)}${where}`);
@@ -135,7 +135,7 @@ async function restartNow(name, r){
   const where = n.name ? ` on ${n.name}` : "";
   const j = await endSession(myClaude(name), n.id).catch(e => ({error: String(e)}));
   if (j.error) return j.error;
-  const arg = `claude:${name}` + (n.several && n.id ? `:n:${n.id}` : "");
+  const arg = agentArg("claude", name) + (n.several && n.id ? `:n:${n.id}` : "");
   const t = tabs.find(x => x.kind === "term" && String(x.arg).replace(/:r:[^:]*/, "") === arg);
   if (t) dropTab(t.id);
   for (let i = 0; i < 40 && claudeLiveOn(name, {id: n.id}); i++){
@@ -215,8 +215,8 @@ function launchClaude(name, sessionId, node){
   const p = (state?.projects || []).find(x => x.name === name);
   const nn = node ? (p?.session_nodes || []).find(x => x.id === node)?.name || node : "";
   openTab({kind:"term",
-           arg: `claude:${name}` + (sessionId ? `:r:${sessionId}` : "") + (node ? `:n:${node}` : ""),
-           label: `Claude: ${projLabel(name)}` + (nn ? ` (${nn})` : "")});
+           arg: agentArg("claude", name) + (sessionId ? `:r:${sessionId}` : "") + (node ? `:n:${node}` : ""),
+           label: `${agentById("claude").name}: ${projLabel(name)}` + (nn ? ` (${nn})` : "")});
 }
 
 // ---- a new project's first session ------------------------------------------

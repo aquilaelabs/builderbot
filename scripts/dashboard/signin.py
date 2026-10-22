@@ -31,6 +31,8 @@ import sys
 import threading
 import time
 
+import agents
+
 # The URL the flow prints, and the two things it says when it is over.
 AUTH_URL = re.compile(r"https://(?:claude\.com|console\.anthropic\.com|"
                       r"platform\.claude\.com)/\S+")
@@ -143,7 +145,7 @@ def start_on_node(nodes, node_id, uid, name="", token=""):
     # bb login --flow speaks to the controller with. Without one the flow
     # ended and nobody was told, and the next check signed the node out
     # again as stale (16 Sep).
-    r = nodes.job_add("user:signin", {"node": node_id}, "claude-login",
+    r = nodes.job_add("user:signin", {"node": node_id}, agents.get("claude").login_job,
                       {"uid": str(uid), "timeout": 900, "token": str(token or "")})
     if r.get("error"):
         return r
@@ -236,7 +238,7 @@ def sign_out(node_id, uid):
     why = cannot(n)
     if why:
         return {"error": why}, 400
-    r = nodes.job_add("user:signin", {"node": n["id"]}, "claude-logout",
+    r = nodes.job_add("user:signin", {"node": n["id"]}, agents.get("claude").logout_job,
                       {"uid": str(uid), "timeout": 120})
     if r.get("error"):
         return r, 400

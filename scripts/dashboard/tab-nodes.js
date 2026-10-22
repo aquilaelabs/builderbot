@@ -2256,10 +2256,10 @@ function wireNodesTab(root){
       if (act === "reboot" || act === "poweroff"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
         const here = (state?.sessions || []).filter(x => x.node_id === id);
-        const mine = here.filter(x => tmuxBase(x.name).startsWith("claude-"));
+        const mine = here.filter(x => agentOfSession(tmuxBase(x.name)));
         const open = here.length
           ? `It ends the ${here.length} session${here.length === 1 ? "" : "s"} open there`
-            + `${mine.length ? ` (${mine.length} of them a Claude conversation)` : ""}; transcripts are kept. `
+            + `${mine.length ? ` (${mine.length} of them a ${agentsWord(mine.map(x => x.name))} conversation)` : ""}; transcripts are kept. `
           : "";
         if (!confirm(act === "reboot"
               ? `Reboot ${name}?\n\n${open}Whatever is running there stops; the agent dials in again when the machine is back up.`
@@ -2273,13 +2273,13 @@ function wireNodesTab(root){
       // who pressed this lost two conversations mid-work with no warning.
       if (act === "update-agent"){
         const here = (state?.sessions || []).filter(x => x.node_id === id);
-        const mine = here.filter(x => tmuxBase(x.name).startsWith("claude-"));
+        const mine = here.filter(x => agentOfSession(tmuxBase(x.name)));
         if (here.length && !confirm(
               `Update the agent on ${
                 (nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
               + `This ends the ${here.length} session`
               + `${here.length === 1 ? "" : "s"} open there`
-              + `${mine.length ? ` (${mine.length} of them a Claude conversation)` : ""}`
+              + `${mine.length ? ` (${mine.length} of them a ${agentsWord(mine.map(x => x.name))} conversation)` : ""}`
               + `. Transcripts are kept; whatever they were running stops.`)) return;
       }
       if (act === "gpu-display"

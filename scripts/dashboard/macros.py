@@ -16,6 +16,8 @@ import re
 import shlex
 from pathlib import Path
 
+import agents
+
 # Every command the UI can run, by name. The UI posts a key from this table and
 # nothing else: no argument passthrough, no shell. A dashboard that accepted a
 # command string would be a remote shell with extra steps, and there is already
@@ -357,10 +359,11 @@ def send(session, name, cid, on_node):
         return {"error": f"unknown macro: {name}"}, 400
     if session not in {s["name"] for s in tmux_sessions()} and not on_node:
         return {"error": f"no such session: {session}"}, 400
-    # Never into a Claude session: that would not run the command, it would
-    # submit it as a prompt.
-    if tmux_base(session).startswith("claude-"):
-        return {"error": "refusing to type into a Claude session"}, 400
+    # Never into an agent's session: that would not run the command, it
+    # would submit it as a prompt.
+    agent, _stem = agents.of_session(tmux_base(session))
+    if agent:
+        return {"error": f"refusing to type into a {agent.name} session"}, 400
     sent = lines[0] if len(lines) == 1 else f"{len(lines)} commands"
     if on_node:
         # A shell on the node: the same lines, through its agent.

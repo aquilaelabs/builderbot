@@ -8,6 +8,8 @@ into the status poll.
 import json
 from pathlib import Path
 
+import agents
+
 # How many tabs the page will open. Each terminal tab is an iframe running a
 # full xterm.js with its own websocket, so this is a real ceiling on browser
 # memory rather than a tidiness rule, and a phone hits it far earlier than a
@@ -165,7 +167,7 @@ def prune_claude_tabs():
         return
     for uid in list((_layouts().get("users") or {})):
         v = load_layout(uid)
-        kept = [t for t in v["tabs"] if not t["arg"].startswith("claude:")]
+        kept = [t for t in v["tabs"] if agents.of_arg(t["arg"])[0] is None]
         if len(kept) == len(v["tabs"]):
             continue                    # nothing to drop for this one
         ids = {t["id"] for t in kept}

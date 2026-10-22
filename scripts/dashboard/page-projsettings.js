@@ -69,7 +69,7 @@ const projLabel = name =>
 const tabProject = t => {
   if (t.kind === "notebook") return t.arg;
   const a = String(t.kind === "term" ? t.arg : "");
-  if (a.startsWith("claude:")) return a.slice(7).split(":")[0];
+  if (agentOfArg(a)) return agentOfArg(a).project;
   if (a.startsWith("ctr:") || !a) return "";
   const cwd = (state?.sessions || []).find(s => s.name === sessionOf(a))?.cwd;
   if (!cwd) return a.startsWith("sh:") ? a.split(":")[2] || "" : "";

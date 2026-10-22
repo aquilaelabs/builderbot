@@ -37,6 +37,7 @@ import sys
 # doctor's probe load this module by path.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import names   # noqa: E402
+import agents  # noqa: E402
 from fields import field   # noqa: E402
 import db   # noqa: E402
 import turns   # noqa: E402
@@ -2782,7 +2783,7 @@ def node_gpu_compute(principal, node_id, on):
 
 # The jobs a Reboot or a Shut down waits for, and how the refusal names each.
 POWER_WAITS = {"toolchain": "a toolchain install or removal", "image": "a system image install",
-               "claude-update": "a Claude Code update"}
+               **{a.update_job: f"a {a.product} update" for a in agents.live()}}
 
 
 def node_power(principal, node_id, what):
@@ -3494,15 +3495,15 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-cle
              # account, not the job one (R47). Both matter: the flow prints a
              # prompt with no newline after it, and the grant has to land in
              # the home a session will read it from.
-             "claude-login",
-             # ...and its other half: `claude auth logout` there, in one
-             # account's home, since the login is that machine's to let go.
-             "claude-logout",
-             # Claude Code itself, for the session account: the installer run
-             # there, then the binary pinned where the account cannot write it
-             # (claudecode.py). Queued by an administrator's press and nothing
-             # else; the Claude sessions on the node are ended first.
-             "claude-update",
+             # Each live coding agent's sign-in, sign-out and install, named
+             # by the agent table (agents.py, R95): Claude's are claude-login,
+             # claude-logout (`claude auth logout` there, in one account's
+             # home, since the login is that machine's to let go) and
+             # claude-update (the installer run there, then the binary pinned
+             # where the account cannot write it, claudecode.py). An install
+             # is queued by an administrator's press and nothing else; the
+             # agent's sessions on the node are ended first.
+             *(j for a in agents.live() for j in (a.login_job, a.logout_job, a.update_job) if j),
              # A line typed into a Claude session on the node, Enter pressed
              # only once the pane echoes it (notify.py's rule, run where the
              # pane is): the roadmap's and the tracker's Send to Claude.
