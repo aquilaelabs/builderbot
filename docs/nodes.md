@@ -1671,7 +1671,7 @@ rendering banded groups in the house pattern, same as every other document
 surface. The graduation lands with the first batch of controller settings
 (phase 2), not before: converting the popup while it holds one setting would
 be ceremony. *Where it stands (19 Oct):* the controller's settings are
-**Controller settings**, the first page under Machines on the rail, and the
+**Controller settings**, beside Home in the rail's Home group, and the
 gear keeps the scheme, the time zone and Profile.
 
 **Project-scoped**, which node runs this project's work. One node, named in

@@ -237,7 +237,8 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
   ok(shown.toolchains && !shown.jobs && !shown.nodes && !shown.settings && !shown.users && !shown.roles && !shown.people && !shown.jobsRail,
      `its rail offers Toolchains and leaves out the pages it may not read (${JSON.stringify(shown)})`);
   // Settings is the account's own Profile, open to anybody (the operator,
-  // 19 Oct: Controller settings went to Machines, first).
+  // 19 Oct: Controller settings went to Machines, first; 22 Oct: and then
+  // beside Home).
   // A new account is shown the guide on its first poll; it is put away, as
   // the person would, before the rail is pressed under it.
   await dp.waitForFunction(() => welcomed, null, { timeout: 15000 });
@@ -250,6 +251,23 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
   await dp.close();
   await api('/api/roles', { action: 'assign', name: 'dep', roles: [] });
   await api('/api/roles', { action: 'remove', name: 'tc-viewer' });
+}
+
+// Controller settings is Home's second page, not Machines' (the operator,
+// 22 Oct), and an address from before the move still finds it.
+{
+  const before = await page.evaluate(() => location.hash);
+  await page.evaluate(() => railGo('home'));
+  await page.waitForFunction(() => tabOf(panes[0])?.kind === 'home', null, { timeout: 10000 });
+  const homeNav = await page.evaluate(() => [...document.querySelectorAll('#pane0 > .bar .subnav button')].map(b => b.textContent.trim()).join());
+  const homeAt = await page.evaluate(() => location.hash);
+  await page.evaluate(() => openRoute('#/machines/settings'));
+  await page.waitForFunction(() => tabOf(panes[0])?.kind === 'settings', null, { timeout: 10000 });
+  const moved = await page.evaluate(() => ({ at: location.hash, on: document.querySelector('#rail .ritem.on')?.dataset.rail,
+    machines: RAIL.find(g => g.key === 'machines').tools.map(([k]) => k).join() }));
+  ok(homeNav === 'Home,Controller' && homeAt === '#/home' && moved.at === '#/home/settings' && moved.on === 'home' && moved.machines === 'nodes,storage',
+     `Home's group holds Home and Controller settings, Home still at #/home, and #/machines/settings lands on it under Home (${JSON.stringify({ homeNav, homeAt, ...moved })})`);
+  if (before) await page.evaluate(h => openRoute(h), before);
 }
 
 // Removed, the role goes with it.

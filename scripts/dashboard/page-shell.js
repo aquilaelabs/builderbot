@@ -31,11 +31,14 @@ const RAIL_ICONS = {
 // tools are the tab kinds it holds, the first the one its button opens; a
 // group with several draws them as the page's sub-nav.
 const RAIL = [
-  {key: "home", label: "Home", icon: "home", tools: [["home", "Home"]]},
+  // Controller settings beside Home rather than under Machines (the
+  // operator, 22 Oct): how this BuilderBot behaves is about the whole
+  // install, which is what Home is.
+  {key: "home", label: "Home", icon: "home", tools: [["home", "Home"], ["settings", "Controller"]]},
   {key: "projects", label: "Projects", icon: "projects", tools: [["projects", "Projects"], ["findings", "Analysis"]]},
   {key: "build", label: "Build", icon: "toolchains", tools: [["toolchains", "Toolchains"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"], ["apps", "Apps"]]},
   {key: "containers", label: "Containers", icon: "docker", tools: [["docker", "Containers"], ["vms", "VMs"], ["nginx", "nginx"]]},
-  {key: "machines", label: "Machines", icon: "nodes", tools: [["settings", "Controller"], ["nodes", "Nodes"], ["storage", "Storage"]]},
+  {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"]]},
   {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
   {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"]]},
   {key: "people", label: "People", icon: "people", tools: [["users", "Users"], ["roles", "Roles"]], admin: true},
@@ -78,8 +81,7 @@ function railGroups(){
   return RAIL.filter(g => (g.tools || []).some(([k]) => railAllows(k)));
 }
 // The page a group opens on: the one asked for when this account may open
-// it, else the group's first that it may. Machines opens Nodes for an
-// account the Controller page is not drawn for.
+// it, else the group's first that it may.
 function railTool(g, want){
   const ok = (g.tools || []).filter(([k]) => railAllows(k)).map(([k]) => k);
   return want && ok.includes(want) ? want : ok[0] || "";
@@ -176,6 +178,9 @@ function routeOf(t){
   if (t.kind === "help") return "#/help" + (helpCur && helpCur !== helpIndex?.home ? "/" + encodeURIComponent(helpCur) : "");
   const g = groupOf(t.kind);
   if (!g) return "";
+  // Home is #/home, the address everything links to, though its group
+  // holds Controller settings too.
+  if (t.kind === "home") return "#/home";
   const node = NODE_PICKED[t.kind]?.() || "";
   return ((g.tools || []).length > 1 ? `#/${g.key}/${t.kind}` : `#/${g.key}`) + (node ? "/" + encodeURIComponent(node) : "");
 }
@@ -209,8 +214,11 @@ function openRoute(hash){
     if (helpIndex && helpCur) helpRead(helpCur);
     return true;
   }
-  const g = RAIL.find(x => x.key === key);
+  let g = RAIL.find(x => x.key === key);
   if (!g) return false;
+  // A page that moved group keeps its old address: #/machines/settings, a
+  // bookmark from before Controller settings went to Home, opens it there.
+  if (a && !(g.tools || []).some(([k]) => k === a) && groupOf(a)) g = groupOf(a);
   const multi = (g.tools || []).length > 1;
   // A group of one tool names its node second (#/group/NODE), as routeOf
   // writes it.

@@ -277,7 +277,7 @@ asks for a fresh one, which the node's next report brings.
 
 ## Controller settings
 
-**Controller settings**, the first page under Machines (`#/machines/settings`),
+**Controller settings**, beside Home in the rail's Home group (`#/home/settings`),
 drawn only for an account that may read the controller, is what the
 **controller** owns and can apply live. Its bar carries the container's uptime
 and the build it is serving. Its sections, each with its own Apply and Revert:
