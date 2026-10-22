@@ -197,7 +197,7 @@ bb node busy [--json]
                    whether this node is quiet enough to time anything on: its load,
                    memory and card (what holds the card's memory, by kind), what
                    runs there by kind (emulators, Gradle, compilers, browsers,
-                   other Claude sessions working, other projects' jobs, counted
+                   other agents' sessions working, other projects' jobs, counted
                    and never named) and a verdict: quiet, busy, saturated
 bb node wait-quiet [--level quiet|busy] [--timeout SECONDS]
                    wait until it is (quiet twice, ten seconds apart), before a
@@ -415,7 +415,7 @@ bb help TOPIC      one topic of the session briefing in full (start, where, map,
                    speed, capture, asks, notebook, versions, git, android, gpu, containers);
                    bb help topics lists them, bb help VERB one verb's lines
 bb brief           the brief this project was started from: waiting for its first
-                   Claude session, or kept after that session started
+                   session, whichever agent runs it, or kept after that session started
 bb design          what this project looks like, from the notebook's Design view:
                    its design language in a line, and its pages
 bb design show [ID|NAME]   the prompt for one page, or for the language alone:
@@ -439,7 +439,7 @@ bb transcripts     your own conversations on this project, from every coding age
                    you use, each marked with its agent, newest first, as the
                    Profile page lists them (bb -p NAME for one it reads)
 bb transcripts show ID [--tz ZONE] [--all]   one of them as text: what was said,
-                   every command Claude ran and what it answered; the newest
+                   every command it ran and what it answered; the newest
                    16 MB of a longer one, the whole of it with --all
 bb transcripts fetch ID [--into DIR]   the file itself into this machine's folder
                    for it: how a node holding its projects as a synced copy

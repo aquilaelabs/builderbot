@@ -1337,7 +1337,7 @@ case "$target" in
         # starts; the else below is what says so, because an empty answer used
         # to be an ordinary state (a project with nothing on its lists) and
         # since the briefing joined it, empty means the fetch failed (B160).
-        pre="$(BB_PROJECT="$proj" BB_UID="$account" bb preamble --json 2>/dev/null || true)"
+        pre="$(BB_PROJECT="$proj" BB_UID="$account" BB_AGENT="$agent" bb preamble --json 2>/dev/null || true)"
         roadmap_block="$(printf '%s' "$pre" | jq -r '.text // ""' 2>/dev/null || true)"
         # Named as the dashboard shows the project, with its id, not by its
         # folder: the name is what the Claude app lists the session under,

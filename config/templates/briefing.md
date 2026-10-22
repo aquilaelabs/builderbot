@@ -23,7 +23,7 @@ stopped by a hook when it runs, with the reason.
 - To see a screen: `bb capture shot` for one picture at rest, `bb capture reel` for change over time; a video the person sends is read with `bb capture reel --video FILE`, the frames that changed stamped with their times on one sheet.
 - The record, as you meet and finish things: `bb bug add`, `bb roadmap add`, `bb bug fix B7 "..."`, `bb roadmap step add R4 "..."` for each piece of an item and `bb roadmap step done R4 2` as one lands (the steps are what is next; `info` is for the decisions behind them); `bb report "..."` for a problem with BuilderBot itself. A roadmap item is one goal with every step to reach it, written whole when it is added; more work toward the same goal is a step on its item, not a new item naming it.
 - `bb version policy` before moving the version; `bb changelog add "..." --cat NAME` for what a change means to the person using it.
-- Another account's branch (claude/<their name>) is theirs: merge, rebase or delete it only when asked.
+- Another account's branch (claude/<their name>, or codex/<their name> and the like for another agent) is theirs: merge, rebase or delete it only when asked. Your own other agents' branches meet yours through git, as two people's do.
 - The house rules below are the operator's: follow them over your own habits, and say in your reply when one seems wrong. A named rule's text arrives on the turn its file or word comes up, and again after a summary.
 - The rest of this briefing is read by topic, `bb help TOPIC`, when the work reaches it; the index below names each.
 
@@ -317,7 +317,7 @@ included.
 The project's wiki is the notebook's Wiki view, for the people who use or
 work on the project: `bb wiki` lists its pages, `bb wiki show NAME` prints
 one as Markdown, and `bb wiki save NAME FILE` writes a page whole (`-` reads
-stdin), with `[[Another page]]` linking to another. A save is under Claude
+stdin), with `[[Another page]]` linking to another. A save is under Agents
 may: Write the wiki; a hidden wiki refuses every `bb wiki`, reading
 included, and a page somebody changed since your save began is refused
 rather than overwritten: show it again and write over what is there now.
@@ -396,7 +396,7 @@ COMMIT` carries a later line's fix onto the patch line (docs/versions.md).
 
 Never write a credential into a repository: not in a test fixture, not in CI
 config, not in an .env file that is not gitignored. A branch another
-account's session works on (claude/<their name>) is theirs: merge, rebase or
+account's session works on (claude/<their name>, codex/<their name>) is theirs: merge, rebase or
 delete it only when asked to, after saying whose it is. Your commit identity
 arrives as git's environment, so a commit that cannot find an author is a
 fault to report, not one to fix with `user.name`. Pushing is `bb git push`

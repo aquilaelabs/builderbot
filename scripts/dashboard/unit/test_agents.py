@@ -144,6 +144,19 @@ class Transcripts(unittest.TestCase):
         self.assertIsNone(transcripts.raw("u_0000aaaa", "alpha", "theirs-1"))
 
 
+class Briefing(unittest.TestCase):
+    """R95 step 5: one briefing for every agent, named where it matters."""
+
+    def test_another_agent_is_told_what_it_is_ahead_of_the_block(self):
+        import preamble
+        self.assertEqual(preamble.for_agent("claude", "BODY"), "BODY")
+        self.assertEqual(preamble.for_agent("", "BODY"), "BODY")
+        got = preamble.for_agent("copilot", "BODY")
+        self.assertTrue(got.startswith("This session runs Copilot CLI, BuilderBot's Copilot agent."))
+        self.assertTrue(got.endswith("\n\nBODY"))
+        self.assertEqual(preamble.for_agent("codex", ""), "")
+
+
 class ByPath(unittest.TestCase):
     """bb loads the notebook's modules by path (lib/dash.py), with nothing of
     the dashboard on sys.path: each that reads the agent table finds it."""
