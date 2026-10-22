@@ -58,17 +58,29 @@ enroll_script = None       # nodes.enroll_script, for a VM made a node (step 14)
 node_retire = None         # (principal, node id): its node retired with it
 node_mark = None           # (node id, host node id): the row says it is a VM there
 node_discard = None        # (principal, node id): a waiting row taken off when its VM is refused
+job_tail = None            # (job id): the end of its log, where the agent says why it refused
 _lock = threading.Lock()
 _rev = [0]
 _seen = {"nodes": None, "sig": 0}
 
 
 def configure(*, state, write_json, node, node_list, job_add, audit, prefs_get, nodes_rev=lambda: 0,
-              enroll_script=None, node_retire=None, node_mark=None, node_discard=None):
+              enroll_script=None, node_retire=None, node_mark=None, node_discard=None, job_tail=None):
     globals().update(STATE=Path(state), write_json=write_json, node=node, node_list=node_list,
                      job_add=job_add, audit=audit, prefs_get=prefs_get, nodes_rev=nodes_rev,
                      enroll_script=enroll_script, node_retire=node_retire, node_mark=node_mark,
-                     node_discard=node_discard)
+                     node_discard=node_discard, job_tail=job_tail)
+
+
+def _why(job, fallback):
+    """Why a vm job failed, for its row: the agent's own refusal from the
+    job's log when it said one, not the bare exit code (B191)."""
+    said = job.get("error") or ""
+    if (not said or said.startswith("exit ")) and job_tail and job.get("id"):
+        refused = [ln for ln in job_tail(job["id"]).splitlines() if ln.startswith("refused: ")]
+        if refused:
+            return refused[-1].removeprefix("refused: ")
+    return said or fallback
 
 
 def rev():
@@ -768,7 +780,7 @@ def vm_done(job, state):
         elif spec.get("action") == "create":
             rec["state"] = "made" if ok else "failed"
             rec["made_at"] = int(time.time())
-            rec["error"] = "" if ok else (job.get("error") or f"its create job {state}; the job's log says why")[:300]
+            rec["error"] = "" if ok else _why(job, f"its create job {state}; the job's log says why")[:300]
         elif ok and spec.get("action") == "disk-grow":
             i = DISK_DEVS.index(spec.get("disk") or "vda")
             if i == 0:
@@ -790,5 +802,5 @@ def vm_done(job, state):
         elif not ok:
             if spec.get("action") == "remove":
                 rec["state"] = "made"
-            rec["error"] = (job.get("error") or f"{spec.get('action')} {state}; the job's log says why")[:300]
+            rec["error"] = _why(job, f"{spec.get('action')} {state}; the job's log says why")[:300]
         _save(d)

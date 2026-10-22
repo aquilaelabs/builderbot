@@ -74,6 +74,16 @@ class Controller(unittest.TestCase):
         spec = self.f.jobs[-1][2]
         self.assertEqual((spec["hw"], spec["autostart"]), ({"cpuset": [0, 1], "net": "lan"}, True))
 
+    def test_a_refused_job_leaves_the_agent_s_reason_on_the_row(self):
+        # B191: the agent's refusal from the job's log, not "exit 64".
+        self.new()
+        vms.vm_done({"id": "j1", "node": "n1", "spec": {"action": "create", "domain": "bbvm-web-db"}, "error": "exit 64"}, "failed")
+        self.assertEqual(vms.view()[0]["error"], "exit 64", "with no log to read, the code is all there is")
+        vms.job_tail = lambda jid: "image: cached\nrefused: /workspace/web/docs is not a folder on this node\n"
+        self.addCleanup(setattr, vms, "job_tail", None)
+        vms.vm_done({"id": "j1", "node": "n1", "spec": {"action": "create", "domain": "bbvm-web-db"}, "error": "exit 64"}, "failed")
+        self.assertEqual(vms.view()[0]["error"], "/workspace/web/docs is not a folder on this node")
+
     def test_the_os_is_found_however_it_is_said(self):
         for said, want in (("Debian 12", "debian-12"), ("debian", "debian-13"), ("ubuntu-24.04", "ubuntu-24.04"),
                            ("rocky", "rocky-10"), ("Ubuntu 26.04 LTS", "ubuntu-26.04"), ("noble", "ubuntu-24.04"),

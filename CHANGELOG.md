@@ -12,6 +12,7 @@
 - A snapshot of a VM that boots by UEFI (Debian 13, an installer VM set to UEFI) works, where it failed; one made in 0.6.0 takes its first snapshot once it has been stopped (587f511)
 - An empty Containers or VMs page's tour shows an example row on a phone as well, where its step ringed the empty notice (c349a34)
 - Reopening the dashboard on a phone no longer asks whether to leave the page over unsaved data: a terminal's own leave warning is off, since nothing in a terminal is lost by leaving. (b0b6e58)
+- A VM whose job its node refused says why on its row, as the node said it, instead of an exit code. (4383554)
 
 ## 0.6.0: 2026-10-21
 
