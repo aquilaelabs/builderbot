@@ -315,6 +315,14 @@ class Agent(unittest.TestCase):
         self.assertEqual(self.av.sums_lookup("d" * 128 + "\n", "alpine.qcow2"), "d" * 128)
         self.assertEqual(self.av.sums_lookup(f"{h} *other.img\n", "missing.img"), "")
 
+    def test_an_image_s_size_is_read_so_a_disk_is_never_smaller(self):
+        from unittest import mock
+        ran = mock.Mock(stdout=json.dumps({"virtual-size": 21474836480}))
+        with mock.patch.object(self.av.subprocess, "run", return_value=ran):
+            self.assertEqual(self.av.image_bytes("/v/gentoo.qcow2"), 20 * 2**30)
+        with mock.patch.object(self.av.subprocess, "run", side_effect=OSError):
+            self.assertEqual(self.av.image_bytes("/v/none.qcow2"), 0)
+
     def test_nothing_outside_the_shapes_reaches_a_command(self):
         a = object.__new__(self.agent.Agent)
         a.state = {}

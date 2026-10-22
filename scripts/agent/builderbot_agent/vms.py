@@ -255,6 +255,15 @@ OVMF_PAIRS = (("/usr/share/OVMF/OVMF_CODE_4M.fd", "/usr/share/OVMF/OVMF_VARS_4M.
               ("/usr/share/OVMF/OVMF_CODE.fd", "/usr/share/OVMF/OVMF_VARS.fd"))
 
 
+def image_bytes(path):
+    """The virtual size of a disk image, or 0 if it cannot be read."""
+    try:
+        out = subprocess.run(["qemu-img", "info", "-U", "--output=json", path], capture_output=True, text=True, timeout=60).stdout
+        return int(json.loads(out).get("virtual-size") or 0)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return 0
+
+
 def ovmf():
     """(code, vars template) of the UEFI firmware here, or None."""
     return next((p for p in OVMF_PAIRS if os.path.isfile(p[0]) and os.path.isfile(p[1])), None)
@@ -546,6 +555,13 @@ class VmsMixin:
         self.own_dir(ddir, who)
         disk = os.path.join(ddir, name + ".qcow2")
         job.step("making its disk")
+        # Never smaller than the image under it, or its last partition runs
+        # past the disk's end and the system cannot find its root (Gentoo's
+        # image is 20 GB).
+        need = 0 if iso else -(-image_bytes(base) // 2**30)
+        if need > disk_gb:
+            job.say(f"its disk is {need} GB rather than {disk_gb}: the image it starts from is that size already\n")
+            disk_gb = need
         made = ["qemu-img", "create", "-f", "qcow2", disk, f"{disk_gb}G"] if iso else \
             ["qemu-img", "create", "-f", "qcow2", "-F", "qcow2", "-b", base, disk, f"{disk_gb}G"]
         if self._vm_run(job, made, who, say=False) != 0:
