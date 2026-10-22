@@ -53,7 +53,7 @@ class Controller:
             # A public hostname (R170): the system's CAs and the name, as a
             # browser would; nothing is pinned, since the certificate the
             # node sees is Cloudflare's edge's and not the controller's.
-            c = http.client.HTTPSConnection(self.host, self.port, timeout=timeout, context=ctx)
+            c = http.client.HTTPSConnection(self.host, self.port, timeout=timeout, context=ctx)  # nosemgrep: python.lang.security.audit.httpsconnection-detected.httpsconnection-detected (its own CA, verified: ctx)
             c.connect()
             self.seen_pin = self.CA
             return c
@@ -62,7 +62,7 @@ class Controller:
         # The certificate is pinned on first use and any other refused; a CA
         # check would refuse the self-signed one a home proxy serves.
         # nosemgrep: httpsconnection-detected
-        c = http.client.HTTPSConnection(self.host, self.port, timeout=timeout,
+        c = http.client.HTTPSConnection(self.host, self.port, timeout=timeout,  # nosemgrep: python.lang.security.audit.httpsconnection-detected.httpsconnection-detected (its own CA, verified: ctx)
                                         context=ctx)
         c.connect()
         seen = "sha256:" + hashlib.sha256(c.sock.getpeercert(True)).hexdigest()

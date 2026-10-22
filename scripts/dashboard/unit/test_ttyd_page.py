@@ -13,7 +13,7 @@ TREE = ast.parse(SRC).body
 NODES = [n for n in TREE if (isinstance(n, ast.FunctionDef) and n.name == "_ttyd_page")
          or (isinstance(n, ast.Assign) and any(getattr(t, "id", "") in ("_TTYD_HEAD", "_TTYD_DPR") for t in n.targets))]
 NS = {}
-exec(compile(ast.Module(NODES, []), "server.py", "exec"), NS)  # noqa: S102 (our own function)
+exec(compile(ast.Module(NODES, []), "server.py", "exec"), NS)  # noqa: S102 (our own function)  # nosemgrep: python.lang.security.audit.exec-detected.exec-detected
 page, HEAD = NS["_ttyd_page"], NS["_TTYD_HEAD"]
 
 BODY = b'<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>ttyd - Terminal</title></head><body></body></html>'

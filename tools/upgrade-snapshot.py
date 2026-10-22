@@ -105,7 +105,7 @@ class Controller:
             if self.proc.poll() is not None:
                 raise SystemExit(f"the controller exited:\n{(world / 'server.log').read_text()}")
             try:
-                urllib.request.urlopen(f"http://127.0.0.1:{self.port}/login", timeout=2)
+                urllib.request.urlopen(f"http://127.0.0.1:{self.port}/login", timeout=2)  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected (its own controller on loopback)
                 return
             except urllib.error.HTTPError:
                 return
@@ -143,7 +143,7 @@ class Controller:
         req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", data=data, headers=headers,
                                      method="POST" if body is not None else "GET")
         try:
-            with urllib.request.urlopen(req, timeout=60) as r:
+            with urllib.request.urlopen(req, timeout=60) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected (its own controller on loopback)
                 out = json.loads(r.read() or b"{}")
         except urllib.error.HTTPError as e:
             out = {"error": f"{e.code}: {e.read()[:300].decode(errors='replace')}"}
@@ -182,7 +182,7 @@ def fill(c):
                                  headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
                                  data=json.dumps({"user": "bb", "version": "snapshot", "census": {
                                      "cpu": 4, "mem_mb": 8192, "arch": "x86_64", "system": "linux"}}).encode())
-    urllib.request.urlopen(req, timeout=30).read()
+    urllib.request.urlopen(req, timeout=30).read()  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected (its own controller on loopback)
     for name, p in PEOPLE.items():
         c.call("/api/users", {"action": "add", "name": name, "password": p["password"], "role": p["role"],
                               "profile": {"full_name": p["full_name"], "email": f"{name}@example.com"}})

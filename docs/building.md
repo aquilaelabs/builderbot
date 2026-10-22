@@ -191,6 +191,9 @@ needs setting up, so every BuilderBot and every project gets it. R117.
 
 ## Static analysis reports
 
+Setting up the scanners that write these reports, and the script that
+runs them, is [scanners.md](scanners.md).
+
 If you run a scanner on the host, only its **output** is mounted, read-only,
 from `SCANNER_REPORTS_PATH`:
 

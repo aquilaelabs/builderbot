@@ -463,7 +463,7 @@ def attention(projects):
     for p in projects:
         r = readiness(p)
         if r["wanted"] and r["why"]:
-            h = hashlib.sha1(r["why"].encode()).hexdigest()[:10]
+            h = hashlib.sha256(r["why"].encode()).hexdigest()[:10]
             out.append({"kind": "release-sign", "id": p, "project": p, "why": r["why"], "bad": False,
                         "key": f"rsign:{p}@{h}"})
         for tag, f in ((whole.get(p) or {}).get("failed") or {}).items():

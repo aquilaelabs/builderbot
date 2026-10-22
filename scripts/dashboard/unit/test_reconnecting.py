@@ -18,7 +18,7 @@ def reconnecting(n, started, wait=300, others=()):
         def node_list():
             return [{"kind": "agent", **x} for x in (n, *others)]
     ns = {"time": time, "STARTED": started, "NODE_WAIT": wait, "_DOWN": [], "nodes": Nodes}
-    exec(compile(ast.Module(FNS, []), "server.py", "exec"), ns)  # noqa: S102 (our own function)
+    exec(compile(ast.Module(FNS, []), "server.py", "exec"), ns)  # noqa: S102 (our own function)  # nosemgrep: python.lang.security.audit.exec-detected.exec-detected
     return ns["_reconnecting"](n)
 
 

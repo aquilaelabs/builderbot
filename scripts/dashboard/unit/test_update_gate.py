@@ -190,7 +190,7 @@ class AgentFlush(unittest.TestCase):
         src = (Path(__file__).parent.parent / "server.py").read_text()
         node = next(n for n in ast.parse(src).body if isinstance(n, ast.Assign)
                     and getattr(n.targets[0], "id", "") == "MAX_BODY_FOR")
-        caps = eval(compile(ast.Expression(node.value), "server.py", "eval"))  # noqa: S307 (our own constant)
+        caps = eval(compile(ast.Expression(node.value), "server.py", "eval"))  # noqa: S307 (our own constant)  # nosemgrep: python.lang.security.audit.eval-detected.eval-detected
         self.assertGreaterEqual(caps["/api/v1/agent/log"], 6 * 72 * 1024,
                                 "the controller takes the largest post the agent can make")
 

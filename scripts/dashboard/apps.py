@@ -149,7 +149,7 @@ def _get(url, limit=MAX_BYTES, accept="application/octet-stream, application/jso
     # No credential: the apps come from BuilderBot's public releases alone
     # (the operator, 20 Oct), so a controller holds no GitHub token for them.
     req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "builderbot-apps"})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:                   # noqa: S310 (our releases, or a test's file)
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:                   # noqa: S310 (our releases, or a test's file)  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         body = r.read(limit + 1)
     if len(body) > limit:
         raise ValueError(f"more than {limit >> 20} MB")
