@@ -2925,6 +2925,8 @@ case "${1-}" in
     *) die "unknown command: $1. Try: bb-sandbox --help" ;;
 esac
 BBSANDBOX
+# Alpine's cloud image has no /usr/local/sbin until something makes it.
+install -d -m 0755 /usr/local/sbin
 install -m 0750 "$BBSANDBOX_TMP" /usr/local/sbin/bb-sandbox
 rm -f "$BBSANDBOX_TMP"
 # Root's, and nobody else's: 0750 root:root. Anyone the operator has given
