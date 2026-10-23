@@ -40,6 +40,38 @@ from .toolchains import sdk_env
 from .census import controller_ip, network_now
 
 
+
+def _pin_release(pin_dir, cmd, root):
+    """Pin an agent the vendor installs as a release folder (Codex CLI's:
+    bin/codex, bin/codex-code-mode-host and codex-resources beside them): the
+    whole folder copied root-owned to <pin_dir>/release, swapped in whole,
+    and the command and each helper beside it a link into it, so the agent
+    finds its helpers where it looks, beside its own executable. Copying the
+    one binary left Codex 0.163 without codex-code-mode-host, and every
+    command a session ran failed (B247)."""
+    new, rel, old = (os.path.join(pin_dir, n) for n in (".release.new", "release", ".release.old"))
+    shutil.rmtree(new, ignore_errors=True)
+    shutil.copytree(root, new, symlinks=True)
+    for d, dirs, files in os.walk(new):
+        for n in dirs + files:
+            with contextlib.suppress(OSError):
+                os.lchown(os.path.join(d, n), 0, 0)
+    os.lchown(new, 0, 0)
+    os.chmod(new, 0o755)
+    shutil.rmtree(old, ignore_errors=True)
+    if os.path.isdir(rel) and not os.path.islink(rel):
+        os.replace(rel, old)
+    os.replace(new, rel)
+    shutil.rmtree(old, ignore_errors=True)
+    for exe in sorted(os.listdir(os.path.join(rel, "bin"))):
+        if not (exe == cmd or exe.startswith(cmd + "-")):
+            continue
+        link, tmp = os.path.join(pin_dir, exe), os.path.join(pin_dir, exe + ".new")
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp)
+        os.symlink(os.path.join("release", "bin", exe), tmp)
+        os.replace(tmp, link)
+
 class SessionWatch:
     """The node's sessions reported the moment one changes (a session
     starting, ending, a Claude pane turning from waiting to working), so
@@ -753,6 +785,16 @@ class SessionsMixin:
                     with contextlib.suppress(OSError):
                         os.unlink(path)
                         gone.append(path)
+            # ...and a pinned release folder, with the links into it.
+            rel = os.path.join(pin_dir, "release")
+            if os.path.isdir(rel) and not os.path.islink(rel):
+                for f in os.listdir(pin_dir):
+                    p = os.path.join(pin_dir, f)
+                    if os.path.islink(p) and os.path.realpath(p).startswith(os.path.realpath(rel) + os.sep):
+                        with contextlib.suppress(OSError):
+                            os.unlink(p)
+                shutil.rmtree(rel, ignore_errors=True)
+                gone.append(rel)
             job.say(("removed " + ", ".join(gone)) if gone else f"{product} was not installed here")
             job.say("\n")
             self.hello_again(f"{product} was removed")
@@ -803,11 +845,14 @@ class SessionsMixin:
         if os.geteuid() == 0:
             try:
                 os.makedirs(pin_dir, mode=0o755, exist_ok=True)
-                tmp = os.path.join(pin_dir, cmd + ".new")
-                shutil.copy2(src, tmp)
-                os.chown(tmp, 0, 0)
-                os.chmod(tmp, 0o755)
-                os.replace(tmp, os.path.join(pin_dir, cmd))
+                if os.path.basename(os.path.dirname(src)) == "bin":
+                    _pin_release(pin_dir, cmd, os.path.dirname(os.path.dirname(src)))
+                else:
+                    tmp = os.path.join(pin_dir, cmd + ".new")
+                    shutil.copy2(src, tmp)
+                    os.chown(tmp, 0, 0)
+                    os.chmod(tmp, 0o755)
+                    os.replace(tmp, os.path.join(pin_dir, cmd))
                 job.say(f"pinned {ver} at {pin_dir}/{cmd}, root-owned: a session runs this copy and cannot change it\n")
             except OSError as e:
                 job.say(f"installed {ver} for {who_name}, but could not pin it: {e}\n")
