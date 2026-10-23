@@ -1418,6 +1418,25 @@ cmd_emu() {
             # boot of a new level on a busy node ran past the old 180 and was
             # called failed while it booted on (Shebang-DevBoard, 6 Oct); and
             # at once for one that has exited, whose reason is in the log.
+            # Room for the phone's data on its first boot, said before the
+            # start: the emulator makes the userdata partition then, needs a
+            # fifth more than its size free, and otherwise dies with a FATAL
+            # in its log after the wait (diagnostics #126, a node's disk 97%
+            # full). Once made, the partition is there and nothing is checked.
+            local adir; adir="$(avd_path "$avd")"
+            if [ -n "$adir" ] && [ -d "$adir" ] && [ ! -e "$adir/userdata-qemu.img" ]; then
+                local size free_mb need_mb
+                size="$(sed -n 's/^disk.dataPartition.size=//p' "$adir/config.ini" 2>/dev/null | head -1)"
+                case "${size:-6G}" in
+                    *[Gg]*) need_mb=$(( ${size%%[GgBb]*} * 1024 * 6 / 5 )) ;;
+                    *[Mm]*) need_mb=$(( ${size%%[MmBb]*} * 6 / 5 )) ;;
+                    *)      need_mb=$(( 6 * 1024 * 6 / 5 )) ;;
+                esac
+                free_mb="$(df -Pm "$adir" 2>/dev/null | awk 'NR == 2 { print $4 }')"
+                if [ -n "$free_mb" ] && [ "$free_mb" -lt "$need_mb" ]; then
+                    die "the phone's first boot needs ${need_mb} MB free on the disk under $(dirname "$adir") and there are ${free_mb} MB: say so in your reply: the person frees space on this node, where every project's phones are kept under $(dirname "$(dirname "$adir")")"
+                fi
+            fi
             local serial="" epid="" waited=0 tries=0 why="" booted=""
             while :; do
                 tries=$((tries + 1))
