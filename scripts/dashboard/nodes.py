@@ -1485,7 +1485,8 @@ def _census(c):
             "slow": [str(x)[:200] for x in (st.get("slow") or [])[:16]],
             # Each project's phones (R123), for the page's Remove.
             "phones": [{"project": str(p.get("project") or "")[:100], "uid": str(p.get("uid") or "")[:20],
-                        "name": str(p.get("name") or "")[:80], "mb": mb(p.get("mb")), "running": bool(p.get("running"))}
+                        "name": str(p.get("name") or "")[:80], "mb": mb(p.get("mb")), "running": bool(p.get("running")),
+                        "ran": mb(p.get("ran")) or 0, "snap_mb": mb(p.get("snap_mb")) or 0}
                        for p in (st.get("phones") or [])[:200] if isinstance(p, dict)]}
     out["mounts"] = []
     for m in (c.get("mounts") if isinstance(c.get("mounts"), list) else [])[:32]:
@@ -2490,6 +2491,18 @@ def room_short(nid, floor_gb, roles=("docker", "root"), need_mb=0):
         return (f"{n.get('name') or nid} has {round(free / 1024, 1)} GB free for {ROOM_WHAT.get(role, role)}, "
                 f"under the {round(keep / 1024, 1):g} GB a node keeps for itself: free some first (its Storage page says what holds it)")
     return ""
+
+
+def homes_full(nid, pct=90):
+    """Whether the filesystem holding the accounts' homes on `nid` is past
+    `pct` used and a phone there is not running (R129): where the room
+    keeper's phones-idle job has something to give back."""
+    st = ((node(nid) or {}).get("reported") or {}).get("storage") or {}
+    fs = (st.get("homes") or {}).get("fs") or ""
+    for f in st.get("filesystems") or []:
+        if f.get("path") == fs and f.get("total_mb") and (f.get("used_mb") or 0) * 100 >= pct * f["total_mb"]:
+            return any(not p.get("running") for p in st.get("phones") or [])
+    return False
 
 
 # Set by server.py (R110): the floor in GB a build or test on a node is held
@@ -3760,6 +3773,8 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-cle
              "storage",
              # One project's phone off the node, from the Storage page (R123).
              "avd-remove",
+             # The idle phones' quick-boot snapshots, the room keeper's (R129).
+             "phones-idle",
              # An Android system image onto a node's toolchain store, or off
              # it: there without being a toolchain (emulator.py).
              "image",

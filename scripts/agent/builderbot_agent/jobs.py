@@ -266,6 +266,8 @@ class Job(threading.Thread):
                 state, code = self.agent.storage_measure(self, spec)
             elif self.job.get("type") == "avd-remove":
                 state, code = self.agent.avd_remove(self, spec)
+            elif self.job.get("type") == "phones-idle":
+                state, code = self.agent.phones_idle(self, spec)
             elif self.job.get("type") in ("claude-login", *AGENT_LOGINS):
                 # Claude's, or another coding agent's (R95 step 3): the same
                 # pty and the same channel, `bb login --flow` told which.

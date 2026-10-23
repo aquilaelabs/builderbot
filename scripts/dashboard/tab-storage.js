@@ -207,12 +207,15 @@ function storageProjects(n, where){
 // time, never while it runs, and made again by the next bb emu start.
 function storagePhones(n){
   const rows = [...(n.phones || [])].sort((a, b) => (b.mb || 0) - (a.mb || 0));
-  const cols = [{label: "Phone"}, {label: "Project"}, {label: "Account"}, {label: "size", num: true},
+  const cols = [{label: "Phone"}, {label: "Project"}, {label: "Account"}, {label: "last started"},
+                {label: "snapshot", num: true}, {label: "size", num: true},
                 ...(storageWrite ? [{act: true, w: "6.5rem"}] : [])];
   return `<div class="field"><div class="hint">A phone is remade the next time its project runs <code>bb emu start</code>; what was installed and signed in on it is gone.</div></div>`
     + tblWrap(cols, rows.map(p => `<div class="row stack2 stphone">${tblLine(cols, [
       `<span class="name">${esc(p.name)}</span>${p.running ? ` <span class="pill ok">running</span>` : ""}`,
       esc(projLabel(p.project)), `<span class="dim">${esc(p.uid === state?.uid ? "yours" : p.uid || "the session account")}</span>`,
+      p.running ? "now" : p.ran ? esc(ago(p.ran)) : `<span class="dim">never</span>`,
+      p.snap_mb ? sgb(p.snap_mb) : `<span class="dim">none</span>`,
       p.mb === null || p.mb === undefined ? `<span class="dim">?</span>` : sgb(p.mb),
       ...(storageWrite ? [p.running ? `<span class="sub dim">stop it first</span>`
         : `<button type="button" class="danger" data-stavd="${esc(p.project)}" data-uid="${esc(p.uid)}" data-avd="${esc(p.name)}">Remove</button>`] : [])])}</div>`).join(""), "sttbl");

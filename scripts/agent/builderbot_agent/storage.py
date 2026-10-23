@@ -242,8 +242,14 @@ def _phones(home):
                     if not AVD_RE.match(name):
                         continue
                     mb = (sizes or {}).get(name + ".avd") if sizes is not None else None
+                    avd = os.path.join(d, proj, name + ".avd")
+                    # When it last started and what its quick-boot snapshot
+                    # holds (R129): what the room keeper and bb tidy go by.
+                    ran = next((int(os.path.getmtime(os.path.join(avd, f))) for f in ("hardware-qemu.ini", "emulator-user.ini")
+                                if os.path.exists(os.path.join(avd, f))), 0)
+                    snap = (_du_children(os.path.join(avd, "snapshots")) or {}).get("", 0)
                     out.append({"project": proj, "uid": uid, "name": name, "mb": mb,
-                                "running": avd_running(os.path.join(d, proj, name + ".avd"))})
+                                "running": avd_running(avd), "ran": ran, "snap_mb": snap})
     return out[:200]
 
 

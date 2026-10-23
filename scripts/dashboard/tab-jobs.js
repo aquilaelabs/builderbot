@@ -100,6 +100,8 @@ function jobTitle(j){
     return `tell ${esc(jobSessionWords(s.session))}: "${esc(text.slice(0, 60))}${text.length > 60 ? "…" : ""}"`;
   }
   if (j.type === "cache-clear") return `clear ${s.project ? esc(projLabel(s.project)) + "'s caches" : "every cache"}`;
+  if (j.type === "phones-idle") return "the idle phones' quick-boot snapshots";
+  if (j.type === "avd-remove") return `remove ${esc(projLabel(s.project || ""))}'s phone ${esc(s.name || "")}`;
   // Run on another node of the project's set because its primary was not
   // up (R82 step 6): said on the row, since the row is where it is looked for.
   const stood = s.fell_over ? " (its primary was not up)" : "";

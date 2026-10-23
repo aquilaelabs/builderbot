@@ -1447,6 +1447,7 @@ def room_mem_pct():
 
 
 CACHE_KEEP_DAYS = 14      # a project's build cache no job has used this long goes when its store is short
+PHONE_SNAPSHOT_DAYS = 7   # a phone not started this long gives back its quick-boot snapshot when its disk is full
 
 
 def _room_loop():
@@ -1459,7 +1460,8 @@ def _room_loop():
     store is as short gets the projects' build caches (Gradle's, npm's,
     pub's: whatever a build keeps under BUILDERBOT_CACHE) that no job has
     used for two weeks cleared by a cache-clear job (R110 step 7), its log
-    on the Jobs page."""
+    on the Jobs page. A node whose homes' disk is past 90% gets its idle
+    phones' quick-boot snapshots removed by a phones-idle job (R129)."""
     while True:
         time.sleep(3600)
         try:
@@ -1471,6 +1473,14 @@ def _room_loop():
                                       {"older_days": CACHE_KEEP_DAYS})
                     print(f"[room] {n.get('name') or n['id']}: build caches unused for "
                           f"{CACHE_KEEP_DAYS} days: {r.get('error') or 'clearing'}", flush=True)
+                # The phones' quick-boot snapshots, where the homes' disk is
+                # past 90% (R129): every project's not started for a week, the
+                # phones themselves and their data kept.
+                if nodes.homes_full(n["id"]):
+                    r = nodes.job_add("operator", {"node": n["id"]}, "phones-idle",
+                                      {"older_days": PHONE_SNAPSHOT_DAYS})
+                    print(f"[room] {n.get('name') or n['id']}: idle phones' quick-boot snapshots: "
+                          f"{r.get('error') or 'removing'}", flush=True)
                 why = nodes.room_short(n["id"], room_floor_gb() * 2)
                 if not why:
                     continue

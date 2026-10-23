@@ -16,6 +16,7 @@
 - A store move waits for its node to be quiet, holds the node's sessions without ending them (each is told what is moving and how far it has got, and may still keep its notes), and lets them go when it is done (9970f34)
 - A node's Storage and Network have Revert beside Save, and saving a store inside a mount that is not on the node yet, or adding a mount over a store, says what will happen first (f56448f)
 - The Storage page frees what it measures: each project's emulator phones are listed with a Remove (refused while one runs), each project's row clears its build caches, Docker's row carries its prunes beside what each frees, and a disk past 90% says what of it can be freed. (1dde5a7)
+- Phones give back their room when idle: bb tidy removes the quick-boot snapshot of a project's phone not started for a week and names one that is not its default after two, the node's room keeper does the same for every project when the homes' disk is past 90%, and bb emu list and the Storage page say when each phone last started and what its snapshot holds. (1b2dbe6)
 
 ### Changed
 

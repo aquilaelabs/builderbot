@@ -189,8 +189,10 @@ bb tidy [--keep emulator|gpu|gradle|browser|server|tmp]... [--dry]
                    its own on the NVIDIA card, its Gradle and Kotlin daemons, the
                    headless browsers a test left behind, a server it put in the
                    background and left listening (a dev server, a preview), and its
-                   own files in /tmp, which in a session is memory; --keep one, with
-                   the reason in your reply
+                   own files in /tmp, which in a session is memory; and the quick-boot
+                   snapshot of each of this project's phones not started for a week,
+                   naming a phone that is not its default and has not run for two
+                   (--keep emulator keeps them); --keep one, with the reason in your reply
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb node busy [--json]

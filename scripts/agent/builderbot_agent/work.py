@@ -265,6 +265,43 @@ class WorkMixin:
         self.hello()
         return "succeeded", 0
 
+    def phones_idle(self, job, spec):
+        """The room keeper's (R129): every project's phones here that are not
+        running and have not started for `older_days` give back their
+        quick-boot snapshot. A phone and its data are never removed here;
+        its next start boots cold. Then a walk, so the page shows it."""
+        try:
+            days = max(1.0, float(spec.get("older_days") or 7))
+        except (TypeError, ValueError):
+            days = 7.0
+        now, freed, n = time.time(), 0, 0
+        for _uid, d in storage.avd_homes(storage.SESSION.get("home") or ""):
+            for proj in sorted(os.listdir(d))[:300]:
+                pd = os.path.join(d, proj)
+                if not storage.NAME_RE.match(proj) or not os.path.isdir(pd):
+                    continue
+                for x in sorted(os.listdir(pd)):
+                    avd = os.path.join(pd, x)
+                    snaps = os.path.join(avd, "snapshots")
+                    if not x.endswith(".avd") or not os.path.isdir(snaps) or storage.avd_running(avd):
+                        continue
+                    ran = next((os.path.getmtime(os.path.join(avd, f)) for f in ("hardware-qemu.ini", "emulator-user.ini")
+                                if os.path.exists(os.path.join(avd, f))), os.path.getmtime(avd))
+                    if (now - ran) / 86400 < days or not os.listdir(snaps):
+                        continue
+                    mb = (storage._du_children(snaps) or {}).get("", 0)
+                    for s in os.listdir(snaps):
+                        shutil.rmtree(os.path.join(snaps, s), ignore_errors=True)
+                    freed += mb or 0
+                    n += 1
+                    job.say(f"{proj}'s {x[:-4]}: quick-boot snapshot removed, {mb} MB (not started for "
+                            f"{int((now - ran) / 86400)} days)\n")
+        job.say(f"{n} snapshot{'' if n == 1 else 's'} removed, {freed} MB freed\n")
+        if n:
+            storage.measure(self.state)
+            self.hello()
+        return "succeeded", 0
+
     def avd_remove(self, job, spec):
         """A project's phone off this node (R123): one account's AVD, its
         .avd folder and its .ini, which bb emu start makes again. Refused
