@@ -5,7 +5,7 @@ import time
 from . import AGENT_VERSION
 from .base import DEFAULT_STORES, NODE_JSON, log, own_digest
 from .controller import Controller
-from .stores import fill_default_stores, load_state, make_store, save_state, store_path_ok
+from .stores import load_state, make_store, save_state, store_path_ok
 from .census import Sampler, census
 from .agent import Agent
 
@@ -102,11 +102,6 @@ def cmd_enroll(args):
 
 def cmd_run():
     state = load_state()
-    # A store role added since this node enrolled: adopted here, once, so a
-    # machine that is already out there gains it on its next start rather
-    # than only on a re-enrolment nobody is going to do.
-    if fill_default_stores(state):
-        save_state(state)
     log(f"node {state.get('node_id')} → {state.get('controller')}, agent "
         f"{AGENT_VERSION} {own_digest()[:19]}…")
     Agent(state).loop()

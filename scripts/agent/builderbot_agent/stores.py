@@ -4,7 +4,7 @@ import json
 import os
 import re
 import subprocess
-from .base import DEFAULT_STORES, NODE_JSON, STORE_DENY_EXACT, STORE_DENY_UNDER, _run, log
+from .base import NODE_JSON, STORE_DENY_EXACT, STORE_DENY_UNDER, _run, log
 
 
 def _can_chown(path):
@@ -400,48 +400,6 @@ def load_state():
                          "builderbot-agent enroll --controller URL --token …") from e
     except ValueError as e:
         raise SystemExit(f"{NODE_JSON} is not JSON ({e}); enroll again") from e
-
-
-def fill_default_stores(state):
-    """Give an already-enrolled node a store role it predates; True if it
-    gained one.
-
-    The store list is written at ENROLMENT and never revisited, so a node
-    enrolled before `appdata` existed would never have one and the controller
-    would answer its fallback forever. A role added to DEFAULT_STORES has to
-    reach the nodes that are already out there or it only ever works on the
-    next machine somebody enrols.
-
-    Placed BESIDE the store this node already keeps its data in, never at the
-    hard-coded default: a guest node keeps everything under one directory in
-    its owner's home (R23), and handing it /var/lib/builderbot would be a
-    path it has no root to make. Where data sits is where the rest belongs.
-    """
-    have = state.get("stores") if isinstance(state.get("stores"), dict) else {}
-    base = os.path.dirname(str(have.get("data") or "")) if have.get("data") else ""
-    added = False
-    for role, default in DEFAULT_STORES.items():
-        if have.get(role):
-            continue
-        have[role] = os.path.join(base, role) if base else default
-        # MADE, not just recorded. A store that exists only in node.json
-        # reports null free space and the row calls it missing, which is the
-        # true answer and a useless one for a directory nothing else is ever
-        # going to create: enrolment makes the four it knows about, so
-        # adoption makes the one it did not. Best effort, the same as there:
-        # a store that cannot be made is reported rather than fatal.
-        try:
-            made = state.setdefault("store_made", {})
-            if isinstance(made, dict):
-                made[role] = make_store(have[role])
-        except OSError as e:
-            log(f"stores: {role} at {have[role]} could not be created "
-                f"({e.strerror}); it will report no space until it exists")
-        log(f"stores: {role} was not set; using {have[role]}")
-        added = True
-    if added:
-        state["stores"] = have
-    return added
 
 
 def save_state(state):

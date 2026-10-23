@@ -386,34 +386,6 @@ const agentEnv = { ...process.env, HOME: `${DIR}/agenthome`, BUILDERBOT_NODE_JSO
      && st.stores.data === `${DIR}/agentdata`,
      '...holding the node token, the id it was minted for, and the full capability set it enrolled with');
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
-  // A store role added AFTER a node enrolled reaches it anyway. The list is
-  // written at enrolment and never revisited, so `appdata` would have existed
-  // only on the next machine somebody enrolled and every node already out
-  // there would have used the controller's fallback forever. Placed beside
-  // the data store rather than at the hard-coded default, because a guest
-  // node keeps everything in one directory in its owner's home (R23) and has
-  // no root to make /var/lib/builderbot.
-  {
-    const keep = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
-    const without = { ...keep, stores: { ...keep.stores } };
-    delete without.stores.appdata;
-    writeFileSync(NODE_JSON, JSON.stringify(without));
-    execFileSync('python3', ['-c',
-      'import importlib.util,sys\n' +
-      `${LOAD_AGENT}\n` +
-      'm=agentpkg.load()\n' +
-      'st=m.load_state()\n' +
-      'm.fill_default_stores(st)\n' +
-      'm.save_state(st)\n'],
-      { env: { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON }, encoding: 'utf8' });
-    const after = JSON.parse(readFileSync(NODE_JSON, 'utf8')).stores;
-    ok(after.appdata === `${DIR}/appdata`,
-       `a store role added since enrolment is adopted beside the data store (${after.appdata})`);
-    ok(existsSync(`${DIR}/appdata`),
-       '...and the directory is MADE, not just recorded, or the row calls it missing forever');
-    writeFileSync(NODE_JSON, JSON.stringify(keep));
-  }
-
   const n = await nodeById(minted.id);
   // The version is read from the controller, not written here: the agent
   // just downloaded from it, so the two must agree, and an assertion naming
