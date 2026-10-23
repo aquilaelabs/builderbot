@@ -1586,7 +1586,14 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
       ok(page.dialogs.length === 1 && /Lock down vps-lock[\s\S]*revoked[\s\S]*provider's console/.test(page.dialogs[0]),
          `Lock down asks first, saying what stops, that its credential goes, and the console's stop (${page.dialogs[0]?.slice(0, 40)})`);
       const refused = await as('devdata', {});
-      const taken = await (await as('work', { running: [], wait: 0 })).json();
+      // The press is answered a moment after it, in the page's modal, and
+      // the lockdown job is queued then: asked for until it is there.
+      let taken = null;
+      for (let i = 0; i < 40 && !taken?.spec; i++){
+        const w = await as('work', { running: [], wait: 0 });
+        taken = await w.json().catch(() => null);
+        if (!taken?.spec) await sleep(250);
+      }
       ok(refused.status === 403 && taken?.spec?.apply === 'lockdown',
          `...from then it is refused all but its lockdown job (${refused.status}, ${taken?.spec?.apply})`);
       await as('result', { job: taken.id, state: 'succeeded', exit: 0 });

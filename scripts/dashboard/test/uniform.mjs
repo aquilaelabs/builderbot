@@ -26,6 +26,14 @@ await ready(page);
 
 // How each document kind is opened, and what says its content has arrived.
 // A new TABKINDS entry must add a line here or the discovery check fails.
+// One of three parts (R130): run as one file, uniform held a run's floor at
+// six and a half minutes; uniform-b and uniform-c are this file with the
+// part set, and each runs the setup above every section and its own
+// sections, so the three go side by side on the queue. Run alone with
+// BB_UNIFORM_PART unset, this is part a; BB_UNIFORM_PART=all runs them all.
+const PART = process.env.BB_UNIFORM_PART || 'a';
+const runs = p => PART === 'all' || PART === p;
+
 const DRIVERS = {
   findings: {
     open: async () => {
@@ -175,7 +183,7 @@ for (const v of NB_VIEWS)
     readyWhen: `.pane .nb .nbview[data-view="${v}"]:not([hidden])`,
   };
 const kinds = tabKinds.flatMap(k => k === 'notebook' ? NB_VIEWS.map(v => `notebook:${v}`) : [k]);
-ok(undriven.length === 0,
+if (runs('a')) ok(undriven.length === 0,
    `every document tab kind has a conformance driver${
      undriven.length ? `; missing: ${undriven.join(', ')} (add it to
      uniform.mjs DRIVERS; the hard rules are the price of a new tab)` : ''}`);
@@ -737,6 +745,7 @@ async function glance(){
   });
 }
 
+if (runs('a')) {
 // ---- one walk over every kind, at a desk ---------------------------------
 // The four readings that change nothing on the page (the box and its bands,
 // the button language, what spans, what lines up) are taken on ONE visit to
@@ -822,7 +831,9 @@ for (const kind of kinds){
 }
 ok(seenBars.size <= 1,
    `an action bar lays out the same on every tab (${JSON.stringify([...seenBars])})`);
+}
 
+if (runs('a')) {
 // ---- one loading line and one empty state -----------------------------------
 // docs/design-language.md, Document tabs: `.loading` while it waits and
 // `.empty` when there is nothing, inside the list. Read off the SOURCE, since
@@ -845,7 +856,9 @@ ok(seenBars.size <= 1,
   ok(off.length === 0, `a loading line is .loading and an empty state is .empty, in every script${
     off.length ? ': ' + off.join('; ') : ''}`);
 }
+}
 
+if (runs('a')) {
 // ---- colors and corners are tokens -------------------------------------------
 // docs/design-language.md, Shape and Color: a hex outside the scheme blocks
 // is the default scheme leaking into the other eleven (a danger edge typed
@@ -870,7 +883,9 @@ ok(seenBars.size <= 1,
   });
   ok(off.length === 0, `no hex color and no numbered corner outside the scheme blocks (${off.length ? off.slice(0, 4).join('; ') : 'none'})`);
 }
+}
 
+if (runs('a')) {
 // ---- a fold stays the way it was left ---------------------------------------
 // A redraw rebuilds the markup, so a <details> with nothing behind it goes
 // back to however it was first drawn: the Docker manager's Details fold shut
@@ -927,7 +942,9 @@ for (const kind of kinds){
      `[${kind}] a status read that brings nothing new writes nothing${quietRead.seen.length ? ': ' + quietRead.seen.slice(0, 6).join('; ') : ''}${
        quietRead.moved.length ? '; moved: ' + quietRead.moved.join(', ') : ''}`);
 }
+}
 
+if (runs('a')) {
 // ---- a setting is written by Save, never by the pick -----------------------
 // docs/design-language.md, Settings: nothing on a tab takes effect until Save
 // or Apply is pressed, because a select that writes on the change is a control
@@ -971,7 +988,9 @@ for (const kind of kinds){
      `[${kind}] no setting writes itself on the pick${
        W.err ? ` (${W.err})` : W.wrote.length ? `: ${W.wrote.join(', ')}` : ''}`);
 }
+}
 
+if (runs('a')) {
 // ---- adding goes at the top ------------------------------------------------
 // The control that adds to a notebook view is the last button on its control
 // row, the primary (R109), its form unrolling under that row; one that adds
@@ -1040,7 +1059,9 @@ for (const kind of kinds){
   ok(foots.roadmap && foots.briefing && foots.design && foots.signing && !foots.bugs && !foots.analysis && !foots.tests && !foots.git,
      `a section's own Save and Revert are on the views that stage and on no other (the operator, 5 Oct: there is no foot) (${JSON.stringify(foots)})`);
 }
+}
 
+if (runs('b')) {
 // ---- the notebook's head row ------------------------------------------------
 // Every view opens with the same row: its one-line summary left, its History
 // right, and that row is the FIRST band of the view, so the History sits at
@@ -1225,6 +1246,9 @@ ok(seenReds.size <= 1,
 // tab and nothing else: before renderGuarded, one bug in one kind's render
 // took drawPanes down, and with it the poll, the strip and every terminal.
 {
+  // Opened here, not only found: part b runs without part a's walk, which
+  // is what opened it in the whole file (R130).
+  await bring('findings');
   await page.evaluate(() => { const t = tabs.find(x => x.kind === 'findings');
                               if (t) focusTab(t.id); });
   const errsBefore = page.errors.length;
@@ -1292,7 +1316,9 @@ for (const kind of kinds){
   ok(skewed.length === 0, `[${kind}] no stacked box is aligned across its own axis${
     skewed.length ? `: ${skewed.join('; ')}` : ''}`);
 }
+}
 
+if (runs('b')) {
 // ---- what reads on a filled accent surface, on every scheme -----------------
 // Seven places put --ink on --accent-deep: the active tab, a primary button,
 // a button that is on, a view bar's current tab, the mobile bar's, an open
@@ -1361,7 +1387,9 @@ for (const kind of kinds){
      `the active tab's words read on its ground in all ${SCHEMES.length} schemes, dark and light${
        bad.length ? `; under ${AA}:1: ${bad.join(', ')}` : ''}`);
 }
+}
 
+if (runs('b')) {
 // ---- a document arrives on its own ground, on every scheme ------------------
 // A document tab brought to the front fades in (docIn), and the fade was
 // on the document box, which painted its own ground: the ground faded in
@@ -1699,6 +1727,11 @@ for (const kind of kinds){
      `[${kind}] every proseline shows all of itself rather than scrolling inside${
        P.grew.length ? `: ${P.grew.join(', ')}` : ''}`);
 }
+}
+if (runs('c')) {
+// Part c is measured at phone width, which part b's walk sets on its way
+// (393 by 851); run on its own it starts there itself.
+await page.setViewportSize({ width: 393, height: 851 });
 // ---- a list of choices is alphabetical -----------------------------------
 // Each of these was in the order somebody wrote it in. The exceptions are
 // named rather than discovered: Default leads the schemes, and the catch-all
@@ -1912,7 +1945,9 @@ for (const kind of kinds){
     }
   }
 }
+}
 
+if (runs('c')) {
 // ---- the document and the framework are one thing ---------------------------
 // docs/design-language.md is what a session reads; this suite is what holds
 // the page. The two drift apart the day a helper is renamed and the document
@@ -1939,7 +1974,9 @@ for (const kind of kinds){
   ok(undocumented.length === 0,
      `...and names the classes the page is measured on${undocumented.length ? `; not: ${undocumented.join(', ')}` : ''}`);
 }
+}
 
+if (runs('c')) {
 // ---- a quiet page is quiet, and a tab opens once (R75 step 4) -------------
 // What the page asks the server for is measured, not assumed: the phone's
 // device probe filled the Jobs tab for weeks, and the Docker tab asked for
@@ -2033,7 +2070,9 @@ for (const kind of kinds){
   }
   await page.evaluate(() => { for (const t of [...tabs]) if (t.kind !== 'term') dropTab(t.id); });
 }
+}
 
+if (runs('c')) {
 // ---- a fold lasts for the page, and a reload starts it from the default ---
 // Open state is kept while the page lives and never stored (the design
 // language, Sections): closed by hand on a desktop, where the default is
@@ -2072,7 +2111,9 @@ for (const kind of kinds){
   ok(await page.$eval(sel, d => d.open),
      `[${kind}] ...and a reload starts it from its default, open on a desktop`);
 }
+}
 
+if (runs('c')) {
 // ---- hidden means hidden (design language, Sections and action bars) -----
 // Every element carrying the attribute is out of the layout, whatever class
 // it wears. A class with a display once beat it: a fold that never closed.
@@ -2082,7 +2123,9 @@ for (const kind of kinds){
     .map(e => e.id || e.className || e.tagName).slice(0, 5));
   ok(shown.length === 0, `nothing carrying hidden is displayed${shown.length ? ': ' + shown.join(', ') : ''}`);
 }
+}
 
+if (runs('c')) {
 // ---- dialogs (design language, Dialogs) -----------------------------------
 // Opened one by one, and each held to the shape every dialog shares: its
 // lines in .field bands (text at box level draws flush against the edge),
@@ -2245,7 +2288,9 @@ for (const [name, open] of Object.entries(DIALOGS)) {
   ok(undriven.length === 0, `every dialog in the page is measured${undriven.length
     ? `: no driver opens ${undriven.join(', ')} (add one to DIALOGS in uniform.mjs)` : ''}`);
 }
+}
 
+if (runs('c')) {
 // ---- a finger, not a pointer (design language, Both sizes) ---------------
 // On a touch phone the controls a thumb meets are a thumb's size, and a bar
 // that spans the screen fits it even on a fold's 344px cover.
@@ -2272,6 +2317,7 @@ for (const [name, open] of Object.entries(DIALOGS)) {
     .filter(b => b.offsetHeight > 0 && b.getBoundingClientRect().right > innerWidth + 1).map(b => b.textContent.trim()));
   ok(cut.length === 0, `...and the bar fits a fold's 344px cover${cut.length ? `: cut off ${cut.join(', ')}` : ''}`);
   await phone.context().close();
+}
 }
 
 ok(page.errors.length === 0,

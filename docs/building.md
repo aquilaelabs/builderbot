@@ -57,8 +57,13 @@ How many workers a test run may use on a node is the node's to say: **Test
 workers** in the Sessions section of its page under Nodes, 0 for the
 machine's cores, handed to every test job there as `BB_TEST_WORKERS` for
 the project's own test command to read (`pytest -n`, `--test-concurrency`,
-`--max-workers`) and read by this harness to run its suites across that
-many workers at once (roadmap R81).
+`--max-workers`) and read by this harness as the most suites it runs at once
+(roadmap R81). Under that ceiling its workers take suites from one queue,
+longest first, each taking the next only while the machine has room (1.5 GB
+of memory free and a load under one and a half times its cores; the suites
+run at the lowest priority, so their own load does not hold the next back),
+so a node busy with the emulator or a docker build runs fewer; the run's last lines say what bounded
+it, a suite that was its floor, the machine, or its reruns (R130).
 
 Ingesting is the CLI's and deliberately not an endpoint: every body the server
 takes is capped at 64kB and a run log is a couple of hundred, so an action for

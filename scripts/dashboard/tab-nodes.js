@@ -972,8 +972,8 @@ function nodeTurnsRow(n){
         value="${esc(c.draft.turnsText)}">
     </div>
     <div class="logdays setrow col ctlrow">
-      ${lbl(winp, `Test workers (0: every core${n.reported?.cpu ? `, ${n.reported.cpu} here` : ""})`,
-        "how many workers a test run here may use, as BB_TEST_WORKERS in its environment")}
+      ${lbl(winp, `Test workers at most (0: every core${n.reported?.cpu ? `, ${n.reported.cpu} here` : ""})`,
+        "the most suites a test run here runs at once; each takes its next suite only while the machine has room, so a busy node runs fewer")}
       <input id="${esc(winp)}" data-k="workers" type="number" min="0" max="256" step="1" inputmode="numeric"
         value="${esc(c.draft.workersText)}">
     </div></div>

@@ -2680,7 +2680,14 @@ cmd_tests() {
         shift
         local u="${BB_REPO:-$PWD}/scripts/dashboard/unit"
         [ -d "$u" ] || die "no unit tests at $u: run this from the BuilderBot checkout"
-        python3 -m unittest discover -s "$u" -t "$u" "${@:--q}"
+        # Across the cores (R130): each module a unit of work, dealt by the
+        # seconds the last run took, one unittest process per core. Named
+        # modules or unittest's own flags run as asked, in one process.
+        if [ "$#" -eq 0 ] || [ "$*" = -q ]; then
+            python3 "$BB_LIB/unitpar.py" "$u" "${BB_REPO:-$PWD}/.bb-map/unit-times.tsv" "${BB_TEST_WORKERS:-$(nproc 2>/dev/null || echo 1)}"
+            return
+        fi
+        python3 -m unittest discover -s "$u" -t "$u" "$@"
         return
     fi
     # A covered run (roadmap R76): the suite, or the named suites, with the

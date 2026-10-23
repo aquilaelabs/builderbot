@@ -15,7 +15,7 @@
 - Lock keeps a project to its owner: the owner's Lock ends every other session there and holds everybody else out of starting one or changing it until they unlock it; an administrator's Admin: Lock holds the owner out too. A locked project stays on the Projects page with its padlock (7d4a5eb)
 - A store move waits for its node to be quiet, holds the node's sessions without ending them (each is told what is moving and how far it has got, and may still keep its notes), and lets them go when it is done (9970f34)
 - A node's Storage and Network have Revert beside Save, and saving a store inside a mount that is not on the node yet, or adding a mount over a store, says what will happen first (f56448f)
-- The Storage page frees what it measures: each project's emulator phones are listed with a Remove (refused while one runs), each project's row clears its build caches, Docker's row carries its prunes beside what each frees, and a disk past 90% says what of it can be freed. (1dde5a7)
+- The Storage page lists each project's emulator phones with their size, last start and snapshot, and a disk past 90% says what of it can be freed and on which page; the Emulator page's new Phones section removes a phone (refused while it runs). (1dde5a7)
 - Phones give back their room when idle: bb tidy removes the quick-boot snapshot of a project's phone not started for a week and names one that is not its default after two, the node's room keeper does the same for every project when the homes' disk is past 90%, and bb emu list and the Storage page say when each phone last started and what its snapshot holds. (1b2dbe6)
 
 ### Changed
@@ -36,6 +36,7 @@
 - A project's agent button reads Manage agent while your session runs, since it opens the chooser with Open, Restart and End. (f412261)
 - The Jobs page's When says the time a running or waiting job began, where it said "started just now" cut short. (fa30ec7)
 - A terminal scrolled back hands your next key to the program: the key row's keys leave the scroll first, and a typed letter ends it, where an arrow used to move tmux's cursor over the history and a letter did nothing. (b0d8cea)
+- Test runs are faster and say what held them up: the suites take turns from one queue, longest first, each started only while the machine has room and at the lowest priority, so the emulator and a docker build come first; the unit tier runs across the cores; and a run ends with what bounded it. (0df638b)
 
 ### Upgrading
 

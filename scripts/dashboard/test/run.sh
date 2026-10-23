@@ -329,8 +329,8 @@ rm -f "$LOCK" 2>/dev/null || true
     || die "cannot take $LOCK: $(stat -c %U "$LOCK" 2>/dev/null || echo somebody)'s, and $LOCKDIR is not world-writable; fix the directory's mode (chmod 0777) and re-run"
 fi
 S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
-# Where each suite's seconds are kept for the worker plan (run_file,
-# bucket_plan): beside the code map in the tree the run was made from, which
+# Where each suite's seconds are kept for the run's queue (run_file, the
+# queue's order, R130): beside the code map in the tree the run was made from, which
 # is this node's own and gitignored; workers inherit the path.
 if [ -z "${SUITE_TIMES:-}" ]; then
     _o="${BB_TEST_ORIGIN:-$(cd "$HERE/../../.." && pwd)}"
@@ -382,70 +382,6 @@ default_suites() {
 # the parent does that, alone, after every worker is done, so "flaky" means
 # what it means in a single run, failed under load and passed by itself.
 #
-# The buckets: the suites known to be slow land in different buckets first,
-# then the rest go, longest file first, to whichever bucket holds the fewest
-# lines so far. Lines are a fair proxy for minutes here, and the seven named
-# are the ones that are minutes each.
-#
-# The output is the workers' logs in bucket order, each under a header, the
-# one being waited on streamed as it grows, so every suite's banner still
-# sits above its own results and its own total, which is what bb tests
-# ingest, bb tests last and the preflight's flaky verdict read. The one
-# combined tally is prefixed like every other line of this script's own,
-# because a bare "N passed, M failed" is a suite's total to those readers.
-bucket_plan() {
-    # $1 workers; $2 a file of "name<TAB>lines" per suite (a file, since the
-    # heredoc is python's stdin); $3 the times file run_file appends to;
-    # stdout: "bucket<TAB>name", buckets numbered from 0, each bucket's
-    # names in the order a single run has.
-    #
-    # By measured seconds, longest first, each to the emptiest bucket. It
-    # was by line count behind a hand-kept list of the slow files, and line
-    # count is a poor clock: uniform.mjs is 1471 lines and 227 s, devapp.mjs
-    # 4109 lines and 199 s, so one worker carried uniform, roles and cards
-    # (about 450 s) while the others idled (30 Sep). A suite never timed on
-    # this node is costed from its lines at the tree's own median rate. The
-    # median of the last five passes per suite, so one slow run on a busy
-    # box does not move the plan, and the file is trimmed to those five.
-    python3 - "$1" "$2" "${3:-}" <<'PY'
-import os, statistics, sys
-n, sizes, times = int(sys.argv[1]), sys.argv[2], sys.argv[3]
-base = lambda k: k.rsplit("/", 1)[-1][:-4] if k.endswith(".mjs") else k.rsplit("/", 1)[-1]
-size = {}
-for line in open(sizes):
-    if line.strip():
-        name, lines = line.rstrip("\n").split("\t")
-        size[name] = int(lines or 0)
-seen = {}
-if times and os.path.isfile(times):
-    for line in open(times, errors="replace"):
-        k, _, v = line.rstrip("\n").partition("\t")
-        if k and v.isdigit():
-            seen.setdefault(k, []).append(int(v))
-    seen = {k: v[-5:] for k, v in seen.items()}
-    try:
-        with open(times + ".tmp", "w") as f:
-            for k in sorted(seen):
-                f.writelines(f"{k}\t{v}\n" for v in seen[k])
-        os.replace(times + ".tmp", times)
-    except OSError:
-        pass
-secs = {k: statistics.median(v) for k, v in seen.items()}
-rates = [size[k] / secs[base(k)] for k in size if secs.get(base(k)) and size[k]]
-rate = statistics.median(rates) if rates else 12.0
-cost = {k: secs.get(base(k), size[k] / rate) for k in size}
-buckets, load = [[] for _ in range(n)], [0.0] * n
-for name in sorted(cost, key=lambda k: (-cost[k], k)):
-    b = load.index(min(load))
-    buckets[b].append(name)
-    load[b] += cost[name]
-for b, names in enumerate(buckets):
-    for name in sorted(names):
-        print(f"{b}\t{name}")
-print(f"planned: {' '.join(f'{x:.0f}s' for x in load)} by {'measured seconds' if secs else 'line count'}"
-      f" ({sum(1 for k in size if base(k) in secs)} of {len(size)} suites timed)", file=sys.stderr)
-PY
-}
 free_ports() {
     # N distinct free ports, one per line. Bound all at once and released
     # together, so the kernel cannot hand the same number to two of them,
@@ -498,7 +434,7 @@ load_line() {
 }
 run_workers() {
     local n="$1"; shift
-    local names=("$@") t f plan i rc=0 wrc tp tf
+    local names=("$@") t f i rc=0 wrc tp tf
     local ports=() pids=() logs=() bucket=() failed=() flaky=()
     [ -z "${DASHBOARD_TEST_PORT:-}" ] \
         || die "DASHBOARD_TEST_PORT pins one port and BB_TEST_WORKERS=$n asks for $n servers; unset one of them"
@@ -508,23 +444,49 @@ run_workers() {
         case "$t" in /*) f="$t" ;; *) f="$HERE/${t%.mjs}.mjs" ;; esac
         printf '%s\t%s\n' "$t" "$(wc -l < "$f" 2>/dev/null || echo 0)"
     done > "$S/sizes"
-    plan="$(bucket_plan "$n" "$S/sizes" "${SUITE_TIMES:-}" 2> "$S/plan.said")"
-    log "workers $(cat "$S/plan.said" 2>/dev/null)"
+    # The queue (R130): every suite, longest first by its last measured
+    # seconds (its line count where it has none), taken by whichever worker
+    # is free.
+    SIZES="$S/sizes" TIMES="${SUITE_TIMES:-}" python3 - > "$S/queue" <<'QUEUE'
+import os
+sizes = dict(l.rstrip("\n").split("\t", 1) for l in open(os.environ["SIZES"]) if "\t" in l)
+secs = {}
+try:
+    for l in open(os.environ.get("TIMES") or "/nonexistent"):
+        k, _, v = l.rstrip("\n").partition("\t")
+        try:
+            secs[k] = float(v)
+        except ValueError:
+            pass
+except OSError:
+    pass
+key = lambda t: secs.get(os.path.basename(t).removesuffix(".mjs"), int(sizes[t] or 0) / 20)
+print("\n".join(sorted(sizes, key=key, reverse=True)))
+QUEUE
+    : > "$S/queue.ran"; : > "$S/queue.held"
+    log "workers: $n taking from a queue of ${#names[@]} suites, longest first, each the next while the machine has room"
+    # What bounds this run (R130): when it started, the suites' timings
+    # appended from here, and the machine's load every ten seconds.
+    local t_start t_phase times_from=0 sampler=""
+    t_start="$(date +%s)"
+    [ -n "${SUITE_TIMES:-}" ] && [ -f "$SUITE_TIMES" ] && times_from="$(wc -l < "$SUITE_TIMES")"
+    : > "$S/load.samples"
+    ( while :; do cut -d' ' -f1 /proc/loadavg >> "$S/load.samples" 2>/dev/null; sleep 10; done ) &
+    sampler=$!
     mapfile -t ports < <(free_ports "$n")
     [ "${#ports[@]}" = "$n" ] || die "could not find $n free ports for the workers' servers"
     for ((i = 0; i < n; i++)); do
-        mapfile -t bucket < <(printf '%s\n' "$plan" | awk -F'\t' -v b="$i" '$1 == b { print $2 }')
         logs[i]="$S/worker-$((i + 1)).log"
         : > "${logs[i]}"
         # Its own port, its own account of what failed, and the rest of the
         # environment as this process has it: the copy, the timing flag,
-        # the coverage directory, all inherited.
+        # the coverage directory, all inherited; its suites from the queue.
         BB_TEST_WORKER="$((i + 1))" DASHBOARD_TEST_PORT="${ports[i]}" \
-        BB_TEST_WORKER_OUT="$S/failed-$((i + 1))" \
-            bash "$0" "${bucket[@]}" > "${logs[i]}" 2>&1 &
+        BB_TEST_WORKER_OUT="$S/failed-$((i + 1))" BB_TEST_QUEUE="$S/queue" \
+            bash "$0" > "${logs[i]}" 2>&1 &
         pids[i]=$!
         WORKER_PIDS+=("$!")
-        log "worker $((i + 1)) of $n (port ${ports[i]}, pid $!): ${bucket[*]}"
+        log "worker $((i + 1)) of $n (port ${ports[i]}, pid $!)"
     done
     for ((i = 0; i < n; i++)); do
         printf '[dashboard-test] == worker %s of %s ==\n' "$((i + 1))" "$n"
@@ -541,6 +503,7 @@ run_workers() {
         fi
     done
     WORKER_PIDS=()
+    t_phase="$(date +%s)"
     read -r tp tf < <(cat "${logs[@]}" \
         | awk '/^[0-9]+ passed, [0-9]+ failed/ { p += $1; f += $3 } END { print p + 0, f + 0 }')
     log "workers: $tp passed, $tf failed across $n workers, ${#names[@]} suites${failed[*]:+; failed in the run: ${failed[*]}}"
@@ -566,6 +529,50 @@ run_workers() {
     if [ "${#again_failed[@]}" -gt 0 ]; then
         warn "failed again alone: ${again_failed[*]} (a suite that ends before its checks finish counts no FAIL: read its output above)"
     fi
+    [ -n "$sampler" ] && kill "$sampler" 2>/dev/null
+    # ...and said: the run's wall, how busy the workers were, the worker and
+    # the suite that set the floor, the reruns' share and the load, then the
+    # one thing that would make it faster (R130).
+    BB_PLAN="$(cat "$S/queue.ran" 2>/dev/null)" BB_HELD="$(cat "$S/queue.held" 2>/dev/null | paste -sd+ | bc 2>/dev/null || echo 0)" BB_T0="$t_start" BB_T1="$t_phase" BB_TIMES="${SUITE_TIMES:-}" BB_FROM="$times_from" \
+    BB_N="$n" BB_LOGS="${logs[*]}" BB_RERUNS="${failed[*]}" BB_AGAIN="${again_failed[*]}" BB_LOAD="$S/load.samples" \
+    BB_OUT="$(dirname "${SUITE_TIMES:-$S/x}")/last-run-bound.json" python3 - "$S/bound.json" <<'BOUND' && python3 "$DASH/../lib/bottleneck.py" "$S/bound.json" || true
+import json, os, sys, time
+e = os.environ
+suites = {}
+try:
+    with open(e["BB_TIMES"]) as f:
+        for i, line in enumerate(f):
+            if i < int(e["BB_FROM"] or 0):
+                continue
+            name, _, secs = line.rstrip("\n").partition("\t")
+            try:
+                suites[name] = float(secs)
+            except ValueError:
+                pass
+except (OSError, KeyError):
+    pass
+plan = {}
+for line in (e.get("BB_PLAN") or "").splitlines():
+    name, _, b = line.partition("\t")
+    if b:
+        plan[os.path.basename(name).removesuffix(".mjs")] = b
+ends = {}
+for i, log in enumerate((e.get("BB_LOGS") or "").split()):
+    try:
+        ends[str(i)] = os.path.getmtime(log)
+    except OSError:
+        pass
+try:
+    load = [float(x) for x in open(e["BB_LOAD"]).read().split()]
+except (OSError, ValueError, KeyError):
+    load = []
+json.dump({"workers": int(e["BB_N"]), "cores": os.cpu_count(), "start": float(e["BB_T0"]),
+           "phase_end": float(e["BB_T1"]), "end": time.time(), "suites": suites, "plan": plan,
+           "worker_end": ends, "load": load, "held_s": float(e.get("BB_HELD") or 0),
+           "reruns": [os.path.basename(x).removesuffix(".mjs") for x in (e.get("BB_RERUNS") or "").split()],
+           "again": [os.path.basename(x).removesuffix(".mjs") for x in (e.get("BB_AGAIN") or "").split()],
+           "out": e.get("BB_OUT") if e.get("BB_TIMES") else ""}, open(sys.argv[1], "w"))
+BOUND
     load_line
     [ "$rc" = 0 ] && log "dashboard tests: all passed" || warn "dashboard tests: FAILURES above"
     exit "$rc"
@@ -599,7 +606,10 @@ unset TMUX
 # own work keep the CPU when they want it, and on a quiet box nothing is
 # slower (the operator, 27 Sep). Best effort: a shell that may not lower
 # its own priority runs as it is.
-renice -n 10 -p $$ >/dev/null 2>&1 || true
+# The lowest CPU priority there is (the operator, 23 Oct: the emulator and a
+# docker build first), and the queue's room_wait holds a run back further
+# while they are working the machine.
+renice -n 19 -p $$ >/dev/null 2>&1 || true
 command -v ionice >/dev/null 2>&1 && ionice -c 2 -n 7 -p $$ >/dev/null 2>&1 || true
 # Same reasoning, for the credential. This script is usually run FROM a Claude
 # session, which is given BB_TOKEN, a token scoped to ONE project with `user`
@@ -1725,7 +1735,7 @@ run_file() {
     [ "$rc" = 0 ] || grep -h "the agent's sources changed on disk" "$S/server.log" 2>/dev/null \
         | tail -3 | while IFS= read -r l; do log "server: $l"; done
     # What the suite cost, world and all, for the next run's worker plan
-    # (bucket_plan): a pass in a whole run only, since a failure can stop
+    # (the queue's order): a pass in a whole run only, since a failure can stop
     # early or wait out a timeout, and a rerun runs on an idle box. One
     # short line appended, so four workers at once do not tear it.
     [ "$rc" = 0 ] && [ -z "${2:-}" ] && [ -n "${SUITE_TIMES:-}" ] \
@@ -1735,12 +1745,58 @@ run_file() {
 rc=0
 failed=()
 failed_names=()
+# A worker on the run's queue (R130) takes the next suite as it is free, the
+# longest first, instead of a share fixed before the run: none sits idle
+# while another has three left. And it takes the next one only while the
+# machine has room (room_wait), so a busy node holds the run back rather
+# than every worker crowding it.
+queue_take() {
+    local got
+    exec 9>>"$BB_TEST_QUEUE.lock"
+    flock 9
+    got="$(head -n 1 "$BB_TEST_QUEUE" 2>/dev/null)"
+    [ -n "$got" ] && sed -i 1d "$BB_TEST_QUEUE"
+    flock -u 9
+    exec 9>&-
+    [ -n "$got" ] && printf '%s' "$got"
+}
+room_wait() {
+    # Memory first, 1.5 GB free, and the machine not run past half again
+    # its cores: the suites run at the lowest priority, so their own load
+    # does not hold the next one back (a first cut at 85% of the cores made
+    # eight workers wait 21 minutes on each other, 23 Oct), while the
+    # emulator, a docker build or a session crowding the machine does. At
+    # most five minutes, so a run is held back and never stopped; what was
+    # waited is kept for the run's report.
+    local cores load mem waited=0
+    cores="$(nproc 2>/dev/null || echo 1)"
+    while [ "$waited" -lt 300 ]; do
+        load="$(cut -d' ' -f1 /proc/loadavg 2>/dev/null || echo 0)"
+        mem="$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo 2>/dev/null || echo 99999)"
+        awk -v l="$load" -v c="$cores" -v m="$mem" 'BEGIN { exit !(l < 1.5 * c && m > 1536) }' && break
+        sleep 5; waited=$((waited + 5))
+    done
+    [ "$waited" -gt 0 ] && printf '%s\n' "$waited" >> "$BB_TEST_QUEUE.held"
+    return 0
+}
+if [ -n "${BB_TEST_QUEUE:-}" ]; then
+    took=0
+    while t="$(queue_take)"; do
+        # The first suite goes at once: the load a run's own start raises is
+        # a minute behind, and every worker waiting on it would be no run.
+        [ "$took" = 0 ] || room_wait
+        took=1
+        printf '%s\t%s\n' "$t" "$((BB_TEST_WORKER - 1))" >> "$BB_TEST_QUEUE.ran"
+        run_file "$HERE/${t%.mjs}.mjs" || { failed+=("$HERE/${t%.mjs}.mjs"); failed_names+=("$t"); }
+    done
+else
 for i in "${!tests[@]}"; do
     # A worker sent to run one suite again (BB_TEST_AGAIN) banners it as a
     # single run's rerun does, so the readers of the log know it for one.
     run_file "${tests[i]}" ${BB_TEST_AGAIN:+again} \
         || { failed+=("${tests[i]}"); failed_names+=("${names[i]}"); }
 done
+fi
 # A worker stops here: what failed goes to its parent by name, and the
 # parent reruns those alone once every worker is done, so the reruns are
 # one at a time on an otherwise idle box, as a single run's are.
