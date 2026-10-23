@@ -45,10 +45,14 @@ MAX_NODES = 64
 
 
 def _path(home, agent="claude"):
-    """Claude's record where it always was; another agent's beside it."""
+    """Claude's record where it always was; another agent's beside it, in
+    the account's own .claude. Not under .config: on the controller that is
+    one of the box's shared dotfiles (BB_SHARED_DOTFILES), so every account
+    read and wrote one file, and a node's report that a second account had
+    no Codex login took the first one's away (B236)."""
     if agent == "claude":
         return Path(home) / ".claude" / MARK
-    return Path(home) / ".config" / "builderbot" / f"{agent}-grant.json"
+    return Path(home) / ".claude" / f".bb-grant-{agent}.json"
 
 
 def _read(home, agent="claude"):

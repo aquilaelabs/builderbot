@@ -45,7 +45,20 @@ class Record(unittest.TestCase):
 
     def test_a_sign_out_where_there_was_none_writes_nothing(self):
         self.assertTrue(claudegrant.report(self.home, "n1", "", signed_in=False, agent="codex")["ok"])
-        self.assertFalse(os.path.exists(os.path.join(self.home, ".config", "builderbot", "codex-grant.json")))
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".claude", ".bb-grant-codex.json")))
+
+    def test_two_accounts_sharing_the_boxs_dotfiles_keep_their_own_record(self):
+        # The controller links each account's .config to the box's (B236):
+        # a node saying the second account has no Codex login is about them.
+        box = tempfile.mkdtemp()
+        os.mkdir(os.path.join(box, ".config"))
+        other = tempfile.mkdtemp()
+        for h in (self.home, other):
+            os.symlink(os.path.join(box, ".config"), os.path.join(h, ".config"))
+        claudegrant.report(self.home, "n1", "me@example.com", "plus", agent="codex")
+        claudegrant.report(other, "n1", "", signed_in=False, agent="codex")
+        self.assertEqual(claudegrant.on(self.home, "n1", "codex")["email"], "me@example.com")
+        self.assertEqual(claudegrant.on(other, "n1", "codex"), {})
 
     def test_another_agents_sign_in_is_its_own_record(self):
         claudegrant.report(self.home, "n1", "me@example.com", "max")
