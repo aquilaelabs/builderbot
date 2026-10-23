@@ -3785,6 +3785,7 @@ artifacts.sign_routes = signing.routes_held
 import version                                                   # noqa: E402
 import vmtemplate                                                # noqa: E402
 vmtemplate.unvetted_ok = forges.unvetted_ok          # the same switch (R54, step 6)
+nodes.unvetted_ok = forges.unvetted_ok               # ...and accounts as their own users (R125)
 # The Nodes tab's verbs are nodes.verb's, and these are what they compose
 # with (a runner's forge and token, a daemon probe, Claude Code's update).
 nodes.configure_verbs(vmtemplate=vmtemplate, forges=forges, devapp=devapp,

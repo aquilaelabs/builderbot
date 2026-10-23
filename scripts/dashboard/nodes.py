@@ -1567,6 +1567,12 @@ def _census(c):
             # a session THERE (bb-tty compares against the machine it runs
             # on); the row hands it to the page per project.
             "boot": re.sub(r"[^0-9.]", "", str(se.get("boot") or ""))[:40],
+            # Accounts as their own users (R125): how far the move is.
+            "accounts": {"users": _mb((se.get("accounts") or {}).get("users")) or 0,
+                         "moved": _mb((se.get("accounts") or {}).get("moved")) or 0,
+                         "waiting": _mb((se.get("accounts") or {}).get("waiting")) or 0,
+                         "error": str((se.get("accounts") or {}).get("error") or "")[:160]}
+                        if isinstance(se.get("accounts"), dict) else {},
             # Seconds since the machine booted. Finite: json.loads takes
             # Infinity and NaN, and int() of either
             # raised, failing the node's whole hello (B180).
@@ -1913,6 +1919,40 @@ def node_root_asks(principal, node_id, on):
     _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
     _touch(node_id, principal, "node-root-asks", {"on": bool(on)})
     return {"ok": True, "on": bool(on)}
+
+
+# Whether dev features are offered (settings' offer_unvetted), set by server.py:
+# accounts as their own users are one until the dev pair has walked them.
+unvetted_ok = lambda: False  # noqa: E731
+
+
+def node_account_users(principal, node_id, on):
+    """Whether each account runs as a Unix user of its own on this node
+    (R125): its home, its tokens, its tmux and its sessions that user's, so
+    a shell as the shared session account reaches none of them. The agent
+    moves each home over once nothing of that account runs the old way, and
+    back the same way when this is turned off. An administrator's."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node runs sessions"}
+    if on and not unvetted_ok():
+        return {"error": "accounts as their own users are a dev feature until walked on the dev pair: "
+                         "Offer dev features in Settings offers them"}
+    conf = dict(n.get("config") or {})
+    if on:
+        conf["account_users"] = True
+    else:
+        conf.pop("account_users", None)
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-account-users", {"on": bool(on)})
+    return {"ok": True, "on": bool(on)}
+
+
+def account_users_on(nid):
+    n = node(nid)
+    return bool(n and (n.get("config") or {}).get("account_users")) and not host_only(nid)
 
 
 def root_refused(n):
@@ -3378,6 +3418,8 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
             "host_only": host_only(nid),
             # Published ports bound to 127.0.0.1 by default there (R190).
             "ports_local": ports_local_on(nid),
+            # Each account a Unix user of its own there (R125).
+            "account_users": account_users_on(nid),
             # The idle rule for Claude sessions (idle.py): the node enforces
             # it itself, so it holds while this controller is down.
             "session_idle_minutes": idle_minutes(),
@@ -5547,6 +5589,10 @@ def verb(principal, req):
         # all. An administrator's, like the rest.
         return node_root_asks(principal, nid, req.get("on") is True)
 
+    def account_users():
+        # Each account a Unix user of its own there (R125).
+        return node_account_users(principal, nid, req.get("on") is True)
+
     def apply():
         return node_apply(principal, nid, field(req, "what"))
 
@@ -5707,7 +5753,7 @@ def verb(principal, req):
              "gpu-compute": gpu_compute,
              "config": config, "turns": turns,
              "test-workers": test_workers, "session-net": session_net, "ports-local": ports_local,
-             "root-asks": root_asks, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
+             "root-asks": root_asks, "account-users": account_users, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
              "host-only": host_on, "host-off": host_off,
              "door": lambda: node_door(principal, nid, req.get("on")),
              "lockdown": lambda: node_lockdown(principal, nid),

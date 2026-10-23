@@ -33,17 +33,21 @@ from .vms import vmnet_keep
 from .backends import _have
 
 
-def session_sudoers(user):
+def session_sudoers(user, accounts=False):
     """The sudo rule that lets the session account start a session inside its
     project's view, and nothing else. !use_pty keeps the session on the pane's
-    own terminal rather than a pty sudo would relay."""
+    own terminal rather than a pty sudo would relay. Where accounts are their
+    own users (R125), each of them may start its own session the same way
+    (bb-session holds it to its own account), and nothing more."""
     return (f"# Written by the BuilderBot agent (R35): the one command {user} may run as root,\n"
             f"# which starts a session inside a view of this node that holds only its project.\n"
             f"Defaults!{SESSION_BIN} !use_pty, !lecture\n"
-            f"{user} ALL=(root) NOPASSWD: {SESSION_BIN}\n")
+            f"{user} ALL=(root) NOPASSWD: {SESSION_BIN}\n"
+            + (f"%bbu ALL=(root) NOPASSWD: {SESSION_BIN} enter *, {SESSION_BIN} check, {SESSION_BIN} check-net\n"
+               if accounts else ""))
 
 
-def session_conf(state, user, net=False):
+def session_conf(state, user, net=False, accounts=None):
     """This machine's layout for bb-session: the session account and the
     stores whose other projects' parts a session's view leaves out, and,
     once the table is in place, that each session gets a network of its own
@@ -57,7 +61,11 @@ def session_conf(state, user, net=False):
             f"TOOLCHAINS_STORE={tc_root(state)}\n"
             f"RUNNER_DIR={RUNNER_DIR}\n"
             f"HIDE=/devdata\n"
-            + (f"SESSION_NET=on\nSESSION_NET_CIDR={SESSNET_CIDR}\n" if net else ""))
+            + (f"SESSION_NET=on\nSESSION_NET_CIDR={SESSNET_CIDR}\n" if net else "")
+            # Accounts as their own users (R125): who to ask whose a terminal
+            # is, and the root-owned bundle it then runs from.
+            + (f"ACCOUNT_USERS=on\nCONTROLLER={accounts['controller']}\n"
+               f"CONTROLLER_PIN={accounts['pin']}\nBUNDLE={accounts['bundle']}\n" if accounts else ""))
 
 
 def isolation_now():

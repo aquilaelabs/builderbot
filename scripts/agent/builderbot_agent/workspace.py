@@ -6,7 +6,7 @@ import os
 import re
 import shutil
 import tarfile
-from .base import ROOT_TOOLS, TOOLS_DIR, log
+from .base import ROOT_BUNDLE_DIR, ROOT_TOOLS, TOOLS_DIR, log
 from .stores import dir_bytes, tc_root
 
 
@@ -176,6 +176,7 @@ class WorkspaceMixin:
             return ""
         if root:
             self._keep_root_tools(tar_path, hexd[:16] or "bundle", say)
+            self._keep_root_bundle(tar_path, hexd[:16] or "bundle", say)
         into = os.path.join(bbdir, hexd[:16] or "bundle")
         if not os.path.isdir(into):
             with tarfile.open(tar_path) as tar:
@@ -244,6 +245,50 @@ class WorkspaceMixin:
                     shutil.rmtree(os.path.join(TOOLS_DIR, other), ignore_errors=True)
         except (OSError, tarfile.TarError) as e:
             say(f"could not keep root's copy of the bundle's tools: {e}\n")
+
+    @staticmethod
+    def _keep_root_bundle(tar_path, name, say):
+        """The whole bundle, root-owned and nobody else's to write, unpacked
+        from the checked tar into ROOT_BUNDLE_DIR/<name>/ and current pointed
+        at it (R125): what bb-session tty starts a terminal from. The two
+        before it are kept for the terminals still running them."""
+        into = os.path.join(ROOT_BUNDLE_DIR, name)
+        try:
+            os.makedirs(ROOT_BUNDLE_DIR, mode=0o755, exist_ok=True)
+            os.chmod(ROOT_BUNDLE_DIR, 0o755)
+            if not os.path.isdir(into):
+                tmp = into + ".new"
+                shutil.rmtree(tmp, ignore_errors=True)
+                with tarfile.open(tar_path) as tar:
+                    if hasattr(tarfile, "data_filter"):
+                        tar.extractall(tmp, filter="data")
+                    else:
+                        tar.extractall(tmp)
+                for d, dirs, files in os.walk(tmp):
+                    for x in [d] + [os.path.join(d, f) for f in dirs + files]:
+                        if os.path.islink(x):
+                            continue
+                        os.chown(x, 0, 0)
+                        st = os.stat(x)
+                        os.chmod(x, (st.st_mode & 0o755) | (0o755 if os.path.isdir(x) else 0o644))
+                for x in ("scripts/bb", "scripts/dashboard/bb-tty", "scripts/dashboard/bb-work-note",
+                          "scripts/dashboard/bb-prompt-relay"):
+                    with contextlib.suppress(OSError):
+                        os.chmod(os.path.join(tmp, x), 0o755)
+                os.replace(tmp, into)
+            link = os.path.join(ROOT_BUNDLE_DIR, ".current.new")
+            if os.path.lexists(link):
+                os.unlink(link)
+            os.symlink(name, link)
+            os.replace(link, os.path.join(ROOT_BUNDLE_DIR, "current"))
+            kept = sorted((d for d in os.listdir(ROOT_BUNDLE_DIR)
+                           if d not in (name, "current") and not d.startswith(".")
+                           and os.path.isdir(os.path.join(ROOT_BUNDLE_DIR, d))),
+                          key=lambda d: os.path.getmtime(os.path.join(ROOT_BUNDLE_DIR, d)), reverse=True)
+            for old in kept[2:]:
+                shutil.rmtree(os.path.join(ROOT_BUNDLE_DIR, old), ignore_errors=True)
+        except (OSError, tarfile.TarError) as e:
+            say(f"could not keep root's copy of the bundle: {e}\n")
 
     @staticmethod
     def prune_bundles(bbdir, keep):

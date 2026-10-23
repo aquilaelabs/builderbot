@@ -9,6 +9,7 @@ import threading
 import time
 from .base import (
     daemon_json_with_ip,
+    ROOT_BUNDLE_DIR,
     DEFAULT_STORES,
     DIAL_BACK_S,
     NEEDRESTART_DIR,
@@ -415,9 +416,15 @@ class ConfigPlaneMixin:
         except OSError:
             return
         wrote = []
+        # Accounts as their own users (R125), once the agent has made the
+        # group and bb-session is there to hold each to its own account.
+        ready = getattr(self, "account_users_ready", None)
+        accounts = {"controller": self.ctl.url, "pin": self.state.get("pin", ""),
+                    "bundle": os.path.join(ROOT_BUNDLE_DIR, "current")} if ready and ready() else None
         for path, text, mode, sudoers in ((SESSION_BIN, tool, 0o755, False),
-                                          (SESSION_CONF, session_conf(self.state, user, self.sessnet.conf_on), 0o644, False),
-                                          (SESSION_SUDOERS, session_sudoers(user), 0o440, True)):
+                                          (SESSION_CONF, session_conf(self.state, user, self.sessnet.conf_on, accounts),
+                                           0o644, False),
+                                          (SESSION_SUDOERS, session_sudoers(user, bool(accounts)), 0o440, True)):
             try:
                 with open(path, encoding="utf-8") as f:
                     if f.read() == text:

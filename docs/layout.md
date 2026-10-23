@@ -241,6 +241,7 @@ scripts/
     toolchains.py                the toolchain store (R19): what is installed, who uses it, a session's environment
     gpu.py                       the NVIDIA card: its sample, its memory's holders, the driver and container toolkit
     sessnet.py                   each session kept to its own project's network (R79)
+    accounts.py                  each account a Unix user of its own on the node (R125): its user made, its home moved to it and back, the terminal's environment for bb-session tty
     runners.py                   the CI runners: their slots and state, and Agent's runner verbs
     census.py                    the census and the sample every hello carries
     jobs.py                      Job: one piece of the controller's work, on its own thread

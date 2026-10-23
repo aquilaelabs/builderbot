@@ -794,6 +794,7 @@ function nodeSessDirty(n){
   const portsOn = "ports_local" in conf ? !!conf.ports_local : !!conf.host_only;
   return (c.sessnetOn !== undefined && c.sessnetOn !== !!conf.session_net)
     || (c.rootAsks !== undefined && c.rootAsks !== !conf.no_root)
+    || (c.acctUsers !== undefined && c.acctUsers !== !!conf.account_users)
     || (c.ctrNet !== undefined && c.ctrNet !== ctrOn)
     || (c.portsLocal !== undefined && c.portsLocal !== portsOn)
     || (c.turnsText !== undefined && String(Number(c.turnsText) || 0) !== String((n.turns || {}).limit || 0))
@@ -912,6 +913,17 @@ function nodeSessNetRow(n){
   if (c.draft.rootAsks === undefined || c.draft.rootFrom !== rootOn){
     c.draft.rootAsks = rootOn; c.draft.rootFrom = rootOn;
   }
+  // ...and whether each account is a Unix user of its own here (R125).
+  const acctOn = !!n.config?.account_users;
+  if (c.draft.acctUsers === undefined || c.draft.acctFrom !== acctOn){
+    c.draft.acctUsers = acctOn; c.draft.acctFrom = acctOn;
+  }
+  const ac = n.reported?.session?.accounts || {};
+  const acctLine = !acctOn ? (ac.users ? `<div class="sub dim">${ac.users} account${ac.users === 1 ? "" : "s"} still ${ac.users === 1 ? "has" : "have"} a home of ${ac.users === 1 ? "its" : "their"} own user, moved back once ${ac.users === 1 ? "its" : "their"} sessions end.</div>` : "")
+    : ac.error ? `<div class="sub bad">Not in force: ${esc(ac.error)}.</div>`
+    : ac.users === undefined ? `<div class="sub dim">The node has not reported it yet.</div>`
+    : ac.waiting ? `<div class="sub dim">${ac.moved} of ${ac.users} homes moved; ${ac.waiting} wait${ac.waiting === 1 ? "s" : ""} for ${ac.waiting === 1 ? "its" : "their"} sessions started before to end.</div>`
+    : `<div class="sub">Every account here runs as a user of its own: its home, its sign-ins and its terminals are its alone, and only root reaches them.</div>`;
   const sn = n.reported?.session_net || {};
   const told = Object.keys(sn).length > 0;
   const line = !told
@@ -927,7 +939,10 @@ function nodeSessNetRow(n){
     ${line}</div>
     <div class="field"><label class="ndcap"><input type="checkbox" data-k="rootasks" ${c.draft.rootAsks ? "checked" : ""}>
       let a session ask for a root command (bb root run), which a person then allows or denies</label>
-    ${rootOn ? "" : `<div class="sub dim">A session that asks is refused and told this is off.</div>`}</div>`;
+    ${rootOn ? "" : `<div class="sub dim">A session that asks is refused and told this is off.</div>`}</div>
+    ${acctOn || state?.settings?.settings?.offer_unvetted?.value ? `<div class="field"><label class="ndcap"><input type="checkbox" data-k="acctusers" ${c.draft.acctUsers ? "checked" : ""}>
+      run each account as a user of its own, so no account and no shell as the session account reaches another's sign-ins or terminals <span class="pill">dev</span></label>
+    ${acctLine}</div>` : ""}`;
 }
 
 // How many Claude sessions here may work on a prompt at once (turns.py on
@@ -2459,7 +2474,7 @@ function wireNodesTab(root){
       }
       if (act === "sess-revert"){
         const c = nodesConf[id];
-        if (c && c.draft) for (const k of ["sessnetOn", "rootAsks", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
+        if (c && c.draft) for (const k of ["sessnetOn", "rootAsks", "acctUsers", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
         nodesRev++; drawPanes();
         return;
       }
@@ -2488,12 +2503,14 @@ function wireNodesTab(root){
                         v => Number(v) ? `test runs here may use ${v} worker${Number(v) === 1 ? "" : "s"}` : "test runs here may use every core")
           && await step(val("rootasks"), !conf.no_root, v => ({action: "root-asks", on: v}),
                         v => v ? "a session here may ask for a root command" : "a session here asking for a root command is refused")
+          && await step(val("acctusers"), !!conf.account_users, v => ({action: "account-users", on: v}),
+                        v => v ? "each account here becomes a user of its own; a home moves once its older sessions end" : "accounts here run as the session account again once their sessions end")
           && await step(val("ctrnet"), "container_net" in conf ? !!conf.container_net : !!conf.host_only, v => ({action: "container-net", on: v}),
                         v => v ? "each project's containers here are kept to their own network from the next hello" : "containers here reach each other again from the next hello")
           && await step(val("portslocal"), "ports_local" in conf ? !!conf.ports_local : !!conf.host_only, v => ({action: "ports-local", on: v}),
                         v => v ? "published ports here bind to 127.0.0.1 from the next hello; docker restarts once" : "published ports here bind to every address from the next hello; docker restarts once");
         const c = nodesConf[id];
-        if (ok && c && c.draft) for (const k of ["sessnetOn", "rootAsks", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
+        if (ok && c && c.draft) for (const k of ["sessnetOn", "rootAsks", "acctUsers", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
         if (said.length) notify(said.join("; "));
         await loadNodes();
         return;
@@ -2603,7 +2620,7 @@ function wireNodesTab(root){
     // Revert, which sleep again when every field is back where it was.
     const sessWake = () => { const dirty = nodeSessDirty(nodesList.find(x => x.id === id) || {});
       box.querySelectorAll('[data-nd="sess-save"], [data-nd="sess-revert"]').forEach(x => { x.disabled = !dirty; }); };
-    for (const [k, key] of [["sessnet", "sessnetOn"], ["rootasks", "rootAsks"], ["ctrnet", "ctrNet"], ["portslocal", "portsLocal"]]){
+    for (const [k, key] of [["sessnet", "sessnetOn"], ["rootasks", "rootAsks"], ["acctusers", "acctUsers"], ["ctrnet", "ctrNet"], ["portslocal", "portsLocal"]]){
       const el = box.querySelector(`[data-k="${k}"]`);
       if (el) el.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft[key] = el.checked; sessWake(); };
     }

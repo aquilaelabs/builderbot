@@ -22,6 +22,7 @@ from .wssync import WorkspaceSync
 from .claudesync import ClaudeMirror
 from .screen import ScreenRelay
 from .sessions import SessionWatch, SessionsMixin
+from .accounts import AccountsMixin
 from .workspace import WorkspaceMixin
 from .work import WorkMixin
 from .configplane import ConfigPlaneMixin
@@ -29,7 +30,7 @@ from .vms import VmsMixin
 from . import storage
 
 
-class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin):
+class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, AccountsMixin):
     def __init__(self, state):
         self.state = state
         # Its own directory under the toolchain store, by its node id (R196),
@@ -266,6 +267,19 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                     else "no longer hosting only")
                 if ho:
                     self.session_stop()
+            # Accounts as their own users (R125): the controller's switch,
+            # kept in node.json. When it moves the layout file and the sudo
+            # rule are rewritten and the ttyds start again on the other way
+            # in; tmux sessions are untouched either way.
+            au = bool(r.get("account_users"))
+            if au != bool(self.state.get("account_users")):
+                self.state["account_users"] = au
+                save_state(self.state)
+                log("accounts run as their own users" if au else "accounts run as the session account again")
+                self.accounts_at = 0.0
+                self.account_users_pass()
+                self.refresh_session_tool()
+                self.session_renew()
             self.keep_session_tokens(r.get("session_tokens") or [])
             # Whether each session here is kept to its own project's network,
             # and what each project owns here (R79), kept in node.json so it
@@ -521,6 +535,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                     delay = 1
             timed("session_check", self.session_check)
             timed("firewall_check", self.session_firewall_check)
+            timed("account_users", self.account_users_pass)
             timed("idle_reap", self.session_idle_reap)
             timed("runner_check", self.runner_check)
             n = self.running()

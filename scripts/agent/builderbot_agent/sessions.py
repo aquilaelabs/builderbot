@@ -4,10 +4,12 @@ import glob
 import hashlib
 import json
 import os
+import pwd
 import re
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 from .jobs import pump
@@ -23,6 +25,8 @@ from .base import (
     NFT_BIN,
     RESPAWNABLE,
     SESSION,
+    ROOT_BUNDLE_DIR,
+    SESSION_BIN,
     SESSION_BIND,
     SESSION_NFT,
     SESSION_PORT,
@@ -198,11 +202,21 @@ class SessionsMixin:
             env.update({"BUILDER_HOME": env.get("HOME", ""), "BB_ACCOUNT_UID": uid,
                         "BB_PROJECT": project, "BB_TOKEN": token,
                         "BUILDERBOT_ROLE": "node"})
+            # Kept by the account's own user where its home is that user's
+            # (R125): the session account cannot write there any more.
+            run_bb, run_who = bb, who
+            dropper = getattr(self, "drop_for", None)
+            if dropper:
+                with contextlib.suppress(RuntimeError):
+                    w, base, root_bb = dropper(env, uid)
+                    if root_bb:
+                        run_bb, run_who = os.path.join(root_bb, "scripts", "bb"), w
+                        env["BUILDER_HOME"] = base
             try:
-                p = subprocess.run([bb, "token", "keep"],
+                p = subprocess.run([run_bb, "token", "keep"],
                                    env=env, capture_output=True, text=True, timeout=20, check=False,
-                                   **({"user": who["user"], "group": who["group"],
-                                       "extra_groups": who["extra_groups"]} if who else {}))
+                                   **({"user": run_who["user"], "group": run_who["group"],
+                                       "extra_groups": run_who["extra_groups"]} if run_who else {}))
             except (OSError, subprocess.SubprocessError) as e:
                 self.keep_said(f"{uid}/{project}", f"bb token keep did not run: {e}")
                 return
@@ -348,10 +362,20 @@ class SessionsMixin:
             # The twin is told it is read-only: bb-tty then says where the
             # sign-in happens instead of prompting for a code nobody can
             # type into it (B137).
+            # Where accounts are their own users (R125) a terminal starts
+            # through bb-session tty, which asks the controller whose it is
+            # and runs as that account from the root-owned bundle; the ttyd
+            # itself stays the session account, which may become nobody.
+            mine = getattr(self, "account_users_ready", None)
+            if mine and mine():
+                self.tty_env_write()
+            starts = {SESSION_PORT: ["sudo", "-n", SESSION_BIN, "tty"],
+                      SESSION_PORT + 1: ["sudo", "-n", SESSION_BIN, "tty-ro"]} if mine and mine() else \
+                     {SESSION_PORT: [bbtty], SESSION_PORT + 1: [bbtty]}
             for port, extra, more in ((SESSION_PORT, ["--writable"], {}),
                                       (SESSION_PORT + 1, [], {"BB_TTY_RO": "1"})):
                 self.ttyd.append(subprocess.Popen(
-                    base[:1] + ["--port", str(port)] + base[1:] + extra + [bbtty],
+                    base[:1] + ["--port", str(port)] + base[1:] + extra + starts[port],
                     cwd=env["HOME"] if os.path.isdir(env["HOME"]) else "/",
                     env=dict(env, **more), stdin=subprocess.DEVNULL, stdout=out, stderr=out, **who))
             out.close()
@@ -569,16 +593,49 @@ class SessionsMixin:
             log("sessions: the bundle was gone from the toolchain store; fetched it again")
 
     def _tmux(self, argv, timeout=10):
-        """tmux as the session account: its server, its sessions. The
-        environment is the account's own (HOME and the default socket
-        path follow the uid), not this process's: the agent under systemd
-        has no TMUX_TMPDIR and must not inherit one from a test."""
+        """tmux on the server a session is on. Where accounts are their own
+        users (R125) each runs its own: a command aimed at an account's
+        session (its u_X~ name) goes to that account's server, and to the
+        session account's for one started before the switch; a listing is
+        every server's, joined. Otherwise the session account's alone."""
+        users = self._tmux_users()
+        if len(users) > 1:
+            t = argv[argv.index("-t") + 1] if "-t" in argv and argv.index("-t") + 1 < len(argv) else ""
+            m = re.match(r"=?(u_[0-9a-f]{8})~", t)
+            if m:
+                own = "bbu-" + m.group(1)[2:]
+                if own in users:
+                    got = self._tmux_as(own, argv, timeout, quiet=True)
+                    if got is not None:
+                        return got
+                return self._tmux_as(users[0], argv, timeout)
+            if not t:
+                outs = [self._tmux_as(u, argv, timeout, quiet=i > 0) for i, u in enumerate(users)]
+                got = [o for o in outs if o is not None]
+                return "".join(got) if got else None
+        return self._tmux_as(users[0], argv, timeout)
+
+    def _tmux_users(self):
+        """Whose tmux servers there are: the session account's, and each
+        account's own user where accounts are (R125)."""
+        users = [self.session_account()]
+        # Every account user there is, the setting on or not: one turned off
+        # still has its sessions running until they end (R125).
+        if os.geteuid() == 0:
+            users += sorted(p.pw_name for p in pwd.getpwall() if p.pw_name.startswith("bbu-"))
+        return users
+
+    def _tmux_as(self, user, argv, timeout=10, quiet=False):
+        """tmux as one account: its server, its sessions. The environment
+        is that account's own (HOME and the default socket path follow the
+        uid), not this process's: the agent under systemd has no TMUX_TMPDIR
+        and must not inherit one from a test."""
         env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
                "LANG": "C.UTF-8"}
         for k in ("TMUX_TMPDIR",):
             if k in os.environ:
                 env[k] = os.environ[k]
-        who = self.as_user(env, self.session_account())
+        who = self.as_user(env, user)
         if not who:
             env["HOME"] = os.path.expanduser("~")
         try:
@@ -587,7 +644,7 @@ class SessionsMixin:
         except (OSError, subprocess.SubprocessError, RuntimeError) as e:
             log(f"sessions: tmux {argv[0]}: {e}")
             return None
-        if p.returncode != 0 and argv[0] != "list-panes" and "no server running" not in (p.stderr or ""):
+        if p.returncode != 0 and not quiet and argv[0] != "list-panes" and "no server running" not in (p.stderr or ""):
             # No server up is the normal state of a node nobody has opened a
             # terminal on, whichever verb met it: list-sessions from the idle
             # reaper said so once a minute, all day. Anything else failing is
@@ -654,6 +711,20 @@ class SessionsMixin:
             return None
         if not who:
             return None
+        # Where accounts own their homes (R125) the session account can read
+        # none of them: read as root, and only from the root-owned bundle,
+        # which nothing outside a view can change.
+        lister = os.path.join(ROOT_BUNDLE_DIR, "current", "scripts", "lib", "login-list.py")
+        if any(u.startswith("bbu-") for u in self._tmux_users()) and os.path.isfile(lister):
+            try:
+                p = subprocess.run([sys.executable, "-I", lister], env={
+                    "PATH": env["PATH"], "LANG": "C.UTF-8",
+                    "BB_USERS_DIR": os.path.join(env.get("HOME", ""), "users")},
+                    capture_output=True, text=True, timeout=20, check=False)
+                rows = json.loads(p.stdout) if p.returncode == 0 else None
+            except (OSError, subprocess.SubprocessError, ValueError):
+                return None
+            return rows[:64] if isinstance(rows, list) else None
         try:
             p = subprocess.run(["bash", bb, "login", "--list"], env=env,
                                capture_output=True, text=True, timeout=20,

@@ -372,23 +372,29 @@ class Job(threading.Thread):
         env = dict(sdk_env(self.agent.state))
         env.update({"BUILDERBOT_NODE": self.agent.state.get("node_id", ""),
                     "BUILDERBOT_JOB": self.job["id"]})
-        try:
-            who = self.agent.as_user(env, who_name)
-        except RuntimeError as e:
-            self.say(f"refused: {e}\n")
-            return "failed", 78
         if not who_name:
             self.say("refused: this node reports no session account, so there is "
                      "no home for a Claude login to land in\n")
             return "failed", 78
-        into = self.agent.bundle(self, who)
+        # As the account's own user where its home is that user's (R125),
+        # from the root-owned bundle; as the session account otherwise.
+        try:
+            dropper = getattr(self.agent, "drop_for", None)
+            if dropper:
+                who, base, root_bb = dropper(env, str(spec.get("uid") or ""))
+            else:
+                who, base, root_bb = self.agent.as_user(env, who_name), env.get("HOME", ""), ""
+        except RuntimeError as e:
+            self.say(f"refused: {e}\n")
+            return "failed", 78
+        into = root_bb or self.agent.bundle(self, who)
         if not into:
             return "failed", 69
         # The BuilderBot account, so the bundle's own user_home resolves the
         # same per-account home bb-tty gives a session here. Resolved there
         # rather than here: one implementation of "where does this account
         # live on this machine", and it is that one.
-        env["BUILDER_HOME"] = env.get("HOME", "")
+        env["BUILDER_HOME"] = base or env.get("HOME", "")
         env["BB_ACCOUNT_UID"] = str(spec.get("uid") or "")
         # What the flow reports with, and where: the token the controller
         # minted for this sign-in, the controller's address, and the node

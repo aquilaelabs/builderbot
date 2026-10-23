@@ -104,6 +104,11 @@ SESSION_BIN = os.environ.get("BUILDERBOT_SESSION_BIN", "/usr/local/sbin/bb-sessi
 # and so any session through bb run, plant root code that landed on the
 # next hello (the review of 26 Sep).
 TOOLS_DIR = os.environ.get("BUILDERBOT_TOOLS_DIR", "/var/lib/builderbot/agent/tools")
+# The bundle a terminal runs where accounts are their own users (R125): a
+# root-owned copy on the node's own disk, unpacked from the checked tar, so
+# nothing outside a view can change what every account's terminal runs (the
+# toolchain store is a share squashed to one uid).
+ROOT_BUNDLE_DIR = os.environ.get("BUILDERBOT_ROOT_BUNDLE", "/usr/local/lib/builderbot/bundle")
 ROOT_TOOLS = ("nodes/provision-linux.sh", "nodes/bb-session")
 # Where an updated Claude Code is pinned, root-owned, for the sessions (claude_update).
 CLAUDE_DIR = "/usr/local/lib/builderbot/claude"
