@@ -544,6 +544,7 @@ class ConfigPlaneMixin:
         stopped = lambda: bool(getattr(job, "canceled", False))  # noqa: E731
         job.say("$ " + " ".join(argv) + "\n")
         flush()                          # the step and the command, now
+        began = time.monotonic()
         try:
             p = subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT, start_new_session=True)
@@ -573,6 +574,11 @@ class ConfigPlaneMixin:
         if stopped():
             job.say("stopped\n")
             return 130
+        # A slow step says how slow (B243): an apply that took a minute to
+        # change nothing gave no way to tell which command took it.
+        took = time.monotonic() - began
+        if took >= 3:
+            job.say(f"   (took {took:.0f}s)\n")
         return 124 if killed else p.returncode
 
     def _apply_root(self, job, cfg):
@@ -691,6 +697,15 @@ class ConfigPlaneMixin:
                 job.say(f"refused the mount at {path}: {why}\n")
                 bad += 1
                 continue
+            # Already there as wanted: said, and nothing run (B243). Every
+            # mount used to be applied again on every apply, which cost a
+            # node with four shares over a minute to change nothing.
+            h = have.get(path) or {}
+            if (h.get("mounted") and not h.get("stale") and str(h.get("source") or "") == src
+                    and str(h.get("type") or "nfs") == kind and bool(h.get("ro")) == ro
+                    and str(h.get("real") or "") == src):
+                job.say(f"== {path} is mounted from {src}, as it is wanted\n")
+                continue
             verb = "add-share" if kind == "virtiofs" else "add-nfs"
             if self._sh(job, [SANDBOX_BIN, verb, f"{src}:{path}" + (":ro" if ro else "")]) != 0:
                 bad += 1
@@ -791,6 +806,19 @@ class ConfigPlaneMixin:
                             f"put {role} on this node's own disk and look like it worked. Fix the "
                             f"mount, or remove it from this node's mounts if {path} is meant to be "
                             f"local.\n")
+                    bad += 1
+                    continue
+                # ...nor one mounted wrong (the operator, 23 Oct: a store on
+                # a configured share must be on that share, mounted, or the
+                # apply fails): a stale handle, or another export than the
+                # one configured, is not the share it names.
+                if cover and (cover.get("stale") or (cover.get("real") and cover.get("source")
+                                                    and cover["real"] != cover["source"])):
+                    job.say(f"refused {role} store {path}: it is inside {cover.get('path')}, which is "
+                            + ("mounted but stale (the export went away under it)"
+                               if cover.get("stale") else
+                               f"mounted from {cover.get('real')} rather than {cover.get('source')}")
+                            + f". {role} stays where it was until that mount is right.\n")
                     bad += 1
                     continue
                 try:

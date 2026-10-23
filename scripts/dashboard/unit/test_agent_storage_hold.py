@@ -87,5 +87,38 @@ class StorageHold(unittest.TestCase):
         self.assertEqual(seen, [False, False])
 
 
+class StoreOnAMount(unittest.TestCase):
+    """A store inside a configured mount goes there only when the mount is
+    there and is the share it names (the operator, 23 Oct)."""
+
+    def run_apply(self, mount):
+        a = object.__new__(agent.Agent)
+        a.state = {"name": "shed", "stores": {"artifacts": "/var/lib/builderbot/artifacts"}}
+        a.write_session_profile = lambda job: None
+        saved = (agent.mounts_now, agent.save_state, os.path.ismount)
+        self.addCleanup(lambda: (setattr(agent, "mounts_now", saved[0]), setattr(agent, "save_state", saved[1]),
+                                 setattr(os.path, "ismount", saved[2])))
+        agent.mounts_now = lambda: [mount]
+        agent.save_state = lambda st: None
+        os.path.ismount = lambda p: p == mount["path"]
+        job = Job()
+        bad = a._apply_stores(job, {"artifacts": mount["path"] + "/art"}, {})
+        return bad, "".join(job.said), a.state["stores"]["artifacts"]
+
+    def test_a_stale_mount_is_refused(self):
+        bad, said, now = self.run_apply({"path": "/srv/share", "source": "nas:/x", "real": "nas:/x",
+                                         "mounted": True, "stale": True})
+        self.assertEqual(bad, 1)
+        self.assertIn("stale", said)
+        self.assertEqual(now, "/var/lib/builderbot/artifacts")
+
+    def test_a_mount_from_another_export_is_refused(self):
+        bad, said, now = self.run_apply({"path": "/srv/share", "source": "nas:/x", "real": "nas:/old",
+                                         "mounted": True})
+        self.assertEqual(bad, 1)
+        self.assertIn("mounted from nas:/old rather than nas:/x", said)
+        self.assertEqual(now, "/var/lib/builderbot/artifacts")
+
+
 if __name__ == "__main__":
     unittest.main()
