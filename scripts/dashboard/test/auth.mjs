@@ -616,7 +616,8 @@ ${code}`], { encoding: 'utf8' });
     ok((await bare('/api/v1/jobs?n=50', { headers: other })).status === 200
        && ((await (await bare('/api/v1/jobs?n=50', { headers: other })).json()).jobs || []).every(j => j.project === 'beta'),
        'a user reads only the jobs of projects they were given');
-    ok(!((await (await bare('/api/status', { headers: other })).json()).attention || []).length,
+    // Their own two-factor notice (R127) is theirs; nothing else is.
+    ok(!((await (await bare('/api/status', { headers: other })).json()).attention || []).filter(a => a.kind !== 'two-factor').length,
        '...and the bell\'s node alerts, which only an administrator can act on, are not theirs');
     // Memories are the reader's own, in the reader's home, not the owner's
     // (bug B67): a user opening the Memory tab must not see what the owner's
