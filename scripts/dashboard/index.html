@@ -720,9 +720,7 @@ html[data-motion="reduce"] .tourring{transition:none}
 @media(max-width:600px){
   /* ...and on a phone it stops above the dock's line and the bottom bar, so
      the gear's whole menu shows where the screen has room for it. */
-  .bellpanel,.uimenu{left:8px;right:8px;width:auto;max-height:calc(100dvh - 190px)}
-  header:has(>.bellpanel:not([hidden]),>.uimenu:not([hidden]))::before{content:"";position:absolute;
-    left:0;right:0;top:100%;height:100vh;z-index:39;background:rgba(0,0,0,.4);pointer-events:none} }
+  .bellpanel,.uimenu{left:8px;right:8px;width:auto;max-height:calc(100dvh - 190px)} }
 .popbar{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;
   min-height:var(--tap);padding:4px 8px 4px 12px;background:var(--panel);
   border-bottom:var(--hair) solid var(--line)}
