@@ -223,6 +223,11 @@ class Job(threading.Thread):
         # path below can now only ADD to this line.
         self.say(f"{self.job.get('type') or 'exec'}"
                  + (f": {spec['apply']}" if spec.get("apply") else "") + "\n")
+        # Posted now: a job turns running at its first log post, and one
+        # that works in this process (a disk measure, a cache clear) said
+        # nothing more until its end, so its row read "assigned" all the
+        # while it ran (B250).
+        self.flush()
         try:
             if self.job.get("type") == "self-update":
                 state, code = self.agent.self_update(self, spec)
