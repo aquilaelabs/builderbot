@@ -2240,6 +2240,16 @@ def _here(name):
         return False
 
 
+def app_flags(name, uid):
+    """What an app's project list says of a project's archive and lock
+    (R128): the Windows companion's device door and the VS Code extension's
+    Files API, which carry neither otherwise. `locked_why` is the refusal
+    when the lock holds this account out, "" when it does not."""
+    held = locked_out(name, uid)
+    return {"archived": name in set(load_archived()), "locked": name in load_locks(),
+            "locked_why": (held or {}).get("error", "")}
+
+
 def lock_verb(name, on, by="", admin=False):
     """Lock or unlock a project, once the server has said who may and which
     kind: a name-checked write. The sessions it ends are the server's to
