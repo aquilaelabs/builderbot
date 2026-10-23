@@ -1616,7 +1616,7 @@ cmd_emu() {
                 local adir ran snap
                 adir="$(avd_path "$n")"
                 ran="$(stat -c %Y "$adir/hardware-qemu.ini" 2>/dev/null || true)"
-                snap="$(du -sm "$adir/snapshots" 2>/dev/null | cut -f1)"
+                snap="$({ du -sm "$adir/snapshots" 2>/dev/null || true; } | cut -f1)"
                 if [ -n "$ran" ]; then ran="$(( ($(date +%s) - ran) / 86400 )) days ago"; else ran=never; fi
                 printf '  Last started: %s; quick-boot snapshot: %s\n' "$ran" \
                     "$([ "${snap:-0}" -gt 1 ] && printf '%s MB' "$snap" || printf 'none')"
