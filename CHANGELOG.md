@@ -17,6 +17,7 @@
 - A node's Storage and Network have Revert beside Save, and saving a store inside a mount that is not on the node yet, or adding a mount over a store, says what will happen first (f56448f)
 - The Storage page lists each project's emulator phones with their size, last start and snapshot, and a disk past 90% says what of it can be freed and on which page; the Emulator page's new Phones section removes a phone (refused while it runs). (1dde5a7)
 - Phones give back their room when idle: bb tidy removes the quick-boot snapshot of a project's phone not started for a week and names one that is not its default after two, the node's room keeper does the same for every project when the homes' disk is past 90%, and bb emu list and the Storage page say when each phone last started and what its snapshot holds. (1b2dbe6)
+- A node's agent says when it was built, beside its version: on the node's row, in bb status on that node and in a diagnostics report, so a problem with an agent can be dated (7355f96)
 
 ### Changed
 

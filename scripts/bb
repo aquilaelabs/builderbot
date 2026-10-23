@@ -718,6 +718,9 @@ cmd_status() {
         # box on" from a session is the CONTROLLER's build, asked for over the
         # API rather than read off an env that was never set here (R62).
         printf '  %-8s %s\n' controller "$(bb_controller_stamp)"
+        # ...and this node's agent, with when it was built (R131).
+        local agl; agl="$(bb_agent_stamp)"
+        [ -z "$agl" ] || printf '  %-8s %s\n' agent "$agl"
     else
         printf '  %-8s %s\n' version "${BB_VERSION:-unstamped}"
         printf '  %-8s %s\n' image "$(
@@ -3508,6 +3511,12 @@ terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
 # and build time. Softly, with a short timeout, because a controller that is
 # down, or a session with no token, is a state the line reports rather than
 # dies on.
+bb_agent_stamp() {
+    local auth; auth="$(bb_auth_header)"
+    [ -n "$auth" ] || return 0
+    BB_META_AUTH="$auth" python3 "$BB_LIB/controller-stamp.py" agent 2>/dev/null || true
+}
+
 bb_controller_stamp() {
     local auth; auth="$(bb_auth_header)"
     [ -n "$auth" ] || { printf 'unknown: no session token to ask the controller with'; return; }

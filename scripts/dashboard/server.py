@@ -6079,9 +6079,17 @@ class Handler(BaseHTTPRequestHandler):
         held = next((a["files"][0] for a in apps.view()["apps"] if a["name"] == "android" and a["files"]), None)
         apk = {"apk": held["file"], "apk_sha256": held["sha256"], "apk_url": held["url"]} if held else \
             {"apk": app_apk(), "apk_sha256": app_apk_sha(), "apk_url": ""}
+        # ...and, for a session that names its node, the agent there and when
+        # it was built (R131): what bb status says beside the controller's.
+        agent = {}
+        nid = urllib.parse.parse_qs(self.path.partition("?")[2]).get("node", [""])[0]
+        if nid and (self._who() or {}).get("session") and not NODES_OK:
+            ag = (nodes.node(nid) or {}).get("agent") or {}
+            agent = {"version": str(ag.get("version") or ""), "built": str(ag.get("built") or "")}
         return self._json({"api": APP_API, "version": image_stamp().get("version") or "",
                            "image": image_stamp().get("rev") or "",
-                           "built": image_stamp().get("built") or "", **apk})
+                           "built": image_stamp().get("built") or "", **apk,
+                           **({"agent": agent} if agent else {})})
 
     def _get_welcome(self):
         """GET /api/welcome: BuilderBot's own changelog for the welcome panel

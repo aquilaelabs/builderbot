@@ -1658,7 +1658,9 @@ function renderNodesInto(i){
       ? (n.jobs || []).filter(j => j.type !== "self-update" && j.state !== "queued").length : 0;
     // The agent a fact; an update for it a pill beside the node's state.
     const agentVer = n.kind === "agent" && n.agent?.version
-      ? `${n.agent.version}${n.agent.digest ? " " + n.agent.digest.slice(7, 15) : ""}` : "";
+      ? `${n.agent.version}${n.agent.digest ? " " + n.agent.digest.slice(7, 15) : ""}${
+        // When it was built (R131), so a person with a problem can say how old it is.
+        n.agent.built && !isNaN(Date.parse(n.agent.built)) ? ` · built ${fmtTime(Date.parse(n.agent.built), {day: "numeric", month: "short", year: "numeric"})}` : ""}` : "";
     const stalePill = n.kind === "agent" && n.agent?.version && stale
       ? ` <span class="pill warn ndstale" title="this controller ships agent ${
           esc(nodesAgent.version)} ${esc(nodesAgent.digest.slice(7, 15))}">update available → ${esc(nodesAgent.version)}</span>` : "";

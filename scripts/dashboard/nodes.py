@@ -3319,6 +3319,19 @@ came_back = None
 checks_wanted = set()
 
 
+def agent_built(ag, digest, shipped, built):
+    """When the agent a node runs was built (R131), on its record: this
+    controller's own image build, written the first time the node reports
+    the agent this controller ships, and kept with that digest while it runs
+    it, so a node left on an older one still says when that one was made.
+    Gone with a digest it was not written for."""
+    if ag.get("digest") != digest:
+        ag.pop("built", None)
+    built = str(built or "").strip()[:32]
+    if digest and digest == shipped and built and not ag.get("built"):
+        ag["built"] = built
+
+
 def keep_clean(keep):
     """The agent's report on the session tokens it keeps (B419), checked:
     {said: [{at, key, msg}] (the last eight), ok: when one was last kept}."""
@@ -3405,6 +3418,7 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
     if isinstance(running, list):
         jobs_reconcile(nid, [str(j) for j in running])
         ag["held"] = jobs_held(nid, [str(j) for j in running])
+    agent_built(ag, str(digest)[:80], agent_file()["digest"], os.environ.get("BB_IMAGE_BUILT", ""))
     ag.update({"version": str(version)[:40], "digest": str(digest)[:80],
                "addr": addr, "last_seen": int(time.time()),
                })
