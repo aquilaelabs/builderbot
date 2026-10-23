@@ -711,22 +711,6 @@ def node_avd_remove(principal, node_id, project, uid, name):
     return r
 
 
-def node_cache_clear(principal, node_id, project):
-    """The Storage page's Clear build cache on one project's row (R123
-    step 2): its cache store folder and its build caches in every account's
-    home, then a walk so the row shows what went."""
-    n = node(node_id)
-    if not n or n.get("kind") != "agent":
-        return {"error": "only an agent node keeps caches to clear"}
-    if not n.get("live"):
-        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
-    r = job_add(principal, {"node": node_id}, "cache-clear",
-                {"timeout": 900, "project": project, "builds": True, "measure": True})
-    if r.get("ok"):
-        audit(principal, "node-cache-clear", node_id, {"job": r["job"], "project": project})
-    return r
-
-
 def node_discard(principal, node_id):
     """A row that never enrolled, taken off outright (the operator, 11 Oct):
     its script was discarded, so there is no history to keep and no

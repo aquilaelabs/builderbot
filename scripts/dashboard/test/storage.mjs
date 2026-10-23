@@ -86,23 +86,28 @@ const back = await page.waitForFunction(id => {
 ok(back, 'Measure now reads Measure now again once its press is answered, not Asking');
 if (job) await api('/api/v1/jobs', { action: 'cancel', id: job.id });
 
-// The page frees what it measures (R123): each project's phones with a
-// Remove, refused while one runs; a project's build caches cleared from its
-// row; Docker's prunes beside what each frees.
+// The page measures, and each thing is freed on the page that manages it
+// (the operator, 23 Oct): its phones are listed here with a link to the
+// Emulator page, where each has its Remove, refused while one runs; no
+// prune and no clear is pressed here.
 {
   const seen = await page.evaluate(() => {
     const s = document.querySelector('.storagetab details[data-sect="storage:phones"]');
-    const rows = [...(s?.querySelectorAll('.stphone') || [])].map(r => r.textContent.replace(/\s+/g, ' ').trim());
-    return { rows, removes: s?.querySelectorAll('[data-stavd]').length || 0,
-             clears: [...document.querySelectorAll('.storagetab [data-stclear]')].map(b => b.dataset.stclear),
-             prunes: [...document.querySelectorAll('.storagetab .stprunes [data-stdprune]')].map(b => b.dataset.stdprune + (b.classList.contains('danger') ? '!' : '')) };
+    return { rows: [...(s?.querySelectorAll('.stphone') || [])].map(r => r.textContent.replace(/\s+/g, ' ').trim()),
+             buttons: document.querySelectorAll('.storagetab [data-stavd], .storagetab [data-stclear], .storagetab [data-stdprune]').length,
+             link: /Emulator page/.test(s?.textContent || '') };
   });
-  ok(seen.rows.length === 2 && /builderbot-36/.test(seen.rows[0]) && /running/.test(seen.rows[1]) && seen.removes === 1,
-     `the Phones section lists each phone largest first, and only the one not running has a Remove (${JSON.stringify(seen.rows)})`);
-  ok(seen.clears.join() === 'alpha,beta', `each project holding caches has its Clear build cache (${seen.clears})`);
-  ok(seen.prunes.join() === 'images,cache,unused!,volumes!', `Docker's row has its four prunes, the safe ones first and the two that lose something red (${seen.prunes})`);
+  ok(seen.rows.length === 2 && /builderbot-36/.test(seen.rows[0]) && /running/.test(seen.rows[1]) && seen.buttons === 0 && seen.link,
+     `Storage lists each phone, largest first, with no button of its own and the way to the Emulator page (${JSON.stringify(seen)})`);
+  await page.evaluate(id => { emuNode = id; openEmulator(); }, minted.id);
+  await page.waitForSelector('.emutab details[data-sect="emulator:phones"] .emphone', { timeout: 15000 });
+  const em = await page.evaluate(() => {
+    const s = document.querySelector('.emutab details[data-sect="emulator:phones"]');
+    return { rows: s.querySelectorAll('.emphone').length, removes: s.querySelectorAll('[data-emuphone]').length };
+  });
+  ok(em.rows === 2 && em.removes === 1, `the Emulator page lists the node's phones, and only the one not running has a Remove (${JSON.stringify(em)})`);
   page.answers.push(0);
-  await page.click('.storagetab [data-stavd="alpha"]');
+  await page.click('.emutab [data-emuphone="alpha"]');
   const avd = await (async () => { for (let i = 0; i < 40; i++){
     const js = (await api('/api/v1/jobs?active=1')).jobs || [];
     const j = js.find(x => x.type === 'avd-remove' && x.node === minted.id);
@@ -112,19 +117,8 @@ if (job) await api('/api/v1/jobs', { action: 'cancel', id: job.id });
   ok(avd && avd.spec?.name === 'builderbot-36' && avd.spec?.project === 'alpha',
      `Remove asks, then queues the phone's removal on that node (${JSON.stringify(avd?.spec || null)})`);
   if (avd) await api('/api/v1/jobs', { action: 'cancel', id: avd.id });
-  const refused = await api('/api/storage', { action: 'avd-remove', node: minted.id, project: 'alpha', uid: '', name: 'builderbot-35' });
+  const refused = await api('/api/emulator', { action: 'phone-remove', node: minted.id, project: 'alpha', uid: '', name: 'builderbot-35' });
   ok(/running/.test(refused.error || ''), `a running phone is refused by the server too (${refused.error})`);
-  page.answers.push(0);
-  await page.click('.storagetab [data-stclear="alpha"]');
-  const clr = await (async () => { for (let i = 0; i < 40; i++){
-    const js = (await api('/api/v1/jobs?active=1')).jobs || [];
-    const j = js.find(x => x.type === 'cache-clear' && x.node === minted.id);
-    if (j) return j;
-    await new Promise(r => setTimeout(r, 250));
-  } return null; })();
-  ok(clr && clr.spec?.project === 'alpha' && clr.spec?.builds === true,
-     `Clear build cache queues the project's clear, its accounts' build caches with it (${JSON.stringify(clr?.spec || null)})`);
-  if (clr) await api('/api/v1/jobs', { action: 'cancel', id: clr.id });
 }
 await api('/api/v1/nodes', { action: 'retire', id: minted.id });
 

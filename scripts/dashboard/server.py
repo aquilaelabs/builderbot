@@ -6186,7 +6186,15 @@ class Handler(BaseHTTPRequestHandler):
         nid, why = self._node_asked(q.get("node", [""])[0])
         if why or not nid:
             return self._json({"error": why or "no node named"})
-        return self._json(emulator.payload(nid))
+        got = emulator.payload(nid)
+        # ...and each project's phones there, of the projects this account
+        # sees (R123): the Emulator page is where a phone is removed.
+        if not got.get("error"):
+            who = self._who()
+            st = ((nodes.node(nid) or {}).get("reported") or {}).get("storage") or {}
+            got["phones"] = [p for p in st.get("phones") or []
+                             if users.is_admin(who) or users.may_see(who, p.get("project") or "")]
+        return self._json(got)
 
     def _get_users(self):
         """GET /api/users."""
@@ -8900,6 +8908,13 @@ class Handler(BaseHTTPRequestHandler):
         # ...on that node (R260): a role holding Toolchains on named nodes.
         if (why := users.may_node(self._who(), "toolchains-write", nid)):
             return self._json({"error": why}, 403)
+        # A project's phone off the node (R123), one this account sees.
+        if action == "phone-remove":
+            project = field(req, "project")
+            if not project or not (users.is_admin(self._who()) or users.may_see(self._who(), project)):
+                return self._json({"error": "which of your projects?"}, 400)
+            return self._result(nodes.node_avd_remove(self._principal(), nid, project,
+                                                      field(req, "uid"), field(req, "name")))
         iid = req.get("images") if isinstance(req.get("images"), list) else field(req, "image")
         if action not in ("add", "remove"):
             return self._json({"error": "an image is added or removed"}, 400)
@@ -9139,19 +9154,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "which node?"}, 400)
         if not users.is_admin(who) and roles.level_of(who, "storage", node=nid) != "write":
             return self._json({"error": "measuring a node's disks again is Write on Storage"}, 403)
-        act = field(req, "action") or "measure"
-        if act in ("avd-remove", "cache-clear"):
-            # A project's phone or its build caches (R123): the project's
-            # own, so one the account may see.
-            project = field(req, "project")
-            if not project or not (users.is_admin(who) or users.may_see(who, project)):
-                return self._json({"error": "which of your projects?"}, 400)
-            if act == "avd-remove":
-                return self._result(nodes.node_avd_remove(self._principal(), nid, project,
-                                                          field(req, "uid"), field(req, "name")))
-            return self._result(nodes.node_cache_clear(self._principal(), nid, project))
-        if act != "measure":
-            return self._json({"error": "measure, avd-remove or cache-clear"}, 400)
         return self._result(nodes.node_storage_measure(self._principal(), nid))
 
     def _get_nginx(self):

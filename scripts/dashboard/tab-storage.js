@@ -18,7 +18,6 @@ let storageList = null;          // last answer, or null before the first
 let storageErr = "";
 let storageRev = 0;
 let storageMay = false;          // whether this account may measure now
-let storageWrite = false;        // ...and free space on the node on show (its Write on Storage)
 let storageNode = "";            // the node the tab shows
 let storageDisk = "";            // the disk its chips picked, "" for all (R122)
 
@@ -81,12 +80,8 @@ function storageHeld(n){
     // The one number in Docker's share a person acts on is what a prune
     // would free; the kind-by-kind list (images 3095 MB (7), ...) is the
     // Docker tab's to tell.
-    const k = kind => dk.kinds.find(x => x.kind === kind) || {};
     items.push({name: "Docker", path: dk.root || "its data root", fs: dk.fs || "", mb: total,
-                note: recl ? `${sgb(recl)} of it reclaimable` : "", prune: recl ? n.node : "",
-                // What each prune frees, by Docker's own count (R123 step 3).
-                prunes: {images: k("Images").reclaimable_mb || 0, cache: k("Build Cache").reclaimable_mb || 0,
-                         volumes: k("Local Volumes").reclaimable_mb || 0}});
+                note: recl ? `${sgb(recl)} of it reclaimable` : "", prune: recl ? n.node : ""});
   }
   return items;
 }
@@ -95,20 +90,8 @@ function storageRow(h){
   return `<div class="row"><div class="grow"><div class="name">${esc(h.name)} <span class="dim">· ${esc(h.path)}</span></div>
       <div class="sub">${h.mb === null ? "not measured in time" : sgb(h.mb)}${h.note ? `; ${esc(h.note)}` : ""}${
         // ...and the way to it: the Containers page on this node with its
-        // Images and volumes open, where the lists are.
-        h.prune ? `: <a href="#" data-stprune="${esc(h.prune)}">the images on the Containers page</a>` : ""}</div>${
-      h.prunes && storageWrite && mayDocker() ? storagePrunes(h.prunes) : ""}</div></div>`;
-}
-
-// Docker's prunes beside what each frees (R123 step 3, the operator 23 Oct:
-// the reclaimable figure promised space the safe prunes do not touch). Safe
-// first: dangling images and an old build cache come back by building; an
-// unused image and a volume's data do not, and are red.
-function storagePrunes(p){
-  const b = (kind, label, mb, danger) => `<button type="button" data-stdprune="${kind}"${danger ? ' class="danger"' : ""}
-      title="${esc(DOCKER_PRUNE_SAID[kind])}">${label}${mb ? ` <span class="dim">${sgb(mb)}</span>` : ""}</button>`;
-  return `<div class="actbar stprunes">${b("images", "Prune images", 0, false)}${b("cache", "Prune build cache", p.cache, false)}${
-    b("unused", "Prune unused images", p.images, true)}${b("volumes", "Prune volumes", p.volumes, true)}</div>`;
+        // Images and volumes open, where the prunes are.
+        h.prune ? `: <a href="#" data-stprune="${esc(h.prune)}">prune on the Containers page</a>` : ""}</div></div></div>`;
 }
 
 // What BuilderBot could free on a filesystem (R123 step 4): its projects'
@@ -122,10 +105,13 @@ function storageFreeable(n, fs){
   const dk = n.docker || {};
   const docker = dk.fs === fs.path ? (dk.kinds || []).reduce((a, k) => a + (k.reclaimable_mb || 0), 0) : 0;
   const home = n.homes?.fs === fs.path || on(n.homes?.path || "");
-  const parts = [[home ? phones : 0, "phones not running"], [home ? builds : 0, "build caches"],
-                 [cache, "the cache store"], [docker, "Docker's reclaimable"]].filter(([mb]) => mb > 0);
-  return parts.length ? `${sgb(parts.reduce((a, [mb]) => a + mb, 0))} of it can be freed here: ${
-    andList(parts.map(([mb, what]) => `${what} ${sgb(mb)}`))}` : "";
+  // Each named with the page that frees it: this page only measures (the
+  // operator, 23 Oct).
+  const parts = [[home ? phones : 0, "phones not running (the Emulator page)"],
+                 [(home ? builds : 0) + cache, "build caches (Clear cache on the node's row on the Nodes page)"],
+                 [docker, "Docker's reclaimable (the Containers page)"]].filter(([mb]) => mb > 0);
+  return parts.length ? `${sgb(parts.reduce((a, [mb]) => a + mb, 0))} of it can be freed: ${
+    andList(parts.map(([mb, what]) => `${what.replace(/ \(/, ` ${sgb(mb)} (`)}`))}` : "";
 }
 
 // A list of names as a sentence: "cache, artifacts and appdata".
@@ -188,37 +174,29 @@ function storageProjects(n, where){
   // desk, and on a phone each cell its column's word beside its number,
   // since a column of bare numbers under a name said nothing (B655). An
   // empty cell says so.
-  // ...and each project's own build caches cleared from its row (R123 step
-  // 2): its cache store folder and its caches in every account's home.
-  const clears = storageWrite && shown.some(r => !r.other && (r.cache || r.builds));
-  const tcols = [{label: "Project"}, ...cols.map(w => ({label: w, num: true})), {label: "total", num: true},
-                 ...(clears ? [{act: true, w: "8.5rem"}] : [])];
+  const tcols = [{label: "Project"}, ...cols.map(w => ({label: w, num: true})), {label: "total", num: true}];
   const tail = empty.length ? `<div class="field stnone"><div class="sub">${esc(andList(empty.map(r => projLabel(r.name))))} hold${empty.length === 1 ? "s" : ""} nothing here</div></div>` : "";
   if (!shown.length) return tail;
   return tblWrap(tcols, shown.map(r => `<div class="row stack2 stproj${r.other ? " dim" : ""}">${tblLine(tcols, [
       `<span class="name">${r.other ? "other projects <span class=\"dim\">· ones you cannot see</span>" : esc(projLabel(r.name))}</span>`,
-      ...cols.map(w => r[w] ? sgb(r[w]) : `<span class="dim">none</span>`), `<b>${sgb(r.total)}</b>`,
-      ...(clears ? [!r.other && (r.cache || r.builds)
-        ? `<button type="button" data-stclear="${esc(r.name)}" title="its cache store folder and its build caches in every account's home; the next build fetches again">${barSaid("Clear build cache", "Clear cache")}</button>` : ""] : [])])}</div>`).join(""), "sttbl") + tail;
+      ...cols.map(w => r[w] ? sgb(r[w]) : `<span class="dim">none</span>`), `<b>${sgb(r.total)}</b>`])}</div>`).join(""), "sttbl") + tail;
 }
 
 // Each project's virtual phones on the node (R123 step 1), largest first,
-// whoever's they are among the projects this account sees: removed one at a
-// time, never while it runs, and made again by the next bb emu start.
+// whoever's they are among the projects this account sees: measured here,
+// removed on the Emulator page, the page that manages them (the operator,
+// 23 Oct).
 function storagePhones(n){
   const rows = [...(n.phones || [])].sort((a, b) => (b.mb || 0) - (a.mb || 0));
   const cols = [{label: "Phone"}, {label: "Project"}, {label: "Account"}, {label: "last started"},
-                {label: "snapshot", num: true}, {label: "size", num: true},
-                ...(storageWrite ? [{act: true, w: "6.5rem"}] : [])];
-  return `<div class="field"><div class="hint">A phone is remade the next time its project runs <code>bb emu start</code>; what was installed and signed in on it is gone.</div></div>`
+                {label: "snapshot", num: true}, {label: "size", num: true}];
+  return `<div class="field"><div class="hint">Each is removed on the ${pageLink("emulator", "Emulator page")}, with this node picked.</div></div>`
     + tblWrap(cols, rows.map(p => `<div class="row stack2 stphone">${tblLine(cols, [
       `<span class="name">${esc(p.name)}</span>${p.running ? ` <span class="pill ok">running</span>` : ""}`,
       esc(projLabel(p.project)), `<span class="dim">${esc(p.uid === state?.uid ? "yours" : p.uid || "the session account")}</span>`,
       p.running ? "now" : p.ran ? esc(ago(p.ran)) : `<span class="dim">never</span>`,
       p.snap_mb ? sgb(p.snap_mb) : `<span class="dim">none</span>`,
-      p.mb === null || p.mb === undefined ? `<span class="dim">?</span>` : sgb(p.mb),
-      ...(storageWrite ? [p.running ? `<span class="sub dim">stop it first</span>`
-        : `<button type="button" class="danger" data-stavd="${esc(p.project)}" data-uid="${esc(p.uid)}" data-avd="${esc(p.name)}">Remove</button>`] : [])])}</div>`).join(""), "sttbl");
+      p.mb === null || p.mb === undefined ? `<span class="dim">?</span>` : sgb(p.mb)])}</div>`).join(""), "sttbl");
 }
 
 // Measure now, the page's upkeep, in its bar with every header button (the
@@ -281,7 +259,6 @@ function renderStorageInto(i){
   }
   const where = ["workspace", "cache", "artifacts", "appdata", "emulator", "builds"];
   const n = storagePick();
-  storageWrite = !!n?.may_measure && !!n?.live;
   const pnodes = storageList.map(x => ({id: x.node, name: x.name, live: x.live}));
   // One order for every page's top (the operator, 17 Oct): the node and
   // Measure now in the bar; when it was measured on the status line under it.
@@ -289,13 +266,6 @@ function renderStorageInto(i){
   d.list.innerHTML = n ? storageBody(n, where)
     : noNodeYet("the disks measured here are a node's");
   wireStorageTab(d.el);
-}
-
-// After a prune the walk is what knows what it freed: one asked for, and the
-// page reads its answer as it lands.
-async function storageMeasureSoon(node){
-  await postJSON("/api/storage", {action: "measure", node}).catch(() => null);
-  setTimeout(loadStorage, 60000);
 }
 
 function wireStorageTab(root){
@@ -309,30 +279,6 @@ function wireStorageTab(root){
                                     storageRev++; drawPanes(); });
   root.querySelectorAll("[data-stdisk]").forEach(c => c.onclick = () => {
     storageDisk = c.dataset.stdisk; storageRev++; drawPanes();
-  });
-  const node = root.querySelector("[data-stnode]")?.dataset.stnode || "";
-  const nodeName = (storageList || []).find(x => x.node === node)?.name || "this node";
-  const act = async (b, body, word) => {
-    busy(b, word);
-    const j = await (await postJSON("/api/storage", {node, ...body})).json().catch(() => ({error: "no answer"}));
-    if (j.error) notify(j.error, true);
-    else notify(`${word.toLowerCase()} on ${nodeName}: the numbers here follow once it is done`);
-    await loadStorage();
-  };
-  root.querySelectorAll("[data-stavd]").forEach(b => b.onclick = async () => {
-    const {stavd: project, uid, avd} = b.dataset;
-    if (!await askYes(`Remove ${avd}, ${projLabel(project)}'s phone on ${nodeName}?\n\nIts next bb emu start makes it again, empty: what was installed and signed in on it goes.`,
-                      {verb: "Remove"})) return;
-    act(b, {action: "avd-remove", project, uid, name: avd}, "Removing");
-  });
-  root.querySelectorAll("[data-stclear]").forEach(b => b.onclick = async () => {
-    const project = b.dataset.stclear;
-    if (!await askYes(`Clear ${projLabel(project)}'s build caches on ${nodeName}?\n\nIts cache store folder and its Gradle and build caches in every account's home go; its next build fetches them again.`,
-                      {verb: "Clear"})) return;
-    act(b, {action: "cache-clear", project}, "Clearing");
-  });
-  root.querySelectorAll("[data-stdprune]").forEach(b => b.onclick = async () => {
-    if (await dockerPrune(b.dataset.stdprune, node, nodeName, b)) storageMeasureSoon(node);
   });
   root.querySelectorAll("[data-stprune]").forEach(a => a.onclick = e => {
     e.preventDefault();
