@@ -1814,6 +1814,9 @@ await page.fill('#rnToken', '');
 // Clearing, which is the other half of a stored token: it cannot be shown and
 // must not be typed over blind, so the field is closed and this is the way in.
 await page.click('#rnCancel');
+// Closing over a typed token asks first, in the page's modal, so the dialog
+// shuts once that is answered: reopened before then, the late close shut it.
+await page.waitForFunction(() => document.getElementById('rnmodal').hidden, null, { timeout: 8000 });
 await page.evaluate(() => renameProject('alpha', 'git'));
 ok(await page.$eval('#rnDelete', e => e.hidden), 'the chain\'s door has no Delete: it is about the remote, not the project');
 await page.waitForSelector('#rnAuthField:not([hidden])', { timeout: 8000 });
