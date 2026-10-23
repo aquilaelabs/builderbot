@@ -406,7 +406,12 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         with self.lock:
             hit = [self.jobs[i] for i in ids if i in self.jobs]
         for j in hit:
-            log(f"job {j.job['id']}: canceled by the controller")
+            # Said once: the controller repeats a cancel on every poll until
+            # the job has ended, and one stuck in a syscall wrote the line
+            # dozens of times a second into the journal (B244).
+            if not getattr(j, "cancel_said", False):
+                log(f"job {j.job['id']}: canceled by the controller")
+                j.cancel_said = True
             j.cancel()
 
     def loop(self):
