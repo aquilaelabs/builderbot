@@ -1358,7 +1358,9 @@ def tty(c, argv, ro=False):
         os.execve(bbtty, [bbtty, *argv], env)
     if not stat.S_ISDIR(hst.st_mode) or hst.st_uid != pw.pw_uid:
         raise Refused(f"{home} belongs to neither this account's user nor the session account")
-    env.update(HOME=home, USER=pw.pw_name, LOGNAME=pw.pw_name, BB_TTY_GRANT=json.dumps(got))
+    # SHELL too: tmux runs every pane's command through it, and an account
+    # user's login shell is nologin, which ran nothing (B277).
+    env.update(HOME=home, USER=pw.pw_name, LOGNAME=pw.pw_name, SHELL="/bin/bash", BB_TTY_GRANT=json.dumps(got))
     if ro:
         env["BB_TTY_RO"] = "1"
     # Not no_new_privs: the session it starts goes through sudo to `enter`.

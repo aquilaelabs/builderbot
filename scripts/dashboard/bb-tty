@@ -1120,6 +1120,10 @@ start() {
     # nothing on its command line; the -e values still land in the
     # session's environment, which is where they were wanted.
     tmux start-server 2>/dev/null || true
+    # Every pane's command runs through tmux's default shell, which is the
+    # login shell where nothing set it, and an account's own user has
+    # nologin for one (B277): bash, whoever this runs as.
+    tmux set-option -g default-shell "$(command -v bash)" 2>/dev/null || true
     # A pane whose command fails stays, with what it said and a line saying
     # so (R132): it closed with the reason in it, and the tab reconnected to
     # the same failure in a loop with nothing on the screen. One that ends
