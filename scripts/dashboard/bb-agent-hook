@@ -2,6 +2,8 @@
 """Claude's hooks, held for Codex CLI and Copilot CLI (R95 step 6).
 
     bb-agent-hook AGENT EVENT [PROJECT SESSION]
+    bb-agent-hook --claude-settings PROJECT ACCOUNT DIR
+    bb-agent-hook --agent-events AGENT
 
 Codex CLI and Copilot CLI each carry hooks of their own now (Codex's
 PreToolUse, UserPromptSubmit, Stop, PermissionRequest and PostCompact;
@@ -33,9 +35,6 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-GATE, NOTE = os.path.join(HERE, "bb-gate"), os.path.join(HERE, "bb-work-note")
-RELAY, CHECK = os.path.join(HERE, "bb-prompt-relay"), os.path.join(HERE, "bb-check-relay")
-RULE = os.path.join(HERE, "bb-rule-hook")
 
 # The tools each agent runs a command or edits a file with, by the names
 # its hooks hand over.
@@ -158,31 +157,94 @@ def run(argv, payload, timeout):
         return 0, "", ""
 
 
+# THE ONE LIST of BuilderBot's hooks: for each event, the scripts a session
+# runs, in order, with their arguments, their timeout and the tools they are
+# for (none: every call). Claude Code's settings are written from it
+# (claude_settings, which bb-tty asks for) and the other agents' calls run
+# from it (plan), so a guard added here holds every agent's sessions and one
+# cannot be added to only some of them. Each event also says where each
+# agent raises it: Claude Code's event name and the matcher that picks it
+# out, and Codex's and Copilot's event names with the time their call here
+# is given (Copilot CLI 1.0.102 has no hook after a summary, so no recall).
+P, W = "{proj}", "{who}"
+HOOKS = {
+    "pre": {"claude": ("PreToolUse", None), "codex": ("PreToolUse", 120), "copilot": ("preToolUse", 120), "steps": [
+        ("bb-gate", [P, W], 60, None, None),
+        ("bb-work-note", [P, W], 30, ("Edit", "Write", "NotebookEdit"), None),
+        ("bb-rule-hook", ["guard", P, W], 30, ("Bash",), None),
+        ("bb-rule-hook", ["map", P, W], 30, ("Grep",), None)]},
+    # Claude Code waiting on its own permission prompt (B52): said to the
+    # controller, so the dock and the bell show it.
+    "asking": {"claude": ("Notification", "permission_prompt"), "codex": ("PermissionRequest", 15),
+               "copilot": ("permissionRequest", 15), "steps": [
+        ("bb-gate", ["--asking", P, W], 15, None, None)]},
+    "recall": {"claude": ("SessionStart", "compact"), "codex": ("PostCompact", 30), "steps": [
+        ("bb-rule-hook", ["recall", P, W], 30, None, None)]},
+    "prompt": {"claude": ("UserPromptSubmit", None), "codex": ("UserPromptSubmit", 900),
+               "copilot": ("userPromptSubmitted", 900), "steps": [
+        ("bb-prompt-relay", [P, W], 30, None, None),
+        ("bb-rule-hook", ["prompt", P, W], 10, None, None),
+        ("bb-gate", ["--turn", P, W, "--wait", "840"], 900, None, "Waiting for a turn on this node")]},
+    "stop": {"claude": ("Stop", None), "codex": ("Stop", 3600), "copilot": ("agentStop", 3600), "steps": [
+        ("bb-check-relay", [P, W], 3600, None, None),
+        ("bb-gate", ["--turn-done", P, W], 30, None, None)]},
+}
+
+
+def _argv(script, args, proj, who, where=None):
+    return [os.path.join(where or HERE, script)] + [proj if a == P else who if a == W else a for a in args]
+
+
 def plan(event, call, proj, who):
     """The hooks a Claude session runs for this event, in its order: (argv,
-    timeout) each."""
-    if event == "pre":
-        steps = [([GATE, proj, who], 60)]
-        if call.get("tool_name") == "Bash":
-            steps.append(([RULE, "guard", proj, who], 30))
-        if call.get("tool_name") == "Edit" and (call.get("tool_input") or {}).get("file_path"):
-            steps.append(([NOTE, proj, who], 30))
-        if call.get("tool_name") == "Grep":
-            steps.append(([RULE, "map", proj, who], 30))
-        return steps
-    if event == "prompt":
-        return [([RELAY, proj, who], 30), ([RULE, "prompt", proj, who], 10),
-                ([GATE, "--turn", proj, who, "--wait", "840"], 900)]
-    if event == "stop":
-        return [([CHECK, proj, who], 3600), ([GATE, "--turn-done", proj, who], 30)]
-    if event == "asking":
-        return [([GATE, "--asking", proj, who], 15)]
-    if event == "recall":
-        return [([RULE, "recall", proj, who], 30)]
-    return []
+    timeout) each. An edit's note needs the file it is about."""
+    tool = call.get("tool_name")
+    steps = []
+    for script, args, timeout, tools, _status in (HOOKS.get(event) or {}).get("steps", []):
+        if tools and tool not in tools:
+            continue
+        if script == "bb-work-note" and not (call.get("tool_input") or {}).get("file_path"):
+            continue
+        steps.append((_argv(script, args, proj, who), timeout))
+    return steps
+
+
+def claude_settings(proj, who, where):
+    """Claude Code's `hooks` settings from the same list, each command under
+    `where` (bb-tty's directory by the name that outlives a bundle): one
+    group per event and matcher, a step for some tools in a group of its own
+    matched on them, as Claude Code runs them."""
+    out = {}
+    for spec in HOOKS.values():
+        name, matcher = spec["claude"]
+        groups = out.setdefault(name, [])
+        every = {"hooks": []} if matcher is None else {"matcher": matcher, "hooks": []}
+        for script, args, timeout, tools, status in spec["steps"]:
+            hook = {"type": "command", "command": shlex.join(_argv(script, args, proj, who, where)), "timeout": timeout}
+            if status:
+                hook["statusMessage"] = status
+            if tools:
+                groups.append({"matcher": "|".join(tools), "hooks": [hook]})
+            else:
+                every["hooks"].append(hook)
+        if every["hooks"]:
+            groups.insert(0, every)
+    return out
+
+
+def agent_events(agent):
+    """[[the agent's event name, this script's event, its timeout]], for
+    bb-tty to write into that agent's hooks file."""
+    return [[spec[agent][0], ev, spec[agent][1]] for ev, spec in HOOKS.items() if agent in spec]
 
 
 def main(argv):
+    if argv[:1] == ["--claude-settings"] and len(argv) == 4:
+        print(json.dumps(claude_settings(*argv[1:])))
+        return 0
+    if argv[:1] == ["--agent-events"] and len(argv) == 2:
+        print(json.dumps(agent_events(argv[1])))
+        return 0
     if len(argv) < 2:
         return 0
     agent, event = argv[:2]

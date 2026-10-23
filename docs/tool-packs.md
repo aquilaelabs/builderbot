@@ -101,7 +101,7 @@ the scripts it runs:
 | `layout` | `bin`: directories inside the pack to put on `PATH`. `env`: variables to set, each a path inside the pack or `=VALUE`. `tool`: a file whose presence means it is installed. |
 | `system.apt` | Debian packages the node needs; installed first where the node lets BuilderBot administer it. |
 | `verbs` | The commands a session calls as `bb tool NAME VERB`. |
-| `guidance` | A Markdown file in the repository telling Claude when and how to use the pack. A session reads it with `bb help tool-NAME`. |
+| `guidance` | A Markdown file in the repository telling a session, whichever coding agent runs it, when and how to use the pack. It reads it with `bb help tool-NAME`. |
 
 ### Verbs
 

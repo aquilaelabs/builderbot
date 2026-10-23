@@ -7,6 +7,8 @@ import importlib.util
 import io
 import json
 import os
+import re
+import shlex
 import shutil
 import tempfile
 import unittest
@@ -61,8 +63,14 @@ class Runs(unittest.TestCase):
                     "if sys.argv[1:2] == ['prompt']:\n"
                     "    print(json.dumps({'hookSpecificOutput': {'additionalContext': 'RULE TEXT'}}))\n")
         os.chmod(stub, 0o755)
-        for k in ("GATE", "NOTE", "RELAY", "CHECK", "RULE"):
-            setattr(self.h, k, stub)
+        # ...under each script's own name, in a directory of its own.
+        hooks = os.path.join(self.d, "hooks")
+        os.mkdir(hooks)
+        for spec in self.h.HOOKS.values():
+            for script, *_ in spec["steps"]:
+                if not os.path.exists(os.path.join(hooks, script)):
+                    os.symlink(stub, os.path.join(hooks, script))
+        self.h.HERE = hooks
 
     def call(self, agent, event, payload, env=None):
         out, err = io.StringIO(), io.StringIO()
@@ -120,6 +128,52 @@ class Runs(unittest.TestCase):
         self.assertEqual(self.call("codex", "pre", {"tool_name": "shell", "tool_input": {"command": "rm -rf /"}}, env={"BB_PROJECT": ""})[0], 0)
         self.assertFalse(os.path.exists(self.log))
 
+
+
+class OneList(unittest.TestCase):
+    """Claude's settings, the other agents' hooks files and what their calls
+    run all come from HOOKS, so none can hold a guard the others lack."""
+
+    def setUp(self):
+        self.h = load()
+        self.settings = self.h.claude_settings("alpha", "u_x", self.h.HERE)
+
+    def claude_runs(self, event, tool=None):
+        """The commands Claude Code runs for an event and a tool, by its
+        settings' own matchers (a regex on the tool name, or the event's)."""
+        name, matcher = self.h.HOOKS[event]["claude"]
+        out = []
+        for group in self.settings.get(name, []):
+            m = group.get("matcher")
+            if m is not None and m != matcher and not (tool and re.fullmatch(m, tool)):
+                continue
+            out += [x["command"] for x in group["hooks"]]
+        return out
+
+    def test_claude_runs_what_the_other_agents_run_for_every_event_and_tool(self):
+        tools = [None, "Bash", "Edit", "Write", "Grep", "Read"]
+        for event in self.h.HOOKS:
+            for tool in tools if event == "pre" else [None]:
+                call = {"tool_name": tool, "tool_input": {"file_path": "/workspace/alpha/a.py"}}
+                theirs = [shlex.join(argv) for argv, _t in self.h.plan(event, call, "alpha", "u_x")]
+                if tool in ("Write",):
+                    # Codex's and Copilot's edits all arrive as Edit (as_claude).
+                    continue
+                self.assertEqual(sorted(self.claude_runs(event, tool)), sorted(theirs), f"{event} {tool}")
+
+    def test_every_step_is_in_claudes_settings(self):
+        said = json.dumps(self.settings)
+        for event, spec in self.h.HOOKS.items():
+            for script, args, *_ in spec["steps"]:
+                argv = self.h._argv(script, args, "alpha", "u_x")
+                self.assertIn(shlex.join(argv), said, event)
+
+    def test_each_agent_hooks_file_calls_every_event_it_has(self):
+        for agent in ("codex", "copilot"):
+            evs = {ev for _n, ev, _t in self.h.agent_events(agent)}
+            want = {ev for ev, spec in self.h.HOOKS.items() if agent in spec}
+            self.assertEqual(evs, want, agent)
+        self.assertEqual({ev for _n, ev, _t in self.h.agent_events("codex")}, set(self.h.HOOKS))
 
 if __name__ == "__main__":
     unittest.main()

@@ -539,11 +539,7 @@ claude_scope() {
     if walls_around "$proj" "$here" | jq -R . \
          | jq -s --arg ws "$WORKSPACE" --arg here "$here" --argjson reads "${readsq:-[]}" \
                --arg state "${DASHBOARD_STATE:-/config}" \
-               --arg gate "$hooks/bb-gate" \
-               --arg note "$hooks/bb-work-note" \
-               --arg relay "$hooks/bb-prompt-relay" \
-               --arg check "$hooks/bb-check-relay" \
-               --arg rule "$hooks/bb-rule-hook" \
+               --argjson hooks "$(python3 "$hooks/bb-agent-hook" --claude-settings "$proj" "${account:-owner}" "$hooks")" \
                --arg proj "$proj" --arg who "${account:-owner}" \
                --arg mem "$HOME/.claude/projects/${here//\//-}/memory" '
            {permissions: {
@@ -559,41 +555,9 @@ claude_scope() {
                         "Write(\($state)/rules.json)",
                         "NotebookEdit(\($state)/rules.json)"])
            },
-            hooks: {PreToolUse: [
-              {hooks: [{type: "command",
-                        command: "\($gate) \($proj) \($who)", timeout: 60}]},
-              {matcher: "Edit|Write|NotebookEdit",
-               hooks: [{type: "command",
-                        command: "\($note) \($proj) \($who)"}]},
-              {matcher: "Bash",
-               hooks: [{type: "command",
-                        command: "\($rule) guard \($proj) \($who)", timeout: 30}]},
-              {matcher: "Grep",
-               hooks: [{type: "command",
-                        command: "\($rule) map \($proj) \($who)", timeout: 30}]}],
-              # Claude Code waiting on its own permission prompt (B52):
-              # said to the controller, so the dock and the bell show it.
-              Notification: [
-              {matcher: "permission_prompt",
-               hooks: [{type: "command",
-                        command: "\($gate) --asking \($proj) \($who)", timeout: 15}]}],
-              SessionStart: [
-              {matcher: "compact",
-               hooks: [{type: "command",
-                        command: "\($rule) recall \($proj) \($who)", timeout: 30}]}],
-              UserPromptSubmit: [
-              {hooks: [{type: "command",
-                        command: "\($relay) \($proj) \($who)"},
-                       {type: "command",
-                        command: "\($rule) prompt \($proj) \($who)", timeout: 10},
-                       {type: "command",
-                        command: "\($gate) --turn \($proj) \($who) --wait 840",
-                        timeout: 900, statusMessage: "Waiting for a turn on this node"}]}],
-              Stop: [
-              {hooks: [{type: "command",
-                        command: "\($check) \($proj) \($who)", timeout: 3600},
-                       {type: "command",
-                        command: "\($gate) --turn-done \($proj) \($who)"}]}]}}' > "$tmp" && [ -s "$tmp" ]; then
+            # Written from the one list in bb-agent-hook, which the hooks of
+            # the other agents run from too: a guard added there holds all.
+            hooks: $hooks}' > "$tmp" && [ -s "$tmp" ]; then
         mv -f "$tmp" "$out"
         printf '%s' "$out"
         return 0
@@ -882,28 +846,27 @@ agent_hooks() {
                 && hooks="${bundle%/*}/current/scripts/dashboard" ;;
     esac
     cmd="$hooks/bb-agent-hook $ag"
+    # Which of the agent's events call it, and for how long: bb-agent-hook's
+    # one list, which Claude's settings are written from as well.
+    local evs
+    evs="$(python3 "$hooks/bb-agent-hook" --agent-events "$ag")" || return 1
     case "$ag" in
         codex)
             f="${CODEX_HOME:-$HOME/.codex}/hooks.json"
             ( umask 077; mkdir -p "${f%/*}" ) 2>/dev/null || return 1
             [ -s "$f" ] || printf '{}\n' > "$f"
-            jq --arg c "$cmd" '
+            jq --arg c "$cmd" --argjson evs "$evs" '
               def ours(ev; t): {hooks: [{type: "command", command: "\($c) \(ev)", timeout: t}]};
               def mine: (.hooks // []) | any(.command // "" | contains("bb-agent-hook"));
               .hooks = ((.hooks // {}) | with_entries(.value |= map(select(mine | not))))
-              | .hooks.PreToolUse += [ours("pre"; 120)]
-              | .hooks.UserPromptSubmit += [ours("prompt"; 900)]
-              | .hooks.Stop += [ours("stop"; 3600)]
-              | .hooks.PermissionRequest += [ours("asking"; 15)]
-              | .hooks.PostCompact += [ours("recall"; 30)]' "$f" > "$f.new" 2>/dev/null \
+              | reduce $evs[] as [$n, $ev, $t] (.; .hooks[$n] += [ours($ev; $t)])' "$f" > "$f.new" 2>/dev/null \
                 && mv -f "$f.new" "$f" ;;
         copilot)
             f="${COPILOT_HOME:-$HOME/.copilot}/hooks/builderbot.json"
             ( umask 077; mkdir -p "${f%/*}" ) 2>/dev/null || return 1
-            jq -n --arg c "$cmd" '
+            jq -n --arg c "$cmd" --argjson evs "$evs" '
               def ours(ev; t): [{type: "command", bash: "\($c) \(ev)", timeoutSec: t}];
-              {version: 1, hooks: {preToolUse: ours("pre"; 120), userPromptSubmitted: ours("prompt"; 900),
-                                   agentStop: ours("stop"; 3600), permissionRequest: ours("asking"; 15)}}' \
+              {version: 1, hooks: (reduce $evs[] as [$n, $ev, $t] ({}; .[$n] = ours($ev; $t)))}' \
                 > "$f.new" 2>/dev/null && mv -f "$f.new" "$f" ;;
     esac
 }
