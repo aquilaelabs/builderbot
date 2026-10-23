@@ -292,10 +292,13 @@ await unfold(page, 'ep.silon');
 await page.waitForSelector('.pgrid .pcard[data-row="ep.silon"] [data-lock]', { state: 'visible', timeout: 10000 });
 const lockSaid = await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-lock]', b => b.textContent.trim());
 await page.click('.pgrid .pcard[data-row="ep.silon"] [data-lock]');         // lock: asks, then the server ends the others' sessions
+// The question is the page's modal, answered a moment after the press.
+for (let i = 0; i < 40 && page.dialogs.length <= ndx; i++) await sleep(100);
 const gone = n => { for (let i = 0; i < 20; i++){ try { execFileSync('tmux', ['has-session', '-t', '=' + n], { stdio: 'ignore' }); } catch { return true; } execFileSync('sleep', ['0.25']); } return false; };
+const lockGone = [gone(`${lockUid}~claude-ep_silon`), gone('claude-ep_silon')];
 ok(lockSaid === 'Lock' && page.dialogs.length === ndx + 1 && /Every session here but yours ends now/.test(page.dialogs[ndx]) && /Lock ep\.silon\?/.test(page.dialogs[ndx])
-   && gone(`${lockUid}~claude-ep_silon`) && !gone('claude-ep_silon'),
-   `dotted project: its owner locking it asks, ends the other account's session and keeps the owner's (${lockSaid}; ${(page.dialogs[ndx] || '').split('\n')[2]})`);
+   && lockGone[0] && !lockGone[1],
+   `dotted project: its owner locking it asks, ends the other account's session and keeps the owner's (${lockSaid}; ${page.dialogs.length - ndx} asked; gone ${lockGone}; ${(page.dialogs[ndx] || '').split('\n')[2]})`);
 await page.evaluate(() => setLocked('ep.silon', false));      // and unlock it again
 tmuxKill('claude-ep_silon');                                  // what follows starts with none
 // Its Claude button back: Start Claude, or Install Claude where the stub

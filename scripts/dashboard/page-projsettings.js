@@ -570,6 +570,7 @@ async function unlinkProject(name){
 // stayed behind under a name nothing points at any more.
 let rnFor = null;                        // the project the dialog is open on
 let rnMode = "all";                      // "all" from the gear, "git" from the chain
+let rnOpens = 0;                         // which opening of the dialog this is
 
 // The form shown in a notebook's Settings view instead of the dialog (R119
 // step 3): one form, moved to where it is wanted. `rnHost` is the view's
@@ -662,6 +663,7 @@ function renameProject(name, mode = "all"){
   settingsOut();
   rnFor = name;
   rnMode = mode;
+  rnOpens++;
   const p = (state?.projects || []).find(x => x.name === name);
   // One dialog, two doors. The gear is the project's own settings; the chain
   // is the remote's half of them, and opening it there hides everything that

@@ -7438,8 +7438,11 @@ $("rnDelete").onclick = () => { const n = rnFor; closeRename(); deleteProject(n)
 // Closing with a section unsaved asks, naming what would go.
 $("rnCancel").onclick = async () => {
   const d = rnDirty().map(x => document.querySelector(`details.rngroup[data-sect="rn:${x}"] .t`)?.textContent || x);
+  const opening = rnOpens;
   if (d.length && !await askYes(`Close without saving?\n\n${d.join(", ")} would be dropped.`,
                                 {verb: "Close without saving", danger: true})) return;
+  // The answer came after the dialog was opened again: that one stays.
+  if (opening !== rnOpens) return;
   closeRename();
 };
 // The settings' sections take turns, one open at a time, as a tab's do.
