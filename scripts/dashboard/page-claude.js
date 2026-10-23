@@ -308,20 +308,32 @@ function launchClaude(name, sessionId, node){
 // for this account and opens the session, which takes it as its first prompt
 // as it starts; Start without it opens one that was not given it and puts the
 // brief away. Either way the brief leaves the project's tree then, and its
-// notebook keeps it.
+// notebook keeps it. Whichever agent the session is (R95): Codex's and
+// Copilot's first prompt is the brief as Claude's is, with their own models.
 let briefFor = null;
 
-async function openBrief(name, node){
+async function openBrief(name, node, agent = "claude"){
   resumeFor = null;
+  resumePick = null;
   if (state) drawProjects(state.projects);
-  briefFor = {name, node};
+  briefFor = {name, node, agent};
   const p = (state?.projects || []).find(x => x.name === name);
-  $("briefTitle").textContent = `First session on ${projLabel(name)}`;
+  const a = agentById(agent);
+  $("briefTitle").textContent = agent === "claude" ? `First session on ${projLabel(name)}`
+    : `First ${a.name} session on ${projLabel(name)}`;
   $("briefErrWrap").hidden = true;
   $("briefText").value = "";
-  for (const [id, table, cur] of [["briefModel", MODELS, p?.yours?.model || ""],
-                                  ["briefEffort", EFFORTS, p?.yours?.effort || ""]]){
-    $(id).innerHTML = optionList(table, cur);
+  if (agent === "claude"){
+    for (const [id, table, cur] of [["briefModel", MODELS, p?.yours?.model || ""],
+                                    ["briefEffort", EFFORTS, p?.yours?.effort || ""]]){
+      $(id).innerHTML = optionList(table, cur);
+    }
+  } else {
+    const t = AGENT_MODELS[agent] || {models: [], efforts: []};
+    for (const [id, xs, cur] of [["briefModel", t.models, p?.yours?.[`${agent}_model`] || ""],
+                                 ["briefEffort", t.efforts, p?.yours?.[`${agent}_effort`] || ""]]){
+      $(id).innerHTML = optionList([["", `${a.name}'s default`], ...xs.map(v => [v, v])], cur);
+    }
   }
   for (const b of ["briefGo", "briefSkip"]) $(b).disabled = true;
   $("briefModal").hidden = false;
@@ -354,8 +366,9 @@ async function briefGo(skip){
   const was = b.textContent;
   busy(b, "Starting");
   try{
-    if (model !== (p?.yours?.model || "") || effort !== (p?.yours?.effort || "")){
-      const j = await (await postJSON("/api/prefs", {project: f.name, model, effort})).json();
+    const mk = f.agent === "claude" ? "model" : `${f.agent}_model`, ek = f.agent === "claude" ? "effort" : `${f.agent}_effort`;
+    if (model !== (p?.yours?.[mk] || "") || effort !== (p?.yours?.[ek] || "")){
+      const j = await (await postJSON("/api/prefs", {project: f.name, [mk]: model, [ek]: effort})).json();
       if (j.error) throw new Error(j.error);
     }
     const j = await (await postJSON("/api/brief", skip ? {project: f.name, action: "aside"}
@@ -367,7 +380,8 @@ async function briefGo(skip){
   }
   unbusy(b, was);
   closeBrief();
-  launchClaude(f.name, null, f.node);
+  if (f.agent === "claude") launchClaude(f.name, null, f.node);
+  else launchAgent(f.agent, f.name, f.node, model, effort);
   refreshSoon();
 }
 
@@ -595,6 +609,8 @@ function placeResumeMenu(){
   // A new conversation of another agent turns to its model and effort.
   m.querySelectorAll("[data-anew]").forEach(b => b.onclick = () => {
     const ag = b.dataset.anew;
+    // A brief still waiting is the first prompt whichever agent starts.
+    if (p.brief) return openBrief(p.name, b.dataset.node, ag);
     resumePick = {project: p.name, sessionId: null, node: b.dataset.node, agent: ag,
                   model: p.yours?.[`${ag}_model`] || "", effort: p.yours?.[`${ag}_effort`] || ""};
     drawProjects(state.projects);
