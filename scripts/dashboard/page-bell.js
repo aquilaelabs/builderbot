@@ -516,9 +516,10 @@ function drawBell(){
     // ...and beside them, what a session has waiting in each project's
     // notebook. One row per project, not per change: the notebook is where
     // the changes are read, so the row's only job is to take you there.
+    // Named for its own agent (ChatGPT's read "Claude on codex-web").
     ...asking.map(s => `<div class="bnote ask">
         <div class="btag">asking you in its terminal</div>
-        <div class="bwhy">Claude on ${esc(projLabel(s.name.replace(/^claude-/, "")))}: ${esc(s.claude.task || "waiting for you to answer it")}</div>
+        <div class="bwhy">${esc(agentSessionWords(s.name))}: ${esc(s.claude.task || "waiting for you to answer it")}</div>
         <div class="bfoot"><span>on ${esc(s.node || "this machine")}</span>
           <span class="acts"><a href="#" data-bask="${esc(s.name)}">Open it</a></span></div></div>`),
     ...waiting.map(p => `<div class="bnote ask">

@@ -117,7 +117,7 @@ function jobSessionWords(name){
   if (!name) return "a session";
   const b = tmuxBase(name);
   let m;
-  if ((m = /^claude-(.+)$/.exec(b))) return `Claude on ${projLabel(projFor(m[1]) ?? m[1])}`;
+  if (agentOfSession(b)) return agentSessionWords(name);
   if ((m = /^shell-(.+)-\d+$/.exec(b))) return `a shell on ${projLabel(projFor(m[1]) ?? m[1])}`;
   return b;
 }

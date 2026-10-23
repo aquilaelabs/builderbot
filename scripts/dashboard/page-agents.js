@@ -54,6 +54,13 @@ function agentOfArg(arg){
     }
   return null;
 }
+// A coding agent's session as a person says it: "ChatGPT on web", by the
+// agent its name carries and the project's own name, never the tmux one.
+function agentSessionWords(name){
+  const b = tmuxBase(name), at = agentOfSession(b);
+  if (!at) return b;
+  return `${at.agent.name} on ${projLabel(projFor(at.stem) ?? at.stem)}`;
+}
 // What a count of agent sessions is called: the one agent's name when they
 // are all one agent's ("2 of them Claude"), else "coding agents".
 function agentsWord(names){
