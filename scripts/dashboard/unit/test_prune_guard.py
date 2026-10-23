@@ -20,5 +20,23 @@ class PruneGuard(unittest.TestCase):
             self.assertTrue(devapp._guard([devapp.DOCKER, *argv]), argv)
 
 
+class PruneTime(unittest.TestCase):
+    def test_a_prune_on_a_node_gets_its_minutes_and_a_start_its_seconds(self):
+        asked = []
+        was = devapp.queue
+        self.addCleanup(setattr, devapp, "queue", was)
+
+        class Q:
+            @staticmethod
+            def run_wait(principal, nid, argv, timeout, forget):
+                asked.append(timeout)
+                return {"code": 0, "out": ""}
+        devapp.queue = Q
+        n = {"id": "n_1", "name": "box"}
+        devapp._agent_exec(n, [devapp.DOCKER, *devapp.PRUNES["cache"]], 600)
+        devapp._agent_exec(n, [devapp.DOCKER, "start", "web"], 600)
+        self.assertEqual(asked, [600, 25])
+
+
 if __name__ == "__main__":
     unittest.main()

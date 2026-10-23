@@ -778,7 +778,10 @@ def _agent_exec(n, argv, timeout):
     _agent_read: a start is not a read, so nothing is memoised and a busy
     node is not answered from what it said before."""
     _docker_log("$ " + " ".join(argv) + f"   (on {n['name']})")
-    r = queue.run_wait("dashboard", n["id"], argv, timeout=min(int(timeout), 25),
+    # 25s for a start or a stop; a prune is given the time it asks for
+    # (B249: a build cache's prune was killed at 25s, partway through).
+    cap = 600 if argv[1:] in [list(p) for p in PRUNES.values()] else 25
+    r = queue.run_wait("dashboard", n["id"], argv, timeout=min(int(timeout), cap),
                        forget=True)
     out = ({"code": 1, "out": r["error"]} if r.get("error")
            else {"code": int(r.get("code") or 0), "out": r.get("out") or ""})
@@ -1570,7 +1573,9 @@ def prune(kind):
     if kind not in PRUNES:
         return {"error": "prune images, volumes, unused or cache"}
     argv = [DOCKER, *PRUNES[kind]]
-    r = _run(argv, timeout=120)
+    # Minutes, not seconds: a build cache or a set of unused images of many
+    # gigabytes takes that long to remove.
+    r = _run(argv, timeout=600)
     with _stats_lock:
         _stats.pop("img:" + (getattr(_node_ctx, "addr", None) or ""), None)
     if r["code"] != 0:
