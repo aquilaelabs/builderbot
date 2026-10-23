@@ -2230,7 +2230,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       // refused, with the sentence saying what to do rather than opening a
       // conversation that could not build anything.
       const nonode = await term('claude:beta');
-      ok(nonode.status === 503 && /no node to run a Claude session on: pick one/.test(nonode.body)
+      ok(nonode.status === 503 && /no node to run a coding agent's session on: pick one/.test(nonode.body)
          && /enroll one on the Nodes page/.test(nonode.body),
          `a project with no node is refused a session, and told why (${
            (nonode.body || '').slice(0, 60)})`);

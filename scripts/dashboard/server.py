@@ -1916,7 +1916,7 @@ def session_target(project, claude=False, node="", uid=""):
     no_node = {"where": "refused", "name": "",
                # The row says it whole, the fact and then what to do about
                # it (no tooltip carries a second half any more).
-               "why": "no node to run a Claude session on: pick one in the project's settings, or enroll "
+               "why": "no node to run a coding agent's session on: pick one in the project's settings, or enroll "
                       "one on the Nodes page under Machines"} if claude \
         else {"where": "local"}
     if not nid or NODES_OK:
