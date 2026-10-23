@@ -447,7 +447,13 @@ function renderDoc(i, t, pane){
 // none), and the tab itself says what happened instead of holding whatever
 // half-drawn state the throw left.
 function renderGuarded(spec, i, t){
-  try{ spec.render(i, t); }
+  try{
+    spec.render(i, t);
+    // ...and its jump bar, whatever it drew: a page waiting on its read
+    // draws its sections' template, and waits as itself with the bar the
+    // loaded page will have (sectJump; the templates rule).
+    $("doc" + i)?.querySelectorAll(".doctab, .nbview:not([hidden])").forEach(v => sectJump(v));
+  }
   catch(e){
     const el = $("doc" + i);
     if (el) el.innerHTML = `<div class="hint bad" style="padding:var(--row-y) var(--row-x)">

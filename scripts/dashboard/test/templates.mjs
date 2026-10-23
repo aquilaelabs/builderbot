@@ -18,7 +18,7 @@ const PAGES = [
   // the page draws one line and Deploy where the template, waiting for the
   // node a person mostly has, draws them.
   ['nginx', '#/containers/nginx', 'nginxList = null; renderNginxInto(0)',
-   ['barSig', 'card', 'title:Hostnames', 'title:Routes', 'title:Certificates', 'title:Image']],
+   ['barSig', 'card', 'jump', 'title:Hostnames', 'title:Routes', 'title:Certificates', 'title:Image']],
   // This machine is a node's with a GPU or Claude Code row to show, which
   // is not known while it waits; on a phone, where it is drawn it is the one
   // open section, so the list's table is folded under it.
@@ -196,7 +196,10 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
       return l && l.children.length && !l.querySelector(w); }, WAITING, { timeout: 15000 }).catch(() => {});
     const got = await settled(page, '.pane .doc.on');
     const release = await hold(page);
-    const err = await page.evaluate(js => { try { (0, eval)(js); return ''; } catch (e){ return String(e); } }, reset);
+    // ...and what renderGuarded does after every draw, which the reset's
+    // direct call skips: the sections' jump bar (sectJump).
+    const err = await page.evaluate(js => { try { (0, eval)(js);
+      document.querySelectorAll('.pane .doc.on .doctab').forEach(v => sectJump(v)); return ''; } catch (e){ return String(e); } }, reset);
     await sleep(300);
     const tpl = await page.evaluate(outline, '.pane .doc.on');
     const wall = await page.evaluate(onTheWall, '.pane .doc.on');

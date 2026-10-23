@@ -2628,7 +2628,9 @@ function renderDockerInto(i){
     el.innerHTML = `<div class="doctab dmtab">${skTpl(`${dmBar(null)}${dmTiles(null)}${dmStatus(null)}
       ${dmView === "list" ? skTable(DM_COLS, 4)
         // ...the rows in a project group's card, as they land (R262).
-        : `<section class="dmcard"><div class="field dmgroup"><b>${skv(8)}</b></div>${skRows(3)}</section>`}
+        // ...named for the jump bar the landed page has (sectJump), which
+        // names each group when it is known.
+        : `<section class="dmcard" data-jtitle="reading…"><div class="field dmgroup"><b>${skv(8)}</b></div>${skRows(3)}</section>`}
       ${dmImagesSection()}`)}</div>`;
     return;
   }

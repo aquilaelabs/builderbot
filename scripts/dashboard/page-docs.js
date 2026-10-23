@@ -652,9 +652,13 @@ function sectJump(g){
   if (mine.length < 2){ have?.remove(); return; }
   const bar = have || document.createElement("nav");
   // In a dialog every line is a .field band (the design's dialog layout).
-  bar.className = g.matches("[data-sects]") ? "field sectjump" : "sectjump";
-  bar.setAttribute("aria-label", "sections");
-  bar.innerHTML = mine.map((o, i) => `<a href="#" data-jump="${i}">${esc(titleOf(o))}</a>`).join("");
+  // Written only where it moved: this runs after every draw, and a poll that
+  // brought nothing new must write nothing (when-a-view-re-reads).
+  const cls = g.matches("[data-sects]") ? "field sectjump" : "sectjump";
+  if (bar.className !== cls) bar.className = cls;
+  if (bar.getAttribute("aria-label") !== "sections") bar.setAttribute("aria-label", "sections");
+  const html = mine.map((o, i) => `<a href="#" data-jump="${i}">${esc(titleOf(o))}</a>`).join("");
+  if (bar.innerHTML !== html) bar.innerHTML = html;
   if (!have) mine[0].before(bar);
   bar.querySelectorAll("[data-jump]").forEach(a => a.onclick = e => {
     e.preventDefault();
