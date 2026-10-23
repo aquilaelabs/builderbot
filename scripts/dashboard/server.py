@@ -2218,7 +2218,9 @@ def project_busy(name, verb):
     operator's behalf is a bigger decision than the one being asked for.
     Here rather than in projects.py because these are the two that see
     outside the filesystem: tmux, and the daemon."""
-    live = {s["name"] for s in tmux_sessions()}
+    # ...here and on every node, where sessions run now (B242): the lock
+    # reads both the same way.
+    live = {s["name"] for s in tmux_sessions()} | {s["name"] for s in node_tmux_sessions()}
     held = sorted(s for s in live
                   if tmux_base(s) in agent_sessions(name)
                   or tmux_base(s).startswith(tmux_name(f"shell-{name}") + "-"))
