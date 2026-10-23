@@ -1200,15 +1200,15 @@ def _guard(argv):
         if argv[2:] == ["--format", "{{json .}}"]:
             return ""
         return "a `docker images` this module did not build"
-    # ...and the two prunes the view offers, dangling images and unused
-    # volumes, each the one flag and nothing named: a prune that takes a
-    # filter or `-a` would reach what a running container still needs.
+    # ...and the prunes the view offers, each exactly as PRUNES spells it and
+    # nothing named: the four were added to PRUNES while this knew two, so
+    # Prune unused images and Prune build cache were refused as a bug (B245).
+    if argv[1:] in [list(p) for p in PRUNES.values()]:
+        return ""
     if verb == "image":
-        if argv[2:] == ["prune", "-f"]:
-            return ""
         return "a `docker image` this module did not build"
     if verb == "volume":
-        if argv[2:] in (["ls", "--format", "{{json .}}"], ["prune", "-f"]):
+        if argv[2:] == ["ls", "--format", "{{json .}}"]:
             return ""
         return "a `docker volume` this module did not build"
     if verb == "system":
@@ -1308,7 +1308,7 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
     # verification failed" from the VM (B312).
     if sink is None and hold is None and argv[:1] == [DOCKER] \
             and len(argv) > 1 and (argv[1] in _CTL_OK | {"logs", "update"}
-                                   or argv[1:3] in (["image", "prune"], ["volume", "prune"])):
+                                   or argv[1:] in [list(p) for p in PRUNES.values()]):
         n = _agent_here()
         if n:
             return _agent_exec(n, argv, timeout)
