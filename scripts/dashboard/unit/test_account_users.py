@@ -89,6 +89,11 @@ class Caller(unittest.TestCase):
                 bbs.caller(c, "u_0000abcd")
 
 
+def exec_(e):
+    """execve does not come back: the stand-in ends the call there."""
+    raise e
+
+
 class Tty(unittest.TestCase):
     def test_a_terminal_without_a_token_is_refused_before_anything_is_asked(self):
         c = {"ACCOUNT_USERS": "on", "HOME_ROOT": "/home/builder"}
@@ -110,6 +115,27 @@ class Tty(unittest.TestCase):
             with self.assertRaises(bbs.Refused):
                 bbs.tty(c, ["u:u_0000abcd:sh:2:hello", "tok:bbs_abcdefghij"])
         self.assertEqual(asked, ["sh:2:hello"])
+
+    def test_a_home_not_moved_yet_opens_the_old_way_as_the_session_account(self):
+        c = {"ACCOUNT_USERS": "on", "HOME_ROOT": "/home/builder", "SESSION_USER": "builder",
+             "BUNDLE": "/b"}
+        sa = mock.Mock(pw_name="builder", pw_uid=99, pw_gid=100, pw_dir="/home/builder")
+        ran = {}
+        with mock.patch.object(bbs.os, "geteuid", return_value=0), \
+                mock.patch.object(bbs, "_grant", return_value=(200, {"uid": "u_0000abcd"})), \
+                mock.patch.object(bbs, "account_user", return_value=mock.Mock(pw_uid=1201)), \
+                mock.patch.object(bbs.os, "lstat", return_value=mock.Mock(st_uid=99, st_mode=0o40700)), \
+                mock.patch.object(bbs.os.path, "isfile", return_value=True), \
+                mock.patch.object(bbs, "_root_owned", return_value=True), \
+                mock.patch.object(bbs.pwd, "getpwnam", return_value=sa), \
+                mock.patch.object(bbs.os, "initgroups"), mock.patch.object(bbs.os, "setgid"), \
+                mock.patch.object(bbs.os, "setuid", lambda u: ran.setdefault("uid", u)), \
+                mock.patch.object(bbs.os, "chdir"), \
+                mock.patch.object(bbs.os, "execve", lambda p, a, e: (ran.update(env=e), exec_(SystemExit))):
+            with self.assertRaises(SystemExit):
+                bbs.tty(c, ["u:u_0000abcd:sh:2:hello", "tok:bbs_abcdefghij"])
+        self.assertEqual(ran["uid"], 99)
+        self.assertNotIn("BB_TTY_GRANT", ran["env"], "bb-tty asks the controller itself, as before the switch")
 
     def test_the_controller_s_answer_names_the_account_and_nothing_else_does(self):
         c = {"ACCOUNT_USERS": "on", "HOME_ROOT": "/home/builder"}

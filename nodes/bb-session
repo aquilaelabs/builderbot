@@ -1331,21 +1331,32 @@ def tty(c, argv, ro=False):
         raise Refused(str(got.get("error") or "the controller did not grant this terminal"))
     pw = account_user(account)
     home = f"{c['HOME_ROOT'].rstrip('/')}/users/{account}"
-    if not pw:
-        raise Refused("this account has no user of its own on this node yet: the node's agent "
-                      "makes it within a minute; open the terminal again then")
     try:
         hst = os.lstat(home)
     except OSError:
-        raise Refused(f"{home} does not exist yet: the node's agent makes it") from None
-    if not stat.S_ISDIR(hst.st_mode) or hst.st_uid != pw.pw_uid:
-        raise Refused("this account's home on this node is still being moved to its own user: "
-                      "open the terminal again in a minute")
+        hst = None
     bbtty = os.path.join(c.get("BUNDLE") or "/nonexistent", "scripts", "dashboard", "bb-tty")
     if not c.get("BUNDLE") or not os.path.isfile(bbtty) or not _root_owned(bbtty):
         raise Refused("bb-session: this node has no root-owned copy of the bundle to start a terminal from")
     env = _tty_env()
     env.update({k: os.environ[k] for k in FROM_PANE if k in os.environ})
+    sa = pwd.getpwnam(c["SESSION_USER"])
+    if not pw or hst is None or hst.st_uid == sa.pw_uid:
+        # Not moved yet: no user of its own, no home here, or its home still
+        # the session account's while sessions of it run that way. Opened
+        # the way it was before the switch, as the session account, which
+        # asks the controller itself (B271); the agent moves the home once
+        # nothing of it runs as the session account.
+        env.update(HOME=sa.pw_dir, USER=sa.pw_name, LOGNAME=sa.pw_name)
+        if ro:
+            env["BB_TTY_RO"] = "1"
+        os.initgroups(sa.pw_name, sa.pw_gid)
+        os.setgid(sa.pw_gid)
+        os.setuid(sa.pw_uid)
+        os.chdir(sa.pw_dir)
+        os.execve(bbtty, [bbtty, *argv], env)
+    if not stat.S_ISDIR(hst.st_mode) or hst.st_uid != pw.pw_uid:
+        raise Refused(f"{home} belongs to neither this account's user nor the session account")
     env.update(HOME=home, USER=pw.pw_name, LOGNAME=pw.pw_name, BB_TTY_GRANT=json.dumps(got))
     if ro:
         env["BB_TTY_RO"] = "1"
