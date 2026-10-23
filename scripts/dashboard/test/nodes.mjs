@@ -1246,8 +1246,12 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   await page.waitForFunction(sel => !document.querySelector(sel + ' [data-napply="storage"]')?.disabled,
                              ROW, { timeout: 10000 });
   page.dialogs.length = 0;
+  // Answered Cancel: the question is what is checked, and a yes answered
+  // a moment after the press queued the apply after the cancel below had
+  // run, holding every later system job on this node ("one at a time").
+  page.answers.push(-1);
   await page.click(`${ROW} [data-napply="storage"]`);
-  await page.waitForFunction(() => true);
+  for (let i = 0; i < 40 && page.dialogs.length === 0; i++) await sleep(100);
   ok(page.dialogs.length === 1 && /unmounts \/mnt\/old/.test(page.dialogs[0]),
      `Apply storage asks first when it would unmount something the node has (${page.dialogs[0]?.slice(0, 60)})`);
   for (const j of (await napi('/api/v1/jobs?active=1')).jobs)
@@ -1484,7 +1488,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const inUseUn = await napi('/api/v1/nodes', { action: 'uninstall', id: minted.id });
     ok(/in use: 1 session running there .* and 1 container running there \(beta-web/.test(inUse.error || '')
        && /in use: 1 session/.test(inUseUn.error || ''),
-       `Disable and Un-enroll refuse while a session or a container runs there, naming them (${inUse.error})`);
+       `Disable and Un-enroll refuse while a session or a container runs there, naming them (${inUse.error} | ${inUseUn.error})`);
     await beatIn({ sessions: [], published: {} });
     page.dialogs.length = 0;
     await page.click(`${ROW} [data-nd="disable"]`);
