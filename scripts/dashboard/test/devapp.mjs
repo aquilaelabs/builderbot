@@ -195,7 +195,9 @@ async function dmEditAll(sel = DM){
     const key = r?.dataset.inst ? `inst:${r.dataset.inst}` : r?.dataset.ctr ? `ctr:${r.dataset.ctr}` : '';
     if (key) dmEditing.add(key);
     dockerRev++; drawPanes(); }, sel);
-  await page.waitForFunction(() => document.querySelector('dialog.dmsetdlg')?.open, null, { timeout: 10000 }).catch(() => {});
+  // Any open one: a drawing of the same row out of sight keeps its own
+  // dialog shut, and the first in the document was that one.
+  await page.waitForFunction(() => [...document.querySelectorAll('dialog.dmsetdlg')].some(d => d.open), null, { timeout: 10000 }).catch(() => {});
 }
 async function dmEditNone(){
   // ...and what a check staged and left: a row with a draft keeps its dialog.

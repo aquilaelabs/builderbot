@@ -45,6 +45,15 @@ const VIEWS = ['briefing', 'roadmap', 'bugs', 'git', 'tests', 'analysis', 'desig
 // Branches table is folded under Changes on the page and not in its wait.
 const VIEW_SKIP = { git: ['title:CI', 'title:README.md', 'phone:table'], briefing: ['title:Brief'] };
 const HELD = /\/api\/(?!status|layout|revs|presence)/;
+// Reads held while a template is measured, then let go: a request held and
+// never answered keeps one of the browser's six connections to the server,
+// and once the six were spent every later page's reads queued behind them,
+// the containers page waiting out each of its waits (91s of it, twice).
+const hold = async (page, re = HELD) => {
+  const held = [];
+  await page.route(re, r => { held.push(r); });
+  return async () => { await page.unroute(re); for (const r of held) await r.continue().catch(() => {}); };
+};
 
 // The outline of what is on show in `sel`: a template's wrapper (.skt) is
 // looked through, its "loading…" word for a screen reader is not counted.
@@ -154,6 +163,11 @@ const onTheWall = sel => {
   return [...out].join(', ');
 };
 
+// A part still reading, on show: a fold read only when it is opened (the
+// containers page's images) keeps its placeholder shut away, and waiting for
+// that one cost the page its whole timeout.
+const WAITING = '.loading:not(details:not([open]) .loading)';
+
 // The page as it lands: a page reads more than once (the Emulator's list of
 // images to add comes after its node's, its dots running meanwhile), so its
 // outline is taken when nothing says it is on its way and two reads 400ms
@@ -178,15 +192,15 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
   const where = W < 900 ? 'on a phone' : 'at a desk';
   for (const [name, hash, reset, skip] of PAGES){
     await page.evaluate(h => { location.hash = h; }, hash);
-    await page.waitForFunction(() => { const l = [...document.querySelectorAll('.pane .doc.on')].find(e => e.checkVisibility({ visibilityProperty: true, opacityProperty: true }));
-      return l && l.children.length && !l.querySelector('.loading'); }, null, { timeout: 15000 }).catch(() => {});
+    await page.waitForFunction(w => { const l = [...document.querySelectorAll('.pane .doc.on')].find(e => e.checkVisibility({ visibilityProperty: true, opacityProperty: true }));
+      return l && l.children.length && !l.querySelector(w); }, WAITING, { timeout: 15000 }).catch(() => {});
     const got = await settled(page, '.pane .doc.on');
-    await page.route(HELD, () => {});
+    const release = await hold(page);
     const err = await page.evaluate(js => { try { (0, eval)(js); return ''; } catch (e){ return String(e); } }, reset);
     await sleep(300);
     const tpl = await page.evaluate(outline, '.pane .doc.on');
     const wall = await page.evaluate(onTheWall, '.pane .doc.on');
-    await page.unroute(HELD);
+    await release();
     ok(!wall, `${name}'s placeholder bars keep their card's inset ${where}${wall ? `: ${wall}` : ''}`);
     // A `phone:KEY` skips KEY at phone width alone.
     const skips = (skip || []).flatMap(k => k.startsWith('phone:') ? (W < 900 ? [k.slice(6)] : []) : [k]);
@@ -196,8 +210,8 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
   const [shown, waiting] = W < 900 ? ['beta', 'delta'] : ['beta', 'gamma'];
   for (const v of VIEWS){
     await page.evaluate(([p, v]) => openNotebook(p, v), [shown, v]);
-    await page.waitForFunction(() => { const n = [...document.querySelectorAll('.nb .nbview:not([hidden])')].find(e => e.checkVisibility({ visibilityProperty: true, opacityProperty: true }));
-      return n && !n.querySelector('.loading'); }, null, { timeout: 15000 }).catch(() => {});
+    await page.waitForFunction(w => { const n = [...document.querySelectorAll('.nb .nbview:not([hidden])')].find(e => e.checkVisibility({ visibilityProperty: true, opacityProperty: true }));
+      return n && !n.querySelector(w); }, WAITING, { timeout: 15000 }).catch(() => {});
     const got = await settled(page, '.nb .nbview:not([hidden])');
     // The waiting shape is the markup's (data-tiles on the view's glance):
     // the loaded view never draws more tiles than its markup declares.
@@ -207,12 +221,12 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
     });
     ok(!decl || decl.drawn <= decl.declared,
        `the notebook's ${v} view draws no more tiles than its markup declares for its waiting shape ${where} (${JSON.stringify(decl)})`);
-    await page.route(HELD, () => {});
+    const release = await hold(page);
     await page.evaluate(([p, v]) => openNotebook(p, v), [waiting, v]);
     await sleep(600);
     const tpl = await page.evaluate(outline, '.nb .nbview:not([hidden])');
     const wall = await page.evaluate(onTheWall, '.nb .nbview:not([hidden])');
-    await page.unroute(HELD);
+    await release();
     ok(!wall, `the notebook's ${v} view's placeholder bars keep their card's inset ${where}${wall ? `: ${wall}` : ''}`);
     const why = differ(got, tpl, (VIEW_SKIP[v] || []).flatMap(k => k.startsWith('phone:') ? (W < 900 ? [k.slice(6)] : []) : [k]));
     ok(!why, `the notebook's ${v} view waits as itself ${where}${why ? `: ${why}` : ''}`);
@@ -220,8 +234,7 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
   // A reload on a view draws that view's own template before anything is
   // read, as a press does (B865: five plain rows, then the view's head).
   for (const v of ['roadmap', 'bugs', 'tests', 'wiki']){
-    await page.route(HELD, () => {});
-    await page.route(/\/api\/status/, () => {});
+    const release = await hold(page), releaseStatus = await hold(page, /\/api\/status/);
     // Read as the page's own script finishes, before the first read could
     // replace it; a hash alone is the same document, so it is reloaded.
     await page.addInitScript(() => document.addEventListener('DOMContentLoaded', () => {
@@ -232,7 +245,7 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
     await page.goto(`${URL}#/projects/beta/${v}`);
     await sleep(300);
     const boot = await page.evaluate(() => window.__boot);
-    await page.unroute(HELD); await page.unroute(/\/api\/status/);
+    await release(); await releaseStatus();
     ok(boot?.view === v && boot.head && boot.ids === 0,
        `a reload on the ${v} view draws its own template first, without the notebook's ids ${where} (${JSON.stringify(boot)})`);
     await page.goto(URL);

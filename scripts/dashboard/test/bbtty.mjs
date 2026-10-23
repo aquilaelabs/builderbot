@@ -102,7 +102,8 @@ if [ "\${1:-}" = auth ]; then
   exit 0
 fi
 printf '%s\\0' "$@" > "${argvOut}"
-sleep 60
+# Held open for a pane; a launcher run on its own has its argv and goes.
+[ -n "\${FAKE_CLAUDE_QUICK:-}" ] || sleep 60
 `);
 chmodSync(join(bin, 'bb'), 0o755);
 chmodSync(join(bin, 'claude'), 0o755);
@@ -393,9 +394,9 @@ writeFileSync(join(tdir, 'the-live-one.jsonl'), '');
 try {
   execFileSync('timeout', ['5', 'bash', LAUNCHER, '--respawn'], {
     encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, FAKE_CLAUDE_QUICK: '1' },
   });
-} catch { /* the stub holds the pane open; timeout ending it is the success */ }
+} catch { /* a stub that hangs is ended by the timeout, and its argv still read */ }
 a = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
 ok(/--model\0opus\0/.test(a) && /--effort\0low\0/.test(a),
    'a respawn re-reads the setting rather than repeating the one it started on');
@@ -423,9 +424,9 @@ rmSync(join(DIR, 'state', 'claude-prefs.json'), { force: true });
   try {
     execFileSync('timeout', ['5', 'bash', LAUNCHER, '--respawn'], {
       encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, FAKE_CLAUDE_QUICK: '1' },
     });
-  } catch { /* the stub holds the pane open; timeout ending it is the success */ }
+  } catch { /* a stub that hangs is ended by the timeout, and its argv still read */ }
   a = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
   ok(!a.includes('armor stats'), 'a respawn of that session is not handed the brief again');
   connect(0);

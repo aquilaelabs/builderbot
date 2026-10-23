@@ -1257,7 +1257,9 @@ ok(seenReds.size <= 1,
     delete window.__realFxRender;
     fxRev++; drawPanes();
   });
-  await page.waitForSelector('.fxtab .rule', { timeout: 8000 }).catch(() => {});
+  // Not waited for: the Docker tab is in front now, so the Analysis tab does
+  // not draw until the loop below brings it, and a wait for its rows sat out
+  // its whole timeout.
 }
 
 // A stacked box may not be aligned across its own axis, on every tab, at
