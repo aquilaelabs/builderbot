@@ -49,6 +49,8 @@
 ### Fixed
 
 - A toolchain left half-installed reads as not installed, and Install clears what it left and installs it whole. (3220428)
+- Terminals draw in desktop Firefox again: every terminal uses the canvas renderer, where WebGL left a black box. (667ee2c)
+- A button stays Asking no longer once its press is answered. (667ee2c)
 
 ### Security
 
