@@ -299,7 +299,7 @@ class SessionsMixin:
         self.session_bound = bind
         logf = os.path.join((self.state.get("stores") or {}).get("data") or "/tmp", "ttyd.log")
         # The canvas renderer, not WebGL: desktop Firefox made a WebGL context
-        # that never painted, so every terminal there went from grey to black
+        # that never painted, so every terminal there went from gray to black
         # with nothing for ttyd to fall back from (the operator, 23 Oct, B259).
         base = [TTYD_BIN, "--interface", bind, "--url-arg", "--max-clients", "16",
                 "-t", "reconnect=5", "-t", "disableLeaveAlert=true", "-t", "rendererType=canvas"]

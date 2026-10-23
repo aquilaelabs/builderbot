@@ -134,7 +134,7 @@ log "dashboard: http://<host>:${PORT}  (terminals proxied at /term; ttyd binds 1
 # asking whether to leave the page on that reload, or on any other: a
 # session lives in tmux, so leaving loses nothing (B189). `rendererType=canvas`
 # draws without WebGL: desktop Firefox made a WebGL context that never
-# painted, and every terminal there went from grey to black with no error for
+# painted, and every terminal there went from gray to black with no error for
 # ttyd to fall back on (B259).
 #
 # Loopback only, and no --credential: the browser reaches terminals through
