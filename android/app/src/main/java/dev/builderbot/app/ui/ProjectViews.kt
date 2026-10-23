@@ -2,7 +2,7 @@
 // notebook's Design view (read here; laid out on the dashboard or by a
 // session), the project's containers with the three verbs a person presses
 // on one, its tests as the last run left them, and a line said to the
-// account's own Claude session, which is the one thing a phone could not do
+// account's own session, any agent's, which is the one thing a phone could not do
 // without a terminal.
 package dev.builderbot.app.ui
 
@@ -386,12 +386,13 @@ fun TestsView(api: Api, project: String) {
 }
 
 // ---- a line, said to the account's own session -----------------------------------
-// Offered only where it can land: the account's own Claude session on this
-// project, running. What it is doing is said beside the box, since a line
-// typed into a session that is working waits its turn.
+// Offered only where it can land: the account's own session on this project,
+// any agent's (/api/say takes every live agent's), running. What it is doing
+// is said beside the box, since a line typed into a session that is working
+// waits its turn.
 
 @Composable
-fun SayBox(api: Api, session: JSONObject, onSaid: () -> Unit = {}) {
+fun SayBox(api: Api, session: JSONObject, agent: String = "Claude", onSaid: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     var text by remember(session.str("name")) { mutableStateOf("") }
     var said by remember(session.str("name")) { mutableStateOf("") }
@@ -400,12 +401,12 @@ fun SayBox(api: Api, session: JSONObject, onSaid: () -> Unit = {}) {
     Column(Modifier.padding(16.dp, 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Dot(if (claude.str("state") == "working") Warn else Ok)
-            Text(listOf("Claude is " + claude.str("state").ifBlank { "open" }, claude.str("task"))
+            Text(listOf("$agent is " + claude.str("state").ifBlank { "open" }, claude.str("task"))
                      .filter { it.isNotBlank() }.joinToString(": "),
                  color = Dim, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(text, { text = it }, label = { Text("Say to Claude") },
+            OutlinedTextField(text, { text = it }, label = { Text("Say to $agent") },
                               modifier = Modifier.weight(1f), maxLines = 4)
             Spacer(Modifier.width(8.dp))
             Button(enabled = text.isNotBlank() && !busy, onClick = {
@@ -490,7 +491,10 @@ fun LogRow(api: Api, row: JSONObject, showProject: Boolean) {
     Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp)) {
         Text(row.str("first").ifBlank { "a conversation with no first line" }, color = Ink, maxLines = 2,
              overflow = TextOverflow.Ellipsis)
-        Dim(listOf(if (showProject) project else "", whenAt(row.optLong("at")), sized(row.optLong("bytes")) + " as written")
+        // Which agent it was with (R95), named where it is not Claude.
+        val with = dev.builderbot.app.Agents.byId(row.str("agent"))
+        Dim(listOf(if (showProject) project else "", if (with != null && with.id != "claude") with.name else "",
+                   whenAt(row.optLong("at")), sized(row.optLong("bytes")) + " as written")
                 .filter { it.isNotBlank() }.joinToString(" · "))
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (said.isNotBlank()) Text(said, color = Bad, style = MaterialTheme.typography.bodySmall,
@@ -520,7 +524,7 @@ fun LogRow(api: Api, row: JSONObject, showProject: Boolean) {
                 scope.launch {
                     said = try {
                         val uri = fetched(context, api, api.transcriptPath(project, id), "logs",
-                                          "claude-$project-${id.take(8)}.txt")
+                                          "${row.str("agent").ifBlank { "claude" }}-$project-${id.take(8)}.txt")
                         context.startActivity(android.content.Intent.createChooser(
                             android.content.Intent(android.content.Intent.ACTION_SEND)
                                 .setType("text/plain")
@@ -536,38 +540,4 @@ fun LogRow(api: Api, row: JSONObject, showProject: Boolean) {
         if (tail.isNotBlank()) Mono(tail)
     }
     Hairline()
-}
-
-// ---- Claude on this project ----------------------------------------------------
-// The account's own session, where one is open: what it is doing and a box
-// to say something to it. Under that, the account's conversations here.
-// Starting a session stays the dashboard's: it opens a terminal, and the
-// terminals are the browser's.
-
-@Composable
-fun ClaudeView(api: Api, project: String, session: JSONObject?, reloadStatus: () -> Unit) {
-    val (tr, reload) = load("transcripts-$project") { api.transcripts(project) }
-    val rows = tr.value?.arr("rows") ?: emptyList()
-    Column(Modifier.fillMaxSize()) {
-    // Above the list and not a row of it: what the session is doing moves
-    // with every look at the status, and a row of a lazy list kept the
-    // line it was first drawn with (it read "waiting" under a pill that
-    // said working).
-    if (session != null) SayBox(api, session, onSaid = { reloadStatus(); reload() })
-    else Column(Modifier.padding(16.dp, 8.dp)) {
-        Dim("no Claude session of yours is open on this project: the Claude button on the dashboard starts one, and this is where you talk to it from then on")
-    }
-    Pull(tr.value == null && tr.error == null, { reload(); reloadStatus() }) {
-    LazyColumn(Modifier.fillMaxSize()) {
-        item {
-            SectionHead("Conversations")
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                if (tr.error != null) Problem(tr.error)
-                if (tr.value != null && rows.isEmpty()) Dim("none of yours on this project yet")
-            }
-        }
-        items(rows) { r -> LogRow(api, r, showProject = false) }
-    }
-    }
-    }
 }

@@ -136,10 +136,16 @@ object Watch {
         // new ask waits for the run (wait), the note waits for the run too,
         // and comes when the tests finish. The run itself is what `bb test`
         // reports to the dashboard (the project's `testing`).
+        // Any agent's session of the account's own (R128), the first running
+        // per project as the page reads it; which agent is named on the note.
         val prefix = st.str("tmux_prefix")
+        val names = st.arr("sessions").associateBy { it.str("name") }
+        val agentOf = mutableMapOf<String, String>()
         val own = st.arr("projects").mapNotNull { p ->
-            val want = prefix + ("claude-" + p.str("name")).replace(Regex("[.:]"), "_")
-            st.arr("sessions").firstOrNull { it.str("name") == want }?.let { Triple(p, it.obj("claude"), p.optJSONObject("testing")) }
+            Agents.runningOn(prefix, p.str("name"), names.keys).firstOrNull()?.let { (a, name) ->
+                agentOf[p.str("name")] = a.name
+                Triple(p, names.getValue(name).obj("claude"), p.optJSONObject("testing"))
+            }
         }
         val busy = own.filter { (p, claude, testing) ->
             claude.str("state") == "working" || (testing != null && p.obj("prefs").str("test_change") != "restart")
@@ -155,7 +161,7 @@ object Watch {
                        else task
             nm.notify(note, NotificationCompat.Builder(context, App.CH_NOTE)
                 .setSmallIcon(R.drawable.ic_stat_bb)
-                .setContentTitle(from + "${p.str("label").ifBlank { project }}: Claude is waiting on you")
+                .setContentTitle(from + "${p.str("label").ifBlank { project }}: ${agentOf[project] ?: "Claude"} is waiting on you")
                 .setContentText(text)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                 .setContentIntent(openApp(context, "project/$project"))
@@ -310,16 +316,35 @@ object Watch {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
-    // The two kinds the server sends: a node whose agent is behind (red
-    // when out of window, where work is stopped), and one whose Claude Code
-    // is behind what is out (claudecode.py, 23 Sep). The bell says the same.
+    // Each kind the bell draws (page-bell.js attRow), in one line: a node
+    // whose agent is behind (red when out of window, where work is
+    // stopped), toolchains and coding agents behind what is out, a release
+    // that cannot be signed, a node short of room, a container or nginx
+    // update, a session the update held, a copy that did not happen and a
+    // sign-in read by something else. A kind this build does not know is
+    // said by its kind and node, never as an agent's version sentence.
     fun attentionLine(a: JSONObject): String = when (a.str("kind")) {
-        // Toolchains behind what is out on a node, Claude Code among them
-        // (API 9): one line per node, as the bell has it.
-        "toolchain" -> "${a.str("node")}: " + a.arr("tools").joinToString(", ") {
-            "${it.str("label")} ${it.str("from").ifBlank { "?" }} → ${it.str("to").let { v -> if (v == "newer") "a newer version" else v }}" }
-        else -> "${a.str("node")} runs agent ${a.str("from")}; the controller ships ${a.str("to")}" +
+        // Toolchains behind what is out on a node (API 9), and the coding
+        // agents' own (R95, the Agents page's): one line per node.
+        "toolchain", "agents" -> "${a.str("node")}: " + a.arr("tools").joinToString(", ") {
+            "${it.str("label")} ${it.str("from").ifBlank { "?" }} → ${it.str("to").let { v -> if (v == "newer") "a newer version" else v }}" } +
+            (if (a.str("kind") == "agents" && a.arr("tools").any { it.str("name") == "claude-code" } && a.optInt("sessions") > 0)
+                 " (updating Claude Code ends the ${a.optInt("sessions")} Claude session${if (a.optInt("sessions") == 1) "" else "s"} there)" else "")
+        "release-sign" -> if (a.bool("bad")) "${a.str("tag")}'s APK in ${a.str("project")} is not signed: ${a.str("why")}"
+                          else "${a.str("project")}'s next release cannot be signed: ${a.str("why")}"
+        "room" -> "${a.str("node")} is running short of room: " + (a.arr("short").map {
+                if (it.has("used_pct") && !it.isNull("used_pct")) "${it.str("what")} has been ${it.optInt("used_pct")}% used for ten minutes"
+                else "${it.str("what")} has ${it.str("free_gb")} GB free of ${it.str("total_gb")} GB" } +
+            (if (a.has("mem") && !a.isNull("mem")) listOf("its memory has been ${a.optInt("mem")}% used for ten minutes") else emptyList()))
+            .joinToString("; ")
+        "image" -> "${a.arr("containers").size} container update${if (a.arr("containers").size == 1) "" else "s"} on ${a.str("node")}"
+        "nginx" -> "nginx update on ${a.str("node")}"
+        "held" -> "A session in ${a.str("project")} stopped for the update"
+        "relocate" -> "Copying or moving ${a.str("name")} did not happen: ${a.str("why")}"
+        "token-read" -> "A sign-in on ${a.str("node")} was read: treat it as copied and end it at the provider"
+        "agent", "" -> "${a.str("node")} runs agent ${a.str("from")}; the controller ships ${a.str("to")}" +
             (if (a.bool("window")) " (out of window, work there is stopped)" else "")
+        else -> "${a.str("node").ifBlank { a.str("project") }}: ${a.str("kind")} needs attention on the dashboard"
     }
 
     // What an ask is, in the words the dashboard's bell uses for the same

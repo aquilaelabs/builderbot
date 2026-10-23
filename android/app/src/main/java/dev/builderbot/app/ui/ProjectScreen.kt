@@ -11,7 +11,8 @@
 // session has to be open on the project) because a button that quietly does
 // nothing is worse than one that is not there.
 //
-// The terminals stay the browser's.
+// A session's terminal opens over the project from its Agent view
+// (AgentView.kt): the dashboard's own page, in a WebView.
 package dev.builderbot.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
@@ -61,7 +62,7 @@ import dev.builderbot.app.str
 import dev.builderbot.app.strs
 import kotlinx.coroutines.launch
 
-private val VIEWS = listOf("Claude", "Roadmap", "Bugs", "Briefing", "Wiki", "Design", "Artifacts", "Docker", "Tests", "Git", "Settings")
+private val VIEWS = listOf("Agent", "Roadmap", "Bugs", "Briefing", "Wiki", "Design", "Artifacts", "Docker", "Tests", "Git", "Settings")
 
 // What the settings view offers, in the dashboard's own order and words. The
 // lists are the server's (prefs.MODELS, prefs.EFFORTS, prefs.EDIT_MODES) and
@@ -75,36 +76,100 @@ private val EFFORTS = listOf("" to "leave as is", "low" to "low", "medium" to "m
 @Composable
 fun ProjectScreen(store: Store, name: String) {
     val api = store.api() ?: return
+    val scope = rememberCoroutineScope()
     // The view in front survives a rotation, as the tab in front does.
-    var view by rememberSaveable(name) { mutableStateOf("Claude") }
+    var view by rememberSaveable(name) { mutableStateOf("Agent") }
     // The status once, for what several views ask of it: the account's own
-    // session here (the name the server would give it, which is the one
-    // /api/say takes), and the project's row.
+    // sessions here, any agent's (the names the server gives them, which
+    // /api/say and /api/session take), and the project's row.
     val (st, reloadStatus) = load("status-project-$name") { api.status() }
     val row = st.value?.arr("projects")?.firstOrNull { it.str("name") == name }
-    val mine = (st.value?.str("tmux_prefix") ?: "") + ("claude-$name").replace(Regex("[.:]"), "_")
-    val session = st.value?.arr("sessions")?.firstOrNull { it.str("name") == mine }
+    val session = ownSession(st.value, name)
+    // A session's terminal, open over the project (R128): which argument,
+    // and the label it is shown under. Not saved: a rotation reattaches.
+    var term by remember(name) { mutableStateOf<Pair<String, String>?>(null) }
+    var menu by remember { mutableStateOf(false) }
+    var locking by remember { mutableStateOf(false) }
+    var said by remember(name) { mutableStateOf("") }
     // Asked again while the project is open, since what the session is
     // doing is the thing on this screen that moves by itself.
     LaunchedEffect(name) { while (true) { kotlinx.coroutines.delay(10_000); reloadStatus() } }
+    term?.let { (arg, label) ->
+        TerminalPane(api, arg, label, onClose = { term = null; reloadStatus() })
+        return
+    }
+    if (locking && row != null) {
+        val on = !row.bool("locked")
+        val held = if (on) !row.bool("owner_mine") else row.bool("locked_admin")
+        androidx.compose.material3.AlertDialog(onDismissRequest = { locking = false },
+            title = { Text(if (on) (if (held) "Lock it as an administrator?" else "Lock it?") else "Unlock it?") },
+            text = { Text(if (!on) "Everybody on the project works in it again."
+                          else if (held) "Every session here ends now. Nobody starts a session in it or changes it, " +
+                               "${row.str("owner_name").ifBlank { "its owner" }} included, until an administrator unlocks it."
+                          else "Every session here but yours ends now. Nobody but you starts a session in it or changes it until you unlock it.") },
+            confirmButton = { Button(onClick = {
+                locking = false
+                scope.launch {
+                    said = try {
+                        val r = api.lock(name, on)
+                        r.str("error").ifBlank {
+                            val n = r.optJSONArray("ended")?.length() ?: 0
+                            if (!on) "unlocked" else "locked" + if (n > 0) ": ${if (n == 1) "a session" else "$n sessions"} ended" else ""
+                        }
+                    } catch (e: Exception) { e.message ?: "it did not change" }
+                    reloadStatus()
+                }
+            }) { Text(if (on) "Lock" else "Unlock") } },
+            dismissButton = { TextButton(onClick = { locking = false }) { Text("Cancel") } })
+    }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.padding(16.dp, 12.dp, 16.dp, 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(16.dp, 12.dp, 4.dp, 6.dp), verticalAlignment = Alignment.CenterVertically) {
             val tone = projectTone(row?.obj("prefs")?.str("color") ?: "")
             if (tone != null) { Dot(tone); Spacer(Modifier.width(2.dp)) }
             // The name it is shown under (R154); `name` is the directory, the key.
             Text(row?.str("label")?.ifBlank { null } ?: name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Ink,
                  modifier = Modifier.weight(1f))
             if (session != null) {
-                val working = session.obj("claude").str("state") == "working"
-                Pill(if (working) "working" else "waiting on you", if (working) Warn else Ok)
+                val (a, s) = session
+                Pill((if (a.id == "claude") "" else "${a.name} ") + sessionWord(s), if (sessionWord(s) == "working") Warn else Ok)
+            }
+            if (row != null && row.bool("locked")) { Spacer(Modifier.width(6.dp)); Pill(if (row.bool("locked_admin")) "locked by admin" else "locked", Warn) }
+            if (row != null && row.bool("archived")) { Spacer(Modifier.width(6.dp)); Pill("archived", Dim) }
+            // Archive and Lock, the two the page keeps in its menu (R119),
+            // where this account may.
+            if (row != null && (row.bool("may_archive") || row.bool("may_lock"))) androidx.compose.foundation.layout.Box {
+                TextButton(onClick = { menu = true }) { Text("⋯") }
+                androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    if (row.bool("may_archive")) androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(if (row.bool("archived")) "Unarchive" else "Archive") },
+                        onClick = {
+                            menu = false
+                            val on = !row.bool("archived")
+                            scope.launch {
+                                said = try {
+                                    api.archive(name, on).str("error").ifBlank {
+                                        if (on) "archived: under Archived at the foot of Projects, and working as before" else "unarchived" }
+                                } catch (e: Exception) { e.message ?: "it did not change" }
+                                reloadStatus()
+                            }
+                        })
+                    if (row.bool("may_lock")) androidx.compose.material3.DropdownMenuItem(
+                        text = { Text((if (if (row.bool("locked")) row.bool("locked_admin") else !row.bool("owner_mine")) "Admin: " else "") +
+                                      if (row.bool("locked")) "Unlock" else "Lock") },
+                        onClick = { menu = false; locking = true })
+                }
             }
         }
+        if (row != null && row.bool("locked_me")) Text(lockedWhy(row), color = Warn, style = MaterialTheme.typography.bodySmall,
+                                                         modifier = Modifier.padding(horizontal = 16.dp))
+        if (said.isNotBlank()) Text(said, color = Note, style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(horizontal = 16.dp))
         // The view strip, the site's: one line of small tabs, the one in
         // front on the deep accent with ink, the rest on the panel with a
         // hairline. Scrolls sideways rather than wrapping: six words do not
         // fit a phone, and a chip that wraps letter by letter takes the whole
-        // strip's height with it. Ten now, in the notebook's own order with
-        // Claude in front, since that is the one a phone is opened for.
+        // strip's height with it. In the notebook's own order with the
+        // agents in front, since that is the one a phone is opened for.
         Row(Modifier.padding(horizontal = 12.dp).horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (v in VIEWS) {
@@ -119,7 +184,6 @@ fun ProjectScreen(store: Store, name: String) {
         }
         Spacer(Modifier.height(4.dp))
         when (view) {
-            "Claude" -> ClaudeView(api, name, session, reloadStatus)
             "Roadmap" -> Roadmap(api, name)
             "Bugs" -> Bugs(api, name)
             "Briefing" -> Briefing(api, name)
@@ -129,7 +193,9 @@ fun ProjectScreen(store: Store, name: String) {
             "Docker" -> DockerView(api, name)
             "Tests" -> TestsView(api, name)
             "Git" -> Git(api, name)
-            "Settings" -> Settings(api, name)
+            "Settings" -> Settings(api, name, st.value, reloadStatus)
+            // Agent, and a view saved under its old name (Claude) before it.
+            else -> AgentView(api, name, st.value, reloadStatus) { arg, label -> term = arg to label }
         }
     }
 }
@@ -138,9 +204,9 @@ fun ProjectScreen(store: Store, name: String) {
 // question: the server marks a step as gone only when the line landed in the
 // pane, so a false here means the session was busy with a dialog and the step
 // is still waiting, which is exactly the case worth not lying about.
-private fun sent(r: Result<org.json.JSONObject>): String {
+private fun sent(r: Result<org.json.JSONObject>, to: String): String {
     val v = r.getOrElse { return it.message ?: "it did not go" }
-    return if (v.bool("sent")) "sent to Claude" else "not sent: the session did not take it"
+    return if (v.bool("sent")) "sent to $to" else "not sent: the session did not take it"
 }
 
 @Composable
@@ -153,11 +219,13 @@ private fun Roadmap(api: dev.builderbot.app.Api, project: String) {
     // Whether there is anything to send TO. The panel's rule, and the
     // server's: no session, no send.
     val live = td.value?.str("session")?.isNotBlank() == true
+    // ...and whose it is: any agent's session takes a step (R95).
+    val to = dev.builderbot.app.Agents.ofName(td.value?.str("session") ?: "")?.first?.name ?: "the session"
     Pull(td.value == null && td.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             Column(Modifier.padding(16.dp, 8.dp)) {
-                if (live) Dim("a Claude session is open on this project")
+                if (live) Dim("a session is open on this project: $to")
                 OutlinedTextField(text, { text = it }, label = { Text("Add to the roadmap") }, modifier = Modifier.fillMaxWidth())
                 Row { Spacer(Modifier.weight(1f)); Button(enabled = text.isNotBlank(), onClick = { scope.launch {
                     said = try { api.roadmapAdd(project, text.trim()); text = ""; "added" } catch (e: Exception) { e.message ?: "" }
@@ -186,9 +254,9 @@ private fun Roadmap(api: dev.builderbot.app.Api, project: String) {
                 Row {
                     Spacer(Modifier.weight(1f))
                     if (!shelved && live) TextButton(onClick = { scope.launch {
-                        said = sent(runCatching { api.roadmapSend(project, it.opt("id"), null, "") })
+                        said = sent(runCatching { api.roadmapSend(project, it.opt("id"), null, "") }, to)
                         reload()
-                    } }) { Text("Send to Claude") }
+                    } }) { Text("Send to $to") }
                     if (!shelved) TextButton(onClick = { scope.launch { runCatching { api.roadmapShelve(project, it.opt("id")) }; reload() } }) { Text("Shelve") }
                 }
             }
@@ -243,7 +311,7 @@ private fun Bugs(api: dev.builderbot.app.Api, project: String) {
                 }
                 if (open) Row { Spacer(Modifier.weight(1f))
                     TextButton(onClick = { scope.launch {
-                        said = sent(runCatching { api.bugSend(project, b.opt("id"), "") })
+                        said = sent(runCatching { api.bugSend(project, b.opt("id"), "") }, "the session")
                         reload()
                     } }) { Text("Send") }
                     TextButton(onClick = { scope.launch { runCatching { api.bugStatus(project, b.opt("id"), "wontfix", "closed from the app") }; reload() } }) { Text("Won't fix") }
@@ -395,16 +463,18 @@ private fun Artifacts(api: dev.builderbot.app.Api, project: String) {
 }
 
 // ---- what this project's sessions run as -----------------------------------
-// The two the dashboard's settings dialog carries and a phone can usefully
-// set: the model and the effort. Permissions are NOT here. Claude Code's own
-// app is where a session's are changed, which is the operator's own finding
-// and a better place for it than a second control saying something similar.
-// Both are read WHEN A SESSION STARTS (bb-tty writes them into
-// the settings file it launches Claude Code with), so changing one while a
-// session is open does nothing to that session until a new one starts. That
-// is what the chip is: it ENDS the open session, the same gesture the dialog
-// offers, and the Claude button starts one on the new setting, resuming the
-// conversation.
+// The ones the dashboard's settings dialog carries and a phone can usefully
+// set: the model and the effort each agent's sessions start on, which are
+// this account's own on the project (prefs.YOURS, answered as `yours`; the
+// project's `prefs` never carried them, so this read blanks before 0.7.0),
+// Claude's as `model` and `effort` and another agent's as `codex_model` and
+// the like (R95 step 9). Permissions are NOT here. Claude Code's own app is
+// where a session's are changed, which is the operator's own finding and a
+// better place for it than a second control saying something similar.
+// They are read WHEN A SESSION STARTS, so changing one while a session is
+// open does nothing to that session until a new one starts. That is what the
+// chip is: it ENDS your open Claude session (the server's `restart` ends
+// Claude's alone), and the Agent view starts one on the new setting.
 //
 // Chips rather than dropdowns: every one of these lists is short, a chip row
 // shows the current value without a tap, and it is the idiom already on this
@@ -412,25 +482,29 @@ private fun Artifacts(api: dev.builderbot.app.Api, project: String) {
 // the browser's. They are not decisions anybody makes from a phone. The
 // color is: it is how a project is found on this screen's own list.
 @Composable
-private fun Settings(api: dev.builderbot.app.Api, project: String) {
+private fun Settings(api: dev.builderbot.app.Api, project: String, status: org.json.JSONObject?, reloadStatus: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val (st, reload) = load("status-settings-$project") { api.status() }
-    val me = st.value?.arr("projects")?.firstOrNull { it.str("name") == project }
+    val me = status?.arr("projects")?.firstOrNull { it.str("name") == project }
     val prefs = me?.obj("prefs")
-    val live = me?.str("session_at")?.isNotBlank() == true
-    var model by remember(prefs) { mutableStateOf(prefs?.str("model") ?: "") }
-    var effort by remember(prefs) { mutableStateOf(prefs?.str("effort") ?: "") }
-    var tone by remember(prefs) { mutableStateOf(prefs?.str("color") ?: "") }
-    var restart by remember(prefs) { mutableStateOf(true) }
+    val yours = me?.obj("yours")
+    // The agents this project offers, Claude first: their own picks each.
+    val agents = dev.builderbot.app.Agents.LIVE.filter { it.id == "claude" || it.id !in (prefs?.strs("agents_off") ?: emptyList()) }
+    val keys = agents.flatMap { listOf(it.modelKey, it.effortKey) }
+    val picks = remember(yours?.toString()) { androidx.compose.runtime.mutableStateMapOf<String, String>().apply {
+        for (k in keys) put(k, yours?.str(k) ?: "") } }
+    var tone by remember(prefs?.toString()) { mutableStateOf(prefs?.str("color") ?: "") }
+    var restart by remember(yours?.toString()) { mutableStateOf(true) }
     var said by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
-    // What a session reads when it starts, which is what ending one is for.
-    val runs = prefs != null && (model != prefs.str("model") || effort != prefs.str("effort"))
-    val changed = runs || (prefs != null && tone != prefs.str("color"))
+    // Your own Claude session running here, which is what the server's
+    // restart ends (not session_at, which names the node and is there
+    // whether or not anything runs).
+    val live = ownSessions(status, project).any { it.first.id == "claude" }
+    val runs = yours != null && (picks["model"] != yours.str("model") || picks["effort"] != yours.str("effort"))
+    val changed = yours != null && (keys.any { picks[it] != yours.str(it) } || (prefs != null && tone != prefs.str("color")))
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp, 8.dp)) {
-        if (st.error != null) Problem(st.error)
-        if (st.value == null && st.error == null) Loading()
-        if (prefs == null && st.value != null) Dim("this project has no settings here")
+        if (status == null) Loading()
+        if (prefs == null && status != null) Dim("this project has no settings here")
         if (prefs != null) {
             // The project's color: the bar its row wears here and its tab
             // wears on the dashboard. Staged like the rest, until Save.
@@ -445,33 +519,36 @@ private fun Settings(api: dev.builderbot.app.Api, project: String) {
                             .border(2.dp, if (tone == t) Ink else Line, RoundedCornerShape(6.dp))
                             .clickable { tone = t },
                         contentAlignment = Alignment.Center) {
-                        if (c == null) Text("\u2013", color = Dim)
+                        if (c == null) Text("–", color = Dim)
                     }
                 }
             }
             Dim(if (tone.isBlank()) "none" else tone)
-            Spacer(Modifier.height(8.dp))
-            Text("Model", fontWeight = FontWeight.SemiBold)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                for ((v, l) in MODELS)
-                    FilterChip(selected = model == v, onClick = { model = v }, label = { Text(l) })
-            }
-            Spacer(Modifier.height(8.dp))
-            Text("Effort", fontWeight = FontWeight.SemiBold)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                for ((v, l) in EFFORTS)
-                    FilterChip(selected = effort == v, onClick = { effort = v }, label = { Text(l) })
+            for (a in agents) {
+                Spacer(Modifier.height(10.dp))
+                Text(if (a.id == "claude") "Model" else "${a.name}'s model", fontWeight = FontWeight.SemiBold)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (v in listOf("") + a.models)
+                        FilterChip(selected = picks[a.modelKey] == v, onClick = { picks[a.modelKey] = v },
+                                   label = { Text(MODELS.firstOrNull { it.first == v && a.id == "claude" }?.second
+                                                  ?: v.ifBlank { "${a.name}'s default" }) })
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(if (a.id == "claude") "Effort" else "${a.name}'s effort", fontWeight = FontWeight.SemiBold)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (v in listOf("") + a.efforts)
+                        FilterChip(selected = picks[a.effortKey] == v, onClick = { picks[a.effortKey] = v },
+                                   label = { Text(v.ifBlank { "default" }) })
+                }
             }
             Spacer(Modifier.height(8.dp))
             if (live && runs) {
                 FilterChip(selected = restart, onClick = { restart = !restart },
-                           label = { Text("end the session now") })
+                           label = { Text("end your Claude session now") })
                 Dim(if (restart)
-                        "press Claude to start it again, resuming the conversation; anything it is in the middle of is lost"
+                        "start it again from the Agent view, resuming the conversation; anything it is in the middle of is lost"
                     else "saved for the next session; the one running keeps what it started with")
-            } else if (!live) {
-                Dim("no session is open, so the model and the effort take effect when one starts")
-            }
+            } else Dim("each agent's model and effort take effect when its next session starts")
             Row {
                 Spacer(Modifier.weight(1f))
                 Button(enabled = changed && !saving, onClick = {
@@ -482,18 +559,17 @@ private fun Settings(api: dev.builderbot.app.Api, project: String) {
                             // the image sends it, and the server has to keep taking it.
                             // What came back changed name with the behavior.
                             val ending = live && runs && restart
-                            val r = api.prefs(project, mapOf(
-                                "model" to model, "effort" to effort, "color" to tone,
-                                "restart" to ending))
+                            val r = api.prefs(project, keys.associateWith { picks[it] ?: "" } +
+                                              mapOf("color" to tone, "restart" to ending))
                             val why = r.str("error")
                             if (why.isNotBlank()) why
                             else if (!ending) "saved"
-                            else if (r.bool("ended")) "saved, and the session ended: press Claude to start it again"
+                            else if (r.bool("ended")) "saved, and your Claude session ended: start it again from the Agent view"
                             else ("saved, but the session was not ended: " +
                                   r.str("why").ifBlank { "it is still on what it started with" })
                         } catch (e: Exception) { e.message ?: "it did not save" }
                         saving = false
-                        reload()
+                        reloadStatus()
                     }
                 }) { Text(if (live && runs && restart) "Save and end it" else "Save") }
             }
