@@ -2423,20 +2423,17 @@ function dmGroupsHtml(ins, cs, job, blind, only = ""){
   // System is BuilderBot's own (R180): what it deploys itself, the nginx
   // container today, set by that deployment and by no picker.
   // Each group a card at a desk (R262): its heading and its rows together.
-  // Each card names itself as a place the page's jump bar goes (sectJump).
-  const card = (html, cls = "", title = "") => `<section class="dmcard${cls}"${
-    title ? ` data-jtitle="${esc(title)}"` : ""}>${html}</section>`;
+  const card = (html, cls = "") => `<section class="dmcard${cls}">${html}</section>`;
   return owners.map(o => gone(o)
-      ? card(head(`${gonesName(o)} (deleted)`, "restore it from the trash, or Move these to another project", null) + group(o),
-             "", `${gonesName(o)} (deleted)`)
+      ? card(head(`${gonesName(o)} (deleted)`, "restore it from the trash, or Move these to another project", null) + group(o))
       : o === "System"
-        ? card(head("System", "BuilderBot's own · no session sees these", null) + group(o), "", "System")
+        ? card(head("System", "BuilderBot's own · no session sees these", null) + group(o))
         : notMine(o)
           ? card(head(projLabel(o), "", colorTone(projectColor(o)))
               + `<div class="sub bad dmwhy">${esc(projLabel(o))} is not on your list of projects: add it to your own list on ${
-                  pageLink("users", "the Users page")} to work on these</div>` + group(o), " notmine", projLabel(o))
-          : card(head(projLabel(o), "", colorTone(projectColor(o))) + group(o), "", projLabel(o))).join("")
-    + (loose ? card(head("No project", "no session sees these", null) + group(""), "", "No project") : "");
+                  pageLink("users", "the Users page")} to work on these</div>` + group(o), " notmine")
+          : card(head(projLabel(o), "", colorTone(projectColor(o))) + group(o))).join("")
+    + (loose ? card(head("No project", "no session sees these", null) + group("")) : "");
 }
 
 // The groups the chips offer: each project with containers here, by its
@@ -2628,9 +2625,7 @@ function renderDockerInto(i){
     el.innerHTML = `<div class="doctab dmtab">${skTpl(`${dmBar(null)}${dmTiles(null)}${dmStatus(null)}
       ${dmView === "list" ? skTable(DM_COLS, 4)
         // ...the rows in a project group's card, as they land (R262).
-        // ...named for the jump bar the landed page has (sectJump), which
-        // names each group when it is known.
-        : `<section class="dmcard" data-jtitle="reading…"><div class="field dmgroup"><b>${skv(8)}</b></div>${skRows(3)}</section>`}
+        : `<section class="dmcard"><div class="field dmgroup"><b>${skv(8)}</b></div>${skRows(3)}</section>`}
       ${dmImagesSection()}`)}</div>`;
     return;
   }

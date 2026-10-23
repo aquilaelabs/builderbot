@@ -472,7 +472,7 @@ function makeNotebook(project){
     // The seat would time out on its own in under a minute; saying so is what
     // stops the other window claiming somebody is here who has just left.
     if (!what){ beat(true); return true; }
-    if (!await askYes(`Close without saving? ${what} would be dropped.`)) return false;
+    if (!await askYes(`Close without saving?\n\n${what} would be dropped.`, {verb: "Close without saving", danger: true})) return false;
     revertPending();
     nb.roadmapOrdering = false;
     beat(true);

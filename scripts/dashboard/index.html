@@ -1050,6 +1050,10 @@ html[data-motion="reduce"] .tourring{transition:none}
    what is left and is the only thing that scrolls. */
 /* A question (page-ask.js): its words a note's measure, paragraphs apart. */
 .askdlg .asksaid{margin:0;font:var(--f-ui);color:var(--ink);overflow-wrap:anywhere}
+/* A question's title is the question, a sentence in its own case at reading
+   size: a dialog's label title is small capitals, and a question in it read
+   as shouting (the operator, 23 Oct). */
+.modal.askdlg h3{font:600 15px/1.35 system-ui,sans-serif;letter-spacing:0;text-transform:none}
 .modal .box.prose{display:flex;flex-direction:column}
 .modal .box.prose>*{flex:none}
 .modal .box.prose>.about{flex:0 1 auto;min-height:0;display:flex;flex-direction:column}

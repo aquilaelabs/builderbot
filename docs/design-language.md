@@ -685,7 +685,7 @@ section is open at a time on every folded surface, as the notebook's views do: o
 one shuts the others (the operator, 11 Oct), so the page is never a stack of open folds
 to scroll. A surface of more
 than one section carries a jump bar (sectJump; the operator, 23 Oct): their names in a line at the top, each
-scrolling to its own, and with them any part of the page that is a section in all but markup and names itself with `data-jtitle` (the Containers page's project groups). A status is a word or a number, never a sentence.
+scrolling to its own. Sections alone: what a page's chips pick (the Containers page's projects) is not on it. A status is a word or a number, never a sentence.
 
 `hidden` means hidden. `[hidden]{display:none !important}` is global,
 because any class that sets `display` otherwise beats the attribute: a fold

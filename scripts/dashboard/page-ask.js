@@ -20,7 +20,15 @@ let askSeq = 0;
 // well ({value, label}), and the answer is then {value, text}.
 function ask({title = "", text = "", choices = [{label: "Yes", value: true}], cancel = "Cancel", field = null} = {}){
   const paras = String(text || "").split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
-  const head = title || paras.shift() || "";
+  // The title is the question alone, up to its first "?" (the operator, 23
+  // Oct: a whole message as the title read as shouting); what follows it in
+  // that paragraph leads the body.
+  let head = title;
+  if (!head){
+    const at = askQuestion(paras);
+    head = at.question;
+    paras.splice(0, paras.length, ...at.rest);
+  }
   const danger = choices.some(c => c.danger);
   return new Promise(resolve => {
     const id = `ask${++askSeq}`;
@@ -79,13 +87,31 @@ function ask({title = "", text = "", choices = [{label: "Yes", value: true}], ca
   });
 }
 
+// A question's text split into its title and the rest (the operator, 23
+// Oct): the title is the question sentence, wherever it sits, from the
+// sentence before it ends to its "?"; the words before and after it, in
+// their order, are the body. A text with no question is its own first
+// paragraph as the title.
+function askQuestion(paras){
+  const i = paras.findIndex(p => p.includes("?"));
+  if (i < 0) return {question: paras[0] || "", rest: paras.slice(1)};
+  const p = paras[i], q = p.indexOf("?");
+  const lead = p.slice(0, q).lastIndexOf(". ");
+  const start = lead < 0 ? 0 : lead + 2;
+  let question = p.slice(start, q + 1).trim();
+  question = question.charAt(0).toUpperCase() + question.slice(1);
+  const before = p.slice(0, start).trim(), after = p.slice(q + 1).trim();
+  const rest = [...paras.slice(0, i), ...(before ? [before] : []), ...(after ? [after] : []), ...paras.slice(i + 1)];
+  return {question, rest};
+}
+
 // What a question's yes is called: its own verb where it opens with one
 // ("Archive alpha?" is Archive), else Yes. A question that asks rather
 // than proposes (Is, Use the, Should) is a Yes.
 const ASK_NOT_VERBS = new Set(["is", "are", "do", "does", "did", "should", "will", "would", "can", "could",
                                "may", "has", "have", "was", "were", "this", "that", "the", "a", "an", "your"]);
 function askYesWord(text){
-  const first = String(text || "").trim().split(/\n/)[0];
+  const first = askQuestion(String(text || "").split(/\n\s*\n/).map(p => p.trim()).filter(Boolean)).question;
   const w = (first.match(/^([A-Z][a-z]+)\b/) || [])[1] || "";
   return first.endsWith("?") && w && !ASK_NOT_VERBS.has(w.toLowerCase()) ? w : "Yes";
 }
@@ -94,7 +120,10 @@ function askYesWord(text){
 // Cancel (a-dialog: anything destructive last).
 const ASK_DANGER = new Set(["Delete", "Remove", "End", "Uninstall", "Discard", "Retire", "Reset", "Forget",
                             "Purge", "Wipe", "Unenroll", "Kill", "Drop", "Clear", "Stop", "Revoke",
-                            "Overwrite", "Replace", "Rotate", "Destroy", "Erase", "Unlink", "Abandon"]);
+                            "Overwrite", "Replace", "Rotate", "Destroy", "Erase", "Unlink", "Abandon",
+                            // ...and what loses work in flight or typed: a reboot, a forced
+                            // stop, leaving or closing over unsaved changes.
+                            "Reboot", "Force", "Leave"]);
 
 // confirm()'s replacement: true for its yes, false for Cancel. `verb` names
 // the yes (askYesWord by default), `danger` marks it destructive, as a verb in

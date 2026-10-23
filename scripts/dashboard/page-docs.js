@@ -637,14 +637,10 @@ function sectJump(g){
   // repeated once per row of a list (the Docker tab's Ports and mounts, one
   // per container) is the row's, and seventeen of them made a bar of
   // seventeen links all called the same (the operator, 8 Oct).
-  // Beside them a part of the page that is a section in all but markup and
-  // names itself as a place to jump to (`data-jtitle`: the Containers
-  // page's project groups), in the order drawn.
-  const titleOf = o => o.dataset.jtitle || o.querySelector(":scope > summary .t")?.textContent || "";
-  const marked = [...g.querySelectorAll("[data-jtitle]")].filter(o => !o.parentElement?.closest("details.sect")
-    && getComputedStyle(o).display !== "none");
-  const all = [...sectsOf(g), ...marked]
-    .sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1), seen = {};
+  // Sections alone (the operator, 23 Oct): a page's chips pick its groups
+  // (the Containers page's projects), and the jump bar is for its sections.
+  const titleOf = o => o.querySelector(":scope > summary .t")?.textContent || "";
+  const all = sectsOf(g), seen = {};
   all.forEach(o => { seen[titleOf(o)] = (seen[titleOf(o)] || 0) + 1; });
   const mine = all.filter(o => seen[titleOf(o)] === 1);
   const have = g.querySelector(":scope .sectjump");
@@ -664,7 +660,7 @@ function sectJump(g){
     e.preventDefault();
     const d = mine[+a.dataset.jump];
     if (!d) return;
-    if (d.matches("details") && !d.open){ d.open = true; if (d.dataset.sect) sectOpen[d.dataset.sect] = true; }
+    if (!d.open){ d.open = true; if (d.dataset.sect) sectOpen[d.dataset.sect] = true; }
     d.scrollIntoView({block: "start", behavior: "smooth"});
   });
 }

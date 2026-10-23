@@ -434,7 +434,7 @@ function nbWikiView({$, nb, project}){
                                     : "took in the forge's wiki's changes"); nb.wkPages = {}; loadWiki(); }
   };
   $("wkPush").onclick = async ev => {
-    if (wikiDirty() && !await askYes("A page is being edited and is not saved: push what is saved?")) return;
+    if (wikiDirty() && !await askYes("Push what is saved?\n\nA page is being edited and is not saved; its edits stay here.", {verb: "Push"})) return;
     busy(ev.target, "Pushing");
     const r = await postJSON("/api/wiki", {project, action: "push"});
     let j = await r.json().catch(() => ({}));

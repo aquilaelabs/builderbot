@@ -843,7 +843,7 @@ function renderToolchainsInto(i){
   // What no node runs from any more, taken off the store (R196).
   el.querySelectorAll("[data-tcclean]").forEach(b => b.onclick = async () => {
     const dirs = (toolchains?.cleanable || []).map(c => c.dir);
-    if (!dirs.length || !await askYes(`Take ${dirs.join(", ")} off the store?\n\nNo node runs from ${dirs.length === 1 ? "it" : "them"}; what is in ${dirs.length === 1 ? "it" : "them"} is gone for good.`)) return;
+    if (!dirs.length || !await askYes(`Take ${dirs.join(", ")} off the store?\n\nNo node runs from ${dirs.length === 1 ? "it" : "them"}; what is in ${dirs.length === 1 ? "it" : "them"} is gone for good.`, {verb: "Remove", danger: true})) return;
     busy(b, "Removing");
     const j = await (await postJSON("/api/toolchains", {action: "clean", node: tcNode, names: dirs})).json().catch(() => ({error: "no answer"}));
     if (j.error) notify(j.error, true);
