@@ -467,6 +467,12 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         self.refresh_session_tool()
         self.quiet_distro_ttyd()
         self.keep_sessions_through_restart()
+        # A coding agent's pin made the wrong way before B262 is put right
+        # before any session starts on it.
+        if os.geteuid() == 0:
+            from .sessions import repair_pins
+            with contextlib.suppress(OSError):
+                repair_pins()
         self.session_try()
         self.sessnet.start()
         self.sesswatch.start()

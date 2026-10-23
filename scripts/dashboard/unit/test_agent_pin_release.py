@@ -57,5 +57,47 @@ class PinRelease(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.pin, ".release.new")))
 
 
+class ReleaseRoot(unittest.TestCase):
+    """Only a link into a vendor's own folder pins a release whole (B262):
+    Copilot CLI's binary IS the file in ~/.local/bin, and its "release" was
+    the account's whole ~/.local."""
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.home, ".local", "bin"))
+
+    def test_a_link_into_the_vendor_s_folder_is_a_release(self):
+        rel = os.path.join(self.home, ".codex", "packages", "standalone", "0.164.0")
+        release(rel, "0.164.0")
+        exe = os.path.join(self.home, ".local", "bin", "codex")
+        os.symlink(os.path.join(rel, "bin", "codex"), exe)
+        self.assertEqual(agent._release_root(exe, os.path.realpath(exe), self.home), os.path.realpath(rel))
+
+    def test_a_binary_in_local_bin_is_one_binary(self):
+        exe = os.path.join(self.home, ".local", "bin", "copilot")
+        with open(exe, "w") as f:
+            f.write("#!/bin/sh\n")
+        self.assertEqual(agent._release_root(exe, os.path.realpath(exe), self.home), "")
+
+
+class RepairPins(unittest.TestCase):
+    def test_a_copied_home_is_removed_and_the_command_kept(self):
+        agents_dir = tempfile.mkdtemp()
+        rel = os.path.join(agents_dir, "copilot", "release")
+        for d in ("bin", "share/pki", "state/claude"):
+            os.makedirs(os.path.join(rel, d))
+        for n in ("copilot", "claude"):
+            with open(os.path.join(rel, "bin", n), "w") as f:
+                f.write(n)
+        saved = agent.AGENTS_DIR
+        agent.AGENTS_DIR = agents_dir
+        self.addCleanup(lambda: setattr(agent, "AGENTS_DIR", saved))
+        with mock.patch("os.chown"):
+            agent.repair_pins()
+        self.assertFalse(os.path.exists(rel))
+        with open(os.path.join(agents_dir, "copilot", "copilot")) as f:
+            self.assertEqual(f.read(), "copilot")
+
+
 if __name__ == "__main__":
     unittest.main()
