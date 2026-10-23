@@ -1987,8 +1987,15 @@ async function loadDockerImages(det){
     {label: "images", value: (j.images || []).length, sub: humanBytes(df("Images").size || (j.images || []).reduce((n, i) => n + i.size, 0))},
     {label: "not in use", value: unused, sub: `${dang} dangling`, tone: dang ? "warn" : ""},
     {label: "volumes", value: (j.volumes || []).length, sub: df("Local Volumes").size ? humanBytes(df("Local Volumes").size) : ""},
+    // Docker's reclaimable is what no container uses: unused images and
+    // volumes, which only the two red prunes take (the operator, 23 Oct: 18
+    // GB said reclaimable did not move after the two safe ones). Said by
+    // name, and the build cache beside it, which the safe prune takes.
     {label: "reclaimable", value: humanBytes((df("Images").reclaimable || 0) + (df("Local Volumes").reclaimable || 0)),
-     sub: "by the two prunes", omit: !(j.df || []).length},
+     sub: "unused images and volumes: the red prunes", omit: !(j.df || []).length},
+    {label: "build cache", value: humanBytes(df("Build Cache").size || 0),
+     sub: df("Build Cache").reclaimable ? `${humanBytes(df("Build Cache").reclaimable)} reclaimable` : "",
+     omit: !(j.df || []).some(r => r.kind === "Build Cache")},
   ]).replace(/^<div class="field">|<\/div>$/g, "")
   // The prunes under the numbers they act on, before the lists (the
   // operator, 23 Oct: at the foot they were a long scroll away).
