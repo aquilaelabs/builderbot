@@ -1084,8 +1084,9 @@ def enter(c, a, command):
     envfile = a.get("env", "")
     project, home = a.get("project", ""), a.get("home", "").rstrip("/")
     account = a.get("account", "")
-    if not envfile.startswith(f"{home}/.cache/builderbot/u/{account}/project/{project}/"):
-        raise Refused("bb-session: the environment file is not in the project's cache folder")
+    want = f"{home}/.cache/builderbot/u/{account}/project/{project}/"
+    if not envfile.startswith(want):
+        raise Refused(f"bb-session: the environment file {envfile or '(none)'} is not in the project's cache folder {want}")
     steps = plan(c, a, uid)
     net = net_conf(c)
     # Asked before anything is made: a node that keeps sessions to their own
@@ -1405,6 +1406,13 @@ def main(argv):
         raise Refused("bb-session takes check, check-net, plan, enter, tty or tty-ro")
     except Refused as e:
         sys.stderr.write(f"{e}\n")
+        # A session's view that will not start is said in its pane and held
+        # there (R132): the pane closes with this process, and the tab only
+        # reconnected to the same refusal with nothing on the screen.
+        if verb == "enter" and sys.stdin.isatty():
+            sys.stderr.write("Close the tab, or press Enter to try again.\n")
+            with contextlib.suppress(OSError, ValueError):
+                sys.stdin.readline()
         return 2
 
 
