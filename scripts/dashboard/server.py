@@ -7149,8 +7149,14 @@ class Handler(BaseHTTPRequestHandler):
         agent = str(req.get("agent") or "claude")
         if agent != "claude" and not any(a.id == agent and a.login_job for a in agents.TABLE):
             return self._json({"error": f"no coding agent called '{agent[:20]}' signs in"}, 400)
+        signed_in = bool(req.get("signed_in", True))
+        if not signed_in and claudegrant.on(home_for(uid), nid, agent):
+            # Said in the log, as the heartbeat's sign-out is (B236): which
+            # session's check took a login away is not on the page.
+            print(f"[dashboard] {nid} reports {agent} signed out for {uid}, "
+                  f"from a check in {proj or 'no project'}", flush=True)
         r = claudegrant.report(home_for(uid), nid, req.get("email") or "", req.get("plan") or "",
-                               signed_in=bool(req.get("signed_in", True)), agent=agent)
+                               signed_in=signed_in, agent=agent)
         return self._json(r, 400 if r.get("error") else 200)
 
     def _tty_grant(self, req):
