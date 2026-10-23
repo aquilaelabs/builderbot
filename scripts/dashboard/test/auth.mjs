@@ -1394,7 +1394,9 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
     // version panel is closed to a session's token outright.
     await act(ownerAuth, '/api/users', { action: 'projects', name: 'plainone', projects: ['alpha'] });
     for (const [path, body, why] of [
-        ['/api/lock', { name: 'alpha', locked: true }, /needs .+ Write/],
+        // Its owner's or an administrator's (R119), not a grant's.
+        ['/api/lock', { name: 'alpha', locked: true }, /owner or an administrator/],
+        ['/api/archive', { name: 'alpha', archived: true }, /owner or an administrator/],
         ['/api/pin', { name: 'status', pinned: true }, /needs Controller Write/],
         ['/api/project-auth', { name: 'alpha' }, /needs .+ Write|rename/],
         ['/api/version', { project: 'alpha', action: 'bump', part: 'patch' }, /needs .+ Write/],

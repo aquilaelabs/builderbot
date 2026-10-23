@@ -201,46 +201,37 @@ Only BuilderBot makes a project (create, clone, or start from an imported
 archive): a folder made by hand on the share is not listed, and the folders
 already there when this arrived were recorded once, as they were.
 
-## Archiving a project
+## Archiving and locking a project
 
-**Archive**, in a project's menu, is for a project you keep in `/workspace`
-to deploy and run rather than to develop: no Claude session starts there and
-its notebook goes read-only, while everything you use yourself (the shell,
-the artifacts, the dev instance) stays live. An archived project's card is
-folded under **Archived** at the foot of the Projects page, says *archived*
-after its name, and is not pinned; **Unarchive**, in the same menu, brings it
-back. It is the one gate there is, and it carries the whole meaning: no
-session, a read-only notebook, no CLAUDE.md.
+**Archive**, in a project's menu, puts a project out of sight and changes
+nothing else: its card folds under **Archived** at the foot of the Projects
+page and leaves Home's pinned projects, and the project keeps working for
+everybody on it, sessions included. **Unarchive**, in the same menu, brings
+it back. The project's owner or an administrator archives one.
 
-The list lives in `/config/locked-projects.json`, so it survives restarts and
-image updates, and it is enforced by the terminal launcher and the server
-rather than the page: the ttyd URL is reachable on its own, and so are the
-API paths, so a rule only the UI honored would be advice. Archiving a project:
+**Lock** keeps people out of a project, and it comes in two kinds. The
+project's owner locks it with **Lock**: every other account's session on it
+ends, and until the owner presses **Unlock** nobody else starts a session in
+it or changes it, administrators included. An administrator who is not its
+owner locks it with **Admin: Lock**: every session on it ends, the owner's
+too, and nobody at all starts one or changes it until an administrator
+presses **Admin: Unlock**. A locked project stays on the Projects page with a
+padlock after its name that says whose lock it is. Locked against you:
 
-- refuses `claude:<project>` at launch, with a message saying why
-- ends every Claude session already running there, whoever's and on
-  whatever node, rather than taking effect "next time"; the question
-  Archive asks first names who is running one
-- needs Project settings to write: without it **Archive** is dead and the
-  server refuses the request
-- makes its notebook **read-only**: the roadmap, the bugs and the memories
-  open and cannot be changed, by you or by anything else
-- refuses to write a `CLAUDE.md` into it, so the `no CLAUDE.md: create one`
-  line stays as plain text rather than being an offer
+- a session of yours is refused at launch, with a message saying whose lock
+  it is, on whatever node
+- its notebook is **read-only**, and so are its settings, its git actions and
+  its containers' settings: the server refuses each write
+- reading it (its notebook, its findings, its artifacts, its dev instance)
+  works as before
 
-**What it deliberately does not touch is everything you do yourself:**
-
-- the **shell** still opens, which is how you go and look at it
-- its **static analysis** is still counted and still opens on the Analysis
-  view, with its history: archiving says who runs a project, not whether its code
-  is worth knowing about
-- its **artifacts** are still listed, and a **dev instance** still builds and
-  runs; that is usually the reason a project is archived in the first place
-- the **version** block, the settings and the rename all still work
-
-One limit worth stating, because it is the same one the sibling-project rule
-carries: this stops a session **starting here**, and the file tools are already
-denied on every project but a session's own. It is not a sandbox: a session in
+Both lists live under `/config` (`archived-projects.json` and
+`locked-projects.json`), so they survive restarts and image updates. The lock
+is enforced by the server on every write and by the terminal launcher on
+every session, which on a node asks the controller with the session's own
+token, because the ttyd URL and the API paths are reachable on their own and
+a rule only the page honored would be advice. It is not a sandbox: the file
+tools are denied on every project but a session's own, and a session in
 another project can still reach this directory through Bash.
 
 ## Push rights

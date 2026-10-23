@@ -979,28 +979,28 @@ function projectNote(p){
   // Not this account's to change: nothing is said and Start agent is not
   // drawn (the operator, 21 Oct: a role somebody lacks is not advertised to
   // them, and a reason a button is off is not an error, so no line is red).
-  if (!p.locked && writeWhy(p)) return "";
+  if (!p.locked_me && writeWhy(p)) return "";
   // No Claude Code on its node, for an account that may install it: the
   // button says it (Install Claude), so no line does.
   if (claudeInstall(p)) return "";
   const said = held || p.session_why;
-  if (said && !p.locked && !here) return `<div class="pnote dim">${esc(said)}</div>`;
+  if (said && !p.locked_me && !here) return `<div class="pnote dim">${esc(said)}</div>`;
   // ...and otherwise why Start agent is dead, whatever made it so (B88):
-  // a Profile with no commit author, somebody else's node. An archived one
+  // a Profile with no commit author, somebody else's node. A locked one
   // says so by its mark, and is left out.
-  const dead = p.locked ? "" : claudeDeadWhy(p);
+  const dead = p.locked_me ? "" : claudeDeadWhy(p);
   return dead ? `<div class="pnote dim">${esc(dead)}</div>` : "";
 }
 // The node to install Claude Code on in place of starting a session, or "":
 // the project's node has none and this account may install toolchains there
 // (the operator, 21 Oct: the button opens that node's Toolchains).
-const claudeInstall = p => !p.locked && !liveSessions().has(myClaude(p.name)) && p.claude_missing
+const claudeInstall = p => !p.locked_me && !liveSessions().has(myClaude(p.name)) && p.claude_missing
   && mayToolchains(p.claude_missing) ? p.claude_missing : "";
 // Why Start agent is dead on this project, or "" when it is live: the one
 // answer the button, its description and the line under it all read.
 function claudeDeadWhy(p){
   const mine = liveSessions().has(myClaude(p.name));
-  if (p.locked) return "archived; you run this one. Unarchive, in its menu, lets Claude back in";
+  if (p.locked_me) return lockedWhy(p);
   if (notMine(p)) return NOT_MINE_WHY;
   // A Claude session is work on the project (B86): Projects Write.
   if (p.write_why) return p.write_why;
@@ -1009,6 +1009,16 @@ function claudeDeadWhy(p){
   if (p.node_removed && !mine) return p.session_why || "its node was removed: pick another in its settings";
   return "";
 }
+// Why a lock holds this account out, as the server says it (R119).
+const lockedWhy = p => p.locked_admin
+  ? "locked by an administrator: nobody starts a session or changes it until one unlocks it"
+  : `locked by ${p.owner_name || "its owner"}, its owner: only they work in it until they unlock it`;
+// The lock's press in a menu: an administrator's says it is one (the
+// operator, 23 Oct), since it holds the project's owner out too.
+const lockLabel = p => {
+  const asAdmin = p.locked ? p.locked_admin : !p.owner_mine;
+  return (asAdmin ? "Admin: " : "") + (p.locked ? "Unlock" : "Lock");
+};
 // The two actions a project page and its card show, and the rest behind
 // one menu (R238: nine look-alike icons on a row were one too many). Its
 // data-* names are wireProjectRows', which serves them.
@@ -1019,7 +1029,7 @@ function projectActions(p, extra = ""){
   const name = p.name, mine = liveSessions().has(myAgentSession(ag.id, name));
   const dead = claudeDeadWhy(p);
   // What this account's roles do not give is left out, not drawn dead.
-  const forbid = !p.locked && !!writeWhy(p);
+  const forbid = !p.locked_me && !!writeWhy(p);
   const menu = [
     p.git_ok && !isBroken(p) && state?.can?.["git-auth"] !== false
       ? `<button type="button" data-l="${esc(name)}">${
@@ -1027,14 +1037,17 @@ function projectActions(p, extra = ""){
     p.phone?.mine ? `<button type="button" data-ph="${esc(name)}"${phoneWhy(p) ? " disabled" : ""}>${
         p.phone?.lease?.project === name ? "Take your phone back" : "Lend your phone"}</button>` : "",
     p.mine === false ? "" : `<button type="button" data-bug="${esc(name)}">Report a BuilderBot bug</button>`,
-    // Archive is the lock under the name it is used for (the operator, 18
-    // Oct): an archived project is kept and run by hand, its card folded
-    // away at the foot of the Projects page, and not pinned.
-    state?.can?.lock === false ? "" : `<button type="button" data-k="${esc(name)}" data-on="${p.locked ? "0" : "1"}">${p.locked ? "Unarchive" : "Archive"}</button>`,
-    p.locked ? "" : `<button type="button" data-p="${esc(name)}" data-on="${p.pinned ? "0" : "1"}">${p.pinned ? "Unpin" : "Pin"}</button>`,
+    // Archive is out of sight only (R119, the operator, 23 Oct): its card
+    // folds away at the foot of the Projects page and leaves Home, and the
+    // project works on. Its owner's or an administrator's.
+    p.may_archive ? `<button type="button" data-k="${esc(name)}" data-on="${p.archived ? "0" : "1"}">${p.archived ? "Unarchive" : "Archive"}</button>` : "",
+    // ...and Lock, which is: its owner's holds everybody else out, an
+    // administrator's its owner too, and says so on the press.
+    p.may_lock ? `<button type="button" data-lock="${esc(name)}" data-on="${p.locked ? "0" : "1"}">${lockLabel(p)}</button>` : "",
+    p.archived ? "" : `<button type="button" data-p="${esc(name)}" data-on="${p.pinned ? "0" : "1"}">${p.pinned ? "Unpin" : "Pin"}</button>`,
     // A label of this account's to keep projects together on the Projects
     // page (the operator, 18 Oct): nothing else follows from it.
-    p.locked ? "" : `<button type="button" data-pgroup="${esc(name)}">${p.group ? "Group: " + esc(p.group) : "Group"}</button>`,
+    p.archived ? "" : `<button type="button" data-pgroup="${esc(name)}">${p.group ? "Group: " + esc(p.group) : "Group"}</button>`,
     // This account's color for it (the operator, 18 Oct: picked here, where a
     // dot beside the name read as a checkbox), its swatches unrolling under
     // the name as Group's box does.

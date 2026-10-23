@@ -524,14 +524,14 @@ function rnVmCapsSet(s){
 
 function rnDrawPrefs(){
   const p = (state?.projects || []).find(x => x.name === rnFor);
-  // Ghosted where no session can start: a locked project is the operator's
-  // to run. The model and effort are not here any more: a session starts on
-  // the ones picked in the Claude button's menu each time (the operator, 12
-  // Oct).
-  const shut = !!p?.locked;
+  // Ghosted where no session can start: a project locked against this
+  // account (R119). The model and effort are not here any more: a session
+  // starts on the ones picked in the agent's menu each time (the operator,
+  // 12 Oct).
+  const shut = !!p?.locked_me;
   $("rnReply").disabled = $("rnAsks").disabled = shut;
   $("rnPrefHint").textContent = shut
-    ? "Archived; this project is yours to run, so no session starts here."
+    ? lockedWhy(p) + "."
     : "Applied the next time Claude starts here. The model and effort are picked each time a session starts, in the Claude button's menu.";
 }
 

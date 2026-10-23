@@ -294,7 +294,9 @@ ok(alive('claude-alpha') && /project\/alpha\/claude-run\.sh$/.test(paneCmd()),
 // because the ttyd URL is reachable directly and a rule only the page honors
 // is a suggestion, the same reason `excluded` is checked in this script.
 const LOCKS = join(DIR, 'state', 'locked-projects.json');
-writeFileSync(LOCKS, JSON.stringify(['alpha']));
+// An administrator's lock (R119), which holds everybody out, read from the
+// file: this suite's bb does not answer `bb settings`, so the file decides.
+writeFileSync(LOCKS, JSON.stringify({ alpha: { by: 'u_0000aaaa', admin: true } }));
 const refusedAt = Date.now();
 out = connect(0);
 const refusedIn = Date.now() - refusedAt;
@@ -307,8 +309,8 @@ ok(/locked/.test(out) && !alive('claude-alpha'),
 // nobody to show it to, and five tests in this suite were paying it.
 ok(refusedIn < 5000,
    `...promptly, rather than pausing for a terminal nobody is holding open (${refusedIn}ms)`);
-ok(/Projects card/.test(out),
-   '...and says where to undo it, rather than only that it said no');
+ok(/card's menu/.test(out) && /locked by its owner/.test(out),
+   '...and says whose lock it is and where it is lifted, rather than only that it said no');
 
 // A briefing that could not be fetched is said out loud rather than started on.
 // The empty answer used to be an ordinary state, a project with nothing on its

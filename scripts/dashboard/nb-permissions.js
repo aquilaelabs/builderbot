@@ -43,7 +43,7 @@ function nbPermsView({$, nb, project, root}){
     const host = view()?.querySelector(".permgit");
     if (!host) return;
     const p = (state?.projects || []).find(x => x.name === project);
-    const locked = !!p?.locked || !!projWriteWhy(project);
+    const locked = !!p?.locked_me || !!projWriteWhy(project);
     const saved = p?.prefs?.gitpol || {}, pol = {...saved, ...draft};
     const dirty = Object.keys(draft).length > 0;
     const body = `<div class="row stack2 gpolicy"><div class="grow">

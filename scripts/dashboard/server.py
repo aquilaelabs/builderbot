@@ -1007,6 +1007,18 @@ def _projects_on_disk():
     return out, None
 
 
+def lock_may(name, uid, admin, rec):
+    """Whether this account may press the project's Lock or Unlock (R119):
+    its owner or an administrator to lock; to unlock, an administrator's
+    lock is an administrator's to lift and an owner's lock the owner's."""
+    if not uid:
+        return False
+    mine = membership.owner_of(name) == uid
+    if not rec:
+        return mine or admin
+    return admin if rec.get("admin") else mine
+
+
 def _project_columns(who, facts):
     """The row the page reads for each project _projects_on_disk found: its
     facts, and everything else a row carries. The project's own settings
@@ -1016,7 +1028,13 @@ def _project_columns(who, facts):
     row: this runs on the fifteen-second poll.
     """
     _t0 = time.monotonic()
-    locked = set(projects.load_locks())
+    locked = projects.load_locks()
+    archived = set(projects.load_archived())
+    # Who may archive and who may lock (R119): the project's owner or an
+    # administrator, never a session. An owner's lock is lifted by the owner,
+    # an administrator's by an administrator.
+    me_uid = "" if (who or {}).get("session") else users.uid_of(who)
+    me_admin = bool(me_uid) and users.is_admin(who)
     # Each directory's id and the name it is shown under (R154): synced with
     # the disk here, two listdirs and no write when nothing moved.
     reg = registry.sync()["projects"]
@@ -1131,6 +1149,16 @@ def _project_columns(who, facts):
                                    else fhost or forge["name"]),
                     "forge_host": fhost,
                     "locked": d.name in locked,
+                    # ...an administrator's lock, which holds its owner too.
+                    "locked_admin": bool(locked.get(d.name, {}).get("admin")),
+                    # ...and whether it holds this account out, as the server
+                    # refuses: what the page shuts on.
+                    "locked_me": d.name in locked and bool(projects.locked_out(d.name, me_uid or users.uid_of(who))),
+                    "archived": d.name in archived,
+                    "owner_name": membership.owner_name(d.name) or "",
+                    "owner_mine": bool(me_uid) and membership.owner_of(d.name) == me_uid,
+                    "may_lock": lock_may(d.name, me_uid, me_admin, locked.get(d.name)),
+                    "may_archive": me_admin or (bool(me_uid) and membership.owner_of(d.name) == me_uid),
                     "pinned": True if pins is None else d.name in pins,
                     # The group this account files it under, or "".
                     "group": groups.get(d.name, ""),
@@ -3834,7 +3862,6 @@ devapp.reaches_of = prefs.reaches_on
 projects.lock = _state_lock
 projects.take_on = users.take_on
 projects.set_prefs = lambda name, **kw: prefs.set_prefs(name, workspace=WORKSPACE, **kw)
-projects.live_sessions = tmux_sessions
 projects.brief_writer = brief.write
 # A create that never took, and a project deleted for good, leave no owner,
 # owner role or account entry behind (B93, B95); the first its settings too.
@@ -4668,6 +4695,7 @@ POST_ROUTES = (
     ("exact", "/api/v1/hook", "_hook"),
     ("exact", "/api/v1/tty-grant", "_tty_grant"),
     ("prefix", "/api/lock", "_lock"),
+    ("prefix", "/api/archive", "_archive"),
     # NOT /api/pin, which is the command pin and has been since long before
     # this: startswith() means a route added above it silently takes every
     # path it prefixes, and both handlers were called _pin, so the later
@@ -4844,6 +4872,10 @@ class Handler(BaseHTTPRequestHandler):
         questions, so every write that names a project asks this too.
         """
         why = users.may(self._who(), "write", name)
+        # ...and a project its owner has locked is nobody else's to change
+        # (R119), whoever they are.
+        if not why and (bad := projects.locked_out(name, users.uid_of(self._who()))):
+            why = bad["error"]
         if not why:
             return False
         self._json({"error": why}, 403)
@@ -7562,7 +7594,7 @@ class Handler(BaseHTTPRequestHandler):
         act = field(req, "action")
         # "send" is a write to the roadmap (it marks a step sent) and starts a
         # session's turn, so it goes with the rest.
-        if (bad := projects.locked_out(name)):
+        if (bad := projects.locked_out(name, users.uid_of(self._who()))):
             return self._json(bad, 409)
         # Closing a batch its session will never close (B198) is an
         # administrator's, like the other decisions about other people's work.
@@ -8300,7 +8332,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self._refused("rules", name) or self._readonly(name):
             return None
-        if (bad := projects.locked_out(name)):
+        if (bad := projects.locked_out(name, users.uid_of(self._who()))):
             return self._json(bad, 409)
         return self._json(*rules.verb(name, field(req, "action"), req))
 
@@ -8345,7 +8377,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(*testreg.verb(name, act, req))
         if self._readonly(name):
             return None
-        if (bad := projects.locked_out(name)):
+        if (bad := projects.locked_out(name, users.uid_of(self._who()))):
             return self._json(bad, 409)
         return self._json(*testreg.verb(name, act, req))
 
@@ -8374,7 +8406,7 @@ class Handler(BaseHTTPRequestHandler):
         # so an action added later is a write until somebody says otherwise.
         if field(req, "action") not in ("history",) and self._readonly(name):
             return None
-        if (bad := projects.locked_out(name)):
+        if (bad := projects.locked_out(name, users.uid_of(self._who()))):
             return self._json(bad, 409)
         return self._json(*bugs.verb(name, field(req, "action"), req, sessions=sessions_anywhere,
                                      prefix=users.tmux_prefix(self._who())))
@@ -8389,7 +8421,7 @@ class Handler(BaseHTTPRequestHandler):
         # read had no project check at all (the audit of 26 Sep).
         if self._not_project(proj):
             return None
-        if (bad := projects.locked_out(proj)):
+        if (bad := projects.locked_out(proj, users.uid_of(self._who()))):
             return self._json(bad, 409)
         # Seeing a project and being able to change it are different
         # questions now (users.may_work): an administrator is shown every
@@ -8615,8 +8647,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "not a project"}, 400)
         if self._readonly(name):
             return None
-        if name in set(projects.load_locks()):
-            return self._json({"error": "archived: Unarchive, in its menu, brings it back"}, 403)
         action = field(req, "action")
         # A branch is its session's (git.py not_yours): another account's is
         # an administrator's to merge, asked each time and never while that
@@ -8881,7 +8911,7 @@ class Handler(BaseHTTPRequestHandler):
         # either (B101): the Save was live for it, and went through.
         if self._not_project(name) or self._readonly(name):
             return
-        if (bad := projects.locked_out(name)):
+        if (bad := projects.locked_out(name, users.uid_of(self._who()))):
             return self._json(bad, 409)
         return self._json(*changelog.editor_verb(name, req))
 
@@ -9224,36 +9254,60 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*layout.save_tabs(users.uid_of(self._who()), req))
 
     def _lock(self, req):
-        """Lock or unlock a project: keep it, stop Claude running in it
-        (projects.lock_verb).
+        """Lock or unlock a project (R119), never a session's. Its owner's
+        lock holds everybody else; an administrator's holds its owner too
+        (projects.locked_out, bb-tty's is_locked). Locking ends every
+        session it holds out, here and on every node: all of them under an
+        administrator's, all but the owner's under the owner's. Named in the
+        answer, so the page can say what went.
 
         What it does NOT claim: a session in ANOTHER project still reaches this
         directory through Bash. The file tools are denied on every sibling
-        already, and that is the whole of the guarantee here too: locking adds
-        "no session of its own", not a sandbox, and says no more than that.
+        already, and that is the whole of the guarantee here too.
         """
         name, on = req.get("name", ""), bool(req.get("locked"))
-        # A project this account was given, and the right (B174): a lock ends
-        # whoever's Claude session is running there, so it is not a tester's
-        # and not a session's.
-        if self._not_project(name) or self._refused("lock", name):
+        if self._not_project(name):
             return None
-        body, code = projects.lock_verb(name, on)
-        # Every Claude session on the project, whoever's and wherever it
-        # runs: lock_verb ends the owner's here, from before sessions moved
-        # onto nodes (R47), and a lock that left another account's session
-        # running on a node was a lock that had not taken (the operator,
-        # 29 Sep). Named in the answer, so the page can say what went.
+        me = self._who()
+        owner = membership.owner_of(name)
+        uid = "" if not me or me.get("session") else users.uid_of(me)
+        admin = bool(uid) and users.is_admin(me)
+        if not lock_may(name, uid, admin, projects.load_locks().get(name)):
+            return self._json({"error": "an administrator locked it, and an administrator unlocks it"
+                                        if projects.load_locks().get(name, {}).get("admin")
+                                        else "the project's owner or an administrator locks it, and "
+                                             "the one who locked it unlocks it"}, 403)
+        # An administrator who is not its owner locks it against its owner
+        # too (the operator, 23 Oct); its owner's lock leaves the owner in.
+        held = admin and uid != owner
+        body, code = projects.lock_verb(name, on, by=uid, admin=held)
         if on and code == 200:
+            # Every session it holds out ends (the operator, 23 Oct): under
+            # an administrator's lock all of them, under its owner's all but
+            # the owner's.
+            bb_owner = users.uid_of(users.get(users.owner_name() or "")) if users.owner_name() else ""
             want = set(agent_sessions(name))
             ended = []
             for s in [x for x in tmux_sessions() if tmux_base(x["name"]) in want] \
                     + [x for x in node_tmux_sessions() if tmux_base(x["name"]) in want]:
+                if not held and (tmux_owner(s["name"]) or bb_owner) == owner:
+                    continue
                 r = end_session(s["name"], str(s.get("node_id") or ""))
                 if not r.get("error") and not r.get("gone") and s["name"] not in ended:
                     ended.append(s["name"])
             body = dict(body) | {"ended": ended}
         return self._json(body, code)
+
+    def _archive(self, req):
+        """Archive or unarchive a project (R119): out of sight, and nothing
+        else; the project's owner or an administrator, never a session."""
+        name, on = req.get("name", ""), bool(req.get("archived"))
+        if self._not_project(name):
+            return None
+        me = self._who()
+        if not me or me.get("session") or not (users.is_admin(me) or users.uid_of(me) == membership.owner_of(name)):
+            return self._json({"error": "the project's owner or an administrator archives it"}, 403)
+        return self._json(*projects.archive_verb(name, on))
 
     def _trash(self, req):
         """Move a project out of the workspace: projects.trash, once

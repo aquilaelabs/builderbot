@@ -1190,34 +1190,40 @@ ok(/installing/.test(rc.body) && !/not reported yet/.test(rc.body),
    '...and one being installed right now says that instead');
 await page.evaluate(() => refresh());
 
-// The padlock: a project the operator keeps and runs themselves. Its whole
-// point is being the OTHER button: excluding hides a row, this one leaves it
-// intact and takes away only the session, so that is what gets asserted.
+// Lock and Archive, two presses since the operator split them (R119, 23 Oct).
+// The lock: its owner's leaves the card in the grid with its mark and its
+// owner working; an administrator's shuts the owner out as well.
 await page.evaluate(() => { refresh(); openProjectsTab(); });
-await page.waitForSelector('.pgrid .pcard[data-row="alpha"] [data-k]', { timeout: 10000, state: 'attached' });
-ok(await page.$$eval('.pgrid [data-k]', bs => bs.length > 0),
-   "every project's card carries a lock in its menu");
+await page.waitForSelector('.pgrid .pcard[data-row="alpha"] [data-lock]', { timeout: 10000, state: 'attached' });
+ok(await page.$$eval('.pgrid .pcard[data-row="alpha"] .actmenu button', bs => {
+     const t = bs.map(b => b.textContent.trim()); return t.includes('Lock') && t.includes('Archive'); }),
+   "its owner's card carries Lock and Archive in its menu, as two presses");
 await page.evaluate(() => setLocked('alpha', true));
+await page.waitForFunction(() => !!document.querySelector('.pgrid .pcard[data-row="alpha"] .lockmark'), { timeout: 15000 });
+const ownLock = await page.$eval('.pgrid .pcard[data-row="alpha"]', r => ({
+  folded: !!r.closest('details.sect'), mark: r.querySelector('.lockmark')?.textContent.trim(),
+  claudeDead: !!r.querySelector('[data-c="alpha"]')?.disabled && /locked/.test(saidOf(r.querySelector('[data-c="alpha"]'))),
+  menu: [...r.querySelectorAll('.actmenu button')].map(b => b.textContent.trim()) }));
+ok(!ownLock.folded && ownLock.mark === 'locked' && !ownLock.claudeDead && ownLock.menu.includes('Unlock'),
+   `its owner's lock keeps the card in the grid, marked locked, with the owner's own Start not shut by it and Unlock in the menu (${JSON.stringify(ownLock)})`);
+await page.evaluate(() => setLocked('alpha', false));
+// An administrator's lock (this account owns alpha, so it is written as one).
+writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ alpha: { by: 'u_0000aaaa', admin: true } }));
+await page.evaluate(() => refresh());
 await page.waitForFunction(
   () => document.querySelector('.pgrid .pcard[data-row="alpha"] [data-c]')?.disabled === true,
-  { timeout: 10000 });
+  { timeout: 15000 });
 const locked = await page.$eval('.pgrid .pcard[data-row="alpha"]', r => ({
   claude: r.querySelector('[data-c="alpha"]')?.disabled,
   shell:  !!r.querySelector('[data-s="alpha"]'),
   note:   r.textContent.replace(/\s+/g, ' '),
+  menu:   [...r.querySelectorAll('.actmenu button')].map(b => b.textContent.trim()),
 }));
-ok(locked.claude === true, 'locking a project takes its Claude button away');
+ok(locked.claude === true, "an administrator's lock takes its Start away, its owner's included");
 ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in');
-  // The control moves at once; the padlock beside the NAME comes from the
-  // server payload and lands on the next poll. Instant feedback on the thing
-  // pressed, and the derived mark a beat behind it rather than the page
-  // re-implementing it.
-  //
+ok(locked.menu.includes('Admin: Unlock'), `...and an administrator is offered Admin: Unlock, saying whose lock it lifts (${locked.menu.join(', ')})`);
   // The MARK, not a sentence. The row used to carry a whole line under the
   // name restating what the padlock already says, on every locked row forever.
-  await page.waitForFunction(
-    () => !!document.querySelector('.pgrid .pcard[data-row="alpha"] .lockmark'),
-    { timeout: 15000 });
   const note = await page.$eval('.pgrid .pcard[data-row="alpha"]',
     r => r.textContent.replace(/\s+/g, ' '));
   ok(!/read-only/.test(note) && !/no Claude session/.test(note),
@@ -1228,23 +1234,27 @@ ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in')
     const g = getComputedStyle(m.querySelector('svg'));
     return { fill: g.fill, stroke: g.stroke, said: m.textContent.trim() };
   });
-  ok(mark.fill === 'none' && mark.stroke !== 'none' && mark.said === 'archived',
-     `...the padlock drawn as a line in the dim color, with its word beside it (${JSON.stringify(mark)})`);
-  // Archived (the operator, 18 Oct): the lock under the name it is used
-  // for. Its card leaves the grid for the Archived fold at the page's foot,
-  // its menu says Unarchive and offers no Pin or Group, and Home's pinned
-  // projects leave it out.
+  ok(mark.fill === 'none' && mark.stroke !== 'none' && mark.said === 'locked by an administrator',
+     `...the padlock drawn as a line in the dim color, with its words beside it (${JSON.stringify(mark)})`);
+writeFileSync(`${DIR}/state/locked-projects.json`, '{}');
+await page.evaluate(() => refresh());
+// Archive (R119): out of sight and nothing else. Its card leaves the grid
+// for the Archived fold at the page's foot, its menu says Unarchive and
+// offers no Pin or Group, and Home's pinned projects leave it out.
+await page.evaluate(() => setArchived('alpha', true));
+await page.waitForFunction(() => !!document.querySelector('.doc .projtab details.sect[data-sect="projects:archived"] .pcard[data-row="alpha"]'), { timeout: 15000 });
   const arch = await page.evaluate(() => {
     const c = document.querySelector('.doc .projtab .pcard[data-row="alpha"]');
     const fold = c?.closest('details.sect');
     return { fold: fold?.dataset.sect || '', foldShut: fold ? !fold.open : null,
              said: fold?.querySelector(':scope > summary .sst')?.textContent || '',
              menu: [...(c?.querySelectorAll('.actmenu button') || [])].map(b => b.textContent.trim()),
-             home: (state?.projects || []).filter(p => p.pinned && !p.locked).some(p => p.name === 'alpha') };
+             mark: !!c?.querySelector('.lockmark'),
+             home: (state?.projects || []).filter(p => p.pinned && !p.archived).some(p => p.name === 'alpha') };
   });
   ok(arch.fold === 'projects:archived' && arch.foldShut === true && /^\d+ projects?$/.test(arch.said)
-     && arch.menu.includes('Unarchive') && !arch.menu.some(t => /^(Pin|Unpin|Group)/.test(t)) && !arch.home,
-     `an archived project's card is folded away under Archived, its menu offering Unarchive and no Pin or Group, and it is not among the pinned (${JSON.stringify(arch)})`);
+     && arch.menu.includes('Unarchive') && !arch.menu.some(t => /^(Pin|Unpin|Group)/.test(t)) && !arch.home && !arch.mark,
+     `an archived project's card is folded away under Archived, its menu offering Unarchive and no Pin or Group, not among the pinned, and not locked (${JSON.stringify(arch)})`);
 // Its menu floats over the page, not inside the fold that holds the card (the
 // operator, 18 Oct: it was cut off at the fold's foot): pressed as a person
 // would, every item of it is on the screen and above the dock's line.
@@ -1264,7 +1274,7 @@ ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in')
      `...and its menu opens whole over the page, its last item above the dock's line and nothing over it (${JSON.stringify(seen)})`);
   await page.evaluate(() => closeMore());
 }
-await page.evaluate(() => setLocked('alpha', false));
+await page.evaluate(() => setArchived('alpha', false));
 // Unlocking is what is under test, so it is the LOCK that has to stop being
 // the reason. The button stays dead here for a different one (alpha has no
 // node in this fixture and a Claude session runs on one), and that is the
@@ -1294,8 +1304,8 @@ ok(inTab.length >= 2 && inTab.includes('alpha'),
    'the Projects page lists every project');
 ok(await page.$eval('.doc .projtab .pcard', r =>
      !!r.querySelector('[data-open]') && !!r.querySelector('[data-s]')
-     && !!r.querySelector('[data-k]') && !!r.querySelector('[data-p]')),
-   '...with the same controls on a card: its page, shell, the lock and the pin');
+     && !!r.querySelector('[data-k]') && !!r.querySelector('[data-lock]') && !!r.querySelector('[data-p]')),
+   '...with the same controls on a card: its page, shell, Archive, Lock and the pin');
 
 // Groups (the operator, 18 Oct): a label of this account's that keeps
 // projects together on the page, set from a card's menu in a box under its
@@ -2130,29 +2140,22 @@ await page.click('#rnCancel');
   await page.click('#rnCancel');
 }
 
-// Ghosted where no session can start. Unlike the credential fields above there
-// is no typing that brings this back, so the reason is the whole message.
-await pjMenu('gamma');
-await page.click(`.doc .projtab [data-k="gamma"]`);
-await page.waitForFunction(() => (state?.projects || [])
-  .some(p => p.name === 'gamma' && p.locked), { timeout: 15000 });
+// Ghosted where no session can start: a project locked against this account,
+// which for its owner is an administrator's lock (R119). Unlike the credential
+// fields above there is no typing that brings this back, so the reason is the
+// whole message.
+writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ gamma: { by: 'u_0000aaaa', admin: true } }));
+await refreshUntil(page, () => (state?.projects || []).some(p => p.name === 'gamma' && p.locked_me), { timeout: 15000 });
 await page.evaluate(() => renameProject('gamma'));
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnReply', e => e.disabled)
    && await page.$eval('#rnAsks', e => e.disabled),
    'a locked project cannot be given session settings: no session starts there to have them');
-ok(/Archived/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
+ok(/locked by an administrator/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
    '...and says which of the two reasons it is');
 await page.click('#rnCancel');
-await pjMenu('gamma');
-console.log('DEBUG108', JSON.stringify(await page.evaluate(() => { const c = document.querySelector('.doc .projtab .pcard[data-row="gamma"]');
-  const k = document.querySelector('.doc .projtab [data-k="gamma"]'); const r = k?.getBoundingClientRect();
-  return { card: !!c, fold: c?.closest('details.sect')?.open, menuHidden: c?.querySelector('.actmenu')?.hidden,
-    kIn: !!k, kRect: r && [r.x, r.y, r.width, r.height], kDisp: k && getComputedStyle(k).display, kVis: k && getComputedStyle(k).visibility,
-    rn: !document.getElementById('rnmodal')?.hidden, docOn: document.querySelector('.pane .doc.on')?.className, hash: location.hash }; })));
-await page.click(`.doc .projtab [data-k="gamma"]`);
-await page.waitForFunction(() => !(state?.projects || [])
-  .some(p => p.name === 'gamma' && p.locked), { timeout: 15000 });
+writeFileSync(`${DIR}/state/locked-projects.json`, '{}');
+await refreshUntil(page, () => !(state?.projects || []).some(p => p.name === 'gamma' && p.locked), { timeout: 15000 });
 // ep.silon is linked and cannot push, which is the third state the chain has
 // to have an answer for: not a form to fill in, and not an empty box either.
 await pjMenu('ep.silon');
@@ -2194,7 +2197,7 @@ ok(await page.$('.doc .projtab [data-p]'),
 // ended a session was a finer distinction than it was worth.
 ok(!await page.$('.doc .projtab [data-x]'),
    'there is no exclude control anywhere any more');
-// delta is the fixture's locked project.
+// delta is the fixture's archived project, locked by an administrator.
 await page.evaluate(() => openProjectsTab());
 await openArchived(page);
 await page.waitForSelector('.pgrid .pcard[data-row="delta"]', { timeout: 10000 });
@@ -2213,7 +2216,7 @@ const refused = await page.evaluate(async () => {
     body: JSON.stringify({ project: 'delta', action: 'add', text: 'should not land' }) });
   return { status: r.status, error: (await r.json()).error || '' };
 });
-ok(refused.status === 409 && /archived/.test(refused.error),
+ok(refused.status === 409 && /locked by an administrator/.test(refused.error),
    '...and the server refuses a write into its notebook, not just the button');
 
 // The sidebar fits its column. It stopped doing so because a tooltip is laid

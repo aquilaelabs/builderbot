@@ -94,9 +94,9 @@ function nbGitView({$, nb, project}){
   // sees whose it is, a plain account gets nothing that changes it, and an
   // administrator is asked by the server first.
   // Nothing here changes the tree, the branches or what a session may push
-  // while the project is archived, or for a role that reads it and does
-  // not write it (B86).
-  const shut = () => !!(state?.projects || []).find(p => p.name === project)?.locked || !!projWriteWhy(project);
+  // while the project is locked against this account, or for a role that
+  // reads it and does not write it (B86).
+  const shut = () => !!(state?.projects || []).find(p => p.name === project)?.locked_me || !!projWriteWhy(project);
   const treeOf = () => {
     const owner = git?.owner || "", notMine = !!owner && owner !== state?.me;
     return {owner, notMine, barred: notMine && !state?.admin};
@@ -146,7 +146,7 @@ function nbGitView({$, nb, project}){
     viewGlance(hint, ...gitGlance);
     const net = $("gitNet");
     if (net){
-      const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+      const locked = !!(state?.projects || []).find(p => p.name === project)?.locked_me;
       net.hidden = locked || !git.remote;
       // A role that only reads the project is shown none of them (the
       // operator, 21 Oct: what a role does not give is not drawn).

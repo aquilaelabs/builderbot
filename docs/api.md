@@ -75,7 +75,8 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/v1/claude-login` | exact | `_claude_login` | A node saying what this account is signed in to Claude, or another coding agent, AS there (R47), or that it is not: never the login itself, which stays on the machine that made it (claudegrant.py says why). |  |
 | POST | `/api/v1/hook` | exact | `_hook` | What a session's hooks have to say, from a NODE (roadmap #24): hooks.py says what each kind means. |  |
 | POST | `/api/v1/tty-grant` | exact | `_tty_grant` | Whose terminal a node's bb-tty is about to start, answered here (B166). |  |
-| POST | `/api/lock` | prefix | `_lock` | Lock or unlock a project: keep it, stop Claude running in it (projects.lock_verb). | refused: lock |
+| POST | `/api/lock` | prefix | `_lock` | Lock or unlock a project (R119), never a session's. |  |
+| POST | `/api/archive` | prefix | `_archive` | Archive or unarchive a project (R119): out of sight, and nothing else; the project's owner or an administrator, never a session. |  |
 | POST | `/api/project-pin` | prefix | `_project_pin` | Pin or unpin a project: whether the sidebar card shows it (projects.pin). |  |
 | POST | `/api/project-group` | prefix | `_project_group` | Put a project in one of this account's groups, take it out, or rename a group (projects.set_group, rename_group), or delete one (delete_group): a label for the Projects page, nothing more. |  |
 | POST | `/api/apps` | prefix | `_apps` | POST /api/apps: look at the release again now (apps.check_now). | refused: controller |

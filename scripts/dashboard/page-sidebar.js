@@ -54,7 +54,9 @@ function wireProjectRows(root){
   });
   root.querySelectorAll("[data-m]").forEach(b => b.onclick = () => openNotebook(b.dataset.m));
   root.querySelectorAll("[data-k]").forEach(b => b.onclick = () =>
-    setLocked(b.dataset.k, b.dataset.on === "1"));
+    setArchived(b.dataset.k, b.dataset.on === "1"));
+  root.querySelectorAll("[data-lock]").forEach(b => b.onclick = () =>
+    setLocked(b.dataset.lock, b.dataset.on === "1"));
   root.querySelectorAll("[data-p]").forEach(b => b.onclick = () =>
     setProjectPinned(b.dataset.p, b.dataset.on === "1"));
   root.querySelectorAll("[data-pgroup]").forEach(b => b.onclick = () => askProjectGroup(b));
@@ -229,35 +231,47 @@ async function pJobAct(action){
   pJobPoll();
 }
 
-// ---- a project's lock ---------------------------------------------------
+// ---- a project's archive and lock ----------------------------------------
+// Two presses since the operator split them (R119, 23 Oct). Archive is out of
+// sight and nothing else: no question asked, since nothing stops. Lock holds
+// people out, so its question says whom, and names the sessions it ends.
 
-// Locking is the same write and the same session-ending as excluding, and the
-// confirmation says the one thing that is different: the row survives whole.
-// Somebody reaching for this wants to keep the project, so the dialog has to
-// make clear it is not the other button.
-// ...and names who is running a Claude session here, since the lock ends
-// every one of them, whoever's and on whatever node (the operator, 29 Sep).
-async function setLocked(name, on){
-  const who = withMe(name);
-  const running = !who.length ? "No Claude session is running here."
-    : who.length === 1 ? `${who[0] === state?.me ? "Your" : who[0] + "'s"} Claude session here ends now.`
-    : `${who.length} Claude sessions here end now: ${who.map(w => w === state?.me ? "yours" : w).join(", ")}.`;
-  if (on && !confirm(`Archive ${projLabel(name)}?\n\n${running}\n\n`
-        + `No Claude session starts here, its notebook goes read-only, and its `
-        + `card moves to Archived at the foot of the Projects page. Your shells, `
-        + `findings, artifacts and dev instance keep working. Unarchive, in its `
-        + `menu, reverses it.`)) return;
+async function setArchived(name, on){
   try{
-    const r = await postJSON("/api/lock", {name, locked:on});
-    const j = await r.json();
+    const j = await (await postJSON("/api/archive", {name, archived: on})).json();
     if (j.error){ notify(j.error, true); return; }
-    for (const s of j.ended || (j.killed ? [j.killed] : [])){
+    applyNow(p => { if (p.name === name) p.archived = !!j.archived; });
+    notify(on ? `${projLabel(name)} archived: in Archived at the foot of the Projects page, and working as before`
+              : `${projLabel(name)} unarchived`);
+  }catch(e){ notify("archive failed: " + e, true); }
+  refresh();
+}
+
+async function setLocked(name, on){
+  const p = (state?.projects || []).find(x => x.name === name) || {};
+  // An administrator who is not its owner locks its owner out too.
+  const held = on ? !p.owner_mine : !!p.locked_admin;
+  const who = withMe(name);
+  const running = !who.length ? "No session is running here."
+    : who.length === 1 ? `${who[0] === state?.me ? "Your" : who[0] + "'s"} session here ends now.`
+    : `${who.length} sessions here end now: ${who.map(w => w === state?.me ? "yours" : w).join(", ")}.`;
+  if (on && !confirm(held
+      ? `Lock ${projLabel(name)} as an administrator?\n\n${running}\n\nNobody starts a session in it or `
+        + `changes it, ${p.owner_name || "its owner"} included, until an administrator unlocks it. `
+        + `It stays on the Projects page with its lock mark.`
+      : `Lock ${projLabel(name)}?\n\nEvery session here but yours ends now. Nobody but you starts a session `
+        + `in it or changes it until you unlock it. It stays on the Projects page with its lock mark.`)) return;
+  try{
+    const j = await (await postJSON("/api/lock", {name, locked: on})).json();
+    if (j.error){ notify(j.error, true); return; }
+    for (const s of j.ended || []){
       const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === s);
       if (t) dropTab(t.id);
     }
-    if (on && j.ended?.length) notify(`${projLabel(name)} archived: ${j.ended.length === 1 ? "its Claude session" : `${j.ended.length} Claude sessions`} ended`);
-    applyNow(p => { p.locked = (j.locked || []).includes(p.name); });
-  }catch(e){ notify("archive failed: " + e, true); }
+    notify(on ? `${projLabel(name)} locked${j.ended?.length ? `: ${j.ended.length === 1 ? "a session" : `${j.ended.length} sessions`} ended` : ""}`
+              : `${projLabel(name)} unlocked`);
+    applyNow(x => { if (x.name === name){ x.locked = !!j.locked; x.locked_admin = !!j.admin; } });
+  }catch(e){ notify("lock failed: " + e, true); }
   refresh();
 }
 

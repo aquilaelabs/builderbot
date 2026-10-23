@@ -260,23 +260,28 @@ sess() {
     printf '%s%s' "$(tmux_prefix "$account")" "$1"
 }
 
-# Projects the operator keeps but runs themselves. Shared with the dashboard,
-# which writes it; enforced here, because a rule only the UI honors is a
-# suggestion: the ttyd URL is reachable directly.
+# Projects their owner has locked (R119): nobody else starts a session in
+# one. Shared with the dashboard, which writes the list; enforced here,
+# because a rule only the UI honors is a suggestion: the ttyd URL is
+# reachable directly.
 LOCKS_FILE="${DASHBOARD_STATE:-/config}/locked-projects.json"
 
+# is_locked PROJECT ACCOUNT: locked against that account. `bb settings`
+# answers it, here from the file and on a node from the controller, since it
+# knows the project's owner, who is never locked out of their own. With no
+# answer the controller reads the list alone and a node lets it through.
 is_locked() {
-    if [ -f "$LOCKS_FILE" ]; then
-        jq -e --arg n "$1" 'index($n) != null' "$LOCKS_FILE" >/dev/null 2>&1
+    local said
+    said="$(BB_PROJECT="$1" BB_ACCOUNT_UID="${2:-}" bb settings --json 2>/dev/null | jq -r '.locked // empty')"
+    if [ -n "$said" ]; then
+        [ "$said" = true ]
         return
     fi
-    # On a node the list is the controller's, and `bb settings` asks it,
-    # over the API, with the session token that rode in above. No token, or
-    # no answer, reads as not locked: the proxy on the controller refuses a
-    # locked project before the connection ever reaches here, so this is the
-    # second check, not the only one.
-    on_node || return 1
-    [ "$(BB_PROJECT="$1" bb settings --json 2>/dev/null | jq -r '.locked // false')" = true ]
+    if [ -f "$LOCKS_FILE" ]; then
+        jq -e --arg n "$1" 'type == "object" and has($n)' "$LOCKS_FILE" >/dev/null 2>&1
+        return
+    fi
+    return 1
 }
 
 # Where the dashboard keeps each project's model and effort. Read by the
@@ -1259,7 +1264,7 @@ case "$target" in
         # a long time to load though it was running). Not for a resume, which
         # names a transcript, nor on a locked project, which says so below.
         fast="$(sess "${agent}-${proj//[.:]/_}")"
-        if [ -z "$resume" ] && ! is_locked "$proj" \
+        if [ -z "$resume" ] && ! is_locked "$proj" "${account:-}" \
            && tmux list-panes -t "=$fast" -F '#{pane_start_command}' 2>/dev/null | grep -qi "$agent"; then
             # The trust flag is still put back (a few jq calls), and the
             # running session is still told it started on the old answer.
@@ -1327,10 +1332,9 @@ case "$target" in
             bad "This container is not signed in to ${agent_name}, and carries no ${agent_product}:" \
                 "a session runs on a node, signed in from that node's Agents page."
         fi
-        if is_locked "$proj"; then
-            bad "'${proj}' is locked: the operator runs this one, so no ${agent_name}" \
-                "session starts here. Unlock it from the Projects card if that" \
-                "was not what you meant."
+        if is_locked "$proj" "${account:-}"; then
+            bad "'${proj}' is locked by its owner: only they start a ${agent_name}" \
+                "session in it until they unlock it, from its card's menu."
         fi
         git_identity "$proj"
         need_author "a ${agent_name} session"

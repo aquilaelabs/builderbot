@@ -12,6 +12,7 @@
 - tools/scan.sh runs the static analysis stack (Semgrep, Trivy, mobsfscan) with plain docker run, and docs/scanners.md says how to set it up (4ec0aa7)
 - Codex CLI (ChatGPT) and Copilot CLI (GitHub) run beside Claude Code: the new Agents page installs, updates and signs in to each on a node, a project's Start offers each one signed in there, and its settings say which agents may run and which one Start opens. Every Agents may dial, house rule and guard holds for them as for Claude, and their conversations are kept, read, shared and resumed on the Sessions view. (8f65c9b)
 - The Android app has the dashboard's light half of every color scheme, and Dark, Light or System beside the schemes under More; its colors are the dashboard's own, written from the design (ee34178)
+- Lock keeps a project to its owner: the owner's Lock ends every other session there and holds everybody else out of starting one or changing it until they unlock it; an administrator's Admin: Lock holds the owner out too. A locked project stays on the Projects page with its padlock (7d4a5eb)
 
 ### Changed
 
@@ -23,12 +24,18 @@
 - Controller settings is a rail group of its own, Controller, after Containers; old links to it still land there (4ec0aa7)
 - Signing keys are checked, generated, wrapped for a backup and rotated, and a release's APK is signed, on the project's node with its own jdk and Android SDK Build-Tools, never on the controller: install both on that node's Toolchains, and the Signing view and the bell say which node it is and what it lacks when it cannot
 - A project's Start Claude is Start agent, opening a chooser of one node at a time (picked by name) with a line per coding agent there; Open names the agent whose session is running (acc4dfa)
+- Archive puts a project out of sight and nothing else: its card folds under Archived and leaves Home, and it keeps working for everybody on it. Its owner or an administrator archives it (7d4a5eb)
 
 ### Upgrading
 
 - Claude Code is installed, updated and removed on a node's Agents page, beside Codex CLI and Copilot CLI, and no longer on the Toolchains page, which keeps build toolchains alone and one line pointing there. A script that posted names ["claude-code"] to /api/toolchains now posts {action, node, agent: "claude"} to /api/agents, which also answers check; /api/toolchains refuses a coding agent's name with the way there. A coding agent's update is its own bell row, opening the Agents page. (e1ee52a)
 - Every project's switch for VS Code and the Windows companion (Settings, Files) is turned on by the upgrade, so everyone on a project with File access in their roles can open it from their own machine; turn it off on a project that should not be. (a0f86af)
 - Set SIGNING_SECRET (16 characters or more) in an *.env file in the secrets folder to seal the signing keys, and keep a copy of it with your other secrets: without it the keys stay as they were; lost, each key comes back by Import a backup (4ec0aa7)
+- Projects archived before this upgrade stay archived and are no longer locked: their sessions start and their notebooks take changes again. Lock one again from its menu if it should stay shut (7d4a5eb)
+
+### Deprecated
+
+- The Lock grant on a role no longer decides anything (a project's owner locks it, an administrator too) and goes in 0.8.0 (7d4a5eb)
 
 ### Security
 

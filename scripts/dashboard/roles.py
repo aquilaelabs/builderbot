@@ -31,7 +31,7 @@ CAPS = {
     "read": ("projects", "read a project: its notebook, code and state"),
     "work": ("projects", "work on a project: the notebook, a Claude session, its settings, builds and tests"),
     "version": ("projects", "move a project's version and release it"),
-    "lock": ("projects", "lock a project, ending whoever's session is on it"),
+    "lock": ("projects", "nothing any more: a project's owner or an administrator locks it (deprecated, goes in 0.8.0)"),
     "rename": ("projects", "rename a project"),
     "trash": ("projects", "delete a project"),
     "git-auth": ("projects", "change how a project authenticates to its remote"),

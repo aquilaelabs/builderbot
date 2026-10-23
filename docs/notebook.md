@@ -557,7 +557,7 @@ whether `main` already has every commit on it, and offers **Delete on
 `<host>`** for the ones where it does, which is the only case where removing
 a branch there can lose nothing. **Revert** and **Branch here**
 on a picked commit. A session's token
-has none of these (it has `bb git`) and an archived project takes no action.
+has none of these (it has `bb git`), and a project locked against the account takes no action.
 
 ## Tests
 

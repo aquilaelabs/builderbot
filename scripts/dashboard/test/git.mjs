@@ -653,11 +653,16 @@ u.configure(state="${DIR}/state", write_json=wj)
 print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   const asSession = await act('fetch', {}, { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' });
   ok(asSession.status === 403 && /bb git/.test(asSession.error), "a session's token is refused the buttons, and told about bb git");
+  // Its owner's lock leaves its owner working (R119); an administrator's
+  // holds the owner too, written as one here since this account owns beta.
   await page.evaluate(() => fetch('/api/lock', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: 'beta', locked: true }) }));
-  ok((await act('fetch')).status === 403, 'a locked project takes no action');
-  await page.evaluate(() => fetch('/api/lock', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: 'beta', locked: false }) }));
+  ok((await act('fetch')).status !== 403, "its owner's lock leaves its owner the buttons");
+  writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ beta: { by: 'u_0000aaaa', admin: true } }));
+  const held = await act('fetch');
+  ok(held.status === 403 && /locked by an administrator/.test(held.error),
+     `an administrator's lock takes no action, its owner's included (${held.status} ${held.error})`);
+  writeFileSync(`${DIR}/state/locked-projects.json`, '{}');
 
   // ...and the view offers them: the network bar, the commit form at the
   // top of Changes, Switch and Delete on a branch, Revert on a commit.

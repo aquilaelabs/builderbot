@@ -746,8 +746,10 @@ mkdir -p "$S/ws/toolstore" && : > "$S/ws/toolstore/.bbignore"
 # container about it. It is not a project because the Projects card did not
 # accept it, which is the only test that matters now.
 mkdir -p "$S/ws/vendored-junk/deep" && echo x > "$S/ws/vendored-junk/deep/thing.py"
-# delta is the locked one: kept, run by the operator, and read-only.
-echo '["delta"]' > "$S/state/locked-projects.json"
+# delta is archived and locked by an administrator (R119): out of sight, and
+# held against everybody, its owner included.
+echo '{"delta": {"by": "u_0000aaaa", "admin": true}}' > "$S/state/locked-projects.json"
+echo '["delta"]' > "$S/state/archived-projects.json"
 # alpha may push, on the deploy key its remote uses. Stated here rather than
 # left to a migration: the one-off that used to grant this on first boot went
 # at 0.5.0, and a fixture that leans on a migration is a fixture that breaks
@@ -1347,7 +1349,8 @@ fresh() {
     # ...and the test registry: uniform.mjs ingests a run of its own so the
     # Tests view has rows, and testreg.mjs counts what it ingests.
     rm -f "$S/state/tests.json"
-    echo '["delta"]' > "$S/state/locked-projects.json"     # a test that locks must not hand that on
+    echo '{"delta": {"by": "u_0000aaaa", "admin": true}}' > "$S/state/locked-projects.json"  # a test that locks must not hand that on
+    echo '["delta"]' > "$S/state/archived-projects.json"   # ...nor one that archives
     rm -f "$S/state/pinned-projects.json"                  # ...nor one that unpins
     # ...nor one that binds a project to a node. nodes.mjs saves alpha's node
     # from the settings dialog; agent.mjs then asserts that a project with no

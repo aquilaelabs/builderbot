@@ -64,6 +64,22 @@ def push_state(state, proj):
     return {"rights": rights, "auth": auth}
 
 
+def _bb_owner(state):
+    try:
+        us = json.load(open(os.path.join(state, "users.json"))).get("users") or {}
+    except (OSError, ValueError, AttributeError):
+        return ""
+    return next((u.get("uid") or "" for u in us.values() if isinstance(u, dict) and u.get("role") == "owner"), "")
+
+
+def _owner_of(state, proj):
+    try:
+        rec = (json.load(open(os.path.join(state, "project-owners.json"))).get("projects") or {}).get(proj) or {}
+    except (OSError, ValueError, AttributeError):
+        rec = {}
+    return rec.get("owner") or _bb_owner(state)
+
+
 def show():
     state = os.environ["DASHBOARD_STATE"]
     prefs = dash.load("prefs", here)
@@ -81,8 +97,15 @@ def show():
     try:
         locks = json.load(open(os.path.join(state, "locked-projects.json")))
     except (OSError, ValueError):
-        locks = []
-    rec["locked"] = proj in (locks if isinstance(locks, list) else [])
+        locks = {}
+    lk = locks.get(proj) if isinstance(locks, dict) else None
+    # Locked AGAINST this seat (R119): an administrator's lock holds
+    # everybody, its owner's everybody but the owner. The owner as
+    # membership.owner_of reads it: the record's, or BuilderBot's owner for a
+    # project from before there were owners, who is also the seat with no
+    # uid of its own.
+    rec["locked"] = isinstance(lk, dict) and (bool(lk.get("admin")) or (
+        os.environ.get("BB_ACCOUNT_UID", "") or _bb_owner(state)) != _owner_of(state, proj))
     rec["project"] = proj
     # The toolchains this project's sessions may not use (R77), whole: the
     # shipped ones switched off here, and every tool pack not switched on.

@@ -265,9 +265,9 @@ await page.click('.sesstbl [data-go="claude-ep_silon"]');
 await page.waitForFunction(() => tabs.some(t => t.arg === 'claude:ep.silon'));
 ok(true, 'dotted project: reopening from Sessions maps back to claude:ep.silon');
 ok(await page.evaluate(() => sessionOf('claude:ep.silon') === 'claude-ep_silon' && sessionOf('sh:2:ep.silon') === 'shell-ep_silon-2'), 'sessionOf applies the tmux rewrite');
-// ...and another account's session on the same project, which the lock
-// ends too: every Claude session there goes, whoever's and wherever it
-// runs, and the question names who is running one (the operator, 29 Sep).
+// ...and another account's session on the same project, which its owner's
+// lock ends (R119): every session but the owner's goes, wherever it runs,
+// and the question says so (the operator, 23 Oct).
 await page.evaluate(async () => (await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ action: 'add', name: 'w.lock', password: 'w.lock-pass-1', role: 'user' }) })).json());
 await member('w.lock');
@@ -284,16 +284,15 @@ const ndx = page.dialogs.length;
 // Code; a running session is never reaped on that any more.
 await page.waitForFunction(() => withMe('ep.silon').includes(state.me), { timeout: 30000 });
 await unfold(page, 'ep.silon');
-await page.waitForSelector('.pgrid .pcard[data-row="ep.silon"] [data-k]', { state: 'visible', timeout: 10000 });
-await page.click('.pgrid .pcard[data-row="ep.silon"] [data-k]');            // lock: asks, then the server ends the sessions
-await page.waitForFunction(() => !state.sessions.some(s => s.name === 'claude-ep_silon'), { timeout: 15000 });
+await page.waitForSelector('.pgrid .pcard[data-row="ep.silon"] [data-lock]', { state: 'visible', timeout: 10000 });
+const lockSaid = await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-lock]', b => b.textContent.trim());
+await page.click('.pgrid .pcard[data-row="ep.silon"] [data-lock]');         // lock: asks, then the server ends the others' sessions
 const gone = n => { for (let i = 0; i < 20; i++){ try { execFileSync('tmux', ['has-session', '-t', '=' + n], { stdio: 'ignore' }); } catch { return true; } execFileSync('sleep', ['0.25']); } return false; };
-// Either wording is the design's: the other account's session is named when
-// the poll has seen it by the click, and that is timing (B388).
-ok(page.dialogs.length === ndx + 1 && /Your Claude session here ends now|2 Claude sessions here end now: yours, w\.lock\./.test(page.dialogs[ndx]) && /Archive ep\.silon\?/.test(page.dialogs[ndx])
-   && !(await page.evaluate(() => tabs.some(t => t.arg === 'claude:ep.silon'))) && gone('claude-ep_silon') && gone(`${lockUid}~claude-ep_silon`),
-   `dotted project: archiving it asks, naming the sessions running there, ends every one of them and drops its tab (${(page.dialogs[ndx] || '').split('\n')[2]})`);
+ok(lockSaid === 'Lock' && page.dialogs.length === ndx + 1 && /Every session here but yours ends now/.test(page.dialogs[ndx]) && /Lock ep\.silon\?/.test(page.dialogs[ndx])
+   && gone(`${lockUid}~claude-ep_silon`) && !gone('claude-ep_silon'),
+   `dotted project: its owner locking it asks, ends the other account's session and keeps the owner's (${lockSaid}; ${(page.dialogs[ndx] || '').split('\n')[2]})`);
 await page.evaluate(() => setLocked('ep.silon', false));      // and unlock it again
+tmuxKill('claude-ep_silon');                                  // what follows starts with none
 // Its Claude button back: Start Claude, or Install Claude where the stub
 // node says it carries no Claude Code (the operator, 21 Oct).
 await page.waitForFunction(() => document.querySelector('.pgrid .pcard[data-row="ep.silon"] :is([data-c], [data-tcinst])'), { timeout: 15000 });

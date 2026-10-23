@@ -133,7 +133,7 @@ function homeJobsHtml(){
 
 function homeGlanceHtml(){
   // Not an archived one (the operator, 18 Oct), pinned or not.
-  const pinned = (state?.projects || []).filter(p => p.pinned && !p.locked);
+  const pinned = (state?.projects || []).filter(p => p.pinned && !p.archived);
   if (!pinned.length) return `<div class="empty">no project is pinned: a project's menu on the Projects page pins it here</div>`;
   // In groups, in the Projects page's order, each group's name over its
   // cards (R273): the page this glances at is sorted so.
