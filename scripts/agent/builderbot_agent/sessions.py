@@ -92,29 +92,6 @@ def _release_root(exe, src, home):
     return "" if os.path.realpath(root) in homes or root in ("/", "/usr", "/usr/local") else root
 
 
-def repair_pins():
-    """A pin made the wrong way before B262: <pin>/release holding more
-    than the agent's own commands under bin/ (an account's ~/.local). The
-    command is kept as a plain copy beside it and the copy of the home is
-    removed. Once per start; a pin made the right way is left alone."""
-    for how in AGENT_INSTALLS.values():
-        pin_dir, cmd = os.path.join(AGENTS_DIR, how["id"]), how["command"]
-        rel = os.path.join(pin_dir, "release")
-        with contextlib.suppress(OSError):
-            names = os.listdir(os.path.join(rel, "bin"))
-            if all(n == cmd or n.startswith(cmd + "-") for n in names):
-                continue
-            exe = os.path.join(rel, "bin", cmd)
-            if os.path.isfile(exe) and not os.path.islink(exe):
-                tmp = os.path.join(pin_dir, cmd + ".new")
-                shutil.copy2(exe, tmp)
-                os.chown(tmp, 0, 0)
-                os.chmod(tmp, 0o755)
-                os.replace(tmp, os.path.join(pin_dir, cmd))
-            shutil.rmtree(rel, ignore_errors=True)
-            log(f"sessions: {how['id']}'s pin held a copy of an account's ~/.local; kept {cmd}, removed the rest (B262)")
-
-
 class SessionWatch:
     """The node's sessions reported the moment one changes (a session
     starting, ending, a Claude pane turning from waiting to working), so

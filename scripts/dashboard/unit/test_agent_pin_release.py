@@ -80,24 +80,5 @@ class ReleaseRoot(unittest.TestCase):
         self.assertEqual(agent._release_root(exe, os.path.realpath(exe), self.home), "")
 
 
-class RepairPins(unittest.TestCase):
-    def test_a_copied_home_is_removed_and_the_command_kept(self):
-        agents_dir = tempfile.mkdtemp()
-        rel = os.path.join(agents_dir, "copilot", "release")
-        for d in ("bin", "share/pki", "state/claude"):
-            os.makedirs(os.path.join(rel, d))
-        for n in ("copilot", "claude"):
-            with open(os.path.join(rel, "bin", n), "w") as f:
-                f.write(n)
-        saved = agent.AGENTS_DIR
-        agent.AGENTS_DIR = agents_dir
-        self.addCleanup(lambda: setattr(agent, "AGENTS_DIR", saved))
-        with mock.patch("os.chown"):
-            agent.repair_pins()
-        self.assertFalse(os.path.exists(rel))
-        with open(os.path.join(agents_dir, "copilot", "copilot")) as f:
-            self.assertEqual(f.read(), "copilot")
-
-
 if __name__ == "__main__":
     unittest.main()
