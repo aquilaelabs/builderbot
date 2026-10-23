@@ -3659,6 +3659,25 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .chips{display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;
   padding-bottom:2px;mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)}
 .chips::-webkit-scrollbar{display:none}
+/* Its ends on a desk (the operator, 23 Oct): an arrow at each end with more
+   past it, held there while the row scrolls under it, and the fade on that
+   side only; a mouse drags the row. A touch swipes, as before. */
+.chips:not(.chl):not(.chr){mask-image:none}
+.chips.chl:not(.chr){mask-image:linear-gradient(to right,transparent,#000 36px)}
+.chips.chl.chr{mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
+@media (pointer:fine){
+  /* The arrow stands on the panel, whole; the fade starts past it. */
+  .chips.chl:not(.chr){mask-image:linear-gradient(to right,#000 22px,transparent 22px,#000 48px)}
+  .chips.chr:not(.chl){mask-image:linear-gradient(to left,#000 22px,transparent 22px,#000 48px)}
+  .chips.chl.chr{mask-image:linear-gradient(to right,#000 22px,transparent 22px,#000 48px,#000 calc(100% - 48px),transparent calc(100% - 22px),#000 calc(100% - 22px))}
+  .chips.chl,.chips.chr{cursor:grab}
+  .chips.dragging{cursor:grabbing;user-select:none}
+  .chips.dragging .chip{pointer-events:none}
+  .chips.chl::before,.chips.chr::after{position:sticky;z-index:1;flex:0 0 22px;display:grid;place-items:center;
+    align-self:stretch;font:600 15px/1 system-ui;color:var(--ink);background:var(--panel);cursor:pointer}
+  .chips.chl::before{content:"\2039";left:0;margin-right:-22px;order:-1}
+  .chips.chr::after{content:"\203A";right:0;margin-left:-22px;order:99}
+}
 /* A list's narrowing band (R254 step 1): its chips at the left and a search
    at the right, the search taking the whole width under them on a phone.
    A row the band leaves out wears .off, so paging counts only what is shown. */
@@ -7077,6 +7096,14 @@ document.addEventListener("scroll", floatSoon, {capture: true, passive: true});
 // A chip row's scroll, kept as it moves and put back when it is drawn again
 // (page-docs.js chipsRestore).
 document.addEventListener("scroll", chipsScrolled, {capture: true, passive: true});
+// A row of chips on a desk: its ends' arrows and a mouse drag (page-docs.js
+// chipsEdge), kept right as the window changes width.
+document.addEventListener("click", chipsArrow);
+document.addEventListener("click", chipsClickGuard, {capture: true});
+document.addEventListener("pointerdown", chipsDown);
+document.addEventListener("pointermove", chipsMove, {passive: true});
+document.addEventListener("pointerup", chipsUp);
+window.addEventListener("resize", () => chipsEdges());
 new MutationObserver(chipsRestore).observe(document.body, {childList: true, subtree: true});
 addEventListener("resize", floatSoon);
 

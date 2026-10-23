@@ -1223,10 +1223,65 @@ const chipScroll = {};
 function chipsScrolled(e){
   const c = e.target;
   if (c?.matches?.(".chips[data-chips]")) chipScroll[c.dataset.chips] = c.scrollLeft;
+  if (c?.matches?.(".chips")) chipsEdge(c);
+}
+// Which ends of a row of chips have more past them (the operator, 23 Oct: on
+// a desk a row that ran off the edge had no way along but a trackpad): .chl
+// and .chr, which draw the arrow at that end and fade it.
+function chipsEdge(c){
+  const max = c.scrollWidth - c.clientWidth;
+  c.classList.toggle("chl", max > 1 && c.scrollLeft > 1);
+  c.classList.toggle("chr", max > 1 && c.scrollLeft < max - 1);
+}
+function chipsEdges(root = document){
+  root.querySelectorAll?.(".chips").forEach(chipsEdge);
+}
+// A press on an end's arrow moves the row most of its width that way. The
+// arrows are the row's own ::before and ::after, so the press lands on the
+// row itself, at its edge, never on a chip.
+const CHIP_ARROW = 28;
+function chipsArrow(e){
+  const c = e.target;
+  if (!c?.matches?.(".chips.chl, .chips.chr") || chipDragged) return;
+  const r = c.getBoundingClientRect(), by = Math.max(80, c.clientWidth * 0.7);
+  if (c.classList.contains("chl") && e.clientX < r.left + CHIP_ARROW) c.scrollBy({left: -by, behavior: "smooth"});
+  else if (c.classList.contains("chr") && e.clientX > r.right - CHIP_ARROW) c.scrollBy({left: by, behavior: "smooth"});
+}
+// ...and a mouse drags it: held and moved past a few pixels the row follows
+// the pointer, and the click a drag ends on presses nothing. A touch keeps
+// the browser's own swipe.
+let chipDrag = null, chipDragged = false;
+function chipsDown(e){
+  const c = e.target?.closest?.(".chips");
+  if (!c || e.pointerType !== "mouse" || e.button !== 0 || c.scrollWidth <= c.clientWidth + 1) return;
+  chipDrag = {c, x: e.clientX, left: c.scrollLeft, moved: false};
+  chipDragged = false;
+}
+function chipsMove(e){
+  if (!chipDrag) return;
+  const dx = e.clientX - chipDrag.x;
+  if (!chipDrag.moved && Math.abs(dx) < 5) return;
+  chipDrag.moved = true;
+  chipDrag.c.classList.add("dragging");
+  chipDrag.c.scrollLeft = chipDrag.left - dx;
+}
+function chipsUp(){
+  if (!chipDrag) return;
+  chipDragged = chipDrag.moved;
+  chipDrag.c.classList.remove("dragging");
+  chipDrag = null;
+  // The click this release makes is swallowed (chipsClickGuard), then the
+  // next press is a press again.
+  if (chipDragged) setTimeout(() => { chipDragged = false; }, 0);
+}
+function chipsClickGuard(e){
+  if (chipDragged && e.target?.closest?.(".chips")){ e.stopPropagation(); e.preventDefault(); }
 }
 function chipsRestore(muts){
   for (const m of muts) for (const n of m.addedNodes){
     if (n.nodeType !== 1) continue;
+    // Its ends, once it is laid out.
+    if (n.matches(".chips") || n.querySelector(".chips")) requestAnimationFrame(() => chipsEdges(n.parentNode || document));
     for (const c of n.matches(".chips[data-chips]") ? [n] : n.querySelectorAll(".chips[data-chips]")){
       const x = chipScroll[c.dataset.chips];
       if (x && c.scrollLeft !== x){
