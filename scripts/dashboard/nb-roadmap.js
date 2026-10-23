@@ -741,7 +741,7 @@ function nbRoadmapView({$, nb}){
     $("clashMine").onclick = () => settleClash(true);
   }
 
-  // Dropping something, with the reason it went. Inline rather than a confirm()
+  // Dropping something, with the reason it went. Inline rather than a await askYes()
   // box, because a confirm cannot hold a field, and the field is the point:
   // nothing here can be undone, so the only thing standing between a deleted
   // line and somebody adding it straight back is a note saying why it went.

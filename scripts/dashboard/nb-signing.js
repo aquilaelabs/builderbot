@@ -250,7 +250,7 @@ function nbSigningView({$, nb, project}){
         drawSigning();
       });
       on("[data-signgen]", async b => {
-        if (route === "sideload" && !confirm(`Make a new sideload signing key named ${key}? `
+        if (route === "sideload" && !await askYes(`Make a new sideload signing key named ${key}? `
               + "Once a build signed with it is out, it is that app's identity for good: download a backup straight after."))
           return;
         b.disabled = true;
@@ -262,7 +262,7 @@ function nbSigningView({$, nb, project}){
       });
       on("[data-rotate]", async b => {
         const to = row.querySelector("[data-rotateto]").value;
-        if (!confirm(`Rotate ${key}'s sideload key to ${to}? Builds then go out signed with both and a proof: `
+        if (!await askYes(`Rotate ${key}'s sideload key to ${to}? Builds then go out signed with both and a proof: `
               + `Android 9 and newer move to ${to}, older devices keep checking ${key}, and ${key} is kept for good.`)) return;
         b.disabled = true;
         const j = await (await postJSON("/api/signing", {action: "rotate", project, from: key, to})).json();

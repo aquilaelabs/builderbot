@@ -514,7 +514,7 @@ function tpDraw(first){
     // row left to uninstall them from.
     const at = await post({action: "where", name: n});
     if (at.error){ tpForm.error = at.error; tpDraw(); return; }
-    if (!confirm(`Remove the tool pack ${n}? It leaves the catalog, and projects that use it lose it.`)) return;
+    if (!await askYes(`Remove the tool pack ${n}? It leaves the catalog, and projects that use it lose it.`)) return;
     const j = await post({action: "remove", name: n});
     if (j.error){ tpForm.error = j.error; tpDraw(); return; }
     tpClose(); loadToolchains();
@@ -843,7 +843,7 @@ function renderToolchainsInto(i){
   // What no node runs from any more, taken off the store (R196).
   el.querySelectorAll("[data-tcclean]").forEach(b => b.onclick = async () => {
     const dirs = (toolchains?.cleanable || []).map(c => c.dir);
-    if (!dirs.length || !confirm(`Take ${dirs.join(", ")} off the store?\n\nNo node runs from ${dirs.length === 1 ? "it" : "them"}; what is in ${dirs.length === 1 ? "it" : "them"} is gone for good.`)) return;
+    if (!dirs.length || !await askYes(`Take ${dirs.join(", ")} off the store?\n\nNo node runs from ${dirs.length === 1 ? "it" : "them"}; what is in ${dirs.length === 1 ? "it" : "them"} is gone for good.`)) return;
     busy(b, "Removing");
     const j = await (await postJSON("/api/toolchains", {action: "clean", node: tcNode, names: dirs})).json().catch(() => ({error: "no answer"}));
     if (j.error) notify(j.error, true);
@@ -858,15 +858,15 @@ function renderToolchainsInto(i){
     const t = el.querySelector("#tcDrvTick"); if (t && !t.disabled) t.checked = true;
     if (inst) inst.disabled = busy || pstale || !tcTicked.size;
   };
-  el.querySelectorAll("[data-tcdrvrm]").forEach(b => b.onclick = () => {
+  el.querySelectorAll("[data-tcdrvrm]").forEach(b => b.onclick = async () => {
     // With no card there is nothing for nouveau to take back (B168).
     const gone = (toolchains?.machine || []).some(m => m.name === TC_DRIVER && m.state === "nocard");
-    if (confirm(gone ? `Remove NVIDIA's driver from ${toolchains?.name || "this node"}? It has no card to drive here, and its tries for one stop.`
+    if (await askYes(gone ? `Remove NVIDIA's driver from ${toolchains?.name || "this node"}? It has no card to drive here, and its tries for one stop.`
                      : `Remove NVIDIA's driver from ${toolchains?.name || "this node"}? The emulator's GPU display goes with it, and nouveau takes the card back when the machine restarts.`))
       tcAct("remove", [TC_DRIVER]);
   });
-  el.querySelectorAll("[data-tcctkrm]").forEach(b => b.onclick = () => {
-    if (confirm(`Remove the NVIDIA container toolkit from ${toolchains?.name || "this node"}? A container that reserves the card no longer starts; NVIDIA's package source goes with it.`))
+  el.querySelectorAll("[data-tcctkrm]").forEach(b => b.onclick = async () => {
+    if (await askYes(`Remove the NVIDIA container toolkit from ${toolchains?.name || "this node"}? A container that reserves the card no longer starts; NVIDIA's package source goes with it.`))
       tcAct("remove", [TC_TOOLKIT]);
   });
   el.querySelectorAll("[data-tcmore]").forEach(b => b.onclick = e => {
@@ -875,14 +875,14 @@ function renderToolchainsInto(i){
     if (tcOpen.has(k)) tcOpen.delete(k); else tcOpen.add(k);
     tcRev++; drawPanes();
   });
-  el.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => {
+  el.querySelectorAll("[data-rm]").forEach(b => b.onclick = async e => {
     // Inside a <label>, so the click would otherwise toggle the checkbox on
     // its way past.
     e.preventDefault(); e.stopPropagation();
     // Asked by the name its row shows: a pack's toolchain's name is the
     // pack's id (B65).
     const name = b.dataset.rm;
-    if (confirm(`Uninstall ${b.dataset.rmlabel || name}? The files are deleted; installing it again re-downloads them.`))
+    if (await askYes(`Uninstall ${b.dataset.rmlabel || name}? The files are deleted; installing it again re-downloads them.`))
       tcAct("remove", [name]);
   });
 
@@ -925,7 +925,7 @@ async function tcAct(action, only){
   if (action !== "abort" && toolchains?.job?.running)
     return notify("a toolchain operation is already running", true);
   if (action === "abort"){
-    if (!confirm("Stop after the toolchain it is on? What has already installed stays."))
+    if (!await askYes("Stop after the toolchain it is on? What has already installed stays."))
       return;
     // On a node the install is a job, and stopping it is the queue's Cancel.
     if (tcNode !== "local" && toolchains?.job?.id)
@@ -945,12 +945,12 @@ async function tcAct(action, only){
   // The driver is the one row whose install ends at a restart: said once,
   // before anything is queued.
   const drv = names.includes(TC_DRIVER) && action === "install";
-  if (drv && !confirm(`Install NVIDIA's driver on ${toolchains?.name || "this node"}? It takes the card only when the machine restarts, which ends every session on it.`))
+  if (drv && !await askYes(`Install NVIDIA's driver on ${toolchains?.name || "this node"}? It takes the card only when the machine restarts, which ends every session on it.`))
     return;
   // ...and the toolkit is the one that adds a package source of somebody
   // else's to the machine.
   if (names.includes(TC_TOOLKIT) && action === "install"
-      && !confirm(`Install the NVIDIA container toolkit on ${toolchains?.name || "this node"}? It adds NVIDIA's own package source to the machine. Running containers keep running.`))
+      && !await askYes(`Install the NVIDIA container toolkit on ${toolchains?.name || "this node"}? It adds NVIDIA's own package source to the machine. Running containers keep running.`))
     return;
   // The ticks stay: a toolchain being installed reads as chosen, and the boxes
   // are ghosted anyway. What happens to them afterwards is decided by how it
@@ -963,7 +963,7 @@ async function tcAct(action, only){
     // NVIDIA's CUDA license) is the person's to accept, named, before
     // anything is fetched: the server says which, and keeps who accepted.
     if (r.status === 409 && Array.isArray(j.accept) && j.accept.length){
-      if (!confirm(`Installing ${names.join(", ")} accepts ${j.accept.map(t => t.label).join(" and ")}.\n\n${
+      if (!await askYes(`Installing ${names.join(", ")} accepts ${j.accept.map(t => t.label).join(" and ")}.\n\n${
             j.accept.map(t => `${t.label}: ${t.url}`).join("\n")}\n\nAccept and install?`)) return;
       r = await postJSON("/api/toolchains", {...body, accept: j.accept.map(t => t.label)});
       j = await r.json().catch(() => ({}));

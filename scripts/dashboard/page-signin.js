@@ -211,7 +211,7 @@ async function sendCode(){
 async function signOut(nodeId, btn, id = "claude"){
   const n = (nodesList || []).find(x => x.id === nodeId);
   const a = agentById(id) || AGENTS[0];
-  if (!confirm(`Sign out of ${a.name} on ${n?.name || "this node"}?\n\nYour ${a.name} sessions stop working there until you sign in again. Your sign-in on any other node stays.`)) return;
+  if (!await askYes(`Sign out of ${a.name} on ${n?.name || "this node"}?\n\nYour ${a.name} sessions stop working there until you sign in again. Your sign-in on any other node stays.`)) return;
   busy(btn, "Signing out");
   let j = {};
   try{

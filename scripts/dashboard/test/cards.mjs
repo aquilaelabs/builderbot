@@ -1989,13 +1989,11 @@ ok(await page.$$eval('.rnbar', bs => bs.length >= 5 && bs.every(b => b.querySele
 ok(!await page.$eval('#rnDelete', e => e.hidden) && /Delete project/.test(await page.$eval('#rnDelete', e => e.textContent)),
    'the settings dialog offers Delete project at its foot');
 {
-  const auto = page.listeners('dialog')[0];
-  page.off('dialog', auto);
   let asked = '';
-  page.once('dialog', d => { asked = d.message(); page.dialogs.push(asked); d.dismiss(); });
+  page.answers.push(q => { asked = q.text; return -1; });
   await page.click('#rnDelete');
   await page.waitForFunction(() => document.getElementById('rnmodal').hidden, { timeout: 15000 });
-  page.on('dialog', auto);
+  await page.waitForFunction(() => !document.querySelector('.askdlg'), null, { timeout: 5000 });
   ok(/moves to \/workspace\/\.trash\/alpha/.test(asked) && existsSync(`${DIR}/ws/alpha/.git`),
      '...which asks, names the bin, and moves nothing when declined');
   await page.evaluate(n => renameProject(n), 'alpha');   // the settings form (the row's gear went in R119 step 3)

@@ -97,7 +97,7 @@ const claudeLiveOn = (name, n) => (state?.sessions || []).some(s => s.name === m
 // drop its tab: the chooser's End session.
 async function claudeEnd(name, n, several){
   const where = n.name ? ` on ${n.name}` : "";
-  if (!confirm(`End your Claude session on ${projLabel(name)}${where}?\n\nThe transcript is kept and can be resumed later, but the conversation stops now.`)) return;
+  if (!await askYes(`End your Claude session on ${projLabel(name)}${where}?\n\nThe transcript is kept and can be resumed later, but the conversation stops now.`)) return;
   resumeFor = null;
   if (state) drawProjects(state.projects);
   try{
@@ -236,8 +236,8 @@ function resumeConversation(name, id, when, ev, agent = "claude"){
 // (the operator, 6 Oct): what it sends arrives as a prompt and Claude starts
 // on it at once, so a stray tap is work begun. The bug and roadmap sends ask
 // in their own send box; every other Send to Claude asks here.
-function sendSure(project, what){
-  return confirm(`Send ${what} to ${projLabel(project)}'s Claude session?\n\n`
+async function sendSure(project, what){
+  return await askYes(`Send ${what} to ${projLabel(project)}'s Claude session?\n\n`
                  + "It arrives as a prompt, and Claude starts on it at once.");
 }
 
@@ -275,7 +275,7 @@ function launchAgent(id, name, node, model = "", effort = "", sessionId = ""){
 async function agentEnd(id, name, n, several){
   const a = agentById(id);
   const where = n.name ? ` on ${n.name}` : "";
-  if (!confirm(`End your ${a.name} session on ${projLabel(name)}${where}?\n\nThe conversation stops now.`)) return;
+  if (!await askYes(`End your ${a.name} session on ${projLabel(name)}${where}?\n\nThe conversation stops now.`)) return;
   resumeFor = null;
   if (state) drawProjects(state.projects);
   try{
@@ -430,7 +430,7 @@ function resumePicker(p, m, card, anchor, ns, several){
   m.querySelector("[data-back]").onclick = () => { resumePick = null; drawProjects(state.projects); };
   m.querySelector("[data-start]").onclick = async e => {
     const label = r.restart ? "Restart" : "Start";
-    if (r.restart && !confirm(`Restart your Claude session on ${projLabel(p.name)}${r.restart.name ? ` on ${r.restart.name}` : ""}?\n\n`
+    if (r.restart && !await askYes(`Restart your Claude session on ${projLabel(p.name)}${r.restart.name ? ` on ${r.restart.name}` : ""}?\n\n`
         + (r.when ? "It ends now, and the conversation you picked is resumed in its place."
                   : "It ends now and resumes the same conversation, starting fresh so it sees what changed since it started."))) return;
     busy(e.target, r.restart ? "Restarting" : "Starting");

@@ -14,6 +14,7 @@
 - The Android app has the dashboard's light half of every color scheme, and Dark, Light or System beside the schemes under More; its colors are the dashboard's own, written from the design (ee34178)
 - Lock keeps a project to its owner: the owner's Lock ends every other session there and holds everybody else out of starting one or changing it until they unlock it; an administrator's Admin: Lock holds the owner out too. A locked project stays on the Projects page with its padlock (7d4a5eb)
 - A store move waits for its node to be quiet, holds the node's sessions without ending them (each is told what is moving and how far it has got, and may still keep its notes), and lets them go when it is done (9970f34)
+- A node's Storage and Network have Revert beside Save, and saving a store inside a mount that is not on the node yet, or adding a mount over a store, says what will happen first (f56448f)
 
 ### Changed
 
@@ -27,6 +28,8 @@
 - A project's Start Claude is Start agent, opening a chooser of one node at a time (picked by name) with a line per coding agent there; Open names the agent whose session is running (acc4dfa)
 - Archive puts a project out of sight and nothing else: its card folds under Archived and leaves Home, and it keeps working for everybody on it. Its owner or an administrator archives it (7d4a5eb)
 - Pointing a node's store at a new folder asks first: a folder that already holds files gets one named for the node inside it, and bringing the old data across is a question of its own; a mount point on a folder with files asks too, and no store or mount may be a system folder (24c9a24)
+- Every question the dashboard asks is its own dialog with buttons that say what they do (Delete, Revert, Yes and No, Cancel), not the browser's OK and Cancel; Escape or a press outside is Cancel (f56448f)
+- Every page and notebook view with more than one section has the row of section names at its top to jump to one; the Containers page's names its project groups too (f56448f)
 
 ### Upgrading
 

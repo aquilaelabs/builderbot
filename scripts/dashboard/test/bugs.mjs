@@ -99,11 +99,11 @@ ok(true, 'the tab picks up what a session filed');
 // ---- closing one, with the note that is the point --------------------------
 page.dialogs = [];
 // The note is typed in the row (R254 step 6), not in the browser's prompt.
-await page.evaluate(() => { window.__prompted = false; window.prompt = () => { window.__prompted = true; return null; }; });
+// (no question modal, either: page.dialogs, emptied above, stays empty)
 await openFold(page, '#bugList .bug[data-id="1"]');
 await page.click('#bugList .bug[data-id="1"] .bFix');
 await page.waitForSelector('#bugList .bug[data-id="1"] .dropbox textarea', { timeout: 5000 });
-ok(!(await page.evaluate(() => window.__prompted)) && /Close as fixed/.test(await page.$eval('#bugList .bug[data-id="1"] .dropbox .primary', b => b.textContent)),
+ok(page.dialogs.length === 0 && /Close as fixed/.test(await page.$eval('#bugList .bug[data-id="1"] .dropbox .primary', b => b.textContent)),
    'closing asks for its note in the row, not in a browser prompt');
 await page.fill('#bugList .bug[data-id="1"] .dropbox textarea', 'the select re-measures on rotate now');
 await page.click('#bugList .bug[data-id="1"] .dropbox .primary');

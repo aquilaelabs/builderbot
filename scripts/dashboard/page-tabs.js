@@ -568,7 +568,7 @@ function refreshSoon(){
 // destroyed and nothing is asked: a terminal keeps running and is listed
 // under Sessions, a document is a view of a file on disk. Ending a session for good is the ✕ in the Sessions card,
 // which is where a question is worth asking because something is actually lost.
-function hideTab(id, ev){
+async function hideTab(id, ev){
   ev?.stopPropagation();
   const t = tabOf(id);
   if (!t) return;
@@ -576,7 +576,7 @@ function hideTab(id, ev){
     // Closing a notebook's tab ends its instance: whatever was staged in it
     // was just answered for, and reopening reads fresh from disk.
     const nb = notebooks.get(t.arg);
-    if (nb && !nb.leaving()) return;
+    if (nb && !await nb.leaving()) return;
     nb?.destroy();
   }
   dropTab(id);

@@ -351,11 +351,11 @@ function wirePhoneTab(root){
     phBusy = "connecting"; phRev++; drawPanes();
     phFetch({action: "connect", ip: phIp.trim(), port: phConnPort.trim()});
   });
-  on("phDisconnect", () => {
+  on("phDisconnect", async () => {
     // An administrator ending somebody else's connection is told whose it
     // is, and that its lease goes with it (R120).
     const other = document.getElementById("phDisconnect")?.dataset.other;
-    if (other && !confirm(`Disconnect ${other}'s phone? Its lease to a project ends too.`)) return;
+    if (other && !await askYes(`Disconnect ${other}'s phone? Its lease to a project ends too.`)) return;
     phBusy = "disconnecting"; phRev++; drawPanes();
     phFetch({action: "disconnect"});
   });

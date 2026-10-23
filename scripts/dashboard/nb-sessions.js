@@ -75,9 +75,9 @@ function nbSessionsView({$, nb, project, root}){
       if (shut){ m.hidden = false; b.setAttribute("aria-expanded", "true"); floatAt(m, b); }
     });
     list.querySelectorAll("[data-cvshare]").forEach(b => b.onclick = () => act(b, b.dataset.cvshare, b.dataset.on ? "share" : "unshare"));
-    list.querySelectorAll("[data-cvdel]").forEach(b => b.onclick = () => {
+    list.querySelectorAll("[data-cvdel]").forEach(b => b.onclick = async () => {
       const r = mine.find(x => x.id === b.dataset.cvdel);
-      if (!confirm(`Delete your conversation of ${r ? fmtTime(r.at * 1000) : "this session"}?\n\n`
+      if (!await askYes(`Delete your conversation of ${r ? fmtTime(r.at * 1000) : "this session"}?\n\n`
           + "It is gone for good: nothing can resume, read or download it again.")) return;
       act(b, b.dataset.cvdel, "delete");
     });

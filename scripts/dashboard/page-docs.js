@@ -629,33 +629,38 @@ function wireSections(root){
     sectJump(view);
   }
 }
-// A jump bar over a long surface (the operator, 8 Oct): with every section
-// open, the names of the sections in a line at the top, each scrolling to
-// its own and opening it if somebody shut it. Four or more sections make
-// a surface long enough to want one; a surface with fewer has none.
+// A jump bar over a surface of more than one part (the operator, 8 and 23
+// Oct): its sections' names in a line at the top, each scrolling to its own
+// and opening it if somebody shut it.
 function sectJump(g){
   // A surface's own sections, which each have a title of their own: a fold
   // repeated once per row of a list (the Docker tab's Ports and mounts, one
   // per container) is the row's, and seventeen of them made a bar of
   // seventeen links all called the same (the operator, 8 Oct).
-  const titleOf = o => o.querySelector(":scope > summary .t")?.textContent || "";
-  const all = sectsOf(g), seen = {};
+  // Beside them a part of the page that is a section in all but markup and
+  // names itself as a place to jump to (`data-jtitle`: the Containers
+  // page's project groups), in the order drawn.
+  const titleOf = o => o.dataset.jtitle || o.querySelector(":scope > summary .t")?.textContent || "";
+  const marked = [...g.querySelectorAll("[data-jtitle]")].filter(o => !o.parentElement?.closest("details.sect")
+    && getComputedStyle(o).display !== "none");
+  const all = [...sectsOf(g), ...marked]
+    .sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1), seen = {};
   all.forEach(o => { seen[titleOf(o)] = (seen[titleOf(o)] || 0) + 1; });
   const mine = all.filter(o => seen[titleOf(o)] === 1);
   const have = g.querySelector(":scope .sectjump");
-  if (mine.length < 4){ have?.remove(); return; }
+  // Two or more (the operator, 23 Oct: every page with more than one).
+  if (mine.length < 2){ have?.remove(); return; }
   const bar = have || document.createElement("nav");
   // In a dialog every line is a .field band (the design's dialog layout).
   bar.className = g.matches("[data-sects]") ? "field sectjump" : "sectjump";
   bar.setAttribute("aria-label", "sections");
-  bar.innerHTML = mine.map(o => `<a href="#" data-jump="${esc(o.dataset.sect || "")}">${
-    esc(titleOf(o))}</a>`).join("");
+  bar.innerHTML = mine.map((o, i) => `<a href="#" data-jump="${i}">${esc(titleOf(o))}</a>`).join("");
   if (!have) mine[0].before(bar);
   bar.querySelectorAll("[data-jump]").forEach(a => a.onclick = e => {
     e.preventDefault();
-    const d = mine.find(o => (o.dataset.sect || "") === a.dataset.jump);
+    const d = mine[+a.dataset.jump];
     if (!d) return;
-    if (!d.open){ d.open = true; if (d.dataset.sect) sectOpen[d.dataset.sect] = true; }
+    if (d.matches("details") && !d.open){ d.open = true; if (d.dataset.sect) sectOpen[d.dataset.sect] = true; }
     d.scrollIntoView({block: "start", behavior: "smooth"});
   });
 }

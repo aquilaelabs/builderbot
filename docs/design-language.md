@@ -683,9 +683,9 @@ default at a desk and several stand open there (the operator, 8 Oct: too much wa
 in folds); a person may shut one, and it stays shut for the page's life. On a phone one
 section is open at a time on every folded surface, as the notebook's views do: opening
 one shuts the others (the operator, 11 Oct), so the page is never a stack of open folds
-to scroll. A surface of four
-or more sections carries a jump bar (sectJump): their names in a line at the top, each
-scrolling to its own. A status is a word or a number, never a sentence.
+to scroll. A surface of more
+than one section carries a jump bar (sectJump; the operator, 23 Oct): their names in a line at the top, each
+scrolling to its own, and with them any part of the page that is a section in all but markup and names itself with `data-jtitle` (the Containers page's project groups). A status is a word or a number, never a sentence.
 
 `hidden` means hidden. `[hidden]{display:none !important}` is global,
 because any class that sets `display` otherwise beats the attribute: a fold

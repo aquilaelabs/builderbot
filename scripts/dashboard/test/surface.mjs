@@ -96,7 +96,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'ado
   'reschedRevs', 'rnDrawAuth', 'rnDrawKey', 'rnKeyAct', 'drawSetup', 'setupFinish', 'setupNeeded', 'setupNode',
   'rnDrawPeople', 'rnDrawPrefs', 'rnFolds', 'rnTestAuth', 'rnLoadFtp', 'rnDrawReach', 'rnReachNodes', 'rnReachNow', 'rnReachSync', 'rnFtpWhere', 'rnDrawFtp', 'rnFtpChange', 'rnSaveFtp', 'rnFillNode', 'rnFillNodesMore', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnLoadPeople', 'rnDrawGitPol', 'rnWhyOff', 'rnLoadSnapshots', 'rnDrawSnapshots', 'rnSavePeople', 'rnSessionEnd', 'rnSessionsDraw', 'rnSessionsLoad', 'rnFolderLine', 'ghName', 'rnShow', 'rnSubmit',
   'roomForTab', 'saveLayout', 'sendCode', 'sendKey',
-  'sessionLabels', 'sessionOf', 'setArchived', 'setBadge', 'setLocked', 'setPinned',
+  'sessionLabels', 'sessionOf', 'ask', 'askText', 'askYes', 'askYesWord', 'setArchived', 'setBadge', 'setLocked', 'setPinned',
   'setProjectPinned', 'shortUptime', 'shortUptime', 'shellCtx', 'show', 'showInStack', 'holdLeaving',
   'signIn', 'signOut', 'slideBody', 'slideDetails',
   'slideHidden', 'fadeIn', 'ghostOf', 'ghostOut', 'fadeThrough', 'slideMark', 'slidePanel', 'swapBox', 'startClaude', 'sendSure', 'launchClaude',   'openBrief', 'closeBrief', 'briefGo', 'pArchivePicked',

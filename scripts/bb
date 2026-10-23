@@ -4254,6 +4254,23 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
         fi
     fi
 
+    # BuilderBot's own page asks its questions in its modal (R121): the
+    # browser's confirm, alert and prompt say OK and Cancel for every answer.
+    if [ -f scripts/dashboard/page-ask.js ]; then
+        section "the page's questions (page-ask.js, not the browser's dialogs)"
+        local dlg
+        # A call has an argument; a comment naming confirm() does not.
+        dlg="$(grep -nE '(^|[^A-Za-z0-9_.$])(confirm|alert|prompt)\([^)]' scripts/dashboard/*.js scripts/dashboard/index.html \
+                 | grep -v '^scripts/dashboard/page-ask.js:' | grep -vE ':[0-9]+:\s*(//|\*|/\*)' || true)"
+        if [ -z "$dlg" ]; then
+            printf '  [ok]   every question is the page'"'"'s modal\n'
+        else
+            printf '  [FAIL] the browser'"'"'s own dialog, where ask, askYes or askText belongs:\n'
+            printf '%s\n' "$dlg" | sed 's/^/         /' | head -20
+            rc=1
+        fi
+    fi
+
     section "github workflows (actionlint)"
     if compgen -G '.github/workflows/*.yml' >/dev/null \
         || compgen -G '.github/workflows/*.yaml' >/dev/null; then

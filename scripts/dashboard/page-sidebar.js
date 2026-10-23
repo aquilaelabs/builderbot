@@ -99,7 +99,7 @@ async function phoneRowPress(b, e){
     refresh();
   };
   if (p.phone.lease?.project === p.name){
-    if (confirm(`Take your phone back from ${projLabel(p.name)}? Its session stops reaching it.`))
+    if (await askYes(`Take your phone back from ${projLabel(p.name)}? Its session stops reaching it.`))
       post({action: "take-back", node: p.phone.node || nid});
     return;
   }
@@ -255,7 +255,7 @@ async function setLocked(name, on){
   const running = !who.length ? "No session is running here."
     : who.length === 1 ? `${who[0] === state?.me ? "Your" : who[0] + "'s"} session here ends now.`
     : `${who.length} sessions here end now: ${who.map(w => w === state?.me ? "yours" : w).join(", ")}.`;
-  if (on && !confirm(held
+  if (on && !await askYes(held
       ? `Lock ${projLabel(name)} as an administrator?\n\n${running}\n\nNobody starts a session in it or `
         + `changes it, ${p.owner_name || "its owner"} included, until an administrator unlocks it. `
         + `It stays on the Projects page with its lock mark.`

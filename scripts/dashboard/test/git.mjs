@@ -1127,11 +1127,11 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     const asks = [];
     const seen = req => { if (req.url().endsWith('/api/git') && /"action":"ask"/.test(req.postData() || '')) asks.push(1); };
     page.on('request', seen);
-    await page.evaluate(() => { window.__confirm = window.confirm; window.confirm = m => { window.__asked = m; return false; }; });
+    let asked = '';
+    page.answers.push(q => { asked = q.text; return -1; });
     // Pressed from the page: the change sits in a section shut by default.
     await page.$eval('.nb .nbview[data-view="git"] [data-gitaskfile]', b => b.click());
     await page.waitForTimeout(300);
-    const asked = await page.evaluate(() => { const m = window.__asked; window.confirm = window.__confirm; delete window.__asked; return m || ''; });
     page.off('request', seen);
     ok(/^Send .* to beta's Claude session\?/.test(asked) && asks.length === 0,
        `Send to Claude asks first, naming the session, and sends nothing when the answer is no (${asked.split('\n')[0]}; ${asks.length} sent)`);

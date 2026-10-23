@@ -1048,6 +1048,8 @@ html[data-motion="reduce"] .tourring{transition:none}
    too (18 Sep, on every size measured). A column instead: the title, the
    switch, the build lines and the foot keep their height, and the page takes
    what is left and is the only thing that scrolls. */
+/* A question (page-ask.js): its words a note's measure, paragraphs apart. */
+.askdlg .asksaid{margin:0;font:var(--f-ui);color:var(--ink);overflow-wrap:anywhere}
 .modal .box.prose{display:flex;flex-direction:column}
 .modal .box.prose>*{flex:none}
 .modal .box.prose>.about{flex:0 1 auto;min-height:0;display:flex;flex-direction:column}
@@ -4091,7 +4093,13 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 /* Containers' images box is a slot its read fills, not a box: its tiles,
    tables and notes are the section's own. */
 .dmimgbox{display:contents}
-.sect>.body>.sub:first-child{margin-top:0}
+/* ...so its bar takes the inset a bar straight in a body has, and wraps on
+   a phone rather than running off the screen. */
+.dmimgbox>.actbar.dmprunes{margin:var(--field-gap) var(--row-x) 0;flex-wrap:wrap}
+/* ...and a first line that is not a band keeps a band's room under the
+   head, at every width (the operator, 23 Oct: "Mounts at boot." sat on the
+   Storage heading; that should never happen anywhere). */
+.sect>.body>:not(.field,.row,.sk-row,.tbl,.tcs,.tchead,.macros,details.sect,.fnote,.empty,.loading,:has(> .field)):first-child{margin-top:var(--row-y)}
 /* A container's own folds (Ports and mounts, Log) start where its card's
    words do, not a section's inset further in (the operator's phone, 18 Oct). */
 :is(.dmtab,.dkview,.vmtab) .row>details.sect>summary,:is(.dmtab,.dkview,.vmtab) .row>details.sect>.body{padding-left:0;padding-right:0}
@@ -4353,10 +4361,21 @@ button[aria-busy="true"]{opacity:.75}
    a blank line apart; a finger keeps the tap height. */
 @media(pointer:fine){ .ndsettings>.field>.ndcap>input[type=checkbox]{min-height:0;margin-block:0} }
 .ndactions{display:flex;flex-direction:column;gap:6px;margin-top:8px;border-top:var(--hair) solid var(--line);padding-top:6px}
-.ndmount,.ndnet{display:grid;grid-template-columns:minmax(0,7em) minmax(0,2fr) minmax(0,1.6fr) auto auto;
-  gap:6px;align-items:center}
-.ndnet{grid-template-columns:minmax(0,7em) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr)}
-.ndmount .ndmstate{grid-column:1 / -1}
+/* A mount is one line at a desk (the operator, 23 Oct: a row for read-only
+   and the × alone used a lot of room): its source and mountpoint, then its
+   kind, read-only, what the node says of it and its × together at the end. */
+.ndmount{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1.2fr) minmax(22em,1.4fr);gap:6px 10px;align-items:end}
+.ndmount .ndmline .ndcap{white-space:nowrap}
+/* Every mount in the same three columns, and the labels said once, over
+   the first: a Source and a Mountpoint over every row was most of its
+   height. The fields keep their own names for a screen reader. */
+.ndmount~.ndmount .setrow>.lbl{display:none}
+.ndmount .ndmline{display:flex;align-items:center;gap:6px 12px;min-height:var(--ctl);flex-wrap:nowrap;min-width:0}
+.ndmount .ndmline select{width:auto;flex:0 0 auto}
+.ndmount .ndmline .ndmstate{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ndmount .ndmline .eye{margin-left:auto}
+.ndnet{display:grid;gap:6px;align-items:center;
+  grid-template-columns:minmax(0,7em) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr)}
 /* Static routes take the network's whole width, in either mode. */
 .ndnet .ndroutes{grid-column:1 / -1}
 .ndmstate.warn{color:var(--warn)} .ndmstate.bad{color:var(--bad)}
@@ -4400,14 +4419,13 @@ button[aria-busy="true"]{opacity:.75}
 .row .jbouts code{font:var(--f-note);white-space:normal;overflow-wrap:anywhere}
 .jbouts a{overflow-wrap:anywhere}
 @media (max-width:600px){
-  .ndmount,.ndnet,.ndstore{grid-template-columns:minmax(0,1fr)}
-  .ndmount .ndmstate,.ndstore .sub{grid-column:1}
-  /* A mount on a phone: the fields stacked, then read-only and the × on one
-     line: the × was a full-width bar with a dot in it, which read as a
-     field with nothing to type. */
-  .ndmount{grid-template-columns:minmax(0,1fr) auto}
-  .ndmount select,.ndmount input:not([type=checkbox]),.ndmount .ndmstate{grid-column:1 / -1}
-  .ndmount .ndcap{grid-column:1} .ndmount .eye{grid-column:2;justify-self:end}
+  .ndnet,.ndstore{grid-template-columns:minmax(0,1fr)}
+  .ndstore .sub{grid-column:1}
+  /* A mount on a phone is two lines: its source and mountpoint side by
+     side, then its kind, read-only, its state and its × on one. */
+  .ndmount{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+  .ndmount .ndmline .ndmstate{white-space:normal}
+  .ndmount .ndmline{grid-column:1 / -1}
 }
 /* The Jobs tab: it is narrowed by chips (B74); the reason a job ended
    badly is a warn line; the log is the manager's compose log, same box. */
@@ -6831,6 +6849,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="page-welcome.js"></script>  <!-- a part of the page that is no tab: same rule -->
 <script src="page-chat.js"></script>
 <script src="page-motion.js"></script>
+<script src="page-ask.js"></script>     <!-- the page's questions as modals (R121) -->
 <script src="page-pull.js"></script>
 <script src="page-report.js"></script>
 <script src="page-lists.js"></script>
@@ -7375,7 +7394,8 @@ $("rnName").oninput = rnShow;
     if (b && !b.disabled){
       if (b.dataset.rnrevert){
         const said = rnSectChanges(b.dataset.rnrevert).said;
-        if (said.length && confirm(`Revert ${said.join(", ")}?\n\nIt goes back to what is saved.`)) rnRevertSect(b.dataset.rnrevert);
+        if (said.length) askYes(`Revert ${said.join(", ")}?\n\nIt goes back to what is saved.`)
+          .then(yes => { if (yes) rnRevertSect(b.dataset.rnrevert); });
       } else rnSubmit(b.dataset.rnsave || b.dataset.rnkeep || b.dataset.rnend, !!b.dataset.rnend);
       return;
     }
@@ -7412,9 +7432,10 @@ $("rnKeyCopy").onclick = async () => {
 $("rnUnlink").onclick = () => unlinkProject(rnFor);
 $("rnDelete").onclick = () => { const n = rnFor; closeRename(); deleteProject(n); };
 // Closing with a section unsaved asks, naming what would go.
-$("rnCancel").onclick = () => {
+$("rnCancel").onclick = async () => {
   const d = rnDirty().map(x => document.querySelector(`details.rngroup[data-sect="rn:${x}"] .t`)?.textContent || x);
-  if (d.length && !confirm(`Close without saving? ${d.join(", ")} would be dropped.`)) return;
+  if (d.length && !await askYes(`Close without saving?\n\n${d.join(", ")} would be dropped.`,
+                                {verb: "Close without saving", danger: true})) return;
   closeRename();
 };
 // The settings' sections take turns, one open at a time, as a tab's do.
@@ -7687,7 +7708,7 @@ $("mSave").onclick = async () => {
     closeEditor();
 };
 $("mDelete").onclick = async () => {
-  if (!editing || !confirm(`Delete "${$("mName").value}"?`)) return;
+  if (!editing || !await askYes(`Delete "${$("mName").value}"?`, {danger: true})) return;
   if (await postCustom({action:"delete", id: editing})) closeEditor();
 };
 // The backdrop and Escape both mean "never mind"; Enter in the title field

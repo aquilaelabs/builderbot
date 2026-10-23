@@ -530,6 +530,9 @@ ok(elsewhere.git_name === 'T. Person',
      `...Build and test's Save stores the build command and nothing of Yours on this project, whose change stays typed and unsaved (${JSON.stringify(after)})`);
   await rnSect(page, 'yours');
   await page.click('.rnbar[data-rnbar="yours"] [data-rnrevert]');
+  // Revert asks first, in the page's question modal (R121), answered a beat
+  // after the press.
+  await page.waitForFunction(was => $('rnGitName').value === was, nameWas, { timeout: 5000 }).catch(() => {});
   ok(await page.evaluate(was => $('rnGitName').value === was
        && document.querySelector('.rnbar[data-rnbar="yours"] [data-rnrevert]').disabled
        && $('rnBuildCmd').value === 'make one', nameWas),

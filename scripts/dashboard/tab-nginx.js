@@ -478,7 +478,7 @@ function wireNginxTab(root){
   // from the server's answer.
   sect.querySelectorAll("[data-ngcertrm]").forEach(b => b.onclick = async () => {
     const k = b.dataset.ngcertrm;
-    if (!confirm(`Take ${k}'s pair off ${n.name}?\n\nA route that picked it falls back to what its hostname resolves to, or answers on 80 only.`)) return;
+    if (!await askYes(`Take ${k}'s pair off ${n.name}?\n\nA route that picked it falls back to what its hostname resolves to, or answers on 80 only.`)) return;
     nginxReadDraft(sect, n);
     busy(b, "Removing");
     const j = await nginxAct({action: "save", node: nid, routes: n.routes || [], drop_cert: k});
@@ -530,7 +530,7 @@ function wireNginxTab(root){
     const del = form.querySelector("[data-ngdel]");
     if (del) del.onclick = async () => {
       const r = (n.routes || [])[i] || {};
-      if (!confirm(`Delete the route ${r.host === "*" ? "every name" : r.host}${r.path && r.path !== "/" ? r.path : ""} to port ${r.port}?`)) return;
+      if (!await askYes(`Delete the route ${r.host === "*" ? "every name" : r.host}${r.path && r.path !== "/" ? r.path : ""} to port ${r.port}?`)) return;
       busy(del, "Deleting");
       const j = await nginxAct({action: "save", node: nid, routes: (n.routes || []).filter((_, k) => k !== i)});
       if (!j.error){ nginxEdit = null; nginxForm = null; }
@@ -578,7 +578,7 @@ function wireNginxTab(root){
   };
   const upd = sect.querySelector("[data-ngupdate]");
   if (upd) upd.onclick = async e => {
-    if (!confirm(`Update nginx on ${n.name} to ${n.behind === n.image?.tag ? "the newer build of " : ""}nginx:${n.behind}?\n\nIt is rebuilt with the new image, so its sites are down while the node pulls it.`)) return;
+    if (!await askYes(`Update nginx on ${n.name} to ${n.behind === n.image?.tag ? "the newer build of " : ""}nginx:${n.behind}?\n\nIt is rebuilt with the new image, so its sites are down while the node pulls it.`)) return;
     nginxReadDraft(sect, n);
     busy(e.target, "Updating");
     await nginxAct({action: "update", node: nid});
@@ -586,7 +586,7 @@ function wireNginxTab(root){
   };
   const rm = sect.querySelector("[data-ngremove]");
   if (rm) rm.onclick = async e => {
-    if (!confirm(`Remove nginx from ${n.name}?\n\nThe container comes down and leaves the Containers page; the routes and certificate stay here for a redeploy.`)) return;
+    if (!await askYes(`Remove nginx from ${n.name}?\n\nThe container comes down and leaves the Containers page; the routes and certificate stay here for a redeploy.`)) return;
     busy(e.target, "Removing");
     await nginxAct({action: "remove", node: nid});
     nginxRedraw();

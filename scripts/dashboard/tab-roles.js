@@ -445,8 +445,8 @@ function rolesRedraw(){ rolesRev++; drawPanes(); }
 function wireRoles(el){
   // A role picked from its list (on a phone, the detail comes over the
   // list), the owners' row opened or shut, and Back to the list.
-  el.querySelectorAll("[data-rpick]").forEach(b => b.onclick = () => {
-    if (b.dataset.rpick !== rolesPick && rolesRoleDirty() && !confirm(`Leave the changes to ${rolesDraft.name} unsaved?`)) return;
+  el.querySelectorAll("[data-rpick]").forEach(b => b.onclick = async () => {
+    if (b.dataset.rpick !== rolesPick && rolesRoleDirty() && !await askYes(`Leave the changes to ${rolesDraft.name} unsaved?`)) return;
     splitAway(() => document.querySelectorAll(".pane .doc.on .rsplit > .rdetail"), () => {
       rolesPick = b.dataset.rpick; rolesDraft = null; rolesPhoneOpen = true; rolesMoveNext = "in"; rolesRedraw(); });
   });
@@ -518,7 +518,7 @@ function wireRoles(el){
   };
   const rm = el.querySelector("#rolesRemove");
   if (rm) rm.onclick = async () => {
-    if (!confirm(`Remove the role ${rolesDraft.name}? Accounts that hold it lose what it gave.`)) return;
+    if (!await askYes(`Remove the role ${rolesDraft.name}? Accounts that hold it lose what it gave.`)) return;
     if (await rolesAct({action: "remove", name: rolesDraft.name}, `${rolesDraft.name} removed`)){
       rolesPick = ""; rolesDraft = null;
     }

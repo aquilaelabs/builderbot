@@ -135,9 +135,9 @@ function renderNoticesInto(i){
 function wireNotices(root){
   wireSections(root);
   const clear = root.querySelector("#ntClear");
-  if (clear) clear.onclick = () => {
+  if (clear) clear.onclick = async () => {
     const kind = noticesChip && noticesChip !== "bad" ? noticesChip : "";
-    if (!confirm(kind ? `Clear every ${NOTICE_KINDS[kind].toLowerCase()} notice?` : "Clear every notice kept for your account?")) return;
+    if (!await askYes(kind ? `Clear every ${NOTICE_KINDS[kind].toLowerCase()} notice?` : "Clear every notice kept for your account?")) return;
     noticesAct({action: "clear", kind});
   };
   root.querySelectorAll("[data-ntchip]").forEach(b => b.onclick = () =>

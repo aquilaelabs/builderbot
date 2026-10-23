@@ -193,8 +193,8 @@ function wireAgentsTab(root){
     const act = b.dataset.agact, tool = b.dataset.agtool;
     const m = (agRows || []).find(x => x.name === tool);
     const who = m?.for || "Claude";
-    if (act === "remove" && !confirm(`Remove ${m?.label || tool} from ${agPick()?.name || "this node"}? Its ${who} sessions end, and none starts there until it is installed again.`)) return;
-    if (act === "install" && m?.installed && !confirm(`Update ${m.label} on ${agPick()?.name || "this node"}? Its ${who} sessions there end first; they start again from the project rows.`)) return;
+    if (act === "remove" && !await askYes(`Remove ${m?.label || tool} from ${agPick()?.name || "this node"}? Its ${who} sessions end, and none starts there until it is installed again.`)) return;
+    if (act === "install" && m?.installed && !await askYes(`Update ${m.label} on ${agPick()?.name || "this node"}? Its ${who} sessions there end first; they start again from the project rows.`)) return;
     busy(b, act === "remove" ? "Removing" : "Asking");
     const j = await (await postJSON("/api/agents", {action: act, node: agNode, agent: m?.agent || ""})).json().catch(() => ({error: "no answer"}));
     if (j.error) notify(j.error, true);

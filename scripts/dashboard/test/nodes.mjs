@@ -982,6 +982,31 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   await page.fill(`${ROW} [data-k="store:cache"]`, '/scratch/cache');
   ok(await page.$(`${ROW} [data-k="store:artifacts"]`) !== null,
      'the fold carries the artifacts store: this node\'s copy of what projects built');
+  // Its first line keeps room under the heading (the operator, 23 Oct:
+  // "Mounts at boot." sat on it), and a mount is one line at a desk: its
+  // source, mountpoint, kind, read-only and × ending at one height.
+  {
+    const lay = await page.evaluate(sel => {
+      const d = document.querySelector(`${sel} details.sect[data-sect="nodes:storage"]`);
+      const head = d?.querySelector(':scope > summary')?.getBoundingClientRect();
+      const first = d?.querySelector(':scope > .body > :first-child')?.getBoundingClientRect();
+      const m = d?.querySelector('.ndmount');
+      const bottoms = m ? ['[data-k="source"]', '[data-k="path"]', '[data-k="type"]', '[data-mrm]']
+        .map(q => Math.round(m.querySelector(q).getBoundingClientRect().bottom)) : [];
+      return { gap: head && first ? Math.round(first.top - head.bottom) : null, bottoms };
+    }, ROW);
+    ok(lay.gap >= 6 && lay.bottoms.length === 4 && Math.max(...lay.bottoms) - Math.min(...lay.bottoms) <= 4,
+       `the Storage section's first line has room under its head, and a mount is one line at a desk (${JSON.stringify(lay)})`);
+    if (process.env.BB_SHOTS){
+      await page.locator(`${ROW} details.sect[data-sect="nodes:storage"]`).screenshot({ path: `${process.env.BB_SHOTS}/storage-desk.png` });
+      const vp = page.viewportSize();
+      await page.setViewportSize({ width: 393, height: 900 });
+      await sleep(400);
+      await page.locator(`${ROW} details.sect[data-sect="nodes:storage"]`).screenshot({ path: `${process.env.BB_SHOTS}/storage-phone.png` });
+      await page.setViewportSize(vp);
+      await sleep(300);
+    }
+  }
   // The heartbeat repaints the tab; the draft and the caret survive it.
   await page.evaluate(() => loadNodes());
   await sleep(400);
@@ -1031,18 +1056,37 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   {
     disk['/srv/full'] = { exists: true, dir: true, files: true };
     disk['/var/lib/builderbot/artifacts'] = { exists: true, dir: true, files: true };
-    await page.evaluate(() => { window.__asked = []; window.__confirm = window.confirm;
-      window.confirm = m => { window.__asked.push(m); return !/^Bring /.test(m); }; });
+    const asked = [];
+    page.answers.push(q => { asked.push(q.text); return 0; }, q => { asked.push(q.text); return /^Bring /.test(q.text) ? 1 : 0; });
     await page.fill(`${ROW} [data-k="store:artifacts"]`, '/srv/full');
     await page.click(`${ROW} [data-nsave]`);
     await page.waitForFunction(id => nodesList.find(n => n.id === id)?.config?.desired?.stores?.artifacts === '/srv/full/shed',
                                minted.id, { timeout: 15000 });
-    const asked = await page.evaluate(() => { const a = window.__asked; window.confirm = window.__confirm; return a; });
     const after = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id).config.desired;
     ok(asked.length === 2 && /already has files in it/.test(asked[0]) && /\/srv\/full\/shed/.test(asked[0])
        && /Bring the artifacts data across from \/var\/lib\/builderbot\/artifacts/.test(asked[1])
        && after.stores.artifacts === '/srv/full/shed' && after.keep.includes('artifacts'),
        `a folder holding files gets one named for the node, the setting is that, and declining the copy starts it empty (${JSON.stringify(after.keep)}; ${asked.length} asked)`);
+    // A store pointed into a mount saved here and not on the node yet is
+    // told so (the operator, 23 Oct): what is on the share cannot be seen
+    // until Apply mounts it, so no folder is chosen from what is there now.
+    const told = [];
+    for (let i = 0; i < 4; i++) page.answers.push(q => { told.push(q.text); return 0; });
+    await page.click(`${ROW} [data-madd]`);
+    const mi = await page.$$eval(`${ROW} .ndmount`, e => e.length - 1);
+    await page.fill(`${ROW} .ndmount[data-i="${mi}"] [data-k="source"]`, 'nas:/mnt/user/new');
+    await page.fill(`${ROW} .ndmount[data-i="${mi}"] [data-k="path"]`, '/srv/newshare');
+    await page.fill(`${ROW} [data-k="store:toolchains"]`, '/srv/newshare/tc');
+    disk['/srv/newshare/tc'] = { exists: true, dir: true, files: true };     // the node's own disk, under it
+    await page.click(`${ROW} [data-nsave]`);
+    await page.waitForFunction(id => nodesList.find(n => n.id === id)?.config?.desired?.stores?.toolchains === '/srv/newshare/tc',
+                               minted.id, { timeout: 15000 });
+    page.answers.length = 0;
+    ok(told.some(m => /inside \/srv\/newshare, a mount saved here that the node does not have yet/.test(m) && /the apply fails/.test(m))
+       && !told.some(m => /a folder for this node inside it/.test(m)),
+       `a store pointed into a mount not on the node yet says so, and no folder is picked from what the node's disk holds now (${told.length} asked)`);
+    await napi('/api/v1/nodes', { action: 'config', id: minted.id, config: after });
+    await page.evaluate(id => { const c = nodesConf[id]; if (c){ c.draft = null; c.dirty = false; } return loadNodes(); }, minted.id);
     // A system folder is refused before anything is asked or saved.
     page.dialogs.length = 0;
     await page.fill(`${ROW} [data-k="store:data"]`, '/etc/builderbot');
@@ -3835,6 +3879,9 @@ print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}
   const base = URL.replace(/\/$/, '');
   const napi = async (path, body) => (await fetch(base + path, { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
   const gone = await napi('/api/v1/nodes', { action: 'enroll', name: 'oldbox' });
+  // delta is archived and, in the fixture, locked by an administrator, which
+  // refuses the settings change this needs (R119): lifted here, put back below.
+  writeFileSync(`${DIR}/state/locked-projects.json`, '{}');
   const was = (await (await fetch(`${base}/api/status`, { headers: H })).json()).projects.find(p => p.name === 'delta')?.prefs?.node || '';
   await napi('/api/prefs', { project: 'delta', node: gone.id });
   await napi('/api/v1/nodes', { action: 'retire', id: gone.id });
@@ -3868,6 +3915,7 @@ print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}
   ok(!theirs.opts.some(o => /oldbox/.test(o)), `another project's picker does not offer it (${JSON.stringify(theirs.opts)})`);
   await page.keyboard.press('Escape');
   await napi('/api/prefs', { project: 'delta', node: was });
+  writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ delta: { by: 'u_0000aaaa', admin: true } }));
 }
 
 await done(browser);

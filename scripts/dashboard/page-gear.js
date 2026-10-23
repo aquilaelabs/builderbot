@@ -322,7 +322,7 @@ function wireLogSection(el){
   // a box and then pressed at is what everybody tries first.
   inp.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); apply(); } };
   el.querySelector("#logClear").onclick = async () => {
-    if (!confirm("Delete every kept log except this session's?\n\n"
+    if (!await askYes("Delete every kept log except this session's?\n\n"
                  + "This session keeps writing to its own.")) return;
     try{
       const r = await postJSON("/api/logs", {action: "clear"});

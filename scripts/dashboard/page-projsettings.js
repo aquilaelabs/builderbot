@@ -544,7 +544,7 @@ function rnDrawPrefs(){
 async function unlinkProject(name){
   const p = (state?.projects || []).find(x => x.name === name);
   const where = p?.forge_host || p?.forge_name || "its remote";
-  if (!confirm(`Unlink ${projLabel(name)} from ${where}?\n\n`
+  if (!await askYes(`Unlink ${projLabel(name)} from ${where}?\n\n`
       + `The remote and its stored token go; every commit and branch stays. `
       + `You can link it elsewhere afterwards.`)) return;
   const stop = m => { $("rnErr").textContent = m; $("rnErrWrap").hidden = false;
@@ -1031,7 +1031,7 @@ function rnDrawSnapshots(){
     : "Snapshots kept is 0, so none are taken; the ones here go at the next daily look.")
     + (pinned ? ` ${pinned} pinned, kept until unpinned.` : "");
   const act = async (b, body, ask) => {
-    if (ask && !confirm(ask)) return;
+    if (ask && !await askYes(ask)) return;
     await pressing(b, async () => {
       const r = await postJSON("/api/snapshots", {project: name, ...body});
       const j = await r.json();
@@ -1645,7 +1645,7 @@ async function rnSubmit(sect, end = false){
 // touched at all. Putting one back is a mv. Friction proportionate to a
 // reversible act, and the dialog names the path so the reversal is obvious.
 async function deleteProject(name){
-  if (!confirm(`Delete ${projLabel(name)}?\n\n`
+  if (!await askYes(`Delete ${projLabel(name)}?\n\n`
       + `It moves to /workspace/.trash/${name}, with every file kept. Its `
       + `roadmap, bugs, versions, memories and containers stay where they are, `
       + `and Put back in the trash returns all of it.\n\n`

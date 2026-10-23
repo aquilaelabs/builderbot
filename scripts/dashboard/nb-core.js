@@ -303,7 +303,7 @@ function makeNotebook(project){
 
   async function rereadRoadmap(){
     if (nb.roadmapPending.length
-        && !confirm(`Reload? ${nb.roadmapPending.length} unsaved change`
+        && !await askYes(`Reload? ${nb.roadmapPending.length} unsaved change`
                     + `${nb.roadmapPending.length === 1 ? "" : "s"} of yours would go: `
                     + "the notebook is being replaced with what is on disk."))
       return;
@@ -467,12 +467,12 @@ function makeNotebook(project){
   // A notebook tab going away takes whatever is unsaved in it with it, so it is
   // the one tab close that asks. Answered here rather than in hideTab, which is
   // shared by every kind and should not learn about any of them.
-  function notebookLeaving(){
+  async function notebookLeaving(){
     const what = nbUnsaved();
     // The seat would time out on its own in under a minute; saying so is what
     // stops the other window claiming somebody is here who has just left.
     if (!what){ beat(true); return true; }
-    if (!confirm(`Close without saving? ${what} would be dropped.`)) return false;
+    if (!await askYes(`Close without saving? ${what} would be dropped.`)) return false;
     revertPending();
     nb.roadmapOrdering = false;
     beat(true);
@@ -499,7 +499,7 @@ function makeNotebook(project){
   async function revertSection(key){
     const st = nb.stagers[key];
     if (!st || !st.count()) return;
-    if (!confirm(`Revert ${st.what()}?\n\nIt goes back to what is on disk.`)) return;
+    if (!await askYes(`Revert ${st.what()}?\n\nIt goes back to what is on disk.`)) return;
     await st.revert();
     syncSave();
   }
@@ -625,7 +625,7 @@ function makeNotebook(project){
     if (v === cur) return true;
     const what = nbUnsaved();
     if (!what) return true;
-    if (!confirm(`Leave this tab? ${what} would be thrown away.\n\n`
+    if (!await askYes(`Leave this tab? ${what} would be thrown away.\n\n`
                  + "Unsaved work does not carry across the tabs: Save it "
                  + "first if you want to keep it.")) return false;
     revertPending();

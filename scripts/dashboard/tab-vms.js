@@ -192,7 +192,7 @@ function wireVms(el){
       if (held.length){
         if (!vmsData?.take?.[v.project])
           return notify(`${andList(held)} ${held.length > 1 ? "have" : "has"} ${v.name}'s Console open: it is one person's at a time. Its Screen can be shared, or ask them.`, true);
-        if (!confirm(`Take ${v.name}'s Console from ${andList(held)}?\n\nA console is one person's at a time: theirs ends, and they are told you took it. Its Screen can be shared instead.`)) return;
+        if (!await askYes(`Take ${v.name}'s Console from ${andList(held)}?\n\nA console is one person's at a time: theirs ends, and they are told you took it. Its Screen can be shared instead.`)) return;
         const j = await (await postJSON("/api/vms", {action: "console-take", project: v.project, name: v.name})).json();
         if (j.error) return notify(j.error, true);
       }
@@ -209,32 +209,35 @@ function wireVms(el){
     row.querySelectorAll("[data-vm]").forEach(b => b.onclick = () => pressing(b, async () => {
       const action = b.dataset.vm;
       const body = {action, project: v.project, name: v.name};
-      if (action === "remove" && !confirm(`Remove ${v.name}?\n\nThe VM is destroyed with its disk${
+      if (action === "remove" && !await askYes(`Remove ${v.name}?\n\nThe VM is destroyed with its disk${
             (v.snapshots || []).length ? ` and its ${v.snapshots.length} snapshot${v.snapshots.length === 1 ? "" : "s"}` : ""}${
             v.node_id ? ", and its node is retired with its credential revoked" : ""}. It cannot be undone.`)) return;
-      if (action === "stop" && b.dataset.force && !confirm(`Force ${v.name} to stop?\n\nIt stops at once, as if unplugged: what it had not saved is lost.`)) return;
-      if (action === "revert" && !confirm(`Revert ${v.name} to ${b.dataset.snap}?\n\nWhat changed in it since that snapshot is lost.`)) return;
-      if (action === "snapshot-rm" && !confirm(`Delete the snapshot ${b.dataset.snap} of ${v.name}?`)) return;
+      if (action === "stop" && b.dataset.force && !await askYes(`Force ${v.name} to stop?\n\nIt stops at once, as if unplugged: what it had not saved is lost.`)) return;
+      if (action === "revert" && !await askYes(`Revert ${v.name} to ${b.dataset.snap}?\n\nWhat changed in it since that snapshot is lost.`)) return;
+      if (action === "snapshot-rm" && !await askYes(`Delete the snapshot ${b.dataset.snap} of ${v.name}?`)) return;
       if (action === "snapshot"){
-        const name = prompt(`A name for this snapshot of ${v.name}: letters, digits, dots, dashes`, "before-" + new Date().toISOString().slice(0, 10));
+        const name = await askText(`A snapshot of ${v.name}\n\nIts name: letters, digits, dots and dashes.`,
+          {value: "before-" + new Date().toISOString().slice(0, 10), verb: "Take snapshot", label: "Name"});
         if (!name) return;
         body.snapshot = name.trim();
       }
       if (action === "disk-grow"){
         const devs = ["vda", "vdb", "vdc", "vdd"].slice(0, 1 + (v.disks || []).length);
         const sizes = [v.disk_gb, ...(v.disks || [])];
-        const dev = devs.length > 1 ? prompt(`Which disk of ${v.name}? ${devs.map((d, i) => `${d} (${sizes[i]} GB)`).join(", ")}`, "vda") : "vda";
+        const dev = devs.length > 1 ? await ask({text: `Which disk of ${v.name} grows?`,
+          choices: devs.map((d, i) => ({label: `${d}, ${sizes[i]} GB`, value: d}))}) : "vda";
         if (!dev || !devs.includes(dev.trim())) return;
-        const gb = prompt(`${dev.trim()} of ${v.name} is ${sizes[devs.indexOf(dev.trim())]} GB. Its new size in GB:`, String(sizes[devs.indexOf(dev.trim())] * 2));
+        const gb = await askText(`Grow ${dev.trim()} of ${v.name}\n\nIt is ${sizes[devs.indexOf(dev.trim())]} GB now.`,
+          {value: String(sizes[devs.indexOf(dev.trim())] * 2), verb: "Grow", label: "New size, GB"});
         if (!gb) return;
         body.disk = dev.trim(); body.gb = +gb;
       }
       if (action === "disk-add"){
-        const gb = prompt(`A further disk for ${v.name}, in GB:`, "20");
+        const gb = await askText(`Add a disk to ${v.name}`, {value: "20", verb: "Add disk", label: "Size, GB"});
         if (!gb) return;
         body.gb = +gb;
       }
-      if (action === "eject" && !confirm(`Eject ${v.iso} from ${v.name}?\n\nIts next boot is from its disk, where the installer put the system.`)) return;
+      if (action === "eject" && !await askYes(`Eject ${v.iso} from ${v.name}?\n\nIts next boot is from its disk, where the installer put the system.`)) return;
       if (b.dataset.snap) body.snapshot = b.dataset.snap;
       if (b.dataset.force) body.force = true;
       busy(b, {start: "Starting", stop: "Stopping", restart: "Restarting", remove: "Removing", snapshot: "Saving",

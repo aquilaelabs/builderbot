@@ -79,7 +79,7 @@ function nbGitView({$, nb, project}){
       : args?.branch ? `the branch ${args.branch} (${kind})`
       : args?.sha ? `the commit ${String(args.sha).slice(0, 7)} (${kind})`
       : `the ${kind}`;
-    if (!args?.confirmed && !sendSure(project, what)) return;
+    if (!args?.confirmed && !await sendSure(project, what)) return;
     if (btn) busy(btn, "Sending");
     try{
       const r = await postJSON("/api/git", {project, action: "ask", kind, args: args || {}});
@@ -169,16 +169,16 @@ function nbGitView({$, nb, project}){
       const r = await postJSON("/api/git", {project, action, args: args || {}});
       const j = await r.json();
       if (j.error){
-        if (j.unmerged && confirm(`${j.error}.\n\nDelete it anyway?`))
+        if (j.unmerged && await askYes(`${j.error}.\n\nDelete it anyway?`))
           return gitAct(action, {...args, force: true}, btn, verb);
         // Two branches with no commit in common (B234): usually the wrong
         // branch, and exactly right for a project that began without a
         // repository, so it is asked.
-        if (j.unrelated && confirm(`${j.error}.\n\nMerging joins them into one history. Join them?`))
+        if (j.unrelated && await askYes(`${j.error}.\n\nMerging joins them into one history. Join them?`))
           return gitAct(action, {...args, unrelated: true}, btn, verb);
         // A page drawn before the branch became somebody's: the server asks.
         if (j.confirm){
-          if (confirm(j.confirm)) return gitAct(action, {...args, confirmed: true}, btn, verb);
+          if (await askYes(j.confirm)) return gitAct(action, {...args, confirmed: true}, btn, verb);
           return j;
         }
         notify(j.error, true);
@@ -445,32 +445,32 @@ function nbGitView({$, nb, project}){
       const j = await gitAct("commit", {message: gitMsgDraft}, gitBusy(cm), "Committing");
       if (j && j.ok) gitMsgDraft = "";
     };
-    body.querySelectorAll("[data-gitdiscard]").forEach(b => b.onclick = () => {
+    body.querySelectorAll("[data-gitdiscard]").forEach(b => b.onclick = async () => {
       const path = b.dataset.gitdiscard;
-      if (confirm(`Discard the changes to ${path}?\n\nIt goes back to the last commit; the change is lost.`))
+      if (await askYes(`Discard the changes to ${path}?\n\nIt goes back to the last commit; the change is lost.`))
         gitAct("discard", {path}, gitBusy(b), "Discarding");
     });
     body.querySelectorAll("[data-gitswitch]").forEach(b => b.onclick = () =>
       gitAct("switch", {name: b.dataset.gitswitch}, gitBusy(b), "Switching"));
     wireBranchActs(body);
-    body.querySelectorAll("[data-gitdeleteremote]").forEach(b => b.onclick = () => {
+    body.querySelectorAll("[data-gitdeleteremote]").forEach(b => b.onclick = async () => {
       const name = b.dataset.gitdeleteremote;
-      if (!confirm(`Delete ${name} on ${git.host?.name || "the remote"}? Every commit on it is in ${
+      if (!await askYes(`Delete ${name} on ${git.host?.name || "the remote"}? Every commit on it is in ${
           git.main || "main"} already, so nothing is lost; the branch stops being listed there.`)) return;
       gitAct("delete-remote", {name}, gitBusy(b), "Deleting");
     });
     body.querySelectorAll("[data-gitdeletemerged]").forEach(b => b.onclick = async () => {
       const names = b.dataset.gitdeletemerged.split(" ").filter(Boolean);
-      if (!confirm(`Delete ${names.length === 1 ? names[0] : names.length + " branches"}? Everything on ${
+      if (!await askYes(`Delete ${names.length === 1 ? names[0] : names.length + " branches"}? Everything on ${
           names.length === 1 ? "it" : "them"} is in ${git.main || "main"} already.`)) return;
       busy(b, "Deleting");
       for (const name of names) await gitAct("delete", {name});
     });
     body.querySelectorAll("[data-gitaskfile]").forEach(b => b.onclick = () =>
       gitAsk("diff", {path: b.dataset.gitaskfile}, gitBusy(b)));
-    body.querySelectorAll("[data-gitdelete]").forEach(b => b.onclick = () => {
+    body.querySelectorAll("[data-gitdelete]").forEach(b => b.onclick = async () => {
       const name = b.dataset.gitdelete;
-      if (confirm(`Delete the branch ${name}?`)) gitAct("delete", {name}, gitBusy(b), "Deleting");
+      if (await askYes(`Delete the branch ${name}?`)) gitAct("delete", {name}, gitBusy(b), "Deleting");
     });
     body.querySelectorAll(".gfile").forEach(d => {
       d.addEventListener("toggle", () => {
@@ -577,15 +577,15 @@ function nbGitView({$, nb, project}){
     root.querySelectorAll("[data-gitmerge]").forEach(b => b.onclick = async () => {
       const name = b.dataset.gitmerge, into = b.dataset.gitinto || here;
       const who = b.dataset.gitwho, their = b.dataset.gitinto ? name : into;
-      if (who && !confirm(`Merge ${name} into ${into}?\n\n${their} is ${who}'s session's branch.`)) return;
+      if (who && !await askYes(`Merge ${name} into ${into}?\n\n${their} is ${who}'s session's branch.`)) return;
       const j = await gitAct("merge", {name, ...(b.dataset.gitinto ? {into: b.dataset.gitinto} : {}), ...(who ? {confirmed: true} : {})},
              gitBusy(b), "Merging");
       if (j?.ok && gitCmp === name) gitGoCompare("");
     });
-    root.querySelectorAll("[data-gitaskbranch]").forEach(b => b.onclick = () => {
+    root.querySelectorAll("[data-gitaskbranch]").forEach(b => b.onclick = async () => {
       const kind = b.dataset.gitaskkind || "merge";
       const name = b.dataset.gitaskbranch, who = b.dataset.gitwho, moves = kind === "merge" || kind === "rebase";
-      if (who && moves && !confirm(`Ask Claude to ${kind} ${name} ${kind === "merge" ? "into" : "onto"} ${main}?\n\n${name} is ${who}'s session's branch.`)) return;
+      if (who && moves && !await askYes(`Ask Claude to ${kind} ${name} ${kind === "merge" ? "into" : "onto"} ${main}?\n\n${name} is ${who}'s session's branch.`)) return;
       gitAsk(kind, {branch: name, ...(who && moves ? {confirmed: true} : {})}, gitBusy(b));
     });
   }
@@ -708,8 +708,8 @@ function nbGitView({$, nb, project}){
         ${renderDiff(c.diff)}
       </div>`;
       revealCommit(box, sha);
-      box.querySelectorAll("[data-gitrevert]").forEach(b => b.onclick = () => {
-        if (confirm(`Revert ${c.short}: ${c.message.split("\n")[0]}?\n\nA new commit undoes it; the history keeps both.`))
+      box.querySelectorAll("[data-gitrevert]").forEach(b => b.onclick = async () => {
+        if (await askYes(`Revert ${c.short}: ${c.message.split("\n")[0]}?\n\nA new commit undoes it; the history keeps both.`))
           gitAct("revert", {sha: b.dataset.gitrevert}, gitBusy(b), "Reverting");
       });
       box.querySelectorAll("[data-gitaskcommit]").forEach(b => b.onclick = () =>

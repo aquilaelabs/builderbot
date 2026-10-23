@@ -116,7 +116,7 @@ async function killSession(name, node = ""){
   const proj = sessionProject(name);
   const said = claude ? `the ${ag.agent.name} session on ${proj ? projLabel(proj) : name}`
     : `the session "${sessionLabels().get(name) || name}"`;
-  if (!confirm(claude
+  if (!await askYes(claude
         ? `End ${said}?\n\nThe transcript is kept and can be `
           + `resumed later, but the conversation stops now.`
         : `End ${said}?\n\nAnything running in it is terminated.`)) return;

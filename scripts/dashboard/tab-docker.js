@@ -1066,7 +1066,7 @@ async function dmAction(project, instance, act, btn){
   // from the row it is about.
   if (act === "nginx-update"){
     const d = (dockerList?.instances || []).find(i => i.project === project && i.instance === instance);
-    if (!confirm(`Update nginx on this node to nginx:${d?.nginx_to || "the newest line"}?\n\nIt is rebuilt with the new image, so its sites are down while the node pulls it.`)) return;
+    if (!await askYes(`Update nginx on this node to nginx:${d?.nginx_to || "the newest line"}?\n\nIt is rebuilt with the new image, so its sites are down while the node pulls it.`)) return;
     if (btn) busy(btn, "Updating");
     try{
       const j = await (await postJSON("/api/nginx", {action: "update", node: dockerList?.node || dockerNode})).json();
@@ -1080,10 +1080,10 @@ async function dmAction(project, instance, act, btn){
   }
   if (act === "update"){
     const d = (dockerList?.instances || []).find(i => i.project === project && i.instance === instance);
-    if (!confirm(`Update ${d?.name || project}?\n\nThe newer ${(d?.images_behind || []).join(", ")} is pulled and it starts again on it, so it is down for a moment.`)) return;
+    if (!await askYes(`Update ${d?.name || project}?\n\nThe newer ${(d?.images_behind || []).join(", ")} is pulled and it starts again on it, so it is down for a moment.`)) return;
   }
-  if (act === "down" && !confirm(`Take ${dmCalled(project, instance)} down?`)) return;
-  if (act === "remove" && !confirm(
+  if (act === "down" && !await askYes(`Take ${dmCalled(project, instance)} down?`)) return;
+  if (act === "remove" && !await askYes(
       `Remove ${dmCalled(project, instance)}?\n\n`
       // Which of the two halves is actually going to happen. A row whose
       // daemon is not answering loses the down, and somebody removing one
@@ -1120,12 +1120,12 @@ async function dmAction(project, instance, act, btn){
       notify(`the env is missing ${st.missing_env.join(", ")}: press Env`, true);
       return;
     }
-    if (act === "rebuild" && !confirm(
+    if (act === "rebuild" && !await askYes(
         (st.built_rev ? `Rebuild ${dmCalled(project, instance)}?\n\nBuilds the image, then down and up. `
                       : `Build ${dmCalled(project, instance)}?\n\nBuilds the first image and brings it up. `)
         + "New env settings stop it before up; the Env editor keeps your old values in comments.")) return;
     if (!st.risks_ack){
-      if (!confirm("This compose file asks for more than its own directory:"
+      if (!await askYes("This compose file asks for more than its own directory:"
           + "\n\n" + (st.risks || []).map(x => "\u2022 " + x).join("\n")
           + "\n\nStart it anyway?")) return;
       ack = st.risks_digest || "";
@@ -1134,7 +1134,7 @@ async function dmAction(project, instance, act, btn){
     // operator, 17 Oct: the person knows what is actually being shipped):
     // named, and a yes is this press's; a no leaves it unbuilt.
     if ((st.beside_new || []).length){
-      if (!confirm(`${projLabel(project)}'s compose now runs ${st.beside_new.join(", ")} beside the app, which its last build did not ship.`
+      if (!await askYes(`${projLabel(project)}'s compose now runs ${st.beside_new.join(", ")} beside the app, which its last build did not ship.`
           + "\n\nShip it with the app? If it is not part of the app, cancel and give it a container of its own with New container.")) return;
       beside = st.beside_digest || "";
     }
@@ -1552,7 +1552,7 @@ async function cSubmit(){
     const row = (dockerList?.instances || []).find(
       d => d.project === editing && d.instance === "main");
     dockerList = null; dockerRev++; loadDocker();
-    if (row?.built_rev && confirm(
+    if (row?.built_rev && await askYes(
           `${editing} is saved. Rebuild it now so the change takes effect?\n\n`
           + `Cancel keeps the change on disk for a later Rebuild.`)){
       dmAction(editing, "main", "rebuild", null);
@@ -1990,6 +1990,17 @@ async function loadDockerImages(det){
     {label: "reclaimable", value: humanBytes((df("Images").reclaimable || 0) + (df("Local Volumes").reclaimable || 0)),
      sub: "by the two prunes", omit: !(j.df || []).length},
   ]).replace(/^<div class="field">|<\/div>$/g, "")
+  // The prunes under the numbers they act on, before the lists (the
+  // operator, 23 Oct: at the foot they were a long scroll away).
+  // Red only where something is lost (the operator, 23 Oct): dangling
+  // layers and an old build cache are nobody's, and come back by building;
+  // an unused image may be one to start from later (one built here is gone
+  // until it is built again), and a volume is data. Safe first.
+  + (mayDocker() ? `<div class="actbar dmprunes"><span class="state">a prune removes only what no container uses</span>
+      <button type="button" data-dmprune="images" title="docker image prune: dangling images, the layers left by rebuilds">Prune images</button>
+      <button type="button" data-dmprune="cache" title="docker builder prune: the build cache, a week old; the next build rebuilds what it needs">Prune build cache</button>
+      <button type="button" class="danger" data-dmprune="unused" title="docker image prune -a: images no container uses, two weeks old; one built here is gone until it is built again">Prune unused images</button>
+      <button type="button" class="danger" data-dmprune="volumes" title="docker volume prune: volumes no container uses, and the data in them">Prune volumes</button></div>` : "")
   // Two tables (R218 step 8): each image with its state, id, size and age,
   // then each volume with its driver.
   + ((j.images || []).length ? tblWrap(DM_IMG_COLS, j.images.map(i => `
@@ -2001,19 +2012,15 @@ async function loadDockerImages(det){
   + ((j.volumes || []).length ? tblWrap(DM_VOL_COLS, j.volumes.map(v => `
       <div class="row dmvol">${tblLine(DM_VOL_COLS, [esc(v.name), esc(v.driver)])}</div>`).join(""), "dmvols")
       : `<div class="hint">no volumes on this daemon</div>`)
-  + `
-    ${mayDocker() ? `<div class="actbar"><span class="state">a prune removes only what no container uses</span>
-      <button type="button" class="danger" data-dmprune="images" title="docker image prune: dangling images">Prune images</button>
-      <button type="button" class="danger" data-dmprune="volumes" title="docker volume prune: volumes no container uses">Prune volumes</button>
-      <button type="button" class="danger" data-dmprune="unused" title="docker image prune -a: images no container uses, two weeks old">Prune unused images</button>
-      <button type="button" class="danger" data-dmprune="cache" title="docker builder prune: the build cache, a week old">Prune build cache</button></div>` : ""}`;
+;
   box.querySelectorAll("[data-dmprune]").forEach(b => b.onclick = async () => {
     const kind = b.dataset.dmprune;
     const what = {images: "Dangling images go; images a container uses stay.",
                   volumes: "Volumes no container uses go, with their data.",
                   unused: "Images no container uses and two weeks old go; a rebuild pulls or builds them again.",
                   cache: "The build cache a week old goes; the next build of what used it is slower."}[kind];
-    if (!confirm(`Prune ${kind === "cache" ? "the build cache" : kind === "unused" ? "unused images" : kind} on ${dockerList?.name || "this node"}?\n\n${what}`)) return;
+    if (!await askYes(`Prune ${kind === "cache" ? "the build cache" : kind === "unused" ? "unused images" : kind} on ${dockerList?.name || "this node"}?\n\n${what}`,
+                      {verb: "Prune", danger: kind === "unused" || kind === "volumes"})) return;
     busy(b, "Pruning");
     const r = await (await postJSON("/api/dockerctl", {action: "prune", container: kind, node})).json().catch(() => ({error: "no answer"}));
     if (r.error) notify(r.error, true);
@@ -2124,7 +2131,7 @@ function dmWireRows(el, list = dockerList){
   el.querySelectorAll("[data-dmunpack]").forEach(a => a.onclick = async e => {
     e.preventDefault();
     const [project, instance] = a.closest("[data-inst]").dataset.inst.split("|");
-    if (!confirm("Unpack its data into its volumes? It stops, the archive is written in over anything already in them, and it starts again.")) return;
+    if (!await askYes("Unpack its data into its volumes? It stops, the archive is written in over anything already in them, and it starts again.")) return;
     const j = await (await postJSON("/api/devapp", {project, instance, action: "unpack"})).json().catch(() => ({error: "no answer"}));
     if (j.error) return notify(j.error, true);
     notify(`unpacking ${j.name}: its row says when it is done`);
@@ -2213,7 +2220,7 @@ function dmWireRows(el, list = dockerList){
   const node = list?.node || dockerNode;
   el.querySelectorAll("[data-ctl]").forEach(b => b.onclick = async () => {
     const what = b.dataset.ctl, ctr = b.dataset.ctr;
-    if (what === "stop" && !confirm(`Stop ${ctr}?`)) return;
+    if (what === "stop" && !await askYes(`Stop ${ctr}?`)) return;
     busy(b, {start: "Starting", stop: "Stopping", restart: "Restarting"}[what]);
     try{
       const r = await postJSON("/api/dockerctl", {action: what, container: ctr, node});
@@ -2276,7 +2283,7 @@ function dmWireRows(el, list = dockerList){
     const [project, instance] = key.split("|");
     const what = (list?.instances || []).find(
       x => x.project === project && x.instance === instance)?.name || project;
-    if (!confirm(`Move ${what} to ${projLabel(to)}? It keeps its name, env and data, and builds from ${
+    if (!await askYes(`Move ${what} to ${projLabel(to)}? It keeps its name, env and data, and builds from ${
         projLabel(to)}'s tree from its next rebuild.`)){ delete dmMoveDraft[key]; return; }
     const r = await postJSON("/api/devapp", {action: "move", project, instance, to});
     const j = await r.json();
@@ -2309,7 +2316,7 @@ function dmWireRows(el, list = dockerList){
     const sel = row.querySelector('[data-route="mode"]');
     const mode = sel?.value || "lan";
     const port = row.querySelector('[data-route="port"]')?.value || "";
-    if (mode === "funnel" && sel.dataset.was !== "funnel" && !confirm(
+    if (mode === "funnel" && sel.dataset.was !== "funnel" && !await askYes(
         `Open ${dmCalled(project, instance)} to the internet?\n\nAnyone with the link can reach the port until the route goes back to lan.`)){
           row.querySelectorAll("[data-route]").forEach(x => { x.value = x.dataset.was; });
           delete dmRouteDraft[row.dataset.inst]; return; }
@@ -2416,17 +2423,20 @@ function dmGroupsHtml(ins, cs, job, blind, only = ""){
   // System is BuilderBot's own (R180): what it deploys itself, the nginx
   // container today, set by that deployment and by no picker.
   // Each group a card at a desk (R262): its heading and its rows together.
-  const card = (html, cls = "") => `<section class="dmcard${cls}">${html}</section>`;
+  // Each card names itself as a place the page's jump bar goes (sectJump).
+  const card = (html, cls = "", title = "") => `<section class="dmcard${cls}"${
+    title ? ` data-jtitle="${esc(title)}"` : ""}>${html}</section>`;
   return owners.map(o => gone(o)
-      ? card(head(`${gonesName(o)} (deleted)`, "restore it from the trash, or Move these to another project", null) + group(o))
+      ? card(head(`${gonesName(o)} (deleted)`, "restore it from the trash, or Move these to another project", null) + group(o),
+             "", `${gonesName(o)} (deleted)`)
       : o === "System"
-        ? card(head("System", "BuilderBot's own · no session sees these", null) + group(o))
+        ? card(head("System", "BuilderBot's own · no session sees these", null) + group(o), "", "System")
         : notMine(o)
           ? card(head(projLabel(o), "", colorTone(projectColor(o)))
               + `<div class="sub bad dmwhy">${esc(projLabel(o))} is not on your list of projects: add it to your own list on ${
-                  pageLink("users", "the Users page")} to work on these</div>` + group(o), " notmine")
-          : card(head(projLabel(o), "", colorTone(projectColor(o))) + group(o))).join("")
-    + (loose ? card(head("No project", "no session sees these", null) + group("")) : "");
+                  pageLink("users", "the Users page")} to work on these</div>` + group(o), " notmine", projLabel(o))
+          : card(head(projLabel(o), "", colorTone(projectColor(o))) + group(o), "", projLabel(o))).join("")
+    + (loose ? card(head("No project", "no session sees these", null) + group(""), "", "No project") : "");
 }
 
 // The groups the chips offer: each project with containers here, by its

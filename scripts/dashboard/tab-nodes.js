@@ -100,7 +100,7 @@ async function loadNodesOnce(seq){
 // Only the gap: the repaint that follows draws the real state (n.applying,
 // the runner's census, a queued job) and replaces this element entirely, so
 // the restore below fires only when nothing repainted: an error, or an
-// action that changes no state. Put the confirm() BEFORE the call, so
+// action that changes no state. Put the await askYes() BEFORE the call, so
 // canceling leaves the button alive.
 async function pressing(btn, fn){
   if (!btn || btn.disabled) return undefined;
@@ -1101,6 +1101,24 @@ async function ndStoreAsk(n, c){
   const roles = Object.keys(d.stores || {}).filter(r => norm(d.stores[r]) && norm(d.stores[r]) !== now(r));
   const was = new Set((desired.mounts || []).map(m => norm(m.path)));
   const mounts = (d.mounts || []).map(m => norm(m.path)).filter(p => p && !was.has(p));
+  // Mounts saved here that the node does not have as they are written: new,
+  // or pointed at another export (the operator, 23 Oct). A store inside one
+  // is placed only once Apply has mounted it, and what is on the share
+  // cannot be seen from here before then.
+  const repM = n?.reported?.mounts || [];
+  const pending = (d.mounts || []).filter(m => norm(m.path) && !repM.some(r => norm(r.path) === norm(m.path)
+    && String(r.source || "") === String(m.source || "") && r.mounted && !r.stale));
+  const coverOf = p => pending.filter(m => p === norm(m.path) || p.startsWith(norm(m.path) + "/"))
+    .sort((a, b) => norm(b.path).length - norm(a.path).length)[0];
+  // ...and a store that stays where it is but would sit under one of them,
+  // whose data on the node's own disk the share then covers.
+  const covered = Object.entries(d.stores || {}).filter(([r, p]) => norm(p) && norm(p) === now(r) && coverOf(norm(p)))
+    .map(([r, p]) => ({role: r, path: norm(p), mount: norm(coverOf(norm(p)).path)}));
+  for (const c of covered){
+    if (!await askYes(`Mount a share at ${c.mount} on ${n.name}?\n\nThe ${c.role} store is in ${c.path}, inside it. `
+        + `Once the share is mounted the store reads what is on the share, and what is in ${c.path} on the `
+        + `node's own disk is covered until it is unmounted; it is not deleted.`)) return false;
+  }
   if (!roles.length && !mounts.length) return true;
   const ask = [...new Set([...roles.map(r => norm(d.stores[r])), ...roles.map(now).filter(Boolean), ...mounts])];
   let j;
@@ -1112,7 +1130,7 @@ async function ndStoreAsk(n, c){
   const at = p => j.paths?.[p] || {};
   for (const p of mounts){
     if (at(p).why){ notify(`the mount at ${p}: ${at(p).why}`, true); return false; }
-    if (at(p).files && !confirm(`Mount the share at ${p} on ${n.name}?\n\n${p} already has files in it. `
+    if (at(p).files && !await askYes(`Mount the share at ${p} on ${n.name}?\n\n${p} already has files in it. `
         + `The share covers them until it is unmounted; they are not deleted.`)) return false;
   }
   const keep = [];
@@ -1120,21 +1138,35 @@ async function ndStoreAsk(n, c){
     const want = norm(d.stores[role]), st = at(want), old = now(role);
     if (st.why){ notify(`the ${role} store: ${st.why}`, true); return false; }
     let to = want, already = false;
-    if (st.files){
+    const cv = coverOf(want);
+    if (cv){
+      if (!await askYes(`Put the ${role} store in ${want} on ${n.name}?\n\n${want} is inside ${norm(cv.path)}, a mount `
+          + `saved here that the node does not have yet${(repM.find(r => norm(r.path) === norm(cv.path)) || {}).source
+            ? ` (it mounts another export there now)` : ""}, so what is on the share cannot be seen until it is `
+          + `mounted. Apply mounts it first and only then puts the store there; if the mount does not come up, `
+          + `the apply fails and ${role} stays in ${old || "its place"}.`)) return false;
+    } else if (st.files){
       to = st.sub; already = !!st.sub_state?.files;
-      if (!confirm(`Put the ${role} store in ${want} on ${n.name}?\n\n${want} already has files in it, so the `
+      if (!await askYes(`Put the ${role} store in ${want} on ${n.name}?\n\n${want} already has files in it, so the `
           + `store goes in a folder for this node inside it, ${to}, and the setting changes to that.`
           + (already ? `\n\n${to} already holds files of its own: the store uses what is there, and `
                        + `nothing is brought across from ${old || "the old place"}.` : ""))) return false;
       d.stores[role] = to;
-    } else if (!confirm(`Put the ${role} store in ${want} on ${n.name}?\n\n`
+    } else if (!await askYes(`Put the ${role} store in ${want} on ${n.name}?\n\n`
         + (st.exists ? `${want} is empty.` : `${want} does not exist yet, and is made.`))) return false;
     // A cache is never brought across (it is rebuilt); nor is an old place
     // with nothing in it, or a store going where files already are.
     const hasData = role !== "cache" && old && at(old).files;
-    if (already || (hasData && !confirm(`Bring the ${role} data across from ${old} to ${to}?\n\n`
-        + `OK copies it there; the copy in ${old} stays for you to remove. Cancel leaves it where it `
-        + `is, and ${to} starts empty.`))) keep.push(role);
+    // Its own question with its own answers (the operator, 23 Oct: OK for
+    // yes and Cancel for no was messy): Yes, No, and Cancel to stop.
+    if (already){ keep.push(role); continue; }
+    if (!hasData) continue;
+    const bring = await ask({text: `Bring the ${role} data across from ${old} to ${to}?\n\n`
+        + `Yes copies it there, and the copy in ${old} stays for you to remove. No leaves it where it `
+        + `is, and ${to} starts empty.`,
+      choices: [{label: "Yes", value: "yes"}, {label: "No", value: "no"}]});
+    if (bring === null) return false;
+    if (bring === "no") keep.push(role);
   }
   d.keep = keep;
   return true;
@@ -1211,19 +1243,21 @@ function nodeConfSections(n){
     const [st, cls] = mountState(m, rep.mounts);
     return `
     <div class="ndmount ctlline" data-i="${i}">
-      <select data-k="type" aria-label="type">
-        <option value="nfs" ${m.type !== "virtiofs" ? "selected" : ""}>nfs</option>
-        <option value="virtiofs" ${m.type === "virtiofs" ? "selected" : ""}>virtiofs</option>
-      </select>
       <div class="setrow col ctlrow">${lbl("", "Source", m.type === "virtiofs" ? "the share tag" : "host:/export")}
       <input data-k="source" value="${esc(m.source || "")}" spellcheck="false" autocomplete="off"
         placeholder="${m.type === "virtiofs" ? "appdata" : "nas:/mnt/user/appdata"}" aria-label="source"></div>
       <div class="setrow col ctlrow">${lbl("", "Mountpoint", "blank means /mnt/ and the export's name")}
       <input data-k="path" value="${esc(m.path || "")}" spellcheck="false" autocomplete="off"
         placeholder="/mnt/appdata" aria-label="mountpoint"></div>
-      <label class="ndcap"><input type="checkbox" data-k="ro" ${m.ro ? "checked" : ""}> read-only</label>
-      <button type="button" class="eye" data-mrm title="take this mount out">×</button>
-      <div class="sub ndmstate ${cls}">${esc(st)}</div>
+      <div class="ndmline">
+        <select data-k="type" aria-label="type">
+          <option value="nfs" ${m.type !== "virtiofs" ? "selected" : ""}>nfs</option>
+          <option value="virtiofs" ${m.type === "virtiofs" ? "selected" : ""}>virtiofs</option>
+        </select>
+        <label class="ndcap"><input type="checkbox" data-k="ro" ${m.ro ? "checked" : ""}> read-only</label>
+        <span class="sub ndmstate ${cls}">${esc(st)}</span>
+        <button type="button" class="eye" data-mrm title="take this mount out" aria-label="take this mount out">×</button>
+      </div>
     </div>`;
   }).join("");
   const STORE_ABOUT = {
@@ -1299,8 +1333,12 @@ function nodeConfSections(n){
   };
   const [storStatus, storStatusCls] = lineFor("storage");
   const [status, statusCls] = lineFor("network");
+  // Save and Revert in the save bar's order (saveBar), Revert putting the
+  // fields back to what is saved; Apply after them.
   const saveBtn = `<button type="button" data-nsave ${c.dirty ? "" : "disabled"}
-      title="save these settings; Apply puts them on the node">Save</button>`;
+      title="save these settings; Apply puts them on the node">Save</button>
+    <button type="button" class="caution" data-nrevert ${c.dirty ? "" : "disabled"}
+      title="put the fields back to what is saved">Revert</button>`;
   const storage = `
       <div class="sub">Mounts at boot.${
         d.fromNode ? ` <span class="dim">As the node reports them; save to manage them from here.</span>` : ""}</div>
@@ -1835,7 +1873,7 @@ async function nodeProjectRemove(b, name, id){
   const node = p.prefs?.node === id ? (rest[0] || "") : (p.prefs?.node || "");
   const inIt = c => { const m = /^\/workspace\/(?:\.worktrees\/)?([^/]+)/.exec(c || ""); return m && m[1] === name; };
   const here = (state?.sessions || []).filter(x => x.node_id === id && inIt(x.cwd));
-  if (!confirm(`Remove ${projLabel(name)} from ${nname}?\n\n`
+  if (!await askYes(`Remove ${projLabel(name)} from ${nname}?\n\n`
         + (rest.length ? "" : "It is then on no node: nothing builds, tests or opens a session for it until one is picked. ")
         + (here.length ? `Its ${here.length} session${here.length === 1 ? "" : "s"} open there keep running until closed. ` : "")
         + "Its containers there keep running, and the Containers page still reaches them.")) return;
@@ -2279,7 +2317,7 @@ function wireNodesTab(root){
       const act = b.dataset.nd;
       if (act === "disable" || act === "enable"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        if (act === "disable" && !confirm(`Disable ${name}?\n\nIt stays enrolled and keeps its configuration, but no project can add it, `
+        if (act === "disable" && !await askYes(`Disable ${name}?\n\nIt stays enrolled and keeps its configuration, but no project can add it, `
               + "no picker offers it, and it is handed no work or session until you press Enable.")) return;
         busy(b, act === "disable" ? "Disabling" : "Enabling");
         const j = await nodeAct({action: act, id});
@@ -2293,18 +2331,18 @@ function wireNodesTab(root){
         return;
       }
       if (act === "retire"
-          && !confirm("Remove this node from every list? Its containers and "
+          && !await askYes("Remove this node from every list? Its containers and "
                       + "its data stay on the machine; the row is kept as "
                       + "history.")) return;
       if (act === "uninstall"
-          && !confirm("Uninstall BuilderBot from this machine?\n\nThe agent, its accounts, "
+          && !await askYes("Uninstall BuilderBot from this machine?\n\nThe agent, its accounts, "
                       + "mounts and runners are removed. Docker and the shares stay. "
                       + "Enrolling it again starts from scratch.")) return;
       // A reboot ends every session on the node, so the press names them,
       // as Update agent's does; a shutdown also does not come back by itself.
       if (act === "lockdown"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        if (!confirm(`Lock down ${name}?\n\nFrom now it may ask this controller for nothing but the job that stops `
+        if (!await askYes(`Lock down ${name}?\n\nFrom now it may ask this controller for nothing but the job that stops `
               + "every container there, its nginx with them, keeps them from starting at a boot and shuts its SSH door. "
               + "Its credential is revoked when that job ends, or in five minutes if the box never answers, and the node is removed.\n\n"
               + "If the box itself may be taken over, also power it off from its provider's console: that stop does not need the agent.")) return;
@@ -2317,7 +2355,7 @@ function wireNodesTab(root){
           ? `It ends the ${here.length} session${here.length === 1 ? "" : "s"} open there`
             + `${mine.length ? ` (${mine.length} of them a ${agentsWord(mine.map(x => x.name))} conversation)` : ""}; transcripts are kept. `
           : "";
-        if (!confirm(act === "reboot"
+        if (!await askYes(act === "reboot"
               ? `Reboot ${name}?\n\n${open}Whatever is running there stops; the agent dials in again when the machine is back up.`
               : `Shut down ${name}?\n\n${open}It does not come back on its own: switch it on from its console or its hypervisor.`)) return;
       }
@@ -2330,7 +2368,7 @@ function wireNodesTab(root){
       if (act === "update-agent"){
         const here = (state?.sessions || []).filter(x => x.node_id === id);
         const mine = here.filter(x => agentOfSession(tmuxBase(x.name)));
-        if (here.length && !confirm(
+        if (here.length && !await askYes(
               `Update the agent on ${
                 (nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
               + `This ends the ${here.length} session`
@@ -2339,7 +2377,7 @@ function wireNodesTab(root){
               + `. Transcripts are kept; whatever they were running stops.`)) return;
       }
       if (act === "gpu-display"
-          && !confirm(`Set up the GPU display on ${(nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
+          && !await askYes(`Set up the GPU display on ${(nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
                       + "This installs the NVIDIA driver and a headless X server on the card, which "
                       + "takes minutes, and the driver takes the card only after a reboot: the row "
                       + "says when to press Reboot.")) return;
@@ -2348,25 +2386,25 @@ function wireNodesTab(root){
       if (act === "sync-stop"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
         const here = (state?.sessions || []).filter(x => x.node_id === id);
-        if (!confirm(`Stop syncing ${name}?\n\n`
+        if (!await askYes(`Stop syncing ${name}?\n\n`
               + (here.length ? `This ends the ${here.length} session${here.length === 1 ? "" : "s"} open there; transcripts are kept. ` : "")
               + "No session starts there while it sends up what is left; then Clean up /workspace removes its copies.")) return;
       }
       if (act === "sync-clean"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        if (!confirm(`Remove the project copies on ${name}?\n\n`
+        if (!await askYes(`Remove the project copies on ${name}?\n\n`
               + "Everything there has reached the controller. The node then holds no projects until it moves to a synced copy again.")) return;
       }
       if (act === "host-only"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        if (!confirm(`Make ${name} hosting only?\n\nIt keeps running the containers sent to it. `
+        if (!await askYes(`Make ${name} hosting only?\n\nIt keeps running the containers sent to it. `
               + "No project may list it, no session or synced copy runs there, and its agent may ask "
               + "the controller for nothing but its own jobs. A project that lists it now has to be "
               + "moved off it first.")) return;
       }
       if (act === "discard"){
         const n = (nodesList || []).find(x => x.id === id);
-        if (!confirm(`Discard ${n?.name || "this row"}?\n\nNothing has enrolled with its script, so the row goes outright and the script it was made for stops working.`)) return;
+        if (!await askYes(`Discard ${n?.name || "this row"}?\n\nNothing has enrolled with its script, so the row goes outright and the script it was made for stops working.`)) return;
       }
       if (act === "reenroll"){
         const n = (nodesList || []).find(x => x.id === id);
@@ -2375,16 +2413,16 @@ function wireNodesTab(root){
       }
       if (act === "door" && b.dataset.on === "0"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        if (!confirm(`Shut the SSH door on ${name}?\n\nNothing reaches its port 22 through the tunnel until it is opened again from here.`)) return;
+        if (!await askYes(`Shut the SSH door on ${name}?\n\nNothing reaches its port 22 through the tunnel until it is opened again from here.`)) return;
       }
       if (act === "feature" && b.dataset.op === "remove"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        if (!confirm(b.dataset.feature === "vmhost"
+        if (!await askYes(b.dataset.feature === "vmhost"
               ? `Uninstall VM host from ${name}?\n\nThe packages BuilderBot added for it come off; what the machine had before stays. It is refused while any VM is still there.`
               : `Turn the hosting firewall off on ${name}?\n\nEvery port this box and its containers publish is reachable from the internet again.`)) return;
       }
       if (act === "cache-clear"
-          && !confirm("Clear this node's build caches? Every project's Gradle, "
+          && !await askYes("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "
                       + "each re-downloads what it needs.")) return;
       // The verb, said on the button for the round trip and, for the
@@ -2686,7 +2724,7 @@ function wireNodeConf(row, id){
   fold.querySelectorAll("[data-nrunner]").forEach(b => b.onclick = async () => {
     const n = nodesList.find(x => x.id === id);
     const want = b.dataset.nrunner === "install", slot = b.dataset.slot;
-    if (!want && !confirm(`Remove the runner ${slot} from ${n?.name || "this node"}?\n\nIt is deregistered `
+    if (!want && !await askYes(`Remove the runner ${slot} from ${n?.name || "this node"}?\n\nIt is deregistered `
         + `from its host first; workflows that target its label will wait for a runner.`)) return;
     // The runner's own labels, kept on its record since it was added; new
     // ones typed in an open form apply to the install pressed next.
@@ -2709,12 +2747,15 @@ function wireNodeConf(row, id){
     if (c.draft.runner) c.draft.runner.token = "";
     if (!r.error){ c.addRunner = false; c.draft.runner = undefined; nodesRev++; drawPanes(); }
   });
-  fold.querySelectorAll("[data-nrunnerforget]").forEach(b => b.onclick = () => {
+  fold.querySelectorAll("[data-nrunnerforget]").forEach(b => b.onclick = async () => {
     const slot = b.dataset.slot;
-    if (!confirm(`Forget the token for ${slot}?\n\nA runner already registered keeps running; installing or removing one later needs a token again.`)) return;
+    if (!await askYes(`Forget the token for ${slot}?\n\nA runner already registered keeps running; installing or removing one later needs a token again.`)) return;
     pressing(b, async () => { busy(b, "Forgetting");
       const r = await nodeAct({action: "runner-forget", id, slot});
       if (!r.error){ nodesRev++; drawPanes(); } });
+  });
+  fold.querySelectorAll("[data-nrevert]").forEach(b => b.onclick = () => {
+    c.draft = null; c.dirty = false; nodesRev++; drawPanes();
   });
   fold.querySelectorAll("[data-nsave]").forEach(save => { save.onclick = () => pressing(save, async () => {
     const was = save.textContent;
@@ -2728,14 +2769,14 @@ function wireNodeConf(row, id){
     const what = b.dataset.napply;
     const n = nodesList.find(x => x.id === id);
     const desired = n?.config?.desired || {};
-    if (what === "network" && !confirm(
+    if (what === "network" && !await askYes(
         `Apply the network change to ${n?.name || "this node"}?\n\nThe node re-addresses `
         + `itself and must dial back in within three minutes, or it puts the old `
         + `config back on its own. ${desired.network?.mode === "static"
             ? `Static ${desired.network.address}` : "DHCP"}.`)) return;
     if (what === "storage"){
       const gone = (n?.reported?.mounts || []).filter(m => !(desired.mounts || []).some(x => x.path === m.path));
-      if (gone.length && !confirm(`Apply storage to ${n?.name || "this node"}?\n\nThis unmounts `
+      if (gone.length && !await askYes(`Apply storage to ${n?.name || "this node"}?\n\nThis unmounts `
           + `${gone.map(m => m.path).join(", ")} and takes ${gone.length === 1 ? "it" : "them"} `
           + `out of fstab. Directories and data stay.`)) return;
       // Moving a store copies what is in it, which can be tens of gigabytes
@@ -2743,7 +2784,7 @@ function wireNodeConf(row, id){
       // text field losing focus.
       const moving = storeMoves(n);
       const copied = moving.filter(m => !m.empty), fresh = moving.filter(m => m.empty);
-      if (moving.length && !confirm(`Apply storage to ${n?.name || "this node"}?\n\n`
+      if (moving.length && !await askYes(`Apply storage to ${n?.name || "this node"}?\n\n`
           + (copied.length ? `This moves ${copied.map(m => `${m.role} from ${m.from} to ${m.to}`).join(", and ")}: `
              + `the contents are copied first, and the old cop${copied.length === 1 ? "y stays" : "ies stay"} `
              + `for you to remove.` : "")

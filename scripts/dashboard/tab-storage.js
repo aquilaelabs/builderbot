@@ -80,14 +80,17 @@ function storageHeld(n){
     // would free; the kind-by-kind list (images 3095 MB (7), ...) is the
     // Docker tab's to tell.
     items.push({name: "Docker", path: dk.root || "its data root", fs: dk.fs || "", mb: total,
-                note: recl ? `${sgb(recl)} of it reclaimable: prune on the Containers page` : ""});
+                note: recl ? `${sgb(recl)} of it reclaimable` : "", prune: recl ? n.id : ""});
   }
   return items;
 }
 
 function storageRow(h){
   return `<div class="row"><div class="grow"><div class="name">${esc(h.name)} <span class="dim">· ${esc(h.path)}</span></div>
-      <div class="sub">${h.mb === null ? "not measured in time" : sgb(h.mb)}${h.note ? `; ${esc(h.note)}` : ""}</div></div></div>`;
+      <div class="sub">${h.mb === null ? "not measured in time" : sgb(h.mb)}${h.note ? `; ${esc(h.note)}` : ""}${
+        // ...and the way to it: the Containers page on this node with its
+        // Images and volumes open, where the prunes are.
+        h.prune ? `: <a href="#" data-stprune="${esc(h.prune)}">prune on the Containers page</a>` : ""}</div></div></div>`;
 }
 
 // A list of names as a sentence: "cache, artifacts and appdata".
@@ -226,6 +229,11 @@ function wireStorageTab(root){
   if (psel) psel.onchange = () => navPush(() => { storageNode = psel.value;
                                     try{ localStorage.setItem("bb.stnode", storageNode); }catch(e){ /* private */ }
                                     storageRev++; drawPanes(); });
+  root.querySelectorAll("[data-stprune]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    sectOpen["docker:images"] = true;
+    openDockerOn(a.dataset.stprune);
+  });
   root.querySelectorAll("[data-stmeasure]").forEach(b => b.onclick = async () => {
     busy(b, "Asking");
     const j = await (await postJSON("/api/storage", {action: "measure", node: b.dataset.stmeasure})).json().catch(() => ({error: "no answer"}));

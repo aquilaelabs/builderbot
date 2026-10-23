@@ -367,7 +367,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     });
     list.querySelectorAll("[data-artunnamed]").forEach(b => b.onclick = async () => {
       const a = rows[+b.dataset.artunnamed];
-      if (!a || !confirm(`Remove ${a.name} from dist/?\n\nIt is gone for everybody.`)) return;
+      if (!a || !await askYes(`Remove ${a.name} from dist/?\n\nIt is gone for everybody.`)) return;
       b.disabled = true;
       try{
         const j = await (await postJSON("/api/artifacts", {project, action: "forget-unnamed", path: a.path})).json();
@@ -496,7 +496,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       const comp = b.dataset.verrelease || "";
       const blk = all.find(x => (x.component || "") === comp);
       const tag = comp ? `${comp}-v${blk?.target}` : `v${blk?.target}`;
-      if (!confirm(`Release ${blk?.target}?\n\n`
+      if (!await askYes(`Release ${blk?.target}?\n\n`
                    + `Tags this commit as ${tag} and pushes the tag; a pushed tag is not moved or deleted from here.`)) return;
       busy(b, "Releasing");
       box.querySelectorAll("button,select").forEach(x => x.disabled = true);
@@ -515,7 +515,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     box.querySelectorAll("[data-verunbump]").forEach(b => b.onclick = async () => {
       const comp = b.dataset.verunbump || "";
       const blk = all.find(x => (x.component || "") === comp);
-      if (!confirm(`Take ${comp ? comp + "'s" : "this project's"} version back `
+      if (!await askYes(`Take ${comp ? comp + "'s" : "this project's"} version back `
                    + `from ${blk?.target} to ${blk?.prev}?\n\n`
                    + `The code stays; ${blk?.target}'s changelog lines return to Unreleased.`)) return;
       box.querySelectorAll("button,select").forEach(x => x.disabled = true);
@@ -542,7 +542,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       // (B92). Anything else saves without a question, as it always has.
       const cost = ver?.window_cost;
       const moves = parts.find(([comp, part]) => !comp && windowMove(part, cost));
-      if (moves && !confirm(
+      if (moves && !await askYes(
             `Bump the ${moves[1]}? This moves the compatibility window.\n\n`
             + `Sessions on ${cost.projects.length} project${cost.projects.length === 1 ? "" : "s"} `
             + `(${cost.projects.join(", ")}) end until each node's agent is updated on the Nodes page.`)) return null;
@@ -816,7 +816,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       const comp = b.dataset.verask === "@fold"
         ? b.closest(".verinit").querySelector(".vdir").value
         : (b.dataset.verask || "");
-      if (!sendSure(project, comp ? `the version question for ${comp}` : "the version question")) return;
+      if (!await sendSure(project, comp ? `the version question for ${comp}` : "the version question")) return;
       busy(b, "Sending");
       try{
         const r = await postJSON("/api/version", {project, action: "ask", component: comp});

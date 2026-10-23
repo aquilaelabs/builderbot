@@ -263,17 +263,17 @@ function renderEmulatorInto(i){
     if (!ids.length) return notify("tick something first", true);      // Toolchains' word for it
     emuAct("add", ids, add);
   };
-  el.querySelectorAll("[data-rmimg]").forEach(b => b.onclick = () => {
+  el.querySelectorAll("[data-rmimg]").forEach(b => b.onclick = async () => {
     const id = b.dataset.rmimg;
     const users = (emu?.images || []).find(im => im.id === id)?.avds || [];
-    if (confirm(`Remove ${id}?\n\n${users.length
+    if (await askYes(`Remove ${id}?\n\n${users.length
       ? `${users.join(", ")} ${users.length === 1 ? "is" : "are"} built on it and will not boot without it.`
       : "No AVD is built on it."}`))
       emuAct("remove", id, b);
   });
   const ab = el.querySelector('[data-emu="abort"]');
   if (ab) ab.onclick = async () => {
-    if (!confirm("Stop this image job? A half-fetched image is removed.")) return;
+    if (!await askYes("Stop this image job? A half-fetched image is removed.")) return;
     busy(ab, "Stopping");
     await postJSON("/api/v1/jobs", {action: "cancel", id: job.id});
     loadEmulator();

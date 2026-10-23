@@ -188,8 +188,8 @@ function wireUsersBar(el){
 
 function wireUsers(el){
   wireDeviceOut(el);
-  el.querySelectorAll("[data-upick]").forEach(b => b.onclick = () => {
-    if (b.dataset.upick !== usersPick && usersDirty() && !confirm(`Leave ${usersPick}'s changes unsaved?`)) return;
+  el.querySelectorAll("[data-upick]").forEach(b => b.onclick = async () => {
+    if (b.dataset.upick !== usersPick && usersDirty() && !await askYes(`Leave ${usersPick}'s changes unsaved?`)) return;
     splitAway(() => document.querySelectorAll(".pane .doc.on .rsplit > .rdetail"), () => {
       usersPick = b.dataset.upick; usersEdit = null; usersPhoneOpen = true; usersMoveNext = "in"; usersRedraw(); });
   });
@@ -208,8 +208,8 @@ function wireUsers(el){
   const sv = el.querySelector("#ueSave");
   if (sv) sv.onclick = () => usersSave(el, sv);
   const rm = el.querySelector("#ueRemove");
-  if (rm) rm.onclick = () => {
-    if (confirm(`Remove ${usersPick}? They lose access immediately.`)) usersAct({action: "remove", name: usersPick});
+  if (rm) rm.onclick = async () => {
+    if (await askYes(`Remove ${usersPick}? They lose access immediately.`)) usersAct({action: "remove", name: usersPick});
   };
 }
 

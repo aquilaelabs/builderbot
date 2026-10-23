@@ -159,7 +159,7 @@ function wireDeviceOut(root){
   root.querySelectorAll("[data-pfdevout]").forEach(b => b.onclick = async () => {
     const of = b.dataset.devof || "";
     const d = [...(profile?.devices || []), ...(usersList || []).flatMap(u => u.devices || [])].find(x => x.id === b.dataset.pfdevout);
-    if (!confirm(`Disconnect ${d ? d.name : "this device"}${of ? ` of ${of}` : ""}? It stops syncing at once and signs in again to come back.`)) return;
+    if (!await askYes(`Disconnect ${d ? d.name : "this device"}${of ? ` of ${of}` : ""}? It stops syncing at once and signs in again to come back.`)) return;
     busy(b, "Disconnecting");
     try{
       const j = await (await postJSON(of ? "/api/users" : "/api/profile",

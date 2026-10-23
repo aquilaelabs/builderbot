@@ -162,11 +162,9 @@ const shared = await page.evaluate(async () => ((await (await fetch('/api/transc
   .find(r => r.id === 'conv-two-2025')?.shared);
 ok(shared === true && /visible to every session/.test(await page.$eval(rowOf('conv-two-2025'), e => e.textContent)),
    `Make visible marks it visible to every session on the project (${shared})`);
-await page.evaluate(() => { window.__c = window.confirm; window.confirm = () => true; });
 await page.click(`${rowOf('conv-two-2025')} .more > button`);
 await page.click(`${rowOf('conv-two-2025')} [data-cvdel]`);
 await page.waitForFunction(id => !document.querySelector(`[data-cvresume="${id}"]`), 'conv-two-2025', { timeout: 10000 }).catch(() => {});
-await page.evaluate(() => { window.confirm = window.__c; });
 const gone = await page.evaluate(async () => ((await (await fetch('/api/transcripts?project=alpha')).json()).rows || []).map(r => r.id));
 ok(!gone.includes('conv-two-2025') && gone.includes('conv-one-2026'), `Delete removes that conversation and no other (${gone.join(', ')})`);
 const onRead = await (await sfetch('/api/transcripts?project=beta')).json();

@@ -413,7 +413,7 @@ function nbMemoryView({$, nb}){
   }
 
   async function forgetMemory(file){
-    if (!confirm(`Forget ${file}?
+    if (!await askYes(`Forget ${file}?
 
 The file goes, and its line comes out of the`
       + ` index. A running session keeps what it already read.`)) return;
