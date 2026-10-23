@@ -307,6 +307,13 @@ STORE_TOOLS = {"java": ("jdk/bin/java",), "flutter": ("flutter/bin/flutter",),
                "web-ext": ("node/bin/web-ext",)}
 
 
+def _own_tool(entry):
+    """The layout's tool when it lives in the toolchain's own directory
+    (`root:` names one elsewhere in the store)."""
+    t = str(entry.get("tool") or "")
+    return "" if t.startswith("root:") else t
+
+
 def store_dirs(state):
     """What is actually IN the toolchain store, as directory names.
 
@@ -359,8 +366,12 @@ def store_dirs(state):
     # one without the file that completes it (playwright's module beside its
     # browsers). A layout that names that file (`needs`) is checked here, and
     # the controller reads a name in this list as not installed.
+    # Where none is named, the tool the layout runs is that file: a flutter
+    # left with no bin/flutter (an install cut short before the marker
+    # existed) was listed installed and `flutter` was not found (diagnostics
+    # #124).
     for entry in store_layout(state):
-        need = entry.get("needs")
+        need = entry.get("needs") or _own_tool(entry)
         if not need or entry.get("dir", "").startswith("android"):
             continue
         d = os.path.join(store, entry["dir"])

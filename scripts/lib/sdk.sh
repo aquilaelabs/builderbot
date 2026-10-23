@@ -1034,6 +1034,23 @@ sdk_clear_interrupted() {
     rm -rf "${d:?}"
     rm -f "$m"
 }
+# ...and a directory without the tool its layout runs, which an install cut
+# short before the marker existed left behind: half of flutter with no
+# bin/flutter, listed as installed until the census asked for the tool, and
+# then refused by a fresh-only install as "already installed" (diagnostics
+# #124). Nothing in it can run, so nothing in it is kept.
+sdk_clear_toolless() {
+    local what="$1" d="$2" tool
+    [ -d "$d" ] && [ -n "$(ls -A "$d" 2>/dev/null)" ] || return 0
+    # A layout that names `needs` is filled in by its recipe (playwright's
+    # module beside the browsers it keeps), so it is not this one's to clear.
+    [ -z "$(sdk_meta field "$what" layout.needs 2>/dev/null)" ] || return 0
+    tool="$(sdk_meta field "$what" layout.tool 2>/dev/null)" || tool=""
+    case "$tool" in ""|root:*) return 0 ;; esac
+    [ ! -e "$d/$tool" ] || return 0
+    warn "${what} at ${d} has no ${tool}: an earlier install did not finish; clearing what it left"
+    rm -rf "${d:?}"
+}
 # Interrupted rather than failed: the dashboard's Abort sends the whole
 # process group a TERM, so the download dies with it. Handled explicitly
 # because bash runs its EXIT trap on a signal with $? still zero: the
@@ -1419,6 +1436,7 @@ sdk_install() {
     [ -z "$why" ] || die "${what} cannot be installed here: ${why}"
     mkdir -p "$root"
     [ "$kind" = sdkmanager ] || sdk_clear_interrupted "$(sdk_dir "$what")"
+    [ "$kind" = sdkmanager ] || sdk_clear_toolless "$what" "$(sdk_dir "$what")"
     # EXIT rather than RETURN: a failing step here reaches `die`, which exits
     # the process, and a RETURN trap never fires on that path.
     trap sdk_install_cleanup EXIT

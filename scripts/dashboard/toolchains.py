@@ -471,7 +471,9 @@ def payload():
         # The directory is there but the file that completes the toolchain is
         # not (layout.needs): not installed, so Install is offered; the
         # recipe fills the directory in rather than starting over.
-        need = (p.get("layout") or {}).get("needs")
+        # Where none is named, the layout's own tool is that file (#124).
+        lay = p.get("layout") or {}
+        need = lay.get("needs") or ("" if str(lay.get("tool") or "").startswith("root:") else lay.get("tool"))
         if path and need and not os.path.exists(os.path.join(path, need)):
             path = ""
         v = _tc_versions.get(p["name"], {})
