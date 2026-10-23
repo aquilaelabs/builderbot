@@ -1253,15 +1253,30 @@ cmd_emu() {
                 log "installing ${pkg}: a couple of GB, kept on the store"
                 sdkmgr --install "$pkg" || die "could not install ${pkg}"
             fi
-            [ -d "${ANDROID_HOME:-/opt/android-sdk}/platforms/android-${api}" ] \
-                || sdkmgr --install "platforms;android-${api}" || warn "could not install platforms;android-${api}"
+            # The platform is a build's (compileSdk), not the phone's, so its
+            # absence stops nothing here. A session sees the store read-only
+            # (B163) and cannot add it: it says where it comes from rather
+            # than an sdkmanager failure (diagnostics #125).
+            local plat="${ANDROID_HOME:-/opt/android-sdk}/platforms"
+            if [ ! -d "$plat/android-${api}" ]; then
+                if [ -w "$plat" ] || { [ ! -e "$plat" ] && [ -w "${ANDROID_HOME:-/opt/android-sdk}" ]; }; then
+                    sdkmgr --install "platforms;android-${api}" || warn "could not install platforms;android-${api}"
+                else
+                    log "platforms;android-${api} is not on this node's store, which a session cannot write: a build that compiles against ${api} needs it from the Toolchains page; the phone does not"
+                fi
+            fi
             if avd_exists "$name"; then log "AVD '${name}' already exists"; return 0; fi
             # The AVD directory has to exist before avdmanager is asked, or
             # it ignores ANDROID_AVD_HOME and writes under ~/.android, where
             # the config line below is not found and the emulator dies with
             # "Broken AVD system path" (the dev VM, 25 Sep).
             [ -z "${ANDROID_AVD_HOME:-}" ] || mkdir -p "$ANDROID_AVD_HOME" 2>/dev/null || true
+            # avdmanager works its SDK root out from where it is installed (the
+            # android-tools entry, beside the SDK rather than in it) and warns
+            # about every package as "in inconsistent location": dozens of
+            # lines that read as a broken SDK (diagnostics #125) and are not.
             echo no | avdmanager create avd -n "$name" -k "$pkg" --device pixel_7 >/dev/null \
+                2> >(grep -v 'in inconsistent location' >&2) \
                 || die "AVD creation failed for ${name}"
             # The image path, written by hand. avdmanager is the android-tools
             # entry on the store, a different directory from the SDK, and it
