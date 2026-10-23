@@ -357,6 +357,9 @@ function needsRows(){
     // normal case after a minor bump and one row per project was six rows
     // saying one thing. Collapsed into one, with one press behind it (B93).
     ...att.map(attRow),
+    // This account's own notice to add a second factor (R127), after what
+    // stopped or what a node needs, which a person is waiting on.
+    ...(state?.two_factor_due ? [attRow(state.two_factor_due)] : []),
     ...ciRed.map(c => `<div class="bnote att bad">
         <div class="bt">CI failing in ${esc(projLabel(c.project))}</div>
         <div class="bsum">${esc(c.text)}</div>

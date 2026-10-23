@@ -52,7 +52,7 @@ const inDashboard = page => page.waitForFunction(() => typeof state !== 'undefin
 // ---- an account with none: the bell asks, and the password opens it ----
 let { ctx, page } = await signIn('twofa', 'twofapass11');
 ok(await inDashboard(page), 'an account with no second factor signs in with its password, as before');
-await page.waitForFunction(() => (state?.attention || []).some(a => a.kind === 'two-factor'), null, { timeout: 20000 });
+await page.waitForFunction(() => !!state?.two_factor_due, null, { timeout: 20000 });
 ok(true, 'the bell carries a standing notice to turn on two-factor sign-in');
 
 // ---- Profile: add the authenticator by its secret and a first code -----
@@ -71,7 +71,7 @@ ok(codes.length === 10 && codes.every(c => /^[a-z2-9]{5}-[a-z2-9]{5}$/.test(c)),
 await page.click('.doc [data-tf="codes-done"]');
 await page.waitForFunction(() => !document.querySelector('.doc .tfcodes'), null, { timeout: 5000 });
 await page.evaluate(() => refresh());
-await page.waitForFunction(() => !(state?.attention || []).some(a => a.kind === 'two-factor'), null, { timeout: 20000 });
+await page.waitForFunction(() => !state?.two_factor_due, null, { timeout: 20000 });
 ok(true, '...and the bell\'s notice goes the moment one is added');
 await ctx.close();
 

@@ -1541,15 +1541,18 @@ def _resume_held(who, nid, session):
     return {"ok": True, **said}, 200
 
 
-def _two_factor_row(who):
-    """The bell's standing notice (R127 step 8): an account with no second
-    factor is told to add one, put away for a day at most, gone the moment
-    it has one."""
+def _two_factor_due(who):
+    """The bell's standing notice (R127 step 8), or None: an account with no
+    second factor is told to add one, put away for a day at most (its key
+    holds the day), gone the moment it has one."""
     uid = users.uid_of(who)
     if not uid or (who or {}).get("session") or mfa.enabled(uid):
-        return []
-    return [{"kind": "two-factor", "id": uid, "day": time.strftime("%Y-%m-%d"),
-             "required": roles.two_factor_required(users.get(who["name"]) or {})}]
+        return None
+    required = roles.two_factor_required(users.get(who["name"]) or {})
+    key = f"2fa:{uid}@{time.strftime('%Y-%m-%d')}"
+    if not required and key in bellseen.dismissed(uid):
+        return None
+    return {"kind": "two-factor", "key": "" if required else key, "required": required}
 
 
 def _token_rows():
@@ -1648,13 +1651,13 @@ def _attention(who):
     # before the release, not after it went out without one.
     signs = releasesign.attention([p for p in releasesign.projects_fn() if users.may_see(who, p)])
     if NODES_OK:
-        return bellseen.filter_rows(users.uid_of(who), signs + _two_factor_row(who))
+        return bellseen.filter_rows(users.uid_of(who), signs)
     where = {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}
     # The sessions an outage of this controller held come first (R251), for
     # their own account or an administrator: stopped work waiting on a
     # person, where the rest is an update that can wait (seen fourth, under
     # the fold of the bell, in the walk of 15 Oct).
-    rows = (_two_factor_row(who) + _held_rows(who)
+    rows = (_held_rows(who)
             + ([] if users.may(who, "node") else nodes.attention(where) + _token_rows())
             # ...and a node short of disk or memory (R110), for whoever
             # manages nodes: what is short, on the Storage page's terms.
@@ -4627,6 +4630,10 @@ def _snapshot(who):
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true; nothing is stored to dismiss.
         "attention": attention,
+        # ...and this account's own standing notice to add a second factor
+        # (R127), kept out of `attention`, whose rows are the nodes' and
+        # carry what the companion app reads off them.
+        "two_factor_due": _timed("status:two_factor", lambda: _two_factor_due(who)),
         # How many of them this account has put away, for the drawer's
         # "show them again".
         "bell_hidden": bell_hidden,
