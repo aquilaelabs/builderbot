@@ -688,6 +688,45 @@ def node_storage_measure(principal, node_id):
     return r
 
 
+def node_avd_remove(principal, node_id, project, uid, name):
+    """The Storage page's Remove on a project's phone (R123): a job the
+    agent runs, which checks the names again and refuses a phone that is
+    running."""
+    n = node(node_id)
+    if not n or n.get("kind") != "agent":
+        return {"error": "only an agent node keeps phones"}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    phones = ((n.get("reported") or {}).get("storage") or {}).get("phones") or []
+    ph = next((p for p in phones if p.get("project") == project and p.get("uid") == uid
+               and p.get("name") == name), None)
+    if not ph:
+        return {"error": f"{name} is not one of {project}'s phones on {n['name']} as last measured"}
+    if ph.get("running"):
+        return {"error": f"{name} is running on {n['name']}: stop it first (bb emu stop in a {project} session)"}
+    r = job_add(principal, {"node": node_id}, "avd-remove",
+                {"timeout": 900, "project": project, "uid": uid, "name": name})
+    if r.get("ok"):
+        audit(principal, "node-avd-remove", node_id, {"job": r["job"], "project": project, "name": name})
+    return r
+
+
+def node_cache_clear(principal, node_id, project):
+    """The Storage page's Clear build cache on one project's row (R123
+    step 2): its cache store folder and its build caches in every account's
+    home, then a walk so the row shows what went."""
+    n = node(node_id)
+    if not n or n.get("kind") != "agent":
+        return {"error": "only an agent node keeps caches to clear"}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    r = job_add(principal, {"node": node_id}, "cache-clear",
+                {"timeout": 900, "project": project, "builds": True, "measure": True})
+    if r.get("ok"):
+        audit(principal, "node-cache-clear", node_id, {"job": r["job"], "project": project})
+    return r
+
+
 def node_discard(principal, node_id):
     """A row that never enrolled, taken off outright (the operator, 11 Oct):
     its script was discarded, so there is no history to keep and no
@@ -1443,7 +1482,11 @@ def _census(c):
                                  for k in ((st.get("docker") or {}).get("kinds") or [])[:8] if isinstance(k, dict)],
                        "root": str((st.get("docker") or {}).get("root") or "")[:200],
                        "fs": str((st.get("docker") or {}).get("fs") or "")[:200]},
-            "slow": [str(x)[:200] for x in (st.get("slow") or [])[:16]]}
+            "slow": [str(x)[:200] for x in (st.get("slow") or [])[:16]],
+            # Each project's phones (R123), for the page's Remove.
+            "phones": [{"project": str(p.get("project") or "")[:100], "uid": str(p.get("uid") or "")[:20],
+                        "name": str(p.get("name") or "")[:80], "mb": mb(p.get("mb")), "running": bool(p.get("running"))}
+                       for p in (st.get("phones") or [])[:200] if isinstance(p, dict)]}
     out["mounts"] = []
     for m in (c.get("mounts") if isinstance(c.get("mounts"), list) else [])[:32]:
         if isinstance(m, dict) and str(m.get("path") or "").startswith("/"):
@@ -3673,6 +3716,8 @@ def ctr_spark(nid, names=None):
 JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-clear", "vm",
              # A walk of the node's disks now, for the Storage tab (R169).
              "storage",
+             # One project's phone off the node, from the Storage page (R123).
+             "avd-remove",
              # An Android system image onto a node's toolchain store, or off
              # it: there without being a toolchain (emulator.py).
              "image",

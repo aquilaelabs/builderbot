@@ -15,6 +15,7 @@
 - Lock keeps a project to its owner: the owner's Lock ends every other session there and holds everybody else out of starting one or changing it until they unlock it; an administrator's Admin: Lock holds the owner out too. A locked project stays on the Projects page with its padlock (7d4a5eb)
 - A store move waits for its node to be quiet, holds the node's sessions without ending them (each is told what is moving and how far it has got, and may still keep its notes), and lets them go when it is done (9970f34)
 - A node's Storage and Network have Revert beside Save, and saving a store inside a mount that is not on the node yet, or adding a mount over a store, says what will happen first (f56448f)
+- The Storage page frees what it measures: each project's emulator phones are listed with a Remove (refused while one runs), each project's row clears its build caches, Docker's row carries its prunes beside what each frees, and a disk past 90% says what of it can be freed. (1dde5a7)
 
 ### Changed
 

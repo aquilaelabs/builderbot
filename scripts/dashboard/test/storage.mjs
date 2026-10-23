@@ -24,7 +24,11 @@ const WALK = { at: Math.floor(Date.now() / 1000) - 600, took_s: 4,
   stores: { cache: { path: '/var/lib/builderbot/cache', fs: '/', used_mb: 4200 }, artifacts: { path: '/var/lib/builderbot/artifacts', fs: '/', used_mb: 900 } },
   projects: { alpha: { workspace: 300, cache: 4000, builds: 2100 }, beta: { cache: 200, artifacts: 900 } },
   workspace: { path: '/workspace', fs: '/' }, homes: { path: '/home/bb', mb: 2500, fs: '/' },
-  docker: { kinds: [{ kind: 'Images', count: 3, mb: 1500, reclaimable_mb: 400 }], root: '/var/lib/docker', fs: '/' }, slow: [] };
+  docker: { kinds: [{ kind: 'Images', count: 3, mb: 1500, reclaimable_mb: 400 }, { kind: 'Build Cache', count: 9, mb: 700, reclaimable_mb: 650 }],
+            root: '/var/lib/docker', fs: '/' }, slow: [],
+  // Each project's phones (R123): one idle, one running.
+  phones: [{ project: 'alpha', uid: '', name: 'builderbot-36', mb: 4096, running: false },
+           { project: 'alpha', uid: '', name: 'builderbot-35', mb: 2048, running: true }] };
 const en = await (await fetch(base + '/api/v1/agent/enroll', { method: 'POST',
   headers: { Authorization: 'Bearer ' + minted.token, 'Content-Type': 'application/json' },
   body: JSON.stringify({ census: { cpu: 4, mem_mb: 8192, system: 'linux', arch: 'x86_64', storage: WALK },
@@ -81,6 +85,47 @@ const back = await page.waitForFunction(id => {
 }, minted.id, { timeout: 15000 }).then(() => true, () => false);
 ok(back, 'Measure now reads Measure now again once its press is answered, not Asking');
 if (job) await api('/api/v1/jobs', { action: 'cancel', id: job.id });
+
+// The page frees what it measures (R123): each project's phones with a
+// Remove, refused while one runs; a project's build caches cleared from its
+// row; Docker's prunes beside what each frees.
+{
+  const seen = await page.evaluate(() => {
+    const s = document.querySelector('.storagetab details[data-sect="storage:phones"]');
+    const rows = [...(s?.querySelectorAll('.stphone') || [])].map(r => r.textContent.replace(/\s+/g, ' ').trim());
+    return { rows, removes: s?.querySelectorAll('[data-stavd]').length || 0,
+             clears: [...document.querySelectorAll('.storagetab [data-stclear]')].map(b => b.dataset.stclear),
+             prunes: [...document.querySelectorAll('.storagetab .stprunes [data-stdprune]')].map(b => b.dataset.stdprune + (b.classList.contains('danger') ? '!' : '')) };
+  });
+  ok(seen.rows.length === 2 && /builderbot-36/.test(seen.rows[0]) && /running/.test(seen.rows[1]) && seen.removes === 1,
+     `the Phones section lists each phone largest first, and only the one not running has a Remove (${JSON.stringify(seen.rows)})`);
+  ok(seen.clears.join() === 'alpha,beta', `each project holding caches has its Clear build cache (${seen.clears})`);
+  ok(seen.prunes.join() === 'images,cache,unused!,volumes!', `Docker's row has its four prunes, the safe ones first and the two that lose something red (${seen.prunes})`);
+  page.answers.push(0);
+  await page.click('.storagetab [data-stavd="alpha"]');
+  const avd = await (async () => { for (let i = 0; i < 40; i++){
+    const js = (await api('/api/v1/jobs?active=1')).jobs || [];
+    const j = js.find(x => x.type === 'avd-remove' && x.node === minted.id);
+    if (j) return j;
+    await new Promise(r => setTimeout(r, 250));
+  } return null; })();
+  ok(avd && avd.spec?.name === 'builderbot-36' && avd.spec?.project === 'alpha',
+     `Remove asks, then queues the phone's removal on that node (${JSON.stringify(avd?.spec || null)})`);
+  if (avd) await api('/api/v1/jobs', { action: 'cancel', id: avd.id });
+  const refused = await api('/api/storage', { action: 'avd-remove', node: minted.id, project: 'alpha', uid: '', name: 'builderbot-35' });
+  ok(/running/.test(refused.error || ''), `a running phone is refused by the server too (${refused.error})`);
+  page.answers.push(0);
+  await page.click('.storagetab [data-stclear="alpha"]');
+  const clr = await (async () => { for (let i = 0; i < 40; i++){
+    const js = (await api('/api/v1/jobs?active=1')).jobs || [];
+    const j = js.find(x => x.type === 'cache-clear' && x.node === minted.id);
+    if (j) return j;
+    await new Promise(r => setTimeout(r, 250));
+  } return null; })();
+  ok(clr && clr.spec?.project === 'alpha' && clr.spec?.builds === true,
+     `Clear build cache queues the project's clear, its accounts' build caches with it (${JSON.stringify(clr?.spec || null)})`);
+  if (clr) await api('/api/v1/jobs', { action: 'cancel', id: clr.id });
+}
 await api('/api/v1/nodes', { action: 'retire', id: minted.id });
 
 await done(browser);

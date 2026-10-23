@@ -37,7 +37,10 @@ def node_view(n, may_see):
             "filesystems": st.get("filesystems") or [], "stores": st.get("stores") or {},
             "workspace": st.get("workspace") or {}, "homes": st.get("homes") or {},
             "docker": st.get("docker") or {}, "slow": st.get("slow") or [],
-            "projects": mine, "other": hidden}
+            "projects": mine, "other": hidden,
+            # The phones of the projects this account sees (R123), whose
+            # Remove the page offers where it may write on the node.
+            "phones": [p for p in st.get("phones") or [] if may_see(p.get("project") or "")]}
     # Its memory fence (R110 step 4): [max MB, used MB], null for none, and
     # left out where the agent is too old to say.
     smp = (n.get("reported") or {}).get("sample") or {}

@@ -190,6 +190,63 @@ def _account_builds(home):
     return out, (whole or {}).get("") if whole is not None else None
 
 
+# A project's virtual phones (R123): each account's AVDs for it, in the
+# folder bb emu keeps them in (~/.android/avd-projects/PROJECT, B511), which
+# no store holds, so the emulator column read the data store's emu/ and
+# missed every one of them (bb-sandbox, 23 Oct: 20 GB of phones, none shown).
+AVD_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+UID_RE = re.compile(r"^u_[0-9a-f]{8}$")
+
+
+def avd_homes(home):
+    """(uid, folder of that account's projects' AVDs) for the session
+    account's home and each account's home under it ("" for the base)."""
+    if not home or not os.path.isdir(home):
+        return []
+    out = [("", os.path.join(home, ".android", "avd-projects"))]
+    for u in sorted(glob.glob(os.path.join(home, "users", "u_*")))[:64]:
+        if UID_RE.match(os.path.basename(u)):
+            out.append((os.path.basename(u), os.path.join(u, ".android", "avd-projects")))
+    return [(uid, d) for uid, d in out if os.path.isdir(d)]
+
+
+def avd_running(avd_dir):
+    """Whether the emulator holds this AVD: its multiinstance.lock flocked,
+    the test bb emu's emu_held makes."""
+    import fcntl
+    lock = os.path.join(avd_dir, "multiinstance.lock")
+    if not os.path.exists(lock):
+        return False
+    try:
+        with open(lock, "rb") as f:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(f, fcntl.LOCK_UN)
+        return False
+    except BlockingIOError:
+        return True
+    except OSError:
+        return False
+
+
+def _phones(home):
+    """Every project's phones under the homes: [{project, uid, name, mb,
+    running}], one du per project's folder."""
+    out = []
+    for uid, d in avd_homes(home):
+        with contextlib.suppress(OSError):
+            for proj in sorted(os.listdir(d))[:300]:
+                if not NAME_RE.match(proj):
+                    continue
+                sizes = _du_children(os.path.join(d, proj))
+                for name in sorted(x[:-4] for x in os.listdir(os.path.join(d, proj)) if x.endswith(".avd")):
+                    if not AVD_RE.match(name):
+                        continue
+                    mb = (sizes or {}).get(name + ".avd") if sizes is not None else None
+                    out.append({"project": proj, "uid": uid, "name": name, "mb": mb,
+                                "running": avd_running(os.path.join(d, proj, name + ".avd"))})
+    return out[:200]
+
+
 def measure(state):
     """One measurement of the whole node: what the tab draws. Several at
     once are one: a second caller waits for the walk already going."""
@@ -228,13 +285,18 @@ def measure(state):
             add("workspace", _du_children(SHARE), SHARE)
         builds, homes = _account_builds(SESSION.get("home") or "")
         add("builds", builds, "homes")
+        phones = _phones(SESSION.get("home") or "")
+        for ph in phones:
+            if ph["mb"]:
+                projects.setdefault(ph["project"], {})["emulator"] = \
+                    projects.get(ph["project"], {}).get("emulator", 0) + ph["mb"]
         got = {"at": int(time.time()), "took_s": int(time.time() - t0),
                "filesystems": fss, "stores": store_rows,
                "projects": dict(sorted(projects.items())[:300]),
                "workspace": {"path": SHARE, "fs": fs_of(SHARE, fss)} if os.path.isdir(SHARE) else {},
                "homes": {"path": SESSION.get("home") or "", "mb": homes,
                          "fs": fs_of(SESSION.get("home") or "/", fss)} if SESSION.get("home") else {},
-               "docker": _docker(), "slow": slow[:16]}
+               "docker": _docker(), "phones": phones, "slow": slow[:16]}
         if got["docker"].get("root"):
             got["docker"]["fs"] = fs_of(got["docker"]["root"], fss)
         with _lock:

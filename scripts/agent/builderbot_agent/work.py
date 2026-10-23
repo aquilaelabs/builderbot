@@ -242,6 +242,14 @@ class WorkMixin:
             days = float(spec.get("older_days") or 0)
         except (TypeError, ValueError):
             days = 0
+        # ...and with `builds`, that project's build caches in every
+        # account's home as well (R123 step 2: the Storage page's builds
+        # column, its Gradle home and out-of-tree build per account).
+        if project and spec.get("builds"):
+            home = storage.SESSION.get("home") or ""
+            if home:
+                targets += glob.glob(os.path.join(home, ".cache", "builderbot", "u", "*", "project", project)) + \
+                    glob.glob(os.path.join(home, "users", "*", ".cache", "builderbot", "u", "*", "project", project))
         n = 0
         for t in targets:
             if days > 0 and cache_age_days(t) < days:
@@ -251,6 +259,40 @@ class WorkMixin:
                 job.say(f"removed {t}\n")
                 n += 1
         job.say(f"cleared {n} director{'y' if n == 1 else 'ies'}\n")
+        if spec.get("measure"):
+            job.say("measuring the disks again for the Storage page\n")
+            storage.measure(self.state)
+        self.hello()
+        return "succeeded", 0
+
+    def avd_remove(self, job, spec):
+        """A project's phone off this node (R123): one account's AVD, its
+        .avd folder and its .ini, which bb emu start makes again. Refused
+        while the emulator holds it; every name checked against the shape
+        bb emu gives it, and the folder found only under the homes'
+        avd-projects, so a spec names nothing else."""
+        project, uid, name = (str(spec.get(k) or "") for k in ("project", "uid", "name"))
+        if not storage.NAME_RE.match(project) or not storage.AVD_RE.match(name) \
+                or (uid and not storage.UID_RE.match(uid)):
+            job.say("not a phone's name\n")
+            return "failed", 2
+        d = dict(storage.avd_homes(storage.SESSION.get("home") or "")).get(uid)
+        avd = os.path.join(d, project, name + ".avd") if d else ""
+        if not avd or not os.path.isdir(avd):
+            job.say(f"{name} is not one of {project}'s phones on this node\n")
+            return "failed", 2
+        if storage.avd_running(avd):
+            job.say(f"{name} is running: stop it (bb emu stop in the project's session) and remove it then\n")
+            return "failed", 75
+        shutil.rmtree(avd, ignore_errors=True)
+        with contextlib.suppress(OSError):
+            os.remove(os.path.join(d, project, name + ".ini"))
+        if os.path.isdir(avd):
+            job.say(f"could not remove all of {avd}\n")
+            return "failed", 1
+        job.say(f"removed {name}, {project}'s phone: its next bb emu start makes it again\n")
+        job.say("measuring the disks again for the Storage page\n")
+        storage.measure(self.state)
         self.hello()
         return "succeeded", 0
 

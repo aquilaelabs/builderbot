@@ -2021,19 +2021,25 @@ async function loadDockerImages(det){
       : `<div class="hint">no volumes on this daemon</div>`)
 ;
   box.querySelectorAll("[data-dmprune]").forEach(b => b.onclick = async () => {
-    const kind = b.dataset.dmprune;
-    const what = {images: "Dangling images go; images a container uses stay.",
-                  volumes: "Volumes no container uses go, with their data.",
-                  unused: "Images no container uses and two weeks old go; a rebuild pulls or builds them again.",
-                  cache: "The build cache a week old goes; the next build of what used it is slower."}[kind];
-    if (!await askYes(`Prune ${kind === "cache" ? "the build cache" : kind === "unused" ? "unused images" : kind} on ${dockerList?.name || "this node"}?\n\n${what}`,
-                      {verb: "Prune", danger: kind === "unused" || kind === "volumes"})) return;
-    busy(b, "Pruning");
-    const r = await (await postJSON("/api/dockerctl", {action: "prune", container: kind, node})).json().catch(() => ({error: "no answer"}));
-    if (r.error) notify(r.error, true);
-    else notify(`pruned ${kind}: ${(r.out || "").split("\n").filter(l => /reclaimed/i.test(l)).join(" ") || "nothing to remove"}`);
-    loadDockerImages(det);
+    if (await dockerPrune(b.dataset.dmprune, node, dockerList?.name, b)) loadDockerImages(det);
   });
+}
+
+// One of the four prunes on a node, asked first in words, from the
+// Containers page or the Storage page's Docker row (R123 step 3): true once
+// it ran. Red where something is lost (an unused image, a volume's data).
+const DOCKER_PRUNE_SAID = {images: "Dangling images go; images a container uses stay.",
+                           volumes: "Volumes no container uses go, with their data.",
+                           unused: "Images no container uses and two weeks old go; a rebuild pulls or builds them again.",
+                           cache: "The build cache a week old goes; the next build of what used it is slower."};
+async function dockerPrune(kind, node, nodeName, b){
+  if (!await askYes(`Prune ${kind === "cache" ? "the build cache" : kind === "unused" ? "unused images" : kind} on ${nodeName || "this node"}?\n\n${DOCKER_PRUNE_SAID[kind]}`,
+                    {verb: "Prune", danger: kind === "unused" || kind === "volumes"})) return false;
+  busy(b, "Pruning");
+  const r = await (await postJSON("/api/dockerctl", {action: "prune", container: kind, node})).json().catch(() => ({error: "no answer"}));
+  if (r.error) notify(r.error, true);
+  else notify(`pruned ${kind}: ${(r.out || "").split("\n").filter(l => /reclaimed/i.test(l)).join(" ") || "nothing to remove"}`);
+  return !r.error;
 }
 
 // The row's Log fold: the last lines of each of its containers, read when

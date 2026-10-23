@@ -9127,6 +9127,19 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "which node?"}, 400)
         if not users.is_admin(who) and roles.level_of(who, "storage", node=nid) != "write":
             return self._json({"error": "measuring a node's disks again is Write on Storage"}, 403)
+        act = field(req, "action") or "measure"
+        if act in ("avd-remove", "cache-clear"):
+            # A project's phone or its build caches (R123): the project's
+            # own, so one the account may see.
+            project = field(req, "project")
+            if not project or not (users.is_admin(who) or users.may_see(who, project)):
+                return self._json({"error": "which of your projects?"}, 400)
+            if act == "avd-remove":
+                return self._result(nodes.node_avd_remove(self._principal(), nid, project,
+                                                          field(req, "uid"), field(req, "name")))
+            return self._result(nodes.node_cache_clear(self._principal(), nid, project))
+        if act != "measure":
+            return self._json({"error": "measure, avd-remove or cache-clear"}, 400)
         return self._result(nodes.node_storage_measure(self._principal(), nid))
 
     def _get_nginx(self):
