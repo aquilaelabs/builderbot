@@ -199,14 +199,30 @@ const AGENTS = [
 ];
 
 // The terminal argument that opens an agent's session on a project, as the
-// dashboard's Start and Open build it: attaching starts one not running.
-function sessionArg(agent, project) {
-  return `${(AGENTS.find(a => a.id === agent) || AGENTS[0]).id}:${project}`;
+// dashboard's Start and Open build it, with the boot of the machine it is
+// for last (page-tabs.js bootFor): bb-tty attaches to a running session
+// whatever the boot, and starts one only for the boot it is running now.
+function sessionArg(agent, project, boot = '') {
+  return `${(AGENTS.find(a => a.id === agent) || AGENTS[0]).id}:${project}${boot ? `:b:${boot}` : ''}`;
 }
 
-async function pickAgent(project) {
+// What the status says of one project for this account: the boot a new
+// session there needs, and which agents' sessions of its own run. A
+// status that does not answer leaves both empty: an open then attaches to
+// a running session and says so in the terminal when there is none.
+async function sessionFacts(c, project) {
+  let st = {};
+  try { st = await c.status(); } catch { st = {}; }
+  const row = (st.projects || []).find(p => p.name === project) || {};
+  const names = new Set((st.sessions || []).map(s => s.name));
+  const tmux = s => s.replace(/[.:]/g, '_');
+  const running = new Set(AGENTS.filter(a => names.has((st.tmux_prefix || '') + tmux(`${a.id}-${project}`))).map(a => a.id));
+  return { boot: row.session_boot || st.boot || '', running };
+}
+
+async function pickAgent(project, running) {
   const pick = await vscode.window.showQuickPick(AGENTS.map(a => ({
-    label: a.name, description: a.product, agent: a.id,
+    label: a.name, description: running.has(a.id) ? `${a.product}, running` : a.product, agent: a.id,
   })), { placeHolder: `Which agent's session on ${project}: opened if it runs, started if not` });
   return pick && pick.agent;
 }
@@ -264,11 +280,12 @@ async function cmdOpenSession(context, project, agent) {
   try {
     project = typeof project === 'string' ? project : await pickProject(context, 'Which project\'s agent session to open');
     if (!project) return;
-    agent = typeof agent === 'string' ? agent : await pickAgent(project);
+    const c = await connect(context);
+    const facts = await sessionFacts(c, project);
+    agent = typeof agent === 'string' ? agent : await pickAgent(project, facts.running);
     if (!agent) return;
     const a = AGENTS.find(x => x.id === agent) || AGENTS[0];
-    const c = await connect(context);
-    const t = new Ttyd(c, sessionArg(a.id, project));
+    const t = new Ttyd(c, sessionArg(a.id, project, facts.boot));
     const write = new vscode.EventEmitter();
     const closed = new vscode.EventEmitter();
     const pty = {
@@ -337,4 +354,4 @@ function deactivate() {
   if (fsp) for (const w of fsp.watchers.values()) w.stopped = true;
 }
 
-module.exports = { activate, deactivate, BuilderBotFS, AGENTS, sessionArg };
+module.exports = { activate, deactivate, BuilderBotFS, AGENTS, sessionArg, sessionFacts };
