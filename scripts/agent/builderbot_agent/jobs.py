@@ -421,6 +421,7 @@ class Job(threading.Thread):
         self.tty = master
         deadline = time.monotonic() + int(spec.get("timeout") or 900)
         last_beat = time.time()
+        tail = ""                         # the last of what it said, for a question split across reads
         try:
             while True:
                 if time.monotonic() > deadline:
@@ -444,7 +445,24 @@ class Job(threading.Thread):
                         break
                     if not chunk:
                         break
-                    self.say(chunk.decode("utf-8", "replace"))
+                    said = chunk.decode("utf-8", "replace")
+                    self.say(said)
+                    tail = (tail + said)[-400:]
+                    # Copilot CLI with no system keyring on the machine (a
+                    # headless node has none) asks, after the person has
+                    # approved the device, whether to keep its token in its
+                    # config file, and waits on the answer: nothing typed it,
+                    # and the sign-in hung after GitHub said the device was
+                    # connected (the operator, 23 Oct). Answered yes, and
+                    # said: the file is the account's own, 600, where Claude
+                    # Code and Codex keep theirs on the same machine.
+                    if agent == "copilot" and "plaintext config file? (y/N)" in tail:
+                        tail = ""
+                        with contextlib.suppress(OSError):
+                            os.write(master, b"y\n")
+                        self.say("\n[builderbot] no keyring on this machine: Copilot keeps its token in "
+                                 "~/.copilot/config.json in your home here, readable by you alone, as Claude "
+                                 "and ChatGPT keep theirs\n")
                     # Posted now, not at the end: the controller reads the
                     # sign-in URL out of this log and hands the code back,
                     # and the flow does not end until it has the code. Held
