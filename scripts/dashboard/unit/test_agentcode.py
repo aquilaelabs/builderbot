@@ -137,6 +137,9 @@ class NodeAgent(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.home = os.path.join(self.tmp.name, "home")
         os.makedirs(self.home)
+        # The node's own agents folder is read first: on a node that carries
+        # a real Codex the census found that one and not the stub (B251).
+        self.mod.AGENTS_DIR = os.path.join(self.tmp.name, "agents")
         self.stub = os.path.join(self.tmp.name, "installer.sh")
         with open(self.stub, "w") as f:
             f.write('mkdir -p "$CODEX_INSTALL_DIR"\n'
