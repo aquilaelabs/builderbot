@@ -33,6 +33,7 @@
 - Creating a project no longer pins it on everyone's Home; it is on the Projects page, and each person pins what they want there. (dd3c32c)
 - A project's agent button reads Manage agent while your session runs, since it opens the chooser with Open, Restart and End. (f412261)
 - The Jobs page's When says the time a running or waiting job began, where it said "started just now" cut short. (fa30ec7)
+- A terminal scrolled back hands your next key to the program: the key row's keys leave the scroll first, and a typed letter ends it, where an arrow used to move tmux's cursor over the history and a letter did nothing. (b0d8cea)
 
 ### Upgrading
 
