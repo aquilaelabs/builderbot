@@ -750,6 +750,12 @@ class SessionsMixin:
                 continue
             # The target is this op's session, whatever the argv says.
             argv[argv.index("-t") + 1] = sess
+            # A key for the program leaves copy mode first, as the
+            # dashboard's own tmux does (macros.py): scrolled back, an arrow
+            # moved tmux's cursor and the program heard nothing.
+            if argv[0] == "send-keys" and "-X" not in argv \
+                    and (self._tmux(["display-message", "-p", "-t", sess, "#{pane_in_mode}"]) or "").strip() == "1":
+                self._tmux(["send-keys", "-t", sess, "-X", "cancel"])
             self._tmux(argv)
 
     def agent_update(self, job, spec):

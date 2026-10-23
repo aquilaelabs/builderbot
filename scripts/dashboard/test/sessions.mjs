@@ -44,6 +44,11 @@ ok(await page.evaluate(() => sessionOf(tabOf(panes[1]).arg) === 'shell-9' && doc
 await page.evaluate(() => sendKey('pgup'));
 await page.waitForFunction(() => true); await sleep(300);
 ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '1', 'PgUp at a prompt enters copy mode (scrolls back)');
+// Any other key is the program's: it leaves copy mode first, where an arrow
+// moved tmux's cursor over the history and the program heard nothing (B254).
+await page.evaluate(() => sendKey('down')); await sleep(300);
+ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '0', "...and the keys row's arrow leaves it, for the program");
+await page.evaluate(() => sendKey('pgup')); await sleep(300);
 await page.evaluate(() => sendKey('pgdn')); await sleep(300);
 ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '0', 'PgDn back at the bottom leaves copy mode by itself');
 ok((await row('shell-9').locator('.pill.ok').textContent()).trim() === 'on screen', 'its row says it is on screen');

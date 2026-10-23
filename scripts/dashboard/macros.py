@@ -307,6 +307,14 @@ def press(session, key, on_node):
             cmd = ["send-keys", "-t", session, "-X", "page-down"] if mode == "1" \
                 else ["send-keys", "-t", session, "NPage"]
         return run(["tmux", *cmd], timeout=10), 200
+    # Any other key is meant for the program, so a pane scrolled back into
+    # copy mode leaves it first: there an arrow moved tmux's cursor over the
+    # history and a letter did nothing, and the program never heard either
+    # (the operator, 23 Oct, at Codex's approval list).
+    if key in TMUX_KEYS or key in TMUX_LITERALS:
+        mode = run(["tmux", "display-message", "-p", "-t", session, "#{pane_in_mode}"], timeout=10)
+        if mode["out"].strip() == "1":
+            run(["tmux", "send-keys", "-t", session, "-X", "cancel"], timeout=10)
     if key in TMUX_KEYS:
         return run(["tmux", "send-keys", "-t", session, TMUX_KEYS[key]], timeout=10), 200
     if key in TMUX_LITERALS:
