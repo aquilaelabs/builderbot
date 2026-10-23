@@ -73,6 +73,14 @@ function toastAdd(text, lv){
 // clock, since what it said is on the record either way. With no dialog
 // open the stylesheet's corner holds.
 const TOAST_GUTTER = 240;
+// ...and again as a dialog opens or goes (page-motion.js armModal): a job's
+// toast stays while its job runs, and one up before the dialog stood over
+// the dialog's buttons and took their presses (the nodes suite's Cancel
+// under "Storage on shed: assigned").
+function toastReplace(){
+  const stack = $("toast");
+  if (stack && stack.children.length) toastPlace(stack);
+}
 function toastPlace(stack){
   const box = [...document.querySelectorAll(".modal:not([hidden]):not(.inline):not(.leaving) > .box")].at(-1);
   stack.style.cssText = "";
