@@ -73,6 +73,13 @@ const job = await (async () => { for (let i = 0; i < 40; i++){
   await new Promise(r => setTimeout(r, 250));
 } return null; })();
 ok(job && job.type === 'storage', `Measure now queues the agent's storage job on that node (${job?.id})`);
+// ...and the button comes back once the press is answered: the bar's markup
+// is the same after it, and a repaint that skipped it left Asking for good.
+const back = await page.waitForFunction(id => {
+  const b = document.querySelector(`.storagetab .docbarrow [data-stmeasure="${id}"]`);
+  return b && !b.disabled && b.textContent.trim() === 'Measure now';
+}, minted.id, { timeout: 15000 }).then(() => true, () => false);
+ok(back, 'Measure now reads Measure now again once its press is answered, not Asking');
 if (job) await api('/api/v1/jobs', { action: 'cancel', id: job.id });
 await api('/api/v1/nodes', { action: 'retire', id: minted.id });
 

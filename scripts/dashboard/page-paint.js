@@ -58,7 +58,12 @@ function paint(el, html, quiet = false){
   // ...counting the children it wrote: a slide marker (slideMark) put in
   // beside them is the motion's, not a write that makes the markup stale.
   const was = rec && rec.first === el.firstChild && rec.n === paintedKids(el) ? rec.html : undefined;
-  if (rec && was === html) return false;
+  // ...unless a button in it was marked busy since (busy(): "Asking..."):
+  // the press rewrote it in place, and the same markup painted again is what
+  // takes the mark off. Skipped, Measure now said Asking until a reload (the
+  // operator, 23 Oct).
+  // A mark the markup carries itself (Abort's Stopping) is not a press's.
+  if (rec && was === html && (html.includes('aria-busy="true"') || !el.querySelector('[aria-busy="true"]'))) return false;
   // Not recorded, so the same markup is still a change on the next poll.
   if (menuHolds(el)) return false;
   const arriving = !rec || WAITING.test(rec.html);
