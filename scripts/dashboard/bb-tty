@@ -21,6 +21,22 @@ set -euo pipefail
 # dashboard suite drive this script at all.
 . "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 
+# A terminal that ends before it starts says so in its tab and waits (R132):
+# set -e ends this script at whatever failed, without a word, and ttyd then
+# reconnects to the same failure in a loop with nothing on the screen. The
+# exec into tmux replaces this script, so a terminal that started never
+# reaches it.
+set -E
+trap 'BB_TTY_LINE=$LINENO' ERR
+bb_tty_ended() {
+    local rc=$?
+    [ "$rc" -eq 0 ] && return 0
+    printf '\r\nBuilderBot: this terminal ended before it started (exit %s, bb-tty line %s).\r\nClose the tab, or press Enter to try again.\r\n' \
+        "$rc" "${BB_TTY_LINE:-?}" >&2
+    if [ -t 0 ]; then read -r -t 3600 _ || true; fi
+}
+trap bb_tty_ended EXIT
+
 target="${1:-shell}"
 
 # ---- whose terminal this is (roadmap #26) ----------------------------------

@@ -1383,12 +1383,17 @@ def main(argv):
         if verb in ("tty", "tty-ro"):
             try:
                 tty(c, argv[1:], ro=verb == "tty-ro")
-            except Refused as e:
-                # Said in the terminal, where ttyd shows it, and held a moment
-                # so it can be read before the tab closes.
-                sys.stdout.write(f"BuilderBot: this terminal was refused: {e}\r\n")
+            except Exception as e:                               # noqa: BLE001 (said in the tab, R132)
+                # Said in the terminal, where ttyd shows it, and held until a
+                # key so it can be read: anything else, a traceback included,
+                # scrolled past or ended in ttyd's reconnect loop (R132).
+                why = str(e) if isinstance(e, Refused) else f"bb-session failed: {type(e).__name__}: {e}"
+                sys.stdout.write(f"BuilderBot: this terminal was refused: {why}\r\n"
+                                 "Close the tab, or press Enter to try again.\r\n")
                 sys.stdout.flush()
-                time.sleep(10)
+                if sys.stdin.isatty():
+                    with contextlib.suppress(OSError, ValueError):
+                        sys.stdin.readline()
                 return 1
         a, command = args(argv[1:])
         if verb == "plan":
