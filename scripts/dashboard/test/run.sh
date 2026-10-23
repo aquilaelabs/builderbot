@@ -851,6 +851,17 @@ ssh-keygen -q -t ed25519 -N '' -C github_testkey -f "$S/testkey"
 ssh-agent -a "$S/ssh-agent.sock" > "$S/agent.env"
 agent_pid="$(sed -n 's/^SSH_AGENT_PID=\([0-9]*\);.*/\1/p' "$S/agent.env")"
 SSH_AUTH_SOCK="$S/ssh-agent.sock" ssh-add -q "$S/testkey" 2>/dev/null
+# The file each toolchain's layout runs, which is what says it is installed
+# (B255): the stub's install lays it down beside its marker.
+python3 - "$HERE/../../../config/toolchains.json" > "$S/tc-needs.tsv" <<'PY'
+import json, sys
+c = json.load(open(sys.argv[1]))
+for r in c if isinstance(c, list) else c.get("toolchains", []):
+    lay = r.get("layout") or {}
+    need = lay.get("needs") or ("" if str(lay.get("tool") or "").startswith("root:") else lay.get("tool") or "")
+    if need:
+        print(f"{r['name']}\t{need}")
+PY
 cat > "$S/bin/bb" <<'EOF'
 #!/usr/bin/env bash
 # Stub: deterministic `bb doctor`, the emulator's image listings, and a
@@ -943,6 +954,8 @@ if [ "${1:-}" = toolchains ]; then
                          printf '[====] 100%% Unzipping...\r\n'; sleep 0.3
                      fi
                      mkdir -p "$d" && : > "$d/marker"
+                     need="$(awk -F'\t' -v n="$3" '$1 == n {print $2}' "$(dirname "$0")/../tc-needs.tsv" 2>/dev/null)"
+                     if [ -n "$need" ]; then mkdir -p "$(dirname "$d/$need")" && : > "$d/$need"; fi
                  else rm -rf "$d"; fi
                  printf '%sed %s\n' "${2%e}" "$3" ;;
     esac
