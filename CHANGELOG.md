@@ -13,6 +13,7 @@
 - Codex CLI (ChatGPT) and Copilot CLI (GitHub) run beside Claude Code: the new Agents page installs, updates and signs in to each on a node, a project's Start offers each one signed in there, and its settings say which agents may run and which one Start opens. Every Agents may dial, house rule and guard holds for them as for Claude, and their conversations are kept, read, shared and resumed on the Sessions view. (8f65c9b)
 - The Android app has the dashboard's light half of every color scheme, and Dark, Light or System beside the schemes under More; its colors are the dashboard's own, written from the design (ee34178)
 - Lock keeps a project to its owner: the owner's Lock ends every other session there and holds everybody else out of starting one or changing it until they unlock it; an administrator's Admin: Lock holds the owner out too. A locked project stays on the Projects page with its padlock (7d4a5eb)
+- A store move waits for its node to be quiet, holds the node's sessions without ending them (each is told what is moving and how far it has got, and may still keep its notes), and lets them go when it is done (9970f34)
 
 ### Changed
 

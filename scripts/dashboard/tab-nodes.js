@@ -1281,7 +1281,11 @@ function nodeConfSections(n){
   const lineFor = kind => {
     const pending = !drift ? [] : kind === "storage" ? drift.storage
       : drift.network === "unknown" ? [] : drift.network;
-    return busyNow
+    return busyNow?.quiet && busyNow.state === "queued"
+      ? ["waiting for the node to go quiet: its jobs to finish and its sessions to end their turns, which then wait on the move", "note"]
+      : busyNow?.quiet
+      ? ["moving storage: the node's sessions are held, and told how far it has got", "note"]
+      : busyNow
       ? [`applying ${busyNow.what}${busyNow.what === "network" ? ": waiting for it to dial back in" : "…"}`, "note"]
       : stale ? [staleWhy(n), windowGap(n) ? "bad" : "warn"]
       : c.dirty ? ["Unsaved: press Save, then Apply.", "warn"]
@@ -2747,7 +2751,11 @@ function wireNodeConf(row, id){
           + (fresh.length ? `${fresh.map(m => `${m.role} starts empty in ${m.to}`).join(", and ")}, `
              + `leaving what was in ${fresh.map(m => m.from).join(" and ")} where it is.` : ""))) return;
     }
-    await pressing(b, () => { busy(b, "Applying"); return nodeAct({action: "apply", id, what}); });
+    const r = await pressing(b, () => { busy(b, "Applying"); return nodeAct({action: "apply", id, what}); });
+    // A storage apply is followed to its end, which is kept on the record
+    // (R120 step 7): a store move can wait for the node to go quiet and then
+    // run for hours, and its end is news to whoever pressed it.
+    if (what === "storage" && r?.job) notifyJob(r.job, `Storage on ${n?.name || "the node"}`);
   });
 }
 

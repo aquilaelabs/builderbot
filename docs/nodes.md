@@ -1602,6 +1602,22 @@ copy would mix the two by name, so it refuses and leaves the store where it
 was. A mount point on a folder that holds files asks first too, saying the
 share covers them until it is unmounted.
 
+**A store move waits for the node to be quiet and holds it without
+ending anything (R120 step 7).** An apply that repoints a store (anything but
+`cache`) is queued as one that needs a quiet node, as an agent update is: the
+node is handed nothing new while it waits, and it starts once no job runs
+there and no session is mid-turn, or fails after thirty minutes naming what
+kept the node busy. A session's next prompt waits meanwhile, saying the node
+is about to move its storage. While the move runs, the agent writes
+`<toolchain store>/.bb/hold.json` and keeps it current with how far the copy
+has got; every session's gate (Claude's, and Codex's and Copilot's through
+their hooks) reads it before each tool call, with no network, and holds the
+call with that sentence, letting the session's own notes through. Nothing
+else is handed to the node until the move ends; the hold is lifted then
+however it ended, and one its agent stopped saying for fifteen minutes holds
+nobody. The node's Storage line says *waiting for the node to go quiet*, then
+*moving storage*.
+
 No store and no mount point may be a system directory: the list above, on
 both ends, with mount points checked as stores are. A folder of its own under
 `/var/log` is allowed; `/var/log` itself, like `/var/lib`, is not.

@@ -143,6 +143,9 @@ def _node_list(all=False):
             # uninstall in flight" off the type alone and never graying.
             entry["apply"] = sp.get("apply", "")
             busy[j["node"]] = {"id": j["id"], "what": sp.get("apply", ""),
+                               # A store move waiting for the node to be quiet
+                               # (R120 step 7) says so, not "applying".
+                               "quiet": bool(sp.get("quiet")), "state": j["state"],
                                "slot": str((sp.get("config") or {}).get("slot") or ""),
                                # Which feature and which way (R91), for its row.
                                "feature": str((sp.get("config") or {}).get("id") or "") if sp.get("apply") == "feature" else "",
@@ -3037,14 +3040,20 @@ def node_apply(principal, node_id, what):
     # for mounting a share and the wrong one for moving one. `cache` is not
     # copied (the agent says why), so it does not buy the longer clock.
     timeout = 900
+    quiet = False
     if what == "storage":
         rep = (n.get("reported") or {}).get("stores") or {}
         if any(p and role != "cache" and (rep.get(role) or {}).get("path")
                and str((rep.get(role) or {}).get("path")).rstrip("/") != str(p).rstrip("/")
                for role, p in (desired.get("stores") or {}).items()):
             timeout = 6 * 3600 + 900
-    r = job_add(principal, {"node": node_id}, "system",
-                {"apply": what, "config": cfg, "timeout": timeout})
+            # ...and it waits for the node to be quiet, and holds it while it
+            # runs (R120 step 7): sessions keep running and are told.
+            quiet = True
+    spec = {"apply": what, "config": cfg, "timeout": timeout}
+    if quiet:
+        spec["quiet"] = True
+    r = job_add(principal, {"node": node_id}, "system", spec)
     if r.get("ok"):
         audit(principal, "node-apply", node_id, {"what": what, "job": r["job"]})
     return r
@@ -4545,6 +4554,10 @@ def job_next(node_id, wait, runner="node", alive=None):
                 # UPDATE_QUIET_S fails it, saying so, and works again.
                 # Not on a node locked down: its lockdown job is all it takes.
                 upd = _update_gate(node_id) if runner == "node" and not (n.get("config") or {}).get("lockdown") else None
+                # ...and while a store move runs, nothing else is handed out
+                # either: what the node runs reads and writes the stores.
+                if upd is None and runner == "node" and (storage_moving(node_id) or {}).get("state") == "moving":
+                    free = lane = False
                 if upd is not None:
                     free = lane = False
                     if upd:
@@ -4622,31 +4635,61 @@ def job_next(node_id, wait, runner="node", alive=None):
 
 
 UPDATE_QUIET_S = 600
+# A store move waits longer for quiet (R120 step 7): it also waits for every
+# session there to finish its turn, and a turn can run a while.
+STORAGE_QUIET_S = 1800
+
+
+def _quiet_storage(j):
+    """A storage apply that moves a store (R120 step 7): it waits for the
+    node to be quiet, and holds it while it runs."""
+    sp = j.get("spec") or {}
+    return j.get("type") == "system" and sp.get("apply") == "storage" and bool(sp.get("quiet"))
 
 
 def _update_gate(node_id):
-    """None when no agent update is queued for this node; else the update
-    job to hand over now (the node is quiet), or {} while it waits for the
-    node's running jobs to finish. One that has waited UPDATE_QUIET_S is
-    failed with what kept the node busy, and the node works on."""
-    rows = _rows("SELECT * FROM jobs WHERE state = 'queued' AND type = 'self-update' AND node = ? "
-                 "ORDER BY queued, id LIMIT 1", (node_id,))
+    """None when no agent update and no store move is queued for this node;
+    else the job to hand over now (the node is quiet), or {} while it waits
+    for the node's running jobs to finish, and for a store move its sessions'
+    turns too (working_on). One that has waited too long is failed with what
+    kept the node busy, and the node works on."""
+    rows = [_job_out(r) for r in _rows("SELECT * FROM jobs WHERE state = 'queued' AND node = ? "
+                                       "AND type IN ('self-update', 'system') ORDER BY queued, id", (node_id,))]
+    rows = [j for j in rows if j["type"] == "self-update" or _quiet_storage(j)]
     if not rows:
         return None
-    j = _job_out(rows[0])
+    j = rows[0]
+    store = _quiet_storage(j)
     busy = _rows("SELECT type, COUNT(*) AS n FROM jobs WHERE node = ? AND state IN ('assigned', 'running') "
                  "GROUP BY type", (node_id,))
-    if not busy:
+    turning = working_on(node_id) if store and working_on else 0
+    if not busy and not turning:
         return j
-    if time.time() - int(j.get("queued") or 0) > UPDATE_QUIET_S:
-        what = ", ".join(f"{b['n']} {b['type']}" for b in busy)
+    wait = STORAGE_QUIET_S if store else UPDATE_QUIET_S
+    if time.time() - int(j.get("queued") or 0) > wait:
+        what = ", ".join([f"{b['n']} {b['type']}" for b in busy]
+                         + ([f"{turning} session{'' if turning == 1 else 's'} working"] if turning else []))
         _exec("UPDATE jobs SET state = 'failed', ended = ?, step = '', error = ? WHERE id = ?",
-              (int(time.time()), f"the node never went quiet for the update in {UPDATE_QUIET_S // 60} "
-                                 f"minutes: still running {what}; press Update agent again when they finish",
+              (int(time.time()), f"the node never went quiet for the {'store move' if store else 'update'} in "
+                                 f"{wait // 60} minutes: still running {what}; press "
+                                 f"{'Apply' if store else 'Update agent'} again when they finish",
                j["id"]))
         _jstate_bump()
         return None
     return {}
+
+
+def storage_moving(node_id):
+    """{state: waiting|moving, job, since} while a store move is queued for
+    this node or running on it (R120 step 7), else None: what a session's
+    next turn waits for, and what the node's row says."""
+    for j in (_job_out(r) for r in _rows("SELECT * FROM jobs WHERE node = ? AND type = 'system' AND "
+                                          "state IN ('queued', 'assigned', 'running') ORDER BY queued, id",
+                                          (node_id,))):
+        if _quiet_storage(j):
+            return {"state": "waiting" if j["state"] == "queued" else "moving", "job": j["id"],
+                    "since": int(j.get("started") or j.get("queued") or 0)}
+    return None
 
 
 def _job_out(j):
@@ -5322,8 +5365,9 @@ project_prefs = None     # a project -> its settings (its node and node set)
 may_push = None          # a project -> whether it was cloned with push rights
 no_node_advice = None    # a project with no node -> what it can still do
 turns_of = None          # a node row -> its sessions' turns: working, waiting, the limit
+working_on = None        # a node id -> how many of its sessions are mid-turn (R120 step 7)
 _VERB_PARTS = ("vmtemplate", "forges", "devapp", "runner_store",
-               "workspace", "project_prefs", "may_push", "no_node_advice", "turns_of")
+               "workspace", "project_prefs", "may_push", "no_node_advice", "turns_of", "working_on")
 
 
 def configure_verbs(**parts):

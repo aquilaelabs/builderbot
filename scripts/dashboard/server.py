@@ -3790,7 +3790,8 @@ vmtemplate.unvetted_ok = forges.unvetted_ok          # the same switch (R54, ste
 nodes.configure_verbs(vmtemplate=vmtemplate, forges=forges, devapp=devapp,
                       runner_store=runners, workspace=workspace,
                       project_prefs=prefs.get, may_push=projects.may_push,
-                      no_node_advice=no_node_advice, turns_of=node_turns)
+                      no_node_advice=no_node_advice, turns_of=node_turns,
+                      working_on=lambda nid: node_turns(nodes.node(nid) or {"id": nid})["working"])
 
 version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                   roadmap_mod=roadmap, bugs_mod=bugs, changelog_mod=changelog,

@@ -138,6 +138,17 @@ def verb(kind, req, me, uid, project):
         if kind == "turn-done":
             turns.done(nid, key)
             return {"ok": True}, 200
+        # A store move on the node (R120 step 7): no new turn starts while
+        # it waits for the node to go quiet or runs; the session is kept,
+        # and its prompt waits with the reason.
+        mv = nodes.storage_moving(nid) if nodes is not None else None
+        if mv:
+            name = (nodes.node(nid) or {}).get("name") or nid
+            return {"ok": True, "go": False, "working": [], "ahead": 0, "limit": limit, "node": name,
+                    "why": (f"{name} is moving one of its data stores"
+                            + (", and waits for its sessions to finish their turns first"
+                               if mv["state"] == "waiting" else "")
+                            + ". This prompt waits until it is done; your session is kept.")}, 200
         r = turns.ask(nid, key, limit, heart, at)
         if not r["go"]:
             n = nodes.node(nid) or {}

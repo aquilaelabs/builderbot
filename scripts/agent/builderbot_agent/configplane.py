@@ -1,9 +1,11 @@
 """The configuration plane (docs/nodes.md section 12): the node's own system, storage and network, applied as root."""
 import contextlib
+import json
 import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from .base import (
     daemon_json_with_ip,
@@ -693,6 +695,68 @@ class ConfigPlaneMixin:
             if self._sh(job, [SANDBOX_BIN, verb, f"{src}:{path}" + (":ro" if ro else "")]) != 0:
                 bad += 1
         stores = cfg.get("stores") if isinstance(cfg.get("stores"), dict) else {}
+        # A store that moves holds the node's sessions while it does (R120
+        # step 7): written where every session's gate reads it, and taken
+        # away however this ends.
+        was_at = dict(self.state.get("stores") or {})
+        moving = sorted(r for r, p in stores.items() if r in DEFAULT_STORES and r != "cache"
+                        and was_at.get(r) and str(was_at[r]).rstrip("/") != str(p).rstrip("/"))
+        # Where the hold goes is fixed now: a move of the toolchain store
+        # itself repoints the bundle, and the sessions' gates read the one
+        # they started with.
+        self._hold_at = self._hold_file() if moving else None
+        if moving:
+            self._hold(f"moving its {' and '.join(moving)} store{'s' if len(moving) > 1 else ''}")
+        try:
+            bad += self._apply_stores(job, stores, cfg)
+        finally:
+            if moving:
+                self._hold(None)
+            self._hold_at = None
+        self.hello()
+        if bad:
+            job.say(f"{bad} of the changes did not apply; the rest did\n")
+            return "failed", 1
+        job.say("storage applied\n")
+        return "succeeded", 0
+
+    def _hold_file(self):
+        """Where a session's gate on this node looks for a hold: beside the
+        bundle in the toolchain store, which every session reads (its bb is
+        there), or None on a node without one."""
+        root = tc_root(self.state)
+        return os.path.join(root, ".bb", "hold.json") if root else None
+
+    def _hold(self, said):
+        """Hold this node's sessions with `said` (what is happening, in
+        words), or lift the hold with None. Rewritten as the work goes, with
+        when it was last said, so a hold left by an agent that died is seen
+        as stale rather than holding forever."""
+        f = getattr(self, "_hold_at", None)
+        if not f:
+            return
+        try:
+            if said is None:
+                with contextlib.suppress(FileNotFoundError):
+                    os.remove(f)
+                return
+            now = int(time.time())
+            was = {}
+            with contextlib.suppress(OSError, ValueError):
+                with open(f) as fh:
+                    was = json.load(fh)
+            tmp = f + ".new"
+            with open(tmp, "w") as fh:
+                json.dump({"what": "storage", "node": self.state.get("name") or "",
+                           "said": said, "since": int(was.get("since") or now), "updated": now}, fh)
+            os.chmod(tmp, 0o644)
+            os.replace(tmp, f)
+        except OSError:
+            pass
+
+    def _apply_stores(self, job, stores, cfg):
+        """The stores half of a storage apply: how many did not apply."""
+        bad = 0
         if stores:
             # Read the mounts back AFTER applying them: what a store may sit
             # on is what is mounted now, not what was asked for.
@@ -765,12 +829,7 @@ class ConfigPlaneMixin:
             self.write_session_profile(job)
             self.state["store_made"] = marks
             save_state(self.state)
-        self.hello()
-        if bad:
-            job.say(f"{bad} of the changes did not apply; the rest did\n")
-            return "failed", 1
-        job.say("storage applied\n")
-        return "succeeded", 0
+        return bad
 
     def _move_store(self, job, role, old, new):
         """Repointing a store used to leave its contents behind: the node
@@ -865,7 +924,23 @@ class ConfigPlaneMixin:
         except OSError as e:
             job.say(f"refused: could not read {old}: {e}\n")
             return False
-        if entries and self._sh(job, argv + entries + [new + "/"], timeout=21600) != 0:
+        # How far it has got, said in the hold every session on the node
+        # reads (R120 step 7), so a held session can say more than "wait".
+        stop = threading.Event()
+
+        def tick():
+            while not stop.wait(20):
+                got = dir_bytes(new)
+                far = (f"{min(99, got * 100 // size)}% copied" if size and got is not None
+                       else f"{(got or 0) // 1048576}MB copied")
+                self._hold(f"moving its {role} store to {new}: {far}")
+        if entries:
+            threading.Thread(target=tick, daemon=True).start()
+        try:
+            copied = not entries or self._sh(job, argv + entries + [new + "/"], timeout=21600) == 0
+        finally:
+            stop.set()
+        if not copied:
             job.say(f"refused: the copy failed. {role} still points at {old}, "
                     f"which is untouched.\n")
             return False

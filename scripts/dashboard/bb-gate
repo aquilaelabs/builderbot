@@ -144,6 +144,11 @@ def turn(project, wait):
             break
         time.sleep(ASK_EVERY)
     bbapi.request("/api/v1/hook", {"kind": "turn-done", "agent": AGENT}, auth=auth, timeout=10)
+    if last.get("why"):
+        # Something on the node holds every turn (a store moving, R120):
+        # said in its own words rather than as a limit.
+        sys.stderr.write(f"{last['why']} It waited {int(wait)} seconds; send it again in a while.\n")
+        return 2
     n = len(last.get("working") or [])
     sys.stderr.write(
         f"{last.get('node') or 'This node'} lets {last.get('limit')} agent session"
@@ -198,6 +203,21 @@ def main():
         return 0
     sf = stamp_file(project)
     now = time.time()
+    # Held by the node itself before anything else (R120 step 7): a store
+    # moving there, said in the file its agent keeps beside this bundle.
+    # Read every call, no network: it holds at once and lifts at once.
+    hold = node_hold(now)
+    if hold:
+        if own_notes():
+            return 0
+        held_mark(sf, (args[1:2] or [""])[0], True, now)
+        sys.stderr.write(
+            f"{hold.get('node') or 'This node'} is {hold.get('said') or 'moving its storage'}, "
+            f"started {max(1, int(now - float(hold.get('since') or now)) // 60)} min ago. Your "
+            "session is kept: nothing that works on the node runs until that is done. Wait and try "
+            "again, or write where you are and what is next to your notes (that is allowed) and "
+            "end the turn.\n")
+        return 2
     last = {}
     try:
         with open(sf) as f:
@@ -227,6 +247,28 @@ def main():
         sys.stderr.write(why + "\n")
         return 2
     return 0
+
+
+# Where this node's agent says it holds the node (R120 step 7): beside the
+# bundle this gate runs from, <store>/.bb/hold.json, which every session on
+# the node reads. A gate run from anywhere else finds none.
+HOLD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "hold.json")
+# A hold its agent has not said again in this long was left by one that
+# died: it holds nobody.
+HOLD_STALE_S = 900
+
+
+def node_hold(now):
+    """The node's hold as its agent wrote it ({node, said, since, updated}),
+    or None when there is none or it is stale."""
+    try:
+        with open(HOLD) as f:
+            h = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(h, dict) or now - float(h.get("updated") or 0) > HOLD_STALE_S:
+        return None
+    return h
 
 
 def held_mark(sf, session, held, now):

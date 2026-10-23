@@ -16,7 +16,7 @@ import nodes  # noqa: E402
 import agentpkg  # noqa: E402
 
 
-class UpdateGate(unittest.TestCase):
+class Gate(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
@@ -26,13 +26,16 @@ class UpdateGate(unittest.TestCase):
         self.n = nodes.LOCAL
         nodes._exec("UPDATE nodes SET kind = 'agent', concurrency = 4 WHERE id = ?", (self.n,))
 
-    def job(self, jid, type, state="queued", node=None, ago=0):
+    def job(self, jid, type, state="queued", node=None, ago=0, spec="{}"):
         nodes._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source, spec, outputs, "
-                    "state, node, queued) VALUES (?, ?, '', 'test', '{}', '{}', '{}', '[]', ?, ?, ?)",
-                    (jid, type, state, self.n if node is None else node, int(time.time()) - ago))
+                    "state, node, queued) VALUES (?, ?, '', 'test', '{}', '{}', ?, '[]', ?, ?, ?)",
+                    (jid, type, spec, state, self.n if node is None else node, int(time.time()) - ago))
 
     def state(self, jid):
         return nodes._rows("SELECT state, error FROM jobs WHERE id = ?", (jid,))[0]
+
+
+class UpdateGate(Gate):
 
     def test_a_quiet_node_takes_its_update(self):
         self.job("u1", "self-update")
@@ -264,6 +267,61 @@ class AgentFlush(unittest.TestCase):
         done, pending = self.flush(502)
         self.assertFalse(done)
         self.assertEqual(len(pending), 1)
+
+
+
+
+MOVE = '{"apply": "storage", "quiet": true, "config": {}}'
+
+
+class StoreMoveGate(Gate):
+    """A store move waits for the node's jobs AND its sessions' turns, and
+    holds the node while it runs (R120 step 7)."""
+
+    def setUp(self):
+        super().setUp()
+        self.turning = 0
+        was = nodes.working_on
+        self.addCleanup(setattr, nodes, "working_on", was)
+        nodes.working_on = lambda nid: self.turning
+
+    def test_a_move_waits_for_a_session_mid_turn(self):
+        self.turning = 1
+        self.job("m1", "system", spec=MOVE)
+        self.assertIsNone(nodes.job_next(self.n, 0))
+        self.assertEqual(nodes.storage_moving(self.n)["state"], "waiting")
+        self.turning = 0
+        got = nodes.job_next(self.n, 0)
+        self.assertEqual(got["id"], "m1")
+        self.assertEqual(nodes.storage_moving(self.n)["state"], "moving")
+
+    def test_nothing_else_is_handed_out_while_a_move_runs(self):
+        self.job("m1", "system", state="running", spec=MOVE)
+        self.job("q1", "build", node="")
+        self.assertIsNone(nodes.job_next(self.n, 0))
+        nodes._exec("UPDATE jobs SET state = 'succeeded' WHERE id = 'm1'")
+        self.assertIsNone(nodes.storage_moving(self.n))
+        self.assertEqual(nodes.job_next(self.n, 0)["id"], "q1")
+
+    def test_a_move_that_never_found_the_node_quiet_fails_naming_the_sessions(self):
+        self.turning = 2
+        self.job("m1", "system", spec=MOVE, ago=nodes.STORAGE_QUIET_S + 5)
+        nodes.job_next(self.n, 0)
+        got = self.state("m1")
+        self.assertEqual(got["state"], "failed")
+        self.assertIn("store move", got["error"])
+        self.assertIn("2 sessions working", got["error"])
+
+    def test_an_agent_update_does_not_wait_for_turns(self):
+        self.turning = 3
+        self.job("u1", "self-update")
+        self.assertEqual(nodes.job_next(self.n, 0)["id"], "u1")
+
+    def test_a_storage_apply_that_moves_nothing_is_an_ordinary_job(self):
+        self.turning = 1
+        self.job("s1", "system", spec='{"apply": "storage", "config": {}}', node="")
+        self.assertIsNone(nodes.storage_moving(self.n))
+        self.assertEqual(nodes.job_next(self.n, 0)["id"], "s1")
 
 
 if __name__ == "__main__":
