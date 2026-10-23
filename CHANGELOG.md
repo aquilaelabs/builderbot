@@ -46,6 +46,10 @@
 
 - The Lock grant on a role no longer decides anything (a project's owner locks it, an administrator too) and goes in 0.8.0 (7d4a5eb)
 
+### Fixed
+
+- A toolchain left half-installed reads as not installed, and Install clears what it left and installs it whole. (3220428)
+
 ### Security
 
 - A signing key's backup downloaded from a project with a backup password is now wrapped under that password: the zip holds no password, and the key opens only with it. A backup downloaded before this holds its key's password in password.txt in plain text: keep those copies somewhere only you can reach, or delete them and download again. (3fe7f38)
