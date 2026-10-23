@@ -321,6 +321,14 @@ class Copies(unittest.TestCase):
         for aid, xs in agents.EFFORTS.items():
             self.assertEqual(tuple(re.findall(r'"([^"]+)"', efforts)), xs, aid)
 
+    def test_the_vscode_extension_s_copy_is_the_live_rows(self):
+        # Its session terminal opens any live agent's session (R128).
+        with open(os.path.join(HERE, "..", "..", "..", "vscode", "extension.js")) as f:
+            js = f.read()
+        body = js[js.index("const AGENTS = ["):js.index("];", js.index("const AGENTS = ["))]
+        rows = re.findall(r"\{ id: '(\w+)', name: '([^']+)', product: '([^']+)' \}", body)
+        self.assertEqual(rows, [(a.id, a.name, a.product) for a in agents.live()])
+
     def test_the_node_agent_s_prefixes_are_the_live_rows(self):
         self.assertEqual(tuple(node.AGENT_PREFIXES), agents.prefixes())
 

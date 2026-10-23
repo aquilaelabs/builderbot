@@ -224,6 +224,10 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
   Module._load = load;
   ext.activate({ subscriptions: [], secrets: { get: async k => secrets.get(k), store: async (k, v) => secrets.set(k, v),
                                                 delete: async k => secrets.delete(k) } });
+  // Any coding agent's session terminal (R128): its argument is the page's.
+  ok(ext.AGENTS.map(a => a.id).join() === 'claude,codex,copilot' && ext.sessionArg('codex', 'alpha') === 'codex:alpha'
+     && ext.sessionArg('copilot', 'alpha') === 'copilot:alpha' && ext.sessionArg('nope', 'alpha') === 'claude:alpha',
+     'the extension opens any live agent\'s session, by the argument the dashboard opens it with');
   const uri = path => vscode.Uri.from({ scheme: 'builderbot', path: '/alpha' + path });
   const dir = await provider.readDirectory(uri('/'));
   const text = Buffer.from(await provider.readFile(uri('/editor-probe.txt'))).toString();

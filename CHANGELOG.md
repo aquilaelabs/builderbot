@@ -20,6 +20,7 @@
 - A node's agent says when it was built, beside its version: on the node's row, in bb status on that node and in a diagnostics report, so a problem with an agent can be dated (7355f96)
 - The Android app starts, opens, restarts and ends a ChatGPT or Copilot session as well as Claude's from a project's Agent view, the Manage agent chooser in a phone's shape, says how you are signed in to each agent on the project's node, archives and locks a project from its menu, and lists the coding agents under Tools
 - The Windows companion's project list says each project's lock, whose it is when it holds you out, and puts an archived project you do not keep at its foot
+- BuilderBot for VS Code opens a ChatGPT or Copilot session as well as Claude's: Open Agent Session asks the project, then the agent, and starts the session when it is not running; its project list says a lock and an archive
 
 ### Changed
 
