@@ -215,6 +215,8 @@ scripts/
     hooks.py                     what a node session's hooks post: overlap notes, the chat feed, the catch-up, the turn queue
     macros.py                    what the page may type into a terminal: the command and key tables, the pins, custom lists
     profiletab.py                an account's own settings, the Profile page
+    mfa.py                       two-factor sign-in (R127): an authenticator app's codes, passkeys (WebAuthn, its CBOR and P-256 check), recovery codes, remembered browsers and wrong codes held, in two-factor.json
+    qr.py                        a QR code as an SVG, for an authenticator app to scan (R127)
     transcripts.py               an account's conversations with Claude as a text to download, from a notebook's Sessions view
     fields.py                    one field out of a request body, read one way by the server and the modules it calls
     timing.py                    where a request's time went: named parts and its own CPU, for bb dashboard trace

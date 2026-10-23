@@ -110,6 +110,12 @@ def filter_rows(uid, rows):
             if r.get("key") in gone:
                 hidden += 1
                 continue
+        elif r.get("kind") == "two-factor":
+            # To the day (R127): put away until tomorrow, never for good.
+            r["key"] = f"2fa:{r['id']}@{r.get('day') or ''}"
+            if r["key"] in gone:
+                hidden += 1
+                continue
         elif r.get("kind") == "token-read":
             # To the newest read (R125 step 6): put away until another one.
             r["key"] = f"tokenread:{r['id']}@{r.get('at') or 0}"

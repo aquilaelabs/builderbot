@@ -758,6 +758,13 @@ html[data-motion="reduce"] .tourring{transition:none}
    wraps rather than shrinking below a tap target on a phone. */
 .logset{display:flex;flex-direction:column;gap:8px}
 .logset .dim{font:var(--f-note)}
+/* Profile's Two-factor section (R127): a line a factor, its action at the
+   right; the QR on white for a camera whatever the theme. */
+.tfset .tfrow{display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.tfset .tfrow .grow{min-width:0}
+.tfset .tfadd{display:flex;flex-direction:column;gap:8px;padding:8px 0}
+.tfset .tfqr svg{width:180px;height:180px;border-radius:var(--r-small)}
+.tfset .tfcodes pre{font:var(--f-data);margin:6px 0;white-space:pre-wrap}
 .logdays{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
   font:var(--f-note);color:var(--dim)}
 /* Only what is its own. Ground, edge, radius, the mono face and the 16px that

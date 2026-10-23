@@ -125,6 +125,36 @@ def make_token(u):
     return f"{nm}.{exp}.{sig}"
 
 
+def purpose_token(u, purpose, secs, extra=""):
+    """A short cookie for one step of signing in (R127): the account, an
+    expiry, what it is for, and a signature over those and the password
+    stamp, as make_token's. `extra` rides along signed (a remembered
+    browser's id)."""
+    exp = str(int(time.time()) + secs)
+    nm = base64.urlsafe_b64encode(u["name"].encode()).decode().rstrip("=")
+    sig = hmac.new(SECRET, f"{purpose}|{u['name']}|{exp}|{extra}|{users.stamp(u)}".encode(),
+                   hashlib.sha256).hexdigest()
+    return f"{nm}.{exp}.{extra}.{sig}"
+
+
+def purpose_user(tok, purpose):
+    """(account, extra) a purpose_token is for, or (None, ""). Fails closed."""
+    parts = str(tok or "").split(".")
+    if len(parts) != 4 or not parts[1].isdigit() or int(parts[1]) < time.time():
+        return None, ""
+    nm, exp, extra, sig = parts
+    try:
+        name = base64.urlsafe_b64decode(nm + "=" * (-len(nm) % 4)).decode()
+    except (ValueError, UnicodeDecodeError):
+        return None, ""
+    u = users.get(name)
+    if not u:
+        return None, ""
+    want = hmac.new(SECRET, f"{purpose}|{name}|{exp}|{extra}|{users.stamp(u)}".encode(),
+                    hashlib.sha256).hexdigest()
+    return (u, extra) if hmac.compare_digest(want, sig) else (None, "")
+
+
 def token_user(tok):
     """The account a cookie is for, or None. Fails closed on everything.
 
@@ -183,6 +213,87 @@ LOGIN_FIELDS = """  <!--ERR-->
   <label for="p">Password</label>
   <input id="p" name="password" type="password" autocomplete="current-password" required>
   <button type="submit">Sign in</button>"""
+
+# The second step of signing in (R127): a code from the authenticator app or
+# a recovery code in one field, a passkey by its button where the account has
+# one and the browser can, and the browser remembered for 30 days on a tick.
+MFA_FIELDS = """  <!--ERR-->
+  <input type="hidden" name="next" value="<!--NEXT-->">
+  <p class="note">Signing in as <b><!--NAME--></b>: the code your authenticator app shows, or one of your recovery codes.</p>
+  <label for="c">Code</label>
+  <input id="c" name="code" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" autofocus>
+  <label class="tick"><input type="checkbox" name="remember" value="1"> Remember this browser for 30 days</label>
+  <button type="submit">Continue</button>
+  <button type="button" id="pk" class="alt" data-has="<!--PASSKEYS-->" hidden>Use a passkey</button>
+  <p class="note"><a href="/logout">Sign in as someone else</a></p>
+  <script data-cfasync="false">
+  (() => {
+    const b = document.getElementById("pk");
+    if (!b || b.dataset.has !== "1" || !window.PublicKeyCredential) return;
+    b.hidden = false;
+    const u8 = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+    const b64 = a => btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/, "");
+    const said = t => { let e = document.querySelector(".err"); if (!e) { e = document.createElement("p"); e.className = "err";
+      b.form.querySelector("input[name=next]").after(e); } e.textContent = t; };
+    const post = body => fetch("/login/passkey", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)}).then(r => r.json());
+    b.onclick = async () => {
+      try {
+        const ch = await post({action: "challenge"});
+        if (ch.error) throw new Error(ch.error);
+        const c = await navigator.credentials.get({publicKey: {challenge: u8(ch.challenge), rpId: location.hostname,
+          allowCredentials: ch.ids.map(id => ({type: "public-key", id: u8(id)})), userVerification: "preferred", timeout: 60000}});
+        const r = await post({action: "verify", id: b64(c.rawId), client: b64(c.response.clientDataJSON),
+          auth: b64(c.response.authenticatorData), sig: b64(c.response.signature),
+          remember: b.form.querySelector("[name=remember]").checked, next: b.form.querySelector("[name=next]").value});
+        if (r.error) throw new Error(r.error);
+        location.href = r.next || "/";
+      } catch (e) { said(e.name === "NotAllowedError" ? "The passkey was not used: try again, or type a code." : String(e.message || e)); }
+    };
+  })();
+  </script>"""
+
+# The page an account whose role requires a second factor meets before
+# anything else (R127): the authenticator's QR and secret, its first code, the
+# recovery codes once; or a passkey where the browser can make one.
+SETUP_2FA_FIELDS = """  <p class="note">A role of yours, <b><!--NAME--></b>, requires a second factor. Scan the code with an authenticator app (or type the secret), then the code it shows.</p>
+  <div id="qr" class="qr"></div>
+  <p class="note" id="sec"></p>
+  <label for="c">Code</label>
+  <input id="c" autocomplete="one-time-code" inputmode="numeric" autocapitalize="none">
+  <button type="submit">Turn it on</button>
+  <button type="button" id="pk" class="alt" hidden>Use a passkey instead</button>
+  <div id="rc" hidden><p class="note">Your recovery codes, shown once: each signs you in once if your app or passkey is lost. Keep them somewhere safe.</p><pre id="codes"></pre><a class="go" href="/">Continue</a></div>
+  <p class="note"><a href="/logout">Sign out</a></p>
+  <script data-cfasync="false">
+  (() => {
+    const f = document.querySelector("form"), $ = id => document.getElementById(id);
+    const api = body => fetch("/api/profile", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)}).then(r => r.json());
+    const said = t => { let e = document.querySelector(".err"); if (!e) { e = document.createElement("p"); e.className = "err";
+      f.querySelector(".head").after(e); } e.textContent = t; };
+    const done = codes => { [...f.children].forEach(el => { if (!el.matches(".head, #rc, script")) el.hidden = true; });
+      $("rc").hidden = false; $("codes").textContent = (codes || []).join("\\n"); };
+    api({action: "2fa-totp-begin"}).then(r => { $("qr").innerHTML = r.qr || ""; $("sec").textContent = "Secret: " + (r.secret || ""); });
+    f.onsubmit = async e => { e.preventDefault();
+      const r = await api({action: "2fa-totp-confirm", code: $("c").value});
+      r.error ? said(r.error) : done(r.recovery); };
+    if (window.PublicKeyCredential) {
+      const b = $("pk"); b.hidden = false;
+      const u8 = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+      const b64 = a => btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/, "");
+      b.onclick = async () => { try {
+        const o = await api({action: "2fa-passkey-begin"});
+        const c = await navigator.credentials.create({publicKey: {challenge: u8(o.challenge), rp: {name: "BuilderBot", id: location.hostname},
+          user: {id: u8(o.user), name: o.name, displayName: o.name}, pubKeyCredParams: [{type: "public-key", alg: -7}],
+          authenticatorSelection: {residentKey: "preferred", userVerification: "preferred"}, attestation: "none", timeout: 60000,
+          excludeCredentials: (o.exclude || []).map(id => ({type: "public-key", id: u8(id)}))}});
+        const r = await api({action: "2fa-passkey-add", name: "passkey", client: b64(c.response.clientDataJSON), att: b64(c.response.attestationObject)});
+        r.error ? said(r.error) : done(r.recovery);
+      } catch (e) { said(e.name === "NotAllowedError" ? "The passkey was not made: try again, or use the app." : String(e.message || e)); } };
+    }
+  })();
+  </script>"""
 
 LOGIN_HTML = """<!doctype html>
 <html><head><meta charset="utf-8">
@@ -287,6 +398,14 @@ LOGIN_HTML = """<!doctype html>
     background:color-mix(in srgb, var(--bad) 10%, transparent);border:1px solid color-mix(in srgb, var(--bad) 35%, transparent)}
   .note{color:var(--dim);font-size:13px;margin:0 0 6px}
   .note b{color:var(--ink)}
+  .note a{color:var(--note)}
+  label.tick{display:flex;gap:8px;align-items:center;margin-top:12px;color:var(--dim);font-size:13px}
+  label.tick input{width:auto;margin:0}
+  button.alt{background:transparent;border-color:var(--line);color:var(--ink);font-weight:500;margin-top:10px}
+  .qr{display:flex;justify-content:center;margin:6px 0}
+  .qr svg{width:180px;height:180px;border-radius:4px}
+  pre#codes{font:14px/1.6 ui-monospace,monospace;color:var(--ink);background:var(--panel);padding:10px;border-radius:var(--r)}
+  a.go{display:block;text-align:center;margin-top:12px;color:var(--note)}
   .banner{position:fixed;top:0;left:0;right:0;padding:6px 12px;font-size:13px;text-align:center;
     color:var(--ink);background:var(--panel);border-bottom:1px solid var(--line)}
   .banner a{color:var(--note)}
@@ -1422,6 +1541,17 @@ def _resume_held(who, nid, session):
     return {"ok": True, **said}, 200
 
 
+def _two_factor_row(who):
+    """The bell's standing notice (R127 step 8): an account with no second
+    factor is told to add one, put away for a day at most, gone the moment
+    it has one."""
+    uid = users.uid_of(who)
+    if not uid or (who or {}).get("session") or mfa.enabled(uid):
+        return []
+    return [{"kind": "two-factor", "id": uid, "day": time.strftime("%Y-%m-%d"),
+             "required": roles.two_factor_required(users.get(who["name"]) or {})}]
+
+
 def _token_rows():
     """nodes.token_attention, each read with its account's name."""
     rows = nodes.token_attention()
@@ -1518,13 +1648,13 @@ def _attention(who):
     # before the release, not after it went out without one.
     signs = releasesign.attention([p for p in releasesign.projects_fn() if users.may_see(who, p)])
     if NODES_OK:
-        return bellseen.filter_rows(users.uid_of(who), signs)
+        return bellseen.filter_rows(users.uid_of(who), signs + _two_factor_row(who))
     where = {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}
     # The sessions an outage of this controller held come first (R251), for
     # their own account or an administrator: stopped work waiting on a
     # person, where the rest is an update that can wait (seen fourth, under
     # the fold of the bell, in the walk of 15 Oct).
-    rows = (_held_rows(who)
+    rows = (_two_factor_row(who) + _held_rows(who)
             + ([] if users.may(who, "node") else nodes.attention(where) + _token_rows())
             # ...and a node short of disk or memory (R110), for whoever
             # manages nodes: what is short, on the Storage page's terms.
@@ -3630,6 +3760,11 @@ prefs.configure_dialog(WORKSPACE=WORKSPACE, pin_instances=devapp.pin_to_current_
 # ---- the Profile tab -------------------------------------------------------------
 # An account's own settings, read and saved: profiletab.py.
 import profiletab                                                # noqa: E402
+# Two-factor sign-in (R127): the authenticator, passkeys and recovery codes.
+import mfa                                                       # noqa: E402
+
+mfa.configure(STATE=STATE, seal=signing.seal, unseal=signing.unseal,
+              sealing=lambda: signing.MASTER is not None)
 
 # An account's conversations with Claude as a download: transcripts.py.
 import transcripts                                               # noqa: E402
@@ -4213,7 +4348,8 @@ diag.configure(image_stamp=image_stamp, uptime=uptime, doctor_payload=doctor.pay
 import devices                                                   # noqa: E402
 devices.configure(users=users.load, access=lambda acct, p: ftp.access_for(acct, p, "editor"),
                   projects=lambda acct: project_names(acct))
-profiletab.configure(devices=devices)
+profiletab.configure(devices=devices, mfa=mfa, audit=db.audit,
+                     two_factor_required=lambda u: roles.two_factor_required(u))
 
 # The apps a person installs, fetched from this controller's release and
 # served from /apps (R272 step 3); which of them are offered is the
@@ -4862,6 +4998,7 @@ class Handler(BaseHTTPRequestHandler):
         Basic and the cookie both land here. Basic is what `bb` and the test
         suite send; the cookie is what a browser gets from the login page.
         """
+        self._basic_2fa = False
         hdr = self.headers.get("Authorization", "")
         if hdr.startswith("Bearer "):
             # A session's scoped token: one project, user rights, an expiry.
@@ -4887,7 +5024,13 @@ class Handler(BaseHTTPRequestHandler):
                 return None
             # The whole "user:password" is checked at once, so a correct name
             # with a wrong password is indistinguishable from both being wrong.
-            return users.authenticate_pair(given)
+            u = users.authenticate_pair(given)
+            # A password alone does not open an account with a second factor
+            # (R127): bb from a dashboard terminal carries its token instead.
+            if u and mfa.enabled(u.get("uid", "")):
+                self._basic_2fa = True
+                return None
+            return u
         for part in self.headers.get("Cookie", "").split(";"):
             k, _, v = part.strip().partition("=")
             if k == "bb_session":
@@ -4985,6 +5128,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": MAINTENANCE_SAID, "maintenance": True}, 503)
             return self._login_page(MAINTENANCE_SAID, nxt=self.path)
         if api:
+            if getattr(self, "_basic_2fa", False):
+                self._basic_2fa = False
+                return self._json({"error": "this account has two-factor sign-in, so its password alone opens "
+                                            "nothing: use bb from a dashboard terminal, which carries its own token"}, 401)
             return self._json({"error": "not signed in"}, 401)
         nxt = urllib.parse.quote(self.path, safe="/?=&")
         self.send_response(302)
@@ -5087,17 +5234,186 @@ class Handler(BaseHTTPRequestHandler):
         if kept_out(u):
             return self._login_page(MAINTENANCE_SAID, name=form.get("username", [""])[0][:200],
                                     nxt=form.get("next", ["/"])[0][:2000])
-        users.touch(u["name"])
         nxt = form.get("next", ["/"])[0]
         if not nxt.startswith("/") or nxt.startswith("//"):
             nxt = "/"
+        # A second factor where the account has one (R127), unless this
+        # browser was remembered for it; the password alone opens nothing.
+        if mfa.enabled(u["uid"]) and not self._trusted_browser(u):
+            return self._mfa_page(u, nxt)
+        self._signed_in(u, nxt)
+
+    def _cookie(self, name):
+        for part in self.headers.get("Cookie", "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == name:
+                return v.strip()
+        return ""
+
+    def _trusted_browser(self, u):
+        """Whether this browser was remembered for this account's second
+        factor (R127): its cookie verifies and its id is still on the list."""
+        who, tid = purpose_user(self._cookie("bb_trust"), "trust")
+        return bool(who and who["name"] == u["name"] and tid and mfa.trusted(u["uid"], tid))
+
+    def _signed_in(self, u, nxt, remember=False, json_answer=False):
+        """The session cookie, and with `remember` the browser's own for its
+        second factor; then on to `nxt`, or a JSON answer for the passkey's
+        fetch."""
+        users.touch(u["name"])
+        cookies = [f"bb_session={make_token(u)}; Path=/; Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax",
+                   "bb_mfa=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"]
+        if remember:
+            ua = re.sub(r"[^\w ./();,:-]", "", self.headers.get("User-Agent", ""))[:80]
+            tid, _ = mfa.trust_add(u["uid"], ua or "a browser")
+            cookies.append(f"bb_trust={purpose_token(u, 'trust', mfa.TRUST_DAYS * 86400, tid)}; Path=/; "
+                           f"Max-Age={mfa.TRUST_DAYS * 86400}; HttpOnly; SameSite=Lax")
+        body = json.dumps({"ok": True, "next": nxt}).encode() if json_answer else b""
+        self.send_response(200 if json_answer else 303)
+        if not json_answer:
+            self.send_header("Location", nxt)
+        for c in cookies:
+            self.send_header("Set-Cookie", c)
+        if json_answer:
+            self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if body:
+            self.wfile.write(body)
+
+    def _mfa_page(self, u, nxt, error="", status=200):
+        """The second step of signing in (R127), with the cookie that says
+        whose it is for ten minutes."""
+        body = (LOGIN_HTML
+                .replace("<!--TITLE-->", "sign in")
+                .replace("<!--SAID-->", "Your second factor")
+                .replace("<!--ACTION-->", "/login/2fa")
+                .replace("<!--FIELDS-->", MFA_FIELDS)
+                .replace("<!--ERR-->", f'<p class="err">{html_escape(error)}</p>' if error else "")
+                .replace("<!--NAME-->", html_escape(u["name"], quote=True))
+                .replace("<!--NEXT-->", html_escape(nxt or "/", quote=True))
+                .replace("<!--PASSKEYS-->", "1" if mfa.passkey_ids(u["uid"]) else "")
+                .replace("<!--BANNER-->", featuresoff.banner_html())).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Set-Cookie", f"bb_mfa={purpose_token(u, 'mfa', 600)}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _two_factor_gate(self, path):
+        """True, with the answer written, when a role of this account
+        requires a second factor it has not set up (R127): it reaches the
+        setup page, its Profile's read and actions, and nothing else."""
+        who = self._who() or {}
+        uid = users.uid_of(who)
+        if who.get("session") or not uid or mfa.enabled(uid):
+            return False
+        if not roles.two_factor_required(users.get(who["name"]) or {}):
+            return False
+        if path in ("/login/setup", "/api/profile", "/api/meta", "/logout", "/favicon.ico", "/favicon.svg"):
+            return False
+        if path.startswith("/api/"):
+            self._json({"error": "a role of yours requires two-factor sign-in: set it up first",
+                        "two_factor_setup": True}, 403)
+            return True
         self.send_response(303)
-        self.send_header("Location", nxt)
-        self.send_header("Set-Cookie",
-                         f"bb_session={make_token(u)}; Path=/; "
-                         f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax")
+        self.send_header("Location", "/login/setup")
         self.send_header("Content-Length", "0")
         self.end_headers()
+        return True
+
+    def _setup_2fa_page(self):
+        """GET /login/setup: an account whose role requires a second factor
+        sets one up here before anything else (R127). The page's script
+        speaks to /api/profile's two-factor actions, as Profile does."""
+        who = self._who() or {}
+        body = (LOGIN_HTML
+                .replace("<!--TITLE-->", "two-factor sign-in")
+                .replace("<!--SAID-->", "Set up two-factor sign-in")
+                .replace("<!--ACTION-->", "/login/setup")
+                .replace("<!--FIELDS-->", SETUP_2FA_FIELDS)
+                .replace("<!--ERR-->", "")
+                .replace("<!--NAME-->", html_escape(who.get("name", ""), quote=True))
+                .replace("<!--NEXT-->", "/")
+                .replace("<!--BANNER-->", featuresoff.banner_html())).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _mfa_keys(self, u):
+        """What wrong codes are counted against: the account and the address."""
+        return (f"acct:{u['uid']}", f"addr:{self.client_address[0]}")
+
+    def _mfa_post(self):
+        """POST /login/2fa: a code or a recovery code for the account the
+        bb_mfa cookie names (R127)."""
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+            if not 0 <= n <= MAX_BODY:
+                return self._json({"error": "body too large"}, 413)
+            form = urllib.parse.parse_qs(self.rfile.read(n).decode("utf-8", "replace"))
+        except (ValueError, TypeError):
+            return self._json({"error": "bad request"}, 400)
+        u, _ = purpose_user(self._cookie("bb_mfa"), "mfa")
+        nxt = form.get("next", ["/"])[0]
+        if not nxt.startswith("/") or nxt.startswith("//"):
+            nxt = "/"
+        if not u:
+            return self._login_page("That sign-in ran out: sign in again.", nxt=nxt)
+        if (left := mfa.held(*self._mfa_keys(u))):
+            return self._mfa_page(u, nxt, f"Too many wrong codes: try again in {max(1, left // 60)} minutes.", 429)
+        code = form.get("code", [""])[0].strip()
+        how = ("authenticator" if code and mfa.totp_check(u["uid"], code)
+               else "recovery code" if code and mfa.recovery_use(u["uid"], code) else "")
+        if not how:
+            wait = mfa.missed(*self._mfa_keys(u))
+            db.audit(f"user:{u['name']}", "2fa-wrong", u["name"], {"addr": self.client_address[0]})
+            time.sleep(0.5 + wait)
+            return self._mfa_page(u, nxt, "That code is not right: the one your app shows now, or an unused recovery code.")
+        mfa.cleared(f"acct:{u['uid']}")
+        db.audit(f"user:{u['name']}", "2fa-signin", u["name"], {"how": how})
+        self._signed_in(u, nxt, remember=form.get("remember", [""])[0] == "1")
+
+    def _mfa_passkey(self):
+        """POST /login/passkey: the passkey's challenge, then its answer, for
+        the account the bb_mfa cookie names (R127)."""
+        req = self._read_json()
+        if req is None:
+            return None
+        u, _ = purpose_user(self._cookie("bb_mfa"), "mfa")
+        if not u:
+            return self._json({"error": "that sign-in ran out: sign in again"}, 401)
+        if (left := mfa.held(*self._mfa_keys(u))):
+            return self._json({"error": f"too many wrong tries: try again in {max(1, left // 60)} minutes"}, 429)
+        if req.get("action") == "challenge":
+            return self._json({"challenge": mfa.challenge(u["uid"], "get"), "ids": mfa.passkey_ids(u["uid"])})
+        nxt = str(req.get("next") or "/")
+        if not nxt.startswith("/") or nxt.startswith("//"):
+            nxt = "/"
+        if not mfa.passkey_check(u["uid"], self._origin(), str(req.get("id") or ""), req.get("client"),
+                                 req.get("auth"), req.get("sig")):
+            mfa.missed(*self._mfa_keys(u))
+            db.audit(f"user:{u['name']}", "2fa-wrong", u["name"], {"addr": self.client_address[0], "how": "passkey"})
+            return self._json({"error": "that passkey did not prove this account"}, 403)
+        mfa.cleared(f"acct:{u['uid']}")
+        db.audit(f"user:{u['name']}", "2fa-signin", u["name"], {"how": "passkey"})
+        self._signed_in(u, nxt, remember=req.get("remember") is True, json_answer=True)
+
+    def _origin(self):
+        """The page's origin as its browser said it, for a passkey: Origin
+        when it names this Host, else the Host the request came to."""
+        host = self.headers.get("Host", "")
+        o = self.headers.get("Origin", "")
+        if o and urllib.parse.urlsplit(o).netloc == host:
+            return o
+        proto = self.headers.get("X-Forwarded-Proto", "") or (
+            "https" if type(self.connection).__name__ == "SSLSocket" else "http")
+        return f"{proto}://{host}"
 
     def _logout(self):
         self.send_response(302)
@@ -5850,6 +6166,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._login_page(setup=True)
         if path == "/login":
             return self._login_page()
+        if path == "/login/setup" and self._authed():
+            return self._setup_2fa_page()
         if path == "/logout":
             return self._logout()
         if path.startswith("/api/v1/agent/"):
@@ -5865,6 +6183,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(body, code)
         if not self._authed():
             return self._deny()
+        if self._two_factor_gate(path):
+            return None
         if path == "/metrics":
             if NODES_OK:
                 return self._json({"error": NODES_OK}, 503)
@@ -6852,6 +7172,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._setup_post()
         if self.path.split("?")[0] == "/login":
             return self._login_post()
+        if self.path.split("?")[0] == "/login/2fa":
+            return self._mfa_post()
+        if self.path.split("?")[0] == "/login/passkey":
+            return self._mfa_passkey()
         if self.path.split("?")[0].startswith("/api/v1/agent/"):
             # Its own door, before the operator's: an agent carries a node
             # token, never the dashboard credential (docs/nodes.md §8: the
@@ -6865,6 +7189,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._device()
         if not self._authed():
             return self._deny()
+        if self._two_factor_gate(self.path.split("?")[0]):
+            return None
         # The one body that is not JSON: an archive to start a project from,
         # streamed to the spool by projects.spool_archive. Its own door
         # before the JSON read, and its own cap: MAX_BODY is sized for a
@@ -7488,6 +7814,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "wrong username or password"}, 401)
             if kept_out(u):
                 return self._json({"error": MAINTENANCE_SAID, "maintenance": True}, 503)
+            # An app is signed in past the second factor too (R127): a code
+            # from the authenticator or a recovery code beside the password.
+            if mfa.enabled(u["uid"]):
+                keys = self._mfa_keys(u)
+                if (left := mfa.held(*keys)):
+                    return self._json({"error": f"too many wrong codes: try again in {max(1, left // 60)} minutes"}, 429)
+                code = str(req.get("code") or "").strip()
+                if not code:
+                    return self._json({"error": "this account has two-factor sign-in: add the code your "
+                                                "authenticator app shows, or a recovery code", "second_factor": True}, 401)
+                if not (mfa.totp_check(u["uid"], code) or mfa.recovery_use(u["uid"], code)):
+                    time.sleep(0.5 + mfa.missed(*keys))
+                    db.audit(f"user:{u['name']}", "2fa-wrong", u["name"], {"addr": self.client_address[0], "app": True})
+                    return self._json({"error": "that code is not right", "second_factor": True}, 401)
+                mfa.cleared(keys[0])
+                db.audit(f"user:{u['name']}", "2fa-signin", u["name"], {"app": True})
             row, got = devices.mint_for(u, req.get("name"), str(req.get("kind") or "pc"))
             if not row:
                 return self._json(got, 400)
@@ -8541,7 +8883,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "not an account"}, 403)
         if req is None:
             return self._json(*profiletab.view(me))
-        payload, status, renamed = profiletab.verb(me, field(req, "action"), req)
+        payload, status, renamed = profiletab.verb(me, field(req, "action"), req, origin=self._origin())
         return self._json(payload, status, cookie=make_token(renamed) if renamed else None)
 
     def _get_snapshots(self):
@@ -8869,6 +9211,12 @@ class Handler(BaseHTTPRequestHandler):
                                                    nodes=req.get("nodes") if isinstance(req.get("nodes"), list) else [],
                                                    only=req.get("only") if isinstance(req.get("only"), dict) else {}))
             return self._result(roles.set_role(field(req, "name"), grants=req.get("grants"), note=field(req, "note")))
+        if act == "two-factor":
+            # Require a second factor of everybody holding this role (R127).
+            r = roles.set_two_factor(field(req, "name"), req.get("on") is True)
+            if r.get("ok"):
+                db.audit(self._principal(), "role-two-factor", r["name"], {"on": r["two_factor"]})
+            return self._result(r)
         if act == "remove":
             r = roles.remove(field(req, "name"))
             if r.get("ok"):

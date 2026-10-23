@@ -3791,7 +3791,16 @@ cmd_users() {
             # node-bound terminal gets) and can fetch its Claude login.
             DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/users-verbs.py" token "$py" "$1" "${2:-}"
             return ;;
-        *) die "usage: bb users [list|claim NAME|passwd NAME|add NAME --role admin|user|token PROJECT]" ;;
+        reset-2fa)
+            # Every second factor of one account gone (R127): the way back in
+            # for an owner who lost their app, their passkeys and their
+            # recovery codes. A shell on the controller only, as enroll-token.
+            [ -z "${BB_TOKEN:-}${BB_ACCOUNT_UID:-}" ] && ! on_node \
+                || die "bb users reset-2fa is run in a shell on the controller (docker exec BuilderBot bb users reset-2fa NAME), not from a session"
+            [ -n "${1:-}" ] || die "which account? bb users reset-2fa NAME"
+            DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/users-verbs.py" reset-2fa "$py" "$1"
+            return ;;
+        *) die "usage: bb users [list|claim NAME|passwd NAME|add NAME --role admin|user|token PROJECT|reset-2fa NAME]" ;;
     esac
     # The password is READ, never an argument: an argument is in the process
     # table for anyone on this box to see, and in the shell history after.

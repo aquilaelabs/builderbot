@@ -230,8 +230,54 @@ def _load():
     return {str(n): _clean(r) for n, r in rs.items() if n not in BUILTIN}
 
 
-def _save(custom):
-    write_json(FILE, {"roles": {n: {k: r.get(k) for k in ("scope", "perms", "note", "only")} for n, r in custom.items()}})
+def _save(custom, two_factor=None):
+    tf = _two_factor_list() if two_factor is None else two_factor
+    write_json(FILE, {"roles": {n: {k: r.get(k) for k in ("scope", "perms", "note", "only")} for n, r in custom.items()},
+                      **({"two_factor": sorted(tf)} if tf else {})})
+
+
+def _two_factor_list():
+    """The roles an administrator requires a second factor of (R127),
+    built in ones included."""
+    try:
+        v = json.loads(FILE.read_text())
+    except (OSError, ValueError, TypeError, AttributeError):
+        return set()
+    got = v.get("two_factor") if isinstance(v, dict) else None
+    return {str(x) for x in got} if isinstance(got, list) else set()
+
+
+def two_factor_roles():
+    with _lock:
+        return _two_factor_list()
+
+
+def set_two_factor(name, on):
+    """Require a second factor of every account holding this role, or not."""
+    name = str(name or "")
+    if name not in BUILTIN and name not in _load():
+        return {"error": f"no role called {name}"}
+    with _lock:
+        tf = _two_factor_list()
+        (tf.add if on else tf.discard)(name)
+        _save(_load(), tf)
+    return {"ok": True, "name": name, "two_factor": bool(on)}
+
+
+def two_factor_required(u):
+    """Whether any role this account holds, everywhere or on a project,
+    requires a second factor of it."""
+    if not u:
+        return False
+    tf = two_factor_roles()
+    if not tf:
+        return False
+    held = set(roles_of(u))
+    pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+    for rs in pr.values():
+        if isinstance(rs, list):
+            held |= {str(r) for r in rs}
+    return bool(held & tf)
 
 
 def ensure_owner_role(project):
@@ -248,10 +294,12 @@ def ensure_owner_role(project):
 
 def all_roles():
     """Every role, built in first, as the tab lists them."""
-    out = {n: dict(r, name=n) for n, r in BUILTIN.items()}
+    with _lock:
+        tf = _two_factor_list()
+    out = {n: dict(r, name=n, two_factor=n in tf) for n, r in BUILTIN.items()}
     with _lock:
         for n, r in sorted(_load().items()):
-            out[n] = dict(r, name=n)
+            out[n] = dict(r, name=n, two_factor=n in tf)
             # A project's owner role reads as whose it is, not as its key,
             # by the name the project is shown under, not its folder (B102).
             if str(r.get("note") or "").startswith("the owner of ") and n.endswith("_owner"):
@@ -310,7 +358,7 @@ def remove(name):
         if name not in d:
             return {"error": f"no role called {name}"}
         del d[name]
-        _save(d)
+        _save(d, _two_factor_list() - {name})
     return {"ok": True, "name": name}
 
 def roles_of(u):

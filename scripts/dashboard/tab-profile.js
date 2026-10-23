@@ -58,6 +58,7 @@ const PROFILE_FIELDS = [
 const PROFILE_SAYS = {
   you: "your name, email and commit author", may: "what your roles let you do",
   password: "change it, signing out everywhere",
+  twofactor: "an authenticator app, passkeys and recovery codes",
   devices: "your apps, to disconnect",
 };
 // The apps signed in as this account on its own machines (R272 step 1), the
@@ -145,11 +146,13 @@ function renderProfileInto(i){
             <button type="button" id="pfPasswd" disabled>Change password</button>
           </div>
         </div>`)}
+    ${sec("twofactor", "Two-factor sign-in", profileTwoFactor(profile.two_factor || {}, !!profile.two_factor_required))}
     ${docSection("profile", "devices", "Signed in as you", "", profileDevices(profile.devices || []))}`;
   wireSections(d.list);
   splitSects(d.list, "profile", {says: PROFILE_SAYS, back: "Profile"});
   wireProfile(d.el);
   wireDeviceOut(d.el);
+  wireTwoFactor(d.el);
 }
 
 // Disconnect: asked, then that device signed out; the app finds its token
@@ -263,4 +266,116 @@ function wireProfile(root){
     }catch(e){ sayAt("pfCur", "could not reach the controller: " + e); }
     finally{ if (pw.isConnected){ unbusy(pw, "Change password"); pwReady(); } }
   };
+}
+
+// ---- two-factor sign-in (R127) ----
+// Profile's section: the authenticator app (added by its QR and a first
+// code), passkeys by name, the recovery codes left and new ones, and the
+// browsers remembered for 30 days. What is set up here is asked at every
+// sign-in after the password; removing a factor asks for one first.
+let pfTotp = null;          // {qr, secret} while an authenticator is being added
+let pfCodes = null;         // recovery codes just made, shown once
+
+function profileTwoFactor(tf, required){
+  const t = tf.totp || {}, keys = tf.passkeys || [], trust = tf.trusted || [];
+  const line = (name, sub, act) => `<div class="tfrow"><div class="grow"><b>${name}</b>${sub ? `<div class="hint">${sub}</div>` : ""}</div>${act}</div>`;
+  return `<div class="logset tfset">
+    <div class="state${tf.on ? "" : required ? " warn" : ""}">${tf.on
+      ? "on: a password alone does not sign in as you"
+      : required ? "a role of yours requires it: add an authenticator or a passkey" : "off: a password alone signs in as you"}</div>
+    ${pfCodes ? `<div class="notice tfcodes"><div>Your recovery codes, shown this once: each signs you in once if your app or passkey is lost.</div>
+      <pre>${pfCodes.map(esc).join("\n")}</pre><button type="button" data-tf="codes-done">I have kept them</button></div>` : ""}
+    ${line("Authenticator app", t.on ? `added ${esc(ago(t.added))}` : "a six-digit code from an app on your phone",
+      t.on ? `<button type="button" data-tf="totp-remove">Remove</button>` : pfTotp ? "" : `<button type="button" data-tf="totp-add">Add</button>`)}
+    ${pfTotp ? `<div class="tfadd"><div class="tfqr">${pfTotp.qr}</div>
+      <div class="hint">Scan it with the app, or type the secret: <code>${esc(pfTotp.secret)}</code></div>
+      <div class="logdays setrow col ctlrow">${lbl("pfTfCode", "The code the app shows")}
+        <input id="pfTfCode" autocomplete="one-time-code" inputmode="numeric" spellcheck="false"></div>
+      <div class="actbar"><span class="state" id="pfTfSaid"></span>
+        <button type="button" data-tf="totp-cancel">Cancel</button><button type="button" class="primary" data-tf="totp-confirm">Turn it on</button></div></div>` : ""}
+    ${keys.map(k => line(`Passkey: ${esc(k.name || "a passkey")}`, `added ${esc(ago(k.added))}${k.used ? `, last used ${esc(ago(k.used))}` : ""}`,
+      `<button type="button" data-tf="passkey-remove" data-id="${esc(k.id)}">Remove</button>`)).join("")}
+    ${window.PublicKeyCredential ? line("Add a passkey", "this device's own, or a security key", `<button type="button" data-tf="passkey-add">Add a passkey</button>`) : ""}
+    ${tf.on ? line("Recovery codes", `${tf.recovery_left} of 10 left`, `<button type="button" data-tf="recovery">Make new ones</button>`) : ""}
+    ${trust.map(b => line(`Remembered: ${esc(b.name || "a browser")}`, `asks no second factor until ${esc(fmtTime(b.until * 1000, {day: "numeric", month: "short"}))}`,
+      `<button type="button" data-tf="trust-remove" data-id="${esc(b.id)}">Forget</button>`)).join("")}
+  </div>`;
+}
+
+const pfU8 = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+const pfB64 = a => btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+async function pfTf(body){
+  const r = await fetch("/api/profile", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  return r.json().catch(() => ({error: "HTTP " + r.status}));
+}
+
+// A fresh second factor for a change that wants one: a passkey where the
+// account has one and this browser can, else a code typed.
+async function pfFresh(){
+  const keys = profile?.two_factor?.passkeys || [];
+  if (keys.length && window.PublicKeyCredential && await askYes("Confirm it is you with your passkey? Cancel types a code instead.", {verb: "Use my passkey"})){
+    try{
+      const o = await pfTf({action: "2fa-fresh"});
+      const c = await navigator.credentials.get({publicKey: {challenge: pfU8(o.challenge), rpId: location.hostname,
+        allowCredentials: o.ids.map(id => ({type: "public-key", id: pfU8(id)})), userVerification: "preferred", timeout: 60000}});
+      return {passkey: {id: pfB64(c.rawId), client: pfB64(c.response.clientDataJSON),
+        auth: pfB64(c.response.authenticatorData), sig: pfB64(c.response.signature)}};
+    }catch{ return null; }
+  }
+  const code = await askText("The code your authenticator app shows now, or a recovery code.", {verb: "Confirm", label: "Code"});
+  return code ? {code} : null;
+}
+
+function wireTwoFactor(root){
+  const redraw = async () => { await loadProfile(); profileRev++; drawPanes(); };
+  root.querySelectorAll("[data-tf]").forEach(b => b.onclick = async () => {
+    const what = b.dataset.tf;
+    if (what === "totp-add"){ pfTotp = await pfTf({action: "2fa-totp-begin"}); profileRev++; drawPanes(); return; }
+    if (what === "totp-cancel"){ pfTotp = null; profileRev++; drawPanes(); return; }
+    if (what === "codes-done"){ pfCodes = null; profileRev++; drawPanes(); return; }
+    if (what === "totp-confirm"){
+      const r = await pfTf({action: "2fa-totp-confirm", code: root.querySelector("#pfTfCode")?.value || ""});
+      if (r.error){ const s = root.querySelector("#pfTfSaid"); if (s){ s.textContent = r.error; s.classList.add("bad"); } return; }
+      pfTotp = null; if (r.recovery?.length) pfCodes = r.recovery;
+      notify("Two-factor sign-in: the authenticator app is on");
+      return redraw();
+    }
+    if (what === "passkey-add"){
+      try{
+        const o = await pfTf({action: "2fa-passkey-begin"});
+        const c = await navigator.credentials.create({publicKey: {challenge: pfU8(o.challenge), rp: {name: "BuilderBot", id: location.hostname},
+          user: {id: pfU8(o.user), name: o.name, displayName: o.name}, pubKeyCredParams: [{type: "public-key", alg: -7}],
+          authenticatorSelection: {residentKey: "preferred", userVerification: "preferred"}, attestation: "none", timeout: 60000,
+          excludeCredentials: (o.exclude || []).map(id => ({type: "public-key", id: pfU8(id)}))}});
+        const name = await askText("A name for this passkey, so you know it in the list.", {verb: "Save", label: "Name", value: "this device"});
+        const r = await pfTf({action: "2fa-passkey-add", name: name || "a passkey", client: pfB64(c.response.clientDataJSON), att: pfB64(c.response.attestationObject)});
+        if (r.error){ notify(r.error, true); return; }
+        if (r.recovery?.length) pfCodes = r.recovery;
+        notify(`Passkey added: ${r.name}`);
+        return redraw();
+      }catch(e){ if (e.name !== "NotAllowedError") notify("the passkey was not made: " + (e.message || e), true); return; }
+    }
+    if (what === "trust-remove"){
+      await pfTf({action: "2fa-trust-remove", id: b.dataset.id});
+      return redraw();
+    }
+    // A removal or new recovery codes: a fresh second factor first.
+    if (what === "totp-remove" || what === "passkey-remove" || what === "recovery"){
+      if (what !== "recovery" && !await askYes(what === "totp-remove" ? "Remove the authenticator app from your sign-in?" : "Remove this passkey from your sign-in?", {verb: "Remove", danger: true})) return;
+      const fresh = await pfFresh();
+      if (!fresh) return;
+      const r = what === "recovery" ? await pfTf({action: "2fa-recovery", ...fresh})
+        : await pfTf({action: "2fa-remove", what: what === "totp-remove" ? "totp" : "passkey:" + b.dataset.id, ...fresh});
+      if (r.error){ notify(r.error, true); return; }
+      if (r.recovery?.length) pfCodes = r.recovery;
+      return redraw();
+    }
+  });
+}
+
+// Profile opened at its Two-factor section: the bell's Set up.
+function openProfileTwoFactor(){
+  SPLIT.profile = {pick: "twofactor", open: true};
+  openProfileTab();
 }

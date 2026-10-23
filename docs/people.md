@@ -228,11 +228,57 @@ entry, **Profile**, which is also **Settings** on the rail: the signed-in
 account's own page, in sections. **Who you are** holds the account name,
 their name and email, and the name and email their commits carry (blank means
 the ones above); **What you may do** is what their roles add up to;
-**Password** is a change that asks for the current one first; and
-**Signed in as you**, last, is the devices signed in as this account (a
+**Password** is a change that asks for the current one first;
+**Two-factor sign-in** is described below; and **Signed in as you**, last, is the devices signed in as this account (a
 line a device, with when it last called and **Disconnect**, which signs that
 one out). The plugins and MCP servers a person added to each coding agent
 are on the Agents page, per agent on each node.
+
+### Two-factor sign-in
+
+An account can add a second factor on Profile's **Two-factor sign-in**:
+
+- **Authenticator app:** **Add** shows a QR code and the secret in words. The
+  first code the app shows turns it on.
+- **Passkey:** **Add a passkey** makes one in the browser (the device's own,
+  or a security key). Each passkey has a name, so it can be told apart in the
+  list.
+
+The first factor added comes with ten **recovery codes**, shown once. Each
+signs in once, if the app or the passkeys are lost. **Make new ones**
+replaces them all.
+
+From then on, after the password, the sign-in page asks for one of these:
+
+- a code from the app;
+- a recovery code;
+- a passkey, by its button.
+
+**Remember this browser for 30 days** skips that step on that browser; Profile
+lists each remembered browser, with **Forget**. Removing a factor or making
+new recovery codes asks for a factor first.
+
+The password alone opens nothing for such an account:
+
+- Basic auth with it is refused.
+- A companion app's sign-in asks for a code beside the password.
+- `bb` from a dashboard terminal is unaffected: it carries its own token.
+
+Wrong codes are counted per account and per address: after five, each try
+waits; after ten in a quarter of an hour, the account or the address is held
+for a quarter of an hour. Every sign-in through a factor, every wrong code and
+every factor added or removed is in the audit.
+
+Until an account has a factor, the bell carries a standing notice to add one.
+It can be put away for the day, not for good.
+
+An administrator can require a second factor of a role, with its box on the
+Roles page. An account in such a role without one meets the setup page at its
+next sign-in and reaches nothing else until it has added one.
+
+An owner who has lost every factor gets back in from a shell on the
+controller: `bb users reset-2fa NAME` removes that account's factors, and its
+password signs in alone until one is added again.
 
 Neither a Claude session nor a shell starts for an account with no
 name and email for commits, and `bb git` refuses for it: every project is a

@@ -289,6 +289,16 @@ function attRow(a){
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bstorage="${esc(a.id)}">Storage page</a></span></div></div>`;
   }
+  // No second factor on this account yet (R127): a standing notice, put
+  // away for the day at most, its Set up opening Profile's section.
+  if (a.kind === "two-factor"){
+    return `<div class="bnote att${a.required ? " warn" : ""}">
+      <div class="bt">${a.required ? "A role of yours requires two-factor sign-in" : "Turn on two-factor sign-in"}</div>
+      <div class="bsum">an authenticator app or a passkey, so a password alone cannot sign in as you</div>
+      <div class="bfoot"><span>until you add one</span>
+        <span class="acts">${a.key && !a.required ? `<a href="#" data-bdismiss="${esc(a.key)}">Not today</a>` : ""}
+          <a href="#" data-b2fa="1">Set up</a></span></div></div>`;
+  }
   // An account's coding-agent sign-in opened on a node by something that was
   // neither that account nor the agent (R125 step 6): root, most likely. A
   // sign-out here deletes this copy, not one already taken, so the row says
@@ -710,6 +720,11 @@ function wireNeeds(root, after = () => {}){
     openToolchainsOn(a.dataset.btc);
   });
   // ...and a coding agent's update to that node's Agents page (R95).
+  root.querySelectorAll("[data-b2fa]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    openProfileTwoFactor();
+  });
   root.querySelectorAll("[data-bag]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();

@@ -18,6 +18,7 @@
 - The Storage page lists each project's emulator phones with their size, last start and snapshot, and a disk past 90% says what of it can be freed and on which page; the Emulator page's new Phones section removes a phone (refused while it runs). (1dde5a7)
 - Phones give back their room when idle: bb tidy removes the quick-boot snapshot of a project's phone not started for a week and names one that is not its default after two, the node's room keeper does the same for every project when the homes' disk is past 90%, and bb emu list and the Storage page say when each phone last started and what its snapshot holds. (1b2dbe6)
 - A node's agent says when it was built, beside its version: on the node's row, in bb status on that node and in a diagnostics report, so a problem with an agent can be dated (7355f96)
+- Two-factor sign-in: an authenticator app, passkeys and recovery codes on Profile, asked after the password on every way in (the page, a companion app's sign-in, Basic auth refused); a browser can be remembered for 30 days; wrong codes are slowed and held; an administrator can require it per role on the Roles page; the bell recommends it until it is on; and bb users reset-2fa NAME on the controller is the way back for a lost factor (597f527)
 
 ### Changed
 

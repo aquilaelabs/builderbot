@@ -17,6 +17,9 @@ plugins_of = None        # (uid, {node id: name}) -> its plugins, as the nodes l
 node_names = None        # () -> {node id: name}
 logs_of = None           # me -> the account's conversations with Claude (transcripts.mine)
 devices = None           # devices.py: the account's signed-in devices (R272), listed and signed out
+mfa = None               # mfa.py: the account's second factors (R127)
+audit = None             # db.audit
+two_factor_required = None   # account -> whether a role of it requires a second factor
 
 
 def configure(**deps):
@@ -56,10 +59,79 @@ def view(me):
             "logs": logs,
             # The apps signed in as this account on its own machines
             # (R272), newest call first: what Disconnect acts on.
-            "devices": devices.listed(acct) if devices else []}, 200
+            "devices": devices.listed(acct) if devices else [],
+            # Its second factors (R127), never a secret, and whether a role
+            # of it requires one.
+            "two_factor": mfa.summary(uid) if mfa else {"on": False},
+            "two_factor_required": bool(two_factor_required and two_factor_required(acct))}, 200
 
 
-def verb(me, act, req):
+def _fresh(uid, req, origin):
+    """Whether this request carries a fresh second factor: a code from the
+    authenticator, an unused recovery code, or a passkey's answer to the
+    challenge 2fa-fresh handed out (R127)."""
+    code = str(req.get("code") or "").strip()
+    if code:
+        return mfa.totp_check(uid, code) or mfa.recovery_use(uid, code)
+    pk = req.get("passkey") if isinstance(req.get("passkey"), dict) else None
+    return bool(pk) and mfa.passkey_check(uid, origin, str(pk.get("id") or ""), pk.get("client"),
+                                          pk.get("auth"), pk.get("sig"))
+
+
+def two_factor(me, act, req, origin):
+    """Profile's Two-factor section (R127). (payload, status)."""
+    uid, name = users.uid_of(me), me["name"]
+    who = f"user:{name}"
+    first = not mfa.enabled(uid)
+    if act == "2fa-totp-begin":
+        return mfa.totp_begin(uid, name), 200
+    if act == "2fa-totp-confirm":
+        r = mfa.totp_confirm(uid, req.get("code"))
+        if r.get("error"):
+            return r, 400
+        audit(who, "2fa-add", name, {"what": "authenticator"})
+        # The first factor comes with its recovery codes, shown once.
+        return {**r, "recovery": mfa.recovery_make(uid) if first else []}, 200
+    if act == "2fa-passkey-begin":
+        return {"challenge": mfa.challenge(uid, "create"), "user": mfa.b64u(uid.encode()), "name": name,
+                "exclude": mfa.passkey_ids(uid)}, 200
+    if act == "2fa-passkey-add":
+        r = mfa.passkey_add(uid, origin, req.get("name"), req.get("client"), req.get("att"))
+        if r.get("error"):
+            return r, 400
+        audit(who, "2fa-add", name, {"what": "passkey", "name": r.get("name")})
+        return {**r, "recovery": mfa.recovery_make(uid) if first else []}, 200
+    if act == "2fa-fresh":
+        # A passkey's challenge, for a change that wants a fresh factor.
+        return {"challenge": mfa.challenge(uid, "get"), "ids": mfa.passkey_ids(uid)}, 200
+    if act == "2fa-trust-remove":
+        mfa.trust_remove(uid, str(req.get("id") or ""))
+        audit(who, "2fa-remove", name, {"what": "remembered browser"})
+        return {"ok": True}, 200
+    if act in ("2fa-remove", "2fa-recovery"):
+        if not first and not _fresh(uid, req, origin):
+            return {"error": "that needs your second factor now: a code from your app, a recovery code, or your passkey",
+                    "fresh": True}, 403
+        if act == "2fa-recovery":
+            audit(who, "2fa-recovery", name, {})
+            return {"ok": True, "recovery": mfa.recovery_make(uid)}, 200
+        what = str(req.get("what") or "")
+        if what == "totp":
+            mfa.totp_remove(uid)
+        elif what.startswith("passkey:"):
+            mfa.passkey_remove(uid, what[8:])
+        else:
+            return {"error": "remove what: totp or passkey:ID"}, 400
+        if not mfa.enabled(uid):
+            # The last factor gone: its recovery codes and remembered
+            # browsers go with it.
+            mfa.remove_all(uid)
+        audit(who, "2fa-remove", name, {"what": what.split(":")[0]})
+        return {"ok": True}, 200
+    return None
+
+
+def verb(me, act, req, origin=""):
     """Change the password, or save the profile and, last, the account's
     name. (payload, status, renamed): `renamed` is the account under its new
     name when the name moved, for the server to sign a fresh cookie over,
@@ -84,6 +156,10 @@ def verb(me, act, req):
             me = renamed = users.get(to)
         return {"ok": True, "name": me["name"], "profile": users.profile(me),
                 "git": users.git_identity(me), "git_ready": users.git_ready(me)}, 200, renamed
+    if str(act).startswith("2fa-") and mfa:
+        got = two_factor(me, act, req, origin)
+        if got:
+            return got[0], got[1], None
     if act == "device-signout":
         r = devices.revoke(users.get(me["name"]) or {}, field(req, "device")) if devices else {"error": "no devices here"}
         return r, (400 if r.get("error") else 200), None
