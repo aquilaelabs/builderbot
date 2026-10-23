@@ -42,6 +42,7 @@ function nbSigningView({$, nb, project}){
   let nodeWhy = "";                             // what keeps the project's node from working on a key (signing.signer)
   let atRest = "";                              // sealed, open, mixed or locked (signing.at_rest)
   let draft = {}, mapDraft = {}, fresh = [], lockOpen = false, pw = {}, adding = false, gen = 0;
+  let keyPick = "";                             // the key the chips picked, "" for all (R122)
 
   async function loadSigning(){
     const mine = ++gen;
@@ -225,14 +226,20 @@ function nbSigningView({$, nb, project}){
       + (!tool && !why ? `<div class="field"><div class="hint" id="sgNode">${esc(nodeWhy)}</div></div>` : "")
       + (!held && !why ? `<div class="field"><div class="hint nbempty">No keys yet: bb sign signs this project's builds on its node with the keys kept here, and a session never sees one.</div></div>` : "")
       + docSection("signing", "lock", "Backup password", locked ? "set" : "none", lock, {cls: locked ? "" : "warn"})
-      + names.map(key => docSection("signing", `key:${key}`, key === "default" ? "Default key" : `Key: ${key}`,
+      // The keys are the project's, as many as it has: big chips pick one,
+      // the small pills are for the view's own sections (R122).
+      + chipBar(names.map(key => ({key, label: key === "default" ? "Default key" : key, count: null})),
+                names.includes(keyPick) ? keyPick : "", "data-sgkey")
+      + names.filter(key => !keyPick || !names.includes(keyPick) || key === keyPick)
+          .map(key => docSection("signing", `key:${key}`, key === "default" ? "Default key" : `Key: ${key}`,
           keyStatus(key), `<div class="field">${SIGN_ROUTES.map(([route, word, about]) => slot(key, route, word, about)).join("")}</div>`
-            + (why ? "" : nb.sectBar(`signing:key:${key}`)))).join("")
+            + (why ? "" : nb.sectBar(`signing:key:${key}`)), {item: true})).join("")
       + docSection("signing", "apps", "Apps", mapped.length ? `${mapped.length}` : "none",
           apps + (why ? "" : nb.sectBar("signing:apps")))
       + docSection("signing", "releases", "Releases", relStatus, relBody,
           {cls: r.wanted && (r.why || (r.failed || []).length) ? "warn" : ""});
     wireSections($("sgBox"));
+    $("sgBox").querySelectorAll("[data-sgkey]").forEach(c => c.onclick = () => { keyPick = c.dataset.sgkey; drawSigning(); });
     wire();
     nb.syncSave();
   }

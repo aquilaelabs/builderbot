@@ -19,6 +19,7 @@ let storageErr = "";
 let storageRev = 0;
 let storageMay = false;          // whether this account may measure now
 let storageNode = "";            // the node the tab shows
+let storageDisk = "";            // the disk its chips picked, "" for all (R122)
 
 function openStorageTab(node){
   if (node) storageNode = node;
@@ -123,12 +124,20 @@ function storageDisks(n){
         mine.length ? `<div class="sub">${ours ? `${sgb(ours)} of it is BuilderBot's` : "nothing of it is BuilderBot's yet"}</div>` : ""}</div>${
       some.map(storageRow).join("")}${
       none.length ? `<div class="row stnone"><div class="grow"><div class="sub">${esc(andList(none.map(h => h.name)))} hold${none.length === 1 ? "s" : ""} nothing yet</div></div></div>` : ""}`,
-      {cls: pct >= 92 ? "bad" : pct >= 80 ? "warn" : ""});
+      {cls: pct >= 92 ? "bad" : pct >= 80 ? "warn" : "", item: true});
   };
-  const out = fss.map(fs => block(fs, held.filter(h => h.fs === fs.path)));
+  // The disks are the node's, as many as it has: big chips pick one (R122),
+  // where small pills listed them as if they were the page's sections.
   const off = held.filter(h => !fss.some(fs => fs.path === h.fs));
-  if (off.length) out.push(docSection("storage", "fs:elsewhere", "Elsewhere", "not measured", off.map(storageRow).join("")));
-  return out.join("");
+  const keys = [...fss.map(fs => fs.path), ...(off.length ? ["elsewhere"] : [])];
+  if (storageDisk && !keys.includes(storageDisk)) storageDisk = "";
+  const chips = chipBar([...fss.map(fs => ({key: fs.path, label: fs.path, count: null})),
+                         ...(off.length ? [{key: "elsewhere", label: "Elsewhere", count: null}] : [])],
+                        storageDisk, "data-stdisk");
+  const out = fss.filter(fs => !storageDisk || storageDisk === fs.path).map(fs => block(fs, held.filter(h => h.fs === fs.path)));
+  if (off.length && (!storageDisk || storageDisk === "elsewhere"))
+    out.push(docSection("storage", "fs:elsewhere", "Elsewhere", "not measured", off.map(storageRow).join(""), {item: true}));
+  return chips + out.join("");
 }
 
 function storageProjects(n, where){
@@ -229,6 +238,9 @@ function wireStorageTab(root){
   if (psel) psel.onchange = () => navPush(() => { storageNode = psel.value;
                                     try{ localStorage.setItem("bb.stnode", storageNode); }catch(e){ /* private */ }
                                     storageRev++; drawPanes(); });
+  root.querySelectorAll("[data-stdisk]").forEach(c => c.onclick = () => {
+    storageDisk = c.dataset.stdisk; storageRev++; drawPanes();
+  });
   root.querySelectorAll("[data-stprune]").forEach(a => a.onclick = e => {
     e.preventDefault();
     sectOpen["docker:images"] = true;

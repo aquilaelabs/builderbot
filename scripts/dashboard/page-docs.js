@@ -468,7 +468,7 @@ const sectLoud = {};
 // `fold`: a fold on purpose, shut until opened at every width (the Projects
 // page's Archived, a read made only when it is opened); every other section
 // at a page's level stands open at a desk and does not fold there.
-function docSection(kind, id, title, status, body, {cls = "", open, loud = false, prime = false, fold = false} = {}){
+function docSection(kind, id, title, status, body, {cls = "", open, loud = false, prime = false, fold = false, item = false} = {}){
   const key = `${kind}:${id}`;
   const turned = loud && !sectLoud[key];
   sectLoud[key] = loud;
@@ -478,7 +478,7 @@ function docSection(kind, id, title, status, body, {cls = "", open, loud = false
   // `prime`: the section a view is opened for (Artifacts' Files), open by
   // default beside the first on a desktop. `data-set`: its caller said open
   // or shut, which a default never overrules.
-  return `<details class="sect" data-sect="${esc(key)}"${isOpen ? " open" : ""}${turned ? " data-lead" : ""}${prime ? " data-prime" : ""}${open !== undefined ? " data-set" : ""}${fold ? " data-fold" : ""}>
+  return `<details class="sect" data-sect="${esc(key)}"${isOpen ? " open" : ""}${turned ? " data-lead" : ""}${prime ? " data-prime" : ""}${open !== undefined ? " data-set" : ""}${fold ? " data-fold" : ""}${item ? " data-item" : ""}>
     <summary><span class="t">${esc(title)}</span>${
       status ? `<span class="sst${cls ? " " + cls : ""}">${esc(status)}</span>` : ""}</summary>
     <div class="body">${body}</div>
@@ -639,8 +639,11 @@ function sectJump(g){
   // seventeen links all called the same (the operator, 8 Oct).
   // Sections alone (the operator, 23 Oct): a page's chips pick its groups
   // (the Containers page's projects), and the jump bar is for its sections.
+  // A section drawn per item (`item`: a disk, a key) is picked by the page's
+  // chips instead, and is not one to jump to (the operator, 23 Oct: big
+  // chips for what changes, small pills for what does not).
   const titleOf = o => o.querySelector(":scope > summary .t")?.textContent || "";
-  const all = sectsOf(g), seen = {};
+  const all = sectsOf(g).filter(o => !o.hasAttribute("data-item")), seen = {};
   all.forEach(o => { seen[titleOf(o)] = (seen[titleOf(o)] || 0) + 1; });
   const mine = all.filter(o => seen[titleOf(o)] === 1);
   const have = g.querySelector(":scope .sectjump");
@@ -1258,10 +1261,13 @@ const inRelease = (v, on) => !on || (on === "none" ? !relOf(v) : relOf(v) === on
 // `all` is All's count where the groups overlap (a branch both Active and
 // Yours), the groups' sum otherwise.
 function chipButtons(groups, on, attr, all){
-  const gs = (groups || []).filter(g => g && g.count);
+  // A group with no count to give (a disk, a key: count null) is a chip
+  // with its name alone; one whose count is 0 has nothing to show.
+  const gs = (groups || []).filter(g => g && (g.count || g.count === null));
   if (gs.length < 2) return "";
-  const total = all ?? gs.reduce((n, g) => n + g.count, 0);
+  const total = all ?? (gs.some(g => g.count === null) ? null : gs.reduce((n, g) => n + g.count, 0));
   const chip = (key, label, count) => `<button type="button" class="chip${(on || "") === key ? " on" : ""}"
-    ${attr}="${esc(key)}" aria-pressed="${(on || "") === key}">${esc(label)}<span class="pill">${count}</span></button>`;
+    ${attr}="${esc(key)}" aria-pressed="${(on || "") === key}">${esc(label)}${
+      count === null || count === undefined ? "" : `<span class="pill">${count}</span>`}</button>`;
   return chip("", "All", total) + gs.map(g => chip(g.key, g.label, g.count)).join("");
 }
