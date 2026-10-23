@@ -1405,9 +1405,9 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     await page.click('#rnCancel');
     // Nothing on it runs Claude Code (the operator, 11 Oct): no section on
     // its row, no row on its Agents page.
-    await page.waitForFunction(sel => !document.querySelector(sel + ' details[data-sect="nodes:agents"]'), ROW, { timeout: 10000 }).catch(() => {});
+    await page.waitForFunction(sel => !document.querySelector(sel + ' .ndagents'), ROW, { timeout: 10000 }).catch(() => {});
     const tcHost = await napi('/api/agents?node=' + minted.id);
-    ok(!(await page.$(`${ROW} details[data-sect="nodes:agents"]`)) && !(tcHost.rows || []).some(m => m.name === 'claude-code'),
+    ok(!(await page.$(`${ROW} .ndagents`)) && !(tcHost.rows || []).some(m => m.name === 'claude-code'),
        `a hosting-only node's row has no Claude Code section, and its Agents page no Claude Code row (${JSON.stringify((tcHost.rows || []).map(m => m.name))})`);
     // A root command on it, by name, for a project that hosts containers
     // there (the operator, 11 Oct): refused for a project that does not,
@@ -3712,7 +3712,7 @@ ok(page.errors.length === 0,
   await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
   await pickNode(page, en.id);
   const ROWC = `.nodestab .ndrow[data-node="${en.id}"]`;
-  await page.waitForFunction(sel => /Claude installed/.test(document.querySelector(sel + ' [data-sect="nodes:agents"]')?.textContent || ''), ROWC, { timeout: 15000 });
+  await page.waitForFunction(sel => /Claude installed/.test(document.querySelector(sel + ' [data-sect="nodes:sessions"] .ndagents')?.textContent || ''), ROWC, { timeout: 15000 });
   ok(!await page.$(`${ROWC} [data-nd="claude-update"]`) && !!await page.$(`${ROWC} [data-ndag="${en.id}"]`),
      'the Nodes page says which coding agents are installed there in one line and points at the Agents page, with no update of its own (R95)');
   await page.evaluate(id => openAgentsOn(id), en.id);

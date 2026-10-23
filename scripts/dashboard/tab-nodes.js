@@ -736,7 +736,9 @@ function nodeSessionsSection(n){
   const ready = !host && se && typeof se === "object" && se.up;
   const facts = factGrid([
     ["Sessions", host ? "none: it hosts containers only" : ready ? `run as ${se.user || "?"}` : ""],
-    ["Claude Code", ready ? (se.claude || "not installed yet") : ""],
+    // The coding agents here, each with its version (the operator, 23 Oct:
+    // their own section said less than this line, and said it apart).
+    ["Coding agents", ready ? (nodeAgentsHere(n).map(a => `${a.product} ${a.version}`).join(", ") || "none installed yet") : ""],
     ["Each session", ready && iso ? (iso.sessions ? "sees only its own project" : "can read other projects") : ""],
     ["Open now", ready && list.length ? list.map(x => x.name).join(", ") : ""],
     ["Reaches the controller", reach],
@@ -765,6 +767,7 @@ function nodeSessionsSection(n){
       ${nodeDoorRow(n)}
       ${nodeHostRow(n)}
       ${host ? "" : nodeSyncRow(n)}
+      ${host ? "" : nodeAgentsLine(n)}
       ${nodeToolsLine(n)}
     </div>`;
   return docSection("nodes", "sessions", ndTitle("sessions"), status, body, {cls});
@@ -801,32 +804,30 @@ function nodeSessDirty(n){
     || (c.workersText !== undefined && String(Number(c.workersText) || 0) !== String(conf.test_workers || 0));
 }
 
-// The coding agents on this node, in one line (R95 step 15): which are
-// installed, and which of them this account is signed in to here, with the
-// way to the Agents page, where each is installed, updated and signed in to.
-function nodeAgentsSection(n){
-  const cc = state?.claude_code || {};
-  const me = cc.nodes?.[n.id] || {};
+// The coding agents installed on this node, each with its version as the
+// census says it (R95 step 15), in the table's order.
+function nodeAgentsHere(n){
+  const me = (state?.claude_code || {}).nodes?.[n.id] || {};
+  const se = n.reported?.session || {};
+  return AGENTS.filter(a => a.id === "claude" ? !!me.installed : !!se?.[a.id])
+    .map(a => ({...a, version: String((a.id === "claude" ? se.claude : se[a.id]) || "").replace(/ \(.*$/, "")}));
+}
+
+// ...and in the Sessions section, one line: which this account is signed in
+// to here, with the way to the Agents page, where each is installed, updated
+// and signed in to (the operator, 23 Oct: the Coding agents section rolled
+// into Sessions).
+function nodeAgentsLine(n){
   const se = n.reported?.session;
-  const up = !!(se && typeof se === "object" && se.up);
-  // What the census says each agent's version is here, by the table's key.
-  const have = AGENTS.filter(a => a.id === "claude" ? !!me.installed : !!se?.[a.id]);
-  const signed = have.filter(a => a.id === "claude" && claudeOn(n.id));
-  let status, cls;
-  if (!up) [status, cls] = ["no session account", "warn"];
-  else if (me.updating) [status, cls] = ["updating", "warn"];
-  else if (!have.length) [status, cls] = ["none installed", "bad"];
-  else if (!signed.length) [status, cls] = ["not signed in", "warn"];
-  else [status, cls] = [`signed in to ${signed.map(a => a.name).join(", ")}`, "ok"];
-  const said = !up ? "No session account here, so no coding agent runs."
-    : !have.length ? "No coding agent is installed here: a session cannot start until one is."
+  if (!(se && typeof se === "object" && se.up)) return "";
+  const have = nodeAgentsHere(n);
+  const signed = have.filter(a => a.id === "claude" ? claudeOn(n.id) : agentOn(a.id, n.id));
+  const said = !have.length ? "No coding agent is installed here: a session cannot start until one is."
     : `${have.map(a => a.name).join(", ")} installed; ${signed.length ? `you are signed in to ${signed.map(a => a.name).join(", ")}` : "you are signed in to none of them"} here.`;
-  const body = `
-    <div class="actbar">
-      <span class="state">${esc(said)}</span>
-      ${up && railAllows("agents") ? `<button type="button" data-ndag="${esc(n.id)}" title="install, update and sign in to each on the Agents page">Agents</button>` : ""}
+  return `<div class="actbar ndagents">
+      <span class="state${have.length ? (signed.length ? "" : " warn") : " bad"}">${esc(said)}</span>
+      ${railAllows("agents") ? `<button type="button" data-ndag="${esc(n.id)}" title="install, update and sign in to each on the Agents page">Agents</button>` : ""}
     </div>`;
-  return docSection("nodes", "agents", ndTitle("agents"), status, body, {cls});
 }
 
 // Whether each session here reaches only its own project's containers, the
@@ -1535,7 +1536,7 @@ function nodeCharts(n){
 // is a change to both; given null, each draws the placeholder's.
 // A node's sections, in their order, by the titles they are drawn under.
 const ND_SECTS = [["health", "Health"], ["projects", "Projects"], ["sessions", "Sessions"], ["gpu", "GPU"],
-                  ["features", "Features"], ["agents", "Coding agents"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
+                  ["features", "Features"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
 function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
 // Why Create sandbox VM and Enroll node are dead, when this install switched
 // enrolling off (R81): under the bar, since a reason in a tooltip is nothing
@@ -1732,7 +1733,6 @@ function renderNodesInto(i){
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeFeaturesSection(n) : ""}
-        ${n.kind === "agent" && !pending && !n.config?.host_only ? nodeAgentsSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
       </div>
