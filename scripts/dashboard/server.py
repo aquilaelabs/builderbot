@@ -1222,6 +1222,10 @@ def _project_columns(who, facts):
                     # claude_projects_link), so a conversation a node's
                     # session had is offered here and continued there.
                     "last_claude": last_claude(d, users.uid_of(who)),
+                    # ...and each other coding agent's newest, for its own
+                    # Resume in the chooser (the operator, 23 Oct: a ChatGPT
+                    # conversation was there and nothing offered it back).
+                    "last_agents": last_agents(d, users.uid_of(who)),
                     # Where this project's sessions run (roadmap #24): the
                     # node's name, or "" for here, and why the button is
                     # dead when its node cannot take one. The proxy decides
@@ -2383,6 +2387,26 @@ def last_claude(project_dir, uid=""):
     if newest is None:
         return None
     return {"id": newest.stem, "when": int(newest.stat().st_mtime)}
+
+
+def last_agents(project_dir, uid=""):
+    """{agent id: {id, when}}: the newest conversation of each coding agent
+    beside Claude on this project, the account's own, from the <agent>/
+    folder its Stop hook copies a session's log into (transcripts.py)."""
+    if not uid:
+        return {}
+    out = {}
+    for d in transcripts.dirs(uid, Path(str(project_dir)).name):
+        for a in transcripts.OTHER_AGENTS:
+            try:
+                files = [f for f in (d / a).glob("*.jsonl") if f.is_file()]
+            except OSError:
+                continue
+            for f in files:
+                when = int(f.stat().st_mtime)
+                if when > (out.get(a) or {}).get("when", 0):
+                    out[a] = {"id": f.stem, "when": when}
+    return out
 
 
 MODEL_FAMILY = re.compile(r'"model"\s*:\s*"claude-(opus|sonnet|haiku|fable)')

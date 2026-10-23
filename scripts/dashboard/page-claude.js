@@ -546,7 +546,11 @@ function placeResumeMenu(){
         + `<button data-aend="${esc(a.id)}" data-nid="${esc(n.id)}" class="danger" title="end your session here">End</button>`, " live");
     if (n.id && !agentOn(a.id, n.id))
       return line(a, "not signed in here", `<button data-asignin="${esc(a.id)}" data-nid="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its ${esc(a.name)} sign-in">Sign in</button>`);
-    return line(a, "", `<button data-anew="${esc(a.id)}" data-node="${esc(node)}" title="a new conversation">New</button>`);
+    // ...and its own last conversation offered back, as Claude's is (the
+    // operator, 23 Oct).
+    const last = p.last_agents?.[a.id];
+    return line(a, "", (last ? `<button data-aresume="${esc(a.id)}" data-node="${esc(node)}" title="resume the last conversation">Resume ${esc(ago(last.when))}</button>` : "")
+      + `<button data-anew="${esc(a.id)}" data-node="${esc(node)}" title="a new conversation">New</button>`);
   };
   const lines = () => {
     if (n.where !== "node") return `<div class="rmstate bad">${esc(n.why)}</div>`;
@@ -606,6 +610,14 @@ function placeResumeMenu(){
     claudeRestart(p.name, ns.find(n => n.id === b.dataset.restart) || {id: "", name: ""}, several));
   m.querySelectorAll("[data-aopen]").forEach(b => b.onclick = () =>
     launchAgent(b.dataset.aopen, p.name, b.dataset.node));
+  // Its last conversation, at its model and effort, as Resume on Claude's line.
+  m.querySelectorAll("[data-aresume]").forEach(b => b.onclick = () => {
+    const ag = b.dataset.aresume, last = p.last_agents?.[ag];
+    if (!last) return;
+    resumePick = {project: p.name, sessionId: last.id, when: last.when, node: b.dataset.node, agent: ag,
+                  model: p.yours?.[`${ag}_model`] || "", effort: p.yours?.[`${ag}_effort`] || ""};
+    drawProjects(state.projects);
+  });
   // A new conversation of another agent turns to its model and effort.
   m.querySelectorAll("[data-anew]").forEach(b => b.onclick = () => {
     const ag = b.dataset.anew;

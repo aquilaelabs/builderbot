@@ -493,6 +493,16 @@ mkdirSync(`${DIR}/home/.claude/projects/${`${DIR}/ws/alpha`.replace(/\//g, '-')}
 writeFileSync(`${DIR}/home/.claude/projects/${`${DIR}/ws/alpha`.replace(/\//g, '-')}`
               + '/bbbbbbbb-0000-4000-8000-00000000c0de.jsonl',
               '{"type":"user","message":{"role":"user","content":"hello"}}\n');
+// Another agent's last conversation is offered back as Claude's is (the
+// operator, 23 Oct): the row carries each one's newest, from the <agent>/
+// folder its Stop hook copies a session's log into.
+mkdirSync(`${DIR}/home/.claude/projects/${`${DIR}/ws/alpha`.replace(/\//g, '-')}/codex`, { recursive: true });
+writeFileSync(`${DIR}/home/.claude/projects/${`${DIR}/ws/alpha`.replace(/\//g, '-')}/codex/01a168f4-0000-7000-8000-00000000c0de.jsonl`,
+              '{"type":"session_meta"}\n');
+const lastCodex = await phone.waitForFunction(() => (state?.projects || []).find(x => x.name === 'alpha')?.last_agents?.codex?.id || null,
+                                              null, { timeout: 20000 }).then(h => h.jsonValue()).catch(() => null);
+ok(lastCodex === '01a168f4-0000-7000-8000-00000000c0de',
+   `a project's row carries ChatGPT's last conversation for its Resume (${lastCodex})`);
 const chooserReady = () => phone.evaluate(() => {
   const p = (state?.projects || []).find(x => x.name === 'alpha');
   return { last_claude: !!p?.last_claude, why: p?.session_why || '',
