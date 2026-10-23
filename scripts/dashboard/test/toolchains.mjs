@@ -853,7 +853,7 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
   // PATH of this check's own, so a machine that really has the toolkit
   // reads the same as one that does not.
   const kbin = mkdtempSync(`${tmpdir()}/bbkit-`);
-  for (const t of ['cat', 'sed', 'head'])
+  for (const t of ['cat', 'sed', 'head', 'readlink', 'dirname'])
     ln(execFileSync('bash', ['-c', `command -v ${t}`], { encoding: 'utf8' }).trim(), `${kbin}/${t}`);
   const bash = execFileSync('bash', ['-c', 'command -v bash'], { encoding: 'utf8' }).trim();
   const kit = () => execFileSync(bash, ['-c', `. ${JSON.stringify(SDK)}; sdk_nvidia_container_line`],
