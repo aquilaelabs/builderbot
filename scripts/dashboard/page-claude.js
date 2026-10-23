@@ -537,7 +537,7 @@ function placeResumeMenu(){
     if (!claudeSigned(n))
       return line(a, "not signed in here", `<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its Claude sign-in">Sign in</button>`);
     return line(a, "", (p.last_claude ? `<button data-r="1" data-node="${esc(node)}" title="resume the last conversation">Resume ${esc(ago(p.last_claude.when))}</button>` : "")
-      + `<button data-n="1" data-node="${esc(node)}"${p.last_claude ? "" : ' class="primary"'} title="a new conversation">New</button>`);
+      + `<button data-n="1" data-node="${esc(node)}" title="a new conversation">New</button>`);
   };
   const otherLine = a => {
     const node = at(n);
