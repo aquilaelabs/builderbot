@@ -199,6 +199,9 @@ cmd_tests_preflight() {
         fi
     fi
     [ -x "$here" ] || here=/opt/builderbot/scripts/dashboard/test/run.sh
+    # A gate's verdict is on the change, never on a kept world: its server
+    # is the keep's own copy and holds what probes left in it.
+    export BB_TEST_FRESH=1
     # Kept whole in the same log bb tests run writes, so bb tests log prints
     # this run when it was the last: a flake named only in the terminal's
     # scroll was gone with the scroll (B328).

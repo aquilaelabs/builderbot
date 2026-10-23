@@ -61,8 +61,8 @@ fi
 KEEPF="${TMPDIR:-/tmp}/bb-suite.keep"
 # A worker never attaches: its parent decided that a fresh world per file is
 # what this run gets, and one kept world cannot be three workers' worlds. Nor
-# does a house rule's check (BB_TEST_FRESH, B785): a verdict is on the change,
-# not on whatever a probe left in the kept world.
+# does a house rule's check or the pre-push gate (BB_TEST_FRESH, B785, B240): a
+# verdict is on the change, not on whatever a probe left in the kept world.
 if [ -z "${BB_TEST_HOLD:-}" ] && [ -z "${BB_TEST_WORKER:-}" ] && [ -z "${BB_TEST_FRESH:-}" ] && [ -f "$KEEPF" ]; then
     # shellcheck source=/dev/null
     . "$KEEPF"
