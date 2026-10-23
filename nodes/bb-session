@@ -1314,6 +1314,10 @@ def tty(c, argv, ro=False):
     if c.get("ACCOUNT_USERS") != "on":
         raise Refused("bb-session: this node runs its terminals as the session account")
     target = argv[0] if argv else ""
+    # The proxy's u:<uid>: in front, which the controller refuses: the
+    # account is its answer to give, as bb-tty strips it before asking.
+    if target.startswith("u:"):
+        target = target[2:].partition(":")[2]
     tok = next((x[4:] for x in argv[1:] if x.startswith("tok:") and TOKEN.fullmatch(x[4:])), "")
     if not tok:
         raise Refused("this terminal came without a session token, which only the controller's "

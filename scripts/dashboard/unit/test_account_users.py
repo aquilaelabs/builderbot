@@ -102,6 +102,15 @@ class Tty(unittest.TestCase):
             with self.assertRaises(bbs.Refused):
                 bbs.tty({"ACCOUNT_USERS": ""}, ["claude:web", "tok:bbs_abcdefghij"])
 
+    def test_the_proxy_s_account_prefix_is_not_sent_for_the_grant(self):
+        c = {"ACCOUNT_USERS": "on", "HOME_ROOT": "/home/builder"}
+        asked = []
+        with mock.patch.object(bbs.os, "geteuid", return_value=0), \
+                mock.patch.object(bbs, "_grant", lambda c, t, tok, ro: asked.append(t) or (403, {"error": "no"})):
+            with self.assertRaises(bbs.Refused):
+                bbs.tty(c, ["u:u_0000abcd:sh:2:hello", "tok:bbs_abcdefghij"])
+        self.assertEqual(asked, ["sh:2:hello"])
+
     def test_the_controller_s_answer_names_the_account_and_nothing_else_does(self):
         c = {"ACCOUNT_USERS": "on", "HOME_ROOT": "/home/builder"}
         with mock.patch.object(bbs.os, "geteuid", return_value=0), \
