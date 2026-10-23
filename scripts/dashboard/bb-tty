@@ -1120,6 +1120,18 @@ start() {
     # nothing on its command line; the -e values still land in the
     # session's environment, which is where they were wanted.
     tmux start-server 2>/dev/null || true
+    # A pane whose command fails stays, with what it said and a line saying
+    # so (R132): it closed with the reason in it, and the tab reconnected to
+    # the same failure in a loop with nothing on the screen. One that ends
+    # cleanly still goes, and so does its tab.
+    tmux set-option -g remain-on-exit failed 2>/dev/null || true
+    tmux set-option -g remain-on-exit-format \
+        "BuilderBot: this ended before it started (exit #{pane_dead_status}). Close the tab, or open it again to start afresh." \
+        2>/dev/null || true
+    # ...and one left so from before is started afresh, not attached to.
+    if tmux list-panes -t "=$s" -F '#{pane_dead}' 2>/dev/null | grep -qx 1; then
+        tmux kill-session -t "=$s" 2>/dev/null || true
+    fi
     # ...and its environment brought up to date, whole. A pane inherits the
     # SERVER's environment (bug #54), which is frozen at the server's start,
     # so on a node, once one session existed, every later one ran with
