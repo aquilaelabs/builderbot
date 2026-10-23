@@ -98,6 +98,21 @@ class Client {
     return { api: j.api, projects: j.projects || [], tooOld: controllerTooOld(j) };
   }
 
+  // The dashboard's status, as the page reads it, for what opening an agent's
+  // session needs of it (R128): the boot of the machine a new session starts
+  // on, without which bb-tty attaches to a running session and starts none,
+  // and which of this account's sessions run.
+  async status() {
+    const r = await request(this.base, '/api/status', { headers: this.headers(), rejectUnauthorized: this.tls });
+    if (r.status === 401 || (r.status >= 300 && r.status < 400)) {
+      throw new Refused(401, 'Not signed in to BuilderBot, or the sign-in has expired: BuilderBot: Sign In.');
+    }
+    let j = {};
+    try { j = JSON.parse(r.body.toString() || '{}'); } catch { j = {}; }
+    if (r.status >= 400) throw new Refused(r.status, j.error || `refused (${r.status})`, j);
+    return j;
+  }
+
   // A session's terminal: the dashboard's own relay at /term, so the same
   // checks decide whose terminal it is and whether it may be typed into.
   async terminal(arg) {

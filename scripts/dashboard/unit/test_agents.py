@@ -303,6 +303,32 @@ class Copies(unittest.TestCase):
                 m = re.search(ag + r'\) printf %s "([^"]*)"', body)
                 self.assertEqual(tuple(m.group(1).split()), xs, (ag, kind))
 
+    def test_the_android_app_s_copy_is_the_live_rows(self):
+        # The companion app finds and starts any live agent's session (R128):
+        # its table (android/.../Agents.kt) is the live rows, Claude first,
+        # with each other agent's own models.
+        path = os.path.join(HERE, "..", "..", "..", "android", "app", "src", "main", "java",
+                            "dev", "builderbot", "app", "Agents.kt")
+        with open(path) as f:
+            kt = f.read()
+        body = kt[kt.index("val LIVE = listOf("):kt.index("\n    )\n", kt.index("val LIVE = listOf("))]
+        rows = re.findall(r'Agent\("(\w+)", "([^"]+)", "([^"]+)",\s*listOf\((.*?)\), EFFORTS\)', body, re.S)
+        self.assertEqual([r[:3] for r in rows], [(a.id, a.name, a.product) for a in agents.live()])
+        for aid, _, _, models in rows:
+            if aid in agents.MODELS:
+                self.assertEqual(tuple(re.findall(r'"([^"]+)"', models)), agents.MODELS[aid], aid)
+        efforts = re.search(r"EFFORTS = listOf\((.*?)\)", kt).group(1)
+        for aid, xs in agents.EFFORTS.items():
+            self.assertEqual(tuple(re.findall(r'"([^"]+)"', efforts)), xs, aid)
+
+    def test_the_vscode_extension_s_copy_is_the_live_rows(self):
+        # Its session terminal opens any live agent's session (R128).
+        with open(os.path.join(HERE, "..", "..", "..", "vscode", "extension.js")) as f:
+            js = f.read()
+        body = js[js.index("const AGENTS = ["):js.index("];", js.index("const AGENTS = ["))]
+        rows = re.findall(r"\{ id: '(\w+)', name: '([^']+)', product: '([^']+)' \}", body)
+        self.assertEqual(rows, [(a.id, a.name, a.product) for a in agents.live()])
+
     def test_the_node_agent_s_prefixes_are_the_live_rows(self):
         self.assertEqual(tuple(node.AGENT_PREFIXES), agents.prefixes())
 

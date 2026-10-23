@@ -66,6 +66,16 @@ class Locks(unittest.TestCase):
         self.assertEqual(projects.load_archived(), ["alpha"])
         self.assertIsNone(projects.locked_out("alpha", PLAIN))
 
+    def test_the_apps_list_says_the_archive_and_whom_a_lock_holds_out(self):
+        # What the Windows companion's and VS Code's project lists carry (R128).
+        self.assertEqual(projects.app_flags("alpha", PLAIN), {"archived": False, "locked": False, "locked_why": ""})
+        projects.archive_verb("alpha", True)
+        projects.lock_verb("alpha", True, by=OWNER, admin=False)
+        self.assertEqual(projects.app_flags("alpha", OWNER), {"archived": True, "locked": True, "locked_why": ""})
+        held = projects.app_flags("alpha", PLAIN)
+        self.assertTrue(held["locked"] and held["archived"])
+        self.assertIn("locked by own", held["locked_why"])
+
     def test_the_migration_moves_the_old_archive_list_out_of_the_lock(self):
         (self.tmp / "locked-projects.json").write_text('["alpha", "beta"]')
         spec = importlib.util.spec_from_file_location(

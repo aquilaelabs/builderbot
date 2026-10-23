@@ -111,4 +111,7 @@ dependencies {
     // result registry hands out ("Can only use lower 16 bits", B493).
     implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    // The unit tier (src/test): the plain-Kotlin parts, such as how a
+    // session of any coding agent is named and found (Agents.kt), on the JVM.
+    testImplementation("junit:junit:4.13.2")
 }

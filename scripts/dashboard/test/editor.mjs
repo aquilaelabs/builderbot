@@ -224,6 +224,11 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
   Module._load = load;
   ext.activate({ subscriptions: [], secrets: { get: async k => secrets.get(k), store: async (k, v) => secrets.set(k, v),
                                                 delete: async k => secrets.delete(k) } });
+  // Any coding agent's session terminal (R128): its argument is the page's.
+  ok(ext.AGENTS.map(a => a.id).join() === 'claude,codex,copilot' && ext.sessionArg('codex', 'alpha') === 'codex:alpha'
+     && ext.sessionArg('copilot', 'alpha') === 'copilot:alpha' && ext.sessionArg('nope', 'alpha') === 'claude:alpha'
+     && ext.sessionArg('codex', 'alpha', '17.5') === 'codex:alpha:b:17.5',
+     'the extension opens any live agent\'s session, by the argument the dashboard opens it with');
   const uri = path => vscode.Uri.from({ scheme: 'builderbot', path: '/alpha' + path });
   const dir = await provider.readDirectory(uri('/'));
   const text = Buffer.from(await provider.readFile(uri('/editor-probe.txt'))).toString();
@@ -281,6 +286,21 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
       ok(new RegExp(`ARGS u:${uid}:sh:1:alpha`).test(out) && /\b42\b/.test(out),
          `the terminal is the dashboard's: the relay stamps whose it is before ttyd sees it, and what is typed runs (${
            out.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '').replace(/\s+/g, ' ').slice(0, 80)})`);
+      // Another agent's session as Open Agent Session opens it (R128): the
+      // argument names the agent and carries the boot the status gives,
+      // which is what lets bb-tty start one that is not running. The
+      // fixture has no node, so the relay takes it as an agent's session
+      // and says there is nowhere to run one, before any ttyd.
+      {
+        const ext = require(`${REPO}/vscode/extension.js`);
+        const facts = await ext.sessionFacts(owner, 'alpha');
+        let no = null;
+        try { await new Ttyd(owner, ext.sessionArg('codex', 'alpha', facts.boot)).open(90, 20); } catch (e) { no = e; }
+        ok(typeof facts.boot === 'string' && facts.boot && facts.running instanceof Set
+           && /no node to run/.test(no?.message || ''),
+           `...and the extension asks the boot a new session needs and opens a ChatGPT one as an agent's (${
+             facts.boot}: ${String(no?.message).slice(0, 80)})`);
+      }
       let no = null;
       try { await new Ttyd(c['ed.out'], 'sh:1:alpha').open(80, 24); } catch (e) { no = e; }
       ok(no && no.status >= 400, `...and the same relay refuses a terminal the account may not open (${no?.status} ${String(no?.message).slice(0, 80)})`);

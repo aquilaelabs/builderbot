@@ -95,6 +95,16 @@ class DeviceDoor:
         return self.ctl.upload(path, src, timeout=timeout, offset=offset, length=length)
 
 
+def lock_word(row):
+    """A project's lock as the list says it (R119), from its row on the
+    device door: "" when it is not locked, ", locked" when the lock leaves
+    this account in (its owner's own), ", locked against you" when it holds
+    this account out, which the controller keeps read-only."""
+    if not (row or {}).get("locked"):
+        return ""
+    return ", locked against you" if row.get("locked_why") else ", locked"
+
+
 def _drop_unheld(tar_path):
     """The first copy's archive, rewritten without the members Windows
     cannot hold, so the agent's unpack meets none of them."""

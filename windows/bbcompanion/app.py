@@ -147,7 +147,14 @@ class App(tk.Tk):
         self.tree.delete(*self.tree.get_children())
         left = 0
         keep = self.selected()
-        for name in sorted(set(self.mine) | set(s["picked"]), key=str.lower):
+        # An archived project is out of sight on the dashboard (R119): one
+        # not synced here goes to the foot of the list, and says so.
+        def row(n):
+            return self.mine.get(n) or {}
+
+        def order(n):
+            return (bool(row(n).get("archived")) and n not in s["picked"], n.lower())
+        for name in sorted(set(self.mine) | set(s["picked"]), key=order):
             folder = s["picked"].get(name, "")
             if folder:
                 p = st["projects"].get(name, {})
@@ -160,10 +167,18 @@ class App(tk.Tk):
                 word, access = "not synced", (self.mine.get(name) or {}).get("access")
             if access == "r":
                 word += ", read-only"
+            # Its lock (R119): one that holds this account out keeps the
+            # copy read-only, and the note under the list says whose it is.
+            word += core.lock_word(row(name))
+            if row(name).get("archived"):
+                word += ", archived"
             self.tree.insert("", "end", iid=name, text=name, values=(folder, word))
         if keep and self.tree.exists(keep):
             self.tree.selection_set(keep)
         said = st.get("error") or self.mine_said or ""
+        held = (self.mine.get(self.selected()) or {}).get("locked_why") or ""
+        if held:
+            said += (" " if said else "") + held
         up = st.get("update") or {}
         if up.get("pending"):
             said += (" " if said else "") + f"BuilderBot companion {up['pending']} is fetched: it starts the next time this app does."

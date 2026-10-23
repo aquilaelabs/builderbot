@@ -4347,7 +4347,8 @@ diag.configure(image_stamp=image_stamp, uptime=uptime, doctor_payload=doctor.pay
 # that person (ftp.access_for).
 import devices                                                   # noqa: E402
 devices.configure(users=users.load, access=lambda acct, p: ftp.access_for(acct, p, "editor"),
-                  projects=lambda acct: project_names(acct))
+                  projects=lambda acct: project_names(acct),
+                  flags=lambda acct, p: projects.app_flags(p, users.uid_of(acct)))
 profiletab.configure(devices=devices, mfa=mfa, audit=db.audit,
                      two_factor_required=lambda u: roles.two_factor_required(u))
 
@@ -9432,7 +9433,7 @@ class Handler(BaseHTTPRequestHandler):
             for name in project_names(me):
                 a, _ = ftp.access_for(me, name, "editor")
                 if a:
-                    mine.append({"name": name, "access": a})
+                    mine.append({"name": name, "access": a, **projects.app_flags(name, users.uid_of(me))})
             return self._json({"api": files.API, "api_min": files.API_MIN, "projects": mine})
         project = field(req, "project")
         if self._not_project(project):
