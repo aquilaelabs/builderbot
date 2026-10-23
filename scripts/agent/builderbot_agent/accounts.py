@@ -75,6 +75,14 @@ class AccountsMixin:
         if not self.account_users_ready():
             SESSION["accounts"] = {"error": "the agent could not make the bbu group, or bb-session is not installed"}
             return
+        # Each account's user has to pass through the session account's home
+        # and users/ to reach its own: search alone (o+x), never a listing,
+        # so the names of the other homes stay unread (B270).
+        for d in (sa_pw.pw_dir, users_dir):
+            with contextlib.suppress(OSError):
+                st = os.lstat(d)
+                if not st.st_mode & 0o001:
+                    os.chmod(d, (st.st_mode & 0o7777) | 0o001)
         legacy = self._legacy_accounts()
         users = moved = waiting = 0
         for name in sorted(os.listdir(users_dir))[:500]:
