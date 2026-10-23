@@ -139,9 +139,17 @@ function jobStatePill(j){
 function jobNode(j){
   return esc(jobsNodes[j.node] || (j.node ? j.node : "any node that fits"));
 }
+// A job not over says the clock time it has been waiting or running since
+// (the operator, 23 Oct: "started just now" was cut to "started just" in
+// the column, and said nothing a person could check), on a page that
+// redraws only when something moves; one that ended, how long ago.
+function jobSince(t){
+  const day = ms => fmtTime(ms, {dateStyle: "short"});
+  return day(t * 1000) === day(Date.now()) ? fmtTime(t * 1000, {hour: "2-digit", minute: "2-digit"}) : ago(t);
+}
 function jobWhen(j){
-  if (j.state === "queued") return `queued ${ago(j.queued)}`;
-  if (j.started && !j.ended) return `started ${ago(j.started)}`;
+  if (j.state === "queued") return `queued ${jobSince(j.queued)}`;
+  if (j.started && !j.ended) return `since ${jobSince(j.started)}`;
   return ago(j.ended || j.queued);
 }
 function jobTook(j){

@@ -32,6 +32,7 @@
 - Every page and notebook view with more than one section has the row of section names at its top to jump to one; the Containers page's names its project groups too (f56448f)
 - Creating a project no longer pins it on everyone's Home; it is on the Projects page, and each person pins what they want there. (dd3c32c)
 - A project's agent button reads Manage agent while your session runs, since it opens the chooser with Open, Restart and End. (f412261)
+- The Jobs page's When says the time a running or waiting job began, where it said "started just now" cut short. (fa30ec7)
 
 ### Upgrading
 

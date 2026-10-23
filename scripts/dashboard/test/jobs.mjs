@@ -278,6 +278,15 @@ await ready(page);
   });
   ok(cols.job >= 220 && !cols.cut.length && cols.act <= 100 && cols.wrap === 'break-word',
      `the Job column has the room, Node and By are whole and the buttons' column is one button wide (${JSON.stringify(cols)})`);
+  // A job not over says the clock time it has been waiting or running
+  // since, which fits the When column whole ("started just now" was cut).
+  const when = await page.evaluate(() => {
+    const now = Math.floor(Date.now() / 1000);
+    return [jobWhen({ state: 'running', started: now - 5 }), jobWhen({ state: 'queued', queued: now - 5 }),
+            jobWhen({ state: 'succeeded', started: now - 50, ended: now - 5 })];
+  });
+  ok(/^since \d{1,2}:\d\d/.test(when[0]) && /^queued \d{1,2}:\d\d/.test(when[1]) && when[2] === 'just now',
+     `a running or waiting job says the time it began, an ended one how long ago (${when.join(' | ')})`);
 }
 
 // bb jobs reads the same listing the tab does, through the API as the
