@@ -59,12 +59,23 @@ def _copilot_config(home):
     return os.path.join(home, ".copilot", "config.json")
 
 
+def _jsonc(path):
+    """A Copilot file as (its leading comment lines, its JSON): since 1.0.103
+    its config.json opens with `//` lines saying it is managed, which a plain
+    json.load refused, so a sign-in there never reached the card."""
+    with open(path) as f:
+        lines = f.read().splitlines(keepends=True)
+    n = 0
+    while n < len(lines) and (not lines[n].strip() or lines[n].lstrip().startswith("//")):
+        n += 1
+    return "".join(lines[:n]), json.loads("".join(lines[n:]))
+
+
 def copilot_of(home):
     """Who this account's Copilot CLI is signed in as here, {email: the
     GitHub login, plan}, or None."""
     try:
-        with open(_copilot_config(home)) as f:
-            d = json.load(f)
+        _, d = _jsonc(_copilot_config(home))
     except FileNotFoundError:
         return None
     except (OSError, ValueError) as e:
@@ -79,8 +90,7 @@ def forget_copilot(home):
     kept there in plain text, taken out; everything else left as it was."""
     p = _copilot_config(home)
     try:
-        with open(p) as f:
-            d = json.load(f)
+        head, d = _jsonc(p)
     except FileNotFoundError:
         return 0
     except (OSError, ValueError):
@@ -91,6 +101,7 @@ def forget_copilot(home):
         d.pop(k, None)
     tmp = p + ".new"
     with open(tmp, "w") as f:
+        f.write(head)
         json.dump(d, f, indent=2)
     os.chmod(tmp, 0o600)
     os.replace(tmp, p)
@@ -119,8 +130,7 @@ def mcp_of(home):
     except OSError:
         pass
     try:
-        with open(os.path.join(home, ".copilot", "mcp-config.json")) as f:
-            got = (json.load(f) or {}).get("mcpServers")
+        got = (_jsonc(os.path.join(home, ".copilot", "mcp-config.json"))[1] or {}).get("mcpServers")
         if isinstance(got, dict) and got:
             out["copilot"] = sorted(str(k)[:80] for k in got)[:32]
     except (OSError, ValueError, AttributeError):

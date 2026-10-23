@@ -63,6 +63,20 @@ class Listed(unittest.TestCase):
         self.put(".copilot/config.json", {"lastLoggedInUser": {"host": "https://github.com", "login": "octo"}})
         self.assertEqual(self.listed()["agents"]["copilot"], {"email": "octo", "plan": ""})
 
+    def test_copilot_s_managed_header_is_read_past_and_kept(self):
+        # 1.0.103 opens its config with comment lines (B280).
+        head = "// User settings belong in settings.json.\n// This file is managed automatically.\n"
+        p = os.path.join(self.home, ".copilot", "config.json")
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w") as f:
+            f.write(head + json.dumps({"lastLoggedInUser": {"login": "octo"}, "theme": "dark"}))
+        self.assertEqual(self.listed()["agents"]["copilot"], {"email": "octo", "plan": ""})
+        subprocess.run([sys.executable, "-I", LIST, "--forget-copilot", self.home], check=True)
+        with open(p) as f:
+            got = f.read()
+        self.assertTrue(got.startswith(head))
+        self.assertEqual(json.loads(got[len(head):]), {"theme": "dark"})
+
     def test_forgetting_copilot_keeps_the_rest_of_its_config(self):
         self.put(".copilot/config.json", {"lastLoggedInUser": {"login": "octo"}, "loggedInUsers": [{"login": "octo"}],
                                           "copilotTokens": {"x": "y"}, "theme": "dark"})
