@@ -1956,18 +1956,9 @@ def create_from_dialog(req, *, env, account, may_node):
             r = set_prefs(name, **{key: str(v)})
             if r.get("error"):
                 body["note"] = f"{body.get('note') or 'ready'}; {label} not set: {r['error']}"
-    # Pinned on arrival, once anything has ever been pinned. Without this a
-    # project made while a pins file exists is absent from it, so it lands
-    # on disk and never reaches Home: created, and apparently gone.
-    # No file still means "all of them", so there is nothing to write then
-    # and writing one would turn the first create into an unasked-for
-    # decision about every other project.
-    with lock:
-        try:
-            pin_new_project(name)
-        except OSError:
-            pass                  # the project exists; its pin is not
-                                  # worth failing the create over
+    # Not pinned: what Home shows is each person's to choose (the operator,
+    # 23 Oct), and the Projects page shows every project, pinned or not. An
+    # account that has never pinned anything still sees all of them there.
     # A clone that failed while the lines above ran was put away before its
     # owner and settings were written: they go now too (B95).
     if not registry.get(name) and unmade:
@@ -2033,16 +2024,6 @@ def save_project_pins(uid, names):
     d[str(uid or "")] = sorted(set(names))
     write_json(_pins_file(), d)
 
-
-def pin_new_project(name):
-    """A project made after anything has been pinned is pinned for everyone
-    who has a set: absent from theirs it would land on disk and never reach
-    their Home, created and apparently gone. Nothing to write while no
-    account has a set, since no file means all of them."""
-    d = _load_pins()
-    if not d:
-        return
-    write_json(_pins_file(), {k: sorted(set(v) | {name}) for k, v in d.items()})
 
 def pin(uid, name, on, fresh=False):
     """Pin or unpin a project for one account, once the server has let a
