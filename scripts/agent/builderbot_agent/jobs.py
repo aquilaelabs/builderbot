@@ -480,16 +480,11 @@ class Job(threading.Thread):
 
     def claude_logout(self, spec, agent=""):
         """`claude auth logout` on this machine for one BuilderBot account,
-        as the SESSION account and in that account's home here: the other
+        as its own user or the SESSION account, in that account's home here: the other
         half of claude_login. The login is this machine's, so this machine
         is the one that lets go of it; the heartbeat that follows says so."""
         who_name = self.agent.session_account()
         env = dict(sdk_env(self.agent.state))
-        try:
-            who = self.agent.as_user(env, who_name)
-        except RuntimeError as e:
-            self.say(f"refused: {e}\n")
-            return "failed", 78
         if not who_name:
             self.say("refused: this node reports no session account, so no Claude login lives here\n")
             return "failed", 78
@@ -497,13 +492,25 @@ class Job(threading.Thread):
         if not re.fullmatch(r"u_[0-9a-f]{8}", uid):
             self.say("refused: a sign-out names the account it is for\n")
             return "failed", 64
-        into = self.agent.bundle(self, who)
+        # As the account's own user where its home is that user's (R125),
+        # from the root-owned bundle, as the sign-in is; the session account
+        # otherwise.
+        try:
+            dropper = getattr(self.agent, "drop_for", None)
+            if dropper:
+                who, base, root_bb = dropper(env, uid)
+            else:
+                who, base, root_bb = self.agent.as_user(env, who_name), "", ""
+        except RuntimeError as e:
+            self.say(f"refused: {e}\n")
+            return "failed", 78
+        into = root_bb or self.agent.bundle(self, who)
         if not into:
             return "failed", 69
         # The session account's home, which is this process's own where the
         # agent is not root and as_user changed nothing.
         env.setdefault("HOME", os.path.expanduser("~"))
-        env["BUILDER_HOME"] = env["HOME"]
+        env["BUILDER_HOME"] = base or env["HOME"]
         env["BB_ACCOUNT_UID"] = uid
         env.setdefault("BUILDERBOT_ROLE", "node")
         env.setdefault("BB_NODE", str(self.agent.state.get("name") or ""))

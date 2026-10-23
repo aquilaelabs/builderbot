@@ -3336,7 +3336,52 @@ def keep_clean(keep):
         ok = int(keep.get("ok") or 0)
     except (TypeError, ValueError):
         ok = 0
-    return {"said": said, "ok": ok}
+    # Who opened an account's token there that was neither the account nor
+    # the agent (R125 step 6): the account read off the home in the path.
+    reads = []
+    for x in (keep.get("reads") if isinstance(keep.get("reads"), list) else [])[-32:]:
+        if not isinstance(x, dict):
+            continue
+        path = str(x.get("path") or "")[:240]
+        m = re.search(r"/users/(u_[0-9a-f]{8})/", path)
+        try:
+            reads.append({"at": int(x.get("at") or 0), "path": path, "account": m.group(1) if m else "",
+                          "pid": int(x.get("pid") or 0), "uid": int(x.get("uid") if x.get("uid") is not None else -1),
+                          "comm": re.sub(r"[^\w .:+()/@-]", "", str(x.get("comm") or ""))[:32]})
+        except (TypeError, ValueError):
+            continue
+    return {"said": said, "ok": ok, "reads": reads}
+
+
+def token_reads_audit(n, old, new):
+    """Each token read this hello carries that the last did not, onto the
+    audit as the node's: a row per reader, kept with the rest of history."""
+    seen = {(r["at"], r["pid"], r["path"]) for r in (old or {}).get("reads") or []}
+    for r in (new or {}).get("reads") or []:
+        if (r["at"], r["pid"], r["path"]) not in seen:
+            audit(f"node:{n.get('name') or n['id']}", "token-read", r["account"] or n["id"],
+                  {"path": r["path"], "pid": r["pid"], "uid": r["uid"], "comm": r["comm"], "at": r["at"]})
+
+
+TOKEN_READ_DAYS = 7
+
+
+def token_attention():
+    """The bell's rows (R125 step 6): a node where something other than an
+    account or the agent opened an account's coding-agent token in the last
+    week, kind token-read, keyed on the newest read so a dismissal holds
+    until another one."""
+    out = []
+    since = time.time() - TOKEN_READ_DAYS * 86400
+    for n in node_list():
+        reads = [r for r in ((n.get("agent") or {}).get("keep") or {}).get("reads") or [] if r.get("at", 0) > since]
+        if n["kind"] != "agent" or not reads:
+            continue
+        last = max(reads, key=lambda r: r["at"])
+        out.append({"kind": "token-read", "node": n["name"], "id": n["id"], "at": last["at"],
+                    "count": len(reads), "comm": last["comm"], "uid": last["uid"], "pid": last["pid"],
+                    "path": last["path"], "account": last["account"]})
+    return out
 
 
 def hello(nid, census, addr, version="", digest="", running=None, keep=None):
@@ -3367,6 +3412,7 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
     # that tried (B419).
     kc = keep_clean(keep)
     if kc is not None:
+        token_reads_audit(n, ag.get("keep"), kc)
         ag["keep"] = kc
     rep = n.get("reported") or {}
     # The tmux sessions ride the HEARTBEAT, not the census, so the live set is

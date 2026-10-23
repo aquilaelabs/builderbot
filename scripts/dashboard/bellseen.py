@@ -110,6 +110,12 @@ def filter_rows(uid, rows):
             if r.get("key") in gone:
                 hidden += 1
                 continue
+        elif r.get("kind") == "token-read":
+            # To the newest read (R125 step 6): put away until another one.
+            r["key"] = f"tokenread:{r['id']}@{r.get('at') or 0}"
+            if r["key"] in gone:
+                hidden += 1
+                continue
         elif r.get("kind") == "held":
             # To the hold (R251): put away until the session is held again.
             if r.get("key") in gone:

@@ -289,6 +289,21 @@ function attRow(a){
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bstorage="${esc(a.id)}">Storage page</a></span></div></div>`;
   }
+  // An account's coding-agent sign-in opened on a node by something that was
+  // neither that account nor the agent (R125 step 6): root, most likely. A
+  // sign-out here deletes this copy, not one already taken, so the row says
+  // to treat it as copied and end it at the provider.
+  if (a.kind === "token-read"){
+    const file = (a.path || "").split("/").slice(-2).join("/");
+    return `<div class="bnote att bad">
+      <div class="bt">A sign-in on ${esc(a.node)} was read</div>
+      <div class="bsum">${esc(a.comm || "a process")} (pid ${esc(String(a.pid))}, uid ${esc(String(a.uid))}) opened ${
+        esc(a.who ? `${a.who}'s` : a.account ? `${a.account}'s` : "an account's")} ${esc(file)}${
+        a.count > 1 ? `; ${esc(String(a.count - 1))} more this week` : ""}</div>
+      <div class="bfoot"><span>${esc(ago(a.at))}; treat it as copied and end it at the provider</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bag="${esc(a.id)}">Agents page</a></span></div></div>`;
+  }
   // A node's nginx behind the newest line (R192): its own note, to the
   // nginx tab on that node, where Update is.
   if (a.kind === "nginx"){

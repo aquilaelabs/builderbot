@@ -249,7 +249,11 @@ class SessionsMixin:
         here: the last few complaints of two days, and when one was last kept."""
         now = int(time.time())
         said = [x for x in self.__dict__.get("_keep_recent", []) if now - x["at"] < 48 * 3600]
-        return {"said": said, "ok": int(self.__dict__.get("_keep_ok") or 0)}
+        tw = self.__dict__.get("_tokenwatch")
+        return {"said": said, "ok": int(self.__dict__.get("_keep_ok") or 0),
+                # Who opened an account's token here that was neither it nor
+                # the agent (R125 step 6), for the controller's audit.
+                "reads": tw.report() if tw else []}
 
     # -- the session half (roadmap #24) ---------------------------------------
     def session_account(self):

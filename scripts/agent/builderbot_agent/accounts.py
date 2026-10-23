@@ -22,6 +22,7 @@ import subprocess
 import time
 
 from .base import ROOT_BUNDLE_DIR, SESSION, SESSION_BIN, log
+from .tokenwatch import TokenWatch
 
 GROUP = "bbu"
 PREFIX = "bbu-"
@@ -92,6 +93,9 @@ class AccountsMixin:
                     self._move_home(home, pw)
                 if os.lstat(home).st_uid == pw.pw_uid:
                     moved += 1
+                    # Its token files held at 600, and who else opens one
+                    # said (R125 step 6).
+                    self.token_watch().watch(home, pw)
         SESSION["accounts"] = {"users": users, "moved": moved, "waiting": waiting}
         self.tty_env_write()
 
@@ -197,6 +201,13 @@ class AccountsMixin:
             if mine and os.path.isdir(os.path.join(ROOT_BUNDLE_DIR, "current")):
                 return self.as_user(env, user), base, os.path.realpath(os.path.join(ROOT_BUNDLE_DIR, "current"))
         return self.as_user(env, sa), base, ""
+
+    def token_watch(self):
+        tw = self.__dict__.get("_tokenwatch")
+        if tw is None:
+            tw = self.__dict__["_tokenwatch"] = TokenWatch()
+            tw.start()
+        return tw
 
     def account_users_ready(self):
         """Whether the sudo rule and bb-session's layout may say accounts

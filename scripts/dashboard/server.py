@@ -1422,6 +1422,16 @@ def _resume_held(who, nid, session):
     return {"ok": True, **said}, 200
 
 
+def _token_rows():
+    """nodes.token_attention, each read with its account's name."""
+    rows = nodes.token_attention()
+    if rows:
+        names = {u["uid"]: u["name"] for u in users.all_users()}
+        for r in rows:
+            r["who"] = names.get(r["account"], "")
+    return rows
+
+
 def _held_rows(who):
     """nodes.held_attention for this account, each row with the account's
     name and its Claude session's name on that project (B773): the gate's
@@ -1515,7 +1525,7 @@ def _attention(who):
     # person, where the rest is an update that can wait (seen fourth, under
     # the fold of the bell, in the walk of 15 Oct).
     rows = (_held_rows(who)
-            + ([] if users.may(who, "node") else nodes.attention(where))
+            + ([] if users.may(who, "node") else nodes.attention(where) + _token_rows())
             # ...and a node short of disk or memory (R110), for whoever
             # manages nodes: what is short, on the Storage page's terms.
             + ([] if users.may(who, "node") else nodes.room_attention(
