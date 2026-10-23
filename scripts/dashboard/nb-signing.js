@@ -107,7 +107,7 @@ function nbSigningView({$, nb, project}){
         : "an administrator on this project downloads a copy to keep offline"}, since losing it is final.</div>` : ""}
       ${retired ? `<div class="sub">Retired: rotated to ${esc(k.retired_for)}. Kept, since the proof and every device before Android 9 still need it.</div>` : ""}
       ${rotated ? `<div class="sub">Rotated from ${esc(k.rotated_from)}: Android 9 and newer see this key, older devices still see ${esc(k.rotated_from)}.</div>` : ""}
-      ${pw[`${key}:${route}`] ? `<div class="rnsignbar actbar">
+      ${k && !d.remove && pw[`${key}:${route}`] ? `<div class="rnsignbar actbar">
         <input type="password" data-signbackuppass autocomplete="current-password" placeholder="the backup password" aria-label="the backup password">
         <button type="button" class="link" data-signbackupgo>Download</button></div>` : ""}
       ${d.open ? `<div class="rnsignform">
@@ -277,7 +277,7 @@ function nbSigningView({$, nb, project}){
         notify(`${key} is rotated to ${to}: the apps it signed now sign with ${to} and the proof`);
         loadSigning();
       });
-      on("[data-signremove]", () => { d.remove = !d.remove; if (d.remove){ d.open = false; delete d.file; } drawSigning(); });
+      on("[data-signremove]", () => { d.remove = !d.remove; if (d.remove){ d.open = false; delete d.file; delete pw[`${key}:${route}`]; } drawSigning(); });
       on("[data-signbackuppw]", () => { pw[`${key}:${route}`] = !pw[`${key}:${route}`]; drawSigning(); });
       on("[data-signbackupgo]", async b => {
         const pass = row.querySelector("[data-signbackuppass]").value;

@@ -230,21 +230,7 @@ def _root(project):
 
 
 def _dir(project, key=DEFAULT):
-    _settle(project)
     return _root(project) / key
-
-
-def _settle(project):
-    """Move a project's keys from before there were names (the slots at the
-    project's own directory) into `default`, once."""
-    root = _root(project)
-    for r in ROUTES:
-        for ext in ("ks", "json"):
-            old = root / f"{r}.{ext}"
-            if old.is_file():
-                (root / DEFAULT).mkdir(parents=True, exist_ok=True)
-                os.chmod(root / DEFAULT, 0o700)
-                os.replace(old, root / DEFAULT / f"{r}.{ext}")
 
 
 def _ok_project(project):
@@ -296,7 +282,6 @@ def _public(rec):
 
 def key_names(project):
     """The project's keys by name, `default` first when it has one."""
-    _settle(project)
     root = _root(project)
     try:
         names = sorted(d.name for d in root.iterdir() if d.is_dir() and _ok_key(d.name))

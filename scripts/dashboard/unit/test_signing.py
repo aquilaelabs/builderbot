@@ -78,15 +78,6 @@ class Signing(unittest.TestCase):
         self.assertEqual(signing.remove("app", "play")[1], 200)
         self.assertEqual(signing.remove("app", "play")[1], 404)
 
-    def test_keys_from_before_names_become_the_default(self):
-        old = self.tmp / "state" / "signing" / "older"
-        old.mkdir(parents=True)
-        (old / "play.ks").write_bytes(self.ks.read_bytes())
-        (old / "play.json").write_text('{"alias": "upload", "sha256": "AB", "store_pass": "s3cret-pass"}')
-        self.assertEqual(signing.listing("older")[0]["keys"]["default"]["play"]["alias"], "upload")
-        self.assertFalse((old / "play.ks").exists())
-        self.assertIsNotNone(signing.secret("older", "play"))
-
     def test_a_generated_key_and_an_app_mapped_to_it(self):
         r, st = signing.generate("app", "sideload", "watch", by="sean")
         self.assertEqual(st, 200, r)
@@ -291,7 +282,7 @@ class Start(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
         signing.configure(state=self.tmp, project_name=re.compile(r"[A-Za-z0-9._-]+"))
-        d = self.tmp / "signing" / "app"
+        d = self.tmp / "signing" / "app" / "default"
         d.mkdir(parents=True)
         (d / "sideload.ks").write_bytes(b"k")
         (d / "sideload.json").write_text('{"alias": "a", "store_pass": "SECRET"}')
