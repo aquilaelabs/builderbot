@@ -1120,11 +1120,11 @@ async function ndStoreAsk(n, c){
         + `node's own disk is covered until it is unmounted; it is not deleted.`)) return false;
   }
   if (!roles.length && !mounts.length) return true;
-  const ask = [...new Set([...roles.map(r => norm(d.stores[r])), ...roles.map(now).filter(Boolean), ...mounts])];
+  const probe = [...new Set([...roles.map(r => norm(d.stores[r])), ...roles.map(now).filter(Boolean), ...mounts])];
   let j;
   try{
     j = await (await fetch("/api/v1/nodes", {method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({action: "path-state", id: n.id, paths: ask})})).json();
+      body: JSON.stringify({action: "path-state", id: n.id, paths: probe})})).json();
   }catch(e){ j = {error: String(e)}; }
   if (j.error){ notify(`could not see what is at those paths on ${n.name}: ${j.error}`, true); return false; }
   const at = p => j.paths?.[p] || {};
