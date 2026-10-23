@@ -122,7 +122,7 @@ const last = await page.$eval('#rnmodal .box', b => [...b.querySelectorAll('.fie
 ok(last === 'rnSessField', `...at the foot of the dialog (${last})`);
 await page.evaluate(() => [...document.querySelectorAll('#rnSessList .rnsess')]
   .find(r => /w\.sess/.test(r.textContent) && /Claude/.test(r.textContent))
-  ?.querySelector('[data-rnend]').click());
+  ?.querySelector('[data-rnsessend]').click());
 await page.waitForFunction(() => ![...document.querySelectorAll('#rnSessList .rnsess')]
   .some(r => /w\.sess/.test(r.textContent) && /Claude/.test(r.textContent)), null, { timeout: 15000 });
 const gone = (() => { try { execFileSync('tmux', ['has-session', '-t', '=' + here[0]]); return false; }

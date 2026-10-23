@@ -35,16 +35,18 @@ function rnSessionsDraw(name, rows){
       <div class="grow"><div class="name">${esc(rnSessWho(r))}</div>
         <div class="sub">${[r.kind === "claude" ? "Claude" : "shell",
           r.node ? "on " + esc(r.node) : "", esc(r.state || "")].filter(Boolean).join(" · ")}</div></div>
-      <button type="button" class="danger" data-rnend="${i}">End</button>
+      <button type="button" class="danger" data-rnsessend="${i}">End</button>
     </div>`).join("") : `<div class="hint">No sessions on this project.</div>`;
-  list.querySelectorAll("[data-rnend]").forEach(b =>
-    b.onclick = () => rnSessionEnd(name, rows[Number(b.dataset.rnend)], b));
+  list.querySelectorAll("[data-rnsessend]").forEach(b =>
+    // Its own attribute: data-rnend is a section bar's End and save, which
+    // the dialog's delegated click took this press for as well.
+    b.onclick = () => rnSessionEnd(name, rows[Number(b.dataset.rnsessend)], b));
   $("rnSessField").hidden = false;
 }
 
 async function rnSessionEnd(name, r, btn){
   const whose = r.who === state?.me ? "your" : `${r.who}'s`;
-  if (!confirm(r.kind === "claude"
+  if (!await askYes(r.kind === "claude"
       ? `End ${whose} Claude session on ${projLabel(name)}?\n\nThe work in flight stops; the conversation resumes from the Claude button.`
       : `End ${whose} shell on ${projLabel(name)}?\n\nWhatever is running in it stops.`)) return;
   busy(btn, "Ending");
