@@ -622,7 +622,7 @@ print(json.dumps(out))
   ok(/waiting for you|working/.test(await stateWord()),
      'liveRefresh reads who is here from /api/live and draws the cards again');
   // Your own session starting is read off the status read at once (B828):
-  // the card's Open Claude reads its session list, which /api/live does not
+  // the card's Manage agent reads its session list, which /api/live does not
   // carry. Someone else's coming or going, or nothing moving, reads nothing.
   const reads = await page.evaluate(async () => {
     const real = refresh; let n = 0;

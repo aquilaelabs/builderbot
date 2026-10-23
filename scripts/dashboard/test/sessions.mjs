@@ -252,8 +252,8 @@ ok((await page.$eval('.sesstbl .sessrow[data-sess="claude-ep_silon"] .td:nth-chi
 // lit by color rather than by being a filled button.
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.pgrid .pcard[data-row="ep.silon"] [data-c]', { timeout: 15000 });
-ok(await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-c]', b => b.textContent.trim() === 'Open Claude' && b.classList.contains('primary')),
-   'dotted project: Claude button knows the session is running (Open Claude, green)');
+ok(await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-c]', b => b.textContent.trim() === 'Manage agent' && b.classList.contains('primary')),
+   'dotted project: the agent button knows the session is running (Manage agent, green)');
 {
   const idle = await page.evaluate(() => [...document.querySelectorAll('.pgrid .pcard [data-c]')]
     .filter(b => !liveSessions().has(myClaude(b.dataset.c))).map(b => [b.textContent.trim(), b.classList.contains('primary')]));

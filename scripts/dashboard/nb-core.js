@@ -1070,15 +1070,16 @@ function projectActions(p, extra = ""){
     : p.last_claude ? `${ag.name}: no session running; resume or start one`
     : `${ag.name}: start a session here`;
   const say = said.startsWith(`${ag.name}:`) ? said : `${ag.name}: ${said}`;
-  // Green only while your session runs, and then it opens it, naming the
-  // agent; otherwise a plain Start agent, the chooser under it picking which
-  // (the operator, 16 Oct: green on every card read as running everywhere;
-  // 22 Oct: one word for every agent).
+  // Green only while your session runs, and then Manage agent, since the
+  // press opens the chooser with the session's Open, Restart and End;
+  // otherwise a plain Start agent, the chooser under it picking which (the
+  // operator, 16 Oct: green on every card read as running everywhere; 22
+  // Oct: one word for every agent; 23 Oct: Manage agent, not Open Claude).
   const inst = ag.id === "claude" ? claudeInstall(p) : "";
   return `${isBroken(p) || forbid ? "" : inst ? `<button type="button" data-tcinst="${esc(inst)}" title="${
         esc(`Claude Code is not installed on ${p.node_name || "its node"}: open its Agents page to install it`)}">Install Claude</button>`
       : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(name)}"${dead ? " disabled" : ""} title="${esc(say)}">${
-        mine ? `Open ${esc(ag.name)}` : "Start agent"}</button>`}
+        mine ? "Manage agent" : "Start agent"}</button>`}
     ${mayShell() && !notMine(p) ? `<button type="button" data-s="${esc(name)}"${!gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}
     <span class="more"><button type="button" data-pmore aria-label="more" aria-expanded="false">${DOTS}</button><div class="actmenu" hidden>${menu}</div></span>`;
 }

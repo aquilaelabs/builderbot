@@ -169,7 +169,7 @@ async function liveRefresh(){
   let j;
   try{ j = await (await fetch("/api/live")).json(); }catch(e){ return; }
   if (!state || !j || j.error) return;
-  // Your own sessions starting or ending are what the cards' Open Claude,
+  // Your own sessions starting or ending are what the cards' Manage agent,
   // a project's header and its settings read off the status read's session
   // list, which this light read does not carry and keeps putting off: so a
   // change in yours reads it at once (the operator, 17 Oct: Start agent

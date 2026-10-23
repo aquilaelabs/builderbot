@@ -232,11 +232,12 @@ tab stays, its pane blank with **Reattach**, and closing the window brings
 it back on its own. The window is the terminal's
 own address, so closing the dashboard leaves it working.
 
-- **Start agent** on a project opens *one* session per project. If it is
-  already running the button reads **Open Claude**, in green, and takes you
-  to its tab. If it is not but the project has a previous conversation, you
-  are asked whether to **resume** it or start a **new** one: the tmux session
-  dies with a container restart, the transcript does not.
+- **Start agent** on a project opens a chooser of the coding agents, one
+  session of each per project. While yours runs the button reads **Manage
+  agent**, in green, and the chooser offers **Open** (its tab), **Restart**
+  and **End**. If none runs but the project has a previous conversation, you
+  are offered to **resume** it or start a **new** one: the tmux session dies
+  with a container restart, the transcript does not.
 - **Shell** opens *another* terminal at the project path every time you
   press it, so you can have several side by side. **+** on the dock's line
   does the same for `/workspace`.
