@@ -75,15 +75,18 @@ object Agents {
      *  on a project, as the page's launchClaude and launchAgent build it:
      *  `codex:PROJECT`, then `:r:ID` to resume a conversation, `:m:` and
      *  `:e:` for another agent's model and effort (bb-tty holds them to its
-     *  own lists; Claude's are saved to the project instead), and `:n:NODE`
-     *  where the project runs on several nodes. */
+     *  own lists; Claude's are saved to the project instead), `:n:NODE`
+     *  where the project runs on several nodes, and last `:b:BOOT`, the boot
+     *  of the machine it is opened for (the page's bootFor): bb-tty starts a
+     *  session only for an argument carrying the boot it is running now, so
+     *  a tab reconnecting after a restart never starts one by itself. */
     fun termArg(agentId: String, project: String, resume: String = "", model: String = "",
-                effort: String = "", node: String = ""): String {
+                effort: String = "", node: String = "", boot: String = ""): String {
         val a = byId(agentId) ?: CLAUDE
         val me = if (a.id == "claude") "" else
             (if (model.isNotBlank()) ":m:$model" else "") + (if (effort.isNotBlank()) ":e:$effort" else "")
         return "${a.id}:$project" + (if (resume.isNotBlank()) ":r:$resume" else "") + me +
-            (if (node.isNotBlank()) ":n:$node" else "")
+            (if (node.isNotBlank()) ":n:$node" else "") + (if (boot.isNotBlank()) ":b:$boot" else "")
     }
 
     /** The agents a project's Start offers on one node, its default first:

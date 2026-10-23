@@ -136,7 +136,7 @@ private fun ago(at: Long): String {
 
 /** What a press turned to: the model and effort step for one agent, a
  *  conversation to resume (or none), and whether it is a restart. */
-private data class Pick(val agent: Agent, val resume: String, val node: String, val restart: JSONObject? = null)
+private data class Pick(val agent: Agent, val resume: String, val node: String, val restart: JSONObject? = null, val boot: String = "")
 
 @Composable
 fun AgentView(api: Api, project: String, status: JSONObject?, reloadStatus: () -> Unit,
@@ -204,16 +204,19 @@ fun AgentView(api: Api, project: String, status: JSONObject?, reloadStatus: () -
                         val offered = Agents.offered(n.strs("agents"), p.obj("prefs").strs("agents_off"),
                                                      p.obj("prefs").str("agent_default").ifBlank { "claude" })
                         val at = if (several) n.str("id") else ""
+                        // The boot of the machine it starts on, as the page's bootFor reads it:
+                        // bb-tty starts a session only for the boot it is running now.
+                        val boot = (if (several) n.str("boot") else "").ifBlank { p.str("session_boot") }.ifBlank { status?.str("boot") ?: "" }
                         for (a in offered) {
                             val run = mine.firstOrNull { (x, s) -> x.id == a.id && (n.str("id").isBlank() || s.str("node_id") == n.str("id")) }?.second
                             val last = if (a.id == "claude") p.optJSONObject("last_claude") else p.obj("last_agents").optJSONObject(a.id)
                             AgentRow(a, run, signed = signedAs(status, a.id, n.str("id")), nodeName = n.str("name"),
                                      last = last, dead = dead.isNotBlank(),
-                                     onOpen = { openTerm(Agents.termArg(a.id, project, node = at), "${a.name}: $label") },
-                                     onRestart = { pick = Pick(a, last?.str("id") ?: "", at, restart = run) },
+                                     onOpen = { openTerm(Agents.termArg(a.id, project, node = at, boot = boot), "${a.name}: $label") },
+                                     onRestart = { pick = Pick(a, last?.str("id") ?: "", at, restart = run, boot = boot) },
                                      onEnd = { ending = a to run!! },
-                                     onResume = { pick = Pick(a, last?.str("id") ?: "", at) },
-                                     onNew = { if (p.bool("brief") && run == null) briefFor = Pick(a, "", at) else pick = Pick(a, "", at) })
+                                     onResume = { pick = Pick(a, last?.str("id") ?: "", at, boot = boot) },
+                                     onNew = { if (p.bool("brief") && run == null) briefFor = Pick(a, "", at, boot = boot) else pick = Pick(a, "", at, boot = boot) })
                         }
                     }
                 }
@@ -332,7 +335,7 @@ private fun StartStep(api: Api, project: String, p: JSONObject?, pk: Pick, onCan
                         }
                         if (!gone) throw Exception("your session is still going down; press Restart again in a moment")
                     }
-                    onStart(Agents.termArg(a.id, project, pk.resume, model, effort, pk.node))
+                    onStart(Agents.termArg(a.id, project, pk.resume, model, effort, pk.node, pk.boot))
                     ""
                 } catch (e: Exception) { e.message ?: "it did not start" }
                 busy = false
@@ -421,6 +424,12 @@ fun TerminalPane(api: Api, arg: String, label: String, onClose: () -> Unit) {
         if (u != null) AndroidView(
             factory = { ctx ->
                 android.webkit.WebView(ctx).apply {
+                    // Match its parent, not wrap its content: a WebView left to
+                    // wrap lays its page out with a viewport 0px high, and the
+                    // terminal page, which is height: 100%, fit one row and
+                    // drew nothing (seen on the emulator walk).
+                    layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
                     // The terminal is the dashboard's own page, and xterm is script.
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true

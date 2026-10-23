@@ -42,6 +42,9 @@ class AgentsTest {
         assertEquals("claude:alpha:r:abc:n:n_1", Agents.termArg("claude", "alpha", resume = "abc", model = "opus", node = "n_1"))
         assertEquals("codex:alpha:m:gpt-5.5:e:high", Agents.termArg("codex", "alpha", model = "gpt-5.5", effort = "high"))
         assertEquals("copilot:alpha:r:s1:n:n_2", Agents.termArg("copilot", "alpha", resume = "s1", node = "n_2"))
+        // The boot rides last, as page-tabs.js appends it and bb-tty strips it first.
+        assertEquals("codex:alpha:m:gpt-5.5:n:n_2:b:1792599490.38",
+                     Agents.termArg("codex", "alpha", model = "gpt-5.5", node = "n_2", boot = "1792599490.38"))
     }
 
     @Test fun startOffersWhatTheNodeHasTheDefaultFirst() {

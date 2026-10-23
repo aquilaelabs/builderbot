@@ -19,11 +19,11 @@
   "endpoints": [
     {"method": "GET", "path": "/api/meta", "fields": ["api", "version", "apk", "apk_sha256", "apk_url"]},
     {"method": "GET", "path": "/api/status", "fields": ["me", "can", "image", "host", "projects", "attention", "phone_asks", "welcome",
-                                                       "sessions", "tmux_prefix", "doctor", "invites", "claude_auth", "agent_auth"],
+                                                       "sessions", "tmux_prefix", "doctor", "invites", "claude_auth", "agent_auth", "boot"],
      "invites": ["id", "project", "by", "kind"],
      "projects": ["name", "label", "git", "locked", "pending", "roadmap", "bugs", "session_at", "pinned", "prefs", "issues", "testing",
                   "archived", "locked_admin", "locked_me", "may_lock", "may_archive", "owner_mine", "owner_name", "session_node",
-                  "session_nodes", "session_why", "last_claude", "last_agents", "yours", "brief", "mine"],
+                  "session_nodes", "session_why", "last_claude", "last_agents", "yours", "brief", "mine", "session_boot"],
      "sessions": ["name"],
      "attention": ["kind", "node", "id", "from", "to", "window", "projects", "tools"],
      "can": ["admin"]},

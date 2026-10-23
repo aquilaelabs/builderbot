@@ -344,7 +344,8 @@ object Watch {
         "token-read" -> "A sign-in on ${a.str("node")} was read: treat it as copied and end it at the provider"
         "agent", "" -> "${a.str("node")} runs agent ${a.str("from")}; the controller ships ${a.str("to")}" +
             (if (a.bool("window")) " (out of window, work there is stopped)" else "")
-        else -> "${a.str("node").ifBlank { a.str("project") }}: ${a.str("kind")} needs attention on the dashboard"
+        else -> "The dashboard's bell has a ${a.str("kind").replace('-', ' ')} notice" +
+            a.str("node").ifBlank { a.str("project") }.let { if (it.isBlank()) "" else " for $it" }
     }
 
     // What an ask is, in the words the dashboard's bell uses for the same
