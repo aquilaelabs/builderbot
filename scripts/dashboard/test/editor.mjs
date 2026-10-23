@@ -102,6 +102,14 @@ const c = Object.fromEntries(Object.keys(people).map(n => [n, new Client(base, c
   ok(w['ed.rw'].ok && readFileSync(`${tree}/editor-probe.txt`, 'utf8') === 'written from an editor\n'
      && w['ed.r'].status === 403 && /read-only/.test(w['ed.r'].error) && w['ed.cap'].status === 403,
      `a write needs read and write: it lands for ed.rw, and read-only and the role-capped account are refused (${w['ed.r'].error})`);
+  // A project locked against an account is read-only through this door
+  // too, as it is on the page (B263): the lock is the owner's or an
+  // administrator's, and ed.rw is neither.
+  const lk = await admin('/api/lock', { name: 'alpha', locked: true });
+  const held = await as(c['ed.rw'], 'alpha', 'write', { path: 'editor-probe.txt', data, overwrite: true });
+  await admin('/api/lock', { name: 'alpha', locked: false });
+  ok(!lk.error && held.status === 403 && /read-only/.test(held.error || ''),
+     `a locked project refuses ed.rw's write through the Files API (${held.error || JSON.stringify(lk)})`);
   const st = await as(c['ed.r'], 'alpha', 'stat', { path: 'editor-probe.txt' });
   ok(st.readonly === true && (await as(c['ed.rw'], 'alpha', 'stat', { path: '' })).readonly === false,
      '...and stat tells the editor which, so a read-only project opens read-only');
