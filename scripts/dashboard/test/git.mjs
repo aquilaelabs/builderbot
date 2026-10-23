@@ -658,11 +658,11 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   await page.evaluate(() => fetch('/api/lock', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: 'beta', locked: true }) }));
   ok((await act('fetch')).status !== 403, "its owner's lock leaves its owner the buttons");
-  writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ beta: { by: 'u_0000aaaa', admin: true } }));
-  const held = await act('fetch');
-  ok(held.status === 403 && /locked by an administrator/.test(held.error),
-     `an administrator's lock takes no action, its owner's included (${held.status} ${held.error})`);
-  writeFileSync(`${DIR}/state/locked-projects.json`, '{}');
+  writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ beta: { by: 'u_0000aaaa', admin: true }, delta: { by: 'u_0000aaaa', admin: true } }));
+  const heldByAdmin = await act('fetch');
+  ok(heldByAdmin.status === 403 && /locked by an administrator/.test(heldByAdmin.error),
+     `an administrator's lock takes no action, its owner's included (${heldByAdmin.status} ${heldByAdmin.error})`);
+  writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ delta: { by: 'u_0000aaaa', admin: true } }));   // the fixture's own lock, kept
 
   // ...and the view offers them: the network bar, the commit form at the
   // top of Changes, Switch and Delete on a branch, Revert on a commit.

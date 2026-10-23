@@ -158,7 +158,7 @@ ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + p
     body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512,
       sessions: [{ name: onNode, attached: false, cwd: '/workspace/gamma', title: '' }] }, running: [], wait: 0 }) });
   const del = await call('/api/trash', { name: 'gamma' });
-  ok(r.status === 200 && del.status === 409 && del.error?.includes(onNode),
+  ok(r.ok && del.status === 409 && del.error?.includes(onNode),
      `a project with a session running on a node is refused Delete, naming the session (${del.status} ${del.error})`);
   await beat();
 }

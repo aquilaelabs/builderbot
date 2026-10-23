@@ -803,8 +803,14 @@ class ConfigPlaneMixin:
                     job.say(f"{role}: made {', '.join(made)}\n")
                 was = str(mine.get(role) or "")
                 if was and was.rstrip("/") != str(path).rstrip("/") and role in keep:
-                    job.say(f"{role}: now {path}, starting empty as asked; what was in {was} "
-                            f"stays there\n")
+                    try:
+                        with os.scandir(path) as it:
+                            there = any(True for _ in it)
+                    except OSError:
+                        there = False
+                    job.say(f"{role}: now {path}, "
+                            f"{'using what is already there' if there else 'starting empty'} as asked; "
+                            f"what was in {was} stays there\n")
                     marks[role] = made
                 elif was and was.rstrip("/") != str(path).rstrip("/"):
                     if not self._move_store(job, role, was, str(path)):

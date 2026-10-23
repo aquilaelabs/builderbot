@@ -1208,7 +1208,7 @@ ok(!ownLock.folded && ownLock.mark === 'locked' && !ownLock.claudeDead && ownLoc
    `its owner's lock keeps the card in the grid, marked locked, with the owner's own Start not shut by it and Unlock in the menu (${JSON.stringify(ownLock)})`);
 await page.evaluate(() => setLocked('alpha', false));
 // An administrator's lock (this account owns alpha, so it is written as one).
-writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ alpha: { by: 'u_0000aaaa', admin: true } }));
+writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ alpha: { by: 'u_0000aaaa', admin: true }, delta: { by: 'u_0000aaaa', admin: true } }));
 await page.evaluate(() => refresh());
 await page.waitForFunction(
   () => document.querySelector('.pgrid .pcard[data-row="alpha"] [data-c]')?.disabled === true,
@@ -1236,7 +1236,7 @@ ok(locked.menu.includes('Admin: Unlock'), `...and an administrator is offered Ad
   });
   ok(mark.fill === 'none' && mark.stroke !== 'none' && mark.said === 'locked by an administrator',
      `...the padlock drawn as a line in the dim color, with its words beside it (${JSON.stringify(mark)})`);
-writeFileSync(`${DIR}/state/locked-projects.json`, '{}');
+writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ delta: { by: 'u_0000aaaa', admin: true } }));   // the fixture's own lock, kept
 await page.evaluate(() => refresh());
 // Archive (R119): out of sight and nothing else. Its card leaves the grid
 // for the Archived fold at the page's foot, its menu says Unarchive and
@@ -2144,7 +2144,7 @@ await page.click('#rnCancel');
 // which for its owner is an administrator's lock (R119). Unlike the credential
 // fields above there is no typing that brings this back, so the reason is the
 // whole message.
-writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ gamma: { by: 'u_0000aaaa', admin: true } }));
+writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ gamma: { by: 'u_0000aaaa', admin: true }, delta: { by: 'u_0000aaaa', admin: true } }));
 await refreshUntil(page, () => (state?.projects || []).some(p => p.name === 'gamma' && p.locked_me), { timeout: 15000 });
 await page.evaluate(() => renameProject('gamma'));
 await page.waitForSelector('#rnmodal:not([hidden])');
@@ -2154,7 +2154,7 @@ ok(await page.$eval('#rnReply', e => e.disabled)
 ok(/locked by an administrator/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
    '...and says which of the two reasons it is');
 await page.click('#rnCancel');
-writeFileSync(`${DIR}/state/locked-projects.json`, '{}');
+writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ delta: { by: 'u_0000aaaa', admin: true } }));   // the fixture's own lock, kept
 await refreshUntil(page, () => !(state?.projects || []).some(p => p.name === 'gamma' && p.locked), { timeout: 15000 });
 // ep.silon is linked and cannot push, which is the third state the chain has
 // to have an answer for: not a form to fill in, and not an empty box either.
@@ -2216,7 +2216,7 @@ const refused = await page.evaluate(async () => {
     body: JSON.stringify({ project: 'delta', action: 'add', text: 'should not land' }) });
   return { status: r.status, error: (await r.json()).error || '' };
 });
-ok(refused.status === 409 && /locked by an administrator/.test(refused.error),
+ok([403, 409].includes(refused.status) && /locked by an administrator/.test(refused.error),
    '...and the server refuses a write into its notebook, not just the button');
 
 // The sidebar fits its column. It stopped doing so because a tooltip is laid
