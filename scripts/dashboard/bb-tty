@@ -1133,11 +1133,6 @@ start() {
         *)        tmux set-option -t "$s" mouse off ;;
     esac
 
-    # tmux's own right-click menu is drawn in the terminal, underneath the
-    # browser's context menu, which covers it: two menus for one click, and
-    # only one of them dismissable. The browser's cannot be suppressed from
-    # here (the terminal is served from its own port and is a cross-origin
-    # frame), so the one we control is the one that goes.
     # A key copy mode has no use for leaves it, so a letter typed into a pane
     # scrolled back ends the scroll rather than vanishing (the operator, 23
     # Oct: Codex's approval list ignored every key while the pane sat in
@@ -1145,6 +1140,12 @@ start() {
     # their meaning; the first other key is spent leaving.
     tmux bind-key -T copy-mode Any send-keys -X cancel 2>/dev/null || true
     tmux bind-key -T copy-mode-vi Any send-keys -X cancel 2>/dev/null || true
+
+    # tmux's own right-click menu is drawn in the terminal, underneath the
+    # browser's context menu, which covers it: two menus for one click, and
+    # only one of them dismissable. The browser's cannot be suppressed from
+    # here (the terminal is served from its own port and is a cross-origin
+    # frame), so the one we control is the one that goes.
     tmux unbind-key -n MouseDown3Pane 2>/dev/null || true
     tmux unbind-key -n MouseDown3Status 2>/dev/null || true
     tmux unbind-key -n MouseDown3StatusLeft 2>/dev/null || true
