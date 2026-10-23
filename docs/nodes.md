@@ -1580,6 +1580,32 @@ can legitimately run for hours, a storage apply that moves a store gets a
 six-hour clock instead of the usual fifteen minutes, and the Nodes page asks
 before starting one.
 
+**Every data location is asked about before it is saved (R120, the operator,
+23 Oct).** Save on a node's Storage asks the node what is at each store path
+that changed, and at each new mount point, before anything is written: a
+read-only look (exists, empty or holding files) that never shows on the Jobs
+page. Then, for each store:
+
+- a path that is empty or does not exist yet asks *are you sure*, and the
+  store goes there as typed;
+- a path that already holds files asks the same, saying that a folder named
+  for the node is made inside it and the setting changes to that
+  (`/srv/share` becomes `/srv/share/<node>`), so a store never shares a
+  folder with files that are not its own;
+- when the old store holds data, whether to bring it across is its own
+  question: yes copies it as above, no saves the store in `keep`, and the
+  apply points it at the new place and starts it empty, leaving the old data
+  where it was. `cache` is never asked; it starts empty anyway.
+
+The agent never copies a store into a folder that already holds files: the
+copy would mix the two by name, so it refuses and leaves the store where it
+was. A mount point on a folder that holds files asks first too, saying the
+share covers them until it is unmounted.
+
+No store and no mount point may be a system directory: the list above, on
+both ends, with mount points checked as stores are. A folder of its own under
+`/var/log` is allowed; `/var/log` itself, like `/var/lib`, is not.
+
 **Network changes get commit/confirm safety, because they are the one change
 that can cut the cord it arrives on.** The agent applies the new network
 config, cycles the stack, and must re-establish its connection to the

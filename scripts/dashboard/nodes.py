@@ -1568,14 +1568,17 @@ STORE_ROLES = ("data", "toolchains", "cache", "artifacts", "appdata")
 STORE_DENY_EXACT = {"/", "/bin", "/boot", "/dev", "/etc", "/home", "/lib",
                     "/lib32", "/lib64", "/libx32", "/media", "/mnt", "/opt",
                     "/proc", "/root", "/run", "/sbin", "/srv", "/sys", "/tmp",
-                    "/usr", "/var"}
+                    "/usr", "/var", "/var/lib", "/var/log"}
 STORE_DENY_UNDER = ("/bin/", "/boot/", "/dev/", "/etc/", "/lib/", "/lib32/",
                     "/lib64/", "/libx32/", "/proc/", "/root/", "/run/",
-                    "/sbin/", "/sys/", "/usr/", "/var/log/", "/var/run/",
+                    "/sbin/", "/sys/", "/usr/", "/var/run/",
                     "/var/lock/", "/var/spool/", "/var/cache/")
+# ...and a folder of its own under /var/log is a place for one (the operator,
+# 23 Oct), though /var/log itself is not. Held equal on both sides by
+# unit/test_store_paths.py.
 
 
-def store_path_ok(path):
+def store_path_ok(path, what="a store"):
     """"" if this is a safe place for a store, else why not."""
     p = str(path or "").rstrip("/") or "/"
     if not p.startswith("/"):
@@ -1583,7 +1586,7 @@ def store_path_ok(path):
     if " " in p or ".." in p.split("/"):
         return f"{path!r} must be a plain absolute path, with no spaces or .."
     if p in STORE_DENY_EXACT:
-        return (f"{p} is a system directory (or the root of the mounts): a store "
+        return (f"{p} is a system directory (or the root of the mounts): {what} "
                 "is a directory of its own, like /var/lib/builderbot/x or /mnt/<share>/<dir>")
     for bad in STORE_DENY_UNDER:
         if (p + "/").startswith(bad):
@@ -1623,6 +1626,10 @@ def _clean_config(cfg):
             path = "/mnt/" + tail
         if not path.startswith("/") or " " in path or ":" in path:
             return None, f"a mountpoint must be an absolute path without spaces: {path!r}"
+        # ...and never over a system directory (R120): a share mounted on
+        # /etc hides the machine's own configuration until it is unmounted.
+        if (why := store_path_ok(path, "a mount point")):
+            return None, f"the mount at {path}: {why}"
         if path.rstrip("/") == "/workspace" or path.startswith("/workspace/"):
             # The node's own synced copy of its projects is there (R163): a
             # mount would cover it, and no node mounts the controller's disk.
@@ -1648,6 +1655,10 @@ def _clean_config(cfg):
             return None, f"the {role} store: {why}"
         stores[role] = path[:200]
     out["stores"] = stores
+    # The stores whose path changes without their data coming along (R120):
+    # the person was asked, and said start it empty.
+    out["keep"] = sorted({str(r) for r in (cfg.get("keep") if isinstance(cfg.get("keep"), list) else [])
+                          if r in STORE_ROLES})
     net = cfg.get("network") if isinstance(cfg.get("network"), dict) else {}
     mode = "static" if net.get("mode") == "static" else "dhcp"
     n = {"mode": mode, "interface": re.sub(r"[^A-Za-z0-9_.-]", "", str(net.get("interface") or ""))[:32]}
@@ -2988,7 +2999,8 @@ def apply_cfg(desired, what):
     the other way about, whenever either moved."""
     desired = desired or {}
     if what == "storage":
-        return {"mounts": desired.get("mounts") or [], "stores": desired.get("stores") or {}}
+        return {"mounts": desired.get("mounts") or [], "stores": desired.get("stores") or {},
+                "keep": desired.get("keep") or []}
     if what == "network":
         return {"network": desired.get("network") or {}}
     return None
@@ -3946,6 +3958,66 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
     why = _no_answer(r["job"], node_id, timeout)
     job_cancel(principal, r["job"])
     return {"error": why}
+
+
+# What node_path_state runs there: read-only, stdlib, the python every node
+# carries for its agent. One JSON line: {path: {exists, dir, files}}.
+_PATH_STATE = """
+import json, os, sys
+out = {}
+for p in json.loads(sys.argv[1]):
+    st = {"exists": os.path.exists(p), "dir": os.path.isdir(p), "files": False}
+    if st["dir"]:
+        try:
+            with os.scandir(p) as it:
+                st["files"] = any(True for _ in it)
+        except OSError:
+            st["files"] = True
+    out[p] = st
+print(json.dumps(out))
+"""
+
+
+def node_slug(name):
+    """The folder named for a node inside a store's folder that already
+    holds files (R120): its name, as a path segment."""
+    return re.sub(r"[^A-Za-z0-9._-]", "-", str(name or "")).strip(".-")[:60] or "node"
+
+
+def node_path_state(principal, node_id, paths):
+    """{paths: {path: {exists, dir, files, why, sub, sub_state}}} for each
+    path asked, or {error}: whether it is a place a store or a mount may go
+    at all (store_path_ok), and what is there now. A path that holds files
+    also carries the folder named for this node inside it, and what is
+    there, which is where the page offers to put the store instead."""
+    n = node(node_id)
+    if not n or n.get("kind") != "agent":
+        return {"error": "only an agent node says what is at a path"}
+    want = []
+    for p in (paths if isinstance(paths, list) else [])[:8]:
+        p = str(p or "").strip().rstrip("/")
+        if p and p not in want:
+            want.append(p)
+    if not want:
+        return {"error": "no path to look at"}
+    sub = {p: f"{p}/{node_slug(n.get('name'))}" for p in want}
+    ask = want + [s for s in sub.values() if s not in want]
+    r = run_wait(principal, node_id, ["python3", "-c", _PATH_STATE, json.dumps(ask)], timeout=20,
+                 forget=True, title="what is at the storage paths")
+    if r.get("error"):
+        return {"error": r["error"]}
+    try:
+        got = json.loads((r.get("out") or "").strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {"error": f"{n.get('name') or node_id} did not say what is there"}
+    out = {}
+    for p in want:
+        st = dict(got.get(p) or {})
+        st["why"] = store_path_ok(p)
+        st["sub"] = sub[p]
+        st["sub_state"] = got.get(sub[p]) or {}
+        out[p] = st
+    return {"paths": out}
 
 
 def _no_answer(job_id, node_id, timeout):
@@ -5472,6 +5544,12 @@ def verb(principal, req):
         return ({"error": "no such node"} if not node(nid)
                 else devapp.check_paths(nid))
 
+    def path_state():
+        # What is at each path on the node before a store or a mount is
+        # pointed there (R120): the page asks before it saves, so the
+        # question it asks is about what is really there.
+        return node_path_state(principal, nid, req.get("paths"))
+
     def funnel():
         # Tailscale Funnel for a port on the node, raw: the manager's
         # route picker goes through the instance's record; this is the
@@ -5551,7 +5629,7 @@ def verb(principal, req):
              "storage": lambda: node_storage_measure(principal, nid),
              "sync-resume": sync_resume, "sync-clean": sync_clean, "runner": runner,
              "runner-token": runner_token, "runner-forget": runner_forget,
-             "paths": paths, "check-paths": check_paths, "funnel": funnel,
+             "paths": paths, "check-paths": check_paths, "path-state": path_state, "funnel": funnel,
              "update-agent": update_agent, "cache-clear": cache_clear,
              "exec": exec_, "test": test}
     if act not in verbs:

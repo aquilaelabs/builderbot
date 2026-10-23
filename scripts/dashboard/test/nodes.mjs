@@ -992,14 +992,80 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(await page.$eval(`${ROW} .ndmount[data-i="${last}"] .ndmstate`, e => /not applied yet/.test(e.textContent))
      && await page.$eval(`${ROW} [data-napply="storage"]`, b => b.disabled),
      '...the new mount says it is not applied yet, and Apply waits for Save');
+  // What is at a path is the node's to say (R120): the page asks before it
+  // saves. Answered here as an agent would, from what this map says the
+  // node's disk holds; any path it does not name is not there.
+  const disk = {};
+  let answering = true;
+  const answerer = (async () => {
+    while (answering){
+      const r = await fetch(base + '/api/v1/agent/work', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 8192, mem_used_mb: 512 }, running: [], wait: 0 }) });
+      const j = r.status === 200 ? await r.json().catch(() => null) : null;
+      if (j?.type === 'exec' && /storage paths/.test(j.spec?.title || '')){
+        const out = Object.fromEntries(JSON.parse(j.spec.argv[3]).map(p => [p, disk[p] || { exists: false, dir: false, files: false }]));
+        const asNode = { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' };
+        await fetch(base + '/api/v1/agent/log', { method: 'POST', headers: asNode,
+          body: JSON.stringify({ job: j.id, chunks: [{ seq: 1, chunk: 'exec\n' + JSON.stringify(out) + '\n' }] }) });
+        await fetch(base + '/api/v1/agent/result', { method: 'POST', headers: asNode,
+          body: JSON.stringify({ job: j.id, state: 'succeeded', exit: 0 }) });
+      }
+      await sleep(150);
+    }
+  })();
+  page.dialogs.length = 0;
   await page.click(`${ROW} [data-nsave]`);
   await page.waitForFunction(sel => !document.querySelector(sel + ' [data-napply="storage"]')?.disabled,
-                             ROW, { timeout: 10000 });
+                             ROW, { timeout: 15000 });
+  ok(page.dialogs.length === 1 && /Put the cache store in \/scratch\/cache/.test(page.dialogs[0]) && /is made/.test(page.dialogs[0]),
+     `a store pointed somewhere new asks first, saying what is there (${page.dialogs[0]?.split('\n').join(' ').slice(0, 90)})`);
   const rec = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
   ok(rec.config.desired.mounts.some(m => m.path === '/mnt/appdata')
      && rec.config.desired.mounts.some(m => m.path === '/mnt/old')
      && rec.config.desired.stores.cache === '/scratch/cache' && rec.config.desired.network.mode === 'dhcp',
      'Save puts the desired config on the record, validated');
+  // A folder that already holds files gets one named for the node inside it,
+  // and the setting changes to that; the data coming along is its own
+  // question (the operator, 23 Oct), answered no here.
+  {
+    disk['/srv/full'] = { exists: true, dir: true, files: true };
+    disk['/var/lib/builderbot/artifacts'] = { exists: true, dir: true, files: true };
+    await page.evaluate(() => { window.__asked = []; window.__confirm = window.confirm;
+      window.confirm = m => { window.__asked.push(m); return !/^Bring /.test(m); }; });
+    await page.fill(`${ROW} [data-k="store:artifacts"]`, '/srv/full');
+    await page.click(`${ROW} [data-nsave]`);
+    await page.waitForFunction(id => nodesList.find(n => n.id === id)?.config?.desired?.stores?.artifacts === '/srv/full/shed',
+                               minted.id, { timeout: 15000 });
+    const asked = await page.evaluate(() => { const a = window.__asked; window.confirm = window.__confirm; return a; });
+    const after = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id).config.desired;
+    ok(asked.length === 2 && /already has files in it/.test(asked[0]) && /\/srv\/full\/shed/.test(asked[0])
+       && /Bring the artifacts data across from \/var\/lib\/builderbot\/artifacts/.test(asked[1])
+       && after.stores.artifacts === '/srv/full/shed' && after.keep.includes('artifacts'),
+       `a folder holding files gets one named for the node, the setting is that, and declining the copy starts it empty (${JSON.stringify(after.keep)}; ${asked.length} asked)`);
+    // A system folder is refused before anything is asked or saved.
+    page.dialogs.length = 0;
+    await page.fill(`${ROW} [data-k="store:data"]`, '/etc/builderbot');
+    await page.click(`${ROW} [data-nsave]`);
+    await sleep(1500);
+    const still = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id).config.desired;
+    ok(page.dialogs.length === 0 && still.stores.data !== '/etc/builderbot',
+       `a store pointed into a system folder is refused, nothing asked and nothing saved (${still.stores.data || 'unset'})`);
+    // ...and a folder of its own under /var/log is a place for one.
+    const ok1 = await napi('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { ...after, stores: { ...after.stores, data: '/var/log/builderbot' } } });
+    const bare = await napi('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { ...after, stores: { ...after.stores, data: '/var/log' } } });
+    const mnt = await napi('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { ...after, mounts: [...after.mounts, { path: '/etc/share', source: 'nas:/x', type: 'nfs' }] } });
+    ok(!ok1.error && /system directory/.test(bare.error || '') && /mount at \/etc\/share/.test(mnt.error || ''),
+       `a folder under /var/log is allowed, /var/log itself and a mount on /etc are not (${bare.error}; ${mnt.error})`);
+    await napi('/api/v1/nodes', { action: 'config', id: minted.id, config: rec.config.desired });
+    // ...and the refused draft dropped, so the editor reads the record again.
+    await page.evaluate(id => { const c = nodesConf[id]; if (c){ c.draft = null; c.dirty = false; } return loadNodes(); }, minted.id);
+  }
+  answering = false;
+  await answerer;
   // A job's log is the only copy of what a node's job wrote, it lives in the
   // controller's store, and until R17 step 1 nothing deleted one: a build's
   // log runs to megabytes, so a busy project filled the database quietly. The
@@ -3201,11 +3267,15 @@ ok(page.errors.length === 0,
     await napi('/api/v1/jobs', { action: 'cancel', id: off.job });
     // The briefing's GPU section reaches a session only where its project's
     // node reports a card: a fact about the machine, not the tree.
-    const without = (await napi('/api/preamble?project=delta')).text || '';
-    await napi('/api/prefs', { project: 'delta', node: shed.id });
-    const withCard = (await napi('/api/preamble?project=delta')).text || '';
-    await napi('/api/prefs', { project: 'delta', node: '' });
-    const gpuTopic = (await napi('/api/preamble?project=delta&topic=gpu')).text || '';
+    // gamma, not delta: delta is the fixture's locked project, whose
+    // settings nobody changes (R119).
+    const prevNode = (await napi('/api/status')).projects?.find(p => p.name === 'gamma')?.prefs?.node || '';
+    await napi('/api/prefs', { project: 'gamma', node: '' });
+    const without = (await napi('/api/preamble?project=gamma')).text || '';
+    await napi('/api/prefs', { project: 'gamma', node: shed.id });
+    const withCard = (await napi('/api/preamble?project=gamma')).text || '';
+    await napi('/api/prefs', { project: 'gamma', node: prevNode });
+    const gpuTopic = (await napi('/api/preamble?project=gamma&topic=gpu')).text || '';
     ok(!/- gpu: /.test(without) && /- gpu: the card/.test(withCard) && /bb gpu run \[--mem MB\] -- CMD/.test(gpuTopic),
        'the briefing names its GPU topic for a project whose node has a card, and for no other; the topic answers either way');
   }

@@ -685,6 +685,10 @@ class ConfigPlaneMixin:
                 job.say(f"skipping a mount with no path or source: {w!r}\n")
                 bad += 1
                 continue
+            if (why := store_path_ok(path, "a mount point")):
+                job.say(f"refused the mount at {path}: {why}\n")
+                bad += 1
+                continue
             verb = "add-share" if kind == "virtiofs" else "add-nfs"
             if self._sh(job, [SANDBOX_BIN, verb, f"{src}:{path}" + (":ro" if ro else "")]) != 0:
                 bad += 1
@@ -697,6 +701,8 @@ class ConfigPlaneMixin:
             # What this agent created for each store, so a move can take
             # back exactly that and nothing else.
             marks = dict(self.state.get("store_made") or {})
+            # The stores asked to move without their data (R120).
+            keep = {str(r) for r in (cfg.get("keep") or []) if isinstance(r, str)}
             for role, path in stores.items():
                 if role not in DEFAULT_STORES:
                     continue
@@ -732,7 +738,11 @@ class ConfigPlaneMixin:
                 if made:
                     job.say(f"{role}: made {', '.join(made)}\n")
                 was = str(mine.get(role) or "")
-                if was and was.rstrip("/") != str(path).rstrip("/"):
+                if was and was.rstrip("/") != str(path).rstrip("/") and role in keep:
+                    job.say(f"{role}: now {path}, starting empty as asked; what was in {was} "
+                            f"stays there\n")
+                    marks[role] = made
+                elif was and was.rstrip("/") != str(path).rstrip("/"):
                     if not self._move_store(job, role, was, str(path)):
                         # The move did not happen, so nothing was written to
                         # the new place: leave no litter behind either.
@@ -781,6 +791,20 @@ class ConfigPlaneMixin:
         if not os.path.isdir(old):
             job.say(f"{role}: nothing at {old} to bring across\n")
             return True
+        # Never a merge (R120): copied into a folder that already holds
+        # files, the old store's would overwrite theirs by name. The page
+        # puts a store that is pointed at one in a folder named for the
+        # node inside it; anything else asking for this is refused.
+        try:
+            with os.scandir(new) as it:
+                holds = any(True for _ in it)
+        except OSError:
+            holds = False
+        if holds and role != "cache":
+            job.say(f"refused: {new} already holds files, and copying {role} into it would "
+                    f"mix the two. Point {role} at an empty folder, or move it without its "
+                    f"data. {role} still points at {old}.\n")
+            return False
         if role == "cache":
             job.say(f"{role}: leaving {old} where it is, because a cache is rebuildable "
                     f"and the new one starts cold\n")

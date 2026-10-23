@@ -60,11 +60,14 @@ BEAT_S = 20
 STORE_DENY_EXACT = {"/", "/bin", "/boot", "/dev", "/etc", "/home", "/lib",
                     "/lib32", "/lib64", "/libx32", "/media", "/mnt", "/opt",
                     "/proc", "/root", "/run", "/sbin", "/srv", "/sys", "/tmp",
-                    "/usr", "/var"}
+                    "/usr", "/var", "/var/lib", "/var/log"}
 STORE_DENY_UNDER = ("/bin/", "/boot/", "/dev/", "/etc/", "/lib/", "/lib32/",
                     "/lib64/", "/libx32/", "/proc/", "/root/", "/run/",
-                    "/sbin/", "/sys/", "/usr/", "/var/log/", "/var/run/",
+                    "/sbin/", "/sys/", "/usr/", "/var/run/",
                     "/var/lock/", "/var/spool/", "/var/cache/")
+# ...and a folder of its own under /var/log is a place for one (the operator,
+# 23 Oct), though /var/log itself is not. Held equal on both sides by
+# unit/test_store_paths.py.
 
 
 # Where the configuration plane's tools are (docs/nodes.md §12, phase 5).

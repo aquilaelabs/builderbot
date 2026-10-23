@@ -1082,9 +1082,62 @@ function staleWhy(n){
 // promising a move here would be a lie.
 function storeMoves(n){
   const want = n?.config?.desired?.stores || {}, rep = n?.reported?.stores || {};
+  const keep = new Set(n?.config?.desired?.keep || []);
   return Object.entries(want).filter(([role, p]) => role !== "cache" && p
       && rep[role]?.path && rep[role].path.replace(/\/+$/, "") !== String(p).replace(/\/+$/, ""))
-    .map(([role, p]) => ({role, from: rep[role].path, to: p}));
+    .map(([role, p]) => ({role, from: rep[role].path, to: p, empty: keep.has(role)}));
+}
+
+// The questions a changed data location asks before it is saved (R120, the
+// operator, 23 Oct), asked of what is really at each path on the node: Are
+// you sure; a folder that already holds files gets one named for the node
+// inside it, and the setting changes to that; and whether the data in the
+// old place comes along. False when a question was answered no, or the
+// node could not say, and nothing is saved.
+async function ndStoreAsk(n, c){
+  const d = c.draft, desired = n?.config?.desired || {}, rep = n?.reported?.stores || {};
+  const norm = p => String(p || "").trim().replace(/\/+$/, "");
+  const now = role => norm(desired.stores?.[role] || rep[role]?.path);
+  const roles = Object.keys(d.stores || {}).filter(r => norm(d.stores[r]) && norm(d.stores[r]) !== now(r));
+  const was = new Set((desired.mounts || []).map(m => norm(m.path)));
+  const mounts = (d.mounts || []).map(m => norm(m.path)).filter(p => p && !was.has(p));
+  if (!roles.length && !mounts.length) return true;
+  const ask = [...new Set([...roles.map(r => norm(d.stores[r])), ...roles.map(now).filter(Boolean), ...mounts])];
+  let j;
+  try{
+    j = await (await fetch("/api/v1/nodes", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action: "path-state", id: n.id, paths: ask})})).json();
+  }catch(e){ j = {error: String(e)}; }
+  if (j.error){ notify(`could not see what is at those paths on ${n.name}: ${j.error}`, true); return false; }
+  const at = p => j.paths?.[p] || {};
+  for (const p of mounts){
+    if (at(p).why){ notify(`the mount at ${p}: ${at(p).why}`, true); return false; }
+    if (at(p).files && !confirm(`Mount the share at ${p} on ${n.name}?\n\n${p} already has files in it. `
+        + `The share covers them until it is unmounted; they are not deleted.`)) return false;
+  }
+  const keep = [];
+  for (const role of roles){
+    const want = norm(d.stores[role]), st = at(want), old = now(role);
+    if (st.why){ notify(`the ${role} store: ${st.why}`, true); return false; }
+    let to = want, already = false;
+    if (st.files){
+      to = st.sub; already = !!st.sub_state?.files;
+      if (!confirm(`Put the ${role} store in ${want} on ${n.name}?\n\n${want} already has files in it, so the `
+          + `store goes in a folder for this node inside it, ${to}, and the setting changes to that.`
+          + (already ? `\n\n${to} already holds files of its own: the store uses what is there, and `
+                       + `nothing is brought across from ${old || "the old place"}.` : ""))) return false;
+      d.stores[role] = to;
+    } else if (!confirm(`Put the ${role} store in ${want} on ${n.name}?\n\n`
+        + (st.exists ? `${want} is empty.` : `${want} does not exist yet, and is made.`))) return false;
+    // A cache is never brought across (it is rebuilt); nor is an old place
+    // with nothing in it, or a store going where files already are.
+    const hasData = role !== "cache" && old && at(old).files;
+    if (already || (hasData && !confirm(`Bring the ${role} data across from ${old} to ${to}?\n\n`
+        + `OK copies it there; the copy in ${old} stays for you to remove. Cancel leaves it where it `
+        + `is, and ${to} starts empty.`))) keep.push(role);
+  }
+  d.keep = keep;
+  return true;
 }
 
 // Saved is not applied: the record says what the node SHOULD be, the census
@@ -2660,6 +2713,9 @@ function wireNodeConf(row, id){
       if (!r.error){ nodesRev++; drawPanes(); } });
   });
   fold.querySelectorAll("[data-nsave]").forEach(save => { save.onclick = () => pressing(save, async () => {
+    const was = save.textContent;
+    busy(save, "Checking");
+    if (!await ndStoreAsk(nodesList.find(x => x.id === id), c)){ unbusy(save, was); return; }
     busy(save, "Saving");
     const r = await nodeAct({action: "config", id, config: c.draft});
     if (!r.error){ c.dirty = false; c.draft = null; nodesRev++; drawPanes(); }
@@ -2682,10 +2738,14 @@ function wireNodeConf(row, id){
       // and take a while, so it is asked about rather than started by a
       // text field losing focus.
       const moving = storeMoves(n);
-      if (moving.length && !confirm(`Apply storage to ${n?.name || "this node"}?\n\nThis moves `
-          + `${moving.map(m => `${m.role} from ${m.from} to ${m.to}`).join(", and ")}. `
-          + `The contents are copied first; the old cop${moving.length === 1 ? "y stays" : "ies stay"} `
-          + `for you to remove.`)) return;
+      const copied = moving.filter(m => !m.empty), fresh = moving.filter(m => m.empty);
+      if (moving.length && !confirm(`Apply storage to ${n?.name || "this node"}?\n\n`
+          + (copied.length ? `This moves ${copied.map(m => `${m.role} from ${m.from} to ${m.to}`).join(", and ")}: `
+             + `the contents are copied first, and the old cop${copied.length === 1 ? "y stays" : "ies stay"} `
+             + `for you to remove.` : "")
+          + (copied.length && fresh.length ? "\n\n" : "")
+          + (fresh.length ? `${fresh.map(m => `${m.role} starts empty in ${m.to}`).join(", and ")}, `
+             + `leaving what was in ${fresh.map(m => m.from).join(" and ")} where it is.` : ""))) return;
     }
     await pressing(b, () => { busy(b, "Applying"); return nodeAct({action: "apply", id, what}); });
   });

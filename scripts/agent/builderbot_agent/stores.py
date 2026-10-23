@@ -32,7 +32,7 @@ def _can_chown(path):
             os.remove(probe)
 
 
-def store_path_ok(path):
+def store_path_ok(path, what="a store"):
     """"" if this is a safe place for a store, else why not. A bare
     top-level directory is refused as well as a system one: /mnt is where
     mounts live, not a store, and putting one there scatters directories
@@ -44,7 +44,7 @@ def store_path_ok(path):
         return f"{path!r} must be a plain absolute path, with no spaces or .."
     if p in STORE_DENY_EXACT:
         return (f"{p} is a system directory (or the root of the mounts): "
-                "a store is a directory of its own, like /var/lib/builderbot/x "
+                f"{what} is a directory of its own, like /var/lib/builderbot/x "
                 "or /mnt/<share>/<dir>")
     for bad in STORE_DENY_UNDER:
         if (p + "/").startswith(bad):

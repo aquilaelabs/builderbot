@@ -25,6 +25,7 @@
 - Signing keys are checked, generated, wrapped for a backup and rotated, and a release's APK is signed, on the project's node with its own jdk and Android SDK Build-Tools, never on the controller: install both on that node's Toolchains, and the Signing view and the bell say which node it is and what it lacks when it cannot
 - A project's Start Claude is Start agent, opening a chooser of one node at a time (picked by name) with a line per coding agent there; Open names the agent whose session is running (acc4dfa)
 - Archive puts a project out of sight and nothing else: its card folds under Archived and leaves Home, and it keeps working for everybody on it. Its owner or an administrator archives it (7d4a5eb)
+- Pointing a node's store at a new folder asks first: a folder that already holds files gets one named for the node inside it, and bringing the old data across is a question of its own; a mount point on a folder with files asks too, and no store or mount may be a system folder (24c9a24)
 
 ### Upgrading
 
