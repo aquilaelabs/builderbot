@@ -1280,7 +1280,27 @@ cmd_emu() {
             # android-tools entry, beside the SDK rather than in it) and warns
             # about every package as "in inconsistent location": dozens of
             # lines that read as a broken SDK (diagnostics #125) and are not.
-            echo no | avdmanager create avd -n "$name" -k "$pkg" --device pixel_7 >/dev/null \
+            # That root is the whole toolchain store, and it scanned every
+            # toolchain in it for packages: over three minutes of silence
+            # before the AVD (report #127, B281). So it is run from a copy of
+            # its launcher that sits in an SDK-shaped folder of this
+            # account's, its jars and the SDK's packages linked in, where the
+            # same work is a second.
+            local avdm real shim
+            avdm="$(command -v avdmanager)"
+            real="$(readlink -f "$avdm")"
+            if [ -n "${ANDROID_HOME:-}" ] \
+               && [ "$(dirname "$(dirname "$(dirname "$(dirname "$real")")")")" != "$(readlink -f "$ANDROID_HOME")" ]; then
+                shim="${XDG_CACHE_HOME:-$HOME/.cache}/builderbot/avd-sdk"
+                mkdir -p "$shim/cmdline-tools/latest/bin" \
+                    && cp -f "$real" "$shim/cmdline-tools/latest/bin/avdmanager" \
+                    && ln -sfn "$(dirname "$(dirname "$real")")/lib" "$shim/cmdline-tools/latest/lib" \
+                    && for d in "$ANDROID_HOME"/*; do
+                        [ "$(basename "$d")" = cmdline-tools ] || ln -sfn "$d" "$shim/$(basename "$d")"
+                    done \
+                    && avdm="$shim/cmdline-tools/latest/bin/avdmanager"
+            fi
+            echo no | "$avdm" create avd -n "$name" -k "$pkg" --device pixel_7 >/dev/null \
                 2> >(grep -v 'in inconsistent location' >&2) \
                 || die "AVD creation failed for ${name}"
             # The image path, written by hand. avdmanager is the android-tools
