@@ -331,7 +331,11 @@ const SESSION_PORT = 17681 + Math.floor(Math.random() * 1000);
 // harness's controller, as a real node does.
 const SHARE = `${DIR}/agentworkspace`;
 mkdirSync(SHARE, { recursive: true });
-const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
+// A home of its own (B248): a non-root agent installs a coding agent into
+// its account's home, and with the runner's own the stub installers below
+// wrote ~/.local/bin/codex and claude into a real person's home.
+mkdirSync(`${DIR}/agenthome`, { recursive: true });
+const agentEnv = { ...process.env, HOME: `${DIR}/agenthome`, BUILDERBOT_NODE_JSON: NODE_JSON,
   BUILDERBOT_SHARE: SHARE,
   BUILDERBOT_TTYD_BIN: `${DIR}/bin/ttyd`, BUILDERBOT_SESSION_PORT: String(SESSION_PORT),
   BUILDERBOT_SESSION_BIND: '127.0.0.1',
