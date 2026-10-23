@@ -1319,14 +1319,9 @@ def _census(c):
                                # its host (R100), whitelisted field by field.
                                "autostart": v.get("autostart") is True,
                                "hw": _vm_hw(v.get("hw")),
-                               # Its root filesystem as its guest agent says (R110):
-                               # [used MB, total MB], for the bell as it fills.
-                               **({"root_fs": [int(v["root_fs"][0]), int(v["root_fs"][1])]}
-                                  if isinstance(v.get("root_fs"), list) and len(v["root_fs"]) == 2
-                                  and all(isinstance(x, int) and x >= 0 for x in v["root_fs"]) else {}),
-                               # ...and the rest its guest agent says (R110 step 8):
-                               # hostname, OS, kernel, addresses, who is signed in,
-                               # every filesystem, whitelisted field by field.
+                               # What its guest agent says (R110 step 8): hostname,
+                               # OS, kernel, addresses, who is signed in, every
+                               # filesystem, whitelisted field by field.
                                **({"guest": _vm_guest(v["guest"])} if isinstance(v.get("guest"), dict) else {}),
                                "iso": str(v.get("iso") or "") if VM_ISO_RE.fullmatch(str(v.get("iso") or "")) else ""})
     vp = c.get("vm_pool") if isinstance(c.get("vm_pool"), dict) else None
@@ -2544,9 +2539,8 @@ def room_attention(floor_gb, mem_pct, label=None, vm_pct=90, pool_keep_gb=10):
         rep = n.get("reported") or {}
         for v in rep.get("vms") or []:
             vn = v["name"].removeprefix("bbvm-")
-            # Every filesystem its guest agent names (R110 step 8), else the
-            # root one an older agent said.
-            fss = (v.get("guest") or {}).get("fs") or ([["/", *v["root_fs"]]] if v.get("root_fs") else [])
+            # Every filesystem its guest agent names (R110 step 8).
+            fss = (v.get("guest") or {}).get("fs") or []
             for mount, used, total in fss:
                 if total and used * 100 >= total * vm_pct:
                     short.append({"what": f"the VM {vn}'s {'disk' if mount == '/' else mount}",

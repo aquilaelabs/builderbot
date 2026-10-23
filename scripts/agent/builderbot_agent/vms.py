@@ -147,8 +147,7 @@ def vms_now():
         # it starts with its host.
         hw = vmhw.read(_run(VIRSH + ["dumpxml", name, "--inactive"], timeout=10))
         facts = guest_facts(name) if info.get("state") == "running" else {}
-        root = next(([u, t] for m, u, t in facts.get("fs", []) if m == "/"), None)
-        out.append({"hw": hw, "autostart": info.get("autostart") == "enable", **({"root_fs": root} if root else {}),
+        out.append({"hw": hw, "autostart": info.get("autostart") == "enable",
                     **({"guest": facts} if facts else {}),
                     "screen": bool(screen), "iso": iso if ISO_RE.fullmatch(iso) else "",
                     "name": name, "state": _state_word(info.get("state", "")), "ip": ip,
