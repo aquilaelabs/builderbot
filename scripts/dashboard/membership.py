@@ -154,6 +154,18 @@ def on_create(project, account):
     users.give_owner_role(project, u["uid"])
 
 
+def adopt(key, first):
+    """A new project of repositories (R136) is owned as the repository it was
+    made from was, invite only if that one was."""
+    with _lock:
+        d = _owners()
+        was = d["projects"].get(first) or {}
+        rec = {k: was[k] for k in ("owner", "invite_only") if was.get(k)}
+        if rec:
+            d["projects"][key] = rec
+            _write("project-owners.json", d)
+
+
 def forget_account(uid):
     """An account removed: its invitations go, and a project it owned
     falls back to BuilderBot's owner rather than to nobody."""

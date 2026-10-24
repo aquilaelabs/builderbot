@@ -168,3 +168,32 @@ def split(dirname):
         if dropped:
             registry.drop_repos(key)
         return {"ok": True, "key": key, "out": out, "dropped": dropped}
+
+
+def refusal(dirs, *, locked, archived, people, node):
+    """Why these repositories cannot be one project, or "": the server's
+    question before a merge, from what it read (the locked and archived
+    names, each repository's people as a set of names, each one's own node,
+    "" for none). One session works in every repository of a project, so
+    each must be open to it, everybody on one must be on all, and they must
+    be on one node."""
+    lab = registry.label
+    for d in dirs:
+        if d in locked:
+            return f"{lab(d)} is locked: unlock it first"
+        if d in archived:
+            return f"{lab(d)} is archived: bring it back first"
+    first = dirs[0]
+    for d in dirs[1:]:
+        odd = sorted(people.get(d, set()) ^ people.get(first, set()))
+        if odd:
+            on, off = (first, d) if odd[0] in people.get(first, set()) else (d, first)
+            return (f"{odd[0]} is on {lab(on)} but not on {lab(off)}: a project's session works in every "
+                    f"repository in it, so everybody on it is on all of them. Put them on {lab(off)}, or "
+                    f"take them off {lab(on)}, first")
+    where = [(d, node.get(d) or "") for d in dirs if node.get(d)]
+    if len({n for _, n in where}) > 1:
+        (a, na), (b, nb) = where[0], next(x for x in where if x[1] != where[0][1])
+        return (f"{lab(a)} works on {na} and {lab(b)} on {nb}: a project's repositories share its node, "
+                f"so give them one first")
+    return ""

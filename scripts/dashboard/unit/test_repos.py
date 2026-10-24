@@ -120,6 +120,17 @@ class Repos(unittest.TestCase):
         prefs.ungrant(key, got["out"], got["dropped"])
         self.assertEqual(sorted(prefs.get("reader")["reads"]), ["app", "docs", "server"])
 
+    def test_a_merge_is_refused_saying_which_repository_and_why(self):
+        ok = dict(locked=set(), archived=set(), people={"app": {"ann", "bo"}, "server": {"ann", "bo"}},
+                  node={"app": "n1", "server": ""})
+        self.assertEqual(repos.refusal(["app", "server"], **ok), "")
+        self.assertIn("server is locked", repos.refusal(["app", "server"], **(ok | {"locked": {"server"}})))
+        self.assertIn("app is archived", repos.refusal(["app", "server"], **(ok | {"archived": {"app"}})))
+        why = repos.refusal(["app", "server"], **(ok | {"people": {"app": {"ann", "bo"}, "server": {"ann"}}}))
+        self.assertTrue(why.startswith("bo is on app but not on server"), why)
+        why = repos.refusal(["app", "server"], **(ok | {"node": {"app": "n1", "server": "n2"}}))
+        self.assertTrue(why.startswith("app works on n1 and server on n2"), why)
+
 
 if __name__ == "__main__":
     unittest.main()

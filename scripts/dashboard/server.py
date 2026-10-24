@@ -3661,6 +3661,7 @@ preamble.node_gpu = _project_node_gpu
 
 prefs.configure(write_json=write_json, state=STATE)
 prefs.configure_repos(project_of=repos.project_of, members=repos.members, is_repos=registry.is_repos)
+users.repos_members = repos.members
 # Said again, now that prefs exists: users.git_identity resolves a per-project
 # override of the commit author, and that override lives in prefs, which is
 # configured after users because the login path must not depend on it.
@@ -4984,6 +4985,7 @@ POST_ROUTES = (
     ("exact", "/api/v1/tty-grant", "_tty_grant"),
     ("prefix", "/api/lock", "_lock"),
     ("prefix", "/api/archive", "_archive"),
+    ("prefix", "/api/repos", "_repos"),
     # NOT /api/pin, which is the command pin and has been since long before
     # this: startswith() means a route added above it silently takes every
     # path it prefixes, and both handlers were called _pin, so the later
@@ -9958,6 +9960,82 @@ class Handler(BaseHTTPRequestHandler):
                     ended.append(s["name"])
             body = dict(body) | {"ended": ended}
         return self._json(body, code)
+
+    def _end_agents_on(self, names):
+        """End every agent session on these projects, here and on every
+        node; the names of the ones that went."""
+        want = set()
+        for n in names:
+            want |= set(agent_sessions(n))
+        ended = []
+        for s in [x for x in tmux_sessions() if tmux_base(x["name"]) in want] \
+                + [x for x in node_tmux_sessions() if tmux_base(x["name"]) in want]:
+            r = end_session(s["name"], str(s.get("node_id") or ""))
+            if not r.get("error") and not r.get("gone") and s["name"] not in ended:
+                ended.append(s["name"])
+        return ended
+
+    def _repos(self, req):
+        """A project's repositories (R136): merge (repositories added to a
+        project, or two made one) and split (one taken out to a project of
+        its own). A person's, never a session's: the owner of every project
+        it touches, or an administrator. The sessions on what changes end,
+        since each ran with the grants it had before, and the answer names
+        them, and for a merge the projects that now read more."""
+        me = self._who()
+        if not me or me.get("session"):
+            return self._json({"error": "a person merges and splits projects, never a session"}, 403)
+        act = field(req, "action")
+        admin = users.is_admin(me)
+        mine = lambda n: admin or membership.may_manage(me, n)          # noqa: E731
+        if act == "merge":
+            into = field(req, "into")
+            add = [str(x) for x in (req.get("add") or []) if str(x)] if isinstance(req.get("add"), list) else []
+            # A project of repositories is seen by whoever sees every one.
+            if registry.is_repos(into):
+                if not set(repos.members(into)) <= set(project_names(me)):
+                    return self._json({"error": f"not a project: {into}"}, 400)
+            elif self._not_project(into):
+                return None
+            if any(self._not_project(x) for x in add):
+                return None
+            key = into if registry.is_repos(into) else ""
+            dirs = (repos.members(key) if key else [into]) + [x for x in add if x not in repos.members(key)]
+            if not all(mine(x) for x in [into] + add):
+                return self._json({"error": "the owner of every project merged, or an administrator, merges them"}, 403)
+            why = repos.refusal(dirs, locked=set(projects.load_locks()), archived=set(projects.load_archived()),
+                                people={d: set(membership.members(d)) for d in dirs},
+                                node={d: (prefs.get(d) or {}).get("node") or "" for d in dirs})
+            if why:
+                return self._json({"error": why}, 409)
+            got = repos.merge(into, add, field(req, "name"))
+            if got.get("error"):
+                return self._json(got, 400)
+            if got["made"]:
+                prefs.adopt(got["key"], into)
+                membership.adopt(got["key"], into)
+            readers = prefs.regrant(got["key"], got["members"])
+            ended = self._end_agents_on(got["added"])
+            return self._json({"ok": True, "key": got["key"], "name": registry.label(got["key"]),
+                               "id": registry.pid(got["key"]), "members": got["members"],
+                               "readers": [registry.label(r) for r in readers], "ended": ended})
+        if act == "split":
+            name = field(req, "name")
+            key = repos.project_of(name)
+            if not key:
+                return self._json({"error": f"{registry.label(name) or 'that'} is not in a project of repositories"}, 400)
+            if self._not_project(name):
+                return None
+            if not mine(key):
+                return self._json({"error": "the project's owner or an administrator splits it"}, 403)
+            before = repos.members(key)
+            got = repos.split(name)
+            if got.get("error"):
+                return self._json(got, 400)
+            prefs.ungrant(key, got["out"], got["dropped"])
+            ended = self._end_agents_on([key] + before)
+            return self._json({"ok": True, "key": key, "out": got["out"], "dropped": got["dropped"], "ended": ended})
+        return self._json({"error": "action is merge or split"}, 400)
 
     def _archive(self, req):
         """Archive or unarchive a project (R119): out of sight, and nothing

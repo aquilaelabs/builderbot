@@ -432,6 +432,9 @@ def stamp(u):
 # from "nobody is signed in" and must not be.
 ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server",
        "uid": "\u0000server"}
+# repos.members, handed over by the server (R136): the repositories of a
+# project of several, [] for any other name. Unset, every name is one.
+repos_members = None
 
 # What a `user` may not do to a project they DO have. Named, not derived: a
 # verb that should be restricted and is not listed is a decision somebody has
@@ -488,7 +491,13 @@ def may_work(u, name):
     # "*" lists every project (sees_all) and takes none on (R135): the
     # owner works on what they added to their own list, like everybody,
     # as a safeguard against working on the wrong one by accident.
-    return name in (u.get("projects") or [])
+    have = u.get("projects") or []
+    # A project of several repositories (R136) is worked on by whoever is
+    # on every repository in it.
+    inside = repos_members(name) if repos_members else []
+    if inside:
+        return all(m in have for m in inside)
+    return name in have
 
 
 def visible(u, names):
