@@ -90,7 +90,8 @@
     "  checksum (R137) where the publisher states what a tarball's or script's download is,",
     "           checked before it is unpacked or run (sdkmeta.py checksum): github-asset,",
     "           file (url template), go-json, zig-index, json (url, path), android-repo,",
-    "           zsync, or none with why."
+    "           zsync, signature (sig, keys: a detached signature checked with config/release-keys),",
+    "           or none with why; a file source may be signed (signed: sig, keys)."
   ],
   "android_images": {
     "_comment": [
@@ -735,7 +736,11 @@
         ],
         "checksum": {
           "from": "file",
-          "url": "{base}/SHASUMS256.txt"
+          "url": "{base}/SHASUMS256.txt",
+          "signed": {
+            "sig": "{base}/SHASUMS256.txt.sig",
+            "keys": "node.asc"
+          }
         }
       },
       "terms": [
@@ -1768,8 +1773,9 @@
           "--version"
         ],
         "checksum": {
-          "from": "none",
-          "why": "Swift signs its downloads (a .sig beside each) and states no checksum; the signature is checked once BuilderBot carries Swift's key (R137 step 4)"
+          "from": "signature",
+          "sig": "{url}.sig",
+          "keys": "swift.asc"
         }
       },
       "updatable": true,

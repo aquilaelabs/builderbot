@@ -523,7 +523,7 @@ def sdk_verified(state):
             with open(os.path.join(store, name, ".bb-verified"), encoding="utf-8") as f:
                 parts = f.readline().rstrip("\n").split("\t")
             algo = parts[0]
-            if algo in ("sha1", "sha256", "sha512"):
+            if algo in ("sha1", "sha256", "sha512", "gpg"):
                 out[name] = {"algo": algo, "where": (parts[2] if len(parts) > 2 else "")[:200]}
             elif algo == "none":
                 out[name] = {"algo": "none", "where": (parts[1] if len(parts) > 1 else "")[:200]}

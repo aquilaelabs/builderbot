@@ -305,7 +305,10 @@ def provenance(project, rel):
 # rest of scripts/dashboard (the notebook modules, users.py, server.py),
 # because a node has no /config for them to read; the verbs that need them
 # are relayed back here (server._bb_relay).
-BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/toolchains.json", "nodes/provision-linux.sh", "nodes/families",
+BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/toolchains.json",
+                # The publishers' release keys a download is checked against (R137).
+                "config/release-keys",
+                "nodes/provision-linux.sh", "nodes/families",
                 # The root helper that builds a session's view, which the
                 # agent installs from here on a sandbox node (R35).
                 "nodes/bb-session",

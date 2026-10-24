@@ -1324,7 +1324,7 @@ def _census(c):
     tv = c.get("toolchain_verified") if isinstance(c.get("toolchain_verified"), dict) else {}
     out["toolchain_verified"] = {str(k)[:40]: {"algo": str(v.get("algo") or "")[:8], "where": str(v.get("where") or "")[:200]}
                                  for k, v in list(tv.items())[:80] if isinstance(v, dict)
-                                 and str(v.get("algo") or "") in ("sha1", "sha256", "sha512", "none")}
+                                 and str(v.get("algo") or "") in ("sha1", "sha256", "sha512", "gpg", "none")}
     # Kept only when the agent sent one: a listing that is there and empty
     # is a store with nothing in it (B671), a key that is absent is a node
     # that has not said, and the Toolchains tab reads the two apart.

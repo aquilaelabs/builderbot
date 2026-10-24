@@ -1216,6 +1216,7 @@ sdk_verified_said() {
     case "$algo" in
         none) printf '; not checked: %s' "$rest" ;;
         sha1|sha256|sha512) printf '; checked: %s matched %s' "$algo" "${rest#*$'\t'}" ;;
+        gpg) printf '; checked: %s' "${rest#*$'\t'}" ;;
     esac
 }
 
@@ -1230,6 +1231,24 @@ sdk_verify_download() {
     said="$(sdk_meta checksum "$what" "$url" "$version")" \
         || { rm -f "$file"; die "could not learn what ${what}'s download should be: ${said:-no answer}"; }
     algo="${said%%$'\t'*}"; said="${said#*$'\t'}"; want="${said%%$'\t'*}"; where="${said#*$'\t'}"
+    if [ "$algo" = gpg ]; then
+        # The publisher signs the download itself (Swift): its signature
+        # checked with the publisher's keys shipped beside the catalog.
+        local sig keyring signer
+        sig="$(mktemp "${TMPDIR:-/tmp}/bb-sig.XXXXXX")"
+        sdk_fetch "$want" "$sig" >/dev/null 2>&1 || { rm -f "$file" "$sig"; die "could not fetch ${what}'s signature (${want})"; }
+        keyring="$(sdk_meta keyring "$where")" || { rm -f "$file" "$sig"; die "${what}: no keys to check its signature with"; }
+        if ! signer="$(gpgv --keyring "$keyring" "$sig" "$file" 2>&1)"; then
+            rm -f "$file" "$sig"
+            die "${what}'s download does not carry its publisher's signature: $(printf '%s' "$signer" | tail -2 | tr '\n' ' ')nothing was installed"
+        fi
+        rm -f "$sig"
+        signer="$(printf '%s' "$signer" | sed -n 's/.*Good signature from "\([^"]*\)".*/\1/p' | head -1)"
+        [ -n "$signer" ] || signer="a key of its publisher"
+        log "verified: signed by ${signer}"
+        printf 'gpg\t\tsigned by %s\n' "$signer" > "$d/.bb-verified" 2>/dev/null || true
+        return 0
+    fi
     if [ "$algo" = none ]; then
         log "not verified: ${where}"
         printf 'none\t%s\n' "$where" > "$d/.bb-verified" 2>/dev/null || true

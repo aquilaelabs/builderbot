@@ -297,6 +297,7 @@ function tcVerifiedLine(p){
   if (!v) return "";
   return v.algo === "none"
     ? `<span class="sub tcverified">Not checked when it was installed: ${esc(v.where)}</span>`
+    : v.algo === "gpg" ? `<span class="sub tcverified">Checked when it was installed: ${esc(v.where)}</span>`
     : `<span class="sub tcverified">Checked when it was installed: its ${esc(v.algo)} matched ${esc(v.where)}</span>`;
 }
 // ---- tool packs (R77) -------------------------------------------------------

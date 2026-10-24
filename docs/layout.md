@@ -304,6 +304,9 @@ nodes/cloud-init/                the seed a cloud image boots from: meta-data an
 config/skel/                     home directory skeleton
 config/icon.png                  the icon the Unraid template shows
 config/toolchains.json           the toolchains the Toolchains page offers, and how to install each
+config/release-keys/README.md    where each publisher release key came from, and how one is refreshed (R137)
+config/release-keys/node.asc     the Node.js release team keys that sign each release SHASUMS256.txt
+config/release-keys/swift.asc    the Swift signing keys that sign each download
 config/controller.env            a bare-metal install's env file as the installer first writes it: the paths compose mounts, the settings compose passes (R90)
 config/controller-packages.tsv   what the controller needs installed, per provisioner family: the image and a bare-metal install read this one list (R90)
 config/vm-images.json            the operating systems a VM is made from: each publisher's cloud image and its checksum file (R91)

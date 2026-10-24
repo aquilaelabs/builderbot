@@ -350,6 +350,51 @@ def _name_of(url):
     return urllib.parse.unquote(urllib.parse.urlsplit(url).path.rsplit("/", 1)[-1])
 
 
+KEYS_DIR = os.path.join(HERE, "..", "..", "config", "release-keys")
+
+
+def keyring(name):
+    """The publisher's keys `name` (config/release-keys), as a keyring file
+    gpgv reads: dearmored once into this run's cache. Never the machine's
+    own keyring, which anybody with a shell may have added to."""
+    src = os.path.join(KEYS_DIR, os.path.basename(str(name or "")))
+    if not os.path.isfile(src):
+        die(f"no release keys named {name!r} beside the catalog")
+    with open(src, "rb") as f:
+        armored = f.read()
+    out = os.path.join(CACHE_DIR, "keys-" + hashlib.sha256(armored).hexdigest()[:16] + ".gpg")
+    if not os.path.isfile(out):
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        p = subprocess.run(["gpg", "--batch", "--dearmor"], input=armored, capture_output=True, check=False)
+        if p.returncode or not p.stdout:
+            die(f"gpg could not read the release keys {name}: {p.stderr.decode(errors='replace')[:200]}")
+        with open(out + ".tmp", "wb") as f:
+            f.write(p.stdout)
+        os.replace(out + ".tmp", out)
+    return out
+
+
+def signed_by(data, sig, keys):
+    """Who of the publisher's keys `keys` signed `data` (bytes) with the
+    detached signature `sig` (bytes), or a refusal."""
+    import tempfile  # noqa: PLC0415
+    with tempfile.TemporaryDirectory() as d:
+        dp, sp = os.path.join(d, "data"), os.path.join(d, "data.sig")
+        with open(dp, "wb") as f:
+            f.write(data)
+        with open(sp, "wb") as f:
+            f.write(sig)
+        try:
+            p = subprocess.run(["gpgv", "--keyring", keyring(keys), sp, dp], capture_output=True, text=True,
+                               timeout=60, check=False)
+        except FileNotFoundError:
+            die("there is no gpgv here to check the publisher's signature with")
+    if p.returncode:
+        die(f"the publisher's signature does not hold: {(p.stderr or p.stdout).strip()[:300]}")
+    m = re.search(r'Good signature from "([^"]+)"', p.stderr)
+    return m.group(1) if m else "a key of the publisher's"
+
+
 def checksum(tc, url, version):
     """(algorithm, hex digest, where it came from) for the file `url`
     downloads, or ("none", "", why) for a row whose publisher states nothing
@@ -373,9 +418,22 @@ def checksum(tc, url, version):
                     die(f"{tc['name']}: GitHub states no digest for {asset} in {repo} {rel.get('tag_name', '')}")
                 return (*_algo(a["digest"]), f"GitHub's digest for {asset} in {repo} {rel.get('tag_name', '')}")
         die(f"{tc['name']}: {repo}'s release {rel.get('tag_name', '')} has no asset {asset}")
+    if how == "signature":
+        # The publisher signs the download itself (Swift): the shell checks
+        # it once the file is here, with this signature and these keys.
+        return "gpg", fill(spec["sig"], subs), os.path.basename(spec["keys"])
     if how == "file":
         src = fill(for_platform(spec["url"]) or "", subs)
-        lines = [ln.split() for ln in get(src).splitlines() if ln.strip()]
+        raw = get(src, decode=False)
+        text = raw.decode("utf-8", "replace")
+        signed = spec.get("signed")
+        if signed:
+            # The checksum file believed only once the publisher's signature
+            # over its exact bytes holds (Node's SHASUMS256.txt), so a mirror
+            # cannot hand out a file and a list that agree with each other.
+            who = signed_by(raw, get(fill(signed["sig"], subs), decode=False), signed["keys"])
+            src = f"{src}, signed by {who}"
+        lines = [ln.split() for ln in text.splitlines() if ln.strip()]
         for parts in lines:
             if len(parts) >= 2 and parts[-1].lstrip("*").removeprefix("./") == name:
                 return (*_algo(parts[0]), src)
@@ -655,6 +713,11 @@ def main(argv):
         abi, flavors = image_flavors()
         for name, spec in flavors.items():
             print(f"{name}\t{abi}\t{spec.get('label', name)}\t{spec.get('about', '')}")
+        return
+
+    if op == "keyring":
+        # The keyring file gpgv reads for one publisher's keys (R137).
+        print(keyring(argv[1] if len(argv) > 1 else ""))
         return
 
     if op == "images":
