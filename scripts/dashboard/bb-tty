@@ -157,6 +157,17 @@ if on_node && [ -n "${grant:-}" ]; then
     # into the view read-only, and Claude's walls let it read them.
     BB_READS="$(printf '%s' "$grant" | jq -r '(.reads // []) | join(" ")')"
     export BB_READS
+    # The other repositories of its project (R136), worked in by a coding
+    # agent's session as its own is, each with its token kept where bb in
+    # that tree reads it.
+    BB_WORKS="$(printf '%s' "$grant" | jq -r '(.works // []) | join(" ")')"
+    export BB_WORKS
+    while read -r w t; do
+        [ -n "$w" ] && [ -n "$t" ] || continue
+        wd="$(cache_project_dir "$w")"
+        ( umask 077; printf '%s\n' "$t" > "$wd/token.new" ) 2>/dev/null \
+            && mv -f "$wd/token.new" "$wd/token" 2>/dev/null || true
+    done < <(printf '%s' "$grant" | jq -r '(.tokens // {}) | to_entries[] | "\(.key) \(.value)"')
     # ...and the places on this node it is shown besides (prefs.sees): a
     # share the view would otherwise leave out with every other.
     BB_SEES="$(printf '%s' "$grant" | jq -r '(.sees // []) | join(" ")')"
@@ -466,6 +477,8 @@ in_view() {
     # trees read-only, and repeated words keep the launcher line respawnable.
     local reads=() r
     for r in ${BB_READS:-}; do reads+=(--reads "$r"); done
+    # ...its project's other repositories, one --works each, bound to write,
+    for r in ${BB_WORKS:-}; do reads+=(--works "$r"); done
     # ...and the places it is shown, one --sees each,
     for r in ${BB_SEES:-}; do reads+=(--sees "$r"); done
     # ...the toolchains it may not use left out of its view of the store (R77),
@@ -585,10 +598,16 @@ claude_scope() {
     esac
     # A project this one reads is a wall to Edit and not to Read: its tree
     # is in the view read-only, and the deny list says the same.
-    local readsq
+    local readsq worksq
     readsq="$(for r in ${BB_READS:-}; do printf '%s\n' "$WORKSPACE/$r"; done | jq -R . | jq -s .)"
+    # ...and its project's other repositories (R136) are no wall at all:
+    # their trees and this session's worktrees of them are its to write,
+    # each one's VERSION held as its own is.
+    worksq="$(for r in ${BB_WORKS:-}; do printf '%s\n' "$WORKSPACE/$r"; done
+              for r in ${BB_WORK_DIRS:-}; do printf '%s\n' "$r"; done | jq -R . | jq -s .)"
     if walls_around "$proj" "$here" | jq -R . \
          | jq -s --arg ws "$WORKSPACE" --arg here "$here" --argjson reads "${readsq:-[]}" \
+               --argjson works "${worksq:-[]}" --argjson workdirs "$(for r in ${BB_WORK_DIRS:-}; do printf '%s\n' "$r"; done | jq -R . | jq -s .)" \
                --arg state "${DASHBOARD_STATE:-/config}" \
                --argjson hooks "$(python3 "$hooks/bb-agent-hook" --claude-settings "$proj" "${account:-owner}" "$hooks")" \
                --arg proj "$proj" --arg who "${account:-owner}" \
@@ -597,12 +616,12 @@ claude_scope() {
               # The memory of the project, which Claude Code keeps outside
               # its tree: a session asked the person to approve reading the
               # file it was about to update (Shebang-DevBoard, 6 Oct).
-              additionalDirectories: [$mem],
-              deny: (map(select(. as $d | $reads | index($d) | not) | "Read(\(.)/**)", "Edit(\(.)/**)")
-                     + map(select(. as $d | $reads | index($d)) | "Edit(\(.)/**)")
-                     + ["Edit(\($here)/VERSION)",
-                        "Edit(\($here)/**/VERSION)",
-                        "Edit(\($state)/rules.json)"])
+              additionalDirectories: ([$mem] + $workdirs),
+              deny: (map(select(. as $d | $works | index($d) | not))
+                     | map(select(. as $d | $reads | index($d) | not) | "Read(\(.)/**)", "Edit(\(.)/**)")
+                       + map(select(. as $d | $reads | index($d)) | "Edit(\(.)/**)"))
+                     + ([$here] + $workdirs | map("Edit(\(.)/VERSION)", "Edit(\(.)/**/VERSION)"))
+                     + ["Edit(\($state)/rules.json)"])
            },
             # Written from the one list in bb-agent-hook, which the hooks of
             # the other agents run from too: a guard added there holds all.
@@ -1578,6 +1597,12 @@ case "$target" in
         # their own, so two people on one project cannot overwrite each other,
         # commit each other's half-finished work, or share a dist/.
         dir="$(session_dir "$proj" "$account" "$agent")"
+        # ...and in each other repository of its project (R136), the same:
+        # its own tree for the owner, a worktree on the same branch name for
+        # anybody else, so one session's work is one branch everywhere.
+        BB_WORK_DIRS=""
+        for w in ${BB_WORKS:-}; do BB_WORK_DIRS+="$(session_dir "$w" "$account" "$agent") "; done
+        export BB_WORK_DIRS
         # Another agent's conversation, resumed in that agent and no other
         # (R95 step 8): its log is the copy its Stop hook keeps in the tree's
         # folder of the account's transcripts (bb-agent-hook keep), fetched

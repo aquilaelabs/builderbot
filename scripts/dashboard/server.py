@@ -2336,6 +2336,13 @@ def session_tokens_for(nid, sessions):
         seen.add((uid, project))
         out.append({"project": project, "uid": uid,
                     "token": users.mint_session(project, uid=uid)})
+        # ...and one for each other repository its project's session works
+        # in (R136), kept by the agent under that repository as this is.
+        key = repos.project_of(project)
+        for m in (repos.members(key) if key else []):
+            if m != project and (uid, m) not in seen:
+                seen.add((uid, m))
+                out.append({"project": m, "uid": uid, "token": users.mint_session(m, uid=uid)})
     return out[:64]
 
 
@@ -5668,6 +5675,14 @@ class Handler(BaseHTTPRequestHandler):
             ag = agents.of_arg(arg)[0]
             if ag.id in ((prefs.get(project) or {}).get("agents_off") or []):
                 return f"{project}'s settings do not allow {ag.name} sessions: its Agents may section says which agents may run"
+            # A project of several repositories has one session, on its
+            # first repository, working in all of them (R136): a second on
+            # another would share its worktrees.
+            key = repos.project_of(project)
+            first = (repos.members(key) or [""])[0] if key else ""
+            if first and project != first:
+                return (f"{registry.label(project)} is a repository of {registry.label(key)}, whose sessions "
+                        f"start on {registry.label(first)} and work in every repository of it")
             # Terminal Read is the shielded Claude console; without it there
             # is no terminal on the project at all (R152 (e)).
             return users.may(me, "claude", project) or self._area_read_why("terminal", project, me)
@@ -7840,12 +7855,21 @@ class Handler(BaseHTTPRequestHandler):
         if not req.get("ro") and users.may(me, "terminal"):
             return self._json({"error": f"{me['name']} has no shell, so this terminal is the "
                                         "read-only one"}, 403)
+        # A coding agent's session on a repository of a project of several
+        # (R136 step 4) works in every repository of it: the others, each
+        # with a token of its own for the account, so bb in that tree
+        # answers for that repository as it would in a session of its own.
+        works, tokens = [], {}
+        if agents.of_arg(arg)[0] is not None and repos.project_of(project):
+            works = [m for m in repos.members(repos.project_of(project)) if m != project and (WORKSPACE / m).is_dir()]
+            tokens = {m: users.mint_session(m, uid=me["uid"]) for m in works}
         # ...and the projects this one reads, for the view bb-session builds
         # (their trees read-only) and the walls bb-tty gives Claude; and the
         # places on its node it is shown, which the view otherwise leaves out.
         return self._json({"uid": me["uid"], "name": me["name"], "project": project,
                            "owner": me.get("role") == "owner",
-                           "reads": [r for r in prefs.reads_trees(project) if (WORKSPACE / r).is_dir()],
+                           "works": works, "tokens": tokens,
+                           "reads": [r for r in prefs.reads_trees(project) if (WORKSPACE / r).is_dir() and r not in works],
                            "sees": (prefs.get(project) or {}).get("sees") or [],
                            # Whether it may compute on its node's NVIDIA card
                            # (R102): "on", or who said no, the node or the

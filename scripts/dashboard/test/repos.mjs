@@ -42,6 +42,13 @@ const key = m.key;
 ok(JSON.stringify(reposFile()[key]?.members) === '["gamma","ep.silon"]', 'the record keeps its repositories');
 ok(JSON.stringify(prefsFile().beta?.reads) === JSON.stringify([key]), `beta reads the project now, not one repository (${JSON.stringify(prefsFile().beta?.reads)})`);
 
+// One session for the project, on its first repository: one asked for on
+// the second is refused, and says where it starts (step 4).
+const t = await fetch(base + '/term/?arg=' + encodeURIComponent('claude:ep.silon'), { headers: ADMIN });
+const said = await t.text();
+ok(t.status === 403 && /repository of Shop, whose sessions start on gamma/.test(said),
+   `a session on the project's second repository is refused, naming where it starts (${t.status} ${said.slice(0, 160)})`);
+
 // A dial set through one repository is the project's, and the other has it.
 const dial = await post('/api/prefs', { project: 'ep.silon', devbuild: 'auto' });
 ok(dial.status === 200 && prefsFile()[key]?.devbuild === 'auto' && !prefsFile()['ep.silon']?.devbuild,

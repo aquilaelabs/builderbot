@@ -61,9 +61,9 @@ that holds, and every cover is checked inside the view before the drop.
     bb-session check
         exit 0 when this machine can build the view, and its wall holds
         where it carries a controller; root only
-    bb-session plan  --project P --account U --home H --cwd D [--reads R]... [--sees PATH]... [--cuda off]
+    bb-session plan  --project P --account U --home H --cwd D [--works W]... [--reads R]... [--sees PATH]... [--cuda off]
         the mounts, as JSON, without making any; anybody
-    bb-session enter --project P --account U --home H --cwd D [--reads R]... [--sees PATH]... --env FILE -- COMMAND...
+    bb-session enter --project P --account U --home H --cwd D [--works W]... [--reads R]... [--sees PATH]... --env FILE -- COMMAND...
         the session, inside the view; through sudo
     bb-session check-net
         exit 0 when this helper can give a session a network of its own; root
@@ -432,6 +432,13 @@ def args(argv):
             out.setdefault("reads", []).append(argv[i + 1])
             i += 2
             continue
+        # Another repository of this project (R136), once each: its tree
+        # and its worktrees are in the view to write, as the project's own
+        # are, since one session works in every repository of a project.
+        if a == "--works" and i + 1 < len(argv):
+            out.setdefault("works", []).append(argv[i + 1])
+            i += 2
+            continue
         # A place on the node this project is set to see, once per place.
         if a == "--sees" and i + 1 < len(argv):
             out.setdefault("sees", []).append(argv[i + 1])
@@ -484,18 +491,26 @@ def plan(c, a, uid, wall=None):
         raise Refused(f"bb-session: {home} does not exist") from None
     if not stat.S_ISDIR(st.st_mode) or (uid is not None and st.st_uid != uid):
         raise Refused(f"bb-session: {home} is not a directory the session account owns")
+    works = []
+    for w in a.get("works", []):
+        if not PROJECT.fullmatch(w) or w.startswith(".") or w == project:
+            raise Refused(f"bb-session: '{w}' is not a repository this session could work in")
+        if not _real_dir(f"{ws}/{w}"):
+            raise Refused(f"bb-session: {ws}/{w} is not a project directory")
+        if w not in works:
+            works.append(w)
     reads = []
-    for r in a.get("reads", []):
+    for r in [x for x in a.get("reads", []) if x not in works]:
         if not PROJECT.fullmatch(r) or r.startswith(".") or r == project:
             raise Refused(f"bb-session: '{r}' is not a project this one could read")
         if not _real_dir(f"{ws}/{r}"):
             raise Refused(f"bb-session: {ws}/{r} is not a project directory")
         if r not in reads:
             reads.append(r)
-    inside = (f"{ws}/{project}", f"{ws}/.worktrees/{project}")
+    inside = tuple(d for p in [project] + works for d in (f"{ws}/{p}", f"{ws}/.worktrees/{p}"))
     parts = cwd.split("/")
     if ".." in parts or not any(cwd == d or cwd.startswith(d + "/") for d in inside):
-        raise Refused(f"bb-session: {cwd} is not inside {project} or its worktrees")
+        raise Refused(f"bb-session: {cwd} is not inside {project}, its project's other repositories or their worktrees")
 
     base = home != home_root        # the account's home is under users; the base home is another's
     # BuilderBot's caches, by where they really are. An account's home links
@@ -506,7 +521,8 @@ def plan(c, a, uid, wall=None):
     caches = {}
     # Everything under u/<account> is that account's and nobody else's (B159);
     # machine/ is this box's and is shared on purpose.
-    for h, keep in [(home, (f"u/{account}/project/{project}", f"u/{account}/account", "machine"))] \
+    for h, keep in [(home, tuple(f"u/{account}/project/{p}" for p in [project] + works)
+                     + (f"u/{account}/account", "machine"))] \
             + ([(home_root, ("machine",))] if base else []):
         path = f"{h}/.cache/builderbot"
         if os.path.lexists(path) and not _real_dir(path):
@@ -628,7 +644,7 @@ def plan(c, a, uid, wall=None):
     # /workspace: this project, its worktrees, the account's transcripts,
     # and among those the other projects' transcripts empty.
     steps.append(("tmpfs", ws, "mode=0755"))
-    for rel in (project, f".worktrees/{project}", f".claude/{account}"):
+    for rel in [x for p in [project] + works for x in (p, f".worktrees/{p}")] + [f".claude/{account}"]:
         if _real_dir(f"{ws}/{rel}"):
             steps.append(("bind", f"{STAGE}/ws/{rel}", f"{ws}/{rel}"))
     # The projects this one reads: their trees, read-only. Nothing of
@@ -645,20 +661,21 @@ def plan(c, a, uid, wall=None):
     # than on the cover and is kept.
     transcripts = f"{ws}/.claude/{account}/projects"
     if _real_dir(transcripts):
-        mine = {_slug(f"{ws}/{project}"), _slug(f"{ws}/.worktrees/{project}/{account}")}
+        mine = {_slug(f"{ws}/{p}") for p in [project] + works} \
+            | {_slug(f"{ws}/.worktrees/{p}/{account}") for p in [project] + works}
         # ...and the folder the session starts in, which is what Claude Code
         # names its folder after, where that is somewhere inside the two.
-        if cwd and _inside(cwd, (f"{ws}/{project}", f"{ws}/.worktrees/{project}/{account}")):
+        if cwd and _inside(cwd, [d for p in [project] + works for d in (f"{ws}/{p}", f"{ws}/.worktrees/{p}/{account}")]):
             mine.add(_slug(cwd))
         for name in sorted(mine):
             if not os.path.lexists(f"{transcripts}/{name}"):
                 steps.append(("make", f"{transcripts}/{name}"))
         entries = [e for e in sorted(os.listdir(transcripts)) if _real_dir(f"{transcripts}/{e}")]
         steps.append(("tmpfs", transcripts, "mode=0755,owned"))
-        for entry in sorted(mine | {e for e in entries if _ours(e, ws, project)}):
+        for entry in sorted(mine | {e for e in entries if any(_ours(e, ws, p) for p in [project] + works)}):
             steps.append(("bindmine", f"{STAGE}/ws/.claude/{account}/projects/{entry}", f"{transcripts}/{entry}"))
         for entry in entries:
-            if not _ours(entry, ws, project) and any(_ours(entry, ws, r) for r in reads):
+            if not any(_ours(entry, ws, p) for p in [project] + works) and any(_ours(entry, ws, r) for r in reads):
                 steps.append(("bindro", f"{STAGE}/ws/.claude/{account}/projects/{entry}", f"{transcripts}/{entry}"))
     # Homes: the account's own is the only one. The base home is another's
     # (on a node every account is homed under users/, and the session
