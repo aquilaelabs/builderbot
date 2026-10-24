@@ -3671,21 +3671,23 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 /* Its ends on a desk (the operator, 23 Oct): an arrow at each end with more
    past it, held there while the row scrolls under it, and the fade on that
    side only; a mouse drags the row. A touch swipes, as before. */
-.chips:not(.chl):not(.chr){mask-image:none}
-.chips.chl:not(.chr){mask-image:linear-gradient(to right,transparent,#000 36px)}
-.chips.chl.chr{mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
+/* ...and the dock's line of tabs the same (the operator, 24 Oct). */
+:is(.chips,.dockline):not(.chl):not(.chr){mask-image:none}
+:is(.chips,.dockline).chl:not(.chr){mask-image:linear-gradient(to right,transparent,#000 36px)}
+:is(.chips,.dockline).chr:not(.chl){mask-image:linear-gradient(to left,transparent,#000 36px)}
+:is(.chips,.dockline).chl.chr{mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
 @media (pointer:fine){
   /* The arrow stands on the panel, whole; the fade starts past it. */
-  .chips.chl:not(.chr){mask-image:linear-gradient(to right,#000 22px,transparent 22px,#000 48px)}
-  .chips.chr:not(.chl){mask-image:linear-gradient(to left,#000 22px,transparent 22px,#000 48px)}
-  .chips.chl.chr{mask-image:linear-gradient(to right,#000 22px,transparent 22px,#000 48px,#000 calc(100% - 48px),transparent calc(100% - 22px),#000 calc(100% - 22px))}
-  .chips.chl,.chips.chr{cursor:grab}
-  .chips.dragging{cursor:grabbing;user-select:none}
-  .chips.dragging .chip{pointer-events:none}
-  .chips.chl::before,.chips.chr::after{position:sticky;z-index:1;flex:0 0 22px;display:grid;place-items:center;
+  :is(.chips,.dockline).chl:not(.chr){mask-image:linear-gradient(to right,#000 22px,transparent 22px,#000 48px)}
+  :is(.chips,.dockline).chr:not(.chl){mask-image:linear-gradient(to left,#000 22px,transparent 22px,#000 48px)}
+  :is(.chips,.dockline).chl.chr{mask-image:linear-gradient(to right,#000 22px,transparent 22px,#000 48px,#000 calc(100% - 48px),transparent calc(100% - 22px),#000 calc(100% - 22px))}
+  :is(.chips,.dockline).chl,:is(.chips,.dockline).chr{cursor:grab}
+  :is(.chips,.dockline).dragging{cursor:grabbing;user-select:none}
+  .chips.dragging .chip,.dockline.dragging .dtab{pointer-events:none}
+  :is(.chips,.dockline).chl::before,:is(.chips,.dockline).chr::after{position:sticky;z-index:1;flex:0 0 22px;display:grid;place-items:center;
     align-self:stretch;font:600 15px/1 system-ui;color:var(--ink);background:var(--panel);cursor:pointer}
-  .chips.chl::before{content:"\2039";left:0;margin-right:-22px;order:-1}
-  .chips.chr::after{content:"\203A";right:0;margin-left:-22px;order:99}
+  :is(.chips,.dockline).chl::before{content:"\2039";left:0;margin-right:-22px;order:-1}
+  :is(.chips,.dockline).chr::after{content:"\203A";right:0;margin-left:-22px;order:99}
 }
 /* A list's narrowing band (R254 step 1): its chips at the left and a search
    at the right, the search taking the whole width under them on a phone.
@@ -4856,13 +4858,6 @@ body.booting .panes.dockup .pane.dock{animation:none}
    untouched, and pull to refresh is vertical. */
 .dockline,.chips,.nbtabs .nbgroups,.nbtabs .nbsub{overscroll-behavior-x:contain}
 html,body{overscroll-behavior-x:none}
-.dockline.fadeL{-webkit-mask-image:linear-gradient(to right,transparent 0,#000 20px);
-  mask-image:linear-gradient(to right,transparent 0,#000 20px)}
-.dockline.fadeR{-webkit-mask-image:linear-gradient(to left,transparent 0,#000 20px);
-  mask-image:linear-gradient(to left,transparent 0,#000 20px)}
-.dockline.fadeL.fadeR{
-  -webkit-mask-image:linear-gradient(to right,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%);
-  mask-image:linear-gradient(to right,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%)}
 .pane .bar.dockbar>.ic{flex:0 0 auto}
 .dockline .dtab{display:inline-flex;align-items:center;gap:0;flex:0 0 auto;border:var(--hair) solid var(--line);
   border-radius:var(--r-control);background:var(--btn);color:var(--dim)}

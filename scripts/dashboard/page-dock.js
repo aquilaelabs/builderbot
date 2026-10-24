@@ -291,9 +291,9 @@ function dockReveal(bar){
 // (the operator, 16 Oct, as the strip it replaced did): hard against an
 // end, that edge shows a whole tab and is left sharp.
 function dockEdges(line){
-  const max = line.scrollWidth - line.clientWidth;
-  line.classList.toggle("fadeL", line.scrollLeft > 1);
-  line.classList.toggle("fadeR", line.scrollLeft < max - 1);
+  // ...and on a desk, an arrow at that end and a mouse's drag, as a row of
+  // big chips has (the operator, 24 Oct): the chips' own ends (chipsEdge).
+  chipsEdge(line);
 }
 
 // The pane's classes and height for the dock's state, each draw.

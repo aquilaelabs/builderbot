@@ -229,4 +229,23 @@ ok(inPage.length > 3 && JSON.stringify(inPage) === JSON.stringify(inServer),
      'closing the popped window brings the tab back on its own');
 }
 
+// The dock's line with more tabs than fit has an arrow at the end with more
+// past it on a desk, as a row of big chips has, and a press on it moves the
+// line along (the operator, 24 Oct).
+{
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => { for (let n = 0; n < 14; n++) openTab({ kind: 'term', arg: `sh:${40 + n}:alpha`, label: `many ${n}` });
+                              panes[1] = tabs.find(t => t.arg === 'sh:40:alpha').id; dockUp = false; render(); });
+  await page.waitForFunction(() => document.querySelector('.dockline')?.classList.contains('chr'), null, { timeout: 10000 }).catch(() => {});
+  const was = await page.$eval('.dockline', l => ({ chr: l.classList.contains('chr'), left: l.scrollLeft }));
+  const r = await page.$eval('.dockline', l => { const b = l.getBoundingClientRect(); return { x: b.right - 10, y: b.top + b.height / 2 }; });
+  await page.mouse.click(r.x, r.y);
+  await page.waitForFunction(() => document.querySelector('.dockline').scrollLeft > 60, null, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(400);
+  const now = await page.$eval('.dockline', l => ({ left: l.scrollLeft, chl: l.classList.contains('chl') }));
+  ok(was.chr && was.left === 0 && now.left > 0 && now.chl,
+     `the dock's line has an arrow at the end with more tabs past it, and a press on it moves the line along (${JSON.stringify({ was, now })})`);
+  await page.evaluate(() => { tabs.filter(t => /^sh:(4\d|5[0-3]):alpha$/.test(t.arg)).forEach(t => dropTab(t.id)); });
+}
+
 await done(browser);

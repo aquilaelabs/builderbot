@@ -1248,7 +1248,7 @@ function chipsEdges(root = document){
 const CHIP_ARROW = 28;
 function chipsArrow(e){
   const c = e.target;
-  if (!c?.matches?.(".chips.chl, .chips.chr") || chipDragged) return;
+  if (!c?.matches?.(".chips.chl, .chips.chr, .dockline.chl, .dockline.chr") || chipDragged) return;
   const r = c.getBoundingClientRect(), by = Math.max(80, c.clientWidth * 0.7);
   if (c.classList.contains("chl") && e.clientX < r.left + CHIP_ARROW) c.scrollBy({left: -by, behavior: "smooth"});
   else if (c.classList.contains("chr") && e.clientX > r.right - CHIP_ARROW) c.scrollBy({left: by, behavior: "smooth"});
@@ -1258,7 +1258,7 @@ function chipsArrow(e){
 // the browser's own swipe.
 let chipDrag = null, chipDragged = false;
 function chipsDown(e){
-  const c = e.target?.closest?.(".chips");
+  const c = e.target?.closest?.(".chips, .dockline");
   if (!c || e.pointerType !== "mouse" || e.button !== 0 || c.scrollWidth <= c.clientWidth + 1) return;
   chipDrag = {c, x: e.clientX, left: c.scrollLeft, moved: false};
   chipDragged = false;
