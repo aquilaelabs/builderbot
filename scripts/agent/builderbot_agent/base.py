@@ -162,13 +162,20 @@ SESSNET_LOCAL = ("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169
 # session works in. The seam is for the suite: it runs its agent as a session account, and inside a
 # session's view /workspace is the view's own read-only root.
 SHARE = os.environ.get("BUILDERBOT_SHARE", "/workspace")
+# The live coding agents (R95), each its id, its command and its session's
+# prefix at once: the live rows of the controller's agent table
+# (scripts/dashboard/agents.py), copied rather than imported since the agent
+# carries no dashboard module; unit/test_agents.py holds the two to each
+# other. The session prefixes, the launchers a respawn may run and the
+# process kinds a busy machine is read by are all made from it.
+AGENT_IDS = ("claude", "codex", "copilot")
 # The pane a respawn may run again: bb-tty's launcher of a coding agent
-# (claude-run.sh, codex-run.sh, copilot-run.sh, R95), in the project's
-# cache folder and started inside the project's view when the node builds one.
+# (claude-run.sh, codex-run.sh, copilot-run.sh), in the project's cache
+# folder and started inside the project's view when the node builds one.
 _PATHCH = r"[A-Za-z0-9._/@+-]"
 RESPAWNABLE = (rf"(?:sudo -n {re.escape(SESSION_BIN)} enter(?: --[a-z]+ {_PATHCH}+)* -- )?"
                rf"{_PATHCH}*/builderbot/(?:u/u_[0-9a-f]{{8}}/)?"
-               rf"project/[A-Za-z0-9._-]+/(?:claude|codex|copilot)-run\.sh")
+               rf"project/[A-Za-z0-9._-]+/(?:{'|'.join(AGENT_IDS)})-run\.sh")
 NETPLAN_DIR = os.environ.get("BUILDERBOT_NETPLAN_DIR", "/etc/netplan")
 NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
 NETPLAN_FILE = "90-builderbot.yaml"
@@ -188,11 +195,8 @@ RUNNER_DIR = os.environ.get("BUILDERBOT_RUNNER_DIR", "/var/lib/builderbot/runner
 APT_BIN = os.environ.get("BUILDERBOT_APT_BIN", "apt-get")
 # Seconds per "minute" of the idle rule; the suite sets 1.
 IDLE_UNIT = float(os.environ.get("BUILDERBOT_IDLE_UNIT", "60"))
-# The session names a coding agent runs under (claude-<project>): the live
-# rows of the controller's agent table (scripts/dashboard/agents.py, R95),
-# copied rather than imported since the agent carries no dashboard module;
-# unit/test_agents.py holds the two to each other.
-AGENT_PREFIXES = ("claude-", "codex-", "copilot-")
+# The session names a coding agent runs under (claude-<project>).
+AGENT_PREFIXES = tuple(f"{a}-" for a in AGENT_IDS)
 
 
 def has_systemd():

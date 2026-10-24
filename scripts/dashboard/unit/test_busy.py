@@ -30,13 +30,13 @@ class Verdict(unittest.TestCase):
         self.assertEqual(why, ["running: 2 gradle, idle"])
 
     def test_busy_says_why_without_naming_another_project(self):
-        word, why = busy.verdict(sample(load1=2.4, kinds={"emulator": 1, "gradle": 2, "claude": 3}),
+        word, why = busy.verdict(sample(load1=2.4, kinds={"emulator": 1, "gradle": 2, "claude": 3, "codex": 1, "copilot": 1}),
                                  [{"type": "exec", "mine": False}, {"type": "sign", "mine": True}], 3)
         self.assertEqual(word, "busy")
         self.assertIn("load 2.4 on 4 cores", why)
         self.assertIn("running: 1 emulator, 2 gradle", why)
         self.assertIn("1 job of other projects", why)
-        self.assertIn("2 other Claude sessions working", why)
+        self.assertIn("2 other agent sessions working", why)
 
     def test_saturated(self):
         self.assertEqual(busy.verdict(sample(load1=14.0), [], 1)[0], "saturated")
@@ -54,14 +54,15 @@ class Kinds(unittest.TestCase):
         for pid, comm, args in ((10, "qemu-system-x86_64-headless", "qemu -avd x"),
                                 (11, "java", "java -cp gradle-launcher org.gradle.launcher.daemon.bootstrap.GradleDaemon"),
                                 (12, "java", "java -jar thing.jar"), (13, "bash", "bash"),
-                                (14, "claude", "claude --remote-control")):
+                                (14, "claude", "claude --remote-control"), (15, "codex", "codex --no-alt-screen"),
+                                (16, "copilot", "copilot --no-auto-update")):
             d = os.path.join(root, str(pid))
             os.makedirs(d)
             with open(os.path.join(d, "comm"), "w") as f:
                 f.write(comm + "\n")
             with open(os.path.join(d, "cmdline"), "wb") as f:
                 f.write(args.replace(" ", "\0").encode())
-        self.assertEqual(agent._proc_kinds(root), {"emulator": 1, "gradle": 1, "java": 1, "claude": 1})
+        self.assertEqual(agent._proc_kinds(root), {"emulator": 1, "gradle": 1, "java": 1, "claude": 1, "codex": 1, "copilot": 1})
 
 
 if __name__ == "__main__":

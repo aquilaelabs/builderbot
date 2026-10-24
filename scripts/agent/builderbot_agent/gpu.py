@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import threading
 import time
-from .base import GPU_DISPLAY_STATE, SYS_ROOT, TOOLKIT, _run
+from .base import AGENT_IDS, GPU_DISPLAY_STATE, SYS_ROOT, TOOLKIT, _run
 
 
 def _gpu_card():
@@ -90,7 +90,9 @@ PROC_KINDS = (
     ("browser", lambda c, a: c in ("chrome", "chromium", "headless_shell", "firefox")),
     ("media", lambda c, a: c in ("ffmpeg", "ffprobe")),
     ("docker build", lambda c, a: c in ("buildkitd", "buildctl") or (c == "docker" and " build" in a)),
-    ("claude", lambda c, a: c == "claude"),
+    # Each coding agent by its own command, which the controller leaves out
+    # of what a busy machine is running: a session is not load (busy.py).
+    *((ag, lambda c, a, ag=ag: c == ag) for ag in AGENT_IDS),
     ("python", lambda c, a: c.startswith("python")),
     ("display", lambda c, a: c in ("Xorg", "X", "Xvfb", "gnome-shell")),
 )
