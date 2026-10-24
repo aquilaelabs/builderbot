@@ -157,7 +157,9 @@ await page.waitForSelector(`${SESS} [data-cvresume="conv-two-2025"]`, { timeout:
 const rowOf = id => `${SESS} .artrow:has([data-cvresume="${id}"])`;
 await page.click(`${rowOf('conv-two-2025')} .more > button`);
 await page.click(`${rowOf('conv-two-2025')} [data-cvshare]`);
-await page.waitForSelector(`${rowOf('conv-two-2025')} .pill`, { timeout: 10000 }).catch(() => {});
+// The row's text, not a pill: its agent already wears one.
+await page.waitForFunction(sel => /visible to every session/.test(document.querySelector(sel)?.textContent || ''),
+                           rowOf('conv-two-2025'), { timeout: 10000 }).catch(() => {});
 const shared = await page.evaluate(async () => ((await (await fetch('/api/transcripts?project=alpha')).json()).rows || [])
   .find(r => r.id === 'conv-two-2025')?.shared);
 ok(shared === true && /visible to every session/.test(await page.$eval(rowOf('conv-two-2025'), e => e.textContent)),
