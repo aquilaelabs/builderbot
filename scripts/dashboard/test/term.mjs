@@ -47,6 +47,15 @@ const waitFor = async (re, ms = 20000) => {
   return false;
 };
 
+// The text is inset from the pane's edges, and the rows still fit: the
+// last row's bottom inside the box.
+const inset = await page.evaluate(() => {
+  const host = document.querySelector('#pane1 .slot.on .xhost'), x = host.querySelector('.xterm-screen');
+  const h = host.getBoundingClientRect(), r = x.getBoundingClientRect();
+  return { left: Math.round(r.left - h.left), top: Math.round(r.top - h.top), fits: r.bottom <= h.bottom + 0.5 };
+});
+ok(inset.left >= 8 && inset.top >= 8 && inset.fits, `the text sits off the pane's edges and fits in it (${JSON.stringify(inset)})`);
+
 // Typing goes down the socket to the shell; its answer comes back up.
 await page.click('#pane1 .slot.on .xterm');
 await page.keyboard.type('echo own-$((40+2))-terminal\n');
@@ -91,11 +100,16 @@ ok(await waitFor(/kb-42/) && !keysAsked.length, `the keys bar's Enter goes down 
   const saved = await own({ term: { size: 16, cursor: 'bar', blink: false, scheme: 'light' } });
   await page.waitForFunction(() => [...TERMS.values()].some(r => r.t.arg === 'sh:7:alpha' && r.term?.options.fontSize === 16), null, { timeout: 10000 }).catch(() => {});
   const mine = await opts();
+  // ...and the room around the text wears the terminal's own color.
+  const pad = await page.evaluate(() => getComputedStyle(document.querySelector('#pane1 .slot.on.ownterm')).backgroundColor);
   const said = await page.evaluate(async () => (await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ project: 'alpha', term_scheme: 'red' }) })).status);
   await page.evaluate(() => refresh());
   await page.waitForFunction(() => [...TERMS.values()].some(r => r.t.arg === 'sh:7:alpha' && r.term?.options.theme.background === '#2c1416'), null, { timeout: 10000 }).catch(() => {});
   const there = await opts();
+  const padThere = await page.evaluate(() => getComputedStyle(document.querySelector('#pane1 .slot.on.ownterm')).backgroundColor);
+  ok(pad === 'rgb(250, 250, 250)' && padThere === 'rgb(44, 20, 22)',
+     `the room around the text changes color with the terminal (${pad} then ${padThere})`);
   ok(mine.size === 16 && mine.cursor === 'bar' && mine.bg === '#fafafa' && said === 200 && there.bg === '#2c1416' && there.size === 16,
      `a terminal takes its person's look, and their colors for its project over it (${JSON.stringify(mine)} then ${JSON.stringify(there)})`);
   await page.evaluate(async () => fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },

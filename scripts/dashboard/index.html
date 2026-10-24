@@ -5048,7 +5048,10 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 /* BuilderBot's own terminal (R133): xterm in the slot, on the ground ttyd's
    page settled on, and under it why it ended, with Reconnect. */
 .pane .slot.ownterm{flex-direction:column;background:#2b2b2b}
-.pane .slot.ownterm .xhost{flex:1;min-height:0;padding:2px 0 0 4px;overflow:hidden}
+.pane .slot.ownterm .xhost{flex:1;min-height:0;overflow:hidden}
+/* Room between the text and the pane's edges, on xterm's own element: the
+   fit addon takes that padding off what it sizes the pty to. */
+.pane .slot.ownterm .xhost .xterm{padding:var(--field-gap);height:100%;box-sizing:border-box}
 .pane .slot.ownterm .xend{display:flex;align-items:center;gap:var(--field-gap);padding:var(--label-gap) var(--field-gap);
   border-top:1px solid var(--line);background:var(--panel);font:var(--f-note);color:var(--dim)}
 .pane .slot.ownterm .xend[hidden]{display:none}
