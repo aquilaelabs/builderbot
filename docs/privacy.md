@@ -30,10 +30,11 @@ On the controller, in its state directory (`/config`):
 On the projects share and the nodes:
 
 - **Each project's files**, and its copy on the node it builds on.
-- **Claude Code's own records**: each account's Claude sign-in on each node,
-  kept on that node and used only by that account's sessions, and the
-  transcripts Claude Code writes of each session, under that account's own
-  directory on the share.
+- **The coding agents' own records**: each account's sign-in to each agent
+  (Claude Code, Codex CLI, Copilot CLI) on each node, kept on that node and
+  used only by that account's sessions, and the transcripts each agent writes
+  of each session, under that account's own home (Claude Code's on the
+  share).
 - **Toolchains** installed into each node's store.
 
 What it does not keep: BuilderBot writes no log of requests, so it holds no
@@ -43,9 +44,10 @@ record of the addresses people sign in from or of the pages they open.
 
 Only when something is used, and only from your own machines:
 
-- **Anthropic**, through Claude Code. A Claude session sends the code and
-  text it works with to Anthropic under that person's own Claude account and
-  Anthropic's terms, which they accept when they sign in to Claude.
+- **The agent's company**, through its agent: a Claude session sends the
+  code and text it works with to Anthropic, a ChatGPT session to OpenAI and
+  a Copilot session to GitHub, each under that person's own account and that
+  company's terms, which they accept when they sign in to it.
 - **GitHub and the container registries**, to check for newer images and
   apps, and **the git hosts** you add projects from.
 - **Each toolchain's vendor**, when one is installed or checked for updates.
@@ -56,7 +58,8 @@ Only when something is used, and only from your own machines:
 An administrator removes an account on the Users page, and a project, with
 its notebook and files, by deleting it and purging it from the trash.
 Notifications and problem reports are cleared from the dashboard. A
-person's Claude sign-in is removed by signing out on the node's page. The
+person's sign-in to an agent is removed by signing out on the node's
+Agents page. The
 whole install is removed by deleting the controller's `/config`, the
 projects share and each node's store.
 

@@ -69,7 +69,7 @@ is typed, each line found opening its doc at the section it is in.
 **Home is the landing page**, and the one view that fits on
 one screen. Across the top, six tiles count the whole install: the nodes
 online of those enrolled, the containers running of all of them, the jobs
-running (with how many failed today), the Claude sessions open, the
+running (with how many failed today), the sessions open, the
 updates due and the projects whose CI is red. Each is a link into the page
 that holds the number. The machines and their containers are counted only
 for an account that may read the Nodes page; a node that has not answered
@@ -204,8 +204,8 @@ running container is not serving.
 ## The dock and its terminals
 
 **The dock** is the foot of every page. Shut, it is one line: **Chat**
-(with its unread count), then each open terminal as a tab (a Claude
-session's with its state dot, a project's in that project's color), then
+(with its unread count), then each open terminal as a tab (an agent's
+session with its state dot, a project's in that project's color), then
 **+** for a new shell and the chevron. A press on a terminal brings the dock
 up with it, half the area to begin with, and dragging the line changes that
 height, which this browser keeps. The chevron puts it down again and the
@@ -224,7 +224,7 @@ command closes it. The dock's line carries each session's dot, amber if it is wa
 as each project's card does.
 
 The dock starts with one terminal (**workspace**, a shell at `/workspace`),
-and every shell or Claude session you open is another tab on its line.
+and every shell or agent's session you open is another tab on its line.
 Every one, the workspace one included, can be minimized; a dock with none
 is its line alone, and **+** starts over. On a desktop the terminal in front
 can also be popped out into its own window (the ⧉ on the dock's line): its
@@ -243,15 +243,15 @@ own address, so closing the dashboard leaves it working.
   does the same for `/workspace`.
 - **−** on a terminal's tab minimizes it, and asks nothing. The terminal
   keeps running and is listed on the Sessions page, where **Open** brings it
-  back; a Claude session is the same, the conversation carries on without a
+  back; an agent's session is the same, the conversation carries on without a
   tab. Nothing is lost, so nothing is asked.
 - **×** on a terminal's tab is the stronger thing: it ends the session,
   after the same question the Sessions page's End asks, and closes the tab
   with it. **Middle-clicking** the tab does the same, the way it does in a
   browser.
 
-**A terminal tab closes itself when its session ends.** `bb-tty` execs claude,
-so the terminal's process *is* the conversation. Exit it with Ctrl+C twice, `/exit`,
+**A terminal tab closes itself when its session ends.** `bb-tty` execs the
+agent, so the terminal's process *is* the conversation. Exit it with Ctrl+C twice, `/exit`,
 Ctrl+D, or a crash, and the tmux session goes with it, and the tab closes rather
 than holding a dead terminal until somebody closes it. Shells too: one you
 typed `exit` in is just as dead.
@@ -280,8 +280,8 @@ that is: a tab left pointing at a dead session would only offer to recreate
 it.
 
 **Tabs are named for where they are.** A terminal reads `sh: <directory>`,
-following the shell as it `cd`s; hover for the full path. A Claude tab reads
-`Claude: <project>`. Two terminals in the same directory carry their number
+following the shell as it `cd`s; hover for the full path. An agent's tab
+reads `<agent>: <project>` (`Claude: alpha`, `ChatGPT: alpha`, `Copilot: alpha`). Two terminals in the same directory carry their number
 so they stay distinguishable.
 
 Every terminal runs inside **tmux**, so a dropped connection, a closed laptop
@@ -291,14 +291,14 @@ kept alive behind it reconnect when you switch to them, because reloading all
 of them at once is several hundred kilobytes of terminal emulator apiece and a
 phone spent its first seconds back doing exactly that. The **Sessions**
 list (Sessions on the rail) is the full list: every terminal and every
-Claude session, named the way the tabs are (`sh: <directory>`, `Claude: <project>`), including the ones you
+agent's session, named the way the tabs are (`sh: <directory>`, `<agent>: <project>`), including the ones you
 minimized; the tmux name and full path are on hover.
 
 **Selecting in a shell copies it.** Release the mouse and the selection is on
 your system clipboard. That is why tmux's mouse mode is off in shell sessions:
 with it on, tmux takes the drag and the text only ever reaches a tmux paste
 buffer. The trade is that the wheel no longer scrolls tmux's scrollback there;
-at a prompt it walks shell history instead. **Claude tabs keep mouse mode** and
+at a prompt it walks shell history instead. **Agents' tabs keep mouse mode** and
 so do not copy on select; its interface wants the mouse more than the
 clipboard, and the wheel scrolls its output.
 
@@ -344,7 +344,7 @@ promise this cannot keep, and the shutdown kills whatever was running before it
 takes the sessions' picture. Sessions are single-pane by construction; if you
 split one inside tmux, only the active pane's contents are kept.
 
-**Claude sessions do not come back.** The conversation ended with the container,
+**Agents' sessions do not come back.** The conversation ended with the container,
 and a session wearing its old name would be a new one pretending otherwise. Its
 tab is dropped at boot too, and the project's **Start agent** offers to resume
 the transcript, which is still on disk.
@@ -373,7 +373,7 @@ command into the terminal you are looking at and presses Enter, rather than
 reporting into a box of its own. The output is then somewhere you can scroll
 it, and one that follows behaves exactly as if you had typed it. A command
 only ever goes to the tab you are looking at, and only if that is a plain
-shell: with a **Claude** session in front (it would submit the command as a
+shell: with an agent's session in front (it would submit the command as a
 prompt), or no terminal at all, every command button is grayed out and
 its hover text says where to go: never quietly typed into some other terminal.
 
@@ -383,7 +383,7 @@ terminal, which is not something a button should be able to do.
 
 The flyout holds no `bb` commands: each has a page that does it better
 (status on Home, the emulator on its page, the logs in Controller settings,
-the Claude sign-in on its node's page). The Tests view sends `bb tests log -f`
+an agent's sign-in on its node's Agents page). The Tests view sends `bb tests log -f`
 into the project's shell from its own button.
 
 What is there, top to bottom: **pinned**, the commands whose **thumbtack**
@@ -418,7 +418,7 @@ dashboard's own process.
 
 ## How a view knows to re-read
 
-Every view shows facts it does not own. The roadmap's arrows depend on a Claude
+Every view shows facts it does not own. The roadmap's arrows depend on a
 session existing; the Artifacts view's Install depends on a phone being
 connected on a node; the Phone page's questions arrive from a terminal. A
 view that made up its own rule for when to re-read would go stale, so none
@@ -468,7 +468,7 @@ project's menu: **Report a BuilderBot bug** opens **Report a bug**, with a categ
 pick, what happened and how to make it happen, and **Send** puts it in the
 diagnostics under that project with its node and the build it was seen on,
 marked as from the dashboard. A person's report is heard whatever that
-project's Claude dial says, from a project they are on: an administrator
+project's Agents may dial says, from a project they are on: an administrator
 shown every project but not on this one cannot start a session there, so
 its menu has no such entry for them and the server refuses one. A
 project's report can carry the reporter's latest conversation on it,

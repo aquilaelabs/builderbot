@@ -4,7 +4,7 @@ A tool pack is a toolchain you add to BuilderBot yourself, from a git
 repository you choose. BuilderBot ships no packs and keeps no list of them:
 a pack is somebody's repository, and adding one is your decision. Once
 added, it installs onto a node like any shipped toolchain, and it gives
-Claude commands of its own through `bb tool`.
+sessions commands of its own through `bb tool`.
 
 Use one for a tool BuilderBot does not carry: a decompiler, a protocol
 analyzer, a game engine's headless editor, your company's internal CLI.
@@ -27,7 +27,7 @@ at the end, shows.
      dropped, as with a project's archive, and it is at most 8 MB, since
      every node carries it; a pack fetches anything bigger as it installs.
 2. Press **Look**. BuilderBot shows what it would do: what it fetches and
-   runs to install, each command Claude would get and the exact words it
+   runs to install, each command a session would get and the exact words it
    runs, its license, and whether it comes with guidance.
 3. Press **Add**. A repository's pack is kept at the commit you looked at,
    and a later commit to it changes nothing here until somebody approves it.
@@ -136,7 +136,7 @@ editor commits one, still runs.
 
 ## Wrapping someone else's tool
 
-A tool's authors need never have heard of BuilderBot. To give Claude a
+A tool's authors need never have heard of BuilderBot. To give a session a
 decompiler, say, write the pack yourself: a `bbtool.json` whose install
 steps download the tool's own release, and whose verbs run it.
 
@@ -161,5 +161,5 @@ steps download the tool's own release, and whose verbs run it.
 `install.sh` beside it fetches the release archive and unpacks it into the
 pack's directory. Upload the two files as a zip, or keep them in a
 repository of your own; a pack whose install needs no script of its own
-can be pasted as its `bbtool.json` alone. Claude then has
+can be pasted as its `bbtool.json` alone. A session then has
 `bb tool ghidra analyze FILE`, and nothing else of the tool's.

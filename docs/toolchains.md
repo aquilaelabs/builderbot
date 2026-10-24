@@ -205,8 +205,9 @@ with a `~` everywhere it appears and replaced by a measurement the moment the
 toolchain has been installed here once.
 
 **Nothing installs, updates or removes itself, and no session can do it for
-you.** `bb toolchains install|update|remove` refuses to run when `CLAUDECODE` is in
-the environment; that variable is in everything a Claude session runs, and
+you.** `bb toolchains install|update|remove` refuses to run when `CLAUDECODE` or
+`BB_AGENT` is in the environment; one of them is in everything a session runs,
+whichever agent it is, and
 the dashboard drops it at startup precisely so that this page is never
 mistaken for one, and tells the session to ask instead. It is a guardrail
 rather than a boundary (a session has a shell, and could call `sdkmanager`
@@ -357,7 +358,7 @@ engine, with iPhone device profiles. For a native iOS build you need a Mac.
 downloads its own copy into its runner's tool cache on the node, versioned by
 whatever that workflow asked for. The toolchain store is the other thing entirely:
 what you installed, versioned by when you installed it. They are kept apart on
-purpose: a workflow bumping a version must not move the ground under a Claude
+purpose: a workflow bumping a version must not move the ground under a
 session.
 
 **The first boot after an update is not free.** A container whose share is
@@ -448,7 +449,7 @@ Their rows say "Installing it asks you to accept", and Install selected
 names each agreement with its link and asks **Accept and install** before
 anything is fetched. The server refuses an install under an agreement that
 was not accepted, and keeps who accepted it, when, and for which toolchains
-in the audit log. A Claude session is never the one to accept: `bb
+in the audit log. A session is never the one to accept: `bb
 toolchains install android:...` from a session, on a store nobody has
 accepted Google's terms for, is refused and sent to this page.
 

@@ -474,7 +474,7 @@ A node whose agent is from another window is reported as such and not
 refused: the Nodes page separates *behind* (a newer build in the same window,
 routine) from *out of window* (the promise was never made, update before
 relying on it). Refusing would strand a node on a guess. The one thing an
-out-of-window agent does stop is Claude sessions on the projects bound to
+out-of-window agent does stop is sessions on the projects bound to
 that node: the controller ends the running ones and ghosts each such
 project's Start agent until the node is updated, per project, so a
 project on a current node is untouched.
@@ -986,7 +986,7 @@ the Dockerfile's: a final stage that copies the source carries the source.
 Send to Docker makes a fresh container; Copy or move on a Containers page row
 takes one that exists, with its named volumes and its data directory, to
 any agent node, the project's own listed first (and only they carry its
-codebase, its development and its Claude sessions; on any other its image
+codebase, its development and its sessions; on any other its image
 is shipped as above). The dialog shows its env to change for the new node.
 `relocate.py` runs it as three jobs, each queued when the one before
 succeeds: on the old node, stop it, pack every volume of its compose
@@ -1485,7 +1485,7 @@ A node is somebody's machine before it is BuilderBot's, so taking BuilderBot
 off it is a verb of its own, in three places that do one thing: **Un-enroll**
 on the node's page (Advanced), `sudo bb-sandbox uninstall` on the machine, and
 `provision-linux.sh --remove`, which runs the machine's own bb-sandbox. None
-of the three goes through from the page while a Claude session or a container
+of the three goes through from the page while a session or a container
 runs on the node: end them first, and the refusal counts them. What always
 goes is what the provisioner put there for BuilderBot alone: the agent and
 its unit, the sessions' firewall rules and their own networks (every piece
@@ -2447,7 +2447,7 @@ agent's cgroup holds the ttyds, the tmux servers under them and the Claude
 sessions inside those, so Update agent ended every conversation on the
 machine. The agent stops what is its own on SIGTERM, its ttyds and its jobs,
 and leaves the tmux alone. What must NOT outlive anything is the idle rule:
-Controller settings' "end a Claude session after N idle minutes" rides the
+Controller settings' Idle sessions, "end any agent's session after N idle minutes", rides the
 hello reply into node.json and the agent enforces it on its own tmux,
 controller up or down (idle.py).
 The account's CLAUDE LOGIN NEVER TRAVELS (R47). Each machine signs in for

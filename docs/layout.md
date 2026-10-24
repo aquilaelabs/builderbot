@@ -81,7 +81,7 @@ scripts/
   lib/brief-verbs.py             `bb brief`: a new project's brief, and bb-tty's take of it for a first session
   lib/design-verbs.py            `bb design`: a project's design language and pages, as the notebook's Design view keeps them
   lib/wiki-verbs.py              `bb wiki`: a project's wiki pages, listed, shown, saved and removed under Agents may: Write the wiki
-  lib/transcripts-verbs.py       `bb transcripts`: the account's own conversations with Claude on a project, listed and printed
+  lib/transcripts-verbs.py       `bb transcripts`: the account's own conversations with each agent on a project, listed and printed
   lib/nb-history.py              `bb history`: the notebook's logs merged
   lib/rules-verbs.py             `bb rules`, except check
   lib/rules-check.py             `bb rules check`: a rule's check command, run in this tree
@@ -125,7 +125,7 @@ scripts/
     bb-rule-hook                 refuses a shell call a rule refuses, hands a definition grep the map's answer, and says the named rules again after a summary (R200)
     users.py                     who may sign in, and what they are allowed to see (docs/users.md)
     roles.py                     roles and permissions (R137): a grant is a capability on a scope, a role a named set of them, in roles.json; the gate (users.may) reads them
-    prefs.py                     which model and effort a project's Claude session runs on
+    prefs.py                     which model and effort a project's sessions run on, per agent
     settings.py                  controller settings, the things that used to be environment variables; switches, a text and two secrets never shown back
     storage.py                   the Storage page's answer (R169): the nodes an account holds the area on, each project's folders where it may see the project, the rest as one line
     tunnel.py                    the home tunnel the controller runs itself (R176): cloudflared as its child from the settings, and the hostname's record and rules through Cloudflare's API
@@ -146,9 +146,9 @@ scripts/
     forgerelease.py              Release's forge half: the GitHub, Gitea or GitLab release beside a pushed tag, its notes the changelog's section and its builds attached
     ciwatch.py                   a project's CI watched once a day and at link: a moving runner label, an action a major behind, a red main branch and GitHub's notices on it, for the Git view, bb catchup and the bell
     wiki.py                      the notebook's Wiki view: a project's wiki kept as a forge-shaped git repository of its own, exported as a zip and pushed to or pulled from the repository's wiki
-    names.py                     what things are called: a project, a tmux session, a project's Claude session
+    names.py                     what things are called: a project, a tmux session, a project's agent sessions
     agents.py                    the coding agents a session may run, one adapter each (R95): how each installs, signs in, is launched, briefed, guarded and read; page-agents.js is the page's copy
-    projects.py                  new project / link and unlink a remote, the worker that clones and pushes, the locks and the sidebar's pins
+    projects.py                  new project / link and unlink a remote, the worker that clones and pushes, the locks and the pins Home shows
     forges.py                    which git host a remote is on, and the two things a host can be asked that git cannot
     systems.py                   the systems a node can be: what Enroll node's pulldown offers, each with its provisioner family and its vetting (R204)
     ftp.py                       a project's file access over FTP and in an editor: the switches, the port, each account's access, and access_for, the one answer both doors give (R151, R159)
@@ -158,7 +158,7 @@ scripts/
     apps.py                      the apps a person installs (R272): fetched from the release matching this controller, checked against their sha256, kept under /config/apps and served at /apps; the seed file read once
     snapshots.py                 each project's tree as it was each day, stored once by content, pruned to the project's days, and restored whole or a file at a time (R165)
     paths.py                     where the controller keeps what grows (snapshots, the git relay, logs), as the Settings page's Storage section sets it, and the move between two
-    claudesync.py                a synced node's Claude conversations: the listing, get and put (whole, a tail, gone) for its agent's mirror (B613)
+    claudesync.py                a synced node's agents' conversations: the listing, get and put (whole, a tail, gone) for its agent's mirror (B613)
     files.py                     a project's files for a person's editor (R159): stat, list, read, write, rename, delete, search and changes, inside the project and never .git
     git.py                       the notebook's Git view: the repository read out, and its writes
     codebase.py                  the code base counted, by language, for the Briefing tab
@@ -193,7 +193,7 @@ scripts/
     channel.py                   the node agent's verbs behind /api/v1/agent/: enroll, hello, work, a job's files, log and result
     claudecode.py                Claude Code on each node: which version, checking for and installing an update
     agentcode.py                 the other coding agents on each node (Codex CLI, Copilot CLI): which version, the registry's latest, installing, updating and removing each (R95)
-    claudegrant.py               which nodes each account is signed in to Claude on, as each node reported it
+    claudegrant.py               which nodes each account is signed in to each agent on, as each node reported it
     mapping.py                   a new project's code map built in the background as it is created
     plugins.py                   the Claude Code plugins a project carries, listed and installed
     turns.py                     how many prompts a node lets run at once, and the queue when more ask
@@ -219,17 +219,17 @@ scripts/
     profiletab.py                an account's own settings, the Profile page
     mfa.py                       two-factor sign-in (R127): an authenticator app's codes, passkeys (WebAuthn, its CBOR and P-256 check), recovery codes, remembered browsers and wrong codes held, in two-factor.json
     qr.py                        a QR code as an SVG, for an authenticator app to scan (R127)
-    transcripts.py               an account's conversations with Claude as a text to download, from a notebook's Sessions view
+    transcripts.py               an account's conversations with each agent as a text to download, from a notebook's Sessions view
     fields.py                    one field out of a request body, read one way by the server and the modules it calls
     timing.py                    where a request's time went: named parts and its own CPU, for bb dashboard trace
     share.py                     a part's share of what a session is sent: the rules, the roadmap and the bugs say less per row before they leave one out
-    layout.py                    what the page keeps here: each account's tab strip and panes, and the sidebar's cards
+    layout.py                    what the page keeps here: each account's tabs and panes, the dock's terminals among them
     bellseen.py                  what each account has dismissed from its bell: an update to one version, until a newer one is out
     migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     testreg.py                   the test registry: what each test protects, and
                                  what a run measured it costing
-    notify.py                    getting a line into a running Claude session, and knowing it landed
-    signin.py                    the Claude sign-in and sign-out on one node, as jobs there
+    notify.py                    getting a line into a running session, and knowing it landed
+    signin.py                    each agent's sign-in and sign-out on one node, as jobs there
     test/                        its Playwright suite: `bb dashboard test`, isolated; device-api.json in it pins what the released companion and VS Code extension read from the controller, each field's type, and deviceapi.mjs drives it (R79)
     unit/                        its python unit tier: `bb tests unit`, the modules' rules without a server or a browser, run first by preflight (agentpkg.py loads the node agent for it)
   agent/builderbot-agent.py      the node agent's entry: runs the package beside it, and is the __main__.py of the zip a node runs
@@ -254,7 +254,7 @@ scripts/
     jobs.py                      Job: one piece of the controller's work, on its own thread
     ftp.py                       the file-access servers a project's settings open
     wssync.py                    keeps a node's synced copy of its projects in step with the controller's (R162)
-    claudesync.py                keeps a synced node's Claude conversations and memories in step with the controller's (B613)
+    claudesync.py                keeps a synced node's agents' conversations and memories in step with the controller's (B613)
     sessions.py                  the session half (#24): ttyds, tokens, firewall and upkeep, as Agent's methods
     workspace.py                 a job's source on disk, its artifacts, and the bundle of bb
     work.py                      compose, toolchains, signing, images and system packages, as Agent's methods

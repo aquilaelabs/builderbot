@@ -301,7 +301,7 @@ the cheap unit is the line and the expensive one is the step. The briefing
 every session gets says this in as many words.
 
 **Items are handed to the session one at a time, by the arrow beside them.**
-Sending types the line into the running Claude session and submits it, but
+Sending types the line into the running session and submits it, but
 only if it can see that it arrived. There is no IPC into a session; the only
 door is its terminal, and a session "waiting for input" is either at its prompt
 or holding a permission dialog, which the title cannot tell apart. Answering a

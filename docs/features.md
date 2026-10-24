@@ -39,7 +39,7 @@ Everything about a project, shared between you and every session that
 works there ([notebook.md](notebook.md)).
 
 - **Overview**: house rules, memories, the code base at a glance.
-- **Roadmap** of items and steps, sent to a Claude session from the page,
+- **Roadmap** of items and steps, sent to a session from the page,
   with a history of who did what.
 - **Bugs**: a tracker sessions file into and read from.
 - **Git**: status, commit, branches with a history graph, fetch, pull and
@@ -51,13 +51,13 @@ works there ([notebook.md](notebook.md)).
 - **Wiki** and **Design**: a wiki read like an encyclopedia, and the
   project's design language and pages, which sessions follow.
 
-## Claude sessions
+## Sessions
 
-([sessions.md](sessions.md))
+([sessions.md](sessions.md), [agents.md](agents.md))
 
-- **Start agent** opens a Claude Code session on the project's node, in a
-  real terminal in the dock. Resume it later, restart it, and pick the model
-  and effort.
+- **Start agent** opens a session of Claude (Claude Code), ChatGPT (Codex
+  CLI) or Copilot (Copilot CLI) on the project's node, in a real terminal in
+  the dock. Resume it later, restart it, and pick the model and effort.
 - Each session starts **briefed**: the project's house rules, roadmap and
   open bugs, so you ask for the thing rather than explain the place.
 - **What an agent may do is a dial per project**: add to the roadmap, file
@@ -69,7 +69,8 @@ works there ([notebook.md](notebook.md)).
 - **Asking**: a session waiting on a permission prompt shows amber in the
   dock, on its project and in the bell.
 - A session may **read other projects** you allow, without changing them.
-- Each person signs in to Claude with their own account, on each node.
+- Each person signs in to each agent with their own account, on each node,
+  from the Agents page.
 
 ## The `bb` command
 

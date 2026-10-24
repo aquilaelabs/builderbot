@@ -2,7 +2,7 @@
 
 BuilderBot is one container, the **controller**, and the machines it enrolls,
 the **nodes**. The controller serves the dashboard and keeps every project's
-notebook and record; the nodes run the work: Claude sessions, builds, tests,
+notebook and record; the nodes run the work: the agents' sessions, builds, tests,
 CI, the emulator and containers. This page is the overview: what the image
 carries, how it is kept safe and how it starts, and which doc explains each
 part. The design decisions behind it, with their dates and reasons, are in
@@ -32,7 +32,7 @@ edge:
 
 | | |
 |---|---|
-| **Claude Code** | Not in the image: a session runs on a node, and the node installs it |
+| **The coding agents** | Not in the image: a session runs on a node, and the node installs them (Claude Code, Codex CLI, Copilot CLI) |
 | **Node** | 22.x (NodeSource) + npm, corepack (yarn/pnpm shims) |
 | **Python** | 3.12, `uv`, `pipx`, venv |
 | **Playwright** | CLI + the system deps; the browsers themselves install to the [toolchain store](toolchains.md#the-toolchain-store-lives-outside-the-image) and appear at `/opt/pw-browsers` |

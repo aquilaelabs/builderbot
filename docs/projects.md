@@ -38,7 +38,7 @@ built. The brief is not the project's `CLAUDE.md`, which every session
 reads as standing instructions and which would go on asserting the first
 day's decisions after the project moved past them. It is kept in the tree
 as `BUILDERBOT-BRIEF.md`, out of git through the repository's own exclude
-file, for the first Claude session: pressing Start agent on the project opens
+file, for the first session: pressing Start agent on the project opens
 it in a dialog, editable, beside the model and effort that session starts
 on. **Build it** starts the session with the brief as its first prompt;
 **Start without it** starts one that was not given it. Either way the
@@ -56,7 +56,7 @@ or xz, unpacked into the new directory before `git init`. However it
 arrived, the code map a session asks before grepping (`bb map`) is built
 for it in the background the moment the tree is there: the dialog closes
 as usual, the card says *mapping the code* for the seconds it takes, and
-a Claude session on that project waits for it, so its first question
+a session on that project waits for it, so its first question
 about the tree is answered from an index rather than by building one. A single
 top-level folder inside is dropped (the project directory *is* that
 folder), desktop junk like `__MACOSX` is skipped, and no brief is asked
@@ -173,7 +173,7 @@ bare button on the card.
 **Settings** in each project's menu opens that project's own settings, which
 are also the Settings view of its page, in sections: General (its name),
 People, Agents may (what a session may enter into the notebook, and how much
-of the tree it may change without asking), Just for you (how Claude replies
+of the tree it may change without asking), Just for you (how a session replies
 to you there, and the name and email your commits carry), Repository, Nodes,
 Build and test, What sessions reach, File access, Snapshots and Running
 sessions; its Android signing keys are a view of their own, Signing, in Ship.
@@ -181,7 +181,7 @@ The git credential is not in it; that is the remote, in the
 same menu, so a credential has one home whether or not the project has a remote
 yet. Renaming changes the name it is shown under and nothing else (R154):
 a project has a permanent id and a directory that is never handed out again,
-and everything (the notebook, the containers, the sessions, Claude's own
+and everything (the notebook, the containers, the sessions, the agents' own
 transcripts and memories) is keyed by the directory, so a rename moves
 nothing and needs nothing closed first. A name follows GitHub's rules for a
 repository's: letters, digits, `-`, `_` and `.` only, each run of anything

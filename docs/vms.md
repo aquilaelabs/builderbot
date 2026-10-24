@@ -2,7 +2,7 @@
 
 A project's virtual machines, made, started, stopped, snapshotted and removed
 on the nodes whose VM host feature is installed, by a person on the VMs page
-or by a project's Claude session with `bb vm`, under the project's own
+or by a project's session with `bb vm`, under the project's own
 setting. The VMs page sits in the Containers group beside Containers and
 nginx, and is built from the Containers page's pieces.
 
@@ -70,7 +70,7 @@ own, inside its qcow2 disk. A running VM's memory is kept too, so a revert
 lands where it was, mid-program. Listed under its row with Revert and
 Delete; `bb vm snapshot NAME SNAP`, `bb vm revert NAME SNAP` and `bb vm
 snapshot-rm NAME SNAP` from a session, under the same dial. A snapshot taken
-before Claude changes a VM is the undo.
+before a session changes a VM is the undo.
 
 ## Made a node
 

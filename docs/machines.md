@@ -48,7 +48,7 @@ provisioned as a sandbox that is dialing in uninstalls BuilderBot from the
 machine and then removes the node here (retire: off every list, its record kept as
 history, and an id is never reused), and on any other removes the node here
 only, saying BuilderBot's pieces stay on the machine. Neither Disable nor
-Un-enroll goes through while a Claude session or a container is running on
+Un-enroll goes through while a session or a container is running on
 the node: the refusal counts them and says where to end them (the Sessions
 page, Down on the Containers page). Un-enroll opens a dialog, since what goes is
 in rings (the operator, 11 Oct), with a box saying what un-enrolling takes
@@ -86,24 +86,24 @@ verifies, and one that fails silently when it is wrong.
 pick per node: no "this one builds, that one deploys". A project names one
 node in its settings and its containers, builds, tests, CI and
 emulation all go there, so three projects on three VMs stay apart and three
-projects on one VM share it. **Its Claude sessions too** (roadmap #24,
+projects on one VM share it. **Its sessions too** (roadmap #24,
 docs/nodes.md §19): a node provisioned with a session account keeps two
 ttyds up beside the agent, running bb-tty from the bb the controller ships,
 so a session on a project bound to it works *on* that machine, with its
 toolchains, in the copy of the project its agent keeps at `/workspace` in
 step with this container's (a synced copy, the one way a node holds its
 projects: nothing mounts the projects share on a node). The node's census
-says whether that half is up (`session`: ports, account, which Claude the
+says whether that half is up (`session`: ports, account, which agents the
 account has) and how far each copy is; `bb roadmap`, `bb bug`, `bb version` and the other verbs
 whose state is this container's are relayed back here over the API with the
 session's own token. The terminal proxy sends a bound project's session to
 that node when its census says the half is up and the project's copy is there, and
 refuses with the reason (on the project's Start agent and in the terminal) when
 the node cannot take one, rather than starting it on the wrong machine. A
-project with **no** node has no Claude session at all: this container carries
-no Claude Code, so the button says so and names what to do. Its shell still
+project with **no** node has no session at all: this container carries no
+coding agent, so the button says so and names what to do. Its shell still
 opens here, on the same share (a tree to read, the linters, git) because
-what moved to a node is Claude and not the terminal. A node's sessions ride its
+what moved to a node is the agents and not the terminal. A node's sessions ride its
 heartbeat onto the Sessions page, with the node named, and ending one
 there reaches the node's agent within a poll. What a project can actually do on its node is
 what is **installed** there: its Health section lists the toolchains its census found,
@@ -309,7 +309,7 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   on Apply rather than clicked; the section's line says whether cloudflared
   is in the image, running and registered.
 - **Maintenance**: the owner's alone. While *Maintenance mode* is on, only
-  the owner signs in and is answered, from the page, the phone app or a Claude
+  the owner signs in and is answered, from the page, the phone app or a
   session of theirs. Everybody else is told BuilderBot is down for
   maintenance, by the sign-in page, the API (503) and the app, and stays
   signed in for when it ends. Nodes are not accounts and keep running, and a
