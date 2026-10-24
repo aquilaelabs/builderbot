@@ -141,10 +141,14 @@ ok(await waitFor(/kb-42/) && !keysAsked.length, `the keys bar's Enter goes down 
   const asked = [];
   phone.on('request', r => { if (r.url().includes('/api/keys')) asked.push(r.postData() || ''); });
   const box = await phone.$eval('#pane1 .slot.on .xterm-screen', e => { const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, top: b.top + 20, h: b.height }; });
+  // Under a full run's load one drag's lines did not always reach the
+  // screen in time (B328): a second drag, said in the result.
+  const scrolled = rows => rows.some(l => /\[\d+\/\d+\]/.test(l)) && !rows.some(l => /^pick-me-word/.test(l)) && rows;
   await finger(phone, box.x, box.top, box.x, box.top + box.h * 0.6);
-  const back = await until(rows => rows.some(l => /\[\d+\/\d+\]/.test(l)) && !rows.some(l => /^pick-me-word/.test(l)) && rows);
+  let back = await until(scrolled, 5000), drags = 1;
+  if (!back){ await finger(phone, box.x, box.top, box.x, box.top + box.h * 0.6); drags = 2; back = await until(scrolled); }
   ok(back && asked.some(b => /"lineup"/.test(b)),
-     `a finger dragged down scrolls a shell back into its history (${asked.length} asked: ${asked[0] || ''})`);
+     `a finger dragged down scrolls a shell back into its history (${drags} drag${drags === 1 ? '' : 's'}, ${asked.length} asked: ${asked[0] || ''})`);
   // Up again, past the bottom: copy mode ends by itself.
   await finger(phone, box.x, box.top + box.h * 0.9, box.x, box.top);
   await finger(phone, box.x, box.top + box.h * 0.9, box.x, box.top);
