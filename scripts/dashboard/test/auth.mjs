@@ -1445,9 +1445,9 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
     // project's owner, Deny names the setting, and nothing it cannot sign
     // is put in front of anybody.
     {
-      mkdirSync(`${DIR}/state/signing/alpha`, { recursive: true });
-      writeFileSync(`${DIR}/state/signing/alpha/sideload.ks`, 'k');
-      writeFileSync(`${DIR}/state/signing/alpha/sideload.json`, JSON.stringify({ alias: 'upload', store_pass: 'pw' }));
+      mkdirSync(`${DIR}/state/signing/alpha/default`, { recursive: true });
+      writeFileSync(`${DIR}/state/signing/alpha/default/sideload.ks`, 'k');
+      writeFileSync(`${DIR}/state/signing/alpha/default/sideload.json`, JSON.stringify({ alias: 'upload', store_pass: 'pw' }));
       mkdirSync(`${DIR}/ws/alpha/dist`, { recursive: true });
       writeFileSync(`${DIR}/ws/alpha/dist/alpha-release.apk`, 'apk');
       const sign = (body) => bare('/api/signing', { method: 'POST', headers: sessAuth,
