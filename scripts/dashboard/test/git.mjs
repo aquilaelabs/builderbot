@@ -386,7 +386,7 @@ print(json.dumps(g._done(said, "fetched", ${JSON.stringify(`${DIR}/ws/beta`)})))
     git('branch', 'sideclash', commitFile(tip, 'clash2.txt', 'from side\n', 'Side clash'));
     const before = git('rev-parse', main);
     const cl = await act('merge', { name: 'sideclash', into: main });
-    ok(/does not merge/.test(cl.error || '') && /Send to Claude/.test(cl.error || '') && git('rev-parse', main) === before
+    ok(/does not merge/.test(cl.error || '') && /send it to the session/.test(cl.error || '') && git('rev-parse', main) === before
        && git('worktree', 'list').split('\n').length === 1 && !(await api('what=status')).files.some(f => f.state === 'conflict'),
        `a merge into main that clashes is abandoned whole, with the session named as what finishes it (${String(cl.error).slice(0, 70)})`);
     git('update-ref', `refs/heads/${main}`, tip);
@@ -1137,6 +1137,22 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     page.off('request', seen);
     ok(/^Send .* to beta's Claude session\?/.test(asked) && asks.length === 0,
        `Send to Claude asks first, naming the session, and sends nothing when the answer is no (${asked.split('\n')[0]}; ${asks.length} sent)`);
+  }
+  // A send reaches whichever agent's session runs, so it is named for it and
+  // its tab is opened, not Claude's, which started a Claude session beside
+  // a ChatGPT one.
+  {
+    const r = await page.evaluate(() => {
+      const was = state.sessions;
+      state.sessions = [...(was || []), { name: myAgentSession('codex', 'beta') }];
+      const opened = [], realL = window.launchAgent, realS = window.startClaude;
+      window.launchAgent = (id, p) => opened.push(`agent:${id}:${p}`);
+      window.startClaude = p => opened.push(`claude:${p}`);
+      try { openSentTo('beta'); openSentTo('beta', 'u_00000000~codex-beta'); return { name: sendAgent('beta').name, opened }; }
+      finally { state.sessions = was; window.launchAgent = realL; window.startClaude = realS; }
+    });
+    ok(r.name === 'ChatGPT' && r.opened.join() === 'agent:codex:beta,agent:codex:beta',
+       `with a ChatGPT session running, a send is named for ChatGPT and opens its tab, not Claude's (${JSON.stringify(r)})`);
   }
   // What a session may do, in one view of its own beside Overview and
   // Settings (the operator, 22 Oct): the settings form's Agents may section

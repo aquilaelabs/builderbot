@@ -826,7 +826,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
           notify("Not sent: the session is busy. Press Enter in its tab when it is free.",
                  true);
         }
-        startClaude(project, null);   // opens the tab, or goes to the one there
+        openSentTo(project, j.session);   // opens the tab, or goes to the one there
       }catch(e){ notify("ask: " + failWords(e), true); }
       // finally, not after the try: an exception on the way to the session
       // used to leave this dead, and a button that will not fire twice is
@@ -861,8 +861,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             pattern="[0-9]+\.[0-9]+\.[0-9]+">
           <button type="button" data-veradd>Give it its own version</button>
           <button type="button" data-verask="@fold"
-            title="put the question to this project's Claude session, for
-this directory">Send to Claude</button>
+            title="put the question to this project's session, for
+this directory">Send to ${esc(sendAgent(project).name)}</button>
         </div>
       </details>`;
   }
@@ -972,7 +972,7 @@ this directory">Send to Claude</button>
                 : `stage ${esc(v.next[pt] || "")}; nothing is written until Save`}">
               ${pt[0].toUpperCase() + pt.slice(1)} → ${esc(v.next[pt] || "")}</button>`).join("")}
           <button type="button" data-verask="${esc(v.component || "")}"
-            title="ask the session whether ${esc(v.target)} should move; it proposes and asks first">Send to Claude</button>
+            title="ask the session whether ${esc(v.target)} should move; it proposes and asks first">Send to ${esc(sendAgent(project).name)}</button>
           ${v.prev && !v.sealed ? `
           <button type="button" data-verunbump="${esc(v.component || "")}"
             title="take the version back to ${esc(v.prev)}; ${esc(v.target)}'s changelog lines return to Unreleased">↩ ${esc(v.prev)}</button>` : ""}
@@ -1009,7 +1009,7 @@ this directory">Send to Claude</button>
           </span></div>
         <div class="actbar verbtns">
           <button type="button" data-verask="${esc(v.component || "")}"
-            title="ask the session what the version should be; it proposes and asks first">Send to Claude</button>
+            title="ask the session what the version should be; it proposes and asks first">Send to ${esc(sendAgent(project).name)}</button>
           <button type="button" data-verlog="${esc(v.component || "")}"
             title="entries logged before the first version wait here">Changelog${
             v.unreleased ? ` (${v.unreleased} new)` : ""}</button>
@@ -1030,7 +1030,7 @@ this directory">Send to Claude</button>
     return `<label class="verpol">
       <span>Claude access</span>
       <select id="verPolicy" data-was="${esc(v.policy)}"
-        aria-label="what a Claude session may do with this project's version">
+        aria-label="what a session may do with this project's version">
         ${optionList((v.policies || []).map(o => [o, POLICY_LABEL[o] || o]), verPolicyPending ?? v.policy)}
       </select>${verPolicyPending != null
         ? `<span class="vermark">staged: on Save</span>` : ""}

@@ -190,7 +190,7 @@ function nbRoadmapView({$, nb}){
     // carries nothing that changes the list or sends from it.
     const ro = projWriteWhy(nb.memProj);
     const send = nb.roadmapOrdering || ro ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : ` aria-disabled="true"`}
-      title="${esc(why)}" aria-label="send to Claude"
+      title="${esc(why)}" aria-label="send to ${esc(sendAgent(nb.memProj).name)}"
       aria-pressed="${on ? "true" : "false"}">${SPARK}</button>`;
     return `<div class="roadmap${st.sent ? " sent" : ""}${st.done ? " done" : ""}${
          idx >= 0 ? " step" : ""}${r.shelved ? " shelved" : ""}"
@@ -654,7 +654,7 @@ function nbRoadmapView({$, nb}){
     // because a modal was in the way of the tab you were being sent to; a tab
     // is not in the way of anything, and coming back to the plan to send its
     // next step is the ordinary next thing.
-    startClaude(proj, null);      // opens the tab, or goes to the one that is there
+    openSentTo(proj);             // opens the tab, or goes to the one that is there
   }
 
   // Wrapped so the poll can tell this panel's own write from somebody

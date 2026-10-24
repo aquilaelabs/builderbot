@@ -241,13 +241,33 @@ function resumeConversation(name, id, when, ev, agent = "claude"){
       : "a session cannot start on this project now: its Start agent says why", true);
 }
 
-// A button that sends something to a project's Claude session asks first
-// (the operator, 6 Oct): what it sends arrives as a prompt and Claude starts
-// on it at once, so a stray tap is work begun. The bug and roadmap sends ask
-// in their own send box; every other Send to Claude asks here.
+// The agent a send on a project reaches: the running session the server
+// types into, Claude's first as names.running_session picks, else the one
+// Start agent opens. A send reached a ChatGPT or Copilot session too, under
+// a button that said Claude.
+function sendAgent(project){
+  const live = liveSessions();
+  return AGENTS.find(a => live.has(myAgentSession(a.id, project)))
+    || agentById((state?.projects || []).find(x => x.name === project)?.prefs?.agent_default) || AGENTS[0];
+}
+// ...and its tab, opened after a send to watch the answer: the session the
+// server says it typed into, else the one a send reaches. A ChatGPT or
+// Copilot session opens as itself; opening Claude's started a Claude session
+// beside it.
+function openSentTo(project, session = ""){
+  const ag = (session && agentOfSession(tmuxBase(session))?.agent) || sendAgent(project);
+  if (ag.id !== "claude") return launchAgent(ag.id, project);
+  startClaude(project, null);
+}
+
+// A button that sends something to a project's session asks first (the
+// operator, 6 Oct): what it sends arrives as a prompt and the agent starts on
+// it at once, so a stray tap is work begun. The bug and roadmap sends ask in
+// their own send box; every other Send asks here.
 async function sendSure(project, what){
-  return await askYes(`Send ${what} to ${projLabel(project)}'s Claude session?\n\n`
-                 + "It arrives as a prompt, and Claude starts on it at once.");
+  const a = sendAgent(project).name;
+  return await askYes(`Send ${what} to ${projLabel(project)}'s ${a} session?\n\n`
+                 + `It arrives as a prompt, and ${a} starts on it at once.`);
 }
 
 // A new project's first session goes through its brief's dialog: a new

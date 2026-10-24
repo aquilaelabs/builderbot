@@ -788,8 +788,8 @@ def not_yours(repo, action, args, uid, kind="", admin=False):
         pairs = [(name, "merges it"), (into, "merges into it")]
     elif action == "ask" and kind in ("merge", "rebase"):
         name = str(args.get("branch") or "")
-        ask = f"Ask Claude to {kind} {name} {'into' if kind == 'merge' else 'onto'} {_main_branch(repo)}?"
-        pairs = [(name, f"has Claude {kind} it")]
+        ask = f"Ask the session to {kind} {name} {'into' if kind == 'merge' else 'onto'} {_main_branch(repo)}?"
+        pairs = [(name, f"has the session {kind} it")]
     elif action in ("switch", "delete"):
         ask = ""
         pairs = [(str(args.get("name") or ""), "switches to it" if action == "switch" else "deletes it")]
@@ -1274,7 +1274,7 @@ def _merge_off_tree(repo, name, into, env, unrelated=False):
                  *(["--allow-unrelated-histories"] if unrelated else []), a, b, env=env, index=False)
         first = ((r["out"] or "").splitlines() or [""])[0].strip()
         if r["code"] or not SHA_RE.match(first):
-            return {"error": f"{name} does not merge into {into} cleanly: Send to Claude "
+            return {"error": f"{name} does not merge into {into} cleanly: send it to the session "
                              f"with merge into {into} picked, and it resolves the clash "
                              f"on its branch"}
         r = _run(repo, "commit-tree", first, "-p", a, "-p", b, "-m", msg, env=env, index=False)

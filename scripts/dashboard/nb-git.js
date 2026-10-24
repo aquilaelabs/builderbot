@@ -86,7 +86,7 @@ function nbGitView({$, nb, project}){
       const j = await r.json();
       if (j.error) return notify(j.error, true);
       if (!j.sent) notify("Not sent: the session is busy. Press Enter in its tab when it is free.", true);
-      startClaude(project, null);
+      openSentTo(project, j.session);
     }catch(e){ notify("ask: " + failWords(e), true); }
     finally{ if (btn && btn.isConnected) unbusy(btn, btn.dataset.label || btn.textContent); }
   }
@@ -271,7 +271,7 @@ function nbGitView({$, nb, project}){
         <div class="body gdiff">${keptBody("file", f.path, fileKey(f), skel("lines", 5))}</div>
         ${locked || tree.barred ? "" : `<div class="body"><div class="actbar">
           ${tree.notMine ? "" : `<button type="button" data-gitaskfile="${esc(f.path)}"
-            title="hand this change to the project's Claude session">Send to Claude</button>`}
+            title="hand this change to the project's session">Send to ${esc(sendAgent(project).name)}</button>`}
           <button type="button" class="danger" data-gitdiscard="${esc(f.path)}"
             title="put the file back as the last commit has it; the change is lost">Discard</button>
         </div></div>`}
@@ -364,10 +364,10 @@ function nbGitView({$, nb, project}){
          // A branch with nothing of its own (0 ahead of main) has nothing to
          // merge or review, and one that is not also behind nothing to
          // rebase (B80).
-         ...(b.name === main || !b.main_ahead ? [] : [...(barred(b) ? [] : [["merge", `Ask Claude to merge it into ${esc(main)}`],
-              ...(b.main_behind ? [["rebase", `Ask Claude to rebase it onto ${esc(main)}`]] : [])]),
-              ["review", "Ask Claude to review it"]].map(([k, w]) => `<button type="button" data-gitaskbranch="${esc(b.name)}" data-gitaskkind="${k}"${
-              k === "review" ? "" : whoAttr(b)} title="hand this branch to the project's Claude session with this ask">${w}</button>`)),
+         ...(b.name === main || !b.main_ahead ? [] : [...(barred(b) ? [] : [["merge", `Ask ${esc(sendAgent(project).name)} to merge it into ${esc(main)}`],
+              ...(b.main_behind ? [["rebase", `Ask ${esc(sendAgent(project).name)} to rebase it onto ${esc(main)}`]] : [])]),
+              ["review", `Ask ${esc(sendAgent(project).name)} to review it`]].map(([k, w]) => `<button type="button" data-gitaskbranch="${esc(b.name)}" data-gitaskkind="${k}"${
+              k === "review" ? "" : whoAttr(b)} title="hand this branch to the project's session with this ask">${w}</button>`)),
          b.head || b.name === main || barred(b) ? "" : `<button type="button" class="danger"
             data-gitdelete="${esc(b.name)}" title="${b.merged ? "delete the branch; everything on it is in " + esc(main) : "delete the branch: refused while it holds commits no other branch has"}">Delete</button>`];
     // A branch with work main lacks opens its comparison, a page of its own,
@@ -407,7 +407,7 @@ function nbGitView({$, nb, project}){
     const conflictBar = conflicts.length && !locked ? `<div class="actbar gconflict">
         <span class="state bad">${conflicts.length} file${conflicts.length === 1 ? "" : "s"} in conflict: the merge is not finished</span>
         <button type="button" class="primary" data-gitask="conflicts"
-          title="hand the merge to the project's Claude session to finish">Resolve with Claude</button>
+          title="hand the merge to the project's session to finish">Resolve with ${esc(sendAgent(project).name)}</button>
       </div>` : "";
     body.innerHTML = docSection("git", "changes", gitTitle("changes"), files.length ? String(files.length) : "none",
         conflictBar + (files.length ? treeNote : "") + commitBar + (files.length ? fileRows : `<div class="empty">nothing changed since the last commit</div>`))
@@ -590,7 +590,7 @@ function nbGitView({$, nb, project}){
     root.querySelectorAll("[data-gitaskbranch]").forEach(b => b.onclick = async () => {
       const kind = b.dataset.gitaskkind || "merge";
       const name = b.dataset.gitaskbranch, who = b.dataset.gitwho, moves = kind === "merge" || kind === "rebase";
-      if (who && moves && !await askYes(`Ask Claude to ${kind} ${name} ${kind === "merge" ? "into" : "onto"} ${main}?\n\n${name} is ${who}'s session's branch.`)) return;
+      if (who && moves && !await askYes(`Ask ${sendAgent(project).name} to ${kind} ${name} ${kind === "merge" ? "into" : "onto"} ${main}?\n\n${name} is ${who}'s session's branch.`)) return;
       gitAsk(kind, {branch: name, ...(who && moves ? {confirmed: true} : {})}, gitBusy(b));
     });
   }
@@ -663,7 +663,7 @@ function nbGitView({$, nb, project}){
           ? `nothing here that ${esc(main)} does not already have`
           : `${commits.length} commit${s_(commits.length)} into ${esc(main)}${ahead}; push ${esc(main)} to ${esc(host)} afterwards`}</span>
         <button type="button" data-gitaskbranch="${esc(name)}" data-gitaskkind="review"
-          title="hand this branch to the project's Claude session to review">Ask Claude to review it</button>
+          title="hand this branch to the project's session to review">Ask ${esc(sendAgent(project).name)} to review it</button>
         ${barred || !commits.length ? "" : `<button type="button" class="primary" data-gitmerge="${esc(name)}" data-gitinto="${esc(main)}"${
           theirs ? ` data-gitwho="${esc(b.who)}"` : ""} title="merge ${esc(name)} into ${esc(main)}">Merge into ${esc(main)}</button>`}
       </div>`;
@@ -706,7 +706,7 @@ function nbGitView({$, nb, project}){
           <select data-gitaskkind aria-label="what to ask"><option value="review">review</option>
             <option value="explain">explain</option><option value="revert">revert</option></select>
           <button type="button" data-gitaskcommit="${esc(c.sha)}"
-            title="hand this commit to the project's Claude session with the ask picked">Send to Claude</button>
+            title="hand this commit to the project's session with the ask picked">Send to ${esc(sendAgent(project).name)}</button>
           ${treeOf().barred ? "" : `<button type="button" data-gitbranchat="${esc(c.sha)}" title="a new branch starting at this commit">Branch here</button>
           <button type="button" data-gitrevert="${esc(c.sha)}" title="a new commit that undoes this one; nothing is rewritten">Revert</button>`}
         </div>`}

@@ -286,7 +286,7 @@ function nbBugsView({$, nb, project}){
               title="${b.status === "open"
                 ? `send this bug to the running session`
                 : `closed: reopen it first to send it`}"
-              >Send to Claude</button>
+              >Send to ${esc(sendAgent(project).name)}</button>
             <button type="button" class="bEdit">Edit</button>
             ${b.status === "open"
               // Five at most on a bar, the rest behind More (R210): six
@@ -370,7 +370,7 @@ function nbBugsView({$, nb, project}){
             }
             nb.sendNoteText = "";
             nb.shutSendBoxes();
-            startClaude(project, null);   // land in the tab it went to
+            openSentTo(project, j.session);   // land in the tab it went to
           },
         });
         body.appendChild(box);
