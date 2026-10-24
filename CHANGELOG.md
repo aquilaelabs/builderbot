@@ -1,19 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.8.0: 2026-10-24
 
 ### Added
 
-- A session sees a release's Android signing: bb sign status says whether the APK can be signed and how the newest went, bb sign release asks for it again under Sign a build, and a release whose APK could not be signed is said before the tag, on Release's confirm and by bb version release, which goes on only with --without-apk
-- A bug and a BuilderBot report say whether they reproduce: always, sometimes, once or not tried, asked under the steps on the Bugs form, shown on the opened row, and a chip and a sort on the list; bb bug add and bb report take --reproduces, and bb bug add --report N files a diagnostics report with its words, steps and answer
+- A session sees a release's Android signing: bb sign status says whether the APK can be signed and how the newest went, bb sign release asks for it again under Sign a build, and a release whose APK could not be signed is said before the tag, on Release's confirm and by bb version release, which goes on only with --without-apk (60d1d3e)
+- A bug and a BuilderBot report say whether they reproduce: always, sometimes, once or not tried, asked under the steps on the Bugs form, shown on the opened row, and a chip and a sort on the list; bb bug add and bb report take --reproduces, and bb bug add --report N files a diagnostics report with its words, steps and answer (2517bcb)
 
 ### Fixed
 
-- A release's signing pressed again on the Signing view is followed to its end: the Releases section re-reads when the look finishes, rather than showing the old failure until the view is reopened
-- Saving a project's settings with End ends a ChatGPT or Copilot session there too, not only a Claude one, so the next start picks up what was saved
-- The bell's CI failing row can be dismissed until another run fails, and a check that has passed since on a release no longer stays red
-- A terminal or a VM's screen opens only from the dashboard's own page: a connection started by another site's page, such as an app on a sibling hostname, is refused
-- Signing a build or a release keeps the key in the node's memory while it works, never on its data store, which on a shared network folder sessions could read
+- A release's signing pressed again on the Signing view is followed to its end: the Releases section re-reads when the look finishes, rather than showing the old failure until the view is reopened (a1611e7)
+- Saving a project's settings with End ends a ChatGPT or Copilot session there too, not only a Claude one, so the next start picks up what was saved (7c9b38a)
+- The bell's CI failing row can be dismissed until another run fails, and a check that has passed since on a release no longer stays red (9cfe9f4)
+- A terminal or a VM's screen opens only from the dashboard's own page: a connection started by another site's page, such as an app on a sibling hostname, is refused (f96a91d)
+- Signing a build or a release keeps the key in the node's memory while it works, never on its data store, which on a shared network folder sessions could read (5da1f79)
 
 ## 0.7.0: 2026-10-24
 
