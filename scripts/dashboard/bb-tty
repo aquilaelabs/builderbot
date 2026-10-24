@@ -652,7 +652,7 @@ PY
 }
 
     local dir out tmp base_resumes=0 a ag="${LAUNCH_AGENT:-claude}"
-    for a in "$@"; do [ "$a" = "--resume" ] && base_resumes=1; done
+    for a in "$@"; do case "$a" in --resume|--resume=*|resume) base_resumes=1 ;; esac; done
     dir="$(cache_project_dir "$proj")"
     # Named for its agent (claude-run.sh, codex-run.sh), which is what the
     # session-is-really-this-agent check reads off the pane.
@@ -792,11 +792,19 @@ PY
         # Only when the base command does not already name one: a session
         # opened from the resume chooser carries its own --resume, and claude
         # would be handed the flag twice.
-        if [ "$base_resumes" -eq 0 ] && [ "$ag" = claude ]; then
-            printf 'if [ "${1:-}" = --respawn ]; then\n'
-            printf '  n="$(ls -1t %q/*.jsonl 2>/dev/null | head -1)"\n' "$tdir"
-            printf '  if [ -n "$n" ]; then n="${n##*/}"; extra+=(--resume "${n%%.jsonl}"); fi\n'
-            printf 'fi\n'
+        # Every agent's the same way (R95 step 19): Codex CLI's newest
+        # conversation in this folder (resume --last keeps to the working
+        # directory), Copilot CLI's newest (--continue).
+        if [ "$base_resumes" -eq 0 ]; then
+            case "$ag" in
+                claude)
+                    printf 'if [ "${1:-}" = --respawn ]; then\n'
+                    printf '  n="$(ls -1t %q/*.jsonl 2>/dev/null | head -1)"\n' "$tdir"
+                    printf '  if [ -n "$n" ]; then n="${n##*/}"; extra+=(--resume "${n%%.jsonl}"); fi\n'
+                    printf 'fi\n' ;;
+                codex)   printf 'if [ "${1:-}" = --respawn ]; then extra+=(resume --last); fi\n' ;;
+                copilot) printf 'if [ "${1:-}" = --respawn ]; then extra+=(--continue); fi\n' ;;
+            esac
         fi
         printf 'exec'
         printf ' %q' "$@"

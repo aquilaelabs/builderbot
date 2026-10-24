@@ -599,6 +599,18 @@ sleep 60
       const mi = cx2.indexOf('-m');
       ok(alive(`codex-${proj}`) && mi >= 0 && cx2[mi + 1] === 'gpt-5.5' && cx2.includes('model_reasoning_effort="high"'),
          `a model and an effort picked at Start reach Codex as its own flags (${cx2.slice(0, 6).join(' ')})`);
+      // A respawn onto a changed setting goes on with the conversation, as
+      // Claude's resumes its newest transcript (R95 step 19).
+      const respawn = ag => {
+        try {
+          execFileSync('timeout', ['5', 'bash', join(HOMEDIR, '.cache', 'builderbot', 'u', ownerUid, 'project', proj, `${ag}-run.sh`), '--respawn'],
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, HOME: HOMEDIR, PATH: `${bin}:${process.env.PATH}` } });
+        } catch { /* the stub sleeps; the timeout ends it and its argv is still read */ }
+        return (existsSync(join(bin, `${ag}-argv`)) ? readFileSync(join(bin, `${ag}-argv`), 'utf8') : '').split('\0');
+      };
+      const rcx = respawn('codex');
+      ok(rcx.includes('resume') && rcx[rcx.indexOf('resume') + 1] === '--last',
+         `...and a respawn resumes Codex's newest conversation in its folder (${rcx.slice(-4).join(' ')})`);
       // A Codex conversation resumes in Codex (R95 step 8): its kept log is
       // put back where Codex looks for it, and Codex is told to resume it.
       tmuxKill(`codex-${proj}`);
@@ -636,6 +648,8 @@ sleep 60
       const dirs = existsSync(`${cpArgv}.dirs`) ? readFileSync(`${cpArgv}.dirs`, 'utf8') : '';
       ok(alive(`copilot-${proj}`) && cp[0] === '--no-auto-update',
          `signed in, a Copilot session starts, its own updater off (${cp.slice(0, 1).join(' ')})`);
+      const rcp = respawn('copilot');
+      ok(rcp.includes('--continue'), `...and a respawn continues Copilot's newest session (${rcp.slice(-3).join(' ')})`);
       const cph = existsSync(join(HOMEDIR, '.copilot', 'hooks', 'builderbot.json'))
         ? JSON.parse(readFileSync(join(HOMEDIR, '.copilot', 'hooks', 'builderbot.json'), 'utf8')) : {};
       ok(cph.version === 1 && /bb-agent-hook copilot pre$/.test(cph.hooks?.preToolUse?.[0]?.bash || '')
