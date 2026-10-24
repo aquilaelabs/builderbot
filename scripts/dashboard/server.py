@@ -1814,6 +1814,12 @@ _ARG_CTR = re.compile(r"^ctr:([A-Za-z0-9][A-Za-z0-9._-]*):([A-Za-z0-9][A-Za-z0-9
                       r"([A-Za-z0-9][A-Za-z0-9_.-]*)$")
 
 
+# `log:ctr:NAME:INSTANCE:CONTAINER`: a container's log in a dock tab (R133
+# step 12), followed on its node by docker logs as the docker account.
+_ARG_LOGCTR = re.compile(r"^log:ctr:([A-Za-z0-9][A-Za-z0-9._-]*):([A-Za-z0-9][A-Za-z0-9._-]*):"
+                         r"([A-Za-z0-9][A-Za-z0-9_.-]*)$")
+
+
 # `vm:PROJECT:NAME`: a VM's serial console (R91), opened on its node's
 # container terminal server, as the jobs account, with virsh console.
 _ARG_VM = re.compile(r"^vm:([A-Za-z0-9][A-Za-z0-9._-]*):([a-z0-9][a-z0-9-]{0,30})$")
@@ -1855,7 +1861,7 @@ def _ctr_owner(name, instance):
 def _arg_project(arg):
     """The project a terminal argument is about, or "" (the workspace
     shell, a named scratch session)."""
-    m = _ARG_CTR.match(arg or "")
+    m = _ARG_CTR.match(arg or "") or _ARG_LOGCTR.match(arg or "")
     if m:
         return _ctr_owner(m.group(1), m.group(2))
     m = _ARG_VM.match(arg or "")
@@ -5677,6 +5683,8 @@ class Handler(BaseHTTPRequestHandler):
         arg = _term_arg(rest)
         if arg.startswith("ctr:"):
             return self._ctr_refused(arg, me)
+        if arg.startswith("log:ctr:"):
+            return self._ctr_log_refused(arg, me)
         if arg.startswith("vm:"):
             return self._vm_con_refused(arg, me)
         if agents.of_arg(arg)[0]:
@@ -5748,6 +5756,31 @@ class Handler(BaseHTTPRequestHandler):
             if (prefs.get(owner) or {}).get("devbuild") == "deny":
                 return (f"{owner}'s Agents may: Run its container is Deny, so a shell in its containers "
                         "is an administrator's")
+        t = ctr_target(name, inst)
+        if t["where"] == "refused":
+            return t["why"]
+        if ctr not in devactions.running_names(name, inst):
+            return f"{ctr} is not a running container of {devapp.pname(name, inst)} now"
+        return ""
+
+    def _ctr_log_refused(self, arg, me):
+        """A sentence when this account may not follow the log of the
+        container a log:ctr: argument names, and "" when it may: as the
+        Containers page's Log reads it (docker-write, and the container's
+        project on the account's list), the container one of the instance's
+        running ones now."""
+        m = _ARG_LOGCTR.match(arg)
+        if not m:
+            return "not a container's log: log:ctr:NAME:INSTANCE:CONTAINER"
+        name, inst, ctr = m.groups()
+        why = users.may(me, "docker-write")
+        if why:
+            return why
+        if inst not in (devapp.instances(name) or []):
+            return f"no instance {inst} of {name} on record here"
+        why = self._not_on_list(me, _ctr_owner(name, inst))
+        if why:
+            return why
         t = ctr_target(name, inst)
         if t["where"] == "refused":
             return t["why"]
@@ -6040,7 +6073,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": cross}, 403)
         # A log, read-only and followed (R133 step 12): no program runs.
         if _term_arg(args).startswith("log:"):
-            return self._log_own(_term_arg(args))
+            return self._log_own(_term_arg(args), args, dims)
         target, vmm, no = self._term_decide(args)
         if not termws.upgrade(self):
             return self._json({"error": no[0] if no else "a websocket is asked for here"}, no[1] if no else 400)
@@ -6116,10 +6149,34 @@ class Handler(BaseHTTPRequestHandler):
             return read, None
         return None, f"no log of the kind {kind or 'named'} is read here"
 
-    def _log_own(self, arg):
+    def _log_own(self, arg, args, dims):
         """/termws?arg=log:... (R133 step 12): a log in a dock tab, followed
         as it is written and read-only, its reader asked again every few
-        seconds and the tab ended when it may no longer read it."""
+        seconds and the tab ended when it may no longer read it. A
+        container's is followed on its node (bb-tty's log:ctr:, docker logs
+        as the docker account), carried signed as its shell is."""
+        if _ARG_LOGCTR.match(arg):
+            no = self._ctr_log_refused(arg, self._who())
+            if not termws.upgrade(self):
+                return self._json({"error": no or "a websocket is asked for here"}, 403 if no else 400)
+            if no:
+                return termws.close(self.connection, no)
+            m = _ARG_LOGCTR.match(arg)
+            target = ctr_target(m.group(1), m.group(2))
+            if target["where"] != "node":
+                return termws.close(self.connection, "a container on this controller has its log on its row's Log")
+            if not target.get("term"):
+                return termws.close(self.connection, f"{target['name']}'s agent serves no terminal of its own yet")
+            words = [v for k, v in urllib.parse.parse_qsl(urllib.parse.urlsplit(
+                self._scoped_arg(args, node=True)).query) if k == "arg"]
+            who_raw = self._who_raw()
+
+            def alive():
+                if kept_out(who_raw):
+                    return "the controller is in maintenance mode"
+                return self._ctr_log_refused(arg, self._who())
+            return termws.node(self.connection, host=target["host"], port=SCREEN_PORT, key=nodes.screen_key(target["id"]),
+                               kind="ctr", words=words, alive=alive, **dims)
         read, why = self._log_reader(arg)
         if not termws.upgrade(self):
             return self._json({"error": why or "a websocket is asked for here"}, 403 if why else 400)
@@ -7930,7 +7987,9 @@ class Handler(BaseHTTPRequestHandler):
         refused = self._term_refused(rest, me) or self._claude_held(rest, me)
         if refused:
             return self._json({"error": refused}, 403)
-        if not req.get("ro") and users.may(me, "terminal"):
+        # A log (R133 step 12) runs nothing anybody types into: reading it
+        # wants the log's own grant, decided above, not a shell.
+        if not req.get("ro") and not arg.startswith("log:") and users.may(me, "terminal"):
             return self._json({"error": f"{me['name']} has no shell, so this terminal is the "
                                         "read-only one"}, 403)
         # A coding agent's session on a repository of a project of several
@@ -7962,7 +8021,8 @@ class Handler(BaseHTTPRequestHandler):
                            # The container a ctr: terminal goes into, checked
                            # above against its instance's running ones: what
                            # bb-tty execs into, never the URL's word for it.
-                           "ctr": (_ARG_CTR.match(arg).group(3) if _ARG_CTR.match(arg) else ""),
+                           "ctr": (_ARG_CTR.match(arg).group(3) if _ARG_CTR.match(arg)
+                                   else _ARG_LOGCTR.match(arg).group(3) if _ARG_LOGCTR.match(arg) else ""),
                            # ...and the VM a vm: console opens (R91): its libvirt
                            # name from the record, never the URL's word for it.
                            "vm": (vm_target(*_ARG_VM.match(arg).groups()).get("domain", "")

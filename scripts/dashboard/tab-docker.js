@@ -2076,7 +2076,12 @@ async function loadRowLog(det, again = false){
   det = dmFoldNow(fold);
   const box = det?.querySelector(".dmlogbox");
   if (!det || !box) return;
-  box.innerHTML = parts.map(p => `<div class="dmlogsvc">${names.length > 1 ? `<div class="sub">${esc(p.name)}</div>` : ""}${
+  // A running container's log followed in a tab of the dock as it is
+  // written (R133 step 12), where this fold reads it again every 4s.
+  const running = new Set((inst?.services || []).filter(c => c.state === "running").map(c => c.name));
+  const dock = n => running.has(n) ? `<div class="actbar"><button type="button" data-dmdock="${esc(n)}"
+      title="${esc(n)}'s log in a tab of the dock, following it as it is written">Follow in the dock</button></div>` : "";
+  box.innerHTML = parts.map(p => `<div class="dmlogsvc">${names.length > 1 ? `<div class="sub">${esc(p.name)}</div>` : ""}${dock(p.name)}${
       p.error ? `<div class="hint bad">${esc(p.error)}</div>`
       : p.text.trim() ? `<pre class="dmlog dllog">${esc(p.text)}</pre>`
       : `<div class="hint">It has printed nothing.</div>`}</div>`).join("")
@@ -2086,6 +2091,8 @@ async function loadRowLog(det, again = false){
   // At the end, which is where a log's reason is.
   box.querySelectorAll("pre").forEach(pre => { pre.scrollTop = pre.scrollHeight; });
   box.querySelector("[data-dmlogagain]").onclick = () => loadRowLog(det, true);
+  box.querySelectorAll("[data-dmdock]").forEach(b => b.onclick = () =>
+    openLogTab(`log:ctr:${inst.project}:${inst.instance}:${b.dataset.dmdock}`, `Log: ${b.dataset.dmdock}`));
   const fl = box.querySelector("[data-dmfollow]");
   fl.onchange = () => { dmFollow[key] = fl.checked; if (fl.checked) dmFollowTick(det, key); };
   if (dmFollow[key]) dmFollowTick(det, key);

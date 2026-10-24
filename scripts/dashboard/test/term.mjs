@@ -235,6 +235,13 @@ await page.evaluate(id => dropTab(id), id2);
   const why = await page.evaluate(() => [...TERMS.values()].find(r => r.t.arg === 'log:nothing')?.ended || '');
   ok(/no log of the kind nothing/.test(why), `a log it has no reader for ends saying so (${why})`);
   await page.evaluate(() => dropTab(tabs.find(t => t.arg === 'log:nothing').id));
+  // A container's log is decided as its row's Log is, and says why it is
+  // refused: one of no instance on record here.
+  await page.evaluate(() => openLogTab('log:ctr:alpha:nosuch:alpha-web-1', 'Log: alpha-web-1'));
+  await page.waitForFunction(() => [...TERMS.values()].some(r => r.t.arg.startsWith('log:ctr:') && r.ended), null, { timeout: 15000 }).catch(() => {});
+  const cwhy = await page.evaluate(() => [...TERMS.values()].find(r => r.t.arg.startsWith('log:ctr:'))?.ended || '');
+  ok(/no instance nosuch of alpha on record here/.test(cwhy), `a container's log names why it cannot be followed (${cwhy})`);
+  await page.evaluate(() => dropTab(tabs.find(t => t.arg.startsWith('log:ctr:')).id));
 }
 
 await done(browser);

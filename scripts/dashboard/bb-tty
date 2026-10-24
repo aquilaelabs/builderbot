@@ -227,6 +227,17 @@ if [ "${BB_TTY_CTR:-}" = 1 ]; then
         tmux set-option -t "$s" status-right ' builderbot '
         exec tmux attach-session -t "$s"
     fi
+    # A container's log in a dock tab (R133 step 12): docker logs followed,
+    # its last lines first, in no tmux, so a reconnect shows them again.
+    # Nothing typed reaches it.
+    case "$target" in
+        log:ctr:*)
+            cname="${grant_ctr:-}"
+            case "$cname" in
+                ''|[!A-Za-z0-9]*|*[!A-Za-z0-9_.-]*) ctr_no "Invalid container: ${cname}" ;;
+            esac
+            exec docker logs --follow --tail 2000 "$cname" </dev/null ;;
+    esac
     case "$target" in ctr:*) ;; *) ctr_no "This terminal server opens a container's shell and nothing else." ;; esac
     cname="${grant_ctr:-}"
     case "$cname" in
