@@ -68,8 +68,18 @@ const exec = async argv => {
     const s = await api(`/api/v1/jobs?id=${r.job}`);
     return ['succeeded', 'failed', 'canceled'].includes(s.state) ? s : null;
   }, 300000, 3000);
-  const log = (await api(`/api/v1/jobs?id=${r.job}&log=1`)).log || '';
-  return { state: j?.state || 'timeout', log: Array.isArray(log) ? log.join('\n') : String(log) };
+  // The last chunks can land after the state does: read until two reads
+  // a second apart agree (B324).
+  const read = async () => { const l = (await api(`/api/v1/jobs?id=${r.job}&log=1`)).log || '';
+    return Array.isArray(l) ? l.join('\n') : String(l); };
+  let log = await read();
+  for (let i = 0; i < 10; i++){
+    await sleep(1000);
+    const again = await read();
+    if (again === log) break;
+    log = again;
+  }
+  return { state: j?.state || 'timeout', log };
 };
 // A command as root in the VM, through ssh from the VM host: its output.
 const inVm = async (ip, script) => {
