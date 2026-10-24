@@ -137,9 +137,11 @@ class Look(unittest.TestCase):
         import bellseen
         ciwatch.look("app")
         rows = ciwatch.red(["app"])
-        self.assertEqual(rows[0]["key"], "ci:app@run 11")
+        self.assertEqual(rows[0]["key"], "ci:app@run11")
         bellseen.configure(state=self.tmp, write_json=lambda p, d: Path(p).write_text(json.dumps(d)))
-        bellseen.dismiss("u_00000001", [rows[0]["key"]])
+        # As the page sends it: a row's keys joined by spaces, split on them
+        # (B331: "run 11" was two keys, and neither the row's).
+        bellseen.dismiss("u_00000001", rows[0]["key"].split(" "))
         self.assertEqual(bellseen.filter_rows("u_00000001", rows)[0], [])
         self.assertEqual(len(bellseen.filter_rows("u_00000002", rows)[0]), 1, "one account's, not everybody's")
 

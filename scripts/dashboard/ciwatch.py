@@ -399,5 +399,7 @@ def red(projects):
         for f in _cached(p).get("findings") or []:
             if f.get("sev") == "bad":
                 out.append({"kind": "ci", "project": p, "text": f["text"], "id": f.get("where", ""),
-                            "url": f.get("url", ""), "key": f"ci:{p}@{f.get('where', '')}"})
+                            # One word: the page sends a row's keys joined by
+                            # spaces, and "run N" was two (B331).
+                            "url": f.get("url", ""), "key": f"ci:{p}@{''.join(str(f.get('where', '')).split())}"})
     return out
