@@ -546,8 +546,22 @@ if [ "\${1:-}" = login ] && [ "\${2:-}" = status ]; then
   if [ -n "\${FAKE_CODEX_OUT:-}" ]; then echo "Not logged in"; exit 1; fi
   echo "Logged in using ChatGPT"; exit 0
 fi
-# Its help, which the launcher reads for the hook-trust flag, as 0.163.0's.
-if [ "\${1:-}" = --help ]; then echo "  --dangerously-bypass-hook-trust  run hooks without review"; exit 0; fi
+# Its help, which the launcher reads for the hook-trust flag, as 0.163.0's;
+# with codex-164 beside it, as 0.164.0's: --no-daemon too, and an app server
+# whose hooks/list names BuilderBot's hook in the account's hooks.json (B284).
+if [ "\${1:-}" = --help ]; then
+  echo "  --dangerously-bypass-hook-trust  run hooks without review"
+  [ -f "${bin}/codex-164" ] && echo "  --no-daemon  run without the shared background server"
+  exit 0
+fi
+if [ "\${1:-}" = app-server ]; then
+  [ -f "${bin}/codex-164" ] || exit 2
+  h="\${CODEX_HOME:-$HOME/.codex}/hooks.json"
+  while read -r l; do case "$l" in *'"id": 2'*|*'"id":2'*)
+    printf '{"id":2,"result":{"data":[{"hooks":[{"key":"%s:pre_tool_use:0:0","sourcePath":"%s","command":"/x/bb-agent-hook codex pre","currentHash":"sha256:0abc","trustStatus":"untrusted"},{"key":"%s:session_start:0:0","sourcePath":"%s","command":"echo theirs","currentHash":"sha256:0def","trustStatus":"untrusted"}]}]}}\n' "$h" "$h" "$h" "$h" ;;
+  esac; done
+  exit 0
+fi
 printf '%s\\0' "$@" > "${cxArgv}"
 sleep 60
 `, { mode: 0o755 });
@@ -591,6 +605,22 @@ sleep 60
            (cxNoted.split('\n').find(l => /not trusted/.test(l)) || 'said nothing').slice(0, 70)})`);
       ok(!/was not trusted/.test(shell(`u:${ownerUid}:codex:${proj}:b:${boot}`)),
          '...and says nothing when it was there already');
+      // On a Codex that can say which hooks it has (0.164.0), BuilderBot's own
+      // are trusted for the launch by the hash it reports, and the bypass
+      // flag and its warning are gone, as is the shared server's (B284).
+      writeFileSync(join(bin, 'codex-164'), '');
+      tmuxKill(`codex-${proj}`);
+      shell(`u:${ownerUid}:codex:${proj}:b:${boot}`);
+      await sleep(1500);
+      const cx164 = existsSync(cxArgv) ? readFileSync(cxArgv, 'utf8').split('\0') : [];
+      const hs = cx164.find(x => x.startsWith('hooks.state=')) || '';
+      ok(cx164.includes('--no-daemon') && /pre_tool_use:0:0"=\{trusted_hash="sha256:0abc"\}/.test(hs)
+         && !hs.includes('session_start') && !cx164.includes('--dangerously-bypass-hook-trust'),
+         `...and on a Codex that lists its hooks, BuilderBot's own are trusted by their hash, a person's left alone, with no bypass flag and no shared server (${hs.slice(0, 60)}...)`);
+      rmSync(join(bin, 'codex-164'));
+      tmuxKill(`codex-${proj}`);
+      shell(`u:${ownerUid}:codex:${proj}:b:${boot}`);
+      await sleep(400);
       // Its guards are its own hooks (R95 step 6): BuilderBot's, for every
       // event a Claude session has them on, in the account's hooks file.
       const hk = existsSync(join(HOMEDIR, '.codex', 'hooks.json')) ? JSON.parse(readFileSync(join(HOMEDIR, '.codex', 'hooks.json'), 'utf8')) : {};

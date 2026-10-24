@@ -762,10 +762,18 @@ PY
             printf '[ -z "${am:-}" ] || extra+=(--model "$am")\n'
             printf '[ -z "${ae:-}" ] || extra+=(--reasoning-effort "$ae")\n'
         fi
-        # Codex trusts a hook by its hash, after a person reviews it; BuilderBot's
-        # own are its guards and run unreviewed, where this Codex has the flag.
+        # Codex trusts a hook by its hash, after a person reviews it.
+        # BuilderBot's own are its guards: trusted for this launch by the
+        # hashes this Codex reports for them (bb-codex-trust), and only where
+        # it cannot say, run under the bypass flag, which it then warns of
+        # (B284). Embedded, said so (--no-daemon): a session's Codex is its
+        # own, never a server another account's shares, and the -c arguments
+        # need it, which Codex otherwise warns of too.
         if [ "$ag" = codex ]; then
-            printf 'if codex --help 2>/dev/null | grep -q -- --dangerously-bypass-hook-trust; then extra+=(--dangerously-bypass-hook-trust); fi\n'
+            printf 'ch="$(codex --help 2>/dev/null)"\n'
+            printf 'case "$ch" in *--no-daemon*) extra+=(--no-daemon) ;; esac\n'
+            printf 'if ht="$(python3 %q "${CODEX_HOME:-$HOME/.codex}" "$PWD" 2>/dev/null)" && [ -n "$ht" ]; then extra+=(-c "$ht")\n' "$(lasting_dir)/bb-codex-trust"
+            printf 'else case "$ch" in *--dangerously-bypass-hook-trust*) extra+=(--dangerously-bypass-hook-trust) ;; esac; fi\n'
         fi
         # Codex CLI's briefing, read from its file at exec as a TOML string
         # (jq writes the JSON string, which TOML reads as its own), handed
@@ -869,6 +877,20 @@ claude_first_run() {
     return 0
 }
 
+# lasting_dir: this script's folder by the name that outlives this bundle (a
+# node's .bb/current), for a path written down where a later bundle runs it.
+lasting_dir() {
+    local here bundle
+    here="$(dirname "$(readlink -f "$0")")"
+    case "$here" in
+        */.bb/*/scripts/dashboard)
+            bundle="${here%/scripts/dashboard}"
+            [ "$(readlink -f "${bundle%/*}/current" 2>/dev/null)" = "$bundle" ] \
+                && here="${bundle%/*}/current/scripts/dashboard" ;;
+    esac
+    printf '%s' "$here"
+}
+
 # agent_hooks AGENT: BuilderBot's guards as the agent's own hooks (R95 step
 # 6), in the account's home for it, where its every session reads them:
 # Codex CLI's hooks.json, Copilot CLI's hooks/builderbot.json. Each hook is
@@ -878,14 +900,8 @@ claude_first_run() {
 # them. Merged into a hooks file somebody else wrote, never replacing it.
 # The hooks by the name that outlives this bundle, as claude_scope's are.
 agent_hooks() {
-    local ag="$1" hooks bundle f cmd
-    hooks="$(dirname "$(readlink -f "$0")")"
-    case "$hooks" in
-        */.bb/*/scripts/dashboard)
-            bundle="${hooks%/scripts/dashboard}"
-            [ "$(readlink -f "${bundle%/*}/current" 2>/dev/null)" = "$bundle" ] \
-                && hooks="${bundle%/*}/current/scripts/dashboard" ;;
-    esac
+    local ag="$1" hooks f cmd
+    hooks="$(lasting_dir)"
     cmd="$hooks/bb-agent-hook $ag"
     # Which of the agent's events call it, and for how long: bb-agent-hook's
     # one list, which Claude's settings are written from as well.
