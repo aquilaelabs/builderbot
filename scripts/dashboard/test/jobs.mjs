@@ -260,6 +260,12 @@ await ready(page);
     .map(type => jobTitle({ type, spec: { timeout: 900 } })));
   ok(titles.every(t => !/exec/.test(t)) && titles[0] === 'measure the disks',
      `a storage job's row is titled what it did, not "exec" (${titles.join(' | ')})`);
+  // ...and every agent's sign-in, sign-out and install in that agent's name
+  // (B291: ChatGPT's and Copilot's read as a bare "exec").
+  const agj = await page.evaluate(() => [['codex-login', {}], ['copilot-logout', {}], ['codex-update', {}],
+    ['copilot-update', { action: 'remove' }], ['claude-login', {}]].map(([type, spec]) => jobTitle({ type, spec })));
+  ok(agj.join(' | ') === 'sign ChatGPT in | sign Copilot out | update Codex CLI | remove Copilot CLI | sign Claude in',
+     `each agent's jobs are named for it (${agj.join(' | ')})`);
   // B112: a tell names the session by its project, not by its tmux name.
   const tell = await page.evaluate(() => [
     jobTitle({ type: 'tell', spec: { session: 'u_525cbd90~claude-hello', text: 'Polish the header' } }),

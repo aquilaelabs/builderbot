@@ -91,9 +91,12 @@ function jobTitle(j){
   // The kinds with no command of their own, each in the words of what it
   // did: a storage walk read as a bare "exec" (B70).
   if (j.type === "storage") return "measure the disks";
-  if (j.type === "claude-login") return "sign Claude in";
-  if (j.type === "claude-logout") return "sign Claude out";
-  if (j.type === "claude-update") return "update Claude Code";
+  // Each coding agent's sign-in, sign-out and install by its own name, every
+  // agent's job named <id>-login, -logout and -update (B291).
+  const ag = (j.type || "").match(/^([a-z]+)-(login|logout|update)$/);
+  const who = ag && AGENTS.find(a => a.id === ag[1]);
+  if (who) return ag[2] === "login" ? `sign ${esc(who.name)} in` : ag[2] === "logout" ? `sign ${esc(who.name)} out`
+    : `${s.action === "remove" ? "remove" : "update"} ${esc(who.product)}`;
   if (j.type === "sign") return `sign ${esc(s.file || "a build")}`;
   if (j.type === "tell"){
     const text = String(s.text || "").replace(/\s+/g, " ");
