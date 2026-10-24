@@ -32,7 +32,7 @@ const isBroken = p => p.issues.some(i => i.level === "error");
 // email can set one for this project alone, and then this project is ready
 // while the others are not.
 const gitReadyFor = p => (p.git_ready !== undefined ? p.git_ready : state?.git_ready) !== false;
-const heldWhy = p => p.held || (!gitReadyFor(p) && !liveSessions().has(myClaude(p.name))
+const heldWhy = p => p.held || (!gitReadyFor(p) && !myLiveSession(p.name)
   ? "set your commit name and email on your Profile (the gear) or in this project's settings first"
   : "");
 

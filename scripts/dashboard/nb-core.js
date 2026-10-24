@@ -901,8 +901,7 @@ function makeNotebook(project){
       // Redrawn from what is already in hand rather than re-fetched: the list
       // on screen may be carrying staged changes that are not on the server,
       // and a refetch here would quietly throw them away.
-      const want = myClaude(project);
-      const now = (state?.sessions || []).some(x => x.name === want) ? want : null;
+      const now = myLiveSession(project);
       if (now !== nb.roadmapSession){ nb.roadmapSession = now; redrawRoadmap(); }
       // The Docker view follows a job on the devapp token above, never here.
       // What this notebook re-reads and when is declared once, up where the
@@ -950,7 +949,7 @@ function makeNotebook(project){
 // first, then whose else is here, then none. The dot is the one every
 // session surface wears.
 function projectState(p){
-  const name = p.name, mine = liveSessions().has(myClaude(name));
+  const name = p.name, sess = myLiveSession(name), mine = !!sess;
   const busy = new Set((state?.claude_busy || {})[name] || []);
   const one = (st, word, cls = "") => `<span class="pstate${cls}">${st ? `<span class="st ${st}"></span>` : ""}${esc(word)}</span>`;
   // Yours first, then everybody else's with a session here, each with its
@@ -958,7 +957,7 @@ function projectState(p){
   // working in the project hides the one thing worth knowing first).
   // On Claude Code's permission prompt it is asking, in amber, as the dock
   // and Sessions say it (B98), not waiting.
-  const asking = mine && claudeOf(myClaude(name))?.state === "asking";
+  const asking = mine && claudeOf(sess)?.state === "asking";
   const me = mine ? (asking ? one("asking", "asking you") : busy.has(state?.me) ? one("working", "working")
     : one("waiting", "waiting for you")) : "";
   // Another account's session on the prompt reads asking too (B104), but
@@ -994,12 +993,12 @@ function projectNote(p){
 // The node to install Claude Code on in place of starting a session, or "":
 // the project's node has none and this account may install toolchains there
 // (the operator, 21 Oct: the button opens that node's Toolchains).
-const claudeInstall = p => !p.locked_me && !liveSessions().has(myClaude(p.name)) && p.claude_missing
+const claudeInstall = p => !p.locked_me && !myLiveSession(p.name) && p.claude_missing
   && mayToolchains(p.claude_missing) ? p.claude_missing : "";
 // Why Start agent is dead on this project, or "" when it is live: the one
 // answer the button, its description and the line under it all read.
 function claudeDeadWhy(p){
-  const mine = liveSessions().has(myClaude(p.name));
+  const mine = !!myLiveSession(p.name);
   if (p.locked_me) return lockedWhy(p);
   if (notMine(p)) return NOT_MINE_WHY;
   // A Claude session is work on the project (B86): Projects Write.
@@ -1026,7 +1025,7 @@ function projectActions(p, extra = ""){
   // The agent the project's Start opens (R95 step 4): Claude's unless its
   // settings name another. Its own session running here makes it Open.
   const ag = agentById(p.prefs?.agent_default) || AGENTS[0];
-  const name = p.name, mine = liveSessions().has(myAgentSession(ag.id, name));
+  const name = p.name, sess = myLiveSession(name), mine = !!sess;
   const dead = claudeDeadWhy(p);
   // What this account's roles do not give is left out, not drawn dead.
   const forbid = !p.locked_me && !!writeWhy(p);
@@ -1066,7 +1065,7 @@ function projectActions(p, extra = ""){
     : p.session_node && !agentOn(ag.id, p.session_node) && !live.has(myAgentSession(ag.id, name))
       ? `${ag.name}: you are not signed in on ${p.session_at}, this project's node. Press for its sign-in`
     : p.session_at ? `${ag.name}: a session on ${p.session_at}, this project's node`
-    : mine ? `${ag.name}: your session is running; open its tab or end it`
+    : mine ? `${agentOfSession(tmuxBase(sess))?.agent.name || ag.name}: your session is running; open its tab, restart or end it`
     : p.last_claude ? `${ag.name}: no session running; resume or start one`
     : `${ag.name}: start a session here`;
   const say = said.startsWith(`${ag.name}:`) ? said : `${ag.name}: ${said}`;

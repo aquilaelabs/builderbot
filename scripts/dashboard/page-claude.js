@@ -93,6 +93,15 @@ const claudeSigned = n => !n.id || !!claudeOn(n.id);
 const claudeLiveOn = (name, n) => (state?.sessions || []).some(s => s.name === myClaude(name)
   && (!n.id || s.node_id === n.id));
 
+// An agent's session tab on a project, dropped as its session ends: matched
+// with what it was opened on (a resumed conversation, a model, an effort)
+// taken off, which only the node it runs on is left beside.
+function dropAgentTab(id, name, node){
+  const arg = agentArg(id, name) + (node ? `:n:${node}` : "");
+  const t = tabs.find(x => x.kind === "term" && String(x.arg).replace(/:[rme]:[^:]*/g, "") === arg);
+  if (t) dropTab(t.id);
+}
+
 // End this account's session of a project on one node, asked first, and
 // drop its tab: the chooser's End session.
 async function claudeEnd(name, n, several){
@@ -103,9 +112,7 @@ async function claudeEnd(name, n, several){
   try{
     const j = await endSession(myClaude(name), n.id);
     if (j.error) return notify(j.error, true);
-    const arg = agentArg("claude", name) + (several && n.id ? `:n:${n.id}` : "");
-    const t = tabs.find(x => x.kind === "term" && String(x.arg).replace(/:r:[^:]*/, "") === arg);
-    if (t) dropTab(t.id);
+    dropAgentTab("claude", name, several && n.id ? n.id : "");
     notify(`ended your Claude session on ${projLabel(name)}${where}`);
   }catch(e){ notify("could not end it: " + e, true); }
   refresh();
@@ -118,11 +125,14 @@ async function claudeEnd(name, n, several){
 // was in already chosen; its Restart asks, and only then is the session
 // ended and started again (restartNow). Asked first and ended at once, it
 // left a person picking a model with no session running.
-function claudeRestart(name, n, several){
+function claudeRestart(name, n, several, agent = "claude"){
   const p = (state?.projects || []).find(x => x.name === name);
+  const claude = agent === "claude", last = claude ? p?.last_claude : p?.last_agents?.[agent];
   resumeFor = name;
-  resumePick = {project: name, sessionId: p?.last_claude?.id || null, node: several ? n.id : "",
-                model: p?.yours?.model || "", effort: p?.yours?.effort || "",
+  resumePick = {project: name, sessionId: last?.id || null, node: several ? n.id : "",
+                model: p?.yours?.[claude ? "model" : `${agent}_model`] || "",
+                effort: p?.yours?.[claude ? "effort" : `${agent}_effort`] || "",
+                ...(claude ? {} : {agent}),
                 restart: {id: n.id || "", name: n.name || "", several: !!several}};
   if (state) drawProjects(state.projects);
 }
@@ -133,18 +143,17 @@ function claudeRestart(name, n, several){
 // going down, the new tab attached to the dying session and showed it end,
 // and a second press was what got a session (the operator, 12 Oct).
 async function restartNow(name, r){
-  const n = r.restart;
+  const n = r.restart, id = r.agent || "claude";
   const where = n.name ? ` on ${n.name}` : "";
-  const j = await endSession(myClaude(name), n.id).catch(e => ({error: String(e)}));
+  const j = await endSession(myAgentSession(id, name), n.id).catch(e => ({error: String(e)}));
   if (j.error) return j.error;
-  const arg = agentArg("claude", name) + (n.several && n.id ? `:n:${n.id}` : "");
-  const t = tabs.find(x => x.kind === "term" && String(x.arg).replace(/:r:[^:]*/, "") === arg);
-  if (t) dropTab(t.id);
-  for (let i = 0; i < 40 && claudeLiveOn(name, {id: n.id}); i++){
+  dropAgentTab(id, name, n.several && n.id ? n.id : "");
+  const live = () => id === "claude" ? claudeLiveOn(name, {id: n.id}) : agentLiveOn(id, name, {id: n.id});
+  for (let i = 0; i < 40 && live(); i++){
     await new Promise(res => setTimeout(res, 500));
     await refresh();
   }
-  if (claudeLiveOn(name, {id: n.id}))
+  if (live())
     return `your session${where} is still going down; press Restart again in a moment`;
   return "";
 }
@@ -275,15 +284,13 @@ function launchAgent(id, name, node, model = "", effort = "", sessionId = ""){
 async function agentEnd(id, name, n, several){
   const a = agentById(id);
   const where = n.name ? ` on ${n.name}` : "";
-  if (!await askYes(`End your ${a.name} session on ${projLabel(name)}${where}?\n\nThe conversation stops now.`)) return;
+  if (!await askYes(`End your ${a.name} session on ${projLabel(name)}${where}?\n\nThe transcript is kept and can be resumed later, but the conversation stops now.`)) return;
   resumeFor = null;
   if (state) drawProjects(state.projects);
   try{
     const j = await endSession(myAgentSession(id, name), n.id);
     if (j.error) return notify(j.error, true);
-    const arg = agentArg(id, name) + (several && n.id ? `:n:${n.id}` : "");
-    const t = tabs.find(x => x.kind === "term" && String(x.arg) === arg);
-    if (t) dropTab(t.id);
+    dropAgentTab(id, name, several && n.id ? n.id : "");
     notify(`ended your ${a.name} session on ${projLabel(name)}${where}`);
   }catch(e){ notify("could not end it: " + e, true); }
   refresh();
@@ -470,8 +477,10 @@ function agentPicker(p, m, card, anchor, n, several){
   const r = resumePick, a = agentById(r.agent), t = AGENT_MODELS[r.agent] || {models: [], efforts: []};
   const opts = (xs, cur) => [`<option value="">${esc(a.name)}'s default</option>`]
     .concat(xs.map(v => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(v)}</option>`)).join("");
-  m.innerHTML = `<div class="rmhead"><b>${r.sessionId ? `Resume the ${esc(a.name)} conversation` : `A new ${esc(a.name)} conversation`}</b><span class="rmfacts">${
-      r.sessionId && r.when ? `from ${esc(ago(r.when))} · ` : ""}${esc(a.product)}${
+  m.innerHTML = `<div class="rmhead"><b>${r.restart ? `Restart your ${esc(a.name)} session`
+      : r.sessionId ? `Resume the ${esc(a.name)} conversation` : `A new ${esc(a.name)} conversation`}</b><span class="rmfacts">${
+      r.restart ? (r.sessionId ? "ending the one running, resuming its conversation · " : "ending the one running · ")
+        : r.sessionId && r.when ? `from ${esc(ago(r.when))} · ` : ""}${esc(a.product)}${
       several || n.name ? ` on ${esc(n.name || "")}` : ""}</span></div>
     <div class="rmfields">
       <div class="setrow col ctlrow"><label class="lbl" for="rmModel">Model</label><select id="rmModel" aria-label="model this session starts on">${opts(t.models, r.model)}</select></div>
@@ -479,21 +488,28 @@ function agentPicker(p, m, card, anchor, n, several){
     </div>
     <div class="actbar rmacts"><span class="state" id="rmSay"></span><span class="sp"></span>
       <button type="button" data-back>Back</button>
-      <button type="button" class="primary" data-start>Start</button></div>`;
+      <button type="button" class="${r.restart ? "danger" : "primary"}" data-start>${r.restart ? "Restart" : "Start"}</button></div>`;
   m.dataset.pick = p.name;
   card.appendChild(m);
   m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; };
   m.querySelector("#rmEffort").onchange = e => { r.effort = e.target.value; };
   m.querySelector("[data-back]").onclick = () => { resumePick = null; drawProjects(state.projects); };
   m.querySelector("[data-start]").onclick = async e => {
+    const label = r.restart ? "Restart" : "Start";
+    if (r.restart && !await askYes(`Restart your ${a.name} session on ${projLabel(p.name)}${r.restart.name ? ` on ${r.restart.name}` : ""}?\n\n`
+        + "It ends now and resumes the same conversation, starting fresh so it sees what changed since it started.")) return;
     // Kept as this person's for the project, per agent (R95 step 9), so the
     // step opens on it next time; the session starts on it either way.
     const mk = `${r.agent}_model`, ek = `${r.agent}_effort`;
+    busy(e.target, r.restart ? "Restarting" : "Starting");
     if (r.model !== (p.yours?.[mk] || "") || r.effort !== (p.yours?.[ek] || "")){
-      busy(e.target, "Starting");
       const j = await (await postJSON("/api/prefs", {project: p.name, [mk]: r.model, [ek]: r.effort})).json().catch(() => ({error: "no answer"}));
-      if (j.error){ unbusy(e.target, "Start"); m.querySelector("#rmSay").textContent = j.error; return; }
+      if (j.error){ unbusy(e.target, label); m.querySelector("#rmSay").textContent = j.error; return; }
       if (p.yours) Object.assign(p.yours, {[mk]: r.model, [ek]: r.effort});
+    }
+    if (r.restart){
+      const why = await restartNow(p.name, r);
+      if (why){ unbusy(e.target, label); m.querySelector("#rmSay").textContent = why; return; }
     }
     launchAgent(r.agent, p.name, r.node, r.model, r.effort, r.sessionId || "");
   };
@@ -543,6 +559,7 @@ function placeResumeMenu(){
     const node = at(n);
     if (agentLiveOn(a.id, p.name, n))
       return line(a, "running", `<button data-aopen="${esc(a.id)}" data-node="${esc(node)}" class="primary" title="open your session's tab">Open</button>`
+        + `<button data-arestart="${esc(a.id)}" data-nid="${esc(n.id)}" title="end it and resume the same conversation">Restart</button>`
         + `<button data-aend="${esc(a.id)}" data-nid="${esc(n.id)}" class="danger" title="end your session here">End</button>`, " live");
     if (n.id && !agentOn(a.id, n.id))
       return line(a, "not signed in here", `<button data-asignin="${esc(a.id)}" data-nid="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its ${esc(a.name)} sign-in">Sign in</button>`);
@@ -627,13 +644,14 @@ function placeResumeMenu(){
                   model: p.yours?.[`${ag}_model`] || "", effort: p.yours?.[`${ag}_effort`] || ""};
     drawProjects(state.projects);
   });
+  m.querySelectorAll("[data-arestart]").forEach(b => b.onclick = () =>
+    claudeRestart(p.name, ns.find(n => n.id === b.dataset.nid) || {id: "", name: ""}, several, b.dataset.arestart));
   m.querySelectorAll("[data-aend]").forEach(b => b.onclick = () =>
     agentEnd(b.dataset.aend, p.name, ns.find(n => n.id === b.dataset.nid) || {id: "", name: ""}, several));
   m.querySelectorAll("[data-asignin]").forEach(b => b.onclick = () => {
     resumeFor = null;
     drawProjects(state.projects);
-    sectOpen[`agents:${b.dataset.asignin}`] = true;
-    openAgentsOn(b.dataset.nid);
+    openNodeClaude(b.dataset.nid, b.dataset.asignin);
   });
   // Over the page under its button, above it near the screen's foot, a
   // sheet on a phone (floatAt), so it is never placed where it cannot be

@@ -1398,7 +1398,7 @@ const rnDirty = () => RN_SECTS.filter(s => rnSectChanges(s).said.length);
 // thumb (sectBar's rule).
 function rnBars(){
   if (rnFor === null) return;
-  const enc = rnEnc(), running = liveSessions().has(myClaude(rnFor));
+  const enc = rnEnc(), running = !!myLiveSession(rnFor);
   for (const sect of RN_SECTS){
     const body = document.querySelector(`details.rngroup[data-sect="rn:${sect}"] > .body`);
     if (!body) continue;
@@ -1536,7 +1536,7 @@ async function rnSubmit(sect, end = false){
   const v = rnDec(merged);
   const {start} = rnSectChanges(sect, enc);
   const prefsChanged = mine.some(k => k !== "version" && String(enc[k] ?? "") !== String(rnPrefWas[k] ?? ""));
-  const running = liveSessions().has(myClaude(name));
+  const running = !!myLiveSession(name);
   // The name and the remote are their own sections' alone.
   const to = sect === "project" ? $("rnName").value : projLabel(name);
   const token = sect === "repo" ? $("rnToken").value.trim() : "";

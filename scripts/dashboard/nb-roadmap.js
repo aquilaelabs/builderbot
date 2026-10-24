@@ -274,8 +274,7 @@ function nbRoadmapView({$, nb}){
     // an answer drawn before the list caught up stood until something else
     // redrew, and nothing said which of the two to believe.
     const sess = j.session || (typeof liveSessions === "function" && nb.memProj
-                               && liveSessions().has(myClaude(nb.memProj))
-                               ? myClaude(nb.memProj) : null);
+                               ? myLiveSession(nb.memProj) : null);
     j = Object.assign({}, j, {session: sess});
     const rows = j.items || [], live = !!sess;
     // Whatever was armed may have been crossed off, dropped, or overtaken by a

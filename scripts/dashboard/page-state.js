@@ -151,6 +151,14 @@ const mayToolchains = nid => state?.can?.["toolchains-write"] !== false
 // Which agent's session it is, the agent table says (R95): Claude's here.
 const myAgentSession = (id, proj) => myTmux(tmuxName((agentById(id) || AGENTS[0]).id + "-" + proj));
 const myClaude = proj => myAgentSession("claude", proj);
+// THIS account's running session on a project, whichever agent's (R95: the
+// header's dot, Manage agent, a Send to session and a restart notice ask it
+// of every agent alike), the project's default agent's first; or null.
+function myLiveSession(proj){
+  const live = liveSessions(), first = (state?.projects || []).find(x => x.name === proj)?.prefs?.agent_default;
+  return AGENTS.map(a => a.id).sort((x, y) => (y === first) - (x === first))
+    .map(id => myAgentSession(id, proj)).find(n => live.has(n)) || null;
+}
 // A name with somebody's prefix taken off, for the questions that are about
 // the session rather than about whose it is.
 const tmuxBase = s => String(s).replace(/^u_[0-9a-f]{8}~/, "");
