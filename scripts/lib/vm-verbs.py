@@ -289,7 +289,16 @@ def cmd_ip(args):
 
 def cmd_ssh(args):
     v = cmd_ip(args[:1]) if args else die(USAGE)
-    os.execvp("ssh", ["ssh", "-o", "StrictHostKeyChecking=accept-new", f"{v.get('user') or 'builder'}@{v['ip']}", *args[1:]])
+    # The key own_key made and the hosts it met, named from $HOME as it made
+    # them: ssh reads the Unix account's home from the password file, which
+    # for an account's session is the shared session account's, where there
+    # is no key and .ssh cannot be written (B307).
+    home = os.path.expanduser("~/.ssh")
+    key = os.path.join(home, "id_ed25519")
+    pick = (["-i", key, "-o", "IdentitiesOnly=yes"] if os.path.isfile(key) else []) \
+        + ["-o", f"UserKnownHostsFile={os.path.join(home, 'known_hosts')}"]
+    os.execvp("ssh", ["ssh", *pick, "-o", "StrictHostKeyChecking=accept-new",
+                      f"{v.get('user') or 'builder'}@{v['ip']}", *args[1:]])
 
 
 def main():
