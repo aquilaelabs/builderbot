@@ -12,7 +12,11 @@ one's notebook or containers, and a rename is the shown name alone.
 
 projects.json: {"next": N, "projects": {dir: {"id", "name", "state", "at",
 "moved"}}}, state being live, trashed or purged, and moved when it last
-changed (the trash's "deleted 2 min ago"). Only BuilderBot makes a project: a
+changed (the trash's "deleted 2 min ago"). A project of several repositories
+(R136, repos.py) is a record of its own in state `repos`: a key shaped like a
+directory and counted as one, so no folder ever takes it, though none is on
+disk; its id and name are the project's, and each repository in it keeps its
+own record, folder and name. Only BuilderBot makes a project: a
 folder made by hand on the share is not one. On the first run every folder
 already there is recorded, which is the whole migration.
 """
@@ -26,7 +30,10 @@ FILE = None
 WORKSPACE = None
 write_json = None
 TRASH = ".trash"
-STATES = ("live", "trashed", "purged")
+STATES = ("live", "trashed", "purged", "repos")
+# The states a name is taken in: a live project's, and a project of
+# repositories'.
+NAMED = ("live", "repos")
 # GitHub's for a repository's name (the operator, 9 Oct): a project is one,
 # or becomes one, and a name GitHub would refuse or rewrite is not one to show.
 NAME_MAX = 100
@@ -182,12 +189,60 @@ def clean_name(raw):
 
 
 def live_named(name, but=None):
-    """The live project's directory shown under `name` (any case), or ""."""
+    """The live project's directory, or the project of repositories' key,
+    shown under `name` (any case), or "". A project of repositories first:
+    one may keep the name of the repository it was made from (R136), and
+    the name then means the project."""
     low = clean_name(name).lower()
+    found = ""
     for k, r in _load()["projects"].items():
-        if k != but and r.get("state") == "live" and str(r.get("name") or k).lower() == low:
-            return k
-    return ""
+        if k != but and r.get("state") in NAMED and str(r.get("name") or k).lower() == low:
+            if r.get("state") == "repos":
+                return k
+            found = found or k
+    return found
+
+
+def is_repos(key):
+    """Whether this key is a project of several repositories (R136)."""
+    r = _load()["projects"].get(str(key or ""))
+    return bool(r) and r.get("state") == "repos"
+
+
+def repos_keys():
+    """Every project of repositories' key."""
+    return sorted(k for k, r in _load()["projects"].items() if r.get("state") == "repos")
+
+
+def claim_repos(name, but=()):
+    """A new project of repositories (R136): its key, a directory nothing
+    has had, and its record under `name`, numbered only where a project
+    other than the repositories in `but` has it (one made from a repository
+    may keep that repository's name). The record."""
+    with _lock:
+        d = _load()
+        shown = clean_name(name)
+        if not shown:
+            return {"error": "a name needs at least one letter or digit in it"}
+        other = live_named(shown)
+        if other and other not in but:
+            shown = unique_name(shown)
+        key = new_dir(shown)
+        r = _add(d, key, shown, "repos")
+        _save(d)
+        return dict(r, key=key)
+
+
+def drop_repos(key):
+    """A project of repositories with none left in it: purged, so its key and
+    id are never handed out again, as a deleted project's are."""
+    with _lock:
+        d = _load()
+        r = d["projects"].get(key)
+        if r is not None and r.get("state") == "repos":
+            r["state"] = "purged"
+            r["moved"] = int(time.time())
+            _save(d)
 
 
 def unique_name(name, but=None):
@@ -268,7 +323,7 @@ def set_name(dirname, name):
     with _lock:
         d = _load()
         r = d["projects"].get(dirname)
-        if r is None or r.get("state") != "live":
+        if r is None or r.get("state") not in NAMED:
             return {"error": f"{dirname} is not a project"}
         other = live_named(name, but=dirname)
         if other:
@@ -296,21 +351,21 @@ def mark(dirname, state):
 
 
 def resolve(word):
-    """A live project's directory from what somebody typed: the directory
-    itself, its id (P3), else a shown name that is one project's. "" when
-    none of them."""
+    """A live project's directory, or a project of repositories' key (R136),
+    from what somebody typed: the directory or key itself, its id (P3), else
+    a shown name that is one project's. "" when none of them."""
     word = str(word or "").strip()
     if not word:
         return ""
     ps = _load()["projects"]
     r = ps.get(word)
-    if r is not None and r.get("state") == "live":
+    if r is not None and r.get("state") in NAMED:
         return word
     # Its id, as the page and a session's name write it (P3).
     if re.fullmatch(r"[Pp]\d+", word):
         n = int(word[1:])
         for k, r in ps.items():
-            if r.get("state") == "live" and r.get("id") == n:
+            if r.get("state") in NAMED and r.get("id") == n:
                 return k
         return ""
     return live_named(word)

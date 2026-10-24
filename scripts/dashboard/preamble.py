@@ -182,7 +182,8 @@ def reads_line(project):
     reads = []
     if prefs_mod is not None:
         try:
-            reads = list((prefs_mod.get(project) or {}).get("reads") or [])
+            reads = list(prefs_mod.reads_trees(project) if hasattr(prefs_mod, "reads_trees")
+                         else (prefs_mod.get(project) or {}).get("reads") or [])
         except Exception:                                            # noqa: BLE001
             reads = []
     if not reads:

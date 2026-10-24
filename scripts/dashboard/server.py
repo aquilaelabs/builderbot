@@ -3457,6 +3457,10 @@ import busy                                                      # noqa: E402
 membership.configure(state=STATE, write_json=write_json)
 roles.configure(state=STATE, write_json=write_json)
 registry.configure(state=STATE, workspace=WORKSPACE, write_json=write_json)
+# A project of several repositories (R136): which repositories are in which,
+# and prefs laying a project's settings over its repositories'.
+import repos                                                     # noqa: E402
+repos.configure(state=STATE, write_json=write_json, registry=registry)
 gitview.configure(workspace=WORKSPACE,
                   worktrees=WORKTREES,
                   tell=notify.tell, tmux_name=tmux_name, state=STATE,
@@ -3656,6 +3660,7 @@ def _project_node_gpu(project):
 preamble.node_gpu = _project_node_gpu
 
 prefs.configure(write_json=write_json, state=STATE)
+prefs.configure_repos(project_of=repos.project_of, members=repos.members, is_repos=registry.is_repos)
 # Said again, now that prefs exists: users.git_identity resolves a per-project
 # override of the commit author, and that override lives in prefs, which is
 # configured after users because the login path must not depend on it.
@@ -4119,7 +4124,7 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    write_json=write_json,
                    after_create=mapping.start)
 # The session network reaches the containers of the projects a project reads.
-devapp.reads_of = lambda p: (prefs.get(p) or {}).get("reads") or []
+devapp.reads_of = prefs.reads_trees
 devapp.hosts_of = lambda p: (prefs.get(p) or {}).get("hosts") or []
 devapp.reaches_of = prefs.reaches_on
 # ...and what the create dialog's follow-ups and the sidebar's pins need.
@@ -4403,7 +4408,7 @@ def _sync_bound(project):
 wssync.configure(workspace=WORKSPACE, nodes_module=nodes, bound_nodes=_sync_bound,
                  changed=files._poke, audit_fn=db.audit)
 wssync.configure_projects(lambda: list(prefs.all_projects()))
-wssync.configure_reads(lambda p: prefs.get(p).get("reads") or [])
+wssync.configure_reads(prefs.reads_trees)
 # Each project's daily snapshots (R165): what a node gone wrong through its
 # synced copy is undone from, kept for the days its settings say.
 import snapshots                                                 # noqa: E402
@@ -5110,7 +5115,7 @@ class Handler(BaseHTTPRequestHandler):
             # from the settings on every request rather than baked into the
             # token, so a change in the dialog reaches a running session.
             if who:
-                who = users.with_reads(who, (prefs.get(who["session"]) or {}).get("reads") or [])
+                who = users.with_reads(who, prefs.reads_trees(who["session"]))
             # Past half its life, the answer to this request carries a fresh
             # one (users.renewal): set here, sent by _json, so a session in
             # use never runs out. Reset per request, because the handler instance
@@ -7834,8 +7839,7 @@ class Handler(BaseHTTPRequestHandler):
         # places on its node it is shown, which the view otherwise leaves out.
         return self._json({"uid": me["uid"], "name": me["name"], "project": project,
                            "owner": me.get("role") == "owner",
-                           "reads": [r for r in (prefs.get(project) or {}).get("reads") or []
-                                     if (WORKSPACE / r).is_dir()],
+                           "reads": [r for r in prefs.reads_trees(project) if (WORKSPACE / r).is_dir()],
                            "sees": (prefs.get(project) or {}).get("sees") or [],
                            # Whether it may compute on its node's NVIDIA card
                            # (R102): "on", or who said no, the node or the

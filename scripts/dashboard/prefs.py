@@ -136,6 +136,118 @@ def configure(*, write_json, state):
     globals()["FILE"] = Path(state) / "claude-prefs.json"
 
 
+# ---- a project of several repositories (R136) ------------------------------
+#
+# What one session in all of a project's repositories needs, and what the
+# project grants others, is the project's: kept on its own record (its key in
+# registry.py) and laid over each repository's as it is read, so every
+# caller of get() sees a repository's settings as its project has them. Each
+# repository's own values for these are kept as they were, untouched, so a
+# repository split out is back to them. The rest (its build and test, its
+# outputs, its captures and snapshots, its tests' place, its gate on what a
+# session enters into its notebook) stays the repository's.
+GROUP_FIELDS = ("node", "nodes", "hosts", "reads", "sees", "reaches", "tc_off", "packs_on",
+                "agents_off", "agent_default", "gitpol", "color", "devbuild", "makevms", "vm_caps",
+                "test_change", "gpu", "report", "sign", "keys", "release", "pc", "log_from", "diag")
+# repos.py's answers, handed over by the server: (project_of, members,
+# is_repos). Unset (bb loading this by path) a repository reads as its own.
+_repos = None
+
+
+def configure_repos(*, project_of, members, is_repos):
+    globals()["_repos"] = (project_of, members, is_repos)
+
+
+def _over(project, rec, raw):
+    """`rec`, a repository's settings, with its project's laid over them."""
+    key = _repos[0](project) if _repos else ""
+    if key:
+        g = _clean(raw.get(key))
+        rec.update({f: g[f] for f in GROUP_FIELDS})
+        rec["repos_of"] = key
+    return rec
+
+
+def reads_trees(project):
+    """The trees a session on `project` reads (prefs.reads): each project it
+    names, a project of repositories as every repository in it now (so one
+    added later is read with nothing changed), and the other repositories of
+    its own project; never itself."""
+    names = list(get(project).get("reads") or [])
+    if not _repos:
+        return names
+    project_of, members, is_repos = _repos
+    mine = members(project) if is_repos(project) else members(project_of(project))
+    out = []
+    for n in names + mine:
+        for t in (members(n) if is_repos(n) else [n]):
+            if t != project and t not in out:
+                out.append(t)
+    return out
+
+
+def adopt(key, first):
+    """A new project of repositories takes the settings its first repository
+    had for what the project now holds, so merging changes nothing a session
+    there runs with."""
+    with _lock:
+        d = _load()
+        was = d["projects"].get(first) if isinstance(d["projects"].get(first), dict) else {}
+        rec = {f: was[f] for f in GROUP_FIELDS if f in was}
+        if rec:
+            d["projects"][key] = rec
+            write_json(FILE, d)
+
+
+def regrant(key, members):
+    """Every project that reads one of these repositories reads their project
+    instead, and so every repository in it, the ones added later too (the
+    operator, 24 Oct: what one project grants another goes by the project).
+    The projects whose reads changed, for Merge to say who reads more now."""
+    changed = []
+    with _lock:
+        d = _load()
+        for name, rec in d["projects"].items():
+            if not isinstance(rec, dict) or name == key or name in members:
+                continue
+            got = _reads_of(rec)
+            if any(m in got for m in members):
+                new = []
+                for r in got:
+                    r = key if r in members else r
+                    if r not in new:
+                        new.append(r)
+                rec["reads"] = new
+                changed.append(name)
+        if changed:
+            write_json(FILE, d)
+    return changed
+
+
+def ungrant(key, out, dropped):
+    """Repositories split out of their project (repos.split's `out`): a
+    project that read the project reads each of them by name as well, so a
+    split takes away nothing anybody was granted; where the project is gone
+    (`dropped`, one repository was left), by name alone. How many projects'
+    reads changed."""
+    n = 0
+    with _lock:
+        d = _load()
+        for name, rec in d["projects"].items():
+            if not isinstance(rec, dict) or key not in _reads_of(rec):
+                continue
+            new = []
+            for r in _reads_of(rec):
+                for t in (([] if dropped else [key]) + list(out) if r == key else [r]):
+                    if t != name and t not in new:
+                        new.append(t)
+            rec["reads"] = new[:16]
+            n += 1
+        if n:
+            write_json(FILE, d)
+    return n
+
+
 # ---- what is the PERSON's rather than the project's ------------------------
 #
 # The operator's call (17 Sep): the model and the effort a session launches on
@@ -477,7 +589,8 @@ def _devbuild(v):
 
 
 def get(project):
-    return _clean(_load()["projects"].get(project))
+    raw = _load()["projects"]
+    return _over(project, _clean(raw.get(project)), raw)
 
 
 # How a project of each shape runs its tests, in the order a tree is asked.
@@ -497,7 +610,7 @@ def all_projects(workspace=None):
     `workspace` is accepted and unused: the status poll passes it.
     """
     d = _load()["projects"]
-    return {k: _clean(v) for k, v in d.items() if isinstance(k, str)}
+    return {k: _over(k, _clean(v), d) for k, v in d.items() if isinstance(k, str)}
 
 
 def _agent_default(rec):
@@ -697,7 +810,25 @@ def reaches_on(project, node):
             if not e["nodes"] or node in e["nodes"]]
 
 
-def set_prefs(project, node=None, nodes=None, build=None, test=None,
+def set_prefs(project, **kw):
+    """Change any of one project's settings; None leaves it, "" clears it.
+    For a repository in a project of several, what the project holds
+    (GROUP_FIELDS) is written to the project and the rest to the
+    repository (R136)."""
+    key = _repos[0](project) if _repos and project else ""
+    if not key:
+        return _set_prefs(project, **kw)
+    mine = {k: v for k, v in kw.items() if k not in GROUP_FIELDS}
+    theirs = {k: v for k, v in kw.items() if k in GROUP_FIELDS and v is not None}
+    if theirs:
+        got = _set_prefs(key, **theirs)
+        if got.get("error"):
+            return got
+    got = _set_prefs(project, **mine)
+    return got if got.get("error") else get(project) | {"ok": True, "project": project}
+
+
+def _set_prefs(project, node=None, nodes=None, build=None, test=None,
               outputs=None, gate=None, gitpol=None,
               devbuild=None, tests_in=None, report=None, color=None, workspace=None, sign=None, keys=None,
               test_change=None, capture_days=None, reads=None, sees=None, gpu=None, dev_keep=None,
