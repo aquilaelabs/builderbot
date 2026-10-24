@@ -223,7 +223,8 @@ if [ "${BB_TTY_CTR:-}" = 1 ]; then
         tmux new-session -A -d -s "$s" -c / virsh -c qemu:///system console --force "$dom"
         tmux set-option -t "$s" mouse off
         tmux set-option -t "$s" status-style bg=color236,fg=color252
-        tmux set-option -t "$s" status-left '#[bold] #S '
+        tmux set-option -t "$s" status-left-length 40
+        tmux set-option -t "$s" status-left '#[bold] #{s/^u_[0-9a-f]*~//:session_name} '
         tmux set-option -t "$s" status-right ' builderbot '
         exec tmux attach-session -t "$s"
     fi
@@ -253,7 +254,8 @@ if [ "${BB_TTY_CTR:-}" = 1 ]; then
     # The status line every terminal in the dock wears (15-dashboard.sh's),
     # on the session: the docker account has no BuilderBot tmux.conf.
     tmux set-option -t "$s" status-style bg=color236,fg=color252
-    tmux set-option -t "$s" status-left '#[bold] #S '
+    tmux set-option -t "$s" status-left-length 40
+    tmux set-option -t "$s" status-left '#[bold] #{s/^u_[0-9a-f]*~//:session_name} '
     tmux set-option -t "$s" status-right ' builderbot '
     exec tmux attach-session -t "$s"
 fi
