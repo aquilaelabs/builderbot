@@ -162,12 +162,9 @@ if on_node && [ -n "${grant:-}" ]; then
     # that tree reads it.
     BB_WORKS="$(printf '%s' "$grant" | jq -r '(.works // []) | join(" ")')"
     export BB_WORKS
-    while read -r w t; do
-        [ -n "$w" ] && [ -n "$t" ] || continue
-        wd="$(cache_project_dir "$w")"
-        ( umask 077; printf '%s\n' "$t" > "$wd/token.new" ) 2>/dev/null \
-            && mv -f "$wd/token.new" "$wd/token" 2>/dev/null || true
-    done < <(printf '%s' "$grant" | jq -r '(.tokens // {}) | to_entries[] | "\(.key) \(.value)"')
+    # Held here and written once the session's folders are made (B329):
+    # this runs before the functions that place them are defined.
+    BB_WORK_TOKENS="$(printf '%s' "$grant" | jq -r '(.tokens // {}) | to_entries[] | "\(.key) \(.value)"')"
     # ...and the places on this node it is shown besides (prefs.sees): a
     # share the view would otherwise leave out with every other.
     BB_SEES="$(printf '%s' "$grant" | jq -r '(.sees // []) | join(" ")')"
@@ -1603,6 +1600,13 @@ case "$target" in
         BB_WORK_DIRS=""
         for w in ${BB_WORKS:-}; do BB_WORK_DIRS+="$(session_dir "$w" "$account" "$agent") "; done
         export BB_WORK_DIRS
+        # ...each with its token kept where bb in that tree reads it.
+        while read -r w t; do
+            [ -n "$w" ] && [ -n "$t" ] || continue
+            wd="$(cache_project_dir "$w")"
+            ( umask 077; printf '%s\n' "$t" > "$wd/token.new" ) 2>/dev/null \
+                && mv -f "$wd/token.new" "$wd/token" 2>/dev/null || true
+        done <<< "${BB_WORK_TOKENS:-}"
         # Another agent's conversation, resumed in that agent and no other
         # (R95 step 8): its log is the copy its Stop hook keeps in the tree's
         # folder of the account's transcripts (bb-agent-hook keep), fetched
