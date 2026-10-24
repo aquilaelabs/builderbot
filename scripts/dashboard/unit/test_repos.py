@@ -132,5 +132,28 @@ class Repos(unittest.TestCase):
         self.assertTrue(why.startswith("app works on n1 and server on n2"), why)
 
 
+class Briefing(unittest.TestCase):
+    """The briefing of a session on a project of several repositories
+    carries the others' rules, roadmap and bugs, each under its name."""
+
+    def test_the_other_repositories_are_briefed_under_their_names(self):
+        import preamble  # noqa: PLC0415
+        fake = type("S", (), {})
+        rules, roadmap, bugs = fake(), fake(), fake()
+        rules.fitted = lambda d, share: (f"rules of {d}", "")
+        roadmap.brief = lambda d: f"roadmap of {d}"
+        bugs.brief = lambda d: f"bugs of {d}"
+        preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs)
+        preamble.repos_fn = lambda p: ("Shop", "P9", [("app", "app"), ("server", "server")]) if p in ("app", "server") else None
+        self.addCleanup(lambda: setattr(preamble, "repos_fn", None))
+        text = preamble.repos_part("app")
+        self.assertIn("Shop (P9), a project of 2 repositories", text)
+        self.assertIn("### Repository server", text)
+        for want in ("rules of server", "roadmap of server", "bugs of server"):
+            self.assertIn(want, text)
+        self.assertNotIn("roadmap of app", text, "its own are the briefing's own parts")
+        self.assertEqual(preamble.repos_part("other"), "")
+
+
 if __name__ == "__main__":
     unittest.main()

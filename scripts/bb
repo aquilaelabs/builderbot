@@ -5995,6 +5995,18 @@ if [ "${1:-}" = -p ] || [ "${1:-}" = --project ]; then
             # By the name it was asked by, never its directory (B58).
             [ -d "$BB_TREE" ] || die "$p_name's tree is not in this session's view: a project added to the reads comes into a session's view when it starts, so start a new one (its notebook answers already)" ;;
     esac
+# A session of a project of several repositories (R136) works in each of
+# them: bb answers for the one whose tree it is run in, the repository the
+# session started on (BB_PROJECT, from bb-tty) when it is run in none of them.
+# `-p` above has the last word.
+elif [ -n "${BB_WORKS:-}" ] && w_here="$(project_here 2>/dev/null)" && [ -n "$w_here" ] \
+        && [ "$w_here" != "${BB_PROJECT:-}" ] && [[ " $BB_WORKS " == *" $w_here "* ]]; then
+    export BB_PROJECT="$w_here"
+    # ...with that repository's token, which bb-tty keeps and the agent
+    # renews beside the first's: the one in the environment is the first's.
+    unset BB_TOKEN
+    w_top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    export BB_TREE="${w_top:-$WORKSPACE/$w_here}"
 fi
 
 # `bb VERB -h`: the verb's own entries in the reference above, answered here

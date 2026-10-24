@@ -64,6 +64,9 @@ _TOPIC = re.compile(r"^<!-- BUILDERBOT:TOPIC ([a-z][a-z0-9-]*): (.*?) -->$")
 
 
 live_fn = None
+# A project of several repositories (R136), the server's: repository ->
+# (the project's name, its id, [(repository, its shown name)]), or None.
+repos_fn = None
 
 
 def configure(*, rules_mod, roadmap_mod, bugs_mod, live=None, prefs_mod=None):
@@ -479,7 +482,8 @@ def parts(project, reply="", asks=""):
                      # step 5): a session argued from a build it assumed once.
                      ("live", lambda: (live_fn() if live_fn else "", "")),
                      ("roadmap", lambda: (roadmap_mod.brief(project), "")),
-                     ("bugs", lambda: (bugs_mod.brief(project), ""))):
+                     ("bugs", lambda: (bugs_mod.brief(project), "")),
+                     ("repos", lambda: (repos_part(project), ""))):
         try:
             text, left = fn()
             text = (text or "").strip("\n")
@@ -493,6 +497,35 @@ def parts(project, reply="", asks=""):
         if text:
             out.append((name, text, left))
     return out
+
+
+def repos_part(project):
+    """For a session on a project of several repositories (R136): what the
+    project is, each repository's tree, and each other repository's rules,
+    roadmap and bugs under its name, as this one's are above. Its rules
+    share the rules' room between them."""
+    got = repos_fn(project) if repos_fn else None
+    if not got:
+        return ""
+    name, pid, members = got
+    ws = os.environ.get("WORKSPACE", "/workspace")
+    lines = [f"## The project's repositories",
+             "",
+             f"This session is {name} ({pid}), a project of {len(members)} repositories, and works in every one: "
+             f"each is its own repository with its own notebook, git host, CI and releases. Each tree below is "
+             f"yours to write (a worktree of it on this session's branch, where you have one); bb answers for "
+             f"the repository whose tree you run it in, and `bb -p NAME` for another.",
+             ""]
+    for d, label in members:
+        lines.append(f"- {label}: {ws}/{d}{' (this briefing is its own, above)' if d == project else ''}")
+    others = [(d, label) for d, label in members if d != project]
+    share = max(2048, SHARES["rules"] // max(1, len(others)))
+    for d, label in others:
+        lines += ["", f"### Repository {label}"]
+        for text in (rules_mod.fitted(d, share)[0], roadmap_mod.brief(d), bugs_mod.brief(d)):
+            if text and text.strip():
+                lines += ["", text.strip("\n")]
+    return "\n".join(lines)
 
 
 # ---- what a prompt names on the record (R202) ---------------------------------

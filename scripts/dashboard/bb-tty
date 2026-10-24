@@ -1191,7 +1191,7 @@ start() {
         GRADLE_USER_HOME="$HOME/.cache/builderbot/u/$account/project/$BB_PROJECT/gradle-home"
     fi
     gradle_local_build
-    for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE BB_LOCAL_BUILD \
+    for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE BB_LOCAL_BUILD BB_WORKS BB_WORK_DIRS \
              GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL CARGO_HOME \
              GRADLE_USER_HOME ANDROID_USER_HOME XDG_DATA_HOME \
              GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1 \
@@ -1240,7 +1240,7 @@ start() {
     local kv
     while IFS= read -r -d '' kv; do
         case "$kv" in
-            TMUX*=*|_=*|PWD=*|OLDPWD=*|SHLVL=*|HOME=*|USER=*|LOGNAME=*|BB_TOKEN=*|BB_ACCOUNT_*=*|BB_PROJECT=*|BB_TREE=*|BB_TREE_OWNER=*|GIT_AUTHOR_*=*|GIT_COMMITTER_*=*|CARGO_HOME=*|GRADLE_USER_HOME=*|ANDROID_USER_HOME=*|XDG_DATA_HOME=*) continue ;;
+            TMUX*=*|_=*|PWD=*|OLDPWD=*|SHLVL=*|HOME=*|USER=*|LOGNAME=*|BB_TOKEN=*|BB_ACCOUNT_*=*|BB_PROJECT=*|BB_TREE=*|BB_TREE_OWNER=*|BB_WORKS=*|BB_WORK_DIRS=*|GIT_AUTHOR_*=*|GIT_COMMITTER_*=*|CARGO_HOME=*|GRADLE_USER_HOME=*|ANDROID_USER_HOME=*|XDG_DATA_HOME=*) continue ;;
         esac
         tmux set-environment -g "${kv%%=*}" "${kv#*=}" 2>/dev/null || true
     done < <(env -0)
