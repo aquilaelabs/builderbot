@@ -33,6 +33,21 @@ ok(bad.status === 400 && /merge or split/.test(bad.error || ''), `an action that
 const held = await post('/api/repos', { action: 'merge', into: 'gamma', add: ['delta'] });
 ok(held.status === 409 && /delta is locked: unlock it first/.test(held.error || ''), `a locked project is not merged (${held.error})`);
 
+// On two nodes: refused, naming each by its name (B333).
+{
+  const ns = ((await (await fetch(base + '/api/v1/nodes', { headers: ADMIN })).json()).nodes || []).filter(n => n.id && n.id !== 'local');
+  if (ns.length){
+    // One enrolled node, and one this controller has never heard of.
+    await post('/api/prefs', { project: 'gamma', node: ns[0].id });
+    await post('/api/prefs', { project: 'ep.silon', node: 'n_0000beef' });
+    const two = await post('/api/repos', { action: 'merge', into: 'gamma', add: ['ep.silon'] });
+    ok(two.status === 409 && two.error.includes(`on ${ns[0].name} and`) && !two.error.includes(ns[0].id),
+       `repositories on two nodes are refused, an enrolled node named as a person knows it (${two.error})`);
+    await post('/api/prefs', { project: 'gamma', node: '', nodes: [] });
+    await post('/api/prefs', { project: 'ep.silon', node: '', nodes: [] });
+  } else ok(false, 'the fixture has a node to put a repository on');
+}
+
 // Merged: gamma and ep.silon, as a project named Shop.
 const m = await post('/api/repos', { action: 'merge', into: 'gamma', add: ['ep.silon'], name: 'Shop' });
 ok(m.status === 200 && m.ok && m.name === 'Shop' && /^P\d+$/.test(m.id || '') && JSON.stringify(m.members) === '["gamma","ep.silon"]',

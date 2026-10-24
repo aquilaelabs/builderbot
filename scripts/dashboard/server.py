@@ -10040,7 +10040,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "the owner of every project merged, or an administrator, merges them"}, 403)
             why = repos.refusal(dirs, locked=set(projects.load_locks()), archived=set(projects.load_archived()),
                                 people={d: set(membership.members(d)) for d in dirs},
-                                node={d: (prefs.get(d) or {}).get("node") or "" for d in dirs})
+                                # By name, as a person knows them (B333).
+                                node={d: devapp.node_name(n) if (n := (prefs.get(d) or {}).get("node") or "") else ""
+                                      for d in dirs})
             if why:
                 return self._json({"error": why}, 409)
             got = repos.merge(into, add, field(req, "name"))
