@@ -9,10 +9,12 @@
 ### Changed
 
 - SIGNING_SECRET is INSTALL_KEY: the one key that seals at rest what BuilderBot keeps, the signing keys among it (7645fec)
+- Terminal tabs are drawn in the page itself rather than in ttyd's frame: a finger scrolls them on a phone and a press held on a word selects it to copy, a job's, a container's and the controller's logs follow in a tab of the dock, and a terminal that ends says why. Settings, Terminals switches back to ttyd for this release (052c096)
 
 ### Upgrading
 
 - Rename SIGNING_SECRET to INSTALL_KEY in your secrets folder's env file: the old name is read for this release only. With an install key set, everybody is signed out once at the first start of 0.8.0 (7645fec)
+- ttyd's terminal is kept for this release only, behind Settings, Terminals; the next release removes it (052c096)
 
 ### Fixed
 
