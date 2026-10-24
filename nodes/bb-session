@@ -1095,7 +1095,11 @@ def net_attach(net, pid, project, dfd):
         # old project for this address until ours lands: gone first.
         with contextlib.suppress(OSError):
             os.unlink(f"s{k}.json", dir_fd=dfd)
-        _ip("link", "add", host_if, "type", "veth", "peer", "name", "eth0", "netns", str(pid))
+        # By the namespace's file, not its pid: this side unshared a PID
+        # namespace before forking the init, so the ip it runs is in that
+        # namespace, where the init's pid here names nothing (B325). The
+        # file under this side's /proc is the init's whatever ip sees.
+        _ip("link", "add", host_if, "type", "veth", "peer", "name", "eth0", "netns", f"/proc/{pid}/ns/net")
         try:
             # IPv4 only out of a session: IPv6 is off on both ends of the
             # link, so nothing leaves by a route the table does not judge.
