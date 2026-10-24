@@ -29,6 +29,7 @@
 - With an install key, the tunnel's and Cloudflare's tokens are kept sealed in the controller's settings, so a copy of /config holds neither (13812ea)
 - With an install key, each project's git token is kept sealed and handed to git by BuilderBot's own credential helper, for the host it was written for alone, so a copy of /config pushes nowhere (b1c372e)
 - A node's token is replaced at each of its check-ins, and one it has given up presented again revokes the node and says so on the bell, so a copy of a node's disk cannot pose as it for long (bd54513)
+- A toolchain's download is checked against what its publisher says it is before it is unpacked or run, its checksum or its signature, and refused naming both digests when it does not match; the Toolchains page and bb toolchains say how each installed toolchain was checked, or that its publisher states nothing to check it against (690cd2e)
 
 ## 0.8.0: 2026-10-24
 
