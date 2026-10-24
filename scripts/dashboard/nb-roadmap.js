@@ -48,6 +48,7 @@ function nbRoadmapView({$, nb}){
       return;
     }
     drawRoadmap(j);
+    reposAlso($("roadmapAlso"), nb.memProj, "roadmap");
   }
 
   // The send arrow. Crossing something out here does not mean "done"; it means

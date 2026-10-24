@@ -234,6 +234,46 @@ a rule only the page honored would be advice. It is not a sandbox: the file
 tools are denied on every project but a session's own, and a session in
 another project can still reach this directory through Bash.
 
+## A project of several repositories
+
+A project can hold more than one repository. **Add a repository**, in a
+project's menu, picks another project to join it; where the project is one
+repository today, it also asks what the project over both is called (its
+own name unless you give another). Each repository stays what it was: its
+folder, its notebook, its git host link (remote, token or deploy key, push
+rights, forge, CI and releases), its version and changelog, its signing
+keys and its dev instance. Nothing on disk moves.
+
+What one session needs is the project's: its node, its coding agents, its
+people and its Agents may dials. A project of several repositories has one
+card on the Projects page and one on Home, under the project's own name and
+id, its repositories listed in it, and one **Start agent**. The session it
+starts runs on the first repository and works in all of them: each one's
+tree is in its view to write, on the same branch name, and `bb` answers for
+the repository whose tree it is run in. A session asked for on another of
+its repositories is refused and pointed at the first. Each repository's own
+page names the project, with its repositories as a switch beside the name,
+and its Roadmap and Bugs carry the other repositories' open items under
+**Also in** the project's name.
+
+What a project grants others goes by the project: one that reads it reads
+every repository in it, including one added later, with no setting changed.
+Merging rewrites a read of one of its repositories into a read of the
+project, and says which projects now read more.
+
+Merging is refused, saying which repository and why, when one is locked or
+archived, when somebody is on one of them and not on another (the session
+works in all of them, so everybody on it is on all of them), or when they
+work on different nodes. The owner of every project merged, or an
+administrator, merges them; never a session.
+
+**Take out**, beside a repository on the project's card, makes it a project
+of its own again, with the settings it had before it joined. A project left
+with one repository is no longer one of several. Taking one out ends the
+project's sessions, since each was started with the grants it had, and a
+project that read the project keeps reading every repository that was in it.
+The record is `project-repos.json` under `/config`.
+
 ## Push rights
 
 A clone is read-only unless you tick **I want to push to this repository**, and

@@ -1134,6 +1134,35 @@ function wireProjectHeader(bar){
   });
   wireProjectMenu(bar);
 }
+// The other repositories of a project of several (R136), under one
+// repository's own list: their open roadmap items or open bugs, merged,
+// each row naming its repository and opening its view there. Read-only
+// here, as each repository's list is its own to change.
+async function reposAlso(el, project, kind){
+  if (!el) return;
+  const r = Object.values(state?.repos || {}).find(x => x.members.includes(project));
+  if (!r){ el.hidden = true; el.innerHTML = ""; return; }
+  const rows = [];
+  for (const m of r.members.filter(m => m !== project)){
+    try{
+      const j = await (await fetch(`/api/${kind}?project=${encodeURIComponent(m)}`)).json();
+      const list = kind === "bugs" ? (j.bugs || []).filter(b => b.status === "open") : (j.items || []);
+      for (const x of list) rows.push({m, id: x.id, text: x.title || x.text || ""});
+    }catch(e){ /* that repository's list answers on its own page */ }
+  }
+  const tag = kind === "bugs" ? "B" : "R", noun = kind === "bugs" ? "open bug" : "open item";
+  const body = rows.length ? rows.map(x => `<div class="alsorow">
+      <button type="button" class="link" data-also="${esc(x.m)}">${esc(projLabel(x.m))}</button>
+      <span class="pid">${tag}${x.id}</span><span class="alsotext">${esc(x.text)}</span></div>`).join("")
+    : `<div class="empty">nothing open in its other repositories</div>`;
+  const html = docSection(kind, "also", `Also in ${r.name}`, `${rows.length} ${noun}${rows.length === 1 ? "" : "s"}`, body, {open: true});
+  if (paint(el, html)){
+    wireSections(el);
+    el.querySelectorAll("[data-also]").forEach(b => b.onclick = () => openNotebook(b.dataset.also, kind === "bugs" ? "bugs" : "roadmap"));
+  }
+  el.hidden = false;
+}
+
 // A project's ⋯, on its header and on its card alike.
 function wireProjectMenu(bar){
   bar.querySelectorAll("[data-pmore]").forEach(b => b.onclick = e => {

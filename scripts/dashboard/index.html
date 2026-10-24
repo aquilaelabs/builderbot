@@ -3385,6 +3385,13 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pcard .pcrepo>.link:hover{text-decoration:underline}
 .pcard .pcrepo>.pcfacts{flex:1}
 .pcard .pnote{font:var(--f-ui)}
+/* A row of another repository's list (R136, reposAlso): which repository,
+   its number, its words. */
+.alsorow{display:flex;align-items:baseline;gap:var(--field-gap);min-height:var(--tap);padding:var(--label-gap) 0;
+  border-top:var(--hair) solid var(--line);min-width:0}
+.alsorow>.link{background:none;border:0;padding:0;min-height:0;color:var(--ink);font-weight:600;cursor:pointer;flex:none}
+.alsorow>.pid{font:var(--f-data);color:var(--dim);flex:none}
+.alsorow>.alsotext{min-width:0;overflow-wrap:anywhere}
 .pcard .pnote.bad{color:var(--bad)} .pcard .pnote.warn{color:var(--warn)} .pcard .pnote.dim{color:var(--dim)}
 .pcard .pcacts{margin-top:auto;padding:6px 0 0;border:0;background:none}
 .pcard .pcacts .more{position:relative;display:inline-flex;margin-left:auto}
@@ -5378,6 +5385,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <summary><span class="t">Finished</span><span class="sst" id="roadmapDoneN"></span></summary>
         <div class="body"><div id="roadmapDoneList"></div></div>
       </details></div>
+    <!-- A project of several repositories' other ones (R136, reposAlso). -->
+    <div class="field" id="roadmapAlso" hidden></div>
     </div>
     <!-- What Claude remembers, on its own tab: a handful of files nobody
          edits, on screen because they are the one input to a session nobody
@@ -5480,6 +5489,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       </div>
       <div class="field" id="bugHist" hidden></div>
       <div class="field" id="bugList" data-skel="rows"></div>
+      <!-- A project of several repositories' other ones (R136, reposAlso). -->
+      <div class="field" id="bugAlso" hidden></div>
     </div>
     <!-- The scanner's findings for this project, read-only: the scan runs on
          the host and bb findings reads the same digest in a terminal. -->

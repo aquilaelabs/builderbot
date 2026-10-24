@@ -93,6 +93,14 @@ const browser = await launch();
     return { name: d.querySelector('.pname')?.textContent.trim(), sw: [...d.querySelectorAll('[data-reposw]')].map(b => b.textContent.trim() + (b.classList.contains('on') ? '*' : '')) }; });
   ok(head.name === 'Shop' && JSON.stringify(head.sw) === '["gamma","ep.silon*"]',
      `a repository's page names its project, its repositories a switch with it picked (${JSON.stringify(head)})`);
+  // Its other repository's open items under one repository's own list,
+  // each naming its repository (step 6).
+  await page.evaluate(() => postJSON('/api/roadmap', { project: 'ep.silon', action: 'add', text: 'also-row from ep.silon' }));
+  const also = await page.evaluate(async () => { const d = document.createElement('div'); document.body.append(d);
+    await reposAlso(d, 'gamma', 'roadmap'); const out = { hidden: d.hidden, head: d.querySelector('.t')?.textContent.trim(),
+      rows: [...d.querySelectorAll('.alsorow')].map(r => r.textContent.replace(/\s+/g, ' ').trim()) }; d.remove(); return out; });
+  ok(!also.hidden && also.head === 'Also in Shop' && also.rows.some(r => /^ep\.silon ?R\d+ ?also-row from ep\.silon$/.test(r)),
+     `a repository's roadmap carries its project's other repositories' items, each naming its repository (${JSON.stringify(also)})`);
   // Home's glance shows it once too, by its own name, both repositories
   // pinned.
   await page.evaluate(async () => { for (const name of ['gamma', 'ep.silon']) await postJSON('/api/project-pin', { name, pinned: true }); await refresh(); });
