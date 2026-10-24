@@ -3418,12 +3418,11 @@ EOF
 Sessions run here too, as ${SESSION_NAME}: the agent keeps a ttyd up on this
 machine's LAN address (port 7681, read-only twin on 7682, and on 7683 a
 container's shell as the docker account) running bb-tty from the bb the
-controller ships, so a Claude session on a project bound to this
-node lives on this machine, in its synced copy of the project at
-/workspace, which the agent makes and keeps in step with the controller's.
-It needs the account signed in to Claude once, from a shell here:
-
-  su - ${SESSION_NAME}              then: claude login
+controller ships, so a session of any agent (Claude, ChatGPT, Copilot) on
+a project bound to this node lives on this machine, in its synced copy of
+the project at /workspace, which the agent makes and keeps in step with the
+controller's. Each person signs in to each agent on this node from its
+Agents page on the dashboard (Build, Agents), once per account.
 
 bb itself is not on this account's PATH: it is the controller's, fetched
 into the toolchain store by the agent (<store>/<scope>/.bb/current/scripts/bb)
