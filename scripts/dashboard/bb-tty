@@ -918,14 +918,19 @@ agent_hooks() {
 # config.toml ([projects."DIR"] trust_level), Copilot CLI in its config.json
 # (trustedFolders); appended or merged, never replacing what is there.
 # Checked against Codex CLI 0.163.0 and Copilot CLI 1.0.102 (22 Oct).
+# Sets AGENT_TRUST_ADDED=1 and AGENT_TRUST_FILE when the answer was missing
+# and has just been written, as CLAUDE_TRUST_ADDED says for Claude Code.
+AGENT_TRUST_ADDED=0
+AGENT_TRUST_FILE=""
 agent_first_run() {
     local ag="$1" dir="$2" f
+    AGENT_TRUST_ADDED=0
     case "$ag" in
         codex)
             f="${CODEX_HOME:-$HOME/.codex}/config.toml"
             ( umask 077; mkdir -p "${f%/*}" ) 2>/dev/null || return 1
             grep -qF "[projects.\"$dir\"]" "$f" 2>/dev/null && return 0
-            printf '\n[projects."%s"]\ntrust_level = "trusted"\n' "$dir" >> "$f" ;;
+            printf '\n[projects."%s"]\ntrust_level = "trusted"\n' "$dir" >> "$f" || return 1 ;;
         copilot)
             f="${COPILOT_HOME:-$HOME/.copilot}/config.json"
             ( umask 077; mkdir -p "${f%/*}" ) 2>/dev/null || return 1
@@ -936,8 +941,27 @@ agent_first_run() {
             grep -v '^[[:space:]]*//' "$f" | jq -e --arg d "$dir" '(.trustedFolders // []) | index($d)' >/dev/null 2>&1 && return 0
             body="$(grep -v '^[[:space:]]*//' "$f" | jq --arg d "$dir" '.trustedFolders = ((.trustedFolders // []) + [$d])')" || return 1
             { [ -z "$head" ] || printf '%s\n' "$head"; printf '%s\n' "$body"; } > "$f.new" \
-                && mv -f "$f.new" "$f" ;;
+                && mv -f "$f.new" "$f" || return 1 ;;
+        *) return 0 ;;
     esac
+    AGENT_TRUST_ADDED=1 AGENT_TRUST_FILE="$f"
+}
+
+# trust_note AGENT DIR: the line a session already running is told when its
+# tree's trust was missing and has just been put back: it started on the old
+# answer and keeps asking until it is restarted. Every agent, in its own file.
+trust_note() {
+    local f
+    if [ "$1" = claude ]; then
+        [ "${CLAUDE_TRUST_ADDED:-0}" = 1 ] || return 0
+        f="${HOME}/.claude.json"
+    else
+        [ "${AGENT_TRUST_ADDED:-0}" = 1 ] || return 0
+        f="$AGENT_TRUST_FILE"
+    fi
+    echo "NOTE: $2 was not trusted in ${f}; it is now." >&2
+    echo "The session already running here started on the old answer, so it" >&2
+    echo "will keep asking about every command until it is restarted." >&2
 }
 
 # bad MESSAGE...: fail visibly. ttyd closes the connection the moment this
@@ -1342,11 +1366,9 @@ case "$target" in
             # On the session's own tree, which for anybody but the owner is
             # their worktree (session_dir, already there for a running one).
             dir="$(session_dir "$proj" "$account" "$agent")"
-            if [ "$agent" = claude ] && claude_first_run "$dir" && [ "${CLAUDE_TRUST_ADDED:-0}" = 1 ]; then
-                echo "NOTE: ${dir} was not trusted in ${HOME}/.claude.json; it is now." >&2
-                echo "The session already running here started on the old answer, so it" >&2
-                echo "will keep asking about every command until it is restarted." >&2
-            fi
+            if [ "$agent" = claude ]; then claude_first_run "$dir" || true
+            else agent_first_run "$agent" "$dir" || true; fi
+            trust_note "$agent" "$dir"
             exec tmux attach-session -t "=$fast"
         fi
         # Signed out, a session starts and dies on claude's own error, which
@@ -1629,11 +1651,7 @@ case "$target" in
         # otherwise, so it will go on asking about every command until it is
         # restarted, which is the whole of what somebody sees, and is worth a
         # line rather than a mystery.
-        if [ "${CLAUDE_TRUST_ADDED:-0}" = 1 ] && tmux has-session -t "=$mysess" 2>/dev/null; then
-            echo "NOTE: ${dir} was not trusted in ${HOME}/.claude.json; it is now." >&2
-            echo "The session already running here started on the old answer, so it" >&2
-            echo "will keep asking about every command until it is restarted." >&2
-        fi
+        if tmux has-session -t "=$mysess" 2>/dev/null; then trust_note "$agent" "$dir"; fi
         # On a node, a session that is about to be MADE is announced to the
         # project's channel through the controller; its proxy announces a
         # local one and cannot see this one. A reattach is not a start.

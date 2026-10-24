@@ -580,6 +580,17 @@ sleep 60
       const toml = existsSync(join(HOMEDIR, '.codex', 'config.toml')) ? readFileSync(join(HOMEDIR, '.codex', 'config.toml'), 'utf8') : '';
       ok(toml.includes(`[projects."${cwt}"]`) && /trust_level = "trusted"/.test(toml),
          '...and its tree answered as trusted, so its first run asks nothing a read-only console cannot answer');
+      // A tab coming back to it puts the answer back if it went, and says
+      // the running session started without it, as Claude's does (R95 step 19).
+      const cxToml = join(HOMEDIR, '.codex', 'config.toml');
+      writeFileSync(cxToml, toml.replace(`[projects."${cwt}"]\ntrust_level = "trusted"\n`, ''));
+      const cxNoted = shell(`u:${ownerUid}:codex:${proj}:b:${boot}`);
+      ok(/was not trusted in .*config\.toml/.test(cxNoted) && /until it is restarted/.test(cxNoted)
+         && readFileSync(cxToml, 'utf8').includes(`[projects."${cwt}"]`),
+         `...and a tab coming back to it puts its trust back and says the running session must restart (${
+           (cxNoted.split('\n').find(l => /not trusted/.test(l)) || 'said nothing').slice(0, 70)})`);
+      ok(!/was not trusted/.test(shell(`u:${ownerUid}:codex:${proj}:b:${boot}`)),
+         '...and says nothing when it was there already');
       // Its guards are its own hooks (R95 step 6): BuilderBot's, for every
       // event a Claude session has them on, in the account's hooks file.
       const hk = existsSync(join(HOMEDIR, '.codex', 'hooks.json')) ? JSON.parse(readFileSync(join(HOMEDIR, '.codex', 'hooks.json'), 'utf8')) : {};
