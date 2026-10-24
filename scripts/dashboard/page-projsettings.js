@@ -169,7 +169,7 @@ function rnLockSettings(p){
       if (locked && !c.disabled){ c.disabled = true; c.dataset.rnlock = "1"; }
       else if (!locked && c.dataset.rnlock){ c.disabled = false; delete c.dataset.rnlock; }
     });
-    if (locked) body.insertAdjacentHTML("afterbegin", `<div class="field rnlocked"><div class="hint bad">${esc(RN_LOCKED_SAID)}</div></div>`);
+    if (locked) body.insertAdjacentHTML("afterbegin", `<div class="field rnlocked"><div class="hint">${esc(RN_LOCKED_SAID)}</div></div>`);
   });
 }
 

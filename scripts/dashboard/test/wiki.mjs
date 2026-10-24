@@ -33,6 +33,10 @@ ok(!(await page.$(`${NB} .nbview[data-view="wiki"] .sectbar`))
 ok(/github\.com\/owner\/alpha/.test(await page.$eval(`${NB} #wkNetState`, e => e.textContent))
    && await page.$eval(`${NB} #wkPush`, e => !e.hidden && e.disabled),
    'with push rights the head row names the forge\'s wiki, and Push waits for a page');
+// Why Push is off is said in the muted voice of every reason, never red (B292).
+ok(await page.$eval(`${NB} #wkWhy`, e => { const h = document.createElement('div'); h.className = 'hint'; e.parentNode.append(h);
+     const same = getComputedStyle(e).color === getComputedStyle(h).color; h.remove(); return same; }),
+   'the line saying why Push is off wears a hint\'s color, not the alarm\'s');
 await page.click(`${NB} #wkNew`);
 ok(await page.$eval(`${NB} #wkNewName`, e => e.value) === 'Home', 'the first New page is Home');
 await page.fill(`${NB} #wkNewText`, '# Home\n\n## Welcome\n\nSee [[Build and test]] and **this**.\n\n- one\n- two\n\n## Install\n\ntext\n\n### Detail\n\nmore\n\n<script>bad()</script>');
