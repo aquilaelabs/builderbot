@@ -30,11 +30,13 @@ import urllib.parse
 
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 CHECK_S = 5
+AGENT_DIR = ""      # the node agent's directory, set by configure()
 _term = {}
 
 
 def configure(*, agent_dir):
-    globals()["AGENT_DIR"] = agent_dir
+    global AGENT_DIR
+    AGENT_DIR = agent_dir
     _term.clear()
 
 
