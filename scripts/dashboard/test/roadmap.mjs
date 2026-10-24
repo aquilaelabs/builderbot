@@ -1638,13 +1638,13 @@ ok(/no session running/.test(await page.$eval('#roadmapSess', h => h.textContent
 // finger never sees and in the line under the whole list.
 // Through the DOM: Playwright itself refuses to click what is aria-disabled.
 await page.$eval('#roadmapList .roadmap .go', b => b.click());
-ok(/no Claude session is running here/.test(await page.$eval('#toast', t => t.textContent)),
+ok(/no session is running here/.test(await page.$eval('#toast', t => t.textContent)),
    `pressing a dead arrow says why in the band (${await page.$eval('#toast', t => t.textContent.slice(0, 60))})`);
 tmuxNew('claude-alpha');
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => [...document.querySelectorAll('#roadmapList .roadmap .go')]
   .some(g => g.getAttribute('aria-disabled') !== 'true'), null, { timeout: 15000 });
-ok(/claude-alpha running/.test(
+ok(/^Claude running$/.test(
      await page.$eval('#roadmapSess', h => h.textContent)),
    '...and starting one brings them back, with the notebook left open the whole time');
 

@@ -344,14 +344,13 @@ function nbBugsView({$, nb, project}){
         nb.roadmapSel = null;               // and only one thing is armed at a time
         nb.drawSendBox(!!nb.roadmapSession);
         // Same session the roadmap sends into, and the same reason it has to
-        // exist first: there is no door into a Claude that is not running.
+        // exist first: there is no door into a session that is not running.
         if (!nb.roadmapSession){
-          notify("no Claude session is running here: start one from the "
-                 + "project's card first", true);
+          notify("no session is running here: start one with Start agent first", true);
           return;
         }
         const box = nb.sendBoxEl({
-          label: `Send B${id} to ${nb.roadmapSession}?`,
+          label: `Send B${id} to ${agentOfSession(tmuxBase(nb.roadmapSession))?.agent.name || "the session"}?`,
           sub: "the session looks it up by number",
           placeholder: "anything to send with it (optional)",
           onCancel: nb.shutSendBoxes,

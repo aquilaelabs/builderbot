@@ -139,7 +139,7 @@ function nbRoadmapView({$, nb}){
     const can = canSend(r, idx, live);
     const why = nb.nbUnsaved() ? `save or revert first: ${nb.nbUnsaved()} not on disk yet`
               : r.shelved ? "shelved: take it off the shelf to send it"
-              : !live ? "no Claude session is running here"
+              : !live ? "no session is running here"
               : st.done ? "a session finished this: sending it again says it did not"
               : st.sent ? "this one has gone already: pick it to send it again"
               : idx < 0 && steps.length
@@ -310,7 +310,8 @@ function nbRoadmapView({$, nb}){
     // ...and its status line: whether a step can be sent, after what is
     // staged (the bar's own words, syncSave's). No session holds the arrows,
     // a running one lights them.
-    setText($("roadmapSess"), live ? `${j.session} running` : "no session running");
+    // The session by its agent, not its tmux name (B299).
+    setText($("roadmapSess"), live ? `${agentOfSession(tmuxBase(j.session))?.agent.name || "A session"} running` : "no session running");
     $("roadmapField").hidden = !rows.length && !finishedN;
     // The band that narrows it: All, Open and Shelved, and the search on
     // the control row.
