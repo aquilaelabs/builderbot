@@ -279,10 +279,17 @@ function dockReveal(bar){
     line.bbEdges = new ResizeObserver(() => dockEdges(line));
     line.bbEdges.observe(line);
   }
+  // The ends' arrows first, since putting one there moves the tabs by the
+  // line's gap (B318), then the tab brought into view, then the ends again.
+  dockEdges(line);
   if (on){
     const lr = line.getBoundingClientRect(), r = on.getBoundingClientRect();
     if (r.left < lr.left) line.scrollLeft -= lr.left - r.left;
     else if (r.right > lr.right) line.scrollLeft += r.right - lr.right;
+    dockEdges(line);
+    const r2 = on.getBoundingClientRect();
+    if (r2.right > lr.right) line.scrollLeft += r2.right - lr.right;
+    else if (r2.left < lr.left) line.scrollLeft -= lr.left - r2.left;
   }
   dockEdges(line);
 }
