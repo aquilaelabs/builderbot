@@ -2554,7 +2554,7 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
   const step = await page.$eval('#resumemenu', m => ({ text: `${m.querySelector('.rmhead b')?.textContent.trim()} ${m.querySelector('.rmhead .rmfacts')?.textContent.trim()}`,
     models: [...m.querySelectorAll('#rmModel option')].map(o => o.value), efforts: [...m.querySelectorAll('#rmEffort option')].map(o => o.value),
     buttons: [...m.querySelectorAll('button')].map(b => b.textContent.trim()) }));
-  ok(/^A new conversation a fresh start on ubu$/.test(step.text) && step.models.includes('opus') && step.models.includes('fable')
+  ok(/^A new Claude conversation Claude Code on ubu$/.test(step.text) && step.models.includes('opus') && step.models.includes('fable')
      && step.efforts.includes('high') && step.buttons.join() === 'Back,Start'
      && !(await page.evaluate(() => tabs.some(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu'))),
      `...New conversation turns the menu to Model and Effort with Start, naming the last session's model on the default, and starts nothing yet (${step.text}; ${step.buttons.join(' | ')})`);

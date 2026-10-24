@@ -418,10 +418,11 @@ function resumePicker(p, m, card, anchor, ns, several){
       ? `Claude's default (last session: ${(MODELS.find(([x]) => x === resumeModelNow.model) || [])[1] || resumeModelNow.model})` : l)}</option>`).join("");
   // What it will do as its head, the two picks labeled above their fields
   // side by side, and Back and the press at its foot (the design 2.0 pass).
-  m.innerHTML = `<div class="rmhead"><b>${r.restart ? "Restart your session"
-      : r.sessionId ? "Resume the conversation" : "A new conversation"}</b><span class="rmfacts">${
-      r.restart ? (r.when ? `ending the one running, resuming the one from ${esc(ago(r.when))}` : "resuming its conversation")
-        : r.sessionId ? `from ${esc(ago(r.when ?? p.last_claude?.when))}` : "a fresh start"}${
+  // The head names the agent and its product, as the other agents' does.
+  m.innerHTML = `<div class="rmhead"><b>${r.restart ? "Restart your Claude session"
+      : r.sessionId ? "Resume the Claude conversation" : "A new Claude conversation"}</b><span class="rmfacts">${
+      r.restart ? (r.when ? `ending the one running, resuming the one from ${esc(ago(r.when))} · ` : "ending the one running, resuming its conversation · ")
+        : r.sessionId ? `from ${esc(ago(r.when ?? p.last_claude?.when))} · ` : ""}Claude Code${
       several || n.name ? ` on ${esc(n.name || "")}` : ""}</span></div>
     <div class="rmfields">
       <div class="setrow col ctlrow"><label class="lbl" for="rmModel">Model</label><select id="rmModel" aria-label="model this session starts on">${opts(MODELS, r.model)}</select></div>

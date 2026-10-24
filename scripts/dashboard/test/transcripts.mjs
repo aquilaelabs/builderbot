@@ -113,7 +113,7 @@ const rm = await page.evaluate(() => ({ head: document.querySelector('.resumemen
   started: tabs.some(t => /:r:conv-two-2025/.test(String(t.arg))) }));
 // With Start Claude on show it opens the chooser there; without (Claude Code
 // not installed on this fixture's node) it says why rather than doing nothing.
-ok(!rm.started && (rm.anchor ? /Resume the conversation/.test(rm.head) && rm.pick === 'conv-two-2025'
+ok(!rm.started && (rm.anchor ? /Resume the Claude conversation/.test(rm.head) && rm.pick === 'conv-two-2025'
                              : /not installed|cannot start/.test(rm.said)),
    `Resume opens the chooser on the conversation picked, or says why it cannot, starting nothing yet (${JSON.stringify(rm)})`);
 await page.evaluate(() => { resumePick = null; resumeFor = null; drawProjects(state.projects); });
