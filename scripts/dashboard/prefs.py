@@ -155,7 +155,15 @@ def configure(*, write_json, state):
 # they read, and the notebook, commits and files are written as ever.
 # `asks`: how often Claude puts a question to this person on this project,
 # "" (Claude's own), fewer or rarely. Theirs too: it is their attention.
+# A terminal's colors (R133 step 10): Default the ground ttyd's page had,
+# Dashboard the color scheme the page is in, and the tints a person gives a
+# project to know it at a glance (a production one red). The rest of the
+# look is the person's alone, on their Profile.
+TERM_SCHEMES = ("default", "amber", "blue", "dashboard", "green", "light", "red")
 USER_CHOICES = {"model": MODELS, "effort": EFFORTS, "reply": ("minimal",),
+                # ...and this person's terminal colors on this project,
+                # over their Profile's, for their own tabs alone.
+                "term_scheme": TERM_SCHEMES,
                 "asks": ("more", "fewer", "rarely"),
                 # Each other agent's model and effort, this person's on this
                 # project, from that agent's own lists (R95 step 9): what
@@ -1019,7 +1027,7 @@ def configure_dialog(**parts):
 
 # The dialog's fields that are the asking account's own on the project, not
 # the project's: anybody on it sets these for themselves.
-YOURS = ("model", "effort", "git_name", "git_email", "reply", "asks",
+YOURS = ("model", "effort", "git_name", "git_email", "reply", "asks", "term_scheme",
          *(f"{a}_{k}" for a in agents.MODELS for k in ("model", "effort")))
 
 

@@ -1166,6 +1166,21 @@ def own_prefs(name, want):
         keep["tour_seen"] = sorted({str(k) for k in want["tour_seen"][:64] if re.fullmatch(r"[a-z][a-z0-9-]{0,30}", str(k))})
     if isinstance(want.get("tour_off"), bool):
         keep["tour_off"] = want["tour_off"]
+    # A terminal's look, this person's in every tab of BuilderBot's own
+    # terminal (R133 step 10): its text size, cursor and colors. Named and
+    # bounded, as everything here is.
+    if isinstance(want.get("term"), dict):
+        import prefs as project_prefs
+        t, look = want["term"], {}
+        if isinstance(t.get("size"), int) and 9 <= t["size"] <= 28:
+            look["size"] = t["size"]
+        if t.get("cursor") in ("block", "bar", "underline"):
+            look["cursor"] = t["cursor"]
+        if isinstance(t.get("blink"), bool):
+            look["blink"] = t["blink"]
+        if t.get("scheme") in project_prefs.TERM_SCHEMES:
+            look["scheme"] = t["scheme"]
+        keep["term"] = look
     if not keep:
         return {"error": "nothing here is a setting"}, 400
     return prefs_set(name, keep), 200

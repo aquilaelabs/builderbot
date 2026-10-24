@@ -113,7 +113,7 @@ function rnPrefsOf(p){
                tests_in: p?.prefs?.tests_in || "node",
                test_change: p?.prefs?.test_change || "wait",
                gpu: p?.prefs?.gpu || "on",
-               reply: p?.yours?.reply || "", asks: p?.yours?.asks || "",
+               reply: p?.yours?.reply || "", asks: p?.yours?.asks || "", term_scheme: p?.yours?.term_scheme || "",
                devbuild: devClaudeMode(p?.name || rnFor),
                makevms: p?.prefs?.makevms || "deny",
                vm_caps: rnVmCapsOf(p),
@@ -471,6 +471,8 @@ function rnFillPrefsRest(p){
   $("rnGpu").value = p?.prefs?.gpu || "on";
   $("rnReply").value = p?.yours?.reply || "";
   $("rnAsks").value = p?.yours?.asks || "";
+  $("rnTermScheme").value = p?.yours?.term_scheme || "";
+  $("rnTermSchemeRow").hidden = !state?.term_own;
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   $("rnCaptureDays").value = String(p?.prefs?.capture_days ?? 7);
   $("rnSnapDays").value = String(p?.prefs?.snapshot_days ?? 14);
@@ -529,7 +531,7 @@ function rnDrawPrefs(){
   // starts on the ones picked in the agent's menu each time (the operator,
   // 12 Oct).
   const shut = !!p?.locked_me;
-  $("rnReply").disabled = $("rnAsks").disabled = shut;
+  $("rnReply").disabled = $("rnAsks").disabled = $("rnTermScheme").disabled = shut;
   $("rnPrefHint").textContent = shut
     ? lockedWhy(p) + "."
     : "Applied the next time Claude starts here. The model and effort are picked each time a session starts, in the Claude button's menu.";
@@ -1317,7 +1319,7 @@ const RN_WAS = {
   gate: ["claude", "Agents may"], test_change: ["claude", "During a test run, a change asked for"], agents_off: ["claude", "Coding agents"], agent_default: ["claude", "Start opens"],
   devbuild: ["claude", "Agents may"], makevms: ["claude", "Agents may"], vm_caps: ["claude", "Its VMs may hold"], report: ["claude", "Agents may"], sign: ["claude", "Agents may"],
   keys: ["claude", "Agents may"], release: ["claude", "Agents may"], pc: ["claude", "Agents may"], version: ["claude", "Move the version"],
-  reply: ["yours", "Replies"], asks: ["yours", "Questions"],
+  reply: ["yours", "Replies"], asks: ["yours", "Questions"], term_scheme: ["yours", "Terminal colors"],
   git_name: ["yours", "Commit name and email"], git_email: ["yours", "Commit name and email"],
 };
 // What a running session takes only when it starts (the briefing, the launch
@@ -1360,6 +1362,7 @@ function rnEnc(){
           dev_keep: $("rnDevKeep").value.trim(), gate: gateKey(rnGateNow()),
           tests_in: $("rnDevTest").value || "node", test_change: $("rnTestChange").value || "wait",
           gpu: $("rnGpu").value || "on", reply: $("rnReply").value || "", asks: $("rnAsks").value || "",
+          term_scheme: $("rnTermScheme").value || "",
           devbuild: $("rnGateDocker").value || "deny", makevms: $("rnGateVms").value || "deny", vm_caps: rnVmCapsNow(), report: $("rnGateReport").value || "auto",
           sign: $("rnGateSign").value || "ask", release: $("rnGateRelease").value || "ask",
           keys: $("rnGateKeys").value || "ask", pc: $("rnGatePc").value || "deny", version: $("rnGateVersion").value || "locked"};
@@ -1475,7 +1478,7 @@ function rnRevertSect(sect){
     $("rnGateRelease").value = w.release; $("rnGateKeys").value = w.keys;
     $("rnGatePc").value = w.pc; $("rnGateVersion").value = w.version;
   } else if (sect === "yours"){
-    $("rnReply").value = w.reply; $("rnAsks").value = w.asks;
+    $("rnReply").value = w.reply; $("rnAsks").value = w.asks; $("rnTermScheme").value = w.term_scheme;
     $("rnGitName").value = w.git_name; $("rnGitEmail").value = w.git_email;
     rnDrawPrefs();
   }
@@ -1577,7 +1580,7 @@ async function rnSubmit(sect, end = false){
                               node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
                               tc_off: v.tc_off, packs_on: v.packs_on, agents_off: v.agents_off, agent_default: v.agent_default,
                               build: v.build, test: v.test, gate: v.gate, ...(v.dbg || {}),
-                              tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks,
+                              tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks, term_scheme: v.term_scheme,
                               devbuild: v.devbuild, makevms: v.makevms, vm_caps: JSON.parse(v.vm_caps || "{}"), report: v.report, sign: v.sign, keys: v.keys, release: v.release, pc: v.pc,
                               outputs: v.outputs.split(",").map(x => x.trim()).filter(Boolean),
                               ...(v.capture_days !== "" ? {capture_days: +v.capture_days} : {}),

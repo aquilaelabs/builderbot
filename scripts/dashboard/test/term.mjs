@@ -77,6 +77,31 @@ await page.keyboard.type('echo kb-$((6*7))');
 await page.evaluate(() => { active = 1; return sendKey('enter'); });
 ok(await waitFor(/kb-42/) && !keysAsked.length, `the keys bar's Enter goes down the terminal's own socket (${keysAsked.length} asked of the server)`);
 
+// The look is the person's (step 10): their Profile's size, cursor and
+// colors reach the open terminal; a project's colors in their own settings
+// for it win there.
+{
+  const opts = () => page.evaluate(() => { const r = [...TERMS.values()].find(r => r.t.arg === 'sh:7:alpha' && r.term);
+    return { size: r.term.options.fontSize, cursor: r.term.options.cursorStyle, bg: r.term.options.theme.background }; });
+  const own = async prefs => page.evaluate(async prefs => {
+    const r = await (await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'prefs', prefs }) })).json();
+    await refresh();
+    return { r, look: state.term_look };
+  }, prefs);
+  const saved = await own({ term: { size: 16, cursor: 'bar', blink: false, scheme: 'light' } });
+  await page.waitForFunction(() => [...TERMS.values()].some(r => r.t.arg === 'sh:7:alpha' && r.term?.options.fontSize === 16), null, { timeout: 10000 }).catch(() => {});
+  const mine = await opts();
+  const said = await page.evaluate(async () => (await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'alpha', term_scheme: 'red' }) })).status);
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => [...TERMS.values()].some(r => r.t.arg === 'sh:7:alpha' && r.term?.options.theme.background === '#2c1416'), null, { timeout: 10000 }).catch(() => {});
+  const there = await opts();
+  ok(mine.size === 16 && mine.cursor === 'bar' && mine.bg === '#fafafa' && said === 200 && there.bg === '#2c1416' && there.size === 16,
+     `a terminal takes its person's look, and their colors for its project over it (${JSON.stringify(mine)} then ${JSON.stringify(there)})`);
+  await page.evaluate(async () => fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'alpha', term_scheme: '' }) }));
+}
+
 // The socket and the shell are one: closing the tab closes the socket.
 const before = await page.evaluate(() => [...TERMS.values()].filter(r => r.t.arg === 'sh:7:alpha').length);
 await page.evaluate(id => dropTab(id), id);

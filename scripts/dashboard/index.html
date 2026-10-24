@@ -5951,6 +5951,20 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           <option value="fewer">fewer: routine calls made, not asked</option>
           <option value="rarely">rarely: only when going on would be unsafe or useless</option>
         </select></label>
+        <!-- Your terminals' colors here, over your Profile's (R133 step 10):
+             a project told apart at a glance, a production one red. Drawn
+             while BuilderBot's own terminal is on. -->
+        <label class="pick" id="rnTermSchemeRow">Terminal colors <select id="rnTermScheme"
+          aria-label="the colors of your terminals in this project">
+          <option value="">your Profile's</option>
+          <option value="amber">amber</option>
+          <option value="blue">blue</option>
+          <option value="dashboard">the dashboard's scheme</option>
+          <option value="default">default</option>
+          <option value="green">green</option>
+          <option value="light">light</option>
+          <option value="red">red</option>
+        </select></label>
       </div>
       <div class="hint" id="rnPrefHint"></div>
       <div class="prefrow ctlrow" role="group" aria-labelledby="rnMineLabel">

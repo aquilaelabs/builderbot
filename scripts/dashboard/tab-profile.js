@@ -59,6 +59,7 @@ const PROFILE_SAYS = {
   you: "your name, email and commit author", may: "what your roles let you do",
   password: "change it, signing out everywhere",
   twofactor: "an authenticator app, passkeys and recovery codes",
+  terminal: "the size, cursor and colors of your terminals",
   devices: "your apps, to disconnect",
 };
 // The apps signed in as this account on its own machines (R272 step 1), the
@@ -147,12 +148,50 @@ function renderProfileInto(i){
           </div>
         </div>`)}
     ${sec("twofactor", "Two-factor sign-in", profileTwoFactor(profile.two_factor || {}, !!profile.two_factor_required))}
+    ${state?.term_own ? sec("terminal", "Your terminal", profileTerminal()) : ""}
     ${docSection("profile", "devices", "Signed in as you", "", profileDevices(profile.devices || []))}`;
   wireSections(d.list);
   splitSects(d.list, "profile", {says: PROFILE_SAYS, back: "Profile"});
   wireProfile(d.el);
   wireDeviceOut(d.el);
   wireTwoFactor(d.el);
+  wireTerminalLook(d.el);
+}
+
+// Your terminal (R133 step 10): its text size, cursor and colors, yours in
+// every tab of BuilderBot's own terminal, applied as picked as the gear's
+// appearance is. A project's own colors, in your settings for it, win there.
+const PF_TERM = [
+  ["size", "Text size", [9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 24].map(n => [String(n), `${n}px`]), "13"],
+  ["cursor", "Cursor", [["bar", "bar"], ["block", "block"], ["underline", "underline"]], "block"],
+  // Default first, as the page's own Default leads its schemes; the rest A to Z.
+  ["scheme", "Colors", [["default", "default"], ["amber", "amber"], ["blue", "blue"], ["dashboard", "the dashboard's scheme"],
+                        ["green", "green"], ["light", "light"], ["red", "red"]], "default"],
+];
+function profileTerminal(){
+  const look = state?.term_look || {};
+  return `<div class="logset">${PF_TERM.map(([k, label, opts, dflt]) => `
+      <div class="logdays setrow col ctlrow">
+        ${lbl("pfTerm_" + k, label)}
+        <select id="pfTerm_${k}" data-pfterm="${k}">${opts.map(([v, w]) =>
+          `<option value="${v}"${String(look[k] ?? dflt) === v ? " selected" : ""}>${esc(w)}</option>`).join("")}</select>
+      </div>`).join("")}
+      <div class="logdays setrow"><label class="ndcap"><input type="checkbox" data-pfterm="blink"${look.blink === false ? "" : " checked"}> The cursor blinks</label></div>
+    </div>`;
+}
+function wireTerminalLook(root){
+  root.querySelectorAll("[data-pfterm]").forEach(el => el.onchange = async () => {
+    const term = {};
+    root.querySelectorAll("[data-pfterm]").forEach(x => {
+      const k = x.dataset.pfterm;
+      term[k] = k === "blink" ? x.checked : k === "size" ? Number(x.value) : x.value;
+    });
+    try{
+      const j = await (await postJSON("/api/users", {action: "prefs", prefs: {term}})).json();
+      if (j.error) return notify(j.error, true);
+    }catch(e){ return notify("could not reach the controller: " + failWords(e), true); }
+    refresh();
+  });
 }
 
 // Disconnect: asked, then that device signed out; the app finds its token

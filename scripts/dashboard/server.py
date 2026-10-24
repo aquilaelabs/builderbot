@@ -1305,7 +1305,7 @@ def _project_columns(who, facts):
                     # `yours`, because `mine` on this row is already taken by
                     # may_work: whether the project is this account's to change.
                     "yours": mine_prefs.get(d.name, {"model": "", "effort": "", "reply": "", "asks": "",
-                                                     "git_name": "", "git_email": ""}),
+                                                     "git_name": "", "git_email": "", "term_scheme": ""}),
                     # Whether a commit here would carry an author, asked WITH
                     # the override: somebody whose Profile has no email can
                     # still set one for this project, and then a session may
@@ -4828,6 +4828,8 @@ def _snapshot(who):
         "theme": users.prefs(who).get("theme", ""),
         "mode": users.prefs(who).get("mode", ""),
         "motion": users.prefs(who).get("motion", ""),
+        # ...and its terminals' look (R133 step 10), which the page applies.
+        "term_look": users.prefs(who).get("term") or {},
         # Whether this account has read the getting-started guide, and
         # which image's changelog it acknowledged: the welcome panel opens
         # itself once for each (the guide on a first sign-in, the changelog

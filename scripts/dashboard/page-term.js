@@ -61,11 +61,60 @@ function termUrl(t, cols, rows){
   return `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/termws?${q}`;
 }
 
+// A terminal's colors by name (R133 step 10), the choices prefs.py's
+// TERM_SCHEMES names: Default the ground ttyd's page had, Dashboard the page's
+// own scheme, and the tints a person gives a project to know it by. Literal
+// here as a terminal's palette is: these are what the program's own
+// colors are drawn on, not the page's surfaces.
+const TERM_SCHEMES = {
+  default: {background: "#2b2b2b"},
+  amber: {background: "#2a2110", foreground: "#f3e6c8", cursor: "#f0b44c"},
+  blue: {background: "#121c2c", foreground: "#dbe6f5", cursor: "#6ea8fe"},
+  green: {background: "#122417", foreground: "#d8f0dc", cursor: "#5fd27a"},
+  light: {background: "#fafafa", foreground: "#24292f", cursor: "#24292f", selectionBackground: "#c8d7f0",
+          black: "#24292f", white: "#6e7781", brightWhite: "#8c959f"},
+  red: {background: "#2c1416", foreground: "#f5dcdc", cursor: "#ff6b6b"},
+};
+
+// The project a terminal's argument is about, for its person's colors there.
+function termProject(arg){
+  const a = String(arg || "");
+  const ag = agentOfArg(a);
+  if (ag) return ag.project;
+  const m = /^(?:sh:\d+:|shell:|vm:)([^:]+)/.exec(a);
+  return m ? m[1] : "";
+}
+
+// This person's look for this tab: their Profile's, and the colors they
+// gave its project over the Profile's (prefs' term_scheme).
+function termLook(t){
+  const look = state?.term_look || {}, row = (state?.projects || []).find(p => p.name === termProject(t.arg));
+  const scheme = row?.yours?.term_scheme || look.scheme || "default";
+  const css = getComputedStyle(document.documentElement);
+  const theme = scheme === "dashboard"
+    ? {background: css.getPropertyValue("--bg").trim(), foreground: css.getPropertyValue("--ink").trim(),
+       cursor: css.getPropertyValue("--accent").trim()}
+    : TERM_SCHEMES[scheme] || TERM_SCHEMES.default;
+  return {fontSize: look.size || 13, cursorStyle: look.cursor || "block", cursorBlink: look.blink !== false, theme};
+}
+
+// The look applied to a terminal when it changed: a Profile saved, a
+// project's colors picked, the page's scheme switched.
+function termRestyle(rec){
+  if (!rec?.term) return;
+  const look = termLook(rec.t), was = JSON.stringify(look);
+  if (rec.look === was) return;
+  rec.look = was;
+  Object.assign(rec.term.options, look);
+  rec.el.style.background = look.theme.background || "";
+  termFit(rec);
+}
+
 // A slot just drawn (or drawn again): its terminal made once, and kept
 // while the slot is kept, as the frames were.
 function termMount(el, t, key){
   let rec = TERMS.get(key);
-  if (rec && rec.el === el) return termFit(rec);
+  if (rec && rec.el === el){ rec.t = t; termRestyle(rec); return termFit(rec); }
   if (rec) termDrop(key);
   rec = {t, el, key, term: null, fit: null, ws: null, ended: ""};
   TERMS.set(key, rec);
@@ -73,12 +122,13 @@ function termMount(el, t, key){
   xtermReady().then(() => {
     if (TERMS.get(key) !== rec) return;
     const term = new window.Terminal({
-      cursorBlink: true, scrollback: 5000, fontFamily: getComputedStyle(document.body).getPropertyValue("--mono") || "monospace",
-      fontSize: 13, theme: {background: "#2b2b2b"}, allowProposedApi: false});
+      scrollback: 5000, fontFamily: getComputedStyle(document.body).getPropertyValue("--mono") || "monospace",
+      allowProposedApi: false, ...termLook(t)});
     const fit = new window.FitAddon.FitAddon();
     term.loadAddon(fit);
     term.open(el.querySelector(".xhost"));
-    rec.term = term; rec.fit = fit;
+    rec.term = term; rec.fit = fit; rec.look = "";
+    termRestyle(rec);
     term.onData(d => termSend(rec, 0, new TextEncoder().encode(d)));
     term.onBinary(d => termSend(rec, 0, Uint8Array.from(d, c => c.charCodeAt(0))));
     term.onResize(({cols, rows}) => termSend(rec, 1, new TextEncoder().encode(JSON.stringify({cols, rows}))));
@@ -163,9 +213,14 @@ function termKey(t, key){
 }
 
 // After each draw: a terminal whose slot left the page is closed, as a
-// frame removed from it was.
+// frame removed from it was, and the rest take a look that changed (a
+// Profile saved, a project's colors picked), which a pane the draw left as
+// it was would not otherwise be given.
 function termSweep(){
-  for (const [key, rec] of TERMS) if (!rec.el.isConnected) termDrop(key);
+  for (const [key, rec] of TERMS){
+    if (!rec.el.isConnected) termDrop(key);
+    else termRestyle(rec);
+  }
 }
 
 // The page back in view, or its panes resized: every terminal sized to its

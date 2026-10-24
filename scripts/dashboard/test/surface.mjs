@@ -59,7 +59,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'ado
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
   'sessionRows', 'liveRefresh', 'bootFetch', 'bootReadsDone',
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',
-  'nudgeTerminals', 'termOwn', 'xtermReady', 'termSlot', 'termUrl', 'termMount', 'termSend', 'termFit', 'termConnect', 'termEnded', 'termDrop', 'termSweep', 'termRevive', 'termKey', 'onRev', 'openClaude',
+  'nudgeTerminals', 'termOwn', 'xtermReady', 'termSlot', 'termUrl', 'termMount', 'termSend', 'termFit', 'termConnect', 'termEnded', 'termDrop', 'termSweep', 'termRevive', 'termKey', 'termProject', 'termLook', 'termRestyle', 'profileTerminal', 'wireTerminalLook', 'onRev', 'openClaude',
   'openDevEnv', 'openDocker', 'openDockerOn', 'openEditContainer', 'openEditInstance', 'cSaveInstance', 'openLinkProject',
   'openNewContainer', 'cFormYaml', 'cFormWrote', 'openNewProject', 'openNotebook', 'openToolchains', 'openPending', 'drawPendingModal', 'pendAct',
   'openProjectsTab', 'openSendToDocker', 'openTab', 'openTrash', 'pDraw',
