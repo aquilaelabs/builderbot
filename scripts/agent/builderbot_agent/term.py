@@ -93,10 +93,13 @@ def spawn(how, words, cols, rows):
     reaches tmux as SIGWINCH."""
     master, slave = os.openpty()
     resize(master, cols, rows)
+    # The terminal it is talking to, as ttyd said it: xterm.js speaks
+    # xterm-256color, and tmux refuses a terminal it has no entry for.
+    env = {**dict(how.get("env") or {}), "TERM": "xterm-256color", "COLORTERM": "truecolor"}
     try:
         p = subprocess.Popen(["setsid", "-c"] + list(how["argv"]) + list(words),
                              stdin=slave, stdout=slave, stderr=slave, close_fds=True,
-                             cwd=how.get("cwd") or "/", env=dict(how.get("env") or {}), **(how.get("who") or {}))
+                             cwd=how.get("cwd") or "/", env=env, **(how.get("who") or {}))
     except (OSError, ValueError):
         os.close(master)
         raise

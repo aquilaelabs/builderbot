@@ -137,6 +137,14 @@ class Term(unittest.TestCase):
         out, _ = c.read_until(lambda o, _: b"winch" in o, secs=5)
         self.assertIn(b"winch", out)
 
+    def test_the_program_is_told_its_terminal(self):
+        # tmux refuses a terminal it has no entry for: the pty says what
+        # xterm.js is, as ttyd did, whatever the environment it was given.
+        how = {"argv": ["/bin/sh"], "env": {"PATH": os.environ["PATH"]}, "who": {}, "cwd": "/"}
+        c = Client(term.pack({"kind": "rw", "argv": ["-c", "echo term:$TERM"]}), kinds=lambda: {"rw": how})
+        out, _ = c.read_until(lambda o, cl: cl is not None)
+        self.assertIn(b"term:xterm-256color", out)
+
     def test_read_only_drops_keys(self):
         c = Client(term.pack({"kind": "ro", "argv": ["-c", "read -t 2 x; echo \"got:[$x]\""]}),
                    kinds=kinds(["/bin/sh"]))
