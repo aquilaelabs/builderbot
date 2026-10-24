@@ -5,6 +5,7 @@
 ### Added
 
 - A session sees a release's Android signing: bb sign status says whether the APK can be signed and how the newest went, bb sign release asks for it again under Sign a build, and a release whose APK could not be signed is said before the tag, on Release's confirm and by bb version release, which goes on only with --without-apk
+- A bug and a BuilderBot report say whether they reproduce: always, sometimes, once or not tried, asked under the steps on the Bugs form, shown on the opened row, and a chip and a sort on the list; bb bug add and bb report take --reproduces, and bb bug add --report N files a diagnostics report with its words, steps and answer
 
 ### Fixed
 

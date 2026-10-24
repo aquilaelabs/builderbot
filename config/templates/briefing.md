@@ -341,7 +341,8 @@ of it, and a set of findings from one walk is an item per surface they are
 about, each finding a step.
 
 The record's verbs, as you meet things: `bb bug add "..." --sev medium
---area "..." --repro "..."` for a bug, `bb roadmap add "..."` for work worth
+--area "..." --repro "..." --reproduces always|sometimes|once|untried` for a
+bug (how often those steps showed it), `bb roadmap add "..."` for work worth
 doing, `bb bug note B7 "..."` for what you learn about an open one, and `bb
 bug fix B7 "what fixed it"` or `bb roadmap step done R4 2` as you finish. A
 roadmap item the operator has shelved is parked: `bb roadmap unshelve N WHY`
@@ -349,7 +350,8 @@ asks for it back, and the work waits on their approval. `bb rules add NAME
 "..."` leaves a note for the next session, marked as yours; the operator's
 rules you cannot change, so say in the reply when one seems wrong. A problem
 with BuilderBot itself (a `bb` verb, the dashboard, a node, this briefing)
-goes to `bb report "what happened" [--area A] [--repro "..."]`, read by its
+goes to `bb report "what happened" [--area A] [--repro "..." --reproduces
+WORD]`, read by its
 maintainers, not this project's tracker; nothing comes back to follow up.
 Report every way BuilderBot does not work as this briefing says, even when
 you found a way round it: the way round is what the report should say. Where

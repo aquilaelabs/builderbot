@@ -87,7 +87,7 @@ ok(colon.status !== 0 && bugsNow() === had,
    '...however the verb is written (bb: ..., `bb`, bb-tty), and the severity is not read as words');
 // A repro that uses bb is how a project's own bug is shown, not a sign it is
 // BuilderBot's: two of MediaReducer's were stopped for one (7 Oct).
-const byRepro = bb(['bug', 'add', 'the dashboard repaints after it loads', '--repro', 'record it with bb capture reel'],
+const byRepro = bb(['bug', 'add', 'the dashboard repaints after it loads', '--repro', 'record it with bb capture reel', '--reproduces', 'once'],
                    { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
 ok(byRepro.status === 0 && /filed B\d+/.test(byRepro.stdout) && bugsNow() === had + 1,
    `...and a repro that uses bb does not make it BuilderBot's (${(byRepro.stdout + byRepro.stderr).trim().slice(0, 80)})`);

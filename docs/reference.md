@@ -376,7 +376,10 @@ bb bug find TEXT   search the reports themselves: area, repro and notes too
 bb bug begin       the same notebook batch `bb roadmap begin` opens; `commit`, `revert`
 bb bug pending     reports a session filed that are waiting for your approval
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
-                   `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
+                   `wontfix N`, `na N`, `reopen N`, `rm N`, `history`. With
+                   --repro, --reproduces always|sometimes|once|untried says how
+                   often those steps showed it; --report N files diagnostics
+                   report N with its words, area, repro and that answer
 bb tests run [ARGS]  run the project's test command, time it, and record the run: says first when it should
                    finish, and ends by NAMING what went wrong: the failed assertions per file, and for a file
                    that CRASHED the line it died on, the assertions that had already failed before it did,
@@ -586,7 +589,7 @@ bb diag [--json] [SECTION...]
                    Debug in its settings, and its account has the grant.
                    Its `reports` section is what sessions on any project
                    reported about BuilderBot, kept until a person clears them
-bb report "..." [--area A] [--repro "..."]
+bb report "..." [--area A] [--repro "..." --reproduces always|sometimes|once|untried]
                    a problem with BuilderBot itself, from a session on any
                    project: it goes into the controller's diagnostics rather
                    than the project's tracker (the briefing's notebook section

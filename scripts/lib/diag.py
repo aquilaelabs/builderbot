@@ -87,3 +87,5 @@ for name, v in d.items():
                 print(f"      area: {r['area']}")
             if r.get("repro"):
                 print(f"      repro: {r['repro']}")
+            if r.get("reproduces") and r["reproduces"] != "untried":
+                print(f"      reproduces: {r['reproduces']}")

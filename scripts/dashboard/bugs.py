@@ -118,6 +118,11 @@ def replay(project, verb, args):
 _lock = statefile.on(lambda: FILE)
 
 SEVERITIES = ("low", "medium", "high", "critical")
+# Whether it reproduces (R124), beside how: every time, now and then, the
+# once it was seen, or nobody has tried. Every report before the field is
+# untried (migration 0008), which is what the tracker knew of it.
+REPRODUCES = ("always", "sometimes", "once", "untried")
+REPRODUCES_WORDS = {"always": "always", "sometimes": "sometimes", "once": "once", "untried": "not tried"}
 # The ways a bug leaves the open list. "na" is for one that was real and
 # stopped applying (the feature it was about was removed, the screen it lived
 # on is gone), which is neither fixed (nobody fixed it) nor wontfix (it was
@@ -447,6 +452,16 @@ def add(project, title, by="you", severity="medium", **fields):
         return {"error": "a bug needs a title: one line, what goes wrong"}
     if severity not in SEVERITIES:
         return {"error": f"severity is one of: {', '.join(SEVERITIES)}"}
+    reproduces = str(fields.pop("reproduces", None) or "")
+    if reproduces and reproduces not in REPRODUCES:
+        return {"error": f"whether it reproduces is one of: {', '.join(REPRODUCES)}"}
+    # A session that says how to reproduce it says how often that worked
+    # (R124): the steps alone read as a sure thing whether or not they are.
+    # A report held before the field is replayed as it was asked.
+    if by == "claude" and not reproduces and not pending.replaying() and _clean(fields.get("repro"), MAX_LONG):
+        return {"error": "say whether those steps reproduce it: --reproduces always, sometimes, once "
+                         "(seen the one time) or untried"}
+    reproduces = reproduces or "untried"
     number = _int(fields.pop("number", None))
     # When it was first seen (roadmap #6): taken NOW, before the gate, so a
     # report held for approval is stamped with the build it was found on
@@ -466,7 +481,7 @@ def add(project, title, by="you", severity="medium", **fields):
                 d.setdefault("reserved", {})[project] = n
                 save(d)
             return pending.hold(project, "bugs", "add",
-                                {"title": title, "severity": severity, "number": n,
+                                {"title": title, "severity": severity, "number": n, "reproduces": reproduces,
                                  **({"seen_in": seen_in} if seen_in else {}),
                                  **({"seen_on": seen_on} if seen_on else {}),
                                  **{k: v for k, v in fields.items() if k in FIELDS}},
@@ -481,7 +496,7 @@ def add(project, title, by="you", severity="medium", **fields):
             return {"error": f"{MAX_BUGS} open bugs is the limit; close some, or "
                              "this stops being a tracker and starts being a log"}
         bug = {"id": number or _next_id(d, project),
-               "title": title, "severity": severity, "status": "open", "rev": 1,
+               "title": title, "severity": severity, "reproduces": reproduces, "status": "open", "rev": 1,
                "by": "claude" if by == "claude" else "you", **agents.asker(by),
           **_by_whom(),
                "at": int(time.time()),
@@ -605,7 +620,7 @@ def edit(project, bug_id, by="you", act="edited", rev=None, **fields):
     notes field, but "noted" and "edited" are different claims to whoever
     reads the history back.
     """
-    keys = set(FIELDS) | {"title", "severity"}
+    keys = set(FIELDS) | {"title", "severity", "reproduces"}
 
     def change(bug):
         before = {k: bug.get(k) for k in keys}
@@ -620,6 +635,10 @@ def edit(project, bug_id, by="you", act="edited", rev=None, **fields):
             if fields["severity"] not in SEVERITIES:
                 return {"error": f"severity is one of: {', '.join(SEVERITIES)}"}
             bug["severity"] = fields["severity"]
+        if "reproduces" in fields:
+            if fields["reproduces"] not in REPRODUCES:
+                return {"error": f"whether it reproduces is one of: {', '.join(REPRODUCES)}"}
+            bug["reproduces"] = fields["reproduces"]
         for k in FIELDS:
             if k in fields:
                 v = _clean(fields[k], MAX_LONG if k in ("repro", "notes")
@@ -789,7 +808,8 @@ def brief(project):
     return (f"The project has a bug tracker with {len(rows)} open ({sev}). `bb bug` lists them, "
             "`bb bug show B7` prints one in full: where it lives, how to reproduce it, what is known "
             "about why. The bugs a prompt names arrive with it. `bb bug add \"...\" --sev medium "
-            "--area \"...\" --repro \"...\"` files one you find that is out of scope, `bb bug note B7 "
+            "--area \"...\" --repro \"...\" --reproduces always|sometimes|once|untried` files one you find "
+            "that is out of scope (how often those steps showed it, said with them), `bb bug note B7 "
             "\"...\"` adds what you learn about an open one, and `bb bug fix B7 \"what fixed it\"` "
             "closes one you fixed. The tracker is where the next session looks first.")
 
@@ -810,6 +830,10 @@ def verb(name, act, req, *, sessions, prefix):
     `prefix` the asking account's session prefix. (payload, status)."""
     parts = {k: field(req, k) for k in ("title", "area", "repro",
                                         "expected", "actual", "notes")}
+    # Whether it reproduces (R124), only when sent: a page from before the
+    # field edits a report without touching it.
+    if field(req, "reproduces"):
+        parts["reproduces"] = field(req, "reproduces")
     if act == "add":
         r = add(name, parts.pop("title"),
                 severity=field(req, "severity", "medium"), **parts)
