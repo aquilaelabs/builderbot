@@ -115,8 +115,11 @@ for (const os of SYSTEMS){
     }, 45 * 60000, 30000);
     // Enough of it to say why: the log's end, and apt's own where a package
     // step failed (exit 100 is apt's), since apt says why on its terminal.
-    const tail = await inVm(ip, 'cat /root/check.rc; tail -60 /root/install.log; '
-      + 'grep -hE "^(E|Err):" /var/log/apt/term.log /root/install.log 2>/dev/null | tail -10');
+    // The lines that say why, ahead of the log's end: a job's log keeps a
+    // bounded head, and a long tail came back as its first word alone.
+    const tail = await inVm(ip, 'echo "rc $(cat /root/install.rc 2>/dev/null)"; '
+      + 'grep -nE "ERROR|Error|error:|E:|Err:|denied|not found|No such|refus" /root/install.log 2>/dev/null | tail -12; '
+      + 'echo "--- the end"; tail -12 /root/install.log');
     ok(rc === '0', `[${os}] install-controller.sh --install finishes (exit ${rc ?? 'none in 45 minutes'}): ${rc === '0' ? tail.slice(-300) : tail.slice(-3000)}`);
     if (rc !== '0') continue;
 
