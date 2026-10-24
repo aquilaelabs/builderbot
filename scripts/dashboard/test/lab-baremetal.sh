@@ -69,9 +69,10 @@ inside() {
     d="/home/builder/.cache/builderbot/u/$acct/project/labp"
     sudo -u builder mkdir -p "$d"
     sudo -u builder sh -c "printf 'PATH=/usr/local/bin:/usr/bin:/bin\0' > $d/env"
-    { declare -f tries covers; echo tries; echo covers; } > /tmp/inview.sh
-    chmod 755 /tmp/inview.sh
+    # In the project's tree, which the view keeps: its /tmp is its own.
+    { declare -f tries covers; echo tries; echo covers; } > /workspace/labp/.inview.sh
+    chmod 755 /workspace/labp/.inview.sh
     cd /tmp && sudo -u builder sudo -n /usr/local/sbin/bb-session enter --project labp --account "$acct" \
-        --home /home/builder --cwd /workspace/labp --env "$d/env" -- /bin/bash /tmp/inview.sh 2>&1 \
+        --home /home/builder --cwd /workspace/labp --env "$d/env" -- /bin/bash /workspace/labp/.inview.sh 2>&1 \
         || echo "enter-rc=$?"
 }
