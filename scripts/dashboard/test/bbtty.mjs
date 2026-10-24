@@ -699,6 +699,10 @@ sleep 60
        '...with the project directory itself denied to it, being another tree');
     ok(!deny.includes(`Edit(${wt}/**)`),
        '...and its own not denied, which a blanket rule on .worktrees would have done');
+    // Edit covers every writing tool, and Claude Code warns at the top of the
+    // session for each Write() or NotebookEdit() rule it ignores (B285).
+    ok(deny.includes('/rules.json)') && !/(Write|NotebookEdit)\(/.test(deny),
+       '...and the rules file is denied by Edit alone, with no spelling Claude Code ignores and warns of');
     // ...and the memory of its own tree allowed, which Claude Code keeps
     // outside the tree: a session asked the person to approve reading a
     // memory it was updating (6 Oct).

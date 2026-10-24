@@ -586,9 +586,7 @@ claude_scope() {
                      + map(select(. as $d | $reads | index($d)) | "Edit(\(.)/**)")
                      + ["Edit(\($here)/VERSION)",
                         "Edit(\($here)/**/VERSION)",
-                        "Edit(\($state)/rules.json)",
-                        "Write(\($state)/rules.json)",
-                        "NotebookEdit(\($state)/rules.json)"])
+                        "Edit(\($state)/rules.json)"])
            },
             # Written from the one list in bb-agent-hook, which the hooks of
             # the other agents run from too: a guard added there holds all.
