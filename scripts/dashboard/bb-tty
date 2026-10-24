@@ -924,8 +924,12 @@ agent_first_run() {
             f="${COPILOT_HOME:-$HOME/.copilot}/config.json"
             ( umask 077; mkdir -p "${f%/*}" ) 2>/dev/null || return 1
             [ -s "$f" ] || printf '{}\n' > "$f"
-            jq -e --arg d "$dir" '(.trustedFolders // []) | index($d)' "$f" >/dev/null 2>&1 && return 0
-            jq --arg d "$dir" '.trustedFolders = ((.trustedFolders // []) + [$d])' "$f" > "$f.new" \
+            # Read past the // lines 1.0.103 opens it with, and kept (B282).
+            local head body
+            head="$(grep '^[[:space:]]*//' "$f" 2>/dev/null)"
+            grep -v '^[[:space:]]*//' "$f" | jq -e --arg d "$dir" '(.trustedFolders // []) | index($d)' >/dev/null 2>&1 && return 0
+            body="$(grep -v '^[[:space:]]*//' "$f" | jq --arg d "$dir" '.trustedFolders = ((.trustedFolders // []) + [$d])')" || return 1
+            { [ -z "$head" ] || printf '%s\n' "$head"; printf '%s\n' "$body"; } > "$f.new" \
                 && mv -f "$f.new" "$f" ;;
     esac
 }
@@ -1349,10 +1353,13 @@ case "$target" in
                     said="$(codex login status 2>&1)" || true
                     ! grep -qi '^not logged in' <<<"$said" ;;
                 # Copilot CLI 1.0.102 has no status verb: a token in the
-                # environment, or the login its config remembers.
+                # environment, or the login its config remembers. Since
+                # 1.0.103 that config opens with // lines, which jq refuses,
+                # so they are left out of what it reads (B282).
                 copilot)
                     [ -n "${COPILOT_GITHUB_TOKEN:-}${GH_TOKEN:-}${GITHUB_TOKEN:-}" ] \
-                        || jq -e '.lastLoggedInUser.login // empty' "${COPILOT_HOME:-$HOME/.copilot}/config.json" >/dev/null 2>&1 ;;
+                        || grep -v '^[[:space:]]*//' "${COPILOT_HOME:-$HOME/.copilot}/config.json" 2>/dev/null \
+                            | jq -e '.lastLoggedInUser.login // empty' >/dev/null 2>&1 ;;
             esac
         }
         # EACH MACHINE KEEPS ITS OWN LOGIN, and opening a tab is when this

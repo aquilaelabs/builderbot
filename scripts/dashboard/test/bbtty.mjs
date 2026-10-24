@@ -627,7 +627,9 @@ sleep 60
       ok(/not signed in to Copilot/.test(cpRefused) && !alive(`copilot-${proj}`),
          'a Copilot session with no GitHub login remembered is refused the same way');
       mkdirSync(join(HOMEDIR, '.copilot'), { recursive: true });
-      writeFileSync(join(HOMEDIR, '.copilot', 'config.json'), JSON.stringify({ lastLoggedInUser: { host: 'https://github.com', login: 'octo' } }));
+      // As Copilot CLI 1.0.103 writes it: two // lines over the JSON (B282).
+      const cpHead = '// User settings belong in settings.json.\n// This file is managed automatically.\n';
+      writeFileSync(join(HOMEDIR, '.copilot', 'config.json'), cpHead + JSON.stringify({ lastLoggedInUser: { host: 'https://github.com', login: 'octo' } }));
       shell(`u:${ownerUid}:copilot:${proj}:b:${boot}`);
       await sleep(400);
       const cp = existsSync(cpArgv) ? readFileSync(cpArgv, 'utf8').split('\0') : [];
@@ -642,10 +644,11 @@ sleep 60
       ok(dirs && existsSync(join(dirs, 'AGENTS.md')) && /THE HOUSE RULES/.test(readFileSync(join(dirs, 'AGENTS.md'), 'utf8'))
          && !dirs.startsWith(src),
          `...handed the briefing as an AGENTS.md in a folder of its own, outside the project's tree (${dirs})`);
-      const cpConf = JSON.parse(readFileSync(join(HOMEDIR, '.copilot', 'config.json'), 'utf8'));
+      const cpRaw = readFileSync(join(HOMEDIR, '.copilot', 'config.json'), 'utf8');
+      const cpConf = cpRaw.startsWith(cpHead) ? JSON.parse(cpRaw.slice(cpHead.length)) : {};
       ok((cpConf.trustedFolders || []).includes(join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-copilot`))
          && cpConf.lastLoggedInUser?.login === 'octo',
-         '...its tree trusted in its config, and what was there kept');
+         '...its tree trusted in its config, and what was there kept, its // lines too');
       tmuxKill(`codex-${proj}`); tmuxKill(`copilot-${proj}`);
       // Their trees go, so what follows counts the two people's alone.
       for (const ag of ['codex', 'copilot']){
