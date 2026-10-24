@@ -219,7 +219,7 @@ function rnFillNode(){
     const row = (state?.projects || []).find(p => p.name === rnFor);
     const gone = row?.node_removed && rnPrefWas.node && !pick.some(n => n.id === rnPrefWas.node)
       ? `<option value="${esc(rnPrefWas.node)}" class="removed" selected>${esc(row.node_name || rnPrefWas.node)} (removed)</option>` : "";
-    sel.innerHTML = `<option value="">none: no builds, tests or Claude sessions until one is picked</option>`
+    sel.innerHTML = `<option value="">none: no builds, tests or sessions until one is picked</option>`
       + gone
       + pick.map(n => `<option value="${esc(n.id)}"${n.id === rnPrefWas.node ? " selected" : ""}>${
           esc(n.name)} (${esc(n.kind)}, ${esc(n.state)}${n.live === false ? ", quiet" : ""}${

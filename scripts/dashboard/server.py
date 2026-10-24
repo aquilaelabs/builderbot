@@ -8118,7 +8118,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*logs.verb(field(req, "action"), req))
 
     def _idle(self, req):
-        """The idle rule for Claude sessions (idle.py): minutes, 0 for never.
+        """The idle rule for every agent's sessions (idle.py): minutes, 0 for never.
         Operator-only, like the log policy beside it."""
         if self._refused("controller"):
             return

@@ -119,7 +119,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/toolpacks` | exact | `_toolpacks` | POST /api/toolpacks: look at a tool pack by its repository's address, or at one made here from a pasted manifest or an uploaded archive (/api/upload-archive's id); add it as it was shown; read a pack made here's manifest | refused: admin |
 | POST | `/api/emulator` | prefix | `_emulator` | Add system images to a node, or remove one: a job there, against its toolchain store. | refused: toolchains-write |
 | POST | `/api/logs` | prefix | `_logs` | The log policy, and the two things that can be done to the pile: logs.verb. | refused: controller |
-| POST | `/api/idle` | prefix | `_idle` | The idle rule for Claude sessions (idle.py): minutes, 0 for never. | refused: controller |
+| POST | `/api/idle` | prefix | `_idle` | The idle rule for every agent's sessions (idle.py): minutes, 0 for never. | refused: controller |
 | POST | `/api/paths` | prefix | `_paths` | Where the controller keeps one kind of what grows (paths.py), and what is there moved across. | refused: controller |
 | POST | `/api/snapshots` | prefix | `_snapshots` | POST /api/snapshots: take one now, or restore the whole tree as of a day or one file of it (snapshots.restore, which snapshots the tree first so it can be undone). | refused: settings |
 | POST | `/api/transcripts` | exact | `_transcripts` | POST /api/transcripts {project, id, action}: one of the signed-in person's own conversations deleted, or made visible to every session on the project (share) or private again (unshare). |  |

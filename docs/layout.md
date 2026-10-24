@@ -200,7 +200,7 @@ scripts/
     workspace.py                 snapshots, the node bundle, and the artifact store
     jobs.py                      the controller's own job runner (exec here or over ssh) plus /healthz and /metrics
     vmtemplate.py                what a new sandbox VM is made from, with this one's identity in it
-    idle.py                      ending Claude sessions nobody has used for a while
+    idle.py                      ending sessions nobody has used for a while
     home.py                      Home's numbers across the install: nodes online, containers running, jobs running, failed today and the last ten
     notices.py                   what the page said to each account, kept per account (<state>/notices/UID.json, the newest 300): the Notifications page's history
     helpdocs.py                  BuilderBot's own docs for the Help page: the docs README lists, one read by name, and a search across them

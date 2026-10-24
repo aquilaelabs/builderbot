@@ -572,7 +572,7 @@ function pFillNode(){
   const was = sel.value;
   sel.innerHTML = pick.map(n => `<option value="${esc(n.id)}">${esc(n.name)}${
       n.live === false ? " (quiet)" : ""}</option>`).join("")
-    + `<option value="">none: no builds, tests or Claude sessions until one is picked</option>`;
+    + `<option value="">none: no builds, tests or sessions until one is picked</option>`;
   // Several: the node most projects are bound to, not none. A project born
   // with no node had nowhere to send its container and used to land on the
   // newest enrolled node instead (the operator, 25 Sep).

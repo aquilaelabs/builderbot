@@ -29,7 +29,7 @@ NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9 ._-]{0,39}$")
 # builds and tests, the phone it is lent.
 CAPS = {
     "read": ("projects", "read a project: its notebook, code and state"),
-    "work": ("projects", "work on a project: the notebook, a Claude session, its settings, builds and tests"),
+    "work": ("projects", "work on a project: the notebook, an agent's session, its settings, builds and tests"),
     "version": ("projects", "move a project's version and release it"),
     "lock": ("projects", "nothing any more: a project's owner or an administrator locks it (deprecated, goes in 0.8.0)"),
     "rename": ("projects", "rename a project"),
@@ -67,7 +67,7 @@ SCOPES = ("mine", "all")           # or a list of project names
 # that one); global areas only through a Global role, which only an
 # administrator gives. Each sentence is what the Roles tab shows.
 AREAS = (
-    ("projects", "Projects", "project", "its notebook and code", "a Claude session, edits, builds and tests"),
+    ("projects", "Projects", "project", "its notebook and code", "an agent's session, edits, builds and tests"),
     ("settings", "Project settings", "project", "the settings", "change them, lock, rename and delete"),
     ("releases", "Releases and versions", "project", "versions and releases", "move the version and release"),
     ("gitauth", "Git authentication", "project", "how it authenticates", "change the credential"),
@@ -76,7 +76,7 @@ AREAS = (
     # A project's VMs (R91): Read sees them on the VMs page, Write makes,
     # starts, stops, snapshots and removes them.
     ("vms", "VMs", "project", "its VMs and their state", "make, start, stop, snapshot and remove them"),
-    ("terminal", "Terminal", "project", "the shielded Claude console", "the full tmux shell"),
+    ("terminal", "Terminal", "project", "the shielded agent console", "the full tmux shell"),
     ("nodes", "Nodes", "global", "the Nodes page", "configure nodes, and what a project's sessions reach"),
     ("toolchains", "Toolchains", "global", "the Toolchains page", "install and remove"),
     ("jobs", "Jobs", "global", "the Jobs page", "run a command on a node"),

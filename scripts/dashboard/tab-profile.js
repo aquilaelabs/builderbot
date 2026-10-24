@@ -117,7 +117,7 @@ function renderProfileInto(i){
           <div class="actbar">
             <span class="state${profile.git_ready === false ? " warn" : ""}">${
               profile.git_ready === false
-                ? "no author for commits yet: a Claude session waits for a name and an email here"
+                ? "no author for commits yet: a session waits for a name and an email here"
                 : `commits are signed ${esc(g.name)} &lt;${esc(g.email)}&gt;`}</span>
             <button type="button" id="pfSave" class="primary"${dirty ? "" : " disabled"}>Save</button>
           </div>

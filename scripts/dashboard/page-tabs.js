@@ -530,7 +530,7 @@ function roomForTab(kind){
   if (kind !== "term") return true;
   const cap = state?.max_tabs || 12;
   if (tabs.filter(t => t.kind === "term").length < cap) return true;
-  notify(`Terminal tab limit reached (${cap} shells and Claude sessions). Close or minimize `
+  notify(`Terminal tab limit reached (${cap} shells and agents' sessions). Close or minimize `
        + `one first; a minimized tab keeps running.`, true);
   return false;
 }

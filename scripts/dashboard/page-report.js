@@ -11,7 +11,7 @@
 // What a report is about, in the words a person would pick. The words go
 // into the report's area, which is what the diagnostics sort and read by.
 const REPORT_CATS = [
-  "The dashboard", "A Claude session", "Builds and tests", "The notebook",
+  "The dashboard", "An agent's session", "Builds and tests", "The notebook",
   "Nodes and toolchains", "The emulator or a phone", "Containers", "Git and pushing",
   "Signing", "The companion app", "Something else",
 ];

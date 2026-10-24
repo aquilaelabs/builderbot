@@ -92,10 +92,10 @@ function renderSessionsInto(i){
           title="take its tab off the strip; it keeps running">Minimize</button>`)
         : `<button type="button" data-a="${esc(s.name)}" title="reopen its tab">Open</button>`}
         <button type="button" class="danger" data-k="${esc(s.name)}" data-kn="${esc(s.node_id || "")}"
-          title="${claude ? "end this Claude session: the transcript is kept" : "end this session and what runs in it"}">End</button></div>`])}</div>`;
+          title="${claude ? "end this session: the transcript is kept" : "end this session and what runs in it"}">End</button></div>`])}</div>`;
   }).join("");
   const html = ss.length ? tblWrap(SESS_COLS, rows, "sesstbl")
-    : `<div class="hint">nothing is running: a terminal or a Claude session you open is listed here</div>`;
+    : `<div class="hint">nothing is running: a terminal or an agent's session you open is listed here</div>`;
   if (!paint(d.list, html)) return;
   // Kept from the pane under the page: its click makes the page's pane the
   // active one, and the terminal just opened in the dock would lose the

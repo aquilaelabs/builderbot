@@ -565,7 +565,7 @@ function nodeFeaturesSection(n){
       <div class="sub">${about}</div></div>${writes ? btn : ""}</div>`;
   const others = [];
   if (!n.config?.host_only)
-    others.push(elsewhere("sessions", "Claude sessions", !!r.session?.user,
+    others.push(elsewhere("sessions", "Sessions", !!r.session?.user,
       r.session?.user ? `Sessions run here as ${esc(r.session.user)}, kept off Docker and root.` : "No session account on this machine: enrolling it again with Claude sessions ticked makes one.",
       `<button type="button" data-nd="reenroll" title="a new script for this machine, with the ticks changed">Enroll again…</button>`));
   others.push(elsewhere("door", "SSH door", !!r.door?.installed,
@@ -753,7 +753,7 @@ function nodeSessionsSection(n){
     notes.push(["The node has not said yet whether it runs sessions.", "warn"]);
   } else if (!se.up){
     [status, cls] = ["none", "warn"];
-    notes.push([`${se.why || "no session account: provision it with --session-user"}. No Claude session can start here until it is up.`, "warn"]);
+    notes.push([`${se.why || "no session account: provision it with --session-user"}. No session can start here until it is up.`, "warn"]);
   } else {
     const shared = !!iso && !iso.sessions;
     if (!se.boot) notes.push(["the agent could not read this machine's boot id, which a terminal here is checked against", "bad"]);
@@ -968,7 +968,7 @@ function nodeTurnsRow(n){
   const winp = `ndWorkers-${n.id}`;
   // What 0 means is in each label, where a phone reads it (B459).
   return `<div class="ndnums"><div class="logdays setrow col ctlrow">
-      ${lbl(inp, "Claude sessions working at once (0: no limit)", "a prompt past it waits for a turn instead of starting")}
+      ${lbl(inp, "Sessions working at once (0: no limit)", "a prompt past it waits for a turn instead of starting")}
       <input id="${esc(inp)}" data-k="turns" type="number" min="0" max="64" step="1" inputmode="numeric"
         value="${esc(c.draft.turnsText)}">
     </div>
@@ -1949,7 +1949,7 @@ function ndDialogs(){
               .map(s => [s.id, s.vetted ? s.name : devOpt(s.name)]))}</select></div>
         </div>
         <div class="hint" id="ndEnSysWhy" hidden></div>
-        <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
+        <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Sessions run on it</label>
         <label class="ndcap"><input type="checkbox" id="ndEnHost"> Hosting only: it runs containers sent to it, and nothing of it comes back</label>
         <div class="hint" id="ndEnHostHint" hidden>No project's code, no sessions and no bb go to it; its agent may ask the controller for its own jobs and nothing else. For a public box such as a cloud VPS.</div>
         <label class="ndcap" id="ndEnFwRow" hidden><input type="checkbox" id="ndEnFw" checked> Take in only 80 and 443</label>
@@ -2498,7 +2498,7 @@ function wireNodesTab(root){
           return true;
         };
         const ok = await step(val("turns"), String((n0.turns || {}).limit || 0), v => ({action: "turns", limit: Number(v)}),
-                              v => Number(v) ? `at most ${v} Claude session${Number(v) === 1 ? "" : "s"} work here at once` : "no limit on Claude sessions working here at once")
+                              v => Number(v) ? `at most ${v} session${Number(v) === 1 ? "" : "s"} work here at once` : "no limit on sessions working here at once")
           && await step(val("sessnet"), !!conf.session_net, v => ({action: "session-net", on: v}),
                         v => v ? "sessions started here from now on reach only their own project's containers" : "sessions started here from now on share its network")
           && await step(val("workers"), String(conf.test_workers || 0), v => ({action: "test-workers", workers: Number(v)}),

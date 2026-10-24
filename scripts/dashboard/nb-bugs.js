@@ -305,7 +305,7 @@ function nbBugsView({$, nb, project}){
         </div>
       </details>`).join("")
       // What the tracker is for, as its empty state (R119 step 4).
-      || (rows.length ? "" : `<div class="hint nbempty">What goes here reaches every Claude session in this project.</div>`);
+      || (rows.length ? "" : `<div class="hint nbempty">What goes here reaches every session in this project.</div>`);
     paginate(list, ":scope > .bug", {key: "bugList", noun: "reports", total: vis.length, more: () => drawBugs()});
     wireMore(list);
     list.querySelectorAll(".bug").forEach(d => {

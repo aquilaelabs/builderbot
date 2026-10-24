@@ -286,7 +286,7 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
 - **Logs**: how long logs are kept, and the downloads (see [Logs](#logs)).
 - **BuilderBot bug reports**: what sessions and people reported about
   BuilderBot itself, and **Clear reports**.
-- **Claude sessions**: the idle rule, which ends a session after N minutes
+- **Idle sessions**: the idle rule, which ends any agent's session after N minutes
   with nothing typed or written, here and on every node, where the node
   itself enforces it so the rule holds while this container is down.
 - **Storage on this controller**: where each kind of thing that grows

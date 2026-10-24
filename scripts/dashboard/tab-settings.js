@@ -100,8 +100,8 @@ function renderSettingsInto(i){
     ${logs || !state ? sect("logs", "Logs", "", `<div class="row stack2" data-group="Logs"><div class="grow">${withRevert(logs, "logs")
         || `<div class="sub">log settings arrive with the first poll…</div>`}</div></div>`) : ""}
     ${reportsSection() ? sect("reports", "BuilderBot bug reports", reportsCount === null ? "" : reportsCount ? `${reportsCount} report${reportsCount === 1 ? "" : "s"}` : "none", reportsSection()) : ""}
-    ${sect("idle", "Claude sessions", idle === undefined ? "" : idle ? `${idle} min` : "never",
-           `<div class="row stack2" data-group="Claude sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
+    ${sect("idle", "Idle sessions", idle === undefined ? "" : idle ? `${idle} min` : "never",
+           `<div class="row stack2" data-group="Idle sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
     ${pathsSection() ? sect("paths", "Storage on this controller", `${paths.length} path${paths.length === 1 ? "" : "s"}`, withRevert(pathsSection(), "paths")) : ""}
     ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})).join("")}
     ${
@@ -637,8 +637,8 @@ function wireIdleSection(el){
       const j = await r.json();
       if (j.error) return notify(j.error, true);
       delete settingsDraft.idleMin;
-      notify(j.minutes ? `Claude sessions end after ${j.minutes} idle minute(s), here and on every node`
-                       : "Claude sessions are never ended for being idle");
+      notify(j.minutes ? `every agent's session ends after ${j.minutes} idle minute(s), here and on every node`
+                       : "no session is ended for being idle");
       refresh();
     }catch(e){ notify("idle: " + e, true); }
     finally{ if (btn && btn.isConnected){ btn.disabled = false; btn.textContent = "Apply"; } }

@@ -239,7 +239,7 @@ function attRow(a){
   if (a.kind === "held"){
     return `<div class="bnote att warn">
       <div class="bt">A session in ${esc(projLabel(a.project))} stopped for the update</div>
-      <div class="bsum">${esc(a.who ? `${a.who}'s` : "A")} Claude session on ${esc(a.node)}, held ${a.since ? esc(ago(a.since)) : "while BuilderBot was away"}</div>
+      <div class="bsum">${esc(a.who ? `${a.who}'s` : "A")} session on ${esc(a.node)}, held ${a.since ? esc(ago(a.since)) : "while BuilderBot was away"}</div>
       <div class="bfoot"><span>it left a note of where it was</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bheld="${esc(a.node_id)}" data-session="${esc(a.session)}" data-claude="${esc(a.claude || a.session)}">Resume</a></span></div></div>`;

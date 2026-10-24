@@ -514,7 +514,7 @@ function groupNodeOptions(sel, own, whose, skip){
     list.forEach(o => g.append(o));
     return g;
   };
-  const a = mk(`${projLabel(whose)}'s nodes: development and Claude sessions`, opts.filter(o => own.includes(o.value)));
+  const a = mk(`${projLabel(whose)}'s nodes: development and sessions`, opts.filter(o => own.includes(o.value)));
   const b = mk("Other nodes: its image shipped, no codebase or sessions there", opts.filter(o => !own.includes(o.value)));
   sel.innerHTML = "";
   [a, b].forEach(g => g && sel.append(g));
@@ -592,7 +592,7 @@ function rlSay(){
     : own.includes(node)
       ? `One of ${projLabel(rlFor.whose)}'s nodes: built and run there, where its sessions can work on it.`
       : `Not one of ${projLabel(rlFor.whose)}'s nodes: its image is built on ${projLabel(rlFor.whose)}'s node and shipped, `
-        + "so its codebase never goes there, and no development or Claude session happens there.";
+        + "so its codebase never goes there, and no development or session happens there.";
   $("rlGo").disabled = !node;
 }
 
@@ -933,7 +933,7 @@ function dmOwnerLine(r, key){
   const shown = n => n === saved && r.owner_gone ? `${r.owner_label || n} (deleted)` : projLabel(n);
   const id = "dmo-" + key;
   return `<div class="setcell dmowner">${lbl(id, "Project",
-      "Its project's Claude sessions can see it and, as that project's Run its container setting allows, "
+      "Its project's sessions can see it and, as that project's Run its container setting allows, "
       + "work on it. No project keeps it from every session.")}
     <select id="${esc(id)}" data-dmown="${esc(key)}" aria-label="which project it belongs to">
       ${optionList([["", "no project"], ...names.map(n => [n, shown(n)])], pick || "")}</select></div>`;
