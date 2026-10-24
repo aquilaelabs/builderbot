@@ -3440,6 +3440,10 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    the spacer beside it grew too and took half (the operator, 18 Oct: the
    hint cut off beside a blank gap). */
 @media(max-width:900px){ .jump{flex:1 1 90px} header>.spacer{display:none} }
+/* The search keeps at least 80px at every phone width (B744, B290): the
+   narrowest phones give the header's side padding back to make room. */
+@media(max-width:900px){ .jump{min-width:80px} }
+@media(max-width:359px){ header{padding-left:8px;padding-right:8px} }
 @media(max-width:600px){ .jump input{padding:4px 8px} }
 /* Under 600px the header's bug and sign-out move into the gear's menu: six
    buttons a thumb wide left the search a sliver at 344px (B744). */

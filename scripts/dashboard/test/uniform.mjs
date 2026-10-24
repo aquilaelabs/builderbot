@@ -2316,6 +2316,11 @@ if (runs('c')) {
   const cut = await phone.evaluate(() => [...document.querySelectorAll('.mobar button')]
     .filter(b => b.offsetHeight > 0 && b.getBoundingClientRect().right > innerWidth + 1).map(b => b.textContent.trim()));
   ok(cut.length === 0, `...and the bar fits a fold's 344px cover${cut.length ? `: cut off ${cut.join(', ')}` : ''}`);
+  // ...and the top bar's search keeps its 80px there, nothing in the header
+  // pushed past the edge to make room (B744, B290).
+  const top = await phone.evaluate(() => ({ jump: Math.round(document.getElementById('jump').getBoundingClientRect().width),
+    over: [...document.querySelectorAll('header > *')].filter(e => e.offsetWidth > 0 && e.getBoundingClientRect().right > innerWidth + 0.5).map(e => e.id || e.className) }));
+  ok(top.jump >= 80 && top.over.length === 0, `...and the top bar's search is at least 80px wide at 344, the header inside the screen (${JSON.stringify(top)})`);
   await phone.context().close();
 }
 }
