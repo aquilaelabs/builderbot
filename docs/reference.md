@@ -77,12 +77,15 @@ bb version unbump      take the last unreleased bump or set back; its
                    stays. Once: the bump before it is not taken back too.
                    A section dated under the wrong number is fixed with
                    unbump, then set to the number meant
-bb version release --why "..."
+bb version release --why "..." [--without-apk]
                    tag this commit and publish the release, as Release on the
                    Artifacts view does, on the controller with the project's own
                    credentials. The project's settings say whether an agent may
                    (Tag and publish a release): auto releases, ask waits for
-                   the project's owner, with --why as the reason
+                   the project's owner, with --why as the reason. A release
+                   whose Android APK could not be signed is refused before the
+                   tag, saying why; --without-apk goes on, and bb sign release
+                   signs it once that is put right
 bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...
                    change the published release under the same setting, each
                    edit its own ask: the notes replaced whole (- reads stdin),
@@ -318,6 +321,15 @@ bb sign rotate OLD NEW --why "..."
                    moves the apps OLD's sideload key signs to NEW's: builds go out
                    signed with both and a proof, Android 9 and newer take NEW,
                    older devices keep checking OLD, which is kept for good
+bb sign status [TAG]
+                   whether a release's APK can be signed (the sideload key, the
+                   node with its tools) and how the newest went: handed over,
+                   signed and attached with the key's fingerprint, or what
+                   stopped it, in the bell's words
+bb sign release --why "..."
+                   look for unsigned release APKs now and sign a failed one
+                   again, as the Signing view's Look for unsigned APKs now,
+                   under Sign a build: auto starts it, ask waits for the owner
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/

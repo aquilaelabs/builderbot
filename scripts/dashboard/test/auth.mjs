@@ -1496,6 +1496,29 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
          `...a session reads the keys without a secret, proposes a new one for the owner to allow, and at Deny is refused naming the setting (${keyAsk?.cmd?.join(' ')})`);
       for (const a of [keyAsk, rotAsk]) if (a) await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: a.id }) });
       await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'ask', keys: 'ask', node: '' }) });
+      // A release's signing (R134): a session reads whether its APK can be
+      // signed and how the newest went, and asks for the look again under
+      // Sign a build; a project that hands over no APK has nothing to ask.
+      {
+        const none = await sign({ action: 'release-sign', why: 'the key was added' });
+        mkdirSync(`${DIR}/ws/alpha/.github/workflows`, { recursive: true });
+        writeFileSync(`${DIR}/ws/alpha/.github/workflows/app.yml`, 'jobs: {b: {steps: [{with: {name: bb-release-apk-x}}]}}\n');
+        const read = await sign({ action: 'release' });
+        const asked = await sign({ action: 'release-sign', why: 'the key was added' });
+        const ownerAsks = await (await bare('/api/phone', { headers: ownerAuth })).json();
+        const ask = (ownerAsks.asks || []).find(a => a.id === asked.body.id);
+        await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'deny' }) });
+        const denied = await sign({ action: 'release-sign', why: 'again' });
+        if (ask) await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: ask.id }) });
+        await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'ask' }) });
+        rmSync(`${DIR}/ws/alpha/.github`, { recursive: true, force: true });
+        ok(none.status === 400 && /no unsigned APK/.test(none.body.error || '')
+           && read.status === 200 && read.body.release?.wanted === true && typeof read.body.release.why === 'string'
+           && Array.isArray(read.body.attention) && !JSON.stringify(read.body).includes('"pw"')
+           && asked.status === 200 && ask?.kind === 'release-sign' && ask.cmd.join(' ') === 'sign release'
+           && denied.status === 403 && /Sign a build/.test(denied.body.error || ''),
+           `...a session reads its release signing with no secret, asks the owner to sign a release again, and at Deny is refused naming the setting (${none.status}/${read.status}/${asked.status}/${denied.status})`);
+      }
       await bare('/api/signing', { method: 'POST', headers: ownerAuth,
         body: JSON.stringify({ action: 'backup-password', project: 'alpha', current: 'a-backup-password', new: '' }) });
       rmSync(`${DIR}/state/signing/alpha`, { recursive: true, force: true });
@@ -1538,6 +1561,23 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
            && ask.tag === 'v1.2.3' && ask.sha === sha && !gitR('tag', '--list', 'v1.2.3'),
            `a session's bb version release is refused before anybody is asked when it could not happen, then waits on the project's owner naming the tag and its commit, and tags nothing until then (${ask?.tag} on ${ask?.sha}; ${noVersion.body.error || ''} | ${dirtyAsked.body.error || ''} | ${asked.body.error || ''})`);
         await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: asked.body.id }) });
+        // An Android APK the release could not have signed is said before
+        // the tag (R134 step 4), and --without-apk goes on to the ask.
+        {
+          mkdirSync(`${R}/.github/workflows`, { recursive: true });
+          writeFileSync(`${R}/.github/workflows/app.yml`, 'jobs: {b: {steps: [{with: {name: bb-release-apk-x}}]}}\n');
+          gitR('add', '.github'); gitR('commit', '-qm', 'an Android workflow');
+          const unsignable = await rel({});
+          const goOn = await rel({ unsigned: true });
+          const asks = await (await bare('/api/phone', { headers: ownerAuth })).json();
+          const a = (asks.asks || []).find(x => x.id === goOn.body.id);
+          if (a) await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: a.id }) });
+          const page = await (await bare('/api/version?project=relproj', { headers: ownerAuth })).json();
+          ok(unsignable.status === 409 && /could not be signed/.test(unsignable.body.error || '') && /--without-apk/.test(unsignable.body.error || '')
+             && goOn.status === 200 && a?.kind === 'release' && !gitR('tag', '--list', 'v1.2.3')
+             && typeof page.release_sign === 'string' && page.release_sign.length > 0,
+             `...a release whose Android APK could not be signed is refused before the tag saying why, --without-apk asks anyway, and Release's confirm is told (${unsignable.status}: ${(unsignable.body.error || '').slice(0, 90)})`);
+        }
         await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'relproj', release: 'deny' }) });
         const denied = await rel({});
         const other = await rel({ project: 'alpha' });

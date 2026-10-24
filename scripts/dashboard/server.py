@@ -3964,6 +3964,17 @@ def _keymaker(action, project, args, by=""):
 
 
 phone.keymaker = _keymaker
+
+
+def _release_signer(project):
+    """A release's APKs looked for and signed again now (R134 step 5): a
+    session's auto dial, and Allow on its ask."""
+    started = releasesign.check_soon(project, force=True)
+    return {"ok": True, "started": started,
+            "said": "looking for unsigned release APKs to sign" if started else "a look is already going"}, 200
+
+
+phone.release_signer = _release_signer
 artifacts.sign_routes = signing.routes_held
 import version                                                   # noqa: E402
 import vmtemplate                                                # noqa: E402
@@ -6334,7 +6345,10 @@ class Handler(BaseHTTPRequestHandler):
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
-        return self._json(version_payload(name))
+        # What would keep a release's APK from being signed (R134 step 4),
+        # said by Release's confirm before the tag is made.
+        rs = releasesign.readiness(name)
+        return self._json(version_payload(name) | {"release_sign": rs["why"] if rs["wanted"] else ""})
 
     def _get_artifacts(self):
         """GET /api/artifacts: artifacts.tab_view, for a project this account
@@ -8405,6 +8419,15 @@ class Handler(BaseHTTPRequestHandler):
             plan = version.release_plan(name, comp)
             if plan.get("error"):
                 return self._json(plan, 400)
+            # Said before the tag, not after it (R134 step 4): 0.7.0 was
+            # tagged with no sideload key and its APK never attached.
+            rs = releasesign.readiness(name, fresh=True)
+            if rs["wanted"] and rs["why"] and not req.get("unsigned"):
+                return self._json({"error": f"{plan['tag']}'s Android APK could not be signed: {rs['why']}. "
+                                            "Put that right first (bb sign status says when it is), or release "
+                                            "with --without-apk and have it signed after with bb sign release "
+                                            "within three days, while CI keeps the unsigned APK",
+                                   "unsigned": rs["why"]}, 409)
             acct = users.account_of(who) or {}
             if mode == "auto":
                 return self._json(*_releaser(name, comp, str(acct.get("name") or ""), self._principal()))
@@ -8507,11 +8530,35 @@ class Handler(BaseHTTPRequestHandler):
             # Sign a build). It never receives the key, the list, or a
             # backup; asking to sign is all a session does here.
             act = field(req, "action")
-            if act not in ("sign", "keys", "generate", "map", "rotate") or name != who["session"]:
+            if act not in ("sign", "keys", "generate", "map", "rotate", "release", "release-sign") \
+                    or name != who["session"]:
                 return self._json({"error": "a session signs with bb sign, which never hands it the key; "
                                             "the keys are a person's to manage"}, 403)
             owner = membership.owner_of(name)
             acct = users.account_of(who) or {}
+            if act == "release":
+                # bb sign status (R134): whether its release APKs can be
+                # signed and how the newest went, in the bell's words. Read
+                # only, and no secret is in it.
+                return self._json({"release": releasesign.status(name),
+                                   "attention": releasesign.attention([name])})
+            if act == "release-sign":
+                # bb sign release (R134 step 5): the Signing view's retry,
+                # under the Sign a build dial.
+                if not releasesign.wants(name):
+                    return self._json({"error": f"{name}'s workflows hand over no unsigned APK to sign "
+                                                f"(an artifact named {releasesign.MARK}TAG)"}, 400)
+                mode = (prefs.get(name) or {}).get("sign") or "ask"
+                if mode == "deny":
+                    return self._json({"error": f"{name}'s settings say Claude does not sign its builds "
+                                                "(Agents may: Sign a build); a person presses Look for unsigned "
+                                                "APKs now in the Signing view"}, 403)
+                if mode == "auto":
+                    return self._json(*_release_signer(name))
+                r = phone.ask_release_sign(field(req, "why"), name, owner,
+                                           membership.owner_name(name) or "the project's owner",
+                                           asker_name=str(acct.get("name") or ""))
+                return self._json(r, 400 if r.get("error") else 200)
             if act in ("keys", "generate", "map", "rotate"):
                 # Manage signing keys (R106 step 6): which keys there are
                 # (names and fingerprints, never a secret), and a new key or

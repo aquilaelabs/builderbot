@@ -388,8 +388,12 @@ app's releases and how the newest went, and **Look for unsigned APKs now**
 signs a failed one again. What would stop a release's signing (no sideload
 key, an app mapped to none of several, the project's node offline, behind, or
 without the jdk or the build-tools, a project not on GitHub) is a bell row before the release, and a signing that
-failed after one is a red bell row until it is signed or put away. GitHub
-only: a Gitea or GitLab workflow's artifacts are not fetched.
+failed after one is a red bell row until it is signed or put away. Release's
+confirm says it too, and a session's `bb version release` is refused before
+the tag with the reason unless it adds `--without-apk`. A session reads the
+same with `bb sign status [TAG]` and asks for the look again with `bb sign
+release --why "..."`, under **Agents may: Sign a build**. GitHub only: a Gitea
+or GitLab workflow's artifacts are not fetched.
 
 **Several apps, several keys.** A project keeps as many named keys as it needs,
 each with both slots; the first is **default**, which is where keys from
