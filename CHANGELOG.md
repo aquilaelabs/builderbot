@@ -11,6 +11,8 @@
 
 - A release's signing pressed again on the Signing view is followed to its end: the Releases section re-reads when the look finishes, rather than showing the old failure until the view is reopened
 - Saving a project's settings with End ends a ChatGPT or Copilot session there too, not only a Claude one, so the next start picks up what was saved
+- The bell's CI failing row can be dismissed until another run fails, and a check that has passed since on a release no longer stays red
+- A terminal or a VM's screen opens only from the dashboard's own page: a connection started by another site's page, such as an app on a sibling hostname, is refused
 
 ## 0.7.0: 2026-10-24
 

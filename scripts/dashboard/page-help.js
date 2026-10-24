@@ -64,7 +64,7 @@ function helpGo(name, anchor = ""){
   if (q) q.value = "";
   helpCur = name; helpAnchor = anchor;
   const to = "#/help" + (name && name !== helpIndex?.home ? "/" + encodeURIComponent(name) : "");
-  if (location.hash !== to) history.pushState(null, "", to);
+  if (location.hash !== to) shellPush(to);
   helpRead(name);
   helpRev++; drawPanes();
   if (!anchor) document.querySelector(".doc.on")?.scrollTo?.({top: 0});

@@ -5045,6 +5045,14 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 .slot .veil{position:absolute;inset:0;background:#2b2b2b;pointer-events:none;
   transition:opacity .12s linear}
 .slot .veil.gone{opacity:0}
+/* BuilderBot's own terminal (R133): xterm in the slot, on the ground ttyd's
+   page settled on, and under it why it ended, with Reconnect. */
+.pane .slot.ownterm{flex-direction:column;background:#2b2b2b}
+.pane .slot.ownterm .xhost{flex:1;min-height:0;padding:2px 0 0 4px;overflow:hidden}
+.pane .slot.ownterm .xend{display:flex;align-items:center;gap:var(--field-gap);padding:var(--label-gap) var(--field-gap);
+  border-top:1px solid var(--line);background:var(--panel);font:var(--f-note);color:var(--dim)}
+.pane .slot.ownterm .xend[hidden]{display:none}
+.pane .slot.ownterm .xend .xwhy{flex:1;min-width:0}
 .pane .empty-pane{margin:auto;color:var(--dim);font-style:italic}
 /* A popped-out terminal's placeholder (R8): the pane's empty voice, and the
    one control under it. */
@@ -6921,6 +6929,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="page-help.js"></script>
 <script src="page-paint.js"></script>
 <script src="page-panes.js"></script>
+<script src="page-term.js"></script>
 <script src="page-projsettings.js"></script>
 <script src="page-keys.js"></script>
 <script src="page-sidebar.js"></script>

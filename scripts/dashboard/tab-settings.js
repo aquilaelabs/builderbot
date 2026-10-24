@@ -272,7 +272,10 @@ const SETTING_GROUPS = [
     // developer of BuilderBot reaches for, and a group headed by one switch
     // read as a feature of the product rather than of its testing.
     {key: "offer_unvetted", label: "Offer dev features", type: "bool",
-     hint: "Also offer untested git hosts, hypervisors and node systems, tagged dev in the pickers."}]},
+     hint: "Also offer untested git hosts, hypervisors and node systems, tagged dev in the pickers."},
+    // BuilderBot's own terminal (R133), a dev switch until walked.
+    {key: "own_terminal", label: "BuilderBot's own terminal", type: "bool",
+     hint: "Every terminal tab opens in the page's own terminal instead of ttyd's, on this controller and on each node whose agent serves one; the rest stay on ttyd."}]},
 ];
 
 // What the Apps section holds, over its switches, and Look now.

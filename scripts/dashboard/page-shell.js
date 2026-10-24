@@ -131,7 +131,17 @@ function railGo(key, tool){
   const was = location.hash;
   OPENERS[kind]?.();
   const to = routeOf(tabOf(panes[0]));
-  if (to && to !== was) history.pushState(null, "", to);
+  if (to && to !== was) shellPush(to);
+}
+
+// A history entry the page made itself, and shellSync told so: it leaves an
+// address alone that differs from the one it last saw (a hand-typed one,
+// B303), and an entry pushed here without saying so read as one, so the
+// next page opened left the old page's address under it and Back went
+// there (B313).
+function shellPush(to){
+  history.pushState(null, "", to);
+  shellSeen = to;
 }
 
 // A node page's picked node, read and set by the address (R256 step 3): the
@@ -162,7 +172,7 @@ function navPush(fn){
   const was = location.hash;
   fn();
   const to = routeOf(tabOf(panes[0]));
-  if (to && to !== was){ history.replaceState(null, "", was || location.pathname + location.search); history.pushState(null, "", to); }
+  if (to && to !== was){ history.replaceState(null, "", was || location.pathname + location.search); shellPush(to); }
 }
 
 // The address a tab is reached at: #/group, #/group/tool, #/projects/NAME,
