@@ -63,6 +63,15 @@ const browser = await launch();
   const at = await page.evaluate(() => { const p = state.projects.find(x => x.name === 'ep.silon');
     const d = document.createElement('div'); d.innerHTML = projectActions(p); return d.querySelector('[data-c]')?.dataset.c; });
   ok(at === 'gamma', `Start on the second repository's page opens the project's session, on its first (${at})`);
+  // Colored, its Take out buttons wear the tint its other buttons do (B330).
+  await page.evaluate(async () => { await postJSON('/api/project-color', { name: 'gamma', color: 'teal' }); await refresh(); });
+  await page.waitForSelector('.pcard.prepos.pc', { timeout: 10000 }).catch(() => {});
+  const tint = await page.evaluate(() => {
+    const card = document.querySelector('.pcard.prepos'), bg = e => e ? getComputedStyle(e).backgroundColor : '';
+    return { out: bg(card?.querySelector('[data-repout]')), more: bg(card?.querySelector('.pcacts .more > button')) };
+  });
+  ok(tint.out && tint.out === tint.more, `on a colored card, Take out wears the card's tint as its other buttons do (${JSON.stringify(tint)})`);
+  await page.evaluate(() => postJSON('/api/project-color', { name: 'gamma', color: '' }));
   await page.screenshot({ path: `${DIR}/repos-card.png` }).catch(() => {});
   await page.close();
 }
