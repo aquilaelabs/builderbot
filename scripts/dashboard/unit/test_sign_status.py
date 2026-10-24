@@ -40,13 +40,16 @@ class Controller(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
 
-NOW = int(time.time())
-STATUS = {"release": {
-    "wanted": True, "node": "bb-sandbox", "why": "", "looking": False,
-    "keys": [{"package": "dev.example.app", "key": "release", "sha256": "DE:66:E7"}],
-    "signed": [{"tag": "v0.7.0", "at": NOW - 120, "files": ["app-0.7.0.apk"], "key": "release",
-                "cert": "DE:66:E7", "url": "https://example.test/releases/v0.7.0"}],
-    "failed": [{"tag": "v0.6.9", "at": NOW - 7200, "why": "no sideload key"}]}, "attention": []}
+def status():
+    """Stamped when asked: a whole tier's run is minutes, and the ages printed
+    are read against the clock then."""
+    now = int(time.time())
+    return {"release": {
+        "wanted": True, "node": "bb-sandbox", "why": "", "looking": False,
+        "keys": [{"package": "dev.example.app", "key": "release", "sha256": "DE:66:E7"}],
+        "signed": [{"tag": "v0.7.0", "at": now - 120, "files": ["app-0.7.0.apk"], "key": "release",
+                    "cert": "DE:66:E7", "url": "https://example.test/releases/v0.7.0"}],
+        "failed": [{"tag": "v0.6.9", "at": now - 7200, "why": "no sideload key"}]}, "attention": []}
 
 
 class Clients(unittest.TestCase):
@@ -68,7 +71,7 @@ class Clients(unittest.TestCase):
                               capture_output=True, text=True, timeout=30, env=self.env())
 
     def test_status_says_the_key_the_node_and_each_result(self):
-        ANSWER["release"] = (200, STATUS)
+        ANSWER["release"] = (200, status())
         r = self.sign("--status", "", "")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(GOT[0][1], {"action": "release", "project": "app"})
@@ -81,7 +84,7 @@ class Clients(unittest.TestCase):
         self.assertLess(r.stdout.index("v0.7.0"), r.stdout.index("v0.6.9"), "newest first")
 
     def test_status_of_one_tag_and_what_would_stop_one(self):
-        ANSWER["release"] = (200, {"release": STATUS["release"] | {"why": "the project has no sideload key"}})
+        ANSWER["release"] = (200, {"release": status()["release"] | {"why": "the project has no sideload key"}})
         r = self.sign("--status", "", "", "v0.7.0")
         self.assertIn("NOT READY: the project has no sideload key", r.stdout)
         self.assertIn("v0.7.0: signed", r.stdout)
