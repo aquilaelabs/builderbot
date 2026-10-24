@@ -244,8 +244,15 @@ function openRoute(hash){
 
 // The address follows the page on show (render calls this): replaced, not
 // pushed, so a poll's redraw is not a history entry; a rail press pushes.
+// The address it last left, or null before the first: one that has changed
+// since, and is not the page on show, is a navigation whose hashchange has
+// not run yet, and is left for it. Replacing it took the address back to the
+// page being left, which the handler then opened (B303).
+let shellSeen = null;
 function shellSync(){
   const to = routeOf(tabOf(panes[0]));
+  if (shellSeen !== null && location.hash && location.hash !== shellSeen && location.hash !== to) return;
+  shellSeen = to || "";
   if (to && to !== location.hash) history.replaceState(null, "", to);
   // A document in front has no address: the page's goes, so a reload lands
   // on the document this browser had in front (R131), not on the last page.

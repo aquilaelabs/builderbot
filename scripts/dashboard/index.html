@@ -7006,7 +7006,7 @@ untitleWatch();
 // Its declarations are page-shell.js; what runs at load is below: the
 // address bar's back and forward open what they name, the search is wired,
 // and the phone's More sheet closes on a tap elsewhere.
-addEventListener("hashchange", () => { sectNewVisit(); if (!openRoute(location.hash)) shellSync(); });
+addEventListener("hashchange", () => { sectNewVisit(); shellSeen = location.hash; if (!openRoute(location.hash)) shellSync(); });
 // The page the address names reads its own data now, on the read the head
 // began (preGets), so it is usually in hand when the first status read
 // draws the page, which then opens as itself rather than as a second

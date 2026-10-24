@@ -366,6 +366,18 @@ await ready(page);
      `bb jobs -n 2 is the session's own last two, whatever else the node ran since (${two.map(l => l.trim().slice(0, 12)).join(', ')})`);
 }
 
+{
+  // An address set by hand while a draw runs before its hashchange (a poll
+  // landing between them) still opens its page, not the one being left
+  // (B303: #/jobs opened Build > Phone on the dev pair).
+  for (const to of ['#/home', '#/jobs']) {
+    await page.evaluate(t => { location.hash = t; render(); }, to);
+    await page.waitForFunction(t => routeOf(tabOf(panes[0])) === t, to, { timeout: 10000 }).catch(() => {});
+    const at = await page.evaluate(() => [location.hash, routeOf(tabOf(panes[0]))]);
+    ok(at[0] === to && at[1] === to, `${to} set by hand with a draw before its hashchange opens ${to} (${at.join(' | ')})`);
+  }
+}
+
 ok(page.errors.length === 0,
    `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
 await done(browser);
