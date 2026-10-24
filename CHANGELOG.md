@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- A project can hold several repositories: Add a repository on a project's menu joins another to it, each keeping its own notebook, git host link and releases; the project gets one card, one id and one coding-agent session that works in all of them, and a project that reads it reads every repository in it; Take out makes one a project of its own again (9ccf960)
+
 ### Changed
 
 - SIGNING_SECRET is INSTALL_KEY: the one key that seals at rest what BuilderBot keeps, the signing keys among it (7645fec)
