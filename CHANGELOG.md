@@ -14,6 +14,8 @@
 
 - Pressing the filter chip or the settings section that is already selected no longer redraws the page with a fade (4a237e5)
 - On a desk the dock's line of tabs, with more tabs than fit, has an arrow at each end with more past it and can be dragged with the mouse (8abd211)
+- A VM made again under an earlier VM's name no longer shows that VM's address until its node next reports (3b9c386)
+- Enrolling a node or installing on a machine just booted from a cloud image waits for the machine's own first apt run to let go of its lock, instead of failing at the first package step (3b9c386)
 
 ### Security
 
