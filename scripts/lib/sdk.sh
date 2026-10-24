@@ -1204,6 +1204,32 @@ sdk_install_android() {
     sdk_relink_android
 }
 
+# sdk_verify_download WHAT FILE URL VERSION DIR: the download held to what
+# its publisher says it is (R137), before anything unpacks or runs it: the
+# catalog row's source.checksum, answered by sdkmeta.py. A mismatch removes
+# the file and stops the install, naming both digests. A row whose publisher
+# states nothing says so on the install, and DIR keeps how it was checked
+# (.bb-verified), which the Toolchains page reads.
+sdk_verify_download() {
+    local what="$1" file="$2" url="$3" version="$4" d="$5" said algo want where got
+    said="$(sdk_meta checksum "$what" "$url" "$version")" \
+        || { rm -f "$file"; die "could not learn what ${what}'s download should be: ${said:-no answer}"; }
+    algo="${said%%$'\t'*}"; said="${said#*$'\t'}"; want="${said%%$'\t'*}"; where="${said#*$'\t'}"
+    if [ "$algo" = none ]; then
+        log "not verified: ${where}"
+        printf 'none\t%s\n' "$where" > "$d/.bb-verified" 2>/dev/null || true
+        return 0
+    fi
+    case "$algo" in sha1|sha256|sha512) ;; *) rm -f "$file"; die "${what}: unknown checksum kind ${algo}" ;; esac
+    got="$("${algo}sum" "$file" | cut -d' ' -f1)"
+    if [ "$got" != "$want" ]; then
+        rm -f "$file"
+        die "${what}'s download is not what ${where} says it is (${algo} ${got}, expected ${want}): nothing was installed"
+    fi
+    log "verified: ${algo} matches ${where}"
+    printf '%s\t%s\t%s\n' "$algo" "$want" "$where" > "$d/.bb-verified" 2>/dev/null || true
+}
+
 # Fetch source.url into the directory, unpacking it there. `strip` drops the
 # tarball's top directory, which is named for the release and would otherwise
 # pin the version into every PATH that points at it.
@@ -1221,6 +1247,7 @@ sdk_install_tarball() {
     mkdir -p "$d"
     tmp="$(mktemp "${TMPDIR:-/tmp}/bb-${what}.XXXXXX")"
     sdk_fetch "$url" "$tmp" || { rm -f "$tmp"; die "could not download ${url}"; }
+    sdk_verify_download "$what" "$tmp" "$url" "$version" "$d"
     # -a: tar picks the decompressor from the file, so the catalog does not
     # have to say whether a release ships .gz or .xz this year.
     tar -xaf "$tmp" -C "$d" --strip-components="$strip" || { rm -f "$tmp"; die "could not unpack ${url}"; }
@@ -1248,6 +1275,7 @@ sdk_install_script() {
     tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/bb-${what}.XXXXXX")"
     tmp="$tmpdir/$(basename "${url%%\?*}")"
     sdk_fetch "$url" "$tmp" || { rm -rf "$tmpdir"; die "could not download ${url}"; }
+    sdk_verify_download "$what" "$tmp" "$url" "" "$d"
     [ -z "$(sdk_meta field "$what" source.chmod)" ] || chmod +x "$tmp"
     local -a cmd env
     sdk_meta_into cmd argv "$what" source.run "dir=$d" "script=$tmp"

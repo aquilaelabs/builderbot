@@ -324,6 +324,96 @@ def resolve(tc):
     return version, url
 
 
+# ---- what a download should be (R137) ---------------------------------------
+# A row's source.checksum says where its publisher states what the file is:
+#   github-asset   GitHub's own digest of a release asset (the release API)
+#   file           a checksum file beside it (url: a template; {url}, {name}, {version})
+#   go-json        go.dev's download index
+#   zig-index      ziglang.org's index, the tarball's shasum
+#   json           a JSON answer and a path into it (adoptium's API)
+#   android-repo   Google's repository listing, the archive's sha1
+#   zsync          an AppImage's .zsync, its SHA-1 line
+#   none           nothing to check against, and why (said on the install)
+# Each answers (algorithm, hex digest, where it came from).
+HEX = re.compile(r"^[0-9a-fA-F]{40}$|^[0-9a-fA-F]{64}$|^[0-9a-fA-F]{128}$")
+ALGOS = {40: "sha1", 64: "sha256", 128: "sha512"}
+
+
+def _algo(hexd):
+    hexd = str(hexd or "").strip().lower().removeprefix("sha256:")
+    if not HEX.match(hexd):
+        die(f"what the publisher gave is no checksum: {hexd[:80]!r}")
+    return ALGOS[len(hexd)], hexd
+
+
+def _name_of(url):
+    return urllib.parse.unquote(urllib.parse.urlsplit(url).path.rsplit("/", 1)[-1])
+
+
+def checksum(tc, url, version):
+    """(algorithm, hex digest, where it came from) for the file `url`
+    downloads, or ("none", "", why) for a row whose publisher states nothing
+    to check it against. A row that names no source is refused."""
+    spec = (tc.get("source") or {}).get("checksum")
+    if not isinstance(spec, dict) or not spec.get("from"):
+        die(f"{tc['name']}: the catalog says nowhere to check its download against")
+    how, name = spec["from"], _name_of(url)
+    subs = {"version": version, "url": url, "name": name, "base": url.rsplit("/", 1)[0]}
+    if how == "none":
+        return "none", "", spec.get("why") or "its publisher states no checksum"
+    if how == "github-asset":
+        m = re.match(r"https://github\.com/([^/]+/[^/]+)/releases/(?:latest/download|download/([^/]+))/([^/?#]+)$", url)
+        if not m:
+            die(f"{tc['name']}: {url} is not a GitHub release asset's address")
+        repo, tag, asset = m.groups()
+        rel = json.loads(get(f"https://api.github.com/repos/{repo}/releases/" + (f"tags/{tag}" if tag else "latest")))
+        for a in rel.get("assets") or []:
+            if str(a.get("name", "")).lower() == asset.lower():
+                if not str(a.get("digest") or "").startswith("sha256:"):
+                    die(f"{tc['name']}: GitHub states no digest for {asset} in {repo} {rel.get('tag_name', '')}")
+                return (*_algo(a["digest"]), f"GitHub's digest for {asset} in {repo} {rel.get('tag_name', '')}")
+        die(f"{tc['name']}: {repo}'s release {rel.get('tag_name', '')} has no asset {asset}")
+    if how == "file":
+        src = fill(for_platform(spec["url"]) or "", subs)
+        lines = [ln.split() for ln in get(src).splitlines() if ln.strip()]
+        for parts in lines:
+            if len(parts) >= 2 and parts[-1].lstrip("*").removeprefix("./") == name:
+                return (*_algo(parts[0]), src)
+        if len(lines) == 1 and len(lines[0]) in (1, 2):
+            return (*_algo(lines[0][0]), src)
+        die(f"{tc['name']}: {src} names no checksum for {name}")
+    if how == "go-json":
+        for rel in json.loads(get("https://go.dev/dl/?mode=json&include=all")):
+            for f in rel.get("files") or []:
+                if f.get("filename") == name:
+                    return (*_algo(f.get("sha256")), "go.dev's download index")
+        die(f"{tc['name']}: go.dev's index lists no {name}")
+    if how == "zig-index":
+        for ver, builds in json.loads(get(spec.get("url") or "https://ziglang.org/download/index.json")).items():
+            for b in (builds.values() if isinstance(builds, dict) else []):
+                if isinstance(b, dict) and b.get("tarball") == url:
+                    return (*_algo(b.get("shasum")), f"ziglang.org's index ({ver})")
+        die(f"{tc['name']}: ziglang.org's index lists no {url}")
+    if how == "json":
+        src = fill(for_platform(spec["url"]) or "", subs)
+        return (*_algo(dig(json.loads(get(src)), spec["path"])), src)
+    if how == "android-repo":
+        xml = get(spec.get("url") or "https://dl.google.com/android/repository/repository2-3.xml")
+        for arch in re.findall(r"<archive>.*?</archive>", xml, re.S):
+            if re.search(rf"<url>{re.escape(name)}</url>", arch):
+                m = re.search(r'<checksum type="sha1">([0-9a-f]{40})</checksum>', arch)
+                if m:
+                    return (*_algo(m.group(1)), "Google's Android repository listing")
+        die(f"{tc['name']}: Google's repository lists no {name}")
+    if how == "zsync":
+        head = get(url + ".zsync", decode=False)[:4096].decode("latin-1")
+        m = re.search(r"^SHA-1: ([0-9a-f]{40})$", head, re.M)
+        if not m:
+            die(f"{tc['name']}: {url}.zsync states no SHA-1")
+        return (*_algo(m.group(1)), url + ".zsync")
+    die(f"{tc['name']}: unknown checksum source {how!r}")
+
+
 def content_length(url):
     req = urllib.request.Request(_web(url), headers=UA, method="HEAD")
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
@@ -611,6 +701,14 @@ def main(argv):
     elif op == "resolve":
         version, url = resolve(tc)
         print(f"{version}\t{url}")
+
+    elif op == "checksum":
+        # The algorithm, the digest and where it came from, tab-separated:
+        # what sdk.sh holds a download to before it is unpacked or run.
+        url = argv[2] if len(argv) > 2 else ""
+        version = argv[3] if len(argv) > 3 else ""
+        algo, digest, where = checksum(tc, url, version)
+        print(f"{algo}\t{digest}\t{where}")
 
     elif op == "size":
         # An optional package id, for the recipes whose size lives in an index
