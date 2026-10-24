@@ -119,8 +119,8 @@ _lock = statefile.on(lambda: FILE)
 
 SEVERITIES = ("low", "medium", "high", "critical")
 # Whether it reproduces (R124), beside how: every time, now and then, the
-# once it was seen, or nobody has tried. Every report before the field is
-# untried (migration 0008), which is what the tracker knew of it.
+# once it was seen, or nobody has tried. A report from before the field has
+# none and reads as untried, which is what the tracker knew of it.
 REPRODUCES = ("always", "sometimes", "once", "untried")
 REPRODUCES_WORDS = {"always": "always", "sometimes": "sometimes", "once": "once", "untried": "not tried"}
 # The ways a bug leaves the open list. "na" is for one that was real and

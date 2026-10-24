@@ -1,13 +1,12 @@
 """Whether a bug reproduces (R124): always, sometimes, once or untried, kept
 beside How to reproduce. A session that gives the steps says how often they
 showed it; a person's report is untried until somebody says; an edit moves
-it; the page's older edits leave it alone; a held report keeps it. Migration
-0008 marks every bug and diagnostics report from before the field untried,
-once. bb report carries it to the diagnostics, and bb bug add --report N
+it; the page's older edits leave it alone; a held report keeps it. Every
+bug and report from before the field reads as untried, with nothing
+rewritten. bb report carries it to the diagnostics, and bb bug add --report N
 carries a report's words, area, repro and answer into the tracker."""
 import ast
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -22,10 +21,6 @@ sys.path.insert(0, os.path.join(HERE, ".."))
 import bugs  # noqa: E402
 import reports  # noqa: E402
 
-_spec = importlib.util.spec_from_file_location(
-    "m0008", os.path.join(HERE, "..", "statemigrations", "0008_bugs_reproduce.py"))
-m0008 = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(m0008)
 
 
 def write_json(p, d, mode=0o644):
@@ -74,26 +69,11 @@ class Field(unittest.TestCase):
         self.assertIn("--reproduces always|sometimes|once|untried", bugs.brief("p"))
 
 
-class Migration(unittest.TestCase):
-    def test_every_bug_and_report_before_the_field_is_untried_once(self):
-        t = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, t, True)
-        (t / "bugs.json").write_text(json.dumps({"projects": {"p": [
-            {"id": 1, "title": "old"}, {"id": 2, "title": "said", "reproduces": "always"}]}}))
-        (t / "reports.json").write_text(json.dumps({"seq": 1, "reports": [{"id": 1, "text": "old"}]}))
-        os.chmod(t / "bugs.json", 0o640)
-        m0008.run({"state": str(t)})
-        m0008.run({"state": str(t)})
-        rows = json.loads((t / "bugs.json").read_text())["projects"]["p"]
-        self.assertEqual([r["reproduces"] for r in rows], ["untried", "always"])
-        self.assertEqual(json.loads((t / "reports.json").read_text())["reports"][0]["reproduces"], "untried")
-        self.assertEqual(os.stat(t / "bugs.json").st_mode & 0o777, 0o640, "the file keeps its mode")
-
-    def test_a_fresh_state_has_nothing_to_mark(self):
-        t = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, t, True)
-        m0008.run({"state": str(t)})
-        self.assertFalse((t / "bugs.json").exists())
+class Older(unittest.TestCase):
+    def test_a_report_from_before_the_field_reads_as_untried(self):
+        # No migration writes it onto older rows (a patch carries none):
+        # every reader takes a missing answer as untried.
+        self.assertEqual(bugs.REPRODUCES_WORDS.get({}.get("reproduces") or "untried"), "not tried")
 
 
 class Reports(unittest.TestCase):
