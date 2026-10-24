@@ -211,9 +211,11 @@ function nbSigningView({$, nb, project}){
           ${(r.signed || []).slice(0, 3).map(x => `<div class="sub">${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.tag)}</a>` : esc(x.tag)}:
             ${esc((x.files || []).join(", "))} signed with ${esc(x.key)} <span class="dim">${esc(signFp(x.cert))}, ${esc(ago(x.at))}</span></div>`).join("")}
           <div class="sub dim">The release's APK is built unsigned by its workflow and signed on ${r.node ? `the project's node, ${esc(r.node)}` : "the project's node"}, never in CI: no keystore or password is a GitHub secret.</div>
-          ${why ? "" : `<div class="rnsignbar actbar"><button type="button" class="link" id="sgRelGo">Look for unsigned APKs now</button></div>`}
+          ${why ? "" : r.looking
+            ? `<div class="rnsignbar actbar"><button type="button" class="link" id="sgRelGo" disabled>Looking for unsigned APKs…</button></div>`
+            : `<div class="rnsignbar actbar"><button type="button" class="link" id="sgRelGo">Look for unsigned APKs now</button></div>`}
         </div>`;
-    const relStatus = !r.wanted ? "off" : r.why ? "blocked" : (r.failed || []).length ? "failed"
+    const relStatus = !r.wanted ? "off" : r.why ? "blocked" : r.looking ? "looking" : (r.failed || []).length ? "failed"
       : (r.keys || []).map(k => k.key).filter((k, i, a) => a.indexOf(k) === i).join(", ") || "ready";
     const keyStatus = key => {
       const s = keys[key] || {}, n = SIGN_ROUTES.filter(([r]) => s[r]).length;
@@ -309,7 +311,10 @@ function nbSigningView({$, nb, project}){
       const j = await (await postJSON("/api/signing", {action: "release-sign", project})).json();
       if (j.error) return notify(j.error, true);
       notify(`${projLabel(project)}: looking for unsigned release APKs to sign`);
-      setTimeout(loadSigning, 4000);
+      // The answer says the look is going; its end moves the releasesign
+      // token, which re-reads this view.
+      if (j.release) rel = j.release;
+      drawSigning();
     });
     const lo = $("sgLockOpen");
     if (lo) lo.onclick = () => { lockOpen = !lockOpen; drawSigning(); };

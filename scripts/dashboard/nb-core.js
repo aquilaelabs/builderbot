@@ -704,6 +704,9 @@ function makeNotebook(project){
   // runs the status poll, which re-read docker again, 134 requests in 30 s.
   watch("devapp", () => { if (showing("docker")) loadNbDocker(); });
   watch("vms", () => { if (showing("vms")) loadNbVms(); });
+  // A release's APK looked for and signed (R106), by the press or the
+  // hourly look: the Releases section follows it to its end.
+  watch("releasesign", () => { if (showing("signing")) loadSigning(); });
   watch("reports", () => { if (showing("analysis")) loadAnalysis(); });
   watch(() => `wiki:${project}`, k => { if (showing("wiki") && wikiNews(k)) loadWiki(); });
   watch("findings", () => { if (showing("analysis")) loadAnalysis(); });

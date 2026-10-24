@@ -4478,6 +4478,9 @@ def revisions(who=None, projects=None):
         "nginx": nginxproxy.rev(),
         # The VMs page (R91): a record written, or a node's census of them.
         "vms": vms.rev(),
+        # A release's APK being looked for and signed (R106): the Signing
+        # view follows a look to its end, and the bell's row goes with it.
+        "releasesign": releasesign.rev(),
         "jobs": 0 if NODES_OK else nodes.jobs_rev(),
         # Who has a session where, and whether it is working: the project
         # rows fetch /api/live when this moves.
