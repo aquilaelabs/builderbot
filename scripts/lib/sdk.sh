@@ -364,8 +364,9 @@ sdk_status_local() {
             continue
         fi
         if d="$(sdk_find "$t")"; then
-            printf '  %-11s %s%s\n' "$t" "$d" \
-                "$([ "${d#"$root"}" = "$d" ] && printf ' (home volume, not the share)')"
+            printf '  %-11s %s%s%s\n' "$t" "$d" \
+                "$([ "${d#"$root"}" = "$d" ] && printf ' (home volume, not the share)')" \
+                "$(sdk_verified_said "$d")"
         else
             printf '  %-11s not installed (bb toolchains install %s)\n' "$t" "$t"
         fi
@@ -1204,6 +1205,20 @@ sdk_install_android() {
     sdk_relink_android
 }
 
+# sdk_verified_said DIR: how the toolchain in DIR was checked when it was
+# installed (R137), as a few words after its row: "; checked: sha256 matched
+# go.dev's download index", "; not checked: why", nothing for one installed
+# before BuilderBot checked.
+sdk_verified_said() {
+    local f="$1/.bb-verified" algo rest
+    [ -r "$f" ] || return 0
+    IFS=$'\t' read -r algo rest < "$f" || return 0
+    case "$algo" in
+        none) printf '; not checked: %s' "$rest" ;;
+        sha1|sha256|sha512) printf '; checked: %s matched %s' "$algo" "${rest#*$'\t'}" ;;
+    esac
+}
+
 # sdk_verify_download WHAT FILE URL VERSION DIR: the download held to what
 # its publisher says it is (R137), before anything unpacks or runs it: the
 # catalog row's source.checksum, answered by sdkmeta.py. A mismatch removes
@@ -1313,6 +1328,9 @@ sdk_install_git() {
         "${g[@]}" checkout -q --detach FETCH_HEAD
         [ "$("${g[@]}" rev-parse HEAD)" = "$commit" ] \
             || die "${what}: ${url} answered $("${g[@]}" rev-parse --short HEAD) where ${commit:0:12} was approved"
+        # The commit's hash is the check on what was fetched (R137): what the
+        # Toolchains page says of a pack's row.
+        printf 'sha1\t%s\tthe git commit an administrator approved\n' "$commit" > "$d/.bb-verified" 2>/dev/null || true
         sdk_mark_exec "$what" "$d"
     else
         log "cloning ${what} (${branch:-default}) into ${d}"
