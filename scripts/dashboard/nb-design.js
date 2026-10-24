@@ -74,13 +74,13 @@ function nbDesignView({$, nb, project, root}){
     const file = nb.dsDirty ? "unsaved changes: Save in their section"
       : !f.exists ? `${f.path || "docs/design-language.md"} not written yet`
       : f.current ? `${f.path} is written and current`
-      : `${f.path} is behind what is saved: Write the file`;
+      : `${f.path} is behind what is saved${dsRo() ? "" : ": Write the file"}`;
     viewGlance($("dsHint"), [{label: n === 1 ? "page" : "pages", value: n, omit: !n},
                              {label: t === 1 ? "theme" : "themes", value: t, omit: !t}],
                esc(`${n ? "" : "no pages yet · "}${file}`));
-    const w = $("dsWrite"), ro = projWriteWhy(project);
+    const w = $("dsWrite");
     w.disabled = !!nb.dsDirty;
-    w.hidden = !!ro;
+    w.hidden = dsRo();
     w.title = nb.dsDirty ? "Save first: the file is written from what is saved"
       : "write docs/design-language.md into the project from what is saved here; a session commits it with the work";
   }
@@ -174,10 +174,14 @@ function nbDesignView({$, nb, project, root}){
     wireThemes(body, sh.theme);
     if (sh.page) wirePage(body.querySelector(`[data-dspage="${keyOf(sh.page)}"]`), sh.page);
     body.querySelectorAll("[data-dsrules]").forEach(wireRulesList);
-    // A locked project reads its notebook: every control here is dead but
-    // Copy, which takes nothing anywhere, and the pulldowns, which show.
-    if (dsRo())
-      body.querySelectorAll("input,select:not([data-dspick]),textarea,button").forEach(e => e.disabled = true);
+    // A project read-only to you reads its design: what a role does not give
+    // is not drawn (the operator, 21 Oct), so every press that would change
+    // it is gone, a fold's own toggle kept, and the fields stay to read,
+    // dead, the pulldowns that pick what is shown live (B293).
+    if (dsRo()){
+      body.querySelectorAll("input,select:not([data-dspick]),textarea").forEach(e => e.disabled = true);
+      body.querySelectorAll("button").forEach(b => { if (!b.closest("summary") && !b.hasAttribute("aria-expanded")) b.hidden = true; });
+    }
     drawHint();
   }
 

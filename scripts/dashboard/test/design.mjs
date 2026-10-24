@@ -906,6 +906,22 @@ ok(gone.pages.length === 0 && gone.language.themes.length === 1 && gone.language
   delete all.beta;
   writeFileSync(store, JSON.stringify(all));
 }
+// A project read-only to you reads its design with nothing to press that
+// would change it: the editing buttons are not drawn, the fields are there
+// to read, dead (B293).
+{
+  await page.evaluate(p => { [...document.querySelectorAll('.nb')].find(n => n.querySelector('#memTitle')?.textContent === `Notebook: ${p}`).classList.add('ro');
+    getNotebook(p).view('memory'); getNotebook(p).view('design'); }, P);
+  await page.waitForSelector(`${NB} .nbview[data-view="design"]:not([hidden]) #dsHint`, { timeout: 10000 }).catch(() => {});
+  const ro = await page.$eval(`${NB} .nbview[data-view="design"]`, v => ({
+    shown: [...v.querySelectorAll('button')].filter(b => b.checkVisibility() && !b.closest('summary') && !b.hasAttribute('aria-expanded')).map(b => b.textContent.trim()),
+    fields: v.querySelectorAll('input:disabled, textarea:disabled').length,
+    hint: v.querySelector('#dsHint')?.textContent || '' }));
+  await page.evaluate(p => { [...document.querySelectorAll('.nb')].find(n => n.querySelector('#memTitle')?.textContent === `Notebook: ${p}`).classList.remove('ro');
+    getNotebook(p).view('memory'); getNotebook(p).view('design'); }, P);
+  ok(ro.shown.length === 0 && ro.fields > 0 && !/Write the file/.test(ro.hint),
+     `a read-only design draws no press that would change it, its fields there to read (${JSON.stringify({ ...ro, hint: ro.hint.slice(0, 50) })})`);
+}
 rmSync(`${DIR}/ws/${P}/docs`, { recursive: true, force: true });
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
 await done(browser);
