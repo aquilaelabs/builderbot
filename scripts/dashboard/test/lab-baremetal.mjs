@@ -9,7 +9,7 @@
 // view built by bb-session; then the wall broken on purpose, and bb-session
 // refusing to start a session until it is mended. The VM is removed after.
 //
-//   BB_LAB_CONTROLLER  the dashboard that makes the VMs, e.g. http://192.168.1.16:7680
+//   BB_LAB_CONTROLLER  the dashboard that makes the VMs, e.g. http://controller.lan:7680
 //   BB_LAB_TOKEN       "user:password" for an administrator there (the lab's own)
 //   BB_LAB_VMHOST      the node with VM host installed that makes the VMs
 //   BB_LAB_KEY         an ssh public key for each VM's own account
