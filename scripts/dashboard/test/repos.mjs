@@ -72,6 +72,14 @@ const browser = await launch();
   });
   ok(tint.out && tint.out === tint.more, `on a colored card, Take out wears the card's tint as its other buttons do (${JSON.stringify(tint)})`);
   await page.evaluate(() => postJSON('/api/project-color', { name: 'gamma', color: '' }));
+  // Home's glance shows it once too, by its own name, both repositories
+  // pinned.
+  await page.evaluate(async () => { for (const name of ['gamma', 'ep.silon']) await postJSON('/api/project-pin', { name, pinned: true }); await refresh(); });
+  const glance = await page.evaluate(() => { const d = document.createElement('div'); d.innerHTML = homeGlanceHtml();
+    return [...d.querySelectorAll('.hproj .name')].map(b => b.textContent.trim()); });
+  ok(glance.filter(n => n === 'Shop').length === 1 && !glance.includes('gamma') && !glance.includes('ep.silon'),
+     `Home shows the project once, by its name (${JSON.stringify(glance)})`);
+  await page.evaluate(async () => { for (const name of ['gamma', 'ep.silon']) await postJSON('/api/project-pin', { name, pinned: false }); });
   await page.screenshot({ path: `${DIR}/repos-card.png` }).catch(() => {});
   await page.close();
 }

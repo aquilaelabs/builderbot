@@ -137,17 +137,23 @@ function homeGlanceHtml(){
   if (!pinned.length) return `<div class="empty">no project is pinned: a project's menu on the Projects page pins it here</div>`;
   // In groups, in the Projects page's order, each group's name over its
   // cards (R273): the page this glances at is sorted so.
+  // A project of several repositories (R136) once, under its own name,
+  // its facts its id and how many, opening its first repository's page.
   const card = p => {
-    const pc = colorAttrs(p.color);
+    const k = reposOf(p.name), r = k ? state.repos[k] : null;
+    const first = r ? (state.projects.find(x => x.name === r.members[0]) || p) : p;
+    const pc = colorAttrs(first.color);
     return `<div class="hproj${pc.cls}"${pc.style}>
-      <button type="button" class="name link" data-hproj="${esc(p.name)}">${esc(p.label || p.name)}</button>
-      <div class="pcfacts">${projFacts(p)}</div>
-      ${projectState(p)}
-      ${projectNote(p)}
+      <button type="button" class="name link" data-hproj="${esc(first.name)}">${esc(r ? r.name : p.label || p.name)}</button>
+      <div class="pcfacts">${r ? `<span class="pid">${esc(r.pid)}</span> · ${r.members.length} repositories` : projFacts(p)}</div>
+      ${projectState(first)}
+      ${projectNote(first)}
     </div>`;
   };
+  const once = list => { const seen = new Set();
+    return list.filter(p => { const k = reposOf(p.name) || p.name; if (seen.has(k)) return false; seen.add(k); return true; }); };
   return byProjectGroup([...pinned].sort(byProjectName)).map(({group, list}) =>
-    `${group ? `<div class="hgroup">${esc(group)} <span class="dim">${list.length}</span></div>` : ""}<div class="hglance">${list.map(card).join("")}</div>`).join("");
+    `${group ? `<div class="hgroup">${esc(group)} <span class="dim">${list.length}</span></div>` : ""}<div class="hglance">${once(list).map(card).join("")}</div>`).join("");
 }
 
 // Getting started (R267): what is left of first run's four once Finish is
