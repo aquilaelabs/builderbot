@@ -1,5 +1,6 @@
 """Behind `bb login --check` (claude_login_check in bb): is this account
-signed in to Claude on this machine, and as whom, told to the controller.
+signed in to each coding agent on this machine, and as whom, told to the
+controller.
 
 One sentence, going up, and no secret in it: "signed in here as X", or "not
 signed in here". The login itself stays on this machine, which signed in

@@ -67,7 +67,7 @@ scripts/
   lib/pc.py                      `bb pc`: a person's Windows PC lent to the project, its verbs asked and their results read
   lib/diag.py                    `bb diag`
   lib/node-log.py                `bb logs --node`
-  lib/login-check.py             `bb login --check`: who this account is signed in to Claude as on this machine, told to the controller
+  lib/login-check.py             `bb login --check`: who this account is signed in to each agent as on this machine, told to the controller
   lib/emu-job.py                 `bb emu` as a job on the project's node
   lib/run-job.py                 `bb run`: the snapshot, the job, the log back
   lib/build-or-test.py           the command, place and outputs `bb build` and `bb test` read from the settings

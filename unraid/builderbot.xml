@@ -9,9 +9,9 @@
   <Support>https://github.com/aquilaelabs/builderbot/issues</Support>
   <Project>https://github.com/aquilaelabs/builderbot</Project>
   <Overview>
-Claude Code workstation and the controller for your build nodes - the machines where builds, tests, CI and the Android emulator run.
+A workshop for coding agents (Claude Code, ChatGPT's Codex CLI and GitHub's Copilot CLI) and the controller for your build nodes: the machines where builds, tests, CI and the Android emulator run.
 
-Open the dashboard on its port; a Claude session runs on a node from there.
+Open the dashboard on its port; an agent's session runs on a node from there.
 Helper CLI inside:       docker exec -it BuilderBot bb status
 
 NOTES
@@ -57,8 +57,6 @@ NOTES
   <Config Name="TZ" Target="TZ" Default="Etc/UTC" Mode="" Description="The container's clock, for its logs and file names (e.g. America/New_York). Optional: each person picks the zone the dashboard shows times in, per browser, on their Profile tab" Type="Variable" Display="advanced" Required="false" Mask="false">Etc/UTC</Config>
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="File-owner uid (99 = Unraid's nobody)" Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="File-owner gid (100 = Unraid's users)" Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
-
-  <!-- ===================== Claude Code ===================== -->
 
   <!-- ===================== GitHub Actions runner ===================== -->
 
