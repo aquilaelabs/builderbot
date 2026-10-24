@@ -1004,7 +1004,7 @@ ${code}`], { encoding: 'utf8' }).trim();
   // from the record a node reported, since no login lives here (R47), and two
   // on one login said out loud, since Anthropic's terms allow one person per
   // Claude account.
-  ok(/no Claude login yet/.test(await detail()), 'an account says when it has no Claude login yet');
+  ok(/signed in to no agent yet/.test(await detail()), 'an account says when it is signed in to no agent yet (B296)');
   const uidOf = (await (await bare('/api/users', { headers: {
       Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json())
     .users.find(u => u.name === 'tabmade').uid;
