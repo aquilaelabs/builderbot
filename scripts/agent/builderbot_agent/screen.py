@@ -27,6 +27,7 @@ from .vms import DOMAIN_RE, VIRSH
 
 SCREEN_PORT = 7684
 SKEW_S = 120
+PREV_KEY_S = 300
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 
@@ -42,13 +43,15 @@ def sign(key, domain, when):
 
 
 def signed(key, domain, when, sig, now=None):
-    """Whether the signature is the controller's, for this VM, this minute."""
+    """Whether the signature is the controller's, for this VM, this minute.
+    `key` may be several, the current and the one before a rotation."""
     try:
         when = int(when)
     except (TypeError, ValueError):
         return False
     now = time.time() if now is None else now
-    return abs(now - when) <= SKEW_S and hmac.compare_digest(sign(key, domain, when), str(sig or ""))
+    keys = key if isinstance(key, list) else [key]
+    return abs(now - when) <= SKEW_S and any(hmac.compare_digest(sign(k, domain, when), str(sig or "")) for k in keys)
 
 
 def vnc_port(domain):
@@ -209,12 +212,22 @@ class ScreenRelay:
                 log(f"screen: VMs' screens relayed on {bound}:{SCREEN_PORT}, to the controller alone")
                 while True:
                     conn, _ = srv.accept()
-                    key = screen_key(self.agent.state.get("token"))
+                    key = self._keys()
                     threading.Thread(target=self._one, args=(conn, key, self._kinds), daemon=True,
                                      name="screen-one").start()
             except OSError as e:
                 log_once("screen-bind", f"screen: cannot listen on {SCREEN_PORT}: {e}")
                 time.sleep(60)
+
+    def _keys(self):
+        """The keys a request may be signed with: this node's token's, and
+        for a few minutes after a rotation the one before's (R135 step 4),
+        which the controller signs with until it has seen the new one used."""
+        keys = [screen_key(self.agent.state.get("token"))]
+        prev, at = getattr(self.agent, "prev_token", None) or ("", 0)
+        if prev and time.monotonic() - at < PREV_KEY_S:
+            keys.append(screen_key(prev))
+        return keys
 
     def _kinds(self):
         """The terminals' programs as the session agent last started them."""

@@ -320,6 +320,16 @@ function attRow(a){
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bag="${esc(a.id)}">Agents page</a></span></div></div>`;
   }
+  // A node's retired token presented again after its grace (R135 step 4): a
+  // copy of its credential is in use somewhere, and its tokens are revoked.
+  if (a.kind === "token-reuse"){
+    return `<div class="bnote att bad">
+      <div class="bt">${esc(a.node)}'s credential was used from a copy</div>
+      <div class="bsum">a token it had already replaced was presented again, so every token of ${esc(a.node)} is revoked: enroll it again from the Nodes page, and treat that machine's disk as copied</div>
+      <div class="bfoot"><span>${esc(ago(a.at))}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bnode="${esc(a.id)}" data-bwhat="node">Nodes page</a></span></div></div>`;
+  }
   // A node's nginx behind the newest line (R192): its own note, to the
   // nginx tab on that node, where Update is.
   if (a.kind === "nginx"){

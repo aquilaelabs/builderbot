@@ -113,6 +113,25 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         groups = [g.gr_gid for g in grp.getgrall() if user in g.gr_mem]
         return {"user": pw.pw_uid, "group": pw.pw_gid, "extra_groups": groups}
 
+    def take_token(self, new):
+        """The controller's next token for this node (R135 step 4): kept in
+        node.json in place of the old one and used from the next call. The
+        old one is remembered for the screen relay's grace, since the
+        controller signs with it until this node has used the new one."""
+        if not isinstance(new, str) or not new.startswith("bbn_") or new == self.state.get("token"):
+            return
+        # Written first and used only once it is: a node.json that kept the
+        # old token past a restart would present a retired one, which reads
+        # as a stolen copy and revokes this node.
+        try:
+            save_state(dict(self.state, token=new))
+        except OSError as e:
+            log(f"the controller's next token was not kept, so the current one stays: {e}")
+            return
+        self.prev_token = (self.state.get("token") or "", time.monotonic())
+        self.state["token"] = new
+        self.ctl.token = new
+
     # -- the channel -------------------------------------------------------
     def census_take(self):
         """The census a hello carries. The layout's one standing rule first,
@@ -220,8 +239,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                                         "version": AGENT_VERSION,
                                         "digest": own_digest(),
                                         "running": self.running_ids(),
-                                        "keep": self.keep_report()}, timeout=30)
+                                        "keep": self.keep_report(),
+                                        # A fresh token each hello (R135 step 4).
+                                        "rotates": True}, timeout=30)
         if st == 200:
+            self.take_token(r.get("token"))
             self.hello_at = time.monotonic()
             self.hello_said = True           # the first is said on the loop; the rest beside it
             self.poll = int(r.get("poll") or 25)

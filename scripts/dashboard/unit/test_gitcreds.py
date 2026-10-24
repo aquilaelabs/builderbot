@@ -2,7 +2,6 @@
 ciphertext where there is a key, open lines sealed at start, read plain by
 the dashboard, and handed to git by git-credential-bb only for the scheme
 and host it was written for; another key, or none, opens nothing."""
-import json
 import os
 import shutil
 import subprocess

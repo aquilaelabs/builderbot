@@ -40,13 +40,15 @@ def sign(key, blob, when):
 
 
 def signed(key, blob, when, sig, now=None):
-    """Whether the controller signed this terminal, this minute."""
+    """Whether the controller signed this terminal, this minute. `key` may
+    be several: the current and the one before a rotation."""
     try:
         when = int(when)
     except (TypeError, ValueError):
         return False
     now = time.time() if now is None else now
-    return abs(now - when) <= SKEW_S and hmac.compare_digest(sign(key, blob, when), str(sig or ""))
+    keys = key if isinstance(key, list) else [key]
+    return abs(now - when) <= SKEW_S and any(hmac.compare_digest(sign(k, blob, when), str(sig or "")) for k in keys)
 
 
 def pack(spec):

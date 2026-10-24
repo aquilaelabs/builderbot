@@ -121,6 +121,12 @@ def filter_rows(uid, rows):
             if r.get("key") in gone:
                 hidden += 1
                 continue
+        elif r.get("kind") == "token-reuse":
+            # To when it was found: put away until it happens again.
+            r["key"] = f"tokenreuse:{r['id']}@{r.get('at') or 0}"
+            if r["key"] in gone:
+                hidden += 1
+                continue
         elif r.get("kind") == "held":
             # To the hold (R251): put away until the session is held again.
             if r.get("key") in gone:

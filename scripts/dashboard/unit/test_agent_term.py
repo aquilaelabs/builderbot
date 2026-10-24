@@ -106,6 +106,14 @@ class Term(unittest.TestCase):
         c = Client(blob, sig=term.sign(KEY, other, int(time.time())), kinds=kinds(["/bin/cat"]))
         self.assertIn(b"403", c.head, "a signature is for the one terminal it names")
 
+    def test_a_rotation_s_previous_key_is_taken_beside_the_current(self):
+        # The controller signs with the token it has seen used, for a few
+        # minutes the one before a rotation (R135 step 4).
+        blob, now = term.pack({"kind": "rw", "argv": ["x"]}), int(time.time())
+        old, new = screen.screen_key("bbn_old"), screen.screen_key("bbn_new")
+        self.assertTrue(term.signed([new, old], blob, now, term.sign(old, blob, now)))
+        self.assertFalse(term.signed([new], blob, now, term.sign(old, blob, now)))
+
     def test_no_terminals_up_says_so(self):
         c = Client(term.pack({"kind": "rw", "argv": []}), kinds=lambda: {})
         self.assertIn(b"409", c.head)

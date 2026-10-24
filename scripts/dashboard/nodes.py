@@ -885,6 +885,49 @@ def _token_mint(kind, node_id, ttl=None):
     return tid, TOKEN_PREFIX[kind] + secret
 
 
+# A node's token rotated (R135 step 4): each hello of an agent that rotates is
+# answered with a fresh token, held PENDING until the node first uses it,
+# which makes it the node's token and RETIRES the one before. A retired token
+# is still taken for GRACE_S, for calls that were already on their way; after
+# that, presenting it means a copy of the node's credential is in use
+# somewhere (a copied disk, a stolen file), and the node's tokens are revoked
+# and the bell says so. Kept in the revoked column: 0 live, 1 revoked.
+TOKEN_PENDING, TOKEN_RETIRED = 2, 3
+ROTATE_GRACE_S = 180
+RETIRED_KEEP_S = 30 * 86400
+
+
+def rotate_token(node_id):
+    """A fresh pending token for an agent that rotates, the bearer it holds.
+    A pending one it never used is dropped; retired ones older than a month
+    are forgotten."""
+    now = int(time.time())
+    _exec("UPDATE tokens SET revoked = 1 WHERE node_id = ? AND kind = 'node' AND revoked = ?",
+          (node_id, TOKEN_PENDING))
+    _exec("DELETE FROM tokens WHERE node_id = ? AND kind = 'node' AND revoked = ? AND created < ?",
+          (node_id, TOKEN_RETIRED, now - RETIRED_KEEP_S))
+    tid, bearer = _token_mint("node", node_id)
+    _exec("UPDATE tokens SET revoked = ? WHERE id = ?", (TOKEN_PENDING, tid))
+    return bearer
+
+
+def _token_reused(t):
+    """A retired token presented after its grace: every token of the node
+    revoked, and the bell told, with when and from where."""
+    nid = t["node_id"]
+    # Every one, live, pending and retired: a pending token the copy was
+    # handed must not come alive later.
+    _exec("UPDATE tokens SET revoked = 1 WHERE node_id = ? AND kind = 'node'", (nid,))
+    n = node(nid)
+    if n:
+        ag = dict(n.get("agent") or {})
+        ag["token_reuse"] = {"at": int(time.time()), "token": t["id"]}
+        _exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), nid))
+        _bump()
+    print(f"dashboard: node {nid} presented a retired token after its grace; its tokens are revoked "
+          "(a copy of its credential is in use somewhere)", flush=True)
+
+
 def authenticate(bearer):
     """A bearer credential to a principal, or the reason it is not one.
 
@@ -906,6 +949,19 @@ def authenticate(bearer):
     if not rows:
         return {"error": "unknown token"}
     t = rows[0]
+    if kind == "node" and t["revoked"] == TOKEN_PENDING:
+        # Its first use (R135 step 4): this token is the node's now, and
+        # the one before retires with its grace.
+        now = int(time.time())
+        _exec("UPDATE tokens SET revoked = ?, expires = ? WHERE node_id = ? AND kind = 'node' AND revoked = 0",
+              (TOKEN_RETIRED, now + ROTATE_GRACE_S, t["node_id"]))
+        _exec("UPDATE tokens SET revoked = 0 WHERE id = ?", (t["id"],))
+        t = dict(t, revoked=0)
+    elif kind == "node" and t["revoked"] == TOKEN_RETIRED:
+        if not (t["expires"] and t["expires"] >= time.time()):
+            _token_reused(t)
+            return {"error": "credential revoked"}
+        t = dict(t, revoked=0, expires=None)
     if t["revoked"]:
         return {"error": "credential revoked" if kind == "node"
                 else "enrollment token already used"}
@@ -3421,10 +3477,15 @@ def token_attention():
         out.append({"kind": "token-read", "node": n["name"], "id": n["id"], "at": last["at"],
                     "count": len(reads), "comm": last["comm"], "uid": last["uid"], "pid": last["pid"],
                     "path": last["path"], "account": last["account"]})
+    # ...and a node whose retired token was presented again (R135 step 4).
+    for n in node_list():
+        ru = (n.get("agent") or {}).get("token_reuse")
+        if isinstance(ru, dict) and ru.get("at"):
+            out.append({"kind": "token-reuse", "node": n["name"], "id": n["id"], "at": int(ru["at"])})
     return out
 
 
-def hello(nid, census, addr, version="", digest="", running=None, keep=None):
+def hello(nid, census, addr, version="", digest="", running=None, keep=None, rotates=False):
     """The agent on connect: refresh the census, record the version it is
     running, and answer with what the controller expects of it: the
     transports, the poll window, the node's own capabilities (so it can
@@ -3525,7 +3586,9 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
             "session_net": session_net_for(nid),
             # The FTPS servers this node runs for its projects' file access
             # (R151): one per project, rooted at its tree.
-            "ftp": [] if host_only(nid) else ftp_for(nid)}
+            "ftp": [] if host_only(nid) else ftp_for(nid),
+            # Its next token, for an agent that rotates (R135 step 4).
+            **({"token": rotate_token(nid)} if rotates else {})}
 
 
 def store_merge(census, free, totals):
