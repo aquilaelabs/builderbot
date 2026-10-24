@@ -57,7 +57,7 @@ function nbBugsView({$, nb, project}){
     // answer that failed carries none, and the token stands in.
     nb.bugRev = nb.bugs.rev ?? revs[`bug:${project}`] ?? nb.bugRev;
     drawBugs();
-    reposAlso($("bugAlso"), project, "bugs");
+    reposAlso($("bugRepos"), project, "bugs");
     // Already behind (see nb-tests.js): read once more now.
     if (!again && nb.bugs.rev !== undefined && revs[`bug:${project}`] !== undefined
         && revs[`bug:${project}`] !== nb.bugs.rev) return loadBugs(true);
