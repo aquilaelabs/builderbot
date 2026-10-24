@@ -3433,6 +3433,14 @@ try:
         print(f"dashboard: sealed {_sealed} signing key(s) under the install's key", flush=True)
 except OSError as e:
     print(f"dashboard: signing keys left as they were, not sealed: {e}", flush=True)
+# ...and the settings' secrets, the tunnel's and Cloudflare's tokens (R135).
+settings.seal, settings.unseal = signing.seal, signing.unseal
+settings.sealing = lambda: signing.MASTER is not None
+try:
+    if (_sealed := settings.seal_all()):
+        print(f"dashboard: sealed {_sealed} setting(s) under the install's key", flush=True)
+except OSError as e:
+    print(f"dashboard: settings' secrets left as they were, not sealed: {e}", flush=True)
 import membership                                                # noqa: E402
 import roles                                                     # noqa: E402
 import registry                                                  # noqa: E402

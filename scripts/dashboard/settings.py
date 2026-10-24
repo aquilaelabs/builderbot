@@ -23,6 +23,7 @@ either: they go through mint-runner-token into a root-only store keyed by
 node, because a session can write this file, and the organization a runner
 token is minted for should not be a session's to change.
 """
+import base64
 import os
 import re
 import shutil
@@ -36,6 +37,12 @@ if _here not in sys.path:
 import statefile  # noqa: E402
 
 write_json = None
+# A secret's value sealed under the install key where there is one (R135),
+# as signing keys and two-factor secrets are: set by the server.
+seal = None               # bytes -> bytes, signing.seal
+unseal = None             # bytes -> bytes, or raises signing.Locked
+sealing = None            # () -> whether an install key is loaded now
+SEALED = "bbseal:"        # a sealed value's prefix, its blob after it in base64
 # What reset() forgets beside the state it moves aside: the runner tokens,
 # which are root's, behind the helper (runners.reset), set by server.py.
 forget_runners = None
@@ -191,10 +198,42 @@ def _parse(key, raw):
 
 def secret(key):
     """A secret's value, for the code that uses it; effective() never
-    carries it."""
+    carries it. Sealed, it is opened here; one this install cannot open
+    (another install key, or none) reads as unset."""
     d = load()
-    v = _parse(key, d.get(key, "")) if key in d else None
+    raw = d.get(key, "")
+    if isinstance(raw, str) and raw.startswith(SEALED):
+        try:
+            raw = unseal(base64.b64decode(raw[len(SEALED):])).decode() if unseal else ""
+        except Exception:                                   # noqa: BLE001 (Locked, or a damaged value: unset)
+            return ""
+    v = _parse(key, raw) if key in d else None
     return v if isinstance(v, str) else ""
+
+
+def _sealed(v):
+    """A secret's value as it is kept: sealed where there is an install key."""
+    if v and seal and sealing and sealing():
+        return SEALED + base64.b64encode(seal(v.encode())).decode()
+    return v
+
+
+def seal_all():
+    """Every secret kept open sealed, once the install has a key: at start.
+    Returns how many."""
+    if not (seal and sealing and sealing()):
+        return 0
+    with _lock:
+        d = load()
+        n = 0
+        for key, spec in KEYS.items():
+            v = d.get(key)
+            if spec["kind"] == "secret" and isinstance(v, str) and v and not v.startswith(SEALED):
+                d[key] = _sealed(v)
+                n += 1
+        if n:
+            write_json(FILE, d)
+    return n
 
 
 def effective():
@@ -210,9 +249,12 @@ def effective():
             out[key] = {"value": _parse(key, d[key]), "source": "settings"}
         else:
             out[key] = {"value": spec["default"], "source": "default"}
-        # A secret is never shown back: the tab learns that one is set.
+        # A secret is never shown back: the tab learns that one is set,
+        # sealed (R135) or not.
         if spec["kind"] == "secret":
-            out[key] = {"value": "", "set": bool(out[key]["value"]), "source": out[key]["source"]}
+            sealed = isinstance(d.get(key), str) and d[key].startswith(SEALED)
+            out[key] = {"value": "", "set": sealed or bool(out[key]["value"]),
+                        "source": "settings" if sealed else out[key]["source"]}
     return out
 
 
@@ -239,7 +281,7 @@ def set_many(changes):
                     else f"{key} is a hostname like bb.example.com" if kind == "text"
                     else f"{key} is a whole number from {KEYS[key]['min']} to {KEYS[key]['max']}" if kind == "number"
                     else f"{key} is one line"}
-        parsed[key] = v
+        parsed[key] = _sealed(v) if KEYS[key]["kind"] == "secret" else v
     with _lock:
         d = load()
         d.update(parsed)

@@ -13,6 +13,7 @@
 ### Security
 
 - With an install key, the key sign-in cookies are signed with is made from it and kept nowhere, so a copy of /config can forge no sign-in (7645fec)
+- With an install key, the tunnel's and Cloudflare's tokens are kept sealed in the controller's settings, so a copy of /config holds neither (13812ea)
 
 ## 0.8.0: 2026-10-24
 
