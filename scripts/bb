@@ -731,10 +731,14 @@ cmd_status() {
                 printf 'unstamped'
             fi)"
     fi
-    # Only where a session runs: the controller carries no Claude Code (R47),
-    # and a dash against it there reads as something missing rather than as
-    # something that was never meant to be here.
-    if on_node; then version claude claude --version; fi
+    # Only where a session runs: the controller carries no coding agent (R47),
+    # and a dash against one there reads as something missing rather than as
+    # something that was never meant to be here. Every agent a session may be.
+    if on_node; then
+        version claude  claude --version
+        version codex   codex --version
+        version copilot copilot --version
+    fi
     version node   node --version
     version npm    npm --version
     version python python3 --version
@@ -5556,7 +5560,16 @@ cmd_doctor() {
     echo "== doctor =="
     # Claude Code is a node's, so a controller has nothing to check for: a
     # failed check nobody can fix is worse than no check (R47).
-    if on_node; then check "claude on PATH" command -v claude; fi
+    # The other agents are each a person's choice: one missing is said as
+    # skipped, with where it is installed, never as a failure.
+    if on_node; then
+        check "claude on PATH" command -v claude
+        local ag
+        for ag in codex copilot; do
+            if command -v "$ag" >/dev/null 2>&1; then printf '  [ok]   %s on PATH\n' "$ag"
+            else printf '  [skip] %s is not installed here: the Agents page installs it\n' "$ag"; fi
+        done
+    fi
     # A session on a node asks about its own project's tree (B168): inside
     # its view /workspace is the view's read-only root by design, and the
     # project, its worktrees and nothing else are bound in under it, so the
@@ -5815,8 +5828,22 @@ cmd_doctor() {
         printf '  [ok]   signed in to Claude on this machine%s\n' \
             "$(python3 "$BB_LIB/doctor-probes.py" login 2>/dev/null)"
     else
-        printf '  [warn] not signed in to Claude on this machine: Sign in on its row on the\n'
-        printf '         Nodes page (Claude Code) runs the flow here, or `bb login` in this shell\n'
+        printf '  [warn] not signed in to Claude on this machine: Sign in on the Agents page\n'
+        printf '         runs the flow here, or `bb login` in this shell\n'
+    fi
+    # ...and each other agent installed here, said as Claude's is but never a
+    # warning: which agents a person signs in to is theirs.
+    if on_node; then
+        local ag nm who
+        for ag in codex copilot; do
+            command -v "$ag" >/dev/null 2>&1 || continue
+            case "$ag" in codex) nm=ChatGPT ;; *) nm=Copilot ;; esac
+            if who="$(python3 "$BB_LIB/doctor-probes.py" signed "$ag" 2>/dev/null)"; then
+                printf '  [ok]   signed in to %s on this machine%s\n' "$nm" "$who"
+            else
+                printf '  [skip] not signed in to %s on this machine: Sign in on the Agents page\n' "$nm"
+            fi
+        done
     fi
     return $ok
 }

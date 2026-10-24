@@ -19,6 +19,7 @@ import claudegrant  # noqa: E402
 import signin  # noqa: E402
 
 LIST = os.path.join(HERE, "..", "..", "lib", "login-list.py")
+PROBES = os.path.join(HERE, "..", "..", "lib", "doctor-probes.py")
 
 
 def jwt(claims):
@@ -84,6 +85,26 @@ class Listed(unittest.TestCase):
         with open(os.path.join(self.home, ".copilot", "config.json")) as f:
             self.assertEqual(json.load(f), {"theme": "dark"})
         self.assertNotIn("copilot", self.listed()["agents"])
+
+
+class Doctor(unittest.TestCase):
+    """bb doctor's line for each other agent reads the same files the list
+    does, so it and the Agents page never disagree."""
+    setUp, put = Listed.setUp, Listed.put
+
+    def signed(self, agent):
+        return subprocess.run([sys.executable, PROBES, "signed", agent],
+                              env={"HOME": self.home, "PATH": os.environ["PATH"]}, capture_output=True, text=True)
+
+    def test_doctor_names_each_agent_s_account(self):
+        self.put(".codex/auth.json", {"tokens": {"id_token": jwt({"email": "me@example.invalid"})}})
+        self.put(".copilot/config.json", {"lastLoggedInUser": {"login": "octo"}})
+        self.assertEqual((self.signed("codex").returncode, self.signed("codex").stdout), (0, " (me@example.invalid)"))
+        self.assertEqual((self.signed("copilot").returncode, self.signed("copilot").stdout), (0, " (octo)"))
+
+    def test_doctor_says_none_when_an_agent_is_not_signed_in(self):
+        self.assertEqual(self.signed("codex").returncode, 1)
+        self.assertEqual(self.signed("copilot").returncode, 1)
 
 
 class Record(unittest.TestCase):
