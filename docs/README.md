@@ -1,8 +1,9 @@
 # BuilderBot documentation
 
-BuilderBot is a self-hosted workshop for Claude Code. One container, the
+BuilderBot is a self-hosted workshop for coding agents: Claude Code,
+ChatGPT's Codex CLI and GitHub's Copilot CLI. One container, the
 **controller**, serves this dashboard and keeps every project's plan, bugs
-and rules; the machines it enrolls, the **nodes**, do the work: Claude
+and rules; the machines it enrolls, the **nodes**, do the work: the agents'
 sessions, builds, tests, CI, Android emulators and Docker containers. These
 docs are also the dashboard's **Help**, where the search in the bar finds a
 line in any of them.
@@ -32,7 +33,7 @@ dashboard's rail.
 
 - [projects.md](projects.md): the Projects page: making, cloning and linking a project, its menu and settings, archiving and deleting it
 - [notebook.md](notebook.md): a project's page: Overview, Roadmap, Bugs, Git, Tests, Analysis, Artifacts, Docker, Wiki and Design
-- [sessions.md](sessions.md): Claude sessions: starting one, the Sessions page, what a session sees, what it is told and the rules it is held to
+- [sessions.md](sessions.md): sessions of each agent, Claude, ChatGPT and Copilot: starting one, the Sessions page, what a session sees, what it is told and the rules it is held to
 
 ## Build, test and ship
 

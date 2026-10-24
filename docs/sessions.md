@@ -1,11 +1,37 @@
-# Claude sessions
+# Sessions
 
-A Claude session is Claude Code running in a terminal on a project's node,
-started from the project's card or page and kept in the dock at the foot of
-every page. This doc covers starting one (the node, the model and effort,
-the sign-in), the Sessions page, what a session sees and reaches, what it is
+A session is a coding agent running in a terminal on a project's node:
+**Claude** (Anthropic's Claude Code), **ChatGPT** (OpenAI's Codex CLI) or
+**Copilot** (GitHub's Copilot CLI), started from the project's card or page
+with Start agent and kept in the dock at the foot of every page. This doc
+covers starting one (the agent, the node, the model and effort, the
+sign-in), the Sessions page, what a session sees and reaches, what it is
 told and how it is held to its rules, and its token. The terminal itself is
 in [dashboard.md](dashboard.md#the-dock-and-its-terminals).
+
+## The three agents
+
+Each agent is used the same way, and the same things hold for each: one
+briefing, the house rules' guards, the project's view and walls, the dock's
+working, waiting and asking states, the transcripts and Resume, and `bb`.
+Where they differ is how each takes those, in its own form:
+
+- **The briefing**: Claude reads it as a system prompt file; ChatGPT as
+  developer instructions added to Codex's own; Copilot as an instructions
+  folder it reads like a project's AGENTS.md. None of it is written into
+  the project's tree.
+- **The guards**: Claude's are the hooks in its generated settings file;
+  ChatGPT's and Copilot's are each agent's own hooks, written into the
+  account's hooks file for it, every one running the same list. Codex's
+  are trusted for each launch by the hashes Codex reports for them.
+- **The conversations**: each agent keeps its own transcripts, listed on a
+  project's Sessions view with the agent named, and Start agent's menu
+  offers each agent's last one to resume.
+- **The sign-in**: each agent's, per account and per node, on the Agents
+  page (see [below](#the-agents-on-a-node-and-their-sign-in)).
+
+Which agent Start agent opens first is your pick for the project; the menu
+lists every agent installed on its node.
 
 ## Starting a session
 
@@ -50,25 +76,25 @@ second node can be started from the same place. Where this account is
 signed in on the project's node, the press starts the session or opens the
 chooser with Resume and New conversation, as it always has. Where
 it is not, the chooser offers **Sign in on** that node in their place, which
-opens the Agents page on that node with its Claude section unfolded. A
+opens the Agents page on that node with that agent's section unfolded. A
 project on several nodes lists each under its name: Resume and New
 conversation for a node this account is signed in on, the sign-in for one it
 is not, and the reason alone for one where a session cannot start.
 
-**A Claude tab does not come back on its own after a restart.** The
+**An agent's tab does not come back on its own after a restart.** The
 conversation ended with the container; the transcript did not, so the
 project's Start agent offers to resume it and that stays a decision you
-make. Enforcing it takes two halves: the saved layout drops Claude tabs at
+make. Enforcing it takes two halves: the saved layout drops agents' tabs at
 boot, and, because a browser left open still holds its own copy, and a phone
 waking up reloads the terminal iframe, which spawns whatever its URL names:
-each Claude terminal's URL carries the run of the container it was opened in.
+each agent's terminal URL carries the run of the container it was opened in.
 One from a previous run is refused where the session would have been created,
 with a line saying to open it from its project's Start agent instead.
 Shell tabs carry no such marker and never needed one: a shell is safe to
 recreate in the same directory, which is why it survives a restart and a
 conversation does not.
 
-## Claude Code on a node, and its sign-in
+## The agents on a node, and their sign-in
 
 **Claude Code is a toolchain of each node, installed on purpose, and by
 nothing a session can do.** The provisioner does not install it: a node's
@@ -89,6 +115,13 @@ install the update: nothing updates it before a session starts (a switch
 that did went on 7 Oct). The same section keeps each account's sign-in;
 the Nodes page keeps one line per node saying which agents are installed and
 signed in there, with a button to the Agents page.
+
+**ChatGPT's Codex CLI and Copilot CLI are installed the same way**, each
+from its own section of the Agents page: Install, Update and Remove run the
+vendor's installer as the session account and pin the binary on a managed
+node, and an agent's update holds its starts there until it ends. A project
+whose agent is missing on its node offers Install for that agent in place
+of Start agent.
 
 **A Claude sign-in is one account's, on one node.** A person signs in on
 each node they work on, and the login stays in that account's home on that
@@ -116,28 +149,36 @@ while that account has a Claude session open there, which the section
 names, and a sign-in on any other node is untouched. A node that is not
 answering offers neither, with the reason under it.
 
+**ChatGPT and Copilot sign in with a device code**, each in its own section
+of the node's Agents page and as the same per-account, per-node record:
+the section shows the link to open and the code to enter at OpenAI or
+GitHub, and says who the node reports signed in once the code is taken
+(the ChatGPT account, or the GitHub login with a Copilot plan). Sign out
+runs that agent's own sign-out on that node, in that account's home.
+
 ## The Sessions page
 
-**Sessions**, on the rail, is every terminal and Claude session of your
+**Sessions**, on the rail, is every terminal and agent's session of your
 account, here and on the nodes, one row each: its name, exactly as its tab
 in the dock is named and with the same hover text, then its project, its
 node and when it started. **Press the name** to go to its tab, reopening it
 first if it was minimized. Beside it, **Open** puts back a tab that was
 minimized, **Minimize** takes a shell's tab off the dock (it keeps running),
 and **End** stops the session. An **on screen** pill marks the ones open in
-the dock right now. Every Claude session (in this list and on its tab)
+the dock right now. Every agent's session (in this list and on its tab)
 carries a **state dot**:
 blue and pulsing while it works, amber when it is waiting on you (input, a
 permission decision, or a finished turn), with the task it reported
 alongside. That is the phone-glance question answered without opening the
 terminal: is it still going, or does it need me? The state comes from the
-terminal title Claude Code itself maintains, read through tmux: no polling
-of the conversation, no extra process.
+terminal title Claude Code itself maintains, read through tmux, and for
+ChatGPT and Copilot from their own hooks: no polling of the conversation,
+no extra process.
 
 **Ending a session for good is End on the Sessions page**, or × on its tab
 in the dock. That one asks,
 because that is where something is actually lost: the shell and everything
-in it, or the Claude conversation (its transcript is kept and can be resumed).
+in it, or the agent's conversation (its transcript is kept and can be resumed).
 
 ## How many sessions work at once
 
@@ -158,9 +199,9 @@ limit existed, or one that was interrupted, is counted by what it is doing.
 ## Keeping a session in its own project
 
 A Claude session started from the dashboard is launched with a generated
-settings file that denies its file tools; `Read`, `Edit`, `Write` and
-`NotebookEdit`, since a deny rule names one tool and Read does not imply the
-rest: access to every *other* project under `/workspace`. Siblings are
+settings file that denies its file tools, `Read` and `Edit` (which covers
+every tool that writes), access to every *other* project under `/workspace`.
+A ChatGPT or Copilot session gets the same walls from its own hooks. Siblings are
 enumerated by name rather than matched by
 pattern, so a project called `app[1]` cannot quietly take its neighbors out of
 the list. That file is passed with
@@ -320,7 +361,7 @@ rather than another rendering of it.
 go and read them and carry on, not to drop what it is doing. A list edited
 under a conversation is a list that conversation is holding a stale copy of.
 
-**The open items go in front of every Claude session the dashboard starts.**
+**The open items go in front of every session the dashboard starts.**
 `bb-tty` appends them to the session's system prompt, so a note left on Tuesday
 is read on Thursday without anybody remembering to mention it. Items a session
 added are marked, so you can see what it put there. It is given as context

@@ -327,7 +327,7 @@ docs/how-it-works.md             the overview: what the image carries, its secur
 docs/dashboard.md                the dashboard: signing in, the rail, Home, the bell, color schemes, the dock and its terminals
 docs/projects.md                 the Projects page: making, linking, archiving and deleting a project, and its repository's access
 docs/notebook.md                 a project's page: its header and its views, from the roadmap and bugs to the wiki and design
-docs/sessions.md                 Claude sessions: starting one, the Sessions page, a session's view and network, its briefing and rules
+docs/sessions.md                 each agent's sessions: starting one, the Sessions page, a session's view and network, its briefing and rules
 docs/building.md                 builds, tests, CI runners and logs, the scanner's findings, dist/, signing and releases
 docs/toolchains.md               the toolchain store, the Toolchains and Emulator pages, the NVIDIA card, Android, the Phone page
 docs/agents.md                   the coding agents: the agent table, the Agents page, installing and signing in to each on a node (R95)

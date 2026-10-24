@@ -23,7 +23,7 @@ edge:
 | Build | CI runner, builds, tests, the scanner's findings, signing and releases | [building.md](building.md) |
 | Containers | The Docker manager and nginx | [containers.md](containers.md) |
 | Machines, Jobs | Controller settings, Nodes, Storage and the job queue | [machines.md](machines.md) |
-| Sessions | Claude sessions: starting one, what it sees, what it is told | [sessions.md](sessions.md) |
+| Sessions | each agent's sessions: starting one, what it sees, what it is told | [sessions.md](sessions.md) |
 | People, Settings | Users, Roles, and your Profile | [people.md](people.md) |
 | Build > Apps | The companion app for an Android phone | [companion-app.md](companion-app.md) |
 | (a terminal) | The `bb` command | [bb-command.md](bb-command.md) and [reference.md](reference.md) |
