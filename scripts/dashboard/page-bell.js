@@ -370,7 +370,8 @@ function needsRows(){
         <div class="bt">CI failing in ${esc(projLabel(c.project))}</div>
         <div class="bsum">${esc(c.text)}</div>
         <div class="bfoot"><span>until the check passes again</span>
-          <span class="acts">${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">On GitHub</a>` : ""}
+          <span class="acts">${c.key ? `<a href="#" data-bdismiss="${esc(c.key)}">Dismiss</a>` : ""}
+            ${c.url ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">On GitHub</a>` : ""}
             <a href="#" data-bci="${esc(c.project)}">Git view</a></span></div></div>`),
     ...syncC.map(c => `<div class="bnote att">
         <div class="bt">Changed in two places: ${esc(projLabel(c.project))}</div>

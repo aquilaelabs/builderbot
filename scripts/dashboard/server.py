@@ -4651,7 +4651,8 @@ def _snapshot(who):
         "invites": _timed("status:invites", lambda: membership.mine(who)),
         # A project this account sees whose main branch's newest CI run
         # failed (ciwatch.red, R117): a bell row while it is true.
-        "ci_red": _timed("status:ci_red", lambda: ciwatch.red([p["name"] for p in ps])),
+        "ci_red": _timed("status:ci_red", lambda: bellseen.filter_rows(
+            users.uid_of(who), ciwatch.red([p["name"] for p in ps]))[0]),
         # A file changed on two synced copies at once (R162, wssync.py): the
         # copy kept beside it, listed until it is deleted.
         "sync_conflicts": _timed("status:sync_conflicts", lambda: wssync.conflicts(lambda p: users.may_see(who, p))),
