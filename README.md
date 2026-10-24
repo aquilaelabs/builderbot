@@ -104,7 +104,8 @@ your projects mounted straight in, and to grow from one machine to several.
     <td width="50%"><img src="docs/screenshots/nodes.png" alt="A node's page: how it is reached, its health and its stores"></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/toolchains.png" alt="The Toolchains page for a node"></td>
+    <td width="50%"><img src="docs/screenshots/agents.png" alt="The Agents page: Claude, ChatGPT and Copilot on a node, each with its version and your sign-in"></td>
+    <td width="50%"><img src="docs/screenshots/toolchains.png" alt="The Toolchains page for a node"></td>
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/containers.png" alt="The Containers page: each project's containers on a node"></td>

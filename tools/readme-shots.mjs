@@ -153,6 +153,10 @@ const desk = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 };
   await tab(page, 'openNodesTab()', 6000); await shoot(page, 'nodes.png'); await ctx.close(); }
 { const { ctx, page } = await open(desk);
   await tab(page, 'openToolchains()', 6000); await shoot(page, 'toolchains.png'); await ctx.close(); }
+// The Agents page: each coding agent on a node, its version and each
+// person's sign-in there (R95; the scrub rewrites the accounts' addresses).
+{ const { ctx, page } = await open(desk);
+  await tab(page, 'openAgentsTab()', 6000); await shoot(page, 'agents.png'); await ctx.close(); }
 { const { ctx, page } = await open(desk);
   await tab(page, 'openDocker()', 7000); await shoot(page, 'containers.png'); await ctx.close(); }
 { const { ctx, page } = await open(desk);
