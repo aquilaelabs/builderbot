@@ -354,6 +354,12 @@ class SessionsMixin:
             starts = {SESSION_PORT: ["sudo", "-n", SESSION_BIN, "tty"],
                       SESSION_PORT + 1: ["sudo", "-n", SESSION_BIN, "tty-ro"]} if mine and mine() else \
                      {SESSION_PORT: [bbtty], SESSION_PORT + 1: [bbtty]}
+            # BuilderBot's own terminal (R133) runs the same programs the
+            # same way, in a pty of the screen relay's (term.py).
+            cwd = env["HOME"] if os.path.isdir(env["HOME"]) else "/"
+            self.term_kinds = {"rw": {"argv": starts[SESSION_PORT], "env": dict(env), "who": who, "cwd": cwd},
+                               "ro": {"argv": starts[SESSION_PORT + 1], "env": dict(env, BB_TTY_RO="1"),
+                                      "who": who, "cwd": cwd}}
             for port, extra, more in ((SESSION_PORT, ["--writable"], {}),
                                       (SESSION_PORT + 1, [], {"BB_TTY_RO": "1"})):
                 self.ttyd.append(subprocess.Popen(
@@ -397,7 +403,8 @@ class SessionsMixin:
             log(f"sessions: ttyd could not bind: {held}")
             return
         SESSION.update(up=True, port=SESSION_PORT, ro_port=SESSION_PORT + 1, user=user,
-                       home=env["HOME"], bind=bind, bundle=self.session_bundle, why="")
+                       home=env["HOME"], bind=bind, bundle=self.session_bundle, why="",
+                       term=os.geteuid() == 0)
         log(f"sessions: ttyd on {bind}:{SESSION_PORT} (read-only twin on {SESSION_PORT + 1}) "
             f"as {user}, bb {self.session_bundle[7:19]}")
         self.ctr_start(into, bbtty, bind, base, logf)
@@ -445,6 +452,9 @@ class SessionsMixin:
             log(f"sessions: the container terminal could not bind {bind}:{port}")
             return
         self.ttyd.append(p)
+        self.term_kinds = dict(getattr(self, "term_kinds", None) or {},
+                               ctr={"argv": [bbtty], "env": dict(env), "who": who,
+                                    "cwd": env["HOME"] if os.path.isdir(env["HOME"]) else "/"})
         SESSION.update(ctr_port=port, ctr_why="")
         log(f"sessions: container terminal on {bind}:{port} as {user or 'this account'}")
 
@@ -502,6 +512,7 @@ class SessionsMixin:
             with contextlib.suppress(OSError, subprocess.TimeoutExpired):
                 p.wait(5)
         self.ttyd = []
+        self.term_kinds = {}
 
     def session_try(self, digest=None):
         """session_refresh, never fatal: the session half must not take the

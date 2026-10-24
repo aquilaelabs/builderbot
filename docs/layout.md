@@ -185,6 +185,7 @@ scripts/
     containers.py                containers BuilderBot did not build: the daemon's list and controls, ones written from a compose file, and whose each is; the Docker manager's view and verbs
     imagecheck.py                every container's registry images against what their registries serve (R195): a weekly check, Check for updates on the Containers page, Update on a row
     vms.py                       the VM manager (R91): each project's VMs on the nodes with VM host, the OS catalog matched by name, the limits, and the vm jobs
+    termws.py                    BuilderBot's own terminal, the controller's half (R133): /termws in a pty here, or carried signed to a node's /term
     nginxproxy.py                one nginx per node, BuilderBot's own (R171): the routes and certificate kept here, the compose file generated from them, deployed and rebuilt through containers.py
     phone.py                     a paired handset on a node: install, push, and the asking
     phonelease.py                a phone lent to a project (R113): the lease, and what its sessions may do on the phone without asking
@@ -244,6 +245,7 @@ scripts/
     vms.py                       the VMs a node runs (R91): the vm job's fixed table of virsh and qemu-img commands, cloud-init, the census of them, and their network's firewall
     vmhw.py                      a VM's hardware beyond size (R100): the host's CPUs and devices, pinning, the balloon, the network, a virtiofs folder, passthrough, the vBIOS dump
     screen.py                    a VM's screen for the dock (R99): a websocket relay on 7684 to the VM's VNC on the loopback, signed by the controller
+    term.py                      BuilderBot's own terminal (R133): a pty per tab on the screen relay's port, running what the node's ttyd runs, signed by the controller
     toolchains.py                the toolchain store (R19): what is installed, who uses it, a session's environment
     gpu.py                       the NVIDIA card: its sample, its memory's holders, the driver and container toolkit
     sessnet.py                   each session kept to its own project's network (R79)

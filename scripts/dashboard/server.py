@@ -1827,7 +1827,7 @@ def vm_target(project, name):
     else:
         return {"where": "node", "id": nid, "name": nm, "host": nodes.route_host(nid),
                 "port": int(se["ctr_port"]), "ro_port": int(se["ctr_port"]),
-                "boot": str(se.get("boot") or ""), "domain": rec["domain"]}
+                "boot": str(se.get("boot") or ""), "domain": rec["domain"], "term": bool(se.get("term"))}
     return {"where": "refused", "name": nm, "why": why}
 
 
@@ -2007,7 +2007,7 @@ def session_target(project, claude=False, node="", uid=""):
     else:
         return {"where": "node", "id": nid, "name": name, "host": nodes.route_host(nid),
                 "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0),
-                "boot": str(se.get("boot") or "")}
+                "boot": str(se.get("boot") or ""), "term": bool(se.get("term"))}
     return {"where": "refused", "name": name, "waiting": waiting,
             "why": why + ("." if passing else
                           ". Sessions run on a node and nowhere else (this container "
@@ -2059,7 +2059,7 @@ def ctr_target(name, instance):
         # and an account without a shell was refused before this.
         return {"where": "node", "id": nid, "name": nm, "host": nodes.route_host(nid),
                 "port": int(se["ctr_port"]), "ro_port": int(se["ctr_port"]),
-                "boot": str(se.get("boot") or "")}
+                "boot": str(se.get("boot") or ""), "term": bool(se.get("term"))}
     return {"where": "refused", "name": nm, "why": why}
 
 
@@ -3628,6 +3628,8 @@ import tunnel                                                    # noqa: E402
 import storage                                                   # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
+import termws                                                    # noqa: E402
+termws.configure(agent_dir=nodes.AGENT_DIR)
 import claudecode                                                # noqa: E402
 import agentcode                                                 # noqa: E402
 import projsessions                                              # noqa: E402
@@ -5453,6 +5455,21 @@ class Handler(BaseHTTPRequestHandler):
             "https" if type(self.connection).__name__ == "SSLSocket" else "http")
         return f"{proto}://{host}"
 
+    def _ws_cross_origin(self):
+        """Why a websocket asked for from a page of another origin is
+        refused, or "". A browser sends the sign-in cookie with a
+        websocket from any page of the same site (another of its
+        hostnames, an app this install routes), so a terminal's socket is
+        opened only by a page of this origin. A client that sends no
+        Origin (a tool with a token) is not a page."""
+        o = self.headers.get("Origin", "")
+        if not o:
+            return ""
+        hosts = {self.headers.get("Host", ""), self.headers.get("X-Forwarded-Host", "")} - {""}
+        if urllib.parse.urlsplit(o).netloc in hosts:
+            return ""
+        return f"a terminal opens from this dashboard's own page, not from {o}"
+
     def _logout(self):
         self.send_response(302)
         self.send_header("Location", "/login")
@@ -5851,6 +5868,107 @@ class Handler(BaseHTTPRequestHandler):
             vms.gone(here)
             up.close()
 
+    def _term_decide(self, rest0):
+        """Whether this terminal may open and where it runs, for /term and
+        /termws alike (R133): (target, vm match, None), or (None, None,
+        (why, status)). `rest0` is the path after the prefix, ?arg= and all."""
+        refused = self._term_refused(rest0)
+        if refused:
+            return None, None, (refused, 403)
+        held = self._claude_held(rest0)
+        if held:
+            # 409, not 403: nothing is wrong with the credential, the thing
+            # asked for is taken. The name is the whole value of the record:
+            # "somebody else has it" tells you nothing you can act on.
+            return None, None, (held, 409)
+        # Where this terminal lives (roadmap #24, phase 10b): a project bound
+        # to a node whose session half is up is relayed to THAT machine's
+        # ttyd (the same two ports, the same bb-tty, with the account and
+        # its token stamped into the URL), and everything else stays on the
+        # loopback. session_target says why a node cannot take one, and the
+        # row's button carries the same sentence.
+        # A SHELL is this container's own and always has been: a tree to look
+        # at, the linters, git. Only a CLAUDE session needs a node, because
+        # only Claude is the thing this container does not carry, so the
+        # question is asked about a claude: argument and about nothing else.
+        arg0 = _term_arg(rest0)
+        # ...and a container's shell is where its container is (R218 step 4).
+        ctr = _ARG_CTR.match(arg0)
+        vmm = _ARG_VM.match(arg0)
+        target = ctr_target(ctr.group(1), ctr.group(2)) if ctr else vm_target(*vmm.groups()) if vmm else \
+            session_target(_arg_project(arg0),
+                           claude=agents.of_arg(arg0)[0] is not None,
+                           node=_arg_node(arg0),
+                           uid=users.uid_of(self._who() or {}) or "")
+        if target["where"] == "refused":
+            return None, None, (target["why"], 503)
+        # A VM's Console is one person's at a time (the operator, 21 Oct):
+        # anybody else is refused while it is held, unless the project's
+        # owner or an administrator took it over a moment ago.
+        if vmm:
+            vkey, my_uid = f"{vmm.group(1)}/{vmm.group(2)}", users.uid_of(self._who() or {}) or ""
+            held = vms.holders(vkey, "console", but=my_uid)
+            if held and not vms.may_take(my_uid, vkey):
+                return None, None, (f"{', '.join(w for _, w in held)} has {vmm.group(2)}'s Console open, and it is "
+                                    "one person's at a time. Its Screen can be shared, or ask them; the "
+                                    "project's owner or an administrator can take it over.", 409)
+        # A terminal on the controller itself, switched off for this install
+        # (R81): what a node runs is the node's, and stays.
+        if target["where"] != "node" and (why := featuresoff.sentences().get("shell")):
+            return None, None, (why, 403)
+        return target, vmm, None
+
+    def _term_own(self):
+        """/termws?arg=...&cols=&rows= (R133): BuilderBot's own terminal, a
+        websocket the page opens directly. Decided as /term is
+        (_term_decide, _scoped_arg); a refusal is the socket closing with
+        why. On this controller bb-tty runs in a pty here; on a node the
+        socket is carried to its screen relay's /term, signed. Every few
+        seconds the decision is asked again, and a terminal no longer
+        allowed is ended (step 9). A node whose agent has no /term yet
+        closes with 4001, and the page opens that tab through ttyd."""
+        query = urllib.parse.urlsplit(self.path).query
+        q = urllib.parse.parse_qs(query)
+        args = "?" + "&".join(f"arg={urllib.parse.quote(a, safe='')}" for a in q.get("arg", []))
+        dims = {k: termws.term()._dim((q.get(k) or [""])[0], d) for k, d in (("cols", 80), ("rows", 24))}
+        if (cross := self._ws_cross_origin()):
+            return self._json({"error": cross}, 403)
+        target, vmm, no = self._term_decide(args)
+        if not termws.upgrade(self):
+            return self._json({"error": no[0] if no else "a websocket is asked for here"}, no[1] if no else 400)
+        down = self.connection
+        if no:
+            return termws.close(down, no[0])
+        if target["where"] == "node" and not target.get("term"):
+            return termws.close(down, f"{target['name']}'s agent serves no terminal of its own yet", 4001)
+        node = target["where"] == "node"
+        words = [v for k, v in urllib.parse.parse_qsl(urllib.parse.urlsplit(
+            self._scoped_arg(args, node=node)).query) if k == "arg"]
+        who_raw = self._who_raw()
+
+        def alive():
+            if kept_out(who_raw):
+                return "the controller is in maintenance mode"
+            return (self._term_decide(args)[2] or ("",))[0]
+        here = None
+        if vmm:
+            here = vms.present(f"{vmm.group(1)}/{vmm.group(2)}", "console",
+                               (self._who() or {}).get("name") or self._principal(),
+                               users.uid_of(self._who() or {}) or "")
+        try:
+            if node:
+                ro = bool(users.may(self._who(), "terminal")) and not (_ARG_CTR.match(_term_arg(args)) or vmm)
+                return termws.node(down, host=target["host"], port=SCREEN_PORT, key=nodes.screen_key(target["id"]),
+                                   kind="ctr" if (_ARG_CTR.match(_term_arg(args)) or vmm) else "ro" if ro else "rw",
+                                   words=words, alive=alive, **dims)
+            env = {k: v for k, v in os.environ.items() if k != "DASHBOARD_AUTH"}
+            return termws.local(down, words, bbtty=str(HERE / "bb-tty"), env=env,
+                                cwd=env.get("HOME") or "/", ro=bool(users.may(self._who(), "terminal")),
+                                alive=alive, **dims)
+        finally:
+            if here is not None:
+                vms.gone(here)
+
     def _term_proxy(self):
         """Everything under /term, relayed byte-for-byte to ttyd on the
         loopback, websockets included.
@@ -5869,52 +5987,11 @@ class Handler(BaseHTTPRequestHandler):
         plain request instead gets Connection: close upstream, which turns
         "relay until EOF" into the complete response.
         """
-        refused = self._term_refused(self.path[len("/term"):])
-        if refused:
-            return self._term_notice(refused, 403)
-        held = self._claude_held(self.path[len("/term"):])
-        if held:
-            # 409, not 403: nothing is wrong with the credential, the thing
-            # asked for is taken. The name is the whole value of the record:
-            # "somebody else has it" tells you nothing you can act on.
-            return self._term_notice(held, 409)
-        # Where this terminal lives (roadmap #24, phase 10b): a project bound
-        # to a node whose session half is up is relayed to THAT machine's
-        # ttyd (the same two ports, the same bb-tty, with the account and
-        # its token stamped into the URL), and everything else stays on the
-        # loopback. session_target says why a node cannot take one, and the
-        # row's button carries the same sentence.
         rest0 = self.path[len("/term"):]
-        # A SHELL is this container's own and always has been: a tree to look
-        # at, the linters, git. Only a CLAUDE session needs a node, because
-        # only Claude is the thing this container does not carry, so the
-        # question is asked about a claude: argument and about nothing else.
-        arg0 = _term_arg(rest0)
-        # ...and a container's shell is where its container is (R218 step 4).
-        ctr = _ARG_CTR.match(arg0)
-        vmm = _ARG_VM.match(arg0)
-        target = ctr_target(ctr.group(1), ctr.group(2)) if ctr else vm_target(*vmm.groups()) if vmm else \
-            session_target(_arg_project(arg0),
-                           claude=agents.of_arg(arg0)[0] is not None,
-                           node=_arg_node(arg0),
-                           uid=users.uid_of(self._who() or {}) or "")
-        if target["where"] == "refused":
-            return self._term_notice(target["why"], 503)
-        # A VM's Console is one person's at a time (the operator, 21 Oct):
-        # anybody else is refused while it is held, unless the project's
-        # owner or an administrator took it over a moment ago.
-        if vmm:
-            vkey, my_uid = f"{vmm.group(1)}/{vmm.group(2)}", users.uid_of(self._who() or {}) or ""
-            held = vms.holders(vkey, "console", but=my_uid)
-            if held and not vms.may_take(my_uid, vkey):
-                return self._term_notice(f"{', '.join(w for _, w in held)} has {vmm.group(2)}'s Console open, and it is "
-                                         "one person's at a time. Its Screen can be shared, or ask them; the "
-                                         "project's owner or an administrator can take it over.", 409)
-        # A terminal on the controller itself, switched off for this install
-        # (R81): what a node runs is the node's, and stays.
-        if target["where"] != "node" and (why := featuresoff.sentences().get("shell")):
-            return self._term_notice(why, 403)
-        rest = self._scoped_arg(self.path[len("/term"):], node=target["where"] == "node")
+        target, vmm, no = self._term_decide(rest0)
+        if no:
+            return self._term_notice(*no)
+        rest = self._scoped_arg(rest0, node=target["where"] == "node")
         if not rest or rest.startswith("?"):
             # ttyd's client resolves "token" and "ws" against the page URL,
             # so the page must live under a trailing slash.
@@ -6241,6 +6318,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._novnc(path[len("/novnc/"):])
         if path == "/screen/ws":
             return self._screen_proxy()
+        if path == "/termws":
+            return self._term_own()
         if path.startswith("/apps/"):
             return self._app_file(path)
         # The page's companion scripts: a new surface is a new classic-script
