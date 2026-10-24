@@ -176,6 +176,10 @@ function drawChatThread(el){
 async function sendKey(key){
   const t = tabOf(panes[active]);
   if (!t || t.kind !== "term") return;
+  // BuilderBot's own terminal takes the key down its own socket, as typed
+  // (R133 step 5); PgUp and PgDn still ask the server, which knows whether
+  // tmux is on the alternate screen and opens copy mode when it is not.
+  if (termOwn(t) && termKey(t, key)) return;
   try{
     const r = await postJSON("/api/keys", {session: sessionOf(t.arg), key});
     const j = await r.json();

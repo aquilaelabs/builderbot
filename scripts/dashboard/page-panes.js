@@ -224,7 +224,9 @@ function drawPanes(){
     if (!t){ showInStack(st, "", () =>
       `<div class="empty-pane">no tab here: “+” opens a terminal, Sessions reopens a running one</div>`);
       continue; }
-    const key = `${t.id}|${t.kind}|${t.arg}${t.gen ? "|" + t.gen : ""}${t.popped ? "|popped" : ""}`;
+    // ...and whether BuilderBot's own terminal draws it (R133): switching
+    // between the two is a different slot.
+    const key = `${t.id}|${t.kind}|${t.arg}${t.gen ? "|" + t.gen : ""}${t.popped ? "|popped" : ""}${termOwn(t) ? "|own" : ""}`;
     // A terminal that was on screen a moment ago is kept alive behind the one
     // that replaced it, so coming back to it is instant. Two panes must never
     // hold the same one: a second live client on a session is the size fight one
@@ -242,6 +244,7 @@ function drawPanes(){
       // second client on the session, the size fight one client per terminal avoids.
       ? `<div class="slot popped"><div class="empty-pane">this terminal is open in its own window<br>
            <button type="button" class="reattach" data-reattach="${esc(t.id)}">Reattach</button></div></div>`
+      : termOwn(t) ? termSlot(t)
       : t.kind === "term"
       // Selecting in a shell copies: the terminal fires the copy itself, and
       // this is the permission that lets it, since the terminal is served from
@@ -255,6 +258,7 @@ function drawPanes(){
     // The boot a new frame's URL carries, for openTab to tell one from before
     // its machine restarted.
     if (fresh && t.kind === "term") t.frameBoot = bootFor(t.arg);
+    if (termOwn(t)) termMount(el, t, key);
     // The id names "the document being shown in pane i", so it must name one
     // node. A hidden document left in the stack (the notebook parks there)
     // used to keep it, and getElementById returns the first in DOM order,
@@ -273,7 +277,7 @@ function drawPanes(){
     // and one that was laid out behind another frame may have missed one. One
     // marked stale slept through a disconnect instead, and needs the reload it
     // was spared while nobody was looking at it.
-    if (!fresh && t.kind === "term"){
+    if (!fresh && t.kind === "term" && !termOwn(t)){
       const f = el.querySelector("iframe");
       if (f?.dataset.stale){ delete f.dataset.stale; f.src = f.src; }
       else nudgeTerminals();
@@ -287,6 +291,8 @@ function drawPanes(){
     openedNow.add(t.id);
     TABKINDS[t.kind]?.open?.();
   }
+  // A terminal of ours whose slot left the page is closed (R133).
+  termSweep();
   // The page in front, toured the first time this account opens it (R94).
   tourSoon(tabOf(panes[0])?.kind);
 }
@@ -413,6 +419,8 @@ function dropElsewhere(keep, key){
 // device has been the one using it.
 let nudgeTimer = null, nudgedAt = 0;
 function nudgeTerminals(){
+  // BuilderBot's own terminals size themselves to their box (R133).
+  termRevive();
   // The visible ones only. A pane keeps three more frames alive behind the one
   // on screen, and they are all the same size already: thrashing their layout
   // costs a reflow each and fixes nothing anybody is looking at.
@@ -447,4 +455,6 @@ function reattachTerminals(){
   document.querySelectorAll(".pane .slot:not(.on) iframe")
           .forEach(f => f.dataset.stale = "1");
   document.querySelectorAll(".pane .slot.on iframe").forEach(f => { f.src = f.src; });
+  // ...and BuilderBot's own: a socket that dropped is opened again (R133).
+  termRevive();
 }

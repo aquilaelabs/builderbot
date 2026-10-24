@@ -115,6 +115,7 @@ scripts/
     nb-*.js                      one per notebook view; nb-core.js is the notebook itself
     page-*.js                    one per part of the page that is neither: the state, the tabs, the panes and the dock, a project's rows, the polls, the bell, the doctor and the rest
     static/                      the favicon set and the SVG marks the page draws
+    vendor/                      xterm.js 5.5.0 and its fit addon 0.10.0 as npm publishes them, with xterm's MIT license (R133), served by name under /vendor/
     bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
     bb-agent-hook                Codex's and Copilot's own hooks holding Claude's guards: their payload in Claude's shape, the same hooks run (R95)
     bb-codex-trust               BuilderBot's own Codex hooks trusted for one launch, by the hashes that Codex reports for them (B284)

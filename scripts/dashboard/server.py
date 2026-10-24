@@ -3041,7 +3041,7 @@ def _diag_watch(project, uid):
 
 
 # The Settings tab's Debugging group, the debug grant's (roles.NAMED_ONLY).
-DEBUG_SETTINGS = ("debug_mode", "offer_unvetted")
+DEBUG_SETTINGS = ("debug_mode", "offer_unvetted", "own_terminal")
 
 
 # A Reset that un-enrolls its nodes first: their uninstalls run, and the
@@ -4653,6 +4653,9 @@ def _snapshot(who):
         "invites": _timed("status:invites", lambda: membership.mine(who)),
         # A project this account sees whose main branch's newest CI run
         # failed (ciwatch.red, R117): a bell row while it is true.
+        # Every terminal tab in BuilderBot's own terminal (R133), the dev
+        # switch, for every account's page.
+        "term_own": bool(settings.get("own_terminal")),
         "ci_red": _timed("status:ci_red", lambda: bellseen.filter_rows(
             users.uid_of(who), ciwatch.red([p["name"] for p in ps]))[0]),
         # A file changed on two synced copies at once (R162, wssync.py): the
@@ -5795,6 +5798,16 @@ class Handler(BaseHTTPRequestHandler):
             out.append(f"{k}{eq}{v}")
         return head + "?" + "&".join(out)
 
+    VENDOR = {"xterm.js": "text/javascript; charset=utf-8", "addon-fit.js": "text/javascript; charset=utf-8",
+              "xterm.css": "text/css; charset=utf-8"}
+
+    def _vendor(self, name):
+        """The page's vendored libraries (R133), by name from a fixed list,
+        never a general file server."""
+        if name not in self.VENDOR:
+            return self._json({"error": "not found"}, 404)
+        return self._static("vendor/" + name, self.VENDOR[name])
+
     def _novnc(self, rest):
         """noVNC's files (the page and the RFB client it imports), as the
         image fetched them; nothing outside its directory."""
@@ -6322,6 +6335,9 @@ class Handler(BaseHTTPRequestHandler):
         # VM's node.
         if path.startswith("/novnc/"):
             return self._novnc(path[len("/novnc/"):])
+        # xterm.js and its fit addon (R133), vendored beside the page.
+        if path.startswith("/vendor/"):
+            return self._vendor(path[len("/vendor/"):])
         if path == "/screen/ws":
             return self._screen_proxy()
         if path == "/termws":
