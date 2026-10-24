@@ -141,9 +141,14 @@ def wall(path, cwd=""):
     share = os.path.normpath(os.environ.get("BB_CLAUDE_SHARE") or os.path.join(ws, ".claude"))
     p = os.path.normpath(os.path.join(cwd or tree, os.path.expanduser(path)))
     under = lambda d: p == d or p.startswith(d.rstrip("/") + "/")  # noqa: E731
-    if os.path.basename(p) == "VERSION" and under(tree):
+    # A project of several repositories (R136): the others and this
+    # session's worktrees of them are its trees as well, as Claude's walls
+    # open to them (bb-tty's claude_scope).
+    trees = [tree] + [os.path.join(ws, w) for w in os.environ.get("BB_WORKS", "").split()] \
+        + os.environ.get("BB_WORK_DIRS", "").split()
+    if os.path.basename(p) == "VERSION" and any(under(t) for t in trees):
         return f"{path}: the version moves with bb version, never by an edit (bb version policy says how)"
-    if under(ws) and not under(tree) and not under(share):
+    if under(ws) and not any(under(t) for t in trees) and not under(share):
         return f"{path} is outside this session's tree ({tree}): another tree is another person's or another session's"
     return ""
 

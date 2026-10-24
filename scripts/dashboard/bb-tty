@@ -1658,6 +1658,12 @@ case "$target" in
             # The other agents ask whether to trust the folder too; the
             # session's own tree is answered for them the same way.
             agent_first_run "$agent" "$dir" || true
+            # ...and its project's other repositories (R136), trusted and
+            # writable to it as Claude's settings make them.
+            for wd in ${BB_WORK_DIRS:-}; do
+                agent_first_run "$agent" "$wd" || true
+                cmd+=(--add-dir "$wd")
+            done
         elif ! claude_first_run "$dir"; then
             echo "WARNING: could not record ${dir} as trusted in ${HOME}/.claude.json." >&2
             echo "Claude Code ignores a workspace's own permission rules until it is," >&2
