@@ -346,18 +346,20 @@ pick_python() {
 # extra: the terminals are the dashboard's, so it is the image's pinned
 # release where the family packages none, and the install stops without it.
 extras() {
-    local arch tag miss=() bin
+    local arch miss=() bin
     arch="$(uname -m)"
     say "the image's other tools"
+    # Each from its vendor's GitHub release, held to the digest GitHub
+    # states for it (gh-fetch, B335), never taken on trust.
+    local ghf="$TREE/scripts/lib/gh-fetch" t
+    t="$(mktemp -d)"
     if [ "$arch" = x86_64 ]; then
-        curl -fsSL -o /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64 \
+        bash "$ghf" hadolint/hadolint latest 'hadolint-linux-x86_64' /usr/local/bin/hadolint >/dev/null \
             && chmod +x /usr/local/bin/hadolint || miss+=(hadolint)
-        curl -fsSL -o /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+        bash "$ghf" mikefarah/yq latest 'yq_linux_amd64' /usr/local/bin/yq >/dev/null \
             && chmod +x /usr/local/bin/yq || miss+=(yq)
-        tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/rhysd/actionlint/releases/latest 2>/dev/null || true)"
-        tag="${tag##*/}"
-        { [ -n "$tag" ] && curl -fsSL "https://github.com/rhysd/actionlint/releases/download/${tag}/actionlint_${tag#v}_linux_amd64.tar.gz" \
-            | tar -xz -C /usr/local/bin actionlint; } || miss+=(actionlint)
+        { bash "$ghf" rhysd/actionlint latest 'actionlint_*_linux_amd64.tar.gz' "$t/actionlint.tar.gz" >/dev/null \
+            && tar -xzf "$t/actionlint.tar.gz" -C /usr/local/bin actionlint; } || miss+=(actionlint)
     else
         miss+=(hadolint yq actionlint)
     fi
@@ -367,9 +369,13 @@ extras() {
     else
         miss+=(ruff)
     fi
-    command -v uv >/dev/null 2>&1 || { curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh >/dev/null 2>&1 || true; }
+    local uvarch misearch
+    uvarch="$([ "$arch" = x86_64 ] && echo x86_64 || echo aarch64)"; misearch="$([ "$arch" = x86_64 ] && echo x64 || echo arm64)"
+    command -v uv >/dev/null 2>&1 || { bash "$ghf" astral-sh/uv latest "uv-${uvarch}-unknown-linux-gnu.tar.gz" "$t/uv.tar.gz" >/dev/null \
+        && tar -xzf "$t/uv.tar.gz" -C /usr/local/bin --strip-components=1 "uv-${uvarch}-unknown-linux-gnu/uv" "uv-${uvarch}-unknown-linux-gnu/uvx"; } || true
     command -v uv >/dev/null 2>&1 || miss+=(uv)
-    command -v mise >/dev/null 2>&1 || { curl -fsSL https://mise.run | env MISE_INSTALL_PATH=/usr/local/bin/mise sh >/dev/null 2>&1 || true; }
+    command -v mise >/dev/null 2>&1 || { bash "$ghf" jdx/mise latest "mise-v*-linux-${misearch}" /usr/local/bin/mise >/dev/null \
+        && chmod +x /usr/local/bin/mise; } || true
     command -v mise >/dev/null 2>&1 || miss+=(mise)
     if command -v npm >/dev/null 2>&1; then
         for bin in playwright web-ext; do
@@ -388,11 +394,11 @@ extras() {
     case "$arch" in
         x86_64|aarch64)
             command -v cloudflared >/dev/null 2>&1 || {
-                curl -fsSL -o /usr/local/bin/cloudflared \
-                    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$( [ "$arch" = x86_64 ] && echo amd64 || echo arm64)" \
-                    && chmod +x /usr/local/bin/cloudflared; } || miss+=(cloudflared) ;;
+                bash "$ghf" cloudflare/cloudflared latest "cloudflared-linux-$( [ "$arch" = x86_64 ] && echo amd64 || echo arm64)" \
+                    /usr/local/bin/cloudflared >/dev/null && chmod +x /usr/local/bin/cloudflared; } || miss+=(cloudflared) ;;
         *) miss+=(cloudflared) ;;
     esac
+    rm -rf "$t"
     [ "${#miss[@]}" -eq 0 ] || warn "not here, which the image carries: ${miss[*]} (the dashboard runs without them; bb lint says [skip] for a missing linter)"
 }
 

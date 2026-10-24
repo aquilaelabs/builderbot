@@ -29,6 +29,9 @@ ARG NODE_MAJOR=22
 # ttyd serves the dashboard's terminal. Ubuntu packages it, but the static
 # release is a single self-contained binary and pins to a known version.
 ARG TTYD_VERSION=1.7.7
+# ...checked by digest, per architecture, from the release's SHA256SUMS (B335).
+ARG TTYD_SHA256_X86_64=8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55
+ARG TTYD_SHA256_AARCH64=b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165
 # noVNC draws a VM's screen in the dock (R99): pinned, and checked by digest.
 ARG NOVNC_VERSION=1.7.0
 ARG NOVNC_SHA256=b1003a11b6e6e8d8f7f5e5586daae7f8ca651d8aee0aa155ff9ac841c48f52c6
@@ -125,27 +128,24 @@ RUN set -eux; \
 # the weekly rebuild is what keeps them current. `ruff` installs via pipx so
 # it is isolated from both the system Python and any project venv.
 #
-# Resolved WITHOUT api.github.com, deliberately: the API allows 60 anonymous
-# calls per hour per IP, and CI builds run from shared Actions egress
-# addresses that have usually spent that budget already, so the "latest release"
-# JSON comes back as a rate-limit error, jq reads a null tag, and the build
-# dies on a 404. The releases/latest/download/ endpoint and the /releases/
-# latest redirect carry the same information with no such limit.
+# Each one held to the digest GitHub states for it (scripts/lib/gh-fetch,
+# B335), which asks GitHub's release API: anonymously it allows 60 calls an
+# hour per address and CI's shared addresses have usually spent them, so CI
+# hands the build its token as a secret (gh_token), in no layer of the image.
 #
 # The point of having them *in the image* rather than only in CI: a session
 # (or a person) can run the same checks CI will run, before the push. That
 # is what `bb lint` does.
 # ---------------------------------------------------------------------------
-RUN set -eux; \
-    curl -fsSL -o /usr/local/bin/hadolint \
-        https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64; \
-    curl -fsSL -o /usr/local/bin/yq \
-        https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64; \
+COPY scripts/lib/gh-fetch /usr/local/sbin/bb-gh-fetch
+RUN --mount=type=secret,id=gh_token,required=false \
+    set -eux; \
+    bb-gh-fetch hadolint/hadolint latest 'hadolint-linux-x86_64' /usr/local/bin/hadolint; \
+    bb-gh-fetch mikefarah/yq latest 'yq_linux_amd64' /usr/local/bin/yq; \
     chmod +x /usr/local/bin/hadolint /usr/local/bin/yq; \
-    tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/rhysd/actionlint/releases/latest)"; \
-    tag="${tag##*/}"; \
-    curl -fsSL "https://github.com/rhysd/actionlint/releases/download/${tag}/actionlint_${tag#v}_linux_amd64.tar.gz" \
-        | tar -xz -C /usr/local/bin actionlint; \
+    bb-gh-fetch rhysd/actionlint latest 'actionlint_*_linux_amd64.tar.gz' /tmp/actionlint.tar.gz; \
+    tar -xzf /tmp/actionlint.tar.gz -C /usr/local/bin actionlint; \
+    rm -f /tmp/actionlint.tar.gz; \
     PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install ruff; \
     hadolint --version; \
     actionlint --version >/dev/null; \
@@ -155,25 +155,18 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 # Language/version tooling that lives outside apt: uv (Python) and mise.
 #
-# Both vendors' install scripts take a destination env var, but they have
-# changed names before, so after each install we also sweep the usual drop
-# points and relocate anything we find. The final `--version` calls make a
-# silently-missing tool a build failure rather than a runtime surprise.
+# Each vendor's release asset, held to GitHub's digest for it (B335), where
+# a vendor's install script piped into sh was taken on trust. The final
+# `--version` calls make a silently-missing tool a build failure rather than
+# a runtime surprise.
 # ---------------------------------------------------------------------------
-RUN set -eux; \
-    relocate() { \
-        bin="$1"; \
-        command -v "$bin" >/dev/null 2>&1 && return 0; \
-        for candidate in "/root/.local/bin/$bin" "/root/.cargo/bin/$bin" "$HOME/.local/bin/$bin"; do \
-            if [ -x "$candidate" ]; then mv "$candidate" "/usr/local/bin/$bin"; return 0; fi; \
-        done; \
-        return 1; \
-    }; \
-    curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh; \
-    relocate uv; \
-    curl -fsSL https://mise.run | env MISE_INSTALL_PATH=/usr/local/bin/mise sh; \
-    relocate mise; \
-    chmod +x /usr/local/bin/uv /usr/local/bin/mise 2>/dev/null || true; \
+RUN --mount=type=secret,id=gh_token,required=false \
+    set -eux; \
+    bb-gh-fetch astral-sh/uv latest 'uv-x86_64-unknown-linux-gnu.tar.gz' /tmp/uv.tar.gz; \
+    tar -xzf /tmp/uv.tar.gz -C /usr/local/bin --strip-components=1 uv-x86_64-unknown-linux-gnu/uv uv-x86_64-unknown-linux-gnu/uvx; \
+    rm -f /tmp/uv.tar.gz; \
+    bb-gh-fetch jdx/mise latest 'mise-v*-linux-x64' /usr/local/bin/mise; \
+    chmod +x /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/mise; \
     uv --version; \
     mise --version
 
@@ -272,6 +265,8 @@ RUN set -eux; \
     esac; \
     curl -fsSL -o /usr/local/bin/ttyd \
         "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${tarch}"; \
+    if [ "$tarch" = x86_64 ]; then want="${TTYD_SHA256_X86_64}"; else want="${TTYD_SHA256_AARCH64}"; fi; \
+    echo "${want}  /usr/local/bin/ttyd" | sha256sum -c -; \
     chmod +x /usr/local/bin/ttyd; \
     ttyd --version
 
@@ -295,14 +290,14 @@ RUN set -eux; \
 # Cloudflare's edge by the weekly rebuild, and a pin here would be the one
 # copy left behind. Absent on an architecture it is not built for, and the
 # Settings tab then says the tunnel cannot run from here.
-RUN set -eux; \
+RUN --mount=type=secret,id=gh_token,required=false \
+    set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
         amd64|arm64) ;; \
         *) echo "no cloudflared build for ${arch}; the home tunnel is not run from here"; exit 0 ;; \
     esac; \
-    curl -fsSL -o /usr/local/bin/cloudflared \
-        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${arch}"; \
+    bb-gh-fetch cloudflare/cloudflared latest "cloudflared-linux-${arch}" /usr/local/bin/cloudflared; \
     chmod +x /usr/local/bin/cloudflared; \
     cloudflared --version
 
