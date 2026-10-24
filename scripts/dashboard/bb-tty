@@ -397,6 +397,10 @@ cache_project_dir() {
 # machine that holds only that project: bb-session, root, and the one command
 # the session account may run through sudo. The agent installs both.
 SESSION_BIN="${BB_SESSION_BIN:-/usr/local/sbin/bb-session}"
+# What only a controller installed bare metal leaves on a machine (R90, the
+# same as bb-session's CONTROLLER_MARKS): where one is, a session runs in
+# its view or not at all.
+CONTROLLER_MARKS=(/etc/bb-session.wall /etc/builderbot-controller /var/lib/builderbot-controller)
 
 # isolating - whether this node builds a session's view. Asked of the helper
 # through sudo, so it answers from what root set up and from nothing a
@@ -416,7 +420,19 @@ in_view() {
     local proj="$1" dir="$2" envf why
     shift 2
     RUN=("$@")
-    isolating || return 0
+    if ! isolating; then
+        # ...but never on the controller's own machine (R90): there a
+        # session runs inside the wall bb-session keeps around the
+        # controller, or not at all, and the check says what is missing.
+        local m
+        for m in "${CONTROLLER_MARKS[@]}"; do
+            on_node && [ -e "$m" ] || continue
+            why="$(sudo -n "$SESSION_BIN" check 2>&1 >/dev/null || true)"
+            bad "This machine is the controller's own, and a session here runs inside the wall around it or not at all:" \
+                "${why:-bb-session is not installed here yet}"
+        done
+        return 0
+    fi
     [ $# -gt 0 ] || set -- "${SHELL:-/bin/bash}" -l
     # The project's own Gradle home (B438), here too: an isolated session's
     # environment is this file, which the helper loads over what tmux was

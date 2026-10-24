@@ -33,6 +33,34 @@ toolchains), and three optional ones: `/secrets` (ro,
 shielded credentials), `/reports` (ro, a scanner's output) and `/logs`
 (the logs on a share of their own).
 
+### A controller installed bare metal: its env file
+
+A controller installed with `nodes/install-controller.sh` ([install.md](install.md#bare-metal))
+reads `/etc/builderbot-controller/controller.env` at every start, in place of
+compose's `.env`. It carries the same settings as the table above, under the
+same names and with the same defaults (`TZ`, `DASHBOARD_PORT`,
+`FEATURES_OFF`, `FEATURES_OFF_WHY`, `BANNER_TEXT`, `BANNER_LINK`,
+`BANNER_LINK_LABEL`), but `PUID` and `PGID`, which are the container's alone:
+the installer makes an account with ids of its own. In place of compose's
+mounts it names the folders:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DASHBOARD_STATE` | `/var/lib/builderbot-controller/config` | The state, compose's `/config`: accounts, settings, notebooks, logs |
+| `BUILDER_HOME` | `/var/lib/builderbot-controller/home` | The controller's own home, compose's `/home/builder` |
+| `WORKSPACE` | `/srv/builderbot/projects` | The projects, compose's `/workspace` (the installer's `--workspace`); never `/workspace`, which is the machine's own node's synced copy |
+| `SDK_ROOT` | `/var/lib/builderbot-controller/sdk` | The toolchain store, compose's `/sdk` |
+| `BB_SECRETS_DIR` | `/etc/builderbot-controller/secrets` | The root-only secrets folder, compose's `/secrets`: `*.env` files and `ssh/` |
+| `SSH_AUTH_SOCK` | `/run/builderbot-controller/ssh-agent.sock` | The deploy-key agent's socket, in a folder only the controller's account enters |
+| `BB_ACCOUNT` | `builderbot` | The account the controller runs as, written by the installer (`--account`); change it by running the installer again |
+| `BB_INSTALL` | `bare-metal` | What the install is, written by the installer and read by the controller, never guessed: on a bare-metal install the first run's node is the machine's own, set up by the installer, and Finish waits for it |
+
+A value with spaces in it goes in double quotes. After an edit, `sudo
+systemctl restart builderbot-controller`. The file is root's and readable by
+the controller's account alone; a session on the machine's own node is kept
+out of it, with the rest of the controller (the wall,
+[decisions.md](decisions.md#a-controller-installed-bare-metal-and-its-own-node)).
+
 ## The `bb` helper
 
 Bare `bb` prints this list; `bb status` is the tool-version wall.
@@ -211,9 +239,10 @@ bb nodes           the machines enrolled as nodes, each with the agent it runs,
                    read-only in a terminal; the Nodes page is where they are edited
 bb nodes show NAME one of them in full, by name or id: its agent against the one
                    this controller ships, and what Update agent would fix
-bb nodes enroll-token NAME [--user U]
+bb nodes enroll-token NAME [--user U] [--own]
                    a new node's enrollment token, printed once, from a shell on
-                   the controller: Enroll node's Just a token, for a scripted setup
+                   the controller: Enroll node's Just a token, for a scripted setup;
+                   --own is the controller's own machine, on a bare-metal install
 bb projects adopt FOLDER [--name NAME]
                    a folder already under the projects share made a project, as
                    if BuilderBot had made it, from a shell on the controller: a
@@ -412,7 +441,10 @@ bb tests lab       the lab suites (test/lab-*.mjs) against real services rather 
                    one you are willing to have that happen to. A VM host there as well
                    (`BB_LAB_VMHOST`, with `BB_LAB_KEY` an ssh public key) walks every Linux
                    system Enroll node offers as a VM made a node, enrolled to Uninstall
-                   (lab-systems, slow: each system takes its ten to twenty minutes)
+                   (lab-systems, slow: each system takes its ten to twenty minutes);
+                   with `BB_LAB_SSH` (that key's private half, a path on the VM host) and
+                   `BB_LAB_REF` (a pushed ref) it installs a controller bare metal in a VM
+                   and tries the wall around its own node (lab-baremetal)
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
 bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
 bb rules           the house rules for this project: the operator's and yours

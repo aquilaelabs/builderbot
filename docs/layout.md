@@ -18,7 +18,8 @@ lab/compose.yml                  the lab's Gitea and Forgejo for bb tests lab, a
 lab/.env.example                 the lab's one setting: the address other machines reach it at
 unraid/builderbot.xml            Unraid Docker template (one-click updates)
 scripts/
-  entrypoint.sh                  secrets shield, uid remap, hooks, ssh-agent
+  entrypoint.sh                  the container's boot: uid remap, the timezone, then lib/boot.sh's steps and gosu
+  host-boot.sh                   a bare-metal install's boot under systemd: lib/boot.sh's steps, then setpriv to its account (R90)
   supervisor.sh                  keeps the box alive; the graceful shutdown
   mint-runner-token              root-only token helper (one of the two sudo commands)
   deploy-key                     root-only deploy key helper: make, keep, forget, load (the other)
@@ -26,6 +27,9 @@ scripts/
   bb                             in-container helper CLI
   as-builder                     privilege-dropping wrapper for docker exec
   lib/common.sh                  shared shell helpers
+  lib/host-env.sh                the image's ENV, the release's stamp and the env file, for a bare-metal install's service and its bb (R90)
+  lib/boot.sh                    the boot's steps both installs take: secrets shield, ssh-agent, home seed, hooks, state gate (R90)
+  lib/controller-packages.sh     the controller's package list read one way, for the Dockerfile and a bare-metal install (R90)
   lib/relay-verbs                the bb verbs a node relays to the controller (bb and bbrelay.py both read it)
   lib/sdk.sh                     the toolchain manager: `bb toolchains`, sourced by bb
   lib/preflight.sh               `bb tests preflight`, sourced by bb
@@ -290,18 +294,21 @@ nodes/bb-session                    the root helper that runs a session in a vie
 nodes/provision-macos.sh            a provisioner for macOS, not offered by default takes it away
 nodes/provision-linux.sh                  turns a Linux machine into a node (the Docker sandbox, the stores, the session half) and enrolls it; Debian, RHEL, Arch and SUSE families, Alpine, Void, Gentoo
 nodes/families/                           the provisioner's family files, one per package family (deb, rhel, arch, suse, alpine, void, gentoo): package names and verbs, where docker comes from; the enroll script carries the picked system's beside the core
+nodes/install-controller.sh               installs the controller bare metal on the provisioner's core, lays the release out by the Dockerfile's COPY lines, and makes the machine a node of itself; --check, --update, --rollback, --remove (R90)
 nodes/unraid-vm.xml             the node as an Unraid VM: one file for every distribution; only the installer ISO line changes
 nodes/vm/                        the same machine for the other six hypervisors: Proxmox, libvirt, QEMU, VMware, Hyper-V, VirtualBox
 nodes/cloud-init/                the seed a cloud image boots from: meta-data and the user-data that runs the provisioner
 config/skel/                     home directory skeleton
 config/icon.png                  the icon the Unraid template shows
 config/toolchains.json           the toolchains the Toolchains page offers, and how to install each
+config/controller.env            a bare-metal install's env file as the installer first writes it: the paths compose mounts, the settings compose passes (R90)
+config/controller-packages.tsv   what the controller needs installed, per provisioner family: the image and a bare-metal install read this one list (R90)
 config/vm-images.json            the operating systems a VM is made from: each publisher's cloud image and its checksum file (R91)
 config/templates/                briefing.md, assembled per session by preamble.py; nothing is copied into a project
 tools/readme-shots.mjs           the README's pictures (dashboard, notebook, nodes, toolchains, the phone's dashboard and terminal) from a running dashboard, normally the dev instance: default scheme, addresses scrubbed, nothing saved
 tools/bb-ref.sh                  writes the bb block of docs/reference.md from bb help; bb lint holds the two equal
 tools/api-doc.py                 writes docs/api.md from server.py's route tables; bb lint holds the two equal
-tools/check-sysdeps.py           checks every recipe's system packages against each distribution's package index
+tools/check-sysdeps.py           checks every recipe's system packages, and with --controller the controller's own list, against each distribution's package index
 tools/agent-version.sh           the lint check that the agent's version moved with its file
 tools/no-em-dash.sh              the house rule voice's check: no em dash on a line this branch adds
 test/nettest/compose.yml         the network probe (R178's proof): a container shipped to a node that tries what a project's container may and may not reach

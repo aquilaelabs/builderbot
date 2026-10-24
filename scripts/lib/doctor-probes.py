@@ -97,6 +97,29 @@ def node():
         print("  [warn] no node can run a session, and this container carries no Claude Code")
         print("         enroll one on the Nodes page, or wait for one to come back: a node")
         print("         that has just restarted or updated its agent is back in a minute")
+    for n in rows:
+        wall(nodes, n)
+
+
+def wall(nodes, n):
+    """The controller's own machine as a node (R90): whether the wall
+    between its sessions and this controller holds, as its bb-session last
+    told it (the census's isolation, `bb-session check`). Said in red when it
+    does not, since no session starts there until it does."""
+    if not nodes.own_machine(n) or n.get("state") == "retired":
+        return
+    rep = n.get("reported") or {}
+    iso = rep.get("isolation") if isinstance(rep.get("isolation"), dict) else None
+    name = n.get("name") or n.get("id")
+    if n.get("state") != "online" or n.get("live") is False or iso is None:
+        print(f"  [warn] the wall on this controller's own node ({name}) is not known: the node has not")
+        print("         reported since it was enrolled, so no session runs there until it does")
+    elif iso.get("sessions"):
+        print(f"  [ok]   the wall holds on this controller's own node ({name}): its sessions reach")
+        print("         none of the controller's state, secrets, ports or docker")
+    else:
+        print(f"  [FAIL] the wall on this controller's own node ({name}) is not in force, so no")
+        print("         session starts there: " + str(iso.get("why") or "bb-session check failed")[:400])
 
 
 def login():

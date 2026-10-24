@@ -3943,4 +3943,96 @@ print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}
   writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ delta: { by: 'u_0000aaaa', admin: true } }));
 }
 
+// The controller's own machine, a bare-metal install's node of itself (R90
+// step 8): minted from a shell with --own, its row wears "this machine",
+// its session network is set and its box cannot be cleared (said on the
+// row), a project's node pickers say which it is, and the container
+// picker does not offer it, since it runs no containers.
+{
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const base = URL.replace(/\/$/, '');
+  const napi = async (path, body) => (await fetch(base + path, { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
+  const tok = execFileSync('python3', [`${REPO}/scripts/lib/nodes-verbs.py`, 'enroll-token', `${REPO}/scripts/dashboard/nodes.py`,
+    'nasbox', '--user', 'bb', '--own'], { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } }).trim();
+  const en = await (await fetch(base + '/api/v1/agent/enroll', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user: 'bb', version: '1', digest: 'sha256:' + '1'.repeat(64),
+                           census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux' } }) })).json();
+  ok(en.ok && /^bbn_/.test(en.token || ''), `the controller's own machine enrolls with an --own token (${en.error || 'ok'})`);
+  const own = await page.evaluate(async () => { await loadNodes(); return nodesList.find(n => n.name === 'nasbox'); });
+  ok(own?.kind === 'agent' && own.config?.own === true && own.config?.session_net === true
+     && JSON.stringify(own.capabilities) === '["package-build"]',
+     `...as an ordinary agent row: this machine, its sessions in a network of their own, no containers (${JSON.stringify(own?.capabilities)})`);
+  await page.evaluate(() => openNodesTab());
+  await page.waitForSelector('.nodestab .ndrow', { timeout: 15000 });
+  await pickNode(page, own.id);
+  const tag = await page.evaluate(id => {
+    const t = document.querySelector(`.nodestab .ndrow[data-node="${id}"] .name .tag.ndown`);
+    const probe = document.createElement('i'); probe.style.color = 'var(--purple)'; document.body.append(probe);
+    const purple = getComputedStyle(probe).color; probe.remove();
+    return t ? { text: t.textContent.trim(), color: getComputedStyle(t).color, purple } : null;
+  }, own.id);
+  ok(tag && tag.text === 'this machine' && tag.color === tag.purple,
+     `its row on the Nodes page is marked this machine, in the reference's color (${JSON.stringify(tag)})`);
+  const box = await page.evaluate(id => {
+    const row = document.querySelector(`.nodestab .ndrow[data-node="${id}"]`);
+    const i = row?.querySelector('input[data-k="sessnet"]');
+    return i ? { checked: i.checked, disabled: i.disabled, said: i.closest('.field')?.textContent || '' } : null;
+  }, own.id);
+  ok(!box || (box.checked && box.disabled && /controller's own machine/.test(box.said)),
+     `its session network box is ticked and cannot be cleared, with why on the row (${JSON.stringify(box)?.slice(0, 120)})`);
+  const off = await napi('/api/v1/nodes', { action: 'session-net', id: own.id, on: false });
+  ok(/controller's own machine/.test(off.error || ''), `...and the server refuses it off as well (${off.error || 'no error'})`);
+  const opts = await page.evaluate(async () => {
+    // The dialog fills its picker once the project's settings are read, and
+    // the options of the last opening are there until then: waited on by
+    // what this one draws, for as long as a loaded box takes.
+    // The dialog may still be open on alpha from the block above, whose
+    // Escape a held key can miss, and opening the same project again draws
+    // nothing new: the picker is filled again from the list as it is now.
+    openProjectSettings('alpha');
+    rnFillNode();
+    const has = () => [...(document.getElementById('rnNode')?.options || [])].some(o => /nasbox/.test(o.textContent));
+    for (let i = 0; i < 100 && !has(); i++) await new Promise(r => setTimeout(r, 100));
+    const proj = [...document.getElementById('rnNode').options].map(o => o.textContent.trim());
+    const sel = document.createElement('select'), wrap = document.createElement('div');
+    fillNodeSelect(sel, wrap, '', null, null);
+    return { proj, ctr: [...sel.options].map(o => o.textContent.trim()),
+             list: (nodesList || []).map(n => `${n.name}:${n.kind}:${n.state}:${n.live}:${!!n.config?.host_only}`) };
+  });
+  await page.keyboard.press('Escape');
+  ok(opts.proj.some(o => /^nasbox \(this machine, agent/.test(o)),
+     `a project's node picker offers it, saying it is this machine (${JSON.stringify(opts.proj)}; nodes ${JSON.stringify(opts.list)})`);
+  ok(!opts.ctr.some(o => /nasbox/.test(o)), `the container picker does not offer it (${JSON.stringify(opts.ctr)})`);
+  // A session there with the wall down is refused before anything starts,
+  // in bb-session's own words, though the node's session half is up and
+  // its copy of the project is there: the census says the wall does not
+  // hold, which is the one thing that differs from any other node.
+  const census = iso => execFileSync('python3', ['-c', `
+import importlib.util, json, sys, time
+spec = importlib.util.spec_from_file_location("nodes", "${REPO}/scripts/dashboard/nodes.py")
+m = importlib.util.module_from_spec(spec); sys.modules["nodes"] = m; spec.loader.exec_module(m)
+m.configure(state="${DIR}/state")
+n = m.node("${own.id}")
+rep = n["reported"]; rep.update({"session": {"up": True, "boot": "b-nas", "port": 7681, "ro_port": 7682, "user": "builder"},
+                                 "sync": {"beta": {"ready": True}}, "isolation": json.loads(sys.argv[1])})
+ag = n["agent"]; ag["last_seen"] = int(time.time())
+m._exec("UPDATE nodes SET reported = ?, agent = ? WHERE id = ?", (json.dumps(rep), json.dumps(ag), "${own.id}"))`, JSON.stringify(iso)],
+    { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+  const wasBeta = (await (await fetch(`${base}/api/status`, { headers: H })).json()).projects.find(p => p.name === 'beta')?.prefs || {};
+  await napi('/api/prefs', { project: 'beta', node: own.id, nodes: [own.id] });
+  census({ sessions: false, why: "bb-session: the wall around this machine's controller does not hold: the job account (bb) is in the docker group" });
+  const why = async () => (await (await fetch(`${base}/api/status`, { headers: H })).json())
+    .projects.find(p => p.name === 'beta')?.session_why || '';
+  const shut = await why();
+  ok(/this controller's own machine, and the wall between its sessions and the controller is not in force/.test(shut)
+     && /the job account \(bb\) is in the docker group/.test(shut),
+     `a session on it with the wall down is refused, saying why (${shut.slice(0, 160)})`);
+  census({ sessions: true, why: '' });
+  const open = await why();
+  ok(!/wall between its sessions/.test(open), `...and with the wall up it is not refused for it (${open.slice(0, 80) || 'no refusal'})`);
+  await napi('/api/prefs', { project: 'beta', node: wasBeta.node || '', nodes: wasBeta.nodes || [] });
+  await napi('/api/v1/nodes', { action: 'retire', id: own.id });
+}
+
 await done(browser);

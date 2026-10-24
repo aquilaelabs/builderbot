@@ -69,23 +69,22 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # ---------------------------------------------------------------------------
 # Base system + build toolchain
+#
+# The packages are config/controller-packages.tsv's deb column, read by the
+# one reader a bare-metal install reads it with too (R90 step 2), so the
+# image and nodes/install-controller.sh install the same list. Copied alone
+# and first, so only an edit of the list itself rebuilds this layer. The
+# count is checked: a reader that printed nothing would otherwise install
+# nothing and pass.
 # ---------------------------------------------------------------------------
+COPY config/controller-packages.tsv /opt/builderbot/config/controller-packages.tsv
+COPY scripts/lib/controller-packages.sh /opt/builderbot/scripts/lib/controller-packages.sh
+# hadolint ignore=SC2046
 RUN set -eux; \
+    pkgs="$(bash /opt/builderbot/scripts/lib/controller-packages.sh deb core tools image)"; \
+    [ "$(printf '%s\n' "$pkgs" | wc -l)" -ge 50 ]; \
     apt-get update; \
-    apt-get install -y --no-install-recommends \
-        ca-certificates curl wget gnupg lsb-release apt-transport-https \
-        git git-lfs openssh-client \
-        build-essential pkg-config make cmake \
-        python3 python3-pip python3-venv python3-dev pipx \
-        jq unzip zip xz-utils bzip2 tar rsync \
-        tmux \
-        ripgrep fd-find fzf \
-        less nano vim tini gosu sudo procps psmisc file lsof strace tree \
-        iproute2 iputils-ping dnsutils netcat-openbsd socat \
-        shellcheck \
-        locales tzdata \
-        libicu74 libssl3 libkrb5-3 zlib1g liblttng-ust1 \
-        sqlite3 imagemagick ffmpeg; \
+    apt-get install -y --no-install-recommends $(printf '%s\n' "$pkgs"); \
     ln -sf /usr/bin/fdfind /usr/local/bin/fd; \
     git lfs install --system; \
     rm -rf /var/lib/apt/lists/*
@@ -93,9 +92,13 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 # Node.js (NodeSource), GitHub CLI, Docker CLI + compose plugin
 #   The Docker CLI talks to the host daemon through a mounted
-#   /var/run/docker.sock; no daemon runs inside this container.
+#   /var/run/docker.sock; no daemon runs inside this container. Which
+#   packages: the list's vendor and docker rows (config/controller-packages.tsv).
 # ---------------------------------------------------------------------------
+# hadolint ignore=SC2046
 RUN set -eux; \
+    pkgs="$(bash /opt/builderbot/scripts/lib/controller-packages.sh deb vendor docker)"; \
+    [ "$(printf '%s\n' "$pkgs" | wc -l)" -ge 5 ]; \
     install -m 0755 -d /etc/apt/keyrings; \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
         | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg; \
@@ -111,8 +114,7 @@ RUN set -eux; \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
         > /etc/apt/sources.list.d/docker.list; \
     apt-get update; \
-    apt-get install -y --no-install-recommends \
-        nodejs gh docker-ce-cli docker-compose-plugin docker-buildx-plugin; \
+    apt-get install -y --no-install-recommends $(printf '%s\n' "$pkgs"); \
     rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------

@@ -325,7 +325,7 @@ def archive_bytes():
 # they were not in the archive and no retention reached them. Both now do.
 
 def ci_dir():
-    return Path(os.environ.get("BB_CI_LOG_DIR", "/config/ci-logs"))
+    return Path(os.environ.get("BB_CI_LOG_DIR") or f"{os.environ.get('DASHBOARD_STATE') or '/config'}/ci-logs")
 
 
 def _ci_entries():

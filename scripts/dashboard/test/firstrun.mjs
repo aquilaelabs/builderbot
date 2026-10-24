@@ -6,7 +6,11 @@
 // a node and lands on Home, whose Getting started card keeps what is left.
 // The fixture starts with setup done, so it is put back to first run here,
 // as making the owner does, and Finish puts it right again.
-import { URL, launch, newPage, ok, done, sleep } from './lib.mjs';
+import { URL, launch, newPage, ok, done, sleep, DIR, patience } from './lib.mjs';
+import { execFileSync, spawn } from 'node:child_process';
+import { mkdirSync, rmSync, openSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { fileURLToPath } from 'node:url';
 
 const auth = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
 const base = URL.replace(/\/$/, '');
@@ -105,4 +109,97 @@ for (const [where, vp] of [['at a desk', { viewport: { width: 1280, height: 900 
 }
 // Left as the fixture had it.
 await firstRun(false);
+
+// ---- a bare-metal install's first run (R90) -----------------------------------
+// The container's first run needs a node the person enrolls; a controller
+// installed bare metal has one already, its own machine, enrolled by the
+// installer, and Finish waits for that one and for no other (the operator,
+// 22 Oct). Told by the install's marker in its env file, BB_INSTALL. Each
+// on a controller of its own, from a fresh state, beside the harness's.
+{
+  const DASH = fileURLToPath(new globalThis.URL('..', import.meta.url));
+  const LIB = fileURLToPath(new globalThis.URL('../../lib', import.meta.url));
+  const freePort = () => new Promise(res => {
+    const s = createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); });
+  });
+  const OWNER = { username: 'firstowner', password: 'longenough1' };
+  const H = { Authorization: 'Basic ' + Buffer.from(`${OWNER.username}:${OWNER.password}`).toString('base64'),
+              'Content-Type': 'application/json' };
+  const controller = async (kind) => {
+    const w = `${DIR}/firstrun-${kind}`;
+    rmSync(w, { recursive: true, force: true });
+    for (const d of ['config', 'workspace', 'home']) mkdirSync(`${w}/${d}`, { recursive: true });
+    const env = { ...process.env, DASHBOARD_STATE: `${w}/config`, WORKSPACE: `${w}/workspace` };
+    execFileSync('python3', [`${LIB}/users-verbs.py`, 'claim', `${DASH}/users.py`, OWNER.username],
+                 { env: { ...env, BB_USERS_PW: OWNER.password } });
+    const port = await freePort();
+    const out = openSync(`${w}/server.log`, 'a');
+    const proc = spawn('python3', ['-u', `${DASH}/server.py`], { stdio: ['ignore', out, out], env: {
+      ...env, DASHBOARD_PORT: String(port), DASHBOARD_TTYD_PORT: String(await freePort()), BUILDER_HOME: `${w}/home`,
+      BB_DOCTOR_FIXTURE: `${DIR}/doctor.txt`, TC_AUTOCHECK: '0', BB_NODE_POLL: '3',
+      BB_CLAUDE_LATEST_URL: 'file:///nonexistent', BB_CLAUDE_CHECK_DELAY: '3600', BB_NGINX_TAGS_URL: 'file:///nonexistent',
+      BB_NGINX_CHECK_DELAY: '3600', BB_APPS_RELEASES_URL: 'file:///nonexistent', BB_APPS_BOOT_DELAY: '3600',
+      BB_IMAGE_CHECK_DELAY: '3600', BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', BB_COVERAGE_OUT: '',
+      ...(kind === 'bare' ? { BB_INSTALL: 'bare-metal' } : {}) } });
+    const base = `http://127.0.0.1:${port}`;
+    for (let i = 0; i < patience(120); i++){
+      try { if ((await fetch(`${base}/login`)).status === 200) break; } catch { /* not up yet */ }
+      await sleep(250);
+    }
+    const post = async (path, body, h = H) => (await fetch(base + path, { method: 'POST', headers: h, body: JSON.stringify(body) })).json();
+    await post('/api/settings', { set: { setup_done: false } });
+    // A node of it, minted from a shell as the installer mints its own, and
+    // answering by its enrollment.
+    const enroll = async (name, own) => {
+      const tok = execFileSync('python3', [`${LIB}/nodes-verbs.py`, 'enroll-token', `${DASH}/nodes.py`, name, '--user', 'bb',
+                                           ...(own ? ['--own'] : [])], { encoding: 'utf8', env }).trim();
+      return { tok, go: () => post('/api/v1/agent/enroll', { user: 'bb', version: '1', digest: 'sha256:' + '1'.repeat(64),
+        census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux' } },
+        { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }) };
+    };
+    const finish = () => post('/api/settings', { set: { setup_done: true } });
+    return { base, proc, enroll, finish, stop: () => proc.kill('SIGTERM') };
+  };
+
+  const ctr = await controller('container');
+  const none = await ctr.finish();
+  ok(/enroll a node that runs sessions first/.test(none.error || ''),
+     `the container's first run still needs a node enrolled before Finish (${none.error || 'finished'})`);
+  await (await ctr.enroll('box1', false)).go();
+  const fin = await ctr.finish();
+  ok(!fin.error, `...and finishes once one answers (${fin.error || 'ok'})`);
+  ctr.stop();
+
+  const bm = await controller('bare');
+  const own = await bm.enroll('thismachine', true);
+  const pending = await bm.finish();
+  ok(/this machine is still being set up as a node/.test(pending.error || ''),
+     `a bare-metal first run waits for its own machine while it is being set up (${pending.error || 'finished'})`);
+  const page = await newPage(browser, { httpCredentials: OWNER, extraHTTPHeaders: { Authorization: H.Authorization } });
+  await page.goto(bm.base);
+  await page.waitForSelector('#setupPanel .setstep', { timeout: 20000 });
+  const draw = () => page.evaluate(async () => {
+    await loadNodes(); setupSig = ''; drawSetup();
+    const s = document.querySelector('#setupPanel .setstep');
+    return { title: s?.querySelector('h3')?.textContent.trim(), state: s?.querySelector('.pill')?.textContent.trim(),
+             text: s?.querySelector('.setstepbody')?.textContent.trim(), more: s?.querySelector('[data-setenroll]')?.textContent.trim(),
+             primary: !!s?.querySelector('[data-setenroll].primary'), finish: document.getElementById('setupFinish')?.disabled };
+  });
+  const before = await draw();
+  ok(before.title === 'This machine' && before.state === 'waiting' && /agent is being installed/.test(before.text) && before.finish,
+     `its setup page shows this machine as the node being set up, with where it is, and Finish waits (${JSON.stringify(before)})`);
+  ok(before.more === 'Enroll another machine' && !before.primary, '...and offers Enroll for more machines, as an option');
+  await (await bm.enroll('otherbox', false)).go();
+  const other = await bm.finish();
+  ok(/still being set up as a node/.test(other.error || ''), `another node answering does not finish it (${other.error || 'finished'})`);
+  const en = await own.go();
+  ok(en.ok, `this machine enrolls (${en.error || 'ok'})`);
+  const after = await draw();
+  ok(after.state === 'done' && /the machine this controller runs on, is enrolled and answering/.test(after.text) && !after.finish,
+     `...and the step is done with Finish open (${JSON.stringify(after)})`);
+  const fin2 = await bm.finish();
+  ok(!fin2.error, `a bare-metal first run finishes with only its own node (${fin2.error || 'ok'})`);
+  await page.close();
+  bm.stop();
+}
 await done(browser);

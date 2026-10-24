@@ -5,7 +5,9 @@
 #
 # The sandbox exists so that a Claude session can build, run and destroy
 # containers without any of that reaching the server's real ones. BuilderBot
-# itself stays the container it is; this box is only ever a Docker host, and
+# itself stays the container it is (or a controller installed bare metal,
+# nodes/install-controller.sh, which runs this script with --beside-controller
+# to make its own machine a node); this box is only ever a Docker host, and
 # keeping it only that is what makes it disposable.
 #
 # Run it inside the VM, once:
@@ -76,6 +78,8 @@ declare -a FEATURES_WANT=()
 # --machine HASH: the script was made for a node that enrolled from one
 # machine (R177), and runs on that one alone.
 MACHINE=""
+# --beside-controller: the controller is on this machine too (R90).
+BESIDE_CONTROLLER=0
 
 usage() {
     cat <<'EOF'
@@ -169,6 +173,12 @@ it, which is a paste rather than a questionnaire.
                        with no sessions.
   --machine HASH       made for one machine (the Nodes page's Enroll script
                        on a node's row): runs there and nowhere else.
+  --beside-controller  this machine is also the controller, installed bare
+                       metal (install-controller.sh passes it, R90): the
+                       docker account is kept OUT of the docker group and the
+                       daemon is not stamped a sandbox, since docker is root
+                       here and the controller's state is on this disk. The
+                       node runs builds and sessions, not containers.
   --door cloudflared   a door in for SSH, switched on and off from the
   --door tailscale     node's row on the Nodes page. cloudflared publishes
                        this machine's port 22 at --door-host HOST (a
@@ -235,6 +245,12 @@ remove_if_asked() {
     exit 0
 }
 
+# Sourced for its core (BB_PROVISION_LIB=1) by nodes/install-controller.sh
+# (R90): the family, the init, the services, the pre-flight and the package
+# helpers are defined and the machine is read, and nothing is asked of the
+# options, nothing is checked against root and nothing is installed; the
+# installer does those itself. Run, it is the whole provisioner, as always.
+if [ "${BB_PROVISION_LIB:-0}" != 1 ]; then
 # No arguments: the help, and nothing changed. Provisioning a machine is
 # what the options ask for, not what a bare invocation should do.
 if [ $# -eq 0 ]; then
@@ -261,6 +277,7 @@ while [ $# -gt 0 ]; do
         --firewall) FIREWALL=1; FEATURES_WANT+=(firewall); shift ;;
         --feature) FEATURES_WANT+=("$2"); shift 2 ;;
         --machine) MACHINE="$2"; shift 2 ;;
+        --beside-controller) BESIDE_CONTROLLER=1; shift ;;
         --data)  STORE_DATA="$2"; STORE_DATA_SET=1; shift 2 ;;
         --toolchains) STORE_TOOLCHAINS="$2"; STORE_TOOLCHAINS_SET=1; shift 2 ;;
         --cache) STORE_CACHE="$2"; STORE_CACHE_SET=1; shift 2 ;;
@@ -333,6 +350,7 @@ case "$TOKEN" in
     ""|bbe_*) ;;
     *) echo "that is not an enrollment token (they start bbe_); mint one on the Nodes tab" >&2; exit 1 ;;
 esac
+fi   # the options, when run rather than sourced
 
 say() { printf '\n== %s\n' "$*"; }
 warn() { printf '\n!! %s\n' "$*" >&2; }
@@ -494,8 +512,13 @@ EOF
 # So: refused at the top, before anything is installed. There is no --force,
 # because provisioning a container as a Docker host has no working version to
 # fall back to.
-if [ -f /.dockerenv ] || [ -f /run/.containerenv ] \
-   || grep -qs -E '(docker|lxc|containerd)' /proc/1/cgroup 2>/dev/null; then
+# in_container: the test, as a function, since install-controller.sh refuses
+# a container by the same one (R90).
+in_container() {
+    [ -f /.dockerenv ] || [ -f /run/.containerenv ] \
+        || grep -qs -E '(docker|lxc|containerd)' /proc/1/cgroup 2>/dev/null
+}
+if [ "${BB_PROVISION_LIB:-0}" != 1 ] && in_container; then
     warn "this is a container, and this script provisions a VM."
     if [ -d /opt/builderbot ]; then
         printf '   You are inside BuilderBot. It is the thing that TALKS to the\n'
@@ -511,7 +534,7 @@ if [ -f /.dockerenv ] || [ -f /run/.containerenv ] \
     exit 1
 fi
 
-[ "$(id -u)" -eq 0 ] || { echo "run this with sudo" >&2; exit 1; }
+[ "${BB_PROVISION_LIB:-0}" = 1 ] || [ "$(id -u)" -eq 0 ] || { echo "run this with sudo" >&2; exit 1; }
 ID=""; ID_LIKE=""; PRETTY_NAME=""; VERSION_ID=""; VERSION_CODENAME=""; UBUNTU_CODENAME=""
 [ -r /etc/os-release ] && . /etc/os-release
 : "$VERSION_ID" "$VERSION_CODENAME" "$UBUNTU_CODENAME"   # the family file's to read
@@ -571,7 +594,7 @@ esac
 # else this repository's for the detected family, for a hand run from a
 # checkout. A picked family that is not this machine's is refused by name:
 # a script built for Ubuntu does nothing to a Rocky machine but say so.
-_here="$(cd "$(dirname "$0")" && pwd)"
+_here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FAMILY_PICKED=""; FAMILY_NAME=""; FAMILY_IDS=""; FAMILY_NEED=""
 if [ -f "$_here/provision-family.sh" ]; then
     # shellcheck source=/dev/null
@@ -723,9 +746,15 @@ EOF
 # FAIL stops the run here with every finding printed, so one run says the
 # whole of what is wrong; a WARN is something the run can survive but the
 # operator should know, and is repeated at the end.
+# preflight: every check, said whole, and an exit when the machine cannot be
+# provisioned (or is of a family not run for real, without --dev). The
+# controller's installer runs the same one first (R90).
+CHECK_FAILED=0
+WARNINGS=()
+preflight() {
 say "checking this machine"
 CHECK_FAILED=0
-declare -a WARNINGS=()
+WARNINGS=()
 chk() {
     case "$1" in
         ok)   printf '   ok    %s\n' "$2" ;;
@@ -838,6 +867,71 @@ case "$VETTED_FAMILIES" in
             exit 1
         fi ;;
 esac
+}
+
+# docker_suite: which suite of Docker's repository to ask for. Normally this
+# release's own codename, but Docker's repository can lag a brand-new Ubuntu
+# or Debian by weeks, and the symptom is an apt 404 that names a URL and not
+# a reason. So the suite is checked before it is committed to, and falls back
+# to the newest stable one that exists: the packages are the same build, only
+# the suite name differs.
+docker_suite() {
+    local try
+    for try in "$@"; do
+        [ -n "$try" ] || continue
+        # -fs and not -fsS: a miss here is the normal path into the fallback,
+        # and curl announcing its own 404 first would read as the failure.
+        if curl -fs -o /dev/null --max-time 15 \
+            "https://download.docker.com/linux/${DOCKER_DEB}/dists/${try}/Release"; then
+            printf '%s' "$try"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# ttyd_install: ttyd from the distribution where it packages it, else the
+# static binary from ttyd's own release, pinned to this machine's
+# architecture (the RHEL family, SUSE Leap and Gentoo carry none). With a
+# version, that release; without, the latest. The distribution's package
+# may enable a unit of its own (Debian's: ttyd as root on lo:7681 serving a
+# login prompt, which nothing here asked for, B136), switched off here
+# whether or not this run installed it.
+ttyd_install() {
+    local want="${1:-}" ttyd_pkg tarch url
+    ttyd_pkg="$(pkg_names ttyd)"
+    if ! command -v ttyd >/dev/null 2>&1 && [ -n "$ttyd_pkg" ]; then
+        pkg "$ttyd_pkg" >/dev/null 2>&1 || true
+    fi
+    if [ -n "$ttyd_pkg" ] && command -v systemctl >/dev/null 2>&1; then
+        systemctl disable --now ttyd.service >/dev/null 2>&1 || true
+    fi
+    command -v ttyd >/dev/null 2>&1 && return 0
+    case "$(uname -m)" in
+        x86_64) tarch=x86_64 ;;
+        aarch64) tarch=aarch64 ;;
+        armv7l) tarch=armhf ;;
+        *) tarch="" ;;
+    esac
+    if [ -n "$want" ]; then url="https://github.com/tsl0922/ttyd/releases/download/${want}/ttyd.${tarch}"
+    else url="https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.${tarch}"; fi
+    if [ -n "$tarch" ] && curl -fsSL -o /usr/local/bin/ttyd.new "$url"; then
+        chmod 0755 /usr/local/bin/ttyd.new && mv /usr/local/bin/ttyd.new /usr/local/bin/ttyd
+        printf '   ttyd %s from its GitHub release\n' "$(ttyd --version 2>/dev/null | awk '{print $NF}')"
+    else
+        rm -f /usr/local/bin/ttyd.new
+        warn "ttyd did not install; fetch ttyd.${tarch:-x86_64} from https://github.com/tsl0922/ttyd/releases into /usr/local/bin"
+        return 1
+    fi
+}
+
+# Sourced for the core: everything above is defined and read, and nothing
+# below runs (R90).
+if [ "${BB_PROVISION_LIB:-0}" = 1 ]; then
+    return 0
+fi
+
+preflight
 if [ "$CHECK_ONLY" = 1 ]; then
     printf '\n   %s can be provisioned by this script' "${PRETTY_NAME:-$ID}"
     [ "${#WARNINGS[@]}" -eq 0 ] && printf '.\n' || printf ', with %d warning(s) above.\n' "${#WARNINGS[@]}"
@@ -974,26 +1068,7 @@ fi
 say "docker"
 # Docker's own repository rather than the distribution's: the compose plugin
 # and a current engine are the entire point of this machine, and Debian's
-# docker.io lags both.
-# Which suite to ask Docker for. Normally this release's own codename, but
-# Docker's repository can lag a brand-new Ubuntu or Debian by weeks, and the
-# symptom is an apt 404 that names a URL and not a reason. So the suite is
-# checked before it is committed to, and falls back to the newest stable one
-# that exists: the packages are the same build, only the suite name differs.
-docker_suite() {
-    local try
-    for try in "$@"; do
-        [ -n "$try" ] || continue
-        # -fs and not -fsS: a miss here is the normal path into the fallback,
-        # and curl announcing its own 404 first would read as the failure.
-        if curl -fs -o /dev/null --max-time 15 \
-            "https://download.docker.com/linux/${DOCKER_DEB}/dists/${try}/Release"; then
-            printf '%s' "$try"
-            return 0
-        fi
-    done
-    return 1
-}
+# docker.io lags both. Which suite: docker_suite, above.
 
 if ! command -v docker >/dev/null 2>&1; then
     docker_install
@@ -1120,13 +1195,21 @@ fence_daemon() {
 fenced=""
 write_fence && fenced=1
 stamped=""
-stamp_daemon && stamped=1
+if [ "$BESIDE_CONTROLLER" = 1 ]; then
+    # The controller's own machine is not a box to be wrecked, and the
+    # manager's root-on-the-far-side actions are not for it (R90): the
+    # fence, yes; the sandbox's label, no.
+    printf '   not stamped as a sandbox: the controller is on this machine\n'
+elif stamp_daemon; then
+    stamped=1
+fi
 if [ -n "$fenced" ] && fence_daemon; then stamped=1; fi
 if [ -n "$stamped" ]; then
     # Only when it moved: a restart bounces every container on this machine,
     # and doing that on a re-run that changed nothing would be rude.
     svc_restart docker || warn "docker did not restart; restart it by hand so its settings are read"
-    say "stamped this daemon as BuilderBot's sandbox"
+    if [ "$BESIDE_CONTROLLER" = 1 ]; then say "this daemon's containers are fenced"
+    else say "stamped this daemon as BuilderBot's sandbox"; fi
 fi
 
 # The journal kept across boots (R185): a fresh VPS keeps it in memory only,
@@ -1199,7 +1282,17 @@ if id -u "$USER_NAME" >/dev/null 2>&1; then
 else
     useradd -m -s /bin/bash "$USER_NAME"
 fi
-usermod -aG docker "$USER_NAME"
+if [ "$BESIDE_CONTROLLER" = 1 ]; then
+    # Docker is root on this machine, and root here holds the controller's
+    # state: the job account stays out, as the session account does
+    # everywhere (R90, the wall). Taken out if a run before put it in.
+    if id -nG "$USER_NAME" | tr ' ' '\n' | grep -qx docker; then
+        gpasswd -d "$USER_NAME" docker >/dev/null 2>&1 || true
+    fi
+    printf '   %s is in no docker group: the controller is on this machine\n' "$USER_NAME"
+else
+    usermod -aG docker "$USER_NAME"
+fi
 # ...and kvm, where the host exposes it. Without this the Android emulator on
 # this node runs with no hardware acceleration and is unusably slow, measured
 # on bb-sandbox, where /dev/kvm is present and root:kvm 0660, and a job as the
@@ -1317,36 +1410,9 @@ else
     # shellcheck disable=SC2046
     pkg $(pkg_names reel) >/dev/null 2>&1 \
         || warn "Xvfb, xdotool or xdpyinfo did not install; bb capture reel --display needs them"
-    ttyd_pkg="$(pkg_names ttyd)"
-    if ! command -v ttyd >/dev/null 2>&1 && [ -n "$ttyd_pkg" ]; then
-        pkg "$ttyd_pkg" >/dev/null 2>&1 || true
-    fi
-    # Debian's package enables a unit of its own: ttyd as root on lo:7681
-    # serving a login prompt, which nothing here asked for. The binary is what
-    # was wanted; the agent runs its own ttyd as the session account (B136).
-    # Outside the install branch on purpose: a re-provision, or a base image
-    # that already carries the package, still has the unit to switch off, so
-    # disabling it only when we install the binary leaves it running on every
-    # run but the first.
-    if [ -n "$ttyd_pkg" ] && command -v systemctl >/dev/null 2>&1; then
-        systemctl disable --now ttyd.service >/dev/null 2>&1 || true
-    fi
-    if ! command -v ttyd >/dev/null 2>&1; then
-        case "$(uname -m)" in
-            x86_64) tarch=x86_64 ;;
-            aarch64) tarch=aarch64 ;;
-            armv7l) tarch=armhf ;;
-            *) tarch="" ;;
-        esac
-        if [ -n "$tarch" ] && curl -fsSL -o /usr/local/bin/ttyd.new \
-                "https://github.com/tsl0922/ttyd/releases/latest/download/ttyd.${tarch}"; then
-            chmod 0755 /usr/local/bin/ttyd.new && mv /usr/local/bin/ttyd.new /usr/local/bin/ttyd
-            printf '   ttyd %s from its GitHub release\n' "$(ttyd --version 2>/dev/null | awk '{print $NF}')"
-        else
-            rm -f /usr/local/bin/ttyd.new
-            warn "ttyd did not install; fetch ttyd.${tarch:-x86_64} from https://github.com/tsl0922/ttyd/releases into /usr/local/bin"
-        fi
-    fi
+    # The distribution's, else ttyd's own latest release (ttyd_install,
+    # above), its stray unit switched off either way (B136).
+    ttyd_install || true
     # Claude Code is not installed here: the node's Toolchains tab does it on
     # purpose, so whoever enrolls a node sees what is put on it (R145), and a
     # session refuses to start until it is there.

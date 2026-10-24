@@ -93,7 +93,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'ado
     'reportsSection', 'clearReports',
   'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderToolchainsInto', 'renderProjectsInto', 'repoOfUrl',
-  'reschedRevs', 'rnDrawAuth', 'rnDrawKey', 'rnKeyAct', 'drawSetup', 'setupFinish', 'setupNeeded', 'setupNode',
+  'reschedRevs', 'rnDrawAuth', 'rnDrawKey', 'rnKeyAct', 'drawSetup', 'setupFinish', 'setupNeeded', 'setupNode', 'setupOwn',
   'rnDrawPeople', 'rnDrawPrefs', 'rnFolds', 'rnTestAuth', 'rnLoadFtp', 'rnDrawReach', 'rnReachNodes', 'rnReachNow', 'rnReachSync', 'rnFtpWhere', 'rnDrawFtp', 'rnFtpChange', 'rnSaveFtp', 'rnFillNode', 'rnFillNodesMore', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnLoadPeople', 'rnDrawGitPol', 'rnWhyOff', 'rnLoadSnapshots', 'rnDrawSnapshots', 'rnSavePeople', 'rnSessionEnd', 'rnSessionsDraw', 'rnSessionsLoad', 'rnFolderLine', 'ghName', 'rnShow', 'rnSubmit',
   'roomForTab', 'saveLayout', 'sendCode', 'sendKey',
   'sessionLabels', 'sessionOf', 'ask', 'askText', 'askYes', 'askQuestion', 'askYesWord', 'setArchived', 'setBadge', 'setLocked', 'setPinned',

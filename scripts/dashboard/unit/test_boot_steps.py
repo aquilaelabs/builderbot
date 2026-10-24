@@ -1,0 +1,159 @@
+"""The controller's boot as steps both installs take (R90 step 3): lib/boot.sh,
+sourced by the container's entrypoint and by a bare-metal install's
+host-boot.sh, each step the same in both, in the same order; what only the
+container does (remapping builder, the timezone, gosu) stays in the
+entrypoint. The root helpers reached through sudo take a bare-metal
+install's state folder only from an env file root owns."""
+import os
+import re
+import subprocess
+import tempfile
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
+SCRIPTS = os.path.join(ROOT, "scripts")
+
+
+def sh(body, env=None):
+    """bash with common.sh and boot.sh sourced from this tree; log/warn
+    print, nothing is root."""
+    pre = (f'set -euo pipefail\n. "{SCRIPTS}/lib/common.sh"\n. "{SCRIPTS}/lib/boot.sh"\n')
+    return subprocess.run(["bash", "-c", pre + body], capture_output=True, text=True, timeout=60,
+                          check=False, env=dict(os.environ, **(env or {})))
+
+
+def steps(path, fn="main"):
+    """The step names a boot's main() calls, in order."""
+    text = open(path, encoding="utf-8").read()
+    body = text[text.index(f"{fn}() {{"):]
+    body = body[: body.index("\n}\n")]
+    names = ("stash_secrets", "BOOT_READY_FILE", "state_gate", "setup_logging", "banner",
+             "setup_timezone", "remap_user", "seed_home", "sock_dir", "persist_android_downloads",
+             "setup_ssh_agent", "record_image", "run_hooks", "boot_ready", "unset", "exec")
+    out = []
+    for line in body.splitlines():
+        line = line.strip()
+        if line.startswith("#"):
+            continue
+        for n in names:
+            if re.search(rf"(^|[\s\"$]){re.escape(n)}\b", line) and n not in out:
+                out.append(n)
+    return out
+
+
+class Order(unittest.TestCase):
+    def test_the_container_boots_as_it_always_has(self):
+        self.assertEqual(steps(os.path.join(SCRIPTS, "entrypoint.sh")), [
+            "stash_secrets", "BOOT_READY_FILE", "state_gate", "setup_logging", "banner",
+            "setup_timezone", "remap_user", "seed_home", "persist_android_downloads", "setup_ssh_agent",
+            "record_image", "run_hooks", "boot_ready", "unset", "exec"])
+
+    def test_a_bare_metal_boot_takes_the_same_steps_without_the_containers_own(self):
+        self.assertEqual(steps(os.path.join(SCRIPTS, "host-boot.sh")), [
+            "stash_secrets", "BOOT_READY_FILE", "state_gate", "setup_logging", "banner",
+            "seed_home", "sock_dir", "setup_ssh_agent", "record_image", "run_hooks", "boot_ready",
+            "unset", "exec"])
+
+    def test_the_steps_live_once(self):
+        # Defined in boot.sh and nowhere else: a fix to one is a fix to both.
+        for fn in ("stash_secrets", "setup_ssh_agent", "seed_home", "run_hooks", "setup_logging",
+                   "record_image", "state_gate", "resolve_command"):
+            for f in ("entrypoint.sh", "host-boot.sh"):
+                self.assertNotIn(f"\n{fn}() {{", open(os.path.join(SCRIPTS, f), encoding="utf-8").read(), (fn, f))
+            self.assertIn(f"\n{fn}() {{", open(os.path.join(SCRIPTS, "lib", "boot.sh"), encoding="utf-8").read(), fn)
+
+    def test_only_the_container_remaps_and_uses_gosu(self):
+        host = open(os.path.join(SCRIPTS, "host-boot.sh"), encoding="utf-8").read()
+        self.assertNotIn("remap_user", host)
+        self.assertNotIn("gosu", host.split("set -euo pipefail", 1)[1])
+        self.assertIn("setpriv --reuid=", host)
+
+
+class Steps(unittest.TestCase):
+    def test_secrets_stashed_from_the_folder_named_and_shielded(self):
+        with tempfile.TemporaryDirectory() as d:
+            sec, run = os.path.join(d, "secrets"), os.path.join(d, "run")
+            os.mkdir(sec)
+            with open(os.path.join(sec, "npm.env"), "w") as f:
+                f.write("NPM_TOKEN=npm_abcdefghijklmnopqrstu\n")
+            r = sh('stash_secrets; cat "$BB_RUN_DIR/secrets.env"; grep -c REDACTED "$BB_RUN_DIR/redact.sed"; '
+                   'stat -c %a "$BB_RUN_DIR" "$BB_RUN_DIR/secrets.env"',
+                   {"BB_SECRETS_DIR": sec, "BB_RUN_DIR": run})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("secrets: loaded 1 value(s) [NPM_TOKEN]", r.stdout)
+            self.assertIn("NPM_TOKEN=npm_abcdefghijklmnopqrstu", r.stdout)
+            self.assertIn("\n700\n600", r.stdout)
+
+    def test_no_folder_is_said(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = sh("stash_secrets", {"BB_SECRETS_DIR": os.path.join(d, "nope"), "BB_RUN_DIR": d + "/run"})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn(f"no {d}/nope and no secret variables set", r.stdout)
+
+    def test_hooks_run_from_the_state_named(self):
+        with tempfile.TemporaryDirectory() as d:
+            hooks = os.path.join(d, "startup.d")
+            os.mkdir(hooks)
+            for name, body in (("10-mine.sh", "echo ran-mine"), ("20-off.disabled.sh", "echo ran-off"),
+                               ("30-root.root.sh", "echo ran-root")):
+                with open(os.path.join(hooks, name), "w") as f:
+                    f.write(f"#!/bin/sh\n{body}\n")
+            r = sh("run_hooks", {"DASHBOARD_STATE": d})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn("ran-mine", r.stdout)
+            self.assertNotIn("ran-off", r.stdout)
+            self.assertIn("skipping 30-root.root.sh (needs root", r.stdout)
+
+    def test_logs_and_ledger_follow_the_state(self):
+        r = sh("bb_log_dir; echo; bb_image_log", {"DASHBOARD_STATE": "/var/lib/x/config", "BB_LOG_DIR": ""})
+        self.assertEqual(r.stdout.split("\n")[:2], ["/var/lib/x/config/logs", "/var/lib/x/config/image-log.tsv"])
+        r = sh("bb_log_dir; echo; bb_image_log", {"DASHBOARD_STATE": ""})
+        self.assertEqual(r.stdout.split("\n")[:2], ["/config/logs", "/config/image-log.tsv"])
+
+    def test_as_account_is_setpriv_or_gosu(self):
+        stub = 'setpriv() { echo "setpriv $*"; }; gosu() { echo "gosu $*"; }; '
+        r = sh(stub + "as_account true", {"BB_DROP": "setpriv", "BB_ACCOUNT": "builderbot", "PGID": "990"})
+        self.assertEqual(r.stdout.strip(), "setpriv --reuid=builderbot --regid=990 --init-groups true")
+        r = sh(stub + "as_account true", {"BB_DROP": "", "BB_ACCOUNT": ""})
+        self.assertEqual(r.stdout.strip(), "gosu builder true")
+
+    def test_the_command_handed_off(self):
+        r = sh("resolve_command | tr '\\0' ' '; echo; resolve_command bash | tr '\\0' ' '")
+        self.assertEqual(r.stdout.split("\n")[:2], ["/opt/builderbot/scripts/supervisor.sh ", "bash -l "])
+
+
+class RootState(unittest.TestCase):
+    def env_file(self, d, text):
+        p = os.path.join(d, "controller.env")
+        with open(p, "w") as f:
+            f.write(text)
+        return p
+
+    def test_the_container_without_an_env_file(self):
+        r = sh("bb_root_state", {"BB_CONTROLLER_ENV": "/nonexistent/controller.env"})
+        self.assertEqual(r.stdout, "/config")
+
+    def test_an_env_file_root_does_not_own_is_not_believed(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self.env_file(d, "DASHBOARD_STATE=/elsewhere\n")
+            r = sh("bb_root_state", {"BB_CONTROLLER_ENV": p})
+            self.assertEqual(r.stdout, "/config")
+
+    def test_one_root_owns_and_nobody_else_writes(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = self.env_file(d, "# a comment\nDASHBOARD_STATE=\"/var/lib/builderbot-controller/config\"\n")
+            stat = 'stat() { case "$2" in %u) echo 0 ;; %a) echo "${MODE}" ;; esac; }; '
+            r = sh(stat + "bb_root_state", {"BB_CONTROLLER_ENV": p, "MODE": "640"})
+            self.assertEqual(r.stdout, "/var/lib/builderbot-controller/config")
+            r = sh(stat + "bb_root_state", {"BB_CONTROLLER_ENV": p, "MODE": "664"})
+            self.assertEqual(r.stdout, "/config")
+
+    def test_the_root_helpers_read_it(self):
+        for f in ("deploy-key", "mint-runner-token"):
+            text = open(os.path.join(SCRIPTS, f), encoding="utf-8").read()
+            self.assertRegex(text, r'\nSTORE="\$\(bb_root_state\)/', f)
+
+
+if __name__ == "__main__":
+    unittest.main()

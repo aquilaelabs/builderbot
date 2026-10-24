@@ -40,7 +40,7 @@ reports = None            # reports.py: problems with BuilderBot, from any proje
 users = None              # the account store, for names
 log_dir = None            # () -> Path of the controller's logs
 state_dir = None          # () -> Path of /config, for its state version
-IMAGE_LOG = Path(os.environ.get("BB_IMAGE_LOG", "/config/image-log.tsv"))
+IMAGE_LOG = Path(os.environ.get("BB_IMAGE_LOG") or f"{os.environ.get('DASHBOARD_STATE') or '/config'}/image-log.tsv")
 
 SECTIONS = ("controller", "images", "settings", "doctor", "nodes", "plugins", "jobs", "errors", "audit",
             "reports")

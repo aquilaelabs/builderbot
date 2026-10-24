@@ -571,7 +571,7 @@ function pFillNode(){
   if (!shown){ sel.innerHTML = ""; return; }
   const was = sel.value;
   sel.innerHTML = pick.map(n => `<option value="${esc(n.id)}">${esc(n.name)}${
-      n.live === false ? " (quiet)" : ""}</option>`).join("")
+      n.config?.own ? " (this machine)" : ""}${n.live === false ? " (quiet)" : ""}</option>`).join("")
     + `<option value="">none: no builds, tests or sessions until one is picked</option>`;
   // Several: the node most projects are bound to, not none. A project born
   // with no node had nowhere to send its container and used to land on the

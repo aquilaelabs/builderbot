@@ -208,9 +208,10 @@ bb nodes           the machines enrolled as nodes, each with the agent it runs,
                    read-only in a terminal; the Nodes page is where they are edited
 bb nodes show NAME one of them in full, by name or id: its agent against the one
                    this controller ships, and what Update agent would fix
-bb nodes enroll-token NAME [--user U]
+bb nodes enroll-token NAME [--user U] [--own]
                    a new node's enrollment token, printed once, from a shell on
-                   the controller: Enroll node's Just a token, for a scripted setup
+                   the controller: Enroll node's Just a token, for a scripted setup;
+                   --own is the controller's own machine, on a bare-metal install
 bb projects adopt FOLDER [--name NAME]
                    a folder already under the projects share made a project, as
                    if BuilderBot had made it, from a shell on the controller: a
@@ -409,7 +410,10 @@ bb tests lab       the lab suites (test/lab-*.mjs) against real services rather 
                    one you are willing to have that happen to. A VM host there as well
                    (`BB_LAB_VMHOST`, with `BB_LAB_KEY` an ssh public key) walks every Linux
                    system Enroll node offers as a VM made a node, enrolled to Uninstall
-                   (lab-systems, slow: each system takes its ten to twenty minutes)
+                   (lab-systems, slow: each system takes its ten to twenty minutes);
+                   with `BB_LAB_SSH` (that key's private half, a path on the VM host) and
+                   `BB_LAB_REF` (a pushed ref) it installs a controller bare metal in a VM
+                   and tries the wall around its own node (lab-baremetal)
 bb tests projection  when a run should finish, from what the last one took (--secs for the number)
 bb tests accept KEY "why"   the wait is the work: stop flagging it, saying why (--no undoes)
 bb rules           the house rules for this project: the operator's and yours
@@ -1683,7 +1687,7 @@ cmd_emu() {
 # on a controller because it survives an image update, then the home.
 ci_log_dir() {
     if [ -n "${BB_CI_LOG_DIR:-}" ]; then printf '%s' "$BB_CI_LOG_DIR"
-    elif [ -w /config ]; then printf '/config/ci-logs'
+    elif [ -w "${DASHBOARD_STATE:-/config}" ]; then printf '%s/ci-logs' "${DASHBOARD_STATE:-/config}"
     else printf '%s/ci-logs' "$HOME"; fi
 }
 
@@ -2773,6 +2777,10 @@ cmd_tests() {
         if [ -n "${BB_LAB_CONTROLLER:-}" ] && [ -n "${BB_LAB_VMHOST:-}" ] && [ -n "${BB_LAB_TOKEN:-}" ] \
            && [ -n "${BB_LAB_KEY:-}" ]; then
             export BB_LAB_CONTROLLER BB_LAB_VMHOST BB_LAB_TOKEN BB_LAB_KEY
+            # ...and with the key's private half on the VM host and a ref of
+            # the repository, a controller installed bare metal (lab-baremetal).
+            [ -n "${BB_LAB_SSH:-}" ] && export BB_LAB_SSH
+            [ -n "${BB_LAB_REF:-}" ] && export BB_LAB_REF
             ok_vmhost="$BB_LAB_CONTROLLER ($BB_LAB_VMHOST)"
             # Each system boots and provisions itself: hours for all of them,
             # where a suite is otherwise given twenty-five minutes.
@@ -3880,7 +3888,7 @@ cmd_nodes() {
             DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/nodes-verbs.py" enroll-token "$py" "$@" ;;
         -h|--help) echo "bb nodes            the enrolled machines, each with the agent it runs"
                    echo "bb nodes show NAME  one of them in full, by name or id"
-                   echo "bb nodes enroll-token NAME [--user U]  a new node's enrollment token, from a shell on the controller" ;;
+                   echo "bb nodes enroll-token NAME [--user U] [--own]  a new node's enrollment token, from a shell on the controller" ;;
         *) die "bb nodes [show NAME|enroll-token NAME]: '$1' is not one of its forms" ;;
     esac
 }
@@ -4710,18 +4718,22 @@ is not running; see bb logs."
 # session asks itself after editing anything here.
 # bb map: the code map (lib/codemap.py, roadmap R75). Over the project tree
 # a session is in (BB_TREE on a node, else the working directory), rebuilt
-# by itself when a source is newer than the index.
+# by itself when a source is newer than the index. BB_REPO first, which is
+# how a worktree of a second branch is named to every test verb: BB_TREE is
+# the project's main checkout, and a worktree's own symbols were "nothing
+# defines" (B228).
 cmd_map() {
+    local root="${BB_REPO:-${BB_TREE:-$PWD}}"
     # `addresses` with nothing to read reads the roadmap: the plan is where
     # a session writes `file ~line`, and where those go stale (item 7).
     if [ "${1:-}" = addresses ] && [ $# -eq 1 ]; then
         # As a command of its own rather than cmd_roadmap in this process:
         # on a node the roadmap is the controller's, and only the dispatch a
         # command starts with relays it there (B293).
-        "$0" roadmap | python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" addresses -
+        "$0" roadmap | python3 "$BB_LIB/codemap.py" --root "$root" addresses -
         return
     fi
-    python3 "$BB_LIB/codemap.py" --root "${BB_TREE:-$PWD}" "$@"
+    python3 "$BB_LIB/codemap.py" --root "$root" "$@"
 }
 
 cmd_drift() {

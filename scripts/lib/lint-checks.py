@@ -172,6 +172,23 @@ def settings():
             bad.append(f"{v}: compose defaults to {d!r}, docs/reference.md to {readme[v]!r}")
     for v in sorted(set(tmpl) - set(env)):
         bad.append(f"{v} is in the Unraid template and compose does not pass it")
+    # A bare-metal install's env file (R90): every setting compose passes is
+    # in its template, at the same default, but those the template names as
+    # the container's alone; and every name the template sets is in the
+    # reference, as compose's are.
+    bare = open("config/controller.env").read()
+    bkeys = dict(re.findall(r"^([A-Z][A-Z0-9_]+)=(.*)$", bare, re.M))
+    alone = re.search(r"Not here, the container's alone: ([A-Z_ ]+)", bare)
+    alone = set(alone.group(1).split()) if alone else set()
+    for v, d in sorted(env.items()):
+        if v in alone:
+            continue
+        if v not in bkeys:
+            bad.append(f"{v} is passed by compose and missing from config/controller.env (a bare-metal install's)")
+        elif bkeys[v].strip('"') != d:
+            bad.append(f"{v}: compose defaults to {d!r}, config/controller.env to {bkeys[v]!r}")
+    for v in sorted(set(bkeys) - set(readme)):
+        bad.append(f"{v} is in config/controller.env and missing from docs/reference.md")
     for target, d in sorted(paths.items()):
         m = re.search(r"^\s*#?\s*-\s*\"?(?:\$\{[A-Z_]+:-([^}]*)\}([^:\"]*)|([^:\"$ ]+)):" + re.escape(target) + r"(?::r[ow])?\"?\s*$",
                       svc, re.M)
@@ -183,7 +200,7 @@ def settings():
     for b in bad:
         print(f"  [FAIL] {b}")
     if not bad:
-        print(f"  [ok]   {len(env)} settings and {len(paths)} paths agree across compose, .env.example, the template and the reference")
+        print(f"  [ok]   {len(env)} settings and {len(paths)} paths agree across compose, .env.example, the template, a bare-metal install's env file and the reference")
     sys.exit(1 if bad else 0)
 
 

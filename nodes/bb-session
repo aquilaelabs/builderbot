@@ -50,8 +50,17 @@ the caller is the one sudo names, the project, account and paths are held to
 their shapes and checked as real directories, and the session's environment
 file is read only after the drop, as the session.
 
+On the controller's own machine (a controller installed bare metal that is a
+node of itself, R90) a session is walled off from the controller as well:
+the folders /etc/bb-session.wall names (its state, env file, secrets and
+agent socket) are covered in the view, the session must run in a network of
+its own, the session and job accounts must reach none of it, and the
+controller's loopback ports must refuse them. None starts unless all of
+that holds, and every cover is checked inside the view before the drop.
+
     bb-session check
-        exit 0 when this machine can build the view; root only
+        exit 0 when this machine can build the view, and its wall holds
+        where it carries a controller; root only
     bb-session plan  --project P --account U --home H --cwd D [--reads R]... [--sees PATH]... [--cuda off]
         the mounts, as JSON, without making any; anybody
     bb-session enter --project P --account U --home H --cwd D [--reads R]... [--sees PATH]... --env FILE -- COMMAND...
@@ -251,6 +260,159 @@ def net_conf(c):
     return {"base": base, "slots": (1 << bits) // NET_SLOT}
 
 
+# ---- the wall: a node on the controller's own machine (R90) -----------------
+#
+# A controller installed bare metal can be a node of itself
+# (nodes/install-controller.sh). Its installer writes WALL: the controller's
+# account, the node's job account, the folders that hold the controller's
+# state, env file, secrets and agent socket, and its loopback-only ports. A
+# session here is kept out of all of it, and none starts unless it holds.
+WALL = "/etc/bb-session.wall"
+# What only a controller installed bare metal leaves on a machine: where
+# one of them is, a wall has to be too, so a missing file is never taken
+# for "no controller here".
+CONTROLLER_MARKS = ("/etc/builderbot-controller", "/var/lib/builderbot-controller",
+                    "/etc/systemd/system/builderbot-controller.service", "/etc/init.d/builderbot-controller",
+                    "/etc/sv/builderbot-controller")
+NFT_BINS = ("/usr/sbin/nft", "/sbin/nft", "/usr/bin/nft")
+WALL_TABLE = "builderbot_wall"
+
+
+def wall_conf():
+    """The wall as {"ACCOUNT", "JOBS_USER", "COVER": [paths], "PORTS": [ints]},
+    "" when this machine carries no controller, or a Refused when it does and
+    the file is missing or not root's alone. Another file only for somebody
+    who is not root, which is the suite."""
+    path = os.environ.get("BB_SESSION_WALL", WALL) if os.geteuid() != 0 else WALL
+    marks = os.environ.get("BB_SESSION_MARKS", "").split(":") if os.geteuid() != 0 \
+        and os.environ.get("BB_SESSION_MARKS") is not None else CONTROLLER_MARKS
+    try:
+        st = os.stat(path)
+    except OSError:
+        if any(m and os.path.lexists(m) for m in marks):
+            raise Refused(f"bb-session: this machine carries a BuilderBot controller and no wall ({path}): "
+                          "run nodes/install-controller.sh --install again to write it") from None
+        return ""
+    if path == WALL and (st.st_uid != 0 or st.st_mode & 0o022):
+        raise Refused(f"bb-session: {path} is not root's alone, so it says nothing a session could be held to")
+    w = {"ACCOUNT": "", "JOBS_USER": "", "COVER": [], "PORTS": []}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            key, sep, value = line.strip().partition("=")
+            if not sep or line.startswith("#"):
+                continue
+            value = value.strip()
+            if key in ("ACCOUNT", "JOBS_USER"):
+                w[key] = value
+            elif key == "COVER":
+                w["COVER"] = [p.rstrip("/") for p in value.split(":") if p.startswith("/") and ".." not in p.split("/")]
+            elif key == "PORTS":
+                w["PORTS"] = [int(p) for p in value.split(",") if p.strip().isdigit()]
+    if not w["ACCOUNT"] or not w["COVER"]:
+        raise Refused(f"bb-session: {path} names no controller account or nothing to cover")
+    return w
+
+
+def _ids(name):
+    """(uid, gids) of an account, every group it is in, or None."""
+    try:
+        pw = pwd.getpwnam(name)
+    except KeyError:
+        return None
+    try:
+        gids = set(os.getgrouplist(name, pw.pw_gid))
+    except OSError:
+        gids = {pw.pw_gid}
+    return pw.pw_uid, gids
+
+
+def wall_faults(c, w, guard=None):
+    """What keeps the wall from holding, one sentence each; [] when it holds.
+    The session account and the job account may not own, read or enter a
+    folder it covers, may not be in the docker group or the controller's,
+    and a session here runs only in a network of its own (R79), with the
+    controller's loopback ports refused to everybody but it and root."""
+    if not w:
+        return []
+    faults = []
+    who = {}
+    for role, name in (("the session account", c.get("SESSION_USER", "")), ("the job account", w["JOBS_USER"])):
+        got = _ids(name) if name else None
+        if got:
+            who[role] = (name, *got)
+    ctl = _ids(w["ACCOUNT"])
+    banned = {}
+    if ctl:
+        banned[pwd.getpwnam(w["ACCOUNT"]).pw_gid] = f"{w['ACCOUNT']}'s group"
+    try:
+        import grp
+        banned[grp.getgrnam("docker").gr_gid] = "the docker group"
+    except (ImportError, KeyError):
+        pass
+    for role, (name, _uid, gids) in who.items():
+        for gid in sorted(set(gids) & set(banned)):
+            faults.append(f"{role} ({name}) is in {banned[gid]}")
+    for p in w["COVER"]:
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue                    # nothing there, nothing to read
+        for role, (name, uid, gids) in who.items():
+            if st.st_uid == uid:
+                faults.append(f"{p} is {role}'s ({name})")
+            elif st.st_mode & 0o007:
+                faults.append(f"{p} lets anybody in (mode {stat.S_IMODE(st.st_mode):o})")
+            elif st.st_mode & 0o070 and st.st_gid in gids:
+                faults.append(f"{p} lets {role} ({name}) in through its group")
+    if not net_conf(c):
+        faults.append("sessions here do not run in a network of their own, which is what keeps them off the "
+                      "controller's own ports (Each session to its own network, on this node's row)")
+    if w["PORTS"] and not (guard if guard is not None else _guard_ok()):
+        faults.append(f"the controller's loopback ports ({', '.join(map(str, w['PORTS']))}) are not refused to "
+                      "the node's accounts (the nftables table builderbot_wall is not there)")
+    out = []
+    for f in faults:
+        if f not in out:
+            out.append(f)
+    return out
+
+
+def _guard_ok():
+    for nft in NFT_BINS:
+        if os.access(nft, os.X_OK):
+            r = subprocess.run([nft, "list", "table", "inet", WALL_TABLE], capture_output=True, timeout=10,
+                               check=False)
+            return r.returncode == 0
+    return False
+
+
+def wall_hold(c):
+    """The wall, checked, or a Refused naming everything that keeps it from
+    holding: what check and enter both ask first. "" where there is none."""
+    w = wall_conf()
+    faults = wall_faults(c, w)
+    if faults:
+        # Short ahead of the faults: the node's census keeps 200 characters
+        # of it, and the faults are what says what to mend.
+        raise Refused("bb-session: the wall around this machine's controller does not hold: " + "; ".join(faults))
+    return w
+
+
+def wall_covered(w):
+    """Inside the view, before the drop: every folder the wall names is the
+    empty cover, and every file /dev/null, or the session does not start."""
+    for p in (w or {}).get("COVER", []):
+        try:
+            st = os.lstat(p)
+        except FileNotFoundError:
+            continue
+        if stat.S_ISDIR(st.st_mode):
+            if os.listdir(p):
+                raise Refused(f"bb-session: {p} is still there to read inside the view")
+        elif not stat.S_ISCHR(st.st_mode):
+            raise Refused(f"bb-session: {p} is still there to read inside the view")
+
+
 def args(argv):
     out, rest = {}, []
     i = 0
@@ -296,10 +458,13 @@ def args(argv):
     return out, rest
 
 
-def plan(c, a, uid):
+def plan(c, a, uid, wall=None):
     """The mounts that make the view, as a list of steps, after checking
     everything they rest on. Pure: it reads the file system and changes
-    nothing, so `plan` shows exactly what `enter` would do."""
+    nothing, so `plan` shows exactly what `enter` would do. `wall` is the
+    controller's, where this machine carries one (R90), read here when the
+    caller has not."""
+    wall = wall_conf() if wall is None else wall
     ws, home_root = c["WORKSPACE"].rstrip("/"), c["HOME_ROOT"].rstrip("/")
     project, account = a.get("project", ""), a.get("account", "")
     home, cwd = a.get("home", "").rstrip("/"), a.get("cwd", "").rstrip("/")
@@ -617,6 +782,18 @@ def plan(c, a, uid):
     for hidden in [c["RUNNER_DIR"]] + [x for x in c["HIDE"].split(":") if x]:
         if _real_dir(hidden.rstrip("/")) and not _inside(hidden.rstrip("/"), out_of_sight):
             steps.append(("hide", hidden.rstrip("/")))
+    # ...and, on the controller's own machine (R90), everything the wall
+    # names: the controller's state, env file, secrets and agent socket.
+    # Under /var, /etc and /run, which are the system's own and stay in the
+    # view, so each is covered by name; one already out of sight is not
+    # there to cover. Whether each held is checked inside the view.
+    for p in (wall or {}).get("COVER", []):
+        if _inside(p, out_of_sight):
+            continue
+        if _real_dir(p):
+            steps.append(("hide", p))
+        elif os.path.lexists(p):
+            steps.append(("hidefile", os.path.realpath(p)))
     # ...and the toolchains this project's settings switch off (R77): a
     # session neither runs nor reads what is not there. Whether or not the
     # store sits under a cover: on a node it does, and is bound back into
@@ -1087,7 +1264,10 @@ def enter(c, a, command):
     want = f"{home}/.cache/builderbot/u/{account}/project/{project}/"
     if not envfile.startswith(want):
         raise Refused(f"bb-session: the environment file {envfile or '(none)'} is not in the project's cache folder {want}")
-    steps = plan(c, a, uid)
+    # On the controller's own machine (R90), the wall first: a session that
+    # would not be walled off from the controller does not start.
+    wall = wall_hold(c)
+    steps = plan(c, a, uid, wall)
     net = net_conf(c)
     # Asked before anything is made: a node that keeps sessions to their own
     # network and has not got it ready starts none, rather than one on the
@@ -1164,6 +1344,7 @@ def enter(c, a, command):
                 raise Refused("bb-session: the node's side of the session's network was not made")
             net_inside(parts[0], parts[1])
         apply(steps, uid, gid)
+        wall_covered(wall)
         _drop(name, uid, gid)
         env = _read_env(envfile, uid)
     except (OSError, Refused, subprocess.SubprocessError) as e:
@@ -1209,6 +1390,10 @@ def check(c):
     _, status = os.waitpid(pid, 0)
     if not (os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0):
         raise Refused("bb-session: this kernel would not make the namespaces a session's view needs")
+    # ...and on the controller's own machine (R90), the wall: the agent asks
+    # this before it offers sessions, so a wall that does not hold is the
+    # reason the node gives for running none.
+    wall_hold(c)
 
 
 def check_net(c):

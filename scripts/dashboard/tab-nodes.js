@@ -935,8 +935,13 @@ function nodeSessNetRow(n){
     : on ? `<div class="sub dim">Setting it up.</div>`
     : sn.sessions ? `<div class="sub dim">${sn.sessions} session${sn.sessions === 1 ? "" : "s"} started while it was on keep their own network until they end.</div>`
     : "";
-  return `<div class="field"><label class="ndcap"><input type="checkbox" data-k="sessnet" ${c.draft.sessnetOn ? "checked" : ""}>
+  // The controller's own machine (R90): on, and staying on, since it is
+  // what keeps a session there off the controller's own ports; said on the
+  // row, muted, rather than a box that refuses at Save.
+  const own = !!n.config?.own;
+  return `<div class="field"><label class="ndcap"><input type="checkbox" data-k="sessnet" ${c.draft.sessnetOn ? "checked" : ""}${own ? " disabled" : ""}>
       keep each session to its own project's network</label>
+    ${own ? `<div class="sub dim">Always on here: this is the controller's own machine, and its own network is what keeps a session off the controller's ports.</div>` : ""}
     ${line}</div>
     <div class="field"><label class="ndcap"><input type="checkbox" data-k="rootasks" ${c.draft.rootAsks ? "checked" : ""}>
       let a session ask for a root command (bb root run), which a person then allows or denies</label>
@@ -1717,7 +1722,10 @@ function renderNodesInto(i){
     return askRows + `
     <div class="row stack2 ndrow" data-node="${esc(n.id)}">
       <div class="grow">
-        <div class="name">${esc(n.name)} ${nodeStatePill(n)}${stalePill}</div>
+        <div class="name">${esc(n.name)} ${
+          // The controller's own machine, installed bare metal (R90): an
+          // ordinary node in every other way, behind the wall.
+          n.config?.own ? `<span class="tag ndown">this machine</span> ` : ""}${nodeStatePill(n)}${stalePill}</div>
         ${
         // Its facts in the facts voice, its id among them (R218 step 26):
         // the id is the one in its enroll script's name.

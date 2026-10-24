@@ -5,7 +5,8 @@ session can build, run and destroy containers without any of it reaching the
 server's real ones.
 
 BuilderBot's controller stays exactly what it is: the container, on the
-projects share, holding the record. Only the *daemon* moves, onto a machine
+projects share, holding the record (or the same controller installed bare
+metal, [install.md](install.md)). Only the *daemon* moves, onto a machine
 enrolled as a node like any other; nothing on BuilderBot's side is a setting.
 
 ## Why a VM rather than a network

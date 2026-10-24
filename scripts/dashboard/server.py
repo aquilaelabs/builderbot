@@ -1998,6 +1998,12 @@ def session_target(project, claude=False, node="", uid=""):
         why = (f"your worktree of {project} is being copied to {name}; "
                "the session starts once it is there")
         passing = waiting = True
+    elif nodes.own_machine(n) and not (rep.get("isolation") or {}).get("sessions"):
+        # The controller's own machine (R90): a session there runs inside
+        # the wall around the controller or not at all, and bb-session's
+        # check, which its census carries, says what keeps the wall down.
+        why = (f"{name} is this controller's own machine, and the wall between its sessions and the controller "
+               f"is not in force: {((rep.get('isolation') or {}).get('why') or 'not reported yet').rstrip('.')}")
     elif not se.get("boot"):
         # Without the node's boot the page would stamp this container's into
         # the tab, and bb-tty there would refuse every reconnect as a stale
@@ -3085,15 +3091,29 @@ def _reset_after(principal):
     threading.Timer(1.0, lambda: os.execv(sys.executable, [sys.executable, *sys.argv])).start()
 
 
+# A controller installed bare metal (R90), by the marker its installer
+# writes into the env file it starts from (BB_INSTALL=bare-metal,
+# nodes/install-controller.sh), never by guessing from the machine: the
+# container install has no such line and is what it always was.
+BARE_METAL = os.environ.get("BB_INSTALL", "") == "bare-metal"
+
+
 def setup_node():
     """The name of a node enrolled, answering and running sessions, for
     Finish on the setup page (R199), or "": a hosting-only one holds no
-    code, so a project has nowhere to work or build."""
+    code, so a project has nowhere to work or build. On a bare-metal
+    install it is this machine's own node (R90), which the installer
+    enrolled, and Finish waits for that one and not for another."""
     if nodes is None:
         return ""
-    return next((n["name"] for n in nodes.node_list()
+    rows = nodes.node_list()
+    # ...where the installer made it one (--no-node makes none, and then
+    # the first run asks for a node as the container's does).
+    own = BARE_METAL and any(nodes.own_machine(n) and n.get("state") != "retired" for n in rows)
+    return next((n["name"] for n in rows
                  if n.get("kind") == "agent" and n.get("state") == "online" and n.get("live")
-                 and not (n.get("config") or {}).get("host_only")), "")
+                 and not (n.get("config") or {}).get("host_only")
+                 and (not own or nodes.own_machine(n))), "")
 # ...and the home tunnel's (R176), applied by tunnel.py when they change.
 TUNNEL_SETTINGS = ("tunnel_host", "tunnel_token", "cf_api_token")
 
@@ -4815,6 +4835,9 @@ def _snapshot(who):
         # an empty Projects card for a user with nothing granted rather than
         # telling them the share is not mounted (16 Sep).
         "admin": bool(who) and users.is_admin(who),
+        # A controller installed bare metal (R90): its own machine is the
+        # first node, which the setup page shows being set up.
+        "bare_metal": BARE_METAL,
         # Whether this account's commits would carry an author: the Claude
         # button ghosts on this, naming the Profile, before bb-tty refuses.
         "git_ready": users.git_ready(who) if users.uid_of(who) else True,
@@ -7449,8 +7472,11 @@ class Handler(BaseHTTPRequestHandler):
                 and (users.account_of(self._who()) or {}).get("role") != "owner"):
             return self._json({"error": "only the owner switches maintenance mode"}, 403)
         if want.get("setup_done") is True and not settings.get("setup_done") and not setup_node():
-            return self._json({"error": "enroll a node that runs sessions first: Finish needs one enrolled and "
-                                        "answering, and not hosting only"}, 409)
+            own = BARE_METAL and any(nodes.own_machine(n) and n.get("state") != "retired" for n in nodes.node_list())
+            return self._json({"error": "this machine is still being set up as a node: Finish waits for it to "
+                                        "answer" if own else
+                               "enroll a node that runs sessions first: Finish needs one enrolled and "
+                               "answering, and not hosting only"}, 409)
         r = settings.set_many(req.get("set") or {})
         if r.get("error"):
             return self._json(r, 400)
