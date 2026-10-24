@@ -201,7 +201,7 @@ const offDialog = () => page.evaluate(() => {
     return r ? `${att.indexOf(r)}: ${r.textContent.replace(/\s+/g, ' ').trim()}` : null;
   }), 30000, 1000);
   ok(row && row.startsWith('0: '), `...first of what needs attention, above the updates (${row})`);
-  ok(row && /test's Claude session on sandbox/.test(row) && /Resume/.test(row),
+  ok(row && /test's session on sandbox/.test(row) && /Resume/.test(row),
      `a session an outage held is a bell row naming whose it is and where it runs, with Resume (${row})`);
   rmSync(`${DIR}/sandboxdata/held.json`, { force: true });
   // Pressed twice before the first send is back: one line, not two (B775).
