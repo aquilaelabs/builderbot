@@ -4,7 +4,7 @@
 // systems.py says was walked is what this runs, so a change to the
 // provisioner is proved on every system again before a release.
 //
-//   BB_LAB_CONTROLLER  the dashboard to ask, e.g. http://192.168.1.16:7680
+//   BB_LAB_CONTROLLER  the dashboard to ask, e.g. http://controller.lan:7680
 //   BB_LAB_TOKEN       "user:password" for an administrator there (the lab's own)
 //   BB_LAB_VMHOST      the node with VM host installed that makes the VMs
 //   BB_LAB_PROJECT     a project there to make them in and to move onto each (hello)

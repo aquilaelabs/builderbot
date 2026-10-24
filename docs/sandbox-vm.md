@@ -121,7 +121,7 @@ changed after the day it was built:
 
 ```bash
 sudo bb-sandbox menu                 # a menu, whiptail where the distro has it (a bare bb-sandbox prints help)
-sudo bb-sandbox add-nfs 192.168.1.10:/mnt/user/media:/auxiliary
+sudo bb-sandbox add-nfs nas.lan:/mnt/user/media:/auxiliary
 sudo bb-sandbox add-share workspace:/workspace:ro
 sudo bb-sandbox appdata /devdata     # which mount holds container appdata
 sudo bb-sandbox readonly /workspace  # ...and back with: readonly /workspace off
@@ -354,8 +354,8 @@ then, in that session:
 ```bash
 sudo bash provision-linux.sh --user bb \
     --key "ssh-ed25519 AAAA… bb-sandbox" \
-    --nfs 192.168.1.10:/mnt/user/projects:/workspace \
-    --nfs 192.168.1.10:/mnt/user/builderbot/devdata:/devdata
+    --nfs nas.lan:/mnt/user/projects:/workspace \
+    --nfs nas.lan:/mnt/user/builderbot/devdata:/devdata
 ```
 
 **It checks the machine before it touches it.** The first thing a run prints
@@ -526,15 +526,15 @@ Then what differs from Unraid's placeholder, each for a reason:
 
   ```bash
   sudo bash provision-linux.sh --user bb --key "ssh-ed25519 …" \
-      --nfs 192.168.1.10:/mnt/user/projects:/workspace \
-      --nfs 192.168.1.10:/mnt/user/builderbot/devdata:/devdata
+      --nfs nas.lan:/mnt/user/projects:/workspace \
+      --nfs nas.lan:/mnt/user/builderbot/devdata:/devdata
   ```
 
   Export them from Unraid first: *Shares → share → NFS Security Settings*,
   **Security: Private**, with a rule naming only the VM:
 
   ```
-  192.168.1.101(sec=sys,rw,all_squash,anonuid=99,anongid=100)
+  sandbox.lan(sec=sys,rw,all_squash,anonuid=99,anongid=100)
   ```
 
   The rule names the VM's address, so the address and the rule move

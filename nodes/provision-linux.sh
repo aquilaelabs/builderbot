@@ -1976,7 +1976,7 @@ menu_whiptail() {
             quit     "" 3>&1 1>&2 2>&3)" || return 0
         case "$choice" in
             list)  cmd_list; pause ;;
-            nfs)   ask "HOST:EXPORT:PATH" "192.168.1.15:/mnt/user/media:/auxiliary" \
+            nfs)   ask "HOST:EXPORT:PATH" "nas.lan:/mnt/user/media:/auxiliary" \
                        && cmd_add_nfs "$REPLY"; pause ;;
             share) ask "TAG:PATH" "" \
                        && cmd_add_share "$REPLY"; pause ;;

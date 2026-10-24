@@ -197,7 +197,7 @@ Under it, and not behind a fold, are **what it publishes and what it mounts,
 written the way Unraid's own Containers page writes them**: container side
 on the left, host side on the right, and the arrow saying which way it goes:
 `/library ← /mnt/user/plex-media` for a read-only mount, `↔` for a writable
-one, `7474:TCP ← 192.168.1.10:7475` for a published port. That is deliberately
+one, `7474:TCP ← 192.0.2.10:7475` for a published port. That is deliberately
 not a second notation to learn; it is the one already used for every other
 container on the box. All of it is read from the *resolved* compose config, so
 a path or a port assembled out of variables shows as the value compose arrived

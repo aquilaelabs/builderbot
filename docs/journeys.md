@@ -319,7 +319,7 @@ whoever reads it, and the two things behind it were not the same thing.
    credential record on the command line, and the mirror git dir that
    deliberately drops the tree's helper no longer costs the view its reach.
 4. **With the token cleared again**, the refusal now reads: *this project has
-   no access token stored, and 192.168.1.16:3000 asks for one: put it in the
+   no access token stored, and gitea.lan:3000 asks for one: put it in the
    project's settings dialog under Access token, or point the remote at ssh.*
    A token that is present and rejected says the other thing instead. Both
    are sentences that name the control; git's line named only what happened.
@@ -449,7 +449,7 @@ e8c11cc; `web`'s compose given `cap_add: CHOWN, SETUID` for the walk.
 
 1. **`bb devapp ls`** listed `web` and `web-dev` as the project's own.
    **`bb devapp log web-dev`** resolved to `web-dev-web-1` (B307's fix)
-   and then failed: `docker logs` went out over `ssh://bb@192.168.1.18`,
+   and then failed: `docker logs` went out over `ssh://bb@devnode.lan`,
    "Host key verification failed". Only the bare reads ran through the
    agent; the container verbs took the retired ssh path (B312, fixed in
    e8c11cc). Walked again after the rebuild: nginx's log came back.
@@ -457,7 +457,7 @@ e8c11cc; `web`'s compose given `cap_add: CHOWN, SETUID` for the walk.
    at 1f77097 said "no build appeared within twenty seconds" over a build
    that succeeded: the same commit, finished between two looks at the row
    (B312's other half). At e8c11cc it said "rebuilt 58e7e92; web-dev is
-   up", and `curl http://192.168.1.18:8088/` on the next line answered
+   up", and `curl http://devnode.lan:8088/` on the next line answered
    200: the port reachable the moment the verb returns, from inside the
    session's network, which is what the agent's refresh after a compose
    job is for. The compose carried capabilities and the setting was auto,
