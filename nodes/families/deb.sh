@@ -12,14 +12,33 @@ FAMILY_IDS="debian ubuntu raspbian"
 # The tools the family implies, checked before anything lands.
 FAMILY_NEED="apt-get dpkg"
 
+# apt_waiting CMD...: CMD, run again while another apt holds its lock (B320).
+# A machine just booted from a cloud image runs its own apt-get (cloud-init,
+# unattended-upgrades) for a few minutes, and an install started as soon as
+# ssh answered failed at its first step on the lock. Up to ten minutes, said
+# once; any other failure is CMD's own, at once.
+apt_waiting() {
+    local i out rc=0
+    for i in $(seq 1 60); do
+        out="$("$@" 2>&1)" && rc=0 || rc=$?
+        if [ "$rc" -ne 0 ] && grep -qE 'Could not get lock|Unable to lock|is another process using it' <<<"$out"; then
+            [ "$i" -gt 1 ] || echo "waiting for another apt (a machine's own first update) to let go of its lock" >&2
+            sleep 10
+            continue
+        fi
+        break
+    done
+    [ -z "$out" ] || printf '%s\n' "$out"
+    return "$rc"
+}
 # pkg_refresh: the package index, once, before the first install.
 pkg_refresh() {
-    export DEBIAN_FRONTEND=noninteractive; apt-get update -qq
+    export DEBIAN_FRONTEND=noninteractive; apt_waiting apt-get update -qq
 }
 # pkg NAME...: install what is named, quietly.
 pkg() {
     DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a \
-                apt-get -o Dpkg::Use-Pty=0 install -y -qq "$@"
+                apt_waiting apt-get -o Dpkg::Use-Pty=0 -o DPkg::Lock::Timeout=600 install -y -qq "$@"
 }
 # pkg_names KEY: what a package is called here, for the handful the core
 # installs itself. A recipe's system packages are the recipe's business,
@@ -65,7 +84,7 @@ docker_install() {
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg]" \
                  "https://download.docker.com/linux/${DOCKER_DEB} ${suite} stable" \
                 > /etc/apt/sources.list.d/docker.list
-            apt-get update -qq
+            apt_waiting apt-get update -qq
             # shellcheck disable=SC2046
             pkg $(pkg_names docker)
 }
