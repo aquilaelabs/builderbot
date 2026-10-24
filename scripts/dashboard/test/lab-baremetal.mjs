@@ -106,8 +106,11 @@ for (const os of SYSTEMS){
       const out = await inVm(ip, 'cat /root/install.rc 2>/dev/null || true');
       return /^\d+$/m.test(out) ? out.match(/^(\d+)$/m)[1] : null;
     }, 45 * 60000, 30000);
-    const tail = await inVm(ip, 'cat /root/check.rc; tail -25 /root/install.log');
-    ok(rc === '0', `[${os}] install-controller.sh --install finishes (exit ${rc ?? 'none in 45 minutes'}): ${tail.slice(-600)}`);
+    // Enough of it to say why: the log's end, and apt's own where a package
+    // step failed (exit 100 is apt's), since apt says why on its terminal.
+    const tail = await inVm(ip, 'cat /root/check.rc; tail -60 /root/install.log; '
+      + 'grep -hE "^(E|Err):" /var/log/apt/term.log /root/install.log 2>/dev/null | tail -10');
+    ok(rc === '0', `[${os}] install-controller.sh --install finishes (exit ${rc ?? 'none in 45 minutes'}): ${rc === '0' ? tail.slice(-300) : tail.slice(-3000)}`);
     if (rc !== '0') continue;
 
     const up = await inVm(ip, SH + '\nstatus\n');

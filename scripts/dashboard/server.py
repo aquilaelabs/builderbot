@@ -86,8 +86,23 @@ def _session_secret():
     read-only took the whole dashboard down at startup, where the honest
     outcome is a dashboard that runs and forgets its sessions on restart.
     Basic auth is unaffected either way.
+
+    With an install key (R135) it is made from the key and kept nowhere, so
+    a copy of /config forges no sign-in; the file an install kept before is
+    removed. Taking the key on signs everybody out once.
     """
     p = STATE / "dashboard-secret"
+    keyf = Path(os.environ.get("BB_SIGNING_SECRET_FILE") or "/run/builderbot-key")
+    try:
+        key = keyf.read_bytes().strip()
+    except OSError:
+        key = b""
+    if len(key) >= 16:
+        try:
+            p.unlink()
+        except OSError:
+            pass
+        return hmac.new(key, b"builderbot session cookies v1", hashlib.sha256).digest()
     try:
         s = p.read_bytes()
         if len(s) >= 32:
@@ -3410,12 +3425,12 @@ artifacts.configure(workspace=WORKSPACE, worktrees=WORKTREES, state=STATE, write
 import signing                                                   # noqa: E402
 
 signing.configure(state=STATE, project_name=PROJECT_NAME)
-# Keys kept open before the install had a signing secret, sealed now that it
+# Keys kept open before the install had an install key, sealed now that it
 # has one (R111 step 2); a key that cannot be opened is left as it is and
 # said on its project's Signing view.
 try:
     if (_sealed := signing.seal_all()):
-        print(f"dashboard: sealed {_sealed} signing key(s) under the install's signing secret", flush=True)
+        print(f"dashboard: sealed {_sealed} signing key(s) under the install's key", flush=True)
 except OSError as e:
     print(f"dashboard: signing keys left as they were, not sealed: {e}", flush=True)
 import membership                                                # noqa: E402

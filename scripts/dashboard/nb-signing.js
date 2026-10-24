@@ -22,13 +22,13 @@ const fileB64 = f => new Promise((ok, bad) => {
 });
 
 // How the controller keeps a project's keys (R111 step 2), the Signing
-// view's status line: sealed under the install's signing secret, kept open
+// view's status line: sealed under the install's key, kept open
 // for want of one, or sealed under one this controller does not have.
 const AT_REST = {
-  sealed: "sealed on the controller under the install's signing secret",
-  mixed: "being sealed under the install's signing secret",
-  open: `<span class="warn">kept unsealed on the controller: SIGNING_SECRET in the secrets folder seals them</span>`,
-  locked: `<span class="bad">sealed under a signing secret this controller does not have: set it as it was, or import each key's backup</span>`,
+  sealed: "sealed on the controller under the install's key",
+  mixed: "being sealed under the install's key",
+  open: `<span class="warn">kept unsealed on the controller: INSTALL_KEY in the secrets folder seals them</span>`,
+  locked: `<span class="bad">sealed under an install key this controller does not have: set it as it was, or import each key's backup</span>`,
 };
 
 function nbSigningView({$, nb, project}){

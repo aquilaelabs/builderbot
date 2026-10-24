@@ -130,8 +130,8 @@ services:
 
       # Recommended for git ssh keys and any publishing token: a root-owned
       # (chmod 700) folder with an ssh/ subfolder of private keys and *.env
-      # files (NPM_TOKEN=..., SIGNING_SECRET=... to seal the signing keys at
-      # rest). Secrets provided here are shielded from Claude
+      # files (NPM_TOKEN=..., INSTALL_KEY=... to seal at rest what the install
+      # keeps, its signing keys among it). Secrets provided here are shielded from Claude
       # sessions (keys are served via a root-owned ssh-agent); keys in
       # home/.ssh are not.
       # - /mnt/user/appdata/BuilderBot/secrets:/secrets:ro

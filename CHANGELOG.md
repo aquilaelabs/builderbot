@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- SIGNING_SECRET is INSTALL_KEY: the one key that seals at rest what BuilderBot keeps, the signing keys among it (7645fec)
+
+### Upgrading
+
+- Rename SIGNING_SECRET to INSTALL_KEY in your secrets folder's env file: the old name is read for this release only. With an install key set, everybody is signed out once at the first start of 0.8.0 (7645fec)
+
+### Security
+
+- With an install key, the key sign-in cookies are signed with is made from it and kept nowhere, so a copy of /config can forge no sign-in (7645fec)
+
 ## 0.8.0: 2026-10-24
 
 ### Added

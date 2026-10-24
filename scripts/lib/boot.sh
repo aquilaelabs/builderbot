@@ -38,24 +38,29 @@ BB_RUN_DIR="${BB_RUN_DIR:-/run/builderbot}"
 # inherits, always: there is no switch (SHIELD_SECRETS went with b218077).
 # The publishing tokens a shell on the controller uses; a git token is a
 # project's own, and a runner's is typed on the Nodes tab.
-# SIGNING_SECRET seals the projects' signing keys at rest (R111): handed to
-# the dashboard as a file of its own in /run below, never kept in /config.
-SECRET_VARS=(NPM_TOKEN UV_PUBLISH_TOKEN SIGNING_SECRET)
+# INSTALL_KEY seals at rest what the install keeps that would open something
+# (R135; R111 began it with the signing keys): handed to the dashboard as a
+# file of its own in /run below, never kept in /config. SIGNING_SECRET, its
+# name before 0.8.0, is read when it is not set, for this release.
+SECRET_VARS=(NPM_TOKEN UV_PUBLISH_TOKEN INSTALL_KEY SIGNING_SECRET)
 
-# The one secret the dashboard itself needs, the signing secret, as a file
-# only the controller's account reads, in /run (never the state, so a copy
-# of the state holds nothing that opens the keys sealed there), written
-# fresh each start. On a bare-metal install it is among what the wall
-# covers (R90).
-signing_secret_file() {
-    local f=/run/builderbot-signing
-    rm -f "$f"
-    [ -n "${SIGNING_SECRET:-}" ] || return 0
-    if [ "${#SIGNING_SECRET}" -lt 16 ]; then
-        warn "SIGNING_SECRET is shorter than 16 characters, so the signing keys stay unsealed: openssl rand -hex 32 makes one"
+# The one secret the dashboard itself needs, the install key, as a file only
+# the controller's account reads, in /run (never the state, so a copy of the
+# state holds nothing that opens what is sealed there), written fresh each
+# start. On a bare-metal install it is among what the wall covers (R90).
+install_key_file() {
+    local f=/run/builderbot-key key="${INSTALL_KEY:-}"
+    rm -f "$f" /run/builderbot-signing
+    if [ -z "$key" ] && [ -n "${SIGNING_SECRET:-}" ]; then
+        key="$SIGNING_SECRET"
+        warn "SIGNING_SECRET is INSTALL_KEY now: rename it in your secrets folder, since the old name is read for this release only"
+    fi
+    [ -n "$key" ] || return 0
+    if [ "${#key}" -lt 16 ]; then
+        warn "INSTALL_KEY is shorter than 16 characters, so nothing is sealed: openssl rand -hex 32 makes one"
         return 0
     fi
-    ( umask 077; printf '%s' "$SIGNING_SECRET" > "$f" )
+    ( umask 077; printf '%s' "$key" > "$f" )
     chown "$BB_ACCOUNT" "$f" 2>/dev/null || true
 }
 

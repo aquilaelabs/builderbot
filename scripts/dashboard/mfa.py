@@ -4,7 +4,7 @@ recovery codes, per account.
 The store is two-factor.json in the state directory, 0600, keyed by the
 account's uid: {uid: {"totp": {...}, "passkeys": [...], "recovery": [...],
 "trusted": [...]}}. The authenticator's secret is sealed under the install's
-signing secret where it has one (signing.seal, as a keystore is), and kept
+install key where it has one (signing.seal, as a keystore is), and kept
 as it is otherwise, as signing keeps its keys then; recovery codes are kept
 as their SHA-256, each good once. An account with nothing here signs in with
 its password alone, as before.
@@ -33,9 +33,9 @@ import qr
 import statefile
 
 STATE = None              # pathlib.Path, set by configure()
-seal = None               # signing.seal, or None: an install without a signing secret
+seal = None               # signing.seal, or None: an install without an install key
 unseal = None
-sealing = None            # () -> whether a signing secret is loaded now
+sealing = None            # () -> whether an install key is loaded now
 
 _lock = threading.Lock()
 ISSUER = "BuilderBot"
