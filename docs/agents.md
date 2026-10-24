@@ -1,15 +1,14 @@
 # Coding agents
 
-A session on a project runs a coding agent in a terminal on a node. Claude
-Code is the one BuilderBot started with; OpenAI's Codex CLI (ChatGPT's
-coding agent) and GitHub's Copilot CLI are being added beside it (R95), and
-after them one open agent that drives any model through a model router.
-This page says what each agent is to BuilderBot, where it is installed and
-signed in to, and how far each is wired.
+A session on a project runs a coding agent in a terminal on a node: Claude
+(Anthropic's Claude Code), ChatGPT (OpenAI's Codex CLI) or Copilot (GitHub's
+Copilot CLI), each used the same way and held to the same briefing and
+guards. This page says what each agent is to BuilderBot, where it is
+installed and signed in to, and how each is wired.
 
 ## One table of agents
 
-Every place that used to say "Claude" asks one table which agent it is
+Every place that names an agent asks one table which agent it is
 looking at: `scripts/dashboard/agents.py`, with the page's copy in
 `page-agents.js` (held to it by `unit/test_agents.py`). A row is an
 adapter: the agent's name as a person reads it, its program and command,
@@ -20,9 +19,9 @@ transcripts are read from.
 | Agent | Program | Signs in with | Install job | Sign-in jobs | Sessions |
 |---|---|---|---|---|---|
 | Claude | Claude Code | an Anthropic account | `claude-update` | `claude-login`, `claude-logout` | yes |
-| ChatGPT | Codex CLI | an OpenAI account (ChatGPT) | `codex-update` | `codex-login`, `codex-logout` | new conversations |
-| Copilot | Copilot CLI | a GitHub account with a Copilot plan | `copilot-update` | `copilot-login`, `copilot-logout` | new conversations |
-| Any model | an open agent (OpenCode, picked when its step is built) | none: the router holds the keys | | | not yet |
+| ChatGPT | Codex CLI | an OpenAI account (ChatGPT) | `codex-update` | `codex-login`, `codex-logout` | yes |
+| Copilot | Copilot CLI | a GitHub account with a Copilot plan | `copilot-update` | `copilot-login`, `copilot-logout` | yes |
+| Any model | an open agent, in a later release | none: a model router would hold the keys | | | not yet |
 
 A row whose sessions are not wired yet is read by nothing that names a
 session: `open-alpha` is a scratch terminal until the open agent lands, and
@@ -32,12 +31,13 @@ on one project at once, and two people may run different agents on it.
 
 ## Starting a session
 
-A project's Start opens the chooser, as it always has: each node the project
-works on, Claude's Resume and New conversation, and under them a line for
-each other agent installed on that node: **New conversation**, **Open tab**
-and **End session** where yours is running there, or **Sign in on** the node
-where you have no sign-in to it there, which opens the Agents page at that
-agent's section.
+A project's **Start agent** opens the chooser: each node the project works
+on, and a line for each agent installed on that node, the project's own
+first. Each line is the same for every agent: **Resume** its last
+conversation and **New** where none of yours is running there; **Open**,
+**Restart** and **End** where one is; or **Sign in** where you have no
+sign-in to it there, which opens the Agents page at that agent's section.
+While one of yours runs, the button reads **Manage agent**.
 
 - **A tree of its own.** Each agent's session works in a tree of its own: an
   agent other than Claude in a worktree on a branch `<agent>/<name>`
@@ -67,9 +67,9 @@ agent's section.
   project allows, and one that may not is offered none, the server refusing
   the same whoever asks.
 - **The one Start opens.** Under the same ticks, *Start opens* names the
-  agent the project's card and header say (Start ChatGPT, Open Copilot);
-  Claude unless it names another. Its chooser still offers every allowed
-  agent installed on each node.
+  agent listed first in Start agent's menu, and the one a project offers to
+  install where its node lacks it; Claude unless it names another. The
+  menu still offers every allowed agent installed on each node.
 - **Signed in or refused.** A terminal that would start a Codex or Copilot
   session with no sign-in there says so and where to sign in, as Claude's
   does.
@@ -167,7 +167,5 @@ credential of any of them.
 
 ## Not built yet
 
-A model and effort kept per agent, the model router and the
-open agent: R95's later steps.
-A sign-in with real ChatGPT and GitHub accounts has been walked against
-stubs only; the walk on a real account is the operator's.
+The model router and the open agent that drives any model through it
+come in a later release.
