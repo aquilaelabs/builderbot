@@ -180,7 +180,7 @@ function nbDesignView({$, nb, project, root}){
     // dead, the pulldowns that pick what is shown live (B293).
     if (dsRo()){
       body.querySelectorAll("input,select:not([data-dspick]),textarea").forEach(e => e.disabled = true);
-      body.querySelectorAll("button").forEach(b => { if (!b.closest("summary") && !b.hasAttribute("aria-expanded")) b.hidden = true; });
+      body.querySelectorAll("button").forEach(b => { if (!b.closest("summary") && !b.hasAttribute("aria-expanded")){ b.hidden = true; b.disabled = true; } });
     }
     drawHint();
   }
