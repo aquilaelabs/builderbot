@@ -40,6 +40,7 @@ import urllib.parse
 import zipfile
 from pathlib import Path
 
+import gitcreds
 import membership
 
 # Which git host a remote is on, and the two things a host can be asked that
@@ -64,13 +65,6 @@ import registry
 TOKEN_RE = re.compile(r"[A-Za-z0-9_.-]{8,255}")
 
 
-def _creds_dir():
-    d = STATE / "gitcreds"
-    d.mkdir(parents=True, exist_ok=True)
-    os.chmod(d, 0o700)
-    return d
-
-
 def write_token(project, token, host, scheme="https", user=""):
     """Store one project's token for one host, and return the helper that
     reads it.
@@ -81,7 +75,6 @@ def write_token(project, token, host, scheme="https", user=""):
     required rather than defaulted; the username is a formality every host
     here accepts, and forges.cred_user picks the one this host wants.
     """
-    f = _creds_dir() / project
     # http is a real answer for a Gitea on somebody's own LAN, and git matches
     # the scheme as well as the host: a line written as https would be
     # ignored on an http remote, which is the same silent nothing as the wrong
@@ -91,34 +84,28 @@ def write_token(project, token, host, scheme="https", user=""):
     # Percent-encoded, the way git's own credential-store writes a line: it
     # decodes on the way back, and a token carrying a / or an @ written raw
     # would be read as part of the host, matching nothing.
+    # Kept by gitcreds, sealed under the install key where there is one
+    # (R135), and handed to git by its helper rather than git's own store.
     q = lambda x: urllib.parse.quote(x, safe="")  # noqa: E731
-    fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        fh.write(f"{scheme}://{q(user or 'oauth2')}:{q(token)}@{host}\n")
-    return f"store --file={f}"
+    gitcreds.write_line(project, f"{scheme}://{q(user or 'oauth2')}:{q(token)}@{host}")
+    return gitcreds.helper(project)
 
 
 def token_target(project):
     """The scheme and host a project's stored token was written for, or
     None: what an https remote has to be spelled with to use it."""
-    f = STATE / "gitcreds" / project
-    try:
-        line = f.read_text().strip().splitlines()[0]
-    except (OSError, IndexError):
-        return None
+    line = gitcreds.read_line(project)
     m = re.match(r"(https?)://[^@/]*@([A-Za-z0-9.:-]+)$", line)
     return {"scheme": m.group(1), "host": m.group(2)} if m else None
 
 
 def token_helper(project):
     """The helper line for a project that has a token, or "" if it has none."""
-    f = STATE / "gitcreds" / project
-    return f"store --file={f}" if f.is_file() else ""
+    return gitcreds.helper(project)
 
 
 def forget_token(project):
-    with contextlib.suppress(OSError):
-        (STATE / "gitcreds" / project).unlink()
+    gitcreds.forget(project)
 
 
 def unscope(dest):
@@ -248,6 +235,9 @@ def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
         PROJECT_NAME=project_name,
         STATE=Path(state), HOME=Path(home), write_json=write_json,
         after_create=after_create)
+    # The tokens' keeper, here for a caller with no server (a bb verb):
+    # where they are; the server adds the install key's seal (R135).
+    gitcreds.configure(state=state)
     # The peer library takes the same runner: it shells out to `ssh -G` to
     # resolve a deploy-key alias, and to nothing else.
     forges.configure(run=run, state=state, write_json=write_json)
@@ -464,12 +454,11 @@ def scoped_to_token(dest, project):
     of having a token. Telling the two apart is what lets the dialog offer
     "disabled" as its own answer rather than as the absence of an answer.
     """
-    f = STATE / "gitcreds" / project
-    if not f.is_file():
+    if not gitcreds.path(project).is_file():
         return False
     r = run(["git", "-C", str(dest), "config", "--local",
              "--get-all", "credential.helper"], timeout=15)
-    return r["code"] == 0 and f"store --file={f}" in r["out"]
+    return r["code"] == 0 and gitcreds.names_helper(r["out"], project)
 
 
 def remote_auth(dest, project=""):
@@ -2302,10 +2291,7 @@ def auth_answer(name):
 def _stored_token(project):
     """The token this project's credential file holds, decoded, or "". Read
     for the host's API in auth_test and never sent anywhere else."""
-    try:
-        line = (STATE / "gitcreds" / project).read_text().strip().splitlines()[0]
-    except (OSError, IndexError):
-        return ""
+    line = gitcreds.read_line(project)
     m = re.match(r"https?://[^:@/]*:([^@]*)@", line)
     return urllib.parse.unquote(m.group(1)) if m else ""
 

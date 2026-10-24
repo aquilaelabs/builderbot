@@ -740,7 +740,7 @@ ok(tj.line === 'https://oauth2:ghp_ExampleTokenValue123@github.com',
    'a token is stored in git\'s own credential-store format');
 ok(tj.mode === '0o600' && tj.dirmode === '0o700',
    '...readable only by the user that runs git, in a directory to match');
-ok(tj.helper.startsWith('store --file=') && tj.helper.endsWith('/gitcreds/alpha'),
+ok(/git-credential-bb/.test(tj.helper) && tj.helper.endsWith('/gitcreds/alpha'),
    '...and the helper git is given names that one file');
 ok(tj.lookup === tj.helper && tj.other === '',
    'a project with no token gets no helper: it is not shared, it is absent');
@@ -1167,6 +1167,7 @@ tmp = tempfile.mkdtemp()
 forges.configure(run=lambda *a, **k: {"code": 1, "out": ""}, state=tmp,
                  write_json=lambda p, d: Path(p).write_text(json.dumps(d)))
 projects.STATE = Path(tmp)
+import gitcreds; gitcreds.configure(state=projects.STATE)
 out = {}
 # a token with the characters git's store has to see percent-encoded
 projects.write_token("p", "ab/cd+ef=@gh", "git.home.lan:3000", "http", "bob")

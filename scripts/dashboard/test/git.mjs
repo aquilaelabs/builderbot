@@ -260,6 +260,7 @@ sys.path.insert(0, ${JSON.stringify(new globalThis.URL('..', import.meta.url).pa
 from pathlib import Path
 import projects, git as g
 projects.STATE = Path(${JSON.stringify(`${DIR}/state`)})
+import gitcreds; gitcreds.configure(state=projects.STATE)
 g.STATE = Path(${JSON.stringify(`${DIR}/state`)})
 seen = []
 class R:
@@ -278,9 +279,11 @@ print(json.dumps(next((a for a in seen if "fetch" in a), [])))
     mkdirSync(`${DIR}/state/gitcreds`, { recursive: true });
     writeFileSync(`${DIR}/state/gitcreds/beta`, 'https://oauth2:tok@example.invalid\n', { mode: 0o600 });
     const withTok = JSON.parse(argvFor(true));
-    ok(withTok.includes(`credential.helper=store --file=${DIR}/state/gitcreds/beta`)
+    // The controller's own helper (R135), which opens the token sealed or not
+    // and hands it over for the host it was written for.
+    ok(withTok.some(a => /^credential\.helper=!\S*git-credential-bb\S* \S*\/state\/gitcreds\/beta$/.test(String(a)))
        && withTok[withTok.indexOf('-c') + 1].startsWith('credential.helper='),
-       `...and one that has it runs git with the controller's own store (${
+       `...and one that has it runs git with the controller's own helper (${
          withTok.filter(a => String(a).includes('credential')).join(' ') || 'none'})`);
     rmSync(`${DIR}/state/gitcreds/beta`, { force: true });
   }
@@ -298,6 +301,7 @@ sys.path.insert(0, ${JSON.stringify(new globalThis.URL('..', import.meta.url).pa
 from pathlib import Path
 import projects, git as g
 projects.STATE = Path(${JSON.stringify(`${DIR}/state`)})
+import gitcreds; gitcreds.configure(state=projects.STATE)
 g.STATE = Path(${JSON.stringify(`${DIR}/state`)})
 said = {"code": 128, "out": "fatal: could not read Username for 'https://gitea.example': terminal prompts disabled"}
 print(json.dumps(g._done(said, "fetched", ${JSON.stringify(`${DIR}/ws/beta`)})))

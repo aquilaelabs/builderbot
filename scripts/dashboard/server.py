@@ -3433,6 +3433,15 @@ try:
         print(f"dashboard: sealed {_sealed} signing key(s) under the install's key", flush=True)
 except OSError as e:
     print(f"dashboard: signing keys left as they were, not sealed: {e}", flush=True)
+# ...the projects' git tokens (R135): gitcreds, and git's helper git-credential-bb...
+import gitcreds                                                  # noqa: E402
+gitcreds.configure(state=STATE, seal_fn=signing.seal, unseal_fn=signing.unseal,
+                   sealing_fn=lambda: signing.MASTER is not None)
+try:
+    if (_sealed := gitcreds.seal_all()):
+        print(f"dashboard: sealed {_sealed} git token(s) under the install's key", flush=True)
+except OSError as e:
+    print(f"dashboard: git tokens left as they were, not sealed: {e}", flush=True)
 # ...and the settings' secrets, the tunnel's and Cloudflare's tokens (R135).
 settings.seal, settings.unseal = signing.seal, signing.unseal
 settings.sealing = lambda: signing.MASTER is not None
