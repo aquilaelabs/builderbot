@@ -929,6 +929,7 @@ function nodeSessNetRow(n){
   const sealLine = !acctOn ? `<div class="sub dim">Needs each account a user of its own first.</div>`
     : !sealOn ? ""
     : !n.reported?.tokseal ? `<div class="sub dim">The node has not reported it yet.</div>`
+    : !sealed ? `<div class="sub dim">Nothing is signed in here yet: a sign-in made here is sealed as the login writes it.</div>`
     : `<div class="sub">${sealed} sign-in${sealed === 1 ? "" : "s"} sealed here. Each opens only while its person has a terminal open on this node, so a copy of its disk signs in to nothing.</div>`
       + (n.tokseal_stale ? `<div class="sub warn">${n.tokseal_stale} still sealed under the install key before this one: keep INSTALL_KEY_PREVIOUS until ${n.tokseal_stale === 1 ? "its person opens" : "their people open"} a terminal here.</div>` : "");
   const ac = n.reported?.session?.accounts || {};
