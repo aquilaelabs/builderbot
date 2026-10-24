@@ -2062,6 +2062,9 @@ def node_token_seal(principal, node_id, on):
     if on and not account_users_on(node_id):
         return {"error": "sealed sign-ins need each account to be a user of its own there first: "
                          "turn that on, then this"}
+    if on and not (can_seal and can_seal()):
+        return {"error": "sealed sign-ins are sealed under the install key, and this controller has none: "
+                         "set INSTALL_KEY in its secrets folder and restart it, then this"}
     conf = dict(n.get("config") or {})
     if on:
         conf["token_seal"] = True
@@ -2083,6 +2086,8 @@ def token_seal_on(nid):
 token_pubs = None
 # ...and how many of a node's seals are under a key before today's.
 token_stale = None
+# ...and whether there is an install key to make any of it from.
+can_seal = None
 
 
 def root_refused(n):

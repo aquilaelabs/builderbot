@@ -3710,6 +3710,7 @@ tokenkeys.configure(agent_dir=nodes.AGENT_DIR)
 # Each account's public key on a node, to seal its sign-ins with (R126).
 nodes.token_pubs = lambda nid: tokenkeys.pubs(nid, [u["uid"] for u in users.all_users() if u.get("uid")])
 nodes.token_stale = tokenkeys.under_previous
+nodes.can_seal = lambda: signing.MASTER is not None
 import claudecode                                                # noqa: E402
 import agentcode                                                 # noqa: E402
 import projsessions                                              # noqa: E402
