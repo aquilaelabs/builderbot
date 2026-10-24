@@ -57,8 +57,15 @@
 ### Fixed
 
 - A toolchain left half-installed reads as not installed, and Install clears what it left and installs it whole. (3220428)
-- Terminals draw in desktop Firefox again: every terminal uses the canvas renderer, where WebGL left a black box. (667ee2c)
 - A button stays Asking no longer once its press is answered. (667ee2c)
+- A Claude session no longer opens on two yellow warnings that a deny rule never matches (ae7a474)
+- An address typed into the browser opens its page, where a draw landing first could take you back to the page you were leaving (203e2a7)
+- A roadmap's Finished section lists what was finished on a project you may read and not change, where it showed an empty list (ef6dc4a)
+- New VM says why it refused where you can read it, where the reason sat behind the dialog's footer and Make it seemed to do nothing (c2301c9)
+- bb vm ssh lets a session into a VM it made, where it was refused for want of the key bb vm new had made (52391b0)
+- A request that never reached the controller is said as the controller not answering, not as the browser's error, and a controller restart no longer leaves a Phone page failure in Notifications (9882993)
+- The top bar's search keeps at least 80px on the narrowest phones (f9fff51)
+- The Git view says why Pull is off when the branch has no upstream (a3cfe7e)
 
 ### Security
 
