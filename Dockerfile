@@ -137,7 +137,7 @@ RUN set -eux; \
 # (or a person) can run the same checks CI will run, before the push. That
 # is what `bb lint` does.
 # ---------------------------------------------------------------------------
-COPY scripts/lib/gh-fetch /usr/local/sbin/bb-gh-fetch
+COPY scripts/lib/gh-fetch /usr/local/bin/bb-gh-fetch
 RUN --mount=type=secret,id=gh_token,required=false \
     set -eux; \
     bb-gh-fetch hadolint/hadolint latest 'hadolint-linux-x86_64' /usr/local/bin/hadolint; \
