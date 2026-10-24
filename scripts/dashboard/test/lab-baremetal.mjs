@@ -98,11 +98,21 @@ for (const os of SYSTEMS){
   ok(made.ok, `[${os}] a VM made for a bare-metal controller (${made.error || made.domain})`);
   if (!made.ok) continue;
   try {
-    const vm = await wait(async () => ((await api('/api/vms')).vms || []).find(v => v.name === name && v.ip), 15 * 60000);
+    // Its address from the VM host's own lease table: the VM's record
+    // carries the address of an earlier VM of that name until the node's
+    // next report, and ssh went there.
+    const leased = async () => (/(\d+\.\d+\.\d+\.\d+)\/\d+/.exec((await exec(['virsh', '-c', 'qemu:///system', 'domifaddr',
+      made.domain, '--source', 'lease'])).log) || [])[1] || null;
+    const first = await wait(leased, 15 * 60000, 15000);
+    const vm = first ? { ip: first } : null;
     ok(vm, `[${os}] it takes an address (${vm?.ip || 'none in 15 minutes: its Screen on the VMs page says why'})`);
     if (!vm) continue;
-    const ip = vm.ip;
-    const sshUp = await wait(async () => /^up$/m.test(await inVm(ip, 'echo up')), 10 * 60000, 20000);
+    // ...and read again at each try, in case the lease moves.
+    let ip = vm.ip;
+    const sshUp = await wait(async () => {
+      ip = (await leased()) || ip;
+      return /^up$/m.test(await inVm(ip, 'echo up'));
+    }, 10 * 60000, 20000);
     ok(sshUp, `[${os}] its own account answers ssh from the VM host`);
     if (!sshUp) continue;
 
@@ -160,7 +170,9 @@ for (const os of SYSTEMS){
     ok(/rc=2/.test(broken) && /job account \(bb\) is in the docker group/.test(broken) && /mended=0/.test(broken),
        `[${os}] the wall broken, bb-session refuses and says why; mended, it starts sessions again (${broken.replace(/\n/g, ' | ').slice(0, 300)})`);
   } finally {
-    await api('/api/vms', { action: 'remove', project: PROJECT, name });
+    // BB_LAB_KEEP=1 leaves it for a look after a failure; the next walk
+    // removes it first.
+    if (process.env.BB_LAB_KEEP !== '1') await api('/api/vms', { action: 'remove', project: PROJECT, name });
   }
 }
 await done(null);
