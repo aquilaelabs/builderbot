@@ -12,7 +12,7 @@ import time
 import urllib.request
 import zipfile
 from . import keyops, storage
-from .base import DRIVER, SANDBOX_BIN, TOOLKIT
+from .base import DRIVER, SANDBOX_BIN, SIGN_WORK, TOOLKIT
 from .stores import tc_root, tc_scope
 from .backends import pkg_backend
 from .toolchains import held_recipes, read_catalog, sdk_env, sysdeps_missing, tc_dir, tc_users, tc_users_said, tc_verbs
@@ -33,6 +33,19 @@ def cache_age_days(path):
         with contextlib.suppress(OSError):
             return max(0.0, (time.time() - os.stat(p).st_mtime) / 86400)
     return 0.0
+
+def _sign_work(kind, jid):
+    """A signing job's folder under SIGN_WORK (B315): on this machine's own
+    memory, its parents root's and open to pass through alone."""
+    root = os.path.join(SIGN_WORK, kind)
+    os.makedirs(root, mode=0o711, exist_ok=True)
+    for d in (SIGN_WORK, root):
+        try:
+            os.chmod(d, 0o711)
+        except OSError:
+            pass
+    return os.path.join(root, re.sub(r"[^A-Za-z0-9_-]", "_", jid))
+
 
 class WorkMixin:
     """Agent's project-work jobs: one of the parts class Agent (agent.py) is made of."""
@@ -549,8 +562,7 @@ class WorkMixin:
                 return "failed", 69
         env = dict(sdk_env(self.state))
         who = self.drop_privileges(env)
-        stores = self.state.get("stores") or {}
-        work = os.path.join(stores.get("data") or "/tmp", "sign", re.sub(r"[^A-Za-z0-9_-]", "_", job.job["id"]))
+        work = _sign_work("build", job.job["id"])
         try:
             os.makedirs(work, mode=0o700, exist_ok=True)
             os.chmod(work, 0o700)
@@ -712,8 +724,7 @@ class WorkMixin:
             return "failed", 69
         env = dict(sdk_env(self.state), **tl["env"])
         who = self.drop_privileges(env)
-        stores = self.state.get("stores") or {}
-        work = os.path.join(stores.get("data") or "/tmp", "sign-key", re.sub(r"[^A-Za-z0-9_-]", "_", jid))
+        work = _sign_work("key", jid)
         kw = {"work": work, "env": env, "who": who}
         try:
             os.makedirs(work, mode=0o700, exist_ok=True)

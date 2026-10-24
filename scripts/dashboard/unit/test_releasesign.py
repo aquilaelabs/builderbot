@@ -381,7 +381,8 @@ class RealSigning(unittest.TestCase):
         self.assertIn(r["key"]["sha256"].replace(":", "").lower(), v.stdout.lower())
         job = [j for j in self.node.jobs.values() if j["spec"]["op"] == "release"][0]
         self.assertEqual((job["type"], job["state"]), ("sign-key", "succeeded"), job["log"])
-        self.assertEqual(os.listdir(self.tmp / "data" / "sign-key"), [])
+        self.assertEqual(os.listdir(self.tmp / "signwork" / "key"), [])
+        self.assertFalse((self.tmp / "data" / "sign-key").exists(), "never on the data store (B315)")
         self.assertEqual(signing._handover, {})
 
     def test_a_rotated_key_signs_with_the_proof(self):

@@ -109,6 +109,11 @@ TOOLS_DIR = os.environ.get("BUILDERBOT_TOOLS_DIR", "/var/lib/builderbot/agent/to
 # nothing outside a view can change what every account's terminal runs (the
 # toolchain store is a share squashed to one uid).
 ROOT_BUNDLE_DIR = os.environ.get("BUILDERBOT_ROOT_BUNDLE", "/usr/local/lib/builderbot/bundle")
+# Where a signing job works with a key (B315): this machine's own memory,
+# never a store. A data store may be a share squashed to one uid, the session
+# account's on the documented one, and a key written there was a session's to
+# read while the job ran. Root's, 0711, each job's folder its account's, 0700.
+SIGN_WORK = os.environ.get("BUILDERBOT_SIGN_WORK", "/run/builderbot/sign")
 ROOT_TOOLS = ("nodes/provision-linux.sh", "nodes/bb-session")
 # Where an updated Claude Code is pinned, root-owned, for the sessions (claude_update).
 CLAUDE_DIR = "/usr/local/lib/builderbot/claude"
