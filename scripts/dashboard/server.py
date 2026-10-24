@@ -3075,7 +3075,7 @@ def _diag_watch(project, uid):
 
 
 # The Settings tab's Debugging group, the debug grant's (roles.NAMED_ONLY).
-DEBUG_SETTINGS = ("debug_mode", "offer_unvetted", "own_terminal")
+DEBUG_SETTINGS = ("debug_mode", "offer_unvetted")
 
 
 # A Reset that un-enrolls its nodes first: their uninstalls run, and the

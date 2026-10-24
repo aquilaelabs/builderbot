@@ -74,7 +74,9 @@ KEYS = {
     # BuilderBot's own terminal (R133) in place of ttyd for every tab: the
     # page's xterm on /termws, a node's on its agent's /term. A dev switch
     # until the dev pair has walked it; off, every tab is ttyd's as before.
-    "own_terminal": {"default": False, "kind": "bool", "applied": "now"},
+    # BuilderBot's own terminal (R133), on unless switched off: ttyd stays
+    # for one release as the way back, then goes.
+    "own_terminal": {"default": True, "kind": "bool", "applied": "now"},
     # First run (R199, the operator, 12 Oct): False from the moment the
     # owner is made until Finish on the setup page, which needs a node
     # enrolled and answering. While False the page shows only the setup
@@ -119,7 +121,7 @@ KEYS = {
 # neither, and at start every option they opened (these two, and each
 # project's Debug grants) is put back off, so setting it to 1 again starts
 # from nothing granted.
-DEBUG_KEYS = ("debug_mode", "offer_unvetted", "own_terminal")
+DEBUG_KEYS = ("debug_mode", "offer_unvetted")
 
 
 def debug_available():

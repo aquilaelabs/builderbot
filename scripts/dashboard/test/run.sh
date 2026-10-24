@@ -1365,6 +1365,19 @@ bind_fixture_node() {
 fresh() {
     rm -f "$S/state/tabs.json" "$S/state/cards.json" "$S/state/roadmap.json" \
           "$S/state/bugs.json"
+    # BuilderBot's own terminal is on by default (R133 step 6); ttyd ships
+    # beside it for this release, and the suites written against ttyd's frame
+    # keep proving it, so each file starts with the switch off, as an install
+    # that switched it off would. term.mjs turns it on for its own checks.
+    python3 - "$S/state/settings.json" <<'PY'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except (OSError, ValueError):
+    d = {}
+d["own_terminal"] = False
+json.dump(d, open(sys.argv[1], "w"))
+PY
     # ...nor the rules and the approval queue (roadmap #7, #27): a rule or a
     # held change left by pending.mjs lit the bell and filled the Briefing
     # tab for every file after it.

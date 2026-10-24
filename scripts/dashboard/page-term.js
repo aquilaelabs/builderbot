@@ -10,8 +10,8 @@
 // terminal of its own yet, and that tab opens through ttyd instead. A socket
 // that drops (a phone asleep, the network) is opened again when the page is
 // back in view: tmux redraws the screen as it attaches, so nothing is lost.
-// Behind the own_terminal switch (a dev feature until walked); off, every
-// tab is ttyd's as before.
+// On unless Settings' Terminals switches it off (own_terminal), when every
+// tab is ttyd's as before: ttyd stays for this release as the way back.
 
 "use strict";
 

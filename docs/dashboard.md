@@ -306,10 +306,13 @@ clipboard, and the wheel scrolls its output.
 and PgDn pages forward; copy mode ends by itself the moment you are back at
 the bottom, so there is nothing to remember (`Ctrl-b [` still works, and `q`
 still leaves). Inside a full-screen program the key is the program's. That is
-also how a **phone** scrolls, with the PgUp/PgDn keys in the ⌨ Keys row: a
-finger drag in the terminal reaches nothing, because tmux holds the alternate
-screen and the browser terminal only turns wheel events into something tmux
-can see, in either kind of tab.
+also what the PgUp/PgDn keys in the ⌨ Keys row do on a **phone**, where a
+finger dragged up or down scrolls the terminal too: back through a shell's
+history by the line (copy mode, left by itself at the bottom), and as the
+wheel would in an agent's tab. A press held on a word selects it, with a
+grip at each end to widen it and **Copy** beside it; a tap still brings up
+the keyboard. With **BuilderBot's own terminal** switched off (Settings,
+Terminals), tabs open in ttyd as before, where a drag reaches nothing.
 
 The launcher sets this on the session as it starts one, not only in the config
 file, because `~/.tmux.conf` lives on the persistent home and is yours.

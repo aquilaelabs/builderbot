@@ -104,8 +104,8 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Reach from outside|Room on the nodes|Maintenance|Debugging|Reset',
-   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the home tunnel the controller runs itself (R176), the room a node keeps (R110), maintenance mode (the owner's), debugging, and the reset (${groups.join(', ')})`);
+ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Reach from outside|Room on the nodes|Terminals|Maintenance|Debugging|Reset',
+   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the home tunnel the controller runs itself (R176), the room a node keeps (R110), the terminal tabs open in (R133), maintenance mode (the owner's), debugging, and the reset (${groups.join(', ')})`);
 {
   // The room a node keeps (R110 steps 1 and 5): whole numbers held to their
   // range by the server, the browser's own min and max beside them.
