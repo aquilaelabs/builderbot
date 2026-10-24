@@ -13,6 +13,7 @@ from timing import timed
 # and the nodes' names.
 users = None
 claude_email = None      # uid -> the Claude account signed in for it, or ""
+agent_emails = None      # uid -> {agent id: the accounts it is signed in as} (B296)
 plugins_of = None        # (uid, {node id: name}) -> its plugins, as the nodes last said
 node_names = None        # () -> {node id: name}
 logs_of = None           # me -> the account's conversations with Claude (transcripts.mine)
@@ -50,6 +51,8 @@ def view(me):
             "git": users.git_identity(me),
             "git_ready": users.git_ready(me),
             "claude": claude,
+            # ...and every agent's, by its id (B296).
+            "agents": agent_emails(uid) if agent_emails else {},
             # The Claude plugins this account installed, per
             # node, as the nodes last said (plugins.py).
             "plugins": plugs,

@@ -122,6 +122,15 @@ class Record(unittest.TestCase):
         self.assertEqual(claudegrant.on(self.home, "n1", "codex"), {})
         self.assertEqual(claudegrant.on(self.home, "n1")["email"], "me@anthropic.invalid")
 
+    def test_every_agent_s_accounts_are_named_for_people_and_profile(self):
+        # B296: People and Profile read each agent's, not Claude's alone.
+        self.assertEqual(claudegrant.emails_of(self.home), {})
+        claudegrant.report(self.home, "n1", "me@openai.invalid", "plus", agent="codex")
+        claudegrant.report(self.home, "n2", "octo", "", agent="copilot")
+        self.assertEqual(claudegrant.emails_of(self.home), {"codex": "me@openai.invalid", "copilot": "octo"})
+        claudegrant.report(self.home, "n1", "me@anthropic.invalid", "max")
+        self.assertEqual(claudegrant.emails_of(self.home)["claude"], "me@anthropic.invalid")
+
     def test_claude_s_record_is_where_it_always_was(self):
         claudegrant.report(self.home, "n1", "me@anthropic.invalid")
         self.assertTrue(os.path.exists(os.path.join(self.home, ".claude", ".bb-grant.json")))

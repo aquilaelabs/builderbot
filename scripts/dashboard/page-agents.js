@@ -35,6 +35,13 @@ const AGENT_GUARDS = {
 // The agents a session may run today, Claude first.
 function agentsLive(){ return AGENTS.filter(a => a.live); }
 function agentById(id){ return AGENTS.find(a => a.id === id) || null; }
+// Who an account is signed in as with each agent, in the agents' order, as
+// "Claude: a@x · ChatGPT: b@y", from a record's agents ({id: emails}), with
+// Claude's own field for a server that sends only it; "" for none (B296).
+function agentLogins(rec){
+  const by = {...(rec?.claude ? {claude: rec.claude} : {}), ...(rec?.agents || {})};
+  return AGENTS.filter(a => by[a.id]).map(a => `${esc(a.name)}: ${esc(by[a.id])}`).join(" · ");
+}
 // {agent, stem} for a session name with its account prefix already off
 // (`claude-alpha`), or null for a shell or anything else.
 function agentOfSession(base){

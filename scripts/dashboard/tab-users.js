@@ -119,7 +119,7 @@ function usersDetail(u){
   const f = (id, key, label, type = "text", extra = "", help = "") =>
     `<div class="setcell">${lbl(id, label, help)}<input id="${id}" data-ufield="${key}" type="${type}" value="${esc(e[key] || "")}"
        autocomplete="off" spellcheck="false" ${extra}${ro ? " disabled" : ""}></div>`;
-  const facts = [u.claude ? `Claude: ${esc(u.claude)}` : "no Claude login yet", u.seen ? `seen ${esc(ago(u.seen))}` : "never seen",
+  const facts = [agentLogins(u) || "signed in to no agent yet", u.seen ? `seen ${esc(ago(u.seen))}` : "never seen",
                  u.projects?.length ? `on ${u.projects.length} project${u.projects.length === 1 ? "" : "s"}` : "on no project yet"];
   const access = rolesData === null ? `<div class="sub dim">reading its roles…</div>` : rolesAccessFields(u.name);
   return `<div class="rhead" data-uback><span class="shback" role="img" aria-label="Back to People">\u2039</span><b>${esc(u.name)}</b> <span class="dim">${facts.join(" · ")}</span></div>

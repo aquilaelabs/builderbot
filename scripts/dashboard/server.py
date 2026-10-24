@@ -3779,6 +3779,7 @@ transcripts.configure(workspace=WORKSPACE,
 profiletab.configure(users=users,
                      claude_email=lambda uid: ", ".join(sorted(
                          {v["email"] for v in claudegrant.nodes_of(home_for(uid)).values()}, key=str.lower)),
+                     agent_emails=lambda uid: claudegrant.emails_of(home_for(uid)),
                      plugins_of=plugins.of,
                      node_names=lambda: {n["id"]: n["name"]
                                          for n in ([] if NODES_OK else nodes.node_list())},

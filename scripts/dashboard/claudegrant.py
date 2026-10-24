@@ -36,6 +36,8 @@ import os
 import time
 from pathlib import Path
 
+import agents
+
 # What logins_of needs from the server, set by server.py: an account's uid
 # to its home, where its record is.
 home_for = None
@@ -127,6 +129,18 @@ def report(home, node_id, email, plan="", signed_in=True, agent="claude"):
     return {"ok": True, "plan": row["plan"]}
 
 
+def emails_of(home):
+    """{agent id: "a@x, b@y"}: the accounts each live coding agent is signed
+    in as on any node, for whoever is shown them (People, Profile), an agent
+    with none left out (B296: a ChatGPT sign-in read as no login at all)."""
+    out = {}
+    for a in agents.live():
+        emails = sorted({v["email"] for v in nodes_of(home, a.id).values() if v.get("email")}, key=str.lower)
+        if emails:
+            out[a.id] = ", ".join(emails)
+    return out
+
+
 def logins_of(rows):
     """Which Anthropic accounts each BuilderBot account is signed in as, on
     any node, and whether two of them share one, for the Users page.
@@ -142,7 +156,7 @@ def logins_of(rows):
     for u in rows:
         home = home_for(u.get("uid", "")) or os.environ.get("BUILDER_HOME", str(Path.home()))
         emails = sorted({v["email"] for v in nodes_of(home).values()}, key=str.lower)
-        out.append(u | {"claude": ", ".join(emails), "_emails": {e.lower() for e in emails}})
+        out.append(u | {"claude": ", ".join(emails), "agents": emails_of(home), "_emails": {e.lower() for e in emails}})
     for u in out:
         u["claude_shared_with"] = [o["name"] for o in out
                                    if o["name"] != u["name"] and o["_emails"] & u["_emails"]]

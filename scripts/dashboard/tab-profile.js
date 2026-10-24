@@ -38,7 +38,7 @@ async function loadProfile(){
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
     profile = j;
-  }catch(e){ notify("profile: " + e, true); return; }
+  }catch(e){ notify("profile: " + failWords(e), true); return; }
   profileRev++;
   if (tabs.some(t => t.kind === "profile")) drawPanes();
 }
@@ -97,9 +97,9 @@ function renderProfileInto(i){
   const dirty = PROFILE_FIELDS.some(([k]) => (profileDraft[k] ?? p[k] ?? "") !== (p[k] ?? ""));
   const wm = profile.what_may || {roles: [], may: []};
   // Who this is, in the facts voice (R218 step 31): the name, the roles and
-  // the Claude account, one mono line.
+  // each agent's account, one mono line.
   d.setBar(`<span class="barfacts">${esc(profile.name)} · ${esc(wm.roles.length ? wm.roles.join(", ") : "no role")}${
-    profile.claude ? ` · Claude: ${esc(profile.claude)}` : ""}</span>`);
+    agentLogins(profile) ? ` · ${agentLogins(profile)}` : ""}</span>`);
   // A page of settings (page-docs.js splitSects, the operator, 16 Oct):
   // each block a section, the sections a list beside the one picked; who
   // you are first, since that is what is changed here most.
@@ -168,7 +168,7 @@ function wireDeviceOut(root){
       const j = await (await postJSON(of ? "/api/users" : "/api/profile",
         of ? {action: "device-signout", name: of, device: b.dataset.pfdevout} : {action: "device-signout", device: b.dataset.pfdevout})).json();
       if (j.error) notify(j.error, true);
-    }catch(e){ notify("could not reach the controller: " + e, true); }
+    }catch(e){ notify("could not reach the controller: " + failWords(e), true); }
     await (of ? loadUsers() : loadProfile());
   });
 }
@@ -230,7 +230,7 @@ function wireProfile(root){
         : "saved: your next session and shell carry it");
       await loadProfile();
       refresh();                      // the Claude buttons follow git_ready
-    }catch(e){ notify("profile: " + e, true); }
+    }catch(e){ notify("profile: " + failWords(e), true); }
     finally{ if (save.isConnected) unbusy(save, "Save"); }
   };
   // Change password wakes once the current one is typed and the new one is
