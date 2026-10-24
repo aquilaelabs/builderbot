@@ -132,8 +132,11 @@ function nbGitView({$, nb, project}){
     const host = git.host?.name || "the remote";
     const said = [tree.notMine ? `${tree.owner}'s working tree` : "", st.branch ? "" : "on no branch",
       commits.length ? "" : "no commits yet",
+      // Without push rights and without an upstream there is nothing to pull
+      // either, and the line says so rather than offering Pull (B294).
       !git.remote ? "" : !git.push
-        ? "no push rights: fetch and pull only; rights are granted in the clone dialog"
+        ? (st.upstream ? "no push rights: fetch and pull only; rights are granted in the clone dialog"
+                       : "no push rights and no upstream: fetch only; rights are granted in the clone dialog")
         : st.upstream ? (st.ahead && st.behind
           ? `pull first: ${host} has ${st.behind} commit${st.behind === 1 ? "" : "s"} this branch does not, and this branch has ${st.ahead} to push (${st.upstream})`
           : st.ahead || st.behind ? `${host}, ${st.upstream}` : `in step with ${host}, ${st.upstream}`)
@@ -154,7 +157,9 @@ function nbGitView({$, nb, project}){
       net.querySelector('[data-gitact="fetch"]').hidden = ro;
       net.querySelector('[data-gitact="push"]').hidden = ro;
       net.querySelector('[data-gitact="push"]').disabled = !git.push;
-      net.querySelector('[data-gitact="pull"]').disabled = !st.upstream;
+      const pull = net.querySelector('[data-gitact="pull"]');
+      pull.disabled = !st.upstream;
+      pull.title = st.upstream ? "fast-forward this branch to its upstream" : "this branch has no upstream to pull from";
       net.querySelector('[data-gitact="pull"]').hidden = tree.barred || ro;
     }
     drawGit();

@@ -679,11 +679,13 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     { timeout: 20000 });
   const view = await page.$eval('.nb .nbview[data-view="git"]', v => ({
     net: !v.querySelector('#gitNet').hidden, push: !v.querySelector('[data-gitact="push"]').disabled,
+    // Pull says why when it is off, the one reason it can be (B294).
+    pull: (b => b.disabled === /no upstream/.test(b.title))(v.querySelector('[data-gitact="pull"]')),
     commitBar: !!v.querySelector('.gcommitbar[data-add] #gitMsg'),
     discard: !!v.querySelector('[data-gitdiscard="a.txt"]'),
     sw: v.querySelectorAll('[data-gitswitch]').length, del: v.querySelectorAll('[data-gitdelete]').length,
     newBranch: !!v.querySelector('#gitPicker [data-gitpicknew]') && !v.querySelector('#gitNewBranch') }));
-  ok(view.net && view.push && view.commitBar && view.discard && view.sw >= 1 && view.del >= 1 && view.newBranch,
+  ok(view.net && view.push && view.pull && view.commitBar && view.discard && view.sw >= 1 && view.del >= 1 && view.newBranch,
      `the view offers the network bar, the commit form, Discard, Switch, Delete and New branch (${JSON.stringify(view)})`);
   const grouped = await page.$eval('.nb .nbview[data-view="git"]', v => ({
     into: !!v.querySelector('[data-gitmerge="old-work"][data-gitinto]'),
