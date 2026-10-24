@@ -87,7 +87,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/container` | prefix | `_container` | A container from a compose file written here, with no project: containers.tab_verb. | refused: docker-write |
 | POST | `/api/vms` | exact | `_vms` | POST /api/vms (R91): new, start, stop, restart, remove, snapshot, revert, snapshot-rm. | refused: vms-write, refused: node |
 | POST | `/api/dockerctl` | prefix | `_docker_ctl` | Start, stop, restart or read the log of ONE container on a node. | refused: docker-write |
-| POST | `/api/rename` | prefix | `_rename` | Rename a project: projects.rename, once project_busy says nothing holds it. | refused: rename |
+| POST | `/api/rename` | prefix | `_rename` | Rename a project: projects.rename. | refused: rename |
 | POST | `/api/trash-restore` | prefix | `_trash_restore` |  | refused: trash |
 | POST | `/api/trash-purge` | prefix | `_trash_purge` | Delete a trashed project for good. | refused: trash |
 | POST | `/api/trash` | prefix | `_trash` | Move a project out of the workspace: projects.trash, once project_busy says nothing holds it (the same guards as renaming). | refused: trash |

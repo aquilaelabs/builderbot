@@ -9763,8 +9763,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*projects.trash_purge(req))
 
     def _rename(self, req):
-        """Rename a project: projects.rename, once project_busy says nothing
-        holds it."""
+        """Rename a project: projects.rename. Only the registry's name
+        changes, so nothing running holds it back."""
         name = req.get("name", "")
         # Whether it is a project first, then whether this account may: a
         # name that is nothing answered "not taken on" to the owner once
