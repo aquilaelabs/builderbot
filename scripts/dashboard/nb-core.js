@@ -979,9 +979,9 @@ function projectNote(p){
   // drawn (the operator, 21 Oct: a role somebody lacks is not advertised to
   // them, and a reason a button is off is not an error, so no line is red).
   if (!p.locked_me && writeWhy(p)) return "";
-  // No Claude Code on its node, for an account that may install it: the
-  // button says it (Install Claude), so no line does.
-  if (claudeInstall(p)) return "";
+  // The project's agent missing on its node, for an account that may install
+  // it: the button says it (Install Claude, Install ChatGPT), so no line does.
+  if (agentInstall(p, projectAgent(p))) return "";
   const said = held || p.session_why;
   if (said && !p.locked_me && !here) return `<div class="pnote dim">${esc(said)}</div>`;
   // ...and otherwise why Start agent is dead, whatever made it so (B88):
@@ -995,6 +995,18 @@ function projectNote(p){
 // (the operator, 21 Oct: the button opens that node's Toolchains).
 const claudeInstall = p => !p.locked_me && !myLiveSession(p.name) && p.claude_missing
   && mayToolchains(p.claude_missing) ? p.claude_missing : "";
+// ...and the same for any agent (R95 step 18): another agent is missing where
+// the project's node does not list it among the agents installed there, the
+// list Start's chooser offers from.
+function agentInstall(p, ag){
+  if (ag.id === "claude") return claudeInstall(p);
+  const n = (p.session_nodes || []).find(x => x.id === p.session_node);
+  return !p.locked_me && !myLiveSession(p.name) && n && n.where === "node"
+    && !(n.agents || []).includes(ag.id) && mayToolchains(n.id) ? n.id : "";
+}
+// The agent a project's Start agent opens first: this account's pick for it,
+// else Claude.
+const projectAgent = p => agentById(p.prefs?.agent_default) || AGENTS[0];
 // Why Start agent is dead on this project, or "" when it is live: the one
 // answer the button, its description and the line under it all read.
 function claudeDeadWhy(p){
@@ -1024,7 +1036,7 @@ const lockLabel = p => {
 function projectActions(p, extra = ""){
   // The agent the project's Start opens (R95 step 4): Claude's unless its
   // settings name another. Its own session running here makes it Open.
-  const ag = agentById(p.prefs?.agent_default) || AGENTS[0];
+  const ag = projectAgent(p);
   const name = p.name, sess = myLiveSession(name), mine = !!sess;
   const dead = claudeDeadWhy(p);
   // What this account's roles do not give is left out, not drawn dead.
@@ -1074,9 +1086,9 @@ function projectActions(p, extra = ""){
   // otherwise a plain Start agent, the chooser under it picking which (the
   // operator, 16 Oct: green on every card read as running everywhere; 22
   // Oct: one word for every agent; 23 Oct: Manage agent, not Open Claude).
-  const inst = ag.id === "claude" ? claudeInstall(p) : "";
-  return `${isBroken(p) || forbid ? "" : inst ? `<button type="button" data-tcinst="${esc(inst)}" title="${
-        esc(`Claude Code is not installed on ${p.node_name || "its node"}: open its Agents page to install it`)}">Install Claude</button>`
+  const inst = agentInstall(p, ag);
+  return `${isBroken(p) || forbid ? "" : inst ? `<button type="button" data-tcinst="${esc(inst)}" data-agent="${esc(ag.id)}" title="${
+        esc(`${ag.product} is not installed on ${p.node_name || "its node"}: open its Agents page to install it`)}">Install ${esc(ag.name)}</button>`
       : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(name)}"${dead ? " disabled" : ""} title="${esc(say)}">${
         mine ? "Manage agent" : "Start agent"}</button>`}
     ${mayShell() && !notMine(p) ? `<button type="button" data-s="${esc(name)}"${!gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}

@@ -42,8 +42,8 @@ const heldWhy = p => p.held || (!gitReadyFor(p) && !myLiveSession(p.name)
 function wireProjectRows(root){
   root.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
   root.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
-  // Install Claude opens the node's Agents page, where it is installed (R95).
-  root.querySelectorAll("[data-tcinst]").forEach(b => b.onclick = () => { sectOpen["agents:claude"] = true; openAgentsOn(b.dataset.tcinst); });
+  // Install opens the node's Agents page at that agent, where it is installed (R95).
+  root.querySelectorAll("[data-tcinst]").forEach(b => b.onclick = () => openNodeClaude(b.dataset.tcinst, b.dataset.agent || "claude"));
   // The chain is the remote, whichever state the project is in: linking one
   // that has no remote, and the credential half (and the way off it) for
   // one that has.

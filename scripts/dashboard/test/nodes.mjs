@@ -3843,6 +3843,20 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
      `...its button is Install Claude in place of Start Claude, nothing under it (${JSON.stringify(inst)})`);
   await page.waitForFunction(id => agNode === id && tabs.some(t => t.kind === 'agents'), en.id, { timeout: 15000 });
   ok(true, '...and a press opens the Agents page on that node (R95)');
+  // ...and the same for whichever agent the project starts first (R95 step
+  // 18): ChatGPT's Install where the node lists no Codex, Start where it does.
+  const other = await page.evaluate(id => {
+    const p = { ...state.projects.find(x => x.name === 'beta'), claude_missing: '', session_node: id,
+                prefs: { agent_default: 'codex' } };
+    const draw = agents => { const box = document.createElement('div');
+      box.innerHTML = projectActions({ ...p, session_nodes: [{ id, name: 'clbox', where: 'node', agents }] });
+      const b = box.querySelector('[data-tcinst]');
+      return { label: b?.textContent.trim() || '', agent: b?.dataset.agent || '', start: !!box.querySelector('[data-c]') }; };
+    return { missing: draw([]), there: draw(['codex']) };
+  }, en.id);
+  ok(other.missing.label === 'Install ChatGPT' && other.missing.agent === 'codex' && !other.missing.start
+     && !other.there.label && other.there.start,
+     `...and a project whose agent is ChatGPT offers Install ChatGPT where Codex is missing, Start agent where it is there (${JSON.stringify(other)})`);
   await napi('/api/prefs', { project: 'beta', node: '' });
   await napi('/api/v1/nodes', { action: 'retire', id: en.id });
 }
