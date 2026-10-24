@@ -399,5 +399,18 @@ class Interpolation(unittest.TestCase):
         self.assertEqual(calls(s), {("g", 2, "f")})
 
 
+
+class Tree(unittest.TestCase):
+    def test_a_vendored_library_is_not_the_projects_code(self):
+        # xterm.js under scripts/dashboard/vendor is minified and not ours:
+        # the map leaves it out, and the parser test no longer reads it.
+        d = Path(tempfile.mkdtemp())
+        (d / "vendor").mkdir()
+        (d / "vendor" / "lib.js").write_text("function theirs(){}\n")
+        (d / "ours.js").write_text("function ours(){}\n")
+        got = sorted(str(p.relative_to(d)) for p, _ in codemap.sources(d))
+        self.assertEqual(got, ["ours.js"])
+
+
 if __name__ == "__main__":
     unittest.main()
