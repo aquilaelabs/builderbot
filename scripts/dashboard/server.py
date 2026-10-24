@@ -8002,7 +8002,7 @@ class Handler(BaseHTTPRequestHandler):
         # questions now (users.may_work): an administrator is shown every
         # project and works on the ones they took on. The reads are named,
         # so an action added later is a write until somebody says otherwise.
-        if field(req, "action") not in ("history",) and self._readonly(name):
+        if field(req, "action") not in ("history", "finished") and self._readonly(name):
             return None
         act = field(req, "action")
         # "send" is a write to the roadmap (it marks a step sent) and starts a
@@ -8817,7 +8817,7 @@ class Handler(BaseHTTPRequestHandler):
         # questions now (users.may_work): an administrator is shown every
         # project and works on the ones they took on. The reads are named,
         # so an action added later is a write until somebody says otherwise.
-        if field(req, "action") not in ("history",) and self._readonly(name):
+        if field(req, "action") not in ("history", "finished") and self._readonly(name):
             return None
         if (bad := projects.locked_out(name, users.uid_of(self._who()))):
             return self._json(bad, 409)

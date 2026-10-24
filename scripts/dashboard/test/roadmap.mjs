@@ -2201,6 +2201,24 @@ ok(await nbOn() === await page.evaluate(() => document.querySelector('.pane .nb 
      `a step's Reword box sets its own release: the step says it, a chip for it appears, and bb lists the item under it (${tag} | ${listed.trim().replace(/\n/g, ' / ')})`);
 }
 
+// A project you may read and not change (an administrator who has not taken
+// it on) still shows what was finished on it: Finished is a read, as History
+// is (B297).
+{
+  const me = await page.evaluate(async () => (await (await fetch('/api/users')).json()).users.find(u => u.name === 'test')?.projects || []);
+  const setMine = ps => page.evaluate(async ps => (await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'projects', name: 'test', projects: ps }) })).status, ps);
+  await setMine(me.filter(n => n !== 'alpha'));
+  const fin = await post({ action: 'finished', project: 'alpha' });
+  const seen = page.errors.length;
+  const add = await post({ action: 'add', project: 'alpha', text: 'not mine to add' });
+  await setMine(me);
+  // The refusal asked for is the browser's one 403 line, not an error of the page's.
+  page.errors.splice(seen, page.errors.length - seen, ...page.errors.slice(seen).filter(e => !/403/.test(e)));
+  ok(fin.status === 200 && Array.isArray(fin.body.finished) && add.status === 403,
+     `a project not taken on still lists its finished items, and stays closed to a change (${fin.status}, add ${add.status})`);
+}
+
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 await done(browser);
