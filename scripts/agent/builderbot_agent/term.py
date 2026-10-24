@@ -158,6 +158,12 @@ def relay(conn, frames, frame, spec, how, alive=None):
                 except OSError:
                     got = b""
                 if not got:
+                    # The pty can end before the program is reaped: its
+                    # code waited for a moment, so the tab says it (B327).
+                    try:
+                        p.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        pass
                     why = _ended(p) or "ended"
                     break
                 conn.sendall(frame(got))
