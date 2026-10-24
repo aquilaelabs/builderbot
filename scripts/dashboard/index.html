@@ -5048,6 +5048,16 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
   border-top:1px solid var(--line);background:var(--panel);font:var(--f-note);color:var(--dim)}
 .pane .slot.ownterm .xend[hidden]{display:none}
 .pane .slot.ownterm .xend .xwhy{flex:1;min-width:0}
+/* A held press's selection on a phone (R133 step 11): a grip under each end
+   to drag, and Copy and Done on a small card over the text. */
+.pane .slot.ownterm .xhost{position:relative;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.pane .slot.ownterm .xsel{position:absolute;inset:0;pointer-events:none;z-index:5}
+.pane .slot.ownterm .xgrip{position:absolute;width:22px;height:22px;margin-left:-11px;border-radius:50% 50% 50% 0;
+  background:var(--accent);transform:rotate(-45deg);pointer-events:auto;touch-action:none}
+.pane .slot.ownterm .xgrip[data-end="b"]{border-radius:50% 0 50% 50%;transform:rotate(45deg)}
+.pane .slot.ownterm .xselbar{position:absolute;display:flex;gap:var(--label-gap);padding:var(--label-gap);
+  background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
+  box-shadow:0 10px 24px rgba(0,0,0,.5);pointer-events:auto}
 .pane .empty-pane{margin:auto;color:var(--dim);font-style:italic}
 /* A popped-out terminal's placeholder (R8): the pane's empty voice, and the
    one control under it. */

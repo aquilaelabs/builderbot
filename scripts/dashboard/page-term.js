@@ -136,8 +136,198 @@ function termMount(el, t, key){
     rec.ro = new ResizeObserver(() => termFit(rec));
     rec.ro.observe(el.querySelector(".xhost"));
     termFit(rec);
+    termTouch(rec);
     termConnect(rec);
   }, e => termEnded(rec, String(e.message || e)));
+}
+
+// A finger on the terminal (R133 step 11): a drag up and down scrolls it
+// and a press held selects the word under it, with handles and Copy; a tap
+// is left to xterm.js, which focuses it for the keyboard.
+function termTouch(rec){
+  const host = rec.el.querySelector(".xhost");
+  let g = null;
+  // A touch's moves and lift go to the element it began on, and xterm.js
+  // redraws its rows under the finger: off the page, that element passes
+  // nothing up to the host. So a gesture, once begun here, is followed on
+  // the window until it lifts.
+  const move = e => {
+    if (!g) return;
+    const p = e.touches[0];
+    if (g.held){ e.preventDefault(); e.stopPropagation(); return; }
+    if (!g.moved && Math.hypot(p.clientX - g.x, p.clientY - g.y) < 8) return;
+    g.moved = true;
+    clearTimeout(g.hold);
+    e.preventDefault(); e.stopPropagation();
+    // A finger going up brings the newer lines, as a page under it would.
+    g.acc += g.last - p.clientY; g.last = p.clientY;
+    const h = termCell(rec).h, n = Math.trunc(g.acc / h);
+    if (n){ g.acc -= n * h; termScroll(rec, n, p); }
+  };
+  const end = e => {
+    window.removeEventListener("touchmove", move, {capture: true});
+    window.removeEventListener("touchend", end, {capture: true});
+    window.removeEventListener("touchcancel", end, {capture: true});
+    if (!g) return;
+    clearTimeout(g.hold);
+    // Neither a drag nor a hold ends as a tap on what was under it, and the
+    // mouse events the browser makes of a held press as it lifts would
+    // start xterm.js's own selection over ours: held off for a moment.
+    if (g.moved || g.held){ e.preventDefault(); e.stopPropagation(); }
+    if (g.held) rec.quietUntil = performance.now() + 700;
+    g = null;
+  };
+  host.addEventListener("touchstart", e => {
+    if (e.touches.length !== 1 || e.target.closest(".xsel")) return;
+    const p = e.touches[0];
+    if (rec.sel) termSelectEnd(rec);
+    g = {x: p.clientX, y: p.clientY, last: p.clientY, acc: 0, moved: false, held: false};
+    g.hold = setTimeout(() => { if (!g || g.moved) return; g.held = true; termSelectAt(rec, g.x, g.y); }, 500);
+    window.addEventListener("touchmove", move, {capture: true, passive: false});
+    window.addEventListener("touchend", end, {capture: true, passive: false});
+    window.addEventListener("touchcancel", end, {capture: true, passive: false});
+  }, {capture: true, passive: true});
+  // ...and, where the browser says so, any mouse event made of a touch while
+  // our selection is up: the lift can come late, or not reach us at all.
+  host.addEventListener("mousedown", e => {
+    if (performance.now() < (rec.quietUntil || 0) || (rec.sel && e.sourceCapabilities?.firesTouchEvents)){
+      e.preventDefault(); e.stopPropagation();
+    }
+  }, {capture: true});
+  // The phone's own menu on a held press is ours to replace.
+  host.addEventListener("contextmenu", e => { if (matchMedia("(pointer: coarse)").matches) e.preventDefault(); });
+}
+
+// One cell's size and the screen's box, from what xterm.js drew.
+function termCell(rec){
+  const scr = rec.el.querySelector(".xterm-screen"), b = scr.getBoundingClientRect();
+  return {w: b.width / rec.term.cols, h: b.height / rec.term.rows, b};
+}
+
+// Lines scrolled (more than nought: toward the newest). Where the pane takes
+// the mouse (a coding agent's, tmux's mouse on) a drag is the wheel it would
+// be at a desk; otherwise (a shell) tmux's history moves by the line, as
+// PgUp moves it by the page, asked of the server in batches.
+function termScroll(rec, n, at){
+  if (rec.term.modes.mouseTrackingMode !== "none"){
+    const scr = rec.el.querySelector(".xterm-screen");
+    for (let i = 0; i < Math.abs(n); i++)
+      scr.dispatchEvent(new WheelEvent("wheel", {deltaY: Math.sign(n), deltaMode: 1, clientX: at.clientX,
+        clientY: at.clientY, bubbles: true, cancelable: true}));
+    return;
+  }
+  rec.scrollBy = (rec.scrollBy || 0) + n;
+  if (rec.scrollSend) return;
+  rec.scrollSend = setTimeout(async () => {
+    const by = rec.scrollBy;
+    rec.scrollBy = 0; rec.scrollSend = null;
+    if (!by) return;
+    try{
+      await postJSON("/api/keys", {session: sessionOf(rec.t.arg), key: by < 0 ? "lineup" : "linedown", lines: Math.abs(by)});
+    }catch(e){ /* the next drag asks again */ }
+  }, 80);
+}
+
+// The cell under a point, as a place in the buffer counted in cells.
+function termPos(rec, x, y){
+  const c = termCell(rec), buf = rec.term.buffer.active;
+  const col = Math.max(0, Math.min(rec.term.cols - 1, Math.floor((x - c.b.left) / c.w)));
+  const row = Math.max(0, Math.min(rec.term.rows - 1, Math.floor((y - c.b.top) / c.h)));
+  return (buf.viewportY + row) * rec.term.cols + col;
+}
+
+// A held press: the word under it selected, its ends' handles and Copy drawn.
+function termSelectAt(rec, x, y){
+  const cols = rec.term.cols, at = termPos(rec, x, y), row = Math.floor(at / cols);
+  const text = rec.term.buffer.active.getLine(row)?.translateToString(false) || "";
+  let a = at % cols, b = a;
+  if (/\S/.test(text[a] || "")){
+    while (a > 0 && /\S/.test(text[a - 1])) a--;
+    while (b < cols - 1 && /\S/.test(text[b + 1] || "")) b++;
+  }
+  rec.sel = {a: row * cols + a, b: row * cols + b};
+  if (navigator.vibrate) navigator.vibrate(10);
+  termSelectDraw(rec);
+}
+
+function termSelectDraw(rec){
+  const s = rec.sel, cols = rec.term.cols;
+  const lo = Math.min(s.a, s.b), hi = Math.max(s.a, s.b);
+  rec.term.select(lo % cols, Math.floor(lo / cols), hi - lo + 1);
+  const host = rec.el.querySelector(".xhost");
+  let layer = host.querySelector(".xsel");
+  if (!layer){
+    layer = document.createElement("div");
+    layer.className = "xsel";
+    layer.innerHTML = `<span class="xgrip" data-end="a"></span><span class="xgrip" data-end="b"></span>
+      <span class="xselbar"><button type="button" class="xcopy">Copy</button><button type="button" class="xdone">Done</button></span>`;
+    host.append(layer);
+    layer.querySelector(".xcopy").onclick = () => termCopy(rec);
+    layer.querySelector(".xdone").onclick = () => termSelectEnd(rec);
+    for (const grip of layer.querySelectorAll(".xgrip")){
+      grip.addEventListener("touchmove", e => {
+        e.preventDefault(); e.stopPropagation();
+        const p = e.touches[0];
+        rec.sel[grip.dataset.end] = termPos(rec, p.clientX, p.clientY - termCell(rec).h);
+        termSelectDraw(rec);
+      }, {passive: false});
+    }
+  }
+  // Each grip under its end's cell: a at the start's left, b at the end's right.
+  const c = termCell(rec), hb = host.getBoundingClientRect(), top = rec.term.buffer.active.viewportY;
+  const place = (pos, right) => {
+    const row = Math.floor(pos / cols) - top, col = pos % cols + (right ? 1 : 0);
+    return {x: c.b.left - hb.left + col * c.w, y: c.b.top - hb.top + (row + 1) * c.h};
+  };
+  const pa = place(s.a <= s.b ? s.a : s.b, false), pb = place(s.a <= s.b ? s.b : s.a, true);
+  const [ga, gb] = layer.querySelectorAll(".xgrip");
+  const [first, last] = s.a <= s.b ? [ga, gb] : [gb, ga];
+  first.style.left = `${pa.x}px`; first.style.top = `${pa.y}px`;
+  last.style.left = `${pb.x}px`; last.style.top = `${pb.y}px`;
+  // Copy above the selection, or under it where the top has no room.
+  const bar = layer.querySelector(".xselbar"), above = pa.y - c.h - bar.offsetHeight - 4;
+  bar.style.top = `${above >= 0 ? above : pb.y + 18}px`;
+  bar.style.left = `${Math.max(0, Math.min(hb.width - bar.offsetWidth, pa.x))}px`;
+}
+
+// The selected text, read off the buffer between the record's ends: a
+// wrapped line runs on, any other ends with a newline.
+function termSelText(rec){
+  const cols = rec.term.cols, buf = rec.term.buffer.active;
+  const lo = Math.min(rec.sel.a, rec.sel.b), hi = Math.max(rec.sel.a, rec.sel.b);
+  let out = "";
+  for (let row = Math.floor(lo / cols); row <= Math.floor(hi / cols); row++){
+    const line = buf.getLine(row);
+    if (!line) continue;
+    const from = row === Math.floor(lo / cols) ? lo % cols : 0;
+    const to = row === Math.floor(hi / cols) ? hi % cols + 1 : cols;
+    if (out && !line.isWrapped) out += "\n";
+    out += line.translateToString(row !== Math.floor(hi / cols), from, to);
+  }
+  return out.replace(/[ \t]+$/gm, "");
+}
+
+async function termCopy(rec){
+  if (!rec.sel) return;
+  const text = termSelText(rec);
+  try{
+    await navigator.clipboard.writeText(text);
+  }catch(e){
+    // Not a secure page, or no permission: the old way, through a field.
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.append(ta); ta.select();
+    try{ document.execCommand("copy"); }catch(e2){ /* nothing more to try */ }
+    ta.remove();
+  }
+  notify("Copied");
+  termSelectEnd(rec);
+}
+
+function termSelectEnd(rec){
+  rec.sel = null;
+  rec.term?.clearSelection();
+  rec.el.querySelector(".xsel")?.remove();
 }
 
 function termSend(rec, kind, body){

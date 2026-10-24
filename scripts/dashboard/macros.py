@@ -266,12 +266,34 @@ def custom_edit(action, req):
         return {"custom": load_custom()}, 200
 
 
-def press(session, key, on_node):
+def scroll_ops(session, key, lines):
+    """A finger's drag on a terminal whose pane does not take the mouse (a
+    shell): `lines` of tmux's history up or down, entering copy mode to go
+    up and leaving it by itself at the bottom (-e), as PgUp does by the page
+    (R133 step 11). tmux commands only, in the shape a node's agent already
+    runs (send-keys or copy-mode, at its session), so no agent change."""
+    n = str(max(1, min(int(lines or 1), 60)))
+    if key == "lineup":
+        return [["copy-mode", "-e", "-t", session],
+                ["send-keys", "-t", session, "-X", "-N", n, "scroll-up"]]
+    return [["send-keys", "-t", session, "-X", "-N", n, "scroll-down"]]
+
+
+def press(session, key, on_node, lines=1):
     """One key from the tables pressed in a session, or a page up or down,
-    once the server has said the session is the caller's: on a node through
-    its agent (`on_node`, its session row), here through tmux. (payload,
-    status)."""
+    or `lines` of history scrolled (lineup, linedown), once the server has
+    said the session is the caller's: on a node through its agent
+    (`on_node`, its session row), here through tmux. (payload, status)."""
+    if key in ("lineup", "linedown"):
+        try:
+            lines = int(lines)
+        except (TypeError, ValueError):
+            return {"error": "lines is a number"}, 400
     if on_node:
+        if key in ("lineup", "linedown"):
+            real = on_node["node_name"]
+            return _answer(session_tmux(on_node["node_id"],
+                                        [{"session": real, "argv": a} for a in scroll_ops(real, key, lines)]))
         # The same table, queued for the node's agent (roadmap #24); the
         # paging decision is the agent's, on the pane it can see.
         real = on_node["node_name"]
@@ -296,6 +318,15 @@ def press(session, key, on_node):
     # send-keys goes straight to the pane, past the key table that binding
     # lives in, so the same decision is made here, as commands. Inside a
     # full-screen program (less, vim) the key is the program's.
+    if key in ("lineup", "linedown"):
+        out = {}
+        if key == "linedown":
+            mode = run(["tmux", "display-message", "-p", "-t", session, "#{pane_in_mode}"], timeout=10)
+            if mode["out"].strip() != "1":
+                return {"ok": True}, 200
+        for argv in scroll_ops(session, key, lines):
+            out = run(["tmux", *argv], timeout=10)
+        return out, 200
     if key in ("pgup", "pgdn"):
         flags = run(["tmux", "display-message", "-p", "-t", session,
                      "#{alternate_on} #{pane_in_mode}"], timeout=10)

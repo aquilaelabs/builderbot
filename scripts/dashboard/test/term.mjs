@@ -6,7 +6,7 @@
 // the same tmux session; a closed tab's socket goes with it; the switch off,
 // the same tab is ttyd's frame again. Driven through the page, as a person
 // at the dock would.
-import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
+import { launch, newPage, ok, done, ready, finger, URL } from './lib.mjs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -114,6 +114,63 @@ ok(await waitFor(/kb-42/) && !keysAsked.length, `the keys bar's Enter goes down 
      `a terminal takes its person's look, and their colors for its project over it (${JSON.stringify(mine)} then ${JSON.stringify(there)})`);
   await page.evaluate(async () => fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ project: 'alpha', term_scheme: '' }) }));
+}
+
+// On a phone (step 11): a finger dragged down scrolls back through a
+// shell's history, by the line, in tmux's copy mode; a press held on a word
+// selects it, with grips and Copy; Copy puts it on the clipboard.
+{
+  const phone = await newPage(browser, { viewport: { width: 393, height: 800 }, hasTouch: true, isMobile: true });
+  await phone.goto(URL);
+  await ready(phone);
+  await phone.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new globalThis.URL(URL).origin });
+  await phone.evaluate(() => { openTab({kind: 'term', arg: 'sh:9:alpha', label: 'thumb'});
+    panes[1] = tabs.find(t => t.arg === 'sh:9:alpha').id; dockUp = true; render(); });
+  await phone.waitForFunction(() => document.querySelector('#pane1 .slot.on.ownterm .xterm-screen'), null, { timeout: 20000 });
+  const shown = () => phone.evaluate(() => {
+    const r = [...TERMS.values()].find(r => r.t.arg === 'sh:9:alpha' && r.term), b = r.term.buffer.active, out = [];
+    for (let i = 0; i < r.term.rows; i++) out.push(b.getLine(b.viewportY + i)?.translateToString(true) || '');
+    return out;
+  });
+  const until = async (fn, ms = 15000) => { const end = Date.now() + ms;
+    while (Date.now() < end){ const got = fn(await shown()); if (got) return got; await new Promise(r => setTimeout(r, 200)); }
+    return null; };
+  await phone.evaluate(() => { const r = [...TERMS.values()].find(r => r.t.arg === 'sh:9:alpha'); r.term.focus(); });
+  await phone.keyboard.type('seq 1 300; echo pick-me-word\n');
+  await until(rows => rows.some(l => /^pick-me-word/.test(l)));
+  const asked = [];
+  phone.on('request', r => { if (r.url().includes('/api/keys')) asked.push(r.postData() || ''); });
+  const box = await phone.$eval('#pane1 .slot.on .xterm-screen', e => { const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, top: b.top + 20, h: b.height }; });
+  await finger(phone, box.x, box.top, box.x, box.top + box.h * 0.6);
+  const back = await until(rows => rows.some(l => /\[\d+\/\d+\]/.test(l)) && !rows.some(l => /^pick-me-word/.test(l)) && rows);
+  ok(back && asked.some(b => /"lineup"/.test(b)),
+     `a finger dragged down scrolls a shell back into its history (${asked.length} asked: ${asked[0] || ''})`);
+  // Up again, past the bottom: copy mode ends by itself.
+  await finger(phone, box.x, box.top + box.h * 0.9, box.x, box.top);
+  await finger(phone, box.x, box.top + box.h * 0.9, box.x, box.top);
+  const home = await until(rows => !rows.some(l => /\[\d+\/\d+\]/.test(l)) && rows.some(l => /^pick-me-word/.test(l)));
+  ok(home, 'a finger dragged up brings it back to the newest, out of copy mode');
+  // The word, found on the screen, pressed and held.
+  const at = await phone.evaluate(() => {
+    const r = [...TERMS.values()].find(r => r.t.arg === 'sh:9:alpha'), b = r.term.buffer.active;
+    for (let i = 0; i < r.term.rows; i++){
+      const l = b.getLine(b.viewportY + i)?.translateToString(true) || '';
+      if (/^pick-me-word/.test(l)){ const c = termCell(r); return { x: c.b.left + 4.5 * c.w, y: c.b.top + (i + 0.5) * c.h }; }
+    }
+    return null;
+  });
+  if (at) await finger(phone, at.x, at.y, at.x, at.y, 800);
+  await phone.waitForTimeout(800);
+  const picked = await phone.evaluate(() => ({ sel: [...TERMS.values()].find(r => r.t.arg === 'sh:9:alpha').term.getSelection(),
+    grips: document.querySelectorAll('#pane1 .slot.on .xsel .xgrip').length, copy: !!document.querySelector('#pane1 .slot.on .xsel .xcopy') }));
+  ok(at && picked.sel === 'pick-me-word' && picked.grips === 2 && picked.copy,
+     `a press held on a word selects it, with a grip at each end and Copy (${JSON.stringify(picked)})`);
+  await phone.click('#pane1 .slot.on .xsel .xcopy').catch(() => {});
+  const clip = await phone.evaluate(() => navigator.clipboard.readText().catch(e => 'unread: ' + e.message));
+  const gone = await phone.evaluate(() => !document.querySelector('#pane1 .slot.on .xsel'));
+  ok(clip === 'pick-me-word' && gone, `Copy puts the word on the clipboard and puts the selection away (${clip})`);
+  await phone.evaluate(() => dropTab(tabs.find(t => t.arg === 'sh:9:alpha').id));
+  await phone.close();
 }
 
 // A tab its node sends back to ttyd (4001: an agent with no terminal of its

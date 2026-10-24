@@ -10169,7 +10169,8 @@ class Handler(BaseHTTPRequestHandler):
         if self._not_theirs(session):
             return None
         return self._json(*macros.press(session, key,
-                                        self._session_on_node(session, str(req.get("node") or ""))))
+                                        self._session_on_node(session, str(req.get("node") or "")),
+                                        req.get("lines", 1)))
 
     def _chat(self, req):
         """Read a conversation, send into one, or mark one seen: chat.converse.
