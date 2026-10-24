@@ -4728,9 +4728,6 @@ span.skel.sk-word{display:inline-block;vertical-align:middle;padding:0}
 #toast .tx{flex:0 0 auto;min-height:24px;min-width:24px;padding:0;border:0;background:none;color:var(--dim)}
 @media(max-width:900px){ #toast{right:8px;left:8px;width:auto;bottom:calc(112px + env(safe-area-inset-bottom))} }
 @media(hover:none){ #toast .tst{pointer-events:none} #toast .tx{pointer-events:auto} }
-/* Over a dialog with no gutter beside it (toastPlace): at the top, and every press goes through. */
-#toast.overdlg{top:calc(8px + env(safe-area-inset-top));bottom:auto}
-#toast.overdlg .tst,#toast.overdlg .tx{pointer-events:none}
 /* ...and the same less motion where the account asked for it in the gear's
    menu (the operator, 19 Oct; noMotion reads it too): every animation
    and transition ends where it would have, at once, and the two the

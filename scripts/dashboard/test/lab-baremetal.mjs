@@ -86,6 +86,13 @@ const SH = readFileSync(fileURLToPath(new globalThis.URL('./lab-baremetal.sh', i
 
 for (const os of SYSTEMS){
   const name = `lab-bm-${os.replace(/[^a-z0-9]+/g, '-')}`.slice(0, 31).replace(/-+$/, '');
+  // One left by an earlier walk is removed first, and waited out: found by
+  // name, its record carried the last walk's address, and ssh went to a VM
+  // that was on its way out.
+  if (((await api('/api/vms')).vms || []).some(v => v.name === name)){
+    await api('/api/vms', { action: 'remove', project: PROJECT, name });
+    await wait(async () => !((await api('/api/vms')).vms || []).some(v => v.name === name) || null, 10 * 60000, 10000);
+  }
   const made = await api('/api/vms', { action: 'new', project: PROJECT, name, os, vcpus: 2, mem_mb: 4096, disk_gb: 24,
                                        keys: [KEY], user: OWNER, node: host.id });
   ok(made.ok, `[${os}] a VM made for a bare-metal controller (${made.error || made.domain})`);

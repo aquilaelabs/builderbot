@@ -71,18 +71,18 @@ function armModal(el){
         // to, and a field focused on the way in scrolled it further, so one
         // opened on a phone could start halfway down (the operator, 30 Sep).
         // Again after the frame, for what the opener fills and focuses.
-        if (was){ modalTop(this); modalOpened(this); requestAnimationFrame(() => { modalTop(this); scrollHints(this); toastReplace(); }); }
+        if (was){ modalTop(this); modalOpened(this); requestAnimationFrame(() => { modalTop(this); scrollHints(this); }); }
         return;
       }
       if (this.hasAttribute("hidden") || this.classList.contains("leaving")) return;
       modalClosed(this);
-      if (noMotion()){ this.setAttribute("hidden", ""); toastReplace(); return; }
+      if (noMotion()){ this.setAttribute("hidden", ""); return; }
       this.classList.add("leaving");
       this.querySelector(":scope > .box")?.animate(
         [{opacity: 1, transform: "none"}, {opacity: 0, transform: "translateY(6px) scale(.985)"}],
         {duration: 150, easing: "ease"});
       this.animate([{opacity: 1}, {opacity: 0}], {duration: 150, easing: "ease"}).finished.then(
-        () => { if (this.classList.contains("leaving")){ this.classList.remove("leaving"); this.setAttribute("hidden", ""); toastReplace(); } },
+        () => { if (this.classList.contains("leaving")){ this.classList.remove("leaving"); this.setAttribute("hidden", ""); } },
         () => {});                        // canceled: it was shown again, and stays
     }});
 }

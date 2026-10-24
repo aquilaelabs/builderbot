@@ -10,8 +10,8 @@
 
 // ---- toasts -------------------------------------------------------------
 // One stack at a corner (R218 step 6, the design's the-dashboard/notifications
-// rule): the bottom left above the dock's line, beside a dialog when one is
-// open (toastPlace), the newest at the foot, at most TOAST_MAX on screen, each with its
+// rule): the bottom left above the dock's line, and there while a dialog is
+// open too, the newest at the foot, at most TOAST_MAX on screen, each with its
 // kind's icon and its own ×, gone after a while but held while the pointer
 // is over the stack, so a sentence being read does not leave mid-read. And
 // every one is on the record: the bell's latest for this page, and the
@@ -66,40 +66,7 @@ function toastAdd(text, lv){
                               {duration: 160, easing: "ease"});
   el.left = lv === "info" ? 4000 : 7000;
   toastTick(el);
-  toastPlace(stack);
   return el;
-}
-
-// Where the stack goes while a dialog is open. No corner of the page is
-// free of controls (a dialog's buttons sit at the left of its foot on some
-// and the right on others), and a refusal is most often said while one is
-// open, so the stack leaves the dialog's box: into the wider gutter beside
-// it at a desk, and where neither is wide enough (a phone, a narrow window)
-// to the top of the screen, letting every press through and going by its
-// clock, since what it said is on the record either way. With no dialog
-// open the stylesheet's corner holds.
-const TOAST_GUTTER = 240;
-// ...and again as a dialog opens or goes (page-motion.js armModal): a job's
-// toast stays while its job runs, and one up before the dialog stood over
-// the dialog's buttons and took their presses (the nodes suite's Cancel
-// under "Storage on shed: assigned").
-function toastReplace(){
-  const stack = $("toast");
-  if (stack && stack.children.length) toastPlace(stack);
-}
-function toastPlace(stack){
-  const box = [...document.querySelectorAll(".modal:not([hidden]):not(.inline):not(.leaving) > .box")].at(-1);
-  stack.style.cssText = "";
-  stack.classList.toggle("overdlg", false);
-  if (!box) return;
-  const r = box.getBoundingClientRect(), rail = $("rail")?.getBoundingClientRect().right || 0;
-  const right = innerWidth - r.right - 24, left = r.left - rail - 24;
-  if (Math.max(right, left) >= TOAST_GUTTER){
-    const w = Math.min(420, Math.max(right, left));
-    stack.style.cssText = right >= left ? `left:auto;right:12px;width:${w}px` : `right:auto;left:${rail + 12}px;width:${w}px`;
-    return;
-  }
-  stack.classList.add("overdlg");
 }
 
 // Each toast's own clock, which stops while the stack is held and goes on
