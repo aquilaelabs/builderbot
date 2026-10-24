@@ -267,7 +267,7 @@ function nbMemoryView({$, nb}){
       }
       if (j.error){ notify(j.error, true); return null; }
       return j;
-    }catch(e){ notify("could not reach the server: " + e, true); return null; }
+    }catch(e){ notify("could not reach the server: " + failWords(e), true); return null; }
   }
 
   // One button for the lot: any memory whose text or index line was touched.

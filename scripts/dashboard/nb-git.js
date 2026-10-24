@@ -87,7 +87,7 @@ function nbGitView({$, nb, project}){
       if (j.error) return notify(j.error, true);
       if (!j.sent) notify("Not sent: the session is busy. Press Enter in its tab when it is free.", true);
       startClaude(project, null);
-    }catch(e){ notify("ask: " + e, true); }
+    }catch(e){ notify("ask: " + failWords(e), true); }
     finally{ if (btn && btn.isConnected) unbusy(btn, btn.dataset.label || btn.textContent); }
   }
   // The project directory is the owner's working tree (B236): anybody else
@@ -192,7 +192,7 @@ function nbGitView({$, nb, project}){
       notify(j.out ? j.out.split("\n").slice(-1)[0] : `${action} done`);
       await loadGit();
       return j;
-    }catch(e){ notify("git: " + e, true); return {error: String(e)}; }
+    }catch(e){ notify("git: " + failWords(e), true); return {error: String(e)}; }
     finally{ if (btn && btn.isConnected) unbusy(btn, btn.dataset.label || btn.textContent); }
   }
   const gitBusy = (btn, verb) => { btn.dataset.label = btn.dataset.label || btn.textContent; return btn; };
@@ -435,7 +435,7 @@ function nbGitView({$, nb, project}){
         const j = await (await postJSON("/api/ci-watch", {project})).json();
         if (j.error) notify(j.error, true);
         else { git.ci = j; drawGit(); }
-      }catch(e){ notify("could not reach the controller: " + e, true); }
+      }catch(e){ notify("could not reach the controller: " + failWords(e), true); }
       finally{ if (cl.isConnected) unbusy(cl, "Look now"); }
     };
     body.querySelectorAll("[data-gitask]").forEach(b => b.onclick = () => gitAsk(b.dataset.gitask, {}, b));

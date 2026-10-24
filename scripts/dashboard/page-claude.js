@@ -114,7 +114,7 @@ async function claudeEnd(name, n, several){
     if (j.error) return notify(j.error, true);
     dropAgentTab("claude", name, several && n.id ? n.id : "");
     notify(`ended your Claude session on ${projLabel(name)}${where}`);
-  }catch(e){ notify("could not end it: " + e, true); }
+  }catch(e){ notify("could not end it: " + failWords(e), true); }
   refresh();
 }
 
@@ -292,7 +292,7 @@ async function agentEnd(id, name, n, several){
     if (j.error) return notify(j.error, true);
     dropAgentTab(id, name, several && n.id ? n.id : "");
     notify(`ended your ${a.name} session on ${projLabel(name)}${where}`);
-  }catch(e){ notify("could not end it: " + e, true); }
+  }catch(e){ notify("could not end it: " + failWords(e), true); }
   refresh();
 }
 

@@ -674,7 +674,7 @@ function nbRoadmapView({$, nb}){
       // each would flicker the list through every intermediate arrangement.
       if (!quiet){ drawRoadmap(j, true); refresh(); }
       return j;
-    }catch(e){ notify("could not reach the server: " + e, true); return null; }
+    }catch(e){ notify("could not reach the server: " + failWords(e), true); return null; }
   }
 
   // ---- two writers, one item ------------------------------------------------

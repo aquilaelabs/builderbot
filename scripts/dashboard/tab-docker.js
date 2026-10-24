@@ -685,7 +685,7 @@ async function openDevEnv(project, instance){
   try{
     const r = await postJSON("/api/devapp", {project, instance, action: "env-get"});
     j = await r.json();
-  }catch(e){ notify("env: " + e, true); return; }
+  }catch(e){ notify("env: " + failWords(e), true); return; }
   const m = document.getElementById("devEnvModal");
   m.querySelector("textarea").value = j.text || "";
   // Both halves: whether this is a draft off the example, and what the STORED
@@ -708,7 +708,7 @@ async function openDevEnv(project, instance){
       m.hidden = true;
       notify("env saved");
       dockerList = null; dockerRev++; loadDocker();
-    }catch(e){ notify("env: " + e, true); }
+    }catch(e){ notify("env: " + failWords(e), true); }
   };
 }
 
@@ -1058,7 +1058,7 @@ async function dmAction(project, instance, act, btn){
     try{
       await postJSON("/api/devapp", {project, instance, action: "abort"});
     }
-    catch(e){ notify("could not stop it: " + e, true); }
+    catch(e){ notify("could not stop it: " + failWords(e), true); }
     dockerRev++; drawPanes(); loadDocker();
     return;
   }
@@ -1074,7 +1074,7 @@ async function dmAction(project, instance, act, btn){
       else if (j.note) notify(j.note, true);
       else notify(`updating nginx to ${j.to}: this row has the build`);
     }
-    catch(e){ notify("could not update it: " + e, true); }
+    catch(e){ notify("could not update it: " + failWords(e), true); }
     dockerRev++; drawPanes(); loadDocker();
     return;
   }
@@ -1102,7 +1102,7 @@ async function dmAction(project, instance, act, btn){
     try{
       const r = await postJSON("/api/devapp", {project, instance, action:"state"});
       st = (await r.json()).state || {};
-    }catch(e){ notify("could not read its state: " + e, true); return; }
+    }catch(e){ notify("could not read its state: " + failWords(e), true); return; }
     if ((st.problems || []).length){
       notify(`${dmCalled(project, instance)} will not work as written: `
              + st.problems.join("; "), true);
@@ -2373,7 +2373,7 @@ function dmWireRows(el, list = dockerList){
       await applyOwner(key);
       if (inst){ await applyMove(inst); await applyRef(inst); await applyOverride(inst); if (row?.dataset.inst) await applyRoute(row); }
       if (name) await applyBoot(name);
-    }catch(e){ notify("apply: " + e, true); }
+    }catch(e){ notify("apply: " + failWords(e), true); }
     finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
     dockerList = null; dockerRev++; loadDocker();
   });
@@ -2579,7 +2579,7 @@ async function dmCheck(btn, node, after){
     if (j.error) notify(j.error, true);
     else notify(j.behind ? `${j.behind} container${j.behind === 1 ? " has" : "s have"} a newer image: Update on ${j.behind === 1 ? "its row" : "their rows"}`
                          : `checked ${j.checked}: every registry image is current`);
-  }catch(e){ notify("could not check: " + e, true); }
+  }catch(e){ notify("could not check: " + failWords(e), true); }
   after();
 }
 // The tiles: what runs of how many, the updates due once images were

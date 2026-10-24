@@ -227,7 +227,7 @@ async function pJobAct(action){
   try{
     const j = await (await postJSON("/api/project-job", {action})).json();
     if (j.error) notify(j.error, true);
-  }catch(e){ notify("could not reach the server: " + e, true); }
+  }catch(e){ notify("could not reach the server: " + failWords(e), true); }
   pJobPoll();
 }
 
@@ -243,7 +243,7 @@ async function setArchived(name, on){
     applyNow(p => { if (p.name === name) p.archived = !!j.archived; });
     notify(on ? `${projLabel(name)} archived: in Archived at the foot of the Projects page, and working as before`
               : `${projLabel(name)} unarchived`);
-  }catch(e){ notify("archive failed: " + e, true); }
+  }catch(e){ notify("archive failed: " + failWords(e), true); }
   refresh();
 }
 
@@ -271,7 +271,7 @@ async function setLocked(name, on){
     notify(on ? `${projLabel(name)} locked${j.ended?.length ? `: ${j.ended.length === 1 ? "a session" : `${j.ended.length} sessions`} ended` : ""}`
               : `${projLabel(name)} unlocked`);
     applyNow(x => { if (x.name === name){ x.locked = !!j.locked; x.locked_admin = !!j.admin; } });
-  }catch(e){ notify("lock failed: " + e, true); }
+  }catch(e){ notify("lock failed: " + failWords(e), true); }
   refresh();
 }
 
@@ -295,7 +295,7 @@ async function askProjectGroup(btn){
     if (j.error){ notify(j.error, true); return; }
     applyNow(x => { x.group = (j.groups || {})[x.name] || ""; });
     notify(got ? `${projLabel(name)} is in ${got}` : `${projLabel(name)} is in no group`);
-  }catch(e){ notify("group: " + e, true); }
+  }catch(e){ notify("group: " + failWords(e), true); }
   refresh();
 }
 
@@ -364,7 +364,7 @@ async function setProjectPinned(name, on){
     // /api/status put a poll's latency between the click and the button
     // moving, on a control whose whole job is instant.
     applyNow(p => { p.pinned = (j.pinned || []).includes(p.name); });
-  }catch(e){ notify("pin failed: " + e, true); }
+  }catch(e){ notify("pin failed: " + failWords(e), true); }
   refresh();                       // ...and reconcile, in the background
 }
 

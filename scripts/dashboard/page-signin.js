@@ -172,7 +172,7 @@ async function signIn(nodeId, btn, id = "claude"){
 async function signinCancel(btn){
   busy(btn, "Stopping");
   try{ await postJSON("/api/signin", {action: "cancel"}); }
-  catch(e){ notify("could not reach the server: " + e, true); }
+  catch(e){ notify("could not reach the server: " + failWords(e), true); }
   signinCode = "";
   await refresh();
   nodesRev++; drawPanes();
@@ -201,7 +201,7 @@ async function sendCode(){
     const j = await r.json();
     if (j.error) notify(j.error, true);
     else { signinCode = ""; notify("sent: the row says what the sign-in makes of it"); }
-  }catch(e){ notify("could not reach the server: " + e, true); }
+  }catch(e){ notify("could not reach the server: " + failWords(e), true); }
   await refresh();
   nodesRev++; drawPanes();
 }

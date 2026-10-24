@@ -55,6 +55,6 @@ async function rnSessionEnd(name, r, btn){
       {project: name, action: "end", session: r.name, node: r.node_id || ""})).json();
     if (j.error){ notify(j.error, true); unbusy(btn, "End"); return; }
     notify(`ended ${whose} ${r.kind === "claude" ? "Claude session" : "shell"} on ${projLabel(name)}`);
-  }catch(e){ notify("could not end it: " + e, true); unbusy(btn, "End"); return; }
+  }catch(e){ notify("could not end it: " + failWords(e), true); unbusy(btn, "End"); return; }
   rnSessionsLoad(name);
 }

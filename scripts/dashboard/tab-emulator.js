@@ -342,6 +342,6 @@ async function emuAct(action, image, btn){
         ? `${image.length} images` : (many ? image[0] : image)} on ${
         emu?.name || "the node"}; this can take minutes`);
     }
-  }catch(e){ notify("could not start: " + e, true); }
+  }catch(e){ notify("could not start: " + failWords(e), true); }
   loadEmulator();
 }

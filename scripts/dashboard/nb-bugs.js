@@ -88,7 +88,7 @@ function nbBugsView({$, nb, project}){
       if (nb.bugRev !== null) nb.bugRev += 1;
       drawBugs(true);
       return j;
-    }catch(e){ notify("could not reach the server: " + e, true); return null; }
+    }catch(e){ notify("could not reach the server: " + failWords(e), true); return null; }
   }
 
   const SEVS = ["low", "medium", "high", "critical"];

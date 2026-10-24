@@ -443,7 +443,7 @@ function nbRulesView({$, nb, project}){
       nb.ruleEditing.clear();                   // written: back to reading them
       nb.ruleOpen.clear(); nb.ruleWas.clear();
       drawRules();
-    }catch(e){ notify("could not reach the server: " + e, true); }
+    }catch(e){ notify("could not reach the server: " + failWords(e), true); }
   }
 
   return {loadRules, drawRules, saveRules, ruleDirty};

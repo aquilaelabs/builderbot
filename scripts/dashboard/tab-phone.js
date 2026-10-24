@@ -102,7 +102,10 @@ async function phFetch(body, probe){
     const j = await r.json();
     if (j.error){ notify(j.error, true); if (!ph) return; }
     else ph = j;
-  }catch(e){ notify("phone: " + e, true); }
+  // A read of its own that met a controller not answering is the poll's to
+  // say (its light and the line under the header), not a failure to keep;
+  // a press is told either way (B301).
+  }catch(e){ if (body || !unreached(e)) notify("phone: " + failWords(e), true); }
   phBusy = ""; phRefreshing = false;
   if (ph && !ph.nodes.some(n => n.id === phNode)) phNode = ph.nodes[0]?.id || "";
   // A probe asked for before any node was known went nowhere: now one is,

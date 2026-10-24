@@ -134,7 +134,7 @@ function renderSettingsInto(i){
     try{
       const j = await (await postJSON("/api/apps", {action: "check"})).json();
       if (j.error) notify(j.error, true);
-    }catch(e){ notify("could not reach the controller: " + e, true); }
+    }catch(e){ notify("could not reach the controller: " + failWords(e), true); }
     // The look runs in the background; read again once it has had a moment.
     setTimeout(loadApps, 4000);
     await loadApps();
@@ -475,7 +475,7 @@ function openDebugSettings(){
       shut();
       notify("saved");
       refresh();
-    }catch(e){ notify("settings: " + e, true); unbusy(go, "Save"); }
+    }catch(e){ notify("settings: " + failWords(e), true); unbusy(go, "Save"); }
   };
 }
 
@@ -588,7 +588,7 @@ function wireSettingsSections(el){
         else if (j.tunnel?.error) notify(`saved; the tunnel: ${j.tunnel.error}`, true);
         else notify("saved");
         refresh();
-      }catch(e){ notify("settings: " + e, true); }
+      }catch(e){ notify("settings: " + failWords(e), true); }
       finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
     };
     btn.onclick = apply;
@@ -640,7 +640,7 @@ function wireIdleSection(el){
       notify(j.minutes ? `every agent's session ends after ${j.minutes} idle minute(s), here and on every node`
                        : "no session is ended for being idle");
       refresh();
-    }catch(e){ notify("idle: " + e, true); }
+    }catch(e){ notify("idle: " + failWords(e), true); }
     finally{ if (btn && btn.isConnected){ btn.disabled = false; btn.textContent = "Apply"; } }
   };
   el.querySelector("#idleApply").onclick = apply;
@@ -705,7 +705,7 @@ function wirePathsSection(el){
                         : `${i.dataset.path} is kept at ${i.value.trim() || "its default"}`);
       }
       refresh();
-    }catch(e){ notify("storage: " + e, true); }
+    }catch(e){ notify("storage: " + failWords(e), true); }
     finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
   };
   btn.onclick = apply;

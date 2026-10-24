@@ -34,6 +34,12 @@ const TOAST_ICONS = {
 };
 let toastHeld = false;
 
+// A failed request in words: the browser's TypeError for a fetch that never
+// landed is the controller not answering (a restart, the network), said so
+// rather than as a JavaScript error; anything else as it came (B301).
+const unreached = e => e instanceof TypeError && /fetch|network|load failed/i.test(e.message || "");
+const failWords = e => unreached(e) ? "the controller did not answer" : String(e?.message || e);
+
 // `opts.kind` is what the record files it under ("said", the default, or
 // "ask" or "job"); `opts.job` names the job it is about.
 function notify(msg, bad, opts = {}){

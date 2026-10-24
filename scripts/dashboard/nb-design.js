@@ -136,7 +136,7 @@ function nbDesignView({$, nb, project, root}){
         if (nb.dsData) nb.dsData.file = j.file;
         notify(`${j.path} written into ${projLabel(project)}: the Git view shows it until a session commits it`);
       }
-    }catch(e){ notify("design: " + e, true); }
+    }catch(e){ notify("design: " + failWords(e), true); }
     unbusy(b, "Write the file");
     drawHint();
   };
@@ -976,7 +976,7 @@ function nbDesignView({$, nb, project, root}){
     try{
       j = await (await postJSON("/api/design", {project, action: "save", language: lang,
                                                   pages: pages.map(p => ({...p, id: p.id > 0 ? p.id : undefined}))})).json();
-    }catch(e){ notify("design: " + e, true); return null; }
+    }catch(e){ notify("design: " + failWords(e), true); return null; }
     if (j.error){ notify("design: " + j.error, true); return null; }
     // The saved pages come back with their ids, and a board keyed by a
     // temporary number is keyed by its id from here.

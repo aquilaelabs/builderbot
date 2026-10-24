@@ -1660,6 +1660,6 @@ async function deleteProject(name){
     // a second delete of the same name is numbered rather than overwriting the
     // first, and the first is exactly the copy somebody would want back.
     notify(`${projLabel(name)} moved to ${j.to}`);
-  }catch(e){ notify("delete failed: " + e, true); }
+  }catch(e){ notify("delete failed: " + failWords(e), true); }
   refresh();
 }

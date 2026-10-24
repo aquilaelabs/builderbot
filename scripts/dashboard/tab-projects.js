@@ -256,7 +256,7 @@ async function renameProjectGroup(btn){
     if (j.error){ notify(j.error, true); return; }
     applyNow(x => { x.group = (j.groups || {})[x.name] || ""; });
     notify(gone ? `${was} is gone: its projects are in no group` : `${was} is now ${got}`);
-  }catch(e){ notify("group: " + e, true); }
+  }catch(e){ notify("group: " + failWords(e), true); }
   refresh();
 }
 

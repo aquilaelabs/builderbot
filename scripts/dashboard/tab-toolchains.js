@@ -982,5 +982,5 @@ async function tcAct(action, only){
       : action === "sysdeps" ? "installing the system packages" + on
       : `${action === "remove" ? "removing" : "installing"} ${names.join(", ")}${on}`);
     loadToolchains();
-  }catch(e){ notify("could not start: " + e, true); }
+  }catch(e){ notify("could not start: " + failWords(e), true); }
 }

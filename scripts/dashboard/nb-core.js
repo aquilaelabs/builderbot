@@ -268,7 +268,7 @@ function makeNotebook(project){
       try{
         const j = await (await postJSON("/api/roadmap", {project, action: "batch-close"})).json();
         if (j.error) notify(j.error, true);
-      }catch(e){ notify("could not reach the server: " + e, true); }
+      }catch(e){ notify("could not reach the server: " + failWords(e), true); }
       await refresh();
     };
     const rr = $("roadmapReread");

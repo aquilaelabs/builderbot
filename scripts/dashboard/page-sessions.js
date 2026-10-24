@@ -127,7 +127,7 @@ async function killSession(name, node = ""){
     const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === name);
     if (t) dropTab(t.id);
     notify(`ended ${said}`);
-  }catch(e){ notify("could not end it: " + e, true); }
+  }catch(e){ notify("could not end it: " + failWords(e), true); }
   await refresh();
   // Nowhere near another End (B54): with focus left on the list, a keyboard
   // Enter after the redraw could end a second session.

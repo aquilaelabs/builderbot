@@ -704,7 +704,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             pane.querySelector("#clState").textContent =
               `saved: ${a.entries} line${a.entries === 1 ? "" : "s"}`;
             loadVersion();
-          }catch(e){ notify("changelog: " + e, true); }
+          }catch(e){ notify("changelog: " + failWords(e), true); }
           finally{ if (save.isConnected) unbusy(save, "Save"); }
         };
       };
@@ -827,7 +827,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
                  true);
         }
         startClaude(project, null);   // opens the tab, or goes to the one there
-      }catch(e){ notify("ask: " + e, true); }
+      }catch(e){ notify("ask: " + failWords(e), true); }
       // finally, not after the try: an exception on the way to the session
       // used to leave this dead, and a button that will not fire twice is
       // indistinguishable from one that did nothing.
@@ -1051,7 +1051,7 @@ this directory">Send to Claude</button>
       else if (j.created) notify(`${j.created.component || "this project"} `
                                  + `is now ${j.created.target}`);
       return j;
-    }catch(e){ notify("version: " + e, true); }
+    }catch(e){ notify("version: " + failWords(e), true); }
     finally{ await loadVersion(); }
   }
 
@@ -1060,7 +1060,7 @@ this directory">Send to Claude</button>
       const r = await postJSON("/api/artifacts", {project, ...body});
       const j = await r.json();
       if (j.error){ notify(j.error, true); }
-    }catch(e){ notify("artifacts: " + e, true); }
+    }catch(e){ notify("artifacts: " + failWords(e), true); }
     await loadArtifacts();
   }
 

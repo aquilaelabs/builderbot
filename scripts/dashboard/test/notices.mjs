@@ -248,5 +248,21 @@ const offDialog = () => page.evaluate(() => {
   await page.setViewportSize({ width: 1280, height: 900 });
 }
 
+// A request that never landed is the controller not answering, said so, and
+// the Phone page's own read leaves it to the poll rather than keeping a
+// failure (B301).
+{
+  const r = await page.evaluate(async () => {
+    const words = [failWords(new TypeError('Failed to fetch')), failWords(new Error('quota spent'))];
+    const kept = [], realFetch = window.fetch, realNotify = window.notify;
+    window.fetch = () => Promise.reject(new TypeError('Failed to fetch'));
+    window.notify = m => kept.push(String(m));
+    try { await phFetch(); } finally { window.fetch = realFetch; window.notify = realNotify; }
+    return { words, kept };
+  });
+  ok(r.words[0] === 'the controller did not answer' && r.words[1] === 'quota spent' && !r.kept.some(t => /phone/.test(t)),
+     `a fetch that never landed is said as the controller not answering, and the Phone page's own read keeps no failure for it (${JSON.stringify(r)})`);
+}
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
 await done(browser);

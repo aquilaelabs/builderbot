@@ -74,7 +74,7 @@ function nbPermsView({$, nb, project, root}){
         draft = {};
         notify("saved");
         refresh();
-      }catch(e){ notify("policy: " + e, true); }
+      }catch(e){ notify("policy: " + failWords(e), true); }
       finally{ if (pa.isConnected) unbusy(pa, "Apply"); drawPush(); }
     };
   }

@@ -314,7 +314,7 @@ function wireLogSection(el){
         ? `keeping ${j.days} days: ${j.removed} file${j.removed === 1 ? "" : "s"} removed`
         : `keeping ${j.days} days; nothing was past it`);
       refresh(); drawUiMenu();
-    }catch(e){ notify("logs: " + e, true); }
+    }catch(e){ notify("logs: " + failWords(e), true); }
     finally{ if (btn?.isConnected) unbusy(btn, "Apply"); }
   };
   el.querySelector("#logApply").onclick = apply;
@@ -329,7 +329,7 @@ function wireLogSection(el){
       const j = await r.json();
       notify(j.error || `${j.removed} file${j.removed === 1 ? "" : "s"} removed`, !!j.error);
       refresh(); drawUiMenu();
-    }catch(e){ notify("logs: " + e, true); }
+    }catch(e){ notify("logs: " + failWords(e), true); }
   };
 }
 

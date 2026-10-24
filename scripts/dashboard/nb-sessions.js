@@ -93,7 +93,7 @@ function nbSessionsView({$, nb, project, root}){
       const j = await (await postJSON("/api/transcripts", {project, id, action})).json();
       if (j.error) notify(j.error, true);
       else notify({delete: "deleted", share: "visible to every session on this project", unshare: "yours alone again"}[action]);
-    }catch(e){ notify("could not reach the controller: " + e, true); }
+    }catch(e){ notify("could not reach the controller: " + failWords(e), true); }
     await loadSessions();
   }
   return {loadSessions};
