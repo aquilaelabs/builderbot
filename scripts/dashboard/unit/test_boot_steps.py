@@ -155,5 +155,25 @@ class RootState(unittest.TestCase):
             self.assertRegex(text, r'\nSTORE="\$\(bb_root_state\)/', f)
 
 
+
+class InstallKey(unittest.TestCase):
+    """install_key_file under set -u (the boot's own): an install with a key
+    and no previous one starts, and one with both keeps both (R126)."""
+    def run_it(self, env):
+        d = tempfile.mkdtemp()
+        body = (f'eval "$(declare -f install_key_file | sed "s#/run/builderbot-key#{d}/key#")"\n'
+                'BB_ACCOUNT=$(id -un); install_key_file; ls ' + d)
+        return sh(body, env), d
+
+    def test_a_key_and_no_previous(self):
+        r, d = self.run_it({"INSTALL_KEY": "k" * 32})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(sorted(os.listdir(d)), ["key"])
+
+    def test_a_key_and_the_one_before(self):
+        r, d = self.run_it({"INSTALL_KEY": "k" * 32, "INSTALL_KEY_PREVIOUS": "p" * 32})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(open(os.path.join(d, "key-previous")).read(), "p" * 32)
+
 if __name__ == "__main__":
     unittest.main()

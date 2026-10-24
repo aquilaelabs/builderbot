@@ -66,8 +66,9 @@ install_key_file() {
     # sign-ins sealed on the nodes under it are opened with it once more and
     # sealed again under the new one (R126), after which it can go.
     rm -f "$f-previous"
-    if [ "${#INSTALL_KEY_PREVIOUS}" -ge 16 ]; then
-        ( umask 077; printf '%s' "$INSTALL_KEY_PREVIOUS" > "$f-previous" )
+    local prev="${INSTALL_KEY_PREVIOUS:-}"
+    if [ "${#prev}" -ge 16 ]; then
+        ( umask 077; printf '%s' "$prev" > "$f-previous" )
         chown "$BB_ACCOUNT" "$f-previous" 2>/dev/null || true
     fi
 }
