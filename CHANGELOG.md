@@ -13,6 +13,7 @@
 ### Fixed
 
 - Pressing the filter chip or the settings section that is already selected no longer redraws the page with a fade (4a237e5)
+- On a desk the dock's line of tabs, with more tabs than fit, has an arrow at each end with more past it and can be dragged with the mouse (8abd211)
 
 ### Security
 
