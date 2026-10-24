@@ -132,9 +132,15 @@ ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Reach from outside|Room
   const G = '.settingstab [data-group="Idle sessions"]';
   const awake = () => page.$eval(G, g => [g.querySelector('#idleApply').disabled, g.querySelector('[data-srevert]').disabled].join());
   const atRest = await awake();
+  // Each read waits for the redraw the typing starts, which a loaded machine
+  // can take a moment over.
+  const settle = want => page.waitForFunction(([g, w]) => { const e = document.querySelector(g);
+    return e && [e.querySelector('#idleApply').disabled, e.querySelector('[data-srevert]').disabled].join() === w; }, [G, want], { timeout: 5000 }).catch(() => {});
   await page.fill('#idleMin', '4321');
+  await settle('false,false');
   const changed = await awake();
   await page.fill('#idleMin', was);
+  await settle('true,true');
   const back = await awake();
   ok(atRest === 'true,true' && changed === 'false,false' && back === 'true,true',
      `a section's Apply and Revert sleep until a field differs, and again when it is typed back (${atRest} | ${changed} | ${back})`);
