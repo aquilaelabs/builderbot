@@ -617,7 +617,7 @@ claude_scope() {
               # its tree: a session asked the person to approve reading the
               # file it was about to update (Shebang-DevBoard, 6 Oct).
               additionalDirectories: ([$mem] + $workdirs),
-              deny: (map(select(. as $d | $works | index($d) | not))
+              deny: ((map(select(. as $d | $works | index($d) | not))
                      | map(select(. as $d | $reads | index($d) | not) | "Read(\(.)/**)", "Edit(\(.)/**)")
                        + map(select(. as $d | $reads | index($d)) | "Edit(\(.)/**)"))
                      + ([$here] + $workdirs | map("Edit(\(.)/VERSION)", "Edit(\(.)/**/VERSION)"))
