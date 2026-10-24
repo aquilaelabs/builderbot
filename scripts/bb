@@ -3108,22 +3108,6 @@ cmd_container() {
     esac
 }
 
-# bb devapp: this project's dev instance, and what a session may be given
-# over it.
-#
-# Up, Down and a container of any other shape are the operator's. What a
-# project can hand over, with one setting in its settings dialog (Agents may:
-# Run its container), is sending it to Docker (its own container, or another
-# beside it: 24 and 26 Sep), rebuilding its containers, changing their env
-# and removing one, because a project whose work IS the container has a loop
-# that a session cannot close otherwise: change it, rebuild it, look at what
-# it did. Three settings and `deny` is the default: `auto` is the loop, `ask`
-# puts the reason in front of a person and starts the build when they allow
-# it, `deny` refuses with the sentence that names the dial, so a session that
-# tries learns where the decision lives rather than guessing.
-#
-# The daemon is the controller's connection to the node, so this goes through
-# the API like `bb root` and `bb phone` rather than running docker anywhere.
 # bb sign (R106): a build in dist/ signed on the project's node with one of
 # its keys, which the session never receives. sign-verbs.py asks, follows an
 # ask to its answer and the job to its verdict.
@@ -3169,6 +3153,22 @@ cmd_sign() {
         python3 "$BB_LIB/sign-verbs.py" "${file#dist/}" "$route" "$why"
 }
 
+# bb devapp: this project's dev instance, and what a session may be given
+# over it.
+#
+# Up, Down and a container of any other shape are the operator's. What a
+# project can hand over, with one setting in its settings dialog (Agents may:
+# Run its container), is sending it to Docker (its own container, or another
+# beside it: 24 and 26 Sep), rebuilding its containers, changing their env
+# and removing one, because a project whose work IS the container has a loop
+# that a session cannot close otherwise: change it, rebuild it, look at what
+# it did. Three settings and `deny` is the default: `auto` is the loop, `ask`
+# puts the reason in front of a person and starts the build when they allow
+# it, `deny` refuses with the sentence that names the dial, so a session that
+# tries learns where the decision lives rather than guessing.
+#
+# The daemon is the controller's connection to the node, so this goes through
+# the API like `bb root` and `bb phone` rather than running docker anywhere.
 cmd_devapp() {
     # --instance NAME before or after the verb, for a project with several;
     # with none named the controller answers for the project's only one.
