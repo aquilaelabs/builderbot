@@ -2577,9 +2577,24 @@ def claude_model_now(project_dir, uid=""):
     return found[-1] if found else ""
 
 
-def end_claude(project):
-    """End this project's Claude session, so the next press of Claude starts
-    one on the setting just saved.
+def end_agents(project):
+    """End this project's coding-agent sessions, every agent's (R95 step 16:
+    Claude's alone was ended, and a ChatGPT or Copilot session kept what it
+    started with), so the next Start agent starts one on the setting just
+    saved. {ended, on_node?} if any was, else {ended: False, why}."""
+    out = {"ended": False, "why": "no session is running here"}
+    for session in agent_sessions(project):
+        r = _end_agent(session)
+        if r.get("ended"):
+            out = r
+        elif not out.get("ended") and r.get("why") != "no session is running here":
+            out = r
+    return out
+
+
+def _end_agent(session):
+    """End one agent's session on a project, so the next press starts one
+    on the setting just saved.
 
     It used to RESPAWN the pane in place, with `tmux respawn-pane -k` running
     the launcher again with `--respawn`, which kept the session, and the browser
@@ -2591,10 +2606,9 @@ def end_claude(project):
     with it.
 
     A session ended is not a conversation lost: the transcript is the
-    account's own and the Claude button resumes it. What it costs is the turn
-    in flight, which is what the dialog asking about it says.
+    account's own and Start agent resumes it. What it costs is the turn in
+    flight, which is what the dialog asking about it says.
     """
-    session = claude_session(project)
     if session not in {s["name"] for s in tmux_sessions()}:
         # On a node, through its agent, under the name that machine knows it
         # by, which is the same path the Sessions card's kill takes.
@@ -3758,7 +3772,7 @@ artifacts.phone_summary = lambda name, uid: phone.summary(
     nodes.node(prefs.get(name)["node"]) if prefs.get(name)["node"] and not NODES_OK else None)
 # The settings dialog's save (prefs.dialog_save).
 prefs.configure_dialog(WORKSPACE=WORKSPACE, pin_instances=devapp.pin_to_current_node,
-                       end_claude=end_claude, net_nudge=net_nudge)
+                       end_agents=end_agents, net_nudge=net_nudge)
 
 # ---- the Profile tab -------------------------------------------------------------
 # An account's own settings, read and saved: profiletab.py.

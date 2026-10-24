@@ -1591,10 +1591,10 @@ async function rnSubmit(sect, end = false){
       if (running && start.length && !j.ended)
         notify(restartNow
                  ? `${projLabel(name)}: saved, but the session was not ended: ` + (j.why || "it is still on what it started with")
-                 : `${projLabel(name)}: saved. Its running session keeps what it started with until you end it and press Claude again.`,
+                 : `${projLabel(name)}: saved. Its running session keeps what it started with until you end it and press Start agent again.`,
                restartNow);
       else if (restartNow && j.ended)
-        notify(`${projLabel(name)}: saved, and its session ended: press Claude to start one on it, resuming the conversation`);
+        notify(`${projLabel(name)}: saved, and its session ended: press Start agent to start one on it, resuming the conversation`);
     }
     if (sect === "people" && rnPeople && ((rnPeopleDraft.owner && rnPeopleDraft.owner !== rnPeople.owner)
         || (rnPeopleDraft.invite_only !== undefined && rnPeopleDraft.invite_only !== rnPeople.invite_only))){
