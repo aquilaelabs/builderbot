@@ -273,6 +273,7 @@ function tcRow(p, busy, job, managed){
       ${tcSystemLine(p, managed)}
       ${tcNeedsLine(p)}
       ${p.installed && p.path && !mine ? `<span class="sub tcpath">at ${esc(p.path)}</span>` : ""}
+      ${tcVerifiedLine(p)}
       </span>
     </span>`,
     // Whatever version is known, installed or reported: a node's own
@@ -287,6 +288,16 @@ function tcRow(p, busy, job, managed){
       p.reopen && !mine ? `<span class="sub warn tcreopen">${p.reopen === 1 ? "1 session" : `${p.reopen} sessions`}
         open here started before this was installed: reopen ${p.reopen === 1 ? "it" : "them"} to use it</span>` : ""}
   </label>`;
+}
+// How an installed toolchain's download was checked when it was installed
+// (R137): against what its publisher states, or not, and why not. Nothing
+// for one installed before BuilderBot checked.
+function tcVerifiedLine(p){
+  const v = p.installed ? p.verified : null;
+  if (!v) return "";
+  return v.algo === "none"
+    ? `<span class="sub tcverified">Not checked when it was installed: ${esc(v.where)}</span>`
+    : `<span class="sub tcverified">Checked when it was installed: its ${esc(v.algo)} matched ${esc(v.where)}</span>`;
 }
 // ---- tool packs (R77) -------------------------------------------------------
 // The packs an administrator added, as a table, a row each with Edit at its

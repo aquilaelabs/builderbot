@@ -503,6 +503,33 @@ def runner_env_text(state):
     return "".join(f"{k}={v}\n" for k, v in sorted(sdk_env(state).items()))
 
 
+def sdk_verified(state):
+    """How each toolchain in the store was checked when it was installed
+    (R137): {name: {algo, where}}, algo "none" with why where its publisher
+    states nothing; a toolchain installed before this has no record and is
+    left out."""
+    store = tc_root(state)
+    out = {}
+    if not store:
+        return out
+    try:
+        names = sorted(os.listdir(store))[:80]
+    except OSError:
+        return out
+    for name in names:
+        if name.startswith("."):
+            continue
+        with contextlib.suppress(OSError, ValueError):
+            with open(os.path.join(store, name, ".bb-verified"), encoding="utf-8") as f:
+                parts = f.readline().rstrip("\n").split("\t")
+            algo = parts[0]
+            if algo in ("sha1", "sha256", "sha512"):
+                out[name] = {"algo": algo, "where": (parts[2] if len(parts) > 2 else "")[:200]}
+            elif algo == "none":
+                out[name] = {"algo": "none", "where": (parts[1] if len(parts) > 1 else "")[:200]}
+    return out
+
+
 def sdk_versions(state):
     """What `bb toolchains versions` reports on this node: {name: version}.
 

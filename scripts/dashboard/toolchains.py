@@ -1258,6 +1258,7 @@ def payload_for_node(nid):
     pv = rep.get("toolchain_versions") or {}
     if not isinstance(pv, dict):
         pv = {}
+    ver = rep.get("toolchain_verified") if isinstance(rep.get("toolchain_verified"), dict) else {}
     plat = platform_of(n)
     store = (rep.get("stores") or {}).get("toolchains") or {}
     items = []
@@ -1315,6 +1316,10 @@ def payload_for_node(nid):
                       "path": "", "version": (have if isinstance(have, str) else "") or "",
                       "size": human_kb(kb) if kb else "",
                       "size_from": "measured the last time it was installed here" if kb else "",
+                      # How its download was checked when it was installed
+                      # (R137): {algo, where}, algo "none" with why; absent
+                      # for one installed before that.
+                      "verified": ver.get(name) if here else None,
                       "latest": "", "state": ""})
     # The versions this node's projects pin (B712), beside the catalog's rows.
     items.extend(pin_rows(nid, rep))
