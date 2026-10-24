@@ -24,7 +24,13 @@ function paintBar(pane, t, i){
     bar.style.removeProperty("--pc");
     // Painted only when it changed: a poll that moves nothing leaves the
     // line's buttons where they are, and a pointer over one keeps its hover.
-    if (paint(bar, dockBar())){ wireDockBar(bar); dockReveal(bar); }
+    // A line drawn again keeps where it was scrolled to (B322).
+    const kept = bar.querySelector(".dockline")?.scrollLeft || 0;
+    if (paint(bar, dockBar())){
+      const line = bar.querySelector(".dockline");
+      if (line) line.scrollLeft = kept;
+      wireDockBar(bar); dockReveal(bar);
+    }
     return;
   }
   // Only the kinds that still declare it. Toolchains moved its own into the tab

@@ -282,7 +282,12 @@ function dockReveal(bar){
   // The ends' arrows first, since putting one there moves the tabs by the
   // line's gap (B318), then the tab brought into view, then the ends again.
   dockEdges(line);
-  if (on){
+  // Only when the tab in front changed: a line scrolled along by its arrow
+  // or a finger stays there while a session's dot moves (B322).
+  const front = on?.dataset.id || "";
+  const moved = front !== bar.bbFront;
+  bar.bbFront = front;
+  if (on && moved){
     const lr = line.getBoundingClientRect(), r = on.getBoundingClientRect();
     if (r.left < lr.left) line.scrollLeft -= lr.left - r.left;
     else if (r.right > lr.right) line.scrollLeft += r.right - lr.right;
