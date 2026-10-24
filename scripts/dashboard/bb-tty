@@ -1136,6 +1136,13 @@ start() {
     tmux set-option -g remain-on-exit-format \
         "BuilderBot: this ended before it started (exit #{pane_dead_status}). Close the tab, or open it again to start afresh." \
         2>/dev/null || true
+    # BuilderBot's tmux settings (the status line, PgUp's scrollback, the
+    # history kept), which the controller's server reads from the copy its
+    # start writes: a node's server, an account's own included, has no such
+    # copy, so it is given them here (B283).
+    if on_node; then
+        tmux source-file "$(dirname "$(readlink -f "$0")")/../lib/tmux.conf" 2>/dev/null || true
+    fi
     # ...and one left so from before is started afresh, not attached to.
     if tmux list-panes -t "=$s" -F '#{pane_dead}' 2>/dev/null | grep -qx 1; then
         tmux kill-session -t "=$s" 2>/dev/null || true
