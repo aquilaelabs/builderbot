@@ -136,8 +136,15 @@ ok(await waitFor(/kb-42/) && !keysAsked.length, `the keys bar's Enter goes down 
     while (Date.now() < end){ const got = fn(await shown()); if (got) return got; await new Promise(r => setTimeout(r, 200)); }
     return null; };
   await phone.evaluate(() => { const r = [...TERMS.values()].find(r => r.t.arg === 'sh:9:alpha'); r.term.focus(); });
-  await phone.keyboard.type('seq 1 300; echo pick-me-word\n');
-  await until(rows => rows.some(l => /^pick-me-word/.test(l)));
+  // The shell's prompt first: typed before the new shell is up, the line
+  // went nowhere and every check after it read an empty screen (B328).
+  await until(rows => rows.some(l => /[$#] *$/.test(l)), 20000);
+  let typed = null;
+  for (let i = 0; i < 3 && !typed; i++){
+    await phone.keyboard.type('seq 1 300; echo pick-me-word\n');
+    typed = await until(rows => rows.some(l => /^pick-me-word/.test(l)), 8000);
+  }
+  ok(typed, 'the phone\'s shell runs what is typed into it');
   const asked = [];
   phone.on('request', r => { if (r.url().includes('/api/keys')) asked.push(r.postData() || ''); });
   const box = await phone.$eval('#pane1 .slot.on .xterm-screen', e => { const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, top: b.top + 20, h: b.height }; });
@@ -147,6 +154,7 @@ ok(await waitFor(/kb-42/) && !keysAsked.length, `the keys bar's Enter goes down 
   await finger(phone, box.x, box.top, box.x, box.top + box.h * 0.6);
   let back = await until(scrolled, 5000), drags = 1;
   if (!back){ await finger(phone, box.x, box.top, box.x, box.top + box.h * 0.6); drags = 2; back = await until(scrolled); }
+  if (!back) console.log('the screen then:', JSON.stringify((await shown()).slice(-8)));
   ok(back && asked.some(b => /"lineup"/.test(b)),
      `a finger dragged down scrolls a shell back into its history (${drags} drag${drags === 1 ? '' : 's'}, ${asked.length} asked: ${asked[0] || ''})`);
   // Up again, past the bottom: copy mode ends by itself.
