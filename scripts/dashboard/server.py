@@ -6358,6 +6358,12 @@ class Handler(BaseHTTPRequestHandler):
         # alone: a bookmark, a phone reopening the app, and the WebUI link
         # all arrive at "/", and each of them should land on the thing that
         # has to happen rather than on a sign-in with nothing to sign in to.
+        # The agents' API is not a page and carries its own token: a
+        # controller installed bare metal enrolls its own machine as a node
+        # before anybody has made the first account (B323), and its agent's
+        # download met the first-run card.
+        if path.startswith("/api/v1/agent/"):
+            return self._agent()
         if not users.all_users() and path not in ("/favicon.ico", "/favicon.svg"):
             return self._login_page(setup=True)
         if path == "/login":
@@ -6366,8 +6372,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._setup_2fa_page()
         if path == "/logout":
             return self._logout()
-        if path.startswith("/api/v1/agent/"):
-            return self._agent()
         if path.startswith("/api/v1/device/"):
             return self._device()
         if path == "/api/v1/healthz":
