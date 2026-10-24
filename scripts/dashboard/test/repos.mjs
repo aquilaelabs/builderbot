@@ -87,6 +87,12 @@ const browser = await launch();
   });
   ok(tint.out && tint.out === tint.more, `on a colored card, Take out wears the card's tint as its other buttons do (${JSON.stringify(tint)})`);
   await page.evaluate(() => postJSON('/api/project-color', { name: 'gamma', color: '' }));
+  // A repository's own page names the project, its repositories a switch
+  // with this one picked (step 6).
+  const head = await page.evaluate(() => { const d = document.createElement('div'); d.innerHTML = projectHeader({ arg: 'ep.silon' });
+    return { name: d.querySelector('.pname')?.textContent.trim(), sw: [...d.querySelectorAll('[data-reposw]')].map(b => b.textContent.trim() + (b.classList.contains('on') ? '*' : '')) }; });
+  ok(head.name === 'Shop' && JSON.stringify(head.sw) === '["gamma","ep.silon*"]',
+     `a repository's page names its project, its repositories a switch with it picked (${JSON.stringify(head)})`);
   // Home's glance shows it once too, by its own name, both repositories
   // pinned.
   await page.evaluate(async () => { for (const name of ['gamma', 'ep.silon']) await postJSON('/api/project-pin', { name, pinned: true }); await refresh(); });

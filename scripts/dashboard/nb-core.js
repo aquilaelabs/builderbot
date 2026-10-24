@@ -1103,8 +1103,14 @@ function projectActions(p, extra = ""){
 function projectHeader(t){
   const name = t.arg, p = (state?.projects || []).find(x => x.name === name);
   if (!p) return `<div class="phead"><span class="pname">${esc(projLabel(name))}</span></div>`;
+  // A repository of a project of several (R136): the project's name, and
+  // its repositories as one switch, this one picked, each opening its own
+  // notebook.
+  const rk = Object.values(state?.repos || {}).find(r => r.members.includes(name));
+  const repoSwitch = rk ? `<span class="pseg prepos" role="group" aria-label="${esc(rk.name)}'s repositories">${rk.members.map(m =>
+    `<button type="button" data-reposw="${esc(m)}"${m === name ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"'}>${esc(projLabel(m))}</button>`).join("")}</span>` : "";
   return `<div class="phead">
-    <span class="pname">${esc(p.label || name)}${lockMark(p)}</span>
+    <span class="pname">${esc(rk ? rk.name : p.label || name)}${lockMark(p)}</span>${repoSwitch}
     <span class="pfacts">${projFacts(p)}</span>
     ${projectState(p)}
     <span class="sp"></span>
@@ -1115,6 +1121,9 @@ function projectHeader(t){
 // menu's own button is the one thing the row did differently.
 function wireProjectHeader(bar){
   wireProjectRows(bar);
+  bar.querySelectorAll("[data-reposw]").forEach(b => b.onclick = () => {
+    if (!b.classList.contains("on")) openNotebook(b.dataset.reposw);
+  });
   // On the project's own page its menu's Settings is the notebook's Settings
   // view (R259: the view strip carries no tab for it), not the dialog. Only
   // there: a card on the Projects page keeps wireProjectRows' Settings, which
