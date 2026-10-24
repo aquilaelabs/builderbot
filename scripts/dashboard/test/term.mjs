@@ -6,7 +6,8 @@
 // the same tmux session; a closed tab's socket goes with it; the switch off,
 // the same tab is ttyd's frame again. Driven through the page, as a person
 // at the dock would.
-import { launch, newPage, ok, done, ready, finger, URL } from './lib.mjs';
+import { launch, newPage, ok, done, ready, finger, URL, DIR } from './lib.mjs';
+import { appendFileSync, mkdirSync } from 'node:fs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -210,5 +211,30 @@ await page.waitForSelector('#pane1 .slot.on iframe', { timeout: 20000 });
 ok(await page.evaluate(() => !document.querySelector('#pane1 .slot.on.ownterm')),
    'with the switch off a shell tab is ttyd\'s frame again');
 await page.evaluate(id => dropTab(id), id2);
+
+// A log in the dock (R133 step 12), with the switch still off: the page's
+// own terminal, read-only, following the controller's log as it is written.
+{
+  mkdirSync(`${DIR}/state/logs`, { recursive: true });
+  appendFileSync(`${DIR}/state/logs/builderbot.log`, 'log-follow-first\n');
+  await page.evaluate(() => openLogTab('log:controller', 'Log: the controller'));
+  await page.waitForSelector('#pane1 .slot.on.ownterm .xterm', { timeout: 20000 }).catch(() => {});
+  const logText = () => page.evaluate(() => { const r = [...TERMS.values()].find(r => r.t.arg === 'log:controller' && r.term);
+    if (!r) return ''; const b = r.term.buffer.active, out = [];
+    for (let i = 0; i < b.length; i++) out.push(b.getLine(i)?.translateToString(true) || ''); return out.join('\n'); });
+  const seen = async re => { for (let i = 0; i < 40; i++){ if (re.test(await logText())) return true; await new Promise(r => setTimeout(r, 250)); } return false; };
+  const first = await seen(/log-follow-first/);
+  appendFileSync(`${DIR}/state/logs/builderbot.log`, 'log-follow-second\n');
+  const second = await seen(/log-follow-second/);
+  const ro = await page.evaluate(() => [...TERMS.values()].find(r => r.t.arg === 'log:controller')?.term?.options.disableStdin === true);
+  ok(first && second && ro, `the controller's log opens in the dock, read-only, and follows what is written to it (${first} ${second} ${ro})`);
+  await page.evaluate(() => dropTab(tabs.find(t => t.arg === 'log:controller').id));
+  // A kind it has no reader for ends at once, saying so.
+  await page.evaluate(() => openLogTab('log:nothing', 'Log: nothing'));
+  await page.waitForFunction(() => [...TERMS.values()].some(r => r.t.arg === 'log:nothing' && r.ended), null, { timeout: 15000 }).catch(() => {});
+  const why = await page.evaluate(() => [...TERMS.values()].find(r => r.t.arg === 'log:nothing')?.ended || '');
+  ok(/no log of the kind nothing/.test(why), `a log it has no reader for ends saying so (${why})`);
+  await page.evaluate(() => dropTab(tabs.find(t => t.arg === 'log:nothing').id));
+}
 
 await done(browser);

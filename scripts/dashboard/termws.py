@@ -186,3 +186,58 @@ def node(conn, *, host, port, key, kind, words, cols, rows, alive):
         return None
     finally:
         up.close()
+
+
+# ---- a log, followed (R133 step 12) ---------------------------------------
+# A log read in the dock: no program and no pty, the controller reading the
+# log itself once a second and sending what is new, read-only, until the
+# thing it is the log of ends or the reader's grant goes. `read` answers
+# (text, ended): the whole log as it is now, and why it will not grow again
+# ("" while it may). A log that is not the same text grown is drawn again.
+FOLLOW_S = 1.0
+
+
+def _crlf(text):
+    return text.replace("\r\n", "\n").replace("\n", "\r\n").encode("utf-8", "replace")
+
+
+def term_follow(conn, read, alive=None):
+    sent, frames = "", Frames()
+    check = time.monotonic() + CHECK_S
+    conn.settimeout(FOLLOW_S)
+    try:
+        while True:
+            try:
+                text, ended = read()
+            except Exception as e:                                  # noqa: BLE001
+                return close(conn, f"the log could not be read: {e}"[:120])
+            text = str(text or "")
+            if not text.startswith(sent):
+                conn.sendall(frame(b"\x1b[2J\x1b[H" + _crlf(text)))
+            elif len(text) > len(sent):
+                conn.sendall(frame(_crlf(text[len(sent):])))
+            sent = text
+            if ended:
+                conn.sendall(frame(_crlf(f"\n[{ended}]\n")))
+                return close(conn, ended)
+            if alive and time.monotonic() >= check:
+                check = time.monotonic() + CHECK_S
+                why = alive()
+                if why:
+                    return close(conn, why)
+            # The browser's side: a close, a ping, or nothing for a second.
+            try:
+                got = conn.recv(4096)
+            except (TimeoutError, OSError) as e:
+                if isinstance(e, TimeoutError) or "timed out" in str(e):
+                    continue
+                return None
+            if not got:
+                return None
+            for op, data in frames.feed(got):
+                if op == 8:
+                    return None
+                if op == 9:
+                    conn.sendall(frame(data, 10))
+    except OSError:
+        return None

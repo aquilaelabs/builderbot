@@ -23,7 +23,18 @@ let xtermLoading = null;
 // terminal (not a VM's screen, which is noVNC's), not popped out, and not a
 // tab its node sent back to ttyd.
 function termOwn(t){
+  // A log (R133 step 12) is the page's own terminal whatever the switch
+  // says: ttyd never had a reader for one.
+  if (t?.kind === "term" && termLog(t)) return true;
   return !!state?.term_own && t?.kind === "term" && !t.popped && !t.ttyd && !/^screen:/.test(t.arg || "");
+}
+
+// A log tab's argument (log:job:ID, log:controller): read-only, followed.
+function termLog(t){ return /^log:/.test(t?.arg || ""); }
+
+// A log opened in the dock, followed as it is written (R133 step 12).
+function openLogTab(arg, label){
+  openTab({kind: "term", arg, label});
 }
 
 // xterm.js and its fit addon, fetched once, when the first such tab opens:
@@ -54,9 +65,9 @@ function termSlot(t){
 // The URL the socket opens: the tab's argument as ttyd's page was given it,
 // boot stamp and all, and the size it starts at.
 function termUrl(t, cols, rows){
-  const u = new URL(ttydUrl(t.arg), location.href);
   const q = new URLSearchParams();
-  for (const a of u.searchParams.getAll("arg")) q.append("arg", a);
+  if (termLog(t)) q.append("arg", t.arg);
+  else for (const a of new URL(ttydUrl(t.arg), location.href).searchParams.getAll("arg")) q.append("arg", a);
   q.set("cols", cols); q.set("rows", rows);
   return `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/termws?${q}`;
 }
@@ -129,8 +140,12 @@ function termMount(el, t, key){
     term.open(el.querySelector(".xhost"));
     rec.term = term; rec.fit = fit; rec.look = "";
     termRestyle(rec);
-    term.onData(d => termSend(rec, 0, new TextEncoder().encode(d)));
-    term.onBinary(d => termSend(rec, 0, Uint8Array.from(d, c => c.charCodeAt(0))));
+    // A log takes no keys: there is no program behind it to read them.
+    if (termLog(t)) term.options.disableStdin = true;
+    else {
+      term.onData(d => termSend(rec, 0, new TextEncoder().encode(d)));
+      term.onBinary(d => termSend(rec, 0, Uint8Array.from(d, c => c.charCodeAt(0))));
+    }
     term.onResize(({cols, rows}) => termSend(rec, 1, new TextEncoder().encode(JSON.stringify({cols, rows}))));
     // Its box changes size with the pane, the dock and the keyboard.
     rec.ro = new ResizeObserver(() => termFit(rec));

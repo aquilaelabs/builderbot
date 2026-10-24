@@ -273,7 +273,9 @@ function renderJobsInto(i){
           // with an empty log is not waiting for anything, and saying it
           // is sends somebody back to look again at nothing.
           esc((jobsLogs[j.id] || "").slice(-4000)
-              || (over ? "(this job wrote nothing)" : "(no output yet)"))}</pre>` : ""}
+              || (over ? "(this job wrote nothing)" : "(no output yet)"))}</pre>
+        <div class="actbar jbfollow"><button type="button" data-jbfollow="${esc(j.id)}" data-label="${esc(`${j.type || "job"} ${j.id}`)}"
+          title="its whole log in a tab of the dock, following it as it is written">Follow in the dock</button></div>` : ""}
     </div>`;
   }).join("");
   // The tab at a glance (R216, the tiles rule): of the jobs listed, how
@@ -301,6 +303,10 @@ function renderJobsInto(i){
                                    + ` <button type="button" data-jbshow="">Show every job</button>`
                                  : "no jobs yet: a compose action, an exec on a node, or an agent update will appear here"}</div>`,
     shown.length ? `${shown.length}` : "none");
+  d.list.querySelectorAll("[data-jbfollow]").forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    openLogTab(`log:job:${b.dataset.jbfollow}`, `Log: ${b.dataset.label}`);
+  });
   // Paged like every other long list here. This one grows without bound:
   // every compose action, exec and agent update lands on it forever, so it
   // was the tab most in need of it and the one that had it least.

@@ -6038,6 +6038,9 @@ class Handler(BaseHTTPRequestHandler):
         dims = {k: termws.term()._dim((q.get(k) or [""])[0], d) for k, d in (("cols", 80), ("rows", 24))}
         if (cross := self._ws_cross_origin()):
             return self._json({"error": cross}, 403)
+        # A log, read-only and followed (R133 step 12): no program runs.
+        if _term_arg(args).startswith("log:"):
+            return self._log_own(_term_arg(args))
         target, vmm, no = self._term_decide(args)
         if not termws.upgrade(self):
             return self._json({"error": no[0] if no else "a websocket is asked for here"}, no[1] if no else 400)
@@ -6073,6 +6076,62 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             if here is not None:
                 vms.gone(here)
+
+    def _log_reader(self, arg):
+        """(read, None) for a log this account may read, as a log tab
+        follows it (termws.follow), or (None, why). Decided as the read it
+        stands in for is: a job's as the Jobs page reads it, the
+        controller's as Settings' Logs downloads it."""
+        kind, _, rest = arg[len("log:"):].partition(":")
+        if kind == "job":
+            jid = rest
+            if not re.fullmatch(r"j_[0-9a-f]{6,16}", jid):
+                return None, "no such job"
+
+            def read():
+                mine, system = self._jobs_scope()
+                body, status = nodes.jobs_view(jid, {}, mine, system)
+                if status != 200 or not body.get("id"):
+                    raise ValueError(body.get("error") or "no such job")
+                log = body.get("log") or ""
+                st = body.get("state") or ""
+                done = st in ("succeeded", "failed", "canceled")
+                return (log if isinstance(log, str) else "\n".join(log)), (f"the job {st}" if done else "")
+            try:
+                read()
+            except ValueError as e:
+                return None, str(e)
+            return read, None
+        if kind == "controller":
+            if users.may(self._who(), "controller-read"):
+                return None, "reading the controller's log is an administrator's"
+            path = logs.log_dir() / "builderbot.log"
+
+            def read():
+                try:
+                    data = path.read_bytes()[-512 * 1024:]
+                except OSError:
+                    data = b""
+                return data.decode("utf-8", "replace"), ""
+            return read, None
+        return None, f"no log of the kind {kind or 'named'} is read here"
+
+    def _log_own(self, arg):
+        """/termws?arg=log:... (R133 step 12): a log in a dock tab, followed
+        as it is written and read-only, its reader asked again every few
+        seconds and the tab ended when it may no longer read it."""
+        read, why = self._log_reader(arg)
+        if not termws.upgrade(self):
+            return self._json({"error": why or "a websocket is asked for here"}, 403 if why else 400)
+        if why:
+            return termws.close(self.connection, why)
+        who_raw = self._who_raw()
+
+        def alive():
+            if kept_out(who_raw):
+                return "the controller is in maintenance mode"
+            return self._log_reader(arg)[1] or ""
+        return termws.term_follow(self.connection, read, alive)
 
     def _term_proxy(self):
         """Everything under /term, relayed byte-for-byte to ttyd on the
@@ -6925,6 +6984,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        mine, system = self._jobs_scope()
+        return self._json(*nodes.jobs_view(q.get("id", [""])[0], q, mine, system))
+
+    def _jobs_scope(self):
+        """(the projects whose jobs this account reads, None for all; the
+        redaction its read of the node's own jobs goes through, or None):
+        what the Jobs page and a job's log in the dock (R133 step 12) both
+        read by."""
         me = self._who()
         mine = None if users.may(me, "admin") == "" \
             else set(project_names(me))
@@ -6937,7 +7004,7 @@ class Handler(BaseHTTPRequestHandler):
         # there that could not be opened was a dead end (the operator, 7 Oct).
         # Through diag's redaction, as the diagnostics themselves are.
         system = diag.redact if mine is not None and not self._diag_why() else None
-        return self._json(*nodes.jobs_view(q.get("id", [""])[0], q, mine, system))
+        return mine, system
 
     def _get_docker(self):
         """GET /api/docker: the manager's whole page, containers.manager_view,

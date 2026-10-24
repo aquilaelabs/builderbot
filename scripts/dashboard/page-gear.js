@@ -276,7 +276,9 @@ function logSection(){
       <!-- An action bar like every other: what the links are on the left,
            the verbs at the right (R119 step 6). -->
       <div class="actbar logacts">
-        <span class="state">download the logs, or clear the old ones</span>
+        <span class="state">follow the controller's log, download the logs, or clear the old ones</span>
+        <button type="button" id="logFollow"
+           title="the controller's log in a tab of the dock, following it as it is written">Follow</button>
         <a class="btnish" href="/logs/download?what=session" download
            title="this container start: the boot, the dashboard and docker"
            >This session</a>
@@ -293,6 +295,8 @@ function logSection(){
 }
 
 function wireLogSection(el){
+  const fol = el.querySelector("#logFollow");
+  if (fol) fol.onclick = () => openLogTab("log:controller", "Log: the controller");
   const inp = el.querySelector("#logDays");
   if (!inp) return;
   // Applied on a press, not on change. Lowering the number CROPS: the files
