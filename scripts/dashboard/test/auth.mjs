@@ -1890,4 +1890,31 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
     .then(() => true, () => false).then(v => ok(v, '...and the band goes'));
 }
 
+// A terminal's socket opens from this dashboard's own page and no other
+// (B312): the sign-in cookie is SameSite=Lax, which a browser still sends
+// with a websocket from another hostname of the same site. A socket from
+// another origin is refused before anything is relayed; one from this
+// origin, or from a tool that sends no Origin, gets past that check.
+{
+  const u = new globalThis.URL(URL);
+  const ask = (path, origin) => new Promise(resolve => {
+    const headers = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
+                      Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13',
+                      'Sec-WebSocket-Key': Buffer.from('0123456789abcdef').toString('base64'),
+                      ...(origin ? { Origin: origin } : {}) };
+    const req = http.request({ host: u.hostname, port: u.port, path, headers });
+    req.on('upgrade', (res, sock) => { sock.destroy(); resolve(101); });
+    req.on('response', res => { res.resume(); resolve(res.statusCode); });
+    req.on('error', () => resolve(0));
+    req.setTimeout(10000, () => { req.destroy(); resolve(-1); });
+    req.end();
+  });
+  const evil = 'http://app.example.test';
+  const got = {};
+  for (const path of ['/term/ws?arg=shell', '/screen/ws?vm=alpha/none', '/termws?arg=shell'])
+    got[path] = [await ask(path, evil), await ask(path, `${u.protocol}//${u.host}`), await ask(path, '')];
+  ok(Object.values(got).every(([x, same, none]) => x === 403 && same !== 403 && none !== 403),
+     `a terminal's or a screen's socket from another origin is refused, and this origin's is not (${JSON.stringify(got)})`);
+}
+
 await done(browser);

@@ -5820,6 +5820,8 @@ class Handler(BaseHTTPRequestHandler):
         a screen is driving the machine, so it takes VMs Write on the VM's
         project; the request upstream carries this controller's signature for
         that VM and this minute, keyed with the node's token hash."""
+        if (cross := self._ws_cross_origin()):
+            return self._json({"error": cross}, 403)
         q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
         project, _, name = str((q.get("vm") or [""])[0]).partition("/")
         if not registry.is_project(project):
@@ -5988,6 +5990,10 @@ class Handler(BaseHTTPRequestHandler):
         "relay until EOF" into the complete response.
         """
         rest0 = self.path[len("/term"):]
+        # A socket from another page of the same site is not this
+        # dashboard's (B312): the Lax sign-in cookie still rides on it.
+        if "upgrade" in self.headers.get("Connection", "").lower() and (cross := self._ws_cross_origin()):
+            return self._term_notice(cross, 403)
         target, vmm, no = self._term_decide(rest0)
         if no:
             return self._term_notice(*no)
