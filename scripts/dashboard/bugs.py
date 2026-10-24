@@ -30,8 +30,9 @@ import sys as _sys
 # Beside this file, whichever way it was loaded: bb's own Python loads the
 # modules by path, where a plain sibling import finds nothing.
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-from names import claude_session   # noqa: E402
+from names import running_session   # noqa: E402
 from fields import field   # noqa: E402
+import agents
 import json
 import os
 import sys
@@ -209,7 +210,7 @@ def _log(d, project, by, ev):
     # batched or not: see revisions() for why a length is not enough.
     d.setdefault("revn", {})[project] = int(d.get("revn", {}).get(project) or 0) + 1
     ev = {"at": int(time.time()),
-          "by": "claude" if by == "claude" else "you",
+          "by": "claude" if by == "claude" else "you", **agents.asker(by),
           **_by_whom(),
           **({"approved": True} if pending.replaying() else {}), **ev}
     b = d.get("batch", {}).get(project)
@@ -481,7 +482,7 @@ def add(project, title, by="you", severity="medium", **fields):
                              "this stops being a tracker and starts being a log"}
         bug = {"id": number or _next_id(d, project),
                "title": title, "severity": severity, "status": "open", "rev": 1,
-               "by": "claude" if by == "claude" else "you",
+               "by": "claude" if by == "claude" else "you", **agents.asker(by),
           **_by_whom(),
                "at": int(time.time()),
                # Never backfilled onto older reports: a made-up "first seen
@@ -672,7 +673,7 @@ def send(project, bug_id, sessions=(), note="", prefix=""):
     # so the session this reaches is already running on them.
     # The caller's own session, not the project's bare one: see roadmap.send
     # for why the bare name is the owner's conversation (B194).
-    session = prefix + claude_session(project)
+    session = running_session(prefix, project, set(sessions))
     tag = ids.label("bugs", bug_id)
     line = (f"Please look at bug {tag} in this project's tracker. "
             f"Run `bb bug show {tag}` for the report: the area, how to "

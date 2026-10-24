@@ -1,9 +1,9 @@
 'use strict';
 // BuilderBot for VS Code (R159): a project's files opened as a folder of
 // their own, builderbot:/PROJECT/..., read and saved through the
-// controller's Files API, with no share mounted here; the changes a Claude
-// session makes appear in open editors as it saves them; and that session's
-// terminal in a VS Code panel. Signed in as the person: the server decides
+// controller's Files API, with no share mounted here; the changes a coding
+// agent's session makes appear in open editors as it saves them; and any
+// agent's session terminal in a VS Code panel. Signed in as the person: the server decides
 // on every request what their account may do, and this only shows its
 // answer. Plain JavaScript and Node's own modules, so there is nothing to
 // build or install beside it.
@@ -176,10 +176,55 @@ async function pickProject(context, why) {
     throw new Error('no project here is open to you in an editor. Its settings (File access) say who may, '
       + 'and whether opening it in an editor is on.');
   }
-  const pick = await vscode.window.showQuickPick(projects.map(p => ({
-    label: p.name, description: p.access === 'rw' ? 'read and write' : 'read only', project: p.name,
+  // An archived project is out of sight (R119): last, and said so. A lock
+  // that holds this account out says why, and leaves it read only.
+  const shown = [...projects.filter(p => !p.archived), ...projects.filter(p => p.archived)];
+  const pick = await vscode.window.showQuickPick(shown.map(p => ({
+    label: p.name,
+    description: [p.access === 'rw' ? 'read and write' : 'read only', p.locked ? 'locked' : '', p.archived ? 'archived' : '']
+      .filter(Boolean).join(', '),
+    ...(p.locked_why ? { detail: p.locked_why } : {}),
+    project: p.name,
   })), { placeHolder: why });
   return pick && pick.project;
+}
+
+// The coding agents a session may run (R95), the live rows of the
+// dashboard's table (scripts/dashboard/agents.py, held to it by
+// unit/test_agents.py): a session's terminal is `ID:PROJECT`, whichever it is.
+const AGENTS = [
+  { id: 'claude', name: 'Claude', product: 'Claude Code' },
+  { id: 'codex', name: 'ChatGPT', product: 'Codex CLI' },
+  { id: 'copilot', name: 'Copilot', product: 'Copilot CLI' },
+];
+
+// The terminal argument that opens an agent's session on a project, as the
+// dashboard's Start and Open build it, with the boot of the machine it is
+// for last (page-tabs.js bootFor): bb-tty attaches to a running session
+// whatever the boot, and starts one only for the boot it is running now.
+function sessionArg(agent, project, boot = '') {
+  return `${(AGENTS.find(a => a.id === agent) || AGENTS[0]).id}:${project}${boot ? `:b:${boot}` : ''}`;
+}
+
+// What the status says of one project for this account: the boot a new
+// session there needs, and which agents' sessions of its own run. A
+// status that does not answer leaves both empty: an open then attaches to
+// a running session and says so in the terminal when there is none.
+async function sessionFacts(c, project) {
+  let st = {};
+  try { st = await c.status(); } catch { st = {}; }
+  const row = (st.projects || []).find(p => p.name === project) || {};
+  const names = new Set((st.sessions || []).map(s => s.name));
+  const tmux = s => s.replace(/[.:]/g, '_');
+  const running = new Set(AGENTS.filter(a => names.has((st.tmux_prefix || '') + tmux(`${a.id}-${project}`))).map(a => a.id));
+  return { boot: row.session_boot || st.boot || '', running };
+}
+
+async function pickAgent(project, running) {
+  const pick = await vscode.window.showQuickPick(AGENTS.map(a => ({
+    label: a.name, description: running.has(a.id) ? `${a.product}, running` : a.product, agent: a.id,
+  })), { placeHolder: `Which agent's session on ${project}: opened if it runs, started if not` });
+  return pick && pick.agent;
 }
 
 // Signed in with a name and password, through the same /login as a browser:
@@ -228,12 +273,19 @@ async function cmdOpenProject(context) {
   }
 }
 
-async function cmdOpenSession(context, project) {
+// Any coding agent's session on a project (R128): the project, then which
+// agent, unless the caller named them (`builderbot.openSession` with a
+// project, and an agent's id after it).
+async function cmdOpenSession(context, project, agent) {
   try {
-    project = typeof project === 'string' ? project : await pickProject(context, 'Whose Claude session to open');
+    project = typeof project === 'string' ? project : await pickProject(context, 'Which project\'s agent session to open');
     if (!project) return;
     const c = await connect(context);
-    const t = new Ttyd(c, `claude:${project}`);
+    const facts = await sessionFacts(c, project);
+    agent = typeof agent === 'string' ? agent : await pickAgent(project, facts.running);
+    if (!agent) return;
+    const a = AGENTS.find(x => x.id === agent) || AGENTS[0];
+    const t = new Ttyd(c, sessionArg(a.id, project, facts.boot));
     const write = new vscode.EventEmitter();
     const closed = new vscode.EventEmitter();
     const pty = {
@@ -254,7 +306,7 @@ async function cmdOpenSession(context, project) {
       handleInput: data => t.write(data),
       setDimensions: dims => t.resize(dims.columns, dims.rows),
     };
-    const term = vscode.window.createTerminal({ name: `Claude: ${project}`, pty });
+    const term = vscode.window.createTerminal({ name: `${a.name}: ${project}`, pty });
     term.show();
   } catch (e) {
     say(e);
@@ -291,7 +343,7 @@ function activate(context) {
     vscode.commands.registerCommand('builderbot.signIn', () => cmdSignIn(context)),
     vscode.commands.registerCommand('builderbot.signOut', () => cmdSignOut(context)),
     vscode.commands.registerCommand('builderbot.openProject', () => cmdOpenProject(context)),
-    vscode.commands.registerCommand('builderbot.openSession', p => cmdOpenSession(context, p)),
+    vscode.commands.registerCommand('builderbot.openSession', (p, a) => cmdOpenSession(context, p, a)),
     vscode.commands.registerCommand('builderbot.search', () => cmdSearch(context)),
     vscode.workspace.onDidChangeConfiguration(e => { if (e.affectsConfiguration('builderbot')) client = null; }),
   );
@@ -302,4 +354,4 @@ function deactivate() {
   if (fsp) for (const w of fsp.watchers.values()) w.stopped = true;
 }
 
-module.exports = { activate, deactivate, BuilderBotFS };
+module.exports = { activate, deactivate, BuilderBotFS, AGENTS, sessionArg, sessionFacts };

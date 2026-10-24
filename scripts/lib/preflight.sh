@@ -167,10 +167,25 @@ cmd_tests_preflight() {
         done
     fi
     [ "${#unplaced[@]}" -eq 0 ] || printf '  WARN: no suite reaches %s: the map could not place it, so this is not a clean verdict; bb map suites FILE says what it knows (B280)\n' "${unplaced[*]}"
+    # A patch line's own rules (R112 step 5): on a branch working toward
+    # X.Y.Z with Z above 0, the house rules named patch say what a patch may
+    # not change, and a file this branch changed under one fails the gate.
+    local br pline=""
+    br="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    if [ -n "$br" ] && [ "$br" != HEAD ]; then
+        pline="$(git config "branch.$br.bbline" 2>/dev/null || true)"
+        [ -n "$pline" ] || pline="$(printf '%s' "$br" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+$' || true)"
+    fi
+    local patch_line=""
+    case "$pline" in *.*.0|"") ;; *) patch_line=1; printf '  patch:   %s is a patch line, so its own rules are checked\n' "$pline" ;; esac
     [ -z "$dry" ] || return 0
     # Not cmd_dashboard test, which execs the harness and would end this
     # verb before its checks: the harness is run as a child here.
     local rc=0 here="${BB_REPO:-$PWD}/scripts/dashboard/test/run.sh"
+    if [ -n "$patch_line" ]; then
+        printf '== patch: what a patch release may not change\n'
+        bash "$0" rules check --patch "${files[@]}" || rc=1
+    fi
     # The unit tier first: seconds, and a failure there is a failure of the
     # rule itself, so it is said before any browser suite starts. A red unit
     # still lets the suites run, so one gate says everything that is wrong.
@@ -184,6 +199,9 @@ cmd_tests_preflight() {
         fi
     fi
     [ -x "$here" ] || here=/opt/builderbot/scripts/dashboard/test/run.sh
+    # A gate's verdict is on the change, never on a kept world: its server
+    # is the keep's own copy and holds what probes left in it.
+    export BB_TEST_FRESH=1
     # Kept whole in the same log bb tests run writes, so bb tests log prints
     # this run when it was the last: a flake named only in the terminal's
     # scroll was gone with the scroll (B328).

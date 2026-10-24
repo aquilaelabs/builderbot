@@ -20,7 +20,7 @@ SYSTEMS = [
      "vetted": "bb-sandbox and the dev pair's bb-dev-sandbox (Ubuntu 24.04 and 26.04), in daily use"},
     {"id": "rocky", "name": "Rocky Linux 9", "family": "rhel", "ids": ["rocky"],
      "vetted": "2026-10-13: bb-dev-sandbox-rh (Rocky 9.8) on the dev pair: enroll, toolchains, storage, "
-               "a synced project, a container, nginx, a Gitea runner, a shell and a Claude session"},
+               "a synced project, a container, nginx, a Gitea runner, a shell and an agent's session"},
     {"id": "debian", "name": "Debian 12 or later", "family": "deb", "ids": ["debian", "raspbian"],
      "vetted": "2026-10-21, R97 on the dev pair: a VM made a node from its cloud image, enrolled; VM host installed and removed; a toolchain installed and removed; nginx run as a container from a compose file; a project synced and a terminal opened through the controller; Uninstall, the machine's own account kept (Debian 13)"},
     {"id": "almalinux", "name": "AlmaLinux 9", "family": "rhel", "ids": ["almalinux"],

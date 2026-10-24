@@ -7,11 +7,13 @@ it in Help.
 
 ## What it is
 
-A Claude Code workstation you reach in a browser. Each project on the Projects page
-is a git repository on a shared disk. A **session** is Claude working in that
-repository, on one of the machines behind the dashboard, with a terminal you
-can watch and type into. A project's page holds its **notebook**, where you and
-Claude keep the plan: the roadmap, the bugs, the house rules and the git view.
+A workstation for coding agents you reach in a browser. Each project on the
+Projects page is a git repository on a shared disk. A **session** is a coding
+agent working in that repository (Claude, through Claude Code; ChatGPT,
+through Codex CLI; or Copilot, through Copilot CLI), on one of the machines
+behind the dashboard, with a terminal you can watch and type into. A
+project's page holds its **notebook**, where you and the sessions keep the
+plan: the roadmap, the bugs, the house rules and the git view.
 
 Nothing runs on your laptop, and nothing here is on your laptop. Close the tab
 and a session keeps going.
@@ -19,7 +21,8 @@ and a session keeps going.
 ## Finding your way
 
 - **The rail**, down the left edge: Home, Projects, Build, Containers,
-  Machines, Sessions, Jobs, People, Settings and Help, each a page. On a
+  Controller, Machines, Sessions, Jobs, People, Settings and Help, each a
+  page. On a
   phone it is the bar at the foot, in the same order: Home, Projects, Build,
   Containers, and More for the others.
 - **The search** at the top jumps to a page, a project, a container or a
@@ -36,18 +39,21 @@ and a session keeps going.
 2. **Your profile** (the gear, top right, then Profile): your name, your email and the git
    identity your commits will carry. No session starts until these are set,
    because a commit with no author is a mess somebody else has to clean up.
-3. **Install Claude Code, then sign in to Claude**, on each machine your
-   projects work on. A node has no Claude Code until the **Toolchains**
-   page (under Build, with that node picked) installs it: tick Claude Code,
-   press Install selected. Then press a project's **Start Claude**: where you are not signed in on its node yet,
-   it offers **Sign in on** that node, which opens the node's page at its
-   Claude Code section. Press Sign in there, open the link, and paste the
-   code back. The login stays on that machine and is yours: it is not
-   shared with the other people here, nobody else's sessions use it, and
-   another node asks for its own the first time you work there.
+3. **Install an agent, then sign in to it**, on each machine your projects
+   work on. A node has no agent until the **Agents** page (under Build, with
+   that node picked) installs one: press Install under Claude, ChatGPT or
+   Copilot. Then press a project's **Start agent**: where you are not signed
+   in on its node yet, it offers **Sign in on** that node, which opens that
+   node's Agents page at that agent's section. Press Sign in there: Claude's
+   gives a link and takes the code back, ChatGPT's and Copilot's give a link
+   and a code to enter at OpenAI or GitHub. The login stays on that machine
+   and is yours: it is not shared with the other people here, nobody else's
+   sessions use it, and another node asks for its own the first time you
+   work there.
 4. **Open a project**: press its name for its page and notebook, **Start
-   Claude** for a session, **Shell** for a plain shell. Terminals open in the
-   dock at the foot of every page.
+   agent** for a session (its menu picks the agent, and resumes the last
+   conversation or starts a new one), **Shell** for a plain shell. Terminals
+   open in the dock at the foot of every page.
 5. **Say what you want done.** A session starts already knowing this project's
    house rules, its roadmap and its open bugs, so you can ask for the thing
    rather than explaining the place.
@@ -58,7 +64,7 @@ The machines are shared. So is the disk the projects live on, and the store
 the toolchains live on. Two people working on one project will see each
 other's uncommitted changes, and the dashboard says so when it notices.
 
-Your Claude login is yours. Your terminal sessions are yours. Which projects
+Your agents' logins are yours. Your terminal sessions are yours. Which projects
 you can see is set per account, so a project you cannot see is not one you are
 missing: you have not been given it.
 
@@ -67,7 +73,7 @@ missing: you have not been given it.
 A refusal is meant to name the way out, so read it rather than pressing again.
 The four you are most likely to meet:
 
-- **not signed in to Claude**: step 3 above, once per person on each node.
+- **not signed in** to an agent: step 3 above, once per person on each node.
 - **the node is away**: the machine a project builds on is not answering, so
   nothing runs there until it is back. It is not your doing.
 - **a tool is missing**: builds use what the machine has, and installing more
@@ -88,7 +94,7 @@ account, because a tracker on a box that is down helps nobody.
 **Ask which build is running before deciding a fix did not work.** The header's
 About control carries the build the box is on, and `bb status` in any terminal prints it.
 
-**Let the notebook hold the plan.** Anything you want Claude to pick up later
+**Let the notebook hold the plan.** Anything you want a session to pick up later
 belongs on the roadmap rather than in a message: the next session reads the
 roadmap, and it never reads your chat history.
 

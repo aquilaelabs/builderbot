@@ -200,18 +200,64 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
         onTools(s.obj("can").optBoolean("toolchains-write", s.obj("can").optBoolean("admin", false)))
     }
     var find by rememberSaveable { mutableStateOf("") }
-    // The account's own Claude sessions, by project: the name the server
-    // gives one is the prefix, then claude- and the project as tmux spells it.
-    val prefix = s?.str("tmux_prefix") ?: ""
-    val sessions = s?.arr("sessions")?.associateBy { it.str("name") } ?: emptyMap()
-    fun sessionOf(project: String) = sessions[prefix + ("claude-$project").replace(Regex("[.:]"), "_")]
+    // The account's own session on each project, any agent's (R128): the
+    // name the server gives one is the prefix, then the agent's id and the
+    // project as tmux spells it (Agents.kt).
+    fun sessionOf(project: String) = ownSession(s, project)
     // The projects the account keeps on its sidebar, as the sidebar has
-    // them; All shows the rest, and a search looks through every one.
-    val every = s?.arr("projects") ?: emptyList()
+    // them; All shows the rest, and a search looks through every one. An
+    // archived one is out of sight (R119): folded at the foot under
+    // Archived, as the Projects page has it, and found by a search.
+    val listed = s?.arr("projects") ?: emptyList()
+    val every = listed.filter { !it.bool("archived") }
+    val archived = listed.filter { it.bool("archived") }
     val kept = every.filter { it.bool("pinned", true) }
     var all by rememberSaveable { mutableStateOf(false) }
-    val shown = if (find.isNotBlank()) every.filter { it.str("label").ifBlank { it.str("name") }.contains(find.trim(), ignoreCase = true) }
+    var showArchived by rememberSaveable { mutableStateOf(false) }
+    val shown = if (find.isNotBlank()) listed.filter { it.str("label").ifBlank { it.str("name") }.contains(find.trim(), ignoreCase = true) }
                 else if (all || kept.isEmpty()) every else kept
+    // A project's row, for the list and for the archived under it.
+    val projectRow: @Composable (JSONObject) -> Unit = { p ->
+        // A project's row: a panel wearing the project's color down
+        // its side, the way its notebook tab does, its state as pills.
+        Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp).clickable { openProject(p.str("name")) },
+              bar = projectTone(p.obj("prefs").str("color"))) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(p.str("label").ifBlank { p.str("name") }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                     color = Ink, modifier = Modifier.weight(1f))
+                // What the account's own session is doing, which is
+                // the question a phone is picked up to ask: working,
+                // or waiting on the person, named for its agent where
+                // that is not Claude. (session_at is the project's
+                // node, there whether or not anything runs, and is no
+                // longer read as a session.)
+                val own = sessionOf(p.str("name"))
+                if (own != null) {
+                    val (a, row) = own
+                    Pill((if (a.id == "claude") "" else "${a.name} ") + sessionWord(row),
+                         if (sessionWord(row) == "working") Warn else Ok)
+                }
+                // A real lock now (R119), no longer the archive flag.
+                if (p.bool("locked")){ Spacer(Modifier.width(6.dp)); Pill(if (p.bool("locked_admin")) "locked by admin" else "locked", Warn) }
+                if (p.bool("archived")){ Spacer(Modifier.width(6.dp)); Pill("archived", Dim) }
+            }
+            val bits = mutableListOf<String>()
+            if (p.str("git").isNotBlank()) bits += p.str("git")
+            if (p.int("roadmap") > 0) bits += "${p.int("roadmap")} on the roadmap"
+            if (p.int("bugs") > 0) bits += "${p.int("bugs")} open bug${if (p.int("bugs") == 1) "" else "s"}"
+            if (p.int("pending") > 0) bits += "${p.int("pending")} waiting for approval"
+            Spacer(Modifier.height(2.dp))
+            Dim(bits.joinToString(" · ").ifBlank { "nothing waiting" })
+            val task = sessionOf(p.str("name"))?.second?.obj("claude")?.str("task") ?: ""
+            if (task.isNotBlank()) Text(task, color = Dim, style = MaterialTheme.typography.bodySmall,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            // What is wrong with the project, where something is:
+            // the lines its row carries on the sidebar.
+            for (i in p.arr("issues").take(3))
+                Text(i.str("text"), color = if (i.str("level") == "error") Bad else Warn,
+                     style = MaterialTheme.typography.bodySmall)
+        }
+    }
     Pull(st.value == null && st.error == null, reload) {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -275,48 +321,20 @@ fun HomeScreen(store: Store, onAdmin: (Boolean) -> Unit, onWaiting: (Int) -> Uni
                 else if (shown.isEmpty()) Column(Modifier.padding(horizontal = 16.dp)) {
                     Dim("no project's name has \u201c${find.trim()}\u201d in it") }
             }
-            items(shown, key = { it.str("name") }) { p ->
-                // A project's row: a panel wearing the project's color down
-                // its side, the way its notebook tab does, its state as pills.
-                Panel(Modifier.fillMaxWidth().padding(16.dp, 4.dp).clickable { openProject(p.str("name")) },
-                      bar = projectTone(p.obj("prefs").str("color"))) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(p.str("label").ifBlank { p.str("name") }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                             color = Ink, modifier = Modifier.weight(1f))
-                        // What the account's own session is doing, which is
-                        // the question a phone is picked up to ask: working,
-                        // or waiting on the person. Somebody else's session
-                        // is a plain Claude.
-                        val own = sessionOf(p.str("name"))
-                        if (own != null) {
-                            val working = own.obj("claude").str("state") == "working"
-                            Pill(if (working) "working" else "waiting on you", if (working) Warn else Ok)
-                        } else if (p.str("session_at").isNotBlank()) Pill("Claude", Ok)
-                        if (p.bool("locked")){ Spacer(Modifier.width(6.dp)); Pill("locked", Warn) }
-                    }
-                    val bits = mutableListOf<String>()
-                    if (p.str("git").isNotBlank()) bits += p.str("git")
-                    if (p.int("roadmap") > 0) bits += "${p.int("roadmap")} on the roadmap"
-                    if (p.int("bugs") > 0) bits += "${p.int("bugs")} open bug${if (p.int("bugs") == 1) "" else "s"}"
-                    if (p.int("pending") > 0) bits += "${p.int("pending")} waiting for approval"
-                    Spacer(Modifier.height(2.dp))
-                    Dim(bits.joinToString(" · ").ifBlank { "nothing waiting" })
-                    val task = sessionOf(p.str("name"))?.obj("claude")?.str("task") ?: ""
-                    if (task.isNotBlank()) Text(task, color = Dim, style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                    // What is wrong with the project, where something is:
-                    // the lines its row carries on the sidebar.
-                    for (i in p.arr("issues").take(3))
-                        Text(i.str("text"), color = if (i.str("level") == "error") Bad else Warn,
-                             style = MaterialTheme.typography.bodySmall)
-                }
-            }
+            items(shown, key = { it.str("name") }) { p -> projectRow(p) }
             if (find.isBlank() && kept.isNotEmpty() && kept.size < every.size) item {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                     TextButton(onClick = { all = !all }) {
                         Text(if (all) "Only the ones on my sidebar" else "All ${every.size} projects") }
                 }
             }
+            if (find.isBlank() && archived.isNotEmpty()) item {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                    TextButton(onClick = { showArchived = !showArchived }) {
+                        Text(if (showArchived) "Hide the archived" else "Archived (${archived.size})") }
+                }
+            }
+            if (find.isBlank() && showArchived) items(archived, key = { "archived:" + it.str("name") }) { p -> projectRow(p) }
             item { Spacer(Modifier.height(12.dp)) }
         }
     }
@@ -907,14 +925,23 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
         // The look: the dashboard's own schemes, by their names. Kept on
         // this device, as the dashboard keeps its own per browser.
         SectionHead("Colors", inset = false)
+        // Dark, Light or System beside the scheme, as the dashboard's gear
+        // has them (R50 step 16); each swatch shows the half that is on.
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (m in Schemes.modes)
+                androidx.compose.material3.FilterChip(selected = Schemes.mode == m,
+                    onClick = { Schemes.pickMode(m); store.mode = m }, label = { Text(m) })
+        }
+        Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (sc in Schemes.all) {
-                val on = Schemes.current.name == sc.name
+            for (scheme in Schemes.all) {
+                val on = Schemes.current.name == scheme.name
+                val sc = if (Schemes.half.light) scheme.light else scheme.dark
                 Column(Modifier
                     .background(sc.panel, RoundedCornerShape(8.dp))
                     .border(if (on) 2.dp else 1.dp, if (on) sc.accent else sc.line, RoundedCornerShape(8.dp))
-                    .clickable { Schemes.pick(sc.name); store.scheme = sc.name }
+                    .clickable { Schemes.pick(scheme.name); store.scheme = scheme.name }
                     .padding(10.dp, 8.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                         for (c in listOf(sc.accent, sc.warn, sc.bad, sc.note))
@@ -922,7 +949,7 @@ fun MoreScreen(store: Store, isAdmin: Boolean, nav: NavHostController, onSignOut
                                 Modifier.size(10.dp).background(c, RoundedCornerShape(99.dp)))
                     }
                     Spacer(Modifier.height(4.dp))
-                    Text(sc.name, color = sc.ink, style = MaterialTheme.typography.labelMedium)
+                    Text(scheme.name, color = sc.ink, style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -980,6 +1007,17 @@ fun ToolsScreen(store: Store, mayTools: Boolean) {
     val (pk, reload) = load("tools-$node") { if (node.isBlank()) JSONObject() else api.toolchains(node) }
     val job = pk.value?.obj("job")
     val busy = job?.bool("running") == true
+    val (ag, reloadAgents) = load("agents-$node") { if (node.isBlank()) JSONObject() else api.agents(node) }
+    var agSaid by remember { mutableStateOf("") }
+    fun agentAct(r: JSONObject, action: String) {
+        scope.launch {
+            agSaid = try {
+                api.agentAct(node, r.str("agent"), action).str("error").ifBlank {
+                    (if (action == "install") "installing " else "removing ") + r.str("label") + "…" }
+            } catch (e: Exception) { e.message ?: e.toString() }
+            reloadAgents()
+        }
+    }
 
     // The press, once the dialog has been answered. Reloaded rather than
     // guessed at: an install is a job, and what the row should say next is
@@ -1083,6 +1121,35 @@ fun ToolsScreen(store: Store, mayTools: Boolean) {
                             Text(if (installed) "Remove" else "Install")
                         }
                     }
+                }
+            }
+            Hairline()
+        }
+        // The coding agents on the node (R95): Claude Code left the
+        // toolchains for the Agents page and its own /api/agents, with
+        // Codex CLI and Copilot CLI beside it. Install, Update or Remove,
+        // under the same grant; a sign-in stays the dashboard's.
+        item {
+            SectionHead("Coding agents")
+            if (ag.error != null) Problem(ag.error)
+            if (agSaid.isNotBlank()) Text(agSaid, Modifier.padding(16.dp, 4.dp), color = Note)
+        }
+        items(ag.value?.arr("rows") ?: emptyList()) { r ->
+            val have = r.str("installed")
+            val state = r.str("state")
+            Column(Modifier.fillMaxWidth().padding(16.dp, 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(r.str("label"), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Text(if (have.isBlank()) "not installed" else if (state == "update") "$have, ${r.str("latest")} is out" else have,
+                         color = if (have.isBlank()) Dim else if (state == "update") Warn else Ok,
+                         style = MaterialTheme.typography.labelMedium)
+                }
+                Dim("for ${r.str("for")}" + if (r.bool("running")) " · working on it now" else "")
+                if (r.str("error").isNotBlank()) Text(r.str("error"), color = Bad, style = MaterialTheme.typography.bodySmall)
+                if (mayTools && r.bool("managed", true)) Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (have.isBlank() || state == "update") OutlinedButton(enabled = !r.bool("running"), onClick = { agentAct(r, "install") }) {
+                        Text(if (have.isBlank()) "Install" else "Update") }
+                    if (have.isNotBlank()) OutlinedButton(enabled = !r.bool("running"), onClick = { agentAct(r, "remove") }) { Text("Remove") }
                 }
             }
             Hairline()

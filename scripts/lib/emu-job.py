@@ -19,7 +19,7 @@ files = [f for f in os.environ.get("BB_EMU_FILES", "").split("\n") if f]
 call = lambda path, body=None: bbapi.call(path, body, auth=auth)   # noqa: E731
 r = call("/api/v1/jobs", {"action": "emu", "project": proj, "argv": argv, "files": files,
                           "outputs": ["*.png", "*.txt"],
-                          "from": "session" if os.environ.get("CLAUDECODE") else "operator"})
+                          "from": "session" if os.environ.get("CLAUDECODE") or os.environ.get("BB_AGENT") else "operator"})
 if r.get("error"):
     sys.exit(f"[builderbot] ERROR: {r['error']}")
 names = {n["id"]: n["name"] for n in (call("/api/v1/nodes").get("nodes") or [])}

@@ -102,7 +102,8 @@ if [ "\${1:-}" = auth ]; then
   exit 0
 fi
 printf '%s\\0' "$@" > "${argvOut}"
-sleep 60
+# Held open for a pane; a launcher run on its own has its argv and goes.
+[ -n "\${FAKE_CLAUDE_QUICK:-}" ] || sleep 60
 `);
 chmodSync(join(bin, 'bb'), 0o755);
 chmodSync(join(bin, 'claude'), 0o755);
@@ -293,7 +294,9 @@ ok(alive('claude-alpha') && /project\/alpha\/claude-run\.sh$/.test(paneCmd()),
 // because the ttyd URL is reachable directly and a rule only the page honors
 // is a suggestion, the same reason `excluded` is checked in this script.
 const LOCKS = join(DIR, 'state', 'locked-projects.json');
-writeFileSync(LOCKS, JSON.stringify(['alpha']));
+// An administrator's lock (R119), which holds everybody out, read from the
+// file: this suite's bb does not answer `bb settings`, so the file decides.
+writeFileSync(LOCKS, JSON.stringify({ alpha: { by: 'u_0000aaaa', admin: true } }));
 const refusedAt = Date.now();
 out = connect(0);
 const refusedIn = Date.now() - refusedAt;
@@ -306,8 +309,8 @@ ok(/locked/.test(out) && !alive('claude-alpha'),
 // nobody to show it to, and five tests in this suite were paying it.
 ok(refusedIn < 5000,
    `...promptly, rather than pausing for a terminal nobody is holding open (${refusedIn}ms)`);
-ok(/Projects card/.test(out),
-   '...and says where to undo it, rather than only that it said no');
+ok(/card's menu/.test(out) && /locked by its owner/.test(out),
+   '...and says whose lock it is and where it is lifted, rather than only that it said no');
 
 // A briefing that could not be fetched is said out loud rather than started on.
 // The empty answer used to be an ordinary state, a project with nothing on its
@@ -393,9 +396,9 @@ writeFileSync(join(tdir, 'the-live-one.jsonl'), '');
 try {
   execFileSync('timeout', ['5', 'bash', LAUNCHER, '--respawn'], {
     encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, FAKE_CLAUDE_QUICK: '1' },
   });
-} catch { /* the stub holds the pane open; timeout ending it is the success */ }
+} catch { /* a stub that hangs is ended by the timeout, and its argv still read */ }
 a = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
 ok(/--model\0opus\0/.test(a) && /--effort\0low\0/.test(a),
    'a respawn re-reads the setting rather than repeating the one it started on');
@@ -423,9 +426,9 @@ rmSync(join(DIR, 'state', 'claude-prefs.json'), { force: true });
   try {
     execFileSync('timeout', ['5', 'bash', LAUNCHER, '--respawn'], {
       encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, FAKE_CLAUDE_QUICK: '1' },
     });
-  } catch { /* the stub holds the pane open; timeout ending it is the success */ }
+  } catch { /* a stub that hangs is ended by the timeout, and its argv still read */ }
   a = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
   ok(!a.includes('armor stats'), 'a respawn of that session is not handed the brief again');
   connect(0);
@@ -531,6 +534,182 @@ tmuxKill('claude-alpha');
     ok(/branch refs\/heads\/claude\//.test(branch),
        `...on a branch of its own, so the work merges rather than collides (${
           (branch.match(/branch \S+/g) || []).join(", ")})`);
+
+    // ---- another coding agent beside Claude (R95 step 4) -------------------
+    // Codex CLI and Copilot CLI stood in for: a session of each starts from
+    // its own argument, in a tree of its own beside the owner's Claude one,
+    // handed the same briefing the way each reads instructions.
+    {
+      const cxArgv = join(bin, 'codex-argv'), cpArgv = join(bin, 'copilot-argv');
+      writeFileSync(join(bin, 'codex'), `#!/usr/bin/env bash
+if [ "\${1:-}" = login ] && [ "\${2:-}" = status ]; then
+  if [ -n "\${FAKE_CODEX_OUT:-}" ]; then echo "Not logged in"; exit 1; fi
+  echo "Logged in using ChatGPT"; exit 0
+fi
+# Its help, which the launcher reads for the hook-trust flag, as 0.163.0's;
+# with codex-164 beside it, as 0.164.0's: --no-daemon too, and an app server
+# whose hooks/list names BuilderBot's hook in the account's hooks.json (B284).
+if [ "\${1:-}" = --help ]; then
+  echo "  --dangerously-bypass-hook-trust  run hooks without review"
+  [ -f "${bin}/codex-164" ] && echo "  --no-daemon  run without the shared background server"
+  exit 0
+fi
+if [ "\${1:-}" = app-server ]; then
+  [ -f "${bin}/codex-164" ] || exit 2
+  h="\${CODEX_HOME:-$HOME/.codex}/hooks.json"
+  while read -r l; do case "$l" in *'"id": 2'*|*'"id":2'*)
+    printf '{"id":2,"result":{"data":[{"hooks":[{"key":"%s:pre_tool_use:0:0","sourcePath":"%s","command":"/x/bb-agent-hook codex pre","currentHash":"sha256:0abc","trustStatus":"untrusted"},{"key":"%s:session_start:0:0","sourcePath":"%s","command":"echo theirs","currentHash":"sha256:0def","trustStatus":"untrusted"}]}]}}\n' "$h" "$h" "$h" "$h" ;;
+  esac; done
+  exit 0
+fi
+printf '%s\\0' "$@" > "${cxArgv}"
+sleep 60
+`, { mode: 0o755 });
+      writeFileSync(join(bin, 'copilot'), `#!/usr/bin/env bash
+printf '%s\\0' "$@" > "${cpArgv}"
+printf '%s' "\${COPILOT_CUSTOM_INSTRUCTIONS_DIRS:-}" > "${cpArgv}.dirs"
+sleep 60
+`, { mode: 0o755 });
+      tmuxKill(`codex-${proj}`); tmuxKill(`copilot-${proj}`);
+      const refused = shell(`u:${ownerUid}:codex:${proj}:b:${boot}`, { FAKE_CODEX_OUT: '1' });
+      ok(/not signed in to ChatGPT/.test(refused) && /Agents page/.test(refused) && !alive(`codex-${proj}`),
+         `signed out of ChatGPT, a Codex session is refused with where to sign in (${refused.trim().split('\n')[0]})`);
+      shell(`u:${ownerUid}:codex:${proj}:b:${boot}`);
+      await sleep(400);
+      ok(alive(`codex-${proj}`) && alive(`claude-${proj}`),
+         'the owner opens a Codex session beside their Claude one on the same project: two agents at once');
+      const cwt = join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-codex`);
+      ok(tmuxFmt(`codex-${proj}`, '#{pane_start_path}') === cwt && existsSync(join(cwt, 'README.md')),
+         `...in a worktree of its own, not the project directory the Claude session is in (${cwt})`);
+      ok(/branch refs\/heads\/codex\//.test(git(['worktree', 'list', '--porcelain'])),
+         '...on a codex/ branch of its own, so the two meet through git as two people do');
+      ok(/project\/wtproj\/codex-run\.sh$/.test(tmuxFmt(`codex-${proj}`, '#{pane_start_command}')),
+         '...started through a launcher named for its agent');
+      const cx = existsSync(cxArgv) ? readFileSync(cxArgv, 'utf8').split('\0') : [];
+      const di = cx.find(a => a.startsWith('developer_instructions=')) || '';
+      let said = '';
+      try { said = JSON.parse(di.slice('developer_instructions='.length)); } catch { said = ''; }
+      ok(cx[0] === '--no-alt-screen' && cx.includes('-c') && cx.includes('--dangerously-bypass-hook-trust') && /THE HOUSE RULES/.test(said),
+         `...handed the briefing as developer instructions, added to Codex's own (${cx.slice(0, 2).join(' ')} ${di.slice(0, 40)})`);
+      const toml = existsSync(join(HOMEDIR, '.codex', 'config.toml')) ? readFileSync(join(HOMEDIR, '.codex', 'config.toml'), 'utf8') : '';
+      ok(toml.includes(`[projects."${cwt}"]`) && /trust_level = "trusted"/.test(toml),
+         '...and its tree answered as trusted, so its first run asks nothing a read-only console cannot answer');
+      // A tab coming back to it puts the answer back if it went, and says
+      // the running session started without it, as Claude's does (R95 step 19).
+      const cxToml = join(HOMEDIR, '.codex', 'config.toml');
+      writeFileSync(cxToml, toml.replace(`[projects."${cwt}"]\ntrust_level = "trusted"\n`, ''));
+      const cxNoted = shell(`u:${ownerUid}:codex:${proj}:b:${boot}`);
+      ok(/was not trusted in .*config\.toml/.test(cxNoted) && /until it is restarted/.test(cxNoted)
+         && readFileSync(cxToml, 'utf8').includes(`[projects."${cwt}"]`),
+         `...and a tab coming back to it puts its trust back and says the running session must restart (${
+           (cxNoted.split('\n').find(l => /not trusted/.test(l)) || 'said nothing').slice(0, 70)})`);
+      ok(!/was not trusted/.test(shell(`u:${ownerUid}:codex:${proj}:b:${boot}`)),
+         '...and says nothing when it was there already');
+      // On a Codex that can say which hooks it has (0.164.0), BuilderBot's own
+      // are trusted for the launch by the hash it reports, and the bypass
+      // flag and its warning are gone, as is the shared server's (B284).
+      writeFileSync(join(bin, 'codex-164'), '');
+      tmuxKill(`codex-${proj}`);
+      shell(`u:${ownerUid}:codex:${proj}:b:${boot}`);
+      await sleep(1500);
+      const cx164 = existsSync(cxArgv) ? readFileSync(cxArgv, 'utf8').split('\0') : [];
+      const hs = cx164.find(x => x.startsWith('hooks.state=')) || '';
+      ok(cx164.includes('--no-daemon') && /pre_tool_use:0:0"=\{trusted_hash="sha256:0abc"\}/.test(hs)
+         && !hs.includes('session_start') && !cx164.includes('--dangerously-bypass-hook-trust'),
+         `...and on a Codex that lists its hooks, BuilderBot's own are trusted by their hash, a person's left alone, with no bypass flag and no shared server (${hs.slice(0, 60)}...)`);
+      rmSync(join(bin, 'codex-164'));
+      tmuxKill(`codex-${proj}`);
+      shell(`u:${ownerUid}:codex:${proj}:b:${boot}`);
+      await sleep(400);
+      // Its guards are its own hooks (R95 step 6): BuilderBot's, for every
+      // event a Claude session has them on, in the account's hooks file.
+      const hk = existsSync(join(HOMEDIR, '.codex', 'hooks.json')) ? JSON.parse(readFileSync(join(HOMEDIR, '.codex', 'hooks.json'), 'utf8')) : {};
+      const cmdOf = ev => (hk.hooks?.[ev] || []).flatMap(e => e.hooks || []).map(h => h.command).join(' ');
+      ok(/bb-agent-hook codex pre$/.test(cmdOf('PreToolUse')) && /bb-agent-hook codex prompt$/.test(cmdOf('UserPromptSubmit'))
+         && /bb-agent-hook codex stop$/.test(cmdOf('Stop')) && /bb-agent-hook codex asking$/.test(cmdOf('PermissionRequest')),
+         `...its guards are Codex's own hooks, written into the account's hooks.json (${Object.keys(hk.hooks || {}).join(', ')})`);
+      const cxRun = readFileSync(join(HOMEDIR, '.cache', 'builderbot', 'u', ownerUid, 'project', proj, 'codex-run.sh'), 'utf8');
+      ok(/export BB_AGENT=codex/.test(cxRun) && /export BB_AGENT_WHO=/.test(cxRun),
+         '...and the launcher names the agent and the account its hooks act for');
+      // The model and effort picked at Start ride the argument, each held
+      // to Codex's own list (R95 step 9).
+      tmuxKill(`codex-${proj}`);
+      shell(`u:${ownerUid}:codex:${proj}:m:gpt-5.5:e:high:b:${boot}`);
+      await sleep(400);
+      const cx2 = existsSync(cxArgv) ? readFileSync(cxArgv, 'utf8').split('\0') : [];
+      const mi = cx2.indexOf('-m');
+      ok(alive(`codex-${proj}`) && mi >= 0 && cx2[mi + 1] === 'gpt-5.5' && cx2.includes('model_reasoning_effort="high"'),
+         `a model and an effort picked at Start reach Codex as its own flags (${cx2.slice(0, 6).join(' ')})`);
+      // A respawn onto a changed setting goes on with the conversation, as
+      // Claude's resumes its newest transcript (R95 step 19).
+      const respawn = ag => {
+        try {
+          execFileSync('timeout', ['5', 'bash', join(HOMEDIR, '.cache', 'builderbot', 'u', ownerUid, 'project', proj, `${ag}-run.sh`), '--respawn'],
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, HOME: HOMEDIR, PATH: `${bin}:${process.env.PATH}` } });
+        } catch { /* the stub sleeps; the timeout ends it and its argv is still read */ }
+        return (existsSync(join(bin, `${ag}-argv`)) ? readFileSync(join(bin, `${ag}-argv`), 'utf8') : '').split('\0');
+      };
+      const rcx = respawn('codex');
+      ok(rcx.includes('resume') && rcx[rcx.indexOf('resume') + 1] === '--last',
+         `...and a respawn resumes Codex's newest conversation in its folder (${rcx.slice(-4).join(' ')})`);
+      // A Codex conversation resumes in Codex (R95 step 8): its kept log is
+      // put back where Codex looks for it, and Codex is told to resume it.
+      tmuxKill(`codex-${proj}`);
+      {
+        const sid = '0199aaaa-bbbb-cccc-dddd-eeeeffff0042';
+        const kd = join(HOMEDIR, '.claude', 'projects', cwt.replace(/[^A-Za-z0-9]/g, '-'), 'codex');
+        mkdirSync(kd, { recursive: true });
+        writeFileSync(join(kd, `${sid}.jsonl`), '{"type":"session_meta","payload":{}}\n');
+        shell(`u:${ownerUid}:codex:${proj}:r:${sid}:b:${boot}`);
+        await sleep(400);
+        const rx = existsSync(cxArgv) ? readFileSync(cxArgv, 'utf8').split('\0') : [];
+        const back = execFileSync('find', [join(HOMEDIR, '.codex', 'sessions'), '-name', `rollout-*-${sid}.jsonl`], { encoding: 'utf8' }).trim();
+        ok(alive(`codex-${proj}`) && rx.includes('resume') && rx[rx.indexOf('resume') + 1] === sid && back,
+           `a kept Codex conversation resumes in Codex, put back where Codex keeps its own (${rx.slice(0, 4).join(' ')})`);
+        tmuxKill(`codex-${proj}`);
+        const none = shell(`u:${ownerUid}:codex:${proj}:r:0199aaaa-0000-0000-0000-000000000000:b:${boot}`);
+        ok(/No ChatGPT conversation/.test(none) && !alive(`codex-${proj}`), '...and one not kept here opens nothing, saying so');
+      }
+      const odd = shell(`u:${ownerUid}:codex:${proj}:m:opus;rm:b:${boot}`);
+      ok(/Not a model ChatGPT offers here/.test(odd) && !alive(`codex-${proj}`),
+         '...and a model not on its list opens nothing');
+      // Copilot: no status verb of its own, so the login its config
+      // remembers is what says it is signed in.
+      rmSync(join(HOMEDIR, '.copilot'), { recursive: true, force: true });
+      const cpRefused = shell(`u:${ownerUid}:copilot:${proj}:b:${boot}`);
+      ok(/not signed in to Copilot/.test(cpRefused) && !alive(`copilot-${proj}`),
+         'a Copilot session with no GitHub login remembered is refused the same way');
+      mkdirSync(join(HOMEDIR, '.copilot'), { recursive: true });
+      // As Copilot CLI 1.0.103 writes it: two // lines over the JSON (B282).
+      const cpHead = '// User settings belong in settings.json.\n// This file is managed automatically.\n';
+      writeFileSync(join(HOMEDIR, '.copilot', 'config.json'), cpHead + JSON.stringify({ lastLoggedInUser: { host: 'https://github.com', login: 'octo' } }));
+      shell(`u:${ownerUid}:copilot:${proj}:b:${boot}`);
+      await sleep(400);
+      const cp = existsSync(cpArgv) ? readFileSync(cpArgv, 'utf8').split('\0') : [];
+      const dirs = existsSync(`${cpArgv}.dirs`) ? readFileSync(`${cpArgv}.dirs`, 'utf8') : '';
+      ok(alive(`copilot-${proj}`) && cp[0] === '--no-auto-update',
+         `signed in, a Copilot session starts, its own updater off (${cp.slice(0, 1).join(' ')})`);
+      const rcp = respawn('copilot');
+      ok(rcp.includes('--continue'), `...and a respawn continues Copilot's newest session (${rcp.slice(-3).join(' ')})`);
+      const cph = existsSync(join(HOMEDIR, '.copilot', 'hooks', 'builderbot.json'))
+        ? JSON.parse(readFileSync(join(HOMEDIR, '.copilot', 'hooks', 'builderbot.json'), 'utf8')) : {};
+      ok(cph.version === 1 && /bb-agent-hook copilot pre$/.test(cph.hooks?.preToolUse?.[0]?.bash || '')
+         && /bb-agent-hook copilot stop$/.test(cph.hooks?.agentStop?.[0]?.bash || ''),
+         `...and its guards are Copilot's own hooks, in a file of BuilderBot's in its hooks folder (${Object.keys(cph.hooks || {}).join(', ')})`);
+      ok(dirs && existsSync(join(dirs, 'AGENTS.md')) && /THE HOUSE RULES/.test(readFileSync(join(dirs, 'AGENTS.md'), 'utf8'))
+         && !dirs.startsWith(src),
+         `...handed the briefing as an AGENTS.md in a folder of its own, outside the project's tree (${dirs})`);
+      const cpRaw = readFileSync(join(HOMEDIR, '.copilot', 'config.json'), 'utf8');
+      const cpConf = cpRaw.startsWith(cpHead) ? JSON.parse(cpRaw.slice(cpHead.length)) : {};
+      ok((cpConf.trustedFolders || []).includes(join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-copilot`))
+         && cpConf.lastLoggedInUser?.login === 'octo',
+         '...its tree trusted in its config, and what was there kept, its // lines too');
+      tmuxKill(`codex-${proj}`); tmuxKill(`copilot-${proj}`);
+      // Their trees go, so what follows counts the two people's alone.
+      for (const ag of ['codex', 'copilot']){
+        try { git(['worktree', 'remove', '--force', join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-${ag}`)]); } catch { /* not made */ }
+      }
+    }
     // TWO ACCOUNTS ON ONE PROJECT KEEP THEIR OWN CACHE (B159). Every session
     // file lives under the account's id, because on a node the cache folder is
     // one folder for everybody: without that level the second session to start
@@ -561,6 +740,10 @@ tmuxKill('claude-alpha');
        '...with the project directory itself denied to it, being another tree');
     ok(!deny.includes(`Edit(${wt}/**)`),
        '...and its own not denied, which a blanket rule on .worktrees would have done');
+    // Edit covers every writing tool, and Claude Code warns at the top of the
+    // session for each Write() or NotebookEdit() rule it ignores (B285).
+    ok(deny.includes('/rules.json)') && !/(Write|NotebookEdit)\(/.test(deny),
+       '...and the rules file is denied by Edit alone, with no spelling Claude Code ignores and warns of');
     // ...and the memory of its own tree allowed, which Claude Code keeps
     // outside the tree: a session asked the person to approve reading a
     // memory it was updating (6 Oct).

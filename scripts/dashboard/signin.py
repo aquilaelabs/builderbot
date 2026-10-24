@@ -31,10 +31,31 @@ import sys
 import threading
 import time
 
+import agents
+
 # The URL the flow prints, and the two things it says when it is over.
 AUTH_URL = re.compile(r"https://(?:claude\.com|console\.anthropic\.com|"
                       r"platform\.claude\.com)/\S+")
 PROMPT = "Paste code"
+
+# Each coding agent's flow as its log reads (R95 step 3): the link it
+# prints, the one-time code a device flow shows beside it (the person types
+# it on the provider's page, and nothing comes back down), and the prompt a
+# flow that wants a code pasted back waits at. Claude's asks for a code;
+# Codex's device login (`codex login --device-auth`, 0.163.0) and Copilot's
+# (`copilot login --device-code`, 1.0.102) show one.
+FLOWS = {
+    "claude": {"url": AUTH_URL, "code": None, "prompt": PROMPT},
+    # The link ends at a space or at the color code Codex prints around it
+    # (\x1b[...m): taken with \S+ the reset came along, the link opened a
+    # page that said the session had ended.
+    "codex": {"url": re.compile(r"https://auth\.openai\.com/[^\s\x1b]+"),
+              "code": re.compile(r"one-time code[^\n]*\n\s*(?:\x1b\[[0-9;]*m)*([A-Z0-9]{4,}(?:-[A-Z0-9]{4,})+)"),
+              "prompt": None},
+    "copilot": {"url": re.compile(r"https://github\.com/login/device[^\s\x1b]*"),
+                "code": re.compile(r"enter code\s+([A-Z0-9]{4}-[A-Z0-9]{4})"),
+                "prompt": None},
+}
 
 
 # How long start_on_node() waits for the URL before answering. The flow takes
@@ -80,10 +101,11 @@ class NodeFlow:
     the card does not know or care which of the two it is talking to.
     """
 
-    def __init__(self, nodes, node_id, job_id, name="", uid=""):
+    def __init__(self, nodes, node_id, job_id, name="", uid="", agent="claude"):
         self._nodes, self.node, self.job = nodes, node_id, job_id
         self.node_name = name
         self.uid = str(uid or "")          # whose sign-in it is: theirs to type into
+        self.agent = agent if agent in FLOWS else "claude"
         self.sent = False
 
     def _log(self):
@@ -111,17 +133,23 @@ class NodeFlow:
     def state(self):
         j, out = self._log()
         done = (j.get("state") or "") in ("succeeded", "failed", "canceled")
-        m = AUTH_URL.search(out)
+        flow = FLOWS[self.agent]
+        m = flow["url"].search(out)
+        c = flow["code"].search(out) if flow["code"] else None
+        prompt = flow["prompt"]
         why = ""
         if done and j.get("state") != "succeeded":
             for line in reversed(out.splitlines()):
                 line = line.strip()
-                if line and not line.startswith("http") and PROMPT not in line:
+                if line and not line.startswith("http") and (not prompt or prompt not in line):
                     why = line[-300:]
                     break
             why = why or "the sign-in did not finish"
         return {"running": not done, "url": m.group(0) if m else "",
-                "waiting": bool(PROMPT in out) and not self.sent and not done,
+                # A device flow's code, shown for the person to type on the
+                # provider's page; "" for a flow that wants one pasted back.
+                "code": c.group(1) if c else "", "agent": self.agent,
+                "waiting": bool(prompt and prompt in out) and not self.sent and not done,
                 "sent": self.sent and not done,
                 "done": done, "ok": j.get("state") == "succeeded",
                 # Which node's row draws it: the flow is that machine's.
@@ -129,7 +157,7 @@ class NodeFlow:
                 "on": self.node_name, "job": self.job, "error": why}
 
 
-def start_on_node(nodes, node_id, uid, name="", token=""):
+def start_on_node(nodes, node_id, uid, name="", token="", agent="claude"):
     """Begin a flow on a node. Same contract as start(): it replaces whatever
     was running and waits a moment for the URL, so the button that is already
     waiting gets the link in its own answer."""
@@ -143,11 +171,12 @@ def start_on_node(nodes, node_id, uid, name="", token=""):
     # bb login --flow speaks to the controller with. Without one the flow
     # ended and nobody was told, and the next check signed the node out
     # again as stale (16 Sep).
-    r = nodes.job_add("user:signin", {"node": node_id}, "claude-login",
-                      {"uid": str(uid), "timeout": 900, "token": str(token or "")})
+    a = agents.get(agent) or agents.get("claude")
+    r = nodes.job_add("user:signin", {"node": node_id}, a.login_job,
+                      {"uid": str(uid), "timeout": 900, "token": str(token or ""), "agent": a.id})
     if r.get("error"):
         return r
-    f = NodeFlow(nodes, node_id, r["job"], name, uid=uid)
+    f = NodeFlow(nodes, node_id, r["job"], name, uid=uid, agent=a.id)
     with _lock:
         _flow = f
     t0 = time.time()
@@ -197,47 +226,50 @@ def owner():
 
 # ---- the row's verbs, one call each from the dashboard -------------------------
 
-def cannot(n):
+def cannot(n, agent="claude"):
     """Why a sign-in or a sign-out cannot run on this node now, or "". A
     node that runs SESSIONS, which is the same test session_target makes:
-    Claude Code is installed for the session account and the login lands in
+    the agent is installed for the session account and the login lands in
     a home a session reads, and a node with no session half has neither."""
+    a = agents.get(agent) or agents.get("claude")
     if not n or n.get("kind") != "agent":
-        return "which node? A Claude sign-in is made on one node, from its row on the Nodes page"
+        return f"which node? A {a.name} sign-in is made on one node, from its Agents page"
     if n.get("state") != "online":
         return f"{n['name']} is {n.get('state') or 'not online'} and takes no new work: sign in or out there when it is back online"
     if n.get("live") is False:
         return f"{n['name']} is not answering: sign in or out there when it is back"
     if not ((n.get("reported") or {}).get("session") or {}).get("up"):
-        return f"{n['name']} runs no sessions, so there is nowhere for a Claude login to live there"
+        return f"{n['name']} runs no sessions, so there is nowhere for a {a.name} login to live there"
     return ""
 
 
-def verb(action, node_id, uid):
-    """Start a sign-in for account `uid` on the node named, or stop the one
-    that is running, once server.py has said this person may and that the
-    node is theirs to see. (payload, status)."""
+def verb(action, node_id, uid, agent="claude"):
+    """Start a sign-in for account `uid` to `agent` on the node named, or
+    stop the one that is running, once server.py has said this person may
+    and that the node is theirs to see. (payload, status)."""
     if action == "cancel":
         return cancel() | {"signin": state(uid)}, 200
     n = nodes.node(node_id) if nodes is not None and node_id else None
-    why = cannot(n)
+    why = cannot(n, agent)
     if why:
         return {"error": why}, 400
     tok = mint(f"node:{n['id']}", ttl=1800, uid=uid)
-    return start_on_node(nodes, n["id"], uid, n["name"], token=tok) | {"signin": state(uid)}, 200
+    return start_on_node(nodes, n["id"], uid, n["name"], token=tok, agent=agent) | {"signin": state(uid)}, 200
 
 
-def sign_out(node_id, uid):
-    """Sign account `uid` out of Claude on one node: `claude auth logout`
-    there, in that account's home, as a job. The credential is that
-    machine's, so that machine is the one that lets go of it, and a node
-    that is not answering is asked when it is back. (payload, status)."""
+def sign_out(node_id, uid, agent="claude"):
+    """Sign account `uid` out of a coding agent on one node: `claude auth
+    logout` there for Claude, `codex logout` for Codex, in that account's
+    home, as a job. The credential is that machine's, so that machine is the
+    one that lets go of it, and a node that is not answering is asked when
+    it is back. (payload, status)."""
     n = nodes.node(node_id) if nodes is not None and node_id else None
-    why = cannot(n)
+    why = cannot(n, agent)
     if why:
         return {"error": why}, 400
-    r = nodes.job_add("user:signin", {"node": n["id"]}, "claude-logout",
-                      {"uid": str(uid), "timeout": 120})
+    a = agents.get(agent) or agents.get("claude")
+    r = nodes.job_add("user:signin", {"node": n["id"]}, a.logout_job,
+                      {"uid": str(uid), "timeout": 120, "agent": a.id})
     if r.get("error"):
         return r, 400
     return {"ok": True, "job": r["job"], "on": n["name"]}, 200

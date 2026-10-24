@@ -195,7 +195,9 @@ async function dmEditAll(sel = DM){
     const key = r?.dataset.inst ? `inst:${r.dataset.inst}` : r?.dataset.ctr ? `ctr:${r.dataset.ctr}` : '';
     if (key) dmEditing.add(key);
     dockerRev++; drawPanes(); }, sel);
-  await page.waitForFunction(() => document.querySelector('dialog.dmsetdlg')?.open, null, { timeout: 10000 }).catch(() => {});
+  // Any open one: a drawing of the same row out of sight keeps its own
+  // dialog shut, and the first in the document was that one.
+  await page.waitForFunction(() => [...document.querySelectorAll('dialog.dmsetdlg')].some(d => d.open), null, { timeout: 10000 }).catch(() => {});
 }
 async function dmEditNone(){
   // ...and what a check staged and left: a row with a draft keeps its dialog.
@@ -2272,14 +2274,15 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
   // Put away, and the dock down again: up, it takes the page's room, and the
   // blocks below this one read the Docker page's own controls.
   await page.evaluate(() => { hideTab(panes[1]); dockToggle(false); });
-  // Why it is dead, said under the row: a hosting-only node runs no
-  // terminal, and a project whose Run its container is Deny keeps its
-  // containers' shells to an administrator.
+  // A hosting-only node runs no terminal: its rows draw no Shell, and the
+  // page's status line says why once, not in red under every row (the
+  // operator, 22 Oct). A project whose Run its container is Deny keeps its
+  // containers' shells to an administrator, said under its own row.
   const why = await page.evaluate(() => {
     const keepN = nodesList, keepL = dockerList, keepA = state.admin;
     nodesList = [{ id: 'n_host', name: 'hostbox', config: { host_only: true } }];
     dockerList = { ...(dockerList || {}), node: 'n_host' };
-    const host = dmShellWhy({ project: 'ep.silon', instance: 'main' });
+    const host = (dmHostOnly() ? 'policy ' : '') + dmStatus(dockerList);
     nodesList = keepN; dockerList = keepL;
     const p = state.projects.find(x => x.name === 'ep.silon'), keepB = p.prefs?.devbuild;
     p.prefs = { ...(p.prefs || {}), devbuild: 'deny' }; state.admin = false;
@@ -2288,8 +2291,8 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
     p.prefs.devbuild = keepB; state.admin = keepA;
     return { host, deny, admin };
   });
-  ok(/hostbox hosts containers only/.test(why.host) && /Run its container is Deny/.test(why.deny) && why.admin === '',
-     `a dead Shell says why: a hosting-only node, or Deny for anybody but an administrator (${JSON.stringify(why)})`);
+  ok(/^policy /.test(why.host) && /hostbox hosts containers only/.test(why.host) && /Run its container is Deny/.test(why.deny) && why.admin === '',
+     `no Shell says why: a hosting-only node once on the page's line, or Deny under its row for anybody but an administrator (${JSON.stringify(why).slice(0, 300)})`);
   rmSync(`${ST}/ep-silon.svcs`, { force: true });
   if (!wasUp) rmSync(`${ST}/ep-silon.up`, { force: true });
   await dmRefresh();
@@ -3053,9 +3056,9 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
     status: document.querySelector(sel + ' > summary .sst')?.textContent.trim(),
     prunes: document.querySelectorAll(sel + ' [data-dmprune]').length }), imgSect);
   ok(imgs.tiles.some(t => /^2 images/.test(t)) && imgs.rows.some(r => /ep-silon-img:latest.*in use/i.test(r)) && imgs.rows.some(r => /dangling.*unused/i.test(r))
-     && imgs.vols.includes('orphan-vol') && /2 images, 2 volumes/.test(imgs.status || '') && imgs.prunes === 2
+     && imgs.vols.includes('orphan-vol') && /2 images, 2 volumes/.test(imgs.status || '') && imgs.prunes === 4
      && imgs.heads[0] === 'Image State ID Size Created' && imgs.heads[1] === 'Volume Driver' && imgs.off === 0,
-     `the Images and volumes section lists the daemon's images in use or not and its volumes, as two tables, and offers the two prunes (${JSON.stringify(imgs)})`);
+     `the Images and volumes section lists the daemon's images in use or not and its volumes, as two tables, and offers the four prunes (R110: unused images and the build cache too) (${JSON.stringify(imgs)})`);
   // The confirmation is accepted by the page's own dialog handler (lib.mjs).
   await page.click(`${imgSect} [data-dmprune="volumes"]`);
   await page.waitForFunction(() => /pruned volumes/.test(document.body.textContent), null, { timeout: 15000 });
@@ -3076,6 +3079,24 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
     await page.click('.dmtab .chips .chip[data-dmchip=""]');
     await page.waitForFunction(() => document.querySelector('.dmtab .chip.on')?.dataset.dmchip === '', null, { timeout: 5000 });
     ok(await page.$$eval('.dmtab .dmgroup', gs => gs.length) > 1, '...and All puts every group back');
+    // A row scrolled along keeps its place when a chip is pressed (the
+    // operator, 22 Oct: it jumped back to its start on every press). Made
+    // narrow so it scrolls whatever the fixture's chips.
+    const kept = await page.evaluate(async () => {
+      const row = () => [...document.querySelectorAll('.dmtab .chips')].find(c => !c.closest('.fghost'));
+      const css = document.createElement('style'); css.textContent = '.dmtab .chips{max-width:160px}'; document.head.append(css);
+      const r = row(); r.scrollLeft = 60; r.dispatchEvent(new Event('scroll'));
+      const at = r.scrollLeft;
+      [...r.querySelectorAll('.chip')].pop().click();
+      for (let i = 0; i < 40 && row() === r; i++) await new Promise(res => setTimeout(res, 50));
+      await new Promise(res => setTimeout(res, 300));
+      const now = row(), was = now.scrollLeft;
+      css.remove();
+      return { at, now: was, redrawn: now !== r };
+    });
+    await page.click('.dmtab .chips .chip[data-dmchip=""]');
+    ok(kept.at > 0 && Math.abs(kept.now - kept.at) <= 1,
+       `...and a chip row scrolled along stays where it was when a chip is pressed (${JSON.stringify(kept)})`);
   } else {
     ok(true, 'one project here, so no chips: a chip row of one is not drawn');
   }
@@ -3811,7 +3832,7 @@ ok(await page.$('#devSend'),
   // The tab is named as well as the switch: the controls moved from the
   // artifact row to the Docker tab and this sentence stayed behind, pointing
   // a session at a tab that no longer has it.
-  ok(off.status === 403 && /project's settings, Claude may: Run its container/.test(off.error || ''),
+  ok(off.status === 403 && /project's settings, Agents may: Run its container/.test(off.error || ''),
      `a session cannot rebuild until the project says so, and is told where the setting is (${
         JSON.stringify(off).slice(0, 90)})`);
   // The two verbs that make and unmake a container are not on the dial at
@@ -4126,7 +4147,7 @@ ok(await page.$('#devSend'),
       G('branch', '-D', 'sendbranch');
     }
   }
-  // The setting lives in the project's settings with the other Claude may
+  // The setting lives in the project's settings with the other Agents may
   // dials (the operator, 24 Sep), because it covers creating the container,
   // which has to be decidable before there is a row. The row says what it is
   // set to and links there, the way the tests-run line does.
@@ -4141,15 +4162,15 @@ ok(await page.$('#devSend'),
   await page.waitForSelector('#rnmodal:not([hidden]) #rnGateDocker', { timeout: 15000 });
   ok(await page.$eval('#rnGateDocker', e => e.value === 'auto' && !e.closest('label').hidden
                         && [...e.options].map(o => o.value).join() === 'auto,ask,deny'),
-     "the project's settings carry it, on auto, with the other Claude may dials");
+     "the project's settings carry it, on auto, with the other Agents may dials");
   // The Claude section holds the test-run setting too (25 Sep): what a
   // change asked for during a run does, saved with the rest of the dialog,
   // under the section's heading since the dialog was put in sections (1 Oct).
-  ok(await page.$eval('#rnGateField', e => e.closest('.rngroup').querySelector('summary .t').textContent) === 'Claude may'
+  ok(await page.$eval('#rnGateField', e => e.closest('.rngroup').querySelector('summary .t').textContent) === 'Agents may'
      && await page.$eval('#rnGateLabel', e => e.textContent) === 'While a test runs'
      && await page.$eval('#rnTestChange', e => e.value === 'wait' && [...e.options].map(o => o.value).join() === 'wait,restart')
      && await page.$eval('#rnReply', e => e.value === ''),
-     'the dialog groups what Claude may do under its Claude may heading, with what a change does during a test run; replies are the person\'s own pick');
+     'the dialog groups what an agent may do under its Agents may heading, with what a change does during a test run; replies are the person\'s own pick');
   await page.selectOption('#rnTestChange', 'restart');
   await page.selectOption('#rnReply', 'minimal');
   await page.selectOption('#rnAsks', 'fewer');
@@ -4626,13 +4647,14 @@ print(json.dumps(out))
     buttons: [...v.querySelectorAll('#dkList .row[data-inst="helper-for-eps|main"] [data-dm]')].map(b => b.dataset.dm),
     cards: [...v.querySelectorAll('#dkList > .dmcard')].map(c => c.querySelector('.dmgroup b')?.textContent),
     loose: v.querySelectorAll('#dkList > .row').length,
-    tiles: [...v.querySelectorAll('#dkTop .tile')].map(t => t.textContent.replace(/\s+/g, ' ').trim()) }));
+    tiles: [...v.querySelectorAll('#dkHint .tile')].map(t => t.textContent.replace(/\s+/g, ' ').trim()) }));
   ok(view.rows.includes('helper-for-eps|main') && view.rows.includes('ep.silon|main')
      && view.rows.includes('someone-elses') && !view.rows.includes('ep.silon|loose'),
      `the project's Docker view lists what belongs to it, and not its own container sent to no project (${view.rows.join(' ')})`);
   ok(view.buttons.includes('up') && view.buttons.includes('rebuild'),
      `...with the manager's own rows and controls (${view.buttons.join(' ')})`);
-  ok(/3 containers on/.test(view.hint), `...and a line counting them (${view.hint.slice(0, 80)})`);
+  ok(/\d+ running of \d+ containers?/.test(view.hint.replace(/\s+/g, ' ')) && /\bon \S/.test(view.hint),
+     `...and a tile counting them, with the node they are on under it (${view.hint.replace(/\s+/g, ' ').slice(0, 80)})`);
   // As the Containers page draws them, scoped to the project (the operator,
   // 19 Oct): its own card under its tiles, no row loose on the page.
   ok(view.cards.length === 1 && view.loose === 0 && view.tiles.some(t => /running/.test(t)) && !view.tiles.some(t => /projects/.test(t)),
@@ -4724,7 +4746,7 @@ print(json.dumps(out))
   if (!wasUp) rmSync(`${DIR}/dockerstate/helper-for-eps.up`, { force: true });
   await dial('deny');
   const denied = await as('/api/dockerctl', { action: 'restart', container: 'someone-elses' });
-  ok(denied.status === 403 && /Claude may: Run its container/.test(denied.error || ''),
+  ok(denied.status === 403 && /Agents may: Run its container/.test(denied.error || ''),
      `...and on deny may not restart it, told where the setting is (${String(denied.error).slice(0, 60)})`);
   await dial('auto');
   const was = readFileSync(`${DIR}/dockerstate/ctl.log`, 'utf8').length;

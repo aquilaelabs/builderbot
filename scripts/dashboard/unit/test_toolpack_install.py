@@ -67,7 +67,7 @@ class Install(unittest.TestCase):
         self.store = os.path.join(t, "store")
         os.makedirs(self.store)
         # As a job runs it on a node: no session around it.
-        self.env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        self.env = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "BB_AGENT")}
         self.env["SDK_ROOT"] = self.store
 
     def bb(self, *a):
@@ -161,7 +161,7 @@ class MadeHere(unittest.TestCase):
             shutil.copy(src, os.path.join(b, arc))
         store = os.path.join(t, "store")
         os.makedirs(store)
-        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        env = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "BB_AGENT")}
         env["SDK_ROOT"] = store
 
         def bb(*a):

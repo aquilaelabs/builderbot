@@ -1,9 +1,10 @@
-"""signing.py (R106): a project's Android keys kept by the controller.
-Against a real keytool where one is installed (the jdk toolchain), skipped
-where none is: a key is checked before it is kept, the listing carries no
-password, the files are the owner's alone, and backup marks it saved."""
+"""signing.py (R106): a project's Android keys kept by the controller and
+worked on by a sign-key job on the project's node (signnode.py runs the real
+agent's side against a toolchain store here), skipped where there is none: a
+key is checked before it is kept, the listing carries no password, the files
+are the owner's alone, and backup marks it saved. What keeps the node from
+the work is said naming the node and what it lacks."""
 import base64
-import glob
 import os
 import re
 import shutil
@@ -16,26 +17,19 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import signing  # noqa: E402
+import signnode  # noqa: E402
+
+# The store's keytool, for making a test's own keystore and opening one.
+KT = os.path.join(signnode.STORE, "jdk", "bin", "keytool") if signnode.STORE else ""
 
 
-def find_keytool():
-    for c in [os.environ.get("BB_KEYTOOL", ""), shutil.which("keytool") or "",
-              *glob.glob("/mnt/SDK/*/jdk/bin/keytool"), *glob.glob("/sdk/*/jdk/bin/keytool")]:
-        if c and os.access(c, os.X_OK):
-            return c
-    return ""
-
-
-KT = find_keytool()
-
-
-@unittest.skipUnless(KT, "no keytool on this machine (the jdk toolchain)")
+@unittest.skipUnless(KT, "no toolchain store with a jdk on this machine")
 class Signing(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        signing.configure(state=self.tmp / "state", project_name=re.compile(r"[A-Za-z0-9._-]+"),
-                          keytool=lambda: KT)
+        signing.configure(state=self.tmp / "state", project_name=re.compile(r"[A-Za-z0-9._-]+"))
+        self.node = signnode.install(self, signing, str(self.tmp / "data"))
         # A key is kept only once its backups have a password (2 Oct).
         signing.set_backup_password("app", "", "a-backup-password")
         self.ks = self.tmp / "k.p12"
@@ -84,22 +78,20 @@ class Signing(unittest.TestCase):
         self.assertEqual(signing.remove("app", "play")[1], 200)
         self.assertEqual(signing.remove("app", "play")[1], 404)
 
-    def test_keys_from_before_names_become_the_default(self):
-        old = self.tmp / "state" / "signing" / "older"
-        old.mkdir(parents=True)
-        (old / "play.ks").write_bytes(self.ks.read_bytes())
-        (old / "play.json").write_text('{"alias": "upload", "sha256": "AB", "store_pass": "s3cret-pass"}')
-        self.assertEqual(signing.listing("older")[0]["keys"]["default"]["play"]["alias"], "upload")
-        self.assertFalse((old / "play.ks").exists())
-        self.assertIsNotNone(signing.secret("older", "play"))
-
     def test_a_generated_key_and_an_app_mapped_to_it(self):
         r, st = signing.generate("app", "sideload", "watch", by="sean")
         self.assertEqual(st, 200, r)
         self.assertTrue(r["key"]["generated"])
         self.assertEqual(signing.generate("app", "sideload", "watch")[1], 409)
         blob, rec = signing.secret("app", "sideload", "watch")
-        self.assertEqual(signing.inspect(blob, rec["store_pass"], "watch")[2], rec["sha256"])
+        self.assertEqual(signing.inspect("app", blob, rec["store_pass"], "watch")[2], rec["sha256"])
+        # Made on the node, by a job whose spec holds no secret, its work
+        # directory gone after and nothing of the key in its log.
+        made = [j for j in self.node.jobs.values() if j["spec"]["op"] == "generate"]
+        self.assertEqual((made[0]["type"], made[0]["state"]), ("sign-key", "succeeded"), made[0].get("log"))
+        self.assertNotIn(rec["store_pass"], repr(made[0]["spec"]) + made[0]["log"])
+        self.assertEqual(os.listdir(self.tmp / "data" / "sign-key"), [])
+        self.assertEqual(signing._handover, {})
         self.assertEqual(signing.set_map("app", "com.example.watch", "nope")[1], 404)
         self.assertEqual(signing.set_map("app", "not a package", "watch")[1], 400)
         self.assertEqual(signing.set_map("app", "com.example.watch", "watch")[1], 200)
@@ -117,6 +109,93 @@ class Signing(unittest.TestCase):
         signing.remove("app", "sideload", "watch")
         self.assertEqual(signing.mapping("app"), {})
 
+    def test_a_backup_made_with_the_password_is_wrapped_under_it(self):
+        # R111: Download backup with the project's backup password wraps the
+        # keystore under that password, password.txt holding none, so a
+        # copy of the zip is no key without it; Import takes it typed in.
+        import io
+        import subprocess
+        import zipfile
+        signing.generate("app", "sideload", "watch")
+        sha = signing.listing("app")[0]["keys"]["watch"]["sideload"]["sha256"]
+        (name, data), st = signing.backup("app", "sideload", "watch", password="a-backup-password")
+        self.assertEqual(st, 200)
+        z = zipfile.ZipFile(io.BytesIO(data))
+        said = z.read("password.txt").decode()
+        self.assertIn("this project's backup password", said)
+        rec = signing._record("app", "sideload", "watch")
+        self.assertNotIn(rec["store_pass"], said, "the key's own password is not in the backup")
+        ks = next(n for n in z.namelist() if n.endswith(".p12"))
+        tmp = self.tmp / "w.p12"
+        tmp.write_bytes(z.read(ks))
+        opens = lambda pw: subprocess.run([KT, "-list", "-keystore", str(tmp), "-storepass", pw],
+                                          capture_output=True).returncode == 0
+        self.assertTrue(opens("a-backup-password") and not opens(rec["store_pass"]),
+                        "the keystore opens with the backup password and not with the key's own")
+        signing.set_backup_password("other", "", "another-password")
+        b64 = base64.b64encode(data).decode()
+        r, st = signing.import_backup("other", "", b64, filename=name)
+        self.assertEqual(st, 400)
+        self.assertIn("type that password", r["error"])
+        r, st = signing.import_backup("other", "", b64, filename=name, password="a-backup-password")
+        self.assertEqual(st, 200, r)
+        self.assertEqual(signing.listing("other")[0]["keys"]["watch"]["sideload"]["sha256"], sha)
+
+    def test_a_backup_imports_into_another_project(self):
+        # R103: Download backup's zip goes into a second project as the same
+        # key, its password and alias read from password.txt.
+        signing.generate("app", "sideload", "watch")
+        sha = signing.listing("app")[0]["keys"]["watch"]["sideload"]["sha256"]
+        (name, data), _ = signing.backup("app", "sideload", "watch")
+        signing.set_backup_password("other", "", "another-password")
+        b64 = base64.b64encode(data).decode()
+        r, st = signing.import_backup("other", "", b64, filename=name, by="sean")
+        self.assertEqual(st, 200, r)
+        got = signing.listing("other")[0]["keys"]["watch"]["sideload"]
+        self.assertEqual(got["sha256"], sha)
+        self.assertEqual(got["alias"], "watch")
+        self.assertGreater(got["backed_up"], 0)
+        self.assertNotIn("store_pass", repr(r))
+        # ...its own backup is a zip again, its password traveling with it.
+        (name2, _), _ = signing.backup("other", "sideload", "watch")
+        self.assertTrue(name2.endswith(".zip"))
+        # Again is a no-op; a different key over it is refused.
+        self.assertEqual(signing.import_backup("other", "sideload", b64, key="watch")[1], 200)
+        r, st = signing.import_backup("other", "sideload", self.b64, key="watch", password="s3cret-pass")
+        self.assertEqual(st, 409, r)
+        # A bare keystore needs its password; a name without a slot needs one said.
+        self.assertEqual(signing.import_backup("other", "play", self.b64)[1], 400)
+        r, st = signing.import_backup("other", "", self.b64, password="s3cret-pass", filename="k.p12")
+        self.assertEqual(st, 400)
+        self.assertIn("slot", r["error"])
+        r, st = signing.import_backup("other", "play", self.b64, key="up", password="s3cret-pass")
+        self.assertEqual(st, 200, r)
+
+    def test_a_backup_zip_holds_only_its_two_files(self):
+        import io
+        import zipfile
+        signing.generate("app", "play")
+        (_, data), _ = signing.backup("app", "play")
+
+        def zipped(extra=None, drop=None, swap=None):
+            src = zipfile.ZipFile(io.BytesIO(data))
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as z:
+                for n in src.namelist():
+                    if n != drop:
+                        z.writestr(n, swap if (swap and n.endswith(".p12")) else src.read(n))
+                for n, b in (extra or {}).items():
+                    z.writestr(n, b)
+            return base64.b64encode(buf.getvalue()).decode()
+        for b64, said in [(zipped(extra={"evil.sh": "x"}), "nothing else"),
+                          (zipped(drop="password.txt"), "nothing else"),
+                          (zipped(swap=self.ks.read_bytes()), "password"),
+                          (base64.b64encode(b"PK\x03\x04junk").decode(), "did not open")]:
+            r, st = signing.import_backup("app", "sideload", b64, key="copy")
+            self.assertEqual(st, 400, r)
+            self.assertIn(said, r["error"])
+        self.assertIsNone(signing.listing("app")[0]["keys"].get("copy"))
+
     def test_no_key_until_the_backups_have_a_password(self):
         signing.set_backup_password("app2", "", "")
         r, st = signing.put("app2", "play", self.b64, "s3cret-pass")
@@ -129,14 +208,66 @@ class Signing(unittest.TestCase):
         self.assertEqual(signing.put("../x", "play", self.b64, "s3cret-pass")[1], 400)
 
 
-class NoKeytool(unittest.TestCase):
-    def test_without_one_it_says_what_to_install(self):
-        signing.configure(state=tempfile.mkdtemp(), project_name=re.compile(r"[A-Za-z0-9._-]+"),
-                          keytool=lambda: None)
+class NodeState(unittest.TestCase):
+    """What keeps the project's node from a key's work is said naming the
+    node and what it lacks (B232), before any job is queued."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        signing.configure(state=self.tmp, project_name=re.compile(r"[A-Za-z0-9._-]+"))
         signing.set_backup_password("app", "", "a-backup-password")
+        for k in ("node_of", "node_get", "node_tools", "node_refuses", "job_add"):
+            self.addCleanup(setattr, signing, k, getattr(signing, k))
+        self.n = {"id": "n_1", "name": "bb-sandbox", "state": "online", "kind": "agent", "live": True}
+        self.have = {"jdk", "android-tools"}
+        self.queued = []
+        signing.node_of = lambda p: "n_1"
+        signing.node_get = lambda nid: self.n if nid == "n_1" else None
+        signing.node_tools = lambda n: self.have
+        signing.node_refuses = lambda nid: ""
+        signing.job_add = lambda *a, **k: self.queued.append(a) or {"error": "not queued in this test"}
+
+    def said(self):
         r, st = signing.put("app", "play", base64.b64encode(b"x").decode(), "p")
         self.assertEqual(st, 400)
-        self.assertIn("jdk toolchain", r["error"])
+        return r["error"]
+
+    def test_each_state_is_said(self):
+        self.have = {"android-tools"}
+        self.assertEqual(self.said(), "app's node bb-sandbox has no jdk: install it on its Toolchains")
+        self.assertIn("no jdk", signing.listing("app")[0]["node_why"])
+        self.assertEqual(signing.listing("app")[0]["node"], "bb-sandbox")
+        self.n["live"] = False
+        self.assertIn("app's node bb-sandbox is offline", self.said())
+        self.n["live"], self.n["state"] = True, "draining"
+        self.assertIn("is draining", self.said())
+        self.n["state"] = "online"
+        signing.node_refuses = lambda nid: "bb-sandbox runs agent 0.6.1 and this controller ships 0.6.2"
+        self.assertIn("runs agent 0.6.1", self.said())
+        signing.node_of = lambda p: ""
+        self.assertIn("app has no node to sign on", self.said())
+        self.assertEqual(self.queued, [], "nothing is queued on a node that cannot do it")
+
+    def test_a_rotation_needs_the_build_tools_too(self):
+        self.have = {"jdk", "android-tools"}
+        self.assertEqual(signing.signer("app")[1], "")
+        self.assertEqual(signing.signer("app", build_tools=True)[1],
+                         "app's node bb-sandbox has no Android SDK Build-Tools (apksigner): install them on its Toolchains")
+        # A node that has not said what its store holds is let try.
+        self.have = set()
+        self.assertEqual(signing.signer("app", build_tools=True)[1], "")
+
+    def test_a_node_missing_the_jdk_says_so_through_the_job(self):
+        # The store said nothing, so the job runs and its node says it.
+        self.have = set()
+        if not signnode.STORE:
+            self.skipTest("no toolchain store here")
+        signnode.install(self, signing, str(self.tmp / "data"), store=str(self.tmp / "empty"))
+        signing.node_get = lambda nid: self.n
+        r, st = signing.generate("app", "sideload")
+        self.assertEqual(st, 409, r)
+        self.assertEqual(r["error"], "app's node bb-sandbox has no jdk: install it on its Toolchains")
 
 
 if __name__ == "__main__":
@@ -150,8 +281,8 @@ class Start(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        signing.configure(state=self.tmp, project_name=re.compile(r"[A-Za-z0-9._-]+"), keytool=lambda: None)
-        d = self.tmp / "signing" / "app"
+        signing.configure(state=self.tmp, project_name=re.compile(r"[A-Za-z0-9._-]+"))
+        d = self.tmp / "signing" / "app" / "default"
         d.mkdir(parents=True)
         (d / "sideload.ks").write_bytes(b"k")
         (d / "sideload.json").write_text('{"alias": "a", "store_pass": "SECRET"}')
@@ -195,7 +326,7 @@ class KeyChoice(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        signing.configure(state=self.tmp, project_name=re.compile(r"[A-Za-z0-9._-]+"), keytool=lambda: None)
+        signing.configure(state=self.tmp, project_name=re.compile(r"[A-Za-z0-9._-]+"))
         self.add("test")
         signing.node_of = lambda p: "n_1"
         signing.file_path = lambda p, rel: Path("/x")
@@ -220,24 +351,16 @@ class KeyChoice(unittest.TestCase):
         self.assertEqual(signing.key_for("app", "dev.x", "sideload"), "other")
 
 
-STORE = next((d for d in glob.glob("/mnt/SDK/*") + glob.glob("/sdk/*")
-              if glob.glob(os.path.join(d, "android", "build-tools", "*", "apksigner"))
-              and os.access(os.path.join(d, "jdk", "bin", "java"), os.X_OK)), "")
-
-
-@unittest.skipUnless(KT and STORE, "no keytool, apksigner and java here")
+@unittest.skipUnless(signnode.STORE_BT, "no toolchain store with a jdk and build-tools here")
 class Rotate(unittest.TestCase):
-    """A sideload key rotated to another (step 7), with the store's apksigner."""
+    """A sideload key rotated to another (step 7), the proof made on the
+    project's node with its apksigner."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        signing.configure(state=self.tmp / "state", project_name=re.compile(r"[A-Za-z0-9._-]+"),
-                          keytool=lambda: KT)
-        tool = sorted(glob.glob(os.path.join(STORE, "android", "build-tools", "*", "apksigner")))[-1]
-        jdk = os.path.join(STORE, "jdk")
-        signing.apksigner_path = lambda: (tool, {"JAVA_HOME": jdk, "PATH": jdk + "/bin:" + os.environ["PATH"]})
-        self.addCleanup(setattr, signing, "apksigner_path", None)
+        signing.configure(state=self.tmp / "state", project_name=re.compile(r"[A-Za-z0-9._-]+"))
+        self.node = signnode.install(self, signing, str(self.tmp / "data"), store=signnode.STORE_BT)
         signing.set_backup_password("app", "", "a-backup-password")
         signing.generate("app", "sideload", "default")
         signing.generate("app", "sideload", "watch2")
@@ -262,7 +385,7 @@ class BackupPassword(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        signing.configure(state=self.tmp, project_name=re.compile(r"[A-Za-z0-9._-]+"), keytool=lambda: None)
+        signing.configure(state=self.tmp, project_name=re.compile(r"[A-Za-z0-9._-]+"))
         signing._tries.clear()
 
     def test_set_needed_changed_and_removed(self):

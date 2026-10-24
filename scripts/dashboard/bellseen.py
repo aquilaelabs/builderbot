@@ -81,7 +81,7 @@ def filter_rows(uid, rows):
     out, hidden = [], 0
     for r in rows:
         r = dict(r)
-        if r.get("kind") == "toolchain":
+        if r.get("kind") in ("toolchain", "agents"):
             tools = []
             for t in r.get("tools") or []:
                 t = dict(t, key=f"tc:{r['id']}:{t['name']}@{t.get('to') or ''}")
@@ -101,6 +101,18 @@ def filter_rows(uid, rows):
         elif r.get("kind") == "image":
             # To the digests it would move to (R195): put away until one moves.
             r["key"] = f"image:{r['id']}@{r.get('digest') or ''}"
+            if r["key"] in gone:
+                hidden += 1
+                continue
+        elif r.get("kind") == "release-sign":
+            # Keyed on what it says (R106): put away until it says another
+            # thing, or another signing fails.
+            if r.get("key") in gone:
+                hidden += 1
+                continue
+        elif r.get("kind") == "token-read":
+            # To the newest read (R125 step 6): put away until another one.
+            r["key"] = f"tokenread:{r['id']}@{r.get('at') or 0}"
             if r["key"] in gone:
                 hidden += 1
                 continue

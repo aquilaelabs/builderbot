@@ -26,11 +26,11 @@ if node:
     if not hit:
         sys.exit(f"[builderbot] ERROR: no node called {node}"
                  + (" that this session may use: a session sees only the nodes its project builds on"
-                    if os.environ.get("CLAUDECODE") else " (bb nodes lists them)"))
+                    if os.environ.get("CLAUDECODE") or os.environ.get("BB_AGENT") else " (bb nodes lists them)"))
     nid = hit[0]["id"]
 r = call("/api/v1/jobs", {"action": "run", "project": proj, "role": role, "node": nid,
                           "argv": argv, "outputs": outs, "timeout": int(timeout),
-                          "from": "session" if os.environ.get("CLAUDECODE") else "operator"})
+                          "from": "session" if os.environ.get("CLAUDECODE") or os.environ.get("BB_AGENT") else "operator"})
 if r.get("error"):
     sys.exit(f"[builderbot] ERROR: {r['error']}")
 names = {n["id"]: n["name"] for n in (call("/api/v1/nodes").get("nodes") or [])}

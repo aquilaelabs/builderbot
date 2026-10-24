@@ -52,6 +52,9 @@ import dev.builderbot.app.ui.Panel
 import dev.builderbot.app.ui.Sunk
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.repeatOnLifecycle
 import dev.builderbot.app.ui.Warn
@@ -158,11 +161,35 @@ class MainActivity : FragmentActivity() {
 // a second design.
 @Composable
 fun BuilderBotTheme(content: @Composable () -> Unit) {
-    // One palette, the dashboard's, whatever the system theme: the screens
-    // paint their panels and text from Parts.kt's tokens directly, so a
-    // light Material scheme underneath them put black headings on the dark
-    // background (seen on an emulator whose system theme was light).
-    val scheme = darkColorScheme(
+    // The dashboard's palette, the half the person chose: the screens paint
+    // their panels and text from the tokens directly, and Material's scheme
+    // underneath is the same half, so a light system setting never puts
+    // black headings on a dark page or the other way round. System follows
+    // the phone (R50 step 16).
+    val sysDark = androidx.compose.foundation.isSystemInDarkTheme()
+    SideEffect { dev.builderbot.app.ui.Schemes.systemDark = sysDark }
+    val light = dev.builderbot.app.ui.Schemes.half.light
+    // The status bar's ground is the page's, and its icons dark on a light one.
+    val view = androidx.compose.ui.platform.LocalView.current
+    if (!view.isInEditMode) SideEffect {
+        val w = (view.context as? android.app.Activity)?.window ?: return@SideEffect
+        @Suppress("DEPRECATION")
+        w.statusBarColor = Bg.toArgb()
+        @Suppress("DEPRECATION")
+        w.navigationBarColor = Bg.toArgb()
+        w.decorView.setBackgroundColor(Bg.toArgb())
+        androidx.core.view.WindowCompat.getInsetsController(w, view).apply {
+            isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light
+        }
+    }
+    val scheme = if (light) lightColorScheme(
+        primary = AccentDeep, onPrimary = Ink, primaryContainer = AccentDeep, onPrimaryContainer = Ink,
+        secondary = Note, secondaryContainer = AccentDeep, onSecondaryContainer = Ink,
+        tertiary = Note, background = Bg, onBackground = Ink, surface = Panel, onSurface = Ink,
+        surfaceVariant = Sunk, onSurfaceVariant = Dim, surfaceContainer = Panel,
+        surfaceContainerHigh = Panel, surfaceContainerHighest = Panel, surfaceContainerLow = Bg, outline = Line, outlineVariant = Line,
+        error = Bad, onError = Panel)
+    else darkColorScheme(
         primary = AccentDeep, onPrimary = Ink, primaryContainer = AccentDeep, onPrimaryContainer = Ink,
         secondary = Note, secondaryContainer = AccentDeep, onSecondaryContainer = Ink,
         tertiary = Note, background = Bg, onBackground = Ink, surface = Panel, onSurface = Ink,
@@ -180,7 +207,8 @@ data class Tab(val route: String, val label: String, val icon: ImageVector)
 @Composable
 fun BuilderBotApp(openOn: String, activity: MainActivity) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val store = remember { Store(context).also { dev.builderbot.app.ui.Schemes.pick(it.scheme); it.scheme = dev.builderbot.app.ui.Schemes.current.name } }
+    val store = remember { Store(context).also { dev.builderbot.app.ui.Schemes.pick(it.scheme); it.scheme = dev.builderbot.app.ui.Schemes.current.name
+        dev.builderbot.app.ui.Schemes.pickMode(it.mode) } }
     var signedIn by remember { mutableStateOf(store.signedIn) }
     // Which pairing is in front (R132): the screens are keyed by it, so a
     // switch redraws every one of them from the other dashboard.
@@ -235,7 +263,9 @@ fun BuilderBotApp(openOn: String, activity: MainActivity) {
         val tabs = listOf(
             Tab("home", "Projects", Icons.Filled.Home),
             Tab("approvals", "Approvals", Icons.Filled.Notifications),
-            Tab("nodes", "Nodes", Icons.Filled.Build),
+            // Named by the dashboard's rail group it is in, as a rail press
+            // is (Machines: Nodes and Storage); the screen keeps its page's name.
+            Tab("nodes", "Machines", Icons.Filled.Build),
             Tab("more", "More", Icons.Filled.Menu),
         ).filter { it.route != "nodes" || isAdmin }
         // A note about one project opens on that project, over Home, so

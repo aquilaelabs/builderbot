@@ -29,9 +29,9 @@ NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9 ._-]{0,39}$")
 # builds and tests, the phone it is lent.
 CAPS = {
     "read": ("projects", "read a project: its notebook, code and state"),
-    "work": ("projects", "work on a project: the notebook, a Claude session, its settings, builds and tests"),
+    "work": ("projects", "work on a project: the notebook, an agent's session, its settings, builds and tests"),
     "version": ("projects", "move a project's version and release it"),
-    "lock": ("projects", "lock a project, ending whoever's session is on it"),
+    "lock": ("projects", "nothing any more: a project's owner or an administrator locks it (deprecated, goes in 0.8.0)"),
     "rename": ("projects", "rename a project"),
     "trash": ("projects", "delete a project"),
     "git-auth": ("projects", "change how a project authenticates to its remote"),
@@ -67,7 +67,7 @@ SCOPES = ("mine", "all")           # or a list of project names
 # that one); global areas only through a Global role, which only an
 # administrator gives. Each sentence is what the Roles tab shows.
 AREAS = (
-    ("projects", "Projects", "project", "its notebook and code", "a Claude session, edits, builds and tests"),
+    ("projects", "Projects", "project", "its notebook and code", "an agent's session, edits, builds and tests"),
     ("settings", "Project settings", "project", "the settings", "change them, lock, rename and delete"),
     ("releases", "Releases and versions", "project", "versions and releases", "move the version and release"),
     ("gitauth", "Git authentication", "project", "how it authenticates", "change the credential"),
@@ -76,7 +76,7 @@ AREAS = (
     # A project's VMs (R91): Read sees them on the VMs page, Write makes,
     # starts, stops, snapshots and removes them.
     ("vms", "VMs", "project", "its VMs and their state", "make, start, stop, snapshot and remove them"),
-    ("terminal", "Terminal", "project", "the shielded Claude console", "the full tmux shell"),
+    ("terminal", "Terminal", "project", "the shielded agent console", "the full tmux shell"),
     ("nodes", "Nodes", "global", "the Nodes page", "configure nodes, and what a project's sessions reach"),
     ("toolchains", "Toolchains", "global", "the Toolchains page", "install and remove"),
     ("jobs", "Jobs", "global", "the Jobs page", "run a command on a node"),
@@ -230,8 +230,54 @@ def _load():
     return {str(n): _clean(r) for n, r in rs.items() if n not in BUILTIN}
 
 
-def _save(custom):
-    write_json(FILE, {"roles": {n: {k: r.get(k) for k in ("scope", "perms", "note", "only")} for n, r in custom.items()}})
+def _save(custom, two_factor=None):
+    tf = _two_factor_list() if two_factor is None else two_factor
+    write_json(FILE, {"roles": {n: {k: r.get(k) for k in ("scope", "perms", "note", "only")} for n, r in custom.items()},
+                      **({"two_factor": sorted(tf)} if tf else {})})
+
+
+def _two_factor_list():
+    """The roles an administrator requires a second factor of (R127),
+    built in ones included."""
+    try:
+        v = json.loads(FILE.read_text())
+    except (OSError, ValueError, TypeError, AttributeError):
+        return set()
+    got = v.get("two_factor") if isinstance(v, dict) else None
+    return {str(x) for x in got} if isinstance(got, list) else set()
+
+
+def two_factor_roles():
+    with _lock:
+        return _two_factor_list()
+
+
+def set_two_factor(name, on):
+    """Require a second factor of every account holding this role, or not."""
+    name = str(name or "")
+    if name not in BUILTIN and name not in _load():
+        return {"error": f"no role called {name}"}
+    with _lock:
+        tf = _two_factor_list()
+        (tf.add if on else tf.discard)(name)
+        _save(_load(), tf)
+    return {"ok": True, "name": name, "two_factor": bool(on)}
+
+
+def two_factor_required(u):
+    """Whether any role this account holds, everywhere or on a project,
+    requires a second factor of it."""
+    if not u:
+        return False
+    tf = two_factor_roles()
+    if not tf:
+        return False
+    held = set(roles_of(u))
+    pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+    for rs in pr.values():
+        if isinstance(rs, list):
+            held |= {str(r) for r in rs}
+    return bool(held & tf)
 
 
 def ensure_owner_role(project):
@@ -248,10 +294,12 @@ def ensure_owner_role(project):
 
 def all_roles():
     """Every role, built in first, as the tab lists them."""
-    out = {n: dict(r, name=n) for n, r in BUILTIN.items()}
+    with _lock:
+        tf = _two_factor_list()
+    out = {n: dict(r, name=n, two_factor=n in tf) for n, r in BUILTIN.items()}
     with _lock:
         for n, r in sorted(_load().items()):
-            out[n] = dict(r, name=n)
+            out[n] = dict(r, name=n, two_factor=n in tf)
             # A project's owner role reads as whose it is, not as its key,
             # by the name the project is shown under, not its folder (B102).
             if str(r.get("note") or "").startswith("the owner of ") and n.endswith("_owner"):
@@ -310,7 +358,7 @@ def remove(name):
         if name not in d:
             return {"error": f"no role called {name}"}
         del d[name]
-        _save(d)
+        _save(d, _two_factor_list() - {name})
     return {"ok": True, "name": name}
 
 def roles_of(u):

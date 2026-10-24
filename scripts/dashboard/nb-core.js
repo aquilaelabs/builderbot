@@ -86,7 +86,7 @@ function makeNotebook(project){
   // to go back to. A row with no entry here is one Add made: canceling
   // that is removing it.
   nb.ruleWas = new Map();
-  // How many memories the tab found (null until read), for the head row that
+  // How many memories the tab found (null until read), for the glance that
   // sums both halves of the briefing: set by drawMemory, read by both draws.
   nb.memN = null;
   // The approval queue (roadmap #27): what the band and the tab counts draw
@@ -108,10 +108,13 @@ function makeNotebook(project){
   // defines functions, and the names it hands back are what the rest of
   // this closure calls by name.
   const {loadGit} = nbGitView({$, nb, project});
+  const {loadPerms, leavePerms, drawPush} = nbPermsView({$, nb, project, root});
+  const {loadSessions} = nbSessionsView({$, nb, project, root});
   // Each section's Save and Revert (see sectBar): published before the views
   // are made, since they register their sections as they are.
   nb.stagers = {}; nb.sectBar = sectBar; nb.stage = stage;
   const {loadArtifacts, loadVersion, drawVersion, postArtifacts, postVersion} = Object.assign(nb, nbArtifactsView({$, nb, project, root, sheet}));
+  const {loadSigning} = Object.assign(nb, nbSigningView({$, nb, project}));
   const {loadAnalysis, loadCodebase, codebaseSection, loadPreamble, preambleSection, loadBrief, briefSection} = Object.assign(nb, nbAnalysisView({$, nb, project}));
   const {loadDesign} = Object.assign(nb, nbDesignView({$, nb, project, root}));
   const {loadWiki, wikiDirty, wikiNews} = Object.assign(nb, nbWikiView({$, nb, project}));
@@ -204,7 +207,7 @@ function makeNotebook(project){
     $("histFind").value = "";
     cancelSend();
     $("roadmapText").value = "";
-    $("roadmapForm").hidden = true; $("roadmapAddBar").hidden = false; $("roadmapShow").hidden = false;
+    $("roadmapForm").hidden = true; $("roadmapAddBar").hidden = true; $("roadmapShow").setAttribute("aria-expanded", "false");
     $("roadmapList").innerHTML = `${skel("rows")}`;
     // Opening it is a re-read: both halves come off disk again, and the card
     // gets the same treatment so the number on the row you just pressed is not
@@ -265,7 +268,7 @@ function makeNotebook(project){
       try{
         const j = await (await postJSON("/api/roadmap", {project, action: "batch-close"})).json();
         if (j.error) notify(j.error, true);
-      }catch(e){ notify("could not reach the server: " + e, true); }
+      }catch(e){ notify("could not reach the server: " + failWords(e), true); }
       await refresh();
     };
     const rr = $("roadmapReread");
@@ -300,7 +303,7 @@ function makeNotebook(project){
 
   async function rereadRoadmap(){
     if (nb.roadmapPending.length
-        && !confirm(`Reload? ${nb.roadmapPending.length} unsaved change`
+        && !await askYes(`Reload? ${nb.roadmapPending.length} unsaved change`
                     + `${nb.roadmapPending.length === 1 ? "" : "s"} of yours would go: `
                     + "the notebook is being replaced with what is on disk."))
       return;
@@ -375,15 +378,17 @@ function makeNotebook(project){
       const save = bar.querySelector("[data-ssave]"), rv = bar.querySelector("[data-srevert]");
       if (!st || !save || !rv || save.getAttribute("aria-busy")) return;
       const b = barSays(key);
-      // The Roadmap's bar is the one that sat dead most of the time (R224):
-      // it appears with a reorder or an edit staged, and goes with the Save.
-      // The rest stay, dead, so they do not move under a thumb.
-      if (key === "roadmap") setHidden(bar.closest(".field"), b.hide);
+      // The Roadmap's bar is its status line (R109), and its Save and Revert
+      // are the ones that sat dead most of the time (R224): they appear with
+      // a reorder or an edit staged, and go with the Save. The rest stay,
+      // dead, so they do not move under a thumb.
+      if (key === "roadmap"){ setHidden(save, b.hide); setHidden(rv, b.hide); }
       setDisabled(save, b.saveDead);
       setDisabled(rv, b.rvDead);
       setTitle(rv, b.rvTitle);
       setTitle(save, b.saveTitle);
-      setText(bar.querySelector(".state"), b.state);
+      // ...its words what is staged, before the session's (.stg).
+      setText(bar.querySelector(".state .stg") || bar.querySelector(".state"), b.state);
     });
   }
 
@@ -425,15 +430,15 @@ function makeNotebook(project){
   // Who else has the notebook open is no longer said (the operator, 17 Oct:
   // not necessary): two windows writing one item are caught at the save,
   // which refuses the second and shows both. The heartbeat stays for what a
-  // session has read, said on the Roadmap's head row.
+  // session has read, said on the Roadmap's status line.
   function drawHere(){
     // A session that has gone and read the list, which is a different claim
     // from having been told: being told rides in on its next prompt (#27), and
     // what the operator wants to know after changing something is whether it
-    // has actually looked. The Roadmap's fact, on its head row (R222): it
+    // has actually looked. The Roadmap's fact, on its status line (R222): it
     // stood over every view.
     const rd = $("roadmapRead");
-    if (rd) rd.textContent = nb.nbRead ? `· read by a session ${ago(nb.nbRead)}` : "";
+    if (rd) rd.textContent = nb.nbRead ? ` · read by a session ${ago(nb.nbRead)}` : "";
   }
 
   // What is unsaved here, in the words the buttons use. Both halves, because
@@ -446,6 +451,7 @@ function makeNotebook(project){
             nb.ruleStagedCount() ? "an edited rule" : "",
             nb.designStagedCount() ? "an unsaved design" : "",
             wikiDirty() ? "a wiki page being edited" : "",
+            nb.signStagedCount() ? "a staged signing key change" : "",
             v ? `${v} staged version bump${v === 1 ? "" : "s"}` : ""]
       .filter(Boolean).join(" and ");
   }
@@ -461,12 +467,12 @@ function makeNotebook(project){
   // A notebook tab going away takes whatever is unsaved in it with it, so it is
   // the one tab close that asks. Answered here rather than in hideTab, which is
   // shared by every kind and should not learn about any of them.
-  function notebookLeaving(){
+  async function notebookLeaving(){
     const what = nbUnsaved();
     // The seat would time out on its own in under a minute; saying so is what
     // stops the other window claiming somebody is here who has just left.
     if (!what){ beat(true); return true; }
-    if (!confirm(`Close without saving? ${what} would be dropped.`)) return false;
+    if (!await askYes(`Close without saving?\n\n${what} would be dropped.`, {verb: "Close without saving", danger: true})) return false;
     revertPending();
     nb.roadmapOrdering = false;
     beat(true);
@@ -493,7 +499,7 @@ function makeNotebook(project){
   async function revertSection(key){
     const st = nb.stagers[key];
     if (!st || !st.count()) return;
-    if (!confirm(`Revert ${st.what()}?\n\nIt goes back to what is on disk.`)) return;
+    if (!await askYes(`Revert ${st.what()}?\n\nIt goes back to what is on disk.`)) return;
     await st.revert();
     syncSave();
   }
@@ -571,11 +577,19 @@ function makeNotebook(project){
     ghostOut(away);
     // The settings form comes into this view while it is on screen, and goes
     // back to the dialog when another view is picked (page-projsettings.js).
+    // ...and its Agents may section into Permissions, which hands it back
+    // first whenever another view is shown.
+    if (v !== "permissions") leavePerms();
     if (v === "settings") settingsInto(project, root.querySelector('.nbview[data-view="settings"] .nbsettings'));
     else if (rnHost && root.contains(rnHost)) settingsOut();
+    if (v === "permissions") loadPerms();
+    if (v === "sessions") loadSessions();
+    // A view still waiting on its data waits as its markup declares (R109).
+    glanceWaiting(root.querySelector(`.nbview[data-view="${v}"] .nbglance`));
     if (v === "git") loadGit();
     if (v === "docker") loadNbDocker();
     if (v === "vms") loadNbVms();
+    if (v === "signing") loadSigning();
     if (v === "bugs" && !nb.bugs) loadBugs();
     if (v === "analysis") loadAnalysis();
     if (v === "design") loadDesign();
@@ -611,7 +625,7 @@ function makeNotebook(project){
     if (v === cur) return true;
     const what = nbUnsaved();
     if (!what) return true;
-    if (!confirm(`Leave this tab? ${what} would be thrown away.\n\n`
+    if (!await askYes(`Leave this tab? ${what} would be thrown away.\n\n`
                  + "Unsaved work does not carry across the tabs: Save it "
                  + "first if you want to keep it.")) return false;
     revertPending();
@@ -619,6 +633,7 @@ function makeNotebook(project){
     nb.ruleClearStaged();
     nb.designClearStaged();
     nb.wikiClear();
+    nb.signClearStaged();
     nb.roadmapOrdering = false;
     redrawRoadmap();
     nb.memEditing.clear();
@@ -764,10 +779,11 @@ function makeNotebook(project){
   async function loadNbVms(){
     try{
       vmsData = await (await fetch("/api/vms")).json();
-    }catch(e){ $("nvHint").textContent = "VMs: " + e; return; }
+    }catch(e){ viewGlance($("nvHint"), [], esc("VMs: " + e)); return; }
     const rows = (vmsData.vms || []).filter(v => v.project === project);
     const up = rows.filter(v => v.state === "running").length;
-    $("nvHint").textContent = rows.length ? `${up} running of ${rows.length}` : "no VMs yet";
+    // The glance (R109): what runs of how many, as the VMs page counts.
+    viewGlance($("nvHint"), rows.length ? [{label: "running", value: up, sub: `of ${rows.length} VM${rows.length === 1 ? "" : "s"}`}] : []);
     const may = (vmsData.can || {})[project] === "write";
     const nb = $("nvNew");
     nb.hidden = !may;
@@ -793,7 +809,7 @@ function makeNotebook(project){
     const node = p?.prefs?.node || dockerNode || "";
     try{
       dkGot = await (await fetch("/api/docker" + (node ? "?node=" + encodeURIComponent(node) : ""))).json();
-    }catch(e){ $("dkHint").textContent = "docker: " + e; return; }
+    }catch(e){ viewGlance($("dkHint"), [], esc("docker: " + e)); return; }
     dockerSeen[dkGot.node || node || ""] = dkGot;
     drawNbDocker();
   }
@@ -806,8 +822,15 @@ function makeNotebook(project){
     const blind = !!(got.blind || got.error || got.on === false);
     const where = (nodesList || []).find(n => n.id === node)?.name || "its node";
     const n = mine.length + others.length;
-    $("dkHint").textContent = `${n} container${n === 1 ? "" : "s"} on ${where}${
-      blind && n ? ": the daemon did not answer, so the rows cannot say what is running" : ""}`;
+    // The glance (R109): the Containers page's tiles for the project's own,
+    // then its node and when the images were checked, or why the rows
+    // cannot say what runs.
+    const imgs = !mine.length || !mayDocker() || featureOff("image-updates") ? ""
+      : got.images_at ? ` · images checked ${esc(ago(got.images_at))}` : " · images not checked yet";
+    viewGlance($("dkHint"), blind || !n ? "" : dmTiles({running: mine.filter(d => d.running).length, all: mine.length,
+      behind: mine.filter(d => (d.images_behind || []).length || d.nginx_to).length, checked: !!got.images_at}),
+      blind && n ? `on ${esc(where)}: the daemon did not answer, so the rows cannot say what is running`
+        : n ? `on ${esc(where)}${imgs}` : "");
     const key = JSON.stringify([mine, others, job && job.step, job && job.running, job && (job.log || "").length,
                                 dmView, got.images_at, blind]);
     if (key === dkSeen) return;
@@ -817,9 +840,6 @@ function makeNotebook(project){
     const ck = $("dkCheck");
     ck.hidden = blind || !mayDocker() || !mine.length;
     ck.onclick = () => dmCheck(ck, node, () => { unbusy(ck, "Check"); ck.insertAdjacentHTML("beforeend", `<span class="lng"> for updates</span>`); loadNbDocker(); });
-    $("dkTop").innerHTML = blind || !n ? "" : dmTiles({running: mine.filter(d => d.running).length, all: mine.length,
-      behind: mine.filter(d => (d.images_behind || []).length || d.nginx_to).length, checked: !!got.images_at})
-      + (mine.length ? dmStatus(got) : "");
     // What the view is for, as its empty state (R119 step 4).
     $("dkList").innerHTML = dmGroupsHtml(mine, others, job, blind, project)
       || `<div class="field"><div class="hint nbempty">Send ${esc(projLabel(project))} from ${pageLink("", "Artifacts", `#/projects/${encodeURIComponent(project)}/artifacts`)}, or pick it on a container's row on the ${pageLink("docker", "Containers page")}.</div></div>`;
@@ -881,8 +901,7 @@ function makeNotebook(project){
       // Redrawn from what is already in hand rather than re-fetched: the list
       // on screen may be carrying staged changes that are not on the server,
       // and a refetch here would quietly throw them away.
-      const want = myClaude(project);
-      const now = (state?.sessions || []).some(x => x.name === want) ? want : null;
+      const now = myLiveSession(project);
       if (now !== nb.roadmapSession){ nb.roadmapSession = now; redrawRoadmap(); }
       // The Docker view follows a job on the devapp token above, never here.
       // What this notebook re-reads and when is declared once, up where the
@@ -891,6 +910,8 @@ function makeNotebook(project){
       // knows, which for a notebook is the batch note and who else is in here.
       // A scan re-ran while the Analysis view is up: re-read. The cache was
       // dropped by refresh() when the mtime moved, so this is one fetch.
+      // What a person changed of the push policy elsewhere, on Permissions.
+      if (!root.querySelector('[data-view="permissions"]').hidden) drawPush();
       if (!root.querySelector('[data-view="analysis"]').hidden
           && nb.anaStamp !== (state?.reports_mtime ?? null))
         loadAnalysis();
@@ -901,6 +922,11 @@ function makeNotebook(project){
     // the page is going (see the pagehide listener by getNotebook).
     leave(){ return beat(true, true); },
     destroy(){
+      // The settings form is one element lent to whichever Settings view
+      // shows it: handed back before this notebook's elements go, or it
+      // goes with them and every later Settings view is empty.
+      leavePerms();
+      if (typeof rnHost !== "undefined" && rnHost && root.contains(rnHost)) settingsOut();
       beat(true);
       unwatch.forEach(off => off());
       nbViewMemo.keep(project, null);
@@ -915,7 +941,7 @@ function makeNotebook(project){
 // A project is a page: its pane's bar is the header the design names (the
 // a-notebook/project-page rule): the name large, the branch and the node in
 // the data face, the session's state as the dot and a word, and at the
-// right its actions: Start Claude, or Open
+// right its actions: Start agent, or Open
 // Claude in green while yours runs (the chooser under it), Shell, and the rest behind one menu (link, phone, report,
 // lock, pin, settings). Drawn by paintBar on every pass like every bar; the
 // chooser sits on the pane, not in the bar, so a repaint leaves it up.
@@ -923,7 +949,7 @@ function makeNotebook(project){
 // first, then whose else is here, then none. The dot is the one every
 // session surface wears.
 function projectState(p){
-  const name = p.name, mine = liveSessions().has(myClaude(name));
+  const name = p.name, sess = myLiveSession(name), mine = !!sess;
   const busy = new Set((state?.claude_busy || {})[name] || []);
   const one = (st, word, cls = "") => `<span class="pstate${cls}">${st ? `<span class="st ${st}"></span>` : ""}${esc(word)}</span>`;
   // Yours first, then everybody else's with a session here, each with its
@@ -931,7 +957,7 @@ function projectState(p){
   // working in the project hides the one thing worth knowing first).
   // On Claude Code's permission prompt it is asking, in amber, as the dock
   // and Sessions say it (B98), not waiting.
-  const asking = mine && claudeOf(myClaude(name))?.state === "asking";
+  const asking = mine && claudeOf(sess)?.state === "asking";
   const me = mine ? (asking ? one("asking", "asking you") : busy.has(state?.me) ? one("working", "working")
     : one("waiting", "waiting for you")) : "";
   // Another account's session on the prompt reads asking too (B104), but
@@ -949,31 +975,43 @@ function projectNote(p){
   // (B826: a copy going up was said and the missing Claude Code that really
   // held it never was).
   const held = p.held && !state?.mapping?.[p.name]?.running ? p.held : "";
-  // Not this account's to change: nothing is said and Start Claude is not
+  // Not this account's to change: nothing is said and Start agent is not
   // drawn (the operator, 21 Oct: a role somebody lacks is not advertised to
   // them, and a reason a button is off is not an error, so no line is red).
-  if (!p.locked && writeWhy(p)) return "";
-  // No Claude Code on its node, for an account that may install it: the
-  // button says it (Install Claude), so no line does.
-  if (claudeInstall(p)) return "";
+  if (!p.locked_me && writeWhy(p)) return "";
+  // The project's agent missing on its node, for an account that may install
+  // it: the button says it (Install Claude, Install ChatGPT), so no line does.
+  if (agentInstall(p, projectAgent(p))) return "";
   const said = held || p.session_why;
-  if (said && !p.locked && !here) return `<div class="pnote dim">${esc(said)}</div>`;
-  // ...and otherwise why Start Claude is dead, whatever made it so (B88):
-  // a Profile with no commit author, somebody else's node. An archived one
+  if (said && !p.locked_me && !here) return `<div class="pnote dim">${esc(said)}</div>`;
+  // ...and otherwise why Start agent is dead, whatever made it so (B88):
+  // a Profile with no commit author, somebody else's node. A locked one
   // says so by its mark, and is left out.
-  const dead = p.locked ? "" : claudeDeadWhy(p);
+  const dead = p.locked_me ? "" : claudeDeadWhy(p);
   return dead ? `<div class="pnote dim">${esc(dead)}</div>` : "";
 }
 // The node to install Claude Code on in place of starting a session, or "":
 // the project's node has none and this account may install toolchains there
 // (the operator, 21 Oct: the button opens that node's Toolchains).
-const claudeInstall = p => !p.locked && !liveSessions().has(myClaude(p.name)) && p.claude_missing
+const claudeInstall = p => !p.locked_me && !myLiveSession(p.name) && p.claude_missing
   && mayToolchains(p.claude_missing) ? p.claude_missing : "";
-// Why Start Claude is dead on this project, or "" when it is live: the one
+// ...and the same for any agent (R95 step 18): another agent is missing where
+// the project's node does not list it among the agents installed there, the
+// list Start's chooser offers from.
+function agentInstall(p, ag){
+  if (ag.id === "claude") return claudeInstall(p);
+  const n = (p.session_nodes || []).find(x => x.id === p.session_node);
+  return !p.locked_me && !myLiveSession(p.name) && n && n.where === "node"
+    && !(n.agents || []).includes(ag.id) && mayToolchains(n.id) ? n.id : "";
+}
+// The agent a project's Start agent opens first: this account's pick for it,
+// else Claude.
+const projectAgent = p => agentById(p.prefs?.agent_default) || AGENTS[0];
+// Why Start agent is dead on this project, or "" when it is live: the one
 // answer the button, its description and the line under it all read.
 function claudeDeadWhy(p){
-  const mine = liveSessions().has(myClaude(p.name));
-  if (p.locked) return "archived; you run this one. Unarchive, in its menu, lets Claude back in";
+  const mine = !!myLiveSession(p.name);
+  if (p.locked_me) return lockedWhy(p);
   if (notMine(p)) return NOT_MINE_WHY;
   // A Claude session is work on the project (B86): Projects Write.
   if (p.write_why) return p.write_why;
@@ -982,14 +1020,27 @@ function claudeDeadWhy(p){
   if (p.node_removed && !mine) return p.session_why || "its node was removed: pick another in its settings";
   return "";
 }
+// Why a lock holds this account out, as the server says it (R119).
+const lockedWhy = p => p.locked_admin
+  ? "locked by an administrator: nobody starts a session or changes it until one unlocks it"
+  : `locked by ${p.owner_name || "its owner"}, its owner: only they work in it until they unlock it`;
+// The lock's press in a menu: an administrator's says it is one (the
+// operator, 23 Oct), since it holds the project's owner out too.
+const lockLabel = p => {
+  const asAdmin = p.locked ? p.locked_admin : !p.owner_mine;
+  return (asAdmin ? "Admin: " : "") + (p.locked ? "Unlock" : "Lock");
+};
 // The two actions a project page and its card show, and the rest behind
 // one menu (R238: nine look-alike icons on a row were one too many). Its
 // data-* names are wireProjectRows', which serves them.
 function projectActions(p, extra = ""){
-  const name = p.name, mine = liveSessions().has(myClaude(name));
+  // The agent the project's Start opens (R95 step 4): Claude's unless its
+  // settings name another. Its own session running here makes it Open.
+  const ag = projectAgent(p);
+  const name = p.name, sess = myLiveSession(name), mine = !!sess;
   const dead = claudeDeadWhy(p);
   // What this account's roles do not give is left out, not drawn dead.
-  const forbid = !p.locked && !!writeWhy(p);
+  const forbid = !p.locked_me && !!writeWhy(p);
   const menu = [
     p.git_ok && !isBroken(p) && state?.can?.["git-auth"] !== false
       ? `<button type="button" data-l="${esc(name)}">${
@@ -997,14 +1048,17 @@ function projectActions(p, extra = ""){
     p.phone?.mine ? `<button type="button" data-ph="${esc(name)}"${phoneWhy(p) ? " disabled" : ""}>${
         p.phone?.lease?.project === name ? "Take your phone back" : "Lend your phone"}</button>` : "",
     p.mine === false ? "" : `<button type="button" data-bug="${esc(name)}">Report a BuilderBot bug</button>`,
-    // Archive is the lock under the name it is used for (the operator, 18
-    // Oct): an archived project is kept and run by hand, its card folded
-    // away at the foot of the Projects page, and not pinned.
-    state?.can?.lock === false ? "" : `<button type="button" data-k="${esc(name)}" data-on="${p.locked ? "0" : "1"}">${p.locked ? "Unarchive" : "Archive"}</button>`,
-    p.locked ? "" : `<button type="button" data-p="${esc(name)}" data-on="${p.pinned ? "0" : "1"}">${p.pinned ? "Unpin" : "Pin"}</button>`,
+    // Archive is out of sight only (R119, the operator, 23 Oct): its card
+    // folds away at the foot of the Projects page and leaves Home, and the
+    // project works on. Its owner's or an administrator's.
+    p.may_archive ? `<button type="button" data-k="${esc(name)}" data-on="${p.archived ? "0" : "1"}">${p.archived ? "Unarchive" : "Archive"}</button>` : "",
+    // ...and Lock, which is: its owner's holds everybody else out, an
+    // administrator's its owner too, and says so on the press.
+    p.may_lock ? `<button type="button" data-lock="${esc(name)}" data-on="${p.locked ? "0" : "1"}">${lockLabel(p)}</button>` : "",
+    p.archived ? "" : `<button type="button" data-p="${esc(name)}" data-on="${p.pinned ? "0" : "1"}">${p.pinned ? "Unpin" : "Pin"}</button>`,
     // A label of this account's to keep projects together on the Projects
     // page (the operator, 18 Oct): nothing else follows from it.
-    p.locked ? "" : `<button type="button" data-pgroup="${esc(name)}">${p.group ? "Group: " + esc(p.group) : "Group"}</button>`,
+    p.archived ? "" : `<button type="button" data-pgroup="${esc(name)}">${p.group ? "Group: " + esc(p.group) : "Group"}</button>`,
     // This account's color for it (the operator, 18 Oct: picked here, where a
     // dot beside the name read as a checkbox), its swatches unrolling under
     // the name as Group's box does.
@@ -1015,23 +1069,28 @@ function projectActions(p, extra = ""){
   // What a press does, or why it is dead, in the button's own words: a
   // screen reader hears it, and a press on a dead one is told.
   const live = liveSessions();
-  const say = dead ? dead
+  // Named for the agent it opens, whatever it says: the button's own word is
+  // Start agent for every one of them.
+  const said = dead ? dead
     : p.session_why ? p.session_why
     : othersOn(name).length ? `${othersOn(name).join(", ")} also working here, in a checkout of their own: start yours`
-    : p.session_node && !claudeOn(p.session_node) && !live.has(myClaude(name))
-      ? `Claude: you are not signed in on ${p.session_at}, this project's node. Press for its sign-in`
-    : p.session_at ? `Claude: a session on ${p.session_at}, this project's node`
-    : mine ? "Claude: your session is running; open its tab or end it"
-    : p.last_claude ? "Claude: no session running; resume or start one"
-    : "Claude: start a session here";
-  // Green only while your session runs, and then it opens it; otherwise a
-  // plain Start Claude (the operator, 16 Oct: green on every card read as
-  // running everywhere).
-  const inst = claudeInstall(p);
-  return `${isBroken(p) || forbid ? "" : inst ? `<button type="button" data-tcinst="${esc(inst)}" title="${
-        esc(`Claude Code is not installed on ${p.node_name || "its node"}: open its Toolchains to install it`)}">Install Claude</button>`
+    : p.session_node && !agentOn(ag.id, p.session_node) && !live.has(myAgentSession(ag.id, name))
+      ? `${ag.name}: you are not signed in on ${p.session_at}, this project's node. Press for its sign-in`
+    : p.session_at ? `${ag.name}: a session on ${p.session_at}, this project's node`
+    : mine ? `${agentOfSession(tmuxBase(sess))?.agent.name || ag.name}: your session is running; open its tab, restart or end it`
+    : p.last_claude ? `${ag.name}: no session running; resume or start one`
+    : `${ag.name}: start a session here`;
+  const say = said.startsWith(`${ag.name}:`) ? said : `${ag.name}: ${said}`;
+  // Green only while your session runs, and then Manage agent, since the
+  // press opens the chooser with the session's Open, Restart and End;
+  // otherwise a plain Start agent, the chooser under it picking which (the
+  // operator, 16 Oct: green on every card read as running everywhere; 22
+  // Oct: one word for every agent; 23 Oct: Manage agent, not Open Claude).
+  const inst = agentInstall(p, ag);
+  return `${isBroken(p) || forbid ? "" : inst ? `<button type="button" data-tcinst="${esc(inst)}" data-agent="${esc(ag.id)}" title="${
+        esc(`${ag.product} is not installed on ${p.node_name || "its node"}: open its Agents page to install it`)}">Install ${esc(ag.name)}</button>`
       : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(name)}"${dead ? " disabled" : ""} title="${esc(say)}">${
-        mine ? "Open Claude" : "Start Claude"}</button>`}
+        mine ? "Manage agent" : "Start agent"}</button>`}
     ${mayShell() && !notMine(p) ? `<button type="button" data-s="${esc(name)}"${!gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}
     <span class="more"><button type="button" data-pmore aria-label="more" aria-expanded="false">${DOTS}</button><div class="actmenu" hidden>${menu}</div></span>`;
 }

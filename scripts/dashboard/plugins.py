@@ -59,9 +59,18 @@ def _clean(rows):
     return sorted(out, key=lambda x: (x["id"], x["scope"], x["project"]))
 
 
+def _clean_mcp(m):
+    """{agent: [server names]} as a node said it (R95 step 15)."""
+    if not isinstance(m, dict):
+        return {}
+    return {str(a)[:20]: sorted(str(x)[:80] for x in v)[:32]
+            for a, v in m.items() if isinstance(v, list) and v and str(a) in ("claude", "codex", "copilot", "open")}
+
+
 def report(node_id, rows):
-    """What a node's `bb login --list` said about each account's plugins.
-    True when anything was written."""
+    """What a node's `bb login --list` said about each account's plugins,
+    and its coding agents' MCP servers beside them (R95 step 15). True when
+    anything was written."""
     if not isinstance(rows, list):
         return False
     with statefile.locked(_file()):
@@ -74,17 +83,20 @@ def report(node_id, rows):
             if not uid.startswith("u_") or len(uid) > 16:
                 continue
             got = _clean(r.get("plugins"))
+            # An agent too old to say leaves the MCP servers as they were.
+            was = (d.get(uid) or {}).get(node_id) or {}
+            mcp = _clean_mcp(r.get("mcp")) if "mcp" in r else (was.get("mcp") or {})
             mine = d.setdefault(uid, {})
-            if not got:
+            if not got and not mcp:
                 if node_id in mine:
                     del mine[node_id]
                     moved = True
                 if not mine:
                     d.pop(uid, None)
                 continue
-            if (mine.get(node_id) or {}).get("plugins") == got:
+            if was.get("plugins") == got and (was.get("mcp") or {}) == mcp:
                 continue
-            mine[node_id] = {"at": int(time.time()), "plugins": got}
+            mine[node_id] = {"at": int(time.time()), "plugins": got, **({"mcp": mcp} if mcp else {})}
             moved = True
         if moved:
             write_json(_file(), d)
@@ -97,7 +109,7 @@ def of(uid, node_names=None):
     name (a node since removed) is shown as its id."""
     names = node_names or {}
     return [{"node": nid, "name": names.get(nid, nid), "at": v.get("at", 0),
-             "plugins": v.get("plugins") or []}
+             "plugins": v.get("plugins") or [], "mcp": v.get("mcp") or {}}
             for nid, v in sorted((_load().get(uid) or {}).items())]
 
 

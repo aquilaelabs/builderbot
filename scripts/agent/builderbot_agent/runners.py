@@ -209,7 +209,7 @@ class RunnersMixin:
                 job.say("asking GitHub for the latest runner release…\n")
                 try:
                     # nosemgrep: dynamic-urllib-use-detected (RUNNER_RELEASES is a literal at the top of this file)
-                    with urllib.request.urlopen(RUNNER_RELEASES, timeout=30) as r:
+                    with urllib.request.urlopen(RUNNER_RELEASES, timeout=30) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected (a literal URL)
                         rel = json.load(r)
                     asset = next(a["browser_download_url"] for a in rel.get("assets", [])
                                  if a.get("name", "").startswith(f"actions-runner-{osname}-{arch}-")
@@ -224,7 +224,7 @@ class RunnersMixin:
                     # since urlopen would open file:// as readily.
                     if not str(asset).lower().startswith("https://"):
                         raise ValueError(f"the release names a non-https asset: {str(asset)[:60]}")
-                    with urllib.request.urlopen(asset, timeout=600) as r, open(tar_path, "wb") as f:
+                    with urllib.request.urlopen(asset, timeout=600) as r, open(tar_path, "wb") as f:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected (https checked above)
                         shutil.copyfileobj(r, f)
                 except OSError as e:
                     job.say(f"download failed: {e}\n")
@@ -372,7 +372,7 @@ class RunnersMixin:
                 rel = {}
                 try:
                     # nosemgrep: dynamic-urllib-use-detected (ACT_RUNNER_RELEASES is a literal at the top of this file)
-                    with urllib.request.urlopen(ACT_RUNNER_RELEASES, timeout=30) as r:
+                    with urllib.request.urlopen(ACT_RUNNER_RELEASES, timeout=30) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected (a literal URL)
                         rel = json.load(r)
                     asset = next(a["browser_download_url"] for a in rel.get("assets", [])
                                  if re.fullmatch(rf"(gitea-runner|act_runner)-[0-9.]+-linux-{arch}", a.get("name", "")))
@@ -393,7 +393,7 @@ class RunnersMixin:
                 try:
                     if not str(asset).lower().startswith("https://"):   # as for the GitHub runner above
                         raise ValueError(f"the release names a non-https asset: {str(asset)[:60]}")
-                    with urllib.request.urlopen(asset, timeout=600) as r, open(exe, "wb") as f:
+                    with urllib.request.urlopen(asset, timeout=600) as r, open(exe, "wb") as f:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected (https checked above)
                         shutil.copyfileobj(r, f)
                 except OSError as e:
                     job.say(f"download failed: {e}\n")

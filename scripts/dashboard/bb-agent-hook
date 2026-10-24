@@ -1,0 +1,317 @@
+#!/usr/bin/env python3
+"""Claude's hooks, held for Codex CLI and Copilot CLI (R95 step 6).
+
+    bb-agent-hook AGENT EVENT [PROJECT SESSION]
+    bb-agent-hook --claude-settings PROJECT ACCOUNT DIR
+    bb-agent-hook --agent-events AGENT
+
+Codex CLI and Copilot CLI each carry hooks of their own now (Codex's
+PreToolUse, UserPromptSubmit, Stop, PermissionRequest and PostCompact;
+Copilot's preToolUse, userPromptSubmitted, agentStop and permissionRequest,
+checked against 0.163.0 and 1.0.102 on 22 Oct). bb-tty writes them into the
+session's own home for the agent (agent_scope), each calling this with the
+agent and the event. This reads the agent's payload, says it again in the
+shape Claude Code's hooks are written for (tool_name Bash and its command,
+Edit and its file_path, the prompt, stop_hook_active), runs the same hooks a
+Claude session runs for that event, in the same order, and answers in the
+agent's own way: Codex as Claude (exit 2 and the sentence on stderr
+refuses), Copilot with its permissionDecision on stdout before a tool.
+
+  pre     before a tool: bb-gate, then bb-rule-hook guard on a command,
+          bb-work-note on an edit
+  prompt  a prompt sent: bb-prompt-relay, bb-rule-hook prompt, bb-gate --turn
+  stop    the turn ends: bb-check-relay, bb-gate --turn-done
+  asking  its own permission prompt is up: bb-gate --asking
+  recall  after it summarized the conversation: bb-rule-hook recall
+
+Every failure of its own lets the call through, as each hook does: a guard
+is never worth an agent that cannot work.
+"""
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+# The tools each agent runs a command or edits a file with, by the names
+# its hooks hand over.
+SHELL = {"shell", "exec_command", "local_shell", "bash", "run_shell_command", "Bash"}
+EDIT = {"apply_patch", "edit", "create", "write", "str_replace_editor", "write_file", "Edit", "Write"}
+# ...and searches a file's contents with (Codex has none: it runs rg in its
+# shell, which the rule guard reads).
+GREP = {"grep", "Grep", "search_file_content"}
+PATCH_FILE = re.compile(r"^\*\*\* (?:Update|Add|Delete) File: (.+)$", re.M)
+
+
+def as_claude(agent, raw):
+    """The payload in Claude Code's shape: the fields BuilderBot's hooks read."""
+    d = raw if isinstance(raw, dict) else {}
+    if agent == "copilot":
+        args = d.get("toolArgs")
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except ValueError:
+                args = {"command": args}
+        out = {"session_id": d.get("sessionId") or "", "cwd": d.get("cwd") or "",
+               "tool_name": d.get("toolName") or "", "tool_input": args if isinstance(args, dict) else {},
+               "prompt": d.get("prompt") or "", "stop_hook_active": bool(d.get("stopHookActive"))}
+    else:
+        out = dict(d)
+        out.setdefault("tool_input", d.get("tool_input") or {})
+    name, spec = str(out.get("tool_name") or ""), out.get("tool_input") or {}
+    if name in SHELL:
+        cmd = spec.get("command") if isinstance(spec, dict) else spec
+        if isinstance(cmd, list):
+            # Codex hands a command as its argv, with `bash -lc SCRIPT` the
+            # usual shape: the script is what a rule reads.
+            cmd = cmd[2] if len(cmd) == 3 and cmd[1] in ("-lc", "-c") else shlex.join(str(x) for x in cmd)
+        out["tool_name"], out["tool_input"] = "Bash", {"command": str(cmd or "")}
+    elif name in EDIT:
+        path = ""
+        if isinstance(spec, dict):
+            path = spec.get("file_path") or spec.get("path") or spec.get("filePath") or ""
+            if not path:
+                m = PATCH_FILE.search(str(spec.get("input") or spec.get("patch") or ""))
+                path = m.group(1).strip() if m else ""
+        elif isinstance(spec, str):
+            m = PATCH_FILE.search(spec)
+            path = m.group(1).strip() if m else ""
+        out["tool_name"], out["tool_input"] = "Edit", {"file_path": path}
+    elif name in GREP:
+        pat = spec.get("pattern") or spec.get("query") or "" if isinstance(spec, dict) else str(spec or "")
+        out["tool_name"], out["tool_input"] = "Grep", {"pattern": str(pat)}
+    return out
+
+
+SID = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,99}")
+UUID_TAIL = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$")
+
+
+def keep(agent, raw):
+    """The conversation's log, copied where Claude Code's are (R95 step 8):
+    ~/.claude/projects/<the session's tree, slashes as dashes>/<agent>/<id>.jsonl,
+    which the projects share or claudesync carries to the controller, where
+    bb transcripts and the Sessions view read it. At the end of every turn,
+    so the copy is never more than a turn behind. The path the agent named
+    when it names one, else where it keeps it; nothing when neither is there."""
+    d = raw if isinstance(raw, dict) else {}
+    tree, home = os.environ.get("BB_TREE", ""), os.environ.get("HOME", "")
+    if not tree or not home:
+        return
+    if agent == "copilot":
+        sid = str(d.get("sessionId") or "")
+        src = str(d.get("transcriptPath") or "") or os.path.join(
+            os.environ.get("COPILOT_HOME") or os.path.join(home, ".copilot"), "session-state", sid, "events.jsonl")
+    else:
+        src = str(d.get("transcript_path") or "")
+        m = UUID_TAIL.search(src)
+        sid = str(d.get("session_id") or (m.group(1) if m else ""))
+    if not SID.fullmatch(sid) or not os.path.isfile(src):
+        return
+    # Named as Claude Code names a tree's folder (every character not a
+    # letter or a digit a dash), which claudesync knows a project's by.
+    dest_dir = os.path.join(home, ".claude", "projects", re.sub(r"[^A-Za-z0-9]", "-", tree), agent)
+    try:
+        os.makedirs(dest_dir, mode=0o700, exist_ok=True)
+        tmp = os.path.join(dest_dir, f".bbsync-{sid}")  # claudesync passes these over
+        with open(src, "rb") as a, open(tmp, "wb") as b:
+            while chunk := a.read(1 << 20):
+                b.write(chunk)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, os.path.join(dest_dir, f"{sid}.jsonl"))
+    except OSError:
+        pass
+
+
+def wall(path, cwd=""):
+    """Why an edit to this path is refused, or "": the lines Claude's deny
+    list draws (bb-tty's claude_scope) for an agent whose edits come
+    through here (R95 step 17). The session's view already holds no other
+    project; what is left is another tree of this one (another person's or
+    another agent's worktree, or the owner's checkout seen from a worktree)
+    and VERSION, which moves with bb version alone."""
+    tree = os.environ.get("BB_TREE", "")
+    if not path or not tree:
+        return ""
+    ws = os.path.normpath(os.environ.get("WORKSPACE") or "/workspace")
+    share = os.path.normpath(os.environ.get("BB_CLAUDE_SHARE") or os.path.join(ws, ".claude"))
+    p = os.path.normpath(os.path.join(cwd or tree, os.path.expanduser(path)))
+    under = lambda d: p == d or p.startswith(d.rstrip("/") + "/")  # noqa: E731
+    if os.path.basename(p) == "VERSION" and under(tree):
+        return f"{path}: the version moves with bb version, never by an edit (bb version policy says how)"
+    if under(ws) and not under(tree) and not under(share):
+        return f"{path} is outside this session's tree ({tree}): another tree is another person's or another session's"
+    return ""
+
+
+def run(argv, payload, timeout):
+    try:
+        p = subprocess.run(argv, input=json.dumps(payload), capture_output=True, text=True,
+                           timeout=timeout, check=False)
+        return p.returncode, p.stdout, p.stderr
+    except (OSError, subprocess.SubprocessError):
+        return 0, "", ""
+
+
+# THE ONE LIST of BuilderBot's hooks: for each event, the scripts a session
+# runs, in order, with their arguments, their timeout and the tools they are
+# for (none: every call). Claude Code's settings are written from it
+# (claude_settings, which bb-tty asks for) and the other agents' calls run
+# from it (plan), so a guard added here holds every agent's sessions and one
+# cannot be added to only some of them. Each event also says where each
+# agent raises it: Claude Code's event name and the matcher that picks it
+# out, and Codex's and Copilot's event names with the time their call here
+# is given (Copilot CLI 1.0.102 has no hook after a summary, so no recall).
+P, W = "{proj}", "{who}"
+HOOKS = {
+    "pre": {"claude": ("PreToolUse", None), "codex": ("PreToolUse", 120), "copilot": ("preToolUse", 120), "steps": [
+        ("bb-gate", [P, W], 60, None, None),
+        ("bb-work-note", [P, W], 30, ("Edit", "Write", "NotebookEdit"), None),
+        ("bb-rule-hook", ["guard", P, W], 30, ("Bash",), None),
+        ("bb-rule-hook", ["map", P, W], 30, ("Grep",), None)]},
+    # Claude Code waiting on its own permission prompt (B52): said to the
+    # controller, so the dock and the bell show it.
+    "asking": {"claude": ("Notification", "permission_prompt"), "codex": ("PermissionRequest", 15),
+               "copilot": ("permissionRequest", 15), "steps": [
+        ("bb-gate", ["--asking", P, W], 15, None, None)]},
+    "recall": {"claude": ("SessionStart", "compact"), "codex": ("PostCompact", 30), "steps": [
+        ("bb-rule-hook", ["recall", P, W], 30, None, None)]},
+    "prompt": {"claude": ("UserPromptSubmit", None), "codex": ("UserPromptSubmit", 900),
+               "copilot": ("userPromptSubmitted", 900), "steps": [
+        ("bb-prompt-relay", [P, W], 30, None, None),
+        ("bb-rule-hook", ["prompt", P, W], 10, None, None),
+        ("bb-gate", ["--turn", P, W, "--wait", "840"], 900, None, "Waiting for a turn on this node")]},
+    "stop": {"claude": ("Stop", None), "codex": ("Stop", 3600), "copilot": ("agentStop", 3600), "steps": [
+        ("bb-check-relay", [P, W], 3600, None, None),
+        ("bb-gate", ["--turn-done", P, W], 30, None, None)]},
+}
+
+
+def _argv(script, args, proj, who, where=None):
+    return [os.path.join(where or HERE, script)] + [proj if a == P else who if a == W else a for a in args]
+
+
+def plan(event, call, proj, who):
+    """The hooks a Claude session runs for this event, in its order: (argv,
+    timeout) each. An edit's note needs the file it is about."""
+    tool = call.get("tool_name")
+    steps = []
+    for script, args, timeout, tools, _status in (HOOKS.get(event) or {}).get("steps", []):
+        if tools and tool not in tools:
+            continue
+        if script == "bb-work-note" and not (call.get("tool_input") or {}).get("file_path"):
+            continue
+        steps.append((_argv(script, args, proj, who), timeout))
+    return steps
+
+
+def claude_settings(proj, who, where):
+    """Claude Code's `hooks` settings from the same list, each command under
+    `where` (bb-tty's directory by the name that outlives a bundle): one
+    group per event and matcher, a step for some tools in a group of its own
+    matched on them, as Claude Code runs them."""
+    out = {}
+    for spec in HOOKS.values():
+        name, matcher = spec["claude"]
+        groups = out.setdefault(name, [])
+        every = {"hooks": []} if matcher is None else {"matcher": matcher, "hooks": []}
+        for script, args, timeout, tools, status in spec["steps"]:
+            hook = {"type": "command", "command": shlex.join(_argv(script, args, proj, who, where)), "timeout": timeout}
+            if status:
+                hook["statusMessage"] = status
+            if tools:
+                groups.append({"matcher": "|".join(tools), "hooks": [hook]})
+            else:
+                every["hooks"].append(hook)
+        if every["hooks"]:
+            groups.insert(0, every)
+    return out
+
+
+def agent_events(agent):
+    """[[the agent's event name, this script's event, its timeout]], for
+    bb-tty to write into that agent's hooks file."""
+    return [[spec[agent][0], ev, spec[agent][1]] for ev, spec in HOOKS.items() if agent in spec]
+
+
+def main(argv):
+    if argv[:1] == ["--claude-settings"] and len(argv) == 4:
+        print(json.dumps(claude_settings(*argv[1:])))
+        return 0
+    if argv[:1] == ["--agent-events"] and len(argv) == 2:
+        print(json.dumps(agent_events(argv[1])))
+        return 0
+    if len(argv) < 2:
+        return 0
+    agent, event = argv[:2]
+    # The project and the account from the session's environment, which
+    # bb-tty's launcher sets; a session BuilderBot did not start has none,
+    # and its hooks do nothing.
+    proj = argv[2] if len(argv) > 2 else os.environ.get("BB_PROJECT", "")
+    who = argv[3] if len(argv) > 3 else os.environ.get("BB_AGENT_WHO", "")
+    if not proj or not who:
+        return 0
+    try:
+        raw = json.load(sys.stdin)
+    except ValueError:
+        raw = {}
+    call = as_claude(agent, raw)
+    if event == "stop":
+        keep(agent, raw)
+    said = []
+    why = wall((call.get("tool_input") or {}).get("file_path", ""), call.get("cwd") or "") \
+        if event == "pre" and call.get("tool_name") == "Edit" else ""
+    if why:
+        if agent == "copilot":
+            print(json.dumps({"permissionDecision": "deny", "permissionDecisionReason": why}))
+            return 0
+        print(why, file=sys.stderr)
+        return 2
+    for cmd, timeout in plan(event, call, proj, who):
+        code, out, err = run(cmd, call, timeout)
+        if out.strip():
+            said.append(out.strip())
+        if code == 2:
+            reason = err.strip() or "refused by a BuilderBot guard"
+            if agent == "copilot" and event == "pre":
+                print(json.dumps({"permissionDecision": "deny", "permissionDecisionReason": reason}))
+                return 0
+            print(reason, file=sys.stderr)
+            return 2
+    # What a hook had to say to the model (a rule's text, a note), passed on
+    # where the agent reads a hook's output; Copilot's before a tool reads
+    # only a decision, so nothing goes there.
+    if said and not (agent == "copilot" and event == "pre"):
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": EVENTS.get(event, event),
+                                                 "additionalContext": context(said)}}))
+    return 0
+
+
+# Claude's event names, which a merged answer is given under.
+EVENTS = {"pre": "PreToolUse", "prompt": "UserPromptSubmit", "stop": "Stop",
+          "asking": "PermissionRequest", "recall": "PostCompact"}
+
+
+def context(said):
+    """What the hooks run for one event said to the model, as one text: each
+    hook's additionalContext when it answered in JSON, its words otherwise.
+    One answer, since an agent reads one JSON object from a hook."""
+    out = []
+    for s in said:
+        try:
+            d = json.loads(s)
+            c = ((d.get("hookSpecificOutput") or {}).get("additionalContext")
+                 or d.get("additionalContext") or d.get("systemMessage") or "")
+            if c:
+                out.append(str(c))
+        except (ValueError, AttributeError):
+            out.append(s)
+    return "\n\n".join(out)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

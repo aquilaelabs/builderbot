@@ -78,7 +78,7 @@ SKIP_DIRS = {".git", "node_modules", "dist", "__pycache__", ".bb-map", "scratchp
 # changed without a bump left indexes answering from the old reading (the
 # operator, 8 Oct), and any edit here costs one rebuild of a few seconds.
 try:
-    SCANNER = hashlib.sha1(Path(__file__).read_bytes()).hexdigest()[:12]
+    SCANNER = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12]
 except OSError:                  # (run from somewhere it cannot read itself)
     SCANNER = "unknown"
 EXTS = {".py": "py", ".js": "js", ".mjs": "js", ".cjs": "js", ".ts": "js", ".tsx": "js",

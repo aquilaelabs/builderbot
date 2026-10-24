@@ -201,7 +201,7 @@ const offDialog = () => page.evaluate(() => {
     return r ? `${att.indexOf(r)}: ${r.textContent.replace(/\s+/g, ' ').trim()}` : null;
   }), 30000, 1000);
   ok(row && row.startsWith('0: '), `...first of what needs attention, above the updates (${row})`);
-  ok(row && /test's Claude session on sandbox/.test(row) && /Resume/.test(row),
+  ok(row && /test's session on sandbox/.test(row) && /Resume/.test(row),
      `a session an outage held is a bell row naming whose it is and where it runs, with Resume (${row})`);
   rmSync(`${DIR}/sandboxdata/held.json`, { force: true });
   // Pressed twice before the first send is back: one line, not two (B775).
@@ -246,6 +246,22 @@ const offDialog = () => page.evaluate(() => {
   ok(open.length === 1 && open[0] === 'notices:history' && !(await page.$('.noticestab details[data-sect="notices:waiting"]')),
      `on a phone, with nothing waiting, the page is its History, open (${open.join(', ')})`);
   await page.setViewportSize({ width: 1280, height: 900 });
+}
+
+// A request that never landed is the controller not answering, said so, and
+// the Phone page's own read leaves it to the poll rather than keeping a
+// failure (B301).
+{
+  const r = await page.evaluate(async () => {
+    const words = [failWords(new TypeError('Failed to fetch')), failWords(new Error('quota spent'))];
+    const kept = [], realFetch = window.fetch, realNotify = window.notify;
+    window.fetch = () => Promise.reject(new TypeError('Failed to fetch'));
+    window.notify = m => kept.push(String(m));
+    try { await phFetch(); } finally { window.fetch = realFetch; window.notify = realNotify; }
+    return { words, kept };
+  });
+  ok(r.words[0] === 'the controller did not answer' && r.words[1] === 'quota spent' && !r.kept.some(t => /phone/.test(t)),
+     `a fetch that never landed is said as the controller not answering, and the Phone page's own read keeps no failure for it (${JSON.stringify(r)})`);
 }
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);

@@ -28,8 +28,8 @@ function sessionLabels(){
   const list = (state?.sessions || []);
   // Through tmuxBase: an account's own sessions carry its prefix, and a
   // prefixed Claude session is still a Claude session.
-  const of = s => { const b = tmuxBase(s.name);
-    return b.startsWith("claude-") ? "Claude: " + projLabel(projFor(b.slice(7)) ?? b.slice(7))
+  const of = s => { const b = tmuxBase(s.name), ag = agentOfSession(b);
+    return ag ? ag.agent.name + ": " + projLabel(projFor(ag.stem) ?? ag.stem)
            // A container's shell (R218 step 4) by the container, not by a
            // directory on the host it says nothing about.
            : b.startsWith("ctr-") ? "in " + b.slice(4)
@@ -103,7 +103,7 @@ function nextShell(proj){
 // against its own run, and a tab stamped with this container's boot was
 // refused on the node on every reconnect, forever (roadmap #24).
 const bootFor = arg => {
-  const proj = arg.startsWith("claude:") ? arg.slice(7).split(":")[0] : "";
+  const proj = agentOfArg(arg)?.project || "";
   const row = (state?.projects || []).find(p => p.name === proj);
   // The boot of the node the argument names (R82), else the primary's.
   const picked = (arg.match(/:n:([A-Za-z0-9_-]+)/) || [])[1];
@@ -114,7 +114,7 @@ const ttydUrl = (arg) => arg.startsWith("screen:")
   // A VM's screen (R99): noVNC's own page, speaking to this controller's
   // relay for that VM, scaled to the dock's size.
   ? `/novnc/vnc_lite.html?scale=true&path=${encodeURIComponent(`screen/ws?vm=${arg.split(":")[1]}/${arg.split(":")[2]}`)}`
-  : `/term/?arg=${encodeURIComponent(arg.startsWith("claude:") && bootFor(arg) ? `${arg}:b:${bootFor(arg)}` : arg)}`;
+  : `/term/?arg=${encodeURIComponent(agentOfArg(arg) && bootFor(arg) ? `${arg}:b:${bootFor(arg)}` : arg)}`;
 
 const isPhone = () => window.matchMedia("(max-width:900px)").matches;
 
@@ -162,6 +162,9 @@ const TOOL_ICONS = {
   toolchains: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <path d="M2.5 5.2 8 2.6l5.5 2.6v5.6L8 13.4l-5.5-2.6z"/>
     <path d="M2.5 5.2 8 7.8l5.5-2.6"/><path d="M8 7.8v5.6"/></svg>`,
+  // A prompt's chevron and cursor in a box: a coding agent at work (R95).
+  agents: `<svg viewBox="0 0 16 16" aria-hidden="true">
+    <rect x="2" y="2.5" width="12" height="11" rx="1.6"/><path d="M4.8 6.2l2.2 1.8-2.2 1.8"/><path d="M8.6 10.4h2.8"/></svg>`,
   // A handset with a play mark on its screen: a phone that is software.
   emulator: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <rect x="4.5" y="2" width="7" height="12" rx="1.4"/><path d="M7 6.2v3.6l2.8-1.8z"/></svg>`,
@@ -210,6 +213,12 @@ const TABKINDS = {
               icon: TOOL_ICONS.toolchains,
               render: (i) => renderToolchainsInto(i), live: () => tcRev,
               open: () => loadToolchains() },
+  // The coding agents on a node (R95 step 15): its own read, the node
+  // list, and the sign-in, which rides the status poll.
+  agents:   { multi: false, label: () => "Agents",
+              icon: TOOL_ICONS.agents,
+              render: (i) => renderAgentsInto(i), live: () => agentsLiveKey(),
+              open: () => loadAgents() },
   // nodesRev and jobsRev as well as its own: a node's images arrive on its
   // census, and an image job moves the queue.
   emulator: { multi: false, label: () => "Emulator",
@@ -438,7 +447,13 @@ function renderDoc(i, t, pane){
 // none), and the tab itself says what happened instead of holding whatever
 // half-drawn state the throw left.
 function renderGuarded(spec, i, t){
-  try{ spec.render(i, t); }
+  try{
+    spec.render(i, t);
+    // ...and its jump bar, whatever it drew: a page waiting on its read
+    // draws its sections' template, and waits as itself with the bar the
+    // loaded page will have (sectJump; the templates rule).
+    $("doc" + i)?.querySelectorAll(".doctab, .nbview:not([hidden])").forEach(v => sectJump(v));
+  }
   catch(e){
     const el = $("doc" + i);
     if (el) el.innerHTML = `<div class="hint bad" style="padding:var(--row-y) var(--row-x)">
@@ -496,7 +511,7 @@ function openTab(spec){
   // Claude for something already open takes the other branch, and an
   // unstamped tab read as "from before", which dropped the tab the operator
   // had just opened.
-  if (String(t.arg).startsWith("claude:") && t.boot === undefined)
+  if (agentOfArg(t.arg) && t.boot === undefined)
     t.boot = bootFor(t.arg);
   // A terminal goes to the dock and anything else is the page on show
   // (R218 step 4): there is no strip and no second pane to choose.
@@ -515,7 +530,7 @@ function roomForTab(kind){
   if (kind !== "term") return true;
   const cap = state?.max_tabs || 12;
   if (tabs.filter(t => t.kind === "term").length < cap) return true;
-  notify(`Terminal tab limit reached (${cap} shells and Claude sessions). Close or minimize `
+  notify(`Terminal tab limit reached (${cap} shells and agents' sessions). Close or minimize `
        + `one first; a minimized tab keeps running.`, true);
   return false;
 }
@@ -559,7 +574,7 @@ function refreshSoon(){
 // destroyed and nothing is asked: a terminal keeps running and is listed
 // under Sessions, a document is a view of a file on disk. Ending a session for good is the ✕ in the Sessions card,
 // which is where a question is worth asking because something is actually lost.
-function hideTab(id, ev){
+async function hideTab(id, ev){
   ev?.stopPropagation();
   const t = tabOf(id);
   if (!t) return;
@@ -567,7 +582,7 @@ function hideTab(id, ev){
     // Closing a notebook's tab ends its instance: whatever was staged in it
     // was just answered for, and reopening reads fresh from disk.
     const nb = notebooks.get(t.arg);
-    if (nb && !nb.leaving()) return;
+    if (nb && !await nb.leaving()) return;
     nb?.destroy();
   }
   dropTab(id);

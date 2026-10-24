@@ -187,32 +187,33 @@ function drawUiMenu(){
   if (!el || el.hidden) return;
   const cur = currentTheme();
   const mode = currentMode();
-  el.innerHTML = `<h4>Appearance</h4>
+  el.innerHTML = `<div class="popbar"><b>Preferences</b></div>
+    <h4>Appearance</h4><div class="popbody">
     <div class="pseg modeseg" role="group" aria-label="dark or light">${MODES.map(([id, label]) => `
       <button type="button" data-mode="${id}" class="${id === mode ? "on" : ""}"
         role="menuitemradio" aria-checked="${id === mode}">${esc(label)}</button>`).join("")}</div>
     <label class="uimotion"><input type="checkbox" id="uiMotion"${document.documentElement.dataset.motion === "reduce" ? " checked" : ""}> Reduce motion${
-      helpIcon("pages switch, menus open and sections fold at once, in every browser you sign in to; off, the page follows what this device asks for")}</label>
-    <h4>Color scheme</h4>
+      helpIcon("pages switch, menus open and sections fold at once, in every browser you sign in to; off, the page follows what this device asks for")}</label></div>
+    <h4>Color scheme</h4><div class="popbody">
     <div class="swgrid">${THEMES.map(([id, label]) => `
       <button type="button" class="sw${id === cur ? " on" : ""}" data-theme="${id}"
         role="menuitemradio" aria-checked="${id === cur}"
         aria-label="${esc(label)}" title="${esc(label)}">
         <span class="swa"></span><span class="swb"></span><span class="swi"></span>
         <span class="swp"></span><span class="swn">${esc(label)}</span>
-      </button>`).join("")}</div>
-    <h4>Time zone</h4>
+      </button>`).join("")}</div></div>
+    <h4>Time zone</h4><div class="popbody">
     <div class="tzrow">
       <select id="uiTZ" aria-label="this browser's time zone">${tzOptions(tzDraft ?? userTZ())}</select>
       <button type="button" id="uiTZApply"${tzDraft === null || tzDraft === userTZ() ? " disabled" : ""}>Apply</button>
     </div>
-    <div class="tzsaid">times here read ${esc(fmtTime(Date.now(), {hour: "2-digit", minute: "2-digit", timeZoneName: "short"}))}</div>
-    <h4>Account</h4>
+    <div class="tzsaid">times here read ${esc(fmtTime(Date.now(), {hour: "2-digit", minute: "2-digit", timeZoneName: "short"}))}</div></div>
+    <h4>Account</h4><div class="popbody">
     <div class="acctrow">
       <button type="button" id="uiProfile">Profile</button>
       <button type="button" id="uiReport" class="narrowonly" aria-label="report a bug" title="report a bug in BuilderBot: it goes to the diagnostics">${$("bReport")?.querySelector("svg")?.outerHTML || "Report a bug"}</button>
       <button type="button" id="uiOut" class="narrowonly" aria-label="sign out" title="sign out: back to the login page">${$("bOut")?.querySelector("svg")?.outerHTML || "Sign out"}</button>
-    </div>`;
+    </div></div>`;
   el.querySelectorAll(".sw").forEach(b =>
     b.onclick = () => applyTheme(b.dataset.theme));
   el.querySelectorAll("[data-mode]").forEach(b =>
@@ -313,7 +314,7 @@ function wireLogSection(el){
         ? `keeping ${j.days} days: ${j.removed} file${j.removed === 1 ? "" : "s"} removed`
         : `keeping ${j.days} days; nothing was past it`);
       refresh(); drawUiMenu();
-    }catch(e){ notify("logs: " + e, true); }
+    }catch(e){ notify("logs: " + failWords(e), true); }
     finally{ if (btn?.isConnected) unbusy(btn, "Apply"); }
   };
   el.querySelector("#logApply").onclick = apply;
@@ -321,14 +322,14 @@ function wireLogSection(el){
   // a box and then pressed at is what everybody tries first.
   inp.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); apply(); } };
   el.querySelector("#logClear").onclick = async () => {
-    if (!confirm("Delete every kept log except this session's?\n\n"
+    if (!await askYes("Delete every kept log except this session's?\n\n"
                  + "This session keeps writing to its own.")) return;
     try{
       const r = await postJSON("/api/logs", {action: "clear"});
       const j = await r.json();
       notify(j.error || `${j.removed} file${j.removed === 1 ? "" : "s"} removed`, !!j.error);
       refresh(); drawUiMenu();
-    }catch(e){ notify("logs: " + e, true); }
+    }catch(e){ notify("logs: " + failWords(e), true); }
   };
 }
 
@@ -366,10 +367,10 @@ function askSignOut(){
   const m = $("outModal");
   if (!m) { location.href = "/logout"; return; }
   const ss = state?.sessions || [];
-  const claude = ss.filter(s => tmuxBase(s.name).startsWith("claude-")).length;
+  const agentSs = ss.filter(s => agentOfSession(tmuxBase(s.name))), claude = agentSs.length;
   $("outEndRow").hidden = !ss.length;
   $("outEnd").checked = false;
-  $("outEndSaid").textContent = `Also end my sessions (${ss.length} running${claude ? `, ${claude} of them Claude` : ""})`;
+  $("outEndSaid").textContent = `Also end my sessions (${ss.length} running${claude ? `, ${claude} of them ${agentsWord(agentSs.map(s => s.name))}` : ""})`;
   const go = $("outGo");
   unbusy(go, "Sign out");
   go.onclick = async () => {

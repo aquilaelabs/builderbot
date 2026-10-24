@@ -34,7 +34,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import statefile  # noqa: E402
 from fields import field  # noqa: E402
-from names import claude_session  # noqa: E402
+import agents  # noqa: E402
+from names import running_session  # noqa: E402
 
 WORKSPACE = None
 WORKTREES = None
@@ -787,8 +788,8 @@ def not_yours(repo, action, args, uid, kind="", admin=False):
         pairs = [(name, "merges it"), (into, "merges into it")]
     elif action == "ask" and kind in ("merge", "rebase"):
         name = str(args.get("branch") or "")
-        ask = f"Ask Claude to {kind} {name} {'into' if kind == 'merge' else 'onto'} {_main_branch(repo)}?"
-        pairs = [(name, f"has Claude {kind} it")]
+        ask = f"Ask the session to {kind} {name} {'into' if kind == 'merge' else 'onto'} {_main_branch(repo)}?"
+        pairs = [(name, f"has the session {kind} it")]
     elif action in ("switch", "delete"):
         ask = ""
         pairs = [(str(args.get("name") or ""), "switches to it" if action == "switch" else "deletes it")]
@@ -804,8 +805,11 @@ def not_yours(repo, action, args, uid, kind="", admin=False):
             return {"error": f"{b} is {who}'s session's branch: only {who} {what}"}
         if not ask:
             continue                 # an administrator switches and deletes as git allows
-        if WORKING and WORKING(Path(repo).name, o):
-            return {"error": f"{who}'s Claude session is working right now: "
+        # The agent whose branch it is (claude/, codex/, copilot/): a
+        # Codex session works on its own branch in its own tree (R95 step 16).
+        ag = agents.get(b.split("/", 1)[0]) or agents.default()
+        if WORKING and WORKING(Path(repo).name, o, ag.id):
+            return {"error": f"{who}'s {ag.name} session is working right now: "
                              f"{ask[0].lower()}{ask[1:-1]} when it is waiting"}
         if not args.get("confirmed"):
             return {"confirm": f"{ask}\n\n{b} is {who}'s session's branch."}
@@ -1270,7 +1274,7 @@ def _merge_off_tree(repo, name, into, env, unrelated=False):
                  *(["--allow-unrelated-histories"] if unrelated else []), a, b, env=env, index=False)
         first = ((r["out"] or "").splitlines() or [""])[0].strip()
         if r["code"] or not SHA_RE.match(first):
-            return {"error": f"{name} does not merge into {into} cleanly: Send to Claude "
+            return {"error": f"{name} does not merge into {into} cleanly: send it to the session "
                              f"with merge into {into} picked, and it resolves the clash "
                              f"on its branch"}
         r = _run(repo, "commit-tree", first, "-p", a, "-p", b, "-m", msg, env=env, index=False)
@@ -1371,7 +1375,7 @@ def ask(repo, project, kind, args, sessions=(), session=""):
     else:
         return {"error": "nothing picked"}
     line = f"From the operator, on the Git view of {project}: {about}; {what}."
-    session = session or TMUX_NAME("claude-" + project)
+    session = session or running_session("", project, set(sessions))
     r = TELL(session, line, sessions)
     if r.get("error"):
         return r
@@ -1434,7 +1438,7 @@ def verb(project, action, req, me, *, prefix, principal):
         # The presser's own session, by the name the roadmap's send uses
         # (B235): the bare name alone was the owner's.
         return ask(WORKSPACE / project, project, field(req, "kind"), req.get("args") or {},
-                   SESSIONS(), session=prefix + claude_session(project))
+                   SESSIONS(), session=running_session(prefix, project, set(SESSIONS())))
     if action == "ci-fix":
         # The CI watch's fix for one line (R117 step 4): written into the
         # working tree, uncommitted, never pushed; Changes shows it.

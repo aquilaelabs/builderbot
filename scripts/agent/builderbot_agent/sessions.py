@@ -4,14 +4,20 @@ import glob
 import hashlib
 import json
 import os
+import pwd
 import re
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 from .jobs import pump
 from .base import (
+    AGENT_INSTALLS,
+    AGENT_PREFIXES,
+    AGENTS_DIR,
+    CLAUDE_INSTALL,
     CLAUDE_DIR,
     DOCKER_BIN,
     FIREWALL_CMD,
@@ -20,6 +26,8 @@ from .base import (
     NFT_BIN,
     RESPAWNABLE,
     SESSION,
+    ROOT_BUNDLE_DIR,
+    SESSION_BIN,
     SESSION_BIND,
     SESSION_NFT,
     SESSION_PORT,
@@ -35,6 +43,54 @@ from .stores import noexec, tc_root
 from .backends import _have
 from .toolchains import sdk_env
 from .census import controller_ip, network_now
+
+
+
+def _pin_release(pin_dir, cmd, root):
+    """Pin an agent the vendor installs as a release folder (Codex CLI's:
+    bin/codex, bin/codex-code-mode-host and codex-resources beside them): the
+    whole folder copied root-owned to <pin_dir>/release, swapped in whole,
+    and the command and each helper beside it a link into it, so the agent
+    finds its helpers where it looks, beside its own executable. Copying the
+    one binary left Codex 0.163 without codex-code-mode-host, and every
+    command a session ran failed (B247)."""
+    new, rel, old = (os.path.join(pin_dir, n) for n in (".release.new", "release", ".release.old"))
+    shutil.rmtree(new, ignore_errors=True)
+    shutil.copytree(root, new, symlinks=True)
+    for d, dirs, files in os.walk(new):
+        for n in dirs + files:
+            with contextlib.suppress(OSError):
+                os.lchown(os.path.join(d, n), 0, 0)
+    os.lchown(new, 0, 0)
+    os.chmod(new, 0o755)
+    shutil.rmtree(old, ignore_errors=True)
+    if os.path.isdir(rel) and not os.path.islink(rel):
+        os.replace(rel, old)
+    os.replace(new, rel)
+    shutil.rmtree(old, ignore_errors=True)
+    for exe in sorted(os.listdir(os.path.join(rel, "bin"))):
+        if not (exe == cmd or exe.startswith(cmd + "-")):
+            continue
+        link, tmp = os.path.join(pin_dir, exe), os.path.join(pin_dir, exe + ".new")
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp)
+        os.symlink(os.path.join("release", "bin", exe), tmp)
+        os.replace(tmp, link)
+
+def _release_root(exe, src, home):
+    """The vendor's release folder to pin whole, or "" for one binary: only
+    where the command is a link into a folder of the vendor's own (Codex's
+    ~/.local/bin/codex into ~/.codex/packages/.../bin). A binary that IS the
+    file in ~/.local/bin is one binary, and its "release folder" was the
+    account's whole ~/.local: Copilot's pin copied a gigabyte of it, its
+    share/ and state/ among it, root-owned and readable by every account
+    (B262)."""
+    if os.path.basename(os.path.dirname(src)) != "bin" or os.path.realpath(exe) != src \
+            or os.path.abspath(exe) == src:
+        return ""
+    root = os.path.dirname(os.path.dirname(src))
+    homes = {os.path.realpath(home), os.path.realpath(os.path.join(home, ".local"))}
+    return "" if os.path.realpath(root) in homes or root in ("/", "/usr", "/usr/local") else root
 
 
 class SessionWatch:
@@ -124,11 +180,21 @@ class SessionsMixin:
             env.update({"BUILDER_HOME": env.get("HOME", ""), "BB_ACCOUNT_UID": uid,
                         "BB_PROJECT": project, "BB_TOKEN": token,
                         "BUILDERBOT_ROLE": "node"})
+            # Kept by the account's own user where its home is that user's
+            # (R125): the session account cannot write there any more.
+            run_bb, run_who = bb, who
+            dropper = getattr(self, "drop_for", None)
+            if dropper:
+                with contextlib.suppress(RuntimeError):
+                    w, base, root_bb = dropper(env, uid)
+                    if root_bb:
+                        run_bb, run_who = os.path.join(root_bb, "scripts", "bb"), w
+                        env["BUILDER_HOME"] = base
             try:
-                p = subprocess.run([bb, "token", "keep"],
+                p = subprocess.run([run_bb, "token", "keep"],
                                    env=env, capture_output=True, text=True, timeout=20, check=False,
-                                   **({"user": who["user"], "group": who["group"],
-                                       "extra_groups": who["extra_groups"]} if who else {}))
+                                   **({"user": run_who["user"], "group": run_who["group"],
+                                       "extra_groups": run_who["extra_groups"]} if run_who else {}))
             except (OSError, subprocess.SubprocessError) as e:
                 self.keep_said(f"{uid}/{project}", f"bb token keep did not run: {e}")
                 return
@@ -161,7 +227,11 @@ class SessionsMixin:
         here: the last few complaints of two days, and when one was last kept."""
         now = int(time.time())
         said = [x for x in self.__dict__.get("_keep_recent", []) if now - x["at"] < 48 * 3600]
-        return {"said": said, "ok": int(self.__dict__.get("_keep_ok") or 0)}
+        tw = self.__dict__.get("_tokenwatch")
+        return {"said": said, "ok": int(self.__dict__.get("_keep_ok") or 0),
+                # Who opened an account's token here that was neither it nor
+                # the agent (R125 step 6), for the controller's audit.
+                "reads": tw.report() if tw else []}
 
     # -- the session half (roadmap #24) ---------------------------------------
     def session_account(self):
@@ -214,6 +284,9 @@ class SessionsMixin:
         # root-owned, so `claude update` typed in a session changes nothing
         # that runs here, and the auto-updater is off (bb-tty).
         pinned = [CLAUDE_DIR] if os.access(os.path.join(CLAUDE_DIR, "claude"), os.X_OK) else []
+        # ...and each other coding agent's pinned copy the same way (R95).
+        pinned += [os.path.join(AGENTS_DIR, s["id"]) for s in AGENT_INSTALLS.values()
+                   if os.access(os.path.join(AGENTS_DIR, s["id"], s["command"]), os.X_OK)]
         env["PATH"] = ":".join([os.path.join(bbdir, "scripts")] + pinned
                                + [os.path.join(home, ".local", "bin"),
                                   os.path.join(home, ".npm-global", "bin"), env["PATH"]])
@@ -260,18 +333,31 @@ class SessionsMixin:
         bind = self.session_bind()
         self.session_bound = bind
         logf = os.path.join((self.state.get("stores") or {}).get("data") or "/tmp", "ttyd.log")
+        # The canvas renderer, not WebGL: desktop Firefox made a WebGL context
+        # that never painted, so every terminal there went from gray to black
+        # with nothing for ttyd to fall back from (the operator, 23 Oct, B259).
         base = [TTYD_BIN, "--interface", bind, "--url-arg", "--max-clients", "16",
-                "-t", "reconnect=5", "-t", "disableLeaveAlert=true"]
+                "-t", "reconnect=5", "-t", "disableLeaveAlert=true", "-t", "rendererType=canvas"]
         self.session_stale = ""
         try:
             out = open(logf, "ab")
             # The twin is told it is read-only: bb-tty then says where the
             # sign-in happens instead of prompting for a code nobody can
             # type into it (B137).
+            # Where accounts are their own users (R125) a terminal starts
+            # through bb-session tty, which asks the controller whose it is
+            # and runs as that account from the root-owned bundle; the ttyd
+            # itself stays the session account, which may become nobody.
+            mine = getattr(self, "account_users_ready", None)
+            if mine and mine():
+                self.tty_env_write()
+            starts = {SESSION_PORT: ["sudo", "-n", SESSION_BIN, "tty"],
+                      SESSION_PORT + 1: ["sudo", "-n", SESSION_BIN, "tty-ro"]} if mine and mine() else \
+                     {SESSION_PORT: [bbtty], SESSION_PORT + 1: [bbtty]}
             for port, extra, more in ((SESSION_PORT, ["--writable"], {}),
                                       (SESSION_PORT + 1, [], {"BB_TTY_RO": "1"})):
                 self.ttyd.append(subprocess.Popen(
-                    base[:1] + ["--port", str(port)] + base[1:] + extra + [bbtty],
+                    base[:1] + ["--port", str(port)] + base[1:] + extra + starts[port],
                     cwd=env["HOME"] if os.path.isdir(env["HOME"]) else "/",
                     env=dict(env, **more), stdin=subprocess.DEVNULL, stdout=out, stderr=out, **who))
             out.close()
@@ -489,16 +575,49 @@ class SessionsMixin:
             log("sessions: the bundle was gone from the toolchain store; fetched it again")
 
     def _tmux(self, argv, timeout=10):
-        """tmux as the session account: its server, its sessions. The
-        environment is the account's own (HOME and the default socket
-        path follow the uid), not this process's: the agent under systemd
-        has no TMUX_TMPDIR and must not inherit one from a test."""
+        """tmux on the server a session is on. Where accounts are their own
+        users (R125) each runs its own: a command aimed at an account's
+        session (its u_X~ name) goes to that account's server, and to the
+        session account's for one started before the switch; a listing is
+        every server's, joined. Otherwise the session account's alone."""
+        users = self._tmux_users()
+        if len(users) > 1:
+            t = argv[argv.index("-t") + 1] if "-t" in argv and argv.index("-t") + 1 < len(argv) else ""
+            m = re.match(r"=?(u_[0-9a-f]{8})~", t)
+            if m:
+                own = "bbu-" + m.group(1)[2:]
+                if own in users:
+                    got = self._tmux_as(own, argv, timeout, quiet=True)
+                    if got is not None:
+                        return got
+                return self._tmux_as(users[0], argv, timeout)
+            if not t:
+                outs = [self._tmux_as(u, argv, timeout, quiet=i > 0) for i, u in enumerate(users)]
+                got = [o for o in outs if o is not None]
+                return "".join(got) if got else None
+        return self._tmux_as(users[0], argv, timeout)
+
+    def _tmux_users(self):
+        """Whose tmux servers there are: the session account's, and each
+        account's own user where accounts are (R125)."""
+        users = [self.session_account()]
+        # Every account user there is, the setting on or not: one turned off
+        # still has its sessions running until they end (R125).
+        if os.geteuid() == 0:
+            users += sorted(p.pw_name for p in pwd.getpwall() if p.pw_name.startswith("bbu-"))
+        return users
+
+    def _tmux_as(self, user, argv, timeout=10, quiet=False):
+        """tmux as one account: its server, its sessions. The environment
+        is that account's own (HOME and the default socket path follow the
+        uid), not this process's: the agent under systemd has no TMUX_TMPDIR
+        and must not inherit one from a test."""
         env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
                "LANG": "C.UTF-8"}
         for k in ("TMUX_TMPDIR",):
             if k in os.environ:
                 env[k] = os.environ[k]
-        who = self.as_user(env, self.session_account())
+        who = self.as_user(env, user)
         if not who:
             env["HOME"] = os.path.expanduser("~")
         try:
@@ -507,7 +626,7 @@ class SessionsMixin:
         except (OSError, subprocess.SubprocessError, RuntimeError) as e:
             log(f"sessions: tmux {argv[0]}: {e}")
             return None
-        if p.returncode != 0 and argv[0] != "list-panes" and "no server running" not in (p.stderr or ""):
+        if p.returncode != 0 and not quiet and argv[0] != "list-panes" and "no server running" not in (p.stderr or ""):
             # No server up is the normal state of a node nobody has opened a
             # terminal on, whichever verb met it: list-sessions from the idle
             # reaper said so once a minute, all day. Anything else failing is
@@ -574,6 +693,20 @@ class SessionsMixin:
             return None
         if not who:
             return None
+        # Where accounts own their homes (R125) the session account can read
+        # none of them: read as root, and only from the root-owned bundle,
+        # which nothing outside a view can change.
+        lister = os.path.join(ROOT_BUNDLE_DIR, "current", "scripts", "lib", "login-list.py")
+        if any(u.startswith("bbu-") for u in self._tmux_users()) and os.path.isfile(lister):
+            try:
+                p = subprocess.run([sys.executable, "-I", lister], env={
+                    "PATH": env["PATH"], "LANG": "C.UTF-8",
+                    "BB_USERS_DIR": os.path.join(env.get("HOME", ""), "users")},
+                    capture_output=True, text=True, timeout=20, check=False)
+                rows = json.loads(p.stdout) if p.returncode == 0 else None
+            except (OSError, subprocess.SubprocessError, ValueError):
+                return None
+            return rows[:64] if isinstance(rows, list) else None
         try:
             p = subprocess.run(["bash", bb, "login", "--list"], env=env,
                                capture_output=True, text=True, timeout=20,
@@ -712,22 +845,44 @@ class SessionsMixin:
                 continue
             # The target is this op's session, whatever the argv says.
             argv[argv.index("-t") + 1] = sess
+            # A key for the program leaves copy mode first, as the
+            # dashboard's own tmux does (macros.py): scrolled back, an arrow
+            # moved tmux's cursor and the program heard nothing.
+            if argv[0] == "send-keys" and "-X" not in argv \
+                    and (self._tmux(["display-message", "-p", "-t", sess, "#{pane_in_mode}"]) or "").strip() == "1":
+                self._tmux(["send-keys", "-t", sess, "-X", "cancel"])
             self._tmux(argv)
+
+    def agent_update(self, job, spec):
+        """Install, update or remove one of the other coding agents for the
+        SESSION account (R95 step 2). Which agent and how is AGENT_INSTALLS's
+        row for this job's type, never anything the controller sent."""
+        how = AGENT_INSTALLS.get(job.job.get("type") or "")
+        if not how:
+            job.say("refused: no coding agent is installed by this job\n")
+            return "failed", 78
+        return self.agent_install(job, spec, how)
 
     def claude_update(self, job, spec):
         """Install the current Claude Code for the SESSION account, and pin it
         (claudecode.py on the controller). Queued by an administrator's press
         and by nothing else; the controller ended the Claude sessions here
-        before queueing it, since the binary is swapped under nothing.
+        before queueing it, since the binary is swapped under nothing."""
+        return self.agent_install(job, spec, CLAUDE_INSTALL)
 
-        The installer runs as the session account, into its home, the way the
-        provisioner first installed it. Then, where this agent is root, the
-        binary is copied into CLAUDE_DIR, root-owned, which the session's
-        PATH reads first: that copy is what a session runs and what the
-        account cannot write, so `claude update` typed in a session changes
-        nothing that runs. A guest node, where the agent is not root, keeps
-        the account's own copy and says so.
-        """
+    def agent_install(self, job, spec, how):
+        """One coding agent installed, updated or removed for the SESSION
+        account, from its row (AGENT_INSTALLS, CLAUDE_INSTALL): one path for
+        every agent (R95 step 18).
+
+        The vendor's installer runs as the session account, into its home,
+        the way the provisioner first installed it. Then, where this agent
+        is root, the binary is copied into the row's pin folder, root-owned,
+        which the session's PATH reads first: that copy is what a session
+        runs and what the account cannot write, so an update typed in a
+        session changes nothing that runs. A guest node, where the agent is
+        not root, keeps the account's own copy and says so."""
+        product, cmd = how["product"], how["command"]
         who_name = self.session_account()
         env = dict(sdk_env(self.state))
         try:
@@ -736,33 +891,46 @@ class SessionsMixin:
             job.say(f"refused: {e}\n")
             return "failed", 78
         if not who_name:
-            job.say("refused: this node reports no session account, so there is no Claude Code here to update\n")
+            job.say(f"refused: this node reports no session account, so there is nowhere for {product} to go\n")
             return "failed", 78
         if not who:
             env.update({"HOME": os.path.expanduser("~"), "USER": who_name, "LOGNAME": who_name})
         home = env.get("HOME") or os.path.expanduser("~")
-        # Taken off, from the node's Toolchains tab (R145): the pinned copy
-        # a session runs and the account's own install under its home.
+        pin_dir = how.get("pin_dir") or os.path.join(AGENTS_DIR, how["id"])
+        # Taken off, from the node's Agents page (R145): the pinned copy a
+        # session runs and the account's own install under its home.
         if spec.get("action") == "remove":
             gone = []
-            for path in (os.path.join(CLAUDE_DIR, "claude"), os.path.join(home, ".local", "bin", "claude"),
-                         os.path.join(home, ".local", "share", "claude")):
+            for path in (os.path.join(pin_dir, cmd), os.path.join(home, how["bin"]),
+                         *(os.path.join(home, a) for a in how.get("also", ()))):
                 if os.path.lexists(path):
                     with contextlib.suppress(OSError):
                         shutil.rmtree(path) if os.path.isdir(path) and not os.path.islink(path) else os.unlink(path)
                         gone.append(path)
-            job.say(("removed " + ", ".join(gone)) if gone else "Claude Code was not installed here")
+            # ...and a pinned release folder, with the links into it.
+            rel = os.path.join(pin_dir, "release")
+            if os.path.isdir(rel) and not os.path.islink(rel):
+                for f in os.listdir(pin_dir):
+                    p = os.path.join(pin_dir, f)
+                    if os.path.islink(p) and os.path.realpath(p).startswith(os.path.realpath(rel) + os.sep):
+                        with contextlib.suppress(OSError):
+                            os.unlink(p)
+                shutil.rmtree(rel, ignore_errors=True)
+                gone.append(rel)
+            job.say(("removed " + ", ".join(gone)) if gone else f"{product} was not installed here")
             job.say("\n")
-            self.hello_again("Claude Code was removed")
+            self.hello_again(f"{product} was removed")
             return "succeeded", 0
         env["PATH"] = ":".join([os.path.join(home, ".local", "bin"), env.get("PATH") or "/usr/local/bin:/usr/bin:/bin"])
         env.setdefault("LANG", "C.UTF-8")
-        # A test's stand-in for the installer; the real one is the script the
-        # provisioner ran, fetched fresh each time.
-        stub = os.environ.get("BUILDERBOT_CLAUDE_INSTALLER")
-        argv = ["bash", stub] if stub else ["bash", "-c", "curl -fsSL https://claude.ai/install.sh | bash"]
-        job.say(f"installing Claude Code for {who_name}"
-                + (f" ({spec.get('to')} is out)" if spec.get("to") else "") + "\n")
+        for k, v in how["env"].items():
+            env[k] = v.format(home=home)
+        want = str(spec.get("to") or "")
+        if want and how["pin"] and re.fullmatch(r"\d+\.\d+\.\d+", want):
+            env[how["pin"][0]] = how["pin"][1].format(v=want)
+        stub = os.environ.get(f"BUILDERBOT_{how['id'].upper()}_INSTALLER")
+        argv = ["bash", stub] if stub else ["bash", "-c", how["script"]]
+        job.say(f"installing {product} for {who_name}" + (f" ({want} is out)" if want else "") + "\n")
         try:
             job.proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                         cwd=home if os.path.isdir(home) else "/tmp", env=env,
@@ -788,45 +956,54 @@ class SessionsMixin:
         if code != 0:
             job.say(f"the installer exited {code}\n")
             return "failed", code
-        # The binary the installer just put down: the version it was asked
-        # for under ~/.local/share/claude/versions when that is there, else
-        # whatever the launcher resolves to. The launcher itself is not
-        # trusted: on a lab node it is a stand-in the installer leaves in
-        # place, and pinning that pinned the old version (23 Sep).
-        exe = os.path.join(home, ".local", "bin", "claude")
-        want = str(spec.get("to") or "")
-        fresh = os.path.join(home, ".local", "share", "claude", "versions", want) if want else ""
+        # The binary the installer just put down: the version asked for in
+        # the folder it leaves, where the row names one (Claude Code's
+        # ~/.local/share/claude/versions), else whatever its launcher resolves
+        # to. Claude's launcher is not trusted alone: on a lab node it is a
+        # stand-in the installer leaves in place, and pinning that pinned the
+        # old version (23 Sep).
+        exe = os.path.join(home, how["bin"])
+        fresh = os.path.join(home, how["fresh"].format(v=want)) if want and how.get("fresh") else ""
         src = fresh if fresh and os.access(fresh, os.X_OK) else (os.path.realpath(exe) if os.access(exe, os.X_OK) else "")
         if not src:
-            job.say("installed, but no claude to run: nothing under ~/.local/bin or ~/.local/share/claude/versions\n")
+            job.say(f"installed, but no {cmd} to run at ~/{how['bin']}\n")
             return "failed", 70
         out, dead = _probe([src, "--version"], timeout=20)
         if dead:
             job.say(f"installed, but it does not run: {dead}\n")
             return "failed", 70
-        ver = out.split("\n")[0].strip()[:40]
+        m = re.search(r"(\d+\.\d+\.\d+)", out)
+        ver = m.group(1) if m else out.split("\n")[0].strip()[:40]
         if os.geteuid() == 0:
             try:
-                os.makedirs(CLAUDE_DIR, mode=0o755, exist_ok=True)
-                tmp = os.path.join(CLAUDE_DIR, "claude.new")
-                shutil.copy2(src, tmp)
-                os.chown(tmp, 0, 0)
-                os.chmod(tmp, 0o755)
-                os.replace(tmp, os.path.join(CLAUDE_DIR, "claude"))
-                job.say(f"pinned {ver} at {CLAUDE_DIR}/claude, root-owned: a session runs this copy and cannot change it\n")
+                os.makedirs(pin_dir, mode=0o755, exist_ok=True)
+                root = _release_root(exe, src, home)
+                if root:
+                    _pin_release(pin_dir, cmd, root)
+                else:
+                    # One binary, and any release folder an earlier pin made
+                    # (B262) goes with what it held.
+                    shutil.rmtree(os.path.join(pin_dir, "release"), ignore_errors=True)
+                    tmp = os.path.join(pin_dir, cmd + ".new")
+                    shutil.copy2(src, tmp)
+                    os.chown(tmp, 0, 0)
+                    os.chmod(tmp, 0o755)
+                    os.replace(tmp, os.path.join(pin_dir, cmd))
+                job.say(f"pinned {ver} at {pin_dir}/{cmd}, root-owned: a session runs this copy and cannot change it\n")
             except OSError as e:
                 job.say(f"installed {ver} for {who_name}, but could not pin it: {e}\n")
         else:
             job.say(f"installed {ver} for {who_name} (the agent is not root here, so the account's own copy is what runs)\n")
-        # New sessions get the PATH with the pinned copy on it; the ttyds
-        # are restarted onto it, tmux sessions untouched (there are none).
+        # New sessions get the PATH with the pinned copy on it; the ttyds are
+        # restarted onto it, tmux sessions untouched (there are none).
         self.session_renew()
-        job.say(f"Claude Code {ver} is what a session here runs now\n")
+        job.say(f"{product} {ver} is what a session here runs now\n")
         # ...and the controller hears it now: the version it compares rides
-        # the census, which rides hello, so without this the bell kept
-        # saying an update was out for up to ten minutes after it landed (B249).
-        self.hello_again("Claude Code was updated")
+        # the census, which rides hello, so without this the bell kept saying
+        # an update was out for up to ten minutes after it landed (B249).
+        self.hello_again(f"{product} was updated")
         return "succeeded", 0
+
 
     def published_now(self):
         """The published host ports of every container here, by compose
@@ -1012,10 +1189,11 @@ class SessionsMixin:
                 f"{', '.join(sorted(have)) or '?'}); firewalld rules replaced")
 
     def session_idle_reap(self):
-        """End this node's Claude sessions past the idle rule: the
-        controller's idle.py, enforced here from node.json. Claude sessions
-        by name (claude-<project>, u_xxxx~claude-<project>), by tmux's own
-        session_activity, once per minute."""
+        """End this node's agent sessions past the idle rule: the
+        controller's idle.py, enforced here from node.json. An agent's
+        sessions by name (claude-<project>, u_xxxx~claude-<project>, the
+        prefixes in AGENT_PREFIXES), by tmux's own session_activity, once
+        per minute."""
         limit = self.state.get("session_idle_minutes") or 0
         if limit <= 0 or time.time() - getattr(self, "_idle_at", 0) < IDLE_UNIT:
             return
@@ -1029,8 +1207,8 @@ class SessionsMixin:
                 last = float(act.strip())
             except ValueError:
                 continue
-            claude = name.startswith("claude-") or "~claude-" in name
-            if claude and time.time() - last > limit * IDLE_UNIT:
+            base = name.split("~", 1)[1] if "~" in name else name
+            if base.startswith(AGENT_PREFIXES) and time.time() - last > limit * IDLE_UNIT:
                 log(f"sessions: ending {name} (idle {limit} minute(s), the controller's rule)")
                 self._tmux(["kill-session", "-t", "=" + name])
 

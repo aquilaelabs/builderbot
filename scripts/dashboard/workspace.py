@@ -312,6 +312,11 @@ BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/toolchains.json", "nodes/pr
                 "scripts/dashboard/bb-tty", "scripts/dashboard/bb-work-note",
                 "scripts/dashboard/bb-prompt-relay", "scripts/dashboard/bb-check-relay",
                 "scripts/dashboard/bb-rule-hook",
+                # ...and the other coding agents' one hook, which runs these
+                # (R95 step 6): their hooks files name it in this bundle.
+                "scripts/dashboard/bb-agent-hook",
+                # ...and what trusts Codex's for a launch (B284).
+                "scripts/dashboard/bb-codex-trust",
                 # The gate, which refuses every tool call while the
                 # controller is not answering, so a node's sessions stop for
                 # an update the same way the controller's do.

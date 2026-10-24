@@ -357,6 +357,9 @@ function rolesRoleBody(){
     ${areas}
     ${r.builtin ? `<div class="sub">${esc(r.note)}. Built in, every area to write, and not changed here.</div>`
       : ""}
+    ${r.fresh ? "" : `<label class="ndcap rtwofactor"><input type="checkbox" id="rolesTf"${
+      d.roles[r.name]?.two_factor ? " checked" : ""}${d.admin ? "" : " disabled"}> Require two-factor sign-in of everybody holding it${
+      helpIcon("each holder without an authenticator app or a passkey is sent to set one up at their next sign-in, and reaches nothing else until they have (R127)")}</label>`}
     ${ro ? "" : `${saveBar({save: 'id="rolesSave"', revert: 'id="rolesRevert"', state: rolesRoleDirty() ? "unsaved" : ""})}
       ${r.fresh ? "" : `<div class="rfoot"><button type="button" class="danger" id="rolesRemove">Remove ${esc(d.roles[r.name]?.label || r.name)}</button></div>`}`}`);
 }
@@ -445,8 +448,8 @@ function rolesRedraw(){ rolesRev++; drawPanes(); }
 function wireRoles(el){
   // A role picked from its list (on a phone, the detail comes over the
   // list), the owners' row opened or shut, and Back to the list.
-  el.querySelectorAll("[data-rpick]").forEach(b => b.onclick = () => {
-    if (b.dataset.rpick !== rolesPick && rolesRoleDirty() && !confirm(`Leave the changes to ${rolesDraft.name} unsaved?`)) return;
+  el.querySelectorAll("[data-rpick]").forEach(b => b.onclick = async () => {
+    if (b.dataset.rpick !== rolesPick && rolesRoleDirty() && !await askYes(`Leave the changes to ${rolesDraft.name} unsaved?`)) return;
     splitAway(() => document.querySelectorAll(".pane .doc.on .rsplit > .rdetail"), () => {
       rolesPick = b.dataset.rpick; rolesDraft = null; rolesPhoneOpen = true; rolesMoveNext = "in"; rolesRedraw(); });
   });
@@ -476,6 +479,9 @@ function wireRoles(el){
     if (rolesExp.has(k)) rolesExp.delete(k); else rolesExp.add(k);
     rolesRedraw();
   });
+  const tf = el.querySelector("#rolesTf");
+  if (tf) tf.onchange = () => rolesAct({action: "two-factor", name: rolesDraft.name, on: tf.checked},
+    tf.checked ? `${rolesDraft.name}: two-factor sign-in required` : `${rolesDraft.name}: two-factor sign-in no longer required`);
   const note = el.querySelector("#rolesNote");
   if (note) note.oninput = () => { rolesDraft.note = note.value; };
   // The area's own boxes say it for every instance: Read ticked reads on
@@ -518,7 +524,7 @@ function wireRoles(el){
   };
   const rm = el.querySelector("#rolesRemove");
   if (rm) rm.onclick = async () => {
-    if (!confirm(`Remove the role ${rolesDraft.name}? Accounts that hold it lose what it gave.`)) return;
+    if (!await askYes(`Remove the role ${rolesDraft.name}? Accounts that hold it lose what it gave.`)) return;
     if (await rolesAct({action: "remove", name: rolesDraft.name}, `${rolesDraft.name} removed`)){
       rolesPick = ""; rolesDraft = null;
     }

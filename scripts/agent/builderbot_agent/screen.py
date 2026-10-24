@@ -125,7 +125,8 @@ def serve_one(conn, key):
     port = vnc_port(domain)
     if not port:
         return _refuse(conn, 409, "the VM is not running, or has no screen")
-    accept = base64.b64encode(hashlib.sha1((hdr.get("sec-websocket-key", "") + WS_GUID).encode()).digest()).decode()
+    # SHA-1 because RFC 6455 says so: the accept key is a handshake, not a secret.
+    accept = base64.b64encode(hashlib.sha1((hdr.get("sec-websocket-key", "") + WS_GUID).encode()).digest()).decode()  # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
     proto = "binary" if "binary" in hdr.get("sec-websocket-protocol", "") else ""
     vnc = socket.create_connection(("127.0.0.1", port), timeout=5)
     vnc.settimeout(None)

@@ -108,8 +108,8 @@ await page.evaluate(() => openNotebook('beta', 'git'));
 await page.waitForFunction(() => !!document.querySelector('.nb .nbview[data-view="git"] #gitPicker:not([hidden]) .gbpickname')?.textContent,
                            null, { timeout: 20000 });
 const NB = '.nb .nbview[data-view="git"]';
-ok(new RegExp(`${st.files.length} changes not committed`).test(await page.$eval(`${NB} #gitHint`, e => e.textContent)),
-   'the head row says the branch, the uncommitted count and the branches');
+ok(new RegExp(`${st.files.length} changes? not committed`).test(await page.$eval(`${NB} #gitHint`, e => e.textContent.replace(/\s+/g, ' '))),
+   'the glance counts what is not committed and the branches, the branch the picker beside them');
 ok(await page.$eval(`${NB}`, e => e.querySelectorAll('.gfile').length) === st.files.length,
    'Changes lists each uncommitted file as a fold');
 // Opened, not clicked: every fold opens by default (d890eda), and a click
@@ -386,7 +386,7 @@ print(json.dumps(g._done(said, "fetched", ${JSON.stringify(`${DIR}/ws/beta`)})))
     git('branch', 'sideclash', commitFile(tip, 'clash2.txt', 'from side\n', 'Side clash'));
     const before = git('rev-parse', main);
     const cl = await act('merge', { name: 'sideclash', into: main });
-    ok(/does not merge/.test(cl.error || '') && /Send to Claude/.test(cl.error || '') && git('rev-parse', main) === before
+    ok(/does not merge/.test(cl.error || '') && /send it to the session/.test(cl.error || '') && git('rev-parse', main) === before
        && git('worktree', 'list').split('\n').length === 1 && !(await api('what=status')).files.some(f => f.state === 'conflict'),
        `a merge into main that clashes is abandoned whole, with the session named as what finishes it (${String(cl.error).slice(0, 70)})`);
     git('update-ref', `refs/heads/${main}`, tip);
@@ -653,11 +653,16 @@ u.configure(state="${DIR}/state", write_json=wj)
 print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   const asSession = await act('fetch', {}, { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' });
   ok(asSession.status === 403 && /bb git/.test(asSession.error), "a session's token is refused the buttons, and told about bb git");
+  // Its owner's lock leaves its owner working (R119); an administrator's
+  // holds the owner too, written as one here since this account owns beta.
   await page.evaluate(() => fetch('/api/lock', { method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: 'beta', locked: true }) }));
-  ok((await act('fetch')).status === 403, 'a locked project takes no action');
-  await page.evaluate(() => fetch('/api/lock', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: 'beta', locked: false }) }));
+  ok((await act('fetch')).status !== 403, "its owner's lock leaves its owner the buttons");
+  writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ beta: { by: 'u_0000aaaa', admin: true }, delta: { by: 'u_0000aaaa', admin: true } }));
+  const heldByAdmin = await act('fetch');
+  ok(heldByAdmin.status === 403 && /locked by an administrator/.test(heldByAdmin.error),
+     `an administrator's lock takes no action, its owner's included (${heldByAdmin.status} ${heldByAdmin.error})`);
+  writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ delta: { by: 'u_0000aaaa', admin: true } }));   // the fixture's own lock, kept
 
   // ...and the view offers them: the network bar, the commit form at the
   // top of Changes, Switch and Delete on a branch, Revert on a commit.
@@ -674,11 +679,13 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
     { timeout: 20000 });
   const view = await page.$eval('.nb .nbview[data-view="git"]', v => ({
     net: !v.querySelector('#gitNet').hidden, push: !v.querySelector('[data-gitact="push"]').disabled,
+    // Pull says why when it is off, the one reason it can be (B294).
+    pull: (b => b.disabled === /no upstream/.test(b.title))(v.querySelector('[data-gitact="pull"]')),
     commitBar: !!v.querySelector('.gcommitbar[data-add] #gitMsg'),
     discard: !!v.querySelector('[data-gitdiscard="a.txt"]'),
     sw: v.querySelectorAll('[data-gitswitch]').length, del: v.querySelectorAll('[data-gitdelete]').length,
     newBranch: !!v.querySelector('#gitPicker [data-gitpicknew]') && !v.querySelector('#gitNewBranch') }));
-  ok(view.net && view.push && view.commitBar && view.discard && view.sw >= 1 && view.del >= 1 && view.newBranch,
+  ok(view.net && view.push && view.pull && view.commitBar && view.discard && view.sw >= 1 && view.del >= 1 && view.newBranch,
      `the view offers the network bar, the commit form, Discard, Switch, Delete and New branch (${JSON.stringify(view)})`);
   const grouped = await page.$eval('.nb .nbview[data-view="git"]', v => ({
     into: !!v.querySelector('[data-gitmerge="old-work"][data-gitinto]'),
@@ -852,6 +859,21 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   ok(own.status === 200 && own.code === 0
      && execFileSync('git', [`--git-dir=${origin}`, 'branch', '--list', 'topic'], { encoding: 'utf8' }).includes('topic'),
      `...while its own branch goes up (${(own.out || own.err || '').trim().slice(0, 40)})`);
+  // A branch never pushed goes up on a bare bb git push and is given its
+  // upstream there (B220), rather than git's refusal and a hint about
+  // push.autoSetupRemote.
+  {
+    const was = execFileSync('git', ['-C', B, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim();
+    execFileSync('git', ['-C', B, 'checkout', '-q', '-b', 'fresh-b220']);
+    const first = await relay(['git', 'push']);
+    // The relay answers with what the session's own bb applies to its tree:
+    // the branch's new upstream among it.
+    const up = ((first.apply || {}).upstream || []).find(u => u[0] === 'fresh-b220')?.[2] || '';
+    const there = execFileSync('git', [`--git-dir=${origin}`, 'branch', '--list', 'fresh-b220'], { encoding: 'utf8' }).includes('fresh-b220');
+    execFileSync('git', ['-C', B, 'checkout', '-q', was]);
+    ok(first.status === 200 && first.code === 0 && there && up === 'refs/heads/fresh-b220',
+       `a branch never pushed goes up on a bare bb git push, its upstream set (${first.status} code ${first.code} ${there} ${up} ${JSON.stringify((first.err || first.error || '') + ' / ' + (first.out || '')).slice(0, 400)})`);
+  }
   // B191: the policy is about REFS, not about the word `main` appearing in
   // the arguments. "Its branch" is the one the tree is on, so everything
   // else on that remote is somebody's, and a setting naming one branch must
@@ -1092,39 +1114,71 @@ print(u.mint_session("beta"))`], { encoding: 'utf8' }).trim();
   const look = () => page.$eval('.nb .nbview[data-view="git"]', el => ({
     file: !!el.querySelector('[data-gitaskfile]'), commit: !!el.querySelector('#gitDetail [data-gitaskcommit]'),
     branch: el.querySelectorAll('[data-gitaskbranch]').length,
-    pol: el.querySelectorAll('[data-gitpol]').length, apply: el.querySelector('#gitPolApply')?.disabled }));
+    pol: el.querySelectorAll('[data-gitpol]').length }));
   await page.waitForFunction(() => {
     const el = document.querySelector('.nb .nbview[data-view="git"]');
     return el && el.querySelector('[data-gitaskfile]') && el.querySelector('#gitDetail [data-gitaskcommit]')
-      && el.querySelectorAll('[data-gitaskbranch]').length >= 1 && el.querySelectorAll('[data-gitpol]').length === 3
-      && el.querySelector('#gitPolApply')?.disabled === true;
+      && el.querySelectorAll('[data-gitaskbranch]').length >= 1;
   }, null, { timeout: 10000 }).catch(() => {});
   const v = await look();
-  ok(v.file && v.commit && v.branch >= 1 && v.pol === 3 && v.apply === true,
-     `the view offers Send to Claude on a change, a commit and a branch, and the policy with its Apply asleep (${JSON.stringify(v)})`);
+  ok(v.file && v.commit && v.branch >= 1 && v.pol === 0,
+     `the view offers Send to Claude on a change, a commit and a branch, and no push policy, which is the Permissions view's (${JSON.stringify(v)})`);
   // Every Send to Claude asks first (the operator, 6 Oct): what it sends is
   // a prompt Claude starts on at once. Answered no here, so nothing goes.
   {
     const asks = [];
     const seen = req => { if (req.url().endsWith('/api/git') && /"action":"ask"/.test(req.postData() || '')) asks.push(1); };
     page.on('request', seen);
-    await page.evaluate(() => { window.__confirm = window.confirm; window.confirm = m => { window.__asked = m; return false; }; });
+    let asked = '';
+    page.answers.push(q => { asked = q.text; return -1; });
     // Pressed from the page: the change sits in a section shut by default.
     await page.$eval('.nb .nbview[data-view="git"] [data-gitaskfile]', b => b.click());
     await page.waitForTimeout(300);
-    const asked = await page.evaluate(() => { const m = window.__asked; window.confirm = window.__confirm; delete window.__asked; return m || ''; });
     page.off('request', seen);
     ok(/^Send .* to beta's Claude session\?/.test(asked) && asks.length === 0,
        `Send to Claude asks first, naming the session, and sends nothing when the answer is no (${asked.split('\n')[0]}; ${asks.length} sent)`);
   }
-  // The policy is a section shut by default: open it to reach the pickers.
-  await page.evaluate(() => { const d = document.querySelector('.nb .nbview[data-view="git"] details[data-sect="git:policy"]'); if (d && !d.open) d.open = true; });
-  await page.waitForSelector('.nb .nbview[data-view="git"] [data-gitpol="push"]', { state: 'visible', timeout: 10000 });
-  await openFold(page, '.nb .nbview[data-view="git"] [data-sect="git:policy"]');   // one section open at a time (the operator, 5 Oct)
-  await page.selectOption('.nb .nbview[data-view="git"] [data-gitpol="push"]', 'deny');
-  ok(await page.$eval('.nb .nbview[data-view="git"] #gitPolApply', b => !b.disabled),
+  // A send reaches whichever agent's session runs, so it is named for it and
+  // its tab is opened, not Claude's, which started a Claude session beside
+  // a ChatGPT one.
+  {
+    const r = await page.evaluate(() => {
+      const was = state.sessions;
+      state.sessions = [...(was || []), { name: myAgentSession('codex', 'beta') }];
+      const opened = [], realL = window.launchAgent, realS = window.startClaude;
+      window.launchAgent = (id, p) => opened.push(`agent:${id}:${p}`);
+      window.startClaude = p => opened.push(`claude:${p}`);
+      try { openSentTo('beta'); openSentTo('beta', 'u_00000000~codex-beta'); return { name: sendAgent('beta').name, opened }; }
+      finally { state.sessions = was; window.launchAgent = realL; window.startClaude = realS; }
+    });
+    ok(r.name === 'ChatGPT' && r.opened.join() === 'agent:codex:beta,agent:codex:beta',
+       `with a ChatGPT session running, a send is named for ChatGPT and opens its tab, not Claude's (${JSON.stringify(r)})`);
+  }
+  // What a session may do, in one view of its own beside Overview and
+  // Settings (the operator, 22 Oct): the settings form's Agents may section
+  // lent to it, and the push policy under it, staged until Apply.
+  await page.evaluate(() => openNotebook('beta', 'permissions'));
+  await page.waitForSelector('.nb .nbview[data-view="permissions"] [data-gitpol="push"]', { state: 'visible', timeout: 10000 });
+  const perm = await page.$eval('.nb .nbview[data-view="permissions"]', el => ({
+    dials: !!el.querySelector('details[data-sect="rn:claude"] #rnGateRoadmap'), pol: el.querySelectorAll('[data-gitpol]').length,
+    apply: el.querySelector('.permGitApply')?.disabled }));
+  ok(perm.dials && perm.pol === 3 && perm.apply === true,
+     `Permissions holds Agents may and the push policy, its Apply asleep (${JSON.stringify(perm)})`);
+  await page.selectOption('.nb .nbview[data-view="permissions"] [data-gitpol="push"]', 'deny');
+  ok(await page.$eval('.nb .nbview[data-view="permissions"] .permGitApply', b => !b.disabled),
      '...picking a policy wakes Apply and saves nothing yet');
-  await page.selectOption('.nb .nbview[data-view="git"] [data-gitpol="push"]', 'allow');
+  await page.selectOption('.nb .nbview[data-view="permissions"] [data-gitpol="push"]', 'allow');
+  // ...and the section goes home: Settings has the form whole, Agents may
+  // in it but not in its list.
+  await page.evaluate(() => openNotebook('beta', 'settings'));
+  await page.waitForSelector('.nb .nbview[data-view="settings"] .nbsettings > .box', { timeout: 10000 });
+  const home = await page.$eval('.nb .nbview[data-view="settings"]', el => ({
+    inForm: !!el.querySelector('.nbsettings > .box > details[data-sect="rn:claude"]'),
+    listed: [...el.querySelectorAll('.snav [data-spick]')].map(b => b.dataset.spick).includes('claude'),
+    left: !!document.querySelector('.nb .nbview[data-view="permissions"]:not(.fghost) details[data-sect="rn:claude"]') }));
+  ok(home.inForm && !home.listed && !home.left,
+     `leaving Permissions hands Agents may back to the form, which Settings does not list (${JSON.stringify(home)})`);
+  await page.evaluate(() => openNotebook('beta', 'git'));
   execFileSync('git', ['-C', B, 'checkout', '-q', '--', 'a.txt']);
 }
 
@@ -1396,7 +1450,7 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
     run: { id: 11, name: 'Android CI', branch: 'main', conclusion: 'failure', at: '2026-10-03T00:44:51Z' },
     findings: [
       { kind: 'run', sev: 'bad', where: 'run 11', url: 'https://github.com/o/beta/actions/runs/11',
-        text: 'The Android CI check failed on main (3 Oct, 00:44 UTC). A Claude session can read why with bb ci-log 11.' },
+        text: 'The Android CI check failed on main (3 Oct, 00:44 UTC). A session can read why with bb ci-log 11.' },
       { kind: 'label', sev: 'warn', where: 'android.yml:10', text: 'runs on ubuntu-latest, which GitHub moves to a new release on its own date',
         fix: { from: 'ubuntu-latest', to: 'ubuntu-24.04' } },
       { kind: 'action', sev: 'note', where: 'android.yml:14', text: 'android-actions/setup-android@v3: v4 is out' }],

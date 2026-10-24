@@ -62,6 +62,15 @@ ok(offered.includes('debian-13') && offered.includes('ubuntu-24.04') && !offered
 await page.fill('#vmName', 'db');
 await page.selectOption('#vmProject', 'alpha');
 await page.selectOption('#vmOs', 'debian-13');
+// Make it with no key is refused, and the reason is where it can be read,
+// above the dialog's footer, not behind it (B304).
+await page.click('#vmGo');
+await page.waitForFunction(() => !document.getElementById('vmWhyF').hidden, null, { timeout: 10000 });
+const seen = await page.evaluate(() => { const w = document.getElementById('vmWhy').getBoundingClientRect();
+  const f = document.querySelector('#vmnewmodal .foot, #vmnewmodal .dlgfoot, #vmnewmodal footer')?.getBoundingClientRect();
+  return { text: document.getElementById('vmWhy').textContent, bottom: Math.round(w.bottom), foot: f ? Math.round(f.top) : innerHeight }; });
+ok(/ssh public key/.test(seen.text) && seen.bottom <= seen.foot,
+   `a refused Make it says why where it can be read, above the dialog's foot (${JSON.stringify(seen)})`);
 await page.fill('#vmKey', KEY);
 await page.click('#vmGo');
 const job = await (async () => { for (let i = 0; i < 40; i++){
@@ -88,17 +97,28 @@ const row = await page.$eval('.vmtab [data-vm-key="alpha/db"]', e => ({ text: e.
 ok(/running/.test(row.text) && /ok/.test(row.pill) && /ssh builder@10\.232\.0\.12/.test(row.text) && /Debian 13/.test(row.text)
    && /kvmbox/.test(row.text) && row.stop && row.con && row.snap,
    `once made it runs: its pill, how to reach it, its OS and node, Stop, Console and its snapshot with Revert (${row.text.slice(0, 120)})`);
+// A Stop its system did not take (an installer with no ACPI daemon) is said
+// on the row after a while, pointing at Force stop (B308).
+const ignored = await page.evaluate(async () => {
+  vmStopAsked['alpha/db'] = Date.now() - 60000; vmsRev++; drawPanes();
+  await new Promise(r => setTimeout(r, 300));
+  const t = document.querySelector('.vmtab [data-vm-key="alpha/db"]')?.textContent || '';
+  delete vmStopAsked['alpha/db']; vmsRev++; drawPanes();
+  return t;
+});
+ok(/asked to shut down .* still running/.test(ignored) && /Force stop/.test(ignored),
+   `a Stop the VM's system ignored is said on its row, with Force stop named (${(ignored.match(/asked to shut down[^.]*/) || [''])[0]})`);
 
 // The notebook's VMs view (R96): the project's own VMs, beside Docker in
 // its Ship group, drawn from the page's rows, with New VM in its head.
 await page.evaluate(() => openNotebook('alpha', 'vms'));
-await page.waitForFunction(() => /1 running of 1/.test(document.querySelector('.nbview[data-view="vms"] #nvHint')?.textContent || ''), null, { timeout: 15000 });
+await page.waitForFunction(() => /1 running of 1/.test((document.querySelector('.nbview[data-view="vms"] #nvHint')?.textContent || '').replace(/\s+/g, ' ')), null, { timeout: 15000 });
 const nv = await page.evaluate(() => {
   const v = document.querySelector('.nbview[data-view="vms"]');
   return { ship: [...document.querySelectorAll('.nbsub [data-in="ship"]')].map(b => b.dataset.v).join(),
            row: !!v.querySelector('[data-vm-key="alpha/db"]'), newVm: !v.querySelector('#nvNew').hidden };
 });
-ok(nv.ship === 'artifacts,docker,vms' && nv.row && nv.newVm,
+ok(nv.ship === 'artifacts,docker,vms,signing' && nv.row && nv.newVm,
    `a project's notebook has VMs beside Docker in Ship, its own VM's row and New VM in its head (${JSON.stringify(nv)})`);
 await page.evaluate(() => openVmsTab());
 await page.waitForSelector('.vmtab [data-vm-key="alpha/db"]', { timeout: 10000 });

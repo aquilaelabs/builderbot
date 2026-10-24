@@ -133,7 +133,9 @@ def skipped(rel):
 # projects root, so it reaches every node holding the project and comes back
 # from the one it was made on (B615). A dot directory, so no project scan
 # meets it.
-WT_UNIT = re.compile(r"\.worktrees/([A-Za-z0-9][A-Za-z0-9._-]*)/(u_[0-9a-f]{8})")
+# ...or one of its agents' other than Claude's (u_xxxxxxxx-codex, R95): the
+# account's all the same, so the uid is still the group a check reads.
+WT_UNIT = re.compile(r"\.worktrees/([A-Za-z0-9][A-Za-z0-9._-]*)/(u_[0-9a-f]{8})(?:-[a-z]+)?")
 
 
 def _worktrees():
@@ -141,9 +143,10 @@ def _worktrees():
 
 
 def worktree_of(unit):
-    """(project, uid) for a worktree's unit name, else None."""
+    """(project, uid, folder) for a worktree's unit name, else None: the
+    folder is the uid, or the uid and its agent (u_xxxxxxxx-codex, R95)."""
     m = WT_UNIT.fullmatch(unit or "")
-    return (m.group(1), m.group(2)) if m else None
+    return (m.group(1), m.group(2), unit.rsplit("/", 1)[1]) if m else None
 
 
 def worktrees_of(project):
@@ -151,7 +154,7 @@ def worktrees_of(project):
     d = _worktrees() / project
     try:
         return sorted(f".worktrees/{project}/{u.name}" for u in d.iterdir()
-                      if u.is_dir() and not u.is_symlink() and re.fullmatch(r"u_[0-9a-f]{8}", u.name))
+                      if u.is_dir() and not u.is_symlink() and re.fullmatch(r"u_[0-9a-f]{8}(?:-[a-z]+)?", u.name))
     except OSError:
         return []
 
@@ -171,14 +174,14 @@ def _root(project, make=False):
         # git_guard), so git on the controller finds it as the worktree it is.
         if not _there(wt[0]):
             raise ValueError("no such project")
-        r = _worktrees() / wt[0] / wt[1]
+        r = _worktrees() / wt[0] / wt[2]
         if not r.is_dir():
-            if not make or not (WORKSPACE / wt[0] / ".git" / "worktrees" / wt[1]).is_dir():
+            if not make or not (WORKSPACE / wt[0] / ".git" / "worktrees" / wt[2]).is_dir():
                 raise ValueError("no such worktree")
             r.mkdir(parents=True, exist_ok=True)
         dot = r / ".git"
         if make and not dot.exists():
-            dot.write_text(f"gitdir: {WORKSPACE / wt[0] / '.git' / 'worktrees' / wt[1]}\n")
+            dot.write_text(f"gitdir: {WORKSPACE / wt[0] / '.git' / 'worktrees' / wt[2]}\n")
         return r
     if not re.fullmatch(r"[A-Za-z0-9._-]+", project or "") or project.startswith("."):
         raise ValueError("no such project")

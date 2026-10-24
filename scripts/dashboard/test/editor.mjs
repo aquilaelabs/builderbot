@@ -35,9 +35,10 @@ const as = async (c, project, action, extra = {}) => {
 };
 
 // ---- accounts, and what alpha's settings give each ----------------------------
-const people = { 'ed.rw': 'edrwpass1', 'ed.r': 'edrpass12', 'ed.none': 'ednonepass1', 'ed.out': 'edoutpass1', 'ed.cap': 'edcappass1' };
+const people = { 'ed.rw': 'edrwpass1', 'ed.r': 'edrpass12', 'ed.none': 'ednonepass1', 'ed.out': 'edoutpass1', 'ed.cap': 'edcappass1',
+                 'ed.mem': 'edmempass1' };
 for (const [n, pw] of Object.entries(people)) addUser(n, pw);
-for (const n of ['ed.rw', 'ed.r', 'ed.none', 'ed.cap'])
+for (const n of ['ed.rw', 'ed.r', 'ed.none', 'ed.cap', 'ed.mem'])
   await admin('/api/users', { action: 'projects', name: n, projects: ['alpha'] });
 // Each holds a role on alpha that gives the files area write, but ed.cap's
 // gives read: its rw in the settings is capped at r by the role (R152 (f)).
@@ -45,8 +46,13 @@ await admin('/api/roles', { action: 'set', name: 'ed-files-w', scope: 'projects'
   perms: { projects: 'write', files: 'write' } });
 await admin('/api/roles', { action: 'set', name: 'ed-files-r', scope: 'projects',
   perms: { projects: 'write', files: 'read' } });
-for (const n of ['ed.rw', 'ed.r', 'ed.none'])
+// ed.none is on alpha with a role that gives no File access; ed.mem is on it
+// with File access and no choice of its own on alpha's list, which since
+// R104 is enough: being on the project is what lets a person's editor in.
+await admin('/api/roles', { action: 'set', name: 'ed-nofiles', scope: 'projects', perms: { projects: 'write' } });
+for (const n of ['ed.rw', 'ed.r', 'ed.mem'])
   await admin('/api/roles', { action: 'assign', name: n, project_roles: { alpha: ['ed-files-w'] } });
+await admin('/api/roles', { action: 'assign', name: 'ed.none', project_roles: { alpha: ['ed-nofiles'] } });
 await admin('/api/roles', { action: 'assign', name: 'ed.cap', project_roles: { alpha: ['ed-files-r'] } });
 const set = await admin('/api/project-ftp', { action: 'set', project: 'alpha', editor: true,
   access: { [uidOf('ed.rw')]: 'rw', [uidOf('ed.r')]: 'r', [uidOf('ed.cap')]: 'rw' } });
@@ -74,8 +80,9 @@ const c = Object.fromEntries(Object.keys(people).map(n => [n, new Client(base, c
   for (const n of Object.keys(people)) mine[n] = (await c[n].projects()).projects;
   const acc = n => (mine[n].find(p => p.name === 'alpha') || {}).access || '';
   ok(acc('ed.rw') === 'rw' && acc('ed.r') === 'r' && acc('ed.cap') === 'r' && acc('ed.none') === '' && acc('ed.out') === ''
+     && acc('ed.mem') === 'rw'
      && (await c['ed.rw'].projects()).api === API,
-     `each is offered alpha exactly as far as the settings and roles give: rw, r, r capped by a role, none, not on it (${
+     `each is offered alpha exactly as far as the settings and roles give: rw, r, r capped by a role, none, not on it, and on it with no choice made (${
        Object.keys(people).map(n => `${n}=${acc(n) || '-'}`).join(' ')})`);
 }
 
@@ -95,6 +102,14 @@ const c = Object.fromEntries(Object.keys(people).map(n => [n, new Client(base, c
   ok(w['ed.rw'].ok && readFileSync(`${tree}/editor-probe.txt`, 'utf8') === 'written from an editor\n'
      && w['ed.r'].status === 403 && /read-only/.test(w['ed.r'].error) && w['ed.cap'].status === 403,
      `a write needs read and write: it lands for ed.rw, and read-only and the role-capped account are refused (${w['ed.r'].error})`);
+  // A project locked against an account is read-only through this door
+  // too, as it is on the page (B263): the lock is the owner's or an
+  // administrator's, and ed.rw is neither.
+  const lk = await admin('/api/lock', { name: 'alpha', locked: true });
+  const held = await as(c['ed.rw'], 'alpha', 'write', { path: 'editor-probe.txt', data, overwrite: true });
+  await admin('/api/lock', { name: 'alpha', locked: false });
+  ok(!lk.error && held.status === 403 && /read-only/.test(held.error || ''),
+     `a locked project refuses ed.rw's write through the Files API (${held.error || JSON.stringify(lk)})`);
   const st = await as(c['ed.r'], 'alpha', 'stat', { path: 'editor-probe.txt' });
   ok(st.readonly === true && (await as(c['ed.rw'], 'alpha', 'stat', { path: '' })).readonly === false,
      '...and stat tells the editor which, so a read-only project opens read-only');
@@ -151,7 +166,7 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
 
 // ---- access taken away, partway --------------------------------------------------------
 {
-  await admin('/api/project-ftp', { action: 'set', project: 'alpha', access: { [uidOf('ed.r')]: '' } });
+  await admin('/api/roles', { action: 'assign', name: 'ed.r', project_roles: { alpha: ['ed-nofiles'] } });
   const gone = await as(c['ed.r'], 'alpha', 'read', { path: 'editor-probe.txt' });
   await admin('/api/users', { action: 'projects', name: 'ed.cap', projects: [] });
   const off = await as(c['ed.cap'], 'alpha', 'list', { path: '' });
@@ -159,7 +174,7 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
   const shut = await as(c['ed.rw'], 'alpha', 'list', { path: '' });
   await admin('/api/project-ftp', { action: 'set', project: 'alpha', editor: true });
   ok(gone.status === 403 && off.status === 400 && shut.status === 403 && /off in its settings/.test(shut.error),
-     `access taken away holds on the next request with the same sign-in: the access, the project, the editor's switch (${gone.status} ${off.status} ${shut.status})`);
+     `access taken away holds on the next request with the same sign-in: the role's File access, the project, the editor's switch (${gone.status} ${off.status} ${shut.status})`);
   execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'passwd', 'ed.rw'], { input: 'edrwpass2\nedrwpass2\n', encoding: 'utf8', env });
   const out = await as(c['ed.rw'], 'alpha', 'list', { path: '' });
   ok(out.status === 401 && /Sign In/.test(out.error), `...and a password change signs the extension out (${out.status}: ${out.error})`);
@@ -209,6 +224,11 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
   Module._load = load;
   ext.activate({ subscriptions: [], secrets: { get: async k => secrets.get(k), store: async (k, v) => secrets.set(k, v),
                                                 delete: async k => secrets.delete(k) } });
+  // Any coding agent's session terminal (R128): its argument is the page's.
+  ok(ext.AGENTS.map(a => a.id).join() === 'claude,codex,copilot' && ext.sessionArg('codex', 'alpha') === 'codex:alpha'
+     && ext.sessionArg('copilot', 'alpha') === 'copilot:alpha' && ext.sessionArg('nope', 'alpha') === 'claude:alpha'
+     && ext.sessionArg('codex', 'alpha', '17.5') === 'codex:alpha:b:17.5',
+     'the extension opens any live agent\'s session, by the argument the dashboard opens it with');
   const uri = path => vscode.Uri.from({ scheme: 'builderbot', path: '/alpha' + path });
   const dir = await provider.readDirectory(uri('/'));
   const text = Buffer.from(await provider.readFile(uri('/editor-probe.txt'))).toString();
@@ -266,6 +286,21 @@ print("\\n".join(f"{p} {a} {t}" for p, a, t in db.execute("SELECT principal, act
       ok(new RegExp(`ARGS u:${uid}:sh:1:alpha`).test(out) && /\b42\b/.test(out),
          `the terminal is the dashboard's: the relay stamps whose it is before ttyd sees it, and what is typed runs (${
            out.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '').replace(/\s+/g, ' ').slice(0, 80)})`);
+      // Another agent's session as Open Agent Session opens it (R128): the
+      // argument names the agent and carries the boot the status gives,
+      // which is what lets bb-tty start one that is not running. The
+      // fixture has no node, so the relay takes it as an agent's session
+      // and says there is nowhere to run one, before any ttyd.
+      {
+        const ext = require(`${REPO}/vscode/extension.js`);
+        const facts = await ext.sessionFacts(owner, 'alpha');
+        let no = null;
+        try { await new Ttyd(owner, ext.sessionArg('codex', 'alpha', facts.boot)).open(90, 20); } catch (e) { no = e; }
+        ok(typeof facts.boot === 'string' && facts.boot && facts.running instanceof Set
+           && /no node to run/.test(no?.message || ''),
+           `...and the extension asks the boot a new session needs and opens a ChatGPT one as an agent's (${
+             facts.boot}: ${String(no?.message).slice(0, 80)})`);
+      }
       let no = null;
       try { await new Ttyd(c['ed.out'], 'sh:1:alpha').open(80, 24); } catch (e) { no = e; }
       ok(no && no.status >= 400, `...and the same relay refuses a terminal the account may not open (${no?.status} ${String(no?.message).slice(0, 80)})`);

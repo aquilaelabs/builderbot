@@ -16,7 +16,7 @@ import argparse
 import json
 import zipfile
 from pathlib import Path
-from xml.sax.saxutils import escape
+from xml.sax.saxutils import escape  # nosemgrep: python.lang.security.use-defused-xml.use-defused-xml (escaping the manifest it writes; nothing is parsed)
 
 HERE = Path(__file__).resolve().parent.parent / "vscode"
 FILES = ("package.json", "extension.js", "README.md", "lib/client.js", "lib/ws.js", "lib/ttyd.js")

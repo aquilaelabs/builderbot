@@ -208,9 +208,10 @@ function renderFindingsInto(i){
     return;
   }
   if (findings.available === false){
+    // How to set the scanners up, one press away in Help (docs/scanners.md).
     d.list.innerHTML = `<div class="empty">no scanner reports: the reports
-      folder is not connected. Static analysis in the README says how to set
-      it up.</div>`;
+      folder is not connected. <a href="#/help/scanners">Setting up the static analysis stack</a>
+      says how, with the script that runs it.</div>`;
     return;
   }
   const rows = fxRows();

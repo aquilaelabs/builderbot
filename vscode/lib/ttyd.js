@@ -10,7 +10,8 @@ const OUTPUT = '0', TITLE = '1';
 
 class Ttyd extends EventEmitter {
   // client: a Client (client.js); arg: what the dashboard puts after ?arg=,
-  // `claude:PROJECT` for a project's Claude session.
+  // `claude:PROJECT` for a project's Claude session, `codex:PROJECT` or
+  // `copilot:PROJECT` for another coding agent's.
   constructor(client, arg) {
     super();
     this.client = client;

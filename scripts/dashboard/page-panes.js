@@ -312,7 +312,8 @@ function renderNotebookInto(i, project){
 // A read-only state enforced by a dimmed button is a suggestion, and this page
 // is not the only way to reach the endpoint behind it.
 function nbReadOnly(root, project){
-  const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+  const p = (state?.projects || []).find(x => x.name === project);
+  const locked = !!p?.locked_me;
   root.classList.toggle("ro", locked);
   let note = root.querySelector(":scope > .rolock");
   if (!locked){ if (note) note.remove(); return; }
@@ -321,10 +322,8 @@ function nbReadOnly(root, project){
     note.className = "rolock";
     root.prepend(note);
   }
-  // Says what still works, not only what does not: the point of locking a
-  // project is that everything you do yourself carries on.
-  note.textContent = "Archived: roadmap, bugs and memories are read-only. Findings, "
-    + "artifacts and the dev instance still work; Unarchive, in its menu, brings it back.";
+  // Says why and who lifts it (R119): the lock is somebody's.
+  note.textContent = lockedWhy(p) + ". Everything here reads as before.";
 }
 
 // Back to its holder when no tab is showing it, so a stale copy is never left

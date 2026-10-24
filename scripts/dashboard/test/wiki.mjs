@@ -1,7 +1,7 @@
 // The notebook's Wiki view (wiki.py, nb-wiki.js, R112): pages as rows that
 // open to be read, New page at the top, Edit on a row, written through with
 // no notebook foot; Export as a zip; and bb wiki for a session, under
-// Claude may: Write the wiki. Pushing to a forge is wiki.py's unit tier,
+// Agents may: Write the wiki. Pushing to a forge is wiki.py's unit tier,
 // against a repository on disk: the harness has no forge.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
@@ -23,7 +23,8 @@ const api = (path, body) => page.evaluate(async ([p, b]) => {
 
 // ---- the view, empty, then a page made from it --------------------------------
 await page.evaluate(n => openNotebook(n, 'wiki'), P);
-await page.waitForFunction(() => /0 pages/.test(document.querySelector('.nb #wkHint')?.textContent || ''), null, { timeout: 20000 });
+await page.waitForFunction(() => /waits? for a page/.test(document.querySelector('.nb #wkNetState')?.textContent || '')
+  && !document.querySelector('.nb #wkHint .tile'), null, { timeout: 20000 });
 ok(!(await page.$(`${NB} .nbview[data-view="wiki"] .sectbar`))
    && await page.$eval(`${NB} #wkExport`, e => e.disabled),
    'the wiki opens empty, with no Save of its own (it writes through) and Export dead until there is a page');
@@ -32,6 +33,10 @@ ok(!(await page.$(`${NB} .nbview[data-view="wiki"] .sectbar`))
 ok(/github\.com\/owner\/alpha/.test(await page.$eval(`${NB} #wkNetState`, e => e.textContent))
    && await page.$eval(`${NB} #wkPush`, e => !e.hidden && e.disabled),
    'with push rights the head row names the forge\'s wiki, and Push waits for a page');
+// Why Push is off is said in the muted voice of every reason, never red (B292).
+ok(await page.$eval(`${NB} #wkWhy`, e => { const h = document.createElement('div'); h.className = 'hint'; e.parentNode.append(h);
+     const same = getComputedStyle(e).color === getComputedStyle(h).color; h.remove(); return same; }),
+   'the line saying why Push is off wears a hint\'s color, not the alarm\'s');
 await page.click(`${NB} #wkNew`);
 ok(await page.$eval(`${NB} #wkNewName`, e => e.value) === 'Home', 'the first New page is Home');
 await page.fill(`${NB} #wkNewText`, '# Home\n\n## Welcome\n\nSee [[Build and test]] and **this**.\n\n- one\n- two\n\n## Install\n\ntext\n\n### Detail\n\nmore\n\n<script>bad()</script>');
@@ -45,7 +50,7 @@ ok(/<h3 id="wk-welcome">Welcome<\/h3>/.test(html) && /<strong>this<\/strong>/.te
 ok(await page.$eval(`${NB} .wkpage .wklink[data-page="Build and test"]`, a => a.classList.contains('wkmissing')
      && getComputedStyle(a).color !== getComputedStyle(document.querySelector('.nb .wknav .wklink')).color),
    'a link to a page that is not there is drawn apart from a live one');
-ok(/1 page/.test(await page.$eval(`${NB} #wkHint`, e => e.textContent)), 'the head row counts it');
+ok(/1 page/.test(await page.$eval(`${NB} #wkHint`, e => e.textContent.replace(/\s+/g, ' '))), 'a tile counts it');
 // Read like an encyclopedia (the operator, 2 Oct): the title over a rule,
 // said once though the page opens with it, a Contents box for its
 // sections, and the pages listed beside the article.
@@ -167,8 +172,8 @@ const hid = await api('/api/prefs', { project: P, gate: { wiki: 'hidden' } });
 ok(hid.status === 200 && hid.gate?.wiki === 'hidden', `the dial takes hidden for the wiki (${hid.status} ${JSON.stringify(hid.gate || hid.error)})`);
 const nope = await api('/api/prefs', { project: P, gate: { bugs: 'hidden' } });
 ok(nope.status >= 400, `...and for nothing else (${nope.error})`);
-ok(/hidden from Claude/.test(bbErr()) && /hidden from Claude/.test(bbErr('show', 'Home'))
-   && /hidden from Claude/.test(bbErr('save', 'Other', src)),
+ok(/hidden from its agents/.test(bbErr()) && /hidden from its agents/.test(bbErr('show', 'Home'))
+   && /hidden from its agents/.test(bbErr('save', 'Other', src)),
    'hidden keeps the wiki from a session: no list, no page, no save');
 ok((await api(`/api/wiki?project=${P}`)).pages?.length >= 2, '...while a person still reads it');
 await api('/api/prefs', { project: P, gate: { wiki: 'auto' } });

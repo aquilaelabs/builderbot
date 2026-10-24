@@ -10,6 +10,10 @@ let vmsData = null;             // the last /api/vms answer, null before the fir
 let vmsErr = "";
 let vmsRev = 0;
 let vmsSearch = "";
+// When this page asked each VM (PROJECT/NAME) to shut down: a system that
+// ignores the request stays up with its job a success, and the row says so
+// rather than leaving Stop looking broken (B308).
+const vmStopAsked = {};
 
 function openVmsTab(){
   openTab({kind: "vms", arg: "__vms", label: "VMs"});
@@ -74,6 +78,13 @@ function vmRow(v){
     // guest agent inside it tells the node.
     : up && v.hw?.net === "lan" && !v.node_id ? "on the LAN: its address shows once QEMU's guest agent runs inside it"
     : up ? "taking its address" : "";
+  // What its guest agent says of it (R110 step 8, the operator, 22 Oct:
+  // like VMware Tools): its own name, system and kernel, who is signed in,
+  // and its addresses when it has more than the one the reach line says.
+  const g = up ? v.guest || {} : {};
+  const more = (g.ips || []).filter(ip => ip !== v.ip);
+  const inside = [g.hostname, g.os, g.kernel && `kernel ${g.kernel}`, g.users ? `${g.users} signed in` : "",
+                  more.length ? `also at ${more.join(", ")}` : ""].filter(Boolean).map(esc).join(`<span class="sep"></span>`);
   // Made a node (step 14): its row on the Nodes page.
   const asNode = v.node_id ? `<div class="sub dmorigin">a node too: ${pageLink("nodes", "on the Nodes page", `#/machines/nodes/${encodeURIComponent(v.node_id)}`)}</div>` : "";
   const snaps = v.snapshots || [];
@@ -86,6 +97,12 @@ function vmRow(v){
   const onLine = onScreen.length || onConsole.length ? `<div class="sub dmstate${others ? " warn" : ""}">${[
       onScreen.length ? `${esc(andList(onScreen))} ${onScreen.length > 1 || onScreen[0] === "you" ? "are" : "is"} on its Screen, sharing one keyboard` : "",
       onConsole.length ? `${esc(andList(onConsole))} ${onConsole[0] === "you" ? "have" : "has"} its Console` : ""].filter(Boolean).join("; ")}</div>` : "";
+  // Asked to shut down here a while ago and still up: its system did not take
+  // the power button, which Force stop pulls the plug on.
+  const asked = vmStopAsked[`${v.project}/${v.name}`];
+  if (asked && !up) delete vmStopAsked[`${v.project}/${v.name}`];
+  const ignored = asked && up && Date.now() - asked > 45000
+    ? `<div class="sub dmstate warn">asked to shut down ${Math.max(1, Math.round((Date.now() - asked) / 60000))} min ago and still running: its system may not answer the power button, and Force stop under More ends it at once</div>` : "";
   const acts = !may ? "" : `
     ${!up && !busy && v.state !== "failed" ? `<button type="button" class="primary" data-vm="start">Start</button>` : ""}
     ${up && v.screen ? `<button type="button" data-vmscreen title="its screen, keyboard and mouse, in the dock">Screen</button>` : ""}
@@ -108,9 +125,10 @@ function vmRow(v){
           <div class="name">${esc(v.name)}${vmPill(v)}</div>
           ${origin ? `<div class="sub dmorigin">${origin}</div>` : ""}
           ${reach ? `<div class="sub dmstate${v.ip ? " ok" : ""}">${reach}</div>` : ""}
+          ${inside ? `<div class="sub dmorigin vmguest">${inside}</div>` : ""}
           ${asNode}
           ${vmHwLine(v)}
-          ${onLine}
+          ${onLine}${ignored}
           ${may && v.state !== "making" ? `<label class="ndcap vmauto"><input type="checkbox" data-vmauto${v.autostart ? " checked" : ""}> starts with its host</label>` : ""}
           ${v.error ? `<div class="sub dmstate bad">${esc(v.error)}</div>` : ""}
         </div>
@@ -184,7 +202,7 @@ function wireVms(el){
       if (held.length){
         if (!vmsData?.take?.[v.project])
           return notify(`${andList(held)} ${held.length > 1 ? "have" : "has"} ${v.name}'s Console open: it is one person's at a time. Its Screen can be shared, or ask them.`, true);
-        if (!confirm(`Take ${v.name}'s Console from ${andList(held)}?\n\nA console is one person's at a time: theirs ends, and they are told you took it. Its Screen can be shared instead.`)) return;
+        if (!await askYes(`Take ${v.name}'s Console from ${andList(held)}?\n\nA console is one person's at a time: theirs ends, and they are told you took it. Its Screen can be shared instead.`)) return;
         const j = await (await postJSON("/api/vms", {action: "console-take", project: v.project, name: v.name})).json();
         if (j.error) return notify(j.error, true);
       }
@@ -201,37 +219,41 @@ function wireVms(el){
     row.querySelectorAll("[data-vm]").forEach(b => b.onclick = () => pressing(b, async () => {
       const action = b.dataset.vm;
       const body = {action, project: v.project, name: v.name};
-      if (action === "remove" && !confirm(`Remove ${v.name}?\n\nThe VM is destroyed with its disk${
+      if (action === "remove" && !await askYes(`Remove ${v.name}?\n\nThe VM is destroyed with its disk${
             (v.snapshots || []).length ? ` and its ${v.snapshots.length} snapshot${v.snapshots.length === 1 ? "" : "s"}` : ""}${
             v.node_id ? ", and its node is retired with its credential revoked" : ""}. It cannot be undone.`)) return;
-      if (action === "stop" && b.dataset.force && !confirm(`Force ${v.name} to stop?\n\nIt stops at once, as if unplugged: what it had not saved is lost.`)) return;
-      if (action === "revert" && !confirm(`Revert ${v.name} to ${b.dataset.snap}?\n\nWhat changed in it since that snapshot is lost.`)) return;
-      if (action === "snapshot-rm" && !confirm(`Delete the snapshot ${b.dataset.snap} of ${v.name}?`)) return;
+      if (action === "stop" && b.dataset.force && !await askYes(`Force ${v.name} to stop?\n\nIt stops at once, as if unplugged: what it had not saved is lost.`)) return;
+      if (action === "revert" && !await askYes(`Revert ${v.name} to ${b.dataset.snap}?\n\nWhat changed in it since that snapshot is lost.`)) return;
+      if (action === "snapshot-rm" && !await askYes(`Delete the snapshot ${b.dataset.snap} of ${v.name}?`)) return;
       if (action === "snapshot"){
-        const name = prompt(`A name for this snapshot of ${v.name}: letters, digits, dots, dashes`, "before-" + new Date().toISOString().slice(0, 10));
+        const name = await askText(`A snapshot of ${v.name}\n\nIts name: letters, digits, dots and dashes.`,
+          {value: "before-" + new Date().toISOString().slice(0, 10), verb: "Take snapshot", label: "Name"});
         if (!name) return;
         body.snapshot = name.trim();
       }
       if (action === "disk-grow"){
         const devs = ["vda", "vdb", "vdc", "vdd"].slice(0, 1 + (v.disks || []).length);
         const sizes = [v.disk_gb, ...(v.disks || [])];
-        const dev = devs.length > 1 ? prompt(`Which disk of ${v.name}? ${devs.map((d, i) => `${d} (${sizes[i]} GB)`).join(", ")}`, "vda") : "vda";
+        const dev = devs.length > 1 ? await ask({text: `Which disk of ${v.name} grows?`,
+          choices: devs.map((d, i) => ({label: `${d}, ${sizes[i]} GB`, value: d}))}) : "vda";
         if (!dev || !devs.includes(dev.trim())) return;
-        const gb = prompt(`${dev.trim()} of ${v.name} is ${sizes[devs.indexOf(dev.trim())]} GB. Its new size in GB:`, String(sizes[devs.indexOf(dev.trim())] * 2));
+        const gb = await askText(`Grow ${dev.trim()} of ${v.name}\n\nIt is ${sizes[devs.indexOf(dev.trim())]} GB now.`,
+          {value: String(sizes[devs.indexOf(dev.trim())] * 2), verb: "Grow", label: "New size, GB"});
         if (!gb) return;
         body.disk = dev.trim(); body.gb = +gb;
       }
       if (action === "disk-add"){
-        const gb = prompt(`A further disk for ${v.name}, in GB:`, "20");
+        const gb = await askText(`Add a disk to ${v.name}`, {value: "20", verb: "Add disk", label: "Size, GB"});
         if (!gb) return;
         body.gb = +gb;
       }
-      if (action === "eject" && !confirm(`Eject ${v.iso} from ${v.name}?\n\nIts next boot is from its disk, where the installer put the system.`)) return;
+      if (action === "eject" && !await askYes(`Eject ${v.iso} from ${v.name}?\n\nIts next boot is from its disk, where the installer put the system.`)) return;
       if (b.dataset.snap) body.snapshot = b.dataset.snap;
       if (b.dataset.force) body.force = true;
       busy(b, {start: "Starting", stop: "Stopping", restart: "Restarting", remove: "Removing", snapshot: "Saving",
                revert: "Reverting", "snapshot-rm": "Deleting", eject: "Ejecting", "disk-grow": "Growing", "disk-add": "Adding"}[action] || "Working");
       const j = await (await postJSON("/api/vms", body)).json();
+      if (!j.error && action === "stop" && !body.force) vmStopAsked[`${v.project}/${v.name}`] = Date.now();
       if (j.error) notify(j.error, true);
       else notify(`${v.name}: ${action === "snapshot-rm" ? "snapshot delete" : action} queued`);
       await loadVms();
@@ -290,8 +312,8 @@ function openNewVm(forProject = ""){
     <div id="vmCloud">
       <div class="field">${lbl("vmKey", "SSH public key", "who may log in: yours, as in ~/.ssh/id_ed25519.pub. The account is builder (admin on a VM made a node), with sudo")}
         <textarea id="vmKey" rows="3" spellcheck="false" autocomplete="off" placeholder="ssh-ed25519 AAAA… you@laptop"></textarea></div>
-      <label class="ndcap"><input type="checkbox" id="vmAgent"> Make it a node: enroll it with an agent at its first boot</label>
-      <div class="hint" id="vmAgentHint" hidden>It joins your LAN as its own machine and appears on the Nodes page once it has booted, a node like any other, marked as a VM on its host; removing the VM retires the node and revokes its credential.</div>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="vmAgent"> Make it a node: enroll it with an agent at its first boot</label>
+      <div class="hint" id="vmAgentHint" hidden>It joins your LAN as its own machine and appears on the Nodes page once it has booted, a node like any other, marked as a VM on its host; removing the VM retires the node and revokes its credential.</div></div>
     </div>
     <div class="prefrow ctlrow" id="vmFwRow" hidden>
       <div class="setrow col ctlrow">${lbl("vmFw", "Firmware", "UEFI for most current installers (and Windows 11); BIOS for an older one")}
@@ -306,14 +328,19 @@ function openNewVm(forProject = ""){
         <div class="setrow col ctlrow">${lbl("vmPw", "Screen password", "asked when its Screen opens; one to eight characters, VNC's limit")}
           <input id="vmPw" type="password" maxlength="8" autocomplete="new-password"></div>
       </div>
-      <label class="ndcap"><input type="checkbox" id="vmAuto"> Starts with its host</label>
+      <div class="field"><label class="ndcap"><input type="checkbox" id="vmAuto"> Starts with its host</label></div>
       <div id="vmHwBox"></div>
     </details>
     <div class="field" id="vmWhyF" hidden><div class="hint bad" id="vmWhy"></div></div>
     ${dlgFoot(`<button type="button" id="vmCancel">Cancel</button>`, `<button type="button" id="vmGo" class="primary">Make it</button>`)}</div>`;
   m.hidden = false;
   const $m = s => m.querySelector(s);
-  const say = t => { $m("#vmWhy").textContent = t; $m("#vmWhyF").hidden = !t; };
+  // More opens as every fold here does, slid rather than snapped.
+  $m(".vmmore > summary").onclick = e => { e.preventDefault(); const d = e.currentTarget.parentElement; slideDetails(d, !d.open); };
+  // Brought into view when said: at the dialog's foot, under More, it sat
+  // behind the footer and a refused press looked like nothing (B304).
+  const say = t => { $m("#vmWhy").textContent = t; $m("#vmWhyF").hidden = !t;
+    if (t) $m("#vmWhyF").scrollIntoView({block: "nearest"}); };
   const from = () => {
     const v = $m("#vmOs").value;
     $m("#vmIsoAdd").hidden = v !== "iso-add";

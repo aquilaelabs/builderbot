@@ -1,4 +1,5 @@
 """The census and the sample: what the node says about itself on every hello."""
+import contextlib
 import errno
 import hashlib
 import ipaddress
@@ -12,6 +13,8 @@ import subprocess
 import time
 import urllib.request
 from .base import (
+    AGENT_INSTALLS,
+    AGENTS_DIR,
     BREW_BIN,
     CLAUDE_DIR,
     OS_RELEASE,
@@ -40,7 +43,7 @@ from .sessnet import SESSNET_STATUS, isolation_now
 from .runners import _runner_state, runner_dirs
 from . import storage
 from . import vmhw
-from .vms import isos_now, vm_pool, vms_now
+from .vms import isos_now, vm_memory, vm_pool, vms_now
 
 
 def _sshd_listening():
@@ -335,6 +338,22 @@ def census(state):
     }
 
 
+def _agent_version(spec, home):
+    """What `<command> --version` says, the first line, as the session
+    account would find it: "" when it is nowhere or does not start."""
+    cmd = spec["command"]
+    dirs = [os.path.join(AGENTS_DIR, spec["id"])] + ([os.path.join(home, ".local", "bin"), os.path.join(home, ".npm-global", "bin")] if home else [])
+    for d in dirs + ["/usr/local/bin", "/usr/bin"]:
+        exe = os.path.join(d, cmd)
+        if os.access(exe, os.X_OK):
+            out_, dead = _probe([exe, "--version"], timeout=15)
+            if dead:
+                _probe_died(cmd, exe, out_, dead)
+                return ""
+            return out_.split("\n")[0][:40] or "installed"
+    return ""
+
+
 def session_now(state):
     """Whether this node runs sessions, and what a proxy needs to reach
     them: the ports, the account, whether /workspace is there (the node's
@@ -369,6 +388,11 @@ def session_now(state):
                 claude = out_.split("\n")[0][:40] or "installed"
             break
     out["claude"] = claude
+    # The other coding agents the same way (R95 step 2): the pinned copy
+    # first, then the account's own, each under the census key the
+    # controller's agent table names (codex, copilot).
+    for spec in AGENT_INSTALLS.values():
+        out[spec["reported"]] = _agent_version(spec, home)
     # This machine's boot, in the form bb-tty's boot_id() computes: a
     # terminal's URL carries the boot it was opened in, and bb-tty refuses
     # to START a session from a tab older than the machine's current run.
@@ -698,6 +722,49 @@ class Sampler:
         except (OSError, ValueError, IndexError):
             return 0, 0
 
+    # Where Docker keeps its images and build cache, asked once an hour (a
+    # heartbeat is too often to run docker for it): with the root
+    # filesystem, the two places a node fills that are no store's (R110).
+    _droot = ("", 0.0)
+
+    def _disks(self):
+        if time.time() - self._droot[1] > 3600:
+            root = ""
+            with contextlib.suppress(OSError, subprocess.SubprocessError):
+                root = subprocess.run(["docker", "info", "--format", "{{.DockerRootDir}}"], capture_output=True,
+                                      text=True, timeout=15, check=False).stdout.strip()
+            if not root and os.path.isdir("/var/lib/docker"):
+                root = "/var/lib/docker"
+            type(self)._droot = (root, time.time())
+        out = {}
+        for role, path in (("root", "/"), ("docker", self._droot[0])):
+            if not path:
+                continue
+            with contextlib.suppress(OSError):
+                st = os.statvfs(path)
+                out[role] = {"path": path, "free_mb": st.f_bavail * st.f_frsize // (1024 * 1024),
+                             "total_mb": st.f_blocks * st.f_frsize // (1024 * 1024)}
+        return out
+
+    FENCE_DIR = "/sys/fs/cgroup/builderbot.slice"
+
+    @classmethod
+    def _fence(cls):
+        """BuilderBot's memory fence here (R110 step 4), {max_mb, used_mb},
+        or None where there is none: the provisioner's builderbot.slice, or
+        the cgroup of that name OpenRC's boot script makes."""
+        base = cls.FENCE_DIR
+        try:
+            with open(base + "/memory.max") as f:
+                mx = f.read().strip()
+            with open(base + "/memory.current") as f:
+                cur = int(f.read().strip())
+        except (OSError, ValueError):
+            return None
+        if not mx.isdigit():
+            return None
+        return {"max_mb": int(mx) >> 20, "used_mb": cur >> 20}
+
     def sample(self, state, running):
         now = self._stat()
         dt, di = now[0] - self.last[0], now[1] - self.last[1]
@@ -709,6 +776,7 @@ class Sampler:
             load1 = 0.0
         return {"cpu_pct": round(100.0 * (dt - di) / dt, 1) if dt > 0 else 0.0,
                 "load1": round(load1, 2), "mem_mb": tot, "mem_used_mb": used,
-                "stores": _stores(state.get("stores")), "running": running,
+                "stores": _stores(state.get("stores")), "disks": self._disks(), "fence": self._fence(), "running": running,
+                **({"vm_mem": vm_memory()} if shutil.which("virsh") else {}),
                 "cores": os.cpu_count() or 0, "kinds": _proc_kinds(),
                 **gpu_cached()}

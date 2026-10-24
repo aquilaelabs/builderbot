@@ -81,7 +81,7 @@ import sys as _sys
 # Beside this file, whichever way it was loaded: bb's own Python loads the
 # modules by path, where a plain sibling import finds nothing.
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-from names import claude_session   # noqa: E402
+from names import running_session   # noqa: E402
 from fields import field   # noqa: E402
 import json
 import os
@@ -164,17 +164,35 @@ def root(project):
     for the main checkout's HEAD, and shipped nothing rather than a file
     named after a commit that did not hold its code (24 Sep): the branch's
     own commits, VERSION file and ordinal are what a build there is about.
-    Checked to lie under the project's worktrees, so the variable cannot
+    Checked to lie under the project's worktrees, or to be a worktree of
+    the project's own repository wherever it is (a Claude Code worktree
+    under the project's .claude/worktrees, B214), so the variable cannot
     point this at another project's tree."""
     want = os.environ.get("BB_VERSION_TREE") or ""
     if want:
         try:
             p = Path(want).resolve()
-            if p.is_dir() and (WORKSPACE / ".worktrees" / project).resolve() in p.parents:
+            if p.is_dir() and ((WORKSPACE / ".worktrees" / project).resolve() in p.parents
+                               or (WORKSPACE / project / ".claude" / "worktrees").resolve() in p.parents
+                               or _same_repo(p, WORKSPACE / project)):
                 return p
         except OSError:
             pass
     return WORKSPACE / project
+
+
+def _same_repo(tree, main):
+    """Whether `tree` is a worktree whose .git file points into `main`'s
+    repository: its gitdir under main/.git/worktrees."""
+    try:
+        line = (tree / ".git").read_text().strip()
+    except OSError:
+        return False
+    if not line.startswith("gitdir:"):
+        return False
+    gitdir = Path(line.split(":", 1)[1].strip())
+    gitdir = (tree / gitdir).resolve() if not gitdir.is_absolute() else gitdir.resolve()
+    return (Path(main) / ".git" / "worktrees").resolve() in gitdir.parents
 
 
 # Never treat these as a component. dist/ holds outputs, not sources, and
@@ -386,9 +404,181 @@ def _repo(project):
             "tags": (_git(project, "tag", "--points-at", "HEAD") or "").splitlines()}
 
 
+# A branch's line (R112): the release it is working toward, said with
+# `bb version line X.Y.Z` (the branch's own git config) or read off a branch
+# named for it, claude/0.7.0 or release/v0.6.2.
+LINE_RE = re.compile(r"(?:^|/)v?(\d{1,4}\.\d{1,5}\.\d{1,6})$")
+_VER = re.compile(r"\d{1,4}\.\d{1,5}\.\d{1,6}")
+
+
+def vkey(v):
+    """A version as a tuple that sorts as versions do."""
+    return tuple(int(x) for x in v.split("."))
+
+
+def branch_of(project):
+    b = (_git(project, "rev-parse", "--abbrev-ref", "HEAD") or "").strip()
+    return "" if b in ("", "HEAD") else b
+
+
+def line(project):
+    """The release this branch is working toward, or "": its own setting,
+    else its name's version (R112, the operator, 22 Oct: some work toward
+    0.7.0, some toward 0.6.2, at once)."""
+    b = branch_of(project)
+    if not b:
+        return ""
+    said = (_git(project, "config", f"branch.{b}.bbline") or "").strip()
+    if _VER.fullmatch(said):
+        return said
+    m = LINE_RE.search(b)
+    return m[1] if m else ""
+
+
+def line_of(project, branch):
+    """The line another branch works toward, as line() reads this one's."""
+    said = (_git(project, "config", f"branch.{branch}.bbline") or "").strip()
+    if _VER.fullmatch(said):
+        return said
+    m = LINE_RE.search(branch)
+    return m[1] if m else ""
+
+
+def forward(project, source, env=None):
+    """Merge a released patch line into this branch's later line (R112 step
+    3): `source` is the patch line's branch (or its release tag). The merge
+    keeps this line's VERSION, stitches the changelog (changelog.stitch:
+    the patch's dated sections placed by version, its released entries not
+    repeated in this line's Unreleased), and commits naming what it carried.
+    A conflict anywhere else is left in the tree for a person, named."""
+    here = line(project)
+    if not here:
+        return {"error": "this branch has no line: bb version line X.Y.Z first"}
+    src = (source or "").strip()
+    if not src or src.startswith("-"):
+        return {"error": "forward which branch? bb version forward BRANCH"}
+    if _git(project, "rev-parse", "--verify", "--quiet", src + "^{commit}") is None:
+        return {"error": f"{src} is not a branch or tag here"}
+    there = line_of(project, src) or (src.lstrip("vV") if _VER.fullmatch(src.lstrip("vV")) else "")
+    if not there:
+        return {"error": f"{src} has no line: say which with bb version line on it, or forward its tag (v0.6.2)"}
+    if vkey(there) >= vkey(here):
+        return {"error": f"{src} works toward {there}, not before this branch's {here}: forward goes from an older line to a newer one"}
+    if _git(project, "status", "--porcelain", "--untracked-files=no"):
+        return {"error": "the tree has changes not committed: commit or stash them first"}
+    carried = [x for x in (_git(project, "log", "--format=%h %s", f"HEAD..{src}", timeout=30) or "").splitlines() if x.strip()]
+    if not carried:
+        return {"ok": True, "carried": [], "said": f"nothing on {src} that this branch does not have"}
+    cl = changelog.FILE if changelog is not None else "CHANGELOG.md"
+    theirs = _git(project, "show", f"{src}:{cl}") or ""
+    if changelog is not None and changelog.unreleased_text(theirs):
+        return {"error": f"{src} has changelog entries not released yet: release {there} first, "
+                         "so what it carries is dated under its own number"}
+    ours = _git(project, "show", f"HEAD:{cl}")
+    _git(project, "merge", "--no-ff", "--no-commit", src, timeout=120, env=env)
+    if _git(project, "rev-parse", "--verify", "--quiet", "MERGE_HEAD") is None:
+        return {"error": f"git would not start the merge of {src}"}
+    tree = root(project)
+    # This line's number, whatever the patch line's says.
+    if _git(project, "cat-file", "-e", f"HEAD:{VERSION_FILE}") is not None:
+        _git(project, "checkout", "HEAD", "--", VERSION_FILE)
+    carried_titles, dropped = [], []
+    if ours is not None and changelog is not None:
+        text, carried_titles, dropped = changelog.stitch(ours, theirs)
+        (tree / cl).write_text(text, encoding="utf-8")
+        _git(project, "add", "--", cl)
+    left = [f for f in (_git(project, "diff", "--name-only", "--diff-filter=U") or "").splitlines() if f.strip()]
+    said = (f"carried {len(carried)} commit{'s' if len(carried) != 1 else ''} from {src} ({there}) into {here}"
+            + (f"; the changelog gains {', '.join(carried_titles)}" if carried_titles else "")
+            + (f"; {len(dropped)} Unreleased entr{'y' if len(dropped) == 1 else 'ies'} {there} already released taken out" if dropped else ""))
+    if left:
+        return {"ok": False, "carried": carried, "conflicts": left,
+                "error": said + f". The merge is open with conflicts in {', '.join(left)}: resolve them, git add, then git commit"}
+    msg = (f"The {there} line merged forward into {here} (bb version forward)\n\n"
+           + "\n".join(f"- {c}" for c in carried[:60]) + ("\n- ..." if len(carried) > 60 else ""))
+    if _git(project, "commit", "-m", msg, timeout=60, env=env) is None:
+        return {"error": said + ", but the commit failed: the merge is open, commit it by hand"}
+    return {"ok": True, "carried": carried, "sections": carried_titles, "dropped": dropped, "said": said,
+            "commit": _git(project, "rev-parse", "--short=7", "HEAD") or ""}
+
+
+def backport(project, commit, env=None):
+    """A commit from a later line carried back onto this patch line (R112
+    step 4): cherry-picked, this line's VERSION kept, and the changelog
+    entries the commit added put under this line's Unreleased in their own
+    categories rather than merged as text (the two files differ by every
+    release between them). A conflict anywhere else is left for a person."""
+    here = line(project)
+    if not here:
+        return {"error": "this branch has no line: bb version line X.Y.Z on the patch line first"}
+    sha = _git(project, "rev-parse", "--verify", "--quiet", (commit or "").strip() + "^{commit}")
+    if not commit or not sha:
+        return {"error": f"{commit or 'which commit'}? bb version backport COMMIT"}
+    if _git(project, "merge-base", "--is-ancestor", sha, "HEAD") is not None:
+        return {"error": f"{commit} is already on this branch"}
+    if _git(project, "status", "--porcelain", "--untracked-files=no"):
+        return {"error": "the tree has changes not committed: commit or stash them first"}
+    cl = changelog.FILE if changelog is not None else "CHANGELOG.md"
+    added = []
+    if changelog is not None:
+        def unrel(rev):
+            secs = changelog.sections(_git(project, "show", f"{rev}:{cl}") or "")
+            return [(e["text"], e["cat"]) for s in secs if s["title"] == "Unreleased" for e in s["entries"]]
+        before = set(unrel(f"{sha}^"))
+        added = [e for e in unrel(sha) if e not in before]
+    _git(project, "cherry-pick", "--no-commit", sha, timeout=120, env=env)
+    tree = root(project)
+    for f in (VERSION_FILE, cl):
+        if _git(project, "cat-file", "-e", f"HEAD:{f}") is not None:
+            _git(project, "checkout", "HEAD", "--", f)
+    short = _git(project, "rev-parse", "--short=7", sha) or sha[:7]
+    for text, cat in added:
+        changelog.add(tree, text, sha="", cat=cat)
+    if added:
+        _git(project, "add", "--", cl)
+    left = [f for f in (_git(project, "diff", "--name-only", "--diff-filter=U") or "").splitlines() if f.strip()]
+    said = (f"{short} carried back onto {here}"
+            + (f", its {len(added)} changelog entr{'y' if len(added) == 1 else 'ies'} under Unreleased" if added else ""))
+    if left:
+        return {"ok": False, "conflicts": left,
+                "error": said + f". Conflicts in {', '.join(left)}: resolve them, git add, then git commit"}
+    if not _git(project, "diff", "--cached", "--name-only"):
+        _git(project, "cherry-pick", "--abort")
+        return {"error": f"{short} changes nothing on {here}: it is here already in another form"}
+    msg = (_git(project, "log", "-1", "--format=%B", sha) or f"Backport {short}").rstrip()
+    msg += f"\n\n(cherry picked from commit {sha}, bb version backport)"
+    if _git(project, "commit", "-m", msg, timeout=60, env=env) is None:
+        return {"error": said + ", but the commit failed: commit it by hand"}
+    return {"ok": True, "said": said, "entries": [t for t, _ in added],
+            "commit": _git(project, "rev-parse", "--short=7", "HEAD") or ""}
+
+
+def set_line(project, version):
+    """Say which release this branch works toward; "" goes back to its name's."""
+    b = branch_of(project)
+    if not b:
+        return {"error": "HEAD is not on a branch, so there is no line to set"}
+    v = (version or "").strip().lstrip("vV")
+    if v and not _VER.fullmatch(v):
+        return {"error": f"{version!r} is not a version: a line is X.Y.Z, as 0.7.0"}
+    if v:
+        ok = _git(project, "config", f"branch.{b}.bbline", v) is not None
+    else:
+        _git(project, "config", "--unset", f"branch.{b}.bbline")
+        ok = True
+    return {"ok": ok, "branch": b, "line": line(project)} if ok else {"error": "git would not keep it"}
+
+
 def parts(project, comp="", repo=None):
     """Everything the renderings are built from, plus why any of it is missing."""
     tgt, err = target(project, comp)
+    # A line newer than VERSION is what a dev build here heads for: after
+    # 0.6.1 shipped, a 0.7.0 branch built as 0.6.1-dev.N, sorting before
+    # the release it came after (R112).
+    if not comp and tgt and _VER.fullmatch(tgt):
+        ln = line(project)
+        if ln and vkey(ln) > vkey(tgt):
+            tgt = ln
     repo = _repo(project) if repo is None else repo
     if repo is None:
         return {"target": tgt, "error": err or no_history(project),
@@ -979,7 +1169,7 @@ def init(project, value, by="claude", comp="", env=None):
     """
     if by != "operator" and policy(project) not in _MAY_INIT:
         return {"error": f"{project}'s version is locked to the operator. They can "
-                         f"give it one on the project's Artifacts view, or set Claude "
+                         f"give it one on the project's Artifacts view, or set an agent's "
                          f"access there to 'may start one'."}
     value = str(value or "").strip()
     if not TARGET_RE.match(value):
@@ -1119,6 +1309,13 @@ def bump(project, part, by="claude", comp="", env=None, to=None, fold=False):
     if why:
         return {"error": why}
     new = to or next_version(tgt, part)
+    # A branch working toward a release moves only to it (R112): a patch
+    # bump on the 0.7.0 line, or a minor on the 0.6.2 line, is the other
+    # line's number.
+    ln = line(project) if not comp else ""
+    if ln and new != ln:
+        return {"error": f"this branch works toward {ln} (bb version line), so its version moves to {ln}, "
+                         f"not {new}: the other line's work goes on its own branch"}
     # A set (jump) renumbers: "it is 0.5.0, not 0.2.0". When the number being
     # left was never released (no tag, unbump's own test), its dated section
     # is notes for a release that will not happen under that number, so they
@@ -1450,7 +1647,7 @@ def ask(project, sessions=(), comp=""):
                 f"then propose and ask; do not apply.")
     # No switch ahead of it: a project's model and effort are launch flags now,
     # so the session this reaches is already running on them.
-    session = claude_session(project)
+    session = running_session("", project, set(sessions))
     r = tell(session, line, sessions)
     if r.get("error"):
         return r
@@ -1528,7 +1725,7 @@ def verb(name, act, req, who, principal):
         # The other half of a release, and the outward-facing one: the
         # bump decided the number, this says it happened and pushes the
         # tag. A person's from here; a session asks through its own
-        # dial (Claude may: Tag and publish a release, R138), whose Allow
+        # dial (Agents may: Tag and publish a release, R138), whose Allow
         # comes back through this same branch.
         r = release(name, comp=comp, env={**CREDS_ENV(), **GIT_ENV(who, name)},
                     may_push=MAY_PUSH(name))

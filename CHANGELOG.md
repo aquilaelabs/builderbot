@@ -1,5 +1,77 @@
 # Changelog
 
+## 0.7.0: 2026-10-24
+
+### Added
+
+- A roadmap step can be meant for a release of its own, set from its Reword box or with bb roadmap target N.M: it says so on the step, the release chips count it, and bb roadmap --target lists its item under that release. (61179cb)
+- A day of a project's snapshots can be pinned from its row, and is then kept whatever the days kept say until it is unpinned; and daily snapshots have their own switch in Build and test, on as before, where 0 days used to be the only way to stop them. (e13dbfb)
+- Controller settings has Room on the nodes: the disk a node keeps free, the memory level the bell warns at, and a memory limit for every container whose compose file sets none; a build also wants the room its last one took, and the hourly keeper clears build caches unused for two weeks (1cd0bc5)
+- A node's setup fences BuilderBot's containers, sessions and jobs inside a share of its memory (builderbot.slice on systemd), so a runaway build or app is stopped before the system itself runs out; the Storage page says each node's fence (1cd0bc5)
+- bb version forward and bb version backport move fixes between two release lines with the changelog kept right, and a project's patch rules hold what a patch release may change (1cd0bc5)
+- tools/scan.sh runs the static analysis stack (Semgrep, Trivy, mobsfscan) with plain docker run, and docs/scanners.md says how to set it up (e7190d6)
+- Codex CLI (ChatGPT) and Copilot CLI (GitHub) run beside Claude Code: the new Agents page installs, updates and signs in to each on a node, a project's Start offers each one signed in there, and its settings say which agents may run and which one Start opens. Every Agents may dial, house rule and guard holds for them as for Claude, and their conversations are kept, read, shared and resumed on the Sessions view. (90bec19)
+- The Android app has the dashboard's light half of every color scheme, and Dark, Light or System beside the schemes under More; its colors are the dashboard's own, written from the design (acc4dfa)
+- Lock keeps a project to its owner: the owner's Lock ends every other session there and holds everybody else out of starting one or changing it until they unlock it; an administrator's Admin: Lock holds the owner out too. A locked project stays on the Projects page with its padlock (24c9a24)
+- A store move waits for its node to be quiet, holds the node's sessions without ending them (each is told what is moving and how far it has got, and may still keep its notes), and lets them go when it is done (f6572b0)
+- A node's Storage and Network have Revert beside Save, and saving a store inside a mount that is not on the node yet, or adding a mount over a store, says what will happen first (c1da3b1)
+- The Storage page lists each project's emulator phones with their size, last start and snapshot, and a disk past 90% says what of it can be freed and on which page; the Emulator page's new Phones section removes a phone (refused while it runs). (1e89170)
+- Phones give back their room when idle: bb tidy removes the quick-boot snapshot of a project's phone not started for a week and names one that is not its default after two, the node's room keeper does the same for every project when the homes' disk is past 90%, and bb emu list and the Storage page say when each phone last started and what its snapshot holds. (c25685f)
+- A node's agent says when it was built, beside its version: on the node's row, in bb status on that node and in a diagnostics report, so a problem with an agent can be dated (4647e68)
+- Two-factor sign-in: an authenticator app, passkeys and recovery codes on Profile, asked after the password on every way in (the page, a companion app's sign-in, Basic auth refused); a browser can be remembered for 30 days; wrong codes are slowed and held; an administrator can require it per role on the Roles page; the bell recommends it until it is on; and bb users reset-2fa NAME on the controller is the way back for a lost factor (1ef3fb4)
+- The Android app starts, opens, restarts and ends a ChatGPT or Copilot session as well as Claude's from a project's Agent view, the Manage agent chooser in a phone's shape, says how you are signed in to each agent on the project's node, archives and locks a project from its menu, and lists the coding agents under Tools (11b042d)
+- The Windows companion's project list says each project's lock, whose it is when it holds you out, and puts an archived project you do not keep at its foot (a59c9ad)
+- BuilderBot for VS Code opens a ChatGPT or Copilot session as well as Claude's: Open Agent Session asks the project, then the agent, and starts the session when it is not running; its project list says a lock and an archive (b7b6ea6)
+
+### Changed
+
+- Being on a project is enough for BuilderBot for VS Code and the Windows companion to open it, as far as your roles' File access goes: no grant of your own on the project's list is needed any more, and the companion lists every project you are on, each synced to a folder or not. A project's switch for them is on by default and closes them when turned off. (2c0e9f6)
+- Android signing keys are now a project's own Signing view under Ship, out of its settings, and a key's downloaded backup can be imported there into the same project or another, its password and alias read from the backup (96c07c1)
+- Every notebook view now opens the way the Containers page does: one row with its search, its toggles and its actions (the Add last, as the main button), its numbers as tiles under it (the Roadmap's to send, shelved and finished, Bugs' open by severity, Git's changes and branches, Tests' passing and failing), a status line under those that holds the Roadmap's Save and Revert while something is staged, and every row of filter chips in one band (a2887c7)
+- A project's notebook has Sessions beside Overview: your own conversations there, any one to resume, read, download, make visible to every session on the project, or delete; they are no longer listed on your Profile (e7190d6)
+- A project's notebook has Permissions beside Overview: everything a session may do on its own, asks first, or may not, with what it may push, in one place out of Settings and the Git view (e7190d6)
+- Controller settings is a rail group of its own, Controller, after Containers; old links to it still land there (e7190d6)
+- Signing keys are checked, generated, wrapped for a backup and rotated, and a release's APK is signed, on the project's node with its own jdk and Android SDK Build-Tools, never on the controller: install both on that node's Toolchains, and the Signing view and the bell say which node it is and what it lacks when it cannot (5d47be7)
+- A project's Start Claude is Start agent, opening a chooser of one node at a time (picked by name) with a line per coding agent there; Open names the agent whose session is running (c95d14e)
+- Archive puts a project out of sight and nothing else: its card folds under Archived and leaves Home, and it keeps working for everybody on it. Its owner or an administrator archives it (24c9a24)
+- Pointing a node's store at a new folder asks first: a folder that already holds files gets one named for the node inside it, and bringing the old data across is a question of its own; a mount point on a folder with files asks too, and no store or mount may be a system folder (9970f34)
+- Every question the dashboard asks is its own dialog with buttons that say what they do (Delete, Revert, Yes and No, Cancel), not the browser's OK and Cancel; Escape or a press outside is Cancel (c1da3b1)
+- Every page and notebook view with more than one section has the row of section names at its top to jump to one; the Containers page's names its project groups too (c1da3b1)
+- Creating a project no longer pins it on everyone's Home; it is on the Projects page, and each person pins what they want there. (3357c1f)
+- A project's agent button reads Manage agent while your session runs, since it opens the chooser with Open, Restart and End. (0412bda)
+- The Jobs page's When says the time a running or waiting job began, where it said "started just now" cut short. (24e747c)
+- A terminal scrolled back hands your next key to the program: the key row's keys leave the scroll first, and a typed letter ends it, where an arrow used to move tmux's cursor over the history and a letter did nothing. (78ba3e1)
+- Test runs are faster and say what held them up: the suites take turns from one queue, longest first, each started only while the machine has room and at the lowest priority, so the emulator and a docker build come first; the unit tier runs across the cores; and a run ends with what bounded it. (1e89170)
+
+### Upgrading
+
+- Claude Code is installed, updated and removed on a node's Agents page, beside Codex CLI and Copilot CLI, and no longer on the Toolchains page, which keeps build toolchains alone and one line pointing there. A script that posted names ["claude-code"] to /api/toolchains now posts {action, node, agent: "claude"} to /api/agents, which also answers check; /api/toolchains refuses a coding agent's name with the way there. A coding agent's update is its own bell row, opening the Agents page. (3cdd23b)
+- Every project's switch for VS Code and the Windows companion (Settings, Files) is turned on by the upgrade, so everyone on a project with File access in their roles can open it from their own machine; turn it off on a project that should not be. (2c0e9f6)
+- Set SIGNING_SECRET (16 characters or more) in an *.env file in the secrets folder to seal the signing keys, and keep a copy of it with your other secrets: without it the keys stay as they were; lost, each key comes back by Import a backup (e7190d6)
+- Projects archived before this upgrade stay archived and are no longer locked: their sessions start and their notebooks take changes again. Lock one again from its menu if it should stay shut (24c9a24)
+
+### Deprecated
+
+- The Lock grant on a role no longer decides anything (a project's owner locks it, an administrator too) and goes in 0.8.0 (24c9a24)
+
+### Fixed
+
+- A toolchain left half-installed reads as not installed, and Install clears what it left and installs it whole. (933a5aa)
+- A button stays Asking no longer once its press is answered. (5ae753d)
+- A Claude session no longer opens on two yellow warnings that a deny rule never matches (b510480)
+- An address typed into the browser opens its page, where a draw landing first could take you back to the page you were leaving (b510480)
+- A roadmap's Finished section lists what was finished on a project you may read and not change, where it showed an empty list (b510480)
+- New VM says why it refused where you can read it, where the reason sat behind the dialog's footer and Make it seemed to do nothing (b510480)
+- bb vm ssh lets a session into a VM it made, where it was refused for want of the key bb vm new had made (b510480)
+- A request that never reached the controller is said as the controller not answering, not as the browser's error, and a controller restart no longer leaves a Phone page failure in Notifications (b510480)
+- The top bar's search keeps at least 80px on the narrowest phones (b510480)
+- The Git view says why Pull is off when the branch has no upstream (b510480)
+
+### Security
+
+- A signing key's backup downloaded from a project with a backup password is now wrapped under that password: the zip holds no password, and the key opens only with it. A backup downloaded before this holds its key's password in password.txt in plain text: keep those copies somewhere only you can reach, or delete them and download again. (44b453c)
+- With SIGNING_SECRET in the secrets folder, every Android signing key and its passwords are sealed at rest, so a copy of /config opens no key; keys kept from before are sealed at the next start (e7190d6)
+
 ## 0.6.1: 2026-10-22
 
 ### Added

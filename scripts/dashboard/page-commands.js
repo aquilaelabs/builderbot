@@ -106,7 +106,7 @@ async function postCustom(body){
     if (state) state.custom = j.custom;
     drawCustom();
     return true;
-  }catch(e){ notify("could not save it: " + e, true); return false; }
+  }catch(e){ notify("could not save it: " + failWords(e), true); return false; }
 }
 
 async function setPinned(name, on){
@@ -118,5 +118,5 @@ async function setPinned(name, on){
     // what is pinned until the next poll.
     if (state) state.pinned = j.pinned;
     drawCommands(); drawLinux(); drawGit();
-  }catch(e){ notify("could not save the pin: " + e, true); }
+  }catch(e){ notify("could not save the pin: " + failWords(e), true); }
 }

@@ -617,6 +617,14 @@ def _run(project, cwd, verb, args, scan=True):
                 return {"held": found}
             if found:
                 return {"code": 1, "out": "", "err": "", "held": found}
+        if verb == "push" and len(pos) <= 1 and branch and not _last(cfg, f"branch.{branch}.merge") \
+                and not any(f in net for f in ("--all", "--tags", "--delete", "-d")):
+            # A branch never pushed: its first push names it and sets its
+            # upstream, as push.autoSetupRemote would (B220), rather than
+            # git's refusal with a hint about a setting.
+            pos = [(pos[:1] or [name])[0], branch]
+            net = [*net, "-u"]
+            flags = [*flags, "-u"]
         if verb == "push":
             r = _git(d, "push", *net, name, *pos[1:])
         elif verb == "fetch":

@@ -25,7 +25,22 @@ PGID="${PGID:-100}"
 # inherits, always: there is no switch (SHIELD_SECRETS went with b218077).
 # The publishing tokens a shell on the controller uses; a git token is a
 # project's own, and a runner's is typed on the Nodes tab.
-SECRET_VARS=(NPM_TOKEN UV_PUBLISH_TOKEN)
+# SIGNING_SECRET seals the projects' signing keys at rest (R111): handed to
+# the dashboard as a file of its own in /run below, never kept in /config.
+SECRET_VARS=(NPM_TOKEN UV_PUBLISH_TOKEN SIGNING_SECRET)
+
+
+signing_secret_file() {
+    local f=/run/builderbot-signing
+    rm -f "$f"
+    [ -n "${SIGNING_SECRET:-}" ] || return 0
+    if [ "${#SIGNING_SECRET}" -lt 16 ]; then
+        warn "SIGNING_SECRET is shorter than 16 characters, so the signing keys stay unsealed: openssl rand -hex 32 makes one"
+        return 0
+    fi
+    ( umask 077; printf '%s' "$SIGNING_SECRET" > "$f" )
+    chown builder "$f" 2>/dev/null || true
+}
 
 
 stash_secrets() {
@@ -580,6 +595,10 @@ main() {
     # this is the environment of the dashboard, ttyd and every process under
     # the builder account, and it carried every one of them until the review
     # of 26 Sep read this file.
+    # The one secret the dashboard itself needs, the signing secret, as a
+    # file only it reads, in /run (never /config, so a copy of /config holds
+    # nothing that opens the keys sealed there), written fresh each start.
+    signing_secret_file
     unset "${SECRET_VARS[@]}"
     if [ "$privileged" -eq 1 ]; then
         exec gosu builder env HOME="$BUILDER_HOME" USER=builder "${cmd[@]}"

@@ -114,5 +114,32 @@ class Snap(unittest.TestCase):
         self.assertEqual(self.objects(), [])
 
 
+    def test_a_pinned_day_outlives_the_days_kept_and_off_takes_none(self):
+        on = {"alpha": True}
+        snapshots.configure(workspace=self.ws, days=lambda p: self.keep[p], names=lambda: ["alpha"],
+                            audit_fn=lambda *row: None, on=lambda p: on[p])
+        snapshots.daily()
+        day = snapshots.days("alpha")[0]["day"]
+        self.assertTrue(snapshots.pin("alpha", day).get("ok"))
+        self.assertTrue(snapshots.days("alpha")[0]["pinned"])
+        self.assertIn("already", snapshots.pin("alpha", day)["error"])
+        self.assertIn("not kept", snapshots.pin("alpha", "1999-01-01")["error"])
+        self.assertIn("not a day", snapshots.pin("alpha", "../x")["error"])
+        self.keep["alpha"] = 0
+        snapshots.daily()
+        self.assertEqual([d["day"] for d in snapshots.days("alpha")], [day], "0 days keeps a pinned one")
+        self.assertTrue(self.objects(), "and the objects it names")
+        self.assertTrue(snapshots.pin("alpha", day, False).get("ok"))
+        snapshots.daily()
+        self.assertEqual(snapshots.days("alpha"), [], "unpinned, it goes with the rest")
+        # Switched off: none is taken, whatever the days kept.
+        self.keep["alpha"], on["alpha"] = 14, False
+        snapshots.daily()
+        self.assertEqual(snapshots.days("alpha"), [], "off takes none")
+        on["alpha"] = True
+        snapshots.daily()
+        self.assertEqual(len(snapshots.days("alpha")), 1, "on again, one a day")
+
+
 if __name__ == "__main__":
     unittest.main()

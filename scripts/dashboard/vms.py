@@ -259,7 +259,9 @@ def view(projects=None):
                        # Its screen, and what its drive holds now (R99): the
                        # node says, after an Eject or a person's own change.
                        screen=bool(live.get("screen")), iso=live.get("iso") or "",
-                       hw=live.get("hw") or {}, autostart=bool(live.get("autostart")))
+                       hw=live.get("hw") or {}, autostart=bool(live.get("autostart")),
+                       # What its guest agent says of it (R110 step 8).
+                       guest=live.get("guest") or {})
             # A node VM is on the LAN, where the host sees no lease of its:
             # its address is the one its agent dials in from.
             if rec.get("node_id") and not row["ip"]:

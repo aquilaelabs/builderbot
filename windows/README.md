@@ -21,6 +21,11 @@ Disconnect ends its token.
 
 ## Picking a project
 
+The list says each project's lock and archive as the dashboard has them:
+a project locked against you is kept read-only, and the note under the
+list says whose lock it is; an archived one you do not keep here is
+listed last.
+
 Add a project and choose the folder it is kept in. The first copy comes
 down whole; after that a change on either side reaches the other in a few
 seconds. What the app does not bring:

@@ -67,26 +67,14 @@ android {
         versionName = bbVersion
         buildConfigField("int", "TARGET_API", "9")
     }
-    // A release is signed with the key the workflow is handed in its
-    // environment (B274): without one there is no release signing config,
-    // and the workflow builds the debug APK and says so. The key never sits
-    // in the tree.
-    val ksPath = System.getenv("BB_APP_KEYSTORE_FILE")
-    if (!ksPath.isNullOrBlank()) {
-        signingConfigs {
-            create("release") {
-                storeFile = file(ksPath)
-                storePassword = System.getenv("BB_APP_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("BB_APP_KEY_ALIAS")
-                keyPassword = System.getenv("BB_APP_KEY_PASSWORD")
-            }
-        }
-    }
+    // A release has no signing config here, so Gradle writes it unsigned
+    // (R106): BuilderBot signs it with the project's own sideload key, on the
+    // controller for a release (releasesign.py) and with bb sign otherwise.
+    // No key, alias or password is in the tree or in CI.
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            if (!ksPath.isNullOrBlank()) signingConfig = signingConfigs.getByName("release")
         }
     }
     buildFeatures {
@@ -123,4 +111,7 @@ dependencies {
     // result registry hands out ("Can only use lower 16 bits", B493).
     implementation("androidx.fragment:fragment-ktx:1.8.9")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    // The unit tier (src/test): the plain-Kotlin parts, such as how a
+    // session of any coding agent is named and found (Agents.kt), on the JVM.
+    testImplementation("junit:junit:4.13.2")
 }

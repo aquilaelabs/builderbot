@@ -38,7 +38,7 @@ async function loadProfile(){
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
     profile = j;
-  }catch(e){ notify("profile: " + e, true); return; }
+  }catch(e){ notify("profile: " + failWords(e), true); return; }
   profileRev++;
   if (tabs.some(t => t.kind === "profile")) drawPanes();
 }
@@ -58,7 +58,7 @@ const PROFILE_FIELDS = [
 const PROFILE_SAYS = {
   you: "your name, email and commit author", may: "what your roles let you do",
   password: "change it, signing out everywhere",
-  plugins: "what you added with /plugin", logs: "your conversations with Claude, to download",
+  twofactor: "an authenticator app, passkeys and recovery codes",
   devices: "your apps, to disconnect",
 };
 // The apps signed in as this account on its own machines (R272 step 1), the
@@ -89,8 +89,7 @@ function renderProfileInto(i){
     d.setBar(`<span class="barfacts">${skv(16)}</span>`);
     splitOff(d.list);                   // drawn before: its grid is the template's to bring
     d.list.innerHTML = skTpl(skSplit([["Who you are", PROFILE_SAYS.you], ["What you may do", PROFILE_SAYS.may],
-      ["Password", PROFILE_SAYS.password], ["Claude plugins", PROFILE_SAYS.plugins],
-      ["Conversation logs", PROFILE_SAYS.logs]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join("")));
+      ["Password", PROFILE_SAYS.password]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join("")));
     return;
   }
   const p = {...(profile.profile || {}), account: profile.name}, g = profile.git || {};
@@ -98,9 +97,9 @@ function renderProfileInto(i){
   const dirty = PROFILE_FIELDS.some(([k]) => (profileDraft[k] ?? p[k] ?? "") !== (p[k] ?? ""));
   const wm = profile.what_may || {roles: [], may: []};
   // Who this is, in the facts voice (R218 step 31): the name, the roles and
-  // the Claude account, one mono line.
+  // each agent's account, one mono line.
   d.setBar(`<span class="barfacts">${esc(profile.name)} · ${esc(wm.roles.length ? wm.roles.join(", ") : "no role")}${
-    profile.claude ? ` · Claude: ${esc(profile.claude)}` : ""}</span>`);
+    agentLogins(profile) ? ` · ${agentLogins(profile)}` : ""}</span>`);
   // A page of settings (page-docs.js splitSects, the operator, 16 Oct):
   // each block a section, the sections a list beside the one picked; who
   // you are first, since that is what is changed here most.
@@ -118,7 +117,7 @@ function renderProfileInto(i){
           <div class="actbar">
             <span class="state${profile.git_ready === false ? " warn" : ""}">${
               profile.git_ready === false
-                ? "no author for commits yet: a Claude session waits for a name and an email here"
+                ? "no author for commits yet: a session waits for a name and an email here"
                 : `commits are signed ${esc(g.name)} &lt;${esc(g.email)}&gt;`}</span>
             <button type="button" id="pfSave" class="primary"${dirty ? "" : " disabled"}>Save</button>
           </div>
@@ -147,59 +146,13 @@ function renderProfileInto(i){
             <button type="button" id="pfPasswd" disabled>Change password</button>
           </div>
         </div>`)}
-    ${sec("tour", "The tour", `
-        <div class="logset">
-          <div class="field"><div class="hint">${(state?.tour?.seen || []).length || state?.tour?.off
-            ? `${state?.tour?.off ? "Skipped on every page" : `Seen on ${state.tour.seen.length} page${state.tour.seen.length === 1 ? "" : "s"}`}: each page's tour shows again the next time you open it.`
-            : "Each page shows its tour the first time you open it."}</div></div>
-          <div class="actbar"><span class="sp"></span><button type="button" id="pfTours">Show the tours again</button></div>
-        </div>`)}
-    ${sec("plugins", "Claude plugins", `
-        <div class="logset">${profilePlugins(profile.plugins || [])}</div>`)}
-    ${sec("logs", "Conversation logs", `
-        <div class="logset">${profileLogs(profile.logs || [])}</div>`)}
+    ${sec("twofactor", "Two-factor sign-in", profileTwoFactor(profile.two_factor || {}, !!profile.two_factor_required))}
     ${docSection("profile", "devices", "Signed in as you", "", profileDevices(profile.devices || []))}`;
   wireSections(d.list);
   splitSects(d.list, "profile", {says: PROFILE_SAYS, back: "Profile"});
-  // Paged like every long list here (R218 step 31): one log per
-  // conversation, so the list only grows.
-  paginate(d.list.querySelector(".cvlogs"), ":scope > .artrow", {key: "pfLogs", noun: "conversations"});
   wireProfile(d.el);
   wireDeviceOut(d.el);
-}
-
-// What you installed with /plugin in your own sessions, per node, as each
-// node last said (plugins.py): read here, changed only in a session, where
-// a plugin takes effect.
-function profilePlugins(rows){
-  if (!rows.length) return `<div class="dim">None installed. <code>/plugin</code> in a Claude session adds one, for you alone.</div>`;
-  const one = p => `<code>${esc(p.id.replace(/@claude-plugins-official$/, ""))}</code>${
-    p.version ? ` ${esc(p.version)}` : ""}${p.scope === "project" ? ` (${esc(p.project ? projLabel(p.project) : "a project")})` : ""}${
-    p.enabled === false ? ` <span class="dim">off</span>` : ""}`;
-  return rows.map(n => `<div class="sub">On ${esc(n.name)}: ${n.plugins.map(one).join(", ")}</div>`).join("")
-    + `<div class="dim">Change them with <code>/plugin</code> in a Claude session.</div>`;
-}
-
-// Your conversations with Claude, newest first, each as a text file to
-// keep: what you said, what Claude said, every command it ran and what came
-// back (transcripts.py renders the transcript Claude Code wrote). An anchor
-// rather than a button, because a download is a link and the browser knows
-// how to save one; the rows are the Artifacts tab's, divided by hairlines.
-function profileLogs(rows){
-  if (!rows.length) return `<div class="dim">None yet. A Claude session on a project writes one as you talk, and it is listed here for you alone.</div>`;
-  const size = b => b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
-  // The stamps in the text are written in this browser's zone, the one the
-  // times on this page are in, so the log and the page agree.
-  const tz = userTZ() || Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-  // The Artifacts tab's rows, so the two lists read the same.
-  return `<div class="cvlogs">${rows.map(r => `
-    <div class="artrow">
-      <div class="grow">
-        <div class="top"><b>${esc(projLabel(r.project))}</b> <span class="dim">${esc(fmtTime(r.at * 1000))} · ${esc(size(r.bytes))}</span></div>
-        ${r.first ? `<div class="dim first">${esc(r.first)}</div>` : ""}</div>
-      <div class="acts"><button type="button" data-cvread="${esc(r.id)}" data-cvproject="${esc(r.project)}">Read</button><a class="btn" href="/api/transcript?project=${encodeURIComponent(r.project)}&id=${encodeURIComponent(r.id)}&tz=${encodeURIComponent(tz)}" download>Download</a></div>
-    </div>`).join("")}</div>
-    <div class="dim">The text is the whole exchange: your words, Claude's, each command it ran and what the command answered. Claude's private reasoning is not in it.</div>`;
+  wireTwoFactor(d.el);
 }
 
 // Disconnect: asked, then that device signed out; the app finds its token
@@ -209,13 +162,13 @@ function wireDeviceOut(root){
   root.querySelectorAll("[data-pfdevout]").forEach(b => b.onclick = async () => {
     const of = b.dataset.devof || "";
     const d = [...(profile?.devices || []), ...(usersList || []).flatMap(u => u.devices || [])].find(x => x.id === b.dataset.pfdevout);
-    if (!confirm(`Disconnect ${d ? d.name : "this device"}${of ? ` of ${of}` : ""}? It stops syncing at once and signs in again to come back.`)) return;
+    if (!await askYes(`Disconnect ${d ? d.name : "this device"}${of ? ` of ${of}` : ""}? It stops syncing at once and signs in again to come back.`)) return;
     busy(b, "Disconnecting");
     try{
       const j = await (await postJSON(of ? "/api/users" : "/api/profile",
         of ? {action: "device-signout", name: of, device: b.dataset.pfdevout} : {action: "device-signout", device: b.dataset.pfdevout})).json();
       if (j.error) notify(j.error, true);
-    }catch(e){ notify("could not reach the controller: " + e, true); }
+    }catch(e){ notify("could not reach the controller: " + failWords(e), true); }
     await (of ? loadUsers() : loadProfile());
   });
 }
@@ -235,7 +188,8 @@ async function openConversation(project, id){
     j = await (await fetch(`/api/transcript?project=${encodeURIComponent(project)}&id=${encodeURIComponent(id)}&as=turns&tz=${encodeURIComponent(tz)}`)).json();
   }catch(e){ j = {error: "could not reach the controller: " + e}; }
   if (j.error){ body.innerHTML = `<div class="notice bad">${esc(j.error)}</div>`; return; }
-  const WHO = {you: "You", claude: "Claude", system: "System"};
+  // The agent the conversation is with (R95): Claude, or the one it names.
+  const WHO = {you: "You", claude: j.agent_name || "Claude", system: "System"};
   body.innerHTML = (j.turns || []).map(t => `<div class="cvturn ${esc(t.who)}">
       <div class="cvwho">${esc(WHO[t.who] || t.who)}${t.at ? ` · ${esc(t.at)}` : ""}</div>
       ${t.text ? `<div class="cvtext">${esc(t.text)}</div>` : ""}
@@ -246,9 +200,6 @@ async function openConversation(project, id){
   body.scrollTop = body.scrollHeight;
 }
 function wireProfile(root){
-  const tr = root.querySelector("#pfTours");
-  if (tr) tr.onclick = () => pressing(tr, async () => { await tourReset(); drawPanes(); });
-  root.querySelectorAll("[data-cvread]").forEach(b => b.onclick = () => openConversation(b.dataset.cvproject, b.dataset.cvread));
   const p = {...(profile?.profile || {}), account: profile?.name};
   root.querySelectorAll("[data-pf]").forEach(inp => inp.oninput = () => {
     const k = inp.dataset.pf;
@@ -279,7 +230,7 @@ function wireProfile(root){
         : "saved: your next session and shell carry it");
       await loadProfile();
       refresh();                      // the Claude buttons follow git_ready
-    }catch(e){ notify("profile: " + e, true); }
+    }catch(e){ notify("profile: " + failWords(e), true); }
     finally{ if (save.isConnected) unbusy(save, "Save"); }
   };
   // Change password wakes once the current one is typed and the new one is
@@ -315,4 +266,116 @@ function wireProfile(root){
     }catch(e){ sayAt("pfCur", "could not reach the controller: " + e); }
     finally{ if (pw.isConnected){ unbusy(pw, "Change password"); pwReady(); } }
   };
+}
+
+// ---- two-factor sign-in (R127) ----
+// Profile's section: the authenticator app (added by its QR and a first
+// code), passkeys by name, the recovery codes left and new ones, and the
+// browsers remembered for 30 days. What is set up here is asked at every
+// sign-in after the password; removing a factor asks for one first.
+let pfTotp = null;          // {qr, secret} while an authenticator is being added
+let pfCodes = null;         // recovery codes just made, shown once
+
+function profileTwoFactor(tf, required){
+  const t = tf.totp || {}, keys = tf.passkeys || [], trust = tf.trusted || [];
+  const line = (name, sub, act) => `<div class="tfrow"><div class="grow"><b>${name}</b>${sub ? `<div class="hint">${sub}</div>` : ""}</div>${act}</div>`;
+  return `<div class="logset tfset">
+    <div class="state${tf.on ? "" : required ? " warn" : ""}">${tf.on
+      ? "on: a password alone does not sign in as you"
+      : required ? "a role of yours requires it: add an authenticator or a passkey" : "off: a password alone signs in as you"}</div>
+    ${pfCodes ? `<div class="notice tfcodes"><div>Your recovery codes, shown this once: each signs you in once if your app or passkey is lost.</div>
+      <pre>${pfCodes.map(esc).join("\n")}</pre><button type="button" data-tf="codes-done">I have kept them</button></div>` : ""}
+    ${line("Authenticator app", t.on ? `added ${esc(ago(t.added))}` : "a six-digit code from an app on your phone",
+      t.on ? `<button type="button" data-tf="totp-remove">Remove</button>` : pfTotp ? "" : `<button type="button" data-tf="totp-add">Add</button>`)}
+    ${pfTotp ? `<div class="tfadd"><div class="tfqr">${pfTotp.qr}</div>
+      <div class="hint">Scan it with the app, or type the secret: <code>${esc(pfTotp.secret)}</code></div>
+      <div class="logdays setrow col ctlrow">${lbl("pfTfCode", "The code the app shows")}
+        <input id="pfTfCode" autocomplete="one-time-code" inputmode="numeric" spellcheck="false"></div>
+      <div class="actbar"><span class="state" id="pfTfSaid"></span>
+        <button type="button" data-tf="totp-cancel">Cancel</button><button type="button" class="primary" data-tf="totp-confirm">Turn it on</button></div></div>` : ""}
+    ${keys.map(k => line(`Passkey: ${esc(k.name || "a passkey")}`, `added ${esc(ago(k.added))}${k.used ? `, last used ${esc(ago(k.used))}` : ""}`,
+      `<button type="button" data-tf="passkey-remove" data-id="${esc(k.id)}">Remove</button>`)).join("")}
+    ${window.PublicKeyCredential ? line("Add a passkey", "this device's own, or a security key", `<button type="button" data-tf="passkey-add">Add a passkey</button>`) : ""}
+    ${tf.on ? line("Recovery codes", `${tf.recovery_left} of 10 left`, `<button type="button" data-tf="recovery">Make new ones</button>`) : ""}
+    ${trust.map(b => line(`Remembered: ${esc(b.name || "a browser")}`, `asks no second factor until ${esc(fmtTime(b.until * 1000, {day: "numeric", month: "short"}))}`,
+      `<button type="button" data-tf="trust-remove" data-id="${esc(b.id)}">Forget</button>`)).join("")}
+  </div>`;
+}
+
+const pfU8 = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+const pfB64 = a => btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+async function pfTf(body){
+  const r = await fetch("/api/profile", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  return r.json().catch(() => ({error: "HTTP " + r.status}));
+}
+
+// A fresh second factor for a change that wants one: a passkey where the
+// account has one and this browser can, else a code typed.
+async function pfFresh(){
+  const keys = profile?.two_factor?.passkeys || [];
+  if (keys.length && window.PublicKeyCredential && await askYes("Confirm it is you with your passkey? Cancel types a code instead.", {verb: "Use my passkey"})){
+    try{
+      const o = await pfTf({action: "2fa-fresh"});
+      const c = await navigator.credentials.get({publicKey: {challenge: pfU8(o.challenge), rpId: location.hostname,
+        allowCredentials: o.ids.map(id => ({type: "public-key", id: pfU8(id)})), userVerification: "preferred", timeout: 60000}});
+      return {passkey: {id: pfB64(c.rawId), client: pfB64(c.response.clientDataJSON),
+        auth: pfB64(c.response.authenticatorData), sig: pfB64(c.response.signature)}};
+    }catch{ return null; }
+  }
+  const code = await askText("The code your authenticator app shows now, or a recovery code.", {verb: "Confirm", label: "Code"});
+  return code ? {code} : null;
+}
+
+function wireTwoFactor(root){
+  const redraw = async () => { await loadProfile(); profileRev++; drawPanes(); };
+  root.querySelectorAll("[data-tf]").forEach(b => b.onclick = async () => {
+    const what = b.dataset.tf;
+    if (what === "totp-add"){ pfTotp = await pfTf({action: "2fa-totp-begin"}); profileRev++; drawPanes(); return; }
+    if (what === "totp-cancel"){ pfTotp = null; profileRev++; drawPanes(); return; }
+    if (what === "codes-done"){ pfCodes = null; profileRev++; drawPanes(); return; }
+    if (what === "totp-confirm"){
+      const r = await pfTf({action: "2fa-totp-confirm", code: root.querySelector("#pfTfCode")?.value || ""});
+      if (r.error){ const s = root.querySelector("#pfTfSaid"); if (s){ s.textContent = r.error; s.classList.add("bad"); } return; }
+      pfTotp = null; if (r.recovery?.length) pfCodes = r.recovery;
+      notify("Two-factor sign-in: the authenticator app is on");
+      return redraw();
+    }
+    if (what === "passkey-add"){
+      try{
+        const o = await pfTf({action: "2fa-passkey-begin"});
+        const c = await navigator.credentials.create({publicKey: {challenge: pfU8(o.challenge), rp: {name: "BuilderBot", id: location.hostname},
+          user: {id: pfU8(o.user), name: o.name, displayName: o.name}, pubKeyCredParams: [{type: "public-key", alg: -7}],
+          authenticatorSelection: {residentKey: "preferred", userVerification: "preferred"}, attestation: "none", timeout: 60000,
+          excludeCredentials: (o.exclude || []).map(id => ({type: "public-key", id: pfU8(id)}))}});
+        const name = await askText("A name for this passkey, so you know it in the list.", {verb: "Save", label: "Name", value: "this device"});
+        const r = await pfTf({action: "2fa-passkey-add", name: name || "a passkey", client: pfB64(c.response.clientDataJSON), att: pfB64(c.response.attestationObject)});
+        if (r.error){ notify(r.error, true); return; }
+        if (r.recovery?.length) pfCodes = r.recovery;
+        notify(`Passkey added: ${r.name}`);
+        return redraw();
+      }catch(e){ if (e.name !== "NotAllowedError") notify("the passkey was not made: " + (e.message || e), true); return; }
+    }
+    if (what === "trust-remove"){
+      await pfTf({action: "2fa-trust-remove", id: b.dataset.id});
+      return redraw();
+    }
+    // A removal or new recovery codes: a fresh second factor first.
+    if (what === "totp-remove" || what === "passkey-remove" || what === "recovery"){
+      if (what !== "recovery" && !await askYes(what === "totp-remove" ? "Remove the authenticator app from your sign-in?" : "Remove this passkey from your sign-in?", {verb: "Remove", danger: true})) return;
+      const fresh = await pfFresh();
+      if (!fresh) return;
+      const r = what === "recovery" ? await pfTf({action: "2fa-recovery", ...fresh})
+        : await pfTf({action: "2fa-remove", what: what === "totp-remove" ? "totp" : "passkey:" + b.dataset.id, ...fresh});
+      if (r.error){ notify(r.error, true); return; }
+      if (r.recovery?.length) pfCodes = r.recovery;
+      return redraw();
+    }
+  });
+}
+
+// Profile opened at its Two-factor section: the bell's Set up.
+function openProfileTwoFactor(){
+  SPLIT.profile = {pick: "twofactor", open: true};
+  openProfileTab();
 }

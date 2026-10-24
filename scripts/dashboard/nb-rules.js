@@ -375,7 +375,7 @@ function nbRulesView({$, nb, project}){
       on(".grEdit", () => { nb.globalEditing = {i, r: {...g, paths: [...(g.paths || [])], words: [...(g.words || [])]}}; drawRules(); });
       on(".grCancel", () => { nb.globalEditing = null; drawRules(); });
       on(".grRm", async ev => {
-        if (!confirm(`Remove the global rule ${g.name}? Every project's sessions stop being handed it.`)) return;
+        if (!await askYes(`Remove the global rule ${g.name}? Every project's sessions stop being handed it.`)) return;
         busy(ev.target, "Removing");
         await saveGlobal(own => { const k = own.findIndex(x => x.name === g.name); if (k >= 0) own.splice(k, 1); });
       });
@@ -443,7 +443,7 @@ function nbRulesView({$, nb, project}){
       nb.ruleEditing.clear();                   // written: back to reading them
       nb.ruleOpen.clear(); nb.ruleWas.clear();
       drawRules();
-    }catch(e){ notify("could not reach the server: " + e, true); }
+    }catch(e){ notify("could not reach the server: " + failWords(e), true); }
   }
 
   return {loadRules, drawRules, saveRules, ruleDirty};

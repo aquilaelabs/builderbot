@@ -56,7 +56,7 @@ if verb == "save":
     if r.get("error"):
         fail(r["error"])
     if r.get("held"):
-        print(f"held for the operator's approval on {proj}'s notebook (Claude may: Add to the design is ask): "
+        print(f"held for the operator's approval on {proj}'s notebook (Agents may: Add to the design is ask): "
               f"{r['held'].get('summary', '')}")
         raise SystemExit(0)
     n = len(r.get("pages") or [])

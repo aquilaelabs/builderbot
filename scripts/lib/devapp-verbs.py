@@ -1,5 +1,5 @@
 """Behind `bb devapp` (cmd_devapp in bb): this project's dev instance, and what
-a session may be given over it under the project's one setting (Claude may:
+a session may be given over it under the project's one setting (Agents may:
 Run its container). Everything here goes through the controller's API like
 `bb root` and `bb phone`, because the daemon is the controller's connection
 to the node; nothing runs docker anywhere.

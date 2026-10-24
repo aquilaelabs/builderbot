@@ -95,6 +95,16 @@ class DeviceDoor:
         return self.ctl.upload(path, src, timeout=timeout, offset=offset, length=length)
 
 
+def lock_word(row):
+    """A project's lock as the list says it (R119), from its row on the
+    device door: "" when it is not locked, ", locked" when the lock leaves
+    this account in (its owner's own), ", locked against you" when it holds
+    this account out, which the controller keeps read-only."""
+    if not (row or {}).get("locked"):
+        return ""
+    return ", locked against you" if row.get("locked_why") else ", locked"
+
+
 def _drop_unheld(tar_path):
     """The first copy's archive, rewritten without the members Windows
     cannot hold, so the agent's unpack meets none of them."""
@@ -244,5 +254,11 @@ def sign_in(url, username, password, name, pin=""):
     ctl.headers.update(update.headers())
     st, r = ctl.call("signin", {"username": username, "password": password, "name": name, "kind": "pc"})
     if st != 200:
-        return {"error": (r or {}).get("error") or f"the controller answered {st}"}
+        said = (r or {}).get("error") or f"the controller answered {st}"
+        # A TLS hello to a plain HTTP server, which each OpenSSL names its own way.
+        if url.lower().startswith("https://") and "SSL" in said and any(
+                w in said for w in ("WRONG_VERSION_NUMBER", "RECORD_LAYER_FAILURE", "HTTP_REQUEST")):
+            said = ("that address answers in plain HTTP, not HTTPS: use http:// in front of it "
+                    "(https:// is for an address behind nginx with a certificate)")
+        return {"error": said}
     return r

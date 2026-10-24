@@ -272,10 +272,26 @@ def shipped():
         if now != then:
             bad.append(f"{path} shipped in {tag} and has changed: a shipped migration is never edited; "
                        "put the change in a new one")
+    # A patch carries no migration (R113): migrations number in one sequence
+    # across releases, and a 0.6.2 taking the next number would collide with
+    # the one the 0.7.0 branch already holds. The branch's line is bb version
+    # line's (its git config, else a branch named for a version).
+    br = git("rev-parse", "--abbrev-ref", "HEAD").stdout.decode().strip()
+    ln = git("config", f"branch.{br}.bbline").stdout.decode().strip() if br and br != "HEAD" else ""
+    if not re.fullmatch(r"\d+\.\d+\.\d+", ln):
+        m = re.search(r"(?:^|/)v?(\d+\.\d+\.\d+)$", br or "")
+        ln = m[1] if m else ""
+    if ln and not ln.endswith(".0"):
+        now = {str(f) for d in SHIPPED for f in pathlib.Path(d).glob("[0-9]*.*") if f.is_file()}
+        added = sorted(now - set(filter(None, names)))
+        for f in added:
+            bad.append(f"{f} is new on {br}, which works toward the patch {ln}: a patch carries no migration, "
+                       "so what it needs waits for the next minor's branch")
     for b in bad:
         print(f"  [FAIL] {b}")
     if not bad:
-        print(f"  [ok]   every migration shipped in {tag} is unchanged")
+        print(f"  [ok]   every migration shipped in {tag} is unchanged"
+              + (f", and none is new on the patch line {ln}" if ln and not ln.endswith(".0") else ""))
     sys.exit(1 if bad else 0)
 
 

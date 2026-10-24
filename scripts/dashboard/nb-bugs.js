@@ -88,7 +88,7 @@ function nbBugsView({$, nb, project}){
       if (nb.bugRev !== null) nb.bugRev += 1;
       drawBugs(true);
       return j;
-    }catch(e){ notify("could not reach the server: " + e, true); return null; }
+    }catch(e){ notify("could not reach the server: " + failWords(e), true); return null; }
   }
 
   const SEVS = ["low", "medium", "high", "critical"];
@@ -175,25 +175,32 @@ function nbBugsView({$, nb, project}){
             notes: box.querySelector(".bfNotes").value};
   }
 
+  // Report a bug, the control row's primary (R109): its form unrolls under
+  // the row, as every view's add does, and rolls back on Cancel or a send.
+  // Not drawn for a role that only reads the project (the operator, 21 Oct:
+  // what a role does not give is not advertised), and its form shut.
   function drawBugAdd(){
-    const box = $("bugAdd");
-    // Not drawn for a role that only reads the project (the operator, 21
-    // Oct: what a role does not give is not advertised).
-    if (projWriteWhy(project)){ box.innerHTML = ""; return; }
-    box.innerHTML = `<div class="addbar ctlrow" data-add="bug">
-      <button type="button">Report a bug</button></div>`;
+    const box = $("bugAdd"), btn = $("bugNew");
+    const shut = () => swapBox(box, () => {
+      box.innerHTML = ""; box.hidden = true; btn.setAttribute("aria-expanded", "false"); });
+    btn.hidden = !!projWriteWhy(project);
+    if (btn.hidden){ if (!box.hidden) shut(); return; }
     // The same fold the memory writer opens with: the two are the same control
     // on two views of one notebook, and one of them appearing whole while the
     // other unrolled was the kind of difference you cannot unsee.
-    const shut = () => swapBox(box, drawBugAdd);
-    box.querySelector("button").onclick = () => swapBox(box, () => {
-      box.innerHTML = bugForm(null);
-      box.querySelector(".bfCancel").onclick = shut;
-      box.querySelector(".bfGo").onclick = async () => {
-        const j = await postBug({action: "add", ...readBugForm(box)});
-        if (j) shut();
-      };
-    });
+    btn.onclick = () => {
+      if (!box.hidden) return box.querySelector(".bfTitle")?.focus();
+      btn.setAttribute("aria-expanded", "true");
+      swapBox(box, () => {
+        box.hidden = false;
+        box.innerHTML = bugForm(null);
+        box.querySelector(".bfCancel").onclick = shut;
+        box.querySelector(".bfGo").onclick = async () => {
+          const j = await postBug({action: "add", ...readBugForm(box)});
+          if (j) shut();
+        };
+      });
+    };
   }
 
   // `force` is what a deliberate action passes. Without it, a redraw is
@@ -213,21 +220,30 @@ function nbBugsView({$, nb, project}){
     const list = $("bugList"), hint = $("bugHint");
     if (!nb.bugs){
       // Waiting as it lands: Report a bug above the list, which needs no list.
-      hint.innerHTML = skel("word"); list.innerHTML = skel("rows");
-      if (!$("bugAdd").innerHTML.trim()) drawBugAdd();
+      glanceWaiting(hint); list.innerHTML = skel("rows");
+      drawBugAdd();
       return;
     }
-    if (nb.bugs.error){ hint.textContent = "bugs: " + nb.bugs.error; return; }
+    if (nb.bugs.error){ viewGlance(hint, [], esc("bugs: " + nb.bugs.error)); return; }
     if (!force && list.querySelector(".dropbox, .bugform")) return;
     if (nb.bugs.releases !== undefined) nb.bugReleases = nb.bugs.releases;
     const rows = sortedBugs();
     const open = rows.filter(b => b.status === "open").length;
-    // Count first; what the tracker is for is its empty state (R119 step 4).
-    hint.textContent = rows.length ? `${open} open of ${rows.length}` : "nothing reported";
+    // The glance (R109): what is open, each severity among the open ones
+    // from the worst, and what is closed, as tiles; the worst two in their
+    // colors while any is open. What the tracker is for is its empty state
+    // (R119 step 4), so an empty one draws none.
+    const sevN = s => rows.filter(b => b.status === "open" && b.severity === s).length;
+    viewGlance(hint, !rows.length ? [] : [
+      {label: "open", value: open},
+      ...["critical", "high", "medium", "low"].map(s => ({label: s, value: sevN(s), omit: !sevN(s),
+        tone: s === "critical" ? "bad" : s === "high" ? "warn" : ""})),
+      {label: "closed", value: rows.length - open, omit: rows.length === open}]);
     // A sort over nothing is a control that does nothing: it arrives with
-    // the second bug, when there is an order to choose.
+    // the second bug, when there is an order to choose, and the search with it.
     const sortBar = $("bugSortBar");
     if (sortBar) sortBar.hidden = rows.length < 2;
+    setHidden($("bugFind"), rows.length < 2 && !nb.bugFind);
     // Narrowed by a chip (All, Open, Closed) and the search (R254 step 1).
     nb.bugChip = ["", "open", "closed"].includes(nb.bugChip) ? nb.bugChip : "";
     if (paint($("bugChips"), chipButtons([{key: "open", label: "Open", count: open},
@@ -270,7 +286,7 @@ function nbBugsView({$, nb, project}){
               title="${b.status === "open"
                 ? `send this bug to the running session`
                 : `closed: reopen it first to send it`}"
-              >Send to Claude</button>
+              >Send to ${esc(sendAgent(project).name)}</button>
             <button type="button" class="bEdit">Edit</button>
             ${b.status === "open"
               // Five at most on a bar, the rest behind More (R210): six
@@ -289,7 +305,7 @@ function nbBugsView({$, nb, project}){
         </div>
       </details>`).join("")
       // What the tracker is for, as its empty state (R119 step 4).
-      || (rows.length ? "" : `<div class="hint nbempty">What goes here reaches every Claude session in this project.</div>`);
+      || (rows.length ? "" : `<div class="hint nbempty">What goes here reaches every session in this project.</div>`);
     paginate(list, ":scope > .bug", {key: "bugList", noun: "reports", total: vis.length, more: () => drawBugs()});
     wireMore(list);
     list.querySelectorAll(".bug").forEach(d => {
@@ -328,14 +344,13 @@ function nbBugsView({$, nb, project}){
         nb.roadmapSel = null;               // and only one thing is armed at a time
         nb.drawSendBox(!!nb.roadmapSession);
         // Same session the roadmap sends into, and the same reason it has to
-        // exist first: there is no door into a Claude that is not running.
+        // exist first: there is no door into a session that is not running.
         if (!nb.roadmapSession){
-          notify("no Claude session is running here: start one from the "
-                 + "project's card first", true);
+          notify("no session is running here: start one with Start agent first", true);
           return;
         }
         const box = nb.sendBoxEl({
-          label: `Send B${id} to ${nb.roadmapSession}?`,
+          label: `Send B${id} to ${agentOfSession(tmuxBase(nb.roadmapSession))?.agent.name || "the session"}?`,
           sub: "the session looks it up by number",
           placeholder: "anything to send with it (optional)",
           onCancel: nb.shutSendBoxes,
@@ -355,7 +370,7 @@ function nbBugsView({$, nb, project}){
             }
             nb.sendNoteText = "";
             nb.shutSendBoxes();
-            startClaude(project, null);   // land in the tab it went to
+            openSentTo(project, j.session);   // land in the tab it went to
           },
         });
         body.appendChild(box);

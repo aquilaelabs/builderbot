@@ -260,12 +260,22 @@ await ready(page);
     .map(type => jobTitle({ type, spec: { timeout: 900 } })));
   ok(titles.every(t => !/exec/.test(t)) && titles[0] === 'measure the disks',
      `a storage job's row is titled what it did, not "exec" (${titles.join(' | ')})`);
+  // ...and every agent's sign-in, sign-out and install in that agent's name
+  // (B291: ChatGPT's and Copilot's read as a bare "exec").
+  const agj = await page.evaluate(() => [['codex-login', {}], ['copilot-logout', {}], ['codex-update', {}],
+    ['copilot-update', { action: 'remove' }], ['claude-login', {}]].map(([type, spec]) => jobTitle({ type, spec })));
+  ok(agj.join(' | ') === 'sign ChatGPT in | sign Copilot out | update Codex CLI | remove Copilot CLI | sign Claude in',
+     `each agent's jobs are named for it (${agj.join(' | ')})`);
   // B112: a tell names the session by its project, not by its tmux name.
   const tell = await page.evaluate(() => [
     jobTitle({ type: 'tell', spec: { session: 'u_525cbd90~claude-hello', text: 'Polish the header' } }),
     jobTitle({ type: 'tell', spec: { session: 'claude-hello', text: 'go' } })]);
   ok(tell.every(t => /^tell Claude on hello: "/.test(t) && !/u_525cbd90|claude-hello/.test(t)),
      `a tell job names the session as Claude on its project (${tell.join(' | ')})`);
+  // ...and another agent's by that agent, as the bell's asking row is
+  // (it read "Claude on codex-hello" for a ChatGPT session).
+  const other = await page.evaluate(() => [agentSessionWords('u_525cbd90~codex-hello'), jobSessionWords('codex-hello')]);
+  ok(other.every(t => t === 'ChatGPT on hello'), `a ChatGPT session is ChatGPT on its project (${other.join(' | ')})`);
   // ...and at 1280 the table gives its room to the Job column: no word is
   // cut, Node and By are whole, and no blank band is left at the right.
   const cols = await page.evaluate(() => {
@@ -278,6 +288,15 @@ await ready(page);
   });
   ok(cols.job >= 220 && !cols.cut.length && cols.act <= 100 && cols.wrap === 'break-word',
      `the Job column has the room, Node and By are whole and the buttons' column is one button wide (${JSON.stringify(cols)})`);
+  // A job not over says the clock time it has been waiting or running
+  // since, which fits the When column whole ("started just now" was cut).
+  const when = await page.evaluate(() => {
+    const now = Math.floor(Date.now() / 1000);
+    return [jobWhen({ state: 'running', started: now - 5 }), jobWhen({ state: 'queued', queued: now - 5 }),
+            jobWhen({ state: 'succeeded', started: now - 50, ended: now - 5 })];
+  });
+  ok(/^since \d{1,2}:\d\d/.test(when[0]) && /^queued \d{1,2}:\d\d/.test(when[1]) && when[2] === 'just now',
+     `a running or waiting job says the time it began, an ended one how long ago (${when.join(' | ')})`);
 }
 
 // bb jobs reads the same listing the tab does, through the API as the
@@ -345,6 +364,18 @@ await ready(page);
   const two = bbs('-n', '2').trim().split('\n').filter(l => /^\s*j_/.test(l));
   ok(two.length === 2 && two.some(l => l.includes(box.job)) && two.some(l => l.includes(own.job)),
      `bb jobs -n 2 is the session's own last two, whatever else the node ran since (${two.map(l => l.trim().slice(0, 12)).join(', ')})`);
+}
+
+{
+  // An address set by hand while a draw runs before its hashchange (a poll
+  // landing between them) still opens its page, not the one being left
+  // (B303: #/jobs opened Build > Phone on the dev pair).
+  for (const to of ['#/home', '#/jobs']) {
+    await page.evaluate(t => { location.hash = t; render(); }, to);
+    await page.waitForFunction(t => routeOf(tabOf(panes[0])) === t, to, { timeout: 10000 }).catch(() => {});
+    const at = await page.evaluate(() => [location.hash, routeOf(tabOf(panes[0]))]);
+    ok(at[0] === to && at[1] === to, `${to} set by hand with a draw before its hashchange opens ${to} (${at.join(' | ')})`);
+  }
 }
 
 ok(page.errors.length === 0,

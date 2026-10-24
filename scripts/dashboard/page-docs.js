@@ -177,15 +177,15 @@ function bootPage(hash){
   if (key === "projects" && parts[1] && !g.tools.some(([k]) => k === parts[1])){
     // A project's notebook: its header, its view strip under it the
     // pane's width with the view's group open, then rows.
-    const GROUPS = [["overview", "Overview", [["overview", "Overview"], ["settings", "Settings"]]],
+    const GROUPS = [["overview", "Overview", [["overview", "Overview"], ["sessions", "Sessions"], ["permissions", "Permissions"], ["settings", "Settings"]]],
                     ["plan", "Plan", [["roadmap", "Roadmap"], ["bugs", "Bugs"]]],
                     ["code", "Code", [["git", "Git"], ["tests", "Tests"], ["analysis", "Analysis"]]],
-                    ["ship", "Ship", [["artifacts", "Artifacts"], ["docker", "Docker"], ["vms", "VMs"]]],
+                    ["ship", "Ship", [["artifacts", "Artifacts"], ["docker", "Docker"], ["vms", "VMs"], ["signing", "Signing"]]],
                     ["docs", "Docs", [["design", "Design"], ["wiki", "Wiki"]]]];
     const view = parts[2] || "overview", grp = GROUPS.find(x => x[2].some(([v]) => v === view)) || GROUPS[0];
     const btn = (on, w) => `<button type="button" disabled class="${on ? "on" : ""}">${w}</button>`;
     bar = `<span class="phead"><span class="pname">${skv(6)}</span><span class="pfacts">${skv(14)}</span><span class="sp"></span>
-      <button type="button" disabled>Open Claude</button><button type="button" disabled>Shell</button></span>`;
+      <button type="button" disabled>Start agent</button><button type="button" disabled>Shell</button></span>`;
     body = `<div class="doc on nbhost"><div class="nb"><div class="nbtabs"><div class="nbgroups">${GROUPS.map(([k, w]) => btn(k === grp[0], w)).join("")}</div>
       <div class="nbsub">${grp[2].map(([v, w]) => btn(v === view, w)).join("")}</div></div>
       ${bootView(view) || `<div class="nbview"><div class="field">${skRows(5)}</div></div>`}</div></div>`;
@@ -271,7 +271,8 @@ const SKTPLS = {
   // As the view lands, from the view's own table (nb-git.js GIT_SECTS): its
   // sections' chips, then each steady section; CI and a README come with
   // what the repository holds, so the placeholder promises neither.
-  git: () => skTpl(`<nav class="sectjump">${GIT_SECTS.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav>`
+  // ...its jump bar only from four sections, as sectJump draws it.
+  git: () => skTpl((GIT_SECTS.length >= 4 ? `<nav class="sectjump">${GIT_SECTS.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav>` : "")
     + GIT_SECTS.map(([k, t]) => docSection("git", k, t, "", k === "branches" ? skTable(gitBranchCols("main"), 3, "gbranches", "row gbranch") : skRows(2))).join("")),
   design: () => skTpl(docSection("design", "pages", "Pages", "", skRows(2))
     + docSection("design", "themes", "Themes", "", skRows(2))),
@@ -337,7 +338,7 @@ function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpt
 
 // A pointer to another page is a link to it (R256 step 2): the address that
 // page answers at, so a press goes there as the rail does and Back returns.
-const PAGE_AT = {nodes: "#/machines/nodes", docker: "#/containers", jobs: "#/jobs", toolchains: "#/build/toolchains",
+const PAGE_AT = {nodes: "#/machines/nodes", docker: "#/containers", jobs: "#/jobs", toolchains: "#/build/toolchains", agents: "#/build/agents",
   users: "#/people/users", roles: "#/people/roles", apps: "#/build/apps"};
 // A page this account may not open is its words and no link (B114): the
 // address of one a grant forbids landed on the group's first page instead.
@@ -467,7 +468,7 @@ const sectLoud = {};
 // `fold`: a fold on purpose, shut until opened at every width (the Projects
 // page's Archived, a read made only when it is opened); every other section
 // at a page's level stands open at a desk and does not fold there.
-function docSection(kind, id, title, status, body, {cls = "", open, loud = false, prime = false, fold = false} = {}){
+function docSection(kind, id, title, status, body, {cls = "", open, loud = false, prime = false, fold = false, item = false} = {}){
   const key = `${kind}:${id}`;
   const turned = loud && !sectLoud[key];
   sectLoud[key] = loud;
@@ -477,7 +478,7 @@ function docSection(kind, id, title, status, body, {cls = "", open, loud = false
   // `prime`: the section a view is opened for (Artifacts' Files), open by
   // default beside the first on a desktop. `data-set`: its caller said open
   // or shut, which a default never overrules.
-  return `<details class="sect" data-sect="${esc(key)}"${isOpen ? " open" : ""}${turned ? " data-lead" : ""}${prime ? " data-prime" : ""}${open !== undefined ? " data-set" : ""}${fold ? " data-fold" : ""}>
+  return `<details class="sect" data-sect="${esc(key)}"${isOpen ? " open" : ""}${turned ? " data-lead" : ""}${prime ? " data-prime" : ""}${open !== undefined ? " data-set" : ""}${fold ? " data-fold" : ""}${item ? " data-item" : ""}>
     <summary><span class="t">${esc(title)}</span>${
       status ? `<span class="sst${cls ? " " + cls : ""}">${esc(status)}</span>` : ""}</summary>
     <div class="body">${body}</div>
@@ -628,31 +629,39 @@ function wireSections(root){
     sectJump(view);
   }
 }
-// A jump bar over a long surface (the operator, 8 Oct): with every section
-// open, the names of the sections in a line at the top, each scrolling to
-// its own and opening it if somebody shut it. Four or more sections make
-// a surface long enough to want one; a surface with fewer has none.
+// A jump bar over a surface of more than one part (the operator, 8 and 23
+// Oct): its sections' names in a line at the top, each scrolling to its own
+// and opening it if somebody shut it.
 function sectJump(g){
   // A surface's own sections, which each have a title of their own: a fold
   // repeated once per row of a list (the Docker tab's Ports and mounts, one
   // per container) is the row's, and seventeen of them made a bar of
   // seventeen links all called the same (the operator, 8 Oct).
+  // Sections alone (the operator, 23 Oct): a page's chips pick its groups
+  // (the Containers page's projects), and the jump bar is for its sections.
+  // A section drawn per item (`item`: a disk, a key) is picked by the page's
+  // chips instead, and is not one to jump to (the operator, 23 Oct: big
+  // chips for what changes, small pills for what does not).
   const titleOf = o => o.querySelector(":scope > summary .t")?.textContent || "";
-  const all = sectsOf(g), seen = {};
+  const all = sectsOf(g).filter(o => !o.hasAttribute("data-item")), seen = {};
   all.forEach(o => { seen[titleOf(o)] = (seen[titleOf(o)] || 0) + 1; });
   const mine = all.filter(o => seen[titleOf(o)] === 1);
   const have = g.querySelector(":scope .sectjump");
-  if (mine.length < 4){ have?.remove(); return; }
+  // Two or more (the operator, 23 Oct: every page with more than one).
+  if (mine.length < 2){ have?.remove(); return; }
   const bar = have || document.createElement("nav");
   // In a dialog every line is a .field band (the design's dialog layout).
-  bar.className = g.matches("[data-sects]") ? "field sectjump" : "sectjump";
-  bar.setAttribute("aria-label", "sections");
-  bar.innerHTML = mine.map(o => `<a href="#" data-jump="${esc(o.dataset.sect || "")}">${
-    esc(titleOf(o))}</a>`).join("");
+  // Written only where it moved: this runs after every draw, and a poll that
+  // brought nothing new must write nothing (when-a-view-re-reads).
+  const cls = g.matches("[data-sects]") ? "field sectjump" : "sectjump";
+  if (bar.className !== cls) bar.className = cls;
+  if (bar.getAttribute("aria-label") !== "sections") bar.setAttribute("aria-label", "sections");
+  const html = mine.map((o, i) => `<a href="#" data-jump="${i}">${esc(titleOf(o))}</a>`).join("");
+  if (bar.innerHTML !== html) bar.innerHTML = html;
   if (!have) mine[0].before(bar);
   bar.querySelectorAll("[data-jump]").forEach(a => a.onclick = e => {
     e.preventDefault();
-    const d = mine.find(o => (o.dataset.sect || "") === a.dataset.jump);
+    const d = mine[+a.dataset.jump];
     if (!d) return;
     if (!d.open){ d.open = true; if (d.dataset.sect) sectOpen[d.dataset.sect] = true; }
     d.scrollIntoView({block: "start", behavior: "smooth"});
@@ -776,7 +785,7 @@ function actMore(items, always = false){
   // ⋯, as a project's header has it (the operator, 17 Oct): the rest of a
   // row's verbs behind one small press, named for a screen reader.
   return `<span class="more"><button type="button" class="moreb" aria-haspopup="menu" aria-expanded="false" aria-label="More"
-      title="the rest of what can be done to it">⋯</button>
+      title="the rest of what can be done to it">${DOTS}</button>
     <div class="actmenu" hidden role="menu">${have.join("")}</div></span>`;
 }
 function wireMore(root){
@@ -851,7 +860,7 @@ function floatPlace(m, anchor){
   const up = h > below && above > below;
   const room = Math.max(40, up ? above : below);
   m.style.maxHeight = room + "px";
-  // Lined up with its button on the side it opens from: Start Claude at a
+  // Lined up with its button on the side it opens from: Start agent at a
   // card's left opens rightward from its left edge, a ⋯ at its right
   // leftward from its right edge.
   const left = Math.max(8, Math.min((a.left + a.right) / 2 < innerWidth / 2 ? a.left : a.right - w, innerWidth - w - 8));
@@ -962,6 +971,38 @@ function statTiles(tiles){
 // What a placeholder passes where a value will go (statTiles, a page's own
 // builders): drawn as a shimmer in the real markup.
 const GHOST = Object.freeze({ghost: true});
+// A notebook view's glance (R109, the a-notebook/views rule): the band under
+// its control row, in the Containers page's order: the numbers the view is
+// about as tiles, then its status line, words alone (`said`, markup) with the
+// buttons those words are about at its right. Painted only when it changed,
+// so a poll's redraw leaves it still; an empty view passes no tiles, its
+// empty state being the hint where its list would be.
+// `tiles` may be a page's own drawing of them (the Docker view's, dmTiles).
+// The same glance while a view's data is on its way: the shape that view's
+// glance had the last time it was drawn (in any notebook: flipping between
+// projects, each settles as the last one did), else what its markup
+// declares on its .nbglance (data-tiles, data-said) for a first open. The
+// markup is the one place a view's waiting shape is written, so it cannot
+// drift from a view's own code (the operator, 22 Oct); templates.mjs holds
+// both. A glance a view has drawn for real, empty included, is never
+// overdrawn: an empty roadmap kept placeholder tiles over its empty state.
+const glanceSeen = {};
+function glanceWaiting(el){
+  if (!el || el.dataset.drawn) return false;
+  const was = glanceSeen[el.id];
+  const n = was ? was.tiles : +el.dataset.tiles || 0;
+  const said = was ? was.said : "said" in el.dataset;
+  return paint(el, statTiles(Array.from({length: n}, () => ({value: GHOST, label: "\u00a0"})))
+               + headLine(said ? skel("word") : "", "", "nbsaid"));
+}
+function viewGlance(el, tiles = [], said = "", actions = ""){
+  if (!el) return false;
+  const wrote = paint(el, (Array.isArray(tiles) ? statTiles(tiles) : tiles || "") + headLine(said, actions, "nbsaid"));
+  // Marked once: a poll that brings nothing new writes nothing (uniform).
+  if (!el.dataset.drawn) el.dataset.drawn = "1";
+  glanceSeen[el.id] = {tiles: el.querySelectorAll(".tile").length, said: !!el.querySelector(".nbsaid")};
+  return wrote;
+}
 
 // What a card's settings are, read (the operator's concept, 17 Oct): one
 // wrapping line of pills, each its label in the quiet voice and its value,
@@ -1172,7 +1213,85 @@ function noNodeYet(what, cls = ""){
 // `all` All's count where the groups overlap (chipButtons).
 function chipBar(groups, on, attr, all){
   const chips = chipButtons(groups, on, attr, all);
-  return chips ? `<div class="field"><div class="chips">${chips}</div></div>` : "";
+  return chips ? `<div class="field"><div class="chips" data-chips="${esc(attr)}">${chips}</div></div>` : "";
+}
+// A row of chips keeps where it was scrolled across the redraws a press or
+// a poll brings (the operator, 22 Oct: pressing a chip far along the row
+// sent it back to its start): its scroll kept by the row's attribute as it
+// moves, and put back on the row drawn in its place.
+const chipScroll = {};
+function chipsScrolled(e){
+  const c = e.target;
+  if (c?.matches?.(".chips[data-chips]")) chipScroll[c.dataset.chips] = c.scrollLeft;
+  if (c?.matches?.(".chips")) chipsEdge(c);
+}
+// Which ends of a row of chips have more past them (the operator, 23 Oct: on
+// a desk a row that ran off the edge had no way along but a trackpad): .chl
+// and .chr, which draw the arrow at that end and fade it.
+function chipsEdge(c){
+  const max = c.scrollWidth - c.clientWidth;
+  c.classList.toggle("chl", max > 1 && c.scrollLeft > 1);
+  c.classList.toggle("chr", max > 1 && c.scrollLeft < max - 1);
+}
+function chipsEdges(root = document){
+  root.querySelectorAll?.(".chips").forEach(chipsEdge);
+}
+// A press on an end's arrow moves the row most of its width that way. The
+// arrows are the row's own ::before and ::after, so the press lands on the
+// row itself, at its edge, never on a chip.
+const CHIP_ARROW = 28;
+function chipsArrow(e){
+  const c = e.target;
+  if (!c?.matches?.(".chips.chl, .chips.chr") || chipDragged) return;
+  const r = c.getBoundingClientRect(), by = Math.max(80, c.clientWidth * 0.7);
+  if (c.classList.contains("chl") && e.clientX < r.left + CHIP_ARROW) c.scrollBy({left: -by, behavior: "smooth"});
+  else if (c.classList.contains("chr") && e.clientX > r.right - CHIP_ARROW) c.scrollBy({left: by, behavior: "smooth"});
+}
+// ...and a mouse drags it: held and moved past a few pixels the row follows
+// the pointer, and the click a drag ends on presses nothing. A touch keeps
+// the browser's own swipe.
+let chipDrag = null, chipDragged = false;
+function chipsDown(e){
+  const c = e.target?.closest?.(".chips");
+  if (!c || e.pointerType !== "mouse" || e.button !== 0 || c.scrollWidth <= c.clientWidth + 1) return;
+  chipDrag = {c, x: e.clientX, left: c.scrollLeft, moved: false};
+  chipDragged = false;
+}
+function chipsMove(e){
+  if (!chipDrag) return;
+  const dx = e.clientX - chipDrag.x;
+  if (!chipDrag.moved && Math.abs(dx) < 5) return;
+  chipDrag.moved = true;
+  chipDrag.c.classList.add("dragging");
+  chipDrag.c.scrollLeft = chipDrag.left - dx;
+}
+function chipsUp(){
+  if (!chipDrag) return;
+  chipDragged = chipDrag.moved;
+  chipDrag.c.classList.remove("dragging");
+  chipDrag = null;
+  // The click this release makes is swallowed (chipsClickGuard), then the
+  // next press is a press again.
+  if (chipDragged) setTimeout(() => { chipDragged = false; }, 0);
+}
+function chipsClickGuard(e){
+  if (chipDragged && e.target?.closest?.(".chips")){ e.stopPropagation(); e.preventDefault(); }
+}
+function chipsRestore(muts){
+  for (const m of muts) for (const n of m.addedNodes){
+    if (n.nodeType !== 1) continue;
+    // Its ends, once it is laid out.
+    if (n.matches(".chips") || n.querySelector(".chips")) requestAnimationFrame(() => chipsEdges(n.parentNode || document));
+    for (const c of n.matches(".chips[data-chips]") ? [n] : n.querySelectorAll(".chips[data-chips]")){
+      const x = chipScroll[c.dataset.chips];
+      if (x && c.scrollLeft !== x){
+        c.scrollLeft = x;
+        // ...and once more after layout, for a row not laid out yet when
+        // it was added (inside a view fading in).
+        requestAnimationFrame(() => { if (c.isConnected && c.scrollLeft !== x) c.scrollLeft = x; });
+      }
+    }
+  }
 }
 // Chips by release (the operator, 21 Oct: the Roadmap's by an item's target,
 // Bugs' by the version a report was seen in): [{key, label, count}], one per
@@ -1180,7 +1299,10 @@ function chipBar(groups, on, attr, all){
 const relOf = v => (String(v || "").match(/^v?(\d+\.\d+\.\d+)/) || [])[1] || "";
 function versionChips(rows, verOf, none){
   const n = new Map();
-  for (const r of rows){ const k = relOf(verOf(r)) || "none"; n.set(k, (n.get(k) || 0) + 1); }
+  // `verOf` may give several (an item and its steps' own, R108): the row
+  // counts once under each.
+  for (const r of rows)
+    for (const k of new Set([].concat(verOf(r)).map(v => relOf(v) || "none"))) n.set(k, (n.get(k) || 0) + 1);
   const num = v => v.split(".").map(Number);
   const keys = [...n.keys()].filter(k => k !== "none")
     .sort((a, b) => { const x = num(a), y = num(b); return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]; });
@@ -1194,10 +1316,13 @@ const inRelease = (v, on) => !on || (on === "none" ? !relOf(v) : relOf(v) === on
 // `all` is All's count where the groups overlap (a branch both Active and
 // Yours), the groups' sum otherwise.
 function chipButtons(groups, on, attr, all){
-  const gs = (groups || []).filter(g => g && g.count);
+  // A group with no count to give (a disk, a key: count null) is a chip
+  // with its name alone; one whose count is 0 has nothing to show.
+  const gs = (groups || []).filter(g => g && (g.count || g.count === null));
   if (gs.length < 2) return "";
-  const total = all ?? gs.reduce((n, g) => n + g.count, 0);
+  const total = all ?? (gs.some(g => g.count === null) ? null : gs.reduce((n, g) => n + g.count, 0));
   const chip = (key, label, count) => `<button type="button" class="chip${(on || "") === key ? " on" : ""}"
-    ${attr}="${esc(key)}" aria-pressed="${(on || "") === key}">${esc(label)}<span class="pill">${count}</span></button>`;
+    ${attr}="${esc(key)}" aria-pressed="${(on || "") === key}">${esc(label)}${
+      count === null || count === undefined ? "" : `<span class="pill">${count}</span>`}</button>`;
   return chip("", "All", total) + gs.map(g => chip(g.key, g.label, g.count)).join("");
 }

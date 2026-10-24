@@ -24,7 +24,11 @@ const WALK = { at: Math.floor(Date.now() / 1000) - 600, took_s: 4,
   stores: { cache: { path: '/var/lib/builderbot/cache', fs: '/', used_mb: 4200 }, artifacts: { path: '/var/lib/builderbot/artifacts', fs: '/', used_mb: 900 } },
   projects: { alpha: { workspace: 300, cache: 4000, builds: 2100 }, beta: { cache: 200, artifacts: 900 } },
   workspace: { path: '/workspace', fs: '/' }, homes: { path: '/home/bb', mb: 2500, fs: '/' },
-  docker: { kinds: [{ kind: 'Images', count: 3, mb: 1500, reclaimable_mb: 400 }], root: '/var/lib/docker', fs: '/' }, slow: [] };
+  docker: { kinds: [{ kind: 'Images', count: 3, mb: 1500, reclaimable_mb: 400 }, { kind: 'Build Cache', count: 9, mb: 700, reclaimable_mb: 650 }],
+            root: '/var/lib/docker', fs: '/' }, slow: [],
+  // Each project's phones (R123): one idle, one running.
+  phones: [{ project: 'alpha', uid: '', name: 'builderbot-36', mb: 4096, running: false },
+           { project: 'alpha', uid: '', name: 'builderbot-35', mb: 2048, running: true }] };
 const en = await (await fetch(base + '/api/v1/agent/enroll', { method: 'POST',
   headers: { Authorization: 'Bearer ' + minted.token, 'Content-Type': 'application/json' },
   body: JSON.stringify({ census: { cpu: 4, mem_mb: 8192, system: 'linux', arch: 'x86_64', storage: WALK },
@@ -73,7 +77,49 @@ const job = await (async () => { for (let i = 0; i < 40; i++){
   await new Promise(r => setTimeout(r, 250));
 } return null; })();
 ok(job && job.type === 'storage', `Measure now queues the agent's storage job on that node (${job?.id})`);
+// ...and the button comes back once the press is answered: the bar's markup
+// is the same after it, and a repaint that skipped it left Asking for good.
+const back = await page.waitForFunction(id => {
+  const b = document.querySelector(`.storagetab .docbarrow [data-stmeasure="${id}"]`);
+  return b && !b.disabled && b.textContent.trim() === 'Measure now';
+}, minted.id, { timeout: 15000 }).then(() => true, () => false);
+ok(back, 'Measure now reads Measure now again once its press is answered, not Asking');
 if (job) await api('/api/v1/jobs', { action: 'cancel', id: job.id });
+
+// The page measures, and each thing is freed on the page that manages it
+// (the operator, 23 Oct): its phones are listed here with a link to the
+// Emulator page, where each has its Remove, refused while one runs; no
+// prune and no clear is pressed here.
+{
+  const seen = await page.evaluate(() => {
+    const s = document.querySelector('.storagetab details[data-sect="storage:phones"]');
+    return { rows: [...(s?.querySelectorAll('.stphone') || [])].map(r => r.textContent.replace(/\s+/g, ' ').trim()),
+             buttons: document.querySelectorAll('.storagetab [data-stavd], .storagetab [data-stclear], .storagetab [data-stdprune]').length,
+             link: /Emulator page/.test(s?.textContent || '') };
+  });
+  ok(seen.rows.length === 2 && /builderbot-36/.test(seen.rows[0]) && /running/.test(seen.rows[1]) && seen.buttons === 0 && seen.link,
+     `Storage lists each phone, largest first, with no button of its own and the way to the Emulator page (${JSON.stringify(seen)})`);
+  await page.evaluate(id => { emuNode = id; openEmulator(); }, minted.id);
+  await page.waitForSelector('.emutab details[data-sect="emulator:phones"] .emphone', { timeout: 15000 });
+  const em = await page.evaluate(() => {
+    const s = document.querySelector('.emutab details[data-sect="emulator:phones"]');
+    return { rows: s.querySelectorAll('.emphone').length, removes: s.querySelectorAll('[data-emuphone]').length };
+  });
+  ok(em.rows === 2 && em.removes === 1, `the Emulator page lists the node's phones, and only the one not running has a Remove (${JSON.stringify(em)})`);
+  page.answers.push(0);
+  await page.click('.emutab [data-emuphone="alpha"]');
+  const avd = await (async () => { for (let i = 0; i < 40; i++){
+    const js = (await api('/api/v1/jobs?active=1')).jobs || [];
+    const j = js.find(x => x.type === 'avd-remove' && x.node === minted.id);
+    if (j) return j;
+    await new Promise(r => setTimeout(r, 250));
+  } return null; })();
+  ok(avd && avd.spec?.name === 'builderbot-36' && avd.spec?.project === 'alpha',
+     `Remove asks, then queues the phone's removal on that node (${JSON.stringify(avd?.spec || null)})`);
+  if (avd) await api('/api/v1/jobs', { action: 'cancel', id: avd.id });
+  const refused = await api('/api/emulator', { action: 'phone-remove', node: minted.id, project: 'alpha', uid: '', name: 'builderbot-35' });
+  ok(/running/.test(refused.error || ''), `a running phone is refused by the server too (${refused.error})`);
+}
 await api('/api/v1/nodes', { action: 'retire', id: minted.id });
 
 await done(browser);

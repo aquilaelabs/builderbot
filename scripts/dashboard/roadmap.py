@@ -32,7 +32,8 @@ import sys as _sys
 # Beside this file, whichever way it was loaded: bb's own Python loads the
 # modules by path, where a plain sibling import finds nothing.
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-from names import claude_session   # noqa: E402
+from names import agent_sessions, running_session   # noqa: E402
+import agents
 import copy
 import json
 import os
@@ -89,7 +90,7 @@ def configure(*, write_json, state, tell=None, tmux_name=None, settle=None,
 # through bb is here: add, and the three follow-ups that ride behind a held
 # add. Everything else on a held item is refused by bb with "still waiting".
 _REPLAY = {"add": "add", "info": "set_info", "step-add": "add_step", "edit": "edit",
-           "target": "set_target",
+           "target": "set_target", "target-step": "set_step_target",
            # A session asking for an item back off the shelf (R78): held as a
            # request whatever the gate says, and a person's Approve replays it.
            "unshelve": "shelve"}
@@ -294,7 +295,7 @@ def _log(d, project, by, ev):
     """
     name = str((actor() if actor else "") or "")[:60]
     ev = {"at": int(time.time()),
-          "by": "claude" if by == "claude" else "you",
+          "by": "claude" if by == "claude" else "you", **agents.asker(by),
           # The account behind it, where one is known, including behind a
           # session, whose author is the person it was minted for.
           **({"who": name} if name else {}),
@@ -665,6 +666,41 @@ def set_target(project, item_id, version, by="you", who=""):
     return _edit(project, item_id, change, by, who)
 
 
+def set_step_target(project, item_id, step, version, by="you", who=""):
+    """Say which release one step is meant for, or "" for its item's (R108,
+    the operator, 22 Oct): an item split across releases says which part
+    ships when, and a step with none goes with its item."""
+    v, bad = _target(version)
+    if bad:
+        return {"error": bad}
+    if _int(step) is None:
+        return {"error": "not a step"}
+
+    def change(row, rows):
+        steps = row.get("steps") or []
+        i = _int(step)
+        if not 0 <= i < len(steps):
+            return {"error": "no such step"}
+        old = steps[i].get("target", "")
+        if old == v:
+            return {"error": f"that step is already for {v}" if v else "that step goes with its item already"}
+        if v:
+            steps[i]["target"] = v
+        else:
+            steps[i].pop("target", None)
+        return {"ok": True, "item": row,
+                "log": {"act": "target-step", "id": row["id"], "step": i, "text": steps[i].get("text", ""),
+                        "of": row["text"], "target": v, **({"was": old} if old else {})}}
+    return _edit(project, item_id, change, by, who)
+
+
+def for_release(row, version):
+    """Whether an item belongs to a release: its own target, or any step's
+    (a step with none goes with its item)."""
+    own = row.get("target") or ""
+    return own == version or any((st.get("target") or own) == version for st in row.get("steps") or [])
+
+
 # An item is one thing to do, or several in an order that matters. A change
 # that needs three things done in sequence is not three items: put them out
 # of order and the second one lands on a tree the first was supposed to have
@@ -717,7 +753,7 @@ def add(project, text, by="you", steps=(), who="", number=None, target=""):
         nid = _int(number) or _next_id(rows, d, project)
         _took(d, project, nid)
         row = {"id": nid, "text": text,
-               "added": int(time.time()), "by": "claude" if by == "claude" else "you",
+               "added": int(time.time()), "by": "claude" if by == "claude" else "you", **agents.asker(by),
                "sent": 0,
                "steps": [{"text": x, "sent": 0} for x in steps],
                **({"target": target} if target else {})}
@@ -845,6 +881,11 @@ def _rebuilt_row(events, item_id, text):
                 steps[i]["done"] = e.get("at", 0)
             elif act == "undone-step":
                 steps[i].pop("done", None)
+            elif act == "target-step":
+                if e.get("target"):
+                    steps[i]["target"] = e["target"]
+                else:
+                    steps[i].pop("target", None)
         elif act == "edit" and i is None:
             row["text"] = e.get("text") or row["text"]
         elif act == "info" and i is None:
@@ -1574,7 +1615,7 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note="", pre
     # conversation and nobody else's. Sent without this, a second person's
     # step was typed into the owner's window, or refused as "no session is
     # running here" while their own sat there running (B194).
-    session = prefix + claude_session(project)
+    session = running_session(prefix, project, set(sessions))
     r = tell(session, line, sessions)
     if r.get("error") or not r.get("sent"):
         return r
@@ -1776,10 +1817,14 @@ def announce(project, kinds, sessions=()):
     line = changed_line(kinds if isinstance(kinds, dict) else {kinds: True})
     if not line or tell is None or tmux_name is None:
         return {"ok": True, "sent": False}
-    session = claude_session(project)
-    if session not in set(sessions):
+    # Every agent's running session on it is told (R95 step 16).
+    live = [n for n in agent_sessions(project) if n in set(sessions)]
+    if not live:
         return {"ok": True, "sent": False}
-    return tell(session, line, sessions)
+    r = {"ok": True, "sent": False}
+    for session in live:
+        r = tell(session, line, sessions)
+    return r
 
 
 # The words after the list, the same at every level of it.
@@ -1867,7 +1912,7 @@ def panel(name, live, prefix):
     # account's prefix, and the owner's prefix is empty (B194). Read with
     # the bare name, a second person's arrows said "no Claude session is
     # running here" with their own session open in the next tab.
-    session = prefix + claude_session(name)
+    session = running_session(prefix, name, set(live))
     return {"items": items(name),
             # How many are finished, for the toggle's label (R78): the
             # items themselves come when it is pressed.
@@ -1943,7 +1988,9 @@ def verb(name, act, req, me, *, live, prefix):
         r = add(name, field(req, "text"), steps=field_list(req, "steps"), who=who,
                 target=field(req, "target"))
     elif act == "target":
-        r = set_target(name, req.get("id"), field(req, "target"), who=who)
+        # A step's own release where one is named (R108), else the item's.
+        r = (set_step_target(name, req.get("id"), req.get("step"), field(req, "target"), who=who)
+             if req.get("step") is not None else set_target(name, req.get("id"), field(req, "target"), who=who))
     elif act == "send":
         r = send(name, req.get("id"), req.get("step"), live,
                  also_told=unsaved(name) if req.get("tell") else False,

@@ -35,6 +35,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/phone/wait` | prefix | `_get_phone_wait` | GET /api/phone/wait?since=T: the companion app's live connection (R125). |  |
 | GET | `/api/phone` | prefix | `_get_phone` | GET /api/phone. |  |
 | GET | `/api/toolchains` | prefix | `_get_toolchains` | GET /api/toolchains. |  |
+| GET | `/api/agents` | prefix | `_get_agents` | GET /api/agents?node=ID: the coding agents on one node (R95, the Agents page): each agent's row, the version against the latest and any job of its own, and the asking account's own plugins and MCP servers there. |  |
 | GET | `/api/emulator` | prefix | `_get_emulator` | GET /api/emulator?node=ID: that node's system images, what could be added, and the image job there. |  |
 | GET | `/api/roles` | prefix | `_get_roles` | GET /api/roles: the Roles page (R152): the areas, every role, and each account with its Global roles, the roles it holds on each project and the projects it is on. |  |
 | GET | `/api/users` | prefix | `_get_users` | GET /api/users. |  |
@@ -71,21 +72,22 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/v1/nodes` | prefix | `_nodes` | The Nodes page's verbs. |  |
 | POST | `/api/v1/jobs` | prefix | `_jobs` | The Jobs page's one verb, and where `bb run`, `bb build`, `bb test` and `bb emu` land from the controller (nodes.run_job). |  |
 | POST | `/api/v1/bb` | exact | `_bb_relay` | A bb verb from a session on a NODE, run here (roadmap #24). | refused: bb |
-| POST | `/api/v1/claude-login` | exact | `_claude_login` | A node saying what this account is signed in to Claude AS there (R47), or that it is not: never the login itself, which stays on the machine that made it (claudegrant.py says why). |  |
+| POST | `/api/v1/claude-login` | exact | `_claude_login` | A node saying what this account is signed in to Claude, or another coding agent, AS there (R47), or that it is not: never the login itself, which stays on the machine that made it (claudegrant.py says why). |  |
 | POST | `/api/v1/hook` | exact | `_hook` | What a session's hooks have to say, from a NODE (roadmap #24): hooks.py says what each kind means. |  |
 | POST | `/api/v1/tty-grant` | exact | `_tty_grant` | Whose terminal a node's bb-tty is about to start, answered here (B166). |  |
-| POST | `/api/lock` | prefix | `_lock` | Lock or unlock a project: keep it, stop Claude running in it (projects.lock_verb). | refused: lock |
+| POST | `/api/lock` | prefix | `_lock` | Lock or unlock a project (R119), never a session's. |  |
+| POST | `/api/archive` | prefix | `_archive` | Archive or unarchive a project (R119): out of sight, and nothing else; the project's owner or an administrator, never a session. |  |
 | POST | `/api/project-pin` | prefix | `_project_pin` | Pin or unpin a project: whether the sidebar card shows it (projects.pin). |  |
 | POST | `/api/project-group` | prefix | `_project_group` | Put a project in one of this account's groups, take it out, or rename a group (projects.set_group, rename_group), or delete one (delete_group): a label for the Projects page, nothing more. |  |
 | POST | `/api/apps` | prefix | `_apps` | POST /api/apps: look at the release again now (apps.check_now). | refused: controller |
-| POST | `/api/pc` | prefix | `_pc` | POST /api/pc: a session's word with a PC lent to its project (pcwork.py, bb pc): lent (which PCs lend which verbs), run (ask one, under the project's Claude may: Use a lent PC) and result (an ask's answer, held a while). |  |
+| POST | `/api/pc` | prefix | `_pc` | POST /api/pc: a session's word with a PC lent to its project (pcwork.py, bb pc): lent (which PCs lend which verbs), run (ask one, under the project's Agents may: Use a lent PC) and result (an ask's answer, held a while). |  |
 | POST | `/api/project-color` | prefix | `_project_color` | Give a project one of the colors for this account alone, or none (projects.set_mark): worn by its card, its tabs and its bar. |  |
 | POST | `/api/project-auth` | prefix | `_project_auth` | What credential this project's remote uses, and what else it could: projects.auth_answer. | refused: rename |
 | POST | `/api/project-ftp` | exact | `_project_ftp` | A project's file access over FTP (ftp.py, R151): what it is, for whoever sees the project, and a change, for an account with the ftp grant (named only: the owner, until a role names it). | refused: ftp |
 | POST | `/api/container` | prefix | `_container` | A container from a compose file written here, with no project: containers.tab_verb. | refused: docker-write |
 | POST | `/api/vms` | exact | `_vms` | POST /api/vms (R91): new, start, stop, restart, remove, snapshot, revert, snapshot-rm. | refused: vms-write, refused: node |
 | POST | `/api/dockerctl` | prefix | `_docker_ctl` | Start, stop, restart or read the log of ONE container on a node. | refused: docker-write |
-| POST | `/api/rename` | prefix | `_rename` | Rename a project: projects.rename, once project_busy says nothing holds it. | refused: rename |
+| POST | `/api/rename` | prefix | `_rename` | Rename a project: projects.rename. | refused: rename |
 | POST | `/api/trash-restore` | prefix | `_trash_restore` |  | refused: trash |
 | POST | `/api/trash-purge` | prefix | `_trash_purge` | Delete a trashed project for good. | refused: trash |
 | POST | `/api/trash` | prefix | `_trash` | Move a project out of the workspace: projects.trash, once project_busy says nothing holds it (the same guards as renaming). | refused: trash |
@@ -113,12 +115,14 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/roles` | prefix | `_roles` | POST /api/roles: assign (an account's Everywhere roles and its roles on each project, as far as the asker may, R152 and R155), set (make or change a role: its scope, its areas and note) or remove one; owner and admin are | refused: admin |
 | POST | `/api/users` | prefix | `_users` | The Users page's verbs. | refused: admin |
 | POST | `/api/toolchains` | prefix | `_toolchains` | Queue installs or removals of the toolchains the Tools card offers: an administrator's, and toolchains.verb says what each action does with which names. |  |
+| POST | `/api/agents` | exact | `_agents` | POST /api/agents: install (or update), remove or check one coding agent on one node (agentcode.verb), the one way an agent is managed (R95, the operator 22 Oct): whoever may install toolchains there. |  |
 | POST | `/api/toolpacks` | exact | `_toolpacks` | POST /api/toolpacks: look at a tool pack by its repository's address, or at one made here from a pasted manifest or an uploaded archive (/api/upload-archive's id); add it as it was shown; read a pack made here's manifest | refused: admin |
 | POST | `/api/emulator` | prefix | `_emulator` | Add system images to a node, or remove one: a job there, against its toolchain store. | refused: toolchains-write |
 | POST | `/api/logs` | prefix | `_logs` | The log policy, and the two things that can be done to the pile: logs.verb. | refused: controller |
-| POST | `/api/idle` | prefix | `_idle` | The idle rule for Claude sessions (idle.py): minutes, 0 for never. | refused: controller |
+| POST | `/api/idle` | prefix | `_idle` | The idle rule for every agent's sessions (idle.py): minutes, 0 for never. | refused: controller |
 | POST | `/api/paths` | prefix | `_paths` | Where the controller keeps one kind of what grows (paths.py), and what is there moved across. | refused: controller |
 | POST | `/api/snapshots` | prefix | `_snapshots` | POST /api/snapshots: take one now, or restore the whole tree as of a day or one file of it (snapshots.restore, which snapshots the tree first so it can be undone). | refused: settings |
+| POST | `/api/transcripts` | exact | `_transcripts` | POST /api/transcripts {project, id, action}: one of the signed-in person's own conversations deleted, or made visible to every session on the project (share) or private again (unshare). |  |
 | POST | `/api/settings` | prefix | `_settings_post` | POST /api/settings. | refused: controller, refused: debug |
 | POST | `/api/rules` | prefix | `_rules` | The operator's house rules for one project: the whole list, saved (rules.verb). | refused: rules |
 | POST | `/api/global-rules` | prefix | `_global_rules` | The rules that apply to EVERY project (R63): rules.global_verb. | refused: controller |
@@ -147,6 +151,6 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/bugs` | prefix | `_bugs` | Report, edit, or close one bug: bugs.verb, behind the gates here. |  |
 | POST | `/api/custom` | prefix | `_custom` | Save or delete one of the operator's own command lists: macros.custom_edit. | refused: terminal |
 | POST | `/api/doctor` | prefix | `_doctor` | Re-run bb doctor now and answer with the fresh verdict. | refused: controller |
-| POST | `/api/signout` | prefix | `_signout` | Sign this account out of Claude on one node (signin.sign_out): the login is that machine's, so that machine lets go of it. |  |
+| POST | `/api/signout` | prefix | `_signout` | Sign this account out of a coding agent on one node (signin.sign_out): the login is that machine's, so that machine lets go of it. |  |
 | POST | `/api/login-code` | prefix | `_login_code` | Hand the code from the browser to the sign-in flow: signin.take_code, for the person whose flow it is. |  |
 | POST | `/api/signin` | prefix | `_signin` | Start a sign-in on one node, or stop the one that is running: signin.verb. |  |

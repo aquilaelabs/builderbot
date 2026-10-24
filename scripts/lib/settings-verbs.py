@@ -64,6 +64,22 @@ def push_state(state, proj):
     return {"rights": rights, "auth": auth}
 
 
+def _bb_owner(state):
+    try:
+        us = json.load(open(os.path.join(state, "users.json"))).get("users") or {}
+    except (OSError, ValueError, AttributeError):
+        return ""
+    return next((u.get("uid") or "" for u in us.values() if isinstance(u, dict) and u.get("role") == "owner"), "")
+
+
+def _owner_of(state, proj):
+    try:
+        rec = (json.load(open(os.path.join(state, "project-owners.json"))).get("projects") or {}).get(proj) or {}
+    except (OSError, ValueError, AttributeError):
+        rec = {}
+    return rec.get("owner") or _bb_owner(state)
+
+
 def show():
     state = os.environ["DASHBOARD_STATE"]
     prefs = dash.load("prefs", here)
@@ -75,11 +91,21 @@ def show():
     # nothing set, which is claude's own default.
     _mine = prefs.for_user(os.environ.get("BB_ACCOUNT_UID", ""), proj) if proj else {}
     rec["model"], rec["effort"] = _mine.get("model", ""), _mine.get("effort", "")
+    # ...and each other agent's pair (R95 step 19), which its launcher reads
+    # at exec as Claude's reads these two.
+    rec.update({k: v for k, v in _mine.items() if k.endswith(("_model", "_effort"))})
     try:
         locks = json.load(open(os.path.join(state, "locked-projects.json")))
     except (OSError, ValueError):
-        locks = []
-    rec["locked"] = proj in (locks if isinstance(locks, list) else [])
+        locks = {}
+    lk = locks.get(proj) if isinstance(locks, dict) else None
+    # Locked AGAINST this seat (R119): an administrator's lock holds
+    # everybody, its owner's everybody but the owner. The owner as
+    # membership.owner_of reads it: the record's, or BuilderBot's owner for a
+    # project from before there were owners, who is also the seat with no
+    # uid of its own.
+    rec["locked"] = isinstance(lk, dict) and (bool(lk.get("admin")) or (
+        os.environ.get("BB_ACCOUNT_UID", "") or _bb_owner(state)) != _owner_of(state, proj))
     rec["project"] = proj
     # The toolchains this project's sessions may not use (R77), whole: the
     # shipped ones switched off here, and every tool pack not switched on.
@@ -149,10 +175,10 @@ def show():
         if k in ("node", "nodes"):
             v = [named.get(x, x) for x in v] if isinstance(v, list) else named.get(v, v)
         print(f"  {k:<8} {', '.join(v) if isinstance(v, list) else v}")
-    # The Claude settings as the dialog names them, so a session can read
+    # The agents' settings as the dialog names them, so a session can read
     # its own dials (the review of 26 Sep: the briefing said the refusal
     # names the setting, and nothing here showed it).
-    print("  Claude settings:")
+    print("  Agents' settings:")
     print(f"    While a test runs: a change asked for   {rec.get('test_change') or 'wait'}")
     print(f"    Tests run                               {rec.get('tests_in') or 'node'}")
     print(f"    Captures kept (days; 0 keeps them)      {rec.get('capture_days', 7)}")
@@ -167,7 +193,7 @@ def show():
     for label, key in (("Add to roadmap", "roadmap"), ("File bugs", "bugs"), ("Add rules", "rules"),
                        ("Fill in build and test", "settings"), ("Add to the design", "design"),
                        ("Write the wiki", "wiki")):
-        print(f"    Claude may: {label:<28} {gate.get(key) or 'auto'}")
+        print(f"    Agents may: {label:<28} {gate.get(key) or 'auto'}")
     for label, key, dflt in (("Run its container", "devbuild", "deny"),
                              # R91: its VMs, bb vm.
                              ("Make VMs", "makevms", "deny"),
@@ -179,7 +205,7 @@ def show():
                              ("Tag and publish a release", "release", "ask"),
                              # R270 step 6: a person's PC lent by the companion.
                              ("Use a lent PC", "pc", "deny")):
-        print(f"    Claude may: {label:<28} {rec.get(key) or dflt}")
+        print(f"    Agents may: {label:<28} {rec.get(key) or dflt}")
     # Who may move the version is version.py's policy rather than a prefs
     # dial, and an owner who set every dial above to auto still found it
     # locked (report #48): printed with them, in the dial's own words.
@@ -187,9 +213,9 @@ def show():
         version = dash.load("version", here)
         version.configure(workspace=os.environ.get("WORKSPACE", "/workspace"), state=state,
                           write_json=lambda *a: None)
-        print(f"    Claude may: {'Move the version':<28} {version.policy(proj)}")
+        print(f"    Agents may: {'Move the version':<28} {version.policy(proj)}")
     except Exception as e:  # noqa: BLE001 (an unreadable policy is said, not a crash)
-        print(f"    Claude may: {'Move the version':<28} unknown ({str(e)[:60]})")
+        print(f"    Agents may: {'Move the version':<28} unknown ({str(e)[:60]})")
 
 
 def set_node():

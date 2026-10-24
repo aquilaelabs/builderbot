@@ -105,6 +105,9 @@ async function refresh(){
     // Signed out (the cookie expired, or the secret rotated): go to the
     // login page rather than showing a dead dashboard with a red dot.
     if (r.status === 401){ location.href = "/login?next=%2F"; return; }
+    // A role of this account requires a second factor it has not set up
+    // (R127): the setup page before anything else.
+    if (r.status === 403 && (await r.clone().json().catch(() => ({}))).two_factor_setup){ location.href = "/login/setup"; return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     const got = await r.json();
     // An action's own answer was adopted while this poll was out: this

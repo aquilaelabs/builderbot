@@ -116,10 +116,13 @@ function projectMatches(p, q){
 // rest behind the menu, the same parts the project page's header draws.
 // A project's lock, said one way on its card, its page's header and Home
 // (consistency batch J: the header said locked where the card said
-// archived): archived when it is locked, read-only when it is not this
-// account's to change (not taken on, or a role that reads it alone).
+// archived): locked when its owner or an administrator locked it (R119),
+// whomever it holds out, read-only when it is not this account's to change
+// (not taken on, or a role that reads it alone). Archived is said by where
+// the card sits, not by a mark.
 function lockMark(p){
-  return p.locked || writeWhy(p) ? ` <span class="lockmark">${LOCK}${p.locked ? "archived" : "read-only"}</span>` : "";
+  const said = p.locked ? (p.locked_admin ? "locked by an administrator" : "locked") : writeWhy(p) ? "read-only" : "";
+  return said ? ` <span class="lockmark" title="${esc(p.locked ? lockedWhy(p) : said)}">${LOCK}${said}</span>` : "";
 }
 // A project's facts line, the same parts wherever it is drawn: its id, its
 // branch, that it may push, and the node it runs on.
@@ -136,7 +139,7 @@ function projectCard(p){
   const pc = colorAttrs(p.color), cls = {error:"bad", warning:"warn", locked:"locked"};
   return `<div class="pcard${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
     <div class="pcname"><button type="button" class="name link" data-open="${esc(p.name)}" title="open ${esc(projLabel(p.name))}'s page">${esc(p.label || p.name)}</button>${lockMark(p)}${
-      p.pinned && !p.locked ? ` <span class="pinmark" title="pinned: on Home's glance" aria-label="pinned">${PIN}</span>` : ""}</div>
+      p.pinned && !p.archived ? ` <span class="pinmark" title="pinned: on Home's glance" aria-label="pinned">${PIN}</span>` : ""}</div>
     <div class="pcfacts">${projFacts(p)}</div>
     ${projectState(p)}
     ${p.issues.map(i => `<div class="pnote ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
@@ -197,14 +200,14 @@ function renderProjectsInto(i){
   // here rather than by the server, which reports the directory order every
   // other reader wants; each group, and the ungrouped, keeps the order.
   const shown = ps.filter(p => projectMatches(p, pjQuery))
-    .sort((a, b) => (b.pinned && !b.locked) - (a.pinned && !a.locked) || byProjectName(a, b));
+    .sort((a, b) => (b.pinned && !b.archived) - (a.pinned && !a.archived) || byProjectName(a, b));
   // The ones in no group first, then each of this account's groups under
   // its name, by name (the operator, 18 Oct); and the archived ones apart,
   // folded at the foot, their own fold whatever group they were in.
   // The chips count every project that is not archived, whatever the search
   // says, so what the search hides is still counted (the chips rule); one
   // in force narrows the grid to its group, and the archived fold is All's.
-  const all = ps.filter(p => !p.locked);
+  const all = ps.filter(p => !p.archived);
   const chips = byProjectGroup(all).map(({group: g, list}) => ({key: g || "none", label: g || "No group", count: list.length}));
   if (pjChip && !chips.some(c => c.key === pjChip)) pjChip = "";
   const cb = el.querySelector("#pjChips");
@@ -212,7 +215,7 @@ function renderProjectsInto(i){
     cb.querySelectorAll("[data-pjchip]").forEach(c => c.onclick = () =>
       fadeThrough(".pane .doc.on .projtab #pjGrid > *", () => { pjChip = c.dataset.pjchip; renderProjectsInto(i); }));
   const inChip = p => !pjChip || (pjChip === "none" ? !p.group : p.group === pjChip);
-  const live = shown.filter(p => !p.locked && inChip(p)), gone = pjChip ? [] : shown.filter(p => p.locked);
+  const live = shown.filter(p => !p.archived && inChip(p)), gone = pjChip ? [] : shown.filter(p => p.archived);
   const grid_ = list => `<div class="pgrid">${list.map(projectCard).join("")}</div>`;
   const html = byProjectGroup(live).map(({group: g, list}) => {
         if (!g) return grid_(list);
@@ -253,7 +256,7 @@ async function renameProjectGroup(btn){
     if (j.error){ notify(j.error, true); return; }
     applyNow(x => { x.group = (j.groups || {})[x.name] || ""; });
     notify(gone ? `${was} is gone: its projects are in no group` : `${was} is now ${got}`);
-  }catch(e){ notify("group: " + e, true); }
+  }catch(e){ notify("group: " + failWords(e), true); }
   refresh();
 }
 
@@ -401,7 +404,7 @@ function pDrawForge(){
   const sel = $("pForge");
   if (sel.dataset.built !== String(pForges.length)){
     sel.innerHTML = `<option value="" hidden>from the address</option>` + pForges.map(f =>
-      `<option value="${esc(f.id)}">${esc(f.name)}${f.dev ? " (dev)" : ""}</option>`).join("");
+      `<option value="${esc(f.id)}">${f.dev ? devOpt(esc(f.name)) : esc(f.name)}</option>`).join("");
     sel.dataset.built = String(pForges.length);
   }
   // One row under the address in both modes, always there, so nothing pops
@@ -569,7 +572,7 @@ function pFillNode(){
   const was = sel.value;
   sel.innerHTML = pick.map(n => `<option value="${esc(n.id)}">${esc(n.name)}${
       n.live === false ? " (quiet)" : ""}</option>`).join("")
-    + `<option value="">none: no builds, tests or Claude sessions until one is picked</option>`;
+    + `<option value="">none: no builds, tests or sessions until one is picked</option>`;
   // Several: the node most projects are bound to, not none. A project born
   // with no node had nowhere to send its container and used to land on the
   // newest enrolled node instead (the operator, 25 Sep).

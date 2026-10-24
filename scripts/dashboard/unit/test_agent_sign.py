@@ -99,5 +99,61 @@ class Sign(unittest.TestCase):
         self.assertNotIn("pw123456", "".join(j.lines))
 
 
+class KeyCtl:
+    """The channel as a sign-key job sees it: what it is handed, and what it
+    answers, kept."""
+
+    def __init__(self, give):
+        self.give, self.said = give, []
+
+    def call(self, verb, body=None, timeout=30):
+        if verb == "signing-key":
+            return 200, self.give
+        self.said.append((verb, body))
+        return 200, {"ok": True}
+
+
+class SignKey(unittest.TestCase):
+    """The controller's key work on this node (R106, the operator 22 Oct):
+    refused where a session could read the key, the missing toolchain named
+    back to the controller, and a keystore checked and a key made with the
+    store's keytool, the answer sent over the channel, nothing of the
+    password in the job's log and the work directory gone."""
+
+    setUp = Sign.setUp
+
+    def agent_with(self, give, user="builder", sessions="sessions"):
+        a = Sign.agent_with(self, "", {}, user=user, sessions=sessions)
+        a.ctl = KeyCtl(give)
+        return a
+
+    def test_a_shared_account_is_refused_and_says_why(self):
+        a, j = self.agent_with({}, sessions="builder"), Job()
+        self.assertEqual(a.sign_key(j, {"op": "inspect"}), ("failed", 77))
+        self.assertIn("one account", a.ctl.said[0][1]["error"])
+
+    def test_a_node_with_no_jdk_says_so(self):
+        agent.tc_root = lambda st: self.tmp
+        a, j = self.agent_with({}), Job()
+        self.assertEqual(a.sign_key(j, {"op": "generate"}), ("failed", 69))
+        self.assertEqual(a.ctl.said, [("signing-result", {"job": "j_unit", "missing": "jdk"})])
+
+    @unittest.skipUnless(STORE, "no jdk in a toolchain store here")
+    def test_a_key_made_and_checked_here(self):
+        a, j = self.agent_with({"alias": "watch", "cn": "Watch", "password": "pw-made-here"}), Job()
+        self.assertEqual(a.sign_key(j, {"op": "generate"}), ("succeeded", 0), "".join(j.lines))
+        verb, made = a.ctl.said[0]
+        self.assertEqual((verb, made["alias"]), ("signing-result", "watch"))
+        self.assertRegex(made["sha256"], r"^([0-9A-F]{2}:){31}[0-9A-F]{2}$")
+        a2, j2 = self.agent_with({"keystore": made["keystore"], "store_pass": "pw-made-here"}), Job()
+        self.assertEqual(a2.sign_key(j2, {"op": "inspect"}), ("succeeded", 0))
+        self.assertEqual(a2.ctl.said[0][1]["sha256"], made["sha256"])
+        a3, j3 = self.agent_with({"keystore": made["keystore"], "store_pass": "wrong"}), Job()
+        self.assertEqual(a3.sign_key(j3, {"op": "inspect"}), ("failed", 1))
+        self.assertEqual(a3.ctl.said[0][1]["error"], "the keystore's password is not that")
+        self.assertNotIn("pw-made-here", "".join(j.lines + j2.lines + j3.lines))
+        self.assertEqual(os.listdir(os.path.join(self.tmp, "data", "sign-key")), [])
+
+
 if __name__ == "__main__":
     unittest.main()

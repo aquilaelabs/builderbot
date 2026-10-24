@@ -34,6 +34,12 @@ const TOAST_ICONS = {
 };
 let toastHeld = false;
 
+// A failed request in words: the browser's TypeError for a fetch that never
+// landed is the controller not answering (a restart, the network), said so
+// rather than as a JavaScript error; anything else as it came (B301).
+const unreached = e => e instanceof TypeError && /fetch|network|load failed/i.test(e.message || "");
+const failWords = e => unreached(e) ? "the controller did not answer" : String(e?.message || e);
+
 // `opts.kind` is what the record files it under ("said", the default, or
 // "ask" or "job"); `opts.job` names the job it is about.
 function notify(msg, bad, opts = {}){
@@ -73,6 +79,14 @@ function toastAdd(text, lv){
 // clock, since what it said is on the record either way. With no dialog
 // open the stylesheet's corner holds.
 const TOAST_GUTTER = 240;
+// ...and again as a dialog opens or goes (page-motion.js armModal): a job's
+// toast stays while its job runs, and one up before the dialog stood over
+// the dialog's buttons and took their presses (the nodes suite's Cancel
+// under "Storage on shed: assigned").
+function toastReplace(){
+  const stack = $("toast");
+  if (stack && stack.children.length) toastPlace(stack);
+}
 function toastPlace(stack){
   const box = [...document.querySelectorAll(".modal:not([hidden]):not(.inline):not(.leaving) > .box")].at(-1);
   stack.style.cssText = "";
@@ -204,30 +218,34 @@ function logNote(msg, bad){
 // way there and Dismiss on the row. Out of window is red and cannot be put
 // away: work there is stopped until it is updated.
 function attRow(a){
-  if (a.kind === "toolchain"){
+  if (a.kind === "toolchain" || a.kind === "agents"){
     const keys = a.tools.map(t => t.key).filter(Boolean).join(" ");
     // The Claude sessions running there now, which an update ends (B57), not
     // the projects bound to the node.
     const cc = a.tools.some(t => t.name === "claude-code") && a.sessions > 0;
     const n = a.tools.length;
+    // A coding agent's update is the Agents page's (R95), a toolchain's the
+    // Toolchains page's: each its own row.
+    const ag = a.kind === "agents";
+    const where = ag ? "Agents page" : "Toolchains page";
     return `<div class="bnote att">
-      <div class="bt">${n} toolchain update${n === 1 ? "" : "s"} on ${esc(a.node)}</div>
+      <div class="bt">${n} ${ag ? "coding agent" : "toolchain"} update${n === 1 ? "" : "s"} on ${esc(a.node)}</div>
       <div class="bsum">${a.tools.map(t => esc(t.label)).join(", ")}</div>
       ${cc ? `<div class="bwarn">Updating Claude Code ends the Claude sessions there
         (${a.sessions} running)</div>` : ""}
-      <details class="bdetail"${sectAttr("bell:tc:" + a.id)}><summary>versions${cc ? " and sessions" : ""}</summary><pre>${
+      <details class="bdetail"${sectAttr((ag ? "bell:ag:" : "bell:tc:") + a.id)}><summary>versions${cc ? " and sessions" : ""}</summary><pre>${
         a.tools.map(t => `${esc(t.label)}: ${esc(t.from || "?")} → ${t.to === "newer" ? "a newer version" : esc(t.to)}`).join("\n")}${
         cc ? `\n\nsessions there: ${a.projects.map(esc).join(", ")}` : ""}</pre></details>
-      <div class="bfoot"><span>on its Toolchains page</span>
+      <div class="bfoot"><span>on its ${where}</span>
         <span class="acts">${keys ? `<a href="#" data-bdismiss="${esc(keys)}">Dismiss</a>` : ""}
-          <a href="#" data-btc="${esc(a.id)}">Toolchains page</a></span></div></div>`;
+          <a href="#" ${ag ? "data-bag" : "data-btc"}="${esc(a.id)}">${where}</a></span></div></div>`;
   }
   // A session the controller's outage held (R251): it was told to write
   // where it was and stop; Resume tells it to pick up from that note.
   if (a.kind === "held"){
     return `<div class="bnote att warn">
       <div class="bt">A session in ${esc(projLabel(a.project))} stopped for the update</div>
-      <div class="bsum">${esc(a.who ? `${a.who}'s` : "A")} Claude session on ${esc(a.node)}, held ${a.since ? esc(ago(a.since)) : "while BuilderBot was away"}</div>
+      <div class="bsum">${esc(a.who ? `${a.who}'s` : "A")} session on ${esc(a.node)}, held ${a.since ? esc(ago(a.since)) : "while BuilderBot was away"}</div>
       <div class="bfoot"><span>it left a note of where it was</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bheld="${esc(a.node_id)}" data-session="${esc(a.session)}" data-claude="${esc(a.claude || a.session)}">Resume</a></span></div></div>`;
@@ -242,6 +260,17 @@ function attRow(a){
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bdocker="${esc(a.node_id)}">Containers page</a></span></div></div>`;
   }
+  // A release's APK signed on its project's node (R106): what would stop it, said
+  // before the release in amber, and a signing that failed after one in red.
+  if (a.kind === "release-sign"){
+    return `<div class="bnote att${a.bad ? " bad" : ""}">
+      <div class="bt">${a.bad ? `${esc(a.tag)}'s APK in ${esc(projLabel(a.project))} is not signed`
+        : `${esc(projLabel(a.project))}'s next release cannot be signed`}</div>
+      <div class="bsum">${esc(a.why)}</div>
+      <div class="bfoot"><span>${a.bad ? (a.at ? esc(ago(a.at)) : "after the release") : "before its release"}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bsign="${esc(a.project)}">Signing view</a></span></div></div>`;
+  }
   // A container whose registry image moved (R195): one note per node, to
   // the Docker tab on that node, where Update is on each row.
   if (a.kind === "image"){
@@ -252,6 +281,44 @@ function attRow(a){
       <div class="bfoot"><span>on its Containers page</span>
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bdocker="${esc(a.id)}">Containers page</a></span></div></div>`;
+  }
+  // A node short of disk or memory (R110): what is short and how much is
+  // left, to that node's Storage page, which says what is taking the room.
+  if (a.kind === "room"){
+    const parts = [...(a.short || []).map(x => x.used_pct != null ? `${x.what} has been ${x.used_pct}% used for ten minutes`
+                                                                  : `${x.what} has ${x.free_gb} GB free of ${x.total_gb} GB`),
+                   ...(a.mem != null ? [`its memory has been ${a.mem}% used for ten minutes`] : [])];
+    return `<div class="bnote att warn">
+      <div class="bt">${esc(a.node)} is running short of room</div>
+      <div class="bsum">${parts.map(esc).join("; ")}</div>
+      <div class="bfoot"><span>${(a.short || []).length ? `a disk keeps ${esc(String(a.floor_gb))} GB free, or a tenth of a small one` : "before it starts killing processes"}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bstorage="${esc(a.id)}">Storage page</a></span></div></div>`;
+  }
+  // No second factor on this account yet (R127): a standing notice, put
+  // away for the day at most, its Set up opening Profile's section.
+  if (a.kind === "two-factor"){
+    return `<div class="bnote att${a.required ? " warn" : ""}">
+      <div class="bt">${a.required ? "A role of yours requires two-factor sign-in" : "Turn on two-factor sign-in"}</div>
+      <div class="bsum">an authenticator app or a passkey, so a password alone cannot sign in as you</div>
+      <div class="bfoot"><span>until you add one</span>
+        <span class="acts">${a.key && !a.required ? `<a href="#" data-bdismiss="${esc(a.key)}">Not today</a>` : ""}
+          <a href="#" data-b2fa="1">Set up</a></span></div></div>`;
+  }
+  // An account's coding-agent sign-in opened on a node by something that was
+  // neither that account nor the agent (R125 step 6): root, most likely. A
+  // sign-out here deletes this copy, not one already taken, so the row says
+  // to treat it as copied and end it at the provider.
+  if (a.kind === "token-read"){
+    const file = (a.path || "").split("/").slice(-2).join("/");
+    return `<div class="bnote att bad">
+      <div class="bt">A sign-in on ${esc(a.node)} was read</div>
+      <div class="bsum">${esc(a.comm || "a process")} (pid ${esc(String(a.pid))}, uid ${esc(String(a.uid))}) opened ${
+        esc(a.who ? `${a.who}'s` : a.account ? `${a.account}'s` : "an account's")} ${esc(file)}${
+        a.count > 1 ? `; ${esc(String(a.count - 1))} more this week` : ""}</div>
+      <div class="bfoot"><span>${esc(ago(a.at))}; treat it as copied and end it at the provider</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bag="${esc(a.id)}">Agents page</a></span></div></div>`;
   }
   // A node's nginx behind the newest line (R192): its own note, to the
   // nginx tab on that node, where Update is.
@@ -296,6 +363,9 @@ function needsRows(){
     // normal case after a minor bump and one row per project was six rows
     // saying one thing. Collapsed into one, with one press behind it (B93).
     ...att.map(attRow),
+    // This account's own notice to add a second factor (R127), after what
+    // stopped or what a node needs, which a person is waiting on.
+    ...(state?.two_factor_due ? [attRow(state.two_factor_due)] : []),
     ...ciRed.map(c => `<div class="bnote att bad">
         <div class="bt">CI failing in ${esc(projLabel(c.project))}</div>
         <div class="bsum">${esc(c.text)}</div>
@@ -407,12 +477,12 @@ function drawBell(){
               : fresh.length ? "info" : "";
   const dot = bell.querySelector(".dot");
   const pendingOn = asks.length + waiting.length + invites.length + asking.length;
-  const attOn = att.some(a => a.window || a.kind === "relocate") || ciRed.length ? "bad" : att.length + syncC.length ? "warn" : "";
+  const attOn = att.some(a => a.window || a.kind === "relocate" || a.bad) || ciRed.length ? "bad" : att.length + syncC.length ? "warn" : "";
   // Something new gone wrong: the bell flashes red twice and settles to the
   // red dot, unlike an ask's amber, which keeps on until it is answered.
   const red = new Set([
     ...fresh.filter(n => n.lv === "bad").map(n => "note:" + n.at + ":" + n.msg),
-    ...att.filter(a => a.window || a.kind === "relocate").map(a => "att:" + (a.key || a.id + "@" + (a.at || a.to || ""))),
+    ...att.filter(a => a.window || a.kind === "relocate" || a.bad).map(a => "att:" + (a.key || a.id + "@" + (a.at || a.to || ""))),
     ...ciRed.map(c => "ci:" + JSON.stringify(c))]);
   if (bellRedSeen !== null && [...red].some(k => !bellRedSeen.has(k)) && !noMotion()){
     bell.classList.remove("flash");
@@ -488,9 +558,10 @@ function drawBell(){
     // ...and beside them, what a session has waiting in each project's
     // notebook. One row per project, not per change: the notebook is where
     // the changes are read, so the row's only job is to take you there.
+    // Named for its own agent (ChatGPT's read "Claude on codex-web").
     ...asking.map(s => `<div class="bnote ask">
         <div class="btag">asking you in its terminal</div>
-        <div class="bwhy">Claude on ${esc(projLabel(s.name.replace(/^claude-/, "")))}: ${esc(s.claude.task || "waiting for you to answer it")}</div>
+        <div class="bwhy">${esc(agentSessionWords(s.name))}: ${esc(s.claude.task || "waiting for you to answer it")}</div>
         <div class="bfoot"><span>on ${esc(s.node || "this machine")}</span>
           <span class="acts"><a href="#" data-bask="${esc(s.name)}">Open it</a></span></div></div>`),
     ...waiting.map(p => `<div class="bnote ask">
@@ -513,11 +584,13 @@ function drawBell(){
   // A short list (R218 step 6): what waits on an answer, what needs doing,
   // then the latest five of what the page said, and See all for the rest
   // and the account's whole record on the Notifications page.
-  const seeAll = `<div class="bfootbar"><button type="button" id="bellAll">See all</button></div>`;
-  panel.innerHTML = (answer.length + needs.length + said.length
+  // ...headed as the doctor's and the gear's are (the operator, 22 Oct),
+  // See all at the head's right where the eye starts.
+  const head = `<div class="popbar"><b>Notifications</b><button type="button" id="bellAll">See all</button></div>`;
+  panel.innerHTML = head + (answer.length + needs.length + said.length
     ? group("Waiting on you", answer) + group("Needs attention", needs)
       + group("Recent", said.slice(0, 5), `<button type="button" id="bellClear">Clear</button>`, said.length)
-    : `<div class="bempty">nothing to report</div>`) + putAway + seeAll;
+    : `<div class="bempty">nothing to report</div>`) + putAway;
   // Any press in the drawer closes it, after the press's own handler has
   // run (the operator, 7 Oct): Approve, Deny, an invitation's answer, Clear,
   // a link to where a row is about. One listener on the drawer, so a row
@@ -635,6 +708,12 @@ function wireNeeds(root, after = () => {}){
     sectOpen["git:ci"] = true;
     openNotebook(a.dataset.bci, "git");
   });
+  // ...and a release's signing to the project's Signing view (R106).
+  root.querySelectorAll("[data-bsign]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    openNotebook(a.dataset.bsign, "signing");
+  });
   // To the node the row is about, at the control it is about (Update agent
   // in its head bar): the press itself
   // stays there, beside the state line that says what it does.
@@ -648,6 +727,23 @@ function wireNeeds(root, after = () => {}){
     e.preventDefault();
     after();
     openToolchainsOn(a.dataset.btc);
+  });
+  // ...and a coding agent's update to that node's Agents page (R95).
+  root.querySelectorAll("[data-b2fa]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    openProfileTwoFactor();
+  });
+  root.querySelectorAll("[data-bag]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    openAgentsOn(a.dataset.bag);
+  });
+  // ...and a node short of room to its Storage page.
+  root.querySelectorAll("[data-bstorage]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    after();
+    openStorageTab(a.dataset.bstorage || "");
   });
   // ...and a container update to the Docker tab on that node.
   root.querySelectorAll("[data-bdocker]").forEach(a => a.onclick = e => {

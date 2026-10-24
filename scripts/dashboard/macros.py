@@ -16,6 +16,8 @@ import re
 import shlex
 from pathlib import Path
 
+import agents
+
 # Every command the UI can run, by name. The UI posts a key from this table and
 # nothing else: no argument passthrough, no shell. A dashboard that accepted a
 # command string would be a remote shell with extra steps, and there is already
@@ -305,6 +307,14 @@ def press(session, key, on_node):
             cmd = ["send-keys", "-t", session, "-X", "page-down"] if mode == "1" \
                 else ["send-keys", "-t", session, "NPage"]
         return run(["tmux", *cmd], timeout=10), 200
+    # Any other key is meant for the program, so a pane scrolled back into
+    # copy mode leaves it first: there an arrow moved tmux's cursor over the
+    # history and a letter did nothing, and the program never heard either
+    # (the operator, 23 Oct, at Codex's approval list).
+    if key in TMUX_KEYS or key in TMUX_LITERALS:
+        mode = run(["tmux", "display-message", "-p", "-t", session, "#{pane_in_mode}"], timeout=10)
+        if mode["out"].strip() == "1":
+            run(["tmux", "send-keys", "-t", session, "-X", "cancel"], timeout=10)
     if key in TMUX_KEYS:
         return run(["tmux", "send-keys", "-t", session, TMUX_KEYS[key]], timeout=10), 200
     if key in TMUX_LITERALS:
@@ -357,10 +367,11 @@ def send(session, name, cid, on_node):
         return {"error": f"unknown macro: {name}"}, 400
     if session not in {s["name"] for s in tmux_sessions()} and not on_node:
         return {"error": f"no such session: {session}"}, 400
-    # Never into a Claude session: that would not run the command, it would
-    # submit it as a prompt.
-    if tmux_base(session).startswith("claude-"):
-        return {"error": "refusing to type into a Claude session"}, 400
+    # Never into an agent's session: that would not run the command, it
+    # would submit it as a prompt.
+    agent, _stem = agents.of_session(tmux_base(session))
+    if agent:
+        return {"error": f"refusing to type into a {agent.name} session"}, 400
     sent = lines[0] if len(lines) == 1 else f"{len(lines)} commands"
     if on_node:
         # A shell on the node: the same lines, through its agent.

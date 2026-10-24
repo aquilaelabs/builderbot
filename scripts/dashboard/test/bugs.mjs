@@ -30,13 +30,13 @@ const row = n => `.pgrid .pcard[data-row="${n}"]`;   // the project's card on th
 await page.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(page);
 await nbGo(page, 'bugs');
-await page.waitForFunction(() => /^nothing reported$/.test(
-  document.getElementById('bugHint')?.textContent || ''), { timeout: 15000 });
-ok(await page.$eval('#bugList .nbempty', e => /reaches every Claude session/.test(e.textContent)),
-   'the Bugs tab opens empty: its head a fragment, and where reports end up its empty state (R119 step 4)');
+await page.waitForSelector('#bugList .nbempty', { timeout: 15000 });
+ok(await page.$eval('#bugList .nbempty', e => /reaches every session in this project/.test(e.textContent))
+   && !(await page.$('#bugHint .tile')) && await page.$eval('#bugNew', b => b.checkVisibility() && b.classList.contains('primary')),
+   'the Bugs tab opens empty: no tiles of zeros, Report a bug on its control row, and where reports end up its empty state (R119 step 4, R109)');
 
 // ---- reporting one from the panel -----------------------------------------
-await page.click('#bugAdd button');
+await page.click('#bugNew');
 await page.waitForSelector('.bugform', { timeout: 10000 });
 ok(await page.evaluate(() => document.activeElement?.tagName !== 'INPUT'),
    'the form opens without a cursor in it, like everything else here');
@@ -99,11 +99,11 @@ ok(true, 'the tab picks up what a session filed');
 // ---- closing one, with the note that is the point --------------------------
 page.dialogs = [];
 // The note is typed in the row (R254 step 6), not in the browser's prompt.
-await page.evaluate(() => { window.__prompted = false; window.prompt = () => { window.__prompted = true; return null; }; });
+// (no question modal, either: page.dialogs, emptied above, stays empty)
 await openFold(page, '#bugList .bug[data-id="1"]');
 await page.click('#bugList .bug[data-id="1"] .bFix');
 await page.waitForSelector('#bugList .bug[data-id="1"] .dropbox textarea', { timeout: 5000 });
-ok(!(await page.evaluate(() => window.__prompted)) && /Close as fixed/.test(await page.$eval('#bugList .bug[data-id="1"] .dropbox .primary', b => b.textContent)),
+ok(page.dialogs.length === 0 && /Close as fixed/.test(await page.$eval('#bugList .bug[data-id="1"] .dropbox .primary', b => b.textContent)),
    'closing asks for its note in the row, not in a browser prompt');
 await page.fill('#bugList .bug[data-id="1"] .dropbox textarea', 'the select re-measures on rotate now');
 await page.click('#bugList .bug[data-id="1"] .dropbox .primary');

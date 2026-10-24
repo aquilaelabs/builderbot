@@ -32,6 +32,7 @@ NAME_MAX = 60
 USERS = None                    # () -> users.load(): who an account is, by uid
 ACCESS = None                   # (account, project) -> "rw" | "r" | "": the editor's door, ftp.access_for
 PROJECTS = None                 # (account) -> [project names this account may see]
+FLAGS = None                    # (account, project) -> {archived, locked, locked_why}: projects.app_flags
 WAIT_MAX = 25                   # seconds a device's long poll is held
 # The door's compatibility window (R270 step 9, R79 step 8), as the agent's:
 # an app says which door it speaks in X-BB-Door (none is 1) and which app and
@@ -60,9 +61,9 @@ def door_refused(said, app=""):
             "update the app from the Apps page, or let it update itself")
 
 
-def configure(*, users, access=None, projects=None):
-    global USERS, ACCESS, PROJECTS
-    USERS, ACCESS, PROJECTS = users, access, projects
+def configure(*, users, access=None, projects=None, flags=None):
+    global USERS, ACCESS, PROJECTS, FLAGS
+    USERS, ACCESS, PROJECTS, FLAGS = users, access, projects, flags
     wssync.configure_devices(name_of=_name_of)
 
 
@@ -208,13 +209,15 @@ def verb(name, auth, req):
         for p in (PROJECTS(auth["account"]) if PROJECTS else []):
             a = _access(auth, p)
             if a:
-                out.append({"project": p, "access": a, "rev": wssync.rev_of(p)})
+                # ...with its archive and lock (R128), for the app's list.
+                out.append({"project": p, "access": a, "rev": wssync.rev_of(p),
+                            **(FLAGS(auth["account"], p) if FLAGS else {})})
         return {"projects": out, "door": DOOR, "door_min": DOOR_MIN}, 200
     if name == "sync":
         act, project = str(req.get("action") or ""), str(req.get("project") or "")
         if not _access(auth, project):
             return {"error": f"{project or 'that project'} is not one this account may edit or read from an app: "
-                             "its editor access is set in the project's settings"}, 403
+                             "your roles give no File access there, or its owner closed it to editors and apps"}, 403
         if act == "state":
             return wssync.state(_nid(auth), project)
         if act == "since":

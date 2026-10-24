@@ -44,6 +44,11 @@ ok(await page.evaluate(() => sessionOf(tabOf(panes[1]).arg) === 'shell-9' && doc
 await page.evaluate(() => sendKey('pgup'));
 await page.waitForFunction(() => true); await sleep(300);
 ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '1', 'PgUp at a prompt enters copy mode (scrolls back)');
+// Any other key is the program's: it leaves copy mode first, where an arrow
+// moved tmux's cursor over the history and the program heard nothing (B254).
+await page.evaluate(() => sendKey('down')); await sleep(300);
+ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '0', "...and the keys row's arrow leaves it, for the program");
+await page.evaluate(() => sendKey('pgup')); await sleep(300);
 await page.evaluate(() => sendKey('pgdn')); await sleep(300);
 ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '0', 'PgDn back at the bottom leaves copy mode by itself');
 ok((await row('shell-9').locator('.pill.ok').textContent()).trim() === 'on screen', 'its row says it is on screen');
@@ -252,22 +257,22 @@ ok((await page.$eval('.sesstbl .sessrow[data-sess="claude-ep_silon"] .td:nth-chi
 // lit by color rather than by being a filled button.
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.pgrid .pcard[data-row="ep.silon"] [data-c]', { timeout: 15000 });
-ok(await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-c]', b => b.textContent.trim() === 'Open Claude' && b.classList.contains('primary')),
-   'dotted project: Claude button knows the session is running (Open Claude, green)');
+ok(await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-c]', b => b.textContent.trim() === 'Manage agent' && b.classList.contains('primary')),
+   'dotted project: the agent button knows the session is running (Manage agent, green)');
 {
   const idle = await page.evaluate(() => [...document.querySelectorAll('.pgrid .pcard [data-c]')]
     .filter(b => !liveSessions().has(myClaude(b.dataset.c))).map(b => [b.textContent.trim(), b.classList.contains('primary')]));
-  ok(idle.length > 0 && idle.every(([t, green]) => t === 'Start Claude' && !green),
-     `...and one with no session of yours says Start Claude, not green (${JSON.stringify(idle.slice(0, 3))})`);
+  ok(idle.length > 0 && idle.every(([t, green]) => t === 'Start agent' && !green),
+     `...and one with no session of yours says Start agent, not green (${JSON.stringify(idle.slice(0, 3))})`);
 }
 await page.evaluate(() => railGo('sessions'));
 await page.click('.sesstbl [data-go="claude-ep_silon"]');
 await page.waitForFunction(() => tabs.some(t => t.arg === 'claude:ep.silon'));
 ok(true, 'dotted project: reopening from Sessions maps back to claude:ep.silon');
 ok(await page.evaluate(() => sessionOf('claude:ep.silon') === 'claude-ep_silon' && sessionOf('sh:2:ep.silon') === 'shell-ep_silon-2'), 'sessionOf applies the tmux rewrite');
-// ...and another account's session on the same project, which the lock
-// ends too: every Claude session there goes, whoever's and wherever it
-// runs, and the question names who is running one (the operator, 29 Sep).
+// ...and another account's session on the same project, which its owner's
+// lock ends (R119): every session but the owner's goes, wherever it runs,
+// and the question says so (the operator, 23 Oct).
 await page.evaluate(async () => (await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ action: 'add', name: 'w.lock', password: 'w.lock-pass-1', role: 'user' }) })).json());
 await member('w.lock');
@@ -284,16 +289,21 @@ const ndx = page.dialogs.length;
 // Code; a running session is never reaped on that any more.
 await page.waitForFunction(() => withMe('ep.silon').includes(state.me), { timeout: 30000 });
 await unfold(page, 'ep.silon');
-await page.waitForSelector('.pgrid .pcard[data-row="ep.silon"] [data-k]', { state: 'visible', timeout: 10000 });
-await page.click('.pgrid .pcard[data-row="ep.silon"] [data-k]');            // lock: asks, then the server ends the sessions
-await page.waitForFunction(() => !state.sessions.some(s => s.name === 'claude-ep_silon'), { timeout: 15000 });
+await page.waitForSelector('.pgrid .pcard[data-row="ep.silon"] [data-lock]', { state: 'visible', timeout: 10000 });
+const lockSaid = await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-lock]', b => b.textContent.trim());
+const lockAnswer = page.waitForResponse(r => r.url().includes('/api/lock'), { timeout: 15000 })
+  .then(r => r.text()).catch(e => `no answer: ${e.message.split('\n')[0]}`);
+await page.click('.pgrid .pcard[data-row="ep.silon"] [data-lock]');         // lock: asks, then the server ends the others' sessions
+const lockSaidBack = await lockAnswer;
+// The question is the page's modal, answered a moment after the press.
+for (let i = 0; i < 40 && page.dialogs.length <= ndx; i++) await sleep(100);
 const gone = n => { for (let i = 0; i < 20; i++){ try { execFileSync('tmux', ['has-session', '-t', '=' + n], { stdio: 'ignore' }); } catch { return true; } execFileSync('sleep', ['0.25']); } return false; };
-// Either wording is the design's: the other account's session is named when
-// the poll has seen it by the click, and that is timing (B388).
-ok(page.dialogs.length === ndx + 1 && /Your Claude session here ends now|2 Claude sessions here end now: yours, w\.lock\./.test(page.dialogs[ndx]) && /Archive ep\.silon\?/.test(page.dialogs[ndx])
-   && !(await page.evaluate(() => tabs.some(t => t.arg === 'claude:ep.silon'))) && gone('claude-ep_silon') && gone(`${lockUid}~claude-ep_silon`),
-   `dotted project: archiving it asks, naming the sessions running there, ends every one of them and drops its tab (${(page.dialogs[ndx] || '').split('\n')[2]})`);
+const lockGone = [gone(`${lockUid}~claude-ep_silon`), gone('claude-ep_silon')];
+ok(lockSaid === 'Lock' && page.dialogs.length === ndx + 1 && /Every session here but yours ends now/.test(page.dialogs[ndx]) && /Lock ep\.silon\?/.test(page.dialogs[ndx])
+   && lockGone[0] && !lockGone[1],
+   `dotted project: its owner locking it asks, ends the other account's session and keeps the owner's (${lockSaid}; ${page.dialogs.length - ndx} asked; gone ${lockGone}; ${lockSaidBack.slice(0, 200)}; ${(page.dialogs[ndx] || '').split('\n')[2]})`);
 await page.evaluate(() => setLocked('ep.silon', false));      // and unlock it again
+tmuxKill('claude-ep_silon');                                  // what follows starts with none
 // Its Claude button back: Start Claude, or Install Claude where the stub
 // node says it carries no Claude Code (the operator, 21 Oct).
 await page.waitForFunction(() => document.querySelector('.pgrid .pcard[data-row="ep.silon"] :is([data-c], [data-tcinst])'), { timeout: 15000 });
@@ -483,6 +493,16 @@ mkdirSync(`${DIR}/home/.claude/projects/${`${DIR}/ws/alpha`.replace(/\//g, '-')}
 writeFileSync(`${DIR}/home/.claude/projects/${`${DIR}/ws/alpha`.replace(/\//g, '-')}`
               + '/bbbbbbbb-0000-4000-8000-00000000c0de.jsonl',
               '{"type":"user","message":{"role":"user","content":"hello"}}\n');
+// Another agent's last conversation is offered back as Claude's is (the
+// operator, 23 Oct): the row carries each one's newest, from the <agent>/
+// folder its Stop hook copies a session's log into.
+mkdirSync(`${DIR}/home/.claude/projects/${`${DIR}/ws/alpha`.replace(/\//g, '-')}/codex`, { recursive: true });
+writeFileSync(`${DIR}/home/.claude/projects/${`${DIR}/ws/alpha`.replace(/\//g, '-')}/codex/01a168f4-0000-7000-8000-00000000c0de.jsonl`,
+              '{"type":"session_meta"}\n');
+const lastCodex = await phone.waitForFunction(() => (state?.projects || []).find(x => x.name === 'alpha')?.last_agents?.codex?.id || null,
+                                              null, { timeout: 20000 }).then(h => h.jsonValue()).catch(() => null);
+ok(lastCodex === '01a168f4-0000-7000-8000-00000000c0de',
+   `a project's row carries ChatGPT's last conversation for its Resume (${lastCodex})`);
 const chooserReady = () => phone.evaluate(() => {
   const p = (state?.projects || []).find(x => x.name === 'alpha');
   return { last_claude: !!p?.last_claude, why: p?.session_why || '',
@@ -504,7 +524,7 @@ await phone.waitForSelector('.resumemenu', { timeout: 5000 }).catch(async () => 
 });
 const chooser = await phone.$eval('.resumemenu', el => ({ shown: getComputedStyle(el).display !== 'none',
   buttons: [...el.querySelectorAll('button')].map(b => b.textContent.trim()), text: el.textContent.trim().slice(0, 120) }));
-ok(chooser.shown && chooser.buttons.length === 2 && /^Resume/.test(chooser.buttons[0]) && chooser.buttons[1] === 'New conversation',
+ok(chooser.shown && chooser.buttons.length === 2 && /^Resume/.test(chooser.buttons[0]) && chooser.buttons[1] === 'New',
    `phone: Claude on a project with history shows the Resume/New chooser (${chooser.buttons.join(' | ') || chooser.text})`);
 // ...where it can be seen. The sidebar scrolls, the chooser is placed inside
 // the card, and pressing Claude on a project whose session has ended opens

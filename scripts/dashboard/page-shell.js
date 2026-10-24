@@ -23,19 +23,26 @@ const RAIL_ICONS = {
   people: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.2" cy="5.6" r="2.3"/><path d="M2.4 13c.3-2.6 1.9-4 3.8-4s3.5 1.4 3.8 4"/><circle cx="11.2" cy="6.2" r="1.8"/><path d="M10.4 9.6c1.9 0 3 1.3 3.2 3.4"/></svg>`,
   settings: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.6 1.9h2.8l.35 1.72 1.2.7 1.66-.57 1.4 2.42-1.3 1.16v1.4l1.3 1.16-1.4 2.42-1.66-.57-1.2.7-.35 1.72H6.6l-.35-1.72-1.2-.7-1.66.57-1.4-2.42 1.3-1.16v-1.4L1.99 6.17l1.4-2.42 1.66.57 1.2-.7z"/><circle cx="8" cy="8" r="2.1"/></svg>`,
   more: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg>`,
+  // A server: two units in a rack, each with its light.
+  controller: `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.8" width="11" height="4.4" rx="1"/><rect x="2.5" y="8.8" width="11" height="4.4" rx="1"/><circle cx="5" cy="5" r=".6"/><circle cx="5" cy="11" r=".6"/><path d="M8 5h3.5M8 11h3.5"/></svg>`,
   help: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.8"/><path d="M6.3 6.4a1.75 1.75 0 1 1 2.5 1.6c-.55.27-.8.66-.8 1.2v.3"/><path d="M8 11.3v.1"/></svg>`,
 };
 
-// The ten groups, in the rail's order (the design's rail rule); Help, the
+// The eleven groups, in the rail's order (the design's rail rule); Help, the
 // docs, last (R258). A group's
 // tools are the tab kinds it holds, the first the one its button opens; a
 // group with several draws them as the page's sub-nav.
 const RAIL = [
   {key: "home", label: "Home", icon: "home", tools: [["home", "Home"]]},
   {key: "projects", label: "Projects", icon: "projects", tools: [["projects", "Projects"], ["findings", "Analysis"]]},
-  {key: "build", label: "Build", icon: "toolchains", tools: [["toolchains", "Toolchains"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"], ["apps", "Apps"]]},
+  {key: "build", label: "Build", icon: "toolchains", tools: [["toolchains", "Toolchains"], ["agents", "Agents"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"], ["apps", "Apps"]]},
   {key: "containers", label: "Containers", icon: "docker", tools: [["docker", "Containers"], ["vms", "VMs"], ["nginx", "nginx"]]},
-  {key: "machines", label: "Machines", icon: "nodes", tools: [["settings", "Controller"], ["nodes", "Nodes"], ["storage", "Storage"]]},
+  // The controller, a group of its own (the operator, 22 Oct): how this
+  // BuilderBot behaves, with room for the pages a bare-metal install and
+  // the USB edition add beside Settings (R90, R56). After Containers, so a
+  // phone's bar keeps its four.
+  {key: "controller", label: "Controller", icon: "controller", tools: [["settings", "Settings"]]},
+  {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"]]},
   {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
   {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"]]},
   {key: "people", label: "People", icon: "people", tools: [["users", "Users"], ["roles", "Roles"]], admin: true},
@@ -66,6 +73,9 @@ function railAllows(kind){
     case "users": case "roles": return !!a.accounts;
     // The Emulator's images are the toolchain store's, so the same area.
     case "toolchains": case "emulator": return !!a.toolchains;
+    // The coding agents on a node (R95): installed as a toolchain is, and
+    // signed in to by whoever works there, so either area draws it.
+    case "agents": return !!a.toolchains || !!a.nodes;
     case "jobs": return !!a.jobs;
     // The nginx tab is the Nodes tab's area (R171); Storage its own (R169).
     case "nodes": case "nginx": return !!a.nodes;
@@ -78,8 +88,7 @@ function railGroups(){
   return RAIL.filter(g => (g.tools || []).some(([k]) => railAllows(k)));
 }
 // The page a group opens on: the one asked for when this account may open
-// it, else the group's first that it may. Machines opens Nodes for an
-// account the Controller page is not drawn for.
+// it, else the group's first that it may.
 function railTool(g, want){
   const ok = (g.tools || []).filter(([k]) => railAllows(k)).map(([k]) => k);
   return want && ok.includes(want) ? want : ok[0] || "";
@@ -105,7 +114,7 @@ const OPENERS = {
   home: () => openHome(),
   projects: () => openProjectsTab(), findings: () => openFindingsTab(), docker: () => openDocker(),
   nodes: () => openNodesTab(), storage: () => openStorageTab(), nginx: () => openNginxTab(), vms: () => openVmsTab(),
-  toolchains: () => openToolchains(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
+  toolchains: () => openToolchains(), agents: () => openAgentsTab(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
   runner: () => openRunnerTab(), jobs: () => openJobsTab(), users: () => openUsersTab(),
   roles: () => openRolesTab(), settings: () => openSettingsTab(), profile: () => openProfileTab(),
   apps: () => openAppsTab(),
@@ -130,7 +139,7 @@ function railGo(key, tool){
 // The Jobs page has no node; its second segment is the chip it is narrowed
 // to (#/jobs/failed-today, which Home's "failed today" opens, B74).
 const NODE_PICKED = {jobs: () => jobsShow, nodes: () => nodesPick, storage: () => storageNode, nginx: () => nginxNode,
-  toolchains: () => tcNode === "local" ? "" : tcNode, emulator: () => emuNode, phone: () => phNode,
+  toolchains: () => tcNode === "local" ? "" : tcNode, agents: () => agNode, emulator: () => emuNode, phone: () => phNode,
   runner: () => runnerNode, docker: () => dockerNode};
 // Toolchains' "local" (the controller's own store, for a shell and the
 // suite) is no node, so an address naming it opens on the node tcPick picks.
@@ -139,6 +148,7 @@ const NODE_PICKED = {jobs: () => jobsShow, nodes: () => nodesPick, storage: () =
 const NODE_SET = {jobs: v => jobsShowSet(v), nodes: v => { nodesPick = v; }, storage: v => { storageNode = v; }, nginx: v => { nginxNode = v; },
   toolchains: v => { const n = v === "local" ? "" : v;
                      if (n !== tcNode){ tcNode = n; toolchains = null; tcTicked.clear(); tcDriverPick = ""; } },
+  agents: v => { if (v !== agNode){ agNode = v; agRows = null; } },
   emulator: v => { if (v !== emuNode){ emuNode = v; emu = null; emuTicked.clear(); } },
   phone: v => { if (v !== phNode){ phNode = v; phIp = ""; } },
   runner: v => { runnerNode = v; },
@@ -176,6 +186,9 @@ function routeOf(t){
   if (t.kind === "help") return "#/help" + (helpCur && helpCur !== helpIndex?.home ? "/" + encodeURIComponent(helpCur) : "");
   const g = groupOf(t.kind);
   if (!g) return "";
+  // Home is #/home, the address everything links to, though its group
+  // holds Controller settings too.
+  if (t.kind === "home") return "#/home";
   const node = NODE_PICKED[t.kind]?.() || "";
   return ((g.tools || []).length > 1 ? `#/${g.key}/${t.kind}` : `#/${g.key}`) + (node ? "/" + encodeURIComponent(node) : "");
 }
@@ -209,8 +222,12 @@ function openRoute(hash){
     if (helpIndex && helpCur) helpRead(helpCur);
     return true;
   }
-  const g = RAIL.find(x => x.key === key);
+  let g = RAIL.find(x => x.key === key);
   if (!g) return false;
+  // A page that moved group keeps its old address: #/machines/settings and
+  // #/home/settings, bookmarks from before Controller settings had a group
+  // of its own, open it there.
+  if (a && !(g.tools || []).some(([k]) => k === a) && groupOf(a)) g = groupOf(a);
   const multi = (g.tools || []).length > 1;
   // A group of one tool names its node second (#/group/NODE), as routeOf
   // writes it.
@@ -227,8 +244,15 @@ function openRoute(hash){
 
 // The address follows the page on show (render calls this): replaced, not
 // pushed, so a poll's redraw is not a history entry; a rail press pushes.
+// The address it last left, or null before the first: one that has changed
+// since, and is not the page on show, is a navigation whose hashchange has
+// not run yet, and is left for it. Replacing it took the address back to the
+// page being left, which the handler then opened (B303).
+let shellSeen = null;
 function shellSync(){
   const to = routeOf(tabOf(panes[0]));
+  if (shellSeen !== null && location.hash && location.hash !== shellSeen && location.hash !== to) return;
+  shellSeen = to || "";
   if (to && to !== location.hash) history.replaceState(null, "", to);
   // A document in front has no address: the page's goes, so a reload lands
   // on the document this browser had in front (R131), not on the last page.

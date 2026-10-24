@@ -40,7 +40,7 @@ import urllib.parse
 import zipfile
 from pathlib import Path
 
-from names import claude_session
+import membership
 
 # Which git host a remote is on, and the two things a host can be asked that
 # git cannot: whether a token is real, and creating an empty repository. A
@@ -214,9 +214,6 @@ first_version = None
 lock = None
 take_on = None
 set_prefs = None
-# ...and a lock's, which ends the project's own Claude session: this
-# container's tmux sessions (the server's tmux_sessions).
-live_sessions = None
 # brief.write: the brief a new project is made with, kept in its tree for the
 # first Claude session rather than written into CLAUDE.md.
 brief_writer = None
@@ -1949,7 +1946,7 @@ def create_from_dialog(req, *, env, account, may_node):
         r = set_prefs(name, devbuild=str(devbuild))
         if r.get("error"):
             body["note"] = f"{body.get('note') or 'ready'}; Run its container not set: {r['error']}"
-    # ...and the rest of Claude may, each only where it differs from the
+    # ...and the rest of Agents may, each only where it differs from the
     # default a project gets anyway.
     for key, dflt, label in (("sign", "ask", "Sign a build"), ("keys", "ask", "Manage signing keys"),
                              ("release", "ask", "Tag and publish a release"),
@@ -1959,18 +1956,9 @@ def create_from_dialog(req, *, env, account, may_node):
             r = set_prefs(name, **{key: str(v)})
             if r.get("error"):
                 body["note"] = f"{body.get('note') or 'ready'}; {label} not set: {r['error']}"
-    # Pinned on arrival, once anything has ever been pinned. Without this a
-    # project made while a pins file exists is absent from it, so it lands
-    # on disk and never reaches Home: created, and apparently gone.
-    # No file still means "all of them", so there is nothing to write then
-    # and writing one would turn the first create into an unasked-for
-    # decision about every other project.
-    with lock:
-        try:
-            pin_new_project(name)
-        except OSError:
-            pass                  # the project exists; its pin is not
-                                  # worth failing the create over
+    # Not pinned: what Home shows is each person's to choose (the operator,
+    # 23 Oct), and the Projects page shows every project, pinned or not. An
+    # account that has never pinned anything still sees all of them there.
     # A clone that failed while the lines above ran was put away before its
     # owner and settings were written: they go now too (B95).
     if not registry.get(name) and unmade:
@@ -2036,16 +2024,6 @@ def save_project_pins(uid, names):
     d[str(uid or "")] = sorted(set(names))
     write_json(_pins_file(), d)
 
-
-def pin_new_project(name):
-    """A project made after anything has been pinned is pinned for everyone
-    who has a set: absent from theirs it would land on disk and never reach
-    their Home, created and apparently gone. Nothing to write while no
-    account has a set, since no file means all of them."""
-    d = _load_pins()
-    if not d:
-        return
-    write_json(_pins_file(), {k: sorted(set(v) | {name}) for k, v in d.items()})
 
 def pin(uid, name, on, fresh=False):
     """Pin or unpin a project for one account, once the server has let a
@@ -2183,85 +2161,127 @@ def delete_group(uid, name):
 # ---------------------------------------------------------------------------
 # the locks
 
-# Locked projects live on the /config volume so the list survives the image
-# updates this container is built to expect. bb-tty reads the same file; a
-# rule only the dashboard honored would be advice, since the terminal URL is
-# reachable on its own.
+# Two lists on the /config volume, keyed by the project's directory, so a
+# rename (which moves only the name it is shown under) carries both (R119,
+# the operator, 23 Oct).
 #
-# There used to be two of these. "Excluded" meant "this is not a project, stop
-# showing it work" and locked meant "this one is mine to run", and the operator
-# found the distinction too fine to be worth two buttons that looked alike and
-# sat next to each other. Locked is the survivor and it carries the whole
-# meaning now: no session starts here, the notebook is readable but not
-# writable, and nothing may be created in the project on Claude's behalf. What
-# it does NOT touch is everything the operator does themselves: the artifacts,
-# a dev instance, the findings and their history.
+# ARCHIVED is out of sight and nothing else: the card folds into Archived at
+# the foot of the Projects page and leaves Home's pinned ones, and the project
+# keeps working for everybody on it. The project's owner or an administrator
+# archives one.
+#
+# LOCKED comes in two kinds (the operator, 23 Oct). Its owner's: nobody else
+# starts a session in it or writes to it, administrators included, and the
+# owner works on as before; the owner locks and unlocks it. An
+# administrator's: nobody at all, its owner included, until an administrator
+# unlocks it. {name: {by, admin}}. bb-tty asks the same answer of `bb
+# settings`, because a rule only the dashboard honored would be advice: the
+# terminal's URL is reachable on its own.
 def _locks_file():
     return STATE / "locked-projects.json"
 
 
-def load_locks():
+def _archived_file():
+    return STATE / "archived-projects.json"
+
+
+def _names(f):
     try:
-        v = json.loads(_locks_file().read_text())
+        v = json.loads(f.read_text())
         return sorted({x for x in v if isinstance(x, str)}) if isinstance(v, list) else []
     except (OSError, ValueError):
         return []
 
 
-def save_locks(names):
-    write_json(_locks_file(), sorted(set(names)))
-
-
-# What a locked project refuses, in one place.
-#
-# The button being hidden is not the rule; this is. The dashboard's own URLs
-# are reachable without it, so a lock enforced only by a missing control is
-# advice. That is the same reasoning that put the lock file where bb-tty can
-# read it rather than keeping it in the page.
-#
-# READS are never refused, and the list of what stays is the point of the
-# feature: the notebook opens, the findings and their history are there, the
-# artifacts list and a dev instance still work. What goes is everything that
-# writes on Claude's behalf: the notebook's three tabs.
-LOCKED_REFUSAL = ("{name} is archived: yours to run. Unarchive it, in its "
-                  "menu, to change its notebook; everything you read here "
-                  "still works while it stays archived.")
-
-
-def locked_out(name):
-    """The refusal for a write into a locked project, or None."""
-    if name and name in set(load_locks()):
-        return {"error": LOCKED_REFUSAL.format(name=name)}
-    return None
-
-
-def lock_verb(name, on):
-    """Lock or unlock a project, once the server has let this person: keep
-    it, stop Claude running in it. A name-checked write, and the
-    enforcement is deliberately not this function's: bb-tty reads the
-    file, because a rule only this UI honors is a suggestion when the ttyd
-    URL is reachable directly. (payload, status)."""
+def load_locks():
+    """{name: {by, admin}}: every locked project and whose lock it is."""
     try:
-        here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
+        v = json.loads(_locks_file().read_text())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(v, dict):
+        return {}
+    return {k: {"by": str(r.get("by") or ""), "admin": bool(r.get("admin"))}
+            for k, r in v.items() if isinstance(k, str) and isinstance(r, dict)}
+
+
+def load_archived():
+    return _names(_archived_file())
+
+
+# What a locked project refuses, in one place: every write and every session
+# of anybody it is locked against. The button being hidden is not the rule;
+# this is, and bb-tty's is_locked for the terminal. Reads are never refused.
+LOCKED_REFUSAL = ("{name} is locked by {owner}, its owner: only they start a "
+                  "session in it or change it until they unlock it.")
+HELD_REFUSAL = ("{name} is locked by an administrator: nobody starts a session "
+                "in it or changes it, its owner included, until an administrator "
+                "unlocks it.")
+
+
+def locked_out(name, uid):
+    """The refusal for a write into a locked project by `uid`, or None: an
+    owner's lock never holds the owner, an administrator's holds everybody."""
+    rec = load_locks().get(name or "")
+    if not rec:
+        return None
+    label = registry.label(name) or name
+    if rec["admin"]:
+        return {"error": HELD_REFUSAL.format(name=label)}
+    if uid and uid == membership.owner_of(name):
+        return None
+    return {"error": LOCKED_REFUSAL.format(name=label, owner=membership.owner_name(name) or "its owner")}
+
+
+def _here(name):
+    try:
+        return name in {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
     except OSError:
-        here = set()
-    if name not in here:
+        return False
+
+
+def app_flags(name, uid):
+    """What an app's project list says of a project's archive and lock
+    (R128): the Windows companion's device door and the VS Code extension's
+    Files API, which carry neither otherwise. `locked_why` is the refusal
+    when the lock holds this account out, "" when it does not."""
+    held = locked_out(name, uid)
+    return {"archived": name in set(load_archived()), "locked": name in load_locks(),
+            "locked_why": (held or {}).get("error", "")}
+
+
+def lock_verb(name, on, by="", admin=False):
+    """Lock or unlock a project, once the server has said who may and which
+    kind: a name-checked write. The sessions it ends are the server's to
+    end, which sees every node's. (payload, status)."""
+    if not _here(name):
         return {"error": f"unknown project: {name}"}, 400
     with lock:
-        names = set(load_locks())
-        names.add(name) if on else names.discard(name)
+        locks = load_locks()
+        if on:
+            locks[name] = {"by": by, "admin": bool(admin)}
+        else:
+            locks.pop(name, None)
         try:
-            save_locks(names)
+            write_json(_locks_file(), locks)
         except OSError as e:
             return {"error": f"could not save: {e}"}, 500
-    # A lock that waits for the current session to end is a lock that
-    # did not take, and the button does not say that.
-    killed = None
-    sess = claude_session(name)
-    if on and sess in {x["name"] for x in live_sessions()}:
-        run(["tmux", "kill-session", "-t", sess], timeout=10)
-        killed = sess
-    return {"locked": sorted(names), "killed": killed}, 200
+    return {"locked": name in locks, "admin": bool(locks.get(name, {}).get("admin"))}, 200
+
+
+def archive_verb(name, on):
+    """Archive or unarchive a project, once the server has let this person:
+    out of sight, and nothing else. (payload, status)."""
+    if not _here(name):
+        return {"error": f"unknown project: {name}"}, 400
+    with lock:
+        names = set(load_archived())
+        names.add(name) if on else names.discard(name)
+        try:
+            write_json(_archived_file(), sorted(names))
+        except OSError as e:
+            return {"error": f"could not save: {e}"}, 500
+    return {"archived": name in names}, 200
 
 
 def auth_answer(name):

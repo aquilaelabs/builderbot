@@ -35,10 +35,12 @@ import time
 import http.client
 import urllib.request
 
+import agents
+
 LATEST_URL = (os.environ.get("BB_CLAUDE_LATEST_URL")
               or "https://downloads.claude.ai/claude-code-releases/latest")
 CHECK_DELAY = float(os.environ.get("BB_CLAUDE_CHECK_DELAY") or 20)
-JOB = "claude-update"
+JOB = agents.get("claude").update_job      # "claude-update", from the agent table
 VER = re.compile(r"(\d+\.\d+\.\d+)")
 
 nodes = None               # nodes.py: node, node_list, job_add, jobs_for, session_kill
@@ -178,7 +180,7 @@ def holds(reap=False):
             out[n["id"]] = (f"Claude Code is updating on {n['name']}: its Claude sessions were ended for "
                             "it, and start again from the project rows when it is done")
         elif missing(n) and not reap:
-            out[n["id"]] = (f"Claude Code is not installed on {n['name']}: its Toolchains page installs it")
+            out[n["id"]] = (f"Claude Code is not installed on {n['name']}: its Agents page installs it")
     return out
 
 
@@ -206,7 +208,7 @@ def remove(principal, node_id):
         return {"error": f"a Claude Code job is already queued on {n['name']}"}
     ended = []
     for s in node_sessions() if node_sessions else []:
-        if s.get("node_id") == node_id and tmux_base(s["name"]).startswith("claude-"):
+        if s.get("node_id") == node_id and agents.of_session(tmux_base(s["name"]))[0] is agents.get("claude"):
             r = nodes.session_kill(node_id, s.get("node_name") or s["name"])
             if not r.get("error"):
                 ended.append(s["name"])
@@ -236,7 +238,7 @@ def update(principal, node_id):
     try:
         ended = []
         for s in node_sessions() if node_sessions else []:
-            if s.get("node_id") == node_id and tmux_base(s["name"]).startswith("claude-"):
+            if s.get("node_id") == node_id and agents.of_session(tmux_base(s["name"]))[0] is agents.get("claude"):
                 r = nodes.session_kill(node_id, s.get("node_name") or s["name"])
                 if not r.get("error"):
                     ended.append(s["name"])

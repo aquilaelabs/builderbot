@@ -52,8 +52,13 @@ USAGE = ("bb version [--for DIR] "
          "                                     before it stays)\n"
          "bb version [--for DIR] init X.Y.Z    give one its first VERSION\n"
          "bb version policy                    what a session may move here\n"
+         "bb version forward BRANCH            merge a released patch line (0.6.2) into this branch's\n"
+         "                                     later line: its fixes carried, this line's number kept,\n"
+         "                                     the changelog's sections placed by version\n"
+         "bb version backport COMMIT           a fix from a later line onto this patch line, its\n"
+         "                                     changelog entries under this line's Unreleased\n"
          "bb version [--for DIR] release --why \"...\"   tag this commit and publish the release, as\n"
-         "                                     Release on the Artifacts view does (Claude may: Tag and\n"
+         "                                     Release on the Artifacts view does (Agents may: Tag and\n"
          "                                     publish a release)\n"
          "A section dated under the wrong number: unbump, then set the number you meant.")
 
@@ -138,7 +143,7 @@ if argv and argv[0] == "init":
 if argv and argv[0] == "release":
     # bb version release (R138): the tag on this commit and the forge's
     # release, made on the controller with the project's own credentials,
-    # which this session never holds. Under Claude may: Tag and publish a
+    # which this session never holds. Under Agents may: Tag and publish a
     # release: auto releases at once, ask waits for the project's owner.
     import bbapi
     import waits
@@ -149,7 +154,7 @@ if argv and argv[0] == "release":
     if "-h" in rest or "--help" in rest:
         print('bb version [--for DIR] release --why "..."   tag this commit, push the tag and publish the\n'
               "    forge's release (GitHub, Gitea or GitLab), as Release on the Artifacts view does. Under\n"
-              "    Claude may: Tag and publish a release: auto releases at once, ask waits for the\n"
+              "    Agents may: Tag and publish a release: auto releases at once, ask waits for the\n"
               "    project's owner, deny refuses.\n"
               'bb version [--for DIR] release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...\n'
               "    change the published release: its notes replaced whole (- reads stdin), a file from\n"
@@ -193,11 +198,49 @@ if argv and argv[0] == "release":
         print(f"no release on the forge: {forge['error']}")
     raise SystemExit(0)
 
+if argv and argv[0] == "line":
+    # The release this branch works toward (R112): read, set, or `none` back
+    # to what the branch's name says.
+    if len(argv) > 1:
+        r = version.set_line(proj, "" if argv[1].lower() == "none" else argv[1])
+        if r.get("error"):
+            fail(r["error"])
+    b, ln = version.branch_of(proj), version.line(proj)
+    tgt = (version.target(proj)[0] or "")
+    print(f"{b or 'HEAD'}: " + (f"works toward {ln}, so a build here is {version.render(proj)['forms']['semver']}"
+                               if ln else f"no line: builds take {tgt or 'no version'} from {version.VERSION_FILE}")
+          + ("" if not ln else ("; its bump goes to " + ln)))
+    raise SystemExit(0)
+
+if argv and argv[0] == "forward":
+    # A released patch line merged into this branch's later line (R112 step
+    # 3): its fixes carried, this line's number kept, the changelog stitched.
+    r = version.forward(proj, argv[1] if len(argv) > 1 else "")
+    if r.get("error"):
+        fail(r["error"])
+    print(r.get("said") or "done")
+    for c in r.get("carried", [])[:20]:
+        print(f"  {c}")
+    if r.get("commit"):
+        print(f"committed {r['commit']}")
+    raise SystemExit(0)
+
+if argv and argv[0] == "backport":
+    # A fix made on a later line carried back onto this patch line (R112
+    # step 4), its changelog entries with it.
+    r = version.backport(proj, argv[1] if len(argv) > 1 else "")
+    if r.get("error"):
+        fail(r["error"])
+    print(r.get("said") or "done")
+    if r.get("commit"):
+        print(f"committed {r['commit']}")
+    raise SystemExit(0)
+
 if argv and argv[0] == "policy":
     # Read-only on purpose: a session should be able to see the limit it is
     # held to and never to move it.
     print(f"{proj}: {policy_line()}")
-    print("a person changes this with Claude may: Move the version in the project's settings,"
+    print("a person changes this with Agents may: Move the version in the project's settings,"
           " or on its Artifacts view; bb version set X.Y.Z moves to a later version in one step")
     raise SystemExit(0)
 
@@ -263,7 +306,7 @@ if v["released"]:
     print(f"  tag               {v['tag']}  (on this commit)")
 elif v["target"]:
     print("  not released yet  Release on the Artifacts view, or bb version release "
-          "--why under Claude may: Tag and publish a release, tags this commit and "
+          "--why under Agents may: Tag and publish a release, tags this commit and "
           "pushes it")
 if v["ordinal"] is not None:
     print(f"  ordinal           {v['ordinal']}")

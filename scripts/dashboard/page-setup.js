@@ -91,7 +91,7 @@ function drawSetup(){
            <div class="setrow col ctlrow">${lbl("setEmail", "Your email")}<input id="setEmail" type="email" autocomplete="email" placeholder="ada@example.com"></div></div>`,
       s.git ? "" : `<button type="button" class="primary" data-setgit disabled>Save</button>`)}
     ${card(3, "Claude Code on your node", !!s.claude, false, s.claude
-      ? `<p>${esc(s.claude)} on ${nodeName}. A project's Start Claude signs you in there the first time.</p>`
+      ? `<p>${esc(s.claude)} on ${nodeName}. A project's Start agent signs you in there the first time.</p>`
       : s.node
       ? `<p>What a Claude session on ${nodeName} runs. It installs as a job on the node, a minute or two.</p>`
       : `<p>What a Claude session runs, installed on the node.</p><div class="sub bad setwhy">Once your node answers.</div>`,
@@ -128,7 +128,7 @@ function wireSetup(el, s){
   const cl = el.querySelector("[data-setclaude]");
   if (cl) cl.onclick = async () => {
     busy(cl, "Starting");
-    const r = await postJSON("/api/toolchains", {action: "install", names: ["claude-code"], node: s.node.id});
+    const r = await postJSON("/api/agents", {action: "install", agent: "claude", node: s.node.id});
     const j = await r.json().catch(() => ({}));
     if (!r.ok){ unbusy(cl, "Install"); return notify(j.error || `could not start (HTTP ${r.status})`, true); }
     notifyJob(j.job, `installing Claude Code on ${s.node.name}`);

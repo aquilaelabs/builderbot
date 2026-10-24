@@ -237,7 +237,8 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
   ok(shown.toolchains && !shown.jobs && !shown.nodes && !shown.settings && !shown.users && !shown.roles && !shown.people && !shown.jobsRail,
      `its rail offers Toolchains and leaves out the pages it may not read (${JSON.stringify(shown)})`);
   // Settings is the account's own Profile, open to anybody (the operator,
-  // 19 Oct: Controller settings went to Machines, first).
+  // 19 Oct: Controller settings went to Machines, first; 22 Oct: and then
+  // beside Home).
   // A new account is shown the guide on its first poll; it is put away, as
   // the person would, before the rail is pressed under it.
   await dp.waitForFunction(() => welcomed, null, { timeout: 15000 });
@@ -250,6 +251,30 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
   await dp.close();
   await api('/api/roles', { action: 'assign', name: 'dep', roles: [] });
   await api('/api/roles', { action: 'remove', name: 'tc-viewer' });
+}
+
+// Controller is a rail group of its own (the operator, 22 Oct), after
+// Containers so a phone's bar keeps its four, and an address from before
+// either move still finds it.
+{
+  const before = await page.evaluate(() => location.hash);
+  await page.evaluate(() => railGo('home'));
+  await page.waitForFunction(() => tabOf(panes[0])?.kind === 'home', null, { timeout: 10000 });
+  const homeAt = await page.evaluate(() => location.hash);
+  const rail = await page.evaluate(() => RAIL.map(g => g.key).join());
+  const at = {};
+  for (const old of ['#/machines/settings', '#/home/settings']){
+    await page.evaluate(h => openRoute(h), old);
+    await page.waitForFunction(() => tabOf(panes[0])?.kind === 'settings', null, { timeout: 10000 });
+    at[old] = await page.evaluate(() => `${location.hash} ${document.querySelector('#rail .ritem.on')?.dataset.rail}`);
+    await page.evaluate(() => railGo('home'));
+    await page.waitForFunction(() => tabOf(panes[0])?.kind === 'home', null, { timeout: 10000 });
+  }
+  const phone = await page.evaluate(() => RAIL_PHONE.join());
+  ok(homeAt === '#/home' && rail.startsWith('home,projects,build,containers,controller,machines') && phone === 'home,projects,build,containers'
+     && Object.values(at).every(v => v === '#/controller controller'),
+     `Controller is its own group after Containers, a phone's four unchanged, and both old addresses land on it (${JSON.stringify({ homeAt, rail, phone, at })})`);
+  if (before) await page.evaluate(h => openRoute(h), before);
 }
 
 // Removed, the role goes with it.

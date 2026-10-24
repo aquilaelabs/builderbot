@@ -16,7 +16,7 @@ manager**, which names a container and takes you there; every container of a
 project is built from that project's codebase, and rebuilding takes whatever
 that codebase says at the time. It opens on the project's own name while the
 project has no container and on `<project>-2`, `-3` after, so another one is
-the same press, and a Claude session sends its project the same way with `bb
+the same press, and a session sends its project the same way with `bb
 devapp new`, under the project's **Run its container** setting.
 
 **The page at a glance.** Under the bar, a row of tiles says how many
@@ -177,10 +177,10 @@ project belongs to it until its row says otherwise, one written here belongs
 to the project picked when it was made, and one somebody else started belongs
 to none until an administrator picks a project on its row; that choice is kept
 by name on its node, so the same container recreated keeps it. The project it
-belongs to lists it in its notebook's Docker view, and that project's Claude
+belongs to lists it in its notebook's Docker view, and that project's
 sessions are the only ones that can see it: `bb devapp ls` lists them and `bb
 devapp log NAME` reads one, while rebuilding, changing the env, starting and
-stopping follow that project's *Claude may: Run its container*. An account
+stopping follow that project's *Agents may: Run its container*. An account
 that is not an administrator sees what belongs to its projects.
 
 ## A dev instance built from a project
@@ -332,7 +332,7 @@ since nobody typed a name for it.
 
 **Which project a container belongs to is tracked separately**, and is never
 read out of its name; it is the key it is stored under. That is what decides
-whose Claude session may touch it, so a project can stand up several
+whose sessions may touch it, so a project can stand up several
 containers, name them anything, and still own all of them.
 
 Which compose projects on the daemon are **this dashboard's** is answered the

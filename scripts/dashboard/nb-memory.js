@@ -13,7 +13,7 @@ function nbMemoryView({$, nb}){
       j = await r.json();
     }catch(e){ j = {error: String(e)}; }
     if (gen !== nb.memGen) return;              // closed, or reopened elsewhere
-    if (j.error){ $("memWhere").textContent = "memory: " + j.error; return; }
+    if (j.error){ viewGlance($("memWhere"), [], esc("memory: " + j.error)); return; }
     drawMemory(j);
   }
 
@@ -23,20 +23,19 @@ function nbMemoryView({$, nb}){
   // #26's three exposures, and the quietest.
   nb.memIndexRev = "";
 
-  // The briefing's head row: one line for both halves of the tab, in the
-  // order they sit: the rules, then what Claude remembers. Drawn by whichever
-  // half arrives, so it is right after the first and complete after the second.
+  // The briefing's glance (R109): both halves of the tab counted as tiles,
+  // in the order they sit: the rules, then what Claude remembers. Drawn by
+  // whichever half arrives, so it is right after the first and complete
+  // after the second; a half with none is said on the status line instead.
   function briefingHead(){
     const el = $("memWhere");
     if (!el) return;
-    const r = nb.ruleData?.rules?.length;
-    const bits = [];
-    if (r !== undefined) bits.push(r ? `${r} rule${r === 1 ? "" : "s"}` : "no rules");
-    if (nb.memN !== null) bits.push(nb.memN ? `${nb.memN} ${nb.memN === 1 ? "memory" : "memories"}` : "nothing remembered yet");
-    // Count first, like every view's head (R119 step 4); what the view is
-    // for is its title, there when a pointer asks.
-    if (bits.length) el.textContent = bits.join(" · "); else el.innerHTML = skel("word");
-    el.title = "what every session here starts with";
+    const r = nb.ruleData?.rules?.length, m = nb.memN;
+    if (r === undefined && m === null){ viewGlance(el, [], skel("word")); return; }
+    const none = [r === 0 ? "no rules of its own" : "", m === 0 ? "nothing remembered yet" : ""].filter(Boolean);
+    viewGlance(el, [
+      {label: r === 1 ? "rule" : "rules", value: r, omit: !r},
+      {label: m === 1 ? "memory" : "memories", value: m, omit: !m}], none.join(" · "));
   }
 
   function drawMemory(j){
@@ -268,7 +267,7 @@ function nbMemoryView({$, nb}){
       }
       if (j.error){ notify(j.error, true); return null; }
       return j;
-    }catch(e){ notify("could not reach the server: " + e, true); return null; }
+    }catch(e){ notify("could not reach the server: " + failWords(e), true); return null; }
   }
 
   // One button for the lot: any memory whose text or index line was touched.
@@ -414,7 +413,7 @@ function nbMemoryView({$, nb}){
   }
 
   async function forgetMemory(file){
-    if (!confirm(`Forget ${file}?
+    if (!await askYes(`Forget ${file}?
 
 The file goes, and its line comes out of the`
       + ` index. A running session keeps what it already read.`)) return;

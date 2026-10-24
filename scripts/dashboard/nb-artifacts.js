@@ -33,8 +33,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     try{
       const r = await fetch("/api/artifacts?project=" + encodeURIComponent(project));
       art = await r.json();
-    }catch(e){ hint.textContent = "artifacts: " + e; return; }
-    if (art.error){ hint.textContent = "artifacts: " + art.error; return; }
+    }catch(e){ viewGlance(hint, [], esc("artifacts: " + e)); return; }
+    if (art.error){ viewGlance(hint, [], esc("artifacts: " + art.error)); return; }
     const rows = art.artifacts || [], job = art.push || {}, dev = art.phone;
     const groups = art.branches || [];
     // The code base itself, as a zip through the browser: a navigation, so
@@ -47,9 +47,18 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       : !art.mine ? `connected by ${art.owner?.name || "somebody else"}: only they can push to it or install on it`
       : "";
     const inst = art.install || {};
-    hint.textContent = rows.length
-      ? `${rows.length} in dist/: what this project ships, newest first`
-      : groups.length ? "0 in dist/; built on a branch, below" : "0 in dist/";
+    // The glance (R109): what this project ships, in dist/, and its size;
+    // what was built on a branch, in each account's worktree; and the
+    // captures sessions looked with, kept apart from both.
+    const caps = art.captures || [], onBranches = groups.reduce((n, g) => n + (g.artifacts || []).length, 0);
+    viewGlance(hint, [
+      {label: "in dist/", value: rows.length, sub: rows.length ? humanBytes(rows.reduce((n, a) => n + (a.size || 0), 0)) : ""},
+      {label: "built on branches", value: onBranches, omit: !onBranches},
+      {label: caps.length === 1 ? "capture" : "captures", value: caps.length, omit: !caps.length},
+      // What the last build took on its node, workspace and cache (R110
+      // step 7): the room the next one is checked against.
+      {label: "last build took", value: humanBytes(art.build?.took?.workspace || 0),
+       sub: art.build?.took?.cache ? `cache ${humanBytes(art.build.took.cache)}` : "", omit: !art.build?.took?.workspace}]);
     {
       // Where this project compiles, as a section rather than a loose band:
       // this tab is three subjects stacked, where it builds, what it is
@@ -240,7 +249,6 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     // session is still reading one. Hidden when there are none: nothing to
     // act on.
     const capBox = $("artCaptures");
-    const caps = art.captures || [];
     if (capBox){
       capBox.hidden = !caps.length;
       const days = art.capture_days ?? 7;
@@ -359,7 +367,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     });
     list.querySelectorAll("[data-artunnamed]").forEach(b => b.onclick = async () => {
       const a = rows[+b.dataset.artunnamed];
-      if (!a || !confirm(`Remove ${a.name} from dist/?\n\nIt is gone for everybody.`)) return;
+      if (!a || !await askYes(`Remove ${a.name} from dist/?\n\nIt is gone for everybody.`)) return;
       b.disabled = true;
       try{
         const j = await (await postJSON("/api/artifacts", {project, action: "forget-unnamed", path: a.path})).json();
@@ -488,7 +496,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       const comp = b.dataset.verrelease || "";
       const blk = all.find(x => (x.component || "") === comp);
       const tag = comp ? `${comp}-v${blk?.target}` : `v${blk?.target}`;
-      if (!confirm(`Release ${blk?.target}?\n\n`
+      if (!await askYes(`Release ${blk?.target}?\n\n`
                    + `Tags this commit as ${tag} and pushes the tag; a pushed tag is not moved or deleted from here.`)) return;
       busy(b, "Releasing");
       box.querySelectorAll("button,select").forEach(x => x.disabled = true);
@@ -507,7 +515,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     box.querySelectorAll("[data-verunbump]").forEach(b => b.onclick = async () => {
       const comp = b.dataset.verunbump || "";
       const blk = all.find(x => (x.component || "") === comp);
-      if (!confirm(`Take ${comp ? comp + "'s" : "this project's"} version back `
+      if (!await askYes(`Take ${comp ? comp + "'s" : "this project's"} version back `
                    + `from ${blk?.target} to ${blk?.prev}?\n\n`
                    + `The code stays; ${blk?.target}'s changelog lines return to Unreleased.`)) return;
       box.querySelectorAll("button,select").forEach(x => x.disabled = true);
@@ -534,7 +542,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       // (B92). Anything else saves without a question, as it always has.
       const cost = ver?.window_cost;
       const moves = parts.find(([comp, part]) => !comp && windowMove(part, cost));
-      if (moves && !confirm(
+      if (moves && !await askYes(
             `Bump the ${moves[1]}? This moves the compatibility window.\n\n`
             + `Sessions on ${cost.projects.length} project${cost.projects.length === 1 ? "" : "s"} `
             + `(${cost.projects.join(", ")}) end until each node's agent is updated on the Nodes page.`)) return null;
@@ -696,7 +704,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             pane.querySelector("#clState").textContent =
               `saved: ${a.entries} line${a.entries === 1 ? "" : "s"}`;
             loadVersion();
-          }catch(e){ notify("changelog: " + e, true); }
+          }catch(e){ notify("changelog: " + failWords(e), true); }
           finally{ if (save.isConnected) unbusy(save, "Save"); }
         };
       };
@@ -808,7 +816,7 @@ function nbArtifactsView({$, nb, project, root, sheet}){
       const comp = b.dataset.verask === "@fold"
         ? b.closest(".verinit").querySelector(".vdir").value
         : (b.dataset.verask || "");
-      if (!sendSure(project, comp ? `the version question for ${comp}` : "the version question")) return;
+      if (!await sendSure(project, comp ? `the version question for ${comp}` : "the version question")) return;
       busy(b, "Sending");
       try{
         const r = await postJSON("/api/version", {project, action: "ask", component: comp});
@@ -818,8 +826,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
           notify("Not sent: the session is busy. Press Enter in its tab when it is free.",
                  true);
         }
-        startClaude(project, null);   // opens the tab, or goes to the one there
-      }catch(e){ notify("ask: " + e, true); }
+        openSentTo(project, j.session);   // opens the tab, or goes to the one there
+      }catch(e){ notify("ask: " + failWords(e), true); }
       // finally, not after the try: an exception on the way to the session
       // used to leave this dead, and a button that will not fire twice is
       // indistinguishable from one that did nothing.
@@ -853,8 +861,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
             pattern="[0-9]+\.[0-9]+\.[0-9]+">
           <button type="button" data-veradd>Give it its own version</button>
           <button type="button" data-verask="@fold"
-            title="put the question to this project's Claude session, for
-this directory">Send to Claude</button>
+            title="put the question to this project's session, for
+this directory">Send to ${esc(sendAgent(project).name)}</button>
         </div>
       </details>`;
   }
@@ -964,7 +972,7 @@ this directory">Send to Claude</button>
                 : `stage ${esc(v.next[pt] || "")}; nothing is written until Save`}">
               ${pt[0].toUpperCase() + pt.slice(1)} → ${esc(v.next[pt] || "")}</button>`).join("")}
           <button type="button" data-verask="${esc(v.component || "")}"
-            title="ask the session whether ${esc(v.target)} should move; it proposes and asks first">Send to Claude</button>
+            title="ask the session whether ${esc(v.target)} should move; it proposes and asks first">Send to ${esc(sendAgent(project).name)}</button>
           ${v.prev && !v.sealed ? `
           <button type="button" data-verunbump="${esc(v.component || "")}"
             title="take the version back to ${esc(v.prev)}; ${esc(v.target)}'s changelog lines return to Unreleased">↩ ${esc(v.prev)}</button>` : ""}
@@ -1001,7 +1009,7 @@ this directory">Send to Claude</button>
           </span></div>
         <div class="actbar verbtns">
           <button type="button" data-verask="${esc(v.component || "")}"
-            title="ask the session what the version should be; it proposes and asks first">Send to Claude</button>
+            title="ask the session what the version should be; it proposes and asks first">Send to ${esc(sendAgent(project).name)}</button>
           <button type="button" data-verlog="${esc(v.component || "")}"
             title="entries logged before the first version wait here">Changelog${
             v.unreleased ? ` (${v.unreleased} new)` : ""}</button>
@@ -1022,7 +1030,7 @@ this directory">Send to Claude</button>
     return `<label class="verpol">
       <span>Claude access</span>
       <select id="verPolicy" data-was="${esc(v.policy)}"
-        aria-label="what a Claude session may do with this project's version">
+        aria-label="what a session may do with this project's version">
         ${optionList((v.policies || []).map(o => [o, POLICY_LABEL[o] || o]), verPolicyPending ?? v.policy)}
       </select>${verPolicyPending != null
         ? `<span class="vermark">staged: on Save</span>` : ""}
@@ -1043,7 +1051,7 @@ this directory">Send to Claude</button>
       else if (j.created) notify(`${j.created.component || "this project"} `
                                  + `is now ${j.created.target}`);
       return j;
-    }catch(e){ notify("version: " + e, true); }
+    }catch(e){ notify("version: " + failWords(e), true); }
     finally{ await loadVersion(); }
   }
 
@@ -1052,7 +1060,7 @@ this directory">Send to Claude</button>
       const r = await postJSON("/api/artifacts", {project, ...body});
       const j = await r.json();
       if (j.error){ notify(j.error, true); }
-    }catch(e){ notify("artifacts: " + e, true); }
+    }catch(e){ notify("artifacts: " + failWords(e), true); }
     await loadArtifacts();
   }
 

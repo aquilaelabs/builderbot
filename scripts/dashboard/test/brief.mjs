@@ -113,6 +113,29 @@ ok(!aside.pending && aside.kept?.sent === false && aside.kept.text === 'set this
    && !existsSync(`${DIR}/ws/briefless/BUILDERBOT-BRIEF.md`),
    'Start without it opens a session and puts the brief away unsent, kept outside the tree');
 
+// ---- another agent's first session takes it the same way (R95) ------------------
+// A new Codex conversation on a project with a brief waiting opens the same
+// dialog, with Codex's own models, and Build it opens Codex's session.
+const made3 = await api('/api/create', { name: 'briefcodex', mode: 'init', about: 'Build a minesweeper.', version: '' });
+await refreshUntil(page, () => state?.projects?.find(p => p.name === 'briefcodex')?.brief === true, { timeout: 20000 });
+await page.evaluate(() => openBrief('briefcodex', '', 'codex'));
+await page.waitForFunction(() => !document.getElementById('briefGo').disabled
+  && document.getElementById('briefText').value.length > 0, null, { timeout: 10000 });
+const cx = await page.evaluate(() => ({ title: document.getElementById('briefTitle').textContent,
+  models: [...document.querySelectorAll('#briefModel option')].map(o => o.value) }));
+ok(made3.ok && /Codex|ChatGPT/.test(cx.title) && cx.models[0] === '' && !cx.models.includes('haiku') && cx.models.length > 1,
+   `a Codex first session opens the brief with Codex's own models (${cx.title}; ${cx.models.join(',')})`);
+await page.selectOption('#briefModel', cx.models[1]);
+await page.click('#briefGo');
+await page.waitForSelector('#briefModal', { state: 'hidden', timeout: 10000 });
+await page.waitForFunction(() => tabs.some(t => t.kind === 'term' && t.arg.startsWith(agentArg('codex', 'briefcodex'))), null, { timeout: 10000 });
+const cxStaged = await api('/api/brief?project=briefcodex');
+await refreshUntil(page, `state?.projects?.find(p => p.name === 'briefcodex')?.yours?.codex_model === ${JSON.stringify(cx.models[1])}`, { timeout: 20000 }).catch(() => {});
+ok(cxStaged.staged && cxStaged.text === 'Build a minesweeper.'
+   && await page.evaluate(() => state.projects.find(p => p.name === 'briefcodex').yours?.codex_model) === cx.models[1]
+   && await tabsFor('briefcodex') === 0,
+   `...and Build it stages the brief, saves Codex's model, and opens a Codex session, not Claude's (${cxStaged.error || 'staged'})`);
+
 // ---- the notebook keeps it --------------------------------------------------------
 await page.evaluate(() => openNotebook('briefly', 'briefing'));
 await page.waitForFunction(() => /Sent as the first session's first prompt/.test(

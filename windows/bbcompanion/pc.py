@@ -113,7 +113,7 @@ class Lender:
             rq = urllib.request.Request(url, data=data, method=a.get("method") or "GET",
                                         headers={"Content-Type": "application/json"} if data else {})
             try:
-                with urllib.request.urlopen(rq, timeout=60) as r:          # noqa: S310 (this PC's own port)
+                with urllib.request.urlopen(rq, timeout=60) as r:          # noqa: S310 (this PC's own port)  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
                     return {"ok": True, "text": to_project(_tail(r.read().decode("utf-8", "replace")), folder, project)}
             except urllib.error.HTTPError as e:
                 return {"ok": False, "text": f"{e.code}: {_tail(e.read().decode('utf-8', 'replace'))}"}

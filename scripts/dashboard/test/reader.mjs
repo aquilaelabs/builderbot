@@ -108,10 +108,10 @@ const rm = await page.evaluate(() => {
 ok(!rm.add && !rm.why && rm.order, `Plan: no Add to roadmap and no Reorder, nothing said (${rm.why})`);
 ok(rm.acts === 0, `...and no row carries Done, Shelve, Reword, Drop, a step or a send (${rm.acts})`);
 
-await view('bugs', '#bugAdd');
+await view('bugs', '#bugNew');
 const bg = await page.evaluate(() => {
   const nb = document.querySelector('.pane .nb');
-  return { add: !!nb.querySelector('#bugAdd button'), why: nb.querySelectorAll('.deadwhy').length,
+  return { add: nb.querySelector('#bugNew').checkVisibility() || !!nb.querySelector('#bugAdd .bugform'), why: nb.querySelectorAll('.deadwhy').length,
            acts: nb.querySelectorAll('#bugList .macts').length };
 });
 ok(!bg.add && !bg.why && bg.acts === 0, `Bugs: no Report a bug, no verbs on a report, nothing said (${bg.why})`);
@@ -172,7 +172,7 @@ await view('wiki', '#wkBody');
 await page.waitForSelector('.pane .nb #wkBody .wktabs', { state: 'attached', timeout: 20000 });
 const wk = await page.evaluate(() => {
   const nb = document.querySelector('.pane .nb');
-  return { add: !!nb.querySelector('#wkNew'), why: nb.querySelectorAll('.deadwhy').length,
+  return { add: !!nb.querySelector('#wkNew')?.checkVisibility(), why: nb.querySelectorAll('.deadwhy').length,
            verbs: nb.querySelectorAll('#wkEditTab, #wkRename, #wkRm').length };
 });
 ok(!wk.add && !wk.why && wk.verbs === 0,

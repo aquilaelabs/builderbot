@@ -51,9 +51,9 @@ function nbDesignView({$, nb, project, root}){
   async function loadDesign(){
     try{
       const j = await (await fetch(`/api/design?project=${encodeURIComponent(project)}`)).json();
-      if (j.error){ $("dsHint").textContent = "design: " + j.error; return; }
+      if (j.error){ viewGlance($("dsHint"), [], esc("design: " + j.error)); return; }
       nb.dsData = j;
-    }catch(e){ $("dsHint").textContent = "design: " + e; return; }
+    }catch(e){ viewGlance($("dsHint"), [], esc("design: " + e)); return; }
     // A re-read never takes what is being edited: the working copies stay
     // until Save or Revert, and only the file's state and the vocabulary
     // come in fresh.
@@ -65,19 +65,22 @@ function nbDesignView({$, nb, project, root}){
     drawDesign();
   }
 
-  // ---- the head row and the add bar -------------------------------------------
+  // ---- the glance and the add bar ---------------------------------------------
+  // Its pages and themes as tiles (R109), and the file's state on the line
+  // under them, with no pages said there while there are none.
   function drawHint(){
     const f = nb.dsData?.file || {};
-    const n = (nb.dsPages || []).length;
-    const pages = n ? `${n} page${n === 1 ? "" : "s"}` : "no pages yet";
+    const n = (nb.dsPages || []).length, t = (nb.dsLang?.themes || []).length;
     const file = nb.dsDirty ? "unsaved changes: Save in their section"
       : !f.exists ? `${f.path || "docs/design-language.md"} not written yet`
       : f.current ? `${f.path} is written and current`
-      : `${f.path} is behind what is saved: Write the file`;
-    $("dsHint").textContent = `${pages} · ${file}`;
-    const w = $("dsWrite"), ro = projWriteWhy(project);
+      : `${f.path} is behind what is saved${dsRo() ? "" : ": Write the file"}`;
+    viewGlance($("dsHint"), [{label: n === 1 ? "page" : "pages", value: n, omit: !n},
+                             {label: t === 1 ? "theme" : "themes", value: t, omit: !t}],
+               esc(`${n ? "" : "no pages yet · "}${file}`));
+    const w = $("dsWrite");
     w.disabled = !!nb.dsDirty;
-    w.hidden = !!ro;
+    w.hidden = dsRo();
     w.title = nb.dsDirty ? "Save first: the file is written from what is saved"
       : "write docs/design-language.md into the project from what is saved here; a session commits it with the work";
   }
@@ -133,7 +136,7 @@ function nbDesignView({$, nb, project, root}){
         if (nb.dsData) nb.dsData.file = j.file;
         notify(`${j.path} written into ${projLabel(project)}: the Git view shows it until a session commits it`);
       }
-    }catch(e){ notify("design: " + e, true); }
+    }catch(e){ notify("design: " + failWords(e), true); }
     unbusy(b, "Write the file");
     drawHint();
   };
@@ -171,10 +174,14 @@ function nbDesignView({$, nb, project, root}){
     wireThemes(body, sh.theme);
     if (sh.page) wirePage(body.querySelector(`[data-dspage="${keyOf(sh.page)}"]`), sh.page);
     body.querySelectorAll("[data-dsrules]").forEach(wireRulesList);
-    // A locked project reads its notebook: every control here is dead but
-    // Copy, which takes nothing anywhere, and the pulldowns, which show.
-    if (dsRo())
-      body.querySelectorAll("input,select:not([data-dspick]),textarea,button").forEach(e => e.disabled = true);
+    // A project read-only to you reads its design: what a role does not give
+    // is not drawn (the operator, 21 Oct), so every press that would change
+    // it is gone, a fold's own toggle kept, and the fields stay to read,
+    // dead, the pulldowns that pick what is shown live (B293).
+    if (dsRo()){
+      body.querySelectorAll("input,select:not([data-dspick]),textarea").forEach(e => e.disabled = true);
+      body.querySelectorAll("button").forEach(b => { if (!b.closest("summary") && !b.hasAttribute("aria-expanded")){ b.hidden = true; b.disabled = true; } });
+    }
     drawHint();
   }
 
@@ -969,7 +976,7 @@ function nbDesignView({$, nb, project, root}){
     try{
       j = await (await postJSON("/api/design", {project, action: "save", language: lang,
                                                   pages: pages.map(p => ({...p, id: p.id > 0 ? p.id : undefined}))})).json();
-    }catch(e){ notify("design: " + e, true); return null; }
+    }catch(e){ notify("design: " + failWords(e), true); return null; }
     if (j.error){ notify("design: " + j.error, true); return null; }
     // The saved pages come back with their ids, and a board keyed by a
     // temporary number is keyed by its id from here.

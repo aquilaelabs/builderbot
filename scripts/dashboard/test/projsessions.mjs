@@ -122,7 +122,7 @@ const last = await page.$eval('#rnmodal .box', b => [...b.querySelectorAll('.fie
 ok(last === 'rnSessField', `...at the foot of the dialog (${last})`);
 await page.evaluate(() => [...document.querySelectorAll('#rnSessList .rnsess')]
   .find(r => /w\.sess/.test(r.textContent) && /Claude/.test(r.textContent))
-  ?.querySelector('[data-rnend]').click());
+  ?.querySelector('[data-rnsessend]').click());
 await page.waitForFunction(() => ![...document.querySelectorAll('#rnSessList .rnsess')]
   .some(r => /w\.sess/.test(r.textContent) && /Claude/.test(r.textContent)), null, { timeout: 15000 });
 const gone = (() => { try { execFileSync('tmux', ['has-session', '-t', '=' + here[0]]); return false; }
@@ -149,6 +149,20 @@ ok(!plainSess.shown && plainSess.ends === 0,
 // The administrator's page only: a plain account's settings dialog asks for
 // the remote's credentials and is refused by design, which the browser logs.
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + page.errors.join(' | ') : ''}`);
+// A project with a session open on a node cannot be deleted from under it
+// (B242): Delete read only this container's tmux, where no session runs now.
+{
+  const onNode = `${uid}~codex-gamma`;
+  const r = await fetch(base + '/api/v1/agent/work', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + agent.token },
+    body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512,
+      sessions: [{ name: onNode, attached: false, cwd: '/workspace/gamma', title: '' }] }, running: [], wait: 0 }) });
+  const del = await call('/api/trash', { name: 'gamma' });
+  ok(r.ok && del.status === 409 && del.error?.includes(onNode),
+     `a project with a session running on a node is refused Delete, naming the session (${del.status} ${del.error})`);
+  await beat();
+}
+
 // Nothing left for the next file: the sessions, and the node, retired the
 // way auth.mjs retires its own.
 for (const n of here) { try { tmuxKill(n); } catch { /* ended above */ } }

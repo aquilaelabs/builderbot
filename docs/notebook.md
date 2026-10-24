@@ -12,7 +12,7 @@ each one keeps.
 
 **The page's header** wears the project's color and carries its name, the
 branch and the node, the session's state as a dot and a word, and its
-actions: **Start Claude** (**Open Claude**, in green, while your session
+actions: **Start agent** (**Open** and the agent's name, in green, while your session
 runs) with the chooser under it, **Shell**, and the rest behind one menu,
 the same menu its card has ([projects.md](projects.md#a-projects-card-and-its-menu)).
 
@@ -301,7 +301,7 @@ the cheap unit is the line and the expensive one is the step. The briefing
 every session gets says this in as many words.
 
 **Items are handed to the session one at a time, by the arrow beside them.**
-Sending types the line into the running Claude session and submits it, but
+Sending types the line into the running session and submits it, but
 only if it can see that it arrived. There is no IPC into a session; the only
 door is its terminal, and a session "waiting for input" is either at its prompt
 or holding a permission dialog, which the title cannot tell apart. Answering a
@@ -378,14 +378,18 @@ choice: a session about to act on a step is exactly who wants to know the plan
 around it moved, and by the time anything can be sent there is nothing unsaved
 left to keep quiet about, which is the next rule.
 
-The view opens the way the others do: its one-line summary on the left
-and **History** on the right, with the field, **Add** and **Reorder** together
-on the row under it. Those three are the things that change the list; History
-only reads it.
+The view opens the way every view does, the way the Containers page does
+(R109): one row with the search and **History** at the left and **Reorder**
+and **Add to roadmap** at the right, the box Add unrolls opening under it;
+then what is left to send, shelved and finished as tiles; then a status line
+saying whether a session is running and when one last read the list, with
+**Save** and **Revert** at its right while something is staged; then the
+chips that narrow the list, by state and by release, in one band. Reorder and
+Add are the things that change the list; History only reads it.
 
 **Nothing can be sent while the view is holding unsaved work.** The arrows go
-down, and the line above the list says which change is not on disk and that
-Save or Revert will clear it. The reason is what a step *is*: a line typed into
+down, and the status line above the list says which change is not on disk and
+that Save or Revert will clear it. The reason is what a step *is*: a line typed into
 a session, which then goes and reads the list for itself. Send a step off a
 list that exists only in this browser and the two are describing different
 plans: the session is working from the file, and the file has never heard of
@@ -419,7 +423,7 @@ first, since an arrangement is work.
 
 ## What a session may add
 
-**How much of what a session adds lands on its own** is the *Claude may*
+**How much of what a session adds lands on its own** is the *Agents may*
 section of the project's settings: add to the roadmap, file bugs, add rules
 and fill in build and test, each **auto**, **ask** or **deny**. Auto: an item, report or
 rule a session adds lands at once, marked as its own. Ask holds it instead: the
@@ -520,7 +524,8 @@ The view acts too, each button one fixed git command with checked arguments,
 run under your author and the project's own credentials: **Fetch**, **Pull**
 (fast-forward only, refused with uncommitted changes) and **Push** (through
 the same path `bb git push` takes, offered only to a project with push
-rights) on the bar under the head row; **Commit all** with a message at the
+rights) at the right of the view's control row, the branch picker at its
+left, what is to push or pull counted in the tiles under it; **Commit all** with a message at the
 top of Changes and **Discard** on each file; **New branch** at the top of
 Branches, **Merge into main** on a branch (from any branch, the way a pull
 request's button merges: it lands in a temporary worktree on `main`, so the
@@ -552,7 +557,7 @@ whether `main` already has every commit on it, and offers **Delete on
 `<host>`** for the ones where it does, which is the only case where removing
 a branch there can lose nothing. **Revert** and **Branch here**
 on a picked commit. A session's token
-has none of these (it has `bb git`) and an archived project takes no action.
+has none of these (it has `bb git`), and a project locked against the account takes no action.
 
 ## Tests
 
@@ -687,7 +692,7 @@ Containers page. How those containers are built and run is
 
 The **Wiki** is the project's wiki, for whoever uses or works on it: pages
 of Markdown that a person writes on the view or a session writes with
-`bb wiki save`, under the project's dial Claude may: Write the wiki (auto
+`bb wiki save`, under the project's dial Agents may: Write the wiki (auto
 lands a page, ask holds it on the notebook for approval with its text, deny
 refuses it, and hidden keeps the wiki from sessions altogether, reading
 included, for notes that are the people's alone). It reads like an encyclopedia: one article at a time, its title over a

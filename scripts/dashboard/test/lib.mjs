@@ -265,6 +265,17 @@ export async function newPage(browser, { tour = false, ...opts } = {}){
   });
   page.on('pageerror', e => page.errors.push(String(e)));
   page.on('dialog', d => { page.dialogs.push(d.message()); d.accept(); });
+  // The page's own questions (page-ask.js, R121) are answered the way the
+  // browser's were: their words recorded on page.dialogs, and the first
+  // answer pressed on the modal, unless a test queued another on
+  // page.answers: an index into the choices, -1 for Cancel, {index, text}
+  // for a question with a field, or a function of the question giving one.
+  page.answers = [];
+  await page.exposeFunction('__bbAsk', q => {
+    page.dialogs.push(q.text || q.title);
+    const a = page.answers.length ? page.answers.shift() : 0;
+    return typeof a === 'function' ? a(q) : a;
+  });
   // The project settings are sections, one open at a time (the operator,
   // 7 Oct). A person opens the section a field is in before using it, and so
   // does a suite: before an action on, or a wait for, a field inside a shut

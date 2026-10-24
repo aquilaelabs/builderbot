@@ -135,8 +135,8 @@ is busy and never why. `bb node busy` asks the controller, which joins the
 node agent's last heartbeat (CPU over the last 25 s, the load against its
 cores, memory, the card's load and memory and how many compute on it, and
 what runs there by kind: emulators, Gradle, other Java, compilers,
-browsers, media, docker builds, Claude) with the jobs active on the node and
-the Claude sessions working there, and answers quiet, busy, saturated or
+browsers, media, docker builds, each coding agent) with the jobs active on
+the node and the agents' sessions working there, and answers quiet, busy, saturated or
 unknown, with the reasons. Another project's work is counted and never
 named. The load right now is read in the session as well, since a heartbeat
 is up to 25 s old. `bb node wait-quiet` waits for two quiet readings ten

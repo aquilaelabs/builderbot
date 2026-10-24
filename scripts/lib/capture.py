@@ -231,15 +231,25 @@ def display_ready(display):
 
 
 def display_size(display):
-    """The display's size from xdpyinfo where the node has it; without it
-    the size an Xvfb started for this is given (1280x800)."""
-    size = "1280x800"
+    """The display's size from xdpyinfo or xdotool, whichever the node has,
+    or "" for none: x11grab then takes the whole screen, where a guessed
+    size bigger than the screen failed the grab (B213)."""
     if shutil.which("xdpyinfo"):
         r = run(["xdpyinfo", "-display", display], timeout=10)
         m = re.search(r"dimensions:\s+(\d+x\d+)", r.stdout or "")
         if m:
-            size = m.group(1)
-    return size
+            return m.group(1)
+    if shutil.which("xdotool"):
+        r = run(["xdotool", "getdisplaygeometry"], timeout=10, env=dict(os.environ, DISPLAY=display))
+        m = re.fullmatch(r"(\d+) (\d+)", (r.stdout or "").strip())
+        if m:
+            return f"{m.group(1)}x{m.group(2)}"
+    return ""
+
+
+def sized(size):
+    """x11grab's size option, or none when the size is not known."""
+    return ["-video_size", size] if size else []
 
 
 def frame_emu(adb):
@@ -251,7 +261,7 @@ def frame_emu(adb):
 
 def frame_display(display, size):
     r = subprocess.run([ffmpeg(), "-hide_banner", "-nostdin", "-loglevel", "error", "-f", "x11grab",
-                        "-video_size", size, "-i", display, "-frames:v", "1", "-f", "image2pipe",
+                        *sized(size), "-i", display, "-frames:v", "1", "-f", "image2pipe",
                         "-vcodec", "png", "-"], capture_output=True, timeout=30, check=False)
     if r.returncode or not r.stdout:
         die(f"nothing was grabbed from {display}: " + (r.stderr or b"").decode("utf-8", "replace").strip()[-200:])
@@ -416,16 +426,9 @@ def from_display(display, seconds, drive, work):
             "provisioner adds Xvfb and xdotool (nodes/provision-linux.sh); bb capture reel --display "
             "then records one an app was started on (Xvfb :9 & DISPLAY=:9 the-app &)")
     video = os.path.join(work, "display.mp4")
-    # The display's size from xdpyinfo where the node has it; without it the
-    # grab is of the size an Xvfb started for this is given (1280x800).
-    size = "1280x800"
-    if shutil.which("xdpyinfo"):
-        r = run(["xdpyinfo", "-display", display], timeout=10)
-        m = re.search(r"dimensions:\s+(\d+x\d+)", r.stdout or "")
-        if m:
-            size = m.group(1)
+    size = display_size(display)
     rec = subprocess.Popen([ffmpeg(), "-hide_banner", "-nostdin", "-y", "-f", "x11grab", "-framerate", "15",
-                            "-video_size", size, "-i", display, "-t", str(seconds), video],
+                            *sized(size), "-i", display, "-t", str(seconds), video],
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if drive:
         subprocess.run(["sh", drive], timeout=seconds + 60, check=False,

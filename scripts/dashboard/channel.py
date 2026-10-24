@@ -13,6 +13,7 @@ answers (payload, status), a file as {path or body, ctype, headers}.
 import base64
 import re
 
+import agents
 import claudegrant
 import db
 import ftp
@@ -82,6 +83,13 @@ def fetch(verb, auth, q, authed):
         j = nodes.job(q.get("job", [""])[0], with_log=False)
         if not j or j["node"] != auth["node"] or j["state"] not in nodes.JOB_ACTIVE:
             return {"error": "not this node's running job"}, 403
+        if j.get("type") == "sign-key":
+            # A release's unsigned APK, handed to the sign-key job signing
+            # it (R106) from the controller's own fetch, never dist/.
+            path = signing.handover_file((j.get("spec") or {}).get("handover"), j["id"])
+            if path is None:
+                return {"error": "this job was handed no file"}, 404
+            return {"path": path, "ctype": "application/octet-stream", "headers": {}}, 200
         path = workspace.file_path(j.get("project") or "", q.get("path", [""])[0])
         if path is None:
             return {"error": "no such file in the project's dist/"}, 404
@@ -135,6 +143,25 @@ def fetch(verb, auth, q, authed):
         return {"error": "this controller ships no agent"}, 404
     return {"body": f["body"], "ctype": "text/x-python; charset=utf-8",
             "headers": {"X-Agent-Digest": f["digest"]}}, 200
+
+
+def _sign_key_job(auth, jid):
+    """The running sign-key job `jid` of this node, or None."""
+    j = nodes.job(jid, with_log=False)
+    ok = j and j.get("type") == "sign-key" and j["node"] == auth.get("node") and j["state"] in nodes.JOB_ACTIVE
+    return j if ok else None
+
+
+def signing_put(auth, q, stream, length):
+    """The APK a sign-key job signed, raw in the body, for the caller
+    waiting on it (signing.put_signed): only the job's own node, while it
+    runs, and never into a project."""
+    if (no := _node_only(auth)):
+        return no
+    j = _sign_key_job(auth, q.get("job", [""])[0])
+    if not j:
+        return {"error": "not this node's running sign-key job"}, 403
+    return signing.put_signed((j.get("spec") or {}).get("handover"), j["id"], stream, length)
 
 
 def artifact(auth, q, stream, length):
@@ -305,6 +332,22 @@ def verb(name, auth, req, addr):
         r = runners.mint(kind, nid, slot, field(req, "runner_id"))
         db.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
         return _answer(r)
+    if name in ("signing-key", "signing-result") and \
+            (nodes.job(field(req, "job"), with_log=False) or {}).get("type") == "sign-key":
+        # The key work a sign-key job does on this node for the controller
+        # (signing._on_node): what it needs, once, and what it made. Only
+        # that job's own node, only while it runs; the spec carries a token
+        # and never a secret.
+        j = _sign_key_job(auth, field(req, "job"))
+        if not j:
+            return {"error": "not this node's running sign-key job"}, 403
+        tok = (j.get("spec") or {}).get("handover")
+        if name == "signing-result":
+            return signing.take_result(tok, j["id"], req)
+        got, status, said = signing.hand_over(tok, j["id"], field(req, "package"))
+        if status == 200:
+            db.audit(auth["principal"], "signing-key", j["id"], said)
+        return got, status
     if name == "signing-key":
         # A project's signing key for the sign job running on this node
         # (R106): only that job's own node, only while it runs, once. The
@@ -329,7 +372,8 @@ def verb(name, auth, req, addr):
             key = signing.successor(project, key)
         got = signing.secret(project, route, key)
         if not got:
-            return {"error": f"{project} has no {signing.WORDS.get(route, route)} named {key}"
+            return {"error": signing.locked(project, route, key)
+                             or f"{project} has no {signing.WORDS.get(route, route)} named {key}"
                              + (f" (what {package} is mapped to)" if package and not spec.get("key") else "")}, 404
         blob, rec = got
         _keys_given.add(j["id"])
@@ -415,6 +459,9 @@ def work(auth, req, addr, alive):
     return None if j is None else (j, 200)
 
 
+_unread = {}        # (node, uid, agent) -> why its login could not be read, logged once
+
+
 def _logins(nid, rows):
     """What a node's agent says each account on it is signed in to Claude
     as (B104). Absent from most heartbeats, and then nothing happens.
@@ -441,11 +488,37 @@ def _logins(nid, rows):
         home = home_for(uid)
         if not home:
             continue
-        email = " ".join(str(r.get("email") or "").split())[:120]
-        on = claudegrant.on(home, nid)
-        if email:
-            if on.get("email") == email:
-                continue                       # already what we have
-            claudegrant.report(home, nid, email, str(r.get("plan") or ""))
-        elif on:
-            claudegrant.report(home, nid, "", signed_in=False)
+        _login(home, nid, "claude", r.get("email"), r.get("plan"))
+        # ...and the other coding agents' (R95 step 3), on an agent recent
+        # enough to say: a row without the key says nothing about them.
+        if isinstance(r.get("agents"), dict):
+            for a in agents.TABLE:
+                if a.id == "claude" or not a.login_job:
+                    continue
+                got = r["agents"].get(a.id) if isinstance(r["agents"].get(a.id), dict) else {}
+                # A login the node could not read is not a sign-out (B236):
+                # the record stays, and why is said once in the log.
+                if got.get("error"):
+                    why = str(got["error"])[:200]
+                    if _unread.get((nid, uid, a.id)) != why:
+                        _unread[(nid, uid, a.id)] = why
+                        print(f"[dashboard] {nid} could not read {uid}'s {a.id} login: {why}", flush=True)
+                    continue
+                _unread.pop((nid, uid, a.id), None)
+                _login(home, nid, a.id, got.get("email"), got.get("plan"))
+
+
+def _login(home, nid, agent, email, plan):
+    """One account's sign-in to one agent on one node, written only when it
+    moved."""
+    email = " ".join(str(email or "").split())[:120]
+    on = claudegrant.on(home, nid, agent)
+    if email:
+        if on.get("email") == email:
+            return                             # already what we have
+        claudegrant.report(home, nid, email, str(plan or ""), agent=agent)
+    elif on:
+        # Said in the log: a sign-out read off a heartbeat is the one a
+        # person cannot see the cause of from the page (B236).
+        print(f"[dashboard] {nid} reports {agent} signed out for {home}", flush=True)
+        claudegrant.report(home, nid, "", signed_in=False, agent=agent)

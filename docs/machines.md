@@ -1,8 +1,8 @@
 # Machines: the controller, nodes and storage
 
-The Machines group on the rail: **Controller settings**, what the controller
-owns and applies live; **Nodes**, every machine work runs on; and
-**Storage**, what a node's disks hold. **Jobs**, the queue of work placed on
+The Machines group on the rail: **Nodes**, every machine work runs on, and
+**Storage**, what a node's disks hold; with them here, **Controller
+settings**, in the Home group, what the controller owns and applies live. **Jobs**, the queue of work placed on
 the nodes, is a page of its own on the rail. This doc covers enrolling and
 running nodes, their stores and their network, the controller's settings and
 logs, and the jobs. The design behind nodes is
@@ -31,8 +31,9 @@ answers, and each store's room; the toolchains its census found, which is what a
 build), Projects (the projects bound to it), Sessions (whether it runs them,
 and which are open), GPU (where it has a card), Features (what the machine has
 beyond the base, each with **Install** or **Uninstall**: VM host, and the
-hosting firewall on a hosting-only node), Claude Code (each account's
-sign-in there), Storage (mounts and stores), Network, and Advanced, which
+hosting firewall on a hosting-only node), Coding agents (one line saying
+which are installed there, with the way to the node's **Agents** page, where
+each is installed, updated, removed and signed in to), Storage (mounts and stores), Network, and Advanced, which
 holds the node's **name** (Rename changes what it is called everywhere here:
 the pickers, the project cards and the label a runner installed from then on registers
 with; a runner already installed keeps the label it registered with until
@@ -47,7 +48,7 @@ provisioned as a sandbox that is dialing in uninstalls BuilderBot from the
 machine and then removes the node here (retire: off every list, its record kept as
 history, and an id is never reused), and on any other removes the node here
 only, saying BuilderBot's pieces stay on the machine. Neither Disable nor
-Un-enroll goes through while a Claude session or a container is running on
+Un-enroll goes through while a session or a container is running on
 the node: the refusal counts them and says where to end them (the Sessions
 page, Down on the Containers page). Un-enroll opens a dialog, since what goes is
 in rings (the operator, 11 Oct), with a box saying what un-enrolling takes
@@ -85,24 +86,24 @@ verifies, and one that fails silently when it is wrong.
 pick per node: no "this one builds, that one deploys". A project names one
 node in its settings and its containers, builds, tests, CI and
 emulation all go there, so three projects on three VMs stay apart and three
-projects on one VM share it. **Its Claude sessions too** (roadmap #24,
+projects on one VM share it. **Its sessions too** (roadmap #24,
 docs/nodes.md §19): a node provisioned with a session account keeps two
 ttyds up beside the agent, running bb-tty from the bb the controller ships,
 so a session on a project bound to it works *on* that machine, with its
 toolchains, in the copy of the project its agent keeps at `/workspace` in
 step with this container's (a synced copy, the one way a node holds its
 projects: nothing mounts the projects share on a node). The node's census
-says whether that half is up (`session`: ports, account, which Claude the
+says whether that half is up (`session`: ports, account, which agents the
 account has) and how far each copy is; `bb roadmap`, `bb bug`, `bb version` and the other verbs
 whose state is this container's are relayed back here over the API with the
 session's own token. The terminal proxy sends a bound project's session to
 that node when its census says the half is up and the project's copy is there, and
-refuses with the reason (on the project's Start Claude and in the terminal) when
+refuses with the reason (on the project's Start agent and in the terminal) when
 the node cannot take one, rather than starting it on the wrong machine. A
-project with **no** node has no Claude session at all: this container carries
-no Claude Code, so the button says so and names what to do. Its shell still
+project with **no** node has no session at all: this container carries no
+coding agent, so the button says so and names what to do. Its shell still
 opens here, on the same share (a tree to read, the linters, git) because
-what moved to a node is Claude and not the terminal. A node's sessions ride its
+what moved to a node is the agents and not the terminal. A node's sessions ride its
 heartbeat onto the Sessions page, with the node named, and ending one
 there reaches the node's agent within a poll. What a project can actually do on its node is
 what is **installed** there: its Health section lists the toolchains its census found,
@@ -114,7 +115,7 @@ full set, so it is a mechanism rather than a setting.)
 **An account that does not administer sees the Nodes page and changes
 nothing on it but its own sign-in.** Its picker lists the nodes its own
 projects work on and no others; every control on the node's page is
-ghosted for it, updating Claude Code and enrolling included, and a line on
+ghosted for it, enrolling included, and a line on
 the page says so; the verbs behind those controls are an administrator's on
 the server as well.
 
@@ -277,7 +278,7 @@ asks for a fresh one, which the node's next report brings.
 
 ## Controller settings
 
-**Controller settings**, the first page under Machines (`#/machines/settings`),
+**Controller settings**, beside Home in the rail's Home group (`#/home/settings`),
 drawn only for an account that may read the controller, is what the
 **controller** owns and can apply live. Its bar carries the container's uptime
 and the build it is serving. Its sections, each with its own Apply and Revert:
@@ -285,7 +286,7 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
 - **Logs**: how long logs are kept, and the downloads (see [Logs](#logs)).
 - **BuilderBot bug reports**: what sessions and people reported about
   BuilderBot itself, and **Clear reports**.
-- **Claude sessions**: the idle rule, which ends a session after N minutes
+- **Idle sessions**: the idle rule, which ends any agent's session after N minutes
   with nothing typed or written, here and on every node, where the node
   itself enforces it so the rule holds while this container is down.
 - **Storage on this controller**: where each kind of thing that grows
@@ -294,6 +295,10 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   and switched once all of it is there, while the records, the database,
   the signing keys and the git credentials stay in the state directory
   (`paths.py`).
+- **Room on the nodes**: the disk a node keeps free (a build, a test or a
+  container rebuild is refused under it, and the bell says so), the memory
+  level past which the bell warns, and a memory limit for every container
+  whose compose file sets none ([nodes.md](nodes.md#room-a-node-keeps-for-itself)).
 - **Apps**: which of the apps a person installs this controller offers on
   the Apps page ([reference.md](reference.md#the-apps-a-person-installs)).
 - **Reach from outside**: the home tunnel the controller runs itself (R176,
@@ -304,7 +309,7 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   on Apply rather than clicked; the section's line says whether cloudflared
   is in the image, running and registered.
 - **Maintenance**: the owner's alone. While *Maintenance mode* is on, only
-  the owner signs in and is answered, from the page, the phone app or a Claude
+  the owner signs in and is answered, from the page, the phone app or a
   session of theirs. Everybody else is told BuilderBot is down for
   maintenance, by the sign-in page, the API (503) and the app, and stays
   signed in for when it ends. Nodes are not accounts and keep running, and a

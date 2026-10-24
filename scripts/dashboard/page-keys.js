@@ -117,7 +117,7 @@ function slidePanel(el, show, swap){
 // macros are for driving a shell: over Claude they type into a conversation
 // that has its own idea of what a keystroke means, and over a document there
 // is nothing to type into at all.
-const isShellTab = t => t?.kind === "term" && !t.arg.startsWith("claude:");
+const isShellTab = t => t?.kind === "term" && !agentOfArg(t.arg);
 
 function drawKeys(){
   const el = $("keys");

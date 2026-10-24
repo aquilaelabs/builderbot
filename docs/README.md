@@ -1,8 +1,9 @@
 # BuilderBot documentation
 
-BuilderBot is a self-hosted workshop for Claude Code. One container, the
+BuilderBot is a self-hosted workshop for coding agents: Claude Code,
+ChatGPT's Codex CLI and GitHub's Copilot CLI. One container, the
 **controller**, serves this dashboard and keeps every project's plan, bugs
-and rules; the machines it enrolls, the **nodes**, do the work: Claude
+and rules; the machines it enrolls, the **nodes**, do the work: the agents'
 sessions, builds, tests, CI, Android emulators and Docker containers. These
 docs are also the dashboard's **Help**, where the search in the bar finds a
 line in any of them.
@@ -32,13 +33,16 @@ dashboard's rail.
 
 - [projects.md](projects.md): the Projects page: making, cloning and linking a project, its menu and settings, archiving and deleting it
 - [notebook.md](notebook.md): a project's page: Overview, Roadmap, Bugs, Git, Tests, Analysis, Artifacts, Docker, Wiki and Design
-- [sessions.md](sessions.md): Claude sessions: starting one, the Sessions page, what a session sees, what it is told and the rules it is held to
+- [sessions.md](sessions.md): sessions of each agent, Claude, ChatGPT and Copilot: starting one, the Sessions page, what a session sees, what it is told and the rules it is held to
 
 ## Build, test and ship
 
 - [building.md](building.md): builds and tests on a node, CI runners and their logs, the scanner's findings, signing and releases
+- [scanners.md](scanners.md): setting up the static analysis stack (Semgrep, Trivy, mobsfscan) and the script that runs it
+- [versions.md](versions.md): a project's version, release lines (two releases built at once), and moving fixes forward and back between them
 - [toolchains.md](toolchains.md): the Build pages: Toolchains, the NVIDIA card, Android versions and the Emulator, and a Phone lent to a project
-- [tool-packs.md](tool-packs.md): toolchains you add yourself from a repository, the commands they give Claude, and how to write one
+- [agents.md](agents.md): the coding agents a session runs (Claude Code, Codex CLI, Copilot CLI): the Agents page, installing each on a node and signing in to it there
+- [tool-packs.md](tool-packs.md): toolchains you add yourself from a repository, the commands they give a session, and how to write one
 - [containers.md](containers.md): the Containers page and nginx: dev instances, how one is reached, their networks and image updates
 - [vms.md](vms.md): the VMs page and `bb vm`: VM host on a node, the OS catalog, Make VMs, the network, snapshots, a VM made a node
 

@@ -10,7 +10,7 @@ Only what the container or the host has to know before BuilderBot runs is a
 variable; everything else is set in the dashboard: Controller settings (under
 Machines) for the controller, a project's settings for the project, the
 Nodes page for each machine. Tokens are never variables: git keys and publishing tokens go in the
-root-only secrets folder ([unraid.md](unraid.md#shielding-secrets-pat--ssh-keys-from-claude-sessions)),
+root-only secrets folder ([unraid.md](unraid.md#shielding-secrets-pat--ssh-keys-from-sessions)),
 a project's settings make its deploy key or hold its access token, and a
 runner's token is typed on the CI runner page.
 
@@ -80,7 +80,7 @@ bb version unbump      take the last unreleased bump or set back; its
 bb version release --why "..."
                    tag this commit and publish the release, as Release on the
                    Artifacts view does, on the controller with the project's own
-                   credentials. The project's settings say whether Claude may
+                   credentials. The project's settings say whether an agent may
                    (Tag and publish a release): auto releases, ask waits for
                    the project's owner, with --why as the reason
 bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...
@@ -97,8 +97,12 @@ bb version release --remove NAME [--remove NAME]... --why "..." [--tag TAG]
                    of an edit, the names checked against the release first
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component: a directory with its own VERSION
+bb version line [X.Y.Z|none]   the release this branch works toward: a branch
+                   named for one (claude/0.7.0) works toward it, or set it here;
+                   a dev build heads for it (0.7.0-dev.N), a bump moves only
+                   to it, and on a patch line bb lint refuses a new migration
 bb version policy  what a session may move here, and who decides. A
-                   person picks it in the project's settings (Claude may:
+                   person picks it in the project's settings (Agents may:
                    Move the version) or on the Artifacts view, before or after
                    there is a version: locked (theirs entirely), may start
                    one (a session writes the FIRST version and moves nothing
@@ -185,15 +189,17 @@ bb tidy [--keep emulator|gpu|gradle|browser|server|tmp]... [--dry]
                    its own on the NVIDIA card, its Gradle and Kotlin daemons, the
                    headless browsers a test left behind, a server it put in the
                    background and left listening (a dev server, a preview), and its
-                   own files in /tmp, which in a session is memory; --keep one, with
-                   the reason in your reply
+                   own files in /tmp, which in a session is memory; and the quick-boot
+                   snapshot of each of this project's phones not started for a week,
+                   naming a phone that is not its default and has not run for two
+                   (--keep emulator keeps them); --keep one, with the reason in your reply
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb node busy [--json]
                    whether this node is quiet enough to time anything on: its load,
                    memory and card (what holds the card's memory, by kind), what
                    runs there by kind (emulators, Gradle, compilers, browsers,
-                   other Claude sessions working, other projects' jobs, counted
+                   other agents' sessions working, other projects' jobs, counted
                    and never named) and a verdict: quiet, busy, saturated
 bb node wait-quiet [--level quiet|busy] [--timeout SECONDS]
                    wait until it is (quiet twice, ten seconds apart), before a
@@ -246,7 +252,7 @@ bb devapp probe [--port N] [--path /x]
                    so no root ask; --container NAME for another of the project's
 bb devapp rebuild [--why "..."]
                    build it and bring it up. Only where the project has handed that
-                   over: Claude may: Run its container, in its settings dialog and
+                   over: Agents may: Run its container, in its settings dialog and
                    the new-project dialog, reads deny (the default, refused with the
                    sentence that names it), ask (the reason goes to a person and the
                    command waits for Approve) or auto. Up, Down and a container of
@@ -296,7 +302,7 @@ bb sign FILE [--for play|sideload] [--why "..."]
                    its password never reach the session. --for play is the Play
                    upload key (the default for an .aab), sideload the app signing
                    key (the default for an .apk). The project's settings say
-                   whether Claude may (Sign a build): auto signs, ask waits for
+                   whether an agent may (Sign a build): auto signs, ask waits for
                    the project's owner to allow it, with --why as the reason.
                    Arrives in dist/ as NAME-signed.apk or .aab. --key NAME signs
                    with that key; without it, the key the build's package is
@@ -307,7 +313,7 @@ bb sign key new NAME --for play|sideload --why "..."
 bb sign map PACKAGE KEY --why "..."
 bb sign rotate OLD NEW --why "..."
                    a new key made on the controller, or an app's package mapped
-                   to a key (KEY "" unmaps it), under Claude may: Manage signing
+                   to a key (KEY "" unmaps it), under Agents may: Manage signing
                    keys: auto does it, ask waits for the project's owner. rotate
                    moves the apps OLD's sideload key signs to NEW's: builds go out
                    signed with both and a proof, Android 9 and newer take NEW,
@@ -347,7 +353,10 @@ bb roadmap edit N "..."               reword one; `step add|edit|rm|done` for on
 bb roadmap info N [M] "..."           add the technical details to one, or step M,
                                       under what is there (--replace sets them)
 bb roadmap target N X.Y.Z             the release one is meant for (`none` clears); --target
-                                      on add sets it, `bb roadmap --target X.Y.Z` lists those
+                                      on add sets it, `bb roadmap --target X.Y.Z` lists those;
+                                      `target N.M X.Y.Z` (or N M) is step M's own, `none`
+                                      sends it back to its item's, and --target lists an item
+                                      for any step meant for that release
 bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
 bb roadmap pending    what a session added that is waiting for your approval
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
@@ -370,7 +379,7 @@ bb devapp test [ARGS]  the project's test command inside its running dev instanc
                    where "Tests run" in the project's settings says the dev instance, so a suite that
                    tests BuilderBot cannot disturb the BuilderBot it runs on (roadmap R48). Only for an
                    image that carries its tests: one built to ship has none, and a run inside it finds
-                   nothing and passes. Claude may: Run its container is not asked: a test runs in a
+                   nothing and passes. Agents may: Run its container is not asked: a test runs in a
                    container that is already up
 bb tests unit      the python unit tier (scripts/dashboard/unit): the modules' rules without a server
                    or a browser, in under a second; preflight runs it before any suite
@@ -408,7 +417,7 @@ bb help TOPIC      one topic of the session briefing in full (start, where, map,
                    speed, capture, asks, notebook, versions, git, android, gpu, containers);
                    bb help topics lists them, bb help VERB one verb's lines
 bb brief           the brief this project was started from: waiting for its first
-                   Claude session, or kept after that session started
+                   session, whichever agent runs it, or kept after that session started
 bb design          what this project looks like, from the notebook's Design view:
                    its design language in a line, and its pages
 bb design show [ID|NAME]   the prompt for one page, or for the language alone:
@@ -422,16 +431,17 @@ bb wiki            the project's wiki, from the notebook's Wiki view: its pages,
                    who changed each last, and where it is pushed
 bb wiki show NAME [--rev]   one page's Markdown (--rev: the revision a save checks)
 bb wiki save NAME FILE|- [--why "..."]   write a page whole, new or rewritten,
-                   under Claude may: Write the wiki: auto lands it, ask holds it
+                   under Agents may: Write the wiki: auto lands it, ask holds it
                    for the operator, deny refuses it, hidden keeps the whole
                    wiki from a session, reading included. A page changed since the
                    save began is refused rather than overwritten
 bb wiki rm NAME [--why "..."]   take a page out, under the same setting
 bb wiki mv OLD NEW   rename one; bb wiki history: the last changes
-bb transcripts     your own conversations with Claude on this project, newest
-                   first, as the Profile page lists them (bb -p NAME for one it reads)
+bb transcripts     your own conversations on this project, from every coding agent
+                   you use, each marked with its agent, newest first, as the
+                   Profile page lists them (bb -p NAME for one it reads)
 bb transcripts show ID [--tz ZONE] [--all]   one of them as text: what was said,
-                   every command Claude ran and what it answered; the newest
+                   every command it ran and what it answered; the newest
                    16 MB of a longer one, the whole of it with --all
 bb transcripts fetch ID [--into DIR]   the file itself into this machine's folder
                    for it: how a node holding its projects as a synced copy
@@ -506,7 +516,7 @@ bb vm ip NAME | ssh NAME [COMMAND...]
 bb container       what container asks are waiting on an administrator
 bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
                    a container built from a compose file the session wrote,
-                   under the project's *Claude may: Run its container*: refused
+                   under the project's *Agents may: Run its container*: refused
                    at deny, asked at ask (an administrator reads the file on
                    the bell, and Approve registers it through the Containers page's own
                    New container path and starts its build), and at auto made
@@ -571,7 +581,7 @@ bb report "..." [--area A] [--repro "..."]
                    says so), redacted like the diagnostics, and nothing comes
                    back to follow up. A `bb bug add` whose words name
                    BuilderBot or a `bb` command is not filed but sent here,
-                   unless `--here` says it is the project's own. *Claude may: Report
+                   unless `--here` says it is the project's own. *Agents may: Report
                    BuilderBot bugs* in a project's settings turns all of it off
                    for that project, rule and nudge included: BuilderBot's own
                    project, whose tracker those bugs belong in, has it off
@@ -583,7 +593,7 @@ bb pc [VERB] [--why "..."]
                    (editor-start, editor-stop, game-start, game-stop, build,
                    shot, log, editor-call METHOD PATH) runs on the PC as its
                    person set it up there and waits for what it did, a
-                   picture landing in dist/pc/. Under *Claude may: Use a lent
+                   picture landing in dist/pc/. Under *Agents may: Use a lent
                    PC* (Deny by default; Ask puts each use in front of the
                    person at the PC); never a command string
 bb doctor          check everything that usually goes wrong
@@ -701,10 +711,17 @@ environment.
 
 ## Signing Android releases
 
-A project keeps its Android keys on the controller, under **Android signing** in
-its settings, and a build is signed on its node as a job no session can look
+A project keeps its Android keys on the controller, in the **Signing** view of
+its page (under Ship), and a build is signed on its node as a job no session can look
 inside: from the Artifacts view, or by a session with `bb sign`, under the
-project's **Claude may: Sign a build**. No key is made or added until the
+project's **Agents may: Sign a build**. Everything that needs a jdk or the
+build-tools happens on the project's node too, never on the controller:
+checking an uploaded keystore, Generate, a wrapped backup, a rotation's proof
+and a release's APK are each a job there, handed the key for that job alone.
+So the node the project's settings choose needs the **jdk** and **Android SDK
+Build-Tools** (with android-tools, which installs them) from its Toolchains,
+and the Signing view says which node it is and what it lacks when it cannot.
+No key is made or added until the
 project's owner has set its **backup password**, which every download of a
 key's backup asks for, BuilderBot's owner included; a backup goes only to an
 administrator who works on the project.
@@ -713,6 +730,17 @@ administrator who works on the project.
 |---|---|---|
 | Play upload key | Google Play with Play App Signing: you sign the `.aab` with it, Google re-signs what users download with the key it holds | Play Console resets it |
 | Sideload signing key | an APK you hand out yourself, or that F-Droid publishes from a reproducible build | gone for good: no update reaches an existing install, or anybody can ship one over it |
+
+On the controller every key is sealed at rest once the install has a
+**signing secret**: `SIGNING_SECRET=` (16 characters or more; `openssl rand
+-hex 32` makes one) in an `*.env` file in the root-only secrets folder, as
+`NPM_TOKEN` is. Each keystore and its passwords under `/config/signing` are
+then ciphertext, so a copy of `/config`, or a backup of it, opens no key;
+keys kept from before are sealed at the next start. The secret is never
+written into `/config`: keep it with your other secrets. Lost or changed, the
+sealed keys cannot be opened, the Signing view says so, and each key comes
+back by **Import a backup**; without a secret, the keys are kept unsealed and
+the view says that too. Root on the running controller can still read them.
 
 So a sideload key is downloaded once with **Download backup** and kept
 offline, with its password somewhere apart from it; its row says so in red
@@ -723,8 +751,9 @@ row gives the certificate's whole fingerprint, with **Copy for F-Droid** for
 its metadata. Using one key on Play, F-Droid and your own downloads (so users
 can move between them) means giving Play that key when the app is first set
 up there. A project can keep several named keys (one per app, or one shared),
-generated on the controller or uploaded, with each app's package mapped to its
+generated on the project's node or uploaded, with each app's package mapped to its
 key, and a sideload key can be **rotated** to another: builds then carry both
 and a proof, Android 9 and newer move to the new key, and the old one is kept
-for the devices before that. [building.md](building.md#android-signing-keys)
+for the devices before that. **Import a backup** takes what Download backup
+gave, in this project or another, as the same key. [building.md](building.md#android-signing-keys)
 has the rest.

@@ -119,7 +119,7 @@ function usersDetail(u){
   const f = (id, key, label, type = "text", extra = "", help = "") =>
     `<div class="setcell">${lbl(id, label, help)}<input id="${id}" data-ufield="${key}" type="${type}" value="${esc(e[key] || "")}"
        autocomplete="off" spellcheck="false" ${extra}${ro ? " disabled" : ""}></div>`;
-  const facts = [u.claude ? `Claude: ${esc(u.claude)}` : "no Claude login yet", u.seen ? `seen ${esc(ago(u.seen))}` : "never seen",
+  const facts = [agentLogins(u) || "signed in to no agent yet", u.seen ? `seen ${esc(ago(u.seen))}` : "never seen",
                  u.projects?.length ? `on ${u.projects.length} project${u.projects.length === 1 ? "" : "s"}` : "on no project yet"];
   const access = rolesData === null ? `<div class="sub dim">reading its roles…</div>` : rolesAccessFields(u.name);
   return `<div class="rhead" data-uback><span class="shback" role="img" aria-label="Back to People">\u2039</span><b>${esc(u.name)}</b> <span class="dim">${facts.join(" · ")}</span></div>
@@ -188,8 +188,8 @@ function wireUsersBar(el){
 
 function wireUsers(el){
   wireDeviceOut(el);
-  el.querySelectorAll("[data-upick]").forEach(b => b.onclick = () => {
-    if (b.dataset.upick !== usersPick && usersDirty() && !confirm(`Leave ${usersPick}'s changes unsaved?`)) return;
+  el.querySelectorAll("[data-upick]").forEach(b => b.onclick = async () => {
+    if (b.dataset.upick !== usersPick && usersDirty() && !await askYes(`Leave ${usersPick}'s changes unsaved?`)) return;
     splitAway(() => document.querySelectorAll(".pane .doc.on .rsplit > .rdetail"), () => {
       usersPick = b.dataset.upick; usersEdit = null; usersPhoneOpen = true; usersMoveNext = "in"; usersRedraw(); });
   });
@@ -208,8 +208,8 @@ function wireUsers(el){
   const sv = el.querySelector("#ueSave");
   if (sv) sv.onclick = () => usersSave(el, sv);
   const rm = el.querySelector("#ueRemove");
-  if (rm) rm.onclick = () => {
-    if (confirm(`Remove ${usersPick}? They lose access immediately.`)) usersAct({action: "remove", name: usersPick});
+  if (rm) rm.onclick = async () => {
+    if (await askYes(`Remove ${usersPick}? They lose access immediately.`)) usersAct({action: "remove", name: usersPick});
   };
 }
 

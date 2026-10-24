@@ -30,14 +30,21 @@ def node_view(n, may_see):
                 other[w] += row[w]
     mine.sort(key=lambda r: -r["total"])
     hidden = {**other, "total": sum(other.values())} if any(other.values()) else None
-    return {"node": n["id"], "name": n.get("name") or n["id"], "live": n.get("live"),
+    out = {"node": n["id"], "name": n.get("name") or n["id"], "live": n.get("live"),
             "host_only": bool((n.get("config") or {}).get("host_only")),
             "measured": bool(st.get("at")), "at": int(st.get("at") or 0), "took_s": int(st.get("took_s") or 0),
             "age_s": max(0, int(time.time()) - int(st.get("at") or 0)) if st.get("at") else None,
             "filesystems": st.get("filesystems") or [], "stores": st.get("stores") or {},
             "workspace": st.get("workspace") or {}, "homes": st.get("homes") or {},
             "docker": st.get("docker") or {}, "slow": st.get("slow") or [],
-            "projects": mine, "other": hidden}
+            "projects": mine, "other": hidden,
+            # The phones of the projects this account sees (R123), whose
+            # Remove the page offers where it may write on the node.
+            "phones": [p for p in st.get("phones") or [] if may_see(p.get("project") or "")]}
+    # Its memory fence (R110 step 4): [max MB, used MB], null for none, and
+    # left out where the agent is too old to say.
+    smp = (n.get("reported") or {}).get("sample") or {}
+    return out | ({"fence": smp["fence"]} if "fence" in smp else {})
 
 
 def view(nodes, who, *, is_admin, nodes_for, may_see, level_of):

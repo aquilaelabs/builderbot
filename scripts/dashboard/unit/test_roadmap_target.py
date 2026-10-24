@@ -61,5 +61,35 @@ class Target(unittest.TestCase):
         self.assertNotIn("target", roadmap._rebuilt_row(events, 4, "a goal"))
 
 
+    def test_a_step_carries_its_own_release_and_goes_with_its_item_without_one(self):
+        rid = roadmap.add("alpha", "a goal", steps=["first", "second"], target="0.7.0")["item"]["id"]
+        self.assertTrue(roadmap.set_step_target("alpha", rid, 1, "v0.8.0").get("ok"))
+        st = self.row(rid)["steps"]
+        self.assertEqual((st[0].get("target"), st[1].get("target")), (None, "0.8.0"))
+        self.assertIn("already", roadmap.set_step_target("alpha", rid, 1, "0.8.0")["error"])
+        self.assertIn("not a version", roadmap.set_step_target("alpha", rid, 0, "soon")["error"])
+        self.assertIn("no such step", roadmap.set_step_target("alpha", rid, 5, "0.8.0")["error"])
+        # An item is for each release its steps name, and its own.
+        self.assertTrue(roadmap.for_release(self.row(rid), "0.7.0"))
+        self.assertTrue(roadmap.for_release(self.row(rid), "0.8.0"))
+        self.assertFalse(roadmap.for_release(self.row(rid), "0.9.0"))
+        self.assertTrue(roadmap.set_step_target("alpha", rid, 1, "").get("ok"))
+        self.assertNotIn("target", self.row(rid)["steps"][1])
+        self.assertFalse(roadmap.for_release(self.row(rid), "0.8.0"))
+
+    def test_the_page_sets_a_step_s_through_the_same_action(self):
+        rid = roadmap.add("alpha", "a goal", steps=["first"])["item"]["id"]
+        _, status = roadmap.verb("alpha", "target", {"id": rid, "step": 0, "target": "0.8.0"}, {}, live=[], prefix="")
+        self.assertEqual(status, 200)
+        self.assertEqual(self.row(rid)["steps"][0]["target"], "0.8.0")
+        self.assertNotIn("target", self.row(rid))
+
+    def test_a_rebuilt_row_keeps_a_step_s(self):
+        events = [{"act": "add", "id": 4, "text": "a goal", "steps": 0, "at": 1},
+                  {"act": "add-step", "id": 4, "step": 0, "text": "one", "at": 2},
+                  {"act": "target-step", "id": 4, "step": 0, "target": "0.8.0", "at": 3}]
+        self.assertEqual(roadmap._rebuilt_row(events, 4, "a goal")["steps"][0]["target"], "0.8.0")
+
+
 if __name__ == "__main__":
     unittest.main()
