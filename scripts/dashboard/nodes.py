@@ -1322,6 +1322,21 @@ def _census(c):
     # How each was checked when it was installed (R137): the algorithm, or
     # none, and where the publisher said it.
     tv = c.get("toolchain_verified") if isinstance(c.get("toolchain_verified"), dict) else {}
+    # The coding agents' sign-ins sealed there (R126): the agent's public
+    # half for this boot and each seal's R with what its login said of
+    # itself, all public. Hex held to the group's width.
+    tk = c.get("tokseal") if isinstance(c.get("tokseal"), dict) else None
+    if tk and re.fullmatch(r"[0-9a-f]{1,520}", str(tk.get("E") or "")):
+        sealed = {}
+        for acct, seals in list((tk.get("sealed") or {}).items())[:500] if isinstance(tk.get("sealed"), dict) else []:
+            if not re.fullmatch(r"u_[0-9a-f]{8}", str(acct)) or not isinstance(seals, dict):
+                continue
+            for ag, v in seals.items():
+                if ag in ("claude", "codex") and isinstance(v, dict) and re.fullmatch(r"[0-9a-f]{1,520}", str(v.get("R") or "")):
+                    sealed.setdefault(acct, {})[ag] = {"R": v["R"], "K": re.sub(r"[^0-9a-f]", "", str(v.get("K") or ""))[:24],
+                                                       "email": str(v.get("email") or "")[:120],
+                                                       "plan": str(v.get("plan") or "")[:40]}
+        out["tokseal"] = {"E": tk["E"], "sealed": sealed}
     out["toolchain_verified"] = {str(k)[:40]: {"algo": str(v.get("algo") or "")[:8], "where": str(v.get("where") or "")[:200]}
                                  for k, v in list(tv.items())[:80] if isinstance(v, dict)
                                  and str(v.get("algo") or "") in ("sha1", "sha256", "sha512", "gpg", "none")}
@@ -2028,6 +2043,46 @@ def node_account_users(principal, node_id, on):
 def account_users_on(nid):
     n = node(nid)
     return bool(n and (n.get("config") or {}).get("account_users")) and not host_only(nid)
+
+
+def node_token_seal(principal, node_id, on):
+    """Whether the coding agents' sign-ins are kept sealed on this node
+    (R126): the agent seals each with the account's public key and opens it
+    only for a terminal a person opened, so a copy of the node's disk opens
+    nothing. Needs accounts as their own users first (R125). An
+    administrator's; a dev feature until walked."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node runs sessions"}
+    if on and not unvetted_ok():
+        return {"error": "sealed sign-ins are a dev feature until walked on the dev pair: "
+                         "Offer dev features in Settings offers them"}
+    if on and not account_users_on(node_id):
+        return {"error": "sealed sign-ins need each account to be a user of its own there first: "
+                         "turn that on, then this"}
+    conf = dict(n.get("config") or {})
+    if on:
+        conf["token_seal"] = True
+    else:
+        conf.pop("token_seal", None)
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-token-seal", {"on": bool(on)})
+    return {"ok": True, "on": bool(on)}
+
+
+def token_seal_on(nid):
+    n = node(nid)
+    return bool(n and (n.get("config") or {}).get("token_seal")) and account_users_on(nid)
+
+
+# Each account's public key for sealing on a node (R126): the server's,
+# made from the install key (tokenkeys.py). nid -> {uid: hex}, or {} where
+# the controller has no install key and so cannot ever open a seal.
+token_pubs = None
+# ...and how many of a node's seals are under a key before today's.
+token_stale = None
 
 
 def root_refused(n):
@@ -3571,6 +3626,10 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None, rot
             "ports_local": ports_local_on(nid),
             # Each account a Unix user of its own there (R125).
             "account_users": account_users_on(nid),
+            # ...and its coding agents' sign-ins sealed there (R126), with
+            # each account's public key to seal them with.
+            "token_seal": token_seal_on(nid),
+            "token_pubs": (token_pubs(nid) if token_pubs and token_seal_on(nid) else {}),
             # The idle rule for Claude sessions (idle.py): the node enforces
             # it itself, so it holds while this controller is down.
             "session_idle_minutes": idle_minutes(),
@@ -5748,6 +5807,10 @@ def verb(principal, req):
         # Each account a Unix user of its own there (R125).
         return node_account_users(principal, nid, req.get("on") is True)
 
+    def token_seal():
+        # Its coding agents' sign-ins sealed there (R126).
+        return node_token_seal(principal, nid, req.get("on") is True)
+
     def apply():
         return node_apply(principal, nid, field(req, "what"))
 
@@ -5908,7 +5971,7 @@ def verb(principal, req):
              "gpu-compute": gpu_compute,
              "config": config, "turns": turns,
              "test-workers": test_workers, "session-net": session_net, "ports-local": ports_local,
-             "root-asks": root_asks, "account-users": account_users, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
+             "root-asks": root_asks, "account-users": account_users, "token-seal": token_seal, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
              "host-only": host_on, "host-off": host_off,
              "door": lambda: node_door(principal, nid, req.get("on")),
              "lockdown": lambda: node_lockdown(principal, nid),
@@ -6120,6 +6183,11 @@ def tab_view(rows, admin):
             n["turns"] = turns_of(n)
             # Its last hour, for the charts on its page (R218 step 9).
             n["spark"] = spark_of(n["id"])
+            # Its sign-ins still sealed under the install key before a
+            # rotation (R126), for an administrator: what keeps the old one.
+            tk = (n.get("reported") or {}).get("tokseal")
+            if admin and tk and token_stale:
+                n["tokseal_stale"] = token_stale(n["id"], tk)
     import systems
     return {"nodes": rows, "agent": agent_shipped() if admin else {},
             "default": node_for() if admin else "",

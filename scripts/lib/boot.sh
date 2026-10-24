@@ -42,7 +42,7 @@ BB_RUN_DIR="${BB_RUN_DIR:-/run/builderbot}"
 # (R135; R111 began it with the signing keys): handed to the dashboard as a
 # file of its own in /run below, never kept in /config. SIGNING_SECRET, its
 # name before 0.8.0, is read when it is not set, for this release.
-SECRET_VARS=(NPM_TOKEN UV_PUBLISH_TOKEN INSTALL_KEY SIGNING_SECRET)
+SECRET_VARS=(NPM_TOKEN UV_PUBLISH_TOKEN INSTALL_KEY INSTALL_KEY_PREVIOUS SIGNING_SECRET)
 
 # The one secret the dashboard itself needs, the install key, as a file only
 # the controller's account reads, in /run (never the state, so a copy of the
@@ -62,6 +62,14 @@ install_key_file() {
     fi
     ( umask 077; printf '%s' "$key" > "$f" )
     chown "$BB_ACCOUNT" "$f" 2>/dev/null || true
+    # The key before it, while a rotation keeps it: the coding agents'
+    # sign-ins sealed on the nodes under it are opened with it once more and
+    # sealed again under the new one (R126), after which it can go.
+    rm -f "$f-previous"
+    if [ "${#INSTALL_KEY_PREVIOUS}" -ge 16 ]; then
+        ( umask 077; printf '%s' "$INSTALL_KEY_PREVIOUS" > "$f-previous" )
+        chown "$BB_ACCOUNT" "$f-previous" 2>/dev/null || true
+    fi
 }
 
 # as_account CMD...: CMD as the controller's account, with its groups. gosu

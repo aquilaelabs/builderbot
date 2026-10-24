@@ -23,6 +23,7 @@ from .claudesync import ClaudeMirror
 from .screen import ScreenRelay
 from .sessions import SessionWatch, SessionsMixin
 from .accounts import AccountsMixin
+from .tokens import TokensMixin
 from .workspace import WorkspaceMixin
 from .work import WorkMixin
 from .configplane import ConfigPlaneMixin
@@ -30,7 +31,8 @@ from .vms import VmsMixin
 from . import storage
 
 
-class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, AccountsMixin):
+class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersMixin, VmsMixin, AccountsMixin,
+            TokensMixin):
     def __init__(self, state):
         self.state = state
         # Its own directory under the toolchain store, by its node id (R196),
@@ -235,6 +237,12 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 and self.census_thread.is_alive():
             self.census_stale = True
         c = taken if taken is not None else self.census_beating()
+        # This boot's public half and the seals here (R126), in the census
+        # the controller keeps of the node, while there are any.
+        if isinstance(c, dict):
+            ts = self.token_census()
+            if ts:
+                c["tokseal"] = ts
         st, r = self.ctl.call("hello", {"census": c,
                                         "version": AGENT_VERSION,
                                         "digest": own_digest(),
@@ -302,6 +310,15 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                 self.account_users_pass()
                 self.refresh_session_tool()
                 self.session_renew()
+            # The coding agents' sign-ins sealed (R126): the controller's
+            # switch, and each account's public key here, kept in node.json.
+            ts, pubs = bool(r.get("token_seal")), r.get("token_pubs") if isinstance(r.get("token_pubs"), dict) else {}
+            if ts != bool(self.state.get("token_seal")) or pubs != (self.state.get("token_pubs") or {}):
+                self.state["token_seal"], self.state["token_pubs"] = ts, pubs
+                save_state(self.state)
+                if ts != bool(self.state.get("token_seal_said")):
+                    self.state["token_seal_said"] = ts
+                    log("the coding agents' sign-ins are kept sealed here" if ts else "sign-ins are no longer sealed here")
             self.keep_session_tokens(r.get("session_tokens") or [])
             # Whether each session here is kept to its own project's network,
             # and what each project owns here (R79), kept in node.json so it
@@ -552,6 +569,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             timed("session_check", self.session_check)
             timed("firewall_check", self.session_firewall_check)
             timed("account_users", self.account_users_pass)
+            timed("tokens", self.token_pass)
             timed("idle_reap", self.session_idle_reap)
             timed("runner_check", self.runner_check)
             n = self.running()

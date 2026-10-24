@@ -407,6 +407,13 @@ class Job(threading.Thread):
         env.setdefault("BUILDERBOT_ROLE", "node")
         env.setdefault("BB_NODE", str(self.agent.state.get("name") or ""))
         argv = ["bash", os.path.join(into, "scripts", "bb"), "login", "--flow"] + (["--agent", agent] if agent else [])
+        # Where sign-ins are sealed (R126), the folder its opened copy lives
+        # in is there before the login writes through the home's link to it;
+        # the token pass then seals what the login wrote.
+        ready = getattr(self.agent, "token_login_ready", None)
+        if ready:
+            with contextlib.suppress(Exception):
+                ready(str(spec.get("uid") or ""))
         master, slave = pty.openpty()
         self.say(f"signing in to {agent or 'Claude'} on this machine; the URL follows\n")
         try:
@@ -523,6 +530,11 @@ class Job(threading.Thread):
             self.say(f"the sign-out did not run: {e}\n")
             return "failed", 70
         self.say((p.stdout or "") + (p.stderr or ""))
+        # ...and its seal, where sign-ins are sealed (R126): signed out is
+        # nothing left here to open.
+        forget = getattr(self.agent, "token_forget", None)
+        if forget and p.returncode == 0 and (agent or "claude") in ("claude", "codex"):
+            forget(uid, agent or "claude")
         return ("succeeded" if p.returncode == 0 else "failed"), p.returncode
 
     def exec(self, spec):

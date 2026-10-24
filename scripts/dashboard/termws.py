@@ -135,11 +135,13 @@ def local(conn, words, *, bbtty, env, cwd, ro, cols, rows, alive):
         close(conn, f"the terminal could not start here: {e}")
 
 
-def node(conn, *, host, port, key, kind, words, cols, rows, alive):
+def node(conn, *, host, port, key, kind, words, cols, rows, alive, extra=None):
     """A terminal on a node: its screen relay's /term, signed, then the
-    two sockets spliced until either closes or `alive` says no more."""
+    two sockets spliced until either closes or `alive` says no more.
+    `extra`: more fields for the signed open (the sealed sign-ins' keys,
+    R126)."""
     t = term()
-    blob = t.pack({"kind": kind, "argv": list(words), "cols": cols, "rows": rows})
+    blob = t.pack({**(extra or {}), "kind": kind, "argv": list(words), "cols": cols, "rows": rows})
     when = int(time.time())
     q = urllib.parse.urlencode({"a": blob, "t": when, "s": t.sign(key, blob, when)})
     try:

@@ -29,6 +29,30 @@ def _claims(jwt):
         return {}
 
 
+# Where a node keeps the coding agents' sign-ins sealed (R126, the agent's
+# tokens.py): a seal there is a sign-in, its header saying whose, though the
+# home's own file is a link to a copy that is only open while the account
+# works here. Read as root, as this runs on a node.
+SEAL_DIR = "/var/lib/builderbot/tokens"
+
+
+def sealed_of(home, agent):
+    """{email, plan} from the seal of `agent` for the account whose home this
+    is, or None: the header alone, never the sealed sign-in."""
+    try:
+        with open(os.path.join(SEAL_DIR, os.path.basename(home.rstrip("/")), agent + ".seal"), "rb") as f:
+            blob = f.read(8192)
+    except OSError:
+        return None
+    if not blob.startswith(b"BBTOK1\n"):
+        return None
+    try:
+        h = json.loads(blob[7:blob.index(b"\n", 7)])
+    except ValueError:
+        return None
+    return {"email": str(h.get("email") or "")[:120], "plan": str(h.get("plan") or "")[:40]}
+
+
 def codex_of(home):
     """Who this account's Codex CLI is signed in as here, {email, plan}, or
     None. $CODEX_HOME is ~/.codex for a session (bb-tty sets none). None
@@ -38,7 +62,9 @@ def codex_of(home):
         with open(os.path.join(home, ".codex", "auth.json")) as f:
             d = json.load(f)
     except FileNotFoundError:
-        return None
+        # Sealed, its copy not open now (R126): still a sign-in.
+        got = sealed_of(home, "codex")
+        return got if got and got["email"] else None
     except (OSError, ValueError) as e:
         return {"error": f"{type(e).__name__}: {e}"[:200]}
     if not isinstance(d, dict):
@@ -192,7 +218,8 @@ def main():
         # The credential is what makes it a login rather than a leftover name: a
         # signed-out home keeps .claude.json and loses this file, and reporting
         # the stale name would keep the card claiming a login that is gone.
-        if email and not os.path.exists(os.path.join(home, ".claude", ".credentials.json")):
+        if email and not os.path.exists(os.path.join(home, ".claude", ".credentials.json")) \
+                and not sealed_of(home, "claude"):
             email = ""
         agents = {k: v for k, v in (("codex", codex_of(home)), ("copilot", copilot_of(home))) if v}
         out.append({"uid": name, "email": email, "plugins": plugins_of(home), "agents": agents, "mcp": mcp_of(home)})

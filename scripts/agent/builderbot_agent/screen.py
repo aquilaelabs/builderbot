@@ -132,9 +132,18 @@ def serve_term(conn, key, hdr, q, kinds):
     spec = term.unpack(blob)
     if spec is None:
         return _refuse(conn, 400, "not a terminal")
-    how = (kinds() or {}).get(spec["kind"])
+    ks = kinds() or {}
+    how = ks.get(spec["kind"])
     if not how:
         return _refuse(conn, 409, "this node's terminals are not up")
+    # The account's sealed sign-ins, opened for its session before the
+    # program starts (R126). One that cannot be opened leaves the terminal
+    # to start as it is: its agent then says it is not signed in here.
+    if spec.get("tk") and spec["kind"] in ("rw", "ro") and callable(ks.get("_open")):
+        try:
+            ks["_open"](spec["tk"])
+        except Exception as e:                                       # noqa: BLE001
+            log(f"term: could not open the account's sealed sign-ins: {type(e).__name__}: {e}")
     _accept(conn, hdr)
     term.relay(conn, _Frames(), _frame, spec, how)
 
@@ -230,8 +239,12 @@ class ScreenRelay:
         return keys
 
     def _kinds(self):
-        """The terminals' programs as the session agent last started them."""
-        return getattr(self.agent, "term_kinds", None) or {}
+        """The terminals' programs as the session agent last started them,
+        and what opens an account's sealed sign-ins for one (R126)."""
+        ks = dict(getattr(self.agent, "term_kinds", None) or {})
+        if callable(getattr(self.agent, "token_open", None)):
+            ks["_open"] = self.agent.token_open
+        return ks
 
     @staticmethod
     def _one(conn, key, kinds):

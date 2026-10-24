@@ -798,6 +798,7 @@ function nodeSessDirty(n){
   return (c.sessnetOn !== undefined && c.sessnetOn !== !!conf.session_net)
     || (c.rootAsks !== undefined && c.rootAsks !== !conf.no_root)
     || (c.acctUsers !== undefined && c.acctUsers !== !!conf.account_users)
+    || (c.tokSeal !== undefined && c.tokSeal !== !!conf.token_seal)
     || (c.ctrNet !== undefined && c.ctrNet !== ctrOn)
     || (c.portsLocal !== undefined && c.portsLocal !== portsOn)
     || (c.turnsText !== undefined && String(Number(c.turnsText) || 0) !== String((n.turns || {}).limit || 0))
@@ -919,6 +920,17 @@ function nodeSessNetRow(n){
   if (c.draft.acctUsers === undefined || c.draft.acctFrom !== acctOn){
     c.draft.acctUsers = acctOn; c.draft.acctFrom = acctOn;
   }
+  // ...and, with that, its coding agents' sign-ins sealed here (R126).
+  const sealOn = !!n.config?.token_seal;
+  if (c.draft.tokSeal === undefined || c.draft.tokFrom !== sealOn){
+    c.draft.tokSeal = sealOn; c.draft.tokFrom = sealOn;
+  }
+  const sealed = Object.values(n.reported?.tokseal?.sealed || {}).reduce((t, a) => t + Object.keys(a).length, 0);
+  const sealLine = !acctOn ? `<div class="sub dim">Needs each account a user of its own first.</div>`
+    : !sealOn ? ""
+    : !n.reported?.tokseal ? `<div class="sub dim">The node has not reported it yet.</div>`
+    : `<div class="sub">${sealed} sign-in${sealed === 1 ? "" : "s"} sealed here. Each opens only while its person has a terminal open on this node, so a copy of its disk signs in to nothing.</div>`
+      + (n.tokseal_stale ? `<div class="sub warn">${n.tokseal_stale} still sealed under the install key before this one: keep INSTALL_KEY_PREVIOUS until ${n.tokseal_stale === 1 ? "its person opens" : "their people open"} a terminal here.</div>` : "");
   const ac = n.reported?.session?.accounts || {};
   const acctLine = !acctOn ? (ac.users ? `<div class="sub dim">${ac.users} account${ac.users === 1 ? "" : "s"} still ${ac.users === 1 ? "has" : "have"} a home of ${ac.users === 1 ? "its" : "their"} own user, moved back once ${ac.users === 1 ? "its" : "their"} sessions end.</div>` : "")
     : ac.error ? `<div class="sub bad">Not in force: ${esc(ac.error)}.</div>`
@@ -948,7 +960,10 @@ function nodeSessNetRow(n){
     ${rootOn ? "" : `<div class="sub dim">A session that asks is refused and told this is off.</div>`}</div>
     ${acctOn || state?.settings?.settings?.offer_unvetted?.value ? `<div class="field"><label class="ndcap"><input type="checkbox" data-k="acctusers" ${c.draft.acctUsers ? "checked" : ""}>
       run each account as a user of its own, so no account and no shell as the session account reaches another's sign-ins or terminals <span class="pill">dev</span></label>
-    ${acctLine}</div>` : ""}`;
+    ${acctLine}</div>
+    <div class="field"><label class="ndcap"><input type="checkbox" data-k="tokseal" ${c.draft.tokSeal ? "checked" : ""}${acctOn || sealOn ? "" : " disabled"}>
+      keep the coding agents' sign-ins sealed, opened only while their person has a terminal open here <span class="pill">dev</span></label>
+    ${sealLine}</div>` : ""}`;
 }
 
 // How many Claude sessions here may work on a prompt at once (turns.py on
@@ -2484,7 +2499,7 @@ function wireNodesTab(root){
       }
       if (act === "sess-revert"){
         const c = nodesConf[id];
-        if (c && c.draft) for (const k of ["sessnetOn", "rootAsks", "acctUsers", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
+        if (c && c.draft) for (const k of ["sessnetOn", "rootAsks", "acctUsers", "tokSeal", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
         nodesRev++; drawPanes();
         return;
       }
@@ -2515,12 +2530,14 @@ function wireNodesTab(root){
                         v => v ? "a session here may ask for a root command" : "a session here asking for a root command is refused")
           && await step(val("acctusers"), !!conf.account_users, v => ({action: "account-users", on: v}),
                         v => v ? "each account here becomes a user of its own; a home moves once its older sessions end" : "accounts here run as the session account again once their sessions end")
+          && await step(val("tokseal"), !!conf.token_seal, v => ({action: "token-seal", on: v}),
+                        v => v ? "coding agents' sign-ins here are sealed from the next hello, each opened only for a terminal its person opens" : "coding agents' sign-ins here are kept as plain files again, each from the next terminal its person opens")
           && await step(val("ctrnet"), "container_net" in conf ? !!conf.container_net : !!conf.host_only, v => ({action: "container-net", on: v}),
                         v => v ? "each project's containers here are kept to their own network from the next hello" : "containers here reach each other again from the next hello")
           && await step(val("portslocal"), "ports_local" in conf ? !!conf.ports_local : !!conf.host_only, v => ({action: "ports-local", on: v}),
                         v => v ? "published ports here bind to 127.0.0.1 from the next hello; docker restarts once" : "published ports here bind to every address from the next hello; docker restarts once");
         const c = nodesConf[id];
-        if (ok && c && c.draft) for (const k of ["sessnetOn", "rootAsks", "acctUsers", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
+        if (ok && c && c.draft) for (const k of ["sessnetOn", "rootAsks", "acctUsers", "tokSeal", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
         if (said.length) notify(said.join("; "));
         await loadNodes();
         return;
@@ -2630,7 +2647,7 @@ function wireNodesTab(root){
     // Revert, which sleep again when every field is back where it was.
     const sessWake = () => { const dirty = nodeSessDirty(nodesList.find(x => x.id === id) || {});
       box.querySelectorAll('[data-nd="sess-save"], [data-nd="sess-revert"]').forEach(x => { x.disabled = !dirty; }); };
-    for (const [k, key] of [["sessnet", "sessnetOn"], ["rootasks", "rootAsks"], ["acctusers", "acctUsers"], ["ctrnet", "ctrNet"], ["portslocal", "portsLocal"]]){
+    for (const [k, key] of [["sessnet", "sessnetOn"], ["rootasks", "rootAsks"], ["acctusers", "acctUsers"], ["tokseal", "tokSeal"], ["ctrnet", "ctrNet"], ["portslocal", "portsLocal"]]){
       const el = box.querySelector(`[data-k="${k}"]`);
       if (el) el.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft[key] = el.checked; sessWake(); };
     }

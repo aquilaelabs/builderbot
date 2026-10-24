@@ -195,6 +195,7 @@ scripts/
     gitcreds.py                  a project's git token, one line in /config/gitcreds, sealed under the install key where there is one (R135)
     git-credential-bb            git's credential helper for that token: opened for the scheme and host it was written for, and nothing kept (R135)
     termws.py                    BuilderBot's own terminal, the controller's half (R133): /termws in a pty here, or carried signed to a node's /term
+    tokenkeys.py                 the controller's half of the sealed sign-ins (R126): each account's public key per node, made from the install key, and the keys a person's own terminal carries
     nginxproxy.py                one nginx per node, BuilderBot's own (R171): the routes and certificate kept here, the compose file generated from them, deployed and rebuilt through containers.py
     phone.py                     a paired handset on a node: install, push, and the asking
     phonelease.py                a phone lent to a project (R113): the lease, and what its sessions may do on the phone without asking
@@ -260,6 +261,8 @@ scripts/
     sessnet.py                   each session kept to its own project's network (R79)
     accounts.py                  each account a Unix user of its own on the node (R125): its user made, its home moved to it and back, the terminal's environment for bb-session tty
     tokenwatch.py                who opens an account's coding-agent token on the node (R125): the files held at 600, a reader that is neither the account nor the agent said on the next hello
+    tokens.py                    the coding agents' sign-ins sealed on the node (R126): sealed where a login wrote them, opened into a tmpfs for a person's terminal, wiped after the last session
+    tokenseal.py                 the sealing both ends load: an account's key pair per node, the seal, and the wrap a seal's key travels in to the agent
     runners.py                   the CI runners: their slots and state, and Agent's runner verbs
     census.py                    the census and the sample every hello carries
     jobs.py                      Job: one piece of the controller's work, on its own thread

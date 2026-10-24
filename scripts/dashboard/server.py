@@ -3705,6 +3705,11 @@ import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
 import termws                                                    # noqa: E402
 termws.configure(agent_dir=nodes.AGENT_DIR)
+import tokenkeys                                                 # noqa: E402
+tokenkeys.configure(agent_dir=nodes.AGENT_DIR)
+# Each account's public key on a node, to seal its sign-ins with (R126).
+nodes.token_pubs = lambda nid: tokenkeys.pubs(nid, [u["uid"] for u in users.all_users() if u.get("uid")])
+nodes.token_stale = tokenkeys.under_previous
 import claudecode                                                # noqa: E402
 import agentcode                                                 # noqa: E402
 import projsessions                                              # noqa: E402
@@ -6099,9 +6104,16 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if node:
                 ro = bool(users.may(self._who(), "terminal")) and not (_ARG_CTR.match(_term_arg(args)) or vmm)
+                kind = "ctr" if (_ARG_CTR.match(_term_arg(args)) or vmm) else "ro" if ro else "rw"
+                # A person's own terminal carries what opens their sealed
+                # sign-ins there (R126), wrapped to the agent; a container's
+                # or a VM's never does, nor anybody else's.
+                tk = None
+                if kind != "ctr" and nodes.token_seal_on(target["id"]):
+                    tk = tokenkeys.wrapped_for(target["id"], users.uid_of(self._who() or {}),
+                                               ((nodes.node(target["id"]) or {}).get("reported") or {}).get("tokseal"))
                 return termws.node(down, host=target["host"], port=SCREEN_PORT, key=nodes.screen_key(target["id"]),
-                                   kind="ctr" if (_ARG_CTR.match(_term_arg(args)) or vmm) else "ro" if ro else "rw",
-                                   words=words, alive=alive, **dims)
+                                   kind=kind, words=words, alive=alive, extra={"tk": tk} if tk else None, **dims)
             env = {k: v for k, v in os.environ.items() if k != "DASHBOARD_AUTH"}
             return termws.local(down, words, bbtty=str(HERE / "bb-tty"), env=env,
                                 cwd=env.get("HOME") or "/", ro=bool(users.may(self._who(), "terminal")),

@@ -788,6 +788,11 @@ written into `/config`: keep it with your other secrets. Lost or changed, the
 sealed keys cannot be opened, the Signing view says so, and each key comes
 back by **Import a backup**; without a secret, the keys are kept unsealed and
 the view says that too. Root on the running controller can still read them.
+The coding agents' sign-ins a node keeps sealed (Nodes, **Sign-ins sealed**)
+are sealed under keys made from it too: to change the install key without
+everybody signing in again, set the old one as `INSTALL_KEY_PREVIOUS=` beside
+the new one until each person has opened a terminal on each node once, which
+seals their sign-in again under the new key.
 
 So a sideload key is downloaded once with **Download backup** and kept
 offline, with its password somewhere apart from it; its row says so in red

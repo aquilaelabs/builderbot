@@ -68,7 +68,14 @@ def unpack(blob):
     if not isinstance(argv, list) or len(argv) > ARG_MAX \
             or not all(isinstance(a, str) and 0 < len(a) <= WORD_MAX and "\0" not in a for a in argv):
         return None
-    return {"kind": d["kind"], "argv": argv, "cols": _dim(d.get("cols"), 80), "rows": _dim(d.get("rows"), 24)}
+    out = {"kind": d["kind"], "argv": argv, "cols": _dim(d.get("cols"), 80), "rows": _dim(d.get("rows"), 24)}
+    # An account's sealed sign-ins opened for this terminal (R126): the
+    # account, the wrap's public half and the wrap, each as the controller
+    # wrote them; opened by the agent before the program starts.
+    tk = d.get("tk")
+    if isinstance(tk, dict) and all(isinstance(tk.get(k), str) and 0 < len(tk[k]) <= 8192 for k in ("acct", "C", "w")):
+        out["tk"] = {k: tk[k] for k in ("acct", "C", "w")}
+    return out
 
 
 def _dim(v, default):
