@@ -17,6 +17,7 @@ from .base import (
     AGENT_INSTALLS,
     AGENT_PREFIXES,
     AGENTS_DIR,
+    CLAUDE_INSTALL,
     CLAUDE_DIR,
     DOCKER_BIN,
     FIREWALL_CMD,
@@ -854,15 +855,33 @@ class SessionsMixin:
 
     def agent_update(self, job, spec):
         """Install, update or remove one of the other coding agents for the
-        SESSION account (R95 step 2), as claude_update does Claude Code:
-        the vendor's installer run as the account, into its home, then the
-        binary pinned root-owned under AGENTS_DIR where the agent is root.
-        Which agent and how is AGENT_INSTALLS's row for this job's type,
-        never anything the controller sent."""
+        SESSION account (R95 step 2). Which agent and how is AGENT_INSTALLS's
+        row for this job's type, never anything the controller sent."""
         how = AGENT_INSTALLS.get(job.job.get("type") or "")
         if not how:
             job.say("refused: no coding agent is installed by this job\n")
             return "failed", 78
+        return self.agent_install(job, spec, how)
+
+    def claude_update(self, job, spec):
+        """Install the current Claude Code for the SESSION account, and pin it
+        (claudecode.py on the controller). Queued by an administrator's press
+        and by nothing else; the controller ended the Claude sessions here
+        before queueing it, since the binary is swapped under nothing."""
+        return self.agent_install(job, spec, CLAUDE_INSTALL)
+
+    def agent_install(self, job, spec, how):
+        """One coding agent installed, updated or removed for the SESSION
+        account, from its row (AGENT_INSTALLS, CLAUDE_INSTALL): one path for
+        every agent (R95 step 18).
+
+        The vendor's installer runs as the session account, into its home,
+        the way the provisioner first installed it. Then, where this agent
+        is root, the binary is copied into the row's pin folder, root-owned,
+        which the session's PATH reads first: that copy is what a session
+        runs and what the account cannot write, so an update typed in a
+        session changes nothing that runs. A guest node, where the agent is
+        not root, keeps the account's own copy and says so."""
         product, cmd = how["product"], how["command"]
         who_name = self.session_account()
         env = dict(sdk_env(self.state))
@@ -877,13 +896,16 @@ class SessionsMixin:
         if not who:
             env.update({"HOME": os.path.expanduser("~"), "USER": who_name, "LOGNAME": who_name})
         home = env.get("HOME") or os.path.expanduser("~")
-        pin_dir = os.path.join(AGENTS_DIR, how["id"])
+        pin_dir = how.get("pin_dir") or os.path.join(AGENTS_DIR, how["id"])
+        # Taken off, from the node's Agents page (R145): the pinned copy a
+        # session runs and the account's own install under its home.
         if spec.get("action") == "remove":
             gone = []
-            for path in (os.path.join(pin_dir, cmd), os.path.join(home, how["bin"])):
+            for path in (os.path.join(pin_dir, cmd), os.path.join(home, how["bin"]),
+                         *(os.path.join(home, a) for a in how.get("also", ()))):
                 if os.path.lexists(path):
                     with contextlib.suppress(OSError):
-                        os.unlink(path)
+                        shutil.rmtree(path) if os.path.isdir(path) and not os.path.islink(path) else os.unlink(path)
                         gone.append(path)
             # ...and a pinned release folder, with the links into it.
             rel = os.path.join(pin_dir, "release")
@@ -904,7 +926,7 @@ class SessionsMixin:
         for k, v in how["env"].items():
             env[k] = v.format(home=home)
         want = str(spec.get("to") or "")
-        if want and re.fullmatch(r"\d+\.\d+\.\d+", want):
+        if want and how["pin"] and re.fullmatch(r"\d+\.\d+\.\d+", want):
             env[how["pin"][0]] = how["pin"][1].format(v=want)
         stub = os.environ.get(f"BUILDERBOT_{how['id'].upper()}_INSTALLER")
         argv = ["bash", stub] if stub else ["bash", "-c", how["script"]]
@@ -917,6 +939,9 @@ class SessionsMixin:
             job.say(f"could not start the installer: {e}\n")
             return "failed", 70
         deadline = time.monotonic() + int(spec.get("timeout") or 900)
+        # Posted as it goes and timed by the clock, not by the next line: it
+        # read on this thread, so nothing was posted until the end and a
+        # silent hang never reached its deadline.
         reader = pump(job, job.proc.stdout)
         while reader.is_alive():
             reader.join(0.5)
@@ -931,8 +956,15 @@ class SessionsMixin:
         if code != 0:
             job.say(f"the installer exited {code}\n")
             return "failed", code
+        # The binary the installer just put down: the version asked for in
+        # the folder it leaves, where the row names one (Claude Code's
+        # ~/.local/share/claude/versions), else whatever its launcher resolves
+        # to. Claude's launcher is not trusted alone: on a lab node it is a
+        # stand-in the installer leaves in place, and pinning that pinned the
+        # old version (23 Sep).
         exe = os.path.join(home, how["bin"])
-        src = os.path.realpath(exe) if os.access(exe, os.X_OK) else ""
+        fresh = os.path.join(home, how["fresh"].format(v=want)) if want and how.get("fresh") else ""
+        src = fresh if fresh and os.access(fresh, os.X_OK) else (os.path.realpath(exe) if os.access(exe, os.X_OK) else "")
         if not src:
             job.say(f"installed, but no {cmd} to run at ~/{how['bin']}\n")
             return "failed", 70
@@ -962,124 +994,16 @@ class SessionsMixin:
                 job.say(f"installed {ver} for {who_name}, but could not pin it: {e}\n")
         else:
             job.say(f"installed {ver} for {who_name} (the agent is not root here, so the account's own copy is what runs)\n")
+        # New sessions get the PATH with the pinned copy on it; the ttyds are
+        # restarted onto it, tmux sessions untouched (there are none).
         self.session_renew()
         job.say(f"{product} {ver} is what a session here runs now\n")
+        # ...and the controller hears it now: the version it compares rides
+        # the census, which rides hello, so without this the bell kept saying
+        # an update was out for up to ten minutes after it landed (B249).
         self.hello_again(f"{product} was updated")
         return "succeeded", 0
 
-    def claude_update(self, job, spec):
-        """Install the current Claude Code for the SESSION account, and pin it
-        (claudecode.py on the controller). Queued by an administrator's press
-        and by nothing else; the controller ended the Claude sessions here
-        before queueing it, since the binary is swapped under nothing.
-
-        The installer runs as the session account, into its home, the way the
-        provisioner first installed it. Then, where this agent is root, the
-        binary is copied into CLAUDE_DIR, root-owned, which the session's
-        PATH reads first: that copy is what a session runs and what the
-        account cannot write, so `claude update` typed in a session changes
-        nothing that runs. A guest node, where the agent is not root, keeps
-        the account's own copy and says so.
-        """
-        who_name = self.session_account()
-        env = dict(sdk_env(self.state))
-        try:
-            who = self.as_user(env, who_name)
-        except RuntimeError as e:
-            job.say(f"refused: {e}\n")
-            return "failed", 78
-        if not who_name:
-            job.say("refused: this node reports no session account, so there is no Claude Code here to update\n")
-            return "failed", 78
-        if not who:
-            env.update({"HOME": os.path.expanduser("~"), "USER": who_name, "LOGNAME": who_name})
-        home = env.get("HOME") or os.path.expanduser("~")
-        # Taken off, from the node's Toolchains tab (R145): the pinned copy
-        # a session runs and the account's own install under its home.
-        if spec.get("action") == "remove":
-            gone = []
-            for path in (os.path.join(CLAUDE_DIR, "claude"), os.path.join(home, ".local", "bin", "claude"),
-                         os.path.join(home, ".local", "share", "claude")):
-                if os.path.lexists(path):
-                    with contextlib.suppress(OSError):
-                        shutil.rmtree(path) if os.path.isdir(path) and not os.path.islink(path) else os.unlink(path)
-                        gone.append(path)
-            job.say(("removed " + ", ".join(gone)) if gone else "Claude Code was not installed here")
-            job.say("\n")
-            self.hello_again("Claude Code was removed")
-            return "succeeded", 0
-        env["PATH"] = ":".join([os.path.join(home, ".local", "bin"), env.get("PATH") or "/usr/local/bin:/usr/bin:/bin"])
-        env.setdefault("LANG", "C.UTF-8")
-        # A test's stand-in for the installer; the real one is the script the
-        # provisioner ran, fetched fresh each time.
-        stub = os.environ.get("BUILDERBOT_CLAUDE_INSTALLER")
-        argv = ["bash", stub] if stub else ["bash", "-c", "curl -fsSL https://claude.ai/install.sh | bash"]
-        job.say(f"installing Claude Code for {who_name}"
-                + (f" ({spec.get('to')} is out)" if spec.get("to") else "") + "\n")
-        try:
-            job.proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                        cwd=home if os.path.isdir(home) else "/tmp", env=env,
-                                        start_new_session=True, close_fds=True, **who)
-        except (OSError, ValueError) as e:
-            job.say(f"could not start the installer: {e}\n")
-            return "failed", 70
-        deadline = time.monotonic() + int(spec.get("timeout") or 900)
-        # Posted as it goes and timed by the clock, not by the next line: it
-        # read on this thread, so nothing was posted until the end and a
-        # silent hang never reached its deadline.
-        reader = pump(job, job.proc.stdout)
-        while reader.is_alive():
-            reader.join(0.5)
-            if job.pending:
-                job.flush()
-            if time.monotonic() > deadline:
-                job.say("the installer did not finish in time\n")
-                job.cancel()
-                return "failed", 75
-        code = job.proc.wait()
-        job.proc = None
-        if code != 0:
-            job.say(f"the installer exited {code}\n")
-            return "failed", code
-        # The binary the installer just put down: the version it was asked
-        # for under ~/.local/share/claude/versions when that is there, else
-        # whatever the launcher resolves to. The launcher itself is not
-        # trusted: on a lab node it is a stand-in the installer leaves in
-        # place, and pinning that pinned the old version (23 Sep).
-        exe = os.path.join(home, ".local", "bin", "claude")
-        want = str(spec.get("to") or "")
-        fresh = os.path.join(home, ".local", "share", "claude", "versions", want) if want else ""
-        src = fresh if fresh and os.access(fresh, os.X_OK) else (os.path.realpath(exe) if os.access(exe, os.X_OK) else "")
-        if not src:
-            job.say("installed, but no claude to run: nothing under ~/.local/bin or ~/.local/share/claude/versions\n")
-            return "failed", 70
-        out, dead = _probe([src, "--version"], timeout=20)
-        if dead:
-            job.say(f"installed, but it does not run: {dead}\n")
-            return "failed", 70
-        ver = out.split("\n")[0].strip()[:40]
-        if os.geteuid() == 0:
-            try:
-                os.makedirs(CLAUDE_DIR, mode=0o755, exist_ok=True)
-                tmp = os.path.join(CLAUDE_DIR, "claude.new")
-                shutil.copy2(src, tmp)
-                os.chown(tmp, 0, 0)
-                os.chmod(tmp, 0o755)
-                os.replace(tmp, os.path.join(CLAUDE_DIR, "claude"))
-                job.say(f"pinned {ver} at {CLAUDE_DIR}/claude, root-owned: a session runs this copy and cannot change it\n")
-            except OSError as e:
-                job.say(f"installed {ver} for {who_name}, but could not pin it: {e}\n")
-        else:
-            job.say(f"installed {ver} for {who_name} (the agent is not root here, so the account's own copy is what runs)\n")
-        # New sessions get the PATH with the pinned copy on it; the ttyds
-        # are restarted onto it, tmux sessions untouched (there are none).
-        self.session_renew()
-        job.say(f"Claude Code {ver} is what a session here runs now\n")
-        # ...and the controller hears it now: the version it compares rides
-        # the census, which rides hello, so without this the bell kept
-        # saying an update was out for up to ten minutes after it landed (B249).
-        self.hello_again("Claude Code was updated")
-        return "succeeded", 0
 
     def published_now(self):
         """The published host ports of every container here, by compose

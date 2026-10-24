@@ -161,6 +161,8 @@ class NodeAgent(unittest.TestCase):
         fake.as_user = lambda env, who: {}
         fake.session_renew = lambda: None
         fake.hello_again = lambda why: None
+        # The one install path every agent's job goes through (R95 step 18).
+        fake.agent_install = lambda job, spec, how: self.mod.Agent.agent_install(fake, job, spec, how)
         env = {"BUILDERBOT_CODEX_INSTALLER": self.stub, "HOME": self.home}
         with mock.patch.dict(os.environ, env), \
                 mock.patch("os.path.expanduser", return_value=self.home), \

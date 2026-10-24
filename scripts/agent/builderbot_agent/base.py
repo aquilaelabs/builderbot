@@ -139,6 +139,15 @@ AGENT_INSTALLS = {
                        "pin": ("VERSION", "v{v}"), "env": {"PREFIX": "{home}/.local"},
                        "bin": ".local/bin/copilot"},
 }
+# Claude Code's row in the same shape, for the claude-update job: kept out of
+# AGENT_INSTALLS, which the census and the session PATH read for the agents
+# beside Claude. Its copy is pinned in CLAUDE_DIR, its installer is handed no
+# version (the one asked for is read from the versions folder it leaves),
+# and a removal takes that folder too.
+CLAUDE_INSTALL = {"id": "claude", "command": "claude", "product": "Claude Code", "reported": "claude",
+                  "script": "curl -fsSL https://claude.ai/install.sh | bash",
+                  "pin": None, "env": {}, "bin": ".local/bin/claude", "pin_dir": CLAUDE_DIR,
+                  "fresh": ".local/share/claude/versions/{v}", "also": (".local/share/claude",)}
 SESSION_CONF = os.environ.get("BUILDERBOT_SESSION_CONF", "/etc/bb-session.conf")
 SESSION_SUDOERS = os.environ.get("BUILDERBOT_SESSION_SUDOERS", "/etc/sudoers.d/builderbot-session")
 # Each session kept to its own project's network (R79): the folder this agent
