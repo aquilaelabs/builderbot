@@ -7107,6 +7107,12 @@ document.querySelectorAll(".modal:not(.inline)").forEach(armModal);
 // once (page-motion.js). Before the page's other keydown listeners, so a
 // dialog's Escape is not also a menu's or an armed arrow's.
 document.addEventListener("keydown", modalKeys);
+// A big chip already on is no change, so its press is none (B317, the
+// operator 24 Oct): no list drawn again, no fade, as the rail does nothing
+// for the group already on. Taken before any chip's own handler.
+document.addEventListener("click", e => {
+  if (e.target.closest?.(".chip.on[aria-pressed='true']")){ e.stopPropagation(); e.preventDefault(); }
+}, true);
 // Scroll hints (scrollHints): on any scroll, which does not bubble but is
 // seen on its way down, and on a slow clock for content that grows under a
 // box nobody is scrolling. Only the few hinted boxes are measured.

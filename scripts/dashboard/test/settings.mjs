@@ -31,6 +31,9 @@ await page.evaluate(() => openSettingsTab());
 // section is picked from its list before its fields are used.
 await page.waitForSelector('.settingstab .snav [data-spick="debug"]', { timeout: 15000 }); await splitPick(page, 'debug');
 await page.waitForSelector('.settingstab [data-set="debug_mode"]', { timeout: 15000 });
+// The section on show, pressed again at a desk, is no change: no fade (B317).
+await page.click('.settingstab .snav [data-spick="debug"]');
+ok(await page.evaluate(() => !document.querySelector('.fghost')), 'the section on show, pressed again, fades nothing');
 // One tree, two products (roadmap R54, step 6): the switch that offers the
 // unvetted git hosts, hypervisors and OS families is a developer's, so it
 // lives in the Debugging dialog and not on the tab, off by default, and the

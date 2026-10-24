@@ -130,6 +130,10 @@ const xWorks = () => page.evaluate(() => {
   await page.waitForFunction(() => [...document.querySelectorAll('.noticestab .ntrow')].every(r => r.classList.contains('bad')), null, { timeout: 5000 });
   ok(await page.$$eval('.noticestab .ntrow', rs => rs.length === 1 && /stack 6/.test(rs[0].textContent)),
      'the Failures chip narrows it to the failures');
+  // The chip on, pressed again, is no change: no fade (B317).
+  await page.waitForFunction(() => !document.querySelector('.fghost'), null, { timeout: 5000 });
+  await page.click('.noticestab [data-ntchip="bad"]');
+  ok(await page.evaluate(() => !document.querySelector('.fghost')), 'the chip already on, pressed again, fades nothing');
   await page.click('.noticestab [data-ntchip=""]');
   const first = await page.$eval('.noticestab .ntrow', r => r.dataset.nt);
   await page.click(`.noticestab [data-ntdel="${first}"]`);

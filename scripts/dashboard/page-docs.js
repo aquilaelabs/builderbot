@@ -553,6 +553,12 @@ function splitDraw(root){
   if (nav.dataset.drawn !== html){
     nav.innerHTML = html; nav.dataset.drawn = html;
     nav.querySelectorAll("[data-spick]").forEach(b => b.onclick = () => {
+      // The section on show pressed again at a desk is no change: nothing
+      // drawn again, no fade (B317). On a phone the list stands in its place,
+      // so a press there still opens it.
+      // It is still the one open, which a narrower window shows in place of
+      // the list.
+      if (b.classList.contains("on") && !matchMedia("(max-width: 900px)").matches){ st.open = true; return; }
       st.pick = b.dataset.spick; st.open = true;
       // At a desk the section fades through, as a rail page does; on a
       // phone it slides in over the list.
