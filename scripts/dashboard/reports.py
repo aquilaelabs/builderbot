@@ -93,16 +93,24 @@ def conversation(rid):
 
 def _view(r):
     return {k: r.get(k) for k in ("id", "at", "project", "by", "node", "build", "text",
-                                  "area", "repro", "conversation")}
+                                  "area", "repro", "reproduces", "conversation")}
 
 
-def add(project, text, *, by="", node="", area="", repro="", conversation=None):
+# Whether its steps reproduce it (R124): the tracker's words (bugs.REPRODUCES),
+# so a report taken into a tracker carries the answer across.
+REPRODUCES = ("always", "sometimes", "once", "untried")
+
+
+def add(project, text, *, by="", node="", area="", repro="", reproduces="", conversation=None):
     """A new report from `project`'s session, or from a person on it; a
     person's about no project in particular has `project` "" (the header's
     Report a bug). {"ok", "id"} or {"error"}."""
     text = _clean(text, MAX_TEXT)
     if not text:
         return {"error": "say what happened: a report with no words is nothing to act on"}
+    reproduces = str(reproduces or "untried")
+    if reproduces not in REPRODUCES:
+        return {"error": f"whether it reproduces is one of: {', '.join(REPRODUCES)}"}
     with _lock:
         d = _load()
         mine = [r for r in d["reports"] if r.get("project") == project]
@@ -120,7 +128,8 @@ def add(project, text, *, by="", node="", area="", repro="", conversation=None):
         d["reports"].append({"id": rid, "at": int(time.time()), "project": str(project)[:100],
                              "by": str(by or "")[:100], "node": str(node or "")[:100],
                              "build": str(made or "")[:80], "text": text,
-                             "area": _clean(area, MAX_AREA), "repro": _clean(repro, MAX_TEXT)})
+                             "area": _clean(area, MAX_AREA), "repro": _clean(repro, MAX_TEXT),
+                             "reproduces": reproduces})
         # The reporter's latest conversation on the project, when they chose
         # to send it: its end, redacted like everything else here, kept
         # beside the store and named on the report.
@@ -192,7 +201,7 @@ def own_verb(act, proj, req, *, by):
     caller at the project (a session only at its own) and its Report
     BuilderBot bugs dial. (payload, status)."""
     return _answer(add(proj, req.get("text"), by=by, node=node_name(proj) if proj else "",
-                       area=req.get("area"), repro=req.get("repro"),
+                       area=req.get("area"), repro=req.get("repro"), reproduces=req.get("reproduces"),
                        conversation=req.get("_conversation")))
 
 

@@ -611,3 +611,25 @@ person ask of the controller's own daemon is what it lets them ask on a
 container install, no more. The record it amends: [nodes.md](nodes.md) §0
 rule 2 and §18 for this install alone, and the provisioner's and
 [sandbox-vm.md](sandbox-vm.md)'s "BuilderBot stays the container".
+
+## Coding agents beside Claude
+
+**Codex CLI and Copilot CLI are agents of their own, held to everything a
+Claude session is, through one table (22 Oct 2026, R95).** The operator asked
+for ChatGPT's and GitHub's coding agents usable the way Claude Code is, from
+the same buttons. Every place that said Claude asks `agents.py` which agent a
+session name, a terminal argument, a job or a census key is, so a second
+agent is a row, and Claude's adapter is the one that behaved as before. Each
+agent is installed, updated and signed in on a node by the person, from the
+Agents page beside Toolchains, never by the provisioner and never by a
+session; the vendor's own installer and device login run on the node, and
+the controller keeps only who each node said is signed in, never a token.
+A session's name carries its agent and an agent other than Claude works in a
+worktree of its own on `<agent>/<name>`, so one person's Claude and Codex
+sessions on one project meet through git as two people's do. The guards are
+the agents' own hooks running BuilderBot's, the dials say "Agents may" and
+hold for every agent alike, and a conversation is kept beside Claude Code's
+at the end of every turn and resumed only in the agent it is with. What an
+agent has no hook for is said in the project's settings rather than implied.
+Steps 12 to 14, a model router and an open agent for any model, wait for
+0.8.0 (the operator, 22 Oct).

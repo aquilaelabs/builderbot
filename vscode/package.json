@@ -1,7 +1,7 @@
 {
   "name": "builderbot",
   "displayName": "BuilderBot",
-  "description": "Open a BuilderBot project's files with no share mounted, see a Claude session's changes as it saves them, and work in that session's terminal, as your own BuilderBot account.",
+  "description": "Open a BuilderBot project's files with no share mounted, see a coding agent session's changes as it saves them, and work in any agent's session terminal, as your own BuilderBot account.",
   "version": "0.1.0",
   "publisher": "builderbot",
   "license": "Apache-2.0",
@@ -15,7 +15,7 @@
       { "command": "builderbot.signIn", "title": "Sign In", "category": "BuilderBot" },
       { "command": "builderbot.signOut", "title": "Sign Out", "category": "BuilderBot" },
       { "command": "builderbot.openProject", "title": "Open Project", "category": "BuilderBot" },
-      { "command": "builderbot.openSession", "title": "Open Claude Session", "category": "BuilderBot" },
+      { "command": "builderbot.openSession", "title": "Open Agent Session", "category": "BuilderBot" },
       { "command": "builderbot.search", "title": "Search Project Files", "category": "BuilderBot" }
     ],
     "configuration": {

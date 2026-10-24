@@ -11,7 +11,7 @@ explained. Everything below is one of seven things.
    |  the notebook: roadmap, bugs, rules,  |  --->  |  jobs: build, test, emu,  |
    |    tests, memory, changelog           |  hello |    compose, tell, update  |
    |  the store: /config (SQLite + JSON)   |  work  |  sessions: bb-session,    |
-   |  the relay: a session's bb verbs      |  result|    bb-tty, tmux, Claude   |
+   |  the relay: a session's bb verbs      |  result|    bb-tty, tmux, agents   |
    |  the asks: root, phone, container,    |        |  the toolchain store      |
    |    rebuild, on the bell               |        |  docker, the emulator,    |
    +---------------------------------------+        |    a phone, an X display  |
@@ -54,7 +54,7 @@ decisions.md under *The notebook*.
 ## Nodes and the agent
 
 A node is a machine enrolled to run work: builds, tests, the emulator, a
-project's containers, and the Claude sessions themselves. It runs the
+project's containers, and the agents' sessions themselves. It runs the
 agent, `scripts/agent/` (the `builderbot_agent` package and its entry,
 shipped as one zip that python runs as it would a script), which dials into the controller
 (`channel.py` on that side: enroll, hello, work, result) and needs no port
@@ -65,7 +65,7 @@ that gives a session its own view of its project. The design record is
 
 ## Sessions
 
-A Claude session runs on its project's node, in tmux, started by `bb-tty`
+A session runs on its project's node, in tmux, started by `bb-tty`
 from a dashboard terminal, inside its own view of the project
 (`bb-session`) and its own network (R79). It is briefed from
 `config/templates/briefing.md`, assembled per session by `preamble.py`

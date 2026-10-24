@@ -101,7 +101,7 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Logs|Claude sessions|Storage|Apps|Reach from outside|Room on the nodes|Maintenance|Debugging|Reset',
+ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Reach from outside|Room on the nodes|Maintenance|Debugging|Reset',
    `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the home tunnel the controller runs itself (R176), the room a node keeps (R110), maintenance mode (the owner's), debugging, and the reset (${groups.join(', ')})`);
 {
   // The room a node keeps (R110 steps 1 and 5): whole numbers held to their
@@ -129,17 +129,23 @@ ok(groups.join('|') === 'Logs|Claude sessions|Storage|Apps|Reach from outside|Ro
   await splitPick(page, 'idle');
   // Apply and Revert sleep until a field differs from what is saved, and
   // again when it is typed back (R218 step 32, as Profile's do).
-  const G = '.settingstab [data-group="Claude sessions"]';
+  const G = '.settingstab [data-group="Idle sessions"]';
   const awake = () => page.$eval(G, g => [g.querySelector('#idleApply').disabled, g.querySelector('[data-srevert]').disabled].join());
   const atRest = await awake();
+  // Each read waits for the redraw the typing starts, which a loaded machine
+  // can take a moment over.
+  const settle = want => page.waitForFunction(([g, w]) => { const e = document.querySelector(g);
+    return e && [e.querySelector('#idleApply').disabled, e.querySelector('[data-srevert]').disabled].join() === w; }, [G, want], { timeout: 5000 }).catch(() => {});
   await page.fill('#idleMin', '4321');
+  await settle('false,false');
   const changed = await awake();
   await page.fill('#idleMin', was);
+  await settle('true,true');
   const back = await awake();
   ok(atRest === 'true,true' && changed === 'false,false' && back === 'true,true',
      `a section's Apply and Revert sleep until a field differs, and again when it is typed back (${atRest} | ${changed} | ${back})`);
   await page.fill('#idleMin', '4321');
-  await page.click('.settingstab [data-group="Claude sessions"] [data-srevert]');
+  await page.click('.settingstab [data-group="Idle sessions"] [data-srevert]');
   await page.waitForFunction(w => document.getElementById('idleMin')?.value === w, was, { timeout: 10000 });
   ok(true, 'Revert on a section puts its field back to what is saved');
   ok(await page.$eval('.settingstab [data-group="Reach from outside"] .setsteps', ol => ol.querySelectorAll('li').length === 4 && /localhost:\d+/.test(ol.textContent)),
@@ -530,6 +536,9 @@ ok(elsewhere.git_name === 'T. Person',
      `...Build and test's Save stores the build command and nothing of Yours on this project, whose change stays typed and unsaved (${JSON.stringify(after)})`);
   await rnSect(page, 'yours');
   await page.click('.rnbar[data-rnbar="yours"] [data-rnrevert]');
+  // Revert asks first, in the page's question modal (R121), answered a beat
+  // after the press.
+  await page.waitForFunction(was => $('rnGitName').value === was, nameWas, { timeout: 5000 }).catch(() => {});
   ok(await page.evaluate(was => $('rnGitName').value === was
        && document.querySelector('.rnbar[data-rnbar="yours"] [data-rnrevert]').disabled
        && $('rnBuildCmd').value === 'make one', nameWas),

@@ -74,12 +74,15 @@ bb version unbump      take the last unreleased bump or set back; its
                    stays. Once: the bump before it is not taken back too.
                    A section dated under the wrong number is fixed with
                    unbump, then set to the number meant
-bb version release --why "..."
+bb version release --why "..." [--without-apk]
                    tag this commit and publish the release, as Release on the
                    Artifacts view does, on the controller with the project's own
-                   credentials. The project's settings say whether Claude may
+                   credentials. The project's settings say whether an agent may
                    (Tag and publish a release): auto releases, ask waits for
-                   the project's owner, with --why as the reason
+                   the project's owner, with --why as the reason. A release
+                   whose Android APK could not be signed is refused before the
+                   tag, saying why; --without-apk goes on, and bb sign release
+                   signs it once that is put right
 bb version release --edit --why "..." [--tag TAG] [--notes FILE] [--attach FILE]...
                    change the published release under the same setting, each
                    edit its own ask: the notes replaced whole (- reads stdin),
@@ -99,7 +102,7 @@ bb version line [X.Y.Z|none]   the release this branch works toward: a branch
                    a dev build heads for it (0.7.0-dev.N), a bump moves only
                    to it, and on a patch line bb lint refuses a new migration
 bb version policy  what a session may move here, and who decides. A
-                   person picks it in the project's settings (Claude may:
+                   person picks it in the project's settings (Agents may:
                    Move the version) or on the Artifacts view, before or after
                    there is a version: locked (theirs entirely), may start
                    one (a session writes the FIRST version and moves nothing
@@ -186,15 +189,17 @@ bb tidy [--keep emulator|gpu|gradle|browser|server|tmp]... [--dry]
                    its own on the NVIDIA card, its Gradle and Kotlin daemons, the
                    headless browsers a test left behind, a server it put in the
                    background and left listening (a dev server, a preview), and its
-                   own files in /tmp, which in a session is memory; --keep one, with
-                   the reason in your reply
+                   own files in /tmp, which in a session is memory; and the quick-boot
+                   snapshot of each of this project's phones not started for a week,
+                   naming a phone that is not its default and has not run for two
+                   (--keep emulator keeps them); --keep one, with the reason in your reply
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb node busy [--json]
                    whether this node is quiet enough to time anything on: its load,
                    memory and card (what holds the card's memory, by kind), what
                    runs there by kind (emulators, Gradle, compilers, browsers,
-                   other Claude sessions working, other projects' jobs, counted
+                   other agents' sessions working, other projects' jobs, counted
                    and never named) and a verdict: quiet, busy, saturated
 bb node wait-quiet [--level quiet|busy] [--timeout SECONDS]
                    wait until it is (quiet twice, ten seconds apart), before a
@@ -248,7 +253,7 @@ bb devapp probe [--port N] [--path /x]
                    so no root ask; --container NAME for another of the project's
 bb devapp rebuild [--why "..."]
                    build it and bring it up. Only where the project has handed that
-                   over: Claude may: Run its container, in its settings dialog and
+                   over: Agents may: Run its container, in its settings dialog and
                    the new-project dialog, reads deny (the default, refused with the
                    sentence that names it), ask (the reason goes to a person and the
                    command waits for Approve) or auto. Up, Down and a container of
@@ -298,7 +303,7 @@ bb sign FILE [--for play|sideload] [--why "..."]
                    its password never reach the session. --for play is the Play
                    upload key (the default for an .aab), sideload the app signing
                    key (the default for an .apk). The project's settings say
-                   whether Claude may (Sign a build): auto signs, ask waits for
+                   whether an agent may (Sign a build): auto signs, ask waits for
                    the project's owner to allow it, with --why as the reason.
                    Arrives in dist/ as NAME-signed.apk or .aab. --key NAME signs
                    with that key; without it, the key the build's package is
@@ -309,11 +314,20 @@ bb sign key new NAME --for play|sideload --why "..."
 bb sign map PACKAGE KEY --why "..."
 bb sign rotate OLD NEW --why "..."
                    a new key made on the controller, or an app's package mapped
-                   to a key (KEY "" unmaps it), under Claude may: Manage signing
+                   to a key (KEY "" unmaps it), under Agents may: Manage signing
                    keys: auto does it, ask waits for the project's owner. rotate
                    moves the apps OLD's sideload key signs to NEW's: builds go out
                    signed with both and a proof, Android 9 and newer take NEW,
                    older devices keep checking OLD, which is kept for good
+bb sign status [TAG]
+                   whether a release's APK can be signed (the sideload key, the
+                   node with its tools) and how the newest went: handed over,
+                   signed and attached with the key's fingerprint, or what
+                   stopped it, in the bell's words
+bb sign release --why "..."
+                   look for unsigned release APKs now and sign a failed one
+                   again, as the Signing view's Look for unsigned APKs now,
+                   under Sign a build: auto starts it, ask waits for the owner
 bb emu create API  build the AVD for an API level, installing its image if missing
 bb emu install APK install an APK on the running emulator
 bb emu shot [FILE] screenshot the emulator into dist/emu/
@@ -360,7 +374,10 @@ bb bug find TEXT   search the reports themselves: area, repro and notes too
 bb bug begin       the same notebook batch `bb roadmap begin` opens; `commit`, `revert`
 bb bug pending     reports a session filed that are waiting for your approval
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
-                   `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
+                   `wontfix N`, `na N`, `reopen N`, `rm N`, `history`. With
+                   --repro, --reproduces always|sometimes|once|untried says how
+                   often those steps showed it; --report N files diagnostics
+                   report N with its words, area, repro and that answer
 bb tests run [ARGS]  run the project's test command, time it, and record the run: says first when it should
                    finish, and ends by NAMING what went wrong: the failed assertions per file, and for a file
                    that CRASHED the line it died on, the assertions that had already failed before it did,
@@ -375,7 +392,7 @@ bb devapp test [ARGS]  the project's test command inside its running dev instanc
                    where "Tests run" in the project's settings says the dev instance, so a suite that
                    tests BuilderBot cannot disturb the BuilderBot it runs on (roadmap R48). Only for an
                    image that carries its tests: one built to ship has none, and a run inside it finds
-                   nothing and passes. Claude may: Run its container is not asked: a test runs in a
+                   nothing and passes. Agents may: Run its container is not asked: a test runs in a
                    container that is already up
 bb tests unit      the python unit tier (scripts/dashboard/unit): the modules' rules without a server
                    or a browser, in under a second; preflight runs it before any suite
@@ -416,7 +433,7 @@ bb help TOPIC      one topic of the session briefing in full (start, where, map,
                    speed, capture, asks, notebook, versions, git, android, gpu, containers);
                    bb help topics lists them, bb help VERB one verb's lines
 bb brief           the brief this project was started from: waiting for its first
-                   Claude session, or kept after that session started
+                   session, whichever agent runs it, or kept after that session started
 bb design          what this project looks like, from the notebook's Design view:
                    its design language in a line, and its pages
 bb design show [ID|NAME]   the prompt for one page, or for the language alone:
@@ -430,16 +447,17 @@ bb wiki            the project's wiki, from the notebook's Wiki view: its pages,
                    who changed each last, and where it is pushed
 bb wiki show NAME [--rev]   one page's Markdown (--rev: the revision a save checks)
 bb wiki save NAME FILE|- [--why "..."]   write a page whole, new or rewritten,
-                   under Claude may: Write the wiki: auto lands it, ask holds it
+                   under Agents may: Write the wiki: auto lands it, ask holds it
                    for the operator, deny refuses it, hidden keeps the whole
                    wiki from a session, reading included. A page changed since the
                    save began is refused rather than overwritten
 bb wiki rm NAME [--why "..."]   take a page out, under the same setting
 bb wiki mv OLD NEW   rename one; bb wiki history: the last changes
-bb transcripts     your own conversations with Claude on this project, newest
-                   first, as the Profile page lists them (bb -p NAME for one it reads)
+bb transcripts     your own conversations on this project, from every coding agent
+                   you use, each marked with its agent, newest first, as the
+                   Profile page lists them (bb -p NAME for one it reads)
 bb transcripts show ID [--tz ZONE] [--all]   one of them as text: what was said,
-                   every command Claude ran and what it answered; the newest
+                   every command it ran and what it answered; the newest
                    16 MB of a longer one, the whole of it with --all
 bb transcripts fetch ID [--into DIR]   the file itself into this machine's folder
                    for it: how a node holding its projects as a synced copy
@@ -514,7 +532,7 @@ bb vm ip NAME | ssh NAME [COMMAND...]
 bb container       what container asks are waiting on an administrator
 bb container new --why "..." --name NAME --compose FILE [--env FILE] [--node NODE] [--for PROJECT]
                    a container built from a compose file the session wrote,
-                   under the project's *Claude may: Run its container*: refused
+                   under the project's *Agents may: Run its container*: refused
                    at deny, asked at ask (an administrator reads the file on
                    the bell, and Approve registers it through the Containers page's own
                    New container path and starts its build), and at auto made
@@ -572,14 +590,14 @@ bb diag [--json] [SECTION...]
                    Debug in its settings, and its account has the grant.
                    Its `reports` section is what sessions on any project
                    reported about BuilderBot, kept until a person clears them
-bb report "..." [--area A] [--repro "..."]
+bb report "..." [--area A] [--repro "..." --reproduces always|sometimes|once|untried]
                    a problem with BuilderBot itself, from a session on any
                    project: it goes into the controller's diagnostics rather
                    than the project's tracker (the briefing's notebook section
                    says so), redacted like the diagnostics, and nothing comes
                    back to follow up. A `bb bug add` whose words name
                    BuilderBot or a `bb` command is not filed but sent here,
-                   unless `--here` says it is the project's own. *Claude may: Report
+                   unless `--here` says it is the project's own. *Agents may: Report
                    BuilderBot bugs* in a project's settings turns all of it off
                    for that project, rule and nudge included: BuilderBot's own
                    project, whose tracker those bugs belong in, has it off
@@ -591,7 +609,7 @@ bb pc [VERB] [--why "..."]
                    (editor-start, editor-stop, game-start, game-stop, build,
                    shot, log, editor-call METHOD PATH) runs on the PC as its
                    person set it up there and waits for what it did, a
-                   picture landing in dist/pc/. Under *Claude may: Use a lent
+                   picture landing in dist/pc/. Under *Agents may: Use a lent
                    PC* (Deny by default; Ask puts each use in front of the
                    person at the PC); never a command string
 bb doctor          check everything that usually goes wrong
@@ -719,6 +737,9 @@ cmd_status() {
         # box on" from a session is the CONTROLLER's build, asked for over the
         # API rather than read off an env that was never set here (R62).
         printf '  %-8s %s\n' controller "$(bb_controller_stamp)"
+        # ...and this node's agent, with when it was built (R131).
+        local agl; agl="$(bb_agent_stamp)"
+        [ -z "$agl" ] || printf '  %-8s %s\n' agent "$agl"
     else
         printf '  %-8s %s\n' version "${BB_VERSION:-unstamped}"
         printf '  %-8s %s\n' image "$(
@@ -729,10 +750,14 @@ cmd_status() {
                 printf 'unstamped'
             fi)"
     fi
-    # Only where a session runs: the controller carries no Claude Code (R47),
-    # and a dash against it there reads as something missing rather than as
-    # something that was never meant to be here.
-    if on_node; then version claude claude --version; fi
+    # Only where a session runs: the controller carries no coding agent (R47),
+    # and a dash against one there reads as something missing rather than as
+    # something that was never meant to be here. Every agent a session may be.
+    if on_node; then
+        version claude  claude --version
+        version codex   codex --version
+        version copilot copilot --version
+    fi
     version node   node --version
     version npm    npm --version
     version python python3 --version
@@ -816,7 +841,7 @@ cmd_projects() {
 claude_login_check() {
     on_node || return 0
     [ -n "${BB_TOKEN:-}" ] || return 0
-    BB_LOGIN_AUTH="$(bb_auth_header)" python3 "$BB_LIB/login-check.py" "${1:-}" || true
+    BB_LOGIN_AUTH="$(bb_auth_header)" python3 "$BB_LIB/login-check.py" "${1:-}" "${2:-claude}" || true
 }
 
 cmd_login() {
@@ -840,6 +865,39 @@ cmd_login() {
         BB_USERS_DIR="$BUILDER_USERS" python3 "$BB_LIB/login-list.py"
         return 0
     fi
+    # `--flow --agent ID` and `--out --agent ID` are the same two for another
+    # coding agent (R95 step 3): its own device login in the account's home
+    # on this machine, the binary found where a session finds it (the
+    # agent's pinned copy, then the session account's own). Each prints its
+    # link and its one-time code and waits for the person to enter the code
+    # on the provider's page; nothing is typed back here. Checked against
+    # Codex CLI 0.163.0 and Copilot CLI 1.0.102 (22 Oct).
+    if { [ "${1:-}" = --flow ] || [ "${1:-}" = --out ]; } && [ "${2:-}" = --agent ]; then
+        local uid="${BB_ACCOUNT_UID:-}" base="${BUILDER_HOME:-$HOME}" ag="${3:-}"
+        local pinned="${BB_AGENTS_PINNED:-/usr/local/lib/builderbot/agents}"
+        case "$ag" in
+            codex|copilot) ;;
+            *) die "no coding agent called '${ag}' signs in here" ;;
+        esac
+        [ -n "$uid" ] || die "a sign-in names the account it is for"
+        HOME="$(user_home "$uid")" && export HOME
+        PATH="$pinned/$ag:$base/.local/bin:$base/.npm-global/bin:$HOME/.local/bin:$PATH"; export PATH
+        command -v "$ag" >/dev/null 2>&1 \
+            || die "$ag is not installed on this machine: Install under its section on the node's Agents page puts one down"
+        case "$1:$ag" in
+            --flow:codex)   codex login --device-auth || die "the sign-in did not complete" ;;
+            --flow:copilot) COPILOT_AUTO_UPDATE=false copilot login --device-code || die "the sign-in did not complete" ;;
+            --out:codex)    codex logout || die "codex logout did not complete" ;;
+            # Copilot CLI 1.0.102 has no logout of its own outside a session
+            # (its /logout): the account it signed in as is forgotten from
+            # its config, and the token with it where it was kept there.
+            --out:copilot)  python3 "$BB_LIB/login-list.py" --forget-copilot "$HOME" || die "the sign-out did not complete" ;;
+        esac
+        log "signed ${1#--} ${ag} on ${BB_NODE:-this machine}"
+        # ...and said to the controller at once, as Claude's flow says its own.
+        claude_login_check --loud "$ag" || true
+        return 0
+    fi
     # `--out` is the sign-out run BY THE AGENT, in a claude-logout job, for
     # the account the dashboard asked about: `claude auth logout` in that
     # account's home on this machine, found the way --flow finds it.
@@ -853,6 +911,7 @@ cmd_login() {
             || die "Claude Code is not installed on this machine, so there is no login here to sign out of"
         claude auth logout || die "claude auth logout did not complete"
         log "signed out of Claude on ${BB_NODE:-this machine}"
+        claude_login_check --loud || true
         return 0
     fi
     # `--flow` is the sign-in run BY THE AGENT, in a claude-login job, with
@@ -880,7 +939,7 @@ cmd_login() {
         # installed on a machine whose sessions ran it fine (24 Sep).
         PATH="$pinned:$base/.local/bin:$base/.npm-global/bin:$HOME/.local/bin:$PATH"; export PATH
         command -v claude >/dev/null 2>&1 \
-            || die "Claude Code is not installed on this machine (looked on PATH, at $pinned and in $base/.local/bin): Update in the Nodes page's Claude Code section installs one copy every account runs"
+            || die "Claude Code is not installed on this machine (looked on PATH, at $pinned and in $base/.local/bin): Install under Claude on the node's Agents page puts down one copy every account runs"
         claude auth login || die "the sign-in did not complete"
         claude_login_check --loud || true
         return 0
@@ -899,7 +958,7 @@ cmd_login() {
     # where sessions are, which is a node (R47). Sign in on a node's row
     # starts the flow there and takes the code back; this says the same.
     command -v claude >/dev/null 2>&1 \
-        || die "this machine carries no Claude Code: a sign-in runs on a node, from Sign in on its row on the Nodes page (Claude Code), or by running this on the node itself"
+        || die "this machine carries no Claude Code: a sign-in runs on a node, from Sign in under Claude on that node's Agents page, or by running this on the node itself"
     # `claude auth login` is the flow built for this and does not leave a
     # session behind afterwards. The older path (start a session and use its
     # slash command) is the fallback for an image whose claude predates the
@@ -1222,15 +1281,50 @@ cmd_emu() {
                 log "installing ${pkg}: a couple of GB, kept on the store"
                 sdkmgr --install "$pkg" || die "could not install ${pkg}"
             fi
-            [ -d "${ANDROID_HOME:-/opt/android-sdk}/platforms/android-${api}" ] \
-                || sdkmgr --install "platforms;android-${api}" || warn "could not install platforms;android-${api}"
+            # The platform is a build's (compileSdk), not the phone's, so its
+            # absence stops nothing here. A session sees the store read-only
+            # (B163) and cannot add it: it says where it comes from rather
+            # than an sdkmanager failure (diagnostics #125).
+            local plat="${ANDROID_HOME:-/opt/android-sdk}/platforms"
+            if [ ! -d "$plat/android-${api}" ]; then
+                if [ -w "$plat" ] || { [ ! -e "$plat" ] && [ -w "${ANDROID_HOME:-/opt/android-sdk}" ]; }; then
+                    sdkmgr --install "platforms;android-${api}" || warn "could not install platforms;android-${api}"
+                else
+                    log "platforms;android-${api} is not on this node's store, which a session cannot write: a build that compiles against ${api} needs it from the Toolchains page; the phone does not"
+                fi
+            fi
             if avd_exists "$name"; then log "AVD '${name}' already exists"; return 0; fi
             # The AVD directory has to exist before avdmanager is asked, or
             # it ignores ANDROID_AVD_HOME and writes under ~/.android, where
             # the config line below is not found and the emulator dies with
             # "Broken AVD system path" (the dev VM, 25 Sep).
             [ -z "${ANDROID_AVD_HOME:-}" ] || mkdir -p "$ANDROID_AVD_HOME" 2>/dev/null || true
-            echo no | avdmanager create avd -n "$name" -k "$pkg" --device pixel_7 >/dev/null \
+            # avdmanager works its SDK root out from where it is installed (the
+            # android-tools entry, beside the SDK rather than in it) and warns
+            # about every package as "in inconsistent location": dozens of
+            # lines that read as a broken SDK (diagnostics #125) and are not.
+            # That root is the whole toolchain store, and it scanned every
+            # toolchain in it for packages: over three minutes of silence
+            # before the AVD (report #127, B281). So it is run from a copy of
+            # its launcher that sits in an SDK-shaped folder of this
+            # account's, its jars and the SDK's packages linked in, where the
+            # same work is a second.
+            local avdm real shim
+            avdm="$(command -v avdmanager)"
+            real="$(readlink -f "$avdm")"
+            if [ -n "${ANDROID_HOME:-}" ] \
+               && [ "$(dirname "$(dirname "$(dirname "$(dirname "$real")")")")" != "$(readlink -f "$ANDROID_HOME")" ]; then
+                shim="${XDG_CACHE_HOME:-$HOME/.cache}/builderbot/avd-sdk"
+                mkdir -p "$shim/cmdline-tools/latest/bin" \
+                    && cp -f "$real" "$shim/cmdline-tools/latest/bin/avdmanager" \
+                    && ln -sfn "$(dirname "$(dirname "$real")")/lib" "$shim/cmdline-tools/latest/lib" \
+                    && for d in "$ANDROID_HOME"/*; do
+                        [ "$(basename "$d")" = cmdline-tools ] || ln -sfn "$d" "$shim/$(basename "$d")"
+                    done \
+                    && avdm="$shim/cmdline-tools/latest/bin/avdmanager"
+            fi
+            echo no | "$avdm" create avd -n "$name" -k "$pkg" --device pixel_7 >/dev/null \
+                2> >(grep -v 'in inconsistent location' >&2) \
                 || die "AVD creation failed for ${name}"
             # The image path, written by hand. avdmanager is the android-tools
             # entry on the store, a different directory from the SDK, and it
@@ -1387,6 +1481,25 @@ cmd_emu() {
             # boot of a new level on a busy node ran past the old 180 and was
             # called failed while it booted on (Shebang-DevBoard, 6 Oct); and
             # at once for one that has exited, whose reason is in the log.
+            # Room for the phone's data on its first boot, said before the
+            # start: the emulator makes the userdata partition then, needs a
+            # fifth more than its size free, and otherwise dies with a FATAL
+            # in its log after the wait (diagnostics #126, a node's disk 97%
+            # full). Once made, the partition is there and nothing is checked.
+            local adir; adir="$(avd_path "$avd")"
+            if [ -n "$adir" ] && [ -d "$adir" ] && [ ! -e "$adir/userdata-qemu.img" ]; then
+                local size free_mb need_mb
+                size="$(sed -n 's/^disk.dataPartition.size=//p' "$adir/config.ini" 2>/dev/null | head -1)"
+                case "${size:-6G}" in
+                    *[Gg]*) need_mb=$(( ${size%%[GgBb]*} * 1024 * 6 / 5 )) ;;
+                    *[Mm]*) need_mb=$(( ${size%%[MmBb]*} * 6 / 5 )) ;;
+                    *)      need_mb=$(( 6 * 1024 * 6 / 5 )) ;;
+                esac
+                free_mb="$(df -Pm "$adir" 2>/dev/null | awk 'NR == 2 { print $4 }')"
+                if [ -n "$free_mb" ] && [ "$free_mb" -lt "$need_mb" ]; then
+                    die "the phone's first boot needs ${need_mb} MB free on the disk under $(dirname "$adir") and there are ${free_mb} MB: say so in your reply: the person frees space on this node, where every project's phones are kept under $(dirname "$(dirname "$adir")")"
+                fi
+            fi
             local serial="" epid="" waited=0 tries=0 why="" booted=""
             while :; do
                 tries=$((tries + 1))
@@ -1544,6 +1657,15 @@ cmd_emu() {
                     "$(sed -n 's/^target=//p' "$(avd_home)/${n}.ini")" \
                     "$(sed -n 's/^tag.id *= *//p' "$cfg" 2>/dev/null)" \
                     "$(sed -n 's/^abi.type *= *//p' "$cfg" 2>/dev/null)"
+                # When it last started and its quick-boot snapshot (R129):
+                # bb tidy gives the snapshot back after a week unstarted.
+                local adir ran snap
+                adir="$(avd_path "$n")"
+                ran="$(stat -c %Y "$adir/hardware-qemu.ini" 2>/dev/null || true)"
+                snap="$({ du -sm "$adir/snapshots" 2>/dev/null || true; } | cut -f1)"
+                if [ -n "$ran" ]; then ran="$(( ($(date +%s) - ran) / 86400 )) days ago"; else ran=never; fi
+                printf '  Last started: %s; quick-boot snapshot: %s\n' "$ran" \
+                    "$([ "${snap:-0}" -gt 1 ] && printf '%s MB' "$snap" || printf 'none')"
             done < <(avd_names)
             [ -n "$any" ] || printf '  (no AVDs)\n'
             ;;
@@ -2358,7 +2480,7 @@ cmd_wiki() {
 cmd_transcripts() {
     local verb="${1:-list}" auth proj
     case "$verb" in list|show|fetch) ;; -h|--help)
-        echo "bb transcripts [list | show ID [--tz ZONE] [--all] | fetch ID [--into DIR]]: your own conversations with Claude on this project, from the controller"; return 0 ;;
+        echo "bb transcripts [list | show ID [--tz ZONE] [--all] | fetch ID [--into DIR]]: your own conversations on this project, every agent's, from the controller"; return 0 ;;
         *) die "bb transcripts [list | show ID [--tz ZONE] [--all] | fetch ID [--into DIR]]" ;; esac
     proj="$(bb_project)" || die "not inside a project under ${WORKSPACE}; cd into one first"
     auth="$(bb_auth_or_die)"
@@ -2604,7 +2726,14 @@ cmd_tests() {
         shift
         local u="${BB_REPO:-$PWD}/scripts/dashboard/unit"
         [ -d "$u" ] || die "no unit tests at $u: run this from the BuilderBot checkout"
-        python3 -m unittest discover -s "$u" -t "$u" "${@:--q}"
+        # Across the cores (R130): each module a unit of work, dealt by the
+        # seconds the last run took, one unittest process per core. Named
+        # modules or unittest's own flags run as asked, in one process.
+        if [ "$#" -eq 0 ] || [ "$*" = -q ]; then
+            python3 "$BB_LIB/unitpar.py" "$u" "${BB_REPO:-$PWD}/.bb-map/unit-times.tsv" "${BB_TEST_WORKERS:-$(nproc 2>/dev/null || echo 1)}"
+            return
+        fi
+        python3 -m unittest discover -s "$u" -t "$u" "$@"
         return
     fi
     # A covered run (roadmap R76): the suite, or the named suites, with the
@@ -2848,7 +2977,15 @@ cmd_bug() {
         proj="$(project_here)" \
             || die "not inside a project under ${WORKSPACE}; cd into one first"
     fi
-    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" BB_WORKSPACE="$WORKSPACE" \
+    # --report N files a diagnostics report: read through bb diag, whose
+    # gate is the diagnostics' own (R124).
+    local reports="" a
+    for a in "$@"; do
+        [ "$a" = --report ] || continue
+        reports="$(cmd_diag --json reports)" || die "the diagnostics reports could not be read: bb diag reports says why"
+        break
+    done
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" BB_WORKSPACE="$WORKSPACE" BB_BUG_REPORTS="$reports" \
         python3 "$BB_LIB/bug-verbs.py" "$py" "$proj" "$@"
 }
 
@@ -3002,22 +3139,6 @@ cmd_container() {
     esac
 }
 
-# bb devapp: this project's dev instance, and what a session may be given
-# over it.
-#
-# Up, Down and a container of any other shape are the operator's. What a
-# project can hand over, with one setting in its settings dialog (Claude may:
-# Run its container), is sending it to Docker (its own container, or another
-# beside it: 24 and 26 Sep), rebuilding its containers, changing their env
-# and removing one, because a project whose work IS the container has a loop
-# that a session cannot close otherwise: change it, rebuild it, look at what
-# it did. Three settings and `deny` is the default: `auto` is the loop, `ask`
-# puts the reason in front of a person and starts the build when they allow
-# it, `deny` refuses with the sentence that names the dial, so a session that
-# tries learns where the decision lives rather than guessing.
-#
-# The daemon is the controller's connection to the node, so this goes through
-# the API like `bb root` and `bb phone` rather than running docker anywhere.
 # bb sign (R106): a build in dist/ signed on the project's node with one of
 # its keys, which the session never receives. sign-verbs.py asks, follows an
 # ask to its answer and the job to its verdict.
@@ -3026,7 +3147,7 @@ cmd_sign() {
     local auth proj
     proj="${BB_PROJECT:-$(project_here 2>/dev/null || true)}"
     case "${1:-}" in
-        keys|key|map|rotate)
+        keys|key|map|rotate|status|release)
             local sub="$1"; shift
             local -a rest=()
             while [ $# -gt 0 ]; do
@@ -3043,7 +3164,7 @@ cmd_sign() {
     esac
     while [ $# -gt 0 ]; do
         case "$1" in
-            -h|--help) sed -n '/^bb sign FILE/,/which is kept for good/p' "$0"; return 0 ;;
+            -h|--help) sed -n '/^bb sign FILE/,/under Sign a build: auto starts it/p' "$0"; return 0 ;;
             --key) [ $# -ge 2 ] || die "--key needs a key's name after it"; key="$2"; shift 2 ;;
             --key=*) key="${1#--key=}"; shift ;;
             --for) [ $# -ge 2 ] || die "--for needs play or sideload after it"; route="$2"; shift 2 ;;
@@ -3063,6 +3184,22 @@ cmd_sign() {
         python3 "$BB_LIB/sign-verbs.py" "${file#dist/}" "$route" "$why"
 }
 
+# bb devapp: this project's dev instance, and what a session may be given
+# over it.
+#
+# Up, Down and a container of any other shape are the operator's. What a
+# project can hand over, with one setting in its settings dialog (Agents may:
+# Run its container), is sending it to Docker (its own container, or another
+# beside it: 24 and 26 Sep), rebuilding its containers, changing their env
+# and removing one, because a project whose work IS the container has a loop
+# that a session cannot close otherwise: change it, rebuild it, look at what
+# it did. Three settings and `deny` is the default: `auto` is the loop, `ask`
+# puts the reason in front of a person and starts the build when they allow
+# it, `deny` refuses with the sentence that names the dial, so a session that
+# tries learns where the decision lives rather than guessing.
+#
+# The daemon is the controller's connection to the node, so this goes through
+# the API like `bb root` and `bb phone` rather than running docker anywhere.
 cmd_devapp() {
     # --instance NAME before or after the verb, for a project with several;
     # with none named the controller answers for the project's only one.
@@ -3108,7 +3245,7 @@ cmd_devapp() {
                     -h|--help) cat <<'EOT'
 bb devapp rebuild [--why "what it is for"]
   build this project's dev instance from its compose file and bring it up,
-  under the project's dial (Claude may: Run its container). The build sees
+  under the project's dial (Agents may: Run its container). The build sees
   BB_BUILD_REV, BB_BUILD_AT and BB_BUILD_VERSION in its environment (the
   commit, when, the version), so a compose whose build.args interpolate them
   (GIT_SHA: ${BB_BUILD_REV}) stamps the image without reading .git, and
@@ -3134,7 +3271,7 @@ EOT
             # container made from its own compose file, named NAME or, unnamed,
             # its own while it has none and one beside it after; pinned to a
             # branch with --branch; then built and started, with this waiting
-            # for the verdict. Under the same setting as rebuild (Claude may:
+            # for the verdict. Under the same setting as rebuild (Agents may:
             # Run its container): on `ask` one request carries it all and
             # Allow makes and builds it.
             local why="" file="" ref="" compose="" override="" host="" tmp="" rc=0
@@ -3164,7 +3301,7 @@ EOT
             ;;
         env|remove)
             # Its env, and removing it, under the same setting as rebuild
-            # (Claude may: Run its container). On `ask` Allow removes it, or
+            # (Agents may: Run its container). On `ask` Allow removes it, or
             # writes the env and builds nothing; on `auto` it is done, and bb
             # devapp rebuild applies an env.
             local verb="$sub" why="" file="" setting=0 tmp=""
@@ -3429,6 +3566,12 @@ terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
 # and build time. Softly, with a short timeout, because a controller that is
 # down, or a session with no token, is a state the line reports rather than
 # dies on.
+bb_agent_stamp() {
+    local auth; auth="$(bb_auth_header)"
+    [ -n "$auth" ] || return 0
+    BB_META_AUTH="$auth" python3 "$BB_LIB/controller-stamp.py" agent 2>/dev/null || true
+}
+
 bb_controller_stamp() {
     local auth; auth="$(bb_auth_header)"
     [ -n "$auth" ] || { printf 'unknown: no session token to ask the controller with'; return; }
@@ -3703,7 +3846,16 @@ cmd_users() {
             # node-bound terminal gets) and can fetch its Claude login.
             DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/users-verbs.py" token "$py" "$1" "${2:-}"
             return ;;
-        *) die "usage: bb users [list|claim NAME|passwd NAME|add NAME --role admin|user|token PROJECT]" ;;
+        reset-2fa)
+            # Every second factor of one account gone (R127): the way back in
+            # for an owner who lost their app, their passkeys and their
+            # recovery codes. A shell on the controller only, as enroll-token.
+            [ -z "${BB_TOKEN:-}${BB_ACCOUNT_UID:-}" ] && ! on_node \
+                || die "bb users reset-2fa is run in a shell on the controller (docker exec BuilderBot bb users reset-2fa NAME), not from a session"
+            [ -n "${1:-}" ] || die "which account? bb users reset-2fa NAME"
+            DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 "$BB_LIB/users-verbs.py" reset-2fa "$py" "$1"
+            return ;;
+        *) die "usage: bb users [list|claim NAME|passwd NAME|add NAME --role admin|user|token PROJECT|reset-2fa NAME]" ;;
     esac
     # The password is READ, never an argument: an argument is in the process
     # table for anyone on this box to see, and in the shell history after.
@@ -4227,6 +4379,23 @@ process.exit(bad ? 1 : 0);' "$f" || jsbad+=("$f (inline)")
         fi
     fi
 
+    # BuilderBot's own page asks its questions in its modal (R121): the
+    # browser's confirm, alert and prompt say OK and Cancel for every answer.
+    if [ -f scripts/dashboard/page-ask.js ]; then
+        section "the page's questions (page-ask.js, not the browser's dialogs)"
+        local dlg
+        # A call has an argument; a comment naming confirm() does not.
+        dlg="$(grep -nE '(^|[^A-Za-z0-9_.$])(confirm|alert|prompt)\([^)]' scripts/dashboard/*.js scripts/dashboard/index.html \
+                 | grep -v '^scripts/dashboard/page-ask.js:' | grep -vE ':[0-9]+:\s*(//|\*|/\*)' || true)"
+        if [ -z "$dlg" ]; then
+            printf '  [ok]   every question is the page'"'"'s modal\n'
+        else
+            printf '  [FAIL] the browser'"'"'s own dialog, where ask, askYes or askText belongs:\n'
+            printf '%s\n' "$dlg" | sed 's/^/         /' | head -20
+            rc=1
+        fi
+    fi
+
     section "github workflows (actionlint)"
     if compgen -G '.github/workflows/*.yml' >/dev/null \
         || compgen -G '.github/workflows/*.yaml' >/dev/null; then
@@ -4514,7 +4683,7 @@ is not running; see bb logs."
             # caller has. The dashboard inheriting that variable makes its own
             # Install button refuse, quoting a message that tells the operator
             # to use the dashboard.
-            nohup env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT "${envs[@]}" \
+            nohup env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u BB_AGENT "${envs[@]}" \
                 python3 -u "$dir/server.py" 2>&1 \
                 | "$(dirname "$(readlink -f "$0")")/lib/log-split.sh" \
                     "$(bb_log_dir)/dashboard.log" dashboard &
@@ -5426,7 +5595,16 @@ cmd_doctor() {
     echo "== doctor =="
     # Claude Code is a node's, so a controller has nothing to check for: a
     # failed check nobody can fix is worse than no check (R47).
-    if on_node; then check "claude on PATH" command -v claude; fi
+    # The other agents are each a person's choice: one missing is said as
+    # skipped, with where it is installed, never as a failure.
+    if on_node; then
+        check "claude on PATH" command -v claude
+        local ag
+        for ag in codex copilot; do
+            if command -v "$ag" >/dev/null 2>&1; then printf '  [ok]   %s on PATH\n' "$ag"
+            else printf '  [skip] %s is not installed here: the Agents page installs it\n' "$ag"; fi
+        done
+    fi
     # A session on a node asks about its own project's tree (B168): inside
     # its view /workspace is the view's read-only root by design, and the
     # project, its worktrees and nothing else are bound in under it, so the
@@ -5685,8 +5863,22 @@ cmd_doctor() {
         printf '  [ok]   signed in to Claude on this machine%s\n' \
             "$(python3 "$BB_LIB/doctor-probes.py" login 2>/dev/null)"
     else
-        printf '  [warn] not signed in to Claude on this machine: Sign in on its row on the\n'
-        printf '         Nodes page (Claude Code) runs the flow here, or `bb login` in this shell\n'
+        printf '  [warn] not signed in to Claude on this machine: Sign in on the Agents page\n'
+        printf '         runs the flow here, or `bb login` in this shell\n'
+    fi
+    # ...and each other agent installed here, said as Claude's is but never a
+    # warning: which agents a person signs in to is theirs.
+    if on_node; then
+        local ag nm who
+        for ag in codex copilot; do
+            command -v "$ag" >/dev/null 2>&1 || continue
+            case "$ag" in codex) nm=ChatGPT ;; *) nm=Copilot ;; esac
+            if who="$(python3 "$BB_LIB/doctor-probes.py" signed "$ag" 2>/dev/null)"; then
+                printf '  [ok]   signed in to %s on this machine%s\n' "$nm" "$who"
+            else
+                printf '  [skip] not signed in to %s on this machine: Sign in on the Agents page\n' "$nm"
+            fi
+        done
     fi
     return $ok
 }

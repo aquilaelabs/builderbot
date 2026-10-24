@@ -110,5 +110,59 @@ class Tidy(unittest.TestCase):
         self.assertEqual(sorted(os.path.basename(x) for x in got), ["junk.log", "old-build"])
 
 
+class Phones(unittest.TestCase):
+    """The project's idle phones give back their quick-boot snapshot after a
+    week, and one that is not the default is named after two (R129); the
+    phone in use and every phone's data stay."""
+
+    def setUp(self):
+        import time
+        self.d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.d, True)
+        for name, days in (("builderbot-36", 1), ("builderbot-35", 20), ("old-34", 9)):
+            a = os.path.join(self.d, name + ".avd")
+            os.makedirs(os.path.join(a, "snapshots", "default_boot"))
+            with open(os.path.join(a, "snapshots", "default_boot", "ram.img"), "wb") as f:
+                f.write(b"x" * 4096)
+            with open(os.path.join(a, "userdata-qemu.img"), "wb") as f:
+                f.write(b"d")
+            with open(os.path.join(a, "hardware-qemu.ini"), "w") as f:
+                f.write("x")
+            old = time.time() - days * 86400
+            os.utime(os.path.join(a, "hardware-qemu.ini"), (old, old))
+        env = {"ANDROID_AVD_HOME": self.d, "BB_PROJECT": "web"}
+        saved = {k: os.environ.get(k) for k in env}
+        os.environ.update(env)
+        self.addCleanup(lambda: [os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+                                 for k, v in saved.items()])
+        dp = tidy.default_phone
+        tidy.default_phone = lambda: "builderbot-36"
+        self.addCleanup(setattr, tidy, "default_phone", dp)
+
+    def snap(self, name):
+        return os.listdir(os.path.join(self.d, name + ".avd", "snapshots"))
+
+    def test_a_week_idle_gives_back_its_snapshot_and_keeps_its_data(self):
+        said, freed = tidy.phones_tidy(False)
+        self.assertEqual(self.snap("builderbot-36"), ["default_boot"])
+        self.assertEqual(self.snap("builderbot-35"), [])
+        self.assertEqual(self.snap("old-34"), [])
+        self.assertTrue(os.path.exists(os.path.join(self.d, "builderbot-35.avd", "userdata-qemu.img")))
+        self.assertEqual(freed, 8192)
+
+    def test_only_a_spare_two_weeks_idle_is_named_and_none_removed(self):
+        said, _ = tidy.phones_tidy(False)
+        named = [x for x in said if "not this project's default" in x]
+        self.assertEqual(len(named), 1)
+        self.assertIn("builderbot-35", named[0])
+        self.assertTrue(os.path.isdir(os.path.join(self.d, "builderbot-35.avd")))
+
+    def test_dry_changes_nothing(self):
+        said, freed = tidy.phones_tidy(True)
+        self.assertEqual(freed, 0)
+        self.assertEqual(self.snap("builderbot-35"), ["default_boot"])
+        self.assertTrue(any(x.startswith("would remove builderbot-35") for x in said))
+
+
 if __name__ == "__main__":
     unittest.main()

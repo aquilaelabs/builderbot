@@ -105,4 +105,18 @@ def accounts():
     print(f'{name}: {"password changed" if sub == "passwd" else "created"}')
 
 
-{"token": token, "list": accounts, "passwd": accounts, "add": accounts, "claim": accounts}[verb]()
+def reset_2fa():
+    """Every second factor of one account gone (R127), and said."""
+    u = users.load()["users"].get(args[0])
+    if not u:
+        sys.exit(f"[builderbot] ERROR: no account called {args[0]}")
+    from pathlib import Path
+    mfa = dash.load("mfa", dash.beside(py))
+    mfa.configure(STATE=Path(os.environ["DASHBOARD_STATE"]), seal=None, unseal=None, sealing=lambda: False)
+    had = mfa.enabled(u.get("uid", ""))
+    mfa.remove_all(u.get("uid", ""))
+    print(f"{args[0]}: {'every second factor removed; the password alone signs in until one is added' if had else 'had no second factor'}")
+
+
+{"token": token, "list": accounts, "passwd": accounts, "add": accounts, "claim": accounts,
+ "reset-2fa": reset_2fa}[verb]()

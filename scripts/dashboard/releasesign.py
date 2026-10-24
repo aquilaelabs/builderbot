@@ -6,17 +6,19 @@ log).
 The project's workflow builds an UNSIGNED release APK and hands it over as a
 workflow artifact named `bb-release-apk-TAG` (kept a few days, never on the
 release). The controller, which made the release, watches for that artifact:
-it fetches it with the project's GitHub token, signs each APK in it here as
-`bb sign` does (signing.sign_here: zipalign, apksigner with the proof of a
-rotation, verify, the certificate checked against the kept key), and
-attaches it to the release under its name less `-unsigned`, with its sha256
-file and a line in the notes giving the key and its certificate's SHA-256
-fingerprint. No keystore, alias or password is ever a GitHub secret, and the
-key never leaves the controller.
+it fetches it with the project's GitHub token, hands each APK in it to a
+sign-key job on the project's node, which signs it as `bb sign` does
+(signing.sign_release: zipalign, apksigner with the proof of a rotation,
+verify, the certificate checked against the kept key) with the node's own
+tools, and attaches what comes back to the release under its name less
+`-unsigned`, with its sha256 file and a line in the notes giving the key and
+its certificate's SHA-256 fingerprint. No keystore, alias or password is
+ever a GitHub secret, and the key reaches only that job on that node.
 
 What would stop a release's signing is said on the bell before the release
-(attention(): no sideload key, an app mapped to none of several, no
-apksigner here), and a signing that failed after one is said there too, red,
+(attention(): no sideload key, an app mapped to none of several, the
+project's node offline or without the jdk and build-tools), and a signing
+that failed after one is said there too, red,
 until it succeeds or is put away. The Signing view names which key signs
 the releases (status()).
 
@@ -73,6 +75,7 @@ _lock = threading.Lock()
 _busy = set()
 _cache = {}
 _bare = set()        # (project, run id): finished runs that handed over no APK
+_rev = [0]           # moved when a look starts or ends: the revisions poll's "releasesign"
 
 
 def configure(*, state, workspace, write_json_fn, projects=None):
@@ -106,6 +109,18 @@ def _save(d):
     if write_json:
         write_json(_file(), d)
     _cache.clear()
+    _rev[0] += 1
+
+
+def rev():
+    """The token a Signing view and the bell re-read on: a look started, or
+    one ended and wrote what it found."""
+    return _rev[0]
+
+
+def looking(project):
+    """Whether a look at the project's runs is going now."""
+    return project in _busy
 
 
 # ---- what the project asks for ----------------------------------------------
@@ -161,17 +176,18 @@ def _stamp(project):
 
 
 def readiness(project, fresh=False):
-    """{wanted, packages, keys: [{package, key, sha256}], why}: which key
-    signs each app's release, or what keeps one from being signed. Kept for
-    the bell's poll half a minute, or until a workflow or a key comes or
-    goes; `fresh` asks again."""
+    """{wanted, packages, keys: [{package, key, sha256}], node, why}: which
+    key signs each app's release and on which node, or what keeps one from
+    being signed. Kept for the bell's poll half a minute, or until a
+    workflow or a key comes or goes; `fresh` asks again."""
     stamp = _stamp(project)
     hit = _cache.get(("ready", project))
     if not fresh and hit and hit[2] == stamp and time.time() - hit[0] < 30:
         return hit[1]
-    out = {"wanted": wants(project), "packages": [], "keys": [], "why": ""}
+    out = {"wanted": wants(project), "packages": [], "keys": [], "why": "", "node": ""}
     if out["wanted"]:
         out["packages"] = packages(project)
+        out["node"] = signing.signer_name(project)
         for pkg in out["packages"] or [""]:
             key, rec, why = signing.release_key(project, pkg)
             if why:
@@ -179,9 +195,10 @@ def readiness(project, fresh=False):
                 break
             out["keys"].append({"package": pkg, "key": key, "sha256": rec.get("sha256") or "",
                                 "rotated_from": rec.get("rotated_from") or ""})
-        if not out["why"] and not signing.build_tools():
-            out["why"] = ("this controller has no apksigner to sign its releases with: install "
-                          "android-tools and the jdk (Toolchains page)")
+        if not out["why"]:
+            # The node the APK is signed on: online, current, and holding
+            # the jdk and build-tools (signing.signer).
+            out["why"] = signing.signer(project, build_tools=True)[1]
         if not out["why"] and not cilogs.repo_of(project):
             out["why"] = (f"{project} is not on GitHub, which is the one forge whose workflow "
                           "artifacts the controller fetches to sign")
@@ -195,7 +212,8 @@ def status(project):
     rec = _load().get(project) or {}
     newest = lambda d: sorted(({"tag": t, **v} for t, v in (d or {}).items() if isinstance(v, dict)),
                               key=lambda x: -int(x.get("at") or 0))[:5]
-    return readiness(project, fresh=True) | {"signed": newest(rec.get("signed")), "failed": newest(rec.get("failed"))}
+    return readiness(project, fresh=True) | {"signed": newest(rec.get("signed")), "failed": newest(rec.get("failed")),
+                                             "looking": looking(project)}
 
 
 # ---- GitHub -----------------------------------------------------------------
@@ -309,7 +327,7 @@ def _sign_run(project, repo, token, rid, aid, tag):
         for name, path in apks:
             final = name.replace("-unsigned", "")
             dst = os.path.join(d, "out-" + final)
-            r = signing.sign_here(project, path, dst)
+            r = signing.sign_release(project, path, dst)
             if r.get("error"):
                 return {"error": f"{name}: {r['error']}"}
             first = first or r
@@ -409,12 +427,14 @@ def _claim(project):
         if project in _busy:
             return False
         _busy.add(project)
+        _rev[0] += 1
         return True
 
 
 def _release(project):
     with _lock:
         _busy.discard(project)
+        _rev[0] += 1
 
 
 def check_soon(project, force=False):

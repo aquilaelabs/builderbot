@@ -15,9 +15,12 @@ delete, or make visible to every session on the project (shared(); the
 operator, 22 Oct); otherwise only the account's own.
 """
 import json
+import re
 import os
 import threading
 import time
+
+import agents
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -134,8 +137,9 @@ def visible(uid, project, name_of=lambda u: u):
             st = f.stat()
         except OSError:
             continue
+        # ...each marked with its agent, as the account's own rows are (R95).
         rows.append({"project": project, "id": sid, "at": int(st.st_mtime), "bytes": st.st_size,
-                     "first": _first_prompt(f), "by": name_of(o)})
+                     "first": _first_prompt(f), "by": name_of(o), "agent": agent_of(f)})
     rows.sort(key=lambda r: r["at"], reverse=True)
     return rows[:MAX_LIST]
 
@@ -144,12 +148,46 @@ def _slug(path):
     return str(path).replace("/", "-")
 
 
+# The coding agents beside Claude whose conversations are kept here too
+# (R95 step 8): each session's own log, copied at the end of every turn by
+# its Stop hook (bb-agent-hook) into an <agent>/ folder of the transcripts
+# folder of the tree it works in, so the share and claudesync carry it
+# exactly as they carry Claude Code's.
+# Read from the agent table, so a new agent is not a second list to keep.
+OTHER_AGENTS = tuple(a.id for a in agents.TABLE if a.id != "claude" and a.live)
+
+
 def _dirs(uid, project):
     """Where this account's sessions on the project wrote: the project's
-    own tree, and the account's worktree of it."""
+    own tree, the account's worktree of it, and each other agent's worktree
+    of the account's (R95), each also under the name Claude Code itself
+    gives a tree's folder (every character not a letter or a digit a dash),
+    which is the one another agent's log is kept under."""
     base = Path(root_for(uid))
-    return [base / _slug(WORKSPACE / project),
-            base / _slug(WORKTREES / project / uid)]
+    out = []
+    for p in (WORKSPACE / project, WORKTREES / project / uid,
+              *(WORKTREES / project / f"{uid}-{a}" for a in OTHER_AGENTS)):
+        for name in (_slug(p), re.sub(r"[^A-Za-z0-9]", "-", str(p))):
+            if base / name not in out:
+                out.append(base / name)
+    return out
+
+
+def _files(uid, project):
+    """Every conversation of this account's on the project: (file, agent)."""
+    for d in _dirs(uid, project):
+        for sub, agent in ((d, "claude"), *((d / a, a) for a in OTHER_AGENTS)):
+            try:
+                found = [f for f in sub.glob("*.jsonl") if f.is_file()]
+            except OSError:
+                continue
+            for f in found:
+                yield f, agent
+
+
+def agent_of(f):
+    """The coding agent a conversation's file is with: its folder says."""
+    return f.parent.name if f.parent.name in OTHER_AGENTS else "claude"
 
 
 def dirs(uid, project):
@@ -160,6 +198,9 @@ def dirs(uid, project):
 
 def _first_prompt(path):
     """The first thing the person typed, for the row: a line, cut short."""
+    if agent_of(path) != "claude":
+        t = next((t for t in _agent_turns(path, agent_of(path), None, 0, first=True)[0] if t["who"] == "you"), None)
+        return " ".join(t["text"].split())[:120] if t else ""
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
             for _ in range(400):
@@ -199,21 +240,19 @@ def mine(uid, projects):
     rows = []
     for project in projects:
         on = shared(project) if SHARED is not None else {}
-        for d in _dirs(uid, project):
+        for f, agent in _files(uid, project):
             try:
-                files = [f for f in d.glob("*.jsonl") if f.is_file()]
+                st = f.stat()
             except OSError:
                 continue
-            for f in files:
-                try:
-                    st = f.stat()
-                except OSError:
-                    continue
-                if st.st_size == 0:
-                    continue
-                rows.append({"project": project, "id": f.stem, "at": int(st.st_mtime),
-                             "bytes": st.st_size, "first": _first_prompt(f),
-                             "shared": f.stem in on})
+            if st.st_size == 0:
+                continue
+            # Which coding agent's (R95): Claude Code's at the top of the
+            # folder, another agent's in its own folder beside them. Only
+            # ever this account's own, whichever agent it used.
+            rows.append({"project": project, "id": f.stem, "at": int(st.st_mtime),
+                         "bytes": st.st_size, "first": _first_prompt(f),
+                         "shared": f.stem in on, "agent": agent})
     rows.sort(key=lambda r: r["at"], reverse=True)
     return rows[:MAX_LIST]
 
@@ -222,9 +261,10 @@ def _find(uid, project, sid):
     if not sid or "/" in sid or sid.startswith(".") or not all(c.isalnum() or c == "-" for c in sid):
         return None
     for d in _dirs(uid, project):
-        f = d / f"{sid}.jsonl"
-        if f.is_file():
-            return f
+        for sub in (d, *(d / a for a in OTHER_AGENTS)):
+            f = sub / f"{sid}.jsonl"
+            if f.is_file():
+                return f
     return None
 
 
@@ -293,6 +333,8 @@ def render(uid, project, sid, tz=None, tail=0):
     f = _find(uid, project, sid)
     if f is None:
         return None, "no such conversation of yours on this project"
+    if agent_of(f) != "claude":
+        return _agent_render(f, agent_of(f), project, sid, tz, tail)
     try:
         mtime = f.stat().st_mtime
     except OSError as e:
@@ -370,6 +412,11 @@ def turns(uid, project, sid, tz=None, tail=0):
     f = _find(uid, project, sid)
     if f is None:
         return {"error": "no such conversation of yours on this project"}, 404
+    if agent_of(f) != "claude":
+        got, partial = _agent_turns(f, agent_of(f), tz, tail)
+        a = agent_of(f)
+        return {"project": project, "id": sid, "partial": partial, "turns": got, "agent": a,
+                "agent_name": (agents.get(a).name if agents.get(a) else a)}, 200
     out, calls, total, partial = [], {}, 0, False
     try:
         size = f.stat().st_size
@@ -419,6 +466,154 @@ def turns(uid, project, sid, tz=None, tail=0):
     except OSError as e:
         return {"error": f"could not read it: {e}"}, 500
     return {"project": project, "id": sid, "partial": partial, "turns": out}, 200
+
+
+# ---- another agent's conversation (R95 step 8) -------------------------------
+# Codex CLI writes a rollout, a line per record ({timestamp, type, payload}:
+# a response_item a message, a function call or its output); Copilot CLI an
+# events log ({type, data, timestamp}: user.message, assistant.message,
+# tool.execution_start and _complete). Both read here into the same turns
+# Claude Code's are, the reader's and the download's. Read against the shapes
+# Codex CLI 0.163.0 and Copilot CLI 1.0.102 write; a record of any other
+# shape is passed over, never a failure.
+
+# What Codex puts in front of a conversation as the person's words, which
+# the person did not type.
+_CODEX_PREAMBLE = ("<environment_context>", "<user_instructions>", "<permissions", "<developer")
+
+
+def _texts_of(content):
+    if isinstance(content, str):
+        return content
+    return "\n".join(str(c.get("text") or "") for c in content if isinstance(c, dict) and c.get("text")) \
+        if isinstance(content, list) else ""
+
+
+def _args(a):
+    if isinstance(a, str):
+        try:
+            a = json.loads(a)
+        except ValueError:
+            return a
+    if isinstance(a, dict):
+        cmd = a.get("command")
+        if isinstance(cmd, list):
+            cmd = cmd[2] if len(cmd) == 3 and cmd[1] in ("-lc", "-c") else " ".join(map(str, cmd))
+        if cmd:
+            return f"$ {cmd}"
+        for k in ("path", "file_path", "pattern", "query", "url", "input"):
+            if a.get(k):
+                return str(a[k])[:2000]
+        return json.dumps(a, ensure_ascii=False)[:2000]
+    return str(a or "")
+
+
+def _agent_turns(f, agent, tz, tail, first=False):
+    """([turn], partial) for another agent's conversation, in turns()'s
+    shape: who you, claude (the agent, whichever it is) or system."""
+    out, calls, partial, total = [], {}, False, 0
+
+    def say(who, text, stamp):
+        out.append({"who": who, "at": stamp, "text": text, "tools": []})
+
+    def tool(call, key, stamp):
+        if not out or out[-1]["who"] != "claude":
+            say("claude", "", stamp)
+        c = {"call": call, "result": "", "cut": False, "error": False}
+        out[-1]["tools"].append(c)
+        if key:
+            calls[key] = c
+
+    def result(key, text):
+        c = calls.get(key)
+        if c is not None:
+            text = str(text or "")
+            c.update(result=text[:TURN_RESULT_MAX], cut=len(text) > TURN_RESULT_MAX)
+    try:
+        size = f.stat().st_size
+        with open(f, encoding="utf-8", errors="replace") as fh:
+            if tail and size > tail:
+                fh.seek(size - tail)
+                fh.readline()
+                partial = True
+            for line in fh:
+                if total > MAX_OUT or (first and any(t["who"] == "you" for t in out)):
+                    partial = partial or total > MAX_OUT
+                    break
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(d, dict):
+                    continue
+                stamp = _when(d, tz)
+                if agent == "codex":
+                    p = d.get("payload") if isinstance(d.get("payload"), dict) else {}
+                    if d.get("type") != "response_item":
+                        continue
+                    t = p.get("type")
+                    if t == "message":
+                        text = _texts_of(p.get("content"))
+                        if not text.strip():
+                            continue
+                        if p.get("role") == "user" and not text.lstrip().startswith(_CODEX_PREAMBLE):
+                            say("you", text, stamp)
+                        elif p.get("role") == "assistant":
+                            say("claude", text, stamp)
+                        total += len(text)
+                    elif t in ("function_call", "custom_tool_call", "local_shell_call"):
+                        tool(f"{p.get('name') or 'shell'}: {_args(p.get('arguments') or p.get('input') or p.get('action'))}",
+                             str(p.get("call_id") or ""), stamp)
+                    elif t in ("function_call_output", "custom_tool_call_output"):
+                        o = p.get("output")
+                        result(str(p.get("call_id") or ""), o.get("output") if isinstance(o, dict) else o)
+                else:
+                    data = d.get("data") if isinstance(d.get("data"), dict) else {}
+                    t = str(d.get("type") or "")
+                    if t == "user.message":
+                        text = _texts_of(data.get("content") or data.get("message") or "")
+                        if text.strip():
+                            say("you", text, stamp)
+                            total += len(text)
+                    elif t == "assistant.message":
+                        text = _texts_of(data.get("content") or data.get("message") or "")
+                        if text.strip():
+                            say("claude", text, stamp)
+                            total += len(text)
+                    elif t == "tool.execution_start":
+                        tool(f"{data.get('toolName') or 'tool'}: {_args(data.get('arguments') or data.get('args'))}",
+                             str(data.get("toolCallId") or data.get("id") or ""), stamp)
+                    elif t == "tool.execution_complete":
+                        r = data.get("result")
+                        result(str(data.get("toolCallId") or data.get("id") or ""),
+                               r.get("content") if isinstance(r, dict) else r)
+    except OSError:
+        return [], False
+    return out, partial
+
+
+def _agent_render(f, agent, project, sid, tz, tail):
+    """render()'s (text, filename) for another agent's conversation."""
+    name = {"codex": "ChatGPT", "copilot": "Copilot"}.get(agent, agent)
+    try:
+        mtime = f.stat().st_mtime
+    except OSError as e:
+        return None, f"could not read it: {e}"
+    started = datetime.fromtimestamp(mtime, timezone.utc).astimezone(tz).strftime("%Y-%m-%d %H:%M")
+    got, partial = _agent_turns(f, agent, tz, tail)
+    out = [f"Conversation on {project} with {name}, session {sid}, last written {started}",
+           f"What was said, every tool call with its command, and what each answered, as the log "
+           f"{name}'s program wrote them.", ""]
+    if partial:
+        out += ["[the newest part of a longer conversation]", ""]
+    for t in got:
+        who = {"you": "You", "claude": name, "system": "System"}.get(t["who"], t["who"])
+        if t["text"]:
+            out += [f"{who} ({t['at']}):" if t["at"] else f"{who}:", t["text"], ""]
+        for c in t["tools"]:
+            out += [c["call"], "Result:" + (("\n" + c["result"]) if c["result"].strip() else " (nothing)"), ""]
+    fname = f"{agent}-{project}-{time.strftime('%Y%m%d-%H%M', time.localtime(mtime))}-{sid[:8]}.txt"
+    return "\n".join(out).rstrip() + "\n", fname
 
 
 # ---- what the conversations did, against the house rules (R200 step 6) -----

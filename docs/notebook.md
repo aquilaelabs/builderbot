@@ -12,7 +12,7 @@ each one keeps.
 
 **The page's header** wears the project's color and carries its name, the
 branch and the node, the session's state as a dot and a word, and its
-actions: **Start Claude** (**Open Claude**, in green, while your session
+actions: **Start agent** (**Open** and the agent's name, in green, while your session
 runs) with the chooser under it, **Shell**, and the rest behind one menu,
 the same menu its card has ([projects.md](projects.md#a-projects-card-and-its-menu)).
 
@@ -301,7 +301,7 @@ the cheap unit is the line and the expensive one is the step. The briefing
 every session gets says this in as many words.
 
 **Items are handed to the session one at a time, by the arrow beside them.**
-Sending types the line into the running Claude session and submits it, but
+Sending types the line into the running session and submits it, but
 only if it can see that it arrived. There is no IPC into a session; the only
 door is its terminal, and a session "waiting for input" is either at its prompt
 or holding a permission dialog, which the title cannot tell apart. Answering a
@@ -423,7 +423,7 @@ first, since an arrangement is work.
 
 ## What a session may add
 
-**How much of what a session adds lands on its own** is the *Claude may*
+**How much of what a session adds lands on its own** is the *Agents may*
 section of the project's settings: add to the roadmap, file bugs, add rules
 and fill in build and test, each **auto**, **ask** or **deny**. Auto: an item, report or
 rule a session adds lands at once, marked as its own. Ask holds it instead: the
@@ -449,7 +449,14 @@ gap between expected and actual, which are exactly its fields, plus a notes
 field the analysis accumulates in (`bb bug note N "..."` appends, dated,
 rather than replacing: the last analysis is how the next one starts). Either
 side writes it: you report from the view, a session files what it trips over
-with `bb bug add "..." --sev high --area "..." --repro "..."`. It is
+with `bb bug add "..." --sev high --area "..." --repro "..." --reproduces
+sometimes`. Beside how to make it happen, a report says whether that works:
+**always**, **sometimes**, **once** (seen the one time) or **not tried**,
+which is what every report from before the question says. A session that
+gives the steps answers it; the form asks it under the steps, the opened row
+says it as *Happens*, a chip narrows the list by it, and the Sort orders by
+it. `bb bug add --report N` files BuilderBot's diagnostics report N (`bb
+diag reports`) with its words, area, repro and that answer. It is
 write-through, not staged: a report is a form submitted once. Each report
 is stamped with the project's version as `bb version` prints it, on filing
 (*in 0.4.0-dev.390+045bb5a* on the row) and again on closing (*closed in*),
@@ -557,7 +564,7 @@ whether `main` already has every commit on it, and offers **Delete on
 `<host>`** for the ones where it does, which is the only case where removing
 a branch there can lose nothing. **Revert** and **Branch here**
 on a picked commit. A session's token
-has none of these (it has `bb git`) and an archived project takes no action.
+has none of these (it has `bb git`), and a project locked against the account takes no action.
 
 ## Tests
 
@@ -692,7 +699,7 @@ Containers page. How those containers are built and run is
 
 The **Wiki** is the project's wiki, for whoever uses or works on it: pages
 of Markdown that a person writes on the view or a session writes with
-`bb wiki save`, under the project's dial Claude may: Write the wiki (auto
+`bb wiki save`, under the project's dial Agents may: Write the wiki (auto
 lands a page, ask holds it on the notebook for approval with its text, deny
 refuses it, and hidden keeps the wiki from sessions altogether, reading
 included, for notes that are the people's alone). It reads like an encyclopedia: one article at a time, its title over a

@@ -9,6 +9,8 @@ BB_META_AUTH is the auth header. The line is printed with no newline, for bb
 to put in its sentence.
 """
 import os
+import sys
+import urllib.parse
 
 import bbapi
 
@@ -20,10 +22,22 @@ import bbapi
 # made once, and the first version of this line made it again.
 # Short timeout: bb status is run often, and a controller that is down should
 # cost a line rather than a 30-second wait.
+# `agent` as the argument: the line for this node's agent instead (R131),
+# its version and when it was built, or nothing when it cannot be had.
+AGENT = sys.argv[1:] == ["agent"]
+NODE = os.environ.get("BB_NODE_ID", "")
+if AGENT and not NODE:
+    raise SystemExit(0)
 try:
-    st, m = bbapi.request("/api/meta", auth=os.environ["BB_META_AUTH"], timeout=5)
+    st, m = bbapi.request("/api/meta" + (f"?node={urllib.parse.quote(NODE)}" if AGENT else ""),
+                          auth=os.environ["BB_META_AUTH"], timeout=5)
 except Exception:
     st, m = None, {}
+if AGENT:
+    ag = (m or {}).get("agent") if isinstance(m, dict) else None
+    if isinstance(ag, dict) and ag.get("version"):
+        print(ag["version"] + (f" (built {ag['built'][:10]})" if ag.get("built") else ""), end="")
+    raise SystemExit(0)
 if st is None:
     print("unreachable: the controller did not answer", end="")
     raise SystemExit(0)

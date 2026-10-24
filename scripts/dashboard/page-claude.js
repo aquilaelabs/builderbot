@@ -43,6 +43,8 @@ function syncResumeMenu(){
 // settings. Kept here as they are picked, since the menu is drawn again on
 // every poll. null while the menu offers its first step.
 let resumePick = null;
+// Which node the chooser's first step shows, of a project on several.
+let rmNode = {project: "", node: ""};
 
 // `ps -o etime=` gives MM:SS under an hour, HH:MM:SS under a day, and
 // D-HH:MM:SS beyond one. Rendered raw in a header with four buttons beside it
@@ -91,21 +93,28 @@ const claudeSigned = n => !n.id || !!claudeOn(n.id);
 const claudeLiveOn = (name, n) => (state?.sessions || []).some(s => s.name === myClaude(name)
   && (!n.id || s.node_id === n.id));
 
+// An agent's session tab on a project, dropped as its session ends: matched
+// with what it was opened on (a resumed conversation, a model, an effort)
+// taken off, which only the node it runs on is left beside.
+function dropAgentTab(id, name, node){
+  const arg = agentArg(id, name) + (node ? `:n:${node}` : "");
+  const t = tabs.find(x => x.kind === "term" && String(x.arg).replace(/:[rme]:[^:]*/g, "") === arg);
+  if (t) dropTab(t.id);
+}
+
 // End this account's session of a project on one node, asked first, and
 // drop its tab: the chooser's End session.
 async function claudeEnd(name, n, several){
   const where = n.name ? ` on ${n.name}` : "";
-  if (!confirm(`End your Claude session on ${projLabel(name)}${where}?\n\nThe transcript is kept and can be resumed later, but the conversation stops now.`)) return;
+  if (!await askYes(`End your Claude session on ${projLabel(name)}${where}?\n\nThe transcript is kept and can be resumed later, but the conversation stops now.`)) return;
   resumeFor = null;
   if (state) drawProjects(state.projects);
   try{
     const j = await endSession(myClaude(name), n.id);
     if (j.error) return notify(j.error, true);
-    const arg = `claude:${name}` + (several && n.id ? `:n:${n.id}` : "");
-    const t = tabs.find(x => x.kind === "term" && String(x.arg).replace(/:r:[^:]*/, "") === arg);
-    if (t) dropTab(t.id);
+    dropAgentTab("claude", name, several && n.id ? n.id : "");
     notify(`ended your Claude session on ${projLabel(name)}${where}`);
-  }catch(e){ notify("could not end it: " + e, true); }
+  }catch(e){ notify("could not end it: " + failWords(e), true); }
   refresh();
 }
 
@@ -116,11 +125,14 @@ async function claudeEnd(name, n, several){
 // was in already chosen; its Restart asks, and only then is the session
 // ended and started again (restartNow). Asked first and ended at once, it
 // left a person picking a model with no session running.
-function claudeRestart(name, n, several){
+function claudeRestart(name, n, several, agent = "claude"){
   const p = (state?.projects || []).find(x => x.name === name);
+  const claude = agent === "claude", last = claude ? p?.last_claude : p?.last_agents?.[agent];
   resumeFor = name;
-  resumePick = {project: name, sessionId: p?.last_claude?.id || null, node: several ? n.id : "",
-                model: p?.yours?.model || "", effort: p?.yours?.effort || "",
+  resumePick = {project: name, sessionId: last?.id || null, node: several ? n.id : "",
+                model: p?.yours?.[claude ? "model" : `${agent}_model`] || "",
+                effort: p?.yours?.[claude ? "effort" : `${agent}_effort`] || "",
+                ...(claude ? {} : {agent}),
                 restart: {id: n.id || "", name: n.name || "", several: !!several}};
   if (state) drawProjects(state.projects);
 }
@@ -131,18 +143,17 @@ function claudeRestart(name, n, several){
 // going down, the new tab attached to the dying session and showed it end,
 // and a second press was what got a session (the operator, 12 Oct).
 async function restartNow(name, r){
-  const n = r.restart;
+  const n = r.restart, id = r.agent || "claude";
   const where = n.name ? ` on ${n.name}` : "";
-  const j = await endSession(myClaude(name), n.id).catch(e => ({error: String(e)}));
+  const j = await endSession(myAgentSession(id, name), n.id).catch(e => ({error: String(e)}));
   if (j.error) return j.error;
-  const arg = `claude:${name}` + (n.several && n.id ? `:n:${n.id}` : "");
-  const t = tabs.find(x => x.kind === "term" && String(x.arg).replace(/:r:[^:]*/, "") === arg);
-  if (t) dropTab(t.id);
-  for (let i = 0; i < 40 && claudeLiveOn(name, {id: n.id}); i++){
+  dropAgentTab(id, name, n.several && n.id ? n.id : "");
+  const live = () => id === "claude" ? claudeLiveOn(name, {id: n.id}) : agentLiveOn(id, name, {id: n.id});
+  for (let i = 0; i < 40 && live(); i++){
     await new Promise(res => setTimeout(res, 500));
     await refresh();
   }
-  if (claudeLiveOn(name, {id: n.id}))
+  if (live())
     return `your session${where} is still going down; press Restart again in a moment`;
   return "";
 }
@@ -191,16 +202,31 @@ function openClaude(name, ev){
 // chooser opens on it at the model and effort step. With a session of yours
 // running here it is a restart into that conversation, which ends the one
 // running first and asks before it does.
-function resumeConversation(name, id, when, ev){
+function resumeConversation(name, id, when, ev, agent = "claude"){
   const p = (state?.projects || []).find(x => x.name === name);
   if (!p) return;
+  // A conversation resumes in the agent it is with, and in no other (R95
+  // step 8): another agent's turns the chooser to that agent's own step,
+  // its model and effort, on the project's node.
+  if (agent && agent !== "claude"){
+    ev?.stopPropagation();
+    const ns = claudeNodes(p), several = ns.length > 1;
+    resumeFor = name;
+    resumeHost = null;
+    resumePick = {project: name, sessionId: id, when, node: several ? (ns[0]?.id || "") : "", agent,
+                  model: p.yours?.[`${agent}_model`] || "", effort: p.yours?.[`${agent}_effort`] || ""};
+    drawProjects(state.projects);
+    syncResumeMenu();
+    if (resumeFor !== name) notify("a session cannot start on this project now: its Start says why", true);
+    return;
+  }
   const ns = claudeNodes(p), several = ns.length > 1;
   const live = ns.find(n => claudeLiveOn(name, {id: n.id}));
   resumeFor = name;
   // The press goes no further: the page's click-away closes the chooser,
   // as the Claude button's own press keeps it open (openClaude).
   ev?.stopPropagation();
-  // Under the project's own Start Claude where it is on show (the notebook's
+  // Under the project's own Start agent where it is on show (the notebook's
   // header), not the box the row's button sits in, which holds no Start.
   resumeHost = null;
   resumePick = {project: name, sessionId: id, when, node: live && several ? live.id : "",
@@ -208,20 +234,40 @@ function resumeConversation(name, id, when, ev){
                 ...(live ? {restart: {id: live.id || "", name: live.name || "", several}} : {})};
   drawProjects(state.projects);
   syncResumeMenu();
-  // Nowhere to start it (placeResumeMenu found no Start Claude to open under):
+  // Nowhere to start it (placeResumeMenu found no Start agent to open under):
   // said, rather than a press that does nothing.
   if (resumeFor !== name)
-    notify(claudeInstall(p) ? `Claude Code is not installed on ${p.node_name || "this project's node"}: install it from its Toolchains, then resume`
-      : "a session cannot start on this project now: its Start Claude says why", true);
+    notify(claudeInstall(p) ? `Claude Code is not installed on ${p.node_name || "this project's node"}: install it from its Agents page, then resume`
+      : "a session cannot start on this project now: its Start agent says why", true);
 }
 
-// A button that sends something to a project's Claude session asks first
-// (the operator, 6 Oct): what it sends arrives as a prompt and Claude starts
-// on it at once, so a stray tap is work begun. The bug and roadmap sends ask
-// in their own send box; every other Send to Claude asks here.
-function sendSure(project, what){
-  return confirm(`Send ${what} to ${projLabel(project)}'s Claude session?\n\n`
-                 + "It arrives as a prompt, and Claude starts on it at once.");
+// The agent a send on a project reaches: the running session the server
+// types into, Claude's first as names.running_session picks, else the one
+// Start agent opens. A send reached a ChatGPT or Copilot session too, under
+// a button that said Claude.
+function sendAgent(project){
+  const live = liveSessions();
+  return AGENTS.find(a => live.has(myAgentSession(a.id, project)))
+    || agentById((state?.projects || []).find(x => x.name === project)?.prefs?.agent_default) || AGENTS[0];
+}
+// ...and its tab, opened after a send to watch the answer: the session the
+// server says it typed into, else the one a send reaches. A ChatGPT or
+// Copilot session opens as itself; opening Claude's started a Claude session
+// beside it.
+function openSentTo(project, session = ""){
+  const ag = (session && agentOfSession(tmuxBase(session))?.agent) || sendAgent(project);
+  if (ag.id !== "claude") return launchAgent(ag.id, project);
+  startClaude(project, null);
+}
+
+// A button that sends something to a project's session asks first (the
+// operator, 6 Oct): what it sends arrives as a prompt and the agent starts on
+// it at once, so a stray tap is work begun. The bug and roadmap sends ask in
+// their own send box; every other Send asks here.
+async function sendSure(project, what){
+  const a = sendAgent(project).name;
+  return await askYes(`Send ${what} to ${projLabel(project)}'s ${a} session?\n\n`
+                 + `It arrives as a prompt, and ${a} starts on it at once.`);
 }
 
 // A new project's first session goes through its brief's dialog: a new
@@ -235,6 +281,41 @@ function startClaude(name, sessionId, node){
   launchClaude(name, sessionId, node);
 }
 
+// Another coding agent's session (R95 step 4): Codex CLI or Copilot CLI on
+// one of the project's nodes, a new conversation in a tab of its own, named
+// for the agent. Its session is its own beside a Claude one, in a tree of
+// its own (session_dir), so one person may run both on a project at once.
+const agentLiveOn = (id, name, n) => (state?.sessions || []).some(s => s.name === myAgentSession(id, name)
+  && (!n.id || s.node_id === n.id));
+function launchAgent(id, name, node, model = "", effort = "", sessionId = ""){
+  const a = agentById(id);
+  if (!a) return;
+  resumeFor = null;
+  resumePick = null;
+  if (state) drawProjects(state.projects);
+  const p = (state?.projects || []).find(x => x.name === name);
+  const nn = node ? (p?.session_nodes || []).find(x => x.id === node)?.name || node : "";
+  // Its model and effort ride the argument (R95 step 9), which bb-tty
+  // holds to the agent's own lists.
+  const me = (model ? `:m:${model}` : "") + (effort ? `:e:${effort}` : "");
+  openTab({kind: "term", arg: agentArg(id, name) + (sessionId ? `:r:${sessionId}` : "") + me + (node ? `:n:${node}` : ""),
+           label: `${a.name}: ${projLabel(name)}` + (nn ? ` (${nn})` : "")});
+}
+async function agentEnd(id, name, n, several){
+  const a = agentById(id);
+  const where = n.name ? ` on ${n.name}` : "";
+  if (!await askYes(`End your ${a.name} session on ${projLabel(name)}${where}?\n\nThe transcript is kept and can be resumed later, but the conversation stops now.`)) return;
+  resumeFor = null;
+  if (state) drawProjects(state.projects);
+  try{
+    const j = await endSession(myAgentSession(id, name), n.id);
+    if (j.error) return notify(j.error, true);
+    dropAgentTab(id, name, several && n.id ? n.id : "");
+    notify(`ended your ${a.name} session on ${projLabel(name)}${where}`);
+  }catch(e){ notify("could not end it: " + failWords(e), true); }
+  refresh();
+}
+
 function launchClaude(name, sessionId, node){
   resumeFor = null;
   resumePick = null;
@@ -244,8 +325,8 @@ function launchClaude(name, sessionId, node){
   const p = (state?.projects || []).find(x => x.name === name);
   const nn = node ? (p?.session_nodes || []).find(x => x.id === node)?.name || node : "";
   openTab({kind:"term",
-           arg: `claude:${name}` + (sessionId ? `:r:${sessionId}` : "") + (node ? `:n:${node}` : ""),
-           label: `Claude: ${projLabel(name)}` + (nn ? ` (${nn})` : "")});
+           arg: agentArg("claude", name) + (sessionId ? `:r:${sessionId}` : "") + (node ? `:n:${node}` : ""),
+           label: `${agentById("claude").name}: ${projLabel(name)}` + (nn ? ` (${nn})` : "")});
 }
 
 // ---- a new project's first session ------------------------------------------
@@ -254,20 +335,32 @@ function launchClaude(name, sessionId, node){
 // for this account and opens the session, which takes it as its first prompt
 // as it starts; Start without it opens one that was not given it and puts the
 // brief away. Either way the brief leaves the project's tree then, and its
-// notebook keeps it.
+// notebook keeps it. Whichever agent the session is (R95): Codex's and
+// Copilot's first prompt is the brief as Claude's is, with their own models.
 let briefFor = null;
 
-async function openBrief(name, node){
+async function openBrief(name, node, agent = "claude"){
   resumeFor = null;
+  resumePick = null;
   if (state) drawProjects(state.projects);
-  briefFor = {name, node};
+  briefFor = {name, node, agent};
   const p = (state?.projects || []).find(x => x.name === name);
-  $("briefTitle").textContent = `First session on ${projLabel(name)}`;
+  const a = agentById(agent);
+  $("briefTitle").textContent = agent === "claude" ? `First session on ${projLabel(name)}`
+    : `First ${a.name} session on ${projLabel(name)}`;
   $("briefErrWrap").hidden = true;
   $("briefText").value = "";
-  for (const [id, table, cur] of [["briefModel", MODELS, p?.yours?.model || ""],
-                                  ["briefEffort", EFFORTS, p?.yours?.effort || ""]]){
-    $(id).innerHTML = optionList(table, cur);
+  if (agent === "claude"){
+    for (const [id, table, cur] of [["briefModel", MODELS, p?.yours?.model || ""],
+                                    ["briefEffort", EFFORTS, p?.yours?.effort || ""]]){
+      $(id).innerHTML = optionList(table, cur);
+    }
+  } else {
+    const t = AGENT_MODELS[agent] || {models: [], efforts: []};
+    for (const [id, xs, cur] of [["briefModel", t.models, p?.yours?.[`${agent}_model`] || ""],
+                                 ["briefEffort", t.efforts, p?.yours?.[`${agent}_effort`] || ""]]){
+      $(id).innerHTML = optionList([["", `${a.name}'s default`], ...xs.map(v => [v, v])], cur);
+    }
   }
   for (const b of ["briefGo", "briefSkip"]) $(b).disabled = true;
   $("briefModal").hidden = false;
@@ -300,8 +393,9 @@ async function briefGo(skip){
   const was = b.textContent;
   busy(b, "Starting");
   try{
-    if (model !== (p?.yours?.model || "") || effort !== (p?.yours?.effort || "")){
-      const j = await (await postJSON("/api/prefs", {project: f.name, model, effort})).json();
+    const mk = f.agent === "claude" ? "model" : `${f.agent}_model`, ek = f.agent === "claude" ? "effort" : `${f.agent}_effort`;
+    if (model !== (p?.yours?.[mk] || "") || effort !== (p?.yours?.[ek] || "")){
+      const j = await (await postJSON("/api/prefs", {project: f.name, [mk]: model, [ek]: effort})).json();
       if (j.error) throw new Error(j.error);
     }
     const j = await (await postJSON("/api/brief", skip ? {project: f.name, action: "aside"}
@@ -313,7 +407,8 @@ async function briefGo(skip){
   }
   unbusy(b, was);
   closeBrief();
-  launchClaude(f.name, null, f.node);
+  if (f.agent === "claude") launchClaude(f.name, null, f.node);
+  else launchAgent(f.agent, f.name, f.node, model, effort);
   refreshSoon();
 }
 
@@ -337,15 +432,17 @@ let resumeModelNow = {project: "", model: ""};
 function resumePicker(p, m, card, anchor, ns, several){
   const r = resumePick;
   const n = ns.find(x => x.id === r.node) || ns[0] || {};
+  if (r.agent && r.agent !== "claude") return agentPicker(p, m, card, anchor, n, several);
   const opts = (table, cur) => table.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${
     esc(v === "" && table === MODELS && resumeModelNow.project === p.name && resumeModelNow.model
       ? `Claude's default (last session: ${(MODELS.find(([x]) => x === resumeModelNow.model) || [])[1] || resumeModelNow.model})` : l)}</option>`).join("");
   // What it will do as its head, the two picks labeled above their fields
   // side by side, and Back and the press at its foot (the design 2.0 pass).
-  m.innerHTML = `<div class="rmhead"><b>${r.restart ? "Restart your session"
-      : r.sessionId ? "Resume the conversation" : "A new conversation"}</b><span class="rmfacts">${
-      r.restart ? (r.when ? `ending the one running, resuming the one from ${esc(ago(r.when))}` : "resuming its conversation")
-        : r.sessionId ? `from ${esc(ago(r.when ?? p.last_claude?.when))}` : "a fresh start"}${
+  // The head names the agent and its product, as the other agents' does.
+  m.innerHTML = `<div class="rmhead"><b>${r.restart ? "Restart your Claude session"
+      : r.sessionId ? "Resume the Claude conversation" : "A new Claude conversation"}</b><span class="rmfacts">${
+      r.restart ? (r.when ? `ending the one running, resuming the one from ${esc(ago(r.when))} · ` : "ending the one running, resuming its conversation · ")
+        : r.sessionId ? `from ${esc(ago(r.when ?? p.last_claude?.when))} · ` : ""}Claude Code${
       several || n.name ? ` on ${esc(n.name || "")}` : ""}</span></div>
     <div class="rmfields">
       <div class="setrow col ctlrow"><label class="lbl" for="rmModel">Model</label><select id="rmModel" aria-label="model this session starts on">${opts(MODELS, r.model)}</select></div>
@@ -361,7 +458,7 @@ function resumePicker(p, m, card, anchor, ns, several){
   m.querySelector("[data-back]").onclick = () => { resumePick = null; drawProjects(state.projects); };
   m.querySelector("[data-start]").onclick = async e => {
     const label = r.restart ? "Restart" : "Start";
-    if (r.restart && !confirm(`Restart your Claude session on ${projLabel(p.name)}${r.restart.name ? ` on ${r.restart.name}` : ""}?\n\n`
+    if (r.restart && !await askYes(`Restart your Claude session on ${projLabel(p.name)}${r.restart.name ? ` on ${r.restart.name}` : ""}?\n\n`
         + (r.when ? "It ends now, and the conversation you picked is resumed in its place."
                   : "It ends now and resumes the same conversation, starting fresh so it sees what changed since it started."))) return;
     busy(e.target, r.restart ? "Restarting" : "Starting");
@@ -393,6 +490,53 @@ function resumePicker(p, m, card, anchor, ns, several){
   floatAt(m, anchor);
 }
 
+// The same step for another agent's new conversation (R95 step 9): which
+// agent, on which node, and that agent's own models and efforts, its
+// default first; Start opens it. Nothing is saved: the pick rides the
+// terminal's argument.
+function agentPicker(p, m, card, anchor, n, several){
+  const r = resumePick, a = agentById(r.agent), t = AGENT_MODELS[r.agent] || {models: [], efforts: []};
+  const opts = (xs, cur) => [`<option value="">${esc(a.name)}'s default</option>`]
+    .concat(xs.map(v => `<option value="${esc(v)}"${v === cur ? " selected" : ""}>${esc(v)}</option>`)).join("");
+  m.innerHTML = `<div class="rmhead"><b>${r.restart ? `Restart your ${esc(a.name)} session`
+      : r.sessionId ? `Resume the ${esc(a.name)} conversation` : `A new ${esc(a.name)} conversation`}</b><span class="rmfacts">${
+      r.restart ? (r.sessionId ? "ending the one running, resuming its conversation · " : "ending the one running · ")
+        : r.sessionId && r.when ? `from ${esc(ago(r.when))} · ` : ""}${esc(a.product)}${
+      several || n.name ? ` on ${esc(n.name || "")}` : ""}</span></div>
+    <div class="rmfields">
+      <div class="setrow col ctlrow"><label class="lbl" for="rmModel">Model</label><select id="rmModel" aria-label="model this session starts on">${opts(t.models, r.model)}</select></div>
+      <div class="setrow col ctlrow"><label class="lbl" for="rmEffort">Effort</label><select id="rmEffort" aria-label="effort this session starts on">${opts(t.efforts, r.effort)}</select></div>
+    </div>
+    <div class="actbar rmacts"><span class="state" id="rmSay"></span><span class="sp"></span>
+      <button type="button" data-back>Back</button>
+      <button type="button" class="${r.restart ? "danger" : "primary"}" data-start>${r.restart ? "Restart" : "Start"}</button></div>`;
+  m.dataset.pick = p.name;
+  card.appendChild(m);
+  m.querySelector("#rmModel").onchange = e => { r.model = e.target.value; };
+  m.querySelector("#rmEffort").onchange = e => { r.effort = e.target.value; };
+  m.querySelector("[data-back]").onclick = () => { resumePick = null; drawProjects(state.projects); };
+  m.querySelector("[data-start]").onclick = async e => {
+    const label = r.restart ? "Restart" : "Start";
+    if (r.restart && !await askYes(`Restart your ${a.name} session on ${projLabel(p.name)}${r.restart.name ? ` on ${r.restart.name}` : ""}?\n\n`
+        + "It ends now and resumes the same conversation, starting fresh so it sees what changed since it started.")) return;
+    // Kept as this person's for the project, per agent (R95 step 9), so the
+    // step opens on it next time; the session starts on it either way.
+    const mk = `${r.agent}_model`, ek = `${r.agent}_effort`;
+    busy(e.target, r.restart ? "Restarting" : "Starting");
+    if (r.model !== (p.yours?.[mk] || "") || r.effort !== (p.yours?.[ek] || "")){
+      const j = await (await postJSON("/api/prefs", {project: p.name, [mk]: r.model, [ek]: r.effort})).json().catch(() => ({error: "no answer"}));
+      if (j.error){ unbusy(e.target, label); m.querySelector("#rmSay").textContent = j.error; return; }
+      if (p.yours) Object.assign(p.yours, {[mk]: r.model, [ek]: r.effort});
+    }
+    if (r.restart){
+      const why = await restartNow(p.name, r);
+      if (why){ unbusy(e.target, label); m.querySelector("#rmSay").textContent = why; return; }
+    }
+    launchAgent(r.agent, p.name, r.node, r.model, r.effort, r.sessionId || "");
+  };
+  floatAt(m, anchor);
+}
+
 function placeResumeMenu(){
   const p = (state?.projects || []).find(x => x.name === resumeFor);
   const card = resumeHostNow();
@@ -408,41 +552,67 @@ function placeResumeMenu(){
     resumePicker(p, m, card, anchor, ns, several);
     return;
   }
-  // What one node offers: Open tab and End session where this account's
-  // session runs there; its sign-in where this account has none there;
-  // else Resume and New conversation, or the one press when there is
-  // nothing to resume; and only its reason where a session cannot start.
-  const offer = n => {
-    const node = several ? n.id : "";
-    // In one action bar (the design 2.0 pass, the operator, 17 Oct): Open
-    // tab the filled press, Restart plain since it resumes, End session the
-    // one destructive verb and last.
-    const bar = html => `<div class="actbar rmacts">${html}</div>`;
+  // One node at a time and one line per agent (the operator, 22 Oct: nodes
+  // times agents was a tall stack of bars): with several nodes, the node
+  // picker on top, and the node's facts on a quiet line under it; then each agent installed there
+  // on a line of its own, its name and how you stand on it at the left and
+  // its presses at the right, in short words with the full ones in their
+  // titles. The project's default agent first.
+  const at = several ? n => n.id : () => "";
+  const runsOn = n => claudeLiveOn(p.name, n) || agentsLive().some(a => a.id !== "claude" && agentLiveOn(a.id, p.name, n));
+  if (rmNode.project !== p.name || !ns.some(n => n.id === rmNode.node))
+    rmNode = {project: p.name, node: (ns.find(runsOn) || ns.find(n => n.id === p.session_node) || ns[0] || {}).id || ""};
+  const n = ns.find(x => x.id === rmNode.node) || ns[0];
+  const line = (a, state, presses, cls = "") => `<div class="rmline${cls}"><span class="rmwho"><b>${esc(a.name)}</b>${
+      state ? `<span class="rmsays">${esc(state)}</span>` : ""}</span><div class="actbar rmacts">${presses}</div></div>`;
+  const claudeLine = () => {
+    const a = agentById("claude"), node = at(n);
     if (claudeLiveOn(p.name, n))
-      return bar(`<button data-open="1" data-node="${esc(node)}" class="primary">Open tab</button>`
-        + `<button data-restart="${esc(n.id)}">Restart</button>`
-        + `<button data-end="${esc(n.id)}" class="danger">End session</button>`);
-    if (n.where !== "node") return `<div class="rmstate bad">${esc(n.why)}</div>`;
+      return line(a, "running", `<button data-open="1" data-node="${esc(node)}" class="primary" title="open your session's tab">Open</button>`
+        + `<button data-restart="${esc(n.id)}" title="end it and resume the same conversation">Restart</button>`
+        + `<button data-end="${esc(n.id)}" class="danger" title="end your session here">End</button>`, " live");
     if (!claudeSigned(n))
-      return bar(`<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Nodes page, at its Claude sign-in">Sign in on ${esc(n.name)}</button>`);
-    return bar((p.last_claude ? `<button data-r="1" data-node="${esc(node)}">Resume: ${esc(ago(p.last_claude.when))}</button>` : "")
-      + `<button data-n="1" data-node="${esc(node)}"${p.last_claude ? "" : ' class="primary"'}>New conversation</button>`);
+      return line(a, "not signed in here", `<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its Claude sign-in">Sign in</button>`);
+    return line(a, "", (p.last_claude ? `<button data-r="1" data-node="${esc(node)}" title="resume the last conversation">Resume ${esc(ago(p.last_claude.when))}</button>` : "")
+      + `<button data-n="1" data-node="${esc(node)}" title="a new conversation">New</button>`);
   };
-  // A node's head: its name, and what it has on a quiet line under it.
-  const head = n => `<div class="rmhead"><b>${esc(n.name || "")}</b>${
-      claudeNodeFacts(n) ? `<span class="rmfacts">${esc(claudeNodeFacts(n))}</span>` : ""}</div>`;
+  const otherLine = a => {
+    const node = at(n);
+    if (agentLiveOn(a.id, p.name, n))
+      return line(a, "running", `<button data-aopen="${esc(a.id)}" data-node="${esc(node)}" class="primary" title="open your session's tab">Open</button>`
+        + `<button data-arestart="${esc(a.id)}" data-nid="${esc(n.id)}" title="end it and resume the same conversation">Restart</button>`
+        + `<button data-aend="${esc(a.id)}" data-nid="${esc(n.id)}" class="danger" title="end your session here">End</button>`, " live");
+    if (n.id && !agentOn(a.id, n.id))
+      return line(a, "not signed in here", `<button data-asignin="${esc(a.id)}" data-nid="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its ${esc(a.name)} sign-in">Sign in</button>`);
+    // ...and its own last conversation offered back, as Claude's is (the
+    // operator, 23 Oct).
+    const last = p.last_agents?.[a.id];
+    return line(a, "", (last ? `<button data-aresume="${esc(a.id)}" data-node="${esc(node)}" title="resume the last conversation">Resume ${esc(ago(last.when))}</button>` : "")
+      + `<button data-anew="${esc(a.id)}" data-node="${esc(node)}" title="a new conversation">New</button>`);
+  };
+  const lines = () => {
+    if (n.where !== "node") return `<div class="rmstate bad">${esc(n.why)}</div>`;
+    const first = p.prefs?.agent_default || "claude";
+    const here = agentsLive().filter(a => (a.id === "claude" || (n.agents || []).includes(a.id))
+        && !(p.prefs?.agents_off || []).includes(a.id))
+      .sort((x, y) => (y.id === first) - (x.id === first));
+    return here.map(a => a.id === "claude" ? claudeLine() : otherLine(a)).join("");
+  };
+  const facts = n && claudeNodeFacts(n);
   const html = !ns.length
     // No node, or one that refused, and there is nowhere else: a session
     // runs on a node and this container carries no Claude Code. The reason,
     // and no choice under it: a menu with nothing in it would be a button
     // that lies.
     ? `<div class="rmstate bad">${esc(p.session_why)}</div>`
-    // Each node (several under R82, or the one): its head, how this account
-    // stands there, and what it offers.
-    : ns.map(n => `<div class="rmnode">${n.name ? head(n) : ""}${
-        claudeLiveOn(p.name, n) ? `<div class="rmstate ok">Your session is running here</div>`
-        : n.where === "node" && !claudeSigned(n) ? `<div class="rmstate">You are not signed in to Claude here</div>` : ""}${
-        offer(n)}</div>`).join("");
+    // Several nodes are the house's node picker (nodePick, the node-switcher
+    // rule), which holds any number of them; one where a session of yours
+    // runs says so after its name.
+    : `<div class="rmnode">${several ? `<div class="rmnodes">${nodePick("rmNodeSel",
+          ns.map(x => ({id: x.id, name: runsOn(x) ? `${x.name} · yours running` : x.name})), n.id)}</div>`
+        + (facts ? `<div class="rmfacts">${esc(facts)}</div>` : "")
+        : n.name ? `<div class="rmhead"><b>${esc(n.name)}</b>${facts ? `<span class="rmfacts">${esc(facts)}</span>` : ""}</div>` : ""}${
+        lines()}</div>`;
   // The same menu as the one up already is left where it is (the operator,
   // 12 Oct): drawn again on every poll, its buttons were replaced under the
   // pointer and its entrance played again, so a press that began on one
@@ -454,6 +624,8 @@ function placeResumeMenu(){
   m.dataset.sig = html;
   m.innerHTML = html;
   card.appendChild(m);
+  const nsel = m.querySelector("#rmNodeSel");
+  if (nsel) nsel.onchange = () => { rmNode = {project: p.name, node: nsel.value}; placeResumeMenu(); };
   m.querySelectorAll("[data-signin-node]").forEach(b => b.onclick = () => {
     resumeFor = null;
     drawProjects(state.projects);
@@ -474,6 +646,34 @@ function placeResumeMenu(){
     claudeEnd(p.name, ns.find(n => n.id === b.dataset.end) || {id: "", name: ""}, several));
   m.querySelectorAll("[data-restart]").forEach(b => b.onclick = () =>
     claudeRestart(p.name, ns.find(n => n.id === b.dataset.restart) || {id: "", name: ""}, several));
+  m.querySelectorAll("[data-aopen]").forEach(b => b.onclick = () =>
+    launchAgent(b.dataset.aopen, p.name, b.dataset.node));
+  // Its last conversation, at its model and effort, as Resume on Claude's line.
+  m.querySelectorAll("[data-aresume]").forEach(b => b.onclick = () => {
+    const ag = b.dataset.aresume, last = p.last_agents?.[ag];
+    if (!last) return;
+    resumePick = {project: p.name, sessionId: last.id, when: last.when, node: b.dataset.node, agent: ag,
+                  model: p.yours?.[`${ag}_model`] || "", effort: p.yours?.[`${ag}_effort`] || ""};
+    drawProjects(state.projects);
+  });
+  // A new conversation of another agent turns to its model and effort.
+  m.querySelectorAll("[data-anew]").forEach(b => b.onclick = () => {
+    const ag = b.dataset.anew;
+    // A brief still waiting is the first prompt whichever agent starts.
+    if (p.brief) return openBrief(p.name, b.dataset.node, ag);
+    resumePick = {project: p.name, sessionId: null, node: b.dataset.node, agent: ag,
+                  model: p.yours?.[`${ag}_model`] || "", effort: p.yours?.[`${ag}_effort`] || ""};
+    drawProjects(state.projects);
+  });
+  m.querySelectorAll("[data-arestart]").forEach(b => b.onclick = () =>
+    claudeRestart(p.name, ns.find(n => n.id === b.dataset.nid) || {id: "", name: ""}, several, b.dataset.arestart));
+  m.querySelectorAll("[data-aend]").forEach(b => b.onclick = () =>
+    agentEnd(b.dataset.aend, p.name, ns.find(n => n.id === b.dataset.nid) || {id: "", name: ""}, several));
+  m.querySelectorAll("[data-asignin]").forEach(b => b.onclick = () => {
+    resumeFor = null;
+    drawProjects(state.projects);
+    openNodeClaude(b.dataset.nid, b.dataset.asignin);
+  });
   // Over the page under its button, above it near the screen's foot, a
   // sheet on a phone (floatAt), so it is never placed where it cannot be
   // seen: a chooser out of sight read as a press that did nothing (bug #65).

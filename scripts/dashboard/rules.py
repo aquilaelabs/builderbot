@@ -6,8 +6,8 @@ anything: the roadmap, the open bugs, and Claude's own memories. This is the
 fourth, and it is the only one of them the operator writes and a session
 cannot. That is the whole point, and it is the line the Briefing tab draws:
 
-    a MEMORY is Claude's, and Claude may rewrite or forget it;
-    a RULE is the operator's, and Claude may not.
+    a MEMORY is the session's, and an agent may rewrite or forget it;
+    a RULE is the operator's, and an agent may not.
 
 Both sides write them, the way both sides write the roadmap and the tracker.
 What is asymmetric is narrower than "who may write": a session may add a rule
@@ -73,6 +73,7 @@ _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
+import agents  # noqa: E402
 import pending  # noqa: E402
 import share  # noqa: E402
 # The shell reader the guard on a node uses too (scripts/lib, which a node
@@ -564,7 +565,7 @@ def _log(d, project, by, ev):
     roadmap.py's, since one merged history is what `bb history` reads."""
     h = d.setdefault("history", {}).setdefault(project, [])
     h.append({"at": int(time.time()),
-              "by": "claude" if by == "claude" else "you",
+              "by": "claude" if by == "claude" else "you", **agents.asker(by),
               **_by_whom(),
               **({"approved": True} if pending.replaying() else {}), **ev})
     del h[:-MAX_HISTORY]

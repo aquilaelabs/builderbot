@@ -1,6 +1,6 @@
 // The notebook's Permissions view: everything a session may do on this
 // project, in one place (the operator, 22 Oct: the dials were split between
-// the Settings view's Claude may and the Git view's push policy). Beside
+// the Settings view's Agents may and the Git view's push policy). Beside
 // Overview and Settings in the Overview group.
 // One classic script beside index.html, the shape tab-*.js has (docs/nodes.md
 // §13): same page, same global scope, one file per notebook view (R60).
@@ -19,7 +19,8 @@ function nbPermsView({$, nb, project, root}){
   // own Save and Revert, as the Settings view lends the whole form.
   function lendDials(){
     const host = view()?.querySelector(".permdials > .box");
-    const sect = document.querySelector('details[data-sect="rn:claude"]');
+    // Not a fading view's still copy of it (ghostOf), which holds one too.
+    const sect = [...document.querySelectorAll('details[data-sect="rn:claude"]')].find(d => !d.closest(".fghost"));
     if (!host || !sect) return;
     if (sect.parentElement === host && rnFor === project) return;
     rnDialsHome();
@@ -42,7 +43,7 @@ function nbPermsView({$, nb, project, root}){
     const host = view()?.querySelector(".permgit");
     if (!host) return;
     const p = (state?.projects || []).find(x => x.name === project);
-    const locked = !!p?.locked || !!projWriteWhy(project);
+    const locked = !!p?.locked_me || !!projWriteWhy(project);
     const saved = p?.prefs?.gitpol || {}, pol = {...saved, ...draft};
     const dirty = Object.keys(draft).length > 0;
     const body = `<div class="row stack2 gpolicy"><div class="grow">
@@ -73,7 +74,7 @@ function nbPermsView({$, nb, project, root}){
         draft = {};
         notify("saved");
         refresh();
-      }catch(e){ notify("policy: " + e, true); }
+      }catch(e){ notify("policy: " + failWords(e), true); }
       finally{ if (pa.isConnected) unbusy(pa, "Apply"); drawPush(); }
     };
   }

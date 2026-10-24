@@ -37,6 +37,7 @@ import sys
 # doctor's probe load this module by path.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import names   # noqa: E402
+import agents  # noqa: E402
 from fields import field   # noqa: E402
 import db   # noqa: E402
 import turns   # noqa: E402
@@ -142,6 +143,9 @@ def _node_list(all=False):
             # uninstall in flight" off the type alone and never graying.
             entry["apply"] = sp.get("apply", "")
             busy[j["node"]] = {"id": j["id"], "what": sp.get("apply", ""),
+                               # A store move waiting for the node to be quiet
+                               # (R120 step 7) says so, not "applying".
+                               "quiet": bool(sp.get("quiet")), "state": j["state"],
                                "slot": str((sp.get("config") or {}).get("slot") or ""),
                                # Which feature and which way (R91), for its row.
                                "feature": str((sp.get("config") or {}).get("id") or "") if sp.get("apply") == "feature" else "",
@@ -687,6 +691,29 @@ def node_storage_measure(principal, node_id):
     r = job_add(principal, {"node": node_id}, "storage", {"timeout": 900})
     if r.get("ok"):
         audit(principal, "node-storage", node_id, {"job": r["job"]})
+    return r
+
+
+def node_avd_remove(principal, node_id, project, uid, name):
+    """The Storage page's Remove on a project's phone (R123): a job the
+    agent runs, which checks the names again and refuses a phone that is
+    running."""
+    n = node(node_id)
+    if not n or n.get("kind") != "agent":
+        return {"error": "only an agent node keeps phones"}
+    if not n.get("live"):
+        return {"error": f"{n['name']}'s agent is not dialing in, so nothing from here reaches the machine"}
+    phones = ((n.get("reported") or {}).get("storage") or {}).get("phones") or []
+    ph = next((p for p in phones if p.get("project") == project and p.get("uid") == uid
+               and p.get("name") == name), None)
+    if not ph:
+        return {"error": f"{name} is not one of {project}'s phones on {n['name']} as last measured"}
+    if ph.get("running"):
+        return {"error": f"{name} is running on {n['name']}: stop it first (bb emu stop in a {project} session)"}
+    r = job_add(principal, {"node": node_id}, "avd-remove",
+                {"timeout": 900, "project": project, "uid": uid, "name": name})
+    if r.get("ok"):
+        audit(principal, "node-avd-remove", node_id, {"job": r["job"], "project": project, "name": name})
     return r
 
 
@@ -1316,14 +1343,9 @@ def _census(c):
                                # its host (R100), whitelisted field by field.
                                "autostart": v.get("autostart") is True,
                                "hw": _vm_hw(v.get("hw")),
-                               # Its root filesystem as its guest agent says (R110):
-                               # [used MB, total MB], for the bell as it fills.
-                               **({"root_fs": [int(v["root_fs"][0]), int(v["root_fs"][1])]}
-                                  if isinstance(v.get("root_fs"), list) and len(v["root_fs"]) == 2
-                                  and all(isinstance(x, int) and x >= 0 for x in v["root_fs"]) else {}),
-                               # ...and the rest its guest agent says (R110 step 8):
-                               # hostname, OS, kernel, addresses, who is signed in,
-                               # every filesystem, whitelisted field by field.
+                               # What its guest agent says (R110 step 8): hostname,
+                               # OS, kernel, addresses, who is signed in, every
+                               # filesystem, whitelisted field by field.
                                **({"guest": _vm_guest(v["guest"])} if isinstance(v.get("guest"), dict) else {}),
                                "iso": str(v.get("iso") or "") if VM_ISO_RE.fullmatch(str(v.get("iso") or "")) else ""})
     vp = c.get("vm_pool") if isinstance(c.get("vm_pool"), dict) else None
@@ -1463,7 +1485,12 @@ def _census(c):
                                  for k in ((st.get("docker") or {}).get("kinds") or [])[:8] if isinstance(k, dict)],
                        "root": str((st.get("docker") or {}).get("root") or "")[:200],
                        "fs": str((st.get("docker") or {}).get("fs") or "")[:200]},
-            "slow": [str(x)[:200] for x in (st.get("slow") or [])[:16]]}
+            "slow": [str(x)[:200] for x in (st.get("slow") or [])[:16]],
+            # Each project's phones (R123), for the page's Remove.
+            "phones": [{"project": str(p.get("project") or "")[:100], "uid": str(p.get("uid") or "")[:20],
+                        "name": str(p.get("name") or "")[:80], "mb": mb(p.get("mb")), "running": bool(p.get("running")),
+                        "ran": mb(p.get("ran")) or 0, "snap_mb": mb(p.get("snap_mb")) or 0}
+                       for p in (st.get("phones") or [])[:200] if isinstance(p, dict)]}
     out["mounts"] = []
     for m in (c.get("mounts") if isinstance(c.get("mounts"), list) else [])[:32]:
         if isinstance(m, dict) and str(m.get("path") or "").startswith("/"):
@@ -1532,6 +1559,9 @@ def _census(c):
             # copy is the node's own directory (R163).
             "writable": None if "writable" not in se else bool(se.get("writable")),
             "claude": str(se.get("claude") or "")[:40],
+            # ...and each other coding agent's version as it printed it,
+            # under the agent table's census key (R95).
+            **{a.reported: str(se.get(a.reported) or "")[:40] for a in agents.installable() if a.id != "claude"},
             "bundle": str(se.get("bundle") or "")[:80],
             # The agent's own sentence for a half that is down (no session
             # account, no ttyd, a port taken), which the row's dead button
@@ -1541,6 +1571,12 @@ def _census(c):
             # a session THERE (bb-tty compares against the machine it runs
             # on); the row hands it to the page per project.
             "boot": re.sub(r"[^0-9.]", "", str(se.get("boot") or ""))[:40],
+            # Accounts as their own users (R125): how far the move is.
+            "accounts": {"users": _mb((se.get("accounts") or {}).get("users")) or 0,
+                         "moved": _mb((se.get("accounts") or {}).get("moved")) or 0,
+                         "waiting": _mb((se.get("accounts") or {}).get("waiting")) or 0,
+                         "error": str((se.get("accounts") or {}).get("error") or "")[:160]}
+                        if isinstance(se.get("accounts"), dict) else {},
             # Seconds since the machine booted. Finite: json.loads takes
             # Infinity and NaN, and int() of either
             # raised, failing the node's whole hello (B180).
@@ -1588,14 +1624,17 @@ STORE_ROLES = ("data", "toolchains", "cache", "artifacts", "appdata")
 STORE_DENY_EXACT = {"/", "/bin", "/boot", "/dev", "/etc", "/home", "/lib",
                     "/lib32", "/lib64", "/libx32", "/media", "/mnt", "/opt",
                     "/proc", "/root", "/run", "/sbin", "/srv", "/sys", "/tmp",
-                    "/usr", "/var"}
+                    "/usr", "/var", "/var/lib", "/var/log"}
 STORE_DENY_UNDER = ("/bin/", "/boot/", "/dev/", "/etc/", "/lib/", "/lib32/",
                     "/lib64/", "/libx32/", "/proc/", "/root/", "/run/",
-                    "/sbin/", "/sys/", "/usr/", "/var/log/", "/var/run/",
+                    "/sbin/", "/sys/", "/usr/", "/var/run/",
                     "/var/lock/", "/var/spool/", "/var/cache/")
+# ...and a folder of its own under /var/log is a place for one (the operator,
+# 23 Oct), though /var/log itself is not. Held equal on both sides by
+# unit/test_store_paths.py.
 
 
-def store_path_ok(path):
+def store_path_ok(path, what="a store"):
     """"" if this is a safe place for a store, else why not."""
     p = str(path or "").rstrip("/") or "/"
     if not p.startswith("/"):
@@ -1603,7 +1642,7 @@ def store_path_ok(path):
     if " " in p or ".." in p.split("/"):
         return f"{path!r} must be a plain absolute path, with no spaces or .."
     if p in STORE_DENY_EXACT:
-        return (f"{p} is a system directory (or the root of the mounts): a store "
+        return (f"{p} is a system directory (or the root of the mounts): {what} "
                 "is a directory of its own, like /var/lib/builderbot/x or /mnt/<share>/<dir>")
     for bad in STORE_DENY_UNDER:
         if (p + "/").startswith(bad):
@@ -1643,6 +1682,10 @@ def _clean_config(cfg):
             path = "/mnt/" + tail
         if not path.startswith("/") or " " in path or ":" in path:
             return None, f"a mountpoint must be an absolute path without spaces: {path!r}"
+        # ...and never over a system directory (R120): a share mounted on
+        # /etc hides the machine's own configuration until it is unmounted.
+        if (why := store_path_ok(path, "a mount point")):
+            return None, f"the mount at {path}: {why}"
         if path.rstrip("/") == "/workspace" or path.startswith("/workspace/"):
             # The node's own synced copy of its projects is there (R163): a
             # mount would cover it, and no node mounts the controller's disk.
@@ -1668,6 +1711,10 @@ def _clean_config(cfg):
             return None, f"the {role} store: {why}"
         stores[role] = path[:200]
     out["stores"] = stores
+    # The stores whose path changes without their data coming along (R120):
+    # the person was asked, and said start it empty.
+    out["keep"] = sorted({str(r) for r in (cfg.get("keep") if isinstance(cfg.get("keep"), list) else [])
+                          if r in STORE_ROLES})
     net = cfg.get("network") if isinstance(cfg.get("network"), dict) else {}
     mode = "static" if net.get("mode") == "static" else "dhcp"
     n = {"mode": mode, "interface": re.sub(r"[^A-Za-z0-9_.-]", "", str(net.get("interface") or ""))[:32]}
@@ -1882,6 +1929,40 @@ def node_root_asks(principal, node_id, on):
     _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
     _touch(node_id, principal, "node-root-asks", {"on": bool(on)})
     return {"ok": True, "on": bool(on)}
+
+
+# Whether dev features are offered (settings' offer_unvetted), set by server.py:
+# accounts as their own users are one until the dev pair has walked them.
+unvetted_ok = lambda: False  # noqa: E731
+
+
+def node_account_users(principal, node_id, on):
+    """Whether each account runs as a Unix user of its own on this node
+    (R125): its home, its tokens, its tmux and its sessions that user's, so
+    a shell as the shared session account reaches none of them. The agent
+    moves each home over once nothing of that account runs the old way, and
+    back the same way when this is turned off. An administrator's."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node runs sessions"}
+    if on and not unvetted_ok():
+        return {"error": "accounts as their own users are a dev feature until walked on the dev pair: "
+                         "Offer dev features in Settings offers them"}
+    conf = dict(n.get("config") or {})
+    if on:
+        conf["account_users"] = True
+    else:
+        conf.pop("account_users", None)
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-account-users", {"on": bool(on)})
+    return {"ok": True, "on": bool(on)}
+
+
+def account_users_on(nid):
+    n = node(nid)
+    return bool(n and (n.get("config") or {}).get("account_users")) and not host_only(nid)
 
 
 def root_refused(n):
@@ -2421,6 +2502,18 @@ def room_short(nid, floor_gb, roles=("docker", "root"), need_mb=0):
     return ""
 
 
+def homes_full(nid, pct=90):
+    """Whether the filesystem holding the accounts' homes on `nid` is past
+    `pct` used and a phone there is not running (R129): where the room
+    keeper's phones-idle job has something to give back."""
+    st = ((node(nid) or {}).get("reported") or {}).get("storage") or {}
+    fs = (st.get("homes") or {}).get("fs") or ""
+    for f in st.get("filesystems") or []:
+        if f.get("path") == fs and f.get("total_mb") and (f.get("used_mb") or 0) * 100 >= pct * f["total_mb"]:
+            return any(not p.get("running") for p in st.get("phones") or [])
+    return False
+
+
 # Set by server.py (R110): the floor in GB a build or test on a node is held
 # to, 0 for none (Controller settings, Room).
 room_floor_gb = lambda: 0  # noqa: E731
@@ -2476,9 +2569,8 @@ def room_attention(floor_gb, mem_pct, label=None, vm_pct=90, pool_keep_gb=10):
         rep = n.get("reported") or {}
         for v in rep.get("vms") or []:
             vn = v["name"].removeprefix("bbvm-")
-            # Every filesystem its guest agent names (R110 step 8), else the
-            # root one an older agent said.
-            fss = (v.get("guest") or {}).get("fs") or ([["/", *v["root_fs"]]] if v.get("root_fs") else [])
+            # Every filesystem its guest agent names (R110 step 8).
+            fss = (v.get("guest") or {}).get("fs") or []
             for mount, used, total in fss:
                 if total and used * 100 >= total * vm_pct:
                     short.append({"what": f"the VM {vn}'s {'disk' if mount == '/' else mount}",
@@ -2956,7 +3048,7 @@ def node_gpu_compute(principal, node_id, on):
 
 # The jobs a Reboot or a Shut down waits for, and how the refusal names each.
 POWER_WAITS = {"toolchain": "a toolchain install or removal", "image": "a system image install",
-               "claude-update": "a Claude Code update"}
+               **{a.update_job: f"a {a.product} update" for a in agents.installable()}}
 
 
 def node_power(principal, node_id, what):
@@ -3014,7 +3106,8 @@ def apply_cfg(desired, what):
     the other way about, whenever either moved."""
     desired = desired or {}
     if what == "storage":
-        return {"mounts": desired.get("mounts") or [], "stores": desired.get("stores") or {}}
+        return {"mounts": desired.get("mounts") or [], "stores": desired.get("stores") or {},
+                "keep": desired.get("keep") or []}
     if what == "network":
         return {"network": desired.get("network") or {}}
     return None
@@ -3051,14 +3144,20 @@ def node_apply(principal, node_id, what):
     # for mounting a share and the wrong one for moving one. `cache` is not
     # copied (the agent says why), so it does not buy the longer clock.
     timeout = 900
+    quiet = False
     if what == "storage":
         rep = (n.get("reported") or {}).get("stores") or {}
         if any(p and role != "cache" and (rep.get(role) or {}).get("path")
                and str((rep.get(role) or {}).get("path")).rstrip("/") != str(p).rstrip("/")
                for role, p in (desired.get("stores") or {}).items()):
             timeout = 6 * 3600 + 900
-    r = job_add(principal, {"node": node_id}, "system",
-                {"apply": what, "config": cfg, "timeout": timeout})
+            # ...and it waits for the node to be quiet, and holds it while it
+            # runs (R120 step 7): sessions keep running and are told.
+            quiet = True
+    spec = {"apply": what, "config": cfg, "timeout": timeout}
+    if quiet:
+        spec["quiet"] = True
+    r = job_add(principal, {"node": node_id}, "system", spec)
     if r.get("ok"):
         audit(principal, "node-apply", node_id, {"what": what, "job": r["job"]})
     return r
@@ -3244,6 +3343,19 @@ came_back = None
 checks_wanted = set()
 
 
+def agent_built(ag, digest, shipped, built):
+    """When the agent a node runs was built (R131), on its record: this
+    controller's own image build, written the first time the node reports
+    the agent this controller ships, and kept with that digest while it runs
+    it, so a node left on an older one still says when that one was made.
+    Gone with a digest it was not written for."""
+    if ag.get("digest") != digest:
+        ag.pop("built", None)
+    built = str(built or "").strip()[:32]
+    if digest and digest == shipped and built and not ag.get("built"):
+        ag["built"] = built
+
+
 def keep_clean(keep):
     """The agent's report on the session tokens it keeps (B419), checked:
     {said: [{at, key, msg}] (the last eight), ok: when one was last kept}."""
@@ -3261,7 +3373,52 @@ def keep_clean(keep):
         ok = int(keep.get("ok") or 0)
     except (TypeError, ValueError):
         ok = 0
-    return {"said": said, "ok": ok}
+    # Who opened an account's token there that was neither the account nor
+    # the agent (R125 step 6): the account read off the home in the path.
+    reads = []
+    for x in (keep.get("reads") if isinstance(keep.get("reads"), list) else [])[-32:]:
+        if not isinstance(x, dict):
+            continue
+        path = str(x.get("path") or "")[:240]
+        m = re.search(r"/users/(u_[0-9a-f]{8})/", path)
+        try:
+            reads.append({"at": int(x.get("at") or 0), "path": path, "account": m.group(1) if m else "",
+                          "pid": int(x.get("pid") or 0), "uid": int(x.get("uid") if x.get("uid") is not None else -1),
+                          "comm": re.sub(r"[^\w .:+()/@-]", "", str(x.get("comm") or ""))[:32]})
+        except (TypeError, ValueError):
+            continue
+    return {"said": said, "ok": ok, "reads": reads}
+
+
+def token_reads_audit(n, old, new):
+    """Each token read this hello carries that the last did not, onto the
+    audit as the node's: a row per reader, kept with the rest of history."""
+    seen = {(r["at"], r["pid"], r["path"]) for r in (old or {}).get("reads") or []}
+    for r in (new or {}).get("reads") or []:
+        if (r["at"], r["pid"], r["path"]) not in seen:
+            audit(f"node:{n.get('name') or n['id']}", "token-read", r["account"] or n["id"],
+                  {"path": r["path"], "pid": r["pid"], "uid": r["uid"], "comm": r["comm"], "at": r["at"]})
+
+
+TOKEN_READ_DAYS = 7
+
+
+def token_attention():
+    """The bell's rows (R125 step 6): a node where something other than an
+    account or the agent opened an account's coding-agent token in the last
+    week, kind token-read, keyed on the newest read so a dismissal holds
+    until another one."""
+    out = []
+    since = time.time() - TOKEN_READ_DAYS * 86400
+    for n in node_list():
+        reads = [r for r in ((n.get("agent") or {}).get("keep") or {}).get("reads") or [] if r.get("at", 0) > since]
+        if n["kind"] != "agent" or not reads:
+            continue
+        last = max(reads, key=lambda r: r["at"])
+        out.append({"kind": "token-read", "node": n["name"], "id": n["id"], "at": last["at"],
+                    "count": len(reads), "comm": last["comm"], "uid": last["uid"], "pid": last["pid"],
+                    "path": last["path"], "account": last["account"]})
+    return out
 
 
 def hello(nid, census, addr, version="", digest="", running=None, keep=None):
@@ -3285,6 +3442,7 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
     if isinstance(running, list):
         jobs_reconcile(nid, [str(j) for j in running])
         ag["held"] = jobs_held(nid, [str(j) for j in running])
+    agent_built(ag, str(digest)[:80], agent_file()["digest"], os.environ.get("BB_IMAGE_BUILT", ""))
     ag.update({"version": str(version)[:40], "digest": str(digest)[:80],
                "addr": addr, "last_seen": int(time.time()),
                })
@@ -3292,6 +3450,7 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
     # that tried (B419).
     kc = keep_clean(keep)
     if kc is not None:
+        token_reads_audit(n, ag.get("keep"), kc)
         ag["keep"] = kc
     rep = n.get("reported") or {}
     # The tmux sessions ride the HEARTBEAT, not the census, so the live set is
@@ -3340,6 +3499,8 @@ def hello(nid, census, addr, version="", digest="", running=None, keep=None):
             "host_only": host_only(nid),
             # Published ports bound to 127.0.0.1 by default there (R190).
             "ports_local": ports_local_on(nid),
+            # Each account a Unix user of its own there (R125).
+            "account_users": account_users_on(nid),
             # The idle rule for Claude sessions (idle.py): the node enforces
             # it itself, so it holds while this controller is down.
             "session_idle_minutes": idle_minutes(),
@@ -3678,6 +3839,10 @@ def ctr_spark(nid, names=None):
 JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-clear", "vm",
              # A walk of the node's disks now, for the Storage tab (R169).
              "storage",
+             # One project's phone off the node, from the Storage page (R123).
+             "avd-remove",
+             # The idle phones' quick-boot snapshots, the room keeper's (R129).
+             "phones-idle",
              # An Android system image onto a node's toolchain store, or off
              # it: there without being a toolchain (emulator.py).
              "image",
@@ -3686,15 +3851,16 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-cle
              # account, not the job one (R47). Both matter: the flow prints a
              # prompt with no newline after it, and the grant has to land in
              # the home a session will read it from.
-             "claude-login",
-             # ...and its other half: `claude auth logout` there, in one
-             # account's home, since the login is that machine's to let go.
-             "claude-logout",
-             # Claude Code itself, for the session account: the installer run
-             # there, then the binary pinned where the account cannot write it
-             # (claudecode.py). Queued by an administrator's press and nothing
-             # else; the Claude sessions on the node are ended first.
-             "claude-update",
+             # Each live coding agent's sign-in, sign-out and install, named
+             # by the agent table (agents.py, R95): Claude's are claude-login,
+             # claude-logout (`claude auth logout` there, in one account's
+             # home, since the login is that machine's to let go) and
+             # claude-update (the installer run there, then the binary pinned
+             # where the account cannot write it, claudecode.py). An install
+             # is queued by an administrator's press and nothing else; the
+             # agent's sessions on the node are ended first.
+             *(j for a in agents.TABLE for j in (a.login_job, a.logout_job) if j),
+             *(a.update_job for a in agents.installable()),
              # A line typed into a Claude session on the node, Enter pressed
              # only once the pane echoes it (notify.py's rule, run where the
              # pane is): the roadmap's and the tracker's Send to Claude.
@@ -3702,7 +3868,11 @@ JOB_TYPES = ("exec", "self-update", "compose", "system", "toolchain", "cache-cle
              # A build in dist/ signed with one of the project's keys
              # (signing.py, R106): the key fetched over the channel for this
              # job alone, used as the enrolled account, never a session's.
-             "sign")
+             "sign",
+             # What the controller's signing keys need a jdk or build-tools
+             # for (signing._on_node): a keystore checked, a key made, a
+             # backup wrapped, a rotation's proof, a release's APK signed.
+             "sign-key")
 JOB_END = ("succeeded", "failed", "canceled")
 
 # Probe jobs (run_wait's `forget`): a read the page makes to draw itself,
@@ -3967,6 +4137,66 @@ def run_wait(principal, node_id, argv, env=None, timeout=30, files=None,
     why = _no_answer(r["job"], node_id, timeout)
     job_cancel(principal, r["job"])
     return {"error": why}
+
+
+# What node_path_state runs there: read-only, stdlib, the python every node
+# carries for its agent. One JSON line: {path: {exists, dir, files}}.
+_PATH_STATE = """
+import json, os, sys
+out = {}
+for p in json.loads(sys.argv[1]):
+    st = {"exists": os.path.exists(p), "dir": os.path.isdir(p), "files": False}
+    if st["dir"]:
+        try:
+            with os.scandir(p) as it:
+                st["files"] = any(True for _ in it)
+        except OSError:
+            st["files"] = True
+    out[p] = st
+print(json.dumps(out))
+"""
+
+
+def node_slug(name):
+    """The folder named for a node inside a store's folder that already
+    holds files (R120): its name, as a path segment."""
+    return re.sub(r"[^A-Za-z0-9._-]", "-", str(name or "")).strip(".-")[:60] or "node"
+
+
+def node_path_state(principal, node_id, paths):
+    """{paths: {path: {exists, dir, files, why, sub, sub_state}}} for each
+    path asked, or {error}: whether it is a place a store or a mount may go
+    at all (store_path_ok), and what is there now. A path that holds files
+    also carries the folder named for this node inside it, and what is
+    there, which is where the page offers to put the store instead."""
+    n = node(node_id)
+    if not n or n.get("kind") != "agent":
+        return {"error": "only an agent node says what is at a path"}
+    want = []
+    for p in (paths if isinstance(paths, list) else [])[:8]:
+        p = str(p or "").strip().rstrip("/")
+        if p and p not in want:
+            want.append(p)
+    if not want:
+        return {"error": "no path to look at"}
+    sub = {p: f"{p}/{node_slug(n.get('name'))}" for p in want}
+    ask = want + [s for s in sub.values() if s not in want]
+    r = run_wait(principal, node_id, ["python3", "-c", _PATH_STATE, json.dumps(ask)], timeout=20,
+                 forget=True, title="what is at the storage paths")
+    if r.get("error"):
+        return {"error": r["error"]}
+    try:
+        got = json.loads((r.get("out") or "").strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {"error": f"{n.get('name') or node_id} did not say what is there"}
+    out = {}
+    for p in want:
+        st = dict(got.get(p) or {})
+        st["why"] = store_path_ok(p)
+        st["sub"] = sub[p]
+        st["sub_state"] = got.get(sub[p]) or {}
+        out[p] = st
+    return {"paths": out}
 
 
 def _no_answer(job_id, node_id, timeout):
@@ -4494,6 +4724,10 @@ def job_next(node_id, wait, runner="node", alive=None):
                 # UPDATE_QUIET_S fails it, saying so, and works again.
                 # Not on a node locked down: its lockdown job is all it takes.
                 upd = _update_gate(node_id) if runner == "node" and not (n.get("config") or {}).get("lockdown") else None
+                # ...and while a store move runs, nothing else is handed out
+                # either: what the node runs reads and writes the stores.
+                if upd is None and runner == "node" and (storage_moving(node_id) or {}).get("state") == "moving":
+                    free = lane = False
                 if upd is not None:
                     free = lane = False
                     if upd:
@@ -4571,31 +4805,61 @@ def job_next(node_id, wait, runner="node", alive=None):
 
 
 UPDATE_QUIET_S = 600
+# A store move waits longer for quiet (R120 step 7): it also waits for every
+# session there to finish its turn, and a turn can run a while.
+STORAGE_QUIET_S = 1800
+
+
+def _quiet_storage(j):
+    """A storage apply that moves a store (R120 step 7): it waits for the
+    node to be quiet, and holds it while it runs."""
+    sp = j.get("spec") or {}
+    return j.get("type") == "system" and sp.get("apply") == "storage" and bool(sp.get("quiet"))
 
 
 def _update_gate(node_id):
-    """None when no agent update is queued for this node; else the update
-    job to hand over now (the node is quiet), or {} while it waits for the
-    node's running jobs to finish. One that has waited UPDATE_QUIET_S is
-    failed with what kept the node busy, and the node works on."""
-    rows = _rows("SELECT * FROM jobs WHERE state = 'queued' AND type = 'self-update' AND node = ? "
-                 "ORDER BY queued, id LIMIT 1", (node_id,))
+    """None when no agent update and no store move is queued for this node;
+    else the job to hand over now (the node is quiet), or {} while it waits
+    for the node's running jobs to finish, and for a store move its sessions'
+    turns too (working_on). One that has waited too long is failed with what
+    kept the node busy, and the node works on."""
+    rows = [_job_out(r) for r in _rows("SELECT * FROM jobs WHERE state = 'queued' AND node = ? "
+                                       "AND type IN ('self-update', 'system') ORDER BY queued, id", (node_id,))]
+    rows = [j for j in rows if j["type"] == "self-update" or _quiet_storage(j)]
     if not rows:
         return None
-    j = _job_out(rows[0])
+    j = rows[0]
+    store = _quiet_storage(j)
     busy = _rows("SELECT type, COUNT(*) AS n FROM jobs WHERE node = ? AND state IN ('assigned', 'running') "
                  "GROUP BY type", (node_id,))
-    if not busy:
+    turning = working_on(node_id) if store and working_on else 0
+    if not busy and not turning:
         return j
-    if time.time() - int(j.get("queued") or 0) > UPDATE_QUIET_S:
-        what = ", ".join(f"{b['n']} {b['type']}" for b in busy)
+    wait = STORAGE_QUIET_S if store else UPDATE_QUIET_S
+    if time.time() - int(j.get("queued") or 0) > wait:
+        what = ", ".join([f"{b['n']} {b['type']}" for b in busy]
+                         + ([f"{turning} session{'' if turning == 1 else 's'} working"] if turning else []))
         _exec("UPDATE jobs SET state = 'failed', ended = ?, step = '', error = ? WHERE id = ?",
-              (int(time.time()), f"the node never went quiet for the update in {UPDATE_QUIET_S // 60} "
-                                 f"minutes: still running {what}; press Update agent again when they finish",
+              (int(time.time()), f"the node never went quiet for the {'store move' if store else 'update'} in "
+                                 f"{wait // 60} minutes: still running {what}; press "
+                                 f"{'Apply' if store else 'Update agent'} again when they finish",
                j["id"]))
         _jstate_bump()
         return None
     return {}
+
+
+def storage_moving(node_id):
+    """{state: waiting|moving, job, since} while a store move is queued for
+    this node or running on it (R120 step 7), else None: what a session's
+    next turn waits for, and what the node's row says."""
+    for j in (_job_out(r) for r in _rows("SELECT * FROM jobs WHERE node = ? AND type = 'system' AND "
+                                          "state IN ('queued', 'assigned', 'running') ORDER BY queued, id",
+                                          (node_id,))):
+        if _quiet_storage(j):
+            return {"state": "waiting" if j["state"] == "queued" else "moving", "job": j["id"],
+                    "since": int(j.get("started") or j.get("queued") or 0)}
+    return None
 
 
 def _job_out(j):
@@ -5271,8 +5535,9 @@ project_prefs = None     # a project -> its settings (its node and node set)
 may_push = None          # a project -> whether it was cloned with push rights
 no_node_advice = None    # a project with no node -> what it can still do
 turns_of = None          # a node row -> its sessions' turns: working, waiting, the limit
+working_on = None        # a node id -> how many of its sessions are mid-turn (R120 step 7)
 _VERB_PARTS = ("vmtemplate", "forges", "devapp", "runner_store",
-               "workspace", "project_prefs", "may_push", "no_node_advice", "turns_of")
+               "workspace", "project_prefs", "may_push", "no_node_advice", "turns_of", "working_on")
 
 
 def configure_verbs(**parts):
@@ -5407,6 +5672,10 @@ def verb(principal, req):
         # all. An administrator's, like the rest.
         return node_root_asks(principal, nid, req.get("on") is True)
 
+    def account_users():
+        # Each account a Unix user of its own there (R125).
+        return node_account_users(principal, nid, req.get("on") is True)
+
     def apply():
         return node_apply(principal, nid, field(req, "what"))
 
@@ -5493,6 +5762,12 @@ def verb(principal, req):
         return ({"error": "no such node"} if not node(nid)
                 else devapp.check_paths(nid))
 
+    def path_state():
+        # What is at each path on the node before a store or a mount is
+        # pointed there (R120): the page asks before it saves, so the
+        # question it asks is about what is really there.
+        return node_path_state(principal, nid, req.get("paths"))
+
     def funnel():
         # Tailscale Funnel for a port on the node, raw: the manager's
         # route picker goes through the instance's record; this is the
@@ -5561,7 +5836,7 @@ def verb(principal, req):
              "gpu-compute": gpu_compute,
              "config": config, "turns": turns,
              "test-workers": test_workers, "session-net": session_net, "ports-local": ports_local,
-             "root-asks": root_asks, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
+             "root-asks": root_asks, "account-users": account_users, "container-net": container_net, "apply": apply, "to-sync": to_sync, "sync-stop": sync_stop,
              "host-only": host_on, "host-off": host_off,
              "door": lambda: node_door(principal, nid, req.get("on")),
              "lockdown": lambda: node_lockdown(principal, nid),
@@ -5572,7 +5847,7 @@ def verb(principal, req):
              "storage": lambda: node_storage_measure(principal, nid),
              "sync-resume": sync_resume, "sync-clean": sync_clean, "runner": runner,
              "runner-token": runner_token, "runner-forget": runner_forget,
-             "paths": paths, "check-paths": check_paths, "funnel": funnel,
+             "paths": paths, "check-paths": check_paths, "path-state": path_state, "funnel": funnel,
              "update-agent": update_agent, "cache-clear": cache_clear,
              "exec": exec_, "test": test}
     if act not in verbs:

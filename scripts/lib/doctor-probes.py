@@ -2,11 +2,13 @@
 the verbs that share its questions (gpu_gles_ok, project_node and
 cmd_doctor in bb): does hardware GLES work here, which node a project is
 assigned, whether the accounts carry a commit identity, whether any node
-can run a session, and which Claude account this machine is signed in as.
+can run a session, and which account each coding agent on this machine is
+signed in as.
 
 The first argument is the probe: `egl` (prints the vendor, exits 1 for
 none or for Mesa), `prefs PROJECT` (prints the project's node, or nothing),
-`id`, `node NODES_PY` and `login`. DASHBOARD_STATE says where the
+`id`, `node NODES_PY`, `login` (Claude's) and `signed AGENT` (Codex's or
+Copilot's: prints the account, exits 1 for none). DASHBOARD_STATE says where the
 dashboard's files are.
 """
 import ctypes
@@ -128,4 +130,18 @@ def login():
     sys.stdout.write(f" ({e})" if e else "")
 
 
-{"egl": gles, "prefs": prefs, "id": identity, "node": node, "login": login}[verb]()
+def signed():
+    """Codex's or Copilot's account here, read as `bb login --list` reads
+    it (login-list.py), so doctor and the Agents page cannot disagree."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "login_list", os.path.join(os.path.dirname(os.path.abspath(__file__)), "login-list.py"))
+    ll = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ll)
+    got = {"codex": ll.codex_of, "copilot": ll.copilot_of}[args[0]](os.path.expanduser("~"))
+    if not got or not got.get("email"):
+        sys.exit(1)
+    sys.stdout.write(f" ({got['email']})")
+
+
+{"egl": gles, "prefs": prefs, "id": identity, "node": node, "login": login, "signed": signed}[verb]()

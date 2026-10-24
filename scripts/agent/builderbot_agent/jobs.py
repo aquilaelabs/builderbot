@@ -11,7 +11,7 @@ import threading
 import time
 import traceback
 import urllib.request
-from .base import log
+from .base import AGENT_INSTALLS, AGENT_LOGINS, AGENT_LOGOUTS, log
 from .toolchains import sdk_env
 
 
@@ -223,6 +223,11 @@ class Job(threading.Thread):
         # path below can now only ADD to this line.
         self.say(f"{self.job.get('type') or 'exec'}"
                  + (f": {spec['apply']}" if spec.get("apply") else "") + "\n")
+        # Posted now: a job turns running at its first log post, and one
+        # that works in this process (a disk measure, a cache clear) said
+        # nothing more until its end, so its row read "assigned" all the
+        # while it ran (B250).
+        self.flush()
         try:
             if self.job.get("type") == "self-update":
                 state, code = self.agent.self_update(self, spec)
@@ -253,20 +258,31 @@ class Job(threading.Thread):
                 state, code = self.agent.image(self, spec)
             elif self.job.get("type") == "sign":
                 state, code = self.agent.sign(self, spec)
+            elif self.job.get("type") == "sign-key":
+                state, code = self.agent.sign_key(self, spec)
             elif self.job.get("type") == "cache-clear":
                 state, code = self.agent.cache_clear(self, spec)
             elif self.job.get("type") == "storage":
                 state, code = self.agent.storage_measure(self, spec)
-            elif self.job.get("type") == "claude-login":
-                state, code = self.claude_login(spec)
+            elif self.job.get("type") == "avd-remove":
+                state, code = self.agent.avd_remove(self, spec)
+            elif self.job.get("type") == "phones-idle":
+                state, code = self.agent.phones_idle(self, spec)
+            elif self.job.get("type") in ("claude-login", *AGENT_LOGINS):
+                # Claude's, or another coding agent's (R95 step 3): the same
+                # pty and the same channel, `bb login --flow` told which.
+                state, code = self.claude_login(spec, AGENT_LOGINS.get(self.job.get("type"), ""))
                 # Said on the next heartbeat rather than in five minutes:
                 # the row that asked is waiting to read who signed in.
                 self.agent._logins_at = 0
-            elif self.job.get("type") == "claude-logout":
-                state, code = self.claude_logout(spec)
+            elif self.job.get("type") in ("claude-logout", *AGENT_LOGOUTS):
+                state, code = self.claude_logout(spec, AGENT_LOGOUTS.get(self.job.get("type"), ""))
                 self.agent._logins_at = 0
             elif self.job.get("type") == "claude-update":
                 state, code = self.agent.claude_update(self, spec)
+            elif self.job.get("type") in AGENT_INSTALLS:
+                # The other coding agents' installs (R95 step 2).
+                state, code = self.agent.agent_update(self, spec)
             elif self.job.get("type") == "tell":
                 state, code = self.agent.tell(self, spec)
             else:
@@ -338,7 +354,7 @@ class Job(threading.Thread):
             time.sleep(delay)
             delay = min(delay * 2, 60)
 
-    def claude_login(self, spec):
+    def claude_login(self, spec, agent=""):
         """`claude auth login` on this machine, under a pty, as the SESSION
         account (roadmap R47).
 
@@ -358,23 +374,29 @@ class Job(threading.Thread):
         env = dict(sdk_env(self.agent.state))
         env.update({"BUILDERBOT_NODE": self.agent.state.get("node_id", ""),
                     "BUILDERBOT_JOB": self.job["id"]})
-        try:
-            who = self.agent.as_user(env, who_name)
-        except RuntimeError as e:
-            self.say(f"refused: {e}\n")
-            return "failed", 78
         if not who_name:
             self.say("refused: this node reports no session account, so there is "
                      "no home for a Claude login to land in\n")
             return "failed", 78
-        into = self.agent.bundle(self, who)
+        # As the account's own user where its home is that user's (R125),
+        # from the root-owned bundle; as the session account otherwise.
+        try:
+            dropper = getattr(self.agent, "drop_for", None)
+            if dropper:
+                who, base, root_bb = dropper(env, str(spec.get("uid") or ""))
+            else:
+                who, base, root_bb = self.agent.as_user(env, who_name), env.get("HOME", ""), ""
+        except RuntimeError as e:
+            self.say(f"refused: {e}\n")
+            return "failed", 78
+        into = root_bb or self.agent.bundle(self, who)
         if not into:
             return "failed", 69
         # The BuilderBot account, so the bundle's own user_home resolves the
         # same per-account home bb-tty gives a session here. Resolved there
         # rather than here: one implementation of "where does this account
         # live on this machine", and it is that one.
-        env["BUILDER_HOME"] = env.get("HOME", "")
+        env["BUILDER_HOME"] = base or env.get("HOME", "")
         env["BB_ACCOUNT_UID"] = str(spec.get("uid") or "")
         # What the flow reports with, and where: the token the controller
         # minted for this sign-in, the controller's address, and the node
@@ -384,9 +406,9 @@ class Job(threading.Thread):
         env.setdefault("BB_CONTROLLER", str(self.agent.state.get("controller") or ""))
         env.setdefault("BUILDERBOT_ROLE", "node")
         env.setdefault("BB_NODE", str(self.agent.state.get("name") or ""))
-        argv = ["bash", os.path.join(into, "scripts", "bb"), "login", "--flow"]
+        argv = ["bash", os.path.join(into, "scripts", "bb"), "login", "--flow"] + (["--agent", agent] if agent else [])
         master, slave = pty.openpty()
-        self.say("signing in to Claude on this machine; the URL follows\n")
+        self.say(f"signing in to {agent or 'Claude'} on this machine; the URL follows\n")
         try:
             self.proc = subprocess.Popen(
                 argv, stdin=slave, stdout=slave, stderr=slave,
@@ -399,6 +421,7 @@ class Job(threading.Thread):
         self.tty = master
         deadline = time.monotonic() + int(spec.get("timeout") or 900)
         last_beat = time.time()
+        tail = ""                         # the last of what it said, for a question split across reads
         try:
             while True:
                 if time.monotonic() > deadline:
@@ -422,7 +445,24 @@ class Job(threading.Thread):
                         break
                     if not chunk:
                         break
-                    self.say(chunk.decode("utf-8", "replace"))
+                    said = chunk.decode("utf-8", "replace")
+                    self.say(said)
+                    tail = (tail + said)[-400:]
+                    # Copilot CLI with no system keyring on the machine (a
+                    # headless node has none) asks, after the person has
+                    # approved the device, whether to keep its token in its
+                    # config file, and waits on the answer: nothing typed it,
+                    # and the sign-in hung after GitHub said the device was
+                    # connected (the operator, 23 Oct). Answered yes, and
+                    # said: the file is the account's own, 600, where Claude
+                    # Code and Codex keep theirs on the same machine.
+                    if agent == "copilot" and "plaintext config file? (y/N)" in tail:
+                        tail = ""
+                        with contextlib.suppress(OSError):
+                            os.write(master, b"y\n")
+                        self.say("\n[builderbot] no keyring on this machine: Copilot keeps its token in "
+                                 "~/.copilot/config.json in your home here, readable by you alone, as Claude "
+                                 "and ChatGPT keep theirs\n")
                     # Posted now, not at the end: the controller reads the
                     # sign-in URL out of this log and hands the code back,
                     # and the flow does not end until it has the code. Held
@@ -438,18 +478,13 @@ class Job(threading.Thread):
         code = self.proc.wait()
         return ("succeeded" if code == 0 else "failed"), code
 
-    def claude_logout(self, spec):
+    def claude_logout(self, spec, agent=""):
         """`claude auth logout` on this machine for one BuilderBot account,
-        as the SESSION account and in that account's home here: the other
+        as its own user or the SESSION account, in that account's home here: the other
         half of claude_login. The login is this machine's, so this machine
         is the one that lets go of it; the heartbeat that follows says so."""
         who_name = self.agent.session_account()
         env = dict(sdk_env(self.agent.state))
-        try:
-            who = self.agent.as_user(env, who_name)
-        except RuntimeError as e:
-            self.say(f"refused: {e}\n")
-            return "failed", 78
         if not who_name:
             self.say("refused: this node reports no session account, so no Claude login lives here\n")
             return "failed", 78
@@ -457,19 +492,31 @@ class Job(threading.Thread):
         if not re.fullmatch(r"u_[0-9a-f]{8}", uid):
             self.say("refused: a sign-out names the account it is for\n")
             return "failed", 64
-        into = self.agent.bundle(self, who)
+        # As the account's own user where its home is that user's (R125),
+        # from the root-owned bundle, as the sign-in is; the session account
+        # otherwise.
+        try:
+            dropper = getattr(self.agent, "drop_for", None)
+            if dropper:
+                who, base, root_bb = dropper(env, uid)
+            else:
+                who, base, root_bb = self.agent.as_user(env, who_name), "", ""
+        except RuntimeError as e:
+            self.say(f"refused: {e}\n")
+            return "failed", 78
+        into = root_bb or self.agent.bundle(self, who)
         if not into:
             return "failed", 69
         # The session account's home, which is this process's own where the
         # agent is not root and as_user changed nothing.
         env.setdefault("HOME", os.path.expanduser("~"))
-        env["BUILDER_HOME"] = env["HOME"]
+        env["BUILDER_HOME"] = base or env["HOME"]
         env["BB_ACCOUNT_UID"] = uid
         env.setdefault("BUILDERBOT_ROLE", "node")
         env.setdefault("BB_NODE", str(self.agent.state.get("name") or ""))
-        self.say("signing out of Claude on this machine\n")
+        self.say(f"signing out of {agent or 'Claude'} on this machine\n")
         try:
-            p = subprocess.run(["bash", os.path.join(into, "scripts", "bb"), "login", "--out"],
+            p = subprocess.run(["bash", os.path.join(into, "scripts", "bb"), "login", "--out"] + (["--agent", agent] if agent else []),
                                env=env, cwd="/tmp", capture_output=True, text=True,
                                timeout=int(spec.get("timeout") or 120), check=False, **who)
         except (OSError, subprocess.SubprocessError) as e:

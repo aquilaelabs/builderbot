@@ -95,11 +95,11 @@ DOCKER = os.environ.get("BB_DOCKER_BIN", "docker")
 # The instance a project has always had, before instances were a thing. Every
 # call that does not name one means this, which is what keeps the migration
 # from being visible anywhere but here.
-# What a session is told when its project's dial (Claude may: Run its
+# What a session is told when its project's dial (Agents may: Run its
 # container) says deny, wherever the refusal is made.
 RUN_DENIED = ("running this project's containers is the operator's: rebuilding, "
               "starting and stopping them, changing their env, creating one and removing "
-              "one are handed over in the project's settings, Claude may: Run its container")
+              "one are handed over in the project's settings, Agents may: Run its container")
 
 MAIN = "main"
 # The owner of a container BuilderBot deploys itself (R180): the nginx tab's
@@ -778,7 +778,10 @@ def _agent_exec(n, argv, timeout):
     _agent_read: a start is not a read, so nothing is memoised and a busy
     node is not answered from what it said before."""
     _docker_log("$ " + " ".join(argv) + f"   (on {n['name']})")
-    r = queue.run_wait("dashboard", n["id"], argv, timeout=min(int(timeout), 25),
+    # 25s for a start or a stop; a prune is given the time it asks for
+    # (B249: a build cache's prune was killed at 25s, partway through).
+    cap = 600 if argv[1:] in [list(p) for p in PRUNES.values()] else 25
+    r = queue.run_wait("dashboard", n["id"], argv, timeout=min(int(timeout), cap),
                        forget=True)
     out = ({"code": 1, "out": r["error"]} if r.get("error")
            else {"code": int(r.get("code") or 0), "out": r.get("out") or ""})
@@ -1200,15 +1203,15 @@ def _guard(argv):
         if argv[2:] == ["--format", "{{json .}}"]:
             return ""
         return "a `docker images` this module did not build"
-    # ...and the two prunes the view offers, dangling images and unused
-    # volumes, each the one flag and nothing named: a prune that takes a
-    # filter or `-a` would reach what a running container still needs.
+    # ...and the prunes the view offers, each exactly as PRUNES spells it and
+    # nothing named: the four were added to PRUNES while this knew two, so
+    # Prune unused images and Prune build cache were refused as a bug (B245).
+    if argv[1:] in [list(p) for p in PRUNES.values()]:
+        return ""
     if verb == "image":
-        if argv[2:] == ["prune", "-f"]:
-            return ""
         return "a `docker image` this module did not build"
     if verb == "volume":
-        if argv[2:] in (["ls", "--format", "{{json .}}"], ["prune", "-f"]):
+        if argv[2:] == ["ls", "--format", "{{json .}}"]:
             return ""
         return "a `docker volume` this module did not build"
     if verb == "system":
@@ -1308,7 +1311,7 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
     # verification failed" from the VM (B312).
     if sink is None and hold is None and argv[:1] == [DOCKER] \
             and len(argv) > 1 and (argv[1] in _CTL_OK | {"logs", "update"}
-                                   or argv[1:3] in (["image", "prune"], ["volume", "prune"])):
+                                   or argv[1:] in [list(p) for p in PRUNES.values()]):
         n = _agent_here()
         if n:
             return _agent_exec(n, argv, timeout)
@@ -1570,7 +1573,9 @@ def prune(kind):
     if kind not in PRUNES:
         return {"error": "prune images, volumes, unused or cache"}
     argv = [DOCKER, *PRUNES[kind]]
-    r = _run(argv, timeout=120)
+    # Minutes, not seconds: a build cache or a set of unused images of many
+    # gigabytes takes that long to remove.
+    r = _run(argv, timeout=600)
     with _stats_lock:
         _stats.pop("img:" + (getattr(_node_ctx, "addr", None) or ""), None)
     if r["code"] != 0:

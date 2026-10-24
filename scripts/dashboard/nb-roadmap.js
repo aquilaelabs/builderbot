@@ -139,7 +139,7 @@ function nbRoadmapView({$, nb}){
     const can = canSend(r, idx, live);
     const why = nb.nbUnsaved() ? `save or revert first: ${nb.nbUnsaved()} not on disk yet`
               : r.shelved ? "shelved: take it off the shelf to send it"
-              : !live ? "no Claude session is running here"
+              : !live ? "no session is running here"
               : st.done ? "a session finished this: sending it again says it did not"
               : st.sent ? "this one has gone already: pick it to send it again"
               : idx < 0 && steps.length
@@ -162,10 +162,11 @@ function nbRoadmapView({$, nb}){
     // ...and the release it is meant for, where one is set (the operator,
     // 21 Oct).
     // A step meant for a release of its own says so (R108); one with none
-    // goes with its item and carries no tag.
+    // goes with its item and carries no tag. An item an agent put here
+    // names that agent (R95).
     const tags = idx >= 0 ? (st.target ? `<span class="tag ver" title="this step is meant to ship in ${esc(st.target)}">for ${esc(st.target)}</span>` : "")
       : (r.target ? `<span class="tag ver" title="meant to ship in ${esc(r.target)}">for ${esc(r.target)}</span>` : "")
-      + (r.by === "claude" ? `<span class="tag who" title="Claude put this here">claude</span>` : "");
+      + (r.by === "claude" ? `<span class="tag who" title="${esc(agentAsker(r))} put this here">${esc(agentAsker(r).toLowerCase())}</span>` : "");
     // In reorder mode the row's three controls are replaced rather than joined:
     // five buttons and a number do not fit a phone, and moving things about is
     // not something anybody does at the same time as sending them.
@@ -189,7 +190,7 @@ function nbRoadmapView({$, nb}){
     // carries nothing that changes the list or sends from it.
     const ro = projWriteWhy(nb.memProj);
     const send = nb.roadmapOrdering || ro ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : ` aria-disabled="true"`}
-      title="${esc(why)}" aria-label="send to Claude"
+      title="${esc(why)}" aria-label="send to ${esc(sendAgent(nb.memProj).name)}"
       aria-pressed="${on ? "true" : "false"}">${SPARK}</button>`;
     return `<div class="roadmap${st.sent ? " sent" : ""}${st.done ? " done" : ""}${
          idx >= 0 ? " step" : ""}${r.shelved ? " shelved" : ""}"
@@ -273,8 +274,7 @@ function nbRoadmapView({$, nb}){
     // an answer drawn before the list caught up stood until something else
     // redrew, and nothing said which of the two to believe.
     const sess = j.session || (typeof liveSessions === "function" && nb.memProj
-                               && liveSessions().has(myClaude(nb.memProj))
-                               ? myClaude(nb.memProj) : null);
+                               ? myLiveSession(nb.memProj) : null);
     j = Object.assign({}, j, {session: sess});
     const rows = j.items || [], live = !!sess;
     // Whatever was armed may have been crossed off, dropped, or overtaken by a
@@ -310,7 +310,8 @@ function nbRoadmapView({$, nb}){
     // ...and its status line: whether a step can be sent, after what is
     // staged (the bar's own words, syncSave's). No session holds the arrows,
     // a running one lights them.
-    setText($("roadmapSess"), live ? `${j.session} running` : "no session running");
+    // The session by its agent, not its tmux name (B299).
+    setText($("roadmapSess"), live ? `${agentOfSession(tmuxBase(j.session))?.agent.name || "A session"} running` : "no session running");
     $("roadmapField").hidden = !rows.length && !finishedN;
     // The band that narrows it: All, Open and Shelved, and the search on
     // the control row.
@@ -653,7 +654,7 @@ function nbRoadmapView({$, nb}){
     // because a modal was in the way of the tab you were being sent to; a tab
     // is not in the way of anything, and coming back to the plan to send its
     // next step is the ordinary next thing.
-    startClaude(proj, null);      // opens the tab, or goes to the one that is there
+    openSentTo(proj);             // opens the tab, or goes to the one that is there
   }
 
   // Wrapped so the poll can tell this panel's own write from somebody
@@ -673,7 +674,7 @@ function nbRoadmapView({$, nb}){
       // each would flicker the list through every intermediate arrangement.
       if (!quiet){ drawRoadmap(j, true); refresh(); }
       return j;
-    }catch(e){ notify("could not reach the server: " + e, true); return null; }
+    }catch(e){ notify("could not reach the server: " + failWords(e), true); return null; }
   }
 
   // ---- two writers, one item ------------------------------------------------
@@ -740,7 +741,7 @@ function nbRoadmapView({$, nb}){
     $("clashMine").onclick = () => settleClash(true);
   }
 
-  // Dropping something, with the reason it went. Inline rather than a confirm()
+  // Dropping something, with the reason it went. Inline rather than a await askYes()
   // box, because a confirm cannot hold a field, and the field is the point:
   // nothing here can be undone, so the only thing standing between a deleted
   // line and somebody adding it straight back is a note saying why it went.
@@ -1141,7 +1142,7 @@ function nbRoadmapView({$, nb}){
       <summary><div class="roadmap"><span class="n id">R${r.id}</span> <span class="body"><span class="txt">${esc(r.text || "")}</span>
         <span class="sub dim">done ${r.done_at ? esc(when(r.done_at)) : ""}${(() => { const v = shippedIn(r.done_at, nb.roadmapReleases);
           return v ? ` · in ${esc(v)}` : ""; })()}</span></span></div></summary>
-      ${factGrid([["Added", r.added ? `${rmDay(r.added)}, by ${r.by === "claude" ? "Claude" : "you"}` : ""],
+      ${factGrid([["Added", r.added ? `${rmDay(r.added)}, by ${r.by === "claude" ? agentAsker(r) : "you"}` : ""],
                   ["Target", r.target || ""],
                   ["Finished", r.done_at ? `${rmDay(r.done_at)}${r.done_by ? `, by ${r.done_by === "claude" ? "Claude" : r.done_by === "you" ? "you" : r.done_by}` : ""}` : ""],
                   ["Shipped in", (() => { const v = shippedIn(r.done_at, nb.roadmapReleases);

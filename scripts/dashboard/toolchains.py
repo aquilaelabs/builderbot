@@ -30,6 +30,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fields import field  # noqa: E402
 from names import tmux_name  # noqa: E402
+import agents  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 
@@ -41,7 +42,7 @@ write_json = None
 STATE = None
 nodes = None          # the node store, once the server has opened it (phase 6)
 claudecode = None     # claudecode.py, set by the server: Claude Code as a node's toolchain (R145)
-CLAUDE = "claude-code"
+agentcode = None      # agentcode.py, set by the server: the other coding agents' rows (R95 step 2)
 
 
 def configure(*, run, write_json, state, project_nodes=None, workspace=None):
@@ -470,7 +471,9 @@ def payload():
         # The directory is there but the file that completes the toolchain is
         # not (layout.needs): not installed, so Install is offered; the
         # recipe fills the directory in rather than starting over.
-        need = (p.get("layout") or {}).get("needs")
+        # Where none is named, the layout's own tool is that file (#124).
+        lay = p.get("layout") or {}
+        need = lay.get("needs") or ("" if str(lay.get("tool") or "").startswith("root:") else lay.get("tool"))
         if path and need and not os.path.exists(os.path.join(path, need)):
             path = ""
         v = _tc_versions.get(p["name"], {})
@@ -991,9 +994,6 @@ def attention(project_nodes):
         tools = [{"name": name, "label": labels[name], "from": r["installed"], "to": r["latest"]}
                  for name, r in sorted(rows.items(), key=lambda kv: labels.get(kv[0], kv[0]).lower())
                  if r["status"] == "update" and name in labels and name not in running]
-        if claudecode and claudecode.behind(n) and not claudecode.updating(n["id"]):
-            tools.insert(0, {"name": CLAUDE, "label": "Claude Code",
-                             "from": claudecode.installed(n), "to": claudecode.latest()["version"]})
         if tools:
             live = claude_running(n["id"], project_nodes)
             out.append({"kind": "toolchain", "node": n["name"], "id": n["id"], "tools": tools,
@@ -1001,10 +1001,34 @@ def attention(project_nodes):
     return out
 
 
+def agent_attention(project_nodes):
+    """Bell rows, one per live agent node with a coding agent behind what is
+    out (R95, the operator 22 Oct: agents are the Agents page's), kind
+    agents, in the toolchain rows' shape so the bell keys and dismisses
+    them alike, with Open on that node's Agents page."""
+    out = []
+    for n in nodes.node_list() if nodes else []:
+        if n.get("kind") != "agent" or not n.get("live"):
+            continue
+        tools = []
+        if claudecode and claudecode.behind(n) and not claudecode.updating(n["id"]):
+            tools.append({"name": "claude-code", "label": "Claude Code",
+                          "from": claudecode.installed(n), "to": claudecode.latest()["version"]})
+        for a in agentcode.tracked() if agentcode else ():
+            if agentcode.behind(n, a.id) and not agentcode.updating(n["id"], a.id):
+                tools.append({"name": a.tool, "label": a.product,
+                              "from": agentcode.installed(n, a.id), "to": agentcode.latest(a.id)["version"]})
+        if tools:
+            live = claude_running(n["id"], project_nodes)
+            out.append({"kind": "agents", "node": n["name"], "id": n["id"], "tools": tools,
+                        "sessions": len(live), "projects": sorted(set(live))})
+    return out
+
+
 _OWNER = re.compile(r"^u_[0-9a-f]{8}~")
 
 
-def claude_running(node_id, project_nodes):
+def claude_running(node_id, project_nodes, agent="claude"):
     """The project of each Claude session running on a node now, one entry
     per session, from its last heartbeat. What an update of Claude Code
     there ends (B57): the projects bound to the node said 5, 6 or 7 with
@@ -1014,8 +1038,8 @@ def claude_running(node_id, project_nodes):
     out = []
     for r in rows:
         base = _OWNER.sub("", str((r or {}).get("name") or ""))
-        if base.startswith("claude-"):
-            stem = base[len("claude-"):]
+        a, stem = agents.of_session(base)
+        if a and a.id == agent:
             out.append(by_tmux.get(stem, stem))
     return out
 
@@ -1413,11 +1437,8 @@ def payload_for_node(nid):
         # The agent's hello at the end of a job lands a moment before the
         # job's result does, so a census from the job's last seconds counts.
         m["settling"] = bool(ended) and int(rep.get("at") or 0) < ended - 5 and time.time() - ended < 120
-    # Claude Code, the session account's (R145), drawn with the machine's
-    # rows; its own job says where it stands, not the toolchain jobs.
-    cl = claude_row(n)
-    if cl:
-        machine.append(cl)
+    # The coding agents are not here (R95, the operator 22 Oct): they are
+    # installed, updated and removed on the Agents page (agentcode.rows).
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             # What is this machine's rather than the store's: the NVIDIA
             # driver and the container toolkit, where the node has the card
@@ -1911,32 +1932,6 @@ def container_row(n):
             "driver_loaded": drv.get("state") in ("loaded", "update")}
 
 
-def claude_row(n):
-    """Claude Code as a row of the node's Toolchains page (R145), or None on
-    a node that runs no session account: what a Claude session there runs,
-    installed on purpose rather than by the provisioner, checked and updated
-    like the rest. The version is the census's (claude --version as the
-    session account); the latest is claudecode's check; the job behind
-    install, update and remove is claudecode's, which ends the node's Claude
-    sessions first, since the binary is swapped under nothing."""
-    se = (n.get("reported") or {}).get("session") or {}
-    # A hosting-only node runs no session, so nothing there runs Claude
-    # Code: no row, whatever its census says (the operator, 11 Oct).
-    if not claudecode or n.get("kind") != "agent" or not se.get("up") or (n.get("config") or {}).get("host_only"):
-        return None
-    inst = claudecode.installed(n)
-    cur = claudecode.latest()
-    job = next(iter(nodes.jobs_for(node_id=n["id"], type=claudecode.JOB, n=1) or []), None) if nodes else None
-    running = claudecode.updating(n["id"])
-    failed = (job or {}).get("state") == "failed" and not running
-    return {"name": CLAUDE, "label": "Claude Code", "installed": inst, "latest": cur.get("version") or "",
-            "state": ("absent" if not inst else "update" if claudecode.behind(n) else "current"),
-            "managed": bool((n.get("reported") or {}).get("sandbox")), "here": bool(inst),
-            "running": running, "action": ((job or {}).get("spec") or {}).get("action") or "install",
-            "error": str((job or {}).get("error") or "")[:200] if failed else "",
-            "checked": int(cur.get("at") or 0), "check_error": cur.get("error") or ""}
-
-
 def container_why(n):
     """Why a container on this node cannot be given its NVIDIA card, in
     words for the row that asked, or "" when it can: the card, the driver
@@ -2242,6 +2237,11 @@ def node_checks_due(now=None):
     if claudecode and (queued or now - int(claudecode.latest().get("at") or 0) >= TC_CHECK_EVERY):
         with contextlib.suppress(Exception):
             claudecode.check()
+    # The other coding agents on the same clock (R95 step 2).
+    for a in agentcode.tracked() if agentcode else ():
+        if queued or now - int(agentcode.latest(a.id).get("at") or 0) >= TC_CHECK_EVERY:
+            with contextlib.suppress(Exception):
+                agentcode.check(a.id)
     return queued
 
 
@@ -2291,23 +2291,12 @@ def verb(action, req, principal):
             known = known | {DRIVER, TOOLKIT}
         # ...and to remove one left for a card that has gone (B168).
         known |= {r["name"] for r in (driver_row(node), container_row(node)) if r and r["state"] == "nocard"}
-        # Claude Code is its own job (claudecode.py): an install or an update
-        # runs the installer as the session account and ends the node's
-        # Claude sessions first; a removal takes the copy off (R145). Ticked
-        # with the store's recipes, it is queued beside their job rather
-        # than refused (the operator, 11 Oct: "why does claude have to be on
-        # its own"); the node runs the two one after the other.
         want = [str(x) for x in (req.get("names") or [])]
-        claude_r = None
-        if CLAUDE in want and action in ("install", "remove") and claudecode:
-            claude_r = claudecode.update(principal, nid) if action == "install" else claudecode.remove(principal, nid)
-            rest = [x for x in want if x != CLAUDE]
-            if not rest or claude_r.get("error"):
-                return claude_r, (400 if claude_r.get("error") else 200)
-            req = dict(req, names=rest)
-        # A press of Check for updates asks Claude Code's latest too, in the
-        # same answer, like the store's recipes (R145).
-        claude_said = claudecode.check() if action == "check" and claudecode else None
+        # A coding agent is the Agents page's (R95, the operator 22 Oct):
+        # named here, it is refused with the way there.
+        if any(agents.by_tool(x) for x in want):
+            return {"error": "a coding agent is installed, updated and removed on the Agents page, "
+                             "not here: POST /api/agents"}, 400
         if action == "check":
             # Every row, or the ones named: the question a check answers
             # is "is any of this out of date", and an uninstalled row's
@@ -2329,11 +2318,6 @@ def verb(action, req, principal):
             if not names:
                 return {"error": "nothing selected"}, 400
         r = node_job(principal, nid, action, names, driver=field(req, "driver"))
-        if claude_said is not None:
-            r = r | {"claude": {"version": claude_said.get("version") or "", "error": claude_said.get("error") or ""}}
-        if claude_r is not None:
-            # Both jobs queued: the recipes' and Claude Code's, said together.
-            r = r | {"claude_job": claude_r.get("job") or "", "note": "Claude Code is its own job beside this one"}
         return r, (400 if r.get("error") else 200)
     if action == "abort":
         return {"ok": abort_job()}, 200

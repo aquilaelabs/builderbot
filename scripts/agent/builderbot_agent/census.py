@@ -13,6 +13,8 @@ import subprocess
 import time
 import urllib.request
 from .base import (
+    AGENT_INSTALLS,
+    AGENTS_DIR,
     BREW_BIN,
     CLAUDE_DIR,
     OS_RELEASE,
@@ -336,6 +338,22 @@ def census(state):
     }
 
 
+def _agent_version(spec, home):
+    """What `<command> --version` says, the first line, as the session
+    account would find it: "" when it is nowhere or does not start."""
+    cmd = spec["command"]
+    dirs = [os.path.join(AGENTS_DIR, spec["id"])] + ([os.path.join(home, ".local", "bin"), os.path.join(home, ".npm-global", "bin")] if home else [])
+    for d in dirs + ["/usr/local/bin", "/usr/bin"]:
+        exe = os.path.join(d, cmd)
+        if os.access(exe, os.X_OK):
+            out_, dead = _probe([exe, "--version"], timeout=15)
+            if dead:
+                _probe_died(cmd, exe, out_, dead)
+                return ""
+            return out_.split("\n")[0][:40] or "installed"
+    return ""
+
+
 def session_now(state):
     """Whether this node runs sessions, and what a proxy needs to reach
     them: the ports, the account, whether /workspace is there (the node's
@@ -370,6 +388,11 @@ def session_now(state):
                 claude = out_.split("\n")[0][:40] or "installed"
             break
     out["claude"] = claude
+    # The other coding agents the same way (R95 step 2): the pinned copy
+    # first, then the account's own, each under the census key the
+    # controller's agent table names (codex, copilot).
+    for spec in AGENT_INSTALLS.values():
+        out[spec["reported"]] = _agent_version(spec, home)
     # This machine's boot, in the form bb-tty's boot_id() computes: a
     # terminal's URL carries the boot it was opened in, and bb-tty refuses
     # to START a session from a tab older than the machine's current run.

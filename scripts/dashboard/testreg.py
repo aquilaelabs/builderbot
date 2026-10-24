@@ -47,6 +47,7 @@ _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
+import agents  # noqa: E402
 from fields import field  # noqa: E402
 import time
 from pathlib import Path
@@ -318,7 +319,7 @@ def ingest(project, text, by="you"):
         # taken from it stops moving and an open tab stops noticing runs.
         p["rev"] = int(p.get("rev") or 0) + 1
         p.setdefault("runs", []).append({
-            "at": now, "by": "claude" if by == "claude" else "you",
+            "at": now, "by": "claude" if by == "claude" else "you", **agents.asker(by),
             "n": len(roster), "suites": len(by_suite),
             "wall": round(sum(s["wall"] or 0 for s in suites.values()), 1),
             "ms": sum(r["ms"] or 0 for r in roster),

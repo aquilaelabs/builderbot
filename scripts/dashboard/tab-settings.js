@@ -100,8 +100,8 @@ function renderSettingsInto(i){
     ${logs || !state ? sect("logs", "Logs", "", `<div class="row stack2" data-group="Logs"><div class="grow">${withRevert(logs, "logs")
         || `<div class="sub">log settings arrive with the first poll…</div>`}</div></div>`) : ""}
     ${reportsSection() ? sect("reports", "BuilderBot bug reports", reportsCount === null ? "" : reportsCount ? `${reportsCount} report${reportsCount === 1 ? "" : "s"}` : "none", reportsSection()) : ""}
-    ${sect("idle", "Claude sessions", idle === undefined ? "" : idle ? `${idle} min` : "never",
-           `<div class="row stack2" data-group="Claude sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
+    ${sect("idle", "Idle sessions", idle === undefined ? "" : idle ? `${idle} min` : "never",
+           `<div class="row stack2" data-group="Idle sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
     ${pathsSection() ? sect("paths", "Storage on this controller", `${paths.length} path${paths.length === 1 ? "" : "s"}`, withRevert(pathsSection(), "paths")) : ""}
     ${groups.map(g => sect(g.key, g.title, g.status, withRevert(g.html, g.key), {cls: g.cls})).join("")}
     ${
@@ -134,7 +134,7 @@ function renderSettingsInto(i){
     try{
       const j = await (await postJSON("/api/apps", {action: "check"})).json();
       if (j.error) notify(j.error, true);
-    }catch(e){ notify("could not reach the controller: " + e, true); }
+    }catch(e){ notify("could not reach the controller: " + failWords(e), true); }
     // The look runs in the background; read again once it has had a moment.
     setTimeout(loadApps, 4000);
     await loadApps();
@@ -188,7 +188,7 @@ async function clearReports(btn){
   if (c.error) return notify(c.error, true);
   if (!c.all) return notify("there are no reports to clear");
   const s = c.all === 1 ? "" : "s";
-  if (!confirm(`Delete all ${c.all} report${s} sessions made about BuilderBot?`)) return;
+  if (!await askYes(`Delete all ${c.all} report${s} sessions made about BuilderBot?`)) return;
   busy(btn, "Clearing");
   try{
     const j = await (await postJSON("/api/reports", {action: "clear"})).json();
@@ -475,7 +475,7 @@ function openDebugSettings(){
       shut();
       notify("saved");
       refresh();
-    }catch(e){ notify("settings: " + e, true); unbusy(go, "Save"); }
+    }catch(e){ notify("settings: " + failWords(e), true); unbusy(go, "Save"); }
   };
 }
 
@@ -588,7 +588,7 @@ function wireSettingsSections(el){
         else if (j.tunnel?.error) notify(`saved; the tunnel: ${j.tunnel.error}`, true);
         else notify("saved");
         refresh();
-      }catch(e){ notify("settings: " + e, true); }
+      }catch(e){ notify("settings: " + failWords(e), true); }
       finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
     };
     btn.onclick = apply;
@@ -637,10 +637,10 @@ function wireIdleSection(el){
       const j = await r.json();
       if (j.error) return notify(j.error, true);
       delete settingsDraft.idleMin;
-      notify(j.minutes ? `Claude sessions end after ${j.minutes} idle minute(s), here and on every node`
-                       : "Claude sessions are never ended for being idle");
+      notify(j.minutes ? `every agent's session ends after ${j.minutes} idle minute(s), here and on every node`
+                       : "no session is ended for being idle");
       refresh();
-    }catch(e){ notify("idle: " + e, true); }
+    }catch(e){ notify("idle: " + failWords(e), true); }
     finally{ if (btn && btn.isConnected){ btn.disabled = false; btn.textContent = "Apply"; } }
   };
   el.querySelector("#idleApply").onclick = apply;
@@ -705,7 +705,7 @@ function wirePathsSection(el){
                         : `${i.dataset.path} is kept at ${i.value.trim() || "its default"}`);
       }
       refresh();
-    }catch(e){ notify("storage: " + e, true); }
+    }catch(e){ notify("storage: " + failWords(e), true); }
     finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
   };
   btn.onclick = apply;

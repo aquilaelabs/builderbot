@@ -5,9 +5,9 @@ seconds) reads its result against a machine it shares, and from inside its
 own view it sees its own processes and nothing else: the load average says
 the machine is busy and never why. The node's agent sees all of it and says
 so on every heartbeat (its load, memory and card, and what runs there by
-KIND: emulators, Gradle, compilers, browsers, media, docker builds, Claude),
-and the controller knows the jobs on it and which Claude sessions are
-working. This joins the two into one answer with a verdict:
+KIND: emulators, Gradle, compilers, browsers, media, docker builds, each
+coding agent), and the controller knows the jobs on it and which agents'
+sessions are working. This joins the two into one answer with a verdict:
 
     quiet       nothing else is using the machine much: a timing means
                 something
@@ -23,12 +23,16 @@ project, and that a build of something else is running is all it needs.
 """
 import time
 
+import agents
+
 STALE_S = 90
+# Each coding agent's process kind is its command (the node's PROC_KINDS).
+AGENT_KINDS = {a.command for a in agents.TABLE}
 
 
 def verdict(sample, jobs, sessions_working, now=None):
     """(word, [reasons]) from a node's last heartbeat sample, its active jobs
-    ([{type, mine}]) and how many Claude sessions are working there."""
+    ([{type, mine}]) and how many agents' sessions are working there."""
     now = now or time.time()
     if not sample or now - int(sample.get("at") or 0) > STALE_S:
         age = int(now - int(sample.get("at") or 0)) if sample and sample.get("at") else None
@@ -37,7 +41,8 @@ def verdict(sample, jobs, sessions_working, now=None):
     load = float(sample.get("load1") or 0) / cores
     cpu = float(sample.get("cpu_pct") or 0)
     mem = (float(sample.get("mem_used_mb") or 0) / float(sample["mem_mb"]) * 100) if sample.get("mem_mb") else 0
-    kinds = {k: v for k, v in (sample.get("kinds") or {}).items() if v and k != "claude"}
+    # A coding agent is a session, counted below as one, not load.
+    kinds = {k: v for k, v in (sample.get("kinds") or {}).items() if v and k not in AGENT_KINDS}
     others = [j for j in jobs if not j.get("mine")]
     why = []
     if load >= 1.0:
@@ -66,7 +71,7 @@ def verdict(sample, jobs, sessions_working, now=None):
     if kinds:
         there.append("running: " + ", ".join(f"{v} {k}" for k, v in sorted(kinds.items())))
     if sessions_working > 1:
-        there.append(f"{sessions_working - 1} other Claude session{'s' if sessions_working != 2 else ''} working")
+        there.append(f"{sessions_working - 1} other agent session{'s' if sessions_working != 2 else ''} working")
     if why:
         return "busy", why + there
     return "quiet", [f"{t}, idle" if t.startswith("running") else t for t in there]

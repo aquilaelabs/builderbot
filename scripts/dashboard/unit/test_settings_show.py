@@ -1,4 +1,4 @@
-"""bb settings show (scripts/lib/settings-verbs.py): every Claude may dial
+"""bb settings show (scripts/lib/settings-verbs.py): every Agents may dial
 is on the list a session reads, the signing ones included (R106), each as
 the project has it or at its default."""
 import json
@@ -26,13 +26,13 @@ class Show(unittest.TestCase):
 
     def test_the_signing_dials_are_listed_at_their_defaults(self):
         out = self.run_show({})
-        self.assertRegex(out, r"Claude may: Sign a build\s+ask")
-        self.assertRegex(out, r"Claude may: Manage signing keys\s+ask")
+        self.assertRegex(out, r"Agents may: Sign a build\s+ask")
+        self.assertRegex(out, r"Agents may: Manage signing keys\s+ask")
 
     def test_and_as_a_project_sets_them(self):
         out = self.run_show({"sign": "auto", "keys": "deny"})
-        self.assertRegex(out, r"Claude may: Sign a build\s+auto")
-        self.assertRegex(out, r"Claude may: Manage signing keys\s+deny")
+        self.assertRegex(out, r"Agents may: Sign a build\s+auto")
+        self.assertRegex(out, r"Agents may: Manage signing keys\s+deny")
 
 
 if __name__ == "__main__":

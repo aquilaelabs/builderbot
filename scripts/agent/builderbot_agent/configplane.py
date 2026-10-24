@@ -1,12 +1,15 @@
 """The configuration plane (docs/nodes.md section 12): the node's own system, storage and network, applied as root."""
 import contextlib
+import json
 import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from .base import (
     daemon_json_with_ip,
+    ROOT_BUNDLE_DIR,
     DEFAULT_STORES,
     DIAL_BACK_S,
     NEEDRESTART_DIR,
@@ -413,9 +416,15 @@ class ConfigPlaneMixin:
         except OSError:
             return
         wrote = []
+        # Accounts as their own users (R125), once the agent has made the
+        # group and bb-session is there to hold each to its own account.
+        ready = getattr(self, "account_users_ready", None)
+        accounts = {"controller": self.ctl.url, "pin": self.state.get("pin", ""),
+                    "bundle": os.path.join(ROOT_BUNDLE_DIR, "current")} if ready and ready() else None
         for path, text, mode, sudoers in ((SESSION_BIN, tool, 0o755, False),
-                                          (SESSION_CONF, session_conf(self.state, user, self.sessnet.conf_on), 0o644, False),
-                                          (SESSION_SUDOERS, session_sudoers(user), 0o440, True)):
+                                          (SESSION_CONF, session_conf(self.state, user, self.sessnet.conf_on, accounts),
+                                           0o644, False),
+                                          (SESSION_SUDOERS, session_sudoers(user, bool(accounts)), 0o440, True)):
             try:
                 with open(path, encoding="utf-8") as f:
                     if f.read() == text:
@@ -542,6 +551,7 @@ class ConfigPlaneMixin:
         stopped = lambda: bool(getattr(job, "canceled", False))  # noqa: E731
         job.say("$ " + " ".join(argv) + "\n")
         flush()                          # the step and the command, now
+        began = time.monotonic()
         try:
             p = subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT, start_new_session=True)
@@ -571,6 +581,11 @@ class ConfigPlaneMixin:
         if stopped():
             job.say("stopped\n")
             return 130
+        # A slow step says how slow (B243): an apply that took a minute to
+        # change nothing gave no way to tell which command took it.
+        took = time.monotonic() - began
+        if took >= 3:
+            job.say(f"   (took {took:.0f}s)\n")
         return 124 if killed else p.returncode
 
     def _apply_root(self, job, cfg):
@@ -685,10 +700,85 @@ class ConfigPlaneMixin:
                 job.say(f"skipping a mount with no path or source: {w!r}\n")
                 bad += 1
                 continue
+            if (why := store_path_ok(path, "a mount point")):
+                job.say(f"refused the mount at {path}: {why}\n")
+                bad += 1
+                continue
+            # Already there as wanted: said, and nothing run (B243). Every
+            # mount used to be applied again on every apply, which cost a
+            # node with four shares over a minute to change nothing.
+            h = have.get(path) or {}
+            if (h.get("mounted") and not h.get("stale") and str(h.get("source") or "") == src
+                    and str(h.get("type") or "nfs") == kind and bool(h.get("ro")) == ro
+                    and str(h.get("real") or "") == src):
+                job.say(f"== {path} is mounted from {src}, as it is wanted\n")
+                continue
             verb = "add-share" if kind == "virtiofs" else "add-nfs"
             if self._sh(job, [SANDBOX_BIN, verb, f"{src}:{path}" + (":ro" if ro else "")]) != 0:
                 bad += 1
         stores = cfg.get("stores") if isinstance(cfg.get("stores"), dict) else {}
+        # A store that moves holds the node's sessions while it does (R120
+        # step 7): written where every session's gate reads it, and taken
+        # away however this ends.
+        was_at = dict(self.state.get("stores") or {})
+        moving = sorted(r for r, p in stores.items() if r in DEFAULT_STORES and r != "cache"
+                        and was_at.get(r) and str(was_at[r]).rstrip("/") != str(p).rstrip("/"))
+        # Where the hold goes is fixed now: a move of the toolchain store
+        # itself repoints the bundle, and the sessions' gates read the one
+        # they started with.
+        self._hold_at = self._hold_file() if moving else None
+        if moving:
+            self._hold(f"moving its {' and '.join(moving)} store{'s' if len(moving) > 1 else ''}")
+        try:
+            bad += self._apply_stores(job, stores, cfg)
+        finally:
+            if moving:
+                self._hold(None)
+            self._hold_at = None
+        self.hello()
+        if bad:
+            job.say(f"{bad} of the changes did not apply; the rest did\n")
+            return "failed", 1
+        job.say("storage applied\n")
+        return "succeeded", 0
+
+    def _hold_file(self):
+        """Where a session's gate on this node looks for a hold: beside the
+        bundle in the toolchain store, which every session reads (its bb is
+        there), or None on a node without one."""
+        root = tc_root(self.state)
+        return os.path.join(root, ".bb", "hold.json") if root else None
+
+    def _hold(self, said):
+        """Hold this node's sessions with `said` (what is happening, in
+        words), or lift the hold with None. Rewritten as the work goes, with
+        when it was last said, so a hold left by an agent that died is seen
+        as stale rather than holding forever."""
+        f = getattr(self, "_hold_at", None)
+        if not f:
+            return
+        try:
+            if said is None:
+                with contextlib.suppress(FileNotFoundError):
+                    os.remove(f)
+                return
+            now = int(time.time())
+            was = {}
+            with contextlib.suppress(OSError, ValueError):
+                with open(f) as fh:
+                    was = json.load(fh)
+            tmp = f + ".new"
+            with open(tmp, "w") as fh:
+                json.dump({"what": "storage", "node": self.state.get("name") or "",
+                           "said": said, "since": int(was.get("since") or now), "updated": now}, fh)
+            os.chmod(tmp, 0o644)
+            os.replace(tmp, f)
+        except OSError:
+            pass
+
+    def _apply_stores(self, job, stores, cfg):
+        """The stores half of a storage apply: how many did not apply."""
+        bad = 0
         if stores:
             # Read the mounts back AFTER applying them: what a store may sit
             # on is what is mounted now, not what was asked for.
@@ -697,6 +787,8 @@ class ConfigPlaneMixin:
             # What this agent created for each store, so a move can take
             # back exactly that and nothing else.
             marks = dict(self.state.get("store_made") or {})
+            # The stores asked to move without their data (R120).
+            keep = {str(r) for r in (cfg.get("keep") or []) if isinstance(r, str)}
             for role, path in stores.items():
                 if role not in DEFAULT_STORES:
                     continue
@@ -723,6 +815,19 @@ class ConfigPlaneMixin:
                             f"local.\n")
                     bad += 1
                     continue
+                # ...nor one mounted wrong (the operator, 23 Oct: a store on
+                # a configured share must be on that share, mounted, or the
+                # apply fails): a stale handle, or another export than the
+                # one configured, is not the share it names.
+                if cover and (cover.get("stale") or (cover.get("real") and cover.get("source")
+                                                    and cover["real"] != cover["source"])):
+                    job.say(f"refused {role} store {path}: it is inside {cover.get('path')}, which is "
+                            + ("mounted but stale (the export went away under it)"
+                               if cover.get("stale") else
+                               f"mounted from {cover.get('real')} rather than {cover.get('source')}")
+                            + f". {role} stays where it was until that mount is right.\n")
+                    bad += 1
+                    continue
                 try:
                     made = make_store(path)
                 except OSError as e:
@@ -732,7 +837,17 @@ class ConfigPlaneMixin:
                 if made:
                     job.say(f"{role}: made {', '.join(made)}\n")
                 was = str(mine.get(role) or "")
-                if was and was.rstrip("/") != str(path).rstrip("/"):
+                if was and was.rstrip("/") != str(path).rstrip("/") and role in keep:
+                    try:
+                        with os.scandir(path) as it:
+                            there = any(True for _ in it)
+                    except OSError:
+                        there = False
+                    job.say(f"{role}: now {path}, "
+                            f"{'using what is already there' if there else 'starting empty'} as asked; "
+                            f"what was in {was} stays there\n")
+                    marks[role] = made
+                elif was and was.rstrip("/") != str(path).rstrip("/"):
                     if not self._move_store(job, role, was, str(path)):
                         # The move did not happen, so nothing was written to
                         # the new place: leave no litter behind either.
@@ -755,12 +870,7 @@ class ConfigPlaneMixin:
             self.write_session_profile(job)
             self.state["store_made"] = marks
             save_state(self.state)
-        self.hello()
-        if bad:
-            job.say(f"{bad} of the changes did not apply; the rest did\n")
-            return "failed", 1
-        job.say("storage applied\n")
-        return "succeeded", 0
+        return bad
 
     def _move_store(self, job, role, old, new):
         """Repointing a store used to leave its contents behind: the node
@@ -781,6 +891,20 @@ class ConfigPlaneMixin:
         if not os.path.isdir(old):
             job.say(f"{role}: nothing at {old} to bring across\n")
             return True
+        # Never a merge (R120): copied into a folder that already holds
+        # files, the old store's would overwrite theirs by name. The page
+        # puts a store that is pointed at one in a folder named for the
+        # node inside it; anything else asking for this is refused.
+        try:
+            with os.scandir(new) as it:
+                holds = any(True for _ in it)
+        except OSError:
+            holds = False
+        if holds and role != "cache":
+            job.say(f"refused: {new} already holds files, and copying {role} into it would "
+                    f"mix the two. Point {role} at an empty folder, or move it without its "
+                    f"data. {role} still points at {old}.\n")
+            return False
         if role == "cache":
             job.say(f"{role}: leaving {old} where it is, because a cache is rebuildable "
                     f"and the new one starts cold\n")
@@ -841,7 +965,23 @@ class ConfigPlaneMixin:
         except OSError as e:
             job.say(f"refused: could not read {old}: {e}\n")
             return False
-        if entries and self._sh(job, argv + entries + [new + "/"], timeout=21600) != 0:
+        # How far it has got, said in the hold every session on the node
+        # reads (R120 step 7), so a held session can say more than "wait".
+        stop = threading.Event()
+
+        def tick():
+            while not stop.wait(20):
+                got = dir_bytes(new)
+                far = (f"{min(99, got * 100 // size)}% copied" if size and got is not None
+                       else f"{(got or 0) // 1048576}MB copied")
+                self._hold(f"moving its {role} store to {new}: {far}")
+        if entries:
+            threading.Thread(target=tick, daemon=True).start()
+        try:
+            copied = not entries or self._sh(job, argv + entries + [new + "/"], timeout=21600) == 0
+        finally:
+            stop.set()
+        if not copied:
             job.say(f"refused: the copy failed. {role} still points at {old}, "
                     f"which is untouched.\n")
             return False

@@ -643,7 +643,7 @@ def may(u, action, project=None):
         what, why = {
             "rename": ("renaming a project", ""),
             "trash": ("deleting a project", ""),
-            "lock": ("locking a project", "it ends whoever's Claude session is running there"),
+            "lock": ("locking a project", "it ends whoever's session is running there"),
             "command-pin": ("moving the pinned commands", "they are one set for everybody on this controller"),
             "version": ("moving a project's version, releasing it or changing who may",
                         "a release pushes a tag with the project's own credentials"),
@@ -665,7 +665,7 @@ def may(u, action, project=None):
             # there is no hole to argue about, which is why an account
             # that may not have one gets a Claude console instead of a
             # window it could point somewhere else (roadmap #27).
-            "terminal": ("a shell", "your Claude session opens as a console instead"),
+            "terminal": ("a shell", "your agent's session opens as a console instead"),
             "git-auth": ("how a project authenticates to its remote", "the token is what pushes, and "
                          "changing the method or clearing it reaches everybody who works on it"),
             "docker-write": ("starting and stopping containers", "you can see what is running and open it"),

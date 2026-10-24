@@ -22,6 +22,7 @@ import json
 import re
 import time
 
+import agents
 from names import tmux_name
 
 SESSIONS = None       # () -> every session row, here and on the nodes
@@ -43,21 +44,25 @@ def configure(*, sessions, base, owner, accounts, owner_name, end):
 
 
 def _kind(base, project):
-    """"claude" or "shell" when a session's unprefixed name is this project's,
-    else "". Exact, by the names bb-tty gives them (claude-<p>, shell-<p> and
-    shell-<p>-<n>), so a project called a-b is never read as a's."""
+    """The agent's id ("claude") or "shell" when a session's unprefixed name
+    is this project's, else "". Exact, by the names bb-tty gives them
+    (claude-<p>, shell-<p> and shell-<p>-<n>), so a project called a-b is
+    never read as a's. Which agent a name is, the agent table says (R95)."""
     t = tmux_name(project)
-    if base == "claude-" + t:
-        return "claude"
+    a, stem = agents.of_session(base)
+    if a and stem == t:
+        return a.id
     if base == "shell-" + t or re.fullmatch(re.escape("shell-" + t) + r"-\d+", base):
         return "shell"
     return ""
 
 
 def of(project):
-    """[{name, node, node_id, who, kind, state, attached}] for every session
-    on this project, every account's: Claude first within each person.
-    `state` is a Claude session's working or waiting, empty for a shell."""
+    """[{name, node, node_id, who, kind, agent, state, attached}] for every
+    session on this project, every account's: an agent's first within each
+    person. `kind` is the agent's id or "shell", `agent` its name as a
+    person reads it ("" for a shell), `state` an agent session's working or
+    waiting, empty for a shell."""
     names = ACCOUNTS()
     owner = OWNER_NAME() or ""
     rows = []
@@ -70,9 +75,10 @@ def of(project):
                      "node_id": s.get("node_id", ""),
                      "who": (names.get(uid) or uid) if uid else owner,
                      "kind": kind,
+                     "agent": (agents.get(kind).name if agents.get(kind) else ""),
                      "state": (s.get("claude") or {}).get("state", ""),
                      "attached": bool(s.get("attached"))})
-    rows.sort(key=lambda r: (r["who"], r["kind"] != "claude", r["name"]))
+    rows.sort(key=lambda r: (r["who"], r["kind"] == "shell", r["name"]))
     return rows
 
 
@@ -108,10 +114,9 @@ def with_(sessions):
     owner = OWNER_NAME()
     out = {}
     for s in sessions:
-        base = BASE(s["name"])
-        if not base.startswith("claude-"):
+        agent, stem = agents.of_session(BASE(s["name"]))
+        if not agent:
             continue
-        stem = base[len("claude-"):]
         who = by_uid.get(OWNER(s["name"]), owner)
         if who:
             out.setdefault(stem, []).append(who)
@@ -125,12 +130,12 @@ def busy(sessions):
     owner = OWNER_NAME()
     out = {}
     for s in sessions:
-        base = BASE(s["name"])
-        if not base.startswith("claude-") or (s.get("claude") or {}).get("state") != "working":
+        agent, stem = agents.of_session(BASE(s["name"]))
+        if not agent or (s.get("claude") or {}).get("state") != "working":
             continue
         who = by_uid.get(OWNER(s["name"]), owner)
         if who:
-            out.setdefault(base[len("claude-"):], []).append(who)
+            out.setdefault(stem, []).append(who)
     return out
 
 
@@ -143,12 +148,12 @@ def asking(sessions):
     owner = OWNER_NAME()
     out = {}
     for s in sessions:
-        base = BASE(s["name"])
-        if not base.startswith("claude-") or (s.get("claude") or {}).get("state") != "asking":
+        agent, stem = agents.of_session(BASE(s["name"]))
+        if not agent or (s.get("claude") or {}).get("state") != "asking":
             continue
         who = by_uid.get(OWNER(s["name"]), owner)
         if who:
-            out.setdefault(base[len("claude-"):], []).append(who)
+            out.setdefault(stem, []).append(who)
     return out
 
 
@@ -161,13 +166,14 @@ def where(sessions):
     owner = OWNER_NAME()
     out = {}
     for s in sessions:
-        base = BASE(s["name"])
-        if not base.startswith("claude-"):
+        agent, stem = agents.of_session(BASE(s["name"]))
+        if not agent:
             continue
         who = by_uid.get(OWNER(s["name"]), owner)
         if who:
-            out.setdefault(base[len("claude-"):], []).append({
+            out.setdefault(stem, []).append({
                 "who": who, "node": str(s.get("node") or ""),
+                "agent": agent.id,
                 "working": (s.get("claude") or {}).get("state") == "working",
                 "asking": (s.get("claude") or {}).get("state") == "asking",
                 # What changed since it started that it will not see until
@@ -186,8 +192,7 @@ def maps(sessions, projects=None):
     polls and /api/live named projects the viewer was not given."""
     if projects is not None:
         stems = {tmux_name(p) for p in projects}
-        sessions = [s for s in sessions if BASE(s["name"]).startswith("claude-")
-                    and BASE(s["name"])[len("claude-"):] in stems]
+        sessions = [s for s in sessions if agents.of_session(BASE(s["name"]))[1] in stems]
     return {"claude_with": with_(sessions), "claude_busy": busy(sessions),
             "claude_asking": asking(sessions), "claude_where": where(sessions)}
 
@@ -213,10 +218,10 @@ def live_token():
 # a restart, when the title stands in until the next one.
 TASK_MAX = 120
 SKEW = 120
-_asked = {}           # (uid, tmux name of the project) -> (when, first line)
+_asked = {}           # (uid, agent, tmux name of the project) -> (when, first line)
 
 
-def asked(uid, project, text, now=None):
+def asked(uid, project, text, now=None, agent="claude"):
     """Note what a session was just asked: the first line of what the person
     typed, trimmed. A turn that was all machinery (text "") changes nothing."""
     line = next((x.strip() for x in str(text or "").splitlines() if x.strip()), "")
@@ -224,14 +229,16 @@ def asked(uid, project, text, now=None):
         return
     if len(line) > TASK_MAX:
         line = line[:TASK_MAX - 1].rstrip() + "…"
-    _asked[(uid, tmux_name(project))] = (time.time() if now is None else now, line)
+    # Per agent (R95 step 19): one person's Claude and Codex sessions on a
+    # project are two rows, each with its own task.
+    _asked[(uid, agent or "claude", tmux_name(project))] = (time.time() if now is None else now, line)
 
 
-def latest_task(uid, stem, created=0):
-    """What the session `claude-<stem>` of `uid` was last asked, or "" when
+def latest_task(uid, stem, created=0, agent="claude"):
+    """What the session `<agent>-<stem>` of `uid` was last asked, or "" when
     nothing has been heard since it began (a prompt to an earlier session of
     the same name is not this one's)."""
-    got = _asked.get((uid, stem))
+    got = _asked.get((uid, agent or "claude", stem))
     # `created` is the node's clock and the note this one's: a little slack,
     # so a node running ahead does not lose a session's first prompt.
     if not got or (created and got[0] < created - SKEW):

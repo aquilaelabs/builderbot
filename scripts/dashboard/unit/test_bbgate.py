@@ -123,6 +123,13 @@ class HeldNotes(unittest.TestCase):
         self.assertEqual(code, 0, "its scratchpad")
         code, _ = self.run_gate(lambda home: {"tool_name": "TodoWrite", "tool_input": {}})
         self.assertEqual(code, 0, "its to-do list")
+        # ...and Codex's and Copilot's own, which reach the gate as Edit
+        # through bb-agent-hook (R95 step 18).
+        code, _ = self.run_gate(lambda home: {"tool_name": "Edit", "tool_input": {
+            "file_path": home + "/.codex/notes.md"}})
+        self.assertEqual(code, 0, "Codex's own folder")
+        code, _ = self.run_gate(lambda home: {"tool_name": "update_plan", "tool_input": {}})
+        self.assertEqual(code, 0, "Codex's plan")
 
     def test_a_hold_is_marked_and_cleared(self):
         # R251: the mark its node's agent reports, for the bell's Resume.
@@ -148,3 +155,68 @@ class HeldNotes(unittest.TestCase):
         code, _ = self.run_gate(lambda home: {"tool_name": "Write", "tool_input": {
             "file_path": home + "/.claude/../elsewhere.txt"}})
         self.assertEqual(code, 2, "a path that only starts out in ~/.claude is resolved first")
+
+
+class NodeHold(unittest.TestCase):
+    """R120 step 7: a node moving its storage holds every session on it, at
+    once and without the network, from the file its agent keeps beside the
+    bundle; notes still go, and a hold its agent stopped saying holds nobody."""
+
+    def setUp(self):
+        import json
+        import tempfile
+        import time
+        self.hold = os.path.join(tempfile.mkdtemp(), "hold.json")
+        was = gate.HOLD
+        self.addCleanup(setattr, gate, "HOLD", was)
+        gate.HOLD = self.hold
+        now = int(time.time())
+        with open(self.hold, "w") as f:
+            json.dump({"what": "storage", "node": "shed", "said": "moving its toolchains store to /mnt/t: 40% copied",
+                       "since": now - 180, "updated": now}, f)
+
+    def run_gate(self, make_call):
+        """HeldNotes' harness with the controller answering: what holds the
+        call is the node, not an outage."""
+        import io
+        import json
+        import sys
+        import tempfile
+        home = tempfile.mkdtemp()
+        env, argv = dict(os.environ), sys.argv
+        os.environ.update(HOME=home, BB_ACCOUNT_UID="u_1")
+        os.environ.pop("XDG_CACHE_HOME", None)
+        was_in, was_err, was_answers = sys.stdin, sys.stderr, gate.controller_answers
+        sys.stdin, sys.stderr = io.StringIO(json.dumps(make_call(home))), io.StringIO()
+        gate.controller_answers = lambda project: True
+        sys.argv = ["bb-gate", "alpha", "s"]
+        try:
+            return gate.main(), sys.stderr.getvalue()
+        finally:
+            sys.stdin, sys.stderr, gate.controller_answers, sys.argv = was_in, was_err, was_answers, argv
+            os.environ.clear()
+            os.environ.update(env)
+
+    def test_a_tool_call_is_held_saying_what_and_how_far(self):
+        code, said = self.run_gate(lambda home: {"tool_name": "Bash", "tool_input": {"command": "make"}})
+        self.assertEqual(code, 2)
+        self.assertIn("shed is moving its toolchains store to /mnt/t: 40% copied", said)
+        self.assertIn("started 3 min ago", said)
+        self.assertIn("session is kept", said)
+
+    def test_notes_still_go(self):
+        code, _ = self.run_gate(lambda home: {"tool_name": "Write", "tool_input": {
+            "file_path": home + "/.claude/projects/x/memory/where.md"}})
+        self.assertEqual(code, 0)
+
+    def test_a_stale_hold_holds_nobody(self):
+        import json
+        with open(self.hold, "w") as f:
+            json.dump({"node": "shed", "said": "moving", "since": 1, "updated": 1}, f)
+        code, _ = self.run_gate(lambda home: {"tool_name": "Bash", "tool_input": {"command": "make"}})
+        self.assertEqual(code, 0)
+
+    def test_no_hold_holds_nobody(self):
+        os.remove(self.hold)
+        code, _ = self.run_gate(lambda home: {"tool_name": "Bash", "tool_input": {"command": "make"}})
+        self.assertEqual(code, 0)

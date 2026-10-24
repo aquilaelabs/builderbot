@@ -72,6 +72,6 @@ async function macro(name, custom){
       // is what the tap was for: it slides away once the command is in.
       if (isPhone() && showMacros){ showMacros = false; drawKeys(); }
     }
-  }catch(e){ notify("could not reach the dashboard: " + e, true); }
+  }catch(e){ notify("could not reach the dashboard: " + failWords(e), true); }
   refresh();
 }

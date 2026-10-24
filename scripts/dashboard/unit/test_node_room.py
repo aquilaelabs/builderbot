@@ -31,8 +31,8 @@ class Room(unittest.TestCase):
 
     def test_a_vm_s_own_disk_filling_and_the_pool_under_its_reserve(self):
         n = node("n1", {})
-        n["reported"].update({"vms": [{"name": "bbvm-web-db", "root_fs": [9300, 10000]},
-                                      {"name": "bbvm-web-ok", "root_fs": [2000, 10000]}],
+        n["reported"].update({"vms": [{"name": "bbvm-web-db", "guest": {"fs": [["/", 9300, 10000]]}},
+                                      {"name": "bbvm-web-ok", "guest": {"fs": [["/", 2000, 10000]]}}],
                               "vm_pool": {"free_mb": 5 * 1024, "total_mb": 200 * 1024}})
         [r] = self.rows([n])
         self.assertEqual([x["what"] for x in r["short"]], ["the VM web-db's disk", "where its VM disks grow"])

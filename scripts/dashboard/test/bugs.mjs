@@ -31,7 +31,7 @@ await page.evaluate(n => openNotebook(n), 'alpha');
 await nbShown(page);
 await nbGo(page, 'bugs');
 await page.waitForSelector('#bugList .nbempty', { timeout: 15000 });
-ok(await page.$eval('#bugList .nbempty', e => /reaches every Claude session/.test(e.textContent))
+ok(await page.$eval('#bugList .nbempty', e => /reaches every session in this project/.test(e.textContent))
    && !(await page.$('#bugHint .tile')) && await page.$eval('#bugNew', b => b.checkVisibility() && b.classList.contains('primary')),
    'the Bugs tab opens empty: no tiles of zeros, Report a bug on its control row, and where reports end up its empty state (R119 step 4, R109)');
 
@@ -46,9 +46,14 @@ await page.fill('.bugform .bfArea', 'scripts/dashboard/index.html (the picker)')
 await page.fill('.bugform .bfRepro', '1. open the picker on a phone\n2. rotate');
 await page.fill('.bugform .bfExpected', 'the selection survives');
 await page.fill('.bugform .bfActual', 'it resets to the first entry');
+// Whether those steps show it (R124): one of four, Not tried until pressed.
+const reprWas = await page.$eval('.bugform .bfRepr .on', b => b.dataset.repr);
+await page.click('.bugform .bfRepr [data-repr="sometimes"]');
 await page.click('.bugform .bfGo');
 await page.waitForSelector('#bugList .bug', { timeout: 10000 });
 const b1 = read()[0];
+ok(reprWas === 'untried' && b1?.reproduces === 'sometimes',
+   `the form asks whether the steps show it, Not tried until a press says (${reprWas} to ${b1?.reproduces})`);
 ok(b1 && b1.title === 'the picker loses its selection on rotate'
    && b1.severity === 'high' && b1.status === 'open' && b1.by === 'you'
    && b1.repro === '1. open the picker on a phone\n2. rotate',
@@ -60,7 +65,7 @@ ok(await page.$eval('#bugList .bug .sev', el => el.textContent) === 'high',
 // --here: the title names a bb verb, which bb bug add now asks about on a
 // project other than BuilderBot (reports.mjs holds that); this one is alpha's own.
 bbBug('add', 'bb lint misses compose files in subdirectories', '--here', '--sev', 'low',
-      '--area', 'scripts/bb', '--repro', 'put a compose file under tools/ and run bb lint');
+      '--area', 'scripts/bb', '--repro', 'put a compose file under tools/ and run bb lint', '--reproduces', 'always');
 ok(read().length === 2 && read()[1].by === 'claude',
    'a session files one through bb bug, marked as its own');
 const listed = bbBug();
@@ -68,6 +73,23 @@ ok(/\bB2\b.*compose files/.test(listed) && /\bB1\b.*picker loses/.test(listed),
    'bb bug lists the open ones');
 ok(/repro: put a compose file/.test(bbBug('show', '2')),
    'bb bug show gives one in full, fields and all');
+ok(/happens: always/.test(bbBug('show', '2')) && /happens: sometimes/.test(bbBug('show', '1')),
+   '...and beside its repro, whether it happens every time (R124)');
+// The opened row says it as a fact, and a chip narrows the list by it.
+{
+  await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').length === 2, null, { timeout: 10000 });
+  const chips = await page.$$eval('#bugRepro [data-bgrepr]', bs => bs.map(b => b.dataset.bgrepr));
+  await page.click('#bugRepro [data-bgrepr="always"]');
+  await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').length === 1, null, { timeout: 10000 });
+  const left = await page.$eval('#bugList .bug', d => d.dataset.id);
+  await page.click('#bugRepro [data-bgrepr=""]');
+  await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').length === 2, null, { timeout: 10000 });
+  await page.click('#bugList .bug[data-id="1"] summary');
+  const fact = await page.$eval('#bugList .bug[data-id="1"] .body', d => d.textContent);
+  await page.click('#bugList .bug[data-id="1"] summary');
+  ok(chips.join(',') === ',always,sometimes' && left === '2' && /Happens\s*sometimes/.test(fact),
+     `the list narrows by whether a bug reproduces, and the opened row says it (${chips.join(',')}; ${left})`);
+}
 // ---- the letter (roadmap #28) ------------------------------------------------
 // A bug is B2, everywhere it is printed; the bare number and the lower-case
 // letter are accepted on the way in; the ROADMAP's letter is refused with a
@@ -99,11 +121,11 @@ ok(true, 'the tab picks up what a session filed');
 // ---- closing one, with the note that is the point --------------------------
 page.dialogs = [];
 // The note is typed in the row (R254 step 6), not in the browser's prompt.
-await page.evaluate(() => { window.__prompted = false; window.prompt = () => { window.__prompted = true; return null; }; });
+// (no question modal, either: page.dialogs, emptied above, stays empty)
 await openFold(page, '#bugList .bug[data-id="1"]');
 await page.click('#bugList .bug[data-id="1"] .bFix');
 await page.waitForSelector('#bugList .bug[data-id="1"] .dropbox textarea', { timeout: 5000 });
-ok(!(await page.evaluate(() => window.__prompted)) && /Close as fixed/.test(await page.$eval('#bugList .bug[data-id="1"] .dropbox .primary', b => b.textContent)),
+ok(page.dialogs.length === 0 && /Close as fixed/.test(await page.$eval('#bugList .bug[data-id="1"] .dropbox .primary', b => b.textContent)),
    'closing asks for its note in the row, not in a browser prompt');
 await page.fill('#bugList .bug[data-id="1"] .dropbox textarea', 'the select re-measures on rotate now');
 await page.click('#bugList .bug[data-id="1"] .dropbox .primary');

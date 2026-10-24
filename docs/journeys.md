@@ -469,7 +469,7 @@ e8c11cc; `web`'s compose given `cap_add: CHOWN, SETUID` for the walk.
    --why askwalk` printed "asked stencil (#1), waiting up to 15 minutes";
    Allow on the dev bell built it and the verb reported "rebuilt".
 5. **Deny.** The same command was refused with the sentence naming
-   Claude may: Run its container.
+   Agents may: Run its container.
 
 - Alpha, new evidence: a session sends its project to Docker, rebuilds
   it, reads its log and reaches its port, under each of the three

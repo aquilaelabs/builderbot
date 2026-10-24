@@ -57,8 +57,13 @@ How many workers a test run may use on a node is the node's to say: **Test
 workers** in the Sessions section of its page under Nodes, 0 for the
 machine's cores, handed to every test job there as `BB_TEST_WORKERS` for
 the project's own test command to read (`pytest -n`, `--test-concurrency`,
-`--max-workers`) and read by this harness to run its suites across that
-many workers at once (roadmap R81).
+`--max-workers`) and read by this harness as the most suites it runs at once
+(roadmap R81). Under that ceiling its workers take suites from one queue,
+longest first, each taking the next only while the machine has room (1.5 GB
+of memory free and a load under one and a half times its cores; the suites
+run at the lowest priority, so their own load does not hold the next back),
+so a node busy with the emulator or a docker build runs fewer; the run's last lines say what bounded
+it, a suite that was its floor, the machine, or its reruns (R130).
 
 Ingesting is the CLI's and deliberately not an endpoint: every body the server
 takes is capped at 64kB and a run log is a couple of hundred, so an action for
@@ -255,7 +260,7 @@ matches a rule id exactly, `--find` searches rules, paths and messages, so a
 question answered in the browser is askable from a session in one line.
 
 **Review the diffs.** Findings need judgment about intent: whether a `|safe`
-is deliberate, whether a SHA1 is for dedup rather than security. Asking Claude
+is deliberate, whether a SHA1 is for dedup rather than security. Asking a session
 to fix everything and re-scan unattended optimizes for a clean report, which is
 not the same as better code, and suppressing a finding satisfies that goal too.
 
@@ -319,9 +324,24 @@ A project keeps up to two keys per named key, set by an administrator in the
 The keystore (`.jks` or `.p12`) and its passwords are kept by the controller
 under `/config/signing/PROJECT/`, owner-only, beside the git tokens and like
 them outside every session's view. A key is checked before it is kept: the
-store's own `keytool` (the jdk toolchain) has to open it with the password
-given, find the alias (or the only key in it) and see a private key, and its
-certificate's SHA-256 fingerprint is what the view shows. A session never
+`keytool` of the project's node (its jdk toolchain) has to open it with the
+password given, find the alias (or the only key in it) and see a private key,
+and its certificate's SHA-256 fingerprint is what the view shows.
+
+**The controller runs no signing tool.** Everything that needs a jdk or the
+build-tools is a job on the project's node: checking an upload, Generate, a
+backup wrapped under the backup password, a rotation's proof and a release's
+APK. The job is handed what it needs over the agent's own channel for that
+job alone, works in a 0700 directory of the enrolled account that is removed
+whatever happens, and hands back only the result (the alias, type and
+fingerprint, the new or wrapped keystore, the proof, the signed APK); its
+spec names the work and never holds a key. The node the project's settings
+choose therefore needs the **jdk** and **Android SDK Build-Tools** (with
+android-tools, which installs them) on its Toolchains. When it cannot do the
+work, because there is no node, it is offline or its agent is behind, or a
+toolchain is missing, the Signing view and the answer say which node and
+what, for instance "alpha's node bb-sandbox has no jdk: install it on its
+Toolchains". A session never
 receives the key or a password, and is refused even the list of which keys
 exist: it signs with `bb sign`, which runs on the project's node as a job the
 session cannot look inside. Renaming the project leaves its keys where they are, with it.
@@ -350,30 +370,35 @@ the key while it is used.
 Picking a keystore, typing its password and marking one for removal are staged
 like everything else in the settings: nothing is sent until Save.
 
-**A release's APK is signed by the controller, never in CI.** A workflow
+**A release's APK is signed on the project's node, never in CI.** A workflow
 builds the release APK unsigned (no `signingConfig` for the release build
 type) and uploads it as a workflow artifact named `bb-release-apk-TAG`, kept a
 few days. The controller that made the release (Release on the version row)
 looks for that artifact every few minutes for twelve hours, and once an hour
-otherwise; it fetches it with the project's GitHub token, signs each APK in it
-on the controller with the sideload key the app's package maps to (the same
+otherwise; it fetches it with the project's GitHub token and hands each APK
+in it to a job on the project's node, which reads its package, is handed the
+sideload key that package maps to, and signs it with its own tools (the same
 steps a sign job takes: `zipalign`, `apksigner` with the proof of a rotation,
-`verify`, the kept certificate checked), and attaches it to the release under
-its name less `-unsigned`, with its `.sha256` file and a line in the notes
-naming the key and its certificate's SHA-256 fingerprint. So no keystore,
-alias or password is ever a GitHub secret, and the key never leaves the
-controller. The Signing view's **Releases** section names which key signs each
+`verify`, the kept certificate checked). The controller attaches what comes
+back to the release under its name less `-unsigned`, with its `.sha256` file
+and a line in the notes naming the key and its certificate's SHA-256
+fingerprint. So no keystore, alias or password is ever a GitHub secret, and
+the key reaches only that job on that node. The Signing view's **Releases** section names which key signs each
 app's releases and how the newest went, and **Look for unsigned APKs now**
 signs a failed one again. What would stop a release's signing (no sideload
-key, an app mapped to none of several, no `apksigner` on the controller, a
-project not on GitHub) is a bell row before the release, and a signing that
-failed after one is a red bell row until it is signed or put away. GitHub
-only: a Gitea or GitLab workflow's artifacts are not fetched.
+key, an app mapped to none of several, the project's node offline, behind, or
+without the jdk or the build-tools, a project not on GitHub) is a bell row before the release, and a signing that
+failed after one is a red bell row until it is signed or put away. Release's
+confirm says it too, and a session's `bb version release` is refused before
+the tag with the reason unless it adds `--without-apk`. A session reads the
+same with `bb sign status [TAG]` and asks for the look again with `bb sign
+release --why "..."`, under **Agents may: Sign a build**. GitHub only: a Gitea
+or GitLab workflow's artifacts are not fetched.
 
 **Several apps, several keys.** A project keeps as many named keys as it needs,
 each with both slots; the first is **default**, which is where keys from
-before there were names went. **Generate** makes one on the controller with
-the store's `keytool` (RSA 4096, ten thousand days) behind a random password
+before there were names went. **Generate** makes one on the project's node
+with its `keytool` (RSA 4096, ten thousand days) behind a random password
 kept with it, so nobody types or sees one, and its backup is a zip of the
 keystore and that password. Under **Apps** an app's package is mapped to a
 key; a sign job reads the package from the build (`aapt2` for an `.apk`, the
@@ -383,12 +408,12 @@ the default for a package with no line, unless the signing named one
 sensible for apps meant to trust each other; a key of their own keeps one
 app's lost key from being every app's. A session reads which keys exist and
 proposes a new one or a mapping (`bb sign keys`, `bb sign key new NAME --for
-sideload`, `bb sign map PACKAGE KEY`) under **Claude may: Manage signing
+sideload`, `bb sign map PACKAGE KEY`) under **Agents may: Manage signing
 keys**, ask by default, which puts it in front of the project's owner.
 
 **Moving an app to another sideload key.** **Rotate to it** on a key's
 sideload row (or `bb sign rotate OLD NEW`, under the same dial) makes a proof
-of rotation on the controller with the store's `apksigner`, signed by both
+of rotation on the project's node with its `apksigner`, signed by both
 keys, and keeps it with the new one. From then on every build that would have
 used the old key is signed with both and the proof, with the new key from
 Android 9 on (`--rotation-min-sdk-version 28`): Android 9 and newer accept
@@ -405,7 +430,7 @@ that carries a rotation says so, and which key older devices still see.
 **Signing a build.** A person signs from the **Artifacts** view: an `.apk` or
 `.aab` row offers **Sign** for each key the project has. A session runs
 `bb sign FILE [--for play|sideload] [--why "..."]` (Play for an `.aab` and
-sideload for an `.apk` unless it says), under the project's dial **Claude
+sideload for an `.apk` unless it says), under the project's dial **Agents
 may: Sign a build**: auto signs, **ask** (the default) puts the build, the
 key and the reason in front of the project's owner in their bell, and deny
 refuses naming the setting. Either way it is the same job, and the session
@@ -415,7 +440,7 @@ such key, no such build, no node) is refused before anybody is asked.
 **A release from a session.** `bb version release --why "..."` tags the
 commit and publishes the release the way **Release** on the Artifacts view
 does, on the controller and with the project's own credentials, which the
-session never holds (R138). It is its own dial, **Claude may: Tag and
+session never holds (R138). It is its own dial, **Agents may: Tag and
 publish a release**, named apart from signing, which makes a build rather
 than a release: auto releases at once, **ask** (the default) puts the tag
 and the commit it would mark in front of the project's owner in their bell

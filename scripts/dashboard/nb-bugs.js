@@ -24,12 +24,20 @@ function bugFacts(b, rel, words, refs){
   return factGrid([
     ["Reported", `${b.at ? rmDay(b.at) : ""}${b.by ? `, by ${who(b.by)}` : ""}`],
     ["Seen in", b.seen_in || ""], ["Seen on", b.seen_on || ""],
+    // Whether its steps show it (R124), from "not tried" up.
+    ["Happens", REPRO_WORDS[b.reproduces || "untried"] || ""],
     ["Closed", closed ? `${words[b.status] || b.status}${b.closed_at ? ", " + rmDay(b.closed_at) : ""}${
       b.status_by ? `, by ${who(b.status_by)}` : ""}${b.status_note ? `: ${b.status_note}` : ""}` : ""],
     ["Fixed in", closed ? b.fixed_in || "" : ""],
     ["Shipped in", shipped === null ? "not yet: planned for the next release" : shipped || ""],
     ["Changelog", clRefs(refs), {html: true}]]);
 }
+
+// Whether a report's steps reproduce it (R124), in the order a reader
+// weighs them: every time first, the ones nobody has tried last.
+const REPRO_ORDER = ["always", "sometimes", "once", "untried"];
+const REPRO_WORDS = {always: "always", sometimes: "sometimes", once: "once", untried: "not tried"};
+const REPRO_LABELS = {always: "Always", sometimes: "Sometimes", once: "Once", untried: "Not tried"};
 
 function nbBugsView({$, nb, project}){
   // ---- bugs ----------------------------------------------------------------
@@ -88,7 +96,7 @@ function nbBugsView({$, nb, project}){
       if (nb.bugRev !== null) nb.bugRev += 1;
       drawBugs(true);
       return j;
-    }catch(e){ notify("could not reach the server: " + e, true); return null; }
+    }catch(e){ notify("could not reach the server: " + failWords(e), true); return null; }
   }
 
   const SEVS = ["low", "medium", "high", "critical"];
@@ -120,6 +128,8 @@ function nbBugsView({$, nb, project}){
     newest:   (a, b) => (b.at || 0) - (a.at || 0),
     oldest:   (a, b) => (a.at || 0) - (b.at || 0),
     updated:  (a, b) => (b.updated || b.at || 0) - (a.updated || a.at || 0),
+    reproduces: (a, b) => REPRO_ORDER.indexOf(a.reproduces || "untried") - REPRO_ORDER.indexOf(b.reproduces || "untried")
+                          || (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9) || (b.at || 0) - (a.at || 0),
     title:    (a, b) => String(a.title).localeCompare(String(b.title)),
   };
 
@@ -148,6 +158,10 @@ function nbBugsView({$, nb, project}){
       <label>How to reproduce</label>
       <textarea class="bfRepro" spellcheck="false"
         placeholder="1. open the picker on a phone&#10;2. rotate">${v("repro")}</textarea>
+      <label>Do those steps show it?</label>
+      <div class="pseg bfRepr" role="radiogroup" aria-label="whether the steps reproduce it">${REPRO_ORDER.map(k => `
+        <button type="button" data-repr="${k}" role="radio" class="${(b?.reproduces || "untried") === k ? "on" : ""}"
+          aria-checked="${(b?.reproduces || "untried") === k}">${REPRO_LABELS[k]}</button>`).join("")}</div>
       <div class="two">
         <div><label>Expected</label>
           <textarea class="bfExpected proseline" rows="1" maxlength="1000"
@@ -165,11 +179,19 @@ function nbBugsView({$, nb, project}){
     </div>`;
   }
 
+  // The form's one-of-four (R124): a press moves the pick.
+  function reprPick(box){
+    box.querySelectorAll(".bfRepr [data-repr]").forEach(b => b.onclick = () =>
+      box.querySelectorAll(".bfRepr [data-repr]").forEach(x => {
+        x.classList.toggle("on", x === b); x.setAttribute("aria-checked", String(x === b)); }));
+  }
+
   function readBugForm(box){
     return {title: box.querySelector(".bfTitle").value,
             severity: box.querySelector(".bfSev").value,
             area: box.querySelector(".bfArea").value,
             repro: box.querySelector(".bfRepro").value,
+            reproduces: box.querySelector(".bfRepr .on")?.dataset.repr || "untried",
             expected: box.querySelector(".bfExpected").value,
             actual: box.querySelector(".bfActual").value,
             notes: box.querySelector(".bfNotes").value};
@@ -194,6 +216,7 @@ function nbBugsView({$, nb, project}){
       swapBox(box, () => {
         box.hidden = false;
         box.innerHTML = bugForm(null);
+        reprPick(box);
         box.querySelector(".bfCancel").onclick = shut;
         box.querySelector(".bfGo").onclick = async () => {
           const j = await postBug({action: "add", ...readBugForm(box)});
@@ -255,8 +278,14 @@ function nbBugsView({$, nb, project}){
     if (nb.bugVer && !vers.some(v => v.key === nb.bugVer)) nb.bugVer = "";
     if (paint($("bugVers"), chipButtons(vers, nb.bugVer, "data-bgver"), true))
       $("bugVers").querySelectorAll("[data-bgver]").forEach(b => b.onclick = () => fadeThrough(() => [$("bugList")], () => { nb.bugVer = b.dataset.bgver; drawBugs(true); }));
+    // ...and by whether it reproduces (R124).
+    const reprN = k => rows.filter(b => (b.reproduces || "untried") === k).length;
+    if (!REPRO_ORDER.includes(nb.bugRepr)) nb.bugRepr = "";
+    if (paint($("bugRepro"), chipButtons(REPRO_ORDER.map(k => ({key: k, label: REPRO_LABELS[k], count: reprN(k)})),
+                                         nb.bugRepr, "data-bgrepr"), true))
+      $("bugRepro").querySelectorAll("[data-bgrepr]").forEach(b => b.onclick = () => fadeThrough(() => [$("bugList")], () => { nb.bugRepr = b.dataset.bgrepr; drawBugs(true); }));
     const shown = b => (!nb.bugChip || (nb.bugChip === "open") === (b.status === "open"))
-      && inRelease(b.seen_in, nb.bugVer) && bugMatch(b, q);
+      && inRelease(b.seen_in, nb.bugVer) && (!nb.bugRepr || (b.reproduces || "untried") === nb.bugRepr) && bugMatch(b, q);
     // Which were open before this redraw, so acting on one does not fold it.
     const held = new Set([...list.querySelectorAll(".bug[open]")].map(d => d.dataset.id));
     // Only the rows on show are built, a page at a time (pageLimit): every
@@ -286,7 +315,7 @@ function nbBugsView({$, nb, project}){
               title="${b.status === "open"
                 ? `send this bug to the running session`
                 : `closed: reopen it first to send it`}"
-              >Send to Claude</button>
+              >Send to ${esc(sendAgent(project).name)}</button>
             <button type="button" class="bEdit">Edit</button>
             ${b.status === "open"
               // Five at most on a bar, the rest behind More (R210): six
@@ -305,7 +334,7 @@ function nbBugsView({$, nb, project}){
         </div>
       </details>`).join("")
       // What the tracker is for, as its empty state (R119 step 4).
-      || (rows.length ? "" : `<div class="hint nbempty">What goes here reaches every Claude session in this project.</div>`);
+      || (rows.length ? "" : `<div class="hint nbempty">What goes here reaches every session in this project.</div>`);
     paginate(list, ":scope > .bug", {key: "bugList", noun: "reports", total: vis.length, more: () => drawBugs()});
     wireMore(list);
     list.querySelectorAll(".bug").forEach(d => {
@@ -344,14 +373,13 @@ function nbBugsView({$, nb, project}){
         nb.roadmapSel = null;               // and only one thing is armed at a time
         nb.drawSendBox(!!nb.roadmapSession);
         // Same session the roadmap sends into, and the same reason it has to
-        // exist first: there is no door into a Claude that is not running.
+        // exist first: there is no door into a session that is not running.
         if (!nb.roadmapSession){
-          notify("no Claude session is running here: start one from the "
-                 + "project's card first", true);
+          notify("no session is running here: start one with Start agent first", true);
           return;
         }
         const box = nb.sendBoxEl({
-          label: `Send B${id} to ${nb.roadmapSession}?`,
+          label: `Send B${id} to ${agentOfSession(tmuxBase(nb.roadmapSession))?.agent.name || "the session"}?`,
           sub: "the session looks it up by number",
           placeholder: "anything to send with it (optional)",
           onCancel: nb.shutSendBoxes,
@@ -371,7 +399,7 @@ function nbBugsView({$, nb, project}){
             }
             nb.sendNoteText = "";
             nb.shutSendBoxes();
-            startClaude(project, null);   // land in the tab it went to
+            openSentTo(project, j.session);   // land in the tab it went to
           },
         });
         body.appendChild(box);
@@ -395,6 +423,7 @@ function nbBugsView({$, nb, project}){
         const body = d.querySelector(".body");
         const b = (nb.bugs.bugs || []).find(x => x.id === id);
         body.innerHTML = bugForm(b);
+        reprPick(body);
         // The revision this form was opened over, so a write that would go
         // over somebody else's is refused rather than applied. On the form
         // rather than in a closure, the same way the memory editor carries

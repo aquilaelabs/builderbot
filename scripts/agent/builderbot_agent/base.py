@@ -60,11 +60,14 @@ BEAT_S = 20
 STORE_DENY_EXACT = {"/", "/bin", "/boot", "/dev", "/etc", "/home", "/lib",
                     "/lib32", "/lib64", "/libx32", "/media", "/mnt", "/opt",
                     "/proc", "/root", "/run", "/sbin", "/srv", "/sys", "/tmp",
-                    "/usr", "/var"}
+                    "/usr", "/var", "/var/lib", "/var/log"}
 STORE_DENY_UNDER = ("/bin/", "/boot/", "/dev/", "/etc/", "/lib/", "/lib32/",
                     "/lib64/", "/libx32/", "/proc/", "/root/", "/run/",
-                    "/sbin/", "/sys/", "/usr/", "/var/log/", "/var/run/",
+                    "/sbin/", "/sys/", "/usr/", "/var/run/",
                     "/var/lock/", "/var/spool/", "/var/cache/")
+# ...and a folder of its own under /var/log is a place for one (the operator,
+# 23 Oct), though /var/log itself is not. Held equal on both sides by
+# unit/test_store_paths.py.
 
 
 # Where the configuration plane's tools are (docs/nodes.md §12, phase 5).
@@ -101,9 +104,50 @@ SESSION_BIN = os.environ.get("BUILDERBOT_SESSION_BIN", "/usr/local/sbin/bb-sessi
 # and so any session through bb run, plant root code that landed on the
 # next hello (the review of 26 Sep).
 TOOLS_DIR = os.environ.get("BUILDERBOT_TOOLS_DIR", "/var/lib/builderbot/agent/tools")
+# The bundle a terminal runs where accounts are their own users (R125): a
+# root-owned copy on the node's own disk, unpacked from the checked tar, so
+# nothing outside a view can change what every account's terminal runs (the
+# toolchain store is a share squashed to one uid).
+ROOT_BUNDLE_DIR = os.environ.get("BUILDERBOT_ROOT_BUNDLE", "/usr/local/lib/builderbot/bundle")
 ROOT_TOOLS = ("nodes/provision-linux.sh", "nodes/bb-session")
 # Where an updated Claude Code is pinned, root-owned, for the sessions (claude_update).
 CLAUDE_DIR = "/usr/local/lib/builderbot/claude"
+# ...and the other coding agents (R95 step 2), each in a folder of its own
+# under this one: AGENTS_DIR/codex/codex, AGENTS_DIR/copilot/copilot.
+AGENTS_DIR = os.environ.get("BUILDERBOT_AGENTS_DIR", "/usr/local/lib/builderbot/agents")
+# How each is installed, by the job the controller's agent table names for
+# it (scripts/dashboard/agents.py update_job): a table lookup, never a
+# command from the controller. Each vendor's own installer, run as the
+# session account into its home: `script` fetched fresh each time, the
+# version asked for in `pin` (formatted with the version), `env` formatted
+# with the home, and the binary it leaves at `bin` under the home. A test
+# stands its own script in with BUILDERBOT_<ID>_INSTALLER. Checked against
+# Codex CLI 0.163.0 and Copilot CLI 1.0.102 (22 Oct).
+# Each coding agent's sign-in and sign-out jobs, by the controller's agent
+# table (agents.py login_job, logout_job), to the agent `bb login --flow` and
+# `bb login --out` are run for. Claude's are the claude-login and
+# claude-logout of old, which name no agent.
+AGENT_LOGINS = {"codex-login": "codex", "copilot-login": "copilot"}
+AGENT_LOGOUTS = {"codex-logout": "codex", "copilot-logout": "copilot"}
+AGENT_INSTALLS = {
+    "codex-update": {"id": "codex", "command": "codex", "product": "Codex CLI", "reported": "codex",
+                     "script": "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+                     "pin": ("CODEX_RELEASE", "{v}"), "env": {"CODEX_INSTALL_DIR": "{home}/.local/bin"},
+                     "bin": ".local/bin/codex"},
+    "copilot-update": {"id": "copilot", "command": "copilot", "product": "Copilot CLI", "reported": "copilot",
+                       "script": "curl -fsSL https://gh.io/copilot-install | bash",
+                       "pin": ("VERSION", "v{v}"), "env": {"PREFIX": "{home}/.local"},
+                       "bin": ".local/bin/copilot"},
+}
+# Claude Code's row in the same shape, for the claude-update job: kept out of
+# AGENT_INSTALLS, which the census and the session PATH read for the agents
+# beside Claude. Its copy is pinned in CLAUDE_DIR, its installer is handed no
+# version (the one asked for is read from the versions folder it leaves),
+# and a removal takes that folder too.
+CLAUDE_INSTALL = {"id": "claude", "command": "claude", "product": "Claude Code", "reported": "claude",
+                  "script": "curl -fsSL https://claude.ai/install.sh | bash",
+                  "pin": None, "env": {}, "bin": ".local/bin/claude", "pin_dir": CLAUDE_DIR,
+                  "fresh": ".local/share/claude/versions/{v}", "also": (".local/share/claude",)}
 SESSION_CONF = os.environ.get("BUILDERBOT_SESSION_CONF", "/etc/bb-session.conf")
 SESSION_SUDOERS = os.environ.get("BUILDERBOT_SESSION_SUDOERS", "/etc/sudoers.d/builderbot-session")
 # Each session kept to its own project's network (R79): the folder this agent
@@ -127,12 +171,20 @@ SESSNET_LOCAL = ("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169
 # session works in. The seam is for the suite: it runs its agent as a session account, and inside a
 # session's view /workspace is the view's own read-only root.
 SHARE = os.environ.get("BUILDERBOT_SHARE", "/workspace")
-# The pane a respawn may run again: bb-tty's claude launcher, in the project's
-# cache folder and started inside the project's view when the node builds one.
+# The live coding agents (R95), each its id, its command and its session's
+# prefix at once: the live rows of the controller's agent table
+# (scripts/dashboard/agents.py), copied rather than imported since the agent
+# carries no dashboard module; unit/test_agents.py holds the two to each
+# other. The session prefixes, the launchers a respawn may run and the
+# process kinds a busy machine is read by are all made from it.
+AGENT_IDS = ("claude", "codex", "copilot")
+# The pane a respawn may run again: bb-tty's launcher of a coding agent
+# (claude-run.sh, codex-run.sh, copilot-run.sh), in the project's cache
+# folder and started inside the project's view when the node builds one.
 _PATHCH = r"[A-Za-z0-9._/@+-]"
 RESPAWNABLE = (rf"(?:sudo -n {re.escape(SESSION_BIN)} enter(?: --[a-z]+ {_PATHCH}+)* -- )?"
                rf"{_PATHCH}*/builderbot/(?:u/u_[0-9a-f]{{8}}/)?"
-               rf"project/[A-Za-z0-9._-]+/claude-run\.sh")
+               rf"project/[A-Za-z0-9._-]+/(?:{'|'.join(AGENT_IDS)})-run\.sh")
 NETPLAN_DIR = os.environ.get("BUILDERBOT_NETPLAN_DIR", "/etc/netplan")
 NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
 NETPLAN_FILE = "90-builderbot.yaml"
@@ -152,6 +204,8 @@ RUNNER_DIR = os.environ.get("BUILDERBOT_RUNNER_DIR", "/var/lib/builderbot/runner
 APT_BIN = os.environ.get("BUILDERBOT_APT_BIN", "apt-get")
 # Seconds per "minute" of the idle rule; the suite sets 1.
 IDLE_UNIT = float(os.environ.get("BUILDERBOT_IDLE_UNIT", "60"))
+# The session names a coding agent runs under (claude-<project>).
+AGENT_PREFIXES = tuple(f"{a}-" for a in AGENT_IDS)
 
 
 def has_systemd():

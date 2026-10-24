@@ -152,6 +152,7 @@ def nodes_now():
             "name": n.get("name"), "id": n.get("id"), "state": n.get("state"),
             "live": n.get("live") is not False, "last_seen": _ago(ag.get("last_seen")),
             "agent": ag.get("version") or "?", "agent_current": ag.get("version") == shipped,
+            "agent_built": str(ag.get("built") or "")[:32],
             "git": str(rep.get("git") or "")[:40],
             "session": {"up": bool(se.get("up")), "why": redact(se.get("why") or ""),
                         "workspace": bool(se.get("workspace")), "writable": se.get("writable"),

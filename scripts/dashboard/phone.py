@@ -84,6 +84,9 @@ release_editor = None
 # (project, plan, asker_name, principal) -> (payload, status): files taken
 # off a published release, its own ask (the operator, 5 Oct).
 release_remover = None
+# (project) -> (payload, status): a release's APK looked for and signed
+# again (releasesign.check, R134), what Allow on a session's ask runs.
+release_signer = None
 container_free = None
 container_builds = None
 pusher = None         # a held push run after Approve (R219): (record, by) -> {code, out, err, apply?}
@@ -763,7 +766,7 @@ def _for(r, uid, admin):
         return False
     # A signing, or a key change, waits on the project's owner, whatever
     # their role.
-    if r.get("kind") in ("sign", "sign-key", "release", "release-edit", "release-remove"):
+    if r.get("kind") in ("sign", "sign-key", "release", "release-edit", "release-remove", "release-sign"):
         return r["to"] == uid
     # A held push (R219) is the asking account's to answer, and an
     # administrator's, since what it would send is the project's.
@@ -1004,7 +1007,7 @@ def ask_root(why, argv, nid, node_name, project, sandbox, by="claude",
 
 def ask_sign(why, project, file, route, to_uid, to_name, asker_name="", principal="", key=""):
     """A session asking to sign a build with one of its project's keys, on a
-    project whose dial is `ask` (Claude may: Sign a build, R106). It goes
+    project whose dial is `ask` (Agents may: Sign a build, R106). It goes
     to the project's owner, who reads which build and which key; Allow
     queues the signing as the session's own."""
     why = " ".join(str(why or "").split())[:300]
@@ -1020,7 +1023,7 @@ def ask_sign(why, project, file, route, to_uid, to_name, asker_name="", principa
 
 def ask_release(why, project, comp, plan, to_uid, to_name, asker_name="", principal=""):
     """A session asking to tag and publish a release, on a project whose
-    dial is `ask` (Claude may: Tag and publish a release, R138). It goes to
+    dial is `ask` (Agents may: Tag and publish a release, R138). It goes to
     the project's owner, who reads the tag and the commit it would mark;
     Allow runs Release as the Artifacts view does, with the project's own
     credentials, which the session never holds."""
@@ -1071,6 +1074,20 @@ def ask_release_remove(why, project, plan, to_uid, to_name, asker_name="", princ
                          "principal": principal, "asker_name": str(asker_name or "")})
 
 
+def ask_release_sign(why, project, to_uid, to_name, asker_name=""):
+    """A session asking for its project's release APKs to be looked for and
+    signed again, as the Signing view's Look for unsigned APKs now does
+    (R134 step 5), under its Sign a build dial. 0.7.0's retry after its key
+    was added had to be a person's press."""
+    why = " ".join(str(why or "").split())[:300]
+    if not why:
+        return {"error": "say what it is for: --why \"...\" (the key was added, the node is back ...)"}
+    if not to_uid:
+        return {"error": f"{project} has no owner to ask"}
+    return _queue("release-sign", why, ["sign", "release"], "", "", project, "claude", to_uid, to_name,
+                  asker_name)
+
+
 def _size(n):
     return f"{n / 1_000_000:.1f} MB" if n >= 100_000 else f"{max(1, n // 1000)} KB"
 
@@ -1101,7 +1118,7 @@ def ask_rebuild(why, project, instance, name, asker_uid="", asker_name="",
                 asker_admin=False, env=None, create=False, target="", ctl="",
                 node="", remove=False, ref="", compose="", host="", host_name="", override=""):
     """A session asking to rebuild its project's dev instance, for a project
-    whose dial is on `ask` (Claude may: Run its container, in the project's
+    whose dial is on `ask` (Agents may: Run its container, in the project's
     settings).
 
     The phone's shape applied to a build: the reason and what it would do go
@@ -1360,6 +1377,14 @@ def decide(rid, allow, uid, name="", admin=False, session=False):
                              f"{rel.get('tag') or r.get('tag')} tagged on {rel.get('sha') or r.get('sha')}"
                              + (" and pushed" if rel.get("pushed") else "")
                              + _forge_said(rel.get("forge") or {})))
+        return {"error": got["error"]} if got.get("error") else {"ok": True}
+    if r.get("kind") == "release-sign":
+        res = (release_signer(r["project"]) if release_signer is not None
+               else ({"error": "nothing here signs a release"}, 400))
+        got = res[0] if isinstance(res, tuple) else res
+        with _lock:
+            r.update(state="done", code=1 if got.get("error") else 0,
+                     out=str(got.get("error") or got.get("said") or "looking"))
         return {"error": got["error"]} if got.get("error") else {"ok": True}
     if r.get("kind") == "release-remove":
         plan = {"tag": r.get("tag") or "", "files": r.get("files") or []}
@@ -1707,7 +1732,7 @@ def verb(action, req, who, fresh):
                 if why:
                     return {"error": why}, 400
                 target = nodes.node(un) if nodes is not None else None
-            # A session's is under its project's dial, Claude may: Run
+            # A session's is under its project's dial, Agents may: Run
             # its container, like every other container verb (B250, the
             # operator, 24 Sep: at auto it was still asked). Refused at
             # deny; at auto, its own project's on its own node is made

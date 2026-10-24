@@ -13,7 +13,6 @@ code that looks fine until it deadlocks.
 import base64
 import contextlib
 from html import escape as html_escape
-import glob
 import gzip
 import datetime
 import hashlib
@@ -36,7 +35,8 @@ import time
 # Beside this file. Imported up here rather than with the modules below,
 # because write_json is defined from it before any of those load.
 import statefile
-from names import PROJECT_NAME, claude_session, tmux_name   # noqa: F401 - re-exported to the modules
+import agents
+from names import PROJECT_NAME, agent_sessions, claude_session, running_session, tmux_name   # noqa: F401 - re-exported to the modules
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -125,6 +125,36 @@ def make_token(u):
     return f"{nm}.{exp}.{sig}"
 
 
+def purpose_token(u, purpose, secs, extra=""):
+    """A short cookie for one step of signing in (R127): the account, an
+    expiry, what it is for, and a signature over those and the password
+    stamp, as make_token's. `extra` rides along signed (a remembered
+    browser's id)."""
+    exp = str(int(time.time()) + secs)
+    nm = base64.urlsafe_b64encode(u["name"].encode()).decode().rstrip("=")
+    sig = hmac.new(SECRET, f"{purpose}|{u['name']}|{exp}|{extra}|{users.stamp(u)}".encode(),
+                   hashlib.sha256).hexdigest()
+    return f"{nm}.{exp}.{extra}.{sig}"
+
+
+def purpose_user(tok, purpose):
+    """(account, extra) a purpose_token is for, or (None, ""). Fails closed."""
+    parts = str(tok or "").split(".")
+    if len(parts) != 4 or not parts[1].isdigit() or int(parts[1]) < time.time():
+        return None, ""
+    nm, exp, extra, sig = parts
+    try:
+        name = base64.urlsafe_b64decode(nm + "=" * (-len(nm) % 4)).decode()
+    except (ValueError, UnicodeDecodeError):
+        return None, ""
+    u = users.get(name)
+    if not u:
+        return None, ""
+    want = hmac.new(SECRET, f"{purpose}|{name}|{exp}|{extra}|{users.stamp(u)}".encode(),
+                    hashlib.sha256).hexdigest()
+    return (u, extra) if hmac.compare_digest(want, sig) else (None, "")
+
+
 def token_user(tok):
     """The account a cookie is for, or None. Fails closed on everything.
 
@@ -183,6 +213,87 @@ LOGIN_FIELDS = """  <!--ERR-->
   <label for="p">Password</label>
   <input id="p" name="password" type="password" autocomplete="current-password" required>
   <button type="submit">Sign in</button>"""
+
+# The second step of signing in (R127): a code from the authenticator app or
+# a recovery code in one field, a passkey by its button where the account has
+# one and the browser can, and the browser remembered for 30 days on a tick.
+MFA_FIELDS = """  <!--ERR-->
+  <input type="hidden" name="next" value="<!--NEXT-->">
+  <p class="note">Signing in as <b><!--NAME--></b>: the code your authenticator app shows, or one of your recovery codes.</p>
+  <label for="c">Code</label>
+  <input id="c" name="code" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" autofocus>
+  <label class="tick"><input type="checkbox" name="remember" value="1"> Remember this browser for 30 days</label>
+  <button type="submit">Continue</button>
+  <button type="button" id="pk" class="alt" data-has="<!--PASSKEYS-->" hidden>Use a passkey</button>
+  <p class="note"><a href="/logout">Sign in as someone else</a></p>
+  <script data-cfasync="false">
+  (() => {
+    const b = document.getElementById("pk");
+    if (!b || b.dataset.has !== "1" || !window.PublicKeyCredential) return;
+    b.hidden = false;
+    const u8 = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+    const b64 = a => btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/, "");
+    const said = t => { let e = document.querySelector(".err"); if (!e) { e = document.createElement("p"); e.className = "err";
+      b.form.querySelector("input[name=next]").after(e); } e.textContent = t; };
+    const post = body => fetch("/login/passkey", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)}).then(r => r.json());
+    b.onclick = async () => {
+      try {
+        const ch = await post({action: "challenge"});
+        if (ch.error) throw new Error(ch.error);
+        const c = await navigator.credentials.get({publicKey: {challenge: u8(ch.challenge), rpId: location.hostname,
+          allowCredentials: ch.ids.map(id => ({type: "public-key", id: u8(id)})), userVerification: "preferred", timeout: 60000}});
+        const r = await post({action: "verify", id: b64(c.rawId), client: b64(c.response.clientDataJSON),
+          auth: b64(c.response.authenticatorData), sig: b64(c.response.signature),
+          remember: b.form.querySelector("[name=remember]").checked, next: b.form.querySelector("[name=next]").value});
+        if (r.error) throw new Error(r.error);
+        location.href = r.next || "/";
+      } catch (e) { said(e.name === "NotAllowedError" ? "The passkey was not used: try again, or type a code." : String(e.message || e)); }
+    };
+  })();
+  </script>"""
+
+# The page an account whose role requires a second factor meets before
+# anything else (R127): the authenticator's QR and secret, its first code, the
+# recovery codes once; or a passkey where the browser can make one.
+SETUP_2FA_FIELDS = """  <p class="note">A role of yours, <b><!--NAME--></b>, requires a second factor. Scan the code with an authenticator app (or type the secret), then the code it shows.</p>
+  <div id="qr" class="qr"></div>
+  <p class="note" id="sec"></p>
+  <label for="c">Code</label>
+  <input id="c" autocomplete="one-time-code" inputmode="numeric" autocapitalize="none">
+  <button type="submit">Turn it on</button>
+  <button type="button" id="pk" class="alt" hidden>Use a passkey instead</button>
+  <div id="rc" hidden><p class="note">Your recovery codes, shown once: each signs you in once if your app or passkey is lost. Keep them somewhere safe.</p><pre id="codes"></pre><a class="go" href="/">Continue</a></div>
+  <p class="note"><a href="/logout">Sign out</a></p>
+  <script data-cfasync="false">
+  (() => {
+    const f = document.querySelector("form"), $ = id => document.getElementById(id);
+    const api = body => fetch("/api/profile", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)}).then(r => r.json());
+    const said = t => { let e = document.querySelector(".err"); if (!e) { e = document.createElement("p"); e.className = "err";
+      f.querySelector(".head").after(e); } e.textContent = t; };
+    const done = codes => { [...f.children].forEach(el => { if (!el.matches(".head, #rc, script")) el.hidden = true; });
+      $("rc").hidden = false; $("codes").textContent = (codes || []).join("\\n"); };
+    api({action: "2fa-totp-begin"}).then(r => { $("qr").innerHTML = r.qr || ""; $("sec").textContent = "Secret: " + (r.secret || ""); });
+    f.onsubmit = async e => { e.preventDefault();
+      const r = await api({action: "2fa-totp-confirm", code: $("c").value});
+      r.error ? said(r.error) : done(r.recovery); };
+    if (window.PublicKeyCredential) {
+      const b = $("pk"); b.hidden = false;
+      const u8 = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+      const b64 = a => btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/, "");
+      b.onclick = async () => { try {
+        const o = await api({action: "2fa-passkey-begin"});
+        const c = await navigator.credentials.create({publicKey: {challenge: u8(o.challenge), rp: {name: "BuilderBot", id: location.hostname},
+          user: {id: u8(o.user), name: o.name, displayName: o.name}, pubKeyCredParams: [{type: "public-key", alg: -7}],
+          authenticatorSelection: {residentKey: "preferred", userVerification: "preferred"}, attestation: "none", timeout: 60000,
+          excludeCredentials: (o.exclude || []).map(id => ({type: "public-key", id: u8(id)}))}});
+        const r = await api({action: "2fa-passkey-add", name: "passkey", client: b64(c.response.clientDataJSON), att: b64(c.response.attestationObject)});
+        r.error ? said(r.error) : done(r.recovery);
+      } catch (e) { said(e.name === "NotAllowedError" ? "The passkey was not made: try again, or use the app." : String(e.message || e)); } };
+    }
+  })();
+  </script>"""
 
 LOGIN_HTML = """<!doctype html>
 <html><head><meta charset="utf-8">
@@ -287,6 +398,14 @@ LOGIN_HTML = """<!doctype html>
     background:color-mix(in srgb, var(--bad) 10%, transparent);border:1px solid color-mix(in srgb, var(--bad) 35%, transparent)}
   .note{color:var(--dim);font-size:13px;margin:0 0 6px}
   .note b{color:var(--ink)}
+  .note a{color:var(--note)}
+  label.tick{display:flex;gap:8px;align-items:center;margin-top:12px;color:var(--dim);font-size:13px}
+  label.tick input{width:auto;margin:0}
+  button.alt{background:transparent;border-color:var(--line);color:var(--ink);font-weight:500;margin-top:10px}
+  .qr{display:flex;justify-content:center;margin:6px 0}
+  .qr svg{width:180px;height:180px;border-radius:4px}
+  pre#codes{font:14px/1.6 ui-monospace,monospace;color:var(--ink);background:var(--panel);padding:10px;border-radius:var(--r)}
+  a.go{display:block;text-align:center;margin-top:12px;color:var(--note)}
   .banner{position:fixed;top:0;left:0;right:0;padding:6px 12px;font-size:13px;text-align:center;
     color:var(--ink);background:var(--panel);border-bottom:1px solid var(--line)}
   .banner a{color:var(--note)}
@@ -344,6 +463,8 @@ MAX_BODY = 64 * 1024
 MAX_BODY_FOR = {"/api/design": 4 * 1024 * 1024, "/api/wiki": 1024 * 1024,
                 "/api/v1/files": 28 * 1024 * 1024,
                 "/api/v1/agent/log": 512 * 1024,
+                # A keystore a node made or wrapped, as base64 (signing.RESULT).
+                "/api/v1/agent/signing-result": 3 * 1024 * 1024,
                 "/api/vms": 3 * 1024 * 1024}   # a GPU's .rom given on the VMs page (R100)
 
 # One field out of a request body, read the one way here and in every
@@ -402,6 +523,7 @@ import helpdocs                                                  # noqa: E402
 # remember, because the failure looks like the dashboard refusing to obey the
 # operator and quoting its own name as the workaround.
 os.environ.pop("CLAUDECODE", None)
+os.environ.pop("BB_AGENT", None)     # ...and any coding agent's mark (R95)
 
 
 def run(cmd, cwd=None, timeout=120, env=None, split_err=False, register=None):
@@ -547,7 +669,7 @@ def compat_reap_once():
     holds = compat_holds(reap=True)
     if not holds:
         return []
-    wanted = {claude_session(p): why for p, why in holds.items()}
+    wanted = {n: why for p, why in holds.items() for n in agent_sessions(p)}
     ended = []
     for s in tmux_sessions():
         why = wanted.get(tmux_base(s["name"]))
@@ -754,7 +876,11 @@ def _session_nodes(name):
         out.append({"id": nid, "name": n.get("name") or t.get("name") or nid,
                     "where": t["where"], "why": t.get("why") or "", "boot": t.get("boot") or "",
                     "sample": rep.get("sample") or {}, "gpu": rep.get("gpu") or "",
-                    "tools": sorted((rep.get("toolchains") or {}).keys())[:6]})
+                    "tools": sorted((rep.get("toolchains") or {}).keys())[:6],
+                    # The coding agents beside Claude installed there, which
+                    # the chooser offers a session of (R95 step 4).
+                    "agents": [a.id for a in agents.live() if a.id != "claude"
+                               and ((rep.get("session") or {}).get(a.reported) or "")]})
     return out
 
 
@@ -1000,6 +1126,18 @@ def _projects_on_disk():
     return out, None
 
 
+def lock_may(name, uid, admin, rec):
+    """Whether this account may press the project's Lock or Unlock (R119):
+    its owner or an administrator to lock; to unlock, an administrator's
+    lock is an administrator's to lift and an owner's lock the owner's."""
+    if not uid:
+        return False
+    mine = membership.owner_of(name) == uid
+    if not rec:
+        return mine or admin
+    return admin if rec.get("admin") else mine
+
+
 def _project_columns(who, facts):
     """The row the page reads for each project _projects_on_disk found: its
     facts, and everything else a row carries. The project's own settings
@@ -1009,7 +1147,13 @@ def _project_columns(who, facts):
     row: this runs on the fifteen-second poll.
     """
     _t0 = time.monotonic()
-    locked = set(projects.load_locks())
+    locked = projects.load_locks()
+    archived = set(projects.load_archived())
+    # Who may archive and who may lock (R119): the project's owner or an
+    # administrator, never a session. An owner's lock is lifted by the owner,
+    # an administrator's by an administrator.
+    me_uid = "" if (who or {}).get("session") else users.uid_of(who)
+    me_admin = bool(me_uid) and users.is_admin(who)
     # Each directory's id and the name it is shown under (R154): synced with
     # the disk here, two listdirs and no write when nothing moved.
     reg = registry.sync()["projects"]
@@ -1124,6 +1268,16 @@ def _project_columns(who, facts):
                                    else fhost or forge["name"]),
                     "forge_host": fhost,
                     "locked": d.name in locked,
+                    # ...an administrator's lock, which holds its owner too.
+                    "locked_admin": bool(locked.get(d.name, {}).get("admin")),
+                    # ...and whether it holds this account out, as the server
+                    # refuses: what the page shuts on.
+                    "locked_me": d.name in locked and bool(projects.locked_out(d.name, me_uid or users.uid_of(who))),
+                    "archived": d.name in archived,
+                    "owner_name": membership.owner_name(d.name) or "",
+                    "owner_mine": bool(me_uid) and membership.owner_of(d.name) == me_uid,
+                    "may_lock": lock_may(d.name, me_uid, me_admin, locked.get(d.name)),
+                    "may_archive": me_admin or (bool(me_uid) and membership.owner_of(d.name) == me_uid),
                     "pinned": True if pins is None else d.name in pins,
                     # The group this account files it under, or "".
                     "group": groups.get(d.name, ""),
@@ -1187,6 +1341,10 @@ def _project_columns(who, facts):
                     # claude_projects_link), so a conversation a node's
                     # session had is offered here and continued there.
                     "last_claude": last_claude(d, users.uid_of(who)),
+                    # ...and each other coding agent's newest, for its own
+                    # Resume in the chooser (the operator, 23 Oct: a ChatGPT
+                    # conversation was there and nothing offered it back).
+                    "last_agents": last_agents(d, users.uid_of(who)),
                     # Where this project's sessions run (roadmap #24): the
                     # node's name, or "" for here, and why the button is
                     # dead when its node cannot take one. The proxy decides
@@ -1383,6 +1541,30 @@ def _resume_held(who, nid, session):
     return {"ok": True, **said}, 200
 
 
+def _two_factor_due(who):
+    """The bell's standing notice (R127 step 8), or None: an account with no
+    second factor is told to add one, put away for a day at most (its key
+    holds the day), gone the moment it has one."""
+    uid = users.uid_of(who)
+    if not uid or (who or {}).get("session") or mfa.enabled(uid):
+        return None
+    required = roles.two_factor_required(users.get(who["name"]) or {})
+    key = f"2fa:{uid}@{time.strftime('%Y-%m-%d')}"
+    if not required and key in bellseen.dismissed(uid):
+        return None
+    return {"kind": "two-factor", "key": "" if required else key, "required": required}
+
+
+def _token_rows():
+    """nodes.token_attention, each read with its account's name."""
+    rows = nodes.token_attention()
+    if rows:
+        names = {u["uid"]: u["name"] for u in users.all_users()}
+        for r in rows:
+            r["who"] = names.get(r["account"], "")
+    return rows
+
+
 def _held_rows(who):
     """nodes.held_attention for this account, each row with the account's
     name and its Claude session's name on that project (B773): the gate's
@@ -1390,9 +1572,12 @@ def _held_rows(who):
     Resume typed into a session called that, which there never is."""
     names = {u["uid"]: u["name"] for u in users.all_users()}
     rows = nodes.held_attention(users.uid_of(who), users.may(who, "admin") == "")
+    running = {s["name"] for s in tmux_sessions() + node_tmux_sessions()} if rows else set()
     for r in rows:
         r["who"] = names.get(r["uid"], "")
-        r["claude"] = users.tmux_prefix({"uid": r["uid"]}) + claude_session(r["project"])
+        # The agent's that is running, since the mark names the account and
+        # the project, not which agent was held (R95 step 16).
+        r["claude"] = running_session(users.tmux_prefix({"uid": r["uid"]}), r["project"], running)
     return rows
 
 
@@ -1409,6 +1594,7 @@ def room_mem_pct():
 
 
 CACHE_KEEP_DAYS = 14      # a project's build cache no job has used this long goes when its store is short
+PHONE_SNAPSHOT_DAYS = 7   # a phone not started this long gives back its quick-boot snapshot when its disk is full
 
 
 def _room_loop():
@@ -1421,7 +1607,8 @@ def _room_loop():
     store is as short gets the projects' build caches (Gradle's, npm's,
     pub's: whatever a build keeps under BUILDERBOT_CACHE) that no job has
     used for two weeks cleared by a cache-clear job (R110 step 7), its log
-    on the Jobs page."""
+    on the Jobs page. A node whose homes' disk is past 90% gets its idle
+    phones' quick-boot snapshots removed by a phones-idle job (R129)."""
     while True:
         time.sleep(3600)
         try:
@@ -1433,6 +1620,14 @@ def _room_loop():
                                       {"older_days": CACHE_KEEP_DAYS})
                     print(f"[room] {n.get('name') or n['id']}: build caches unused for "
                           f"{CACHE_KEEP_DAYS} days: {r.get('error') or 'clearing'}", flush=True)
+                # The phones' quick-boot snapshots, where the homes' disk is
+                # past 90% (R129): every project's not started for a week, the
+                # phones themselves and their data kept.
+                if nodes.homes_full(n["id"]):
+                    r = nodes.job_add("operator", {"node": n["id"]}, "phones-idle",
+                                      {"older_days": PHONE_SNAPSHOT_DAYS})
+                    print(f"[room] {n.get('name') or n['id']}: idle phones' quick-boot snapshots: "
+                          f"{r.get('error') or 'removing'}", flush=True)
                 why = nodes.room_short(n["id"], room_floor_gb() * 2)
                 if not why:
                     continue
@@ -1463,13 +1658,13 @@ def _attention(who):
     # person, where the rest is an update that can wait (seen fourth, under
     # the fold of the bell, in the walk of 15 Oct).
     rows = (_held_rows(who)
-            + ([] if users.may(who, "node") else nodes.attention(where))
+            + ([] if users.may(who, "node") else nodes.attention(where) + _token_rows())
             # ...and a node short of disk or memory (R110), for whoever
             # manages nodes: what is short, on the Storage page's terms.
             + ([] if users.may(who, "node") else nodes.room_attention(
                 room_floor_gb(), room_mem_pct(),
                 label=lambda r: {"root": "its root filesystem", "docker": "Docker's images and build cache"}.get(r, f"its {r} store")))
-            + [a for a in toolchains.attention(where)
+            + [a for a in toolchains.attention(where) + toolchains.agent_attention(where)
                if not users.may_node(who, "toolchains-write", a["id"])]
             # ...and a node's nginx behind the newest line (nginxproxy.attention,
             # R192), for whoever may act on the Docker tab, which Update is.
@@ -1527,17 +1722,37 @@ ASKING = {}
 ASKING_SETTLE = 4
 
 
-def asking_set(project, uid, text=""):
-    ASKING[(uid, tmux_name(claude_session(project)))] = {"at": time.time(), "text": str(text or "")[:300]}
+def asking_set(project, uid, text="", agent="claude"):
+    ASKING[(uid, tmux_name(agents.session_name(agent, project)))] = {"at": time.time(), "text": str(text or "")[:300]}
 
 
-def asking_clear(project, uid):
-    ASKING.pop((uid, tmux_name(claude_session(project))), None)
+def asking_clear(project, uid, agent="claude"):
+    ASKING.pop((uid, tmux_name(agents.session_name(agent, project))), None)
+
+
+# What another agent's session is doing (R95 step 7), as its hooks said it:
+# working from the prompt its turn began on, waiting once the turn ended.
+# Claude's reads its pane title, which no other agent's carries.
+AGENT_STATE = {}
+
+
+def agent_state_set(project, uid, agent, state):
+    AGENT_STATE[(uid, tmux_name(agents.session_name(agent, project)))] = {"state": state, "at": time.time()}
 
 
 def session_state(uid, name, title):
     """(state, task) for a Claude session: claude_state's, or "asking" while
-    it waits on its permission prompt, the prompt's words as the task."""
+    it waits on its permission prompt, the prompt's words as the task.
+    Another agent's session says nothing yet (R95 step 7 reads its own
+    events): Claude Code's pane title is no other agent's, and a session
+    read as waiting when it was working would call a person for nothing."""
+    agent, _stem = agents.of_session(tmux_base(name))
+    if agent and agent.id != "claude":
+        k = (uid, tmux_base(name))
+        a = ASKING.get(k)
+        if a:
+            return "asking", a["text"] or "waiting for you to answer it in its terminal"
+        return (AGENT_STATE.get(k) or {}).get("state", "waiting"), ""
     state, task = claude_state(title)
     k = (uid, tmux_base(name))
     a = ASKING.get(k)
@@ -1631,8 +1846,8 @@ def _arg_project(arg):
     m = _ARG_VM.match(arg or "")
     if m:
         return m.group(1)
-    if arg.startswith("claude:"):
-        return arg[len("claude:"):].split(":")[0]
+    if agents.of_arg(arg)[0]:
+        return agents.project_of_arg(arg)
     if arg.startswith("shell:"):
         return arg[len("shell:"):]
     if arg.startswith("sh:"):
@@ -1704,7 +1919,7 @@ def session_target(project, claude=False, node="", uid=""):
     no_node = {"where": "refused", "name": "",
                # The row says it whole, the fact and then what to do about
                # it (no tooltip carries a second half any more).
-               "why": "no node to run a Claude session on: pick one in the project's settings, or enroll "
+               "why": "no node to run a coding agent's session on: pick one in the project's settings, or enroll "
                       "one on the Nodes page under Machines"} if claude \
         else {"where": "local"}
     if not nid or NODES_OK:
@@ -1984,7 +2199,7 @@ def _session_visible(name, mine, seen, all_of_them):
         return True
     # Unowned: a Claude session, or a terminal from before accounts. Judged by
     # the project in its name, which is what the account was or was not given.
-    for pre in ("claude-", "shell-"):
+    for pre in (*agents.prefixes(), "shell-"):
         if base.startswith(pre):
             stem = base[len(pre):]
             return any(tmux_name(p) == stem or stem.startswith(tmux_name(p) + "-")
@@ -2048,7 +2263,7 @@ def tmux_sessions():
                    "created": int(created) if created.strip().isdigit() else 0}
             # By the unprefixed name, the way node rows are read, so another
             # account's session here says whether it is working too.
-            if tmux_base(name).startswith("claude-"):
+            if agents.is_session(tmux_base(name)):
                 uid = tmux_owner(name) or (users.uid_of(users.get(users.owner_name() or "")) if users.owner_name() else "")
                 state, task = session_state(uid, name, info.get("title", ""))
                 row["claude"] = {"state": state, "task": task}
@@ -2056,11 +2271,12 @@ def tmux_sessions():
     return rows
 
 
-def claude_working(project, uid):
-    """Whether that account's Claude session on this project is mid-prompt,
-    here or on a node, by its pane title (claude_state). The owner's is the
-    bare name, as everywhere else on the page."""
-    want = claude_session(project)
+def claude_working(project, uid, agent="claude"):
+    """Whether that account's session of one agent on this project is
+    mid-prompt, here or on a node (session_state: Claude's pane title,
+    another agent's hooks). The owner's is the bare name, as everywhere
+    else on the page."""
+    want = agents.session_name(agent, project)
     owner = users.uid_of(users.get(users.owner_name() or ""))
     return any(tmux_base(s["name"]) == want and (tmux_owner(s["name"]) or owner) == uid
                and (s.get("claude") or {}).get("state") == "working"
@@ -2092,7 +2308,8 @@ def session_tokens_for(nid, sessions):
     """
     want = {}
     for name in project_names(users.ALL):
-        want[claude_session(name)] = name
+        for n in agent_sessions(name):
+            want[n] = name
     out = []
     seen = set()
     for row in sessions if isinstance(sessions, list) else []:
@@ -2134,12 +2351,12 @@ def node_tmux_sessions():
             row = {"name": name, "node_name": real, "node": nname, "node_id": nid,
                    "attached": bool(s.get("attached")), "cwd": s.get("cwd", ""),
                    "created": int(s.get("created") or 0)}
-            if tmux_base(real).startswith("claude-"):
+            agent, stem = agents.of_session(tmux_base(real))
+            if agent:
                 state, task = session_state(who, real, s.get("title", ""))
                 # What it was last asked over the title, which Claude names
                 # from the first turn and keeps (B59).
-                task = projsessions.latest_task(who, tmux_base(real)[len("claude-"):],
-                                                row["created"]) or task
+                task = projsessions.latest_task(who, stem, row["created"], agent.id) or task
                 row["claude"] = {"state": state, "task": task}
             rows.append(row)
     return rows
@@ -2192,9 +2409,11 @@ def project_busy(name, verb):
     operator's behalf is a bigger decision than the one being asked for.
     Here rather than in projects.py because these are the two that see
     outside the filesystem: tmux, and the daemon."""
-    live = {s["name"] for s in tmux_sessions()}
+    # ...here and on every node, where sessions run now (B242): the lock
+    # reads both the same way.
+    live = {s["name"] for s in tmux_sessions()} | {s["name"] for s in node_tmux_sessions()}
     held = sorted(s for s in live
-                  if tmux_base(s) == claude_session(name)
+                  if tmux_base(s) in agent_sessions(name)
                   or tmux_base(s).startswith(tmux_name(f"shell-{name}") + "-"))
     if held:
         return ("close its terminals first: " + ", ".join(held[:3])
@@ -2246,13 +2465,21 @@ def node_heart(n):
     if n.get("live"):
         for r in rep.get("sessions") or []:
             name = str((r or {}).get("name") or "")
-            if tmux_base(name).startswith("claude-") \
-                    and claude_state(str((r or {}).get("title") or ""))[0] == "working":
+            ag, _stem = agents.of_session(tmux_base(name))
+            if not ag:
+                continue
+            # Claude's by its pane title; another agent's by what its hooks
+            # said (R95 step 7): every agent's working session counts.
+            if ag.id == "claude":
+                busy = claude_state(str((r or {}).get("title") or ""))[0] == "working"
+            else:
+                busy = (AGENT_STATE.get((tmux_owner(name), tmux_base(name))) or {}).get("state") == "working"
+            if busy:
                 heart.add(name)
     return heart, float((rep.get("sample") or {}).get("at") or 0)
 
 
-def turn_scope(project, uid):
+def turn_scope(project, uid, agent="claude"):
     """(node id, key, limit, heart, at) for a turn of `uid`'s session on
     `project` (turns.py), or None when there is no node to count on: the
     project runs on no agent node, so nothing here is the machine a session
@@ -2265,7 +2492,7 @@ def turn_scope(project, uid):
     if not n or n["kind"] != "agent":
         return None
     heart, at = node_heart(n)
-    return nid, f"{uid}~{claude_session(project)}", nodes.turn_limit(nid), heart, at
+    return nid, f"{uid}~{agents.session_name(agent, project)}", nodes.turn_limit(nid), heart, at
 
 
 def node_turns(n):
@@ -2309,6 +2536,26 @@ def last_claude(project_dir, uid=""):
     if newest is None:
         return None
     return {"id": newest.stem, "when": int(newest.stat().st_mtime)}
+
+
+def last_agents(project_dir, uid=""):
+    """{agent id: {id, when}}: the newest conversation of each coding agent
+    beside Claude on this project, the account's own, from the <agent>/
+    folder its Stop hook copies a session's log into (transcripts.py)."""
+    if not uid:
+        return {}
+    out = {}
+    for d in transcripts.dirs(uid, Path(str(project_dir)).name):
+        for a in transcripts.OTHER_AGENTS:
+            try:
+                files = [f for f in (d / a).glob("*.jsonl") if f.is_file()]
+            except OSError:
+                continue
+            for f in files:
+                when = int(f.stat().st_mtime)
+                if when > (out.get(a) or {}).get("when", 0):
+                    out[a] = {"id": f.stem, "when": when}
+    return out
 
 
 MODEL_FAMILY = re.compile(r'"model"\s*:\s*"claude-(opus|sonnet|haiku|fable)')
@@ -2964,6 +3211,15 @@ def claude_auth(home=""):
                       for nid, v in claudegrant.nodes_of(home).items()}}
 
 
+def agent_auth(home=""):
+    """{agent id: {"nodes": {node id: {email, plan}}}} for every coding agent
+    with a sign-in of its own but Claude's (R95 step 3): what each node
+    reported this account is signed in to it as, from the same record."""
+    return {a.id: {"nodes": {nid: {"email": v["email"], "plan": v["plan"]}
+                             for nid, v in claudegrant.nodes_of(home, a.id).items()}}
+            for a in agents.TABLE if a.id != "claude" and a.login_job}
+
+
 # ---- toolchains ------------------------------------------------------------
 # All of it (the catalog, the probes, the sizes, the versions and the worker
 # that installs) lives in toolchains.py, which is handed the two helpers it
@@ -3139,16 +3395,7 @@ WORKTREES = Path(os.environ.get("BB_WORKTREES") or str(WORKSPACE / ".worktrees")
 artifacts.configure(workspace=WORKSPACE, worktrees=WORKTREES, state=STATE, write_json=write_json)
 import signing                                                   # noqa: E402
 
-
-def _keytool():
-    """The store's keytool, which checks a keystore before it is kept
-    (signing.inspect), or None while no jdk is installed."""
-    root = toolchains.sdk_root_path()
-    p = os.path.join(root, "jdk", "bin", "keytool") if root else ""
-    return p if p and os.access(p, os.X_OK) else None
-
-
-signing.configure(state=STATE, project_name=PROJECT_NAME, keytool=_keytool)
+signing.configure(state=STATE, project_name=PROJECT_NAME)
 # Keys kept open before the install had a signing secret, sealed now that it
 # has one (R111 step 2); a key that cannot be opened is left as it is and
 # said on its project's Signing view.
@@ -3157,23 +3404,6 @@ try:
         print(f"dashboard: sealed {_sealed} signing key(s) under the install's signing secret", flush=True)
 except OSError as e:
     print(f"dashboard: signing keys left as they were, not sealed: {e}", flush=True)
-
-
-def _apksigner():
-    """The store's newest apksigner and the java it runs on, for a proof of
-    rotation (signing.rotate), or (None, {})."""
-    root = toolchains.sdk_root_path()
-    if not root:
-        return None, {}
-    tools = sorted(glob.glob(os.path.join(root, "android", "build-tools", "*", "apksigner")),
-                   key=lambda p: [int(x) if x.isdigit() else 0 for x in re.split(r"[.-]", os.path.basename(os.path.dirname(p)))])
-    jdk = os.path.join(root, "jdk")
-    if not tools or not os.access(os.path.join(jdk, "bin", "java"), os.X_OK):
-        return None, {}
-    return tools[-1], {"JAVA_HOME": jdk, "PATH": os.path.join(jdk, "bin") + os.pathsep + os.environ.get("PATH", "")}
-
-
-signing.apksigner_path = _apksigner
 import membership                                                # noqa: E402
 import roles                                                     # noqa: E402
 import registry                                                  # noqa: E402
@@ -3405,6 +3635,7 @@ import storage                                                   # noqa: E402
 import db                                                        # noqa: E402
 import nodes                                                     # noqa: E402
 import claudecode                                                # noqa: E402
+import agentcode                                                 # noqa: E402
 import projsessions                                              # noqa: E402
 import turns                                                     # noqa: E402
 
@@ -3486,12 +3717,15 @@ if not NODES_OK:
     jobs.configure(nodes_module=nodes)
     toolchains.nodes = nodes
     toolchains.claudecode = claudecode
+    toolchains.agentcode = agentcode
     emulator.nodes = nodes
     phone.nodes = nodes            # every adb command is a job on a node
     # A compose action the AGENT ran still has records to write here; this is
     # where the module that queued it finishes it (roadmap #18).
     nodes.on_done("compose", devactions.compose_done)
     nodes.on_done(claudecode.JOB, claudecode.update_done)
+    for _a in agentcode.tracked():
+        nodes.on_done(_a.update_job, agentcode.update_done)
 # What Allow on a rebuild request actually starts (the Docker row's `ask`).
 # Outside the block above: the ask has nothing to do with the node registry,
 # and a controller without one still has projects whose containers run.
@@ -3549,6 +3783,11 @@ prefs.configure_dialog(WORKSPACE=WORKSPACE, pin_instances=devapp.pin_to_current_
 # ---- the Profile tab -------------------------------------------------------------
 # An account's own settings, read and saved: profiletab.py.
 import profiletab                                                # noqa: E402
+# Two-factor sign-in (R127): the authenticator, passkeys and recovery codes.
+import mfa                                                       # noqa: E402
+
+mfa.configure(STATE=STATE, seal=signing.seal, unseal=signing.unseal,
+              sealing=lambda: signing.MASTER is not None)
 
 # An account's conversations with Claude as a download: transcripts.py.
 import transcripts                                               # noqa: E402
@@ -3560,6 +3799,7 @@ transcripts.configure(workspace=WORKSPACE,
 profiletab.configure(users=users,
                      claude_email=lambda uid: ", ".join(sorted(
                          {v["email"] for v in claudegrant.nodes_of(home_for(uid)).values()}, key=str.lower)),
+                     agent_emails=lambda uid: claudegrant.emails_of(home_for(uid)),
                      plugins_of=plugins.of,
                      node_names=lambda: {n["id"]: n["name"]
                                          for n in ([] if NODES_OK else nodes.node_list())},
@@ -3677,6 +3917,12 @@ signing.node_of = lambda name: prefs.get(name)["node"]
 signing.node_refuses = lambda nid: nodes.agent_stale(nodes.node(nid)) if nid and not NODES_OK else ""
 signing.job_add = nodes.job_add
 signing.file_path = workspace.file_path
+# What needs a jdk or build-tools is a sign-key job on that node too, waited
+# for (signing._on_node): the controller runs no keytool or apksigner.
+signing.node_get = nodes.node
+signing.job_get = nodes.job
+signing.job_cancel = nodes.job_cancel
+signing.node_tools = toolchains.node_has
 phone.signer = signing.start
 
 
@@ -3738,16 +3984,29 @@ def _keymaker(action, project, args, by=""):
 
 
 phone.keymaker = _keymaker
+
+
+def _release_signer(project):
+    """A release's APKs looked for and signed again now (R134 step 5): a
+    session's auto dial, and Allow on its ask."""
+    started = releasesign.check_soon(project, force=True)
+    return {"ok": True, "started": started,
+            "said": "looking for unsigned release APKs to sign" if started else "a look is already going"}, 200
+
+
+phone.release_signer = _release_signer
 artifacts.sign_routes = signing.routes_held
 import version                                                   # noqa: E402
 import vmtemplate                                                # noqa: E402
 vmtemplate.unvetted_ok = forges.unvetted_ok          # the same switch (R54, step 6)
+nodes.unvetted_ok = forges.unvetted_ok               # ...and accounts as their own users (R125)
 # The Nodes tab's verbs are nodes.verb's, and these are what they compose
 # with (a runner's forge and token, a daemon probe, Claude Code's update).
 nodes.configure_verbs(vmtemplate=vmtemplate, forges=forges, devapp=devapp,
                       runner_store=runners, workspace=workspace,
                       project_prefs=prefs.get, may_push=projects.may_push,
-                      no_node_advice=no_node_advice, turns_of=node_turns)
+                      no_node_advice=no_node_advice, turns_of=node_turns,
+                      working_on=lambda nid: node_turns(nodes.node(nid) or {"id": nid})["working"])
 
 version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                   roadmap_mod=roadmap, bugs_mod=bugs, changelog_mod=changelog,
@@ -3758,8 +4017,8 @@ changelog.component_dir = version._sub
 import forgerelease                                              # noqa: E402
 import featuresoff                                               # noqa: E402
 forgerelease.configure(state=STATE, workspace=WORKSPACE, write_json_fn=write_json)
-# A release's APK, built unsigned in CI and signed here with the project's
-# sideload key (R106): a release made from the panel is looked for at once.
+# A release's APK, built unsigned in CI and signed on the project's node with
+# its sideload key (R106): a release made from the panel is looked for at once.
 import releasesign                                               # noqa: E402
 releasesign.configure(state=STATE, workspace=WORKSPACE, write_json_fn=write_json,
                       projects=lambda: sorted(d.name for d in WORKSPACE.iterdir()
@@ -3787,6 +4046,8 @@ version.configure_verbs(PANEL=version_payload, GIT_ENV=users.git_env, CREDS_ENV=
 if not NODES_OK:
     claudecode.configure(nodes_module=nodes, node_sessions=node_tmux_sessions,
                          tmux_base=tmux_base, audit=nodes.audit)
+    agentcode.configure(nodes_module=nodes, node_sessions=node_tmux_sessions,
+                        tmux_base=tmux_base, audit=nodes.audit, claude=claudecode)
 
 # Every account's sessions on a project, for its settings dialog, and an
 # administrator ending one (projsessions.py): the rows the Sessions card is
@@ -3817,7 +4078,6 @@ devapp.reaches_of = prefs.reaches_on
 projects.lock = _state_lock
 projects.take_on = users.take_on
 projects.set_prefs = lambda name, **kw: prefs.set_prefs(name, workspace=WORKSPACE, **kw)
-projects.live_sessions = tmux_sessions
 projects.brief_writer = brief.write
 # A create that never took, and a project deleted for good, leave no owner,
 # owner role or account entry behind (B93, B95); the first its settings too.
@@ -3870,7 +4130,8 @@ import hooks                                                     # noqa: E402
 
 hooks.configure(users=users, rules=rules, preamble=preamble, overlap=overlap, chat=chat, roadmap=roadmap, pending=pending,
                 turns=turns, nodes=nodes, seen_note=session_seen_note, turn_scope=turn_scope,
-                asking_set=asking_set, asking_clear=asking_clear, asked=projsessions.asked)
+                asking_set=asking_set, asking_clear=asking_clear, asked=projsessions.asked,
+                agent_state=agent_state_set)
 
 
 # Written by entrypoint.sh once every startup hook has finished. Named here as
@@ -4064,6 +4325,7 @@ ftp.configure(state=STATE, workspace=WORKSPACE, write_json=write_json, users=use
               project_node=lambda p: prefs.get(p)["node"] or "",
               ask_hello=lambda nid: None if NODES_OK else nodes.ask_hello(nid),
               node_info=lambda nid: None if NODES_OK else _ftp_node(nid))
+ftp.locked_out = projects.locked_out       # a lock makes the files read-only through every door (B263)
 nodes.ftp_for = ftp.for_node
 # The node's nginx container, for its log stream (R182): named only where the nginx tab put one.
 nodes.nginx_for = lambda nid: nginxproxy.container_name(nid) if nginxproxy.deployed(devapp, nid) else ""
@@ -4120,8 +4382,10 @@ diag.configure(image_stamp=image_stamp, uptime=uptime, doctor_payload=doctor.pay
 # that person (ftp.access_for).
 import devices                                                   # noqa: E402
 devices.configure(users=users.load, access=lambda acct, p: ftp.access_for(acct, p, "editor"),
-                  projects=lambda acct: project_names(acct))
-profiletab.configure(devices=devices)
+                  projects=lambda acct: project_names(acct),
+                  flags=lambda acct, p: projects.app_flags(p, users.uid_of(acct)))
+profiletab.configure(devices=devices, mfa=mfa, audit=db.audit,
+                     two_factor_required=lambda u: roles.two_factor_required(u))
 
 # The apps a person installs, fetched from this controller's release and
 # served from /apps (R272 step 3); which of them are offered is the
@@ -4133,7 +4397,7 @@ apps.unvetted_ok = channel.unvetted_ok      # the Windows companion and the VS C
 devices.configure_apps(apps)
 
 # A person's PC lent to a project (R270 step 6): the companion lends a
-# table of verbs, a session asks with bb pc under Claude may: Use a lent PC.
+# table of verbs, a session asks with bb pc under Agents may: Use a lent PC.
 import pcwork                                                    # noqa: E402
 pcwork.configure(workspace=WORKSPACE, mode_fn=lambda p: (prefs.get(p) or {}).get("pc") or "deny",
                  notify_fn=lambda uid, text, level: notices.act(uid, {"action": "add", "text": text,
@@ -4245,6 +4509,9 @@ def revisions(who=None, projects=None):
         "nginx": nginxproxy.rev(),
         # The VMs page (R91): a record written, or a node's census of them.
         "vms": vms.rev(),
+        # A release's APK being looked for and signed (R106): the Signing
+        # view follows a look to its end, and the bell's row goes with it.
+        "releasesign": releasesign.rev(),
         "jobs": 0 if NODES_OK else nodes.jobs_rev(),
         # Who has a session where, and whether it is working: the project
         # rows fetch /api/live when this moves.
@@ -4398,6 +4665,10 @@ def _snapshot(who):
         # another window), computed here on every poll so an alert clears
         # the moment it stops being true; nothing is stored to dismiss.
         "attention": attention,
+        # ...and this account's own standing notice to add a second factor
+        # (R127), kept out of `attention`, whose rows are the nodes' and
+        # carry what the companion app reads off them.
+        "two_factor_due": _timed("status:two_factor", lambda: _two_factor_due(who)),
         # How many of them this account has put away, for the drawer's
         # "show them again".
         "bell_hidden": bell_hidden,
@@ -4445,6 +4716,8 @@ def _snapshot(who):
         # Which nodes report this account signed in to Claude, and the
         # sign-in of theirs that is running, if one is.
         "claude_auth": _timed("status:claude_auth", lambda: claude_auth(home_for(users.uid_of(who)))),
+        # ...and the other coding agents' the same way (R95 step 3).
+        "agent_auth": _timed("status:agent_auth", lambda: agent_auth(home_for(users.uid_of(who)))),
         "signin": login,
         # A clone or a first push runs in the background now, so the card can
         # say what it is doing without the dialog being open.
@@ -4602,6 +4875,7 @@ GET_ROUTES = (
     ("prefix", "/api/phone/wait", "_get_phone_wait"),
     ("prefix", "/api/phone", "_get_phone"),
     ("prefix", "/api/toolchains", "_get_toolchains"),
+    ("prefix", "/api/agents", "_get_agents"),
     ("prefix", "/api/emulator", "_get_emulator"),
     ("prefix", "/api/roles", "_get_roles"),
     ("prefix", "/api/users", "_get_users"),
@@ -4650,6 +4924,7 @@ POST_ROUTES = (
     ("exact", "/api/v1/hook", "_hook"),
     ("exact", "/api/v1/tty-grant", "_tty_grant"),
     ("prefix", "/api/lock", "_lock"),
+    ("prefix", "/api/archive", "_archive"),
     # NOT /api/pin, which is the command pin and has been since long before
     # this: startswith() means a route added above it silently takes every
     # path it prefixes, and both handlers were called _pin, so the later
@@ -4693,6 +4968,7 @@ POST_ROUTES = (
     ("prefix", "/api/roles", "_roles"),
     ("prefix", "/api/users", "_users"),
     ("prefix", "/api/toolchains", "_toolchains"),
+    ("exact", "/api/agents", "_agents"),
     ("exact", "/api/toolpacks", "_toolpacks"),
     ("prefix", "/api/emulator", "_emulator"),
     ("prefix", "/api/logs", "_logs"),
@@ -4768,6 +5044,7 @@ class Handler(BaseHTTPRequestHandler):
         Basic and the cookie both land here. Basic is what `bb` and the test
         suite send; the cookie is what a browser gets from the login page.
         """
+        self._basic_2fa = False
         hdr = self.headers.get("Authorization", "")
         if hdr.startswith("Bearer "):
             # A session's scoped token: one project, user rights, an expiry.
@@ -4793,7 +5070,13 @@ class Handler(BaseHTTPRequestHandler):
                 return None
             # The whole "user:password" is checked at once, so a correct name
             # with a wrong password is indistinguishable from both being wrong.
-            return users.authenticate_pair(given)
+            u = users.authenticate_pair(given)
+            # A password alone does not open an account with a second factor
+            # (R127): bb from a dashboard terminal carries its token instead.
+            if u and mfa.enabled(u.get("uid", "")):
+                self._basic_2fa = True
+                return None
+            return u
         for part in self.headers.get("Cookie", "").split(";"):
             k, _, v = part.strip().partition("=")
             if k == "bb_session":
@@ -4825,6 +5108,10 @@ class Handler(BaseHTTPRequestHandler):
         questions, so every write that names a project asks this too.
         """
         why = users.may(self._who(), "write", name)
+        # ...and a project its owner has locked is nobody else's to change
+        # (R119), whoever they are.
+        if not why and (bad := projects.locked_out(name, users.uid_of(self._who()))):
+            why = bad["error"]
         if not why:
             return False
         self._json({"error": why}, 403)
@@ -4887,6 +5174,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": MAINTENANCE_SAID, "maintenance": True}, 503)
             return self._login_page(MAINTENANCE_SAID, nxt=self.path)
         if api:
+            if getattr(self, "_basic_2fa", False):
+                self._basic_2fa = False
+                return self._json({"error": "this account has two-factor sign-in, so its password alone opens "
+                                            "nothing: use bb from a dashboard terminal, which carries its own token"}, 401)
             return self._json({"error": "not signed in"}, 401)
         nxt = urllib.parse.quote(self.path, safe="/?=&")
         self.send_response(302)
@@ -4989,17 +5280,186 @@ class Handler(BaseHTTPRequestHandler):
         if kept_out(u):
             return self._login_page(MAINTENANCE_SAID, name=form.get("username", [""])[0][:200],
                                     nxt=form.get("next", ["/"])[0][:2000])
-        users.touch(u["name"])
         nxt = form.get("next", ["/"])[0]
         if not nxt.startswith("/") or nxt.startswith("//"):
             nxt = "/"
+        # A second factor where the account has one (R127), unless this
+        # browser was remembered for it; the password alone opens nothing.
+        if mfa.enabled(u["uid"]) and not self._trusted_browser(u):
+            return self._mfa_page(u, nxt)
+        self._signed_in(u, nxt)
+
+    def _cookie(self, name):
+        for part in self.headers.get("Cookie", "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == name:
+                return v.strip()
+        return ""
+
+    def _trusted_browser(self, u):
+        """Whether this browser was remembered for this account's second
+        factor (R127): its cookie verifies and its id is still on the list."""
+        who, tid = purpose_user(self._cookie("bb_trust"), "trust")
+        return bool(who and who["name"] == u["name"] and tid and mfa.trusted(u["uid"], tid))
+
+    def _signed_in(self, u, nxt, remember=False, json_answer=False):
+        """The session cookie, and with `remember` the browser's own for its
+        second factor; then on to `nxt`, or a JSON answer for the passkey's
+        fetch."""
+        users.touch(u["name"])
+        cookies = [f"bb_session={make_token(u)}; Path=/; Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax",
+                   "bb_mfa=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"]
+        if remember:
+            ua = re.sub(r"[^\w ./();,:-]", "", self.headers.get("User-Agent", ""))[:80]
+            tid, _ = mfa.trust_add(u["uid"], ua or "a browser")
+            cookies.append(f"bb_trust={purpose_token(u, 'trust', mfa.TRUST_DAYS * 86400, tid)}; Path=/; "
+                           f"Max-Age={mfa.TRUST_DAYS * 86400}; HttpOnly; SameSite=Lax")
+        body = json.dumps({"ok": True, "next": nxt}).encode() if json_answer else b""
+        self.send_response(200 if json_answer else 303)
+        if not json_answer:
+            self.send_header("Location", nxt)
+        for c in cookies:
+            self.send_header("Set-Cookie", c)
+        if json_answer:
+            self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if body:
+            self.wfile.write(body)
+
+    def _mfa_page(self, u, nxt, error="", status=200):
+        """The second step of signing in (R127), with the cookie that says
+        whose it is for ten minutes."""
+        body = (LOGIN_HTML
+                .replace("<!--TITLE-->", "sign in")
+                .replace("<!--SAID-->", "Your second factor")
+                .replace("<!--ACTION-->", "/login/2fa")
+                .replace("<!--FIELDS-->", MFA_FIELDS)
+                .replace("<!--ERR-->", f'<p class="err">{html_escape(error)}</p>' if error else "")
+                .replace("<!--NAME-->", html_escape(u["name"], quote=True))
+                .replace("<!--NEXT-->", html_escape(nxt or "/", quote=True))
+                .replace("<!--PASSKEYS-->", "1" if mfa.passkey_ids(u["uid"]) else "")
+                .replace("<!--BANNER-->", featuresoff.banner_html())).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Set-Cookie", f"bb_mfa={purpose_token(u, 'mfa', 600)}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _two_factor_gate(self, path):
+        """True, with the answer written, when a role of this account
+        requires a second factor it has not set up (R127): it reaches the
+        setup page, its Profile's read and actions, and nothing else."""
+        who = self._who() or {}
+        uid = users.uid_of(who)
+        if who.get("session") or not uid or mfa.enabled(uid):
+            return False
+        if not roles.two_factor_required(users.get(who["name"]) or {}):
+            return False
+        if path in ("/login/setup", "/api/profile", "/api/meta", "/logout", "/favicon.ico", "/favicon.svg"):
+            return False
+        if path.startswith("/api/"):
+            self._json({"error": "a role of yours requires two-factor sign-in: set it up first",
+                        "two_factor_setup": True}, 403)
+            return True
         self.send_response(303)
-        self.send_header("Location", nxt)
-        self.send_header("Set-Cookie",
-                         f"bb_session={make_token(u)}; Path=/; "
-                         f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax")
+        self.send_header("Location", "/login/setup")
         self.send_header("Content-Length", "0")
         self.end_headers()
+        return True
+
+    def _setup_2fa_page(self):
+        """GET /login/setup: an account whose role requires a second factor
+        sets one up here before anything else (R127). The page's script
+        speaks to /api/profile's two-factor actions, as Profile does."""
+        who = self._who() or {}
+        body = (LOGIN_HTML
+                .replace("<!--TITLE-->", "two-factor sign-in")
+                .replace("<!--SAID-->", "Set up two-factor sign-in")
+                .replace("<!--ACTION-->", "/login/setup")
+                .replace("<!--FIELDS-->", SETUP_2FA_FIELDS)
+                .replace("<!--ERR-->", "")
+                .replace("<!--NAME-->", html_escape(who.get("name", ""), quote=True))
+                .replace("<!--NEXT-->", "/")
+                .replace("<!--BANNER-->", featuresoff.banner_html())).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _mfa_keys(self, u):
+        """What wrong codes are counted against: the account and the address."""
+        return (f"acct:{u['uid']}", f"addr:{self.client_address[0]}")
+
+    def _mfa_post(self):
+        """POST /login/2fa: a code or a recovery code for the account the
+        bb_mfa cookie names (R127)."""
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+            if not 0 <= n <= MAX_BODY:
+                return self._json({"error": "body too large"}, 413)
+            form = urllib.parse.parse_qs(self.rfile.read(n).decode("utf-8", "replace"))
+        except (ValueError, TypeError):
+            return self._json({"error": "bad request"}, 400)
+        u, _ = purpose_user(self._cookie("bb_mfa"), "mfa")
+        nxt = form.get("next", ["/"])[0]
+        if not nxt.startswith("/") or nxt.startswith("//"):
+            nxt = "/"
+        if not u:
+            return self._login_page("That sign-in ran out: sign in again.", nxt=nxt)
+        if (left := mfa.held(*self._mfa_keys(u))):
+            return self._mfa_page(u, nxt, f"Too many wrong codes: try again in {max(1, left // 60)} minutes.", 429)
+        code = form.get("code", [""])[0].strip()
+        how = ("authenticator" if code and mfa.totp_check(u["uid"], code)
+               else "recovery code" if code and mfa.recovery_use(u["uid"], code) else "")
+        if not how:
+            wait = mfa.missed(*self._mfa_keys(u))
+            db.audit(f"user:{u['name']}", "2fa-wrong", u["name"], {"addr": self.client_address[0]})
+            time.sleep(0.5 + wait)
+            return self._mfa_page(u, nxt, "That code is not right: the one your app shows now, or an unused recovery code.")
+        mfa.cleared(f"acct:{u['uid']}")
+        db.audit(f"user:{u['name']}", "2fa-signin", u["name"], {"how": how})
+        self._signed_in(u, nxt, remember=form.get("remember", [""])[0] == "1")
+
+    def _mfa_passkey(self):
+        """POST /login/passkey: the passkey's challenge, then its answer, for
+        the account the bb_mfa cookie names (R127)."""
+        req = self._read_json()
+        if req is None:
+            return None
+        u, _ = purpose_user(self._cookie("bb_mfa"), "mfa")
+        if not u:
+            return self._json({"error": "that sign-in ran out: sign in again"}, 401)
+        if (left := mfa.held(*self._mfa_keys(u))):
+            return self._json({"error": f"too many wrong tries: try again in {max(1, left // 60)} minutes"}, 429)
+        if req.get("action") == "challenge":
+            return self._json({"challenge": mfa.challenge(u["uid"], "get"), "ids": mfa.passkey_ids(u["uid"])})
+        nxt = str(req.get("next") or "/")
+        if not nxt.startswith("/") or nxt.startswith("//"):
+            nxt = "/"
+        if not mfa.passkey_check(u["uid"], self._origin(), str(req.get("id") or ""), req.get("client"),
+                                 req.get("auth"), req.get("sig")):
+            mfa.missed(*self._mfa_keys(u))
+            db.audit(f"user:{u['name']}", "2fa-wrong", u["name"], {"addr": self.client_address[0], "how": "passkey"})
+            return self._json({"error": "that passkey did not prove this account"}, 403)
+        mfa.cleared(f"acct:{u['uid']}")
+        db.audit(f"user:{u['name']}", "2fa-signin", u["name"], {"how": "passkey"})
+        self._signed_in(u, nxt, remember=req.get("remember") is True, json_answer=True)
+
+    def _origin(self):
+        """The page's origin as its browser said it, for a passkey: Origin
+        when it names this Host, else the Host the request came to."""
+        host = self.headers.get("Host", "")
+        o = self.headers.get("Origin", "")
+        if o and urllib.parse.urlsplit(o).netloc == host:
+            return o
+        proto = self.headers.get("X-Forwarded-Proto", "") or (
+            "https" if type(self.connection).__name__ == "SSLSocket" else "http")
+        return f"{proto}://{host}"
 
     def _logout(self):
         self.send_response(302)
@@ -5125,8 +5585,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._ctr_refused(arg, me)
         if arg.startswith("vm:"):
             return self._vm_con_refused(arg, me)
-        if arg.startswith("claude:"):
-            project = arg[len("claude:"):].split(":")[0]
+        if agents.of_arg(arg)[0]:
+            project = agents.project_of_arg(arg)
+            # An agent the project's settings switched off starts nothing
+            # there (R95), whoever asks.
+            ag = agents.of_arg(arg)[0]
+            if ag.id in ((prefs.get(project) or {}).get("agents_off") or []):
+                return f"{project}'s settings do not allow {ag.name} sessions: its Agents may section says which agents may run"
             # Terminal Read is the shielded Claude console; without it there
             # is no terminal on the project at all (R152 (e)).
             return users.may(me, "claude", project) or self._area_read_why("terminal", project, me)
@@ -5158,7 +5623,7 @@ class Handler(BaseHTTPRequestHandler):
         a ctr: argument names, and "" when it may (R218 step 4, the operator,
         14 Oct): a person with a shell who may run that container, which is
         its project's account or an administrator, as for Start and Stop on
-        the Containers page; an administrator alone when the project's Claude may:
+        the Containers page; an administrator alone when the project's Agents may:
         Run its container is Deny; and the container one of the instance's
         running ones, asked of its daemon now, never taken from the URL."""
         m = _ARG_CTR.match(arg)
@@ -5179,7 +5644,7 @@ class Handler(BaseHTTPRequestHandler):
             if why:
                 return why
             if (prefs.get(owner) or {}).get("devbuild") == "deny":
-                return (f"{owner}'s Claude may: Run its container is Deny, so a shell in its containers "
+                return (f"{owner}'s Agents may: Run its container is Deny, so a shell in its containers "
                         "is an administrator's")
         t = ctr_target(name, inst)
         if t["where"] == "refused":
@@ -5217,16 +5682,17 @@ class Handler(BaseHTTPRequestHandler):
         # claude:<project>[:r:<id>] and sh:<n>:<project> put it in different
         # places, so the shape decides rather than a fixed index.
         bits = arg.split(":")
-        want = (bits[1] if arg.startswith("claude:") and len(bits) > 1
+        is_agent = agents.of_arg(arg)[0] is not None
+        want = (bits[1] if is_agent and len(bits) > 1
                 else bits[2] if arg.startswith("sh:") and len(bits) > 2 else "")
-        if uid and (arg == "shell" or arg.startswith("sh:") or arg.startswith("claude:")) \
+        if uid and (arg == "shell" or arg.startswith("sh:") or is_agent) \
                 and not users.git_ready(me, want):
             return (f"{me['name']} has no name and email for commits yet: set them on your "
                     "Profile (the gear in the header), or for one project in its settings "
                     "dialog, and open this again")
-        if not arg.startswith("claude:"):
+        if not is_agent:
             return ""
-        project = arg[len("claude:"):].split(":")[0]
+        project = agents.project_of_arg(arg)
         # A project whose map is still building (mapping.py): its first
         # session waits the few seconds, so its first question about the
         # tree is answered from an index rather than by building one. The
@@ -5238,9 +5704,11 @@ class Handler(BaseHTTPRequestHandler):
         t = session_target(project, claude=True, node=_arg_node(arg), uid=uid)
         if t["where"] != "node":
             return ""
-        # Claude Code on that node first (claudecode.py): an update running
-        # there holds the start, and with Keep Claude Code current on, a
-        # node behind is updated now and this start waits for it.
+        # The agent on that node first (claudecode.py, agentcode.py): an
+        # update running there holds the start.
+        ag = agents.of_arg(arg)[0]
+        if ag and ag.id != "claude":
+            return agentcode.start_hold(project, t["id"], ag.id) or ""
         return claudecode.start_hold(project, t["id"]) or ""
 
     def _term_notice(self, sentence, code):
@@ -5435,7 +5903,7 @@ class Handler(BaseHTTPRequestHandler):
         vmm = _ARG_VM.match(arg0)
         target = ctr_target(ctr.group(1), ctr.group(2)) if ctr else vm_target(*vmm.groups()) if vmm else \
             session_target(_arg_project(arg0),
-                           claude=arg0.startswith("claude:"),
+                           claude=agents.of_arg(arg0)[0] is not None,
                            node=_arg_node(arg0),
                            uid=users.uid_of(self._who() or {}) or "")
         if target["where"] == "refused":
@@ -5744,6 +6212,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._login_page(setup=True)
         if path == "/login":
             return self._login_page()
+        if path == "/login/setup" and self._authed():
+            return self._setup_2fa_page()
         if path == "/logout":
             return self._logout()
         if path.startswith("/api/v1/agent/"):
@@ -5759,6 +6229,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(body, code)
         if not self._authed():
             return self._deny()
+        if self._two_factor_gate(path):
+            return None
         if path == "/metrics":
             if NODES_OK:
                 return self._json({"error": NODES_OK}, 503)
@@ -5896,7 +6368,10 @@ class Handler(BaseHTTPRequestHandler):
         name = q.get("project", [""])[0]
         if self._not_project(name):
             return
-        return self._json(version_payload(name))
+        # What would keep a release's APK from being signed (R134 step 4),
+        # said by Release's confirm before the tag is made.
+        rs = releasesign.readiness(name)
+        return self._json(version_payload(name) | {"release_sign": rs["why"] if rs["wanted"] else ""})
 
     def _get_artifacts(self):
         """GET /api/artifacts: artifacts.tab_view, for a project this account
@@ -5936,7 +6411,7 @@ class Handler(BaseHTTPRequestHandler):
     def _pc(self, req):
         """POST /api/pc: a session's word with a PC lent to its project
         (pcwork.py, bb pc): lent (which PCs lend which verbs), run (ask
-        one, under the project's Claude may: Use a lent PC) and result (an
+        one, under the project's Agents may: Use a lent PC) and result (an
         ask's answer, held a while). A session's alone: its project is the
         one its token was minted for."""
         me = self._who() or {}
@@ -5973,9 +6448,17 @@ class Handler(BaseHTTPRequestHandler):
         held = next((a["files"][0] for a in apps.view()["apps"] if a["name"] == "android" and a["files"]), None)
         apk = {"apk": held["file"], "apk_sha256": held["sha256"], "apk_url": held["url"]} if held else \
             {"apk": app_apk(), "apk_sha256": app_apk_sha(), "apk_url": ""}
+        # ...and, for a session that names its node, the agent there and when
+        # it was built (R131): what bb status says beside the controller's.
+        agent = {}
+        nid = urllib.parse.parse_qs(self.path.partition("?")[2]).get("node", [""])[0]
+        if nid and (self._who() or {}).get("session") and not NODES_OK:
+            ag = (nodes.node(nid) or {}).get("agent") or {}
+            agent = {"version": str(ag.get("version") or ""), "built": str(ag.get("built") or "")}
         return self._json({"api": APP_API, "version": image_stamp().get("version") or "",
                            "image": image_stamp().get("rev") or "",
-                           "built": image_stamp().get("built") or "", **apk})
+                           "built": image_stamp().get("built") or "", **apk,
+                           **({"agent": agent} if agent else {})})
 
     def _get_welcome(self):
         """GET /api/welcome: BuilderBot's own changelog for the welcome panel
@@ -6078,6 +6561,33 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(d)
         return self._json(toolchains.payload())
 
+    def _get_agents(self):
+        """GET /api/agents?node=ID: the coding agents on one node (R95, the
+        Agents page): each agent's row, the version against the latest and
+        any job of its own, and the asking account's own plugins and MCP
+        servers there. Answered for the nodes this account may look at."""
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        nid, why = self._node_asked(q.get("node", [""])[0])
+        if why or not nid or nid == "local":
+            return self._json({"error": why or "which node?", "rows": []})
+        n = nodes.node(nid) if not NODES_OK else None
+        if not n:
+            return self._json({"error": "no such node", "rows": []}, 404)
+        out = {"node": nid, "name": n.get("name") or nid, "live": bool(n.get("live")), "rows": agentcode.rows(n)}
+        me = self._who() or {}
+        if users.uid_of(me) and not me.get("session"):
+            mine = next((x for x in plugins.of(users.uid_of(me)) if x["node"] == nid), {})
+            out["yours"] = {"plugins": mine.get("plugins") or [], "mcp": mine.get("mcp") or {}}
+        return self._json(out)
+
+    def _agents(self, req):
+        """POST /api/agents: install (or update), remove or check one coding
+        agent on one node (agentcode.verb), the one way an agent is managed
+        (R95, the operator 22 Oct): whoever may install toolchains there."""
+        if (why := users.may_node(self._who(), "toolchains-write", field(req, "node"))):
+            return self._json({"error": why}, 403)
+        return self._json(*agentcode.verb(self._principal(), req))
+
     def _get_emulator(self):
         """GET /api/emulator?node=ID: that node's system images, what could be
         added, and the image job there. The same node scope as Toolchains."""
@@ -6087,7 +6597,15 @@ class Handler(BaseHTTPRequestHandler):
         nid, why = self._node_asked(q.get("node", [""])[0])
         if why or not nid:
             return self._json({"error": why or "no node named"})
-        return self._json(emulator.payload(nid))
+        got = emulator.payload(nid)
+        # ...and each project's phones there, of the projects this account
+        # sees (R123): the Emulator page is where a phone is removed.
+        if not got.get("error"):
+            who = self._who()
+            st = ((nodes.node(nid) or {}).get("reported") or {}).get("storage") or {}
+            got["phones"] = [p for p in st.get("phones") or []
+                             if users.is_admin(who) or users.may_see(who, p.get("project") or "")]
+        return self._json(got)
 
     def _get_users(self):
         """GET /api/users."""
@@ -6362,7 +6880,7 @@ class Handler(BaseHTTPRequestHandler):
                                                  asker_name=(me.get("name") or "")))
             mode = prefs.get(sess)["makevms"]
             if mode == "deny":
-                return self._json({"error": f"{sess}'s settings say Claude may not make or change VMs "
+                return self._json({"error": f"{sess}'s settings say an agent may not make or change VMs "
                                             "(Make VMs is deny): a person changes that in the project's settings"}, 403)
             if mode == "ask":
                 r = phone.ask_vm(field(req, "why") or f"{action} {field(req, 'name')}", sess, req,
@@ -6598,7 +7116,7 @@ class Handler(BaseHTTPRequestHandler):
         """POST /api/wiki: a page saved, removed or renamed, and the wiki
         pushed to or pulled from the forge's (wiki.verb), for an account
         that works on the project. A session's writes go through the
-        project's dial, Claude may: Write the wiki."""
+        project's dial, Agents may: Write the wiki."""
         name = field(req, "project")
         if self._not_project(name) or self._readonly(name):
             return
@@ -6703,6 +7221,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._setup_post()
         if self.path.split("?")[0] == "/login":
             return self._login_post()
+        if self.path.split("?")[0] == "/login/2fa":
+            return self._mfa_post()
+        if self.path.split("?")[0] == "/login/passkey":
+            return self._mfa_passkey()
         if self.path.split("?")[0].startswith("/api/v1/agent/"):
             # Its own door, before the operator's: an agent carries a node
             # token, never the dashboard credential (docs/nodes.md §8: the
@@ -6716,6 +7238,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._device()
         if not self._authed():
             return self._deny()
+        if self._two_factor_gate(self.path.split("?")[0]):
+            return None
         # The one body that is not JSON: an archive to start a project from,
         # streamed to the spool by projects.spool_archive. Its own door
         # before the JSON read, and its own cap: MAX_BODY is sized for a
@@ -7062,8 +7586,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._result(jobs.cancel(self._principal(), field(req, "id")))
 
     def _claude_login(self, req):
-        """A node saying what this account is signed in to Claude AS there
-        (R47), or that it is not: never the login itself, which stays on the
+        """A node saying what this account is signed in to Claude, or another
+        coding agent, AS there (R47), or that it is not: never the login itself, which stays on the
         machine that made it (claudegrant.py says why).
 
         Only a session token minted FOR an account speaks here (the one the
@@ -7095,8 +7619,19 @@ class Handler(BaseHTTPRequestHandler):
         if not nid:
             return self._json({"error": "a sign-in is reported by a session on the "
                                         "node it happened on"}, 400)
+        # ...and the other coding agents' beside Claude's (R95 step 3): the
+        # same report, said from the same check, kept in their own record.
+        agent = str(req.get("agent") or "claude")
+        if agent != "claude" and not any(a.id == agent and a.login_job for a in agents.TABLE):
+            return self._json({"error": f"no coding agent called '{agent[:20]}' signs in"}, 400)
+        signed_in = bool(req.get("signed_in", True))
+        if not signed_in and claudegrant.on(home_for(uid), nid, agent):
+            # Said in the log, as the heartbeat's sign-out is (B236): which
+            # session's check took a login away is not on the page.
+            print(f"[dashboard] {nid} reports {agent} signed out for {uid}, "
+                  f"from a check in {proj or 'no project'}", flush=True)
         r = claudegrant.report(home_for(uid), nid, req.get("email") or "", req.get("plan") or "",
-                               signed_in=bool(req.get("signed_in", True)))
+                               signed_in=signed_in, agent=agent)
         return self._json(r, 400 if r.get("error") else 200)
 
     def _tty_grant(self, req):
@@ -7255,7 +7790,7 @@ class Handler(BaseHTTPRequestHandler):
             if status != 200:
                 return self._json(got, status)
             return self._send_file(got)
-        if verb in ("artifact", "sync-put", "claude-put", "devimage-put", "devdata-put"):
+        if verb in ("artifact", "sync-put", "claude-put", "devimage-put", "devdata-put", "signing-put"):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
@@ -7268,6 +7803,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(*channel.devimage_put(auth, q, self.rfile, length))
             if verb == "devdata-put":
                 return self._json(*channel.devdata_put(auth, q, self.rfile, length))
+            if verb == "signing-put":
+                return self._json(*channel.signing_put(auth, q, self.rfile, length))
             return self._json(*channel.artifact(auth, q, self.rfile, length))
         if verb in ("sync-file", "sync-tar", "claude-file", "devimage", "devdata"):
             got, status = {"sync-file": channel.sync_file, "sync-tar": channel.sync_tar,
@@ -7329,6 +7866,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "wrong username or password"}, 401)
             if kept_out(u):
                 return self._json({"error": MAINTENANCE_SAID, "maintenance": True}, 503)
+            # An app is signed in past the second factor too (R127): a code
+            # from the authenticator or a recovery code beside the password.
+            if mfa.enabled(u["uid"]):
+                keys = self._mfa_keys(u)
+                if (left := mfa.held(*keys)):
+                    return self._json({"error": f"too many wrong codes: try again in {max(1, left // 60)} minutes"}, 429)
+                code = str(req.get("code") or "").strip()
+                if not code:
+                    return self._json({"error": "this account has two-factor sign-in: add the code your "
+                                                "authenticator app shows, or a recovery code", "second_factor": True}, 401)
+                if not (mfa.totp_check(u["uid"], code) or mfa.recovery_use(u["uid"], code)):
+                    time.sleep(0.5 + mfa.missed(*keys))
+                    db.audit(f"user:{u['name']}", "2fa-wrong", u["name"], {"addr": self.client_address[0], "app": True})
+                    return self._json({"error": "that code is not right", "second_factor": True}, 401)
+                mfa.cleared(keys[0])
+                db.audit(f"user:{u['name']}", "2fa-signin", u["name"], {"app": True})
             row, got = devices.mint_for(u, req.get("name"), str(req.get("kind") or "pc"))
             if not row:
                 return self._json(got, 400)
@@ -7390,6 +7943,12 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(got["body"])
         return None
 
+    def _signin_agent(self, req):
+        """The coding agent a sign-in or a sign-out is for (R95 step 3):
+        Claude when none is named, and only one with a sign-in of its own."""
+        a = agents.get(field(req, "agent") or "claude")
+        return a if a and a.login_job else None
+
     def _signin_node(self, req):
         """(node id, refusal) for a sign-in or a sign-out: a person's, never
         a session's, on a node this account may look at, which for an
@@ -7397,10 +7956,12 @@ class Handler(BaseHTTPRequestHandler):
         me = self._who() or {}
         if me.get("session"):
             return "", ({"error": "a session does not sign an account in or out"}, 403)
+        if not self._signin_agent(req):
+            return "", ({"error": "no such coding agent, or one with no sign-in of its own"}, 400)
         nid = field(req, "node")
         if not nid:
-            return "", ({"error": "which node? A Claude sign-in is made on one node, "
-                                  "from its row on the Nodes page"}, 400)
+            return "", ({"error": "which node? A sign-in is made on one node, "
+                                  "from its Agents page"}, 400)
         nid, why = self._node_asked(nid)
         if why:
             return "", ({"error": why}, 403)
@@ -7422,7 +7983,7 @@ class Handler(BaseHTTPRequestHandler):
         nid, no = self._signin_node(req)
         if no:
             return self._json(*no)
-        return self._json(*signin.verb("", nid, uid))
+        return self._json(*signin.verb("", nid, uid, self._signin_agent(req).id))
 
     def _login_code(self, req):
         """Hand the code from the browser to the sign-in flow: signin.take_code,
@@ -7435,11 +7996,13 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*signin.take_code(field(req, "code")))
 
     def _signout(self, req):
-        """Sign this account out of Claude on one node (signin.sign_out):
-        the login is that machine's, so that machine lets go of it."""
+        """Sign this account out of a coding agent on one node
+        (signin.sign_out): the login is that machine's, so that machine lets
+        go of it."""
         nid, no = self._signin_node(req)
         if no:
             return self._json(*no)
+        agent = self._signin_agent(req)
         # Not while a conversation of THIS account's is running there.
         # Signing out pulls the ground from under the sessions it started,
         # and a page that has not polled for fifteen seconds can offer a
@@ -7449,22 +8012,23 @@ class Handler(BaseHTTPRequestHandler):
         # another machine.
         me = users.uid_of(self._who())
         busy = sorted(x["name"] for x in node_tmux_sessions()
-                      if x.get("node_id") == nid and tmux_base(x["name"]).startswith("claude-")
+                      if x.get("node_id") == nid
+                      and agents.of_session(tmux_base(x["name"]))[0] is agent
                       and (tmux_owner(x["name"]) or users.uid_of(
                           users.get(users.owner_name() or ""))) == me)
         if busy:
             # Said as projects, not tmux names: "u_3deb3420~claude-hello"
             # named nothing a person recognizes, and every one listed is
             # the asker's own.
-            projs = sorted({tmux_base(n)[len("claude-"):] for n in busy})
-            return self._json({"error": "end your Claude session"
+            projs = sorted({agents.of_session(tmux_base(n))[1] for n in busy})
+            return self._json({"error": f"end your {agent.name} session"
                                + ("s" if len(projs) > 1 else "") + " on "
                                + ", ".join(projs) + " first (Sessions, or the tab's Close)"}, 409)
-        payload, status = signin.sign_out(nid, me)
+        payload, status = signin.sign_out(nid, me, agent.id)
         if status == 200:
             # The row says so at once; the node's own report, which the job
             # prompts, is what keeps it true.
-            claudegrant.report(home_for(me), nid, "", signed_in=False)
+            claudegrant.report(home_for(me), nid, "", signed_in=False, agent=agent.id)
         return self._json(payload, status)
 
     def _roadmap(self, req):
@@ -7482,12 +8046,12 @@ class Handler(BaseHTTPRequestHandler):
         # questions now (users.may_work): an administrator is shown every
         # project and works on the ones they took on. The reads are named,
         # so an action added later is a write until somebody says otherwise.
-        if field(req, "action") not in ("history",) and self._readonly(name):
+        if field(req, "action") not in ("history", "finished") and self._readonly(name):
             return None
         act = field(req, "action")
         # "send" is a write to the roadmap (it marks a step sent) and starts a
         # session's turn, so it goes with the rest.
-        if (bad := projects.locked_out(name)):
+        if (bad := projects.locked_out(name, users.uid_of(self._who()))):
             return self._json(bad, 409)
         # Closing a batch its session will never close (B198) is an
         # administrator's, like the other decisions about other people's work.
@@ -7598,7 +8162,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*logs.verb(field(req, "action"), req))
 
     def _idle(self, req):
-        """The idle rule for Claude sessions (idle.py): minutes, 0 for never.
+        """The idle rule for every agent's sessions (idle.py): minutes, 0 for never.
         Operator-only, like the log policy beside it."""
         if self._refused("controller"):
             return
@@ -7772,7 +8336,7 @@ class Handler(BaseHTTPRequestHandler):
                                             "operator uses or removes it from the Docker "
                                             "manager"}, 403)
         if act not in ("starter", "state", "probe", "test") and session:
-            # The dial is the project's (Claude may: Run its container, in its
+            # The dial is the project's (Agents may: Run its container, in its
             # settings) and covers rebuilding its containers, changing their
             # env and sending the project to Docker, its own container or
             # another beside it: the operator's widenings of 24 and 26 Sep, so
@@ -7874,13 +8438,22 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "a session releases its own project and no other"}, 403)
             mode = (prefs.get(name) or {}).get("release") or "ask"
             if mode == "deny":
-                return self._json({"error": f"{name}'s settings say Claude does not release it (Claude may: "
+                return self._json({"error": f"{name}'s settings say Claude does not release it (Agents may: "
                                             "Tag and publish a release); a person cuts it with Release on "
                                             "the Artifacts view"}, 403)
             comp = field(req, "component") or ""
             plan = version.release_plan(name, comp)
             if plan.get("error"):
                 return self._json(plan, 400)
+            # Said before the tag, not after it (R134 step 4): 0.7.0 was
+            # tagged with no sideload key and its APK never attached.
+            rs = releasesign.readiness(name, fresh=True)
+            if rs["wanted"] and rs["why"] and not req.get("unsigned"):
+                return self._json({"error": f"{plan['tag']}'s Android APK could not be signed: {rs['why']}. "
+                                            "Put that right first (bb sign status says when it is), or release "
+                                            "with --without-apk and have it signed after with bb sign release "
+                                            "within three days, while CI keeps the unsigned APK",
+                                   "unsigned": rs["why"]}, 409)
             acct = users.account_of(who) or {}
             if mode == "auto":
                 return self._json(*_releaser(name, comp, str(acct.get("name") or ""), self._principal()))
@@ -7903,7 +8476,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": why}, 400)
             mode = (prefs.get(name) or {}).get("release") or "ask" if who.get("session") else "auto"
             if mode == "deny":
-                return self._json({"error": f"{name}'s settings say Claude does not release it (Claude may: "
+                return self._json({"error": f"{name}'s settings say Claude does not release it (Agents may: "
                                             "Tag and publish a release), which taking a file off its release is "
                                             "part of; a person removes it on the forge"}, 403)
             names = req.get("remove") if isinstance(req.get("remove"), list) else []
@@ -7935,7 +8508,7 @@ class Handler(BaseHTTPRequestHandler):
             notes = req.get("notes") if isinstance(req.get("notes"), str) else None
             mode = (prefs.get(name) or {}).get("release") or "ask" if who.get("session") else "auto"
             if mode == "deny":
-                return self._json({"error": f"{name}'s settings say Claude does not release it (Claude may: "
+                return self._json({"error": f"{name}'s settings say Claude does not release it (Agents may: "
                                             "Tag and publish a release), which an edit of its release is part of; "
                                             "a person edits it on the forge"}, 403)
             plan = forgerelease.edit_plan(name, tag, notes, attach)
@@ -7979,15 +8552,39 @@ class Handler(BaseHTTPRequestHandler):
         name = field(req, "project")
         who = self._who() or {}
         if who.get("session"):
-            # bb sign: its own project's build, under its dial (Claude may:
+            # bb sign: its own project's build, under its dial (Agents may:
             # Sign a build). It never receives the key, the list, or a
             # backup; asking to sign is all a session does here.
             act = field(req, "action")
-            if act not in ("sign", "keys", "generate", "map", "rotate") or name != who["session"]:
+            if act not in ("sign", "keys", "generate", "map", "rotate", "release", "release-sign") \
+                    or name != who["session"]:
                 return self._json({"error": "a session signs with bb sign, which never hands it the key; "
                                             "the keys are a person's to manage"}, 403)
             owner = membership.owner_of(name)
             acct = users.account_of(who) or {}
+            if act == "release":
+                # bb sign status (R134): whether its release APKs can be
+                # signed and how the newest went, in the bell's words. Read
+                # only, and no secret is in it.
+                return self._json({"release": releasesign.status(name),
+                                   "attention": releasesign.attention([name])})
+            if act == "release-sign":
+                # bb sign release (R134 step 5): the Signing view's retry,
+                # under the Sign a build dial.
+                if not releasesign.wants(name):
+                    return self._json({"error": f"{name}'s workflows hand over no unsigned APK to sign "
+                                                f"(an artifact named {releasesign.MARK}TAG)"}, 400)
+                mode = (prefs.get(name) or {}).get("sign") or "ask"
+                if mode == "deny":
+                    return self._json({"error": f"{name}'s settings say Claude does not sign its builds "
+                                                "(Agents may: Sign a build); a person presses Look for unsigned "
+                                                "APKs now in the Signing view"}, 403)
+                if mode == "auto":
+                    return self._json(*_release_signer(name))
+                r = phone.ask_release_sign(field(req, "why"), name, owner,
+                                           membership.owner_name(name) or "the project's owner",
+                                           asker_name=str(acct.get("name") or ""))
+                return self._json(r, 400 if r.get("error") else 200)
             if act in ("keys", "generate", "map", "rotate"):
                 # Manage signing keys (R106 step 6): which keys there are
                 # (names and fingerprints, never a secret), and a new key or
@@ -7995,7 +8592,7 @@ class Handler(BaseHTTPRequestHandler):
                 kmode = (prefs.get(name) or {}).get("keys") or "ask"
                 if kmode == "deny":
                     return self._json({"error": f"{name}'s settings say Claude does not manage its signing "
-                                                "keys (Claude may: Manage signing keys)"}, 403)
+                                                "keys (Agents may: Manage signing keys)"}, 403)
                 if act == "keys":
                     return self._json(*signing.listing(name))
                 # Said before anybody is asked to allow a key that could not
@@ -8014,7 +8611,7 @@ class Handler(BaseHTTPRequestHandler):
             mode = (prefs.get(name) or {}).get("sign") or "ask"
             if mode == "deny":
                 return self._json({"error": f"{name}'s settings say Claude does not sign its builds "
-                                            "(Claude may: Sign a build); a person signs from the "
+                                            "(Agents may: Sign a build); a person signs from the "
                                             "Artifacts view"}, 403)
             file, route, key = field(req, "file"), field(req, "route"), field(req, "key")
             no = signing.refusal(name, file, route, key)
@@ -8225,7 +8822,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self._refused("rules", name) or self._readonly(name):
             return None
-        if (bad := projects.locked_out(name)):
+        if (bad := projects.locked_out(name, users.uid_of(self._who()))):
             return self._json(bad, 409)
         return self._json(*rules.verb(name, field(req, "action"), req))
 
@@ -8270,7 +8867,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(*testreg.verb(name, act, req))
         if self._readonly(name):
             return None
-        if (bad := projects.locked_out(name)):
+        if (bad := projects.locked_out(name, users.uid_of(self._who()))):
             return self._json(bad, 409)
         return self._json(*testreg.verb(name, act, req))
 
@@ -8297,9 +8894,9 @@ class Handler(BaseHTTPRequestHandler):
         # questions now (users.may_work): an administrator is shown every
         # project and works on the ones they took on. The reads are named,
         # so an action added later is a write until somebody says otherwise.
-        if field(req, "action") not in ("history",) and self._readonly(name):
+        if field(req, "action") not in ("history", "finished") and self._readonly(name):
             return None
-        if (bad := projects.locked_out(name)):
+        if (bad := projects.locked_out(name, users.uid_of(self._who()))):
             return self._json(bad, 409)
         return self._json(*bugs.verb(name, field(req, "action"), req, sessions=sessions_anywhere,
                                      prefix=users.tmux_prefix(self._who())))
@@ -8314,7 +8911,7 @@ class Handler(BaseHTTPRequestHandler):
         # read had no project check at all (the audit of 26 Sep).
         if self._not_project(proj):
             return None
-        if (bad := projects.locked_out(proj)):
+        if (bad := projects.locked_out(proj, users.uid_of(self._who()))):
             return self._json(bad, 409)
         # Seeing a project and being able to change it are different
         # questions now (users.may_work): an administrator is shown every
@@ -8371,7 +8968,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "not an account"}, 403)
         if req is None:
             return self._json(*profiletab.view(me))
-        payload, status, renamed = profiletab.verb(me, field(req, "action"), req)
+        payload, status, renamed = profiletab.verb(me, field(req, "action"), req, origin=self._origin())
         return self._json(payload, status, cookie=make_token(renamed) if renamed else None)
 
     def _get_snapshots(self):
@@ -8540,8 +9137,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "not a project"}, 400)
         if self._readonly(name):
             return None
-        if name in set(projects.load_locks()):
-            return self._json({"error": "archived: Unarchive, in its menu, brings it back"}, 403)
         action = field(req, "action")
         # A branch is its session's (git.py not_yours): another account's is
         # an administrator's to merge, asked each time and never while that
@@ -8701,6 +9296,12 @@ class Handler(BaseHTTPRequestHandler):
                                                    nodes=req.get("nodes") if isinstance(req.get("nodes"), list) else [],
                                                    only=req.get("only") if isinstance(req.get("only"), dict) else {}))
             return self._result(roles.set_role(field(req, "name"), grants=req.get("grants"), note=field(req, "note")))
+        if act == "two-factor":
+            # Require a second factor of everybody holding this role (R127).
+            r = roles.set_two_factor(field(req, "name"), req.get("on") is True)
+            if r.get("ok"):
+                db.audit(self._principal(), "role-two-factor", r["name"], {"on": r["two_factor"]})
+            return self._result(r)
         if act == "remove":
             r = roles.remove(field(req, "name"))
             if r.get("ok"):
@@ -8782,6 +9383,13 @@ class Handler(BaseHTTPRequestHandler):
         # ...on that node (R260): a role holding Toolchains on named nodes.
         if (why := users.may_node(self._who(), "toolchains-write", nid)):
             return self._json({"error": why}, 403)
+        # A project's phone off the node (R123), one this account sees.
+        if action == "phone-remove":
+            project = field(req, "project")
+            if not project or not (users.is_admin(self._who()) or users.may_see(self._who(), project)):
+                return self._json({"error": "which of your projects?"}, 400)
+            return self._result(nodes.node_avd_remove(self._principal(), nid, project,
+                                                      field(req, "uid"), field(req, "name")))
         iid = req.get("images") if isinstance(req.get("images"), list) else field(req, "image")
         if action not in ("add", "remove"):
             return self._json({"error": "an image is added or removed"}, 400)
@@ -8806,7 +9414,7 @@ class Handler(BaseHTTPRequestHandler):
         # either (B101): the Save was live for it, and went through.
         if self._not_project(name) or self._readonly(name):
             return
-        if (bad := projects.locked_out(name)):
+        if (bad := projects.locked_out(name, users.uid_of(self._who()))):
             return self._json(bad, 409)
         return self._json(*changelog.editor_verb(name, req))
 
@@ -8909,7 +9517,7 @@ class Handler(BaseHTTPRequestHandler):
             for name in project_names(me):
                 a, _ = ftp.access_for(me, name, "editor")
                 if a:
-                    mine.append({"name": name, "access": a})
+                    mine.append({"name": name, "access": a, **projects.app_flags(name, users.uid_of(me))})
             return self._json({"api": files.API, "api_min": files.API_MIN, "projects": mine})
         project = field(req, "project")
         if self._not_project(project):
@@ -8947,11 +9555,11 @@ class Handler(BaseHTTPRequestHandler):
             if not sess and not users.may_work(me, proj):
                 return self._json({"error": f"you are not on {proj}, so a bug from there is not yours to "
                                             "report: ask to be added, or report from a project you work on"}, 403)
-            # The dial is Claude's (Claude may: Report BuilderBot bugs): a
+            # The dial is Claude's (Agents may: Report BuilderBot bugs): a
             # person reporting from a project's row is always heard.
             if sess and prefs.get(proj)["report"] == "deny":
                 return self._json({"error": f"reporting BuilderBot bugs is off for {proj}: its "
-                                            "settings, Claude may: Report BuilderBot bugs. A "
+                                            "settings, Agents may: Report BuilderBot bugs. A "
                                             "problem goes into this project's tracker"}, 403)
             # The person's latest conversation on the project, when they
             # ticked Include it (the operator, 2 Oct): theirs only, found and
@@ -9149,36 +9757,60 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*layout.save_tabs(users.uid_of(self._who()), req))
 
     def _lock(self, req):
-        """Lock or unlock a project: keep it, stop Claude running in it
-        (projects.lock_verb).
+        """Lock or unlock a project (R119), never a session's. Its owner's
+        lock holds everybody else; an administrator's holds its owner too
+        (projects.locked_out, bb-tty's is_locked). Locking ends every
+        session it holds out, here and on every node: all of them under an
+        administrator's, all but the owner's under the owner's. Named in the
+        answer, so the page can say what went.
 
         What it does NOT claim: a session in ANOTHER project still reaches this
         directory through Bash. The file tools are denied on every sibling
-        already, and that is the whole of the guarantee here too: locking adds
-        "no session of its own", not a sandbox, and says no more than that.
+        already, and that is the whole of the guarantee here too.
         """
         name, on = req.get("name", ""), bool(req.get("locked"))
-        # A project this account was given, and the right (B174): a lock ends
-        # whoever's Claude session is running there, so it is not a tester's
-        # and not a session's.
-        if self._not_project(name) or self._refused("lock", name):
+        if self._not_project(name):
             return None
-        body, code = projects.lock_verb(name, on)
-        # Every Claude session on the project, whoever's and wherever it
-        # runs: lock_verb ends the owner's here, from before sessions moved
-        # onto nodes (R47), and a lock that left another account's session
-        # running on a node was a lock that had not taken (the operator,
-        # 29 Sep). Named in the answer, so the page can say what went.
+        me = self._who()
+        owner = membership.owner_of(name)
+        uid = "" if not me or me.get("session") else users.uid_of(me)
+        admin = bool(uid) and users.is_admin(me)
+        if not lock_may(name, uid, admin, projects.load_locks().get(name)):
+            return self._json({"error": "an administrator locked it, and an administrator unlocks it"
+                                        if projects.load_locks().get(name, {}).get("admin")
+                                        else "the project's owner or an administrator locks it, and "
+                                             "the one who locked it unlocks it"}, 403)
+        # An administrator who is not its owner locks it against its owner
+        # too (the operator, 23 Oct); its owner's lock leaves the owner in.
+        held = admin and uid != owner
+        body, code = projects.lock_verb(name, on, by=uid, admin=held)
         if on and code == 200:
-            want = claude_session(name)
+            # Every session it holds out ends (the operator, 23 Oct): under
+            # an administrator's lock all of them, under its owner's all but
+            # the owner's.
+            bb_owner = users.uid_of(users.get(users.owner_name() or "")) if users.owner_name() else ""
+            want = set(agent_sessions(name))
             ended = []
-            for s in [x for x in tmux_sessions() if tmux_base(x["name"]) == want] \
-                    + [x for x in node_tmux_sessions() if tmux_base(x["name"]) == want]:
+            for s in [x for x in tmux_sessions() if tmux_base(x["name"]) in want] \
+                    + [x for x in node_tmux_sessions() if tmux_base(x["name"]) in want]:
+                if not held and (tmux_owner(s["name"]) or bb_owner) == owner:
+                    continue
                 r = end_session(s["name"], str(s.get("node_id") or ""))
                 if not r.get("error") and not r.get("gone") and s["name"] not in ended:
                     ended.append(s["name"])
             body = dict(body) | {"ended": ended}
         return self._json(body, code)
+
+    def _archive(self, req):
+        """Archive or unarchive a project (R119): out of sight, and nothing
+        else; the project's owner or an administrator, never a session."""
+        name, on = req.get("name", ""), bool(req.get("archived"))
+        if self._not_project(name):
+            return None
+        me = self._who()
+        if not me or me.get("session") or not (users.is_admin(me) or users.uid_of(me) == membership.owner_of(name)):
+            return self._json({"error": "the project's owner or an administrator archives it"}, 403)
+        return self._json(*projects.archive_verb(name, on))
 
     def _trash(self, req):
         """Move a project out of the workspace: projects.trash, once
@@ -9208,8 +9840,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(*projects.trash_purge(req))
 
     def _rename(self, req):
-        """Rename a project: projects.rename, once project_busy says nothing
-        holds it."""
+        """Rename a project: projects.rename. Only the registry's name
+        changes, so nothing running holds it back."""
         name = req.get("name", "")
         # Whether it is a project first, then whether this account may: a
         # name that is nothing answered "not taken on" to the owner once
@@ -9456,9 +10088,9 @@ class Handler(BaseHTTPRequestHandler):
         # is somebody else's conversation, and typing into it is the thing a
         # read-only console must not become.
         project = next((name for name in project_names(me)
-                        if users.tmux_prefix(me) + claude_session(name) == want), "")
+                        if want in [users.tmux_prefix(me) + n for n in agent_sessions(name)]), "")
         if not project or users.may(me, "claude", project):
-            return self._json({"error": "not a Claude session of yours"}, 403)
+            return self._json({"error": "not a session of yours"}, 403)
         on_node = self._session_on_node(want, str(req.get("node") or ""))
         if want not in {x["name"] for x in tmux_sessions()} and not on_node:
             return self._json({"error": "that conversation is not running"}, 409)
@@ -9565,6 +10197,7 @@ def main():
     idle.start()
     if not NODES_OK:
         claudecode.start()        # the first check soon after the start, then every six hours
+        agentcode.start()         # ...and the other coding agents' (R95 step 2)
     # The seed file once, before the first look at the release (R272 step 4).
     try:
         if seeded := apps.seed(settings.set_many):
@@ -9579,7 +10212,7 @@ def main():
     if not NODES_OK:
         threading.Thread(target=_room_loop, name="room", daemon=True).start()
     ciwatch.start()           # a project's CI, once a day (R117)
-    releasesign.start()       # a release's unsigned APK, signed here (R106)
+    releasesign.start()       # a release's unsigned APK, signed on its node (R106)
     if "tunnel" not in featuresoff.off():
         tunnel.apply()        # the home tunnel, where the settings say so (R176)
     if toolchains.AUTOCHECK:

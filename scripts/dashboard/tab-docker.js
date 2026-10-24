@@ -518,7 +518,7 @@ function groupNodeOptions(sel, own, whose, skip){
     list.forEach(o => g.append(o));
     return g;
   };
-  const a = mk(`${projLabel(whose)}'s nodes: development and Claude sessions`, opts.filter(o => own.includes(o.value)));
+  const a = mk(`${projLabel(whose)}'s nodes: development and sessions`, opts.filter(o => own.includes(o.value)));
   const b = mk("Other nodes: its image shipped, no codebase or sessions there", opts.filter(o => !own.includes(o.value)));
   sel.innerHTML = "";
   [a, b].forEach(g => g && sel.append(g));
@@ -596,7 +596,7 @@ function rlSay(){
     : own.includes(node)
       ? `One of ${projLabel(rlFor.whose)}'s nodes: built and run there, where its sessions can work on it.`
       : `Not one of ${projLabel(rlFor.whose)}'s nodes: its image is built on ${projLabel(rlFor.whose)}'s node and shipped, `
-        + "so its codebase never goes there, and no development or Claude session happens there.";
+        + "so its codebase never goes there, and no development or session happens there.";
   $("rlGo").disabled = !node;
 }
 
@@ -689,7 +689,7 @@ async function openDevEnv(project, instance){
   try{
     const r = await postJSON("/api/devapp", {project, instance, action: "env-get"});
     j = await r.json();
-  }catch(e){ notify("env: " + e, true); return; }
+  }catch(e){ notify("env: " + failWords(e), true); return; }
   const m = document.getElementById("devEnvModal");
   m.querySelector("textarea").value = j.text || "";
   // Both halves: whether this is a draft off the example, and what the STORED
@@ -712,7 +712,7 @@ async function openDevEnv(project, instance){
       m.hidden = true;
       notify("env saved");
       dockerList = null; dockerRev++; loadDocker();
-    }catch(e){ notify("env: " + e, true); }
+    }catch(e){ notify("env: " + failWords(e), true); }
   };
 }
 
@@ -845,7 +845,7 @@ function dmOverrideLine(d){
 
 function dmClaudeSaid(d, other = false){
   // What a Claude session may do with it, in a pill's few words: the
-  // setting of the PROJECT it belongs to (Claude may: Run its container),
+  // setting of the PROJECT it belongs to (Agents may: Run its container),
   // the words linking there. `other` is a container BuilderBot did not
   // start, which is started and stopped rather than rebuilt.
   if (!d.owner || !mayDocker() || d.owner === "System") return "";
@@ -854,7 +854,7 @@ function dmClaudeSaid(d, other = false){
   const says = other ? {auto: "start · stop", ask: "asks first", deny: "reads its log"}
     : own ? {auto: "rebuild · env · create", ask: "asks first", deny: "may not rebuild"}
     : {auto: "rebuild · env", ask: "asks first", deny: "may not rebuild"};
-  return `<a href="#" data-dmtestgo="${esc(d.owner)}" title="the project's settings, where Claude may: Run its container is set">${esc(says[mode] || says.deny)}</a>`;
+  return `<a href="#" data-dmtestgo="${esc(d.owner)}" title="the project's settings, where Agents may: Run its container is set">${esc(says[mode] || says.deny)}</a>`;
 }
 
 // The row's settings as one grid with one Apply at its foot (R210, the
@@ -937,7 +937,7 @@ function dmOwnerLine(r, key){
   const shown = n => n === saved && r.owner_gone ? `${r.owner_label || n} (deleted)` : projLabel(n);
   const id = "dmo-" + key;
   return `<div class="setcell dmowner">${lbl(id, "Project",
-      "Its project's Claude sessions can see it and, as that project's Run its container setting allows, "
+      "Its project's sessions can see it and, as that project's Run its container setting allows, "
       + "work on it. No project keeps it from every session.")}
     <select id="${esc(id)}" data-dmown="${esc(key)}" aria-label="which project it belongs to">
       ${optionList([["", "no project"], ...names.map(n => [n, shown(n)])], pick || "")}</select></div>`;
@@ -985,7 +985,7 @@ function dmSetPills(pills){
 }
 // An instance's settings as pills: whose it is, what it is built from when
 // that is another project, its branch, where it is reached, whether it
-// starts on boot, what Claude may do and where tests run.
+// starts on boot, what an agent may do and where tests run.
 function dmInstPills(d, managed){
   const r = d.route;
   const mode = {lan: "LAN", funnel: "public link", public: "public"}[r?.mode] || "";
@@ -1062,7 +1062,7 @@ async function dmAction(project, instance, act, btn){
     try{
       await postJSON("/api/devapp", {project, instance, action: "abort"});
     }
-    catch(e){ notify("could not stop it: " + e, true); }
+    catch(e){ notify("could not stop it: " + failWords(e), true); }
     dockerRev++; drawPanes(); loadDocker();
     return;
   }
@@ -1070,7 +1070,7 @@ async function dmAction(project, instance, act, btn){
   // from the row it is about.
   if (act === "nginx-update"){
     const d = (dockerList?.instances || []).find(i => i.project === project && i.instance === instance);
-    if (!confirm(`Update nginx on this node to nginx:${d?.nginx_to || "the newest line"}?\n\nIt is rebuilt with the new image, so its sites are down while the node pulls it.`)) return;
+    if (!await askYes(`Update nginx on this node to nginx:${d?.nginx_to || "the newest line"}?\n\nIt is rebuilt with the new image, so its sites are down while the node pulls it.`)) return;
     if (btn) busy(btn, "Updating");
     try{
       const j = await (await postJSON("/api/nginx", {action: "update", node: dockerList?.node || dockerNode})).json();
@@ -1078,16 +1078,16 @@ async function dmAction(project, instance, act, btn){
       else if (j.note) notify(j.note, true);
       else notify(`updating nginx to ${j.to}: this row has the build`);
     }
-    catch(e){ notify("could not update it: " + e, true); }
+    catch(e){ notify("could not update it: " + failWords(e), true); }
     dockerRev++; drawPanes(); loadDocker();
     return;
   }
   if (act === "update"){
     const d = (dockerList?.instances || []).find(i => i.project === project && i.instance === instance);
-    if (!confirm(`Update ${d?.name || project}?\n\nThe newer ${(d?.images_behind || []).join(", ")} is pulled and it starts again on it, so it is down for a moment.`)) return;
+    if (!await askYes(`Update ${d?.name || project}?\n\nThe newer ${(d?.images_behind || []).join(", ")} is pulled and it starts again on it, so it is down for a moment.`)) return;
   }
-  if (act === "down" && !confirm(`Take ${dmCalled(project, instance)} down?`)) return;
-  if (act === "remove" && !confirm(
+  if (act === "down" && !await askYes(`Take ${dmCalled(project, instance)} down?`)) return;
+  if (act === "remove" && !await askYes(
       `Remove ${dmCalled(project, instance)}?\n\n`
       // Which of the two halves is actually going to happen. A row whose
       // daemon is not answering loses the down, and somebody removing one
@@ -1106,7 +1106,7 @@ async function dmAction(project, instance, act, btn){
     try{
       const r = await postJSON("/api/devapp", {project, instance, action:"state"});
       st = (await r.json()).state || {};
-    }catch(e){ notify("could not read its state: " + e, true); return; }
+    }catch(e){ notify("could not read its state: " + failWords(e), true); return; }
     if ((st.problems || []).length){
       notify(`${dmCalled(project, instance)} will not work as written: `
              + st.problems.join("; "), true);
@@ -1124,12 +1124,12 @@ async function dmAction(project, instance, act, btn){
       notify(`the env is missing ${st.missing_env.join(", ")}: press Env`, true);
       return;
     }
-    if (act === "rebuild" && !confirm(
+    if (act === "rebuild" && !await askYes(
         (st.built_rev ? `Rebuild ${dmCalled(project, instance)}?\n\nBuilds the image, then down and up. `
                       : `Build ${dmCalled(project, instance)}?\n\nBuilds the first image and brings it up. `)
         + "New env settings stop it before up; the Env editor keeps your old values in comments.")) return;
     if (!st.risks_ack){
-      if (!confirm("This compose file asks for more than its own directory:"
+      if (!await askYes("This compose file asks for more than its own directory:"
           + "\n\n" + (st.risks || []).map(x => "\u2022 " + x).join("\n")
           + "\n\nStart it anyway?")) return;
       ack = st.risks_digest || "";
@@ -1138,7 +1138,7 @@ async function dmAction(project, instance, act, btn){
     // operator, 17 Oct: the person knows what is actually being shipped):
     // named, and a yes is this press's; a no leaves it unbuilt.
     if ((st.beside_new || []).length){
-      if (!confirm(`${projLabel(project)}'s compose now runs ${st.beside_new.join(", ")} beside the app, which its last build did not ship.`
+      if (!await askYes(`${projLabel(project)}'s compose now runs ${st.beside_new.join(", ")} beside the app, which its last build did not ship.`
           + "\n\nShip it with the app? If it is not part of the app, cancel and give it a container of its own with New container.")) return;
       beside = st.beside_digest || "";
     }
@@ -1556,7 +1556,7 @@ async function cSubmit(){
     const row = (dockerList?.instances || []).find(
       d => d.project === editing && d.instance === "main");
     dockerList = null; dockerRev++; loadDocker();
-    if (row?.built_rev && confirm(
+    if (row?.built_rev && await askYes(
           `${editing} is saved. Rebuild it now so the change takes effect?\n\n`
           + `Cancel keeps the change on disk for a later Rebuild.`)){
       dmAction(editing, "main", "rebuild", null);
@@ -1676,17 +1676,21 @@ function dmUnrouted(d){
     loop.length === 1 ? "at it" : "at them"} yet: <a href="#" data-dmnginx="${esc(dockerList.node || "")}">add a route on the nginx page</a></div>`;
 }
 
+// A hosting-only node runs no terminal, so its containers draw no Shell, and
+// the page says so once on its status line rather than under every row: it
+// is the node's policy, not a fault (the operator, 22 Oct).
+function dmHostOnly(){
+  const n = (nodesList || []).find(x => x.id === (dockerList?.node || dockerNode));
+  return n?.config?.host_only ? n : null;
+}
 // A shell inside one of the instance's running containers, in the dock
-// (R218 step 4): why it cannot open here, or "" when it can. Said under the
-// row in red when it cannot (the operator, 14 Oct); the server asks the same
+// (R218 step 4): why it cannot open here, or "" when it can, said under the
+// row as a setting switched off (warn), never red; the server asks the same
 // questions again, and of the daemon, before anything runs (_ctr_refused).
 function dmShellWhy(d){
-  const n = (nodesList || []).find(x => x.id === (dockerList?.node || dockerNode));
-  if (n?.config?.host_only)
-    return `${n.name} hosts containers only and runs no terminal, so a shell in this one opens on a node that runs sessions`;
   const owner = d.owner || d.project;
   if (!state?.admin && (state?.projects || []).find(p => p.name === owner)?.prefs?.devbuild === "deny")
-    return `${projLabel(owner)}'s Claude may: Run its container is Deny, so a shell in its containers is an administrator's`;
+    return `${projLabel(owner)}'s Agents may: Run its container is Deny, so a shell in its containers is an administrator's`;
   return "";
 }
 function dmShell(project, instance, ctr){
@@ -1733,7 +1737,7 @@ function dmRowsHtml(ins, job, blind){
       : d.running ? ["running", "ok"] : d.exists ? ["stopped", "off"] : ["down", "off"];
     // Its running containers, for the Shell (R218 step 4), and why one
     // cannot open, said under the row.
-    const shellAt = !blind && mayShell() && mayDocker() && (d.services || []).filter(c => c.state === "running").length
+    const shellAt = !blind && mayShell() && mayDocker() && !dmHostOnly() && (d.services || []).filter(c => c.state === "running").length
       ? (d.services || []).filter(c => c.state === "running") : null;
     const shellWhy = shellAt ? dmShellWhy(d) : "";
     const key = `inst:${d.project}|${d.instance}`;
@@ -1831,7 +1835,7 @@ function dmRowsHtml(ins, job, blind){
         ${d.await_env ? `<div class="sub warn">built: fill in the env, then Up</div>`
           : (d.missing_env || []).length ? `<div class="sub warn dmenv">the env is missing ${esc(d.missing_env.join(", "))}: press Env</div>` : ""}
         ${d.nginx_to ? `<div class="sub warn dmnginx">nginx:${esc(d.nginx_to)} is out: Update pins it and rebuilds</div>` : ""}
-        ${shellWhy ? `<div class="sub bad dmshellwhy">No shell here: ${esc(shellWhy)}</div>` : ""}
+        ${shellWhy ? `<div class="sub warn dmshellwhy">No shell here: ${esc(shellWhy)}</div>` : ""}
         ${dockerList?.ports_local && (d.open_ports || []).length ? `<div class="sub bad dmopen">${esc(d.open_ports.join(", "))} ${
           d.open_ports.length === 1 ? "is" : "are"} published on every address of this node, so the internet reaches ${
           d.open_ports.length === 1 ? "it" : "them"} past nginx: ${dmOpenWhy(d, d.open_ports.length === 1 ? "it" : "them")}</div>`
@@ -1987,9 +1991,27 @@ async function loadDockerImages(det){
     {label: "images", value: (j.images || []).length, sub: humanBytes(df("Images").size || (j.images || []).reduce((n, i) => n + i.size, 0))},
     {label: "not in use", value: unused, sub: `${dang} dangling`, tone: dang ? "warn" : ""},
     {label: "volumes", value: (j.volumes || []).length, sub: df("Local Volumes").size ? humanBytes(df("Local Volumes").size) : ""},
+    // Docker's reclaimable is what no container uses: unused images and
+    // volumes, which only the two red prunes take (the operator, 23 Oct: 18
+    // GB said reclaimable did not move after the two safe ones). Said by
+    // name, and the build cache beside it, which the safe prune takes.
     {label: "reclaimable", value: humanBytes((df("Images").reclaimable || 0) + (df("Local Volumes").reclaimable || 0)),
-     sub: "by the two prunes", omit: !(j.df || []).length},
+     sub: "unused images and volumes: the red prunes", omit: !(j.df || []).length},
+    {label: "build cache", value: humanBytes(df("Build Cache").size || 0),
+     sub: df("Build Cache").reclaimable ? `${humanBytes(df("Build Cache").reclaimable)} reclaimable` : "",
+     omit: !(j.df || []).some(r => r.kind === "Build Cache")},
   ]).replace(/^<div class="field">|<\/div>$/g, "")
+  // The prunes under the numbers they act on, before the lists (the
+  // operator, 23 Oct: at the foot they were a long scroll away).
+  // Red only where something is lost (the operator, 23 Oct): dangling
+  // layers and an old build cache are nobody's, and come back by building;
+  // an unused image may be one to start from later (one built here is gone
+  // until it is built again), and a volume is data. Safe first.
+  + (mayDocker() ? `<div class="actbar dmprunes"><span class="state">a prune removes only what no container uses</span>
+      <button type="button" data-dmprune="images" title="docker image prune: dangling images, the layers left by rebuilds">Prune images</button>
+      <button type="button" data-dmprune="cache" title="docker builder prune: the build cache, a week old; the next build rebuilds what it needs">Prune build cache</button>
+      <button type="button" class="danger" data-dmprune="unused" title="docker image prune -a: images no container uses, two weeks old; one built here is gone until it is built again">Prune unused images</button>
+      <button type="button" class="danger" data-dmprune="volumes" title="docker volume prune: volumes no container uses, and the data in them">Prune volumes</button></div>` : "")
   // Two tables (R218 step 8): each image with its state, id, size and age,
   // then each volume with its driver.
   + ((j.images || []).length ? tblWrap(DM_IMG_COLS, j.images.map(i => `
@@ -2001,25 +2023,27 @@ async function loadDockerImages(det){
   + ((j.volumes || []).length ? tblWrap(DM_VOL_COLS, j.volumes.map(v => `
       <div class="row dmvol">${tblLine(DM_VOL_COLS, [esc(v.name), esc(v.driver)])}</div>`).join(""), "dmvols")
       : `<div class="hint">no volumes on this daemon</div>`)
-  + `
-    ${mayDocker() ? `<div class="actbar"><span class="state">a prune removes only what no container uses</span>
-      <button type="button" class="danger" data-dmprune="images" title="docker image prune: dangling images">Prune images</button>
-      <button type="button" class="danger" data-dmprune="volumes" title="docker volume prune: volumes no container uses">Prune volumes</button>
-      <button type="button" class="danger" data-dmprune="unused" title="docker image prune -a: images no container uses, two weeks old">Prune unused images</button>
-      <button type="button" class="danger" data-dmprune="cache" title="docker builder prune: the build cache, a week old">Prune build cache</button></div>` : ""}`;
+;
   box.querySelectorAll("[data-dmprune]").forEach(b => b.onclick = async () => {
-    const kind = b.dataset.dmprune;
-    const what = {images: "Dangling images go; images a container uses stay.",
-                  volumes: "Volumes no container uses go, with their data.",
-                  unused: "Images no container uses and two weeks old go; a rebuild pulls or builds them again.",
-                  cache: "The build cache a week old goes; the next build of what used it is slower."}[kind];
-    if (!confirm(`Prune ${kind === "cache" ? "the build cache" : kind === "unused" ? "unused images" : kind} on ${dockerList?.name || "this node"}?\n\n${what}`)) return;
-    busy(b, "Pruning");
-    const r = await (await postJSON("/api/dockerctl", {action: "prune", container: kind, node})).json().catch(() => ({error: "no answer"}));
-    if (r.error) notify(r.error, true);
-    else notify(`pruned ${kind}: ${(r.out || "").split("\n").filter(l => /reclaimed/i.test(l)).join(" ") || "nothing to remove"}`);
-    loadDockerImages(det);
+    if (await dockerPrune(b.dataset.dmprune, node, dockerList?.name, b)) loadDockerImages(det);
   });
+}
+
+// One of the four prunes on a node, asked first in words, from the
+// Containers page or the Storage page's Docker row (R123 step 3): true once
+// it ran. Red where something is lost (an unused image, a volume's data).
+const DOCKER_PRUNE_SAID = {images: "Dangling images go; images a container uses stay.",
+                           volumes: "Volumes no container uses go, with their data.",
+                           unused: "Images no container uses and two weeks old go; a rebuild pulls or builds them again.",
+                           cache: "The build cache a week old goes; the next build of what used it is slower."};
+async function dockerPrune(kind, node, nodeName, b){
+  if (!await askYes(`Prune ${kind === "cache" ? "the build cache" : kind === "unused" ? "unused images" : kind} on ${nodeName || "this node"}?\n\n${DOCKER_PRUNE_SAID[kind]}`,
+                    {verb: "Prune", danger: kind === "unused" || kind === "volumes"})) return false;
+  busy(b, "Pruning");
+  const r = await (await postJSON("/api/dockerctl", {action: "prune", container: kind, node})).json().catch(() => ({error: "no answer"}));
+  if (r.error) notify(r.error, true);
+  else notify(`pruned ${kind}: ${(r.out || "").split("\n").filter(l => /reclaimed/i.test(l)).join(" ") || "nothing to remove"}`);
+  return !r.error;
 }
 
 // The row's Log fold: the last lines of each of its containers, read when
@@ -2124,7 +2148,7 @@ function dmWireRows(el, list = dockerList){
   el.querySelectorAll("[data-dmunpack]").forEach(a => a.onclick = async e => {
     e.preventDefault();
     const [project, instance] = a.closest("[data-inst]").dataset.inst.split("|");
-    if (!confirm("Unpack its data into its volumes? It stops, the archive is written in over anything already in them, and it starts again.")) return;
+    if (!await askYes("Unpack its data into its volumes? It stops, the archive is written in over anything already in them, and it starts again.")) return;
     const j = await (await postJSON("/api/devapp", {project, instance, action: "unpack"})).json().catch(() => ({error: "no answer"}));
     if (j.error) return notify(j.error, true);
     notify(`unpacking ${j.name}: its row says when it is done`);
@@ -2213,7 +2237,7 @@ function dmWireRows(el, list = dockerList){
   const node = list?.node || dockerNode;
   el.querySelectorAll("[data-ctl]").forEach(b => b.onclick = async () => {
     const what = b.dataset.ctl, ctr = b.dataset.ctr;
-    if (what === "stop" && !confirm(`Stop ${ctr}?`)) return;
+    if (what === "stop" && !await askYes(`Stop ${ctr}?`)) return;
     busy(b, {start: "Starting", stop: "Stopping", restart: "Restarting"}[what]);
     try{
       const r = await postJSON("/api/dockerctl", {action: what, container: ctr, node});
@@ -2276,7 +2300,7 @@ function dmWireRows(el, list = dockerList){
     const [project, instance] = key.split("|");
     const what = (list?.instances || []).find(
       x => x.project === project && x.instance === instance)?.name || project;
-    if (!confirm(`Move ${what} to ${projLabel(to)}? It keeps its name, env and data, and builds from ${
+    if (!await askYes(`Move ${what} to ${projLabel(to)}? It keeps its name, env and data, and builds from ${
         projLabel(to)}'s tree from its next rebuild.`)){ delete dmMoveDraft[key]; return; }
     const r = await postJSON("/api/devapp", {action: "move", project, instance, to});
     const j = await r.json();
@@ -2309,7 +2333,7 @@ function dmWireRows(el, list = dockerList){
     const sel = row.querySelector('[data-route="mode"]');
     const mode = sel?.value || "lan";
     const port = row.querySelector('[data-route="port"]')?.value || "";
-    if (mode === "funnel" && sel.dataset.was !== "funnel" && !confirm(
+    if (mode === "funnel" && sel.dataset.was !== "funnel" && !await askYes(
         `Open ${dmCalled(project, instance)} to the internet?\n\nAnyone with the link can reach the port until the route goes back to lan.`)){
           row.querySelectorAll("[data-route]").forEach(x => { x.value = x.dataset.was; });
           delete dmRouteDraft[row.dataset.inst]; return; }
@@ -2353,7 +2377,7 @@ function dmWireRows(el, list = dockerList){
       await applyOwner(key);
       if (inst){ await applyMove(inst); await applyRef(inst); await applyOverride(inst); if (row?.dataset.inst) await applyRoute(row); }
       if (name) await applyBoot(name);
-    }catch(e){ notify("apply: " + e, true); }
+    }catch(e){ notify("apply: " + failWords(e), true); }
     finally{ if (btn.isConnected) unbusy(btn, "Apply"); }
     dockerList = null; dockerRev++; loadDocker();
   });
@@ -2559,7 +2583,7 @@ async function dmCheck(btn, node, after){
     if (j.error) notify(j.error, true);
     else notify(j.behind ? `${j.behind} container${j.behind === 1 ? " has" : "s have"} a newer image: Update on ${j.behind === 1 ? "its row" : "their rows"}`
                          : `checked ${j.checked}: every registry image is current`);
-  }catch(e){ notify("could not check: " + e, true); }
+  }catch(e){ notify("could not check: " + failWords(e), true); }
   after();
 }
 // The tiles: what runs of how many, the updates due once images were
@@ -2590,7 +2614,10 @@ function dmStatus(d){
   // Image updates switched off on this install (R81): its sentence where
   // the line says when they were checked.
   if (featureOff("image-updates")) return `<div class="field">${deadWhy(featureOff("image-updates"))}</div>`;
-  return headLine(!d ? `images checked ${skv(4)}` : d.images_at ? `images checked ${esc(ago(d.images_at))}` : "images not checked yet",
+  const host = dmHostOnly();
+  return headLine((!d ? `images checked ${skv(4)}` : d.images_at ? `images checked ${esc(ago(d.images_at))}` : "images not checked yet")
+    // ...and, once, why its containers have no Shell.
+    + (host && mayShell() ? ` · ${esc(host.name)} hosts containers only, so a shell in one opens from a node that runs sessions` : ""),
     "", "dmimgbar");
 }
 

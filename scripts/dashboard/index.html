@@ -706,21 +706,29 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
   padding-bottom:calc(10px + env(safe-area-inset-bottom))}
 @media(prefers-reduced-motion:reduce){ .tourring{transition:none} }
 html[data-motion="reduce"] .tourring{transition:none}
-.bellpanel{position:absolute;right:8px;top:100%;z-index:40;
-  width:min(400px,calc(100vw - 16px));max-height:min(60vh,440px);overflow:auto;
+/* The header's pop-outs, the bell's, the doctor's and the gear's: one shape
+   (the operator, 22 Oct). Anchored to the header's bottom edge, one width,
+   a title band on top, banded section heads, and as tall as the screen
+   has room for, scrolling inside past that; anything else closes one, Escape closes it. On a phone each runs
+   to the same 8px edges and the page behind dims, so where it ends is plain
+   where its rows look like the page's own. */
+.bellpanel,.uimenu{position:absolute;right:8px;top:100%;z-index:40;
+  width:min(400px,calc(100vw - 16px));max-height:calc(100dvh - 72px);overflow:auto;overscroll-behavior:contain;
   background:var(--panel);border:var(--hair) solid var(--line);border-top:0;
   border-radius:0 0 var(--r-surface) var(--r-surface);box-shadow:0 8px 22px rgba(0,0,0,.45);
   animation:menuIn .22s cubic-bezier(.33,1,.68,1)}
-/* The header's own menu, under the gear. Same shape and the
-   same manners as the bell panel beside it: anchored to the header's bottom
-   edge, anything else closes it, Escape closes it. */
-.uimenu{position:absolute;right:8px;top:100%;z-index:40;
-  width:min(300px,calc(100vw - 16px));
-  background:var(--panel);border:var(--hair) solid var(--line);border-top:0;
-  border-radius:0 0 var(--r-surface) var(--r-surface);box-shadow:0 8px 22px rgba(0,0,0,.45);padding:8px;
-  animation:menuIn .22s cubic-bezier(.33,1,.68,1)}
-.uimenu h4{margin:6px 2px 6px;font:var(--f-tag);letter-spacing:.6px;
-  text-transform:uppercase;color:var(--dim)}
+@media(max-width:600px){
+  /* ...and on a phone it stops above the dock's line and the bottom bar, so
+     the gear's whole menu shows where the screen has room for it. */
+  .bellpanel,.uimenu{left:8px;right:8px;width:auto;max-height:calc(100dvh - 190px)} }
+.popbar{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:8px;
+  min-height:var(--tap);padding:4px 8px 4px 12px;background:var(--panel);
+  border-bottom:var(--hair) solid var(--line)}
+.popbar>b{font:var(--f-ui);font-weight:600;color:var(--ink)}
+.popbar>.popmeta{font:var(--f-pill);color:var(--dim);margin-left:auto}
+.popbar>b+button{margin-left:auto}
+.uimenu h4{margin:0}
+.uimenu .popbody{padding:8px 12px 10px}
 .uimenu>button{width:100%;min-height:var(--tap);justify-content:flex-start}
 /* Profile across the row, and on a narrow phone the header's bug and sign
    out beside it as the square icons they are in the header (the operator,
@@ -748,6 +756,13 @@ html[data-motion="reduce"] .tourring{transition:none}
    wraps rather than shrinking below a tap target on a phone. */
 .logset{display:flex;flex-direction:column;gap:8px}
 .logset .dim{font:var(--f-note)}
+/* Profile's Two-factor section (R127): a line a factor, its action at the
+   right; the QR on white for a camera whatever the theme. */
+.tfset .tfrow{display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.tfset .tfrow .grow{min-width:0}
+.tfset .tfadd{display:flex;flex-direction:column;gap:8px;padding:8px 0}
+.tfset .tfqr svg{width:180px;height:180px;border-radius:var(--r-small)}
+.tfset .tfcodes pre{font:var(--f-data);margin:6px 0;white-space:pre-wrap}
 .logdays{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
   font:var(--f-note);color:var(--dim)}
 /* Only what is its own. Ground, edge, radius, the mono face and the 16px that
@@ -962,7 +977,7 @@ html[data-motion="reduce"] .tourring{transition:none}
   display:flex;align-items:center;justify-content:center}
 .sw.on{outline:2px solid var(--accent);outline-offset:1px}
 @media(hover:hover){ .sw:hover{border-color:var(--ink)} }
-.bnote{padding:8px 10px;border-bottom:var(--hair) solid var(--line);font:var(--f-ui)}
+.bnote{padding:8px 12px;border-bottom:var(--hair) solid var(--line);font:var(--f-ui)}
 .bnote:last-of-type{border-bottom:0}
 .bnote .bwhy{overflow-wrap:anywhere}
 .bnote.bad .bwhy{color:var(--bad)}
@@ -1003,7 +1018,7 @@ html[data-motion="reduce"] .tourring{transition:none}
 .bnote.ask.bad .bwhy{color:var(--bad)}
 /* The drawer in three groups, each headed by what it is and how many
    (the operator, 10 Oct: one amber wall). A head is a label, not a row. */
-.bgroup{display:flex;align-items:center;gap:8px;padding:8px 10px 6px;
+.bgroup,.uimenu h4{display:flex;align-items:center;gap:8px;padding:8px 12px 6px;
   font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;color:var(--dim);
   border-bottom:var(--hair) solid var(--line);background:var(--sunk)}
 .bgroup button{margin-left:auto}
@@ -1038,6 +1053,12 @@ html[data-motion="reduce"] .tourring{transition:none}
    too (18 Sep, on every size measured). A column instead: the title, the
    switch, the build lines and the foot keep their height, and the page takes
    what is left and is the only thing that scrolls. */
+/* A question (page-ask.js): its words a note's measure, paragraphs apart. */
+.askdlg .asksaid{margin:0;font:var(--f-ui);color:var(--ink);overflow-wrap:anywhere}
+/* A question's title is the question, a sentence in its own case at reading
+   size: a dialog's label title is small capitals, and a question in it read
+   as shouting (the operator, 23 Oct). */
+.modal.askdlg h3{font:600 15px/1.35 system-ui,sans-serif;letter-spacing:0;text-transform:none}
 .modal .box.prose{display:flex;flex-direction:column}
 .modal .box.prose>*{flex:none}
 .modal .box.prose>.about{flex:0 1 auto;min-height:0;display:flex;flex-direction:column}
@@ -1939,6 +1960,15 @@ select:focus{outline-offset:-2px}
 .storagetab .ndmeter .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .storagetab .ndmeter .val{white-space:normal;overflow-wrap:anywhere;text-align:right}
 @media (max-width:600px){.storagetab .ndmeter{grid-template-columns:6em minmax(0,1fr) 7.5em}}
+/* The Agents tab (tab-agents.js, R95): a device sign-in's one-time code,
+   what the person types on the provider's page, a short mono fact set
+   apart by its weight and spacing, and taken whole by one press. */
+/* An agent's section in parts, each under a small head in the gear's voice,
+   a hairline between them. */
+.fsub{font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;color:var(--dim);margin:2px 0 8px}
+.agentstab .agpart+.agpart{border-top:var(--hair) solid var(--line)}
+.agentstab .agpart>.actbar{margin-top:10px}
+.agentstab .sicode{font:var(--f-data);font-weight:600;letter-spacing:.12em;user-select:all}
 /* The nginx tab (tab-nginx.js): its sections hold field bands, which carry
    their own inset, so the body adds none (as a settings group's does). */
 /* ...and its routes, a table of records (the record-lists rule): a row
@@ -1958,10 +1988,9 @@ select:focus{outline-offset:-2px}
 .ngfields{display:grid;grid-template-columns:var(--tcols);column-gap:var(--row-x);row-gap:var(--field-gap);min-width:0}
 .ngfields>.setrow.col{margin:0;min-width:0;max-width:none}
 .ngformbar{margin:0;padding:0}
-/* The shared hostname list on the nginx tab: a name, where it is routed,
-   and Delete where it is routed nowhere; the box to add one under it. */
-.nghost{display:flex;align-items:center;gap:8px;margin:2px 0}
-.nghost + .actbar input,.field > .actbar input[data-nghostnew]{flex:1 1 14em;min-width:0}
+/* The shared hostname list on the nginx tab: a record table as Routes is,
+   and the box to add one under it. */
+.field > .actbar input[data-nghostnew]{flex:1 1 14em;min-width:0}
 /* On a phone a route's form stacks: hostname, path and port beside each
    other, the pair under them (the operator, 18 Oct: the fields ran past
    the screen's edge). */
@@ -2173,7 +2202,7 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .macros button svg{width:14px;height:14px;fill:none;stroke:currentColor;
   stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;
   vertical-align:-2px;margin-right:5px}
-/* A group of picks (Claude may, Yours on this project, the new-project
+/* A group of picks (Agents may, Yours on this project, the new-project
    dialog's): a grid of equal columns, each pick its label above its control
    (the design language, Controls), so every select starts at the same x and
    is the same width whatever its label says. The label was beside the
@@ -2600,8 +2629,12 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   .nbtabs button{flex:1 1 0;text-align:center;padding:9px 2px;min-width:0}
 }
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
+/* New VM's More (tab-vms.js): its line at the dialog's inset, as a field's
+   label is, and the rows it opens in bands of their own. */
+.vmmore>summary{padding:var(--row-y) var(--row-x);cursor:pointer;color:var(--dim)}
+.vmmore[open]>summary{color:var(--ink)}
 .nbview[hidden]{display:none}
-/* Claude may is the Permissions view's; the Settings view leaves it out of
+/* Agents may is the Permissions view's; the Settings view leaves it out of
    its page while the form is there (nb-permissions.js). */
 .nbsettings details[data-sect="rn:claude"]{display:none}
 /* The lent phone's screen as a session last saw it (tab-phone.js, R113): a
@@ -2703,7 +2736,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .wkfooter{border-top:var(--hair) solid var(--line);margin-top:20px;padding-top:8px;color:var(--dim);font:var(--f-note)}
 .wkarticle .wkText,.wkadd .wkText{min-height:22em;font-family:var(--mono);width:100%;box-sizing:border-box}
 .wklogrow{padding:3px 0;font:var(--f-note)}
-#wkWhy{color:var(--bad);font:var(--f-note)}
+#wkWhy{color:var(--dim);font:var(--f-note)}
 /* Narrow is the PANE's width, not the window's (B728): a notebook in one of
    two panes in a 1000px window, or on a phone, is 500px wide, and the page
    column drawn over the article there was the window's rule not applying.
@@ -2722,7 +2755,12 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 @media(max-width:600px){
   .wkreader{display:block}
   .wknav{display:none}
-  .wkreader>.wkpick{display:flex;align-items:center;gap:var(--field-gap);margin-bottom:10px}
+  /* The picker as a bar's is on a phone: its word left to the screen reader
+     and the box ending where the search above it ends, both capped as every
+     control is (the operator, 22 Oct: two boxes of two widths, one with a
+     word beside it, read as a mess). */
+  .wkreader>.wkpick{display:flex;align-items:center;gap:var(--field-gap);margin-bottom:10px;max-width:min(var(--ctl-w),88%)}
+  .wkreader>.wkpick>.pickw{display:none}
   .wktitle{font-size:1.5em}
 }
 
@@ -3296,17 +3334,24 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 :is(.pcard,.pane .bar.proj).pc{box-shadow:inset 3px 0 var(--pc);background:color-mix(in srgb, var(--pc) 16%, var(--panel));
   border-color:color-mix(in srgb, var(--pc) 45%, var(--line))}
 /* A colored card's buttons wear its color too (the operator, 18 Oct): a
-   lighter tint for the plain ones, a deeper one for Open Claude, so the card
+   lighter tint for the plain ones, a deeper one for Manage agent, so the card
    reads as one color and the running session still stands out on it. Every
    row of buttons the card holds: its actions and a box it asks in (Group),
    so a form opened on it is the card's too (B863); and a project page's
    header's, as its card's. */
-:is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc .phead)>button,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button{background:color-mix(in srgb, var(--pc) 22%, var(--btn));
+:is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button{background:color-mix(in srgb, var(--pc) 22%, var(--btn));
   border-color:color-mix(in srgb, var(--pc) 50%, var(--line));color:var(--ink)}
-:is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc .phead)>button.primary{background:color-mix(in srgb, var(--pc) 50%, var(--btn));border-color:var(--pc)}
+:is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button.primary{background:color-mix(in srgb, var(--pc) 50%, var(--btn));border-color:var(--pc)}
+/* A word asked in a colored card or a project's header (askInline: Group,
+   Rename) wears the same color as its buttons, its field tinted and its focus
+   ring the project's, where the page's plain skin read as a hole in the card
+   (the operator, 22 Oct). */
+:is(.pcard.pc,.pane .bar.proj.pc) .askrow input{background:color-mix(in srgb, var(--pc) 10%, var(--sunk));
+  border-color:color-mix(in srgb, var(--pc) 45%, var(--line))}
+:is(.pcard.pc,.pane .bar.proj.pc) .askrow input:focus{outline:2px solid color-mix(in srgb, var(--pc) 60%, var(--panel));outline-offset:-1px}
 @media(hover:hover){
-  :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc .phead)>button:hover,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button:hover{background:color-mix(in srgb, var(--pc) 34%, var(--btn))}
-  :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc .phead)>button.primary:hover{background:color-mix(in srgb, var(--pc) 62%, var(--btn))}
+  :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button:hover,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button:hover{background:color-mix(in srgb, var(--pc) 34%, var(--btn))}
+  :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button.primary:hover{background:color-mix(in srgb, var(--pc) 62%, var(--btn))}
 }
 /* The whole card opens the project's page (the operator, 18 Oct), so the
    whole card answers the pointer, as a tile that is a link does. */
@@ -3395,6 +3440,10 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    the spacer beside it grew too and took half (the operator, 18 Oct: the
    hint cut off beside a blank gap). */
 @media(max-width:900px){ .jump{flex:1 1 90px} header>.spacer{display:none} }
+/* The search keeps at least 80px at every phone width (B744, B290): the
+   narrowest phones give the header's side padding back to make room. */
+@media(max-width:900px){ .jump{min-width:80px} }
+@media(max-width:359px){ header{padding-left:8px;padding-right:8px} }
 @media(max-width:600px){ .jump input{padding:4px 8px} }
 /* Under 600px the header's bug and sign-out move into the gear's menu: six
    buttons a thumb wide left the search a sliver at 344px (B744). */
@@ -3619,6 +3668,25 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
 .chips{display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;
   padding-bottom:2px;mask-image:linear-gradient(to right,#000 calc(100% - 16px),transparent)}
 .chips::-webkit-scrollbar{display:none}
+/* Its ends on a desk (the operator, 23 Oct): an arrow at each end with more
+   past it, held there while the row scrolls under it, and the fade on that
+   side only; a mouse drags the row. A touch swipes, as before. */
+.chips:not(.chl):not(.chr){mask-image:none}
+.chips.chl:not(.chr){mask-image:linear-gradient(to right,transparent,#000 36px)}
+.chips.chl.chr{mask-image:linear-gradient(to right,transparent,#000 36px,#000 calc(100% - 36px),transparent)}
+@media (pointer:fine){
+  /* The arrow stands on the panel, whole; the fade starts past it. */
+  .chips.chl:not(.chr){mask-image:linear-gradient(to right,#000 22px,transparent 22px,#000 48px)}
+  .chips.chr:not(.chl){mask-image:linear-gradient(to left,#000 22px,transparent 22px,#000 48px)}
+  .chips.chl.chr{mask-image:linear-gradient(to right,#000 22px,transparent 22px,#000 48px,#000 calc(100% - 48px),transparent calc(100% - 22px),#000 calc(100% - 22px))}
+  .chips.chl,.chips.chr{cursor:grab}
+  .chips.dragging{cursor:grabbing;user-select:none}
+  .chips.dragging .chip{pointer-events:none}
+  .chips.chl::before,.chips.chr::after{position:sticky;z-index:1;flex:0 0 22px;display:grid;place-items:center;
+    align-self:stretch;font:600 15px/1 system-ui;color:var(--ink);background:var(--panel);cursor:pointer}
+  .chips.chl::before{content:"\2039";left:0;margin-right:-22px;order:-1}
+  .chips.chr::after{content:"\203A";right:0;margin-left:-22px;order:99}
+}
 /* A list's narrowing band (R254 step 1): its chips at the left and a search
    at the right, the search taking the whole width under them on a phone.
    A row the band leaves out wears .off, so paging counts only what is shown. */
@@ -4057,7 +4125,13 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 /* Containers' images box is a slot its read fills, not a box: its tiles,
    tables and notes are the section's own. */
 .dmimgbox{display:contents}
-.sect>.body>.sub:first-child{margin-top:0}
+/* ...so its bar takes the inset a bar straight in a body has, and wraps on
+   a phone rather than running off the screen. */
+.dmimgbox>.actbar.dmprunes{margin:var(--field-gap) var(--row-x) 0;flex-wrap:wrap}
+/* ...and a first line that is not a band keeps a band's room under the
+   head, at every width (the operator, 23 Oct: "Mounts at boot." sat on the
+   Storage heading; that should never happen anywhere). */
+.sect>.body>:not(.field,.row,.sk-row,.tbl,.tcs,.tchead,.macros,details.sect,.fnote,.empty,.loading,:has(> .field)):first-child{margin-top:var(--row-y)}
 /* A container's own folds (Ports and mounts, Log) start where its card's
    words do, not a section's inset further in (the operator's phone, 18 Oct). */
 :is(.dmtab,.dkview,.vmtab) .row>details.sect>summary,:is(.dmtab,.dkview,.vmtab) .row>details.sect>.body{padding-left:0;padding-right:0}
@@ -4307,20 +4381,35 @@ button[aria-busy="true"]{opacity:.75}
 /* Its Sessions section (the operator, 18 Oct): the facts, its settings as
    one group over its Save and Revert, then its actions. */
 .ndsettings{display:flex;flex-direction:column;gap:2px;margin-top:6px;border-top:var(--hair) solid var(--line);padding-top:6px}
-.ndsettings>.field{padding:2px 0;margin:0}
+/* The bands' own inset kept: only their height is tightened (the
+   operator, 22 Oct: on a phone the switches ran to the edge under the inset
+   facts). */
+.ndsettings>.field{padding:2px var(--row-x);margin:0}
 .ndsettings>.field>.ndcap{min-height:32px}
 .ndsettings>.field>.sub{margin-top:2px}
 /* ...its two numbers side by side, a phone stacking them. */
 .ndsettings>.logdays.setrow.col{display:inline-flex;width:auto}
-.ndsettings .ndnums{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:8px}
+.ndsettings .ndnums{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:8px;padding:0 var(--row-x)}
+.ndsettings>.actbar{padding:0 var(--row-x)}
 /* A mouse needs no 38px box around a 16px tick, which spread the switches
    a blank line apart; a finger keeps the tap height. */
 @media(pointer:fine){ .ndsettings>.field>.ndcap>input[type=checkbox]{min-height:0;margin-block:0} }
 .ndactions{display:flex;flex-direction:column;gap:6px;margin-top:8px;border-top:var(--hair) solid var(--line);padding-top:6px}
-.ndmount,.ndnet{display:grid;grid-template-columns:minmax(0,7em) minmax(0,2fr) minmax(0,1.6fr) auto auto;
-  gap:6px;align-items:center}
-.ndnet{grid-template-columns:minmax(0,7em) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr)}
-.ndmount .ndmstate{grid-column:1 / -1}
+/* A mount is one line at a desk (the operator, 23 Oct: a row for read-only
+   and the × alone used a lot of room): its source and mountpoint, then its
+   kind, read-only, what the node says of it and its × together at the end. */
+.ndmount{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1.2fr) minmax(22em,1.4fr);gap:6px 10px;align-items:end}
+.ndmount .ndmline .ndcap{white-space:nowrap}
+/* Every mount in the same three columns, and the labels said once, over
+   the first: a Source and a Mountpoint over every row was most of its
+   height. The fields keep their own names for a screen reader. */
+.ndmount~.ndmount .setrow>.lbl{display:none}
+.ndmount .ndmline{display:flex;align-items:center;gap:6px 12px;min-height:var(--ctl);flex-wrap:nowrap;min-width:0}
+.ndmount .ndmline select{width:auto;flex:0 0 auto}
+.ndmount .ndmline .ndmstate{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ndmount .ndmline .eye{margin-left:auto}
+.ndnet{display:grid;gap:6px;align-items:center;
+  grid-template-columns:minmax(0,7em) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr)}
 /* Static routes take the network's whole width, in either mode. */
 .ndnet .ndroutes{grid-column:1 / -1}
 .ndmstate.warn{color:var(--warn)} .ndmstate.bad{color:var(--bad)}
@@ -4364,14 +4453,13 @@ button[aria-busy="true"]{opacity:.75}
 .row .jbouts code{font:var(--f-note);white-space:normal;overflow-wrap:anywhere}
 .jbouts a{overflow-wrap:anywhere}
 @media (max-width:600px){
-  .ndmount,.ndnet,.ndstore{grid-template-columns:minmax(0,1fr)}
-  .ndmount .ndmstate,.ndstore .sub{grid-column:1}
-  /* A mount on a phone: the fields stacked, then read-only and the × on one
-     line: the × was a full-width bar with a dot in it, which read as a
-     field with nothing to type. */
-  .ndmount{grid-template-columns:minmax(0,1fr) auto}
-  .ndmount select,.ndmount input:not([type=checkbox]),.ndmount .ndmstate{grid-column:1 / -1}
-  .ndmount .ndcap{grid-column:1} .ndmount .eye{grid-column:2;justify-self:end}
+  .ndnet,.ndstore{grid-template-columns:minmax(0,1fr)}
+  .ndstore .sub{grid-column:1}
+  /* A mount on a phone is two lines: its source and mountpoint side by
+     side, then its kind, read-only, its state and its × on one. */
+  .ndmount{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+  .ndmount .ndmline .ndmstate{white-space:normal}
+  .ndmount .ndmline{grid-column:1 / -1}
 }
 /* The Jobs tab: it is narrowed by chips (B74); the reason a job ended
    badly is a warn line; the log is the manager's compose log, same box. */
@@ -4457,12 +4545,9 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
 .st.warn{background:var(--warn)}
 .st.bad{background:var(--bad)}
 /* The doctor's panel under its dot in the top bar (R218 step 3). */
-.docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}
-#docWhen{font:var(--f-pill);color:var(--dim);margin-left:auto}
-#doctor:not([hidden]){border-top:var(--hair) solid var(--line)}
-.doctor .probs{padding:7px 10px;display:flex;flex-direction:column;gap:4px}
+.doctor .probs{padding:8px 12px;display:flex;flex-direction:column;gap:4px}
 .doctor .probs:empty{display:none}
-.doctor .chips{display:flex;flex-wrap:wrap;gap:5px;padding:7px 10px}
+.doctor .chips{display:flex;flex-wrap:wrap;gap:5px;padding:8px 12px 10px}
 .doctor .probs:not(:empty)+.chips{border-top:var(--hair) solid var(--line)}
 .doctor .probs .sub.bad{color:var(--bad)}
 .doctor .probs .sub.warn{color:var(--warn)}
@@ -4706,6 +4791,18 @@ html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
 .resumemenu .rmstate.ok::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--pass);flex:0 0 auto}
 .resumemenu .rmstate.bad{color:var(--bad)}
 .resumemenu .rmacts{padding:0;border:0;background:none;gap:8px;flex-wrap:wrap}
+/* The first step: a node switch, its facts, then one line per agent with its
+   name and how you stand at the left and its presses at the right (the
+   operator, 22 Oct). On a narrow menu the presses go under the name. */
+.resumemenu .rmnodes .pick{display:flex;align-items:center;gap:8px;max-width:100%}
+.resumemenu .rmnodes select{flex:1 1 auto;min-width:0}
+.resumemenu .rmline{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;
+  padding-top:8px;border-top:var(--hair) solid var(--line)}
+.resumemenu .rmline .rmwho{display:flex;align-items:baseline;gap:8px;min-width:0}
+.resumemenu .rmline .rmwho b{font:var(--f-ui);font-weight:600;color:var(--ink)}
+.resumemenu .rmline .rmsays{font:var(--f-note);color:var(--dim)}
+.resumemenu .rmline.live .rmsays{color:var(--pass)}
+.resumemenu .rmline .rmacts{margin-left:auto}
 .resumemenu .rmacts button{white-space:nowrap}
 .resumemenu .rmfields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .resumemenu .rmfields select{width:100%;min-width:0}
@@ -5072,6 +5169,18 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
    in a project row and a toolchain row only, and the dialog's "never backed
    up", the Claude chooser's reasons and a sign-in's refusals were not. */
 .sub.bad{color:var(--bad)}
+/* ...and a warning the same everywhere: what has to happen first (end the
+   sessions before signing out) is a warning, never red, which is for what
+   failed (the operator, 22 Oct). */
+.sub.warn{color:var(--warn)}
+/* Agents may's groups (the notebook, building, shipping): a heading over
+   each row of pickers, the gap above it a band's, and the VM limits as
+   number and unit pairs, two to a line on a phone. */
+.rnsub{display:block;margin-top:14px}
+.vmcaps{display:grid;grid-template-columns:repeat(4,max-content);gap:8px 16px;align-items:center}
+.vmcap{display:inline-flex;align-items:center;gap:8px}
+.vmcap>input{width:6em}
+@media(max-width:600px){ .vmcaps{grid-template-columns:repeat(2,max-content)} }
 </style>
 </head>
 <body class="booting">
@@ -5326,12 +5435,14 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="field lfilter" id="bugSortBar">
         <div class="chips" id="bugChips"></div>
         <div class="chips relchips" id="bugVers"></div>
+        <div class="chips" id="bugRepro"></div>
         <span class="lsort"><label for="bugSort">Sort</label>
         <select id="bugSort">
           <option value="severity" selected>severity</option>
           <option value="newest">newest first</option>
           <option value="oldest">oldest first</option>
           <option value="updated">recently changed</option>
+          <option value="reproduces">how often it happens</option>
           <option value="title">title A–Z</option>
         </select></span>
       </div>
@@ -5540,7 +5651,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="sesslist"></div>
     </div>
     <!-- What a session may do here, in one place (the operator, 22 Oct):
-         the settings form's Claude may section, lent while this view is on
+         the settings form's Agents may section, lent while this view is on
          screen (nb-permissions.js), and what it may push. -->
     <div class="nbview" data-view="permissions" hidden>
       <div class="field nbhead vbar docbarrow"><span class="nbsum">what a session may do here on its own, asks first, or may not</span><span class="sp"></span></div>
@@ -5672,7 +5783,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     <!-- In sections, each titled and each hiding itself when none of its
          fields is shown (the chain's door shows the remote alone): what
          the project is and who it belongs to, where it runs, what a
-         session sees, how it builds, what Claude may
+         session sees, how it builds, what an agent may
          do, what is yours, and who is in it now (the operator, 1 Oct). -->
     <details class="sect rngroup" data-sect="rn:project"><summary><span class="t">General</span></summary><div class="body">
     <div class="field" id="rnNameField">
@@ -5684,7 +5795,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
     </div></details>
     <!-- People, a section of its own (R255 step 7): who the project is for
          is not what it is called, and the dialog reads People (who) apart
-         from Claude may (what its sessions do). -->
+         from Agents may (what its sessions do). -->
     <details class="sect rngroup" data-sect="rn:people" hidden><summary><span class="t">People</span></summary><div class="body">
     <!-- Who the project belongs to and who joins it (membership.py): the
          owner and Invite only are staged until Save; Invite and Withdraw are
@@ -5694,11 +5805,11 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div id="rnPeople" role="group" aria-labelledby="rnPeopleLabel"></div>
     </div>
     </div></details>
-    <details class="sect rngroup" data-sect="rn:claude"><summary><span class="t">Claude may</span></summary><div class="body">
+    <details class="sect rngroup" data-sect="rn:claude"><summary><span class="t">Agents may</span></summary><div class="body">
     <!-- How much the operator wants to be in the loop on what a session
          ENTERS into the notebook (roadmap #27). Creation only: what is
          already on a list a session may still tick, note and reword. -->
-    <!-- Everything Claude may or may not do on this project, in one place
+    <!-- Everything Agents may or may not do on this project, in one place
          (the operator, 25 Sep): what a session enters, what it runs, and
          what a change asked for does while a test run is going. -->
     <div class="field" id="rnGateField">
@@ -5710,8 +5821,12 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           <option value="restart">interrupts any test run for the new ask</option>
         </select></label>
       </div>
-      <label id="rnGateMayLabel">On its own, asked first, or not at all</label>
-      <div class="prefrow ctlrow" role="group" aria-labelledby="rnGateMayLabel">
+      <!-- What a session may do on its own, ask first, or not at all, in
+           the groups a person looks for it under (the operator, 22 Oct: one
+           grid of fifteen read as a heap). -->
+      <div class="hint" id="rnGateMayLabel">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
+      <label id="rnGateNbLabel" class="rnsub">The notebook</label>
+      <div class="prefrow ctlrow" role="group" aria-labelledby="rnGateNbLabel">
         <label class="pick">Add to roadmap <select id="rnGateRoadmap"
           aria-label="new roadmap items from a session"></select></label>
         <label class="pick">File bugs <select id="rnGateBugs"
@@ -5722,6 +5837,9 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           aria-label="the design language and pages saved from a session"></select></label>
         <label class="pick">Write the wiki <select id="rnGateWiki"
           aria-label="wiki pages written or removed by a session"></select></label>
+      </div>
+      <label id="rnGateRunLabel" class="rnsub">Building and running</label>
+      <div class="prefrow ctlrow" role="group" aria-labelledby="rnGateRunLabel">
         <label class="pick">Fill in build and test <select id="rnGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
         <!-- The project's container: rebuild it, change its env, create it
@@ -5733,37 +5851,41 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
              session, read as Run its container is. Deny by default. -->
         <label class="pick">Make VMs <select id="rnGateVms"
           aria-label="making, starting, stopping, snapshotting and removing this project's VMs, from a session"></select></label>
-        <!-- What its VMs may hold in all, whoever makes them (R91 step 7). -->
-        <div class="logdays setrow ctlrow" id="rnVmCapsRow"><label class="ndcap" for="rnVmCount">Its VMs may hold<span class="help" data-help="in all, whoever makes them: a VM that would pass one of these is refused with the limit named. Each node also keeps 2 GB of memory and 10 GB of disk for itself" tabindex="0">?</span></label>
-          <input id="rnVmCount" type="number" min="0" max="64" step="1" inputmode="numeric" aria-label="VMs at most"> <span class="dim">VMs,</span>
-          <input id="rnVmCpus" type="number" min="0" max="256" step="1" inputmode="numeric" aria-label="vCPUs in all"> <span class="dim">vCPUs,</span>
-          <input id="rnVmMem" type="number" min="0" max="1024" step="1" inputmode="numeric" aria-label="GB of memory in all"> <span class="dim">GB memory,</span>
-          <input id="rnVmDisk" type="number" min="0" max="16384" step="1" inputmode="numeric" aria-label="GB of disk in all"> <span class="dim">GB disk</span></div>
-        <!-- bb report, which sends BuilderBot's own problems to its
-             maintainers rather than this project's tracker. Off for the
-             project that IS BuilderBot, whose tracker they belong in. -->
-        <!-- bb sign (R106): a build signed with one of the project's keys,
-             which the session never receives. Ask by default; Ask waits for
-             the project's owner. -->
-        <label class="pick">Sign a build <select id="rnGateSign"
-          aria-label="signing an APK or bundle with this project's keys, from a session"></select></label>
-        <!-- bb version release (R138): the tag on this commit and the
-             forge's release, made on the controller with the project's
-             credentials. Ask by default; Ask waits for the project's owner.
-             Named apart from signing, which is a build, not a release. -->
-        <label class="pick">Tag and publish a release <select id="rnGateRelease"
-          aria-label="tagging this commit and publishing the release, from a session"></select></label>
-        <!-- A new generated key, or an app's package mapped to a key, from a
-             session (R106 step 6). Ask by default: a new sideload key is an
-             app's identity for good. -->
-        <label class="pick">Manage signing keys <select id="rnGateKeys"
-          aria-label="making a signing key or mapping an app to one, from a session"></select></label>
         <!-- bb pc (R270 step 6): the verbs a person's Windows companion
              lends this project (its editor, its game, its build, a picture,
              a log). Deny by default: it is somebody's own machine; Ask puts
              each use in front of the person at that PC. -->
         <label class="pick">Use a lent PC <select id="rnGatePc"
           aria-label="asking a person's Windows PC to run its lent verbs, from a session"></select></label>
+      </div>
+      <!-- What its VMs may hold in all, whoever makes them (R91 step 7):
+           each number with its unit, two to a line on a phone. -->
+      <div id="rnVmCapsRow">
+      <label class="rnsub" for="rnVmCount">Its VMs may hold<span class="help" data-help="in all, whoever makes them: a VM that would pass one of these is refused with the limit named. Each node also keeps 2 GB of memory and 10 GB of disk for itself" tabindex="0">?</span></label>
+      <div class="vmcaps ctlrow">
+        <label class="vmcap"><input id="rnVmCount" type="number" min="0" max="64" step="1" inputmode="numeric" aria-label="VMs at most"><span class="dim">VMs</span></label>
+        <label class="vmcap"><input id="rnVmCpus" type="number" min="0" max="256" step="1" inputmode="numeric" aria-label="vCPUs in all"><span class="dim">vCPUs</span></label>
+        <label class="vmcap"><input id="rnVmMem" type="number" min="0" max="1024" step="1" inputmode="numeric" aria-label="GB of memory in all"><span class="dim">GB memory</span></label>
+        <label class="vmcap"><input id="rnVmDisk" type="number" min="0" max="16384" step="1" inputmode="numeric" aria-label="GB of disk in all"><span class="dim">GB disk</span></label>
+      </div></div>
+      <label id="rnGateShipLabel" class="rnsub">Shipping</label>
+      <div class="prefrow ctlrow" role="group" aria-labelledby="rnGateShipLabel">
+        <!-- bb sign (R106): a build signed with one of the project's keys,
+             which the session never receives. Ask by default; Ask waits for
+             the project's owner. -->
+        <label class="pick">Sign a build <select id="rnGateSign"
+          aria-label="signing an APK or bundle with this project's keys, from a session"></select></label>
+        <!-- A new generated key, or an app's package mapped to a key, from a
+             session (R106 step 6). Ask by default: a new sideload key is an
+             app's identity for good. -->
+        <label class="pick">Manage signing keys <select id="rnGateKeys"
+          aria-label="making a signing key or mapping an app to one, from a session"></select></label>
+        <!-- bb version release (R138): the tag on this commit and the
+             forge's release, made on the controller with the project's
+             credentials. Ask by default; Ask waits for the project's owner.
+             Named apart from signing, which is a build, not a release. -->
+        <label class="pick">Tag and publish a release <select id="rnGateRelease"
+          aria-label="tagging this commit and publishing the release, from a session"></select></label>
         <!-- Who may move the version: version.py's policy, the same setting
              the Artifacts tab's version row writes. Here too, because an
              owner who set every dial on this panel to auto still found the
@@ -5771,10 +5893,25 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
              Auto/Ask/Deny: a policy says how far, not whether to ask. -->
         <label class="pick">Move the version <select id="rnGateVersion"
           aria-label="moving the project's version, from a session"></select></label>
+      </div>
+      <label id="rnGateBbLabel" class="rnsub">BuilderBot itself</label>
+      <div class="prefrow ctlrow" role="group" aria-labelledby="rnGateBbLabel">
+        <!-- bb report, which sends BuilderBot's own problems to its
+             maintainers rather than this project's tracker. Off for the
+             project that IS BuilderBot, whose tracker they belong in. -->
         <label class="pick">Report BuilderBot bugs <select id="rnGateReport"
           aria-label="reporting problems with BuilderBot itself, from a session"></select></label>
       </div>
-      <div class="hint">Auto lands it, Ask holds it for your approval, Deny refuses it.</div>
+    </div>
+    <!-- The coding agents beside Claude its sessions may run (R95): each
+         installed and signed in on a node, ticked here to be offered. -->
+    <div class="field" id="rnAgentsField">
+      <label id="rnAgentsLabel">Coding agents</label>
+      <div class="lbox" id="rnAgents" role="group" aria-labelledby="rnAgentsLabel"></div>
+      <div class="prefrow ctlrow"><label class="pick wide">Start opens <select id="rnAgentDefault"
+        aria-label="the coding agent the project's Start opens"></select></label></div>
+      <div class="hint">A session of an agent left unticked does not start on this project. Claude always may.</div>
+      <div class="hint" id="rnAgentGuards"></div>
     </div>
         <!-- The Git view's session dials, shown here with the rest of what its
          sessions may do (R255 step 7) and set there, where the push they
@@ -5909,7 +6046,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            the rest prefs.nodes. Drawn by rnFillNodesMore. -->
       <label id="rnNodesLabel" hidden>Also works on</label>
       <div class="lbox" id="rnNodesMore" role="group" aria-labelledby="rnNodesLabel" hidden></div>
-      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them. One marked Hosting only takes containers alone, built on the project's node and sent there; its sessions may make, rebuild and remove them there under Claude may: Run its container. A hosting node not ticked is yours to copy to and rebuild on from the Docker tab.</div>
+      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them. One marked Hosting only takes containers alone, built on the project's node and sent there; its sessions may make, rebuild and remove them there under Agents may: Run its container. A hosting node not ticked is yours to copy to and rebuild on from the Docker tab.</div>
       <!-- What the project may use there (R102): the card, and where its
            tests run when it has a dev instance. -->
       <div class="prefrow ctlrow">
@@ -6086,7 +6223,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          that project's, listed in its notebook and reachable by its
          sessions. Changed later on the row, so not shown when editing. -->
     <div class="field" id="cUnderField">
-      <label for="cUnder">Project<span class="help" data-help="the project it belongs to: its Claude sessions can see it and work on it. No project keeps it from every session" tabindex="0">?</span></label>
+      <label for="cUnder">Project<span class="help" data-help="the project it belongs to: its sessions can see it and work on it. No project keeps it from every session" tabindex="0">?</span></label>
       <select id="cUnder"></select>
     </div>
     <div class="field">
@@ -6152,7 +6289,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="hint" id="dnPreview" hidden></div>
     </div>
     <div class="field">
-      <label for="dnUnder">Project<span class="help" data-help="the project it belongs to, its own by default: its Claude sessions can see it and work on it. No project keeps it from every session" tabindex="0">?</span></label>
+      <label for="dnUnder">Project<span class="help" data-help="the project it belongs to, its own by default: its sessions can see it and work on it. No project keeps it from every session" tabindex="0">?</span></label>
       <select id="dnUnder"></select>
     </div>
     <div class="field" id="dnNodeField" hidden>
@@ -6434,7 +6571,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          whoever makes the project rather than found later. Auto by default;
          the settings dialog changes it afterwards. -->
     <div class="field" id="pGateField" hidden>
-      <label id="pGateLabel">Claude may</label>
+      <label id="pGateLabel">Agents may</label>
       <!-- The dials start at their defaults and live on the project's
            Settings view (R245): a dialog is for what cannot wait. The
            selects stay, hidden, since the submit reads them. -->
@@ -6454,7 +6591,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           aria-label="the build, test and outputs fields from a session"></select></label>
         <label class="pick">Run its container <select id="pGateDocker"
           aria-label="rebuilding, changing the env of or creating this project's container, from a session"></select></label>
-        <!-- The rest of the project settings' Claude may, so a project is
+        <!-- The rest of the project settings' Agents may, so a project is
              born with every one of them chosen rather than found later. -->
         <label class="pick">Sign a build <select id="pGateSign"
           aria-label="signing an APK or bundle with this project's keys, from a session"></select></label>
@@ -6622,7 +6759,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
   <button id="bDocDot" aria-haspopup="dialog" aria-expanded="false"
           aria-label="bb doctor: the controller's own checks"><span class="st" id="docDot"></span></button>
   <div id="docPanel" class="bellpanel doctor" hidden role="dialog" aria-label="bb doctor">
-    <div class="docbar"><b>Doctor</b><span id="docWhen"></span>
+    <div class="popbar"><b>Doctor</b><span id="docWhen" class="popmeta"></span>
       <button id="bDoctor" title="run bb doctor now" aria-label="run bb doctor now">↻</button></div>
     <div id="doctor"><div class="empty">first run pending…</div></div>
   </div>
@@ -6742,11 +6879,13 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="tab-profile.js"></script>
 <script src="tab-apps.js"></script>
 <script src="tab-toolchains.js"></script>
+<script src="tab-agents.js"></script>
 <script src="tab-emulator.js"></script>
 <script src="tab-docker.js"></script>
 <script src="page-welcome.js"></script>  <!-- a part of the page that is no tab: same rule -->
 <script src="page-chat.js"></script>
 <script src="page-motion.js"></script>
+<script src="page-ask.js"></script>     <!-- the page's questions as modals (R121) -->
 <script src="page-pull.js"></script>
 <script src="page-report.js"></script>
 <script src="page-lists.js"></script>
@@ -6771,6 +6910,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="nb-roadmap.js"></script>
 <script src="nb-memory.js"></script>
 <script src="nb-history.js"></script>
+<script src="page-agents.js"></script>
 <script src="page-state.js"></script>
 <script src="page-prose.js"></script>
 <script src="page-tabs.js"></script>
@@ -6874,7 +7014,7 @@ untitleWatch();
 // Its declarations are page-shell.js; what runs at load is below: the
 // address bar's back and forward open what they name, the search is wired,
 // and the phone's More sheet closes on a tap elsewhere.
-addEventListener("hashchange", () => { sectNewVisit(); if (!openRoute(location.hash)) shellSync(); });
+addEventListener("hashchange", () => { sectNewVisit(); shellSeen = location.hash; if (!openRoute(location.hash)) shellSync(); });
 // The page the address names reads its own data now, on the read the head
 // began (preGets), so it is usually in hand when the first status read
 // draws the page, which then opens as itself rather than as a second
@@ -6966,6 +7106,18 @@ let floatFrame = 0;
 const floatSoon = e => { if (e?.target?.closest?.(".floatm") || floatFrame) return;
   floatFrame = requestAnimationFrame(() => { floatFrame = 0; floatFollow(); }); };
 document.addEventListener("scroll", floatSoon, {capture: true, passive: true});
+// A chip row's scroll, kept as it moves and put back when it is drawn again
+// (page-docs.js chipsRestore).
+document.addEventListener("scroll", chipsScrolled, {capture: true, passive: true});
+// A row of chips on a desk: its ends' arrows and a mouse drag (page-docs.js
+// chipsEdge), kept right as the window changes width.
+document.addEventListener("click", chipsArrow);
+document.addEventListener("click", chipsClickGuard, {capture: true});
+document.addEventListener("pointerdown", chipsDown);
+document.addEventListener("pointermove", chipsMove, {passive: true});
+document.addEventListener("pointerup", chipsUp);
+window.addEventListener("resize", () => chipsEdges());
+new MutationObserver(chipsRestore).observe(document.body, {childList: true, subtree: true});
 addEventListener("resize", floatSoon);
 
 // ---- panes -----------------------------------------------------------
@@ -7286,7 +7438,8 @@ $("rnName").oninput = rnShow;
     if (b && !b.disabled){
       if (b.dataset.rnrevert){
         const said = rnSectChanges(b.dataset.rnrevert).said;
-        if (said.length && confirm(`Revert ${said.join(", ")}?\n\nIt goes back to what is saved.`)) rnRevertSect(b.dataset.rnrevert);
+        if (said.length) askYes(`Revert ${said.join(", ")}?\n\nIt goes back to what is saved.`)
+          .then(yes => { if (yes) rnRevertSect(b.dataset.rnrevert); });
       } else rnSubmit(b.dataset.rnsave || b.dataset.rnkeep || b.dataset.rnend, !!b.dataset.rnend);
       return;
     }
@@ -7323,9 +7476,13 @@ $("rnKeyCopy").onclick = async () => {
 $("rnUnlink").onclick = () => unlinkProject(rnFor);
 $("rnDelete").onclick = () => { const n = rnFor; closeRename(); deleteProject(n); };
 // Closing with a section unsaved asks, naming what would go.
-$("rnCancel").onclick = () => {
+$("rnCancel").onclick = async () => {
   const d = rnDirty().map(x => document.querySelector(`details.rngroup[data-sect="rn:${x}"] .t`)?.textContent || x);
-  if (d.length && !confirm(`Close without saving? ${d.join(", ")} would be dropped.`)) return;
+  const opening = rnOpens;
+  if (d.length && !await askYes(`Close without saving?\n\n${d.join(", ")} would be dropped.`,
+                                {verb: "Close without saving", danger: true})) return;
+  // The answer came after the dialog was opened again: that one stays.
+  if (opening !== rnOpens) return;
   closeRename();
 };
 // The settings' sections take turns, one open at a time, as a tab's do.
@@ -7466,6 +7623,8 @@ onRev("settings", () => refresh());
 // is a third clock for a fact the poll already carries.
 onRev("toolchains", () => {
   if (tabs.some(t => t.kind === "toolchains")) loadToolchains();
+  // ...and the Agents page, whose rows are a node's toolchain rows (R95).
+  if (shown("agents")) loadAgents();
 });
 // Google's image index landing, for the Emulator tab's picker.
 onRev("emulator", () => {
@@ -7501,6 +7660,8 @@ onRev("nodes", () => {
   // ...and Storage, whose walk lands with a node's census: the numbers a
   // Measure now asked for arrive with no Refresh (the operator, 17 Oct).
   if (shown("storage")) loadStorage();
+  // ...and the Agents page, whose versions ride a node's census (R95).
+  if (shown("agents")) loadAgents();
   if (shown("emulator") && emu?.nonode) loadEmulator();
   // ...and Home's Getting started, which says whether a node is online.
   if (shown("home") && homeStartReadsNodes()) loadNodes().then(() => drawPanes());
@@ -7594,7 +7755,7 @@ $("mSave").onclick = async () => {
     closeEditor();
 };
 $("mDelete").onclick = async () => {
-  if (!editing || !confirm(`Delete "${$("mName").value}"?`)) return;
+  if (!editing || !await askYes(`Delete "${$("mName").value}"?`, {danger: true})) return;
   if (await postCustom({action:"delete", id: editing})) closeEditor();
 };
 // The backdrop and Escape both mean "never mind"; Enter in the title field

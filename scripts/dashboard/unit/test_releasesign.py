@@ -1,13 +1,14 @@
-"""releasesign.py (R106): a release's APK built unsigned in CI and signed by
-the controller with the project's sideload key. Against a stand-in for
+"""releasesign.py (R106): a release's APK built unsigned in CI and signed on
+the project's node with its sideload key. Against a stand-in for
 GitHub's API, its artifact storage and its upload host on a local port: the
 run's bb-release-apk-TAG artifact is fetched (its storage never handed the
 token), each APK signed and attached under its name less -unsigned with its
 sha256 and a notes line giving the key's fingerprint, a second look signs
 nothing twice, and a failure is kept for the bell and signed again on a
 press. What would stop a release is said before it: no key, an app mapped
-to none of several. Where the store's keytool, aapt2 and apksigner are
-here, a real APK is signed end to end."""
+to none of several, the project's node offline or without its tools. Where
+a toolchain store with the jdk and build-tools is here, a real APK is signed
+end to end by the real agent's side of the job (signnode.py)."""
 import glob
 import hashlib
 import io
@@ -30,6 +31,7 @@ import cilogs  # noqa: E402
 import forgerelease  # noqa: E402
 import releasesign  # noqa: E402
 import signing  # noqa: E402
+import signnode  # noqa: E402
 
 SEEN = []
 REL = {}
@@ -147,14 +149,18 @@ class Base(unittest.TestCase):
                          push_record_fn={"app": {"repo": "o/app", "host": "github.com"}}.get)
         forgerelease.configure(state=self.tmp, workspace=self.tmp / "ws", write_json_fn=wj)
         releasesign.configure(state=self.tmp, workspace=self.tmp / "ws", write_json_fn=wj, projects=lambda: ["app"])
-        signing.configure(state=self.tmp / "state", project_name=re.compile(r"[A-Za-z0-9._-]+"),
-                          keytool=lambda: None)
+        signing.configure(state=self.tmp / "state", project_name=re.compile(r"[A-Za-z0-9._-]+"))
+        # The project's node, there and ready unless a test says otherwise.
+        for k in ("node_of", "node_get", "node_tools", "node_refuses"):
+            self.addCleanup(setattr, signing, k, getattr(signing, k))
+        signing.node_of = lambda p: "n_1"
+        signing.node_get = signing.node_tools = signing.node_refuses = None
         base = f"http://127.0.0.1:{self.srv.server_address[1]}"
         for mod, k in ((cilogs, "API"), (forgerelease, "API"), (forgerelease, "UPLOADS")):
             self.addCleanup(setattr, mod, k, getattr(mod, k))
             setattr(mod, k, base)
         # A kept sideload key, as signing.py writes one (its keystore is not
-        # opened here: sign_here is stood in for, below).
+        # opened here: sign_release is stood in for, below).
         self.key("default")
         self.signed, self.fail_why = [], ""
 
@@ -164,15 +170,8 @@ class Base(unittest.TestCase):
                 return {"error": self.fail_why}
             Path(out).write_bytes(b"signed:" + Path(src).read_bytes())
             return {"key": "default", "cert": "AB:CD", "package": "dev.example.app", "schemes": ["v2"]}
-        self.addCleanup(setattr, signing, "sign_here", signing.sign_here)
-        signing.sign_here = fake_sign
-        self.addCleanup(setattr, signing, "apksigner_path", signing.apksigner_path)
-        self.tools = self.tmp / "bt"
-        self.tools.mkdir()
-        for t in ("apksigner", "zipalign", "aapt2"):
-            (self.tools / t).write_text("#!/bin/sh\n")
-            (self.tools / t).chmod(0o755)
-        signing.apksigner_path = lambda: (str(self.tools / "apksigner"), {})
+        self.addCleanup(setattr, signing, "sign_release", signing.sign_release)
+        signing.sign_release = fake_sign
 
     def key(self, name, sha="AB:CD"):
         d = self.tmp / "state" / "signing" / "app" / name
@@ -233,6 +232,20 @@ class Signs(Base):
         self.fail_why = ""
         self.assertEqual(releasesign.check("app", force=True)["signed"], ["v0.7.0"])
         self.assertFalse([a for a in releasesign.attention(["app"]) if a["bad"]])
+        self.assertFalse(releasesign.status("app")["failed"])
+
+    def test_a_look_moves_the_token_as_it_starts_and_ends(self):
+        # The Signing view re-reads on it, so a press is followed to its end
+        # rather than read once a few seconds on, mid-look.
+        was = releasesign.rev()
+        self.assertTrue(releasesign._claim("app"))
+        self.assertTrue(releasesign.status("app")["looking"])
+        self.assertGreater(releasesign.rev(), was)
+        mid = releasesign.rev()
+        releasesign.check("app")
+        releasesign._release("app")
+        self.assertGreater(releasesign.rev(), mid)
+        self.assertFalse(releasesign.status("app")["looking"])
 
     def test_a_release_whose_apk_never_came_is_said(self):
         releasesign.expect("app", "v0.9.0")
@@ -292,9 +305,19 @@ class Before(Base):
         releasesign._cache.clear()
         self.assertEqual(releasesign.readiness("app")["keys"][0]["key"], "next")
 
-    def test_no_apksigner_here_is_said(self):
-        signing.apksigner_path = lambda: (None, {})
-        self.assertIn("no apksigner", releasesign.readiness("app")["why"])
+    def test_the_nodes_state_is_said(self):
+        # The node it is signed on, in its words: offline, or without the
+        # build-tools, which a rotation's proof and an APK need.
+        n = {"id": "n_1", "name": "bb-sandbox", "state": "online", "kind": "agent", "live": False}
+        signing.node_get = lambda nid: n
+        r = releasesign.readiness("app", fresh=True)
+        self.assertIn("app's node bb-sandbox is offline", r["why"])
+        self.assertEqual(r["node"], "bb-sandbox")
+        n["live"] = True
+        signing.node_tools = lambda node: {"jdk", "android-tools"}
+        self.assertIn("has no Android SDK Build-Tools", releasesign.readiness("app", fresh=True)["why"])
+        signing.node_tools = lambda node: {"jdk", "android-tools", "android:build-tools"}
+        self.assertEqual(releasesign.readiness("app", fresh=True)["why"], "")
 
     def test_a_project_whose_workflows_hand_over_nothing_is_left_alone(self):
         (self.tmp / "ws" / "app" / ".github" / "workflows" / "android.yml").write_text("name: x\n")
@@ -313,57 +336,63 @@ class Before(Base):
         self.assertEqual([f.name for f in forgerelease.assets("app", "65298e0")], ["app-0.7.0-65298e0-release.apk"])
 
 
-# ---- a real APK, signed with the store's own tools --------------------------
-
-def store():
-    for root in glob.glob("/mnt/SDK/*/") + glob.glob("/sdk/*/"):
-        kt = os.path.join(root, "jdk", "bin", "keytool")
-        bts = sorted(glob.glob(os.path.join(root, "android", "build-tools", "*")))
-        jars = sorted(glob.glob(os.path.join(root, "android", "platforms", "android-*", "android.jar")))
-        if os.access(kt, os.X_OK) and bts and jars and os.access(os.path.join(bts[-1], "apksigner"), os.X_OK):
-            return root, kt, bts[-1], jars[0]
-    return None
 
 
-STORE = store()
+# ---- a real APK, signed on the node with its own tools ----------------------
+
+def jar():
+    jars = sorted(glob.glob(os.path.join(signnode.STORE_BT, "android", "platforms", "android-*", "android.jar"))) \
+        if signnode.STORE_BT else []
+    return jars[0] if jars else ""
 
 
-@unittest.skipUnless(STORE, "no jdk and android-tools store on this machine")
+JAR = jar()
+
+
+@unittest.skipUnless(JAR, "no toolchain store with the jdk, build-tools and a platform here")
 class RealSigning(unittest.TestCase):
     def setUp(self):
-        root, self.kt, self.bt, self.jar = STORE
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        signing.configure(state=self.tmp / "state", project_name=re.compile(r"[A-Za-z0-9._-]+"),
-                          keytool=lambda: self.kt)
-        jdk = os.path.join(root, "jdk")
-        self.addCleanup(setattr, signing, "apksigner_path", signing.apksigner_path)
-        signing.apksigner_path = lambda: (os.path.join(self.bt, "apksigner"),
-                                          {"JAVA_HOME": jdk, "PATH": os.path.join(jdk, "bin") + os.pathsep + os.environ["PATH"]})
+        signing.configure(state=self.tmp / "state", project_name=re.compile(r"[A-Za-z0-9._-]+"))
+        self.node = signnode.install(self, signing, str(self.tmp / "data"), store=signnode.STORE_BT)
+        self.bt = os.path.dirname(signnode.agent.module("keyops").build_tools(signnode.STORE_BT)["apksigner"])
+        jdk = os.path.join(signnode.STORE_BT, "jdk")
+        self.env = dict(os.environ, JAVA_HOME=jdk, PATH=os.path.join(jdk, "bin") + os.pathsep + os.environ["PATH"])
         signing.set_backup_password("app", "", "a-backup-password")
         man = self.tmp / "AndroidManifest.xml"
         man.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android" '
                        'package="dev.example.app"><uses-sdk android:minSdkVersion="26"/></manifest>')
         self.apk = self.tmp / "app-unsigned.apk"
-        subprocess.run([os.path.join(self.bt, "aapt2"), "link", "-o", str(self.apk), "-I", self.jar,
+        subprocess.run([os.path.join(self.bt, "aapt2"), "link", "-o", str(self.apk), "-I", JAR,
                         "--manifest", str(man)], check=True, capture_output=True)
 
-    def test_an_unsigned_apk_is_signed_here_with_the_kept_key(self):
+    def test_an_unsigned_apk_is_signed_on_the_node_with_the_kept_key(self):
         r, st = signing.generate("app", "sideload", "default")
         self.assertEqual(st, 200, r)
         out = self.tmp / "app.apk"
-        got = signing.sign_here("app", self.apk, out)
+        got = signing.sign_release("app", self.apk, out)
         self.assertNotIn("error", got, got)
         self.assertEqual((got["key"], got["package"]), ("default", "dev.example.app"))
         self.assertEqual(got["cert"], r["key"]["sha256"])
         v = subprocess.run([os.path.join(self.bt, "apksigner"), "verify", "--print-certs", str(out)],
-                           capture_output=True, text=True,
-                           env=dict(os.environ, **signing.apksigner_path()[1]))
+                           capture_output=True, text=True, env=self.env)
         self.assertEqual(v.returncode, 0, v.stderr)
         self.assertIn(r["key"]["sha256"].replace(":", "").lower(), v.stdout.lower())
+        job = [j for j in self.node.jobs.values() if j["spec"]["op"] == "release"][0]
+        self.assertEqual((job["type"], job["state"]), ("sign-key", "succeeded"), job["log"])
+        self.assertEqual(os.listdir(self.tmp / "data" / "sign-key"), [])
+        self.assertEqual(signing._handover, {})
 
-    def test_no_key_is_refused_before_anything_runs(self):
-        got = signing.sign_here("app", self.apk, self.tmp / "app.apk")
+    def test_a_rotated_key_signs_with_the_proof(self):
+        signing.generate("app", "sideload", "default")
+        signing.generate("app", "sideload", "next")
+        self.assertEqual(signing.rotate("app", "default", "next")[1], 200)
+        got = signing.sign_release("app", self.apk, self.tmp / "app.apk")
+        self.assertEqual((got.get("key"), got.get("rotated_from")), ("next", "default"), got)
+
+    def test_no_key_is_refused_before_anything_is_signed(self):
+        got = signing.sign_release("app", self.apk, self.tmp / "app.apk")
         self.assertIn("has no sideload signing key", got["error"])
         self.assertFalse((self.tmp / "app.apk").exists())
 

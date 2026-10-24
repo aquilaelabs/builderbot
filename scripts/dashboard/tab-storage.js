@@ -19,6 +19,7 @@ let storageErr = "";
 let storageRev = 0;
 let storageMay = false;          // whether this account may measure now
 let storageNode = "";            // the node the tab shows
+let storageDisk = "";            // the disk its chips picked, "" for all (R122)
 
 function openStorageTab(node){
   if (node) storageNode = node;
@@ -80,14 +81,37 @@ function storageHeld(n){
     // would free; the kind-by-kind list (images 3095 MB (7), ...) is the
     // Docker tab's to tell.
     items.push({name: "Docker", path: dk.root || "its data root", fs: dk.fs || "", mb: total,
-                note: recl ? `${sgb(recl)} of it reclaimable: prune on the Containers page` : ""});
+                note: recl ? `${sgb(recl)} of it reclaimable` : "", prune: recl ? n.node : ""});
   }
   return items;
 }
 
 function storageRow(h){
   return `<div class="row"><div class="grow"><div class="name">${esc(h.name)} <span class="dim">· ${esc(h.path)}</span></div>
-      <div class="sub">${h.mb === null ? "not measured in time" : sgb(h.mb)}${h.note ? `; ${esc(h.note)}` : ""}</div></div></div>`;
+      <div class="sub">${h.mb === null ? "not measured in time" : sgb(h.mb)}${h.note ? `; ${esc(h.note)}` : ""}${
+        // ...and the way to it: the Containers page on this node with its
+        // Images and volumes open, where the prunes are.
+        h.prune ? `: <a href="#" data-stprune="${esc(h.prune)}">prune on the Containers page</a>` : ""}</div></div></div>`;
+}
+
+// What BuilderBot could free on a filesystem (R123 step 4): its projects'
+// phones, its build caches and Docker's reclaimable, where they sit on it.
+function storageFreeable(n, fs){
+  const on = path => fs.path === path || (path || "").startsWith(fs.path === "/" ? "/" : fs.path + "/");
+  const phones = (n.phones || []).filter(p => !p.running).reduce((a, p) => a + (p.mb || 0), 0);
+  const builds = (n.projects || []).reduce((a, r) => a + (r.builds || 0), 0);
+  const cache = n.stores?.cache && n.stores.cache.fs === fs.path
+    ? (n.projects || []).reduce((a, r) => a + (r.cache || 0), 0) : 0;
+  const dk = n.docker || {};
+  const docker = dk.fs === fs.path ? (dk.kinds || []).reduce((a, k) => a + (k.reclaimable_mb || 0), 0) : 0;
+  const home = n.homes?.fs === fs.path || on(n.homes?.path || "");
+  // Each named with the page that frees it: this page only measures (the
+  // operator, 23 Oct).
+  const parts = [[home ? phones : 0, "phones not running (the Emulator page)"],
+                 [(home ? builds : 0) + cache, "build caches (Clear cache on the node's row on the Nodes page)"],
+                 [docker, "Docker's reclaimable (the Containers page)"]].filter(([mb]) => mb > 0);
+  return parts.length ? `${sgb(parts.reduce((a, [mb]) => a + mb, 0))} of it can be freed: ${
+    andList(parts.map(([mb, what]) => `${what.replace(/ \(/, ` ${sgb(mb)} (`)}`))}` : "";
 }
 
 // A list of names as a sentence: "cache, artifacts and appdata".
@@ -117,15 +141,24 @@ function storageDisks(n){
         // "used": the card's heading already names the filesystem.
         meter("used", pct, `${sgb(fs.used_mb)} / ${sgb(fs.total_mb)}`,
               `${fs.source} (${fs.type}${fs.ro ? ", read-only" : ""})${also}`)}</div>${
-        mine.length ? `<div class="sub">${ours ? `${sgb(ours)} of it is BuilderBot's` : "nothing of it is BuilderBot's yet"}</div>` : ""}</div>${
+        mine.length ? `<div class="sub">${ours ? `${sgb(ours)} of it is BuilderBot's` : "nothing of it is BuilderBot's yet"}</div>` : ""}${
+        pct >= 90 && storageFreeable(n, fs) ? `<div class="sub warn">${esc(storageFreeable(n, fs))}.</div>` : ""}</div>${
       some.map(storageRow).join("")}${
       none.length ? `<div class="row stnone"><div class="grow"><div class="sub">${esc(andList(none.map(h => h.name)))} hold${none.length === 1 ? "s" : ""} nothing yet</div></div></div>` : ""}`,
-      {cls: pct >= 92 ? "bad" : pct >= 80 ? "warn" : ""});
+      {cls: pct >= 92 ? "bad" : pct >= 80 ? "warn" : "", item: true});
   };
-  const out = fss.map(fs => block(fs, held.filter(h => h.fs === fs.path)));
+  // The disks are the node's, as many as it has: big chips pick one (R122),
+  // where small pills listed them as if they were the page's sections.
   const off = held.filter(h => !fss.some(fs => fs.path === h.fs));
-  if (off.length) out.push(docSection("storage", "fs:elsewhere", "Elsewhere", "not measured", off.map(storageRow).join("")));
-  return out.join("");
+  const keys = [...fss.map(fs => fs.path), ...(off.length ? ["elsewhere"] : [])];
+  if (storageDisk && !keys.includes(storageDisk)) storageDisk = "";
+  const chips = chipBar([...fss.map(fs => ({key: fs.path, label: fs.path, count: null})),
+                         ...(off.length ? [{key: "elsewhere", label: "Elsewhere", count: null}] : [])],
+                        storageDisk, "data-stdisk");
+  const out = fss.filter(fs => !storageDisk || storageDisk === fs.path).map(fs => block(fs, held.filter(h => h.fs === fs.path)));
+  if (off.length && (!storageDisk || storageDisk === "elsewhere"))
+    out.push(docSection("storage", "fs:elsewhere", "Elsewhere", "not measured", off.map(storageRow).join(""), {item: true}));
+  return chips + out.join("");
 }
 
 function storageProjects(n, where){
@@ -147,6 +180,23 @@ function storageProjects(n, where){
   return tblWrap(tcols, shown.map(r => `<div class="row stack2 stproj${r.other ? " dim" : ""}">${tblLine(tcols, [
       `<span class="name">${r.other ? "other projects <span class=\"dim\">· ones you cannot see</span>" : esc(projLabel(r.name))}</span>`,
       ...cols.map(w => r[w] ? sgb(r[w]) : `<span class="dim">none</span>`), `<b>${sgb(r.total)}</b>`])}</div>`).join(""), "sttbl") + tail;
+}
+
+// Each project's virtual phones on the node (R123 step 1), largest first,
+// whoever's they are among the projects this account sees: measured here,
+// removed on the Emulator page, the page that manages them (the operator,
+// 23 Oct).
+function storagePhones(n){
+  const rows = [...(n.phones || [])].sort((a, b) => (b.mb || 0) - (a.mb || 0));
+  const cols = [{label: "Phone"}, {label: "Project"}, {label: "Account"}, {label: "last started"},
+                {label: "snapshot", num: true}, {label: "size", num: true}];
+  return `<div class="field"><div class="hint">Each is removed on the ${pageLink("emulator", "Emulator page")}, with this node picked.</div></div>`
+    + tblWrap(cols, rows.map(p => `<div class="row stack2 stphone">${tblLine(cols, [
+      `<span class="name">${esc(p.name)}</span>${p.running ? ` <span class="pill ok">running</span>` : ""}`,
+      esc(projLabel(p.project)), `<span class="dim">${esc(p.uid === state?.uid ? "yours" : p.uid || "the session account")}</span>`,
+      p.running ? "now" : p.ran ? esc(ago(p.ran)) : `<span class="dim">never</span>`,
+      p.snap_mb ? sgb(p.snap_mb) : `<span class="dim">none</span>`,
+      p.mb === null || p.mb === undefined ? `<span class="dim">?</span>` : sgb(p.mb)])}</div>`).join(""), "sttbl");
 }
 
 // Measure now, the page's upkeep, in its bar with every header button (the
@@ -188,6 +238,7 @@ function storageBody(n, where){
     ${hint}
     ${storageDisks(n)}
     ${byProject(`${(n.projects || []).length} project${(n.projects || []).length === 1 ? "" : "s"}`, storageProjects(n, where))}
+    ${(n.phones || []).length ? docSection("storage", "phones", "Phones", `${n.phones.length}, ${sgb(n.phones.reduce((a, p) => a + (p.mb || 0), 0))}`, storagePhones(n)) : ""}
     ${n.slow?.length ? `<div class="field"><div class="hint warn">Not measured in time: ${esc(n.slow.join(", "))}. A slow share; the next walk tries again.</div></div>` : ""}
   </div>`;
 }
@@ -226,6 +277,14 @@ function wireStorageTab(root){
   if (psel) psel.onchange = () => navPush(() => { storageNode = psel.value;
                                     try{ localStorage.setItem("bb.stnode", storageNode); }catch(e){ /* private */ }
                                     storageRev++; drawPanes(); });
+  root.querySelectorAll("[data-stdisk]").forEach(c => c.onclick = () => {
+    storageDisk = c.dataset.stdisk; storageRev++; drawPanes();
+  });
+  root.querySelectorAll("[data-stprune]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    sectOpen["docker:images"] = true;
+    openDockerOn(a.dataset.stprune);
+  });
   root.querySelectorAll("[data-stmeasure]").forEach(b => b.onclick = async () => {
     busy(b, "Asking");
     const j = await (await postJSON("/api/storage", {action: "measure", node: b.dataset.stmeasure})).json().catch(() => ({error: "no answer"}));

@@ -23,7 +23,7 @@ function argForSession(name){
   // Matched through tmuxName (a session's name is the project's with `.` and
   // `:` rewritten), and by exact project first, so a project genuinely called
   // "web-2" is not read as terminal 2 of a project called "web".
-  for (const [prefix, arg] of [["claude-", "claude:"], ["shell-", "shell:"]]){
+  for (const [prefix, arg] of [...agentsLive().map(a => [a.id + "-", a.id + ":"]), ["shell-", "shell:"]]){
     const p = name.startsWith(prefix) ? projFor(name.slice(prefix.length)) : null;
     if (p) return arg + p;
   }
@@ -65,16 +65,16 @@ function renderSessionsInto(i){
     paint(d.list, skTpl(skTable(SESS_COLS, 3, "sesstbl", "row sessrow")));
     return;
   }
-  const claudes = ss.filter(s => tmuxBase(s.name).startsWith("claude-")).length;
+  const agentSs = ss.filter(s => agentOfSession(tmuxBase(s.name))), claudes = agentSs.length;
   d.setBar(`<span class="dim">${ss.length} session${ss.length === 1 ? "" : "s"}${
-    claudes ? `, ${claudes} of them Claude` : ""}</span>`);
+    claudes ? `, ${claudes} of them ${agentsWord(agentSs.map(s => s.name))}` : ""}</span>`);
   // Named exactly as its tab is: the tmux name and the full path are in the
   // name's description, where the detail belongs.
   const names = sessionLabels();
   const tabFor = new Map(tabs.filter(t => t.kind === "term").map(t => [sessionOf(t.arg), t]));
   const rows = ss.map(s => {
     const t = tabFor.get(s.name);
-    const claude = tmuxBase(s.name).startsWith("claude-");
+    const claude = !!agentOfSession(tmuxBase(s.name));
     const tip = tabTitle(t || {kind: "term", arg: argForSession(s.name), label: s.name});
     const proj = sessionProject(s.name);
     // Only while it IS working: the task comes off the pane title, which
@@ -92,10 +92,10 @@ function renderSessionsInto(i){
           title="take its tab off the strip; it keeps running">Minimize</button>`)
         : `<button type="button" data-a="${esc(s.name)}" title="reopen its tab">Open</button>`}
         <button type="button" class="danger" data-k="${esc(s.name)}" data-kn="${esc(s.node_id || "")}"
-          title="${claude ? "end this Claude session: the transcript is kept" : "end this session and what runs in it"}">End</button></div>`])}</div>`;
+          title="${claude ? "end this session: the transcript is kept" : "end this session and what runs in it"}">End</button></div>`])}</div>`;
   }).join("");
   const html = ss.length ? tblWrap(SESS_COLS, rows, "sesstbl")
-    : `<div class="hint">nothing is running: a terminal or a Claude session you open is listed here</div>`;
+    : `<div class="hint">nothing is running: a terminal or an agent's session you open is listed here</div>`;
   if (!paint(d.list, html)) return;
   // Kept from the pane under the page: its click makes the page's pane the
   // active one, and the terminal just opened in the dock would lose the
@@ -111,12 +111,12 @@ function renderSessionsInto(i){
 // the same name can exist here and there: a project unbound from a node
 // while a session was still open on it, and the row knows which it meant.
 async function killSession(name, node = ""){
-  const claude = tmuxBase(name).startsWith("claude-");
+  const ag = agentOfSession(tmuxBase(name)), claude = !!ag;
   // Named as its row and its tab are, never by its tmux name (B58).
   const proj = sessionProject(name);
-  const said = claude ? `the Claude session on ${proj ? projLabel(proj) : name}`
+  const said = claude ? `the ${ag.agent.name} session on ${proj ? projLabel(proj) : name}`
     : `the session "${sessionLabels().get(name) || name}"`;
-  if (!confirm(claude
+  if (!await askYes(claude
         ? `End ${said}?\n\nThe transcript is kept and can be `
           + `resumed later, but the conversation stops now.`
         : `End ${said}?\n\nAnything running in it is terminated.`)) return;
@@ -127,7 +127,7 @@ async function killSession(name, node = ""){
     const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === name);
     if (t) dropTab(t.id);
     notify(`ended ${said}`);
-  }catch(e){ notify("could not end it: " + e, true); }
+  }catch(e){ notify("could not end it: " + failWords(e), true); }
   await refresh();
   // Nowhere near another End (B54): with focus left on the list, a keyboard
   // Enter after the redraw could end a second session.
@@ -169,10 +169,10 @@ async function liveRefresh(){
   let j;
   try{ j = await (await fetch("/api/live")).json(); }catch(e){ return; }
   if (!state || !j || j.error) return;
-  // Your own sessions starting or ending are what the cards' Open Claude,
+  // Your own sessions starting or ending are what the cards' Manage agent,
   // a project's header and its settings read off the status read's session
   // list, which this light read does not carry and keeps putting off: so a
-  // change in yours reads it at once (the operator, 17 Oct: Start Claude
+  // change in yours reads it at once (the operator, 17 Oct: Start agent
   // stayed until a reload).
   const yours = w => Object.entries(w || {}).filter(([, ns]) => (ns || []).includes(state.me)).map(([k]) => k).sort().join(",");
   const moved = yours(j.claude_with) !== yours(state.claude_with);

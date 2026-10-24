@@ -26,6 +26,9 @@ audit = None
 project_node = None          # project -> its primary node id, "" for none
 ask_hello = None             # node id -> the agent is told now, not in ten minutes
 node_info = None             # node id -> {"name", "addr", "has_ftp": True|False|None}
+# A locked project's refusal for an account (projects.locked_out), set by
+# server.py: a lock makes every way into the files read-only (B263).
+locked_out = lambda name, uid: None  # noqa: E731
 
 ACCESS = ("r", "rw")
 PORT_MIN, PORT_MAX = 1024, 65535
@@ -338,4 +341,8 @@ def access_for(u, project, door):
         access = "r"
     if not access:
         return "", "This account has no file access to this project."
+    # A project locked against this account (R119) is read here as it is on
+    # the page: nothing of it changes, through this door either (B263).
+    if access == "rw" and locked_out(project, users.uid_of(u)):
+        access = "r"
     return access, ""

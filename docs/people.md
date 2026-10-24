@@ -28,10 +28,10 @@ from Controller settings and Enroll node.
 
 Afterwards, `bb users passwd <name>` changes a password and `bb users add`
 makes the others. `bb users token <project> [<account>]` mints the scoped
-session token a Claude session is given, for proving a node by hand, where
+session token a session is given, for proving a node by hand, where
 `bb` reaches the controller with `BB_TOKEN` and nothing else; with an
 account named it is the token a node-bound terminal carries, which is also
-what reports that account's Claude sign-in on the node.
+what reports that account's sign-ins to each agent on the node.
 
 ## Accounts
 
@@ -45,7 +45,7 @@ but not deleting one, renaming one, or changing which node it builds on: a
 node is shared, and that setting reaches every project on it.
 
 **The project list means the same thing for every role; what differs is the
-remedy.** A project not on your list is read-only: no Claude session, no
+remedy.** A project not on your list is read-only: no session, no
 notebook edits, no rebuild. An admin is shown *every* project: hiding one
 from somebody who administers the box only sends them looking for it, with
 the ones they have not taken on marked read-only, and they can add any of them
@@ -72,7 +72,7 @@ role with New projects to write on bb-sandbox alone lets an
 account make projects there and nowhere else, a project made elsewhere or on
 no node being refused by name, and the account owns what it makes, so it
 holds PROJECT_owner on it. Write needs Read, and an area without Read is not shown. Terminal's
-Read is the shielded Claude console and its Write the full tmux shell, which
+Read is the shielded agent console and its Write the full tmux shell, which
 reaches every account's files on its node.
 
 **owner** and **admin** are built in with everything; an admin may not change
@@ -83,19 +83,19 @@ and moved with it when it changes hands; it is an ordinary role, so cutting
 it back (taking File access off it, say) holds for whoever owns the project.
 
 A person may do what their roles give and nothing else: an account on a
-project's list with no role there works on nothing. A Claude session does no
-more than the person behind it: what its own rules (its project's Claude may
+project's list with no role there works on nothing. A session does no
+more than the person behind it: what its own rules (its project's Agents may
 dials, a session's limits) allow and what its account's roles give on the
 project, whichever is less, the projects it reads included, so a session of
 somebody who may only read a project can only read it.
 
 An area without Read is not offered (the status carries each area's level,
 and the rail does not draw its page), and the server holds the same line: the
-Users and Roles reads, a Claude console without Terminal Read (no terminal
+Users and Roles reads, an agent's console without Terminal Read (no terminal
 at all), the Jobs listing (a person's own projects' jobs alone) and the
 Docker listing (the projects whose Containers they may read). Without Nodes
 or Toolchains Read those reads answer only for the nodes of the person's own
-projects, which a Claude sign-in there needs, and never for another machine.
+projects, which a sign-in there needs, and never for another machine.
 
 The **Roles** page lists the roles beside the one picked (the projects'
 owner roles folded into one row at the list's end): its kind, what it is
@@ -128,7 +128,7 @@ people. A session has no say in any of it.
 
 Each account works as itself:
 
-- **its own home**: own shell history, own Claude login, own memories. The
+- **its own home**: own shell history, own agent logins, own memories. The
   box's own dotfiles are shared into it rather than copied, so the Android
   pairing key, the AVDs and the build caches are not duplicated per person
 - **its transcripts and memories in one place whichever machine ran the
@@ -166,8 +166,8 @@ the session.
 its unread count beside it. It lists the
 other accounts (a green dot for whoever is here right now) and, under them,
 the **project channels**, which are group chats for everybody on a project. A
-channel carries what people type into it *and* what the box notices: a Claude
-session started, a rebuild, and what each person asked Claude. Three people on
+channel carries what people type into it *and* what the box notices: a
+session started, a rebuild, and what each person asked their agent. Three people on
 one project not doing the same work twice is the whole point of it.
 
 An admin is shown every project's channel, since they are shown every project,
@@ -178,7 +178,7 @@ you have taken on.
 
 **Prompts on a shared project are not private**, and the chat says so where
 the channel is drawn rather than leaving it to be discovered: what you ask
-Claude on a project you share goes to the people you share it with.
+a session on a project you share goes to the people you share it with.
 
 `bb work` says who else is in the project and which files two of you have
 uncommitted at once. Two answers, and the cheap one is the truthful one: **git**
@@ -186,13 +186,17 @@ is exact: a file changed in two trees at once is a collision whatever anybody
 intended, and it needs nothing recorded, while a **PreToolUse hook** adds the
 finer grain, naming the definition an edit lands in, which is a guess and is
 labeled as one. The hook also tells the second session, before its edit, that
-somebody else has that file open. It does not refuse it: each session is in its
+somebody else has that file open. A session is an account and a coding agent:
+your own Claude and Codex sessions on one project are two, each told of the
+other, and every session is named with its agent, "sam (Codex CLI)". It does not refuse it: each session is in its
 own worktree, so two people editing one function are making two commits rather
 than corrupting one tree, and that is what a merge is for.
 
-Each account signs in to Claude for itself, on each node it works on, from
-that node's Claude Code section. Which Anthropic account that is is the person's own choice:
-the Users page says when two BuilderBot accounts are on one, since Anthropic's
+Each account signs in to the agents it uses for itself, on each node it
+works on, from that node's Agents page (Build, then Agents, with that node
+picked), and People and Profile name the account each agent is signed in as.
+Which account that is is the person's own choice: the Users page says when
+two BuilderBot accounts are on one Anthropic account, since Anthropic's
 terms allow one person per Claude account, and nothing is refused for it.
 
 The notebook (roadmap, bugs, analysis) stays shared, because it is about the
@@ -203,7 +207,7 @@ project; memories do not, because they are about the person.
 **A `user` has no shell and no command line at all**, and that is what makes
 the rest of the role mean something: everything else is enforced by the
 dashboard, in Python, and a terminal is the way around all of it. So a `user`
-gets no shell, and their Claude session opens as a **console** instead:
+gets no shell, and their agent's session opens as a **console** instead:
 the real interface, rendered by a `ttyd` started without `--writable`, with
 a box to type a message and a button to end the conversation. The proxy
 refuses anything else they ask a terminal for, so a read-only window cannot be
@@ -215,7 +219,7 @@ it. Building what you committed and looking at it is the point of having the
 project, and Rebuild is also how a stopped instance comes back; the page
 already ghosts it until the code has actually moved. They cannot create or
 rename a project, change how one authenticates, or touch a stored token. What
-they can write is the notebook, a rebuild, and a Claude session on a project
+they can write is the notebook, a rebuild, and a session on a project
 they were given.
 
 ## Your profile
@@ -226,31 +230,80 @@ entry, **Profile**, which is also **Settings** on the rail: the signed-in
 account's own page, in sections. **Who you are** holds the account name,
 their name and email, and the name and email their commits carry (blank means
 the ones above); **What you may do** is what their roles add up to;
-**Password** is a change that asks for the current one first; **Claude
-plugins** lists the plugins they installed; and **Signed in as you**, last, is the devices signed in as this account (a
+**Password** is a change that asks for the current one first;
+**Two-factor sign-in** is described below; and **Signed in as you**, last, is the devices signed in as this account (a
 line a device, with when it last called and **Disconnect**, which signs that
-one out).
+one out). The plugins and MCP servers a person added to each coding agent
+are on the Agents page, per agent on each node.
 
-Neither a Claude session nor a shell starts for an account with no
+### Two-factor sign-in
+
+An account can add a second factor on Profile's **Two-factor sign-in**:
+
+- **Authenticator app:** **Add** shows a QR code and the secret in words. The
+  first code the app shows turns it on.
+- **Passkey:** **Add a passkey** makes one in the browser (the device's own,
+  or a security key). Each passkey has a name, so it can be told apart in the
+  list.
+
+The first factor added comes with ten **recovery codes**, shown once. Each
+signs in once, if the app or the passkeys are lost. **Make new ones**
+replaces them all.
+
+From then on, after the password, the sign-in page asks for one of these:
+
+- a code from the app;
+- a recovery code;
+- a passkey, by its button.
+
+**Remember this browser for 30 days** skips that step on that browser; Profile
+lists each remembered browser, with **Forget**. Removing a factor or making
+new recovery codes asks for a factor first.
+
+The password alone opens nothing for such an account:
+
+- Basic auth with it is refused.
+- A companion app's sign-in asks for a code beside the password.
+- `bb` from a dashboard terminal is unaffected: it carries its own token.
+
+Wrong codes are counted per account and per address: after five, each try
+waits; after ten in a quarter of an hour, the account or the address is held
+for a quarter of an hour. Every sign-in through a factor, every wrong code and
+every factor added or removed is in the audit.
+
+Until an account has a factor, the bell carries a standing notice to add one.
+It can be put away for the day, not for good.
+
+An administrator can require a second factor of a role, with its box on the
+Roles page. An account in such a role without one meets the setup page at its
+next sign-in and reaches nothing else until it has added one.
+
+An owner who has lost every factor gets back in from a shell on the
+controller: `bb users reset-2fa NAME` removes that account's factors, and its
+password signs in alone until one is added again.
+
+Neither a session nor a shell starts for an account with no
 name and email for commits, and `bb git` refuses for it: every project is a
-repository, and a shell is where git is typed, and the project's Start Claude
+repository, and a shell is where git is typed, and the project's Start agent
 and Shell say so until the Profile has them. Blank git fields fall back to the name and email
 above and to nothing else; no address is ever made up. A project's
 notebook has **Sessions** beside Overview: the account's own conversations
-with Claude on that project, newest first with the first thing typed, each
-with **Resume**, which opens the Start chooser on that conversation (the
-project's Claude button resumes only the last), **Read**, **Download**, and
+with each agent on that project (Claude, ChatGPT, Copilot, each marked),
+newest first with the first thing typed, each with **Resume**, which opens
+the Start chooser on that conversation (Start agent's menu resumes only each
+agent's last), **Read**, **Download**, and
 behind its ⋯ **Make visible**, which lets every session on the project read
 it with `bb transcripts` until **Make private**, and **Delete**, for good (one
 still being written by a running session is refused). A session never
 deletes or shares one. The download is a text file: what
-was said on both sides, every command Claude ran and what the command
-answered, `bb roadmap` and its reply included, from the transcript Claude
-Code writes as the session goes (transcripts.py reads the account's
-`~/.claude/projects` directory, the one on the share). Each line is
-stamped in the browser's own zone, the one the page shows times in, so the
-log and the page agree; a line headed System is what BuilderBot or Claude
-Code put in front of Claude. Claude's private reasoning is not conversation
+was said on both sides, every command the agent ran and what the command
+answered, `bb roadmap` and its reply included, from the transcript the agent
+writes as the session goes (transcripts.py reads the account's own: Claude
+Code's `~/.claude/projects`, the one on the share, Codex CLI's
+`~/.codex/sessions` and Copilot CLI's `~/.copilot/session-state`). Each line
+is stamped in the browser's own zone, the one the page shows times in, so
+the log and the page agree; a line headed System is what BuilderBot or the
+agent put in front of it. An agent's private reasoning is not conversation
 and is left out, and another account's file is simply not found. A session
 reads the same: `bb transcripts` lists the account's own conversations on
 its project and `bb transcripts show ID` prints one, and with `bb -p NAME`

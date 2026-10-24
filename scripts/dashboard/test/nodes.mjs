@@ -982,6 +982,31 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   await page.fill(`${ROW} [data-k="store:cache"]`, '/scratch/cache');
   ok(await page.$(`${ROW} [data-k="store:artifacts"]`) !== null,
      'the fold carries the artifacts store: this node\'s copy of what projects built');
+  // Its first line keeps room under the heading (the operator, 23 Oct:
+  // "Mounts at boot." sat on it), and a mount is one line at a desk: its
+  // source, mountpoint, kind, read-only and × ending at one height.
+  {
+    const lay = await page.evaluate(sel => {
+      const d = document.querySelector(`${sel} details.sect[data-sect="nodes:storage"]`);
+      const head = d?.querySelector(':scope > summary')?.getBoundingClientRect();
+      const first = d?.querySelector(':scope > .body > :first-child')?.getBoundingClientRect();
+      const m = d?.querySelector('.ndmount');
+      const bottoms = m ? ['[data-k="source"]', '[data-k="path"]', '[data-k="type"]', '[data-mrm]']
+        .map(q => Math.round(m.querySelector(q).getBoundingClientRect().bottom)) : [];
+      return { gap: head && first ? Math.round(first.top - head.bottom) : null, bottoms };
+    }, ROW);
+    ok(lay.gap >= 6 && lay.bottoms.length === 4 && Math.max(...lay.bottoms) - Math.min(...lay.bottoms) <= 4,
+       `the Storage section's first line has room under its head, and a mount is one line at a desk (${JSON.stringify(lay)})`);
+    if (process.env.BB_SHOTS){
+      await page.locator(`${ROW} details.sect[data-sect="nodes:storage"]`).screenshot({ path: `${process.env.BB_SHOTS}/storage-desk.png` });
+      const vp = page.viewportSize();
+      await page.setViewportSize({ width: 393, height: 900 });
+      await sleep(400);
+      await page.locator(`${ROW} details.sect[data-sect="nodes:storage"]`).screenshot({ path: `${process.env.BB_SHOTS}/storage-phone.png` });
+      await page.setViewportSize(vp);
+      await sleep(300);
+    }
+  }
   // The heartbeat repaints the tab; the draft and the caret survive it.
   await page.evaluate(() => loadNodes());
   await sleep(400);
@@ -992,14 +1017,99 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   ok(await page.$eval(`${ROW} .ndmount[data-i="${last}"] .ndmstate`, e => /not applied yet/.test(e.textContent))
      && await page.$eval(`${ROW} [data-napply="storage"]`, b => b.disabled),
      '...the new mount says it is not applied yet, and Apply waits for Save');
+  // What is at a path is the node's to say (R120): the page asks before it
+  // saves. Answered here as an agent would, from what this map says the
+  // node's disk holds; any path it does not name is not there.
+  const disk = {};
+  let answering = true;
+  const answerer = (async () => {
+    while (answering){
+      const r = await fetch(base + '/api/v1/agent/work', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 8192, mem_used_mb: 512 }, running: [], wait: 0 }) });
+      const j = r.status === 200 ? await r.json().catch(() => null) : null;
+      if (j?.type === 'exec' && /storage paths/.test(j.spec?.title || '')){
+        const out = Object.fromEntries(JSON.parse(j.spec.argv[3]).map(p => [p, disk[p] || { exists: false, dir: false, files: false }]));
+        const asNode = { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' };
+        await fetch(base + '/api/v1/agent/log', { method: 'POST', headers: asNode,
+          body: JSON.stringify({ job: j.id, chunks: [{ seq: 1, chunk: 'exec\n' + JSON.stringify(out) + '\n' }] }) });
+        await fetch(base + '/api/v1/agent/result', { method: 'POST', headers: asNode,
+          body: JSON.stringify({ job: j.id, state: 'succeeded', exit: 0 }) });
+      }
+      await sleep(150);
+    }
+  })();
+  page.dialogs.length = 0;
   await page.click(`${ROW} [data-nsave]`);
   await page.waitForFunction(sel => !document.querySelector(sel + ' [data-napply="storage"]')?.disabled,
-                             ROW, { timeout: 10000 });
+                             ROW, { timeout: 15000 });
+  ok(page.dialogs.length === 1 && /Put the cache store in \/scratch\/cache/.test(page.dialogs[0]) && /is made/.test(page.dialogs[0]),
+     `a store pointed somewhere new asks first, saying what is there (${page.dialogs[0]?.split('\n').join(' ').slice(0, 90)})`);
   const rec = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
   ok(rec.config.desired.mounts.some(m => m.path === '/mnt/appdata')
      && rec.config.desired.mounts.some(m => m.path === '/mnt/old')
      && rec.config.desired.stores.cache === '/scratch/cache' && rec.config.desired.network.mode === 'dhcp',
      'Save puts the desired config on the record, validated');
+  // A folder that already holds files gets one named for the node inside it,
+  // and the setting changes to that; the data coming along is its own
+  // question (the operator, 23 Oct), answered no here.
+  {
+    disk['/srv/full'] = { exists: true, dir: true, files: true };
+    disk['/var/lib/builderbot/artifacts'] = { exists: true, dir: true, files: true };
+    const asked = [];
+    page.answers.push(q => { asked.push(q.text); return 0; }, q => { asked.push(q.text); return /^Bring /.test(q.text) ? 1 : 0; });
+    await page.fill(`${ROW} [data-k="store:artifacts"]`, '/srv/full');
+    await page.click(`${ROW} [data-nsave]`);
+    await page.waitForFunction(id => nodesList.find(n => n.id === id)?.config?.desired?.stores?.artifacts === '/srv/full/shed',
+                               minted.id, { timeout: 15000 });
+    const after = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id).config.desired;
+    ok(asked.length === 2 && /already has files in it/.test(asked[0]) && /\/srv\/full\/shed/.test(asked[0])
+       && /Bring the artifacts data across from \/var\/lib\/builderbot\/artifacts/.test(asked[1])
+       && after.stores.artifacts === '/srv/full/shed' && after.keep.includes('artifacts'),
+       `a folder holding files gets one named for the node, the setting is that, and declining the copy starts it empty (${JSON.stringify(after.keep)}; ${asked.length} asked)`);
+    // A store pointed into a mount saved here and not on the node yet is
+    // told so (the operator, 23 Oct): what is on the share cannot be seen
+    // until Apply mounts it, so no folder is chosen from what is there now.
+    const told = [];
+    for (let i = 0; i < 4; i++) page.answers.push(q => { told.push(q.text); return 0; });
+    await page.click(`${ROW} [data-madd]`);
+    const mi = await page.$$eval(`${ROW} .ndmount`, e => e.length - 1);
+    await page.fill(`${ROW} .ndmount[data-i="${mi}"] [data-k="source"]`, 'nas:/mnt/user/new');
+    await page.fill(`${ROW} .ndmount[data-i="${mi}"] [data-k="path"]`, '/srv/newshare');
+    await page.fill(`${ROW} [data-k="store:toolchains"]`, '/srv/newshare/tc');
+    disk['/srv/newshare/tc'] = { exists: true, dir: true, files: true };     // the node's own disk, under it
+    await page.click(`${ROW} [data-nsave]`);
+    await page.waitForFunction(id => nodesList.find(n => n.id === id)?.config?.desired?.stores?.toolchains === '/srv/newshare/tc',
+                               minted.id, { timeout: 15000 });
+    page.answers.length = 0;
+    ok(told.some(m => /inside \/srv\/newshare, a mount saved here that the node does not have yet/.test(m) && /the apply fails/.test(m))
+       && !told.some(m => /a folder for this node inside it/.test(m)),
+       `a store pointed into a mount not on the node yet says so, and no folder is picked from what the node's disk holds now (${told.length} asked)`);
+    await napi('/api/v1/nodes', { action: 'config', id: minted.id, config: after });
+    await page.evaluate(id => { const c = nodesConf[id]; if (c){ c.draft = null; c.dirty = false; } return loadNodes(); }, minted.id);
+    // A system folder is refused before anything is asked or saved.
+    page.dialogs.length = 0;
+    await page.fill(`${ROW} [data-k="store:data"]`, '/etc/builderbot');
+    await page.click(`${ROW} [data-nsave]`);
+    await sleep(1500);
+    const still = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id).config.desired;
+    ok(page.dialogs.length === 0 && still.stores.data !== '/etc/builderbot',
+       `a store pointed into a system folder is refused, nothing asked and nothing saved (${still.stores.data || 'unset'})`);
+    // ...and a folder of its own under /var/log is a place for one.
+    const ok1 = await napi('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { ...after, stores: { ...after.stores, data: '/var/log/builderbot' } } });
+    const bare = await napi('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { ...after, stores: { ...after.stores, data: '/var/log' } } });
+    const mnt = await napi('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { ...after, mounts: [...after.mounts, { path: '/etc/share', source: 'nas:/x', type: 'nfs' }] } });
+    ok(!ok1.error && /system directory/.test(bare.error || '') && /mount at \/etc\/share/.test(mnt.error || ''),
+       `a folder under /var/log is allowed, /var/log itself and a mount on /etc are not (${bare.error}; ${mnt.error})`);
+    await napi('/api/v1/nodes', { action: 'config', id: minted.id, config: rec.config.desired });
+    // ...and the refused draft dropped, so the editor reads the record again.
+    await page.evaluate(id => { const c = nodesConf[id]; if (c){ c.draft = null; c.dirty = false; } return loadNodes(); }, minted.id);
+  }
+  answering = false;
+  await answerer;
   // A job's log is the only copy of what a node's job wrote, it lives in the
   // controller's store, and until R17 step 1 nothing deleted one: a build's
   // log runs to megabytes, so a busy project filled the database quietly. The
@@ -1136,8 +1246,12 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   await page.waitForFunction(sel => !document.querySelector(sel + ' [data-napply="storage"]')?.disabled,
                              ROW, { timeout: 10000 });
   page.dialogs.length = 0;
+  // Answered Cancel: the question is what is checked, and a yes answered
+  // a moment after the press queued the apply after the cancel below had
+  // run, holding every later system job on this node ("one at a time").
+  page.answers.push(-1);
   await page.click(`${ROW} [data-napply="storage"]`);
-  await page.waitForFunction(() => true);
+  for (let i = 0; i < 40 && page.dialogs.length === 0; i++) await sleep(100);
   ok(page.dialogs.length === 1 && /unmounts \/mnt\/old/.test(page.dialogs[0]),
      `Apply storage asks first when it would unmount something the node has (${page.dialogs[0]?.slice(0, 60)})`);
   for (const j of (await napi('/api/v1/jobs?active=1')).jobs)
@@ -1290,11 +1404,11 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
        'a hosting-only node is not offered as a project\'s primary, only under Also works on, marked Hosting only');
     await page.click('#rnCancel');
     // Nothing on it runs Claude Code (the operator, 11 Oct): no section on
-    // its row, no row on its Toolchains tab.
-    await page.waitForFunction(sel => !document.querySelector(sel + ' details[data-sect="nodes:claude"]'), ROW, { timeout: 10000 }).catch(() => {});
-    const tcHost = await napi('/api/toolchains?node=' + minted.id);
-    ok(!(await page.$(`${ROW} details[data-sect="nodes:claude"]`)) && !(tcHost.machine || []).some(m => m.name === 'claude-code'),
-       `a hosting-only node's row has no Claude Code section, and its Toolchains page no Claude Code row (${JSON.stringify((tcHost.machine || []).map(m => m.name))})`);
+    // its row, no row on its Agents page.
+    await page.waitForFunction(sel => !document.querySelector(sel + ' .ndagents'), ROW, { timeout: 10000 }).catch(() => {});
+    const tcHost = await napi('/api/agents?node=' + minted.id);
+    ok(!(await page.$(`${ROW} .ndagents`)) && !(tcHost.rows || []).some(m => m.name === 'claude-code'),
+       `a hosting-only node's row has no Claude Code section, and its Agents page no Claude Code row (${JSON.stringify((tcHost.rows || []).map(m => m.name))})`);
     // A root command on it, by name, for a project that hosts containers
     // there (the operator, 11 Oct): refused for a project that does not,
     // asked for one that does, and refused where the row's switch is off.
@@ -1374,7 +1488,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const inUseUn = await napi('/api/v1/nodes', { action: 'uninstall', id: minted.id });
     ok(/in use: 1 session running there .* and 1 container running there \(beta-web/.test(inUse.error || '')
        && /in use: 1 session/.test(inUseUn.error || ''),
-       `Disable and Un-enroll refuse while a session or a container runs there, naming them (${inUse.error})`);
+       `Disable and Un-enroll refuse while a session or a container runs there, naming them (${inUse.error} | ${inUseUn.error})`);
     await beatIn({ sessions: [], published: {} });
     page.dialogs.length = 0;
     await page.click(`${ROW} [data-nd="disable"]`);
@@ -1472,7 +1586,14 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
       ok(page.dialogs.length === 1 && /Lock down vps-lock[\s\S]*revoked[\s\S]*provider's console/.test(page.dialogs[0]),
          `Lock down asks first, saying what stops, that its credential goes, and the console's stop (${page.dialogs[0]?.slice(0, 40)})`);
       const refused = await as('devdata', {});
-      const taken = await (await as('work', { running: [], wait: 0 })).json();
+      // The press is answered a moment after it, in the page's modal, and
+      // the lockdown job is queued then: asked for until it is there.
+      let taken = null;
+      for (let i = 0; i < 40 && !taken?.spec; i++){
+        const w = await as('work', { running: [], wait: 0 });
+        taken = await w.json().catch(() => null);
+        if (!taken?.spec) await sleep(250);
+      }
       ok(refused.status === 403 && taken?.spec?.apply === 'lockdown',
          `...from then it is refused all but its lockdown job (${refused.status}, ${taken?.spec?.apply})`);
       await as('result', { job: taken.id, state: 'succeeded', exit: 0 });
@@ -3201,11 +3322,15 @@ ok(page.errors.length === 0,
     await napi('/api/v1/jobs', { action: 'cancel', id: off.job });
     // The briefing's GPU section reaches a session only where its project's
     // node reports a card: a fact about the machine, not the tree.
-    const without = (await napi('/api/preamble?project=delta')).text || '';
-    await napi('/api/prefs', { project: 'delta', node: shed.id });
-    const withCard = (await napi('/api/preamble?project=delta')).text || '';
-    await napi('/api/prefs', { project: 'delta', node: '' });
-    const gpuTopic = (await napi('/api/preamble?project=delta&topic=gpu')).text || '';
+    // gamma, not delta: delta is the fixture's locked project, whose
+    // settings nobody changes (R119).
+    const prevNode = (await napi('/api/status')).projects?.find(p => p.name === 'gamma')?.prefs?.node || '';
+    await napi('/api/prefs', { project: 'gamma', node: '' });
+    const without = (await napi('/api/preamble?project=gamma')).text || '';
+    await napi('/api/prefs', { project: 'gamma', node: shed.id });
+    const withCard = (await napi('/api/preamble?project=gamma')).text || '';
+    await napi('/api/prefs', { project: 'gamma', node: prevNode });
+    const gpuTopic = (await napi('/api/preamble?project=gamma&topic=gpu')).text || '';
     ok(!/- gpu: /.test(without) && /- gpu: the card/.test(withCard) && /bb gpu run \[--mem MB\] -- CMD/.test(gpuTopic),
        'the briefing names its GPU topic for a project whose node has a card, and for no other; the topic answers either way');
   }
@@ -3499,15 +3624,19 @@ ok(page.errors.length === 0,
   const me = (await napi('/api/v1/nodes')).nodes.find(n => n.id === en.id);
   ok(!!me?.live && me.reported?.session?.claude === '1.0.0 (Claude Code)',
      `the node dials in reporting its Claude Code (hello: ${JSON.stringify(hi).slice(0, 80)}; row: live=${me?.live} session=${JSON.stringify(me?.reported?.session || null).slice(0, 120)})`);
-  // Claude Code is a toolchain of the node (R145): the Toolchains tab's
-  // Check for updates asks its latest with the rest, in the same answer.
+  // Claude Code is a coding agent of the node (R145, R95): the Agents
+  // page's check asks its latest; the Toolchains page's asks the node's
+  // toolchains alone.
+  const ack = await napi('/api/agents', { action: 'check' });
+  ok(ack.claude?.version === '1.2.0', `Check for updates asks the installer's latest and gets it (${ack.claude?.version || ack.claude?.error || ack.error})`);
   const chk = await napi('/api/toolchains', { action: 'check', node: en.id });
-  ok(chk.claude?.version === '1.2.0', `Check for updates asks the installer's latest and gets it (${chk.claude?.version || chk.claude?.error || chk.error})`);
-  // The node's own toolchain check it queued beside: the fake agent takes it
-  // and answers the way bb toolchains versions does, Go behind, so the tab
-  // is not busy with it and the agent is handed the update next.
+  ok(!('claude' in chk), `...and the Toolchains page's check asks nothing of a coding agent (${Object.keys(chk).join(', ')})`);
+  // The node's own toolchain check it queued: the fake agent takes it and
+  // answers the way bb toolchains versions does, Go behind, so the tab is
+  // not busy with it and the agent is handed the update next.
   const tcRowOf = st => (st.attention || []).find(a => a.kind === 'toolchain' && a.id === en.id);
-  const claudeIn = st => (tcRowOf(st)?.tools || []).find(t => t.name === 'claude-code');
+  const agRowOf = st => (st.attention || []).find(a => a.kind === 'agents' && a.id === en.id);
+  const claudeIn = st => (agRowOf(st)?.tools || []).find(t => t.name === 'claude-code');
   if (chk.job) {
     const AH = { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' };
     const w = await fetch(base + '/api/v1/agent/work', { method: 'POST', headers: AH,
@@ -3520,81 +3649,79 @@ ok(page.errors.length === 0,
     } else await napi('/api/v1/jobs', { action: 'cancel', id: chk.job });
   }
   const st = await napi('/api/status');
-  const row = tcRowOf(st);
+  const row = tcRowOf(st), agRow = agRowOf(st);
   const cl = claudeIn(st), goRow = (row?.tools || []).find(t => t.name === 'go');
   ok(cl?.from === '1.0.0' && cl.to === '1.2.0' && cl.label === 'Claude Code',
-     `a node behind is a bell row naming both versions (${JSON.stringify(row || st.attention)})`);
-  ok(goRow?.from === '1.27.0' && goRow.to === '1.28.0' && row.tools.length === 2
-     && (st.attention || []).filter(a => a.id === en.id && a.kind === 'toolchain').length === 1,
-     `...the same row as a store toolchain's update, one per node, Claude Code first (${JSON.stringify(row?.tools)})`);
-  // The row's link opens the node's Toolchains tab, where each is updated
-  // (the operator, 9 Oct), from whichever node that tab was on.
-  await page.waitForFunction(id => (state?.attention || []).some(a => a.kind === 'toolchain' && a.id === id), en.id, { timeout: 15000 });
+     `a node behind is a bell row naming both versions (${JSON.stringify(agRow || st.attention)})`);
+  ok(goRow?.from === '1.27.0' && goRow.to === '1.28.0' && row.tools.length === 1
+     && (st.attention || []).filter(a => a.id === en.id && a.kind === 'toolchain').length === 1
+     && (st.attention || []).filter(a => a.id === en.id && a.kind === 'agents').length === 1,
+     `...a row of its own, beside the toolchains' row, one each per node (${JSON.stringify(row?.tools)})`);
+  // Each row's link opens its own page on the node (the operator, 9 and
+  // 22 Oct), from whichever node that page was on.
+  await page.waitForFunction(id => (state?.attention || []).some(a => a.kind === 'agents' && a.id === id)
+                                   && (state?.attention || []).some(a => a.kind === 'toolchain' && a.id === id), en.id, { timeout: 15000 });
   await page.evaluate(() => { tcNode = 'local'; });
   await page.click('#bBell');
+  await page.waitForSelector(`#bellPanel [data-bag="${en.id}"]`, { timeout: 10000 });
   await page.waitForSelector(`#bellPanel [data-btc="${en.id}"]`, { timeout: 10000 });
-  // The panel draws from the page's own poll, which can be a poll behind the
-  // status read above, and a poll under load can be a long way off: ask for
-  // it until the page's row carries both (B662), then read the drawer.
-  await refreshUntil(page, `((state?.attention || []).find(a => a.kind === 'toolchain'
-    && a.id === ${JSON.stringify(en.id)})?.tools || []).length === 2`, { timeout: 30000 }).catch(() => {});
-  await page.waitForFunction(id => /2 toolchain updates/.test(document.querySelector(`#bellPanel [data-btc="${id}"]`)?.closest('.bnote')?.textContent || ''),
-                             en.id, { timeout: 10000 }).catch(() => {});
+  const agBell = await page.$eval(`#bellPanel [data-bag="${en.id}"]`, a => a.closest('.bnote').textContent.replace(/\s+/g, ' '));
   const tcBell = await page.$eval(`#bellPanel [data-btc="${en.id}"]`, a => a.closest('.bnote').textContent.replace(/\s+/g, ' '));
-  ok(/2 toolchain updates on clbox/.test(tcBell) && /Claude Code, Go/.test(tcBell)
-     && /Claude Code: 1\.0\.0 → 1\.2\.0/.test(tcBell) && /Go: 1\.27\.0 → 1\.28\.0/.test(tcBell),
-     `the bell says it in a line, every toolchain behind on the node in one row, the versions under its fold (${tcBell.slice(0, 160)})`);
+  ok(/1 coding agent update on clbox/.test(agBell) && /Claude Code: 1\.0\.0 → 1\.2\.0/.test(agBell) && /Agents page/.test(agBell)
+     && /1 toolchain update on clbox/.test(tcBell) && /Go: 1\.27\.0 → 1\.28\.0/.test(tcBell) && !/Claude Code/.test(tcBell),
+     `the bell says each in a line, the coding agents on their row and the toolchains on theirs, the versions under the fold (${agBell.slice(0, 100)} | ${tcBell.slice(0, 80)})`);
   // B57: what the update ends is the Claude sessions running there, counted,
   // not the projects bound to the node.
-  const ends = /ends the Claude sessions there \((\d+) running\)/.exec(tcBell);
-  ok(typeof row.sessions === 'number' && (row.sessions ? ends && +ends[1] === row.sessions : !ends && !/ends the Claude/.test(tcBell)),
-     `...and its warning counts the Claude sessions running there (${row.sessions}: ${ends?.[0] || 'none said'})`);
+  const ends = /ends the Claude sessions there \((\d+) running\)/.exec(agBell);
+  ok(typeof agRow.sessions === 'number' && (agRow.sessions ? ends && +ends[1] === agRow.sessions : !ends && !/ends the Claude/.test(agBell)),
+     `...and its warning counts the Claude sessions running there (${agRow.sessions}: ${ends?.[0] || 'none said'})`);
   // Dismiss puts that version away for this account (bellseen.py, R144),
   // with the drawer left open; Show again brings it back.
-  await page.click(`#bellPanel [data-bdismiss]`);
-  await page.waitForFunction(id => !(state?.attention || []).some(a => a.kind === 'toolchain' && a.id === id)
-                                   && state.bell_hidden === 2, en.id, { timeout: 15000 });
+  await page.click(`#bellPanel .bnote:has([data-bag="${en.id}"]) [data-bdismiss]`);
+  await page.waitForFunction(id => !(state?.attention || []).some(a => a.kind === 'agents' && a.id === id)
+                                   && state.bell_hidden === 1, en.id, { timeout: 15000 });
   await page.waitForSelector('#bellRestore', { timeout: 10000 });
-  ok(!(await page.$eval('#bellPanel', e => e.hidden)) && /2 updates dismissed/.test(await page.textContent('#bellPanel')),
-     'Dismiss puts both updates away, leaves the drawer open, and says how many are put away');
+  ok(!(await page.$eval('#bellPanel', e => e.hidden)) && /1 update dismissed/.test(await page.textContent('#bellPanel')),
+     'Dismiss puts the update away, leaves the drawer open, and says how many are put away');
   await page.click('#bellRestore');
-  await page.waitForFunction(id => state.bell_hidden === 0 && (state?.attention || []).some(a => a.kind === 'toolchain' && a.id === id),
+  await page.waitForFunction(id => state.bell_hidden === 0 && (state?.attention || []).some(a => a.kind === 'agents' && a.id === id),
                              en.id, { timeout: 15000 });
-  await page.waitForSelector(`#bellPanel [data-btc="${en.id}"]`, { timeout: 15000 });
-  ok(true, '...and Show again brings them back');
+  await page.waitForSelector(`#bellPanel [data-bag="${en.id}"]`, { timeout: 15000 });
+  ok(true, '...and Show again brings it back');
   // The node was enrolled through the API, so the page may not have listed
-  // it yet; the tab still opens on it, not on another (B754).
+  // it yet; the page still opens on it, not on another (B754).
   // The drawer is drawn anew on every poll, so a press can straddle a
   // redraw: the mousedown on one link and the mouseup on its replacement,
   // and the click goes to the drawer, which runs no link's handler (B748).
   // Pressed again while the drawer is still open on the link.
-  const tcLink = `#bellPanel [data-btc="${en.id}"]`;
+  const agLink = `#bellPanel [data-bag="${en.id}"]`;
   let went = '';
   for (let i = 0; i < 3; i++){
-    if (await page.isVisible(tcLink)) await page.click(tcLink, { timeout: 5000 }).catch(() => {});
-    went = await page.waitForFunction(id => tcNode === id && document.getElementById('bellPanel').hidden, en.id, { timeout: patience(8000) })
+    if (await page.isVisible(agLink)) await page.click(agLink, { timeout: 5000 }).catch(() => {});
+    went = await page.waitForFunction(id => agNode === id && document.getElementById('bellPanel').hidden, en.id, { timeout: patience(8000) })
       .then(() => '', async () => JSON.stringify({ want: en.id, press: i + 1,
-        ...await page.evaluate(() => ({ tcNode, bell: document.getElementById('bellPanel').hidden })) }));
+        ...await page.evaluate(() => ({ agNode, bell: document.getElementById('bellPanel').hidden })) }));
     if (!went) break;
   }
   ok(!went, `the bell's link names the node and shuts the bell${went ? ` (${went})` : ''}`);
-  await page.waitForSelector('#tcClaudeTick', { timeout: 30000 });
-  ok(true, '...and its link opens the Toolchains page on that node, Claude Code\'s row there');
+  await page.waitForSelector(`.agentstab [data-agnode="${en.id}"] [data-sect="agents:claude"]`, { timeout: 30000 });
+  ok(true, '...and its link opens the Agents page on that node');
   ok(st.claude_code?.nodes?.[en.id]?.behind === true && st.claude_code.latest === '1.2.0',
      '...and the status payload says which node is behind');
   await page.evaluate(() => openNodesTab());
   await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
   await pickNode(page, en.id);
   const ROWC = `.nodestab .ndrow[data-node="${en.id}"]`;
-  await page.waitForFunction(sel => /1\.0\.0, 1\.2\.0 is out/.test(document.querySelector(sel)?.textContent || ''), ROWC, { timeout: 15000 });
-  ok(!await page.$(`${ROWC} [data-nd="claude-update"]`) && !!await page.$(`${ROWC} [data-ndtc="${en.id}"]`),
-     'the Nodes page says the version against the latest and points at the Toolchains page, with no update of its own');
-  await page.evaluate(id => openToolchainsOn(id), en.id);
-  await page.waitForSelector('#tcClaudeTick', { timeout: 15000 });
-  const tcRowText = await page.$eval('#tcClaudeTick', i => i.closest('.tc').textContent.replace(/\s+/g, ' '));
-  ok(/Claude Code/.test(tcRowText) && /1\.0\.0/.test(tcRowText) && /update available: 1\.2\.0/.test(tcRowText)
-     && await page.$eval('#tcClaudeTick', i => !i.disabled),
-     `the node's Toolchains page has a Claude Code row: its version, the update out, and a tick to install it (${tcRowText.slice(0, 120)})`);
+  await page.waitForFunction(sel => /Claude installed/.test(document.querySelector(sel + ' [data-sect="nodes:sessions"] .ndagents')?.textContent || ''), ROWC, { timeout: 15000 });
+  ok(!await page.$(`${ROWC} [data-nd="claude-update"]`) && !!await page.$(`${ROWC} [data-ndag="${en.id}"]`),
+     'the Nodes page says which coding agents are installed there in one line and points at the Agents page, with no update of its own (R95)');
+  await page.evaluate(id => openAgentsOn(id), en.id);
+  const AGC = `.agentstab [data-agnode="${en.id}"] [data-sect="agents:claude"]`;
+  await page.waitForSelector(`${AGC} [data-agact="install"]`, { timeout: 15000 });
+  const tcRowText = await page.$eval(AGC, s => s.textContent.replace(/\s+/g, ' '));
+  ok(/Claude Code/.test(tcRowText) && /1\.0\.0, 1\.2\.0 is out/.test(tcRowText)
+     && await page.$eval(`${AGC} [data-agact="install"]`, b => !b.disabled && b.textContent.trim() === 'Update'),
+     `the node's Agents page has a Claude section: its version, the update out, and Update (${tcRowText.slice(0, 120)})`);
   await page.evaluate(() => openNodesTab());
   // A session's token gets nowhere near it.
   const tok = execFileSync('python3', ['-c', `
@@ -3609,9 +3736,9 @@ def wj(path, d):
 m.configure(state=${JSON.stringify(`${DIR}/state`)}, write_json=wj)
 print(m.mint_session('alpha'))
 `], { encoding: 'utf8' }).trim();
-  const asSession = await fetch(base + '/api/toolchains', { method: 'POST',
+  const asSession = await fetch(base + '/api/agents', { method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
-    body: JSON.stringify({ action: 'install', node: en.id, names: ['claude-code'] }) });
+    body: JSON.stringify({ action: 'install', node: en.id, agent: 'claude' }) });
   ok(asSession.status === 403, `a session's token cannot ask for the update (${asSession.status})`);
   // The update: the node's project is bound, a Claude session is reported
   // there, and the press ends it, queues the job and holds the row.
@@ -3622,7 +3749,7 @@ print(m.mint_session('alpha'))
     // there, the owner included; an unprefixed name is nobody's and dropped.
     body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512,
       sessions: [{ name: `${JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid}~claude-beta` }] }, running: [], wait: 0 }) });
-  const up = await napi('/api/toolchains', { action: 'install', node: en.id, names: ['claude-code'] });
+  const up = await napi('/api/agents', { action: 'install', node: en.id, agent: 'claude' });
   const job = up.job ? await napi(`/api/v1/jobs?id=${up.job}`) : null;
   ok(up.ok && job?.type === 'claude-update' && job.node === en.id && job.spec?.to === '1.2.0' && (up.ended || []).length === 1,
      `Update ends the Claude session there and queues the job naming the version (${up.job || up.error}; ended ${JSON.stringify(up.ended)})`);
@@ -3655,7 +3782,7 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
   }
   ok(!claudeIn(await napi('/api/status')),
      '...and Claude Code leaves the bell row while the update is queued');
-  const again = await napi('/api/toolchains', { action: 'install', node: en.id, names: ['claude-code'] });
+  const again = await napi('/api/agents', { action: 'install', node: en.id, agent: 'claude' });
   ok(/already queued/.test(again.error || ''), '...and a second press is refused while one is queued');
   // The fake agent takes the job and finishes it the way the real one does,
   // naming what it installed on its last line. The row and the bell read
@@ -3697,7 +3824,7 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
   census.session.claude = '';
   await hello();
   const none = (await napi('/api/status')).projects.find(p => p.name === 'beta')?.held || '';
-  ok(/Claude Code is not installed on clbox: its Toolchains page installs it/.test(none),
+  ok(/Claude Code is not installed on clbox: its Agents page installs it/.test(none),
      `a node with no Claude Code holds its projects' Claude button, saying where to install it (${none.slice(0, 80)})`);
   // ...and the button is Install Claude, opening that node's Toolchains,
   // with no line under it (the operator, 21 Oct).
@@ -3714,8 +3841,22 @@ print(json.dumps({"held_while_ending": seen, "after": m.updating("n1"), "ok": r.
   });
   ok(inst.label === 'Install Claude' && inst.node === en.id && !inst.start && !inst.note,
      `...its button is Install Claude in place of Start Claude, nothing under it (${JSON.stringify(inst)})`);
-  await page.waitForFunction(id => tcNode === id && tabs.some(t => t.kind === 'toolchains'), en.id, { timeout: 15000 });
-  ok(true, '...and a press opens the Toolchains page on that node');
+  await page.waitForFunction(id => agNode === id && tabs.some(t => t.kind === 'agents'), en.id, { timeout: 15000 });
+  ok(true, '...and a press opens the Agents page on that node (R95)');
+  // ...and the same for whichever agent the project starts first (R95 step
+  // 18): ChatGPT's Install where the node lists no Codex, Start where it does.
+  const other = await page.evaluate(id => {
+    const p = { ...state.projects.find(x => x.name === 'beta'), claude_missing: '', session_node: id,
+                prefs: { agent_default: 'codex' } };
+    const draw = agents => { const box = document.createElement('div');
+      box.innerHTML = projectActions({ ...p, session_nodes: [{ id, name: 'clbox', where: 'node', agents }] });
+      const b = box.querySelector('[data-tcinst]');
+      return { label: b?.textContent.trim() || '', agent: b?.dataset.agent || '', start: !!box.querySelector('[data-c]') }; };
+    return { missing: draw([]), there: draw(['codex']) };
+  }, en.id);
+  ok(other.missing.label === 'Install ChatGPT' && other.missing.agent === 'codex' && !other.missing.start
+     && !other.there.label && other.there.start,
+     `...and a project whose agent is ChatGPT offers Install ChatGPT where Codex is missing, Start agent where it is there (${JSON.stringify(other)})`);
   await napi('/api/prefs', { project: 'beta', node: '' });
   await napi('/api/v1/nodes', { action: 'retire', id: en.id });
 }
@@ -3763,6 +3904,9 @@ print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}
   const base = URL.replace(/\/$/, '');
   const napi = async (path, body) => (await fetch(base + path, { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
   const gone = await napi('/api/v1/nodes', { action: 'enroll', name: 'oldbox' });
+  // delta is archived and, in the fixture, locked by an administrator, which
+  // refuses the settings change this needs (R119): lifted here, put back below.
+  writeFileSync(`${DIR}/state/locked-projects.json`, '{}');
   const was = (await (await fetch(`${base}/api/status`, { headers: H })).json()).projects.find(p => p.name === 'delta')?.prefs?.node || '';
   await napi('/api/prefs', { project: 'delta', node: gone.id });
   await napi('/api/v1/nodes', { action: 'retire', id: gone.id });
@@ -3796,6 +3940,7 @@ print(json.dumps({"ok": bool(r.get("ok")), "moved": m.jobs_state_rev() - before}
   ok(!theirs.opts.some(o => /oldbox/.test(o)), `another project's picker does not offer it (${JSON.stringify(theirs.opts)})`);
   await page.keyboard.press('Escape');
   await napi('/api/prefs', { project: 'delta', node: was });
+  writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ delta: { by: 'u_0000aaaa', admin: true } }));
 }
 
 // The controller's own machine, a bare-metal install's node of itself (R90

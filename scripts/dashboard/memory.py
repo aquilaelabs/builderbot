@@ -23,8 +23,9 @@ import sys as _sys
 # Beside this file, whichever way it was loaded: bb's own Python loads the
 # modules by path, where a plain sibling import finds nothing.
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-from names import claude_session   # noqa: E402
+from names import running_session   # noqa: E402
 from fields import field   # noqa: E402
+import agents
 import functools
 import hashlib
 import inspect
@@ -100,7 +101,7 @@ def _log(project, by, ev):
             d = {"projects": {}}
         h = d["projects"].setdefault(project, [])
         h.append({"at": int(time.time()),
-                  "by": "claude" if by == "claude" else "you",
+                  "by": "claude" if by == "claude" else "you", **agents.asker(by),
                   **_by_whom(), **ev})
         del h[:-MAX_HISTORY]
         try:
@@ -412,7 +413,7 @@ def payload(project, live=(), home=None):
         issues.append({"level": "warning",
                        "text": f"{len(found) - MAX_FILES} more files here are not shown"})
 
-    session = claude_session(project)
+    session = running_session("", project, set(live))
     return {"project": project, "dir": str(d),
             "memories": memories, "issues": issues, "types": list(TYPES),
             # The index is regenerated from the lines the memories carry, so

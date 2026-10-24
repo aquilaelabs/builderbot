@@ -514,7 +514,7 @@ function tpDraw(first){
     // row left to uninstall them from.
     const at = await post({action: "where", name: n});
     if (at.error){ tpForm.error = at.error; tpDraw(); return; }
-    if (!confirm(`Remove the tool pack ${n}? It leaves the catalog, and projects that use it lose it.`)) return;
+    if (!await askYes(`Remove the tool pack ${n}? It leaves the catalog, and projects that use it lose it.`)) return;
     const j = await post({action: "remove", name: n});
     if (j.error){ tpForm.error = j.error; tpDraw(); return; }
     tpClose(); loadToolchains();
@@ -637,35 +637,9 @@ function tcToolkitRow(m, busy, job){
   </div>`;
 }
 
-// Claude Code, the session account's (R145): a row like the store's, with
-// its own job behind it, which ends the node's Claude sessions before it
-// swaps the binary. A session cannot start on a node without it, so the
-// row says so where it is missing.
-const TC_CLAUDE = "claude-code";
-function tcClaudeRow(m, busy){
-  const mine = !!m.running;
-  const doing = m.action === "remove" ? "removing" : m.here ? "updating" : "installing";
-  const may = mayToolchains(tcNode);
-  const upToDate = !mine && m.state === "current";
-  const line = mine ? `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(tcDots)}</span></span>`
-    : m.here ? `<span class="sub where on">installed</span>`
-    : `<span class="sub where warn">not installed: a Claude session cannot start on this node until it is</span>`;
-  return `<div class="tc tcdrv${upToDate ? " done" : ""}">
-    <input type="checkbox" id="tcClaudeTick" value="${TC_CLAUDE}" aria-label="Claude Code"${
-      busy || mine || !may ? " disabled" : ""}${
-      upToDate ? ` checked disabled title="installed and up to date"`
-               : tcTicked.has(TC_CLAUDE) ? " checked" : ""}>
-    <span class="grow">
-      <label class="nm" for="tcClaudeTick">${esc(m.label)}${m.installed ? ` <span class="pill" title="installed">${esc(m.installed)}</span>` : ""}${
-        !m.installed && m.latest ? ` <span class="pill" title="what Install selected would fetch">${esc(m.latest)}</span>` : ""}</label>
-      <span class="sub">What a Claude session on this node runs, for the node's session account. Installing or updating it ends the Claude sessions here first; they start again from the project rows.</span>
-      ${line}
-      ${m.state === "update" && !mine ? `<span class="sub upd">update available: ${esc(m.latest)}. Tick it and press ${tcInstallSaid()}</span>` : ""}
-      ${m.error && !mine ? `<span class="sub bad">${esc(m.error)}</span>` : ""}
-    </span>
-    ${m.here && !mine && may ? rmIcon("data-tcclrm", "uninstall Claude Code", {title: "remove Claude Code from this node", why: busy ? "another toolchain operation is running" : ""}) : ""}
-  </div>`;
-}
+// The coding agents (Claude Code, Codex CLI, Copilot CLI) are not here: the
+// Agents page (tab-agents.js) installs, updates and removes them (R95, the
+// operator 22 Oct), and this page keeps one line saying so.
 
 // The page's two lists under their heads (the operator, 18 Oct: Toolchains
 // had none): what belongs to the machine itself (its NVIDIA driver and
@@ -794,11 +768,10 @@ function renderToolchainsInto(i){
     (() => {
       const items = (d.items || []).filter(x => !x.wrong_platform);
       if (!items.length) return "";
-      // This machine's rows count too (Claude Code, the driver, the
-      // toolkit), as Home and the bell count them.
+      // This machine's rows count too (the driver, the toolkit). The
+      // coding agents are the Agents page's to count (R95 step 15).
       const due = items.filter(x => x.state === "update").length
-        + (onNode ? (d.machine || []).filter(m =>
-          m.name === TC_CLAUDE ? m.state === "update" : !!m.newer).length : 0);
+        + (onNode ? (d.machine || []).filter(m => !!m.newer).length : 0);
       const need = items.filter(x => (x.pinned_by || []).length && !x.installed).length;
       return statTiles([
         {label: "installed", value: items.filter(x => x.installed).length, sub: `of ${items.length} offered`},
@@ -835,10 +808,15 @@ function renderToolchainsInto(i){
             : `This node's owner installs them: the agent does not administer the machine.`}</div></div>`;
     })()}
     ${tcSections(onNode && (d.machine || []).length ? `<div class="tcs tcmachine">${
-      d.machine.map(m => (m.name === TC_CLAUDE ? tcClaudeRow : m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : "",
+      d.machine.map(m => (m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : "",
       tblWrap(TC_COLS, (d.items || []).filter(i => !i.wrong_platform)
       .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join(""), "tcs"),
       `${(d.items || []).filter(i => i.installed).length} installed`)}
+    ${
+    // The coding agents arrive with the machine's rows and are the Agents
+    // page's (R95 step 15): one line at the foot says where.
+    onNode ? `<div class="field tcagents"><div class="hint">The coding agents (${
+      esc(AGENTS.filter(a => a.live).map(a => a.product).join(", "))}) are installed and updated on the ${pageLink("agents", "Agents page", `#/build/agents/${encodeURIComponent(d.node || tcNode)}`)}.</div></div>` : ""}
     ${state?.can?.admin ? tpSection(d.items) : ""}
 `;
 
@@ -865,7 +843,7 @@ function renderToolchainsInto(i){
   // What no node runs from any more, taken off the store (R196).
   el.querySelectorAll("[data-tcclean]").forEach(b => b.onclick = async () => {
     const dirs = (toolchains?.cleanable || []).map(c => c.dir);
-    if (!dirs.length || !confirm(`Take ${dirs.join(", ")} off the store?\n\nNo node runs from ${dirs.length === 1 ? "it" : "them"}; what is in ${dirs.length === 1 ? "it" : "them"} is gone for good.`)) return;
+    if (!dirs.length || !await askYes(`Take ${dirs.join(", ")} off the store?\n\nNo node runs from ${dirs.length === 1 ? "it" : "them"}; what is in ${dirs.length === 1 ? "it" : "them"} is gone for good.`, {verb: "Remove", danger: true})) return;
     busy(b, "Removing");
     const j = await (await postJSON("/api/toolchains", {action: "clean", node: tcNode, names: dirs})).json().catch(() => ({error: "no answer"}));
     if (j.error) notify(j.error, true);
@@ -880,19 +858,15 @@ function renderToolchainsInto(i){
     const t = el.querySelector("#tcDrvTick"); if (t && !t.disabled) t.checked = true;
     if (inst) inst.disabled = busy || pstale || !tcTicked.size;
   };
-  el.querySelectorAll("[data-tcdrvrm]").forEach(b => b.onclick = () => {
+  el.querySelectorAll("[data-tcdrvrm]").forEach(b => b.onclick = async () => {
     // With no card there is nothing for nouveau to take back (B168).
     const gone = (toolchains?.machine || []).some(m => m.name === TC_DRIVER && m.state === "nocard");
-    if (confirm(gone ? `Remove NVIDIA's driver from ${toolchains?.name || "this node"}? It has no card to drive here, and its tries for one stop.`
+    if (await askYes(gone ? `Remove NVIDIA's driver from ${toolchains?.name || "this node"}? It has no card to drive here, and its tries for one stop.`
                      : `Remove NVIDIA's driver from ${toolchains?.name || "this node"}? The emulator's GPU display goes with it, and nouveau takes the card back when the machine restarts.`))
       tcAct("remove", [TC_DRIVER]);
   });
-  el.querySelectorAll("[data-tcclrm]").forEach(b => b.onclick = () => {
-    if (confirm(`Remove Claude Code from ${toolchains?.name || "this node"}? Its Claude sessions end, and none starts there until it is installed again.`))
-      tcAct("remove", [TC_CLAUDE]);
-  });
-  el.querySelectorAll("[data-tcctkrm]").forEach(b => b.onclick = () => {
-    if (confirm(`Remove the NVIDIA container toolkit from ${toolchains?.name || "this node"}? A container that reserves the card no longer starts; NVIDIA's package source goes with it.`))
+  el.querySelectorAll("[data-tcctkrm]").forEach(b => b.onclick = async () => {
+    if (await askYes(`Remove the NVIDIA container toolkit from ${toolchains?.name || "this node"}? A container that reserves the card no longer starts; NVIDIA's package source goes with it.`))
       tcAct("remove", [TC_TOOLKIT]);
   });
   el.querySelectorAll("[data-tcmore]").forEach(b => b.onclick = e => {
@@ -901,14 +875,14 @@ function renderToolchainsInto(i){
     if (tcOpen.has(k)) tcOpen.delete(k); else tcOpen.add(k);
     tcRev++; drawPanes();
   });
-  el.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => {
+  el.querySelectorAll("[data-rm]").forEach(b => b.onclick = async e => {
     // Inside a <label>, so the click would otherwise toggle the checkbox on
     // its way past.
     e.preventDefault(); e.stopPropagation();
     // Asked by the name its row shows: a pack's toolchain's name is the
     // pack's id (B65).
     const name = b.dataset.rm;
-    if (confirm(`Uninstall ${b.dataset.rmlabel || name}? The files are deleted; installing it again re-downloads them.`))
+    if (await askYes(`Uninstall ${b.dataset.rmlabel || name}? The files are deleted; installing it again re-downloads them.`))
       tcAct("remove", [name]);
   });
 
@@ -951,7 +925,7 @@ async function tcAct(action, only){
   if (action !== "abort" && toolchains?.job?.running)
     return notify("a toolchain operation is already running", true);
   if (action === "abort"){
-    if (!confirm("Stop after the toolchain it is on? What has already installed stays."))
+    if (!await askYes("Stop after the toolchain it is on? What has already installed stays."))
       return;
     // On a node the install is a job, and stopping it is the queue's Cancel.
     if (tcNode !== "local" && toolchains?.job?.id)
@@ -971,12 +945,12 @@ async function tcAct(action, only){
   // The driver is the one row whose install ends at a restart: said once,
   // before anything is queued.
   const drv = names.includes(TC_DRIVER) && action === "install";
-  if (drv && !confirm(`Install NVIDIA's driver on ${toolchains?.name || "this node"}? It takes the card only when the machine restarts, which ends every session on it.`))
+  if (drv && !await askYes(`Install NVIDIA's driver on ${toolchains?.name || "this node"}? It takes the card only when the machine restarts, which ends every session on it.`))
     return;
   // ...and the toolkit is the one that adds a package source of somebody
   // else's to the machine.
   if (names.includes(TC_TOOLKIT) && action === "install"
-      && !confirm(`Install the NVIDIA container toolkit on ${toolchains?.name || "this node"}? It adds NVIDIA's own package source to the machine. Running containers keep running.`))
+      && !await askYes(`Install the NVIDIA container toolkit on ${toolchains?.name || "this node"}? It adds NVIDIA's own package source to the machine. Running containers keep running.`))
     return;
   // The ticks stay: a toolchain being installed reads as chosen, and the boxes
   // are ghosted anyway. What happens to them afterwards is decided by how it
@@ -989,7 +963,7 @@ async function tcAct(action, only){
     // NVIDIA's CUDA license) is the person's to accept, named, before
     // anything is fetched: the server says which, and keeps who accepted.
     if (r.status === 409 && Array.isArray(j.accept) && j.accept.length){
-      if (!confirm(`Installing ${names.join(", ")} accepts ${j.accept.map(t => t.label).join(" and ")}.\n\n${
+      if (!await askYes(`Installing ${names.join(", ")} accepts ${j.accept.map(t => t.label).join(" and ")}.\n\n${
             j.accept.map(t => `${t.label}: ${t.url}`).join("\n")}\n\nAccept and install?`)) return;
       r = await postJSON("/api/toolchains", {...body, accept: j.accept.map(t => t.label)});
       j = await r.json().catch(() => ({}));
@@ -1008,5 +982,5 @@ async function tcAct(action, only){
       : action === "sysdeps" ? "installing the system packages" + on
       : `${action === "remove" ? "removing" : "installing"} ${names.join(", ")}${on}`);
     loadToolchains();
-  }catch(e){ notify("could not start: " + e, true); }
+  }catch(e){ notify("could not start: " + failWords(e), true); }
 }

@@ -5,8 +5,9 @@
 <h1 align="center">BuilderBot</h1>
 
 <p align="center">
-  A self-hosted workshop for Claude Code: your projects, the machines that
-  build them, and the sessions working on them, in one dashboard.
+  A self-hosted workshop for coding agents (Claude Code, ChatGPT's Codex CLI
+  and GitHub's Copilot CLI): your projects, the machines that build them, and
+  the sessions working on them, in one dashboard.
 </p>
 
 <p align="center">
@@ -18,7 +19,7 @@
 </p>
 
 > [!WARNING]
-> **BuilderBot is early software.** It runs Claude Code sessions that edit,
+> **BuilderBot is early software.** It runs coding agents' sessions that edit,
 > commit, run and push code on your machines, and it is still changing fast.
 > Do not point it at production repositories or at anything you cannot afford
 > to lose: try it on separate repositories made for testing, and keep backups
@@ -33,24 +34,25 @@
 
 BuilderBot is one container, the **controller**, and the machines you enroll
 under it, the **nodes**. The controller keeps the dashboard and the record of
-every project: its plan, its bugs, its rules. The nodes do the work: Claude
-Code sessions, builds, tests, CI, Android emulators and Docker containers.
+every project: its plan, its bugs, its rules. The nodes do the work: the
+agents' sessions, builds, tests, CI, Android emulators and Docker containers.
 
 Each project is a git repository on a shared disk. Open it from the browser,
-on a desktop or a phone, and a Claude session starts on its node already
-briefed with the project's house rules, roadmap and open bugs. Close the tab
-and the session keeps going.
+on a desktop or a phone, and a session of Claude, ChatGPT or Copilot starts
+on its node already briefed with the project's house rules, roadmap and open
+bugs. Close the tab and the session keeps going.
 
 It is built to live on a home server (an Unraid template ships with it) with
 your projects mounted straight in, and to grow from one machine to several.
 
 ## Features
 
-- **Claude sessions from the browser.** Real terminals in a dock at the foot
+- **Coding agents from the browser.** Claude (Claude Code), ChatGPT (Codex
+  CLI) and Copilot (Copilot CLI), each started with Start agent and held to
+  the same briefing, rules and guards. Real terminals in a dock at the foot
   of every page, at a desk or on a phone, each session in its own project's
-  view of the disk. Resume,
-  restart, pick the model and effort, and see at a glance which sessions need
-  a restart to pick up a change.
+  view of the disk. Resume, restart, pick the model and effort, and see at a
+  glance which sessions need a restart to pick up a change.
 - **A page per project.** Its overview and house rules, roadmap, bug
   tracker, git, tests, static analysis, artifacts, containers, VMs, wiki and
   design, shared between you and every session that works there.
@@ -78,7 +80,7 @@ your projects mounted straight in, and to grow from one machine to several.
   Alpine, or from an installer's ISO you install yourself (Windows
   included), each on its own network, with snapshots to go back to, more
   disks when it needs them, and its screen and console in the dock, shared
-  with whoever else is on it. Ask a Claude session for "a Debian 12 VM with
+  with whoever else is on it. Ask a session for "a Debian 12 VM with
   4 GB" and it makes one, where the project allows it; a VM can even enroll
   itself as another node.
 - **People and permissions.** Accounts with roles, per-project access, and a
@@ -102,14 +104,15 @@ your projects mounted straight in, and to grow from one machine to several.
     <td width="50%"><img src="docs/screenshots/nodes.png" alt="A node's page: how it is reached, its health and its stores"></td>
   </tr>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/toolchains.png" alt="The Toolchains page for a node"></td>
+    <td width="50%"><img src="docs/screenshots/agents.png" alt="The Agents page: Claude, ChatGPT and Copilot on a node, each with its version and your sign-in"></td>
+    <td width="50%"><img src="docs/screenshots/toolchains.png" alt="The Toolchains page for a node"></td>
   </tr>
   <tr>
     <td width="50%"><img src="docs/screenshots/containers.png" alt="The Containers page: each project's containers on a node"></td>
     <td width="50%"><img src="docs/screenshots/vms.png" alt="The VMs page: a project's virtual machines with their state, address and snapshots"></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/features.png" alt="A node's Features section: VM host, Claude sessions, the SSH door and the rest, each with how it installs"></td>
+    <td width="50%"><img src="docs/screenshots/features.png" alt="A node's Features section: VM host, sessions, the SSH door and the rest, each with how it installs"></td>
     <td width="50%"><img src="docs/screenshots/tour.png" alt="The first-use tour on Home, its card beside the rail it is about"></td>
   </tr>
   <tr>
@@ -130,12 +133,13 @@ your projects mounted straight in, and to grow from one machine to several.
   keeps the record, needs little CPU, and wants a disk for your projects.
 - **At least one node**: a Linux machine or VM where sessions, builds and
   tests actually run, on **Ubuntu 24.04 or later** or **Rocky Linux 9**,
-  the systems nodes are tested on. A separate VM keeps what Claude runs
+  the systems nodes are tested on. A separate VM keeps what the agents run
   away from your server.
 - **Your repositories** on GitHub, Gitea or Forgejo, or any git remote over
   plain git.
-- **A Claude account** for each person who will run Claude sessions. Each
-  signs in to Claude Code themselves, on the node.
+- **An account with the agent each person will use**: Claude (a Claude
+  plan), ChatGPT (a ChatGPT plan) or Copilot (a GitHub account with a Copilot
+  plan). Each person signs in themselves, on the node, from the Agents page.
 - **Repositories made for trying it** (see the warning above).
 
 ### Install the controller
@@ -195,11 +199,12 @@ account, so do this before anyone else can reach it. Then:
 2. **Enroll a node**: Machines, then Nodes, then **Enroll node**. It gives
    you one command to run on the node machine, which sets it up and connects
    it.
-3. **Install Claude Code on the node**: Build, then Toolchains, with that
-   node picked.
+3. **Install an agent on the node**: Build, then Agents, with that node
+   picked: Claude Code, Codex CLI for ChatGPT, or Copilot CLI, and sign in to
+   it there.
 4. **Add a project** on the Projects page (clone one, start an empty one,
-   or upload an archive), and press **Start Claude**. The first time, it walks you
-   through signing in to Claude on that node.
+   or upload an archive), and press **Start agent**. A node where you are not
+   signed in yet offers its sign-in in Start agent's menu.
 
 The full checklist, with every option and the Unraid way, is
 **[docs/install.md](docs/install.md)**. Once it is running, the people you

@@ -5,10 +5,137 @@ rather than from `claude auth status`, for every account on the box at
 once.
 
 BB_USERS_DIR is the directory the accounts' homes are under.
+
+Each row carries the other coding agents' sign-ins too (R95 step 3), under
+`agents`: Codex CLI's from its auth.json (the account the id token names,
+never the token), Copilot CLI's from its config (the GitHub login it last
+signed in as). `--forget-copilot HOME` is Copilot's sign-out, which its
+1.0.102 has no command for outside a session.
 """
+import base64
 import json
 import os
 import re
+import sys
+
+
+def _claims(jwt):
+    """The claims of a JSON web token, read and never checked: what it says
+    about whose it is, for a row to name. {} when it is not one."""
+    try:
+        part = str(jwt).split(".")[1]
+        return json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4))) or {}
+    except (IndexError, ValueError, TypeError):
+        return {}
+
+
+def codex_of(home):
+    """Who this account's Codex CLI is signed in as here, {email, plan}, or
+    None. $CODEX_HOME is ~/.codex for a session (bb-tty sets none). None
+    only when there is no login file: one that could not be read is
+    {"error": why}, which nobody reads as a sign-out (B236)."""
+    try:
+        with open(os.path.join(home, ".codex", "auth.json")) as f:
+            d = json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"[:200]}
+    if not isinstance(d, dict):
+        return None
+    toks = d.get("tokens") if isinstance(d.get("tokens"), dict) else {}
+    idt = toks.get("id_token")
+    claims = idt if isinstance(idt, dict) else _claims(idt) if idt else {}
+    email = str(claims.get("email") or "")[:120]
+    if email:
+        auth = claims.get("https://api.openai.com/auth") if isinstance(claims.get("https://api.openai.com/auth"), dict) else {}
+        return {"email": email, "plan": str(auth.get("chatgpt_plan_type") or "")[:40]}
+    if d.get("OPENAI_API_KEY"):
+        return {"email": "an OpenAI API key", "plan": "API"}
+    return None
+
+
+def _copilot_config(home):
+    return os.path.join(home, ".copilot", "config.json")
+
+
+def _jsonc(path):
+    """A Copilot file as (its leading comment lines, its JSON): since 1.0.103
+    its config.json opens with `//` lines saying it is managed, which a plain
+    json.load refused, so a sign-in there never reached the card."""
+    with open(path) as f:
+        lines = f.read().splitlines(keepends=True)
+    n = 0
+    while n < len(lines) and (not lines[n].strip() or lines[n].lstrip().startswith("//")):
+        n += 1
+    return "".join(lines[:n]), json.loads("".join(lines[n:]))
+
+
+def copilot_of(home):
+    """Who this account's Copilot CLI is signed in as here, {email: the
+    GitHub login, plan}, or None."""
+    try:
+        _, d = _jsonc(_copilot_config(home))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"[:200]}
+    u = d.get("lastLoggedInUser") if isinstance(d, dict) else None
+    login = str((u or {}).get("login") or "")[:120] if isinstance(u, dict) else ""
+    return {"email": login, "plan": ""} if login else None
+
+
+def forget_copilot(home):
+    """Copilot's sign-out: the logins its config remembers, and a token it
+    kept there in plain text, taken out; everything else left as it was."""
+    p = _copilot_config(home)
+    try:
+        head, d = _jsonc(p)
+    except FileNotFoundError:
+        return 0
+    except (OSError, ValueError):
+        return 1
+    if not isinstance(d, dict):
+        return 1
+    for k in [k for k in d if k in ("lastLoggedInUser", "loggedInUsers") or "token" in k.lower()]:
+        d.pop(k, None)
+    tmp = p + ".new"
+    with open(tmp, "w") as f:
+        f.write(head)
+        json.dump(d, f, indent=2)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, p)
+    return 0
+
+
+def mcp_of(home):
+    """The MCP servers each coding agent of this account's is set up with
+    here (R95 step 15), by name only: a server's settings can carry its own
+    keys, and nothing here reads them. Claude Code's from ~/.claude.json,
+    Codex's from its config.toml ([mcp_servers.NAME]), Copilot's from its
+    mcp-config.json. {agent: [names]}, an agent with none left out."""
+    out = {}
+    try:
+        with open(os.path.join(home, ".claude.json")) as f:
+            got = (json.load(f) or {}).get("mcpServers")
+        if isinstance(got, dict) and got:
+            out["claude"] = sorted(str(k)[:80] for k in got)[:32]
+    except (OSError, ValueError, AttributeError):
+        pass
+    try:
+        with open(os.path.join(home, ".codex", "config.toml")) as f:
+            names = sorted({m.group(1).strip('"')[:80] for m in re.finditer(r'^\[mcp_servers\.("?[^\]."]+"?)\]', f.read(), re.M)})
+        if names:
+            out["codex"] = names[:32]
+    except OSError:
+        pass
+    try:
+        got = (_jsonc(os.path.join(home, ".copilot", "mcp-config.json"))[1] or {}).get("mcpServers")
+        if isinstance(got, dict) and got:
+            out["copilot"] = sorted(str(k)[:80] for k in got)[:32]
+    except (OSError, ValueError, AttributeError):
+        pass
+    return out
 
 
 def plugins_of(home):
@@ -45,26 +172,35 @@ def plugins_of(home):
 # Every account's home on this machine. The owner has no bare directory here:
 # on a node every account is prefixed and homed under users/ (common.sh's
 # owner_uid says why), so the uid is simply the directory's name.
-out = []
-root = os.environ.get("BB_USERS_DIR") or ""
-try:
-    names = sorted(os.listdir(root))
-except OSError:
-    names = []
-for name in names[:64]:
-    if not re.fullmatch(r"u_[0-9a-f]{8}", name):
-        continue
-    home = os.path.join(root, name)
-    email = ""
+def main():
+    out = []
+    root = os.environ.get("BB_USERS_DIR") or ""
     try:
-        d = json.load(open(os.path.join(home, ".claude.json")))
-        email = str(((d.get("oauthAccount") or {}).get("emailAddress")) or "")[:120]
-    except (OSError, ValueError, AttributeError, TypeError):
+        names = sorted(os.listdir(root))
+    except OSError:
+        names = []
+    for name in names[:64]:
+        if not re.fullmatch(r"u_[0-9a-f]{8}", name):
+            continue
+        home = os.path.join(root, name)
         email = ""
-    # The credential is what makes it a login rather than a leftover name: a
-    # signed-out home keeps .claude.json and loses this file, and reporting
-    # the stale name would keep the card claiming a login that is gone.
-    if email and not os.path.exists(os.path.join(home, ".claude", ".credentials.json")):
-        email = ""
-    out.append({"uid": name, "email": email, "plugins": plugins_of(home)})
-print(json.dumps(out))
+        try:
+            d = json.load(open(os.path.join(home, ".claude.json")))
+            email = str(((d.get("oauthAccount") or {}).get("emailAddress")) or "")[:120]
+        except (OSError, ValueError, AttributeError, TypeError):
+            email = ""
+        # The credential is what makes it a login rather than a leftover name: a
+        # signed-out home keeps .claude.json and loses this file, and reporting
+        # the stale name would keep the card claiming a login that is gone.
+        if email and not os.path.exists(os.path.join(home, ".claude", ".credentials.json")):
+            email = ""
+        agents = {k: v for k, v in (("codex", codex_of(home)), ("copilot", copilot_of(home))) if v}
+        out.append({"uid": name, "email": email, "plugins": plugins_of(home), "agents": agents, "mcp": mcp_of(home)})
+    print(json.dumps(out))
+
+
+# Imported by login-check.py for the agents' readers, run by `bb login --list`.
+if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--forget-copilot":
+        sys.exit(forget_copilot(sys.argv[2]))
+    main()

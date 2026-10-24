@@ -477,9 +477,9 @@ A node whose agent is from another window is reported as such and not
 refused: the Nodes page separates *behind* (a newer build in the same window,
 routine) from *out of window* (the promise was never made, update before
 relying on it). Refusing would strand a node on a guess. The one thing an
-out-of-window agent does stop is Claude sessions on the projects bound to
+out-of-window agent does stop is sessions on the projects bound to
 that node: the controller ends the running ones and ghosts each such
-project's Start Claude until the node is updated, per project, so a
+project's Start agent until the node is updated, per project, so a
 project on a current node is untouched.
 
 What a session is briefed with is no longer in this window, or in any
@@ -650,7 +650,7 @@ controller is.
   `.git` and `dist/` are synced: a session commits on the node, and a build
   there lands its artifacts where the Artifacts view reads them.
 - **A session waits** for its project's first copy: the node reports each
-  project as copying or ready, and Start Claude says which. Binding a
+  project as copying or ready, and Start agent says which. Binding a
   project to a synced node, or changing what it reads, tells every synced
   node at once (`wssync.held_changed`), so the first copy starts on the
   save rather than at the node's next look of its own, half a minute
@@ -989,7 +989,7 @@ the Dockerfile's: a final stage that copies the source carries the source.
 Send to Docker makes a fresh container; Copy or move on a Containers page row
 takes one that exists, with its named volumes and its data directory, to
 any agent node, the project's own listed first (and only they carry its
-codebase, its development and its Claude sessions; on any other its image
+codebase, its development and its sessions; on any other its image
 is shipped as above). The dialog shows its env to change for the new node.
 `relocate.py` runs it as three jobs, each queued when the one before
 succeeds: on the old node, stop it, pack every volume of its compose
@@ -1074,7 +1074,7 @@ the pieces stack:
    and runs no session). The project's sessions may then
    make a container there (`bb devapp new --node NAME`, built on the
    project's own node and shipped) and rebuild and remove the ones there,
-   under its Claude may: Run its container, as on its own node; a node not
+   under its Agents may: Run its container, as on its own node; a node not
    named stays a person's to send to.
 4z. *One name, one row.* A script made with a name a row already wears,
    waiting or enrolled, is refused rather than a second row made
@@ -1488,7 +1488,7 @@ A node is somebody's machine before it is BuilderBot's, so taking BuilderBot
 off it is a verb of its own, in three places that do one thing: **Un-enroll**
 on the node's page (Advanced), `sudo bb-sandbox uninstall` on the machine, and
 `provision-linux.sh --remove`, which runs the machine's own bb-sandbox. None
-of the three goes through from the page while a Claude session or a container
+of the three goes through from the page while a session or a container
 runs on the node: end them first, and the refusal counts them. What always
 goes is what the provisioner put there for BuilderBot alone: the agent and
 its unit, the sessions' firewall rules and their own networks (every piece
@@ -1582,6 +1582,48 @@ gigabytes of it across a link would be work for nothing. Because that copy
 can legitimately run for hours, a storage apply that moves a store gets a
 six-hour clock instead of the usual fifteen minutes, and the Nodes page asks
 before starting one.
+
+**Every data location is asked about before it is saved (R120, the operator,
+23 Oct).** Save on a node's Storage asks the node what is at each store path
+that changed, and at each new mount point, before anything is written: a
+read-only look (exists, empty or holding files) that never shows on the Jobs
+page. Then, for each store:
+
+- a path that is empty or does not exist yet asks *are you sure*, and the
+  store goes there as typed;
+- a path that already holds files asks the same, saying that a folder named
+  for the node is made inside it and the setting changes to that
+  (`/srv/share` becomes `/srv/share/<node>`), so a store never shares a
+  folder with files that are not its own;
+- when the old store holds data, whether to bring it across is its own
+  question: yes copies it as above, no saves the store in `keep`, and the
+  apply points it at the new place and starts it empty, leaving the old data
+  where it was. `cache` is never asked; it starts empty anyway.
+
+The agent never copies a store into a folder that already holds files: the
+copy would mix the two by name, so it refuses and leaves the store where it
+was. A mount point on a folder that holds files asks first too, saying the
+share covers them until it is unmounted.
+
+**A store move waits for the node to be quiet and holds it without
+ending anything (R120 step 7).** An apply that repoints a store (anything but
+`cache`) is queued as one that needs a quiet node, as an agent update is: the
+node is handed nothing new while it waits, and it starts once no job runs
+there and no session is mid-turn, or fails after thirty minutes naming what
+kept the node busy. A session's next prompt waits meanwhile, saying the node
+is about to move its storage. While the move runs, the agent writes
+`<toolchain store>/.bb/hold.json` and keeps it current with how far the copy
+has got; every session's gate (Claude's, and Codex's and Copilot's through
+their hooks) reads it before each tool call, with no network, and holds the
+call with that sentence, letting the session's own notes through. Nothing
+else is handed to the node until the move ends; the hold is lifted then
+however it ended, and one its agent stopped saying for fifteen minutes holds
+nobody. The node's Storage line says *waiting for the node to go quiet*, then
+*moving storage*.
+
+No store and no mount point may be a system directory: the list above, on
+both ends, with mount points checked as stores are. A folder of its own under
+`/var/log` is allowed; `/var/log` itself, like `/var/lib`, is not.
 
 **Network changes get commit/confirm safety, because they are the one change
 that can cut the cord it arrives on.** The agent applies the new network
@@ -2309,8 +2351,8 @@ above, in order:
    session half up, the session is relayed there; otherwise it is this
    container's, as it always was.
 3. **The login is per node and per account**, in that account's home on the
-   node, and it is made there: Sign in in the node's Claude Code section (Nodes
-   page) runs `claude auth login` on that machine as a job, with the code
+   node, and it is made there: Sign in in the Claude section of the node's
+   Agents page runs `claude auth login` on that machine as a job, with the code
    pasted back in that section, and Sign out there runs `claude auth logout` the
    same way. Nothing fetches a login from anywhere: one machine, one
    account, one login. **Transcripts and memories are one place**: every
@@ -2363,7 +2405,7 @@ refused with the reason (offline, no session half, no mount) rather than
 quietly started on the wrong machine, and `_term_proxy` dials the node's
 ttyd on the address it enrolled from, stamping `tok:` and `name:` after the
 account. The project's card carries the same decision (`session_at`,
-`session_why`), so Start Claude is dead with the sentence before
+`session_why`), so Start agent is dead with the sentence before
 anything is asked. Two of its refusals are passing and say to wait rather
 than to unbind: the agent not answering (a reboot, an update), and a node
 that came up under ten minutes ago whose network mount has not landed;
@@ -2432,14 +2474,14 @@ agent's cgroup holds the ttyds, the tmux servers under them and the Claude
 sessions inside those, so Update agent ended every conversation on the
 machine. The agent stops what is its own on SIGTERM, its ttyds and its jobs,
 and leaves the tmux alone. What must NOT outlive anything is the idle rule:
-Controller settings' "end a Claude session after N idle minutes" rides the
+Controller settings' Idle sessions, "end any agent's session after N idle minutes", rides the
 hello reply into node.json and the agent enforces it on its own tmux,
 controller up or down (idle.py).
 The account's CLAUDE LOGIN NEVER TRAVELS (R47). Each machine signs in for
 itself and keeps the grant it alone refreshes, because a refresh rotates the
 refresh token and two machines holding copies of one grant sign each other
 out, which is what a day of node sessions produced twice (bug #64, B100).
-So a login is one account's on one node: signed in from that node's Claude Code section,
+So a login is one account's on one node: signed in from that node's Agents page,
 signed out there, and no business of any other node's. What crosses the
 wire is one sentence and no secret: "this account is signed in here as X",
 or that it is not. `bb login --check` sends it on every connection, the

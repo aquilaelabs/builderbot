@@ -16,7 +16,7 @@ import java.net.URL
 
 class ApiError(val status: Int, message: String) : IOException(message)
 
-class Api(private val base: String, private val user: String, private val password: String) {
+class Api(val base: String, private val user: String, private val password: String) {
 
     private fun open(path: String, method: String): HttpURLConnection {
         val url = URL(base.trimEnd('/') + path)
@@ -184,6 +184,57 @@ class Api(private val base: String, private val user: String, private val passwo
     // The Git view's network verbs: fetch, pull (fast-forward only), push.
     suspend fun gitAct(project: String, action: String) =
         post("/api/git", json("project" to project, "action" to action))
+
+    // ---- 0.7.0: the coding agents, and a project's archive and lock --------
+    // A session of the account's own ended, any agent's: the chooser's End
+    // (the page's endSession). `node` is the node it runs on, by id.
+    suspend fun endSession(session: String, node: String) =
+        post("/api/session", json("action" to "kill", "session" to session, "node" to node))
+    // Out of sight and nothing else (R119), its owner's or an administrator's.
+    suspend fun archive(project: String, on: Boolean) =
+        post("/api/archive", json("name" to project, "archived" to on))
+    // Holds people out, and ends the sessions it holds out; the answer names them.
+    suspend fun lock(project: String, on: Boolean) =
+        post("/api/lock", json("name" to project, "locked" to on))
+    // The coding agents on one node (the Agents page): each one's version
+    // against the latest, and Install, Update or Remove on one.
+    suspend fun agents(node: String) = get("/api/agents?node=${enc(node)}")
+    suspend fun agentAct(node: String, agent: String, action: String) =
+        post("/api/agents", json("node" to node, "agent" to agent, "action" to action))
+    // A new project's brief, waiting for its first session: read, then
+    // staged as that session's first prompt or set aside.
+    suspend fun brief(project: String) = get("/api/brief?project=${enc(project)}")
+    suspend fun briefAct(project: String, action: String, text: String = "") =
+        post("/api/brief", json("project" to project, "action" to action, "text" to text))
+
+    /** The dashboard's own sign-in, for the one screen that is the
+     *  dashboard's page rather than its API: a session's terminal, which
+     *  is a page and a WebSocket a WebView opens. Basic auth is not asked
+     *  for there (an unsigned request is sent to /login), so the WebView
+     *  carries the cookie a browser would get, from the same /login the VS
+     *  Code extension signs in through. The cookie's value, or an error. */
+    suspend fun webCookie(): String = withContext(Dispatchers.IO) {
+        val c = URL(base.trimEnd('/') + "/login").openConnection() as HttpURLConnection
+        c.requestMethod = "POST"
+        c.connectTimeout = 15_000
+        c.readTimeout = 30_000
+        c.instanceFollowRedirects = false
+        c.doOutput = true
+        c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+        c.setRequestProperty("User-Agent", "BuilderBot-app/${BuildConfig.VERSION_NAME} api/${BuildConfig.TARGET_API}")
+        try {
+            val form = "username=${enc(user)}&password=${enc(password)}&next=%2F"
+            c.outputStream.use { it.write(form.toByteArray()) }
+            val status = c.responseCode
+            val cookie = (c.headerFields["Set-Cookie"] ?: c.headerFields["set-cookie"] ?: emptyList())
+                .firstNotNullOfOrNull { Regex("bb_session=([^;]+)").find(it)?.groupValues?.get(1) }
+            if (status != 303 || cookie.isNullOrBlank())
+                throw ApiError(status, if (status == 200) "the dashboard did not take this account's sign-in for its terminal"
+                                       else "the terminal's sign-in was refused (HTTP $status)")
+            cookie
+        } finally { c.disconnect() }
+    }
+    fun termUrl(arg: String) = base.trimEnd('/') + "/term/?arg=" + enc(arg)
 
     /** An artifact's BYTES, into a file. The only call here that is not JSON:
      *  the newer APK is an artifact like any other, and installing it from the

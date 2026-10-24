@@ -27,10 +27,10 @@ function convRows(project, rows, theirs = false){
   return `<div class="cvlogs">${rows.map(r => `
     <div class="artrow">
       <div class="grow">
-        <div class="top"><b>${esc(fmtTime(r.at * 1000))}</b> <span class="dim">${esc(ago(r.at))} · ${esc(size(r.bytes))}${
+        <div class="top"><b>${esc(fmtTime(r.at * 1000))}</b> <span class="pill cvagent" title="the coding agent this conversation is with">${esc(agentById(r.agent)?.name || "Claude")}</span> <span class="dim">${esc(ago(r.at))} · ${esc(size(r.bytes))}${
           theirs ? ` · ${esc(r.by || "")}'s` : ""}</span>${r.shared ? ` <span class="pill">visible to every session</span>` : ""}</div>
         ${r.first ? `<div class="dim first">${esc(r.first)}</div>` : ""}</div>
-      <div class="acts actbar">${theirs ? "" : `<button type="button" data-cvresume="${esc(r.id)}" data-cvat="${esc(String(r.at))}">Resume</button>`}<button type="button" data-cvread="${esc(r.id)}">Read</button><a class="btn" href="/api/transcript?project=${encodeURIComponent(project)}&id=${encodeURIComponent(r.id)}&tz=${encodeURIComponent(tz)}" download>Download</a>${
+      <div class="acts actbar">${theirs ? "" : `<button type="button" data-cvresume="${esc(r.id)}" data-cvat="${esc(String(r.at))}" data-cvagent="${esc(r.agent || "claude")}">Resume</button>`}<button type="button" data-cvread="${esc(r.id)}">Read</button><a class="btn" href="/api/transcript?project=${encodeURIComponent(project)}&id=${encodeURIComponent(r.id)}&tz=${encodeURIComponent(tz)}" download>Download</a>${
         theirs ? "" : actMore([
           `<button type="button" data-cvshare="${esc(r.id)}" data-on="${r.shared ? "" : "1"}">${r.shared ? "Make private" : "Make visible"}</button>`,
           `<button type="button" class="danger" data-cvdel="${esc(r.id)}">Delete</button>`], true)}</div>
@@ -75,15 +75,15 @@ function nbSessionsView({$, nb, project, root}){
       if (shut){ m.hidden = false; b.setAttribute("aria-expanded", "true"); floatAt(m, b); }
     });
     list.querySelectorAll("[data-cvshare]").forEach(b => b.onclick = () => act(b, b.dataset.cvshare, b.dataset.on ? "share" : "unshare"));
-    list.querySelectorAll("[data-cvdel]").forEach(b => b.onclick = () => {
+    list.querySelectorAll("[data-cvdel]").forEach(b => b.onclick = async () => {
       const r = mine.find(x => x.id === b.dataset.cvdel);
-      if (!confirm(`Delete your conversation of ${r ? fmtTime(r.at * 1000) : "this session"}?\n\n`
+      if (!await askYes(`Delete your conversation of ${r ? fmtTime(r.at * 1000) : "this session"}?\n\n`
           + "It is gone for good: nothing can resume, read or download it again.")) return;
       act(b, b.dataset.cvdel, "delete");
     });
     list.querySelectorAll("[data-cvread]").forEach(b => b.onclick = () => openConversation(project, b.dataset.cvread));
     // Go on with this one: the project's chooser opens on it (resumeConversation).
-    list.querySelectorAll("[data-cvresume]").forEach(b => b.onclick = ev => resumeConversation(project, b.dataset.cvresume, +b.dataset.cvat, ev));
+    list.querySelectorAll("[data-cvresume]").forEach(b => b.onclick = ev => resumeConversation(project, b.dataset.cvresume, +b.dataset.cvat, ev, b.dataset.cvagent));
   }
   // Delete, Make visible and Make private: a person's, on the press.
   async function act(b, id, action){
@@ -93,7 +93,7 @@ function nbSessionsView({$, nb, project, root}){
       const j = await (await postJSON("/api/transcripts", {project, id, action})).json();
       if (j.error) notify(j.error, true);
       else notify({delete: "deleted", share: "visible to every session on this project", unshare: "yours alone again"}[action]);
-    }catch(e){ notify("could not reach the controller: " + e, true); }
+    }catch(e){ notify("could not reach the controller: " + failWords(e), true); }
     await loadSessions();
   }
   return {loadSessions};

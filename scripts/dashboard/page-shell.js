@@ -35,7 +35,7 @@ const RAIL_ICONS = {
 const RAIL = [
   {key: "home", label: "Home", icon: "home", tools: [["home", "Home"]]},
   {key: "projects", label: "Projects", icon: "projects", tools: [["projects", "Projects"], ["findings", "Analysis"]]},
-  {key: "build", label: "Build", icon: "toolchains", tools: [["toolchains", "Toolchains"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"], ["apps", "Apps"]]},
+  {key: "build", label: "Build", icon: "toolchains", tools: [["toolchains", "Toolchains"], ["agents", "Agents"], ["emulator", "Emulator"], ["phone", "Phone"], ["runner", "CI runner"], ["apps", "Apps"]]},
   {key: "containers", label: "Containers", icon: "docker", tools: [["docker", "Containers"], ["vms", "VMs"], ["nginx", "nginx"]]},
   // The controller, a group of its own (the operator, 22 Oct): how this
   // BuilderBot behaves, with room for the pages a bare-metal install and
@@ -73,6 +73,9 @@ function railAllows(kind){
     case "users": case "roles": return !!a.accounts;
     // The Emulator's images are the toolchain store's, so the same area.
     case "toolchains": case "emulator": return !!a.toolchains;
+    // The coding agents on a node (R95): installed as a toolchain is, and
+    // signed in to by whoever works there, so either area draws it.
+    case "agents": return !!a.toolchains || !!a.nodes;
     case "jobs": return !!a.jobs;
     // The nginx tab is the Nodes tab's area (R171); Storage its own (R169).
     case "nodes": case "nginx": return !!a.nodes;
@@ -111,7 +114,7 @@ const OPENERS = {
   home: () => openHome(),
   projects: () => openProjectsTab(), findings: () => openFindingsTab(), docker: () => openDocker(),
   nodes: () => openNodesTab(), storage: () => openStorageTab(), nginx: () => openNginxTab(), vms: () => openVmsTab(),
-  toolchains: () => openToolchains(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
+  toolchains: () => openToolchains(), agents: () => openAgentsTab(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
   runner: () => openRunnerTab(), jobs: () => openJobsTab(), users: () => openUsersTab(),
   roles: () => openRolesTab(), settings: () => openSettingsTab(), profile: () => openProfileTab(),
   apps: () => openAppsTab(),
@@ -136,7 +139,7 @@ function railGo(key, tool){
 // The Jobs page has no node; its second segment is the chip it is narrowed
 // to (#/jobs/failed-today, which Home's "failed today" opens, B74).
 const NODE_PICKED = {jobs: () => jobsShow, nodes: () => nodesPick, storage: () => storageNode, nginx: () => nginxNode,
-  toolchains: () => tcNode === "local" ? "" : tcNode, emulator: () => emuNode, phone: () => phNode,
+  toolchains: () => tcNode === "local" ? "" : tcNode, agents: () => agNode, emulator: () => emuNode, phone: () => phNode,
   runner: () => runnerNode, docker: () => dockerNode};
 // Toolchains' "local" (the controller's own store, for a shell and the
 // suite) is no node, so an address naming it opens on the node tcPick picks.
@@ -145,6 +148,7 @@ const NODE_PICKED = {jobs: () => jobsShow, nodes: () => nodesPick, storage: () =
 const NODE_SET = {jobs: v => jobsShowSet(v), nodes: v => { nodesPick = v; }, storage: v => { storageNode = v; }, nginx: v => { nginxNode = v; },
   toolchains: v => { const n = v === "local" ? "" : v;
                      if (n !== tcNode){ tcNode = n; toolchains = null; tcTicked.clear(); tcDriverPick = ""; } },
+  agents: v => { if (v !== agNode){ agNode = v; agRows = null; } },
   emulator: v => { if (v !== emuNode){ emuNode = v; emu = null; emuTicked.clear(); } },
   phone: v => { if (v !== phNode){ phNode = v; phIp = ""; } },
   runner: v => { runnerNode = v; },
@@ -240,8 +244,15 @@ function openRoute(hash){
 
 // The address follows the page on show (render calls this): replaced, not
 // pushed, so a poll's redraw is not a history entry; a rail press pushes.
+// The address it last left, or null before the first: one that has changed
+// since, and is not the page on show, is a navigation whose hashchange has
+// not run yet, and is left for it. Replacing it took the address back to the
+// page being left, which the handler then opened (B303).
+let shellSeen = null;
 function shellSync(){
   const to = routeOf(tabOf(panes[0]));
+  if (shellSeen !== null && location.hash && location.hash !== shellSeen && location.hash !== to) return;
+  shellSeen = to || "";
   if (to && to !== location.hash) history.replaceState(null, "", to);
   // A document in front has no address: the page's goes, so a reload lands
   // on the document this browser had in front (R131), not on the last page.

@@ -10,7 +10,7 @@ is reached: push rights, tokens, deploy keys and FTP.
 ## The Projects page
 
 The **Projects** page shows every project under `/workspace` as a card with
-its branch and node, and **Start Claude** (**Open Claude**, in green, while
+its branch and node, and **Start agent** (**Open** and the agent's name, in green, while
 your session runs), **Shell** and a menu on each. The bar holds a search,
 **New project** and the bin; the cards can be kept together in groups of your
 own (**Group**, in a card's menu), and archived projects are folded under
@@ -38,7 +38,7 @@ built. The brief is not the project's `CLAUDE.md`, which every session
 reads as standing instructions and which would go on asserting the first
 day's decisions after the project moved past them. It is kept in the tree
 as `BUILDERBOT-BRIEF.md`, out of git through the repository's own exclude
-file, for the first Claude session: pressing Start Claude on the project opens
+file, for the first session: pressing Start agent on the project opens
 it in a dialog, editable, beside the model and effort that session starts
 on. **Build it** starts the session with the brief as its first prompt;
 **Start without it** starts one that was not given it. Either way the
@@ -56,7 +56,7 @@ or xz, unpacked into the new directory before `git init`. However it
 arrived, the code map a session asks before grepping (`bb map`) is built
 for it in the background the moment the tree is there: the dialog closes
 as usual, the card says *mapping the code* for the seconds it takes, and
-a Claude session on that project waits for it, so its first question
+a session on that project waits for it, so its first question
 about the tree is answered from an index rather than by building one. A single
 top-level folder inside is dropped (the project directory *is* that
 folder), desktop junk like `__MACOSX` is skipped, and no brief is asked
@@ -136,7 +136,7 @@ render, and a row that flashes up for one frame is worse than none.
 ## A project's card and its menu
 
 A card, and the header of the project's own page, carry two actions,
-**Start Claude** and **Shell**, and a menu for the rest: **Link to a git
+**Start agent** and **Shell**, and a menu for the rest: **Link to a git
 host** (or the host's settings, once linked), **Lend your phone** when your
 phone is connected on its node, **Report a BuilderBot bug**, **Archive**,
 **Pin**, **Group**, **Color**, **Settings**, and, on the card, **Delete**.
@@ -147,7 +147,7 @@ projects together on the Projects page, and nothing else follows from it.
 
 **The node** beside the branch on every project's card and in its page's
 header is the node its work runs on. A project with none says nothing more;
-its Start Claude is ghosted with where to pick one.
+its Start agent is ghosted with where to pick one.
 
 **A pin** per project, **Pin** or **Unpin** in its menu, decides whether
 Home's glance shows it.
@@ -172,8 +172,8 @@ bare button on the card.
 
 **Settings** in each project's menu opens that project's own settings, which
 are also the Settings view of its page, in sections: General (its name),
-People, Claude may (what a session may enter into the notebook, and how much
-of the tree it may change without asking), Just for you (how Claude replies
+People, Agents may (what a session may enter into the notebook, and how much
+of the tree it may change without asking), Just for you (how a session replies
 to you there, and the name and email your commits carry), Repository, Nodes,
 Build and test, What sessions reach, File access, Snapshots and Running
 sessions; its Android signing keys are a view of their own, Signing, in Ship.
@@ -181,7 +181,7 @@ The git credential is not in it; that is the remote, in the
 same menu, so a credential has one home whether or not the project has a remote
 yet. Renaming changes the name it is shown under and nothing else (R154):
 a project has a permanent id and a directory that is never handed out again,
-and everything (the notebook, the containers, the sessions, Claude's own
+and everything (the notebook, the containers, the sessions, the agents' own
 transcripts and memories) is keyed by the directory, so a rename moves
 nothing and needs nothing closed first. A name follows GitHub's rules for a
 repository's: letters, digits, `-`, `_` and `.` only, each run of anything
@@ -201,46 +201,37 @@ Only BuilderBot makes a project (create, clone, or start from an imported
 archive): a folder made by hand on the share is not listed, and the folders
 already there when this arrived were recorded once, as they were.
 
-## Archiving a project
+## Archiving and locking a project
 
-**Archive**, in a project's menu, is for a project you keep in `/workspace`
-to deploy and run rather than to develop: no Claude session starts there and
-its notebook goes read-only, while everything you use yourself (the shell,
-the artifacts, the dev instance) stays live. An archived project's card is
-folded under **Archived** at the foot of the Projects page, says *archived*
-after its name, and is not pinned; **Unarchive**, in the same menu, brings it
-back. It is the one gate there is, and it carries the whole meaning: no
-session, a read-only notebook, no CLAUDE.md.
+**Archive**, in a project's menu, puts a project out of sight and changes
+nothing else: its card folds under **Archived** at the foot of the Projects
+page and leaves Home's pinned projects, and the project keeps working for
+everybody on it, sessions included. **Unarchive**, in the same menu, brings
+it back. The project's owner or an administrator archives one.
 
-The list lives in `/config/locked-projects.json`, so it survives restarts and
-image updates, and it is enforced by the terminal launcher and the server
-rather than the page: the ttyd URL is reachable on its own, and so are the
-API paths, so a rule only the UI honored would be advice. Archiving a project:
+**Lock** keeps people out of a project, and it comes in two kinds. The
+project's owner locks it with **Lock**: every other account's session on it
+ends, and until the owner presses **Unlock** nobody else starts a session in
+it or changes it, administrators included. An administrator who is not its
+owner locks it with **Admin: Lock**: every session on it ends, the owner's
+too, and nobody at all starts one or changes it until an administrator
+presses **Admin: Unlock**. A locked project stays on the Projects page with a
+padlock after its name that says whose lock it is. Locked against you:
 
-- refuses `claude:<project>` at launch, with a message saying why
-- ends every Claude session already running there, whoever's and on
-  whatever node, rather than taking effect "next time"; the question
-  Archive asks first names who is running one
-- needs Project settings to write: without it **Archive** is dead and the
-  server refuses the request
-- makes its notebook **read-only**: the roadmap, the bugs and the memories
-  open and cannot be changed, by you or by anything else
-- refuses to write a `CLAUDE.md` into it, so the `no CLAUDE.md: create one`
-  line stays as plain text rather than being an offer
+- a session of yours is refused at launch, with a message saying whose lock
+  it is, on whatever node
+- its notebook is **read-only**, and so are its settings, its git actions and
+  its containers' settings: the server refuses each write
+- reading it (its notebook, its findings, its artifacts, its dev instance)
+  works as before
 
-**What it deliberately does not touch is everything you do yourself:**
-
-- the **shell** still opens, which is how you go and look at it
-- its **static analysis** is still counted and still opens on the Analysis
-  view, with its history: archiving says who runs a project, not whether its code
-  is worth knowing about
-- its **artifacts** are still listed, and a **dev instance** still builds and
-  runs; that is usually the reason a project is archived in the first place
-- the **version** block, the settings and the rename all still work
-
-One limit worth stating, because it is the same one the sibling-project rule
-carries: this stops a session **starting here**, and the file tools are already
-denied on every project but a session's own. It is not a sandbox: a session in
+Both lists live under `/config` (`archived-projects.json` and
+`locked-projects.json`), so they survive restarts and image updates. The lock
+is enforced by the server on every write and by the terminal launcher on
+every session, which on a node asks the controller with the session's own
+token, because the ttyd URL and the API paths are reachable on their own and
+a rule only the page honored would be advice. It is not a sandbox: the file
+tools are denied on every project but a session's own, and a session in
 another project can still reach this directory through Bash.
 
 ## Push rights

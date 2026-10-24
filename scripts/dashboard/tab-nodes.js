@@ -19,7 +19,7 @@ let nodesList = null;            // last answer, or null before the first
 // its dialog opened still has its nodes.
 let nodesStale = false;
 // The pages that draw the list: a node picker each, or the rows themselves.
-const NODE_READERS = ["nodes", "toolchains", "emulator", "docker", "projects", "settings"];
+const NODE_READERS = ["nodes", "toolchains", "agents", "emulator", "docker", "projects", "settings"];
 let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
 let nodesAgent = null;           // the agent this controller ships: {digest, version}
@@ -100,7 +100,7 @@ async function loadNodesOnce(seq){
 // Only the gap: the repaint that follows draws the real state (n.applying,
 // the runner's census, a queued job) and replaces this element entirely, so
 // the restore below fires only when nothing repainted: an error, or an
-// action that changes no state. Put the confirm() BEFORE the call, so
+// action that changes no state. Put the await askYes() BEFORE the call, so
 // canceling leaves the button alive.
 async function pressing(btn, fn){
   if (!btn || btn.disabled) return undefined;
@@ -565,7 +565,7 @@ function nodeFeaturesSection(n){
       <div class="sub">${about}</div></div>${writes ? btn : ""}</div>`;
   const others = [];
   if (!n.config?.host_only)
-    others.push(elsewhere("sessions", "Claude sessions", !!r.session?.user,
+    others.push(elsewhere("sessions", "Sessions", !!r.session?.user,
       r.session?.user ? `Sessions run here as ${esc(r.session.user)}, kept off Docker and root.` : "No session account on this machine: enrolling it again with Claude sessions ticked makes one.",
       `<button type="button" data-nd="reenroll" title="a new script for this machine, with the ticks changed">Enroll again…</button>`));
   others.push(elsewhere("door", "SSH door", !!r.door?.installed,
@@ -736,7 +736,9 @@ function nodeSessionsSection(n){
   const ready = !host && se && typeof se === "object" && se.up;
   const facts = factGrid([
     ["Sessions", host ? "none: it hosts containers only" : ready ? `run as ${se.user || "?"}` : ""],
-    ["Claude Code", ready ? (se.claude || "not installed yet") : ""],
+    // The coding agents here, each with its version (the operator, 23 Oct:
+    // their own section said less than this line, and said it apart).
+    ["Coding agents", ready ? (nodeAgentsHere(n).map(a => `${a.product} ${a.version}`).join(", ") || "none installed yet") : ""],
     ["Each session", ready && iso ? (iso.sessions ? "sees only its own project" : "can read other projects") : ""],
     ["Open now", ready && list.length ? list.map(x => x.name).join(", ") : ""],
     ["Reaches the controller", reach],
@@ -751,7 +753,7 @@ function nodeSessionsSection(n){
     notes.push(["The node has not said yet whether it runs sessions.", "warn"]);
   } else if (!se.up){
     [status, cls] = ["none", "warn"];
-    notes.push([`${se.why || "no session account: provision it with --session-user"}. No Claude session can start here until it is up.`, "warn"]);
+    notes.push([`${se.why || "no session account: provision it with --session-user"}. No session can start here until it is up.`, "warn"]);
   } else {
     const shared = !!iso && !iso.sessions;
     if (!se.boot) notes.push(["the agent could not read this machine's boot id, which a terminal here is checked against", "bad"]);
@@ -765,6 +767,7 @@ function nodeSessionsSection(n){
       ${nodeDoorRow(n)}
       ${nodeHostRow(n)}
       ${host ? "" : nodeSyncRow(n)}
+      ${host ? "" : nodeAgentsLine(n)}
       ${nodeToolsLine(n)}
     </div>`;
   return docSection("nodes", "sessions", ndTitle("sessions"), status, body, {cls});
@@ -794,42 +797,37 @@ function nodeSessDirty(n){
   const portsOn = "ports_local" in conf ? !!conf.ports_local : !!conf.host_only;
   return (c.sessnetOn !== undefined && c.sessnetOn !== !!conf.session_net)
     || (c.rootAsks !== undefined && c.rootAsks !== !conf.no_root)
+    || (c.acctUsers !== undefined && c.acctUsers !== !!conf.account_users)
     || (c.ctrNet !== undefined && c.ctrNet !== ctrOn)
     || (c.portsLocal !== undefined && c.portsLocal !== portsOn)
     || (c.turnsText !== undefined && String(Number(c.turnsText) || 0) !== String((n.turns || {}).limit || 0))
     || (c.workersText !== undefined && String(Number(c.workersText) || 0) !== String(conf.test_workers || 0));
 }
 
-// Claude Code on this node: this account's sign-in here (a login is one
-// account's on one node, page-signin.js), and where the copy the session
-// account runs stands, with the way to the node's Toolchains tab, which
-// installs, updates and removes it (R145).
-function nodeClaudeSection(n){
-  const cc = state?.claude_code || {};
-  const me = cc.nodes?.[n.id] || {};
+// The coding agents installed on this node, each with its version as the
+// census says it (R95 step 15), in the table's order.
+function nodeAgentsHere(n){
+  const me = (state?.claude_code || {}).nodes?.[n.id] || {};
+  const se = n.reported?.session || {};
+  return AGENTS.filter(a => a.id === "claude" ? !!me.installed : !!se?.[a.id])
+    .map(a => ({...a, version: String((a.id === "claude" ? se.claude : se[a.id]) || "").replace(/ \(.*$/, "")}));
+}
+
+// ...and in the Sessions section, one line: which this account is signed in
+// to here, with the way to the Agents page, where each is installed, updated
+// and signed in to (the operator, 23 Oct: the Coding agents section rolled
+// into Sessions).
+function nodeAgentsLine(n){
   const se = n.reported?.session;
-  const inst = me.installed || "";
-  const latest = cc.latest || "";
-  let status, cls;
-  if (!se || typeof se !== "object" || !se.up) [status, cls] = ["no session account", "warn"];
-  else if (me.updating) [status, cls] = ["updating", "warn"];
-  else if (!inst) [status, cls] = ["not installed", "bad"];
-  else if (me.behind) [status, cls] = [`${inst}, ${latest} is out`, "warn"];
-  else [status, cls] = [latest ? `${inst}, up to date` : inst, "ok"];
-  // ...and whether the person looking is signed in here, which a folded
-  // section would otherwise keep to itself.
-  if (inst && se?.up && !me.updating && !claudeOn(n.id)) [status, cls] = [`${status}, not signed in`, "warn"];
-  // Installed, updated and removed on the node's Toolchains tab like any
-  // toolchain (R145); what stays here is the account's sign-in.
-  const body = `
-    ${signinBlock(n)}
-    <div class="actbar">
-      <span class="state">${!se?.up ? "No session account here, so nothing runs Claude Code."
-        : inst ? `Claude Code ${esc(inst)}${me.behind ? `; ${esc(latest)} is out` : ""}: the ${pageLink("toolchains", "Toolchains page")} updates it.`
-        : `Not installed: a Claude session cannot start here until the ${pageLink("toolchains", "Toolchains page")} installs it.`}</span>
-      ${se?.up && mayToolchains(n.id) ? `<button type="button" data-ndtc="${esc(n.id)}" title="install, update or remove it there">Toolchains</button>` : ""}
+  if (!(se && typeof se === "object" && se.up)) return "";
+  const have = nodeAgentsHere(n);
+  const signed = have.filter(a => a.id === "claude" ? claudeOn(n.id) : agentOn(a.id, n.id));
+  const said = !have.length ? "No coding agent is installed here: a session cannot start until one is."
+    : `${have.map(a => a.name).join(", ")} installed; ${signed.length ? `you are signed in to ${signed.map(a => a.name).join(", ")}` : "you are signed in to none of them"} here.`;
+  return `<div class="actbar ndagents">
+      <span class="state${have.length ? (signed.length ? "" : " warn") : " bad"}">${esc(said)}</span>
+      ${railAllows("agents") ? `<button type="button" data-ndag="${esc(n.id)}" title="install, update and sign in to each on the Agents page">Agents</button>` : ""}
     </div>`;
-  return docSection("nodes", "claude", ndTitle("claude"), status, body, {cls});
 }
 
 // Whether each session here reaches only its own project's containers, the
@@ -916,6 +914,17 @@ function nodeSessNetRow(n){
   if (c.draft.rootAsks === undefined || c.draft.rootFrom !== rootOn){
     c.draft.rootAsks = rootOn; c.draft.rootFrom = rootOn;
   }
+  // ...and whether each account is a Unix user of its own here (R125).
+  const acctOn = !!n.config?.account_users;
+  if (c.draft.acctUsers === undefined || c.draft.acctFrom !== acctOn){
+    c.draft.acctUsers = acctOn; c.draft.acctFrom = acctOn;
+  }
+  const ac = n.reported?.session?.accounts || {};
+  const acctLine = !acctOn ? (ac.users ? `<div class="sub dim">${ac.users} account${ac.users === 1 ? "" : "s"} still ${ac.users === 1 ? "has" : "have"} a home of ${ac.users === 1 ? "its" : "their"} own user, moved back once ${ac.users === 1 ? "its" : "their"} sessions end.</div>` : "")
+    : ac.error ? `<div class="sub bad">Not in force: ${esc(ac.error)}.</div>`
+    : ac.users === undefined ? `<div class="sub dim">The node has not reported it yet.</div>`
+    : ac.waiting ? `<div class="sub dim">${ac.moved} of ${ac.users} homes moved; ${ac.waiting} wait${ac.waiting === 1 ? "s" : ""} for ${ac.waiting === 1 ? "its" : "their"} sessions started before to end.</div>`
+    : `<div class="sub">Every account here runs as a user of its own: its home, its sign-ins and its terminals are its alone, and only root reaches them.</div>`;
   const sn = n.reported?.session_net || {};
   const told = Object.keys(sn).length > 0;
   const line = !told
@@ -936,7 +945,10 @@ function nodeSessNetRow(n){
     ${line}</div>
     <div class="field"><label class="ndcap"><input type="checkbox" data-k="rootasks" ${c.draft.rootAsks ? "checked" : ""}>
       let a session ask for a root command (bb root run), which a person then allows or denies</label>
-    ${rootOn ? "" : `<div class="sub dim">A session that asks is refused and told this is off.</div>`}</div>`;
+    ${rootOn ? "" : `<div class="sub dim">A session that asks is refused and told this is off.</div>`}</div>
+    ${acctOn || state?.settings?.settings?.offer_unvetted?.value ? `<div class="field"><label class="ndcap"><input type="checkbox" data-k="acctusers" ${c.draft.acctUsers ? "checked" : ""}>
+      run each account as a user of its own, so no account and no shell as the session account reaches another's sign-ins or terminals <span class="pill">dev</span></label>
+    ${acctLine}</div>` : ""}`;
 }
 
 // How many Claude sessions here may work on a prompt at once (turns.py on
@@ -961,13 +973,13 @@ function nodeTurnsRow(n){
   const winp = `ndWorkers-${n.id}`;
   // What 0 means is in each label, where a phone reads it (B459).
   return `<div class="ndnums"><div class="logdays setrow col ctlrow">
-      ${lbl(inp, "Claude sessions working at once (0: no limit)", "a prompt past it waits for a turn instead of starting")}
+      ${lbl(inp, "Sessions working at once (0: no limit)", "a prompt past it waits for a turn instead of starting")}
       <input id="${esc(inp)}" data-k="turns" type="number" min="0" max="64" step="1" inputmode="numeric"
         value="${esc(c.draft.turnsText)}">
     </div>
     <div class="logdays setrow col ctlrow">
-      ${lbl(winp, `Test workers (0: every core${n.reported?.cpu ? `, ${n.reported.cpu} here` : ""})`,
-        "how many workers a test run here may use, as BB_TEST_WORKERS in its environment")}
+      ${lbl(winp, `Test workers at most (0: every core${n.reported?.cpu ? `, ${n.reported.cpu} here` : ""})`,
+        "the most suites a test run here runs at once; each takes its next suite only while the machine has room, so a busy node runs fewer")}
       <input id="${esc(winp)}" data-k="workers" type="number" min="0" max="256" step="1" inputmode="numeric"
         value="${esc(c.draft.workersText)}">
     </div></div>
@@ -1091,9 +1103,94 @@ function staleWhy(n){
 // promising a move here would be a lie.
 function storeMoves(n){
   const want = n?.config?.desired?.stores || {}, rep = n?.reported?.stores || {};
+  const keep = new Set(n?.config?.desired?.keep || []);
   return Object.entries(want).filter(([role, p]) => role !== "cache" && p
       && rep[role]?.path && rep[role].path.replace(/\/+$/, "") !== String(p).replace(/\/+$/, ""))
-    .map(([role, p]) => ({role, from: rep[role].path, to: p}));
+    .map(([role, p]) => ({role, from: rep[role].path, to: p, empty: keep.has(role)}));
+}
+
+// The questions a changed data location asks before it is saved (R120, the
+// operator, 23 Oct), asked of what is really at each path on the node: Are
+// you sure; a folder that already holds files gets one named for the node
+// inside it, and the setting changes to that; and whether the data in the
+// old place comes along. False when a question was answered no, or the
+// node could not say, and nothing is saved.
+async function ndStoreAsk(n, c){
+  const d = c.draft, desired = n?.config?.desired || {}, rep = n?.reported?.stores || {};
+  const norm = p => String(p || "").trim().replace(/\/+$/, "");
+  const now = role => norm(desired.stores?.[role] || rep[role]?.path);
+  const roles = Object.keys(d.stores || {}).filter(r => norm(d.stores[r]) && norm(d.stores[r]) !== now(r));
+  const was = new Set((desired.mounts || []).map(m => norm(m.path)));
+  const mounts = (d.mounts || []).map(m => norm(m.path)).filter(p => p && !was.has(p));
+  // Mounts saved here that the node does not have as they are written: new,
+  // or pointed at another export (the operator, 23 Oct). A store inside one
+  // is placed only once Apply has mounted it, and what is on the share
+  // cannot be seen from here before then.
+  const repM = n?.reported?.mounts || [];
+  const pending = (d.mounts || []).filter(m => norm(m.path) && !repM.some(r => norm(r.path) === norm(m.path)
+    && String(r.source || "") === String(m.source || "") && r.mounted && !r.stale));
+  const coverOf = p => pending.filter(m => p === norm(m.path) || p.startsWith(norm(m.path) + "/"))
+    .sort((a, b) => norm(b.path).length - norm(a.path).length)[0];
+  // ...and a store that stays where it is but would sit under one of them,
+  // whose data on the node's own disk the share then covers.
+  const covered = Object.entries(d.stores || {}).filter(([r, p]) => norm(p) && norm(p) === now(r) && coverOf(norm(p)))
+    .map(([r, p]) => ({role: r, path: norm(p), mount: norm(coverOf(norm(p)).path)}));
+  for (const c of covered){
+    if (!await askYes(`Mount a share at ${c.mount} on ${n.name}?\n\nThe ${c.role} store is in ${c.path}, inside it. `
+        + `Once the share is mounted the store reads what is on the share, and what is in ${c.path} on the `
+        + `node's own disk is covered until it is unmounted; it is not deleted.`)) return false;
+  }
+  if (!roles.length && !mounts.length) return true;
+  const probe = [...new Set([...roles.map(r => norm(d.stores[r])), ...roles.map(now).filter(Boolean), ...mounts])];
+  let j;
+  try{
+    j = await (await fetch("/api/v1/nodes", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action: "path-state", id: n.id, paths: probe})})).json();
+  }catch(e){ j = {error: String(e)}; }
+  if (j.error){ notify(`could not see what is at those paths on ${n.name}: ${j.error}`, true); return false; }
+  const at = p => j.paths?.[p] || {};
+  for (const p of mounts){
+    if (at(p).why){ notify(`the mount at ${p}: ${at(p).why}`, true); return false; }
+    if (at(p).files && !await askYes(`Mount the share at ${p} on ${n.name}?\n\n${p} already has files in it. `
+        + `The share covers them until it is unmounted; they are not deleted.`)) return false;
+  }
+  const keep = [];
+  for (const role of roles){
+    const want = norm(d.stores[role]), st = at(want), old = now(role);
+    if (st.why){ notify(`the ${role} store: ${st.why}`, true); return false; }
+    let to = want, already = false;
+    const cv = coverOf(want);
+    if (cv){
+      if (!await askYes(`Put the ${role} store in ${want} on ${n.name}?\n\n${want} is inside ${norm(cv.path)}, a mount `
+          + `saved here that the node does not have yet${(repM.find(r => norm(r.path) === norm(cv.path)) || {}).source
+            ? ` (it mounts another export there now)` : ""}, so what is on the share cannot be seen until it is `
+          + `mounted. Apply mounts it first and only then puts the store there; if the mount does not come up, `
+          + `the apply fails and ${role} stays in ${old || "its place"}.`)) return false;
+    } else if (st.files){
+      to = st.sub; already = !!st.sub_state?.files;
+      if (!await askYes(`Put the ${role} store in ${want} on ${n.name}?\n\n${want} already has files in it, so the `
+          + `store goes in a folder for this node inside it, ${to}, and the setting changes to that.`
+          + (already ? `\n\n${to} already holds files of its own: the store uses what is there, and `
+                       + `nothing is brought across from ${old || "the old place"}.` : ""))) return false;
+      d.stores[role] = to;
+    } else if (!await askYes(`Put the ${role} store in ${want} on ${n.name}?\n\n`
+        + (st.exists ? `${want} is empty.` : `${want} does not exist yet, and is made.`))) return false;
+    // A cache is never brought across (it is rebuilt); nor is an old place
+    // with nothing in it, or a store going where files already are.
+    const hasData = role !== "cache" && old && at(old).files;
+    // Its own question with its own answers (the operator, 23 Oct: OK for
+    // yes and Cancel for no was messy): Yes, No, and Cancel to stop.
+    if (already){ keep.push(role); continue; }
+    if (!hasData) continue;
+    const bring = await ask({text: `Bring the ${role} data across from ${old} to ${to}?\n\n`
+        + `Yes copies it there, and the copy in ${old} stays for you to remove. No leaves it where it `
+        + `is, and ${to} starts empty.`,
+      choices: [{label: "Yes", value: "yes"}, {label: "No", value: "no"}]});
+    if (bring === null) return false;
+    if (bring === "no") keep.push(role);
+  }
+  d.keep = keep;
+  return true;
 }
 
 // Saved is not applied: the record says what the node SHOULD be, the census
@@ -1167,19 +1264,21 @@ function nodeConfSections(n){
     const [st, cls] = mountState(m, rep.mounts);
     return `
     <div class="ndmount ctlline" data-i="${i}">
-      <select data-k="type" aria-label="type">
-        <option value="nfs" ${m.type !== "virtiofs" ? "selected" : ""}>nfs</option>
-        <option value="virtiofs" ${m.type === "virtiofs" ? "selected" : ""}>virtiofs</option>
-      </select>
       <div class="setrow col ctlrow">${lbl("", "Source", m.type === "virtiofs" ? "the share tag" : "host:/export")}
       <input data-k="source" value="${esc(m.source || "")}" spellcheck="false" autocomplete="off"
         placeholder="${m.type === "virtiofs" ? "appdata" : "nas:/mnt/user/appdata"}" aria-label="source"></div>
       <div class="setrow col ctlrow">${lbl("", "Mountpoint", "blank means /mnt/ and the export's name")}
       <input data-k="path" value="${esc(m.path || "")}" spellcheck="false" autocomplete="off"
         placeholder="/mnt/appdata" aria-label="mountpoint"></div>
-      <label class="ndcap"><input type="checkbox" data-k="ro" ${m.ro ? "checked" : ""}> read-only</label>
-      <button type="button" class="eye" data-mrm title="take this mount out">×</button>
-      <div class="sub ndmstate ${cls}">${esc(st)}</div>
+      <div class="ndmline">
+        <select data-k="type" aria-label="type">
+          <option value="nfs" ${m.type !== "virtiofs" ? "selected" : ""}>nfs</option>
+          <option value="virtiofs" ${m.type === "virtiofs" ? "selected" : ""}>virtiofs</option>
+        </select>
+        <label class="ndcap"><input type="checkbox" data-k="ro" ${m.ro ? "checked" : ""}> read-only</label>
+        <span class="sub ndmstate ${cls}">${esc(st)}</span>
+        <button type="button" class="eye" data-mrm title="take this mount out" aria-label="take this mount out">×</button>
+      </div>
     </div>`;
   }).join("");
   const STORE_ABOUT = {
@@ -1237,7 +1336,11 @@ function nodeConfSections(n){
   const lineFor = kind => {
     const pending = !drift ? [] : kind === "storage" ? drift.storage
       : drift.network === "unknown" ? [] : drift.network;
-    return busyNow
+    return busyNow?.quiet && busyNow.state === "queued"
+      ? ["waiting for the node to go quiet: its jobs to finish and its sessions to end their turns, which then wait on the move", "note"]
+      : busyNow?.quiet
+      ? ["moving storage: the node's sessions are held, and told how far it has got", "note"]
+      : busyNow
       ? [`applying ${busyNow.what}${busyNow.what === "network" ? ": waiting for it to dial back in" : "…"}`, "note"]
       : stale ? [staleWhy(n), windowGap(n) ? "bad" : "warn"]
       : c.dirty ? ["Unsaved: press Save, then Apply.", "warn"]
@@ -1251,8 +1354,12 @@ function nodeConfSections(n){
   };
   const [storStatus, storStatusCls] = lineFor("storage");
   const [status, statusCls] = lineFor("network");
+  // Save and Revert in the save bar's order (saveBar), Revert putting the
+  // fields back to what is saved; Apply after them.
   const saveBtn = `<button type="button" data-nsave ${c.dirty ? "" : "disabled"}
-      title="save these settings; Apply puts them on the node">Save</button>`;
+      title="save these settings; Apply puts them on the node">Save</button>
+    <button type="button" class="caution" data-nrevert ${c.dirty ? "" : "disabled"}
+      title="put the fields back to what is saved">Revert</button>`;
   const storage = `
       <div class="sub">Mounts at boot.${
         d.fromNode ? ` <span class="dim">As the node reports them; save to manage them from here.</span>` : ""}</div>
@@ -1434,7 +1541,7 @@ function nodeCharts(n){
 // is a change to both; given null, each draws the placeholder's.
 // A node's sections, in their order, by the titles they are drawn under.
 const ND_SECTS = [["health", "Health"], ["projects", "Projects"], ["sessions", "Sessions"], ["gpu", "GPU"],
-                  ["features", "Features"], ["claude", "Claude Code"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
+                  ["features", "Features"], ["storage", "Storage"], ["network", "Network"], ["advanced", "Advanced"]];
 function ndTitle(k){ return (ND_SECTS.find(s => s[0] === k) || [k, k])[1]; }
 // Why Create sandbox VM and Enroll node are dead, when this install switched
 // enrolling off (R81): under the bar, since a reason in a tooltip is nothing
@@ -1557,7 +1664,9 @@ function renderNodesInto(i){
       ? (n.jobs || []).filter(j => j.type !== "self-update" && j.state !== "queued").length : 0;
     // The agent a fact; an update for it a pill beside the node's state.
     const agentVer = n.kind === "agent" && n.agent?.version
-      ? `${n.agent.version}${n.agent.digest ? " " + n.agent.digest.slice(7, 15) : ""}` : "";
+      ? `${n.agent.version}${n.agent.digest ? " " + n.agent.digest.slice(7, 15) : ""}${
+        // When it was built (R131), so a person with a problem can say how old it is.
+        n.agent.built && !isNaN(Date.parse(n.agent.built)) ? ` · built ${fmtTime(Date.parse(n.agent.built), {day: "numeric", month: "short", year: "numeric"})}` : ""}` : "";
     const stalePill = n.kind === "agent" && n.agent?.version && stale
       ? ` <span class="pill warn ndstale" title="this controller ships agent ${
           esc(nodesAgent.version)} ${esc(nodesAgent.digest.slice(7, 15))}">update available → ${esc(nodesAgent.version)}</span>` : "";
@@ -1632,7 +1741,6 @@ function renderNodesInto(i){
         ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeGpuSection(n) : ""}
         ${n.kind === "agent" && !pending ? nodeFeaturesSection(n) : ""}
-        ${n.kind === "agent" && !pending && !n.config?.host_only ? nodeClaudeSection(n) : ""}
         ${plane ? nodeConfSections(n) : ""}
         ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
       </div>
@@ -1790,7 +1898,7 @@ async function nodeProjectRemove(b, name, id){
   const node = p.prefs?.node === id ? (rest[0] || "") : (p.prefs?.node || "");
   const inIt = c => { const m = /^\/workspace\/(?:\.worktrees\/)?([^/]+)/.exec(c || ""); return m && m[1] === name; };
   const here = (state?.sessions || []).filter(x => x.node_id === id && inIt(x.cwd));
-  if (!confirm(`Remove ${projLabel(name)} from ${nname}?\n\n`
+  if (!await askYes(`Remove ${projLabel(name)} from ${nname}?\n\n`
         + (rest.length ? "" : "It is then on no node: nothing builds, tests or opens a session for it until one is picked. ")
         + (here.length ? `Its ${here.length} session${here.length === 1 ? "" : "s"} open there keep running until closed. ` : "")
         + "Its containers there keep running, and the Containers page still reaches them.")) return;
@@ -1849,7 +1957,7 @@ function ndDialogs(){
               .map(s => [s.id, s.vetted ? s.name : devOpt(s.name)]))}</select></div>
         </div>
         <div class="hint" id="ndEnSysWhy" hidden></div>
-        <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Claude sessions run on it</label>
+        <label class="ndcap"><input type="checkbox" id="ndEnSess" checked> Sessions run on it</label>
         <label class="ndcap"><input type="checkbox" id="ndEnHost"> Hosting only: it runs containers sent to it, and nothing of it comes back</label>
         <div class="hint" id="ndEnHostHint" hidden>No project's code, no sessions and no bb go to it; its agent may ask the controller for its own jobs and nothing else. For a public box such as a cloud VPS.</div>
         <label class="ndcap" id="ndEnFwRow" hidden><input type="checkbox" id="ndEnFw" checked> Take in only 80 and 443</label>
@@ -2229,11 +2337,12 @@ function wireNodesTab(root){
     const id = box.dataset.node;
     // The driver is the Toolchains tab's row (R102): this opens it on the node.
     box.querySelectorAll("[data-ndtc]").forEach(b => b.onclick = () => openToolchainsOn(b.dataset.ndtc));
+    box.querySelectorAll("[data-ndag]").forEach(b => b.onclick = () => openAgentsOn(b.dataset.ndag));
     box.querySelectorAll("[data-nd]").forEach(b => b.onclick = () => pressing(b, async () => {
       const act = b.dataset.nd;
       if (act === "disable" || act === "enable"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        if (act === "disable" && !confirm(`Disable ${name}?\n\nIt stays enrolled and keeps its configuration, but no project can add it, `
+        if (act === "disable" && !await askYes(`Disable ${name}?\n\nIt stays enrolled and keeps its configuration, but no project can add it, `
               + "no picker offers it, and it is handed no work or session until you press Enable.")) return;
         busy(b, act === "disable" ? "Disabling" : "Enabling");
         const j = await nodeAct({action: act, id});
@@ -2247,18 +2356,18 @@ function wireNodesTab(root){
         return;
       }
       if (act === "retire"
-          && !confirm("Remove this node from every list? Its containers and "
+          && !await askYes("Remove this node from every list? Its containers and "
                       + "its data stay on the machine; the row is kept as "
                       + "history.")) return;
       if (act === "uninstall"
-          && !confirm("Uninstall BuilderBot from this machine?\n\nThe agent, its accounts, "
+          && !await askYes("Uninstall BuilderBot from this machine?\n\nThe agent, its accounts, "
                       + "mounts and runners are removed. Docker and the shares stay. "
                       + "Enrolling it again starts from scratch.")) return;
       // A reboot ends every session on the node, so the press names them,
       // as Update agent's does; a shutdown also does not come back by itself.
       if (act === "lockdown"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        if (!confirm(`Lock down ${name}?\n\nFrom now it may ask this controller for nothing but the job that stops `
+        if (!await askYes(`Lock down ${name}?\n\nFrom now it may ask this controller for nothing but the job that stops `
               + "every container there, its nginx with them, keeps them from starting at a boot and shuts its SSH door. "
               + "Its credential is revoked when that job ends, or in five minutes if the box never answers, and the node is removed.\n\n"
               + "If the box itself may be taken over, also power it off from its provider's console: that stop does not need the agent.")) return;
@@ -2266,12 +2375,12 @@ function wireNodesTab(root){
       if (act === "reboot" || act === "poweroff"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
         const here = (state?.sessions || []).filter(x => x.node_id === id);
-        const mine = here.filter(x => tmuxBase(x.name).startsWith("claude-"));
+        const mine = here.filter(x => agentOfSession(tmuxBase(x.name)));
         const open = here.length
           ? `It ends the ${here.length} session${here.length === 1 ? "" : "s"} open there`
-            + `${mine.length ? ` (${mine.length} of them a Claude conversation)` : ""}; transcripts are kept. `
+            + `${mine.length ? ` (${mine.length} of them a ${agentsWord(mine.map(x => x.name))} conversation)` : ""}; transcripts are kept. `
           : "";
-        if (!confirm(act === "reboot"
+        if (!await askYes(act === "reboot"
               ? `Reboot ${name}?\n\n${open}Whatever is running there stops; the agent dials in again when the machine is back up.`
               : `Shut down ${name}?\n\n${open}It does not come back on its own: switch it on from its console or its hypervisor.`)) return;
       }
@@ -2283,17 +2392,17 @@ function wireNodesTab(root){
       // who pressed this lost two conversations mid-work with no warning.
       if (act === "update-agent"){
         const here = (state?.sessions || []).filter(x => x.node_id === id);
-        const mine = here.filter(x => tmuxBase(x.name).startsWith("claude-"));
-        if (here.length && !confirm(
+        const mine = here.filter(x => agentOfSession(tmuxBase(x.name)));
+        if (here.length && !await askYes(
               `Update the agent on ${
                 (nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
               + `This ends the ${here.length} session`
               + `${here.length === 1 ? "" : "s"} open there`
-              + `${mine.length ? ` (${mine.length} of them a Claude conversation)` : ""}`
+              + `${mine.length ? ` (${mine.length} of them a ${agentsWord(mine.map(x => x.name))} conversation)` : ""}`
               + `. Transcripts are kept; whatever they were running stops.`)) return;
       }
       if (act === "gpu-display"
-          && !confirm(`Set up the GPU display on ${(nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
+          && !await askYes(`Set up the GPU display on ${(nodesList || []).find(n => n.id === id)?.name || "this node"}?\n\n`
                       + "This installs the NVIDIA driver and a headless X server on the card, which "
                       + "takes minutes, and the driver takes the card only after a reboot: the row "
                       + "says when to press Reboot.")) return;
@@ -2302,25 +2411,25 @@ function wireNodesTab(root){
       if (act === "sync-stop"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
         const here = (state?.sessions || []).filter(x => x.node_id === id);
-        if (!confirm(`Stop syncing ${name}?\n\n`
+        if (!await askYes(`Stop syncing ${name}?\n\n`
               + (here.length ? `This ends the ${here.length} session${here.length === 1 ? "" : "s"} open there; transcripts are kept. ` : "")
               + "No session starts there while it sends up what is left; then Clean up /workspace removes its copies.")) return;
       }
       if (act === "sync-clean"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        if (!confirm(`Remove the project copies on ${name}?\n\n`
+        if (!await askYes(`Remove the project copies on ${name}?\n\n`
               + "Everything there has reached the controller. The node then holds no projects until it moves to a synced copy again.")) return;
       }
       if (act === "host-only"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        if (!confirm(`Make ${name} hosting only?\n\nIt keeps running the containers sent to it. `
+        if (!await askYes(`Make ${name} hosting only?\n\nIt keeps running the containers sent to it. `
               + "No project may list it, no session or synced copy runs there, and its agent may ask "
               + "the controller for nothing but its own jobs. A project that lists it now has to be "
               + "moved off it first.")) return;
       }
       if (act === "discard"){
         const n = (nodesList || []).find(x => x.id === id);
-        if (!confirm(`Discard ${n?.name || "this row"}?\n\nNothing has enrolled with its script, so the row goes outright and the script it was made for stops working.`)) return;
+        if (!await askYes(`Discard ${n?.name || "this row"}?\n\nNothing has enrolled with its script, so the row goes outright and the script it was made for stops working.`)) return;
       }
       if (act === "reenroll"){
         const n = (nodesList || []).find(x => x.id === id);
@@ -2329,16 +2438,16 @@ function wireNodesTab(root){
       }
       if (act === "door" && b.dataset.on === "0"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        if (!confirm(`Shut the SSH door on ${name}?\n\nNothing reaches its port 22 through the tunnel until it is opened again from here.`)) return;
+        if (!await askYes(`Shut the SSH door on ${name}?\n\nNothing reaches its port 22 through the tunnel until it is opened again from here.`)) return;
       }
       if (act === "feature" && b.dataset.op === "remove"){
         const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        if (!confirm(b.dataset.feature === "vmhost"
+        if (!await askYes(b.dataset.feature === "vmhost"
               ? `Uninstall VM host from ${name}?\n\nThe packages BuilderBot added for it come off; what the machine had before stays. It is refused while any VM is still there.`
               : `Turn the hosting firewall off on ${name}?\n\nEvery port this box and its containers publish is reachable from the internet again.`)) return;
       }
       if (act === "cache-clear"
-          && !confirm("Clear this node's build caches? Every project's Gradle, "
+          && !await askYes("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "
                       + "each re-downloads what it needs.")) return;
       // The verb, said on the button for the round trip and, for the
@@ -2375,7 +2484,7 @@ function wireNodesTab(root){
       }
       if (act === "sess-revert"){
         const c = nodesConf[id];
-        if (c && c.draft) for (const k of ["sessnetOn", "rootAsks", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
+        if (c && c.draft) for (const k of ["sessnetOn", "rootAsks", "acctUsers", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
         nodesRev++; drawPanes();
         return;
       }
@@ -2397,19 +2506,21 @@ function wireNodesTab(root){
           return true;
         };
         const ok = await step(val("turns"), String((n0.turns || {}).limit || 0), v => ({action: "turns", limit: Number(v)}),
-                              v => Number(v) ? `at most ${v} Claude session${Number(v) === 1 ? "" : "s"} work here at once` : "no limit on Claude sessions working here at once")
+                              v => Number(v) ? `at most ${v} session${Number(v) === 1 ? "" : "s"} work here at once` : "no limit on sessions working here at once")
           && await step(val("sessnet"), !!conf.session_net, v => ({action: "session-net", on: v}),
                         v => v ? "sessions started here from now on reach only their own project's containers" : "sessions started here from now on share its network")
           && await step(val("workers"), String(conf.test_workers || 0), v => ({action: "test-workers", workers: Number(v)}),
                         v => Number(v) ? `test runs here may use ${v} worker${Number(v) === 1 ? "" : "s"}` : "test runs here may use every core")
           && await step(val("rootasks"), !conf.no_root, v => ({action: "root-asks", on: v}),
                         v => v ? "a session here may ask for a root command" : "a session here asking for a root command is refused")
+          && await step(val("acctusers"), !!conf.account_users, v => ({action: "account-users", on: v}),
+                        v => v ? "each account here becomes a user of its own; a home moves once its older sessions end" : "accounts here run as the session account again once their sessions end")
           && await step(val("ctrnet"), "container_net" in conf ? !!conf.container_net : !!conf.host_only, v => ({action: "container-net", on: v}),
                         v => v ? "each project's containers here are kept to their own network from the next hello" : "containers here reach each other again from the next hello")
           && await step(val("portslocal"), "ports_local" in conf ? !!conf.ports_local : !!conf.host_only, v => ({action: "ports-local", on: v}),
                         v => v ? "published ports here bind to 127.0.0.1 from the next hello; docker restarts once" : "published ports here bind to every address from the next hello; docker restarts once");
         const c = nodesConf[id];
-        if (ok && c && c.draft) for (const k of ["sessnetOn", "rootAsks", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
+        if (ok && c && c.draft) for (const k of ["sessnetOn", "rootAsks", "acctUsers", "ctrNet", "portsLocal", "turnsText", "workersText"]) c.draft[k] = undefined;
         if (said.length) notify(said.join("; "));
         await loadNodes();
         return;
@@ -2519,7 +2630,7 @@ function wireNodesTab(root){
     // Revert, which sleep again when every field is back where it was.
     const sessWake = () => { const dirty = nodeSessDirty(nodesList.find(x => x.id === id) || {});
       box.querySelectorAll('[data-nd="sess-save"], [data-nd="sess-revert"]').forEach(x => { x.disabled = !dirty; }); };
-    for (const [k, key] of [["sessnet", "sessnetOn"], ["rootasks", "rootAsks"], ["ctrnet", "ctrNet"], ["portslocal", "portsLocal"]]){
+    for (const [k, key] of [["sessnet", "sessnetOn"], ["rootasks", "rootAsks"], ["acctusers", "acctUsers"], ["ctrnet", "ctrNet"], ["portslocal", "portsLocal"]]){
       const el = box.querySelector(`[data-k="${k}"]`);
       if (el) el.onchange = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft[key] = el.checked; sessWake(); };
     }
@@ -2640,7 +2751,7 @@ function wireNodeConf(row, id){
   fold.querySelectorAll("[data-nrunner]").forEach(b => b.onclick = async () => {
     const n = nodesList.find(x => x.id === id);
     const want = b.dataset.nrunner === "install", slot = b.dataset.slot;
-    if (!want && !confirm(`Remove the runner ${slot} from ${n?.name || "this node"}?\n\nIt is deregistered `
+    if (!want && !await askYes(`Remove the runner ${slot} from ${n?.name || "this node"}?\n\nIt is deregistered `
         + `from its host first; workflows that target its label will wait for a runner.`)) return;
     // The runner's own labels, kept on its record since it was added; new
     // ones typed in an open form apply to the install pressed next.
@@ -2663,14 +2774,20 @@ function wireNodeConf(row, id){
     if (c.draft.runner) c.draft.runner.token = "";
     if (!r.error){ c.addRunner = false; c.draft.runner = undefined; nodesRev++; drawPanes(); }
   });
-  fold.querySelectorAll("[data-nrunnerforget]").forEach(b => b.onclick = () => {
+  fold.querySelectorAll("[data-nrunnerforget]").forEach(b => b.onclick = async () => {
     const slot = b.dataset.slot;
-    if (!confirm(`Forget the token for ${slot}?\n\nA runner already registered keeps running; installing or removing one later needs a token again.`)) return;
+    if (!await askYes(`Forget the token for ${slot}?\n\nA runner already registered keeps running; installing or removing one later needs a token again.`)) return;
     pressing(b, async () => { busy(b, "Forgetting");
       const r = await nodeAct({action: "runner-forget", id, slot});
       if (!r.error){ nodesRev++; drawPanes(); } });
   });
+  fold.querySelectorAll("[data-nrevert]").forEach(b => b.onclick = () => {
+    c.draft = null; c.dirty = false; nodesRev++; drawPanes();
+  });
   fold.querySelectorAll("[data-nsave]").forEach(save => { save.onclick = () => pressing(save, async () => {
+    const was = save.textContent;
+    busy(save, "Checking");
+    if (!await ndStoreAsk(nodesList.find(x => x.id === id), c)){ unbusy(save, was); return; }
     busy(save, "Saving");
     const r = await nodeAct({action: "config", id, config: c.draft});
     if (!r.error){ c.dirty = false; c.draft = null; nodesRev++; drawPanes(); }
@@ -2679,26 +2796,34 @@ function wireNodeConf(row, id){
     const what = b.dataset.napply;
     const n = nodesList.find(x => x.id === id);
     const desired = n?.config?.desired || {};
-    if (what === "network" && !confirm(
+    if (what === "network" && !await askYes(
         `Apply the network change to ${n?.name || "this node"}?\n\nThe node re-addresses `
         + `itself and must dial back in within three minutes, or it puts the old `
         + `config back on its own. ${desired.network?.mode === "static"
             ? `Static ${desired.network.address}` : "DHCP"}.`)) return;
     if (what === "storage"){
       const gone = (n?.reported?.mounts || []).filter(m => !(desired.mounts || []).some(x => x.path === m.path));
-      if (gone.length && !confirm(`Apply storage to ${n?.name || "this node"}?\n\nThis unmounts `
+      if (gone.length && !await askYes(`Apply storage to ${n?.name || "this node"}?\n\nThis unmounts `
           + `${gone.map(m => m.path).join(", ")} and takes ${gone.length === 1 ? "it" : "them"} `
           + `out of fstab. Directories and data stay.`)) return;
       // Moving a store copies what is in it, which can be tens of gigabytes
       // and take a while, so it is asked about rather than started by a
       // text field losing focus.
       const moving = storeMoves(n);
-      if (moving.length && !confirm(`Apply storage to ${n?.name || "this node"}?\n\nThis moves `
-          + `${moving.map(m => `${m.role} from ${m.from} to ${m.to}`).join(", and ")}. `
-          + `The contents are copied first; the old cop${moving.length === 1 ? "y stays" : "ies stay"} `
-          + `for you to remove.`)) return;
+      const copied = moving.filter(m => !m.empty), fresh = moving.filter(m => m.empty);
+      if (moving.length && !await askYes(`Apply storage to ${n?.name || "this node"}?\n\n`
+          + (copied.length ? `This moves ${copied.map(m => `${m.role} from ${m.from} to ${m.to}`).join(", and ")}: `
+             + `the contents are copied first, and the old cop${copied.length === 1 ? "y stays" : "ies stay"} `
+             + `for you to remove.` : "")
+          + (copied.length && fresh.length ? "\n\n" : "")
+          + (fresh.length ? `${fresh.map(m => `${m.role} starts empty in ${m.to}`).join(", and ")}, `
+             + `leaving what was in ${fresh.map(m => m.from).join(" and ")} where it is.` : ""))) return;
     }
-    await pressing(b, () => { busy(b, "Applying"); return nodeAct({action: "apply", id, what}); });
+    const r = await pressing(b, () => { busy(b, "Applying"); return nodeAct({action: "apply", id, what}); });
+    // A storage apply is followed to its end, which is kept on the record
+    // (R120 step 7): a store move can wait for the node to go quiet and then
+    // run for hours, and its end is news to whoever pressed it.
+    if (what === "storage" && r?.job) notifyJob(r.job, `Storage on ${n?.name || "the node"}`);
   });
 }
 

@@ -87,7 +87,7 @@ ok(colon.status !== 0 && bugsNow() === had,
    '...however the verb is written (bb: ..., `bb`, bb-tty), and the severity is not read as words');
 // A repro that uses bb is how a project's own bug is shown, not a sign it is
 // BuilderBot's: two of MediaReducer's were stopped for one (7 Oct).
-const byRepro = bb(['bug', 'add', 'the dashboard repaints after it loads', '--repro', 'record it with bb capture reel'],
+const byRepro = bb(['bug', 'add', 'the dashboard repaints after it loads', '--repro', 'record it with bb capture reel', '--reproduces', 'once'],
                    { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
 ok(byRepro.status === 0 && /filed B\d+/.test(byRepro.stdout) && bugsNow() === had + 1,
    `...and a repro that uses bb does not make it BuilderBot's (${(byRepro.stdout + byRepro.stderr).trim().slice(0, 80)})`);
@@ -99,13 +99,13 @@ const mine2 = bb(['bug', 'add', 'bb build fails because this project pins an old
 ok(mine2.status === 0 && /filed B\d+/.test(mine2.stdout) && bugsNow() === had + 2,
    `...while --here files one that is the project's own (${mine2.stdout.trim().slice(0, 80)})`);
 // ---- off for a project, in its settings -------------------------------------------
-// Claude may: Report BuilderBot bugs. BuilderBot's own project has it off:
+// Agents may: Report BuilderBot bugs. BuilderBot's own project has it off:
 // its problems go into its own tracker, so its sessions are not sent to
 // bb report, not nudged toward it, and refused by it.
 const setReport = v => call('/api/prefs', { project: 'alpha', report: v });
 await setReport('deny');
 const refused = await call('/api/reports', { action: 'add', text: 'something about bb' }, ALPHA);
-ok(refused.status === 403 && /Claude may: Report BuilderBot bugs/.test(refused.error || ''),
+ok(refused.status === 403 && /Agents may: Report BuilderBot bugs/.test(refused.error || ''),
    `with it off, bb report is refused and says where the setting is (${refused.error})`);
 const quiet = (await call('/api/preamble?project=alpha&topic=notebook')).text || '';
 ok(/setting Report BuilderBot bugs is deny/.test(quiet) && /`bb bug add --here` files it here/.test(quiet),
@@ -126,7 +126,7 @@ await ready(page);
 await page.evaluate(() => renameProject('alpha'));
 await page.waitForSelector('#rnmodal:not([hidden]) #rnGateReport', { timeout: 15000 });
 ok(await page.$eval('#rnGateReport', e => e.value === 'auto' && [...e.options].map(o => o.value).join() === 'auto,deny'),
-   "the project's settings carry it under Claude may, on auto, with nothing to ask");
+   "the project's settings carry it under Agents may, on auto, with nothing to ask");
 await page.selectOption('#rnGateReport', 'deny');
 await saveDialog(page);
 await page.waitForFunction(async () => {

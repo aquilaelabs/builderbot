@@ -113,7 +113,7 @@ const rm = await page.evaluate(() => ({ head: document.querySelector('.resumemen
   started: tabs.some(t => /:r:conv-two-2025/.test(String(t.arg))) }));
 // With Start Claude on show it opens the chooser there; without (Claude Code
 // not installed on this fixture's node) it says why rather than doing nothing.
-ok(!rm.started && (rm.anchor ? /Resume the conversation/.test(rm.head) && rm.pick === 'conv-two-2025'
+ok(!rm.started && (rm.anchor ? /Resume the Claude conversation/.test(rm.head) && rm.pick === 'conv-two-2025'
                              : /not installed|cannot start/.test(rm.said)),
    `Resume opens the chooser on the conversation picked, or says why it cannot, starting nothing yet (${JSON.stringify(rm)})`);
 await page.evaluate(() => { resumePick = null; resumeFor = null; drawProjects(state.projects); });
@@ -157,16 +157,16 @@ await page.waitForSelector(`${SESS} [data-cvresume="conv-two-2025"]`, { timeout:
 const rowOf = id => `${SESS} .artrow:has([data-cvresume="${id}"])`;
 await page.click(`${rowOf('conv-two-2025')} .more > button`);
 await page.click(`${rowOf('conv-two-2025')} [data-cvshare]`);
-await page.waitForSelector(`${rowOf('conv-two-2025')} .pill`, { timeout: 10000 }).catch(() => {});
+// The row's text, not a pill: its agent already wears one.
+await page.waitForFunction(sel => /visible to every session/.test(document.querySelector(sel)?.textContent || ''),
+                           rowOf('conv-two-2025'), { timeout: 10000 }).catch(() => {});
 const shared = await page.evaluate(async () => ((await (await fetch('/api/transcripts?project=alpha')).json()).rows || [])
   .find(r => r.id === 'conv-two-2025')?.shared);
 ok(shared === true && /visible to every session/.test(await page.$eval(rowOf('conv-two-2025'), e => e.textContent)),
    `Make visible marks it visible to every session on the project (${shared})`);
-await page.evaluate(() => { window.__c = window.confirm; window.confirm = () => true; });
 await page.click(`${rowOf('conv-two-2025')} .more > button`);
 await page.click(`${rowOf('conv-two-2025')} [data-cvdel]`);
 await page.waitForFunction(id => !document.querySelector(`[data-cvresume="${id}"]`), 'conv-two-2025', { timeout: 10000 }).catch(() => {});
-await page.evaluate(() => { window.confirm = window.__c; });
 const gone = await page.evaluate(async () => ((await (await fetch('/api/transcripts?project=alpha')).json()).rows || []).map(r => r.id));
 ok(!gone.includes('conv-two-2025') && gone.includes('conv-one-2026'), `Delete removes that conversation and no other (${gone.join(', ')})`);
 const onRead = await (await sfetch('/api/transcripts?project=beta')).json();
@@ -181,12 +181,12 @@ ok(notRead.status === 400, `a project alpha does not read is not a project to th
 const cli = (...a) => execFileSync('bash', [`${REPO}/scripts/bb`, ...a], { encoding: 'utf8',
   env: { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: token, BB_PROJECT: 'alpha', XDG_CACHE_HOME: `${DIR}/cache-transcripts` } });
 const listed = cli('-p', 'beta', 'transcripts');
-ok(/^your conversations with Claude on beta, newest first:\n  beta-chat-1  /.test(listed) && /Make the beta page blue/.test(listed),
-   `bb -p NAME transcripts lists the account's conversations on a read project (${listed.split('\n')[1]?.trim()})`);
+ok(/^your conversations on beta, every agent's, newest first:\n  beta-chat-1  Claude /.test(listed) && /Make the beta page blue/.test(listed),
+   `bb -p NAME transcripts lists the account's conversations on a read project, each marked with its agent (${listed.split('\n')[1]?.trim()})`);
 const shown = cli('-p', 'beta', 'transcripts', 'show', 'beta-chat-1', '--tz', 'Asia/Tokyo');
 ok(/^Conversation on beta, session beta-chat-1/.test(shown) && /You \(2026-09-28 19:15\):\nMake the beta page blue/.test(shown),
    'bb transcripts show ID prints one, stamped in the zone asked for');
-ok(/^your conversations with Claude on alpha/.test(cli('transcripts', 'list')), 'and with no -p it is the session\'s own project');
+ok(/^your conversations on alpha, every agent's/.test(cli('transcripts', 'list')), 'and with no -p it is the session\'s own project');
 await page.evaluate(async () => { await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', reads: [] }) }); });
 await page.close();
 await done(browser);

@@ -26,10 +26,13 @@ differs is known to have changed here or there.
 import contextlib
 import json
 import os
+import pwd
 import re
 import threading
 import time
 import urllib.parse
+
+from .accounts import user_of
 from .base import log_once
 
 TICK = 5.0
@@ -52,7 +55,7 @@ def project_of(entry, ws, projects):
     controller's claudesync.project_of)."""
     for p in projects:
         if entry == slug(f"{ws}/{p}") or re.fullmatch(
-                re.escape(slug(f"{ws}/.worktrees/{p}") + "-") + r"u-[0-9a-f]{8}", entry):
+                re.escape(slug(f"{ws}/.worktrees/{p}") + "-") + r"u-[0-9a-f]{8}(?:-[a-z]+)?", entry):
             return p
     return ""
 
@@ -171,11 +174,41 @@ class ClaudeMirror:
             json.dump(self.rec, f)
         os.replace(tmp, self.rec_path())
 
-    def own(self, path):
-        o = self.wssync.owner()
+    def owner(self, uid=""):
+        """Who an account's copies belong to: its own user where accounts
+        run as their own users (R125), so its sessions can read and add to
+        them and the shared session account cannot; the session account
+        otherwise, as wssync owns the tree."""
+        if uid and os.geteuid() == 0 and getattr(self.agent, "account_users_on", lambda: False)():
+            with contextlib.suppress(KeyError):
+                pw = pwd.getpwnam(user_of(uid))
+                return pw.pw_uid, pw.pw_gid
+        return self.wssync.owner()
+
+    def own(self, path, uid=""):
+        o = self.owner(uid)
         if o:
             with contextlib.suppress(OSError):
                 os.lchown(path, *o)
+
+    def adopt(self, uid):
+        """An account's folder made before its user was (by this loop or a
+        session as the session account) goes to the user once, whole: the
+        folder is 700, so left as it was the account's own sessions could
+        not reach their transcripts."""
+        o = self.owner(uid)
+        d = os.path.join(self.top(), uid)
+        try:
+            if not o or os.lstat(d).st_uid == o[0]:
+                return
+        except OSError:
+            return
+        for cur, dirs, files in os.walk(d):
+            for n in dirs + files:
+                with contextlib.suppress(OSError):
+                    os.lchown(os.path.join(cur, n), *o)
+        with contextlib.suppress(OSError):
+            os.lchown(d, *o)
 
     def ready_top(self):
         """/workspace/.claude, the session account's, so claude_projects_link
@@ -195,12 +228,12 @@ class ClaudeMirror:
         cur = os.path.join(self.top(), uid)
         if not os.path.isdir(cur):
             os.mkdir(cur, 0o700)
-            self.own(cur)
+            self.own(cur, uid)
         for part in ["projects", *[x for x in rel_dir.split("/") if x]]:
             cur = os.path.join(cur, part)
             if not os.path.isdir(cur):
                 os.mkdir(cur)
-                self.own(cur)
+                self.own(cur, uid)
 
     def walk(self, held):
         out = {}
@@ -210,6 +243,7 @@ class ClaudeMirror:
         except OSError:
             return out
         for uid in uids:
+            self.adopt(uid)
             base = os.path.join(self.top(), uid, "projects")
             if os.path.islink(base):
                 continue
@@ -323,7 +357,7 @@ class ClaudeMirror:
                 os.remove(tmp)
             raise OSError(f"the controller answered {code}")
         os.chmod(tmp, 0o600)
-        self.own(tmp)
+        self.own(tmp, uid)
         os.utime(tmp, ns=(there[1] * 1_000_000, there[1] * 1_000_000))
         os.replace(tmp, p)
         self.rec[key] = stamp(p)

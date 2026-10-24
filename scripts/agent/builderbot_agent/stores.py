@@ -4,7 +4,7 @@ import json
 import os
 import re
 import subprocess
-from .base import DEFAULT_STORES, NODE_JSON, STORE_DENY_EXACT, STORE_DENY_UNDER, _run, log
+from .base import NODE_JSON, STORE_DENY_EXACT, STORE_DENY_UNDER, _run, log
 
 
 def _can_chown(path):
@@ -32,7 +32,7 @@ def _can_chown(path):
             os.remove(probe)
 
 
-def store_path_ok(path):
+def store_path_ok(path, what="a store"):
     """"" if this is a safe place for a store, else why not. A bare
     top-level directory is refused as well as a system one: /mnt is where
     mounts live, not a store, and putting one there scatters directories
@@ -44,7 +44,7 @@ def store_path_ok(path):
         return f"{path!r} must be a plain absolute path, with no spaces or .."
     if p in STORE_DENY_EXACT:
         return (f"{p} is a system directory (or the root of the mounts): "
-                "a store is a directory of its own, like /var/lib/builderbot/x "
+                f"{what} is a directory of its own, like /var/lib/builderbot/x "
                 "or /mnt/<share>/<dir>")
     for bad in STORE_DENY_UNDER:
         if (p + "/").startswith(bad):
@@ -307,6 +307,13 @@ STORE_TOOLS = {"java": ("jdk/bin/java",), "flutter": ("flutter/bin/flutter",),
                "web-ext": ("node/bin/web-ext",)}
 
 
+def _own_tool(entry):
+    """The layout's tool when it lives in the toolchain's own directory
+    (`root:` names one elsewhere in the store)."""
+    t = str(entry.get("tool") or "")
+    return "" if t.startswith("root:") else t
+
+
 def store_dirs(state):
     """What is actually IN the toolchain store, as directory names.
 
@@ -359,8 +366,12 @@ def store_dirs(state):
     # one without the file that completes it (playwright's module beside its
     # browsers). A layout that names that file (`needs`) is checked here, and
     # the controller reads a name in this list as not installed.
+    # Where none is named, the tool the layout runs is that file: a flutter
+    # left with no bin/flutter (an install cut short before the marker
+    # existed) was listed installed and `flutter` was not found (diagnostics
+    # #124).
     for entry in store_layout(state):
-        need = entry.get("needs")
+        need = entry.get("needs") or _own_tool(entry)
         if not need or entry.get("dir", "").startswith("android"):
             continue
         d = os.path.join(store, entry["dir"])
@@ -389,48 +400,6 @@ def load_state():
                          "builderbot-agent enroll --controller URL --token …") from e
     except ValueError as e:
         raise SystemExit(f"{NODE_JSON} is not JSON ({e}); enroll again") from e
-
-
-def fill_default_stores(state):
-    """Give an already-enrolled node a store role it predates; True if it
-    gained one.
-
-    The store list is written at ENROLMENT and never revisited, so a node
-    enrolled before `appdata` existed would never have one and the controller
-    would answer its fallback forever. A role added to DEFAULT_STORES has to
-    reach the nodes that are already out there or it only ever works on the
-    next machine somebody enrols.
-
-    Placed BESIDE the store this node already keeps its data in, never at the
-    hard-coded default: a guest node keeps everything under one directory in
-    its owner's home (R23), and handing it /var/lib/builderbot would be a
-    path it has no root to make. Where data sits is where the rest belongs.
-    """
-    have = state.get("stores") if isinstance(state.get("stores"), dict) else {}
-    base = os.path.dirname(str(have.get("data") or "")) if have.get("data") else ""
-    added = False
-    for role, default in DEFAULT_STORES.items():
-        if have.get(role):
-            continue
-        have[role] = os.path.join(base, role) if base else default
-        # MADE, not just recorded. A store that exists only in node.json
-        # reports null free space and the row calls it missing, which is the
-        # true answer and a useless one for a directory nothing else is ever
-        # going to create: enrolment makes the four it knows about, so
-        # adoption makes the one it did not. Best effort, the same as there:
-        # a store that cannot be made is reported rather than fatal.
-        try:
-            made = state.setdefault("store_made", {})
-            if isinstance(made, dict):
-                made[role] = make_store(have[role])
-        except OSError as e:
-            log(f"stores: {role} at {have[role]} could not be created "
-                f"({e.strerror}); it will report no space until it exists")
-        log(f"stores: {role} was not set; using {have[role]}")
-        added = True
-    if added:
-        state["stores"] = have
-    return added
 
 
 def save_state(state):

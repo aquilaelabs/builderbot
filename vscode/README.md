@@ -1,8 +1,8 @@
 # BuilderBot for VS Code
 
 Open a BuilderBot project in VS Code without mounting a share, see what a
-Claude session changes as it saves, and work in that session's terminal from
-a VS Code panel. You use it as your own BuilderBot account. The controller
+coding agent's session (Claude, ChatGPT or Copilot) changes as it saves, and
+work in that session's terminal from a VS Code panel. You use it as your own BuilderBot account. The controller
 decides what the account may do on every request, so the extension can do
 nothing the dashboard would not let you do.
 
@@ -13,7 +13,8 @@ goes: a role with Write opens it read and write, one with Read opens it
 read-only, and a role without File access does not open it. A project's
 owner can close it to editors in the project's settings, under **File
 access**, and a choice made for a person on that list narrows what their
-roles give.
+roles give. A project locked against you opens read-only and says why; an
+archived one is listed last.
 
 ## Install
 
@@ -29,9 +30,13 @@ Extensions view, open the **…** menu and choose **Install from VSIX…**.
   Code's secret storage. Changing your password signs it out.
 - **BuilderBot: Open Project**: pick a project. It opens as a folder named
   `builderbot:/PROJECT`. A read-only project opens read-only.
-- **BuilderBot: Open Claude Session**: the project's Claude session in a
-  terminal panel. This is the same terminal the dashboard opens, and the
-  same rules decide whether you may type into it.
+- **BuilderBot: Open Agent Session**: pick a project, then Claude, ChatGPT
+  or Copilot: your session of that agent on the project, in a terminal
+  panel, started if it is not running. This is the same terminal the
+  dashboard opens, and the same rules decide whether you may type into it;
+  an agent not installed or not signed in on the project's node says so
+  there, and is signed in from the dashboard's Agents page. Closing the
+  panel leaves the session running; End on the dashboard stops it.
 - **BuilderBot: Search Project Files**: search the project's files on the
   controller, then open a match.
 - **BuilderBot: Sign Out**.

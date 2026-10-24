@@ -331,7 +331,11 @@ const SESSION_PORT = 17681 + Math.floor(Math.random() * 1000);
 // harness's controller, as a real node does.
 const SHARE = `${DIR}/agentworkspace`;
 mkdirSync(SHARE, { recursive: true });
-const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
+// A home of its own (B248): a non-root agent installs a coding agent into
+// its account's home, and with the runner's own the stub installers below
+// wrote ~/.local/bin/codex and claude into a real person's home.
+mkdirSync(`${DIR}/agenthome`, { recursive: true });
+const agentEnv = { ...process.env, HOME: `${DIR}/agenthome`, BUILDERBOT_NODE_JSON: NODE_JSON,
   BUILDERBOT_SHARE: SHARE,
   BUILDERBOT_TTYD_BIN: `${DIR}/bin/ttyd`, BUILDERBOT_SESSION_PORT: String(SESSION_PORT),
   BUILDERBOT_SESSION_BIND: '127.0.0.1',
@@ -345,6 +349,10 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   BUILDERBOT_IDLE_UNIT: '1',
   // The Claude Code installer, stood in for: the real one fetches a binary.
   BUILDERBOT_CLAUDE_INSTALLER: `${DIR}/bin/claude-installer`,
+  // ...and Codex CLI's (R95 step 2), which leaves a stub codex in the
+  // account's ~/.local/bin that prints its version.
+  BUILDERBOT_CODEX_INSTALLER: `${DIR}/bin/codex-installer`,
+  BUILDERBOT_AGENTS_DIR: `${DIR}/agents-pinned`,
   BUILDERBOT_SESSION_RETRY_S: '2',   // the restart cooldown, which a test waits out
   BUILDERBOT_SYSTEMD: '1',      // this agent takes the service path whichever box runs the suite
   BUILDERBOT_TAILSCALE_BIN: `${DIR}/bin/tailscale`,
@@ -378,34 +386,6 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
      && st.stores.data === `${DIR}/agentdata`,
      '...holding the node token, the id it was minted for, and the full capability set it enrolled with');
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
-  // A store role added AFTER a node enrolled reaches it anyway. The list is
-  // written at enrolment and never revisited, so `appdata` would have existed
-  // only on the next machine somebody enrolled and every node already out
-  // there would have used the controller's fallback forever. Placed beside
-  // the data store rather than at the hard-coded default, because a guest
-  // node keeps everything in one directory in its owner's home (R23) and has
-  // no root to make /var/lib/builderbot.
-  {
-    const keep = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
-    const without = { ...keep, stores: { ...keep.stores } };
-    delete without.stores.appdata;
-    writeFileSync(NODE_JSON, JSON.stringify(without));
-    execFileSync('python3', ['-c',
-      'import importlib.util,sys\n' +
-      `${LOAD_AGENT}\n` +
-      'm=agentpkg.load()\n' +
-      'st=m.load_state()\n' +
-      'm.fill_default_stores(st)\n' +
-      'm.save_state(st)\n'],
-      { env: { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON }, encoding: 'utf8' });
-    const after = JSON.parse(readFileSync(NODE_JSON, 'utf8')).stores;
-    ok(after.appdata === `${DIR}/appdata`,
-       `a store role added since enrolment is adopted beside the data store (${after.appdata})`);
-    ok(existsSync(`${DIR}/appdata`),
-       '...and the directory is MADE, not just recorded, or the row calls it missing forever');
-    writeFileSync(NODE_JSON, JSON.stringify(keep));
-  }
-
   const n = await nodeById(minted.id);
   // The version is read from the controller, not written here: the agent
   // just downloaded from it, so the two must agree, and an assertion naming
@@ -1254,6 +1234,19 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
        `a node signed in to a different Anthropic account is recorded as that, without the last one's plan (${two.error || two.plan})`);
     await api({ email: 'tester@example.com', plan: 'max', signed_in: true });
 
+    // The other coding agents say theirs the same way, from the same check,
+    // into their own record (R95 step 3): never Claude's.
+    const agentsAt = async () => (await (await fetch(URL.replace(/\/$/, '') + '/api/status', { headers: auth })).json()).agent_auth || {};
+    const cx = await api({ agent: 'codex', email: 'tester@example.com', plan: 'plus', signed_in: true });
+    ok(cx.ok && (await agentsAt()).codex?.nodes?.[minted.id]?.email === 'tester@example.com'
+       && (await where())[minted.id]?.email === 'tester@example.com',
+       `a node reports a Codex sign-in the way it reports Claude's, into Codex's record (${cx.error || 'ok'})`);
+    await api({ agent: 'codex', signed_in: false });
+    ok(!(await agentsAt()).codex?.nodes?.[minted.id] && (await where())[minted.id]?.email === 'tester@example.com',
+       '...and its sign-out takes Codex off that node and leaves Claude signed in');
+    const odd = await api({ agent: 'nonesuch', email: 'x@example.invalid', signed_in: true });
+    ok(odd.status === 400 && /nonesuch/.test(odd.error || ''), 'an agent BuilderBot does not sign in to is refused by name');
+
     // The flow itself finds Claude Code where a SESSION finds it: the session
     // account's own ~/.local/bin (the provisioner's install) and the pinned
     // copy, not only the signing-in account's home. The owner's home is the
@@ -1298,8 +1291,8 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          '...and with no account named it signs nobody out');
       rmSync(`${base}/.local/bin/claude`);
       const none = run('u_0badf00d');
-      ok(none.code !== 0 && /Update in the Nodes page/.test(none.out),
-         '...and with none anywhere the refusal names the Nodes page as the way out');
+      ok(none.code !== 0 && /on the node's Agents page/.test(none.out),
+         '...and with none anywhere the refusal names the Agents page as the way out');
     }
 
     // A token for the project alone (a relayed verb's) is nobody's account,
@@ -1543,9 +1536,16 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
         JSON.stringify({ tool_input: { file_path: '/workspace/alpha/src/picker.py', old_string: 'def pick():\n  pass' } }));
       const work = execFileSync('bash', [`${REPO}/scripts/bb`, 'work'], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`,
         env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'alpha' } });
-      ok(/test\s+src\/picker\.py\s+\[pick\]/.test(work) && noteOut === '',
-         `an edit's note from the node is what bb work reads here, symbol guessed and file relative to the tree (${
+      ok(/test \(Claude Code\)\s+src\/picker\.py\s+\[pick\]/.test(work) && noteOut === '',
+         `an edit's note from the node is what bb work reads here, symbol guessed and file relative to the tree, the agent named (${
            (work.split('\n').find(l => /picker/.test(l)) || '').trim()})`);
+      // The notes are per account and agent (R95): the same person's Codex
+      // session about to edit that file is told their Claude session has it.
+      const codexNote = execFileSync('python3', [`${REPO}/scripts/dashboard/bb-work-note`, 'alpha', 'ignored'],
+        { input: JSON.stringify({ tool_input: { file_path: '/workspace/alpha/src/picker.py', old_string: 'x' } }),
+          encoding: 'utf8', env: { ...nodeEnv, BB_AGENT: 'codex' }, stdio: ['pipe', 'pipe', 'pipe'] });
+      ok(/has src\/picker\.py open: test \(Claude Code\)/.test(codexNote),
+         `...and one person's Codex session is told their own Claude session has the file, by agent (${codexNote.slice(0, 120)})`);
       // ---- the house rules reach a session on a node (B686, R200) -------
       // The note's answer and the prompt's seen carry the named rules the
       // controller's store fires, the hooks remember what this conversation
@@ -1619,6 +1619,10 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       ok(typed === true, '...and the agent types it into the pane, Enter included');
       const paged = await api('/api/keys', { session: 'claude-alpha', node: onNode?.node_id, key: 'pgup' });
       ok(paged.ok && paged.queued, 'the key row\'s PgUp is queued the same way, decided on the node');
+      const scrolled = await until(async () => tmuxFmt(real, '#{pane_in_mode}') === '1' ? true : null, 30000, 500);
+      await api('/api/keys', { session: 'claude-alpha', node: onNode?.node_id, key: 'down' });
+      const left = scrolled && await until(async () => tmuxFmt(real, '#{pane_in_mode}') === '0' ? true : null, 30000, 500);
+      ok(left === true, '...and an arrow after it leaves copy mode on the node, for the program (B254)');
       const k = await api('/api/session', { action: 'kill', session: 'claude-alpha', node: onNode?.node_id });
       ok(k.ok && k.queued, `ending it from the card is queued for the agent (${JSON.stringify(k)})`);
       ok(!((await api('/api/status')).sessions || []).some(s => s.node === 'agentbox' && s.name === 'claude-alpha'),
@@ -2059,17 +2063,32 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          '...and stops at the one it did not make, whatever is in it');
 
       // Put it back, so what follows runs against the stores it expects.
-      await api('/api/v1/nodes', { action: 'config', id: minted.id,
-        config: { mounts: [{ type: 'nfs', source: 'nas:/mnt/user/appdata', path: '/mnt/appdata' },
-                           { type: 'virtiofs', source: 'projects', path: '/srv/projects', ro: true }],
-                  stores: { cache: `${DIR}/agentcache`, toolchains: `${DIR}/agenttoolchains`,
-                            artifacts: `${DIR}/agentartifacts` },
-                  network: { mode: 'static', address: '10.9.9.9/24', gateway: '10.9.9.1', dns: ['10.9.9.1'] } } });
+      // The old place still holds the copy the move left, so a copy back
+      // would mix the two by name, and the agent refuses it (R120); going
+      // back is a move that starts on what is there (`keep`), as the Nodes
+      // page asks it.
+      const backCfg = { mounts: [{ type: 'nfs', source: 'nas:/mnt/user/appdata', path: '/mnt/appdata' },
+                                 { type: 'virtiofs', source: 'projects', path: '/srv/projects', ro: true }],
+                        stores: { cache: `${DIR}/agentcache`, toolchains: `${DIR}/agenttoolchains`,
+                                  artifacts: `${DIR}/agentartifacts` },
+                        network: { mode: 'static', address: '10.9.9.9/24', gateway: '10.9.9.1', dns: ['10.9.9.1'] } };
+      await api('/api/v1/nodes', { action: 'config', id: minted.id, config: backCfg });
+      const merge = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
+      const mr = await until(async () => {
+        const x = await api(`/api/v1/jobs?id=${merge.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(x.state) ? x : null;
+      }, 60000);
+      ok(mr?.state === 'failed' && /already holds files/.test(mr.log || '')
+         && (await nodeById(minted.id)).reported.stores.toolchains.path === `${DIR}/agenttoolchains2`,
+         `a store is never copied into a folder that holds files: refused, and it stays where it was (${mr?.state})`);
+      await api('/api/v1/nodes', { action: 'config', id: minted.id, config: { ...backCfg, keep: ['toolchains'] } });
       const back = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
-      await until(async () => {
+      const br = await until(async () => {
         const x = await api(`/api/v1/jobs?id=${back.job}`);
         return ['succeeded', 'failed', 'canceled'].includes(x.state) ? x : null;
       }, 60000);
+      ok(br?.state === 'succeeded' && /using what is already there as asked/.test(br.log || ''),
+         `...while a move asked to keep its data where it is repoints without a copy (${br?.state})`);
     }
 
     // network: written, applied, dialed back, with the stub controller still here
@@ -2183,7 +2202,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       // refused, with the sentence saying what to do rather than opening a
       // conversation that could not build anything.
       const nonode = await term('claude:beta');
-      ok(nonode.status === 503 && /no node to run a Claude session on: pick one/.test(nonode.body)
+      ok(nonode.status === 503 && /no node to run a coding agent's session on: pick one/.test(nonode.body)
          && /enroll one on the Nodes page/.test(nonode.body),
          `a project with no node is refused a session, and told why (${
            (nonode.body || '').slice(0, 60)})`);
@@ -3190,9 +3209,9 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
     // loop now rather than before the next job is taken (B644), so for a few
     // seconds the row is behind the machine.
     await until(async () => (await nodeById(minted.id))?.reported?.session?.up ? true : null, 30000);
-    // From the node's Toolchains tab, where Claude Code is a row (R145).
-    const cu = await api('/api/toolchains', { action: 'install', node: minted.id, names: ['claude-code'] });
-    ok(cu.ok && /^j_/.test(cu.job), `Install on the Toolchains page queues the claude-update job on this node (${cu.job || cu.error})`);
+    // From the node's Agents page, where Claude Code is a row (R145, R95).
+    const cu = await api('/api/agents', { action: 'install', node: minted.id, agent: 'claude' });
+    ok(cu.ok && /^j_/.test(cu.job), `Install on the Agents page queues the claude-update job on this node (${cu.job || cu.error})`);
     const cfin = await until(async () => {
       const r = await api(`/api/v1/jobs?id=${cu.job}`);
       return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
@@ -3201,6 +3220,43 @@ echo "stub-installed" >> "${DIR}/claude-installer.log"
        `the agent runs the installer as the session account and streams its words (${cfin?.state})`);
     ok(cfin?.state === 'failed' ? /does not run|no claude in|no claude to run/.test(cfin.log || '') : /is what a session here runs now/.test(cfin?.log || ''),
        `...and says what runs afterwards, or why nothing does (${(cfin?.log || '').trim().split('\n').slice(-1)[0]?.slice(0, 90)})`);
+  }
+
+  // ---- Codex CLI installed by the real agent (agentcode.py, R95 step 2) ----
+  // The same row and the same shape of job as Claude Code's: the vendor's
+  // installer stood in for, the version asked for handed to it, and the
+  // binary it leaves read back, which the census then reports.
+  {
+    writeFileSync(`${DIR}/bin/codex-installer`, `#!/bin/sh
+echo "Installing Codex CLI (stub) $CODEX_RELEASE into $CODEX_INSTALL_DIR"
+mkdir -p "$CODEX_INSTALL_DIR"
+printf '#!/bin/sh\necho codex-cli 0.163.0\n' > "$CODEX_INSTALL_DIR/codex"
+chmod +x "$CODEX_INSTALL_DIR/codex"
+`, { mode: 0o755 });
+    const ag = await api(`/api/agents?node=${encodeURIComponent(minted.id)}`);
+    const row = (ag.rows || []).find(m => m.name === 'codex-cli');
+    ok(row && row.label === 'Codex CLI' && row.for === 'ChatGPT' && (ag.rows || [])[0]?.agent === 'claude',
+       `the node's Agents page has a Codex CLI row after Claude Code's (${row ? row.state : (ag.rows || []).map(m => m.name).join(', ')})`);
+    const tc = await api(`/api/toolchains?node=${encodeURIComponent(minted.id)}`);
+    ok(!(tc.machine || []).some(m => ['claude-code', 'codex-cli', 'copilot-cli'].includes(m.name)),
+       `...and its Toolchains page draws no coding agent (${(tc.machine || []).map(m => m.name).join(', ')})`);
+    const refused = await api('/api/toolchains', { action: 'install', node: minted.id, names: ['codex-cli'] });
+    ok(/Agents page/.test(refused.error || ''), `...nor installs one, naming the way there (${refused.error || 'queued'})`);
+    const cx = await api('/api/agents', { action: 'install', node: minted.id, agent: 'codex' });
+    ok(cx.ok && /^j_/.test(cx.job), `Install queues the codex-update job on this node (${cx.job || cx.error})`);
+    const xfin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${cx.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 60000);
+    ok(xfin?.state === 'succeeded' && /Installing Codex CLI \(stub\)/.test(xfin.log || '')
+       && /Codex CLI 0\.163\.0 is what a session here runs now/.test(xfin.log || ''),
+       `the agent runs the installer as the session account and reads the version back (${xfin?.state}: ${(xfin?.log || '').trim().split('\n').slice(-1)[0]?.slice(0, 90)})`);
+    const after = await until(async () => {
+      const t = await api(`/api/agents?node=${encodeURIComponent(minted.id)}`);
+      const m = (t.rows || []).find(x => x.name === 'codex-cli');
+      return m?.installed === '0.163.0' ? m : null;
+    }, 30000);
+    ok(after, `...and the row says what is installed the moment the job ends (${after?.installed || 'not yet'})`);
   }
 
   // ---- Send to Claude reaches a session on a node -------------------------

@@ -91,15 +91,20 @@ function jobTitle(j){
   // The kinds with no command of their own, each in the words of what it
   // did: a storage walk read as a bare "exec" (B70).
   if (j.type === "storage") return "measure the disks";
-  if (j.type === "claude-login") return "sign Claude in";
-  if (j.type === "claude-logout") return "sign Claude out";
-  if (j.type === "claude-update") return "update Claude Code";
+  // Each coding agent's sign-in, sign-out and install by its own name, every
+  // agent's job named <id>-login, -logout and -update (B291).
+  const ag = (j.type || "").match(/^([a-z]+)-(login|logout|update)$/);
+  const who = ag && AGENTS.find(a => a.id === ag[1]);
+  if (who) return ag[2] === "login" ? `sign ${esc(who.name)} in` : ag[2] === "logout" ? `sign ${esc(who.name)} out`
+    : `${s.action === "remove" ? "remove" : "update"} ${esc(who.product)}`;
   if (j.type === "sign") return `sign ${esc(s.file || "a build")}`;
   if (j.type === "tell"){
     const text = String(s.text || "").replace(/\s+/g, " ");
     return `tell ${esc(jobSessionWords(s.session))}: "${esc(text.slice(0, 60))}${text.length > 60 ? "…" : ""}"`;
   }
   if (j.type === "cache-clear") return `clear ${s.project ? esc(projLabel(s.project)) + "'s caches" : "every cache"}`;
+  if (j.type === "phones-idle") return "the idle phones' quick-boot snapshots";
+  if (j.type === "avd-remove") return `remove ${esc(projLabel(s.project || ""))}'s phone ${esc(s.name || "")}`;
   // Run on another node of the project's set because its primary was not
   // up (R82 step 6): said on the row, since the row is where it is looked for.
   const stood = s.fell_over ? " (its primary was not up)" : "";
@@ -117,7 +122,7 @@ function jobSessionWords(name){
   if (!name) return "a session";
   const b = tmuxBase(name);
   let m;
-  if ((m = /^claude-(.+)$/.exec(b))) return `Claude on ${projLabel(projFor(m[1]) ?? m[1])}`;
+  if (agentOfSession(b)) return agentSessionWords(name);
   if ((m = /^shell-(.+)-\d+$/.exec(b))) return `a shell on ${projLabel(projFor(m[1]) ?? m[1])}`;
   return b;
 }
@@ -139,9 +144,17 @@ function jobStatePill(j){
 function jobNode(j){
   return esc(jobsNodes[j.node] || (j.node ? j.node : "any node that fits"));
 }
+// A job not over says the clock time it has been waiting or running since
+// (the operator, 23 Oct: "started just now" was cut to "started just" in
+// the column, and said nothing a person could check), on a page that
+// redraws only when something moves; one that ended, how long ago.
+function jobSince(t){
+  const day = ms => fmtTime(ms, {dateStyle: "short"});
+  return day(t * 1000) === day(Date.now()) ? fmtTime(t * 1000, {hour: "2-digit", minute: "2-digit"}) : ago(t);
+}
 function jobWhen(j){
-  if (j.state === "queued") return `queued ${ago(j.queued)}`;
-  if (j.started && !j.ended) return `started ${ago(j.started)}`;
+  if (j.state === "queued") return `queued ${jobSince(j.queued)}`;
+  if (j.started && !j.ended) return `since ${jobSince(j.started)}`;
   return ago(j.ended || j.queued);
 }
 function jobTook(j){

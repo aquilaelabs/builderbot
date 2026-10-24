@@ -1,7 +1,7 @@
 """Behind `bb version release --edit` (R139), and --remove, which takes files
 off the release as its own ask: the published release's notes
 replaced and files attached, made by the controller with the project's own
-token under Claude may: Tag and publish a release, every edit its own ask.
+token under Agents may: Tag and publish a release, every edit its own ask.
 
 Run where it is typed, never relayed: the notes are a file the session
 wrote (its scratchpad, or stdin), and a relayed verb ran on the

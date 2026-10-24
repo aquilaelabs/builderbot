@@ -136,22 +136,32 @@ def turn(project, wait):
     auth = "Bearer " + token(project)
     last = {}
     while True:
-        status, r = bbapi.request("/api/v1/hook", {"kind": "turn"}, auth=auth, timeout=10)
+        status, r = bbapi.request("/api/v1/hook", {"kind": "turn", "agent": AGENT}, auth=auth, timeout=10)
         if status != 200 or not isinstance(r, dict) or r.get("go", True):
             return 0                    # gone, refused, or a turn: the prompt goes
         last = r
         if time.time() + ASK_EVERY > deadline:
             break
         time.sleep(ASK_EVERY)
-    bbapi.request("/api/v1/hook", {"kind": "turn-done"}, auth=auth, timeout=10)
+    bbapi.request("/api/v1/hook", {"kind": "turn-done", "agent": AGENT}, auth=auth, timeout=10)
+    if last.get("why"):
+        # Something on the node holds every turn (a store moving, R120):
+        # said in its own words rather than as a limit.
+        sys.stderr.write(f"{last['why']} It waited {int(wait)} seconds; send it again in a while.\n")
+        return 2
     n = len(last.get("working") or [])
     sys.stderr.write(
-        f"{last.get('node') or 'This node'} lets {last.get('limit')} Claude session"
+        f"{last.get('node') or 'This node'} lets {last.get('limit')} agent session"
         f"{'' if last.get('limit') == 1 else 's'} work at once, {n} "
         f"{'is' if n == 1 else 'are'} working, and this prompt waited {int(wait)} seconds "
         "for a turn without getting one. Send it again in a while, or ask an "
         "administrator to raise the limit on the Nodes tab.\n")
     return 2
+
+
+# Which coding agent's session this hook is for (R95 step 7): the launcher's
+# BB_AGENT, Claude's when there is none, as a session from before it had.
+AGENT = os.environ.get("BB_AGENT") or "claude"
 
 
 def main():
@@ -166,7 +176,7 @@ def main():
         return turn((args[1:2] or [""])[0], wait) if args[1:2] else 0
     if args[:1] == ["--turn-done"]:
         if args[1:2] and bbapi is not None:
-            bbapi.request("/api/v1/hook", {"kind": "turn-done"},
+            bbapi.request("/api/v1/hook", {"kind": "turn-done", "agent": AGENT},
                           auth="Bearer " + token(args[1]), timeout=10)
         return 0
     if args[:1] == ["--asking"]:
@@ -179,7 +189,7 @@ def main():
                 said = str((json.load(sys.stdin) or {}).get("message") or "")[:300]
             except (ValueError, OSError, AttributeError):
                 said = ""
-            bbapi.request("/api/v1/hook", {"kind": "asking", "text": said},
+            bbapi.request("/api/v1/hook", {"kind": "asking", "text": said, "agent": AGENT},
                           auth="Bearer " + token(args[1]), timeout=10)
         return 0
     if args[:1] == ["--prompt"]:
@@ -193,6 +203,21 @@ def main():
         return 0
     sf = stamp_file(project)
     now = time.time()
+    # Held by the node itself before anything else (R120 step 7): a store
+    # moving there, said in the file its agent keeps beside this bundle.
+    # Read every call, no network: it holds at once and lifts at once.
+    hold = node_hold(now)
+    if hold:
+        if own_notes():
+            return 0
+        held_mark(sf, (args[1:2] or [""])[0], True, now)
+        sys.stderr.write(
+            f"{hold.get('node') or 'This node'} is {hold.get('said') or 'moving its storage'}, "
+            f"started {max(1, int(now - float(hold.get('since') or now)) // 60)} min ago. Your "
+            "session is kept: nothing that works on the node runs until that is done. Wait and try "
+            "again, or write where you are and what is next to your notes (that is allowed) and "
+            "end the turn.\n")
+        return 2
     last = {}
     try:
         with open(sf) as f:
@@ -224,6 +249,28 @@ def main():
     return 0
 
 
+# Where this node's agent says it holds the node (R120 step 7): beside the
+# bundle this gate runs from, <store>/.bb/hold.json, which every session on
+# the node reads. A gate run from anywhere else finds none.
+HOLD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "hold.json")
+# A hold its agent has not said again in this long was left by one that
+# died: it holds nobody.
+HOLD_STALE_S = 900
+
+
+def node_hold(now):
+    """The node's hold as its agent wrote it ({node, said, since, updated}),
+    or None when there is none or it is stale."""
+    try:
+        with open(HOLD) as f:
+            h = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(h, dict) or now - float(h.get("updated") or 0) > HOLD_STALE_S:
+        return None
+    return h
+
+
 def held_mark(sf, session, held, now):
     """Beside the stamp, the mark that this session was held by an outage
     (R251): its node's agent reports it, so once the controller answers again
@@ -246,6 +293,11 @@ def held_mark(sf, session, held, now):
 # serves, and refusing them left a session told to wait with nowhere to say
 # where it was.
 NOTE_TOOLS = {"Write", "Edit", "MultiEdit", "Read", "NotebookEdit"}
+# ...each agent's own list of what it is doing (Claude's TodoWrite, Codex's
+# update_plan), and each agent's own folder in the home (R95 step 18): an
+# edit from Codex or Copilot reaches here as Edit, through bb-agent-hook.
+PLAN_TOOLS = {"TodoWrite", "update_plan"}
+NOTE_DIRS = (".claude", ".codex", ".copilot")
 
 
 def own_notes():
@@ -254,14 +306,14 @@ def own_notes():
     except (ValueError, OSError):
         return False
     tool = str(call.get("tool_name") or "")
-    if tool == "TodoWrite":
+    if tool in PLAN_TOOLS:
         return True
     if tool not in NOTE_TOOLS:
         return False
     path = os.path.realpath(str((call.get("tool_input") or {}).get("file_path")
                                 or (call.get("tool_input") or {}).get("notebook_path") or ""))
     home = os.path.realpath(os.environ.get("HOME", "/nonexistent"))
-    return bool(path) and (path.startswith(os.path.join(home, ".claude") + os.sep)
+    return bool(path) and (any(path.startswith(os.path.join(home, d) + os.sep) for d in NOTE_DIRS)
                            or path.startswith("/tmp/claude-"))
 
 

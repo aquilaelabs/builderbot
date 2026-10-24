@@ -11,7 +11,7 @@ import subprocess
 import time
 import urllib.request
 import zipfile
-from . import storage
+from . import keyops, storage
 from .base import DRIVER, SANDBOX_BIN, TOOLKIT
 from .stores import tc_root, tc_scope
 from .backends import pkg_backend
@@ -242,6 +242,14 @@ class WorkMixin:
             days = float(spec.get("older_days") or 0)
         except (TypeError, ValueError):
             days = 0
+        # ...and with `builds`, that project's build caches in every
+        # account's home as well (R123 step 2: the Storage page's builds
+        # column, its Gradle home and out-of-tree build per account).
+        if project and spec.get("builds"):
+            home = storage.SESSION.get("home") or ""
+            if home:
+                targets += glob.glob(os.path.join(home, ".cache", "builderbot", "u", "*", "project", project)) + \
+                    glob.glob(os.path.join(home, "users", "*", ".cache", "builderbot", "u", "*", "project", project))
         n = 0
         for t in targets:
             if days > 0 and cache_age_days(t) < days:
@@ -251,6 +259,77 @@ class WorkMixin:
                 job.say(f"removed {t}\n")
                 n += 1
         job.say(f"cleared {n} director{'y' if n == 1 else 'ies'}\n")
+        if spec.get("measure"):
+            job.say("measuring the disks again for the Storage page\n")
+            storage.measure(self.state)
+        self.hello()
+        return "succeeded", 0
+
+    def phones_idle(self, job, spec):
+        """The room keeper's (R129): every project's phones here that are not
+        running and have not started for `older_days` give back their
+        quick-boot snapshot. A phone and its data are never removed here;
+        its next start boots cold. Then a walk, so the page shows it."""
+        try:
+            days = max(1.0, float(spec.get("older_days") or 7))
+        except (TypeError, ValueError):
+            days = 7.0
+        now, freed, n = time.time(), 0, 0
+        for _uid, d in storage.avd_homes(storage.SESSION.get("home") or ""):
+            for proj in sorted(os.listdir(d))[:300]:
+                pd = os.path.join(d, proj)
+                if not storage.NAME_RE.match(proj) or not os.path.isdir(pd):
+                    continue
+                for x in sorted(os.listdir(pd)):
+                    avd = os.path.join(pd, x)
+                    snaps = os.path.join(avd, "snapshots")
+                    if not x.endswith(".avd") or not os.path.isdir(snaps) or storage.avd_running(avd):
+                        continue
+                    ran = next((os.path.getmtime(os.path.join(avd, f)) for f in ("hardware-qemu.ini", "emulator-user.ini")
+                                if os.path.exists(os.path.join(avd, f))), os.path.getmtime(avd))
+                    if (now - ran) / 86400 < days or not os.listdir(snaps):
+                        continue
+                    mb = (storage._du_children(snaps) or {}).get("", 0)
+                    for s in os.listdir(snaps):
+                        shutil.rmtree(os.path.join(snaps, s), ignore_errors=True)
+                    freed += mb or 0
+                    n += 1
+                    job.say(f"{proj}'s {x[:-4]}: quick-boot snapshot removed, {mb} MB (not started for "
+                            f"{int((now - ran) / 86400)} days)\n")
+        job.say(f"{n} snapshot{'' if n == 1 else 's'} removed, {freed} MB freed\n")
+        if n:
+            storage.measure(self.state)
+            self.hello()
+        return "succeeded", 0
+
+    def avd_remove(self, job, spec):
+        """A project's phone off this node (R123): one account's AVD, its
+        .avd folder and its .ini, which bb emu start makes again. Refused
+        while the emulator holds it; every name checked against the shape
+        bb emu gives it, and the folder found only under the homes'
+        avd-projects, so a spec names nothing else."""
+        project, uid, name = (str(spec.get(k) or "") for k in ("project", "uid", "name"))
+        if not storage.NAME_RE.match(project) or not storage.AVD_RE.match(name) \
+                or (uid and not storage.UID_RE.match(uid)):
+            job.say("not a phone's name\n")
+            return "failed", 2
+        d = dict(storage.avd_homes(storage.SESSION.get("home") or "")).get(uid)
+        avd = os.path.join(d, project, name + ".avd") if d else ""
+        if not avd or not os.path.isdir(avd):
+            job.say(f"{name} is not one of {project}'s phones on this node\n")
+            return "failed", 2
+        if storage.avd_running(avd):
+            job.say(f"{name} is running: stop it (bb emu stop in the project's session) and remove it then\n")
+            return "failed", 75
+        shutil.rmtree(avd, ignore_errors=True)
+        with contextlib.suppress(OSError):
+            os.remove(os.path.join(d, project, name + ".ini"))
+        if os.path.isdir(avd):
+            job.say(f"could not remove all of {avd}\n")
+            return "failed", 1
+        job.say(f"removed {name}, {project}'s phone: its next bb emu start makes it again\n")
+        job.say("measuring the disks again for the Storage page\n")
+        storage.measure(self.state)
         self.hello()
         return "succeeded", 0
 
@@ -594,6 +673,113 @@ class WorkMixin:
             job.outputs.append({"kind": "artifact", "path": r["path"], "size": r.get("size"),
                                 "sha256": r.get("sha256"), "signed": route,
                                 "cert": k.get("sha256") or ""})
+            return "succeeded", 0
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
+    def sign_key(self, job, spec):
+        """The controller's signing key work, on this node (R106, the
+        operator 22 Oct: the controller runs nothing): a keystore checked, a
+        key made, a key wrapped under a backup's password, a rotation's
+        proof, or a release's APK signed (keyops.py). What the job needs
+        comes over this agent's channel for it alone (signing-key) and what
+        it made goes back the same way (signing-result, and signing-put for
+        a signed APK); none of it is written but into a 0700 directory of the
+        enrolled account, removed whatever happens. Refused where a session
+        could read it, as a sign job is."""
+        jid = job.job["id"]
+
+        def answer(r):
+            st, got = self.ctl.call("signing-result", {"job": jid, **r}, timeout=60)
+            if st != 200:
+                job.say(f"the controller did not take the answer: {(got or {}).get('error') or st}\n")
+            return st == 200
+        enrolled = str(self.state.get("user") or "")
+        if os.geteuid() != 0 or not enrolled or enrolled == "root" or enrolled == self.session_account():
+            why = ("jobs and Claude sessions run as one account on this node, so a session could read "
+                   "the key while it is used: sign on a node provisioned as a sandbox")
+            job.say(f"refused: {why}\n")
+            answer({"error": why})
+            return "failed", 77
+        op = str(spec.get("op") or "")
+        if op not in ("inspect", "generate", "wrap", "rotate", "release"):
+            job.say("refused: a sign-key job is inspect, generate, wrap, rotate or release\n")
+            return "failed", 64
+        tl, missing = keyops.tools(tc_root(self.state), op in ("rotate", "release"))
+        if missing:
+            job.say(f"no {missing} on this node: install it from the Toolchains page\n")
+            answer({"missing": missing})
+            return "failed", 69
+        env = dict(sdk_env(self.state), **tl["env"])
+        who = self.drop_privileges(env)
+        stores = self.state.get("stores") or {}
+        work = os.path.join(stores.get("data") or "/tmp", "sign-key", re.sub(r"[^A-Za-z0-9_-]", "_", jid))
+        kw = {"work": work, "env": env, "who": who}
+        try:
+            os.makedirs(work, mode=0o700, exist_ok=True)
+            os.chmod(work, 0o700)
+            if who:
+                os.chown(work, who["user"], who["group"])
+            package, src = "", os.path.join(work, "in.apk")
+            if op == "release":
+                st, _ = self.ctl.fetch(f"file?job={jid}&path=release.apk", src)
+                if st != 200:
+                    job.say(f"could not fetch the APK from the controller ({st})\n")
+                    answer({"error": f"the node could not fetch the APK from the controller ({st})"})
+                    return "failed", 69
+                if who:
+                    os.chown(src, who["user"], who["group"])
+                package = keyops.package_of(tl["aapt2"], src, **kw)
+                if package:
+                    job.say(f"the APK is {package}\n")
+            st, k = self.ctl.call("signing-key", {"job": jid, "package": package}, timeout=30)
+            if st != 200 or not isinstance(k, dict):
+                why = (k or {}).get("error") if isinstance(k, dict) else ""
+                job.say(f"the controller handed nothing over: {why or st}\n")
+                answer({"error": why or f"the controller handed nothing over ({st})"})
+                return "failed", 69
+
+            def raw(d):
+                return dict(d, keystore=base64.b64decode(d.get("keystore") or ""))
+            b64 = lambda b: base64.b64encode(b).decode()   # noqa: E731
+            job.say(f"{op} on this node\n")
+            out, why = {}, ""
+            if op == "inspect":
+                alias, kind, sha, why = keyops.inspect(tl["keytool"], base64.b64decode(k.get("keystore") or ""),
+                                                       str(k.get("store_pass") or ""), str(k.get("alias") or ""), **kw)
+                out = {"alias": alias, "type": kind, "sha256": sha}
+            elif op == "generate":
+                pw = str(k.get("password") or "")
+                blob, why = keyops.generate(tl["keytool"], str(k.get("alias") or ""), str(k.get("cn") or ""), pw, **kw)
+                if not why:
+                    alias, kind, sha, why = keyops.inspect(tl["keytool"], blob, pw, str(k.get("alias") or ""), **kw)
+                    out = {"keystore": b64(blob), "alias": alias, "type": kind, "sha256": sha}
+            elif op == "wrap":
+                blob, why = keyops.wrap(tl["keytool"], base64.b64decode(k.get("keystore") or ""),
+                                        str(k.get("store_pass") or ""), str(k.get("key_pass") or ""),
+                                        str(k.get("alias") or ""), str(k.get("new_pass") or ""), **kw)
+                out = {"keystore": b64(blob)}
+            elif op == "rotate":
+                proof, why = keyops.rotate(tl["apksigner"], raw(k.get("old") or {}), raw(k.get("new") or {}), **kw)
+                out = {"lineage": b64(proof)}
+            else:
+                prev = k.get("previous")
+                signed = os.path.join(work, "out.apk")
+                got, why = keyops.sign_apk(tl, src, signed, raw(k), raw(prev) if prev else None,
+                                           base64.b64decode(k.get("lineage") or ""), **kw)
+                if not why:
+                    st, r = self.ctl.upload(f"signing-put?job={jid}", signed)
+                    if st != 200 or (r or {}).get("error"):
+                        why = f"the signed APK did not reach the controller: {(r or {}).get('error') or st}"
+                    out = {**got, "key": k.get("key") or "", "package": package,
+                           "rotated_from": (prev or {}).get("key") or ""}
+            if why:
+                job.say(f"{op} failed: {why}\n")
+                answer({"error": why})
+                return "failed", 1
+            if not answer(out):
+                return "failed", 1
+            job.say(f"{op} done\n")
             return "succeeded", 0
         finally:
             shutil.rmtree(work, ignore_errors=True)

@@ -47,7 +47,7 @@ for name, v in d.items():
         for n in v:
             se, vw = n["session"], n["views"]
             print(f"  {n['name']}: {n['state']}{'' if n['live'] else ', not dialing in'}, seen {n['last_seen']}, "
-                  f"agent {n['agent']}{'' if n['agent_current'] else ' (not the shipped one)'}, {n['git'] or 'git ?'}")
+                  f"agent {n['agent']}{', built ' + n['agent_built'][:10] if n.get('agent_built') else ''}{'' if n['agent_current'] else ' (not the shipped one)'}, {n['git'] or 'git ?'}")
             print(f"    sessions {'up' if se['up'] else 'down: ' + (se['why'] or '?')}, "
                   f"views {'built' if vw['built'] else 'not built: ' + (vw['why'] or '?')}, bundle {se['bundle'] or '?'}")
             for e in n.get("mount_errors") or []:
@@ -87,3 +87,5 @@ for name, v in d.items():
                 print(f"      area: {r['area']}")
             if r.get("repro"):
                 print(f"      repro: {r['repro']}")
+            if r.get("reproduces") and r["reproduces"] != "untried":
+                print(f"      reproduces: {r['reproduces']}")

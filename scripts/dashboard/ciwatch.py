@@ -248,7 +248,7 @@ def look(project):
                 if r["conclusion"] != "success":
                     found.append({"kind": "run", "sev": "bad", "where": f"run {r['id']}",
                                   "text": f"The {r['name']} check {ended(r['conclusion'])} on {r['branch']}"
-                                          f" ({_when(r['at'])}). A Claude session can read why with "
+                                          f" ({_when(r['at'])}). A session can read why with "
                                           f"bb ci-log {r['id']}.",
                                   "url": r.get("url", "")})
             if newest:

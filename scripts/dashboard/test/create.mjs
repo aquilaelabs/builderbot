@@ -214,11 +214,11 @@ ok(existsSync(`${DIR}/ws/zeta/.git`), 'zeta is a git repository');
      '...and the project row says a brief is waiting');
 }
 
-// A project made after anything has been pinned is pinned itself. Without
-// that it lands on disk and never reaches the sidebar: created, and to the
-// operator indistinguishable from gone. Unpinning first is what brings the
-// pins file into existence; while there is none, everything is pinned anyway
-// and this would prove nothing.
+// A project made after anything has been pinned is not pinned for anyone:
+// what Home shows is each person's to choose (the operator, 23 Oct). It is
+// on the Projects page all the same, which shows every project. Unpinning
+// first is what brings the pins file into existence; while there is none,
+// everything is pinned anyway and this would prove nothing.
 await page.evaluate(() => { setProjectPinned('beta', false); openProjectsTab(); });
 // The page shows every project, pinned or not; the card's menu says which.
 await page.waitForFunction(
@@ -229,7 +229,11 @@ await page.fill('#pName', 'pinme');
 await page.click('#pCreate');
 await page.waitForFunction(() => [...document.querySelectorAll('.pgrid .pcard .name')]
   .some(n => n.textContent === 'pinme'), { timeout: 15000 });
-ok(true, 'a project created while a pins file exists still reaches the sidebar');
+ok(!Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'))).flat().includes('pinme'),
+   'a project created while a pins file exists is on the Projects page and pinned for nobody');
+await page.evaluate(() => setProjectPinned('pinme', true));
+await page.waitForFunction(
+  () => document.querySelector('.pgrid .pcard[data-row="pinme"] [data-p]')?.textContent.trim() === 'Unpin', { timeout: 15000 });
 
 // ---- starting a local repo from an archive -------------------------------
 // A code base somebody already has, dropped into a fresh repo: unpacked

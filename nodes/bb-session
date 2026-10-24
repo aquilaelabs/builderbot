@@ -142,7 +142,12 @@ def conf():
          "TOOLCHAINS_STORE": "",
          # The session network (R79): "on" only where the agent has set it
          # up, and the range sessions are addressed from.
-         "SESSION_NET": "", "SESSION_NET_CIDR": "10.231.0.0/16"}
+         "SESSION_NET": "", "SESSION_NET_CIDR": "10.231.0.0/16",
+         # Accounts as their own users (R125): "on" where the agent has made
+         # each account a user that owns its home. Then a terminal starts
+         # through `tty`, which asks the controller whose it is, and runs as
+         # that account from the root-owned copy of the bundle.
+         "ACCOUNT_USERS": "", "CONTROLLER": "", "CONTROLLER_PIN": "", "BUNDLE": ""}
     # Another layout file only for somebody who is not root, which is `plan`
     # run by the suite: `enter` is root through sudo, which resets the
     # environment, and root reads the machine's own file whatever it says.
@@ -1215,29 +1220,50 @@ def _default_signals():
         signal.signal(s, signal.SIG_DFL)
 
 
-def caller(c):
-    """(name, uid, gid) of the session account, when sudo is how this was
-    reached and the account sudo names is the session account."""
+# An account's own user on a node (R125): bbu- and the account's eight hex
+# digits, made by the agent, owning the account's home.
+ACCOUNT_USER = "bbu-"
+
+
+def account_user(account):
+    """The passwd entry of the account's own user here, or None."""
+    if not ACCOUNT.fullmatch(account or ""):
+        return None
+    try:
+        return pwd.getpwnam(ACCOUNT_USER + account[2:])
+    except KeyError:
+        return None
+
+
+def caller(c, account=""):
+    """(name, uid, gid) of who started this through sudo: the session
+    account, or, where accounts are their own users (R125), the user of the
+    account the session is for, and no other account's."""
     if os.geteuid() != 0:
         raise Refused("bb-session: this runs as root, through sudo")
+    if c.get("ACCOUNT_USERS") == "on":
+        pw = account_user(account)
+        if pw and os.environ.get("SUDO_UID") == str(pw.pw_uid):
+            return pw.pw_name, pw.pw_uid, pw.pw_gid
     try:
         pw = pwd.getpwnam(c["SESSION_USER"])
     except KeyError:
         raise Refused(f"bb-session: there is no session account {c['SESSION_USER']} here") from None
     if os.environ.get("SUDO_UID") != str(pw.pw_uid):
-        raise Refused(f"bb-session: only {pw.pw_name} starts a session through this")
+        raise Refused(f"bb-session: only {pw.pw_name} or the session's own account starts a session through this")
     return pw.pw_name, pw.pw_uid, pw.pw_gid
 
 
 def enter(c, a, command):
-    name, uid, gid = caller(c)
+    name, uid, gid = caller(c, a.get("account", ""))
     if not command:
         raise Refused("bb-session: nothing to run")
     envfile = a.get("env", "")
     project, home = a.get("project", ""), a.get("home", "").rstrip("/")
     account = a.get("account", "")
-    if not envfile.startswith(f"{home}/.cache/builderbot/u/{account}/project/{project}/"):
-        raise Refused("bb-session: the environment file is not in the project's cache folder")
+    want = f"{home}/.cache/builderbot/u/{account}/project/{project}/"
+    if not envfile.startswith(want):
+        raise Refused(f"bb-session: the environment file {envfile or '(none)'} is not in the project's cache folder {want}")
     # On the controller's own machine (R90), the wall first: a session that
     # would not be walled off from the controller does not start.
     wall = wall_hold(c)
@@ -1390,6 +1416,146 @@ def check_net(c):
         raise Refused("bb-session: this kernel would not make a network namespace for a session")
 
 
+# ---- a terminal, as its account (R125) -------------------------------------
+#
+# ttyd runs as root where accounts are their own users, and runs this. The
+# URL's claims prove nothing on a node (bb-tty's B166), so the token that rode
+# in is shown to the controller, which alone can check its signature, and the
+# account it answers with is the user this drops to. Nothing here comes from
+# the bundle on the toolchain store, which any process outside a view could
+# change: the check is this file's own, and bb-tty runs from the root-owned
+# copy the agent keeps.
+TOKEN = re.compile(r"bbs_[A-Za-z0-9_-]{8,200}")
+
+
+def _grant(c, target, tok, ro):
+    """(status, answer) of the controller's tty-grant for this terminal."""
+    import hashlib
+    import http.client
+    import ssl
+    import urllib.parse
+    u = urllib.parse.urlsplit(c.get("CONTROLLER") or "")
+    if u.scheme not in ("http", "https") or not u.hostname:
+        raise Refused("bb-session: this node does not know its controller's address")
+    port = u.port or (443 if u.scheme == "https" else 80)
+    if u.scheme == "https":
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE          # the pin below is the check, as bbapi's
+        conn = http.client.HTTPSConnection(u.hostname, port, timeout=20, context=ctx)
+        conn.connect()
+        seen = "sha256:" + hashlib.sha256(conn.sock.getpeercert(True)).hexdigest()
+        if c.get("CONTROLLER_PIN") and seen != c["CONTROLLER_PIN"]:
+            conn.close()
+            raise Refused("bb-session: the controller's certificate is not the one this node pinned")
+    else:
+        conn = http.client.HTTPConnection(u.hostname, port, timeout=20)
+    body = json.dumps({"arg": target, "ro": ro}).encode()
+    conn.request("POST", u.path.rstrip("/") + "/api/v1/tty-grant", body,
+                 {"Content-Type": "application/json", "Authorization": "Bearer " + tok})
+    r = conn.getresponse()
+    raw = r.read(1 << 16)
+    conn.close()
+    try:
+        got = json.loads(raw.decode() or "{}")
+    except ValueError:
+        got = {}
+    return r.status, got if isinstance(got, dict) else {}
+
+
+def _root_owned(path):
+    """Whether path and every directory above it is root's and nobody
+    else's to write."""
+    p = os.path.realpath(path)
+    while True:
+        st = os.stat(p)
+        if st.st_uid != 0 or st.st_mode & 0o022:
+            return False
+        if p == "/":
+            return True
+        p = os.path.dirname(p)
+
+
+# The environment a terminal starts with: sudo resets this process's, so the
+# agent leaves the ttyds' own here, root's alone (accounts.py TTY_ENV).
+TTY_ENV = "/run/bb-session/tty-env.json"
+
+
+def _tty_env():
+    try:
+        st = os.lstat(TTY_ENV)
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != 0 or st.st_mode & 0o077:
+            return {}
+        with open(TTY_ENV) as f:
+            got = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return {str(k): str(v) for k, v in got.items() if ENV_NAME.fullmatch(str(k))} if isinstance(got, dict) else {}
+
+
+def tty(c, argv, ro=False):
+    """Start a terminal as the account the controller says it is for."""
+    if os.geteuid() != 0:
+        raise Refused("bb-session: this runs as root")
+    if c.get("ACCOUNT_USERS") != "on":
+        raise Refused("bb-session: this node runs its terminals as the session account")
+    target = argv[0] if argv else ""
+    # The proxy's u:<uid>: in front, which the controller refuses: the
+    # account is its answer to give, as bb-tty strips it before asking.
+    if target.startswith("u:"):
+        target = target[2:].partition(":")[2]
+    tok = next((x[4:] for x in argv[1:] if x.startswith("tok:") and TOKEN.fullmatch(x[4:])), "")
+    if not tok:
+        raise Refused("this terminal came without a session token, which only the controller's "
+                      "proxy adds, so it was not opened through the dashboard")
+    try:
+        st, got = _grant(c, target, tok, ro)
+    except OSError as e:
+        raise Refused(f"the controller did not answer: {e}") from None
+    account = str(got.get("uid") or "")
+    if st != 200 or not ACCOUNT.fullmatch(account):
+        raise Refused(str(got.get("error") or "the controller did not grant this terminal"))
+    pw = account_user(account)
+    home = f"{c['HOME_ROOT'].rstrip('/')}/users/{account}"
+    try:
+        hst = os.lstat(home)
+    except OSError:
+        hst = None
+    bbtty = os.path.join(c.get("BUNDLE") or "/nonexistent", "scripts", "dashboard", "bb-tty")
+    if not c.get("BUNDLE") or not os.path.isfile(bbtty) or not _root_owned(bbtty):
+        raise Refused("bb-session: this node has no root-owned copy of the bundle to start a terminal from")
+    env = _tty_env()
+    env.update({k: os.environ[k] for k in FROM_PANE if k in os.environ})
+    sa = pwd.getpwnam(c["SESSION_USER"])
+    if not pw or hst is None or hst.st_uid == sa.pw_uid:
+        # Not moved yet: no user of its own, no home here, or its home still
+        # the session account's while sessions of it run that way. Opened
+        # the way it was before the switch, as the session account, which
+        # asks the controller itself (B271); the agent moves the home once
+        # nothing of it runs as the session account.
+        env.update(HOME=sa.pw_dir, USER=sa.pw_name, LOGNAME=sa.pw_name)
+        if ro:
+            env["BB_TTY_RO"] = "1"
+        os.initgroups(sa.pw_name, sa.pw_gid)
+        os.setgid(sa.pw_gid)
+        os.setuid(sa.pw_uid)
+        os.chdir(sa.pw_dir)
+        os.execve(bbtty, [bbtty, *argv], env)
+    if not stat.S_ISDIR(hst.st_mode) or hst.st_uid != pw.pw_uid:
+        raise Refused(f"{home} belongs to neither this account's user nor the session account")
+    # SHELL too: tmux runs every pane's command through it, and an account
+    # user's login shell is nologin, which ran nothing (B277).
+    env.update(HOME=home, USER=pw.pw_name, LOGNAME=pw.pw_name, SHELL="/bin/bash", BB_TTY_GRANT=json.dumps(got))
+    if ro:
+        env["BB_TTY_RO"] = "1"
+    # Not no_new_privs: the session it starts goes through sudo to `enter`.
+    os.initgroups(pw.pw_name, pw.pw_gid)
+    os.setgid(pw.pw_gid)
+    os.setuid(pw.pw_uid)
+    os.chdir(home)
+    os.execve(bbtty, [bbtty, *argv], env)
+
+
 def main(argv):
     verb = argv[0] if argv else ""
     try:
@@ -1402,6 +1568,21 @@ def main(argv):
             check_net(c)
             print("ok: a session here can have a network of its own")
             return 0
+        if verb in ("tty", "tty-ro"):
+            try:
+                tty(c, argv[1:], ro=verb == "tty-ro")
+            except Exception as e:                               # noqa: BLE001 (said in the tab, R132)
+                # Said in the terminal, where ttyd shows it, and held until a
+                # key so it can be read: anything else, a traceback included,
+                # scrolled past or ended in ttyd's reconnect loop (R132).
+                why = str(e) if isinstance(e, Refused) else f"bb-session failed: {type(e).__name__}: {e}"
+                sys.stdout.write(f"BuilderBot: this terminal was refused: {why}\r\n"
+                                 "Close the tab, or press Enter to try again.\r\n")
+                sys.stdout.flush()
+                if sys.stdin.isatty():
+                    with contextlib.suppress(OSError, ValueError):
+                        sys.stdin.readline()
+                return 1
         a, command = args(argv[1:])
         if verb == "plan":
             print(json.dumps(plan(c, a, None)))
@@ -1409,9 +1590,16 @@ def main(argv):
         if verb == "enter":
             enter(c, a, command)
             return 0
-        raise Refused("bb-session takes check, check-net, plan or enter")
+        raise Refused("bb-session takes check, check-net, plan, enter, tty or tty-ro")
     except Refused as e:
         sys.stderr.write(f"{e}\n")
+        # A session's view that will not start is said in its pane and held
+        # there (R132): the pane closes with this process, and the tab only
+        # reconnected to the same refusal with nothing on the screen.
+        if verb == "enter" and sys.stdin.isatty():
+            sys.stderr.write("Close the tab, or press Enter to try again.\n")
+            with contextlib.suppress(OSError, ValueError):
+                sys.stdin.readline()
         return 2
 
 

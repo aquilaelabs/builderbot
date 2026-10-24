@@ -1,5 +1,5 @@
 // A project's settings dialog: its name, its nodes, the model and effort
-// every session starts on, its color, the dials of what Claude may do
+// every session starts on, its color, the dials of what an agent may do
 // there, the git credential, and the submit that applies each change in
 // turn. Unlinking and deleting a project start here too.
 //
@@ -69,7 +69,7 @@ const projLabel = name =>
 const tabProject = t => {
   if (t.kind === "notebook") return t.arg;
   const a = String(t.kind === "term" ? t.arg : "");
-  if (a.startsWith("claude:")) return a.slice(7).split(":")[0];
+  if (agentOfArg(a)) return agentOfArg(a).project;
   if (a.startsWith("ctr:") || !a) return "";
   const cwd = (state?.sessions || []).find(s => s.name === sessionOf(a))?.cwd;
   if (!cwd) return a.startsWith("sh:") ? a.split(":")[2] || "" : "";
@@ -98,6 +98,8 @@ function rnPrefsOf(p){
                hosts: (p?.prefs?.hosts || []).join(","),
                reads: (p?.prefs?.reads || []).join(","),
                tc_off: (p?.prefs?.tc_off || []).join(","), packs_on: (p?.prefs?.packs_on || []).join(","),
+               agents_off: (p?.prefs?.agents_off || []).join(","),
+               agent_default: p?.prefs?.agent_default || "claude",
                sees: (p?.prefs?.sees || []).join(", "),
                reaches: JSON.stringify(p?.prefs?.reaches || []),
                debug: rnDebugKey(p?.prefs?.diag, p?.prefs?.log_from),
@@ -144,6 +146,7 @@ function rnFillPrefs(p){
   rnFillNode();
   rnFillPrefsRest(p);
   rnFillReads();
+  rnFillAgents();
   rnFillDebug();
   rnLoadTools(p);
   rnLockSettings(p);
@@ -166,7 +169,7 @@ function rnLockSettings(p){
       if (locked && !c.disabled){ c.disabled = true; c.dataset.rnlock = "1"; }
       else if (!locked && c.dataset.rnlock){ c.disabled = false; delete c.dataset.rnlock; }
     });
-    if (locked) body.insertAdjacentHTML("afterbegin", `<div class="field rnlocked"><div class="hint bad">${esc(RN_LOCKED_SAID)}</div></div>`);
+    if (locked) body.insertAdjacentHTML("afterbegin", `<div class="field rnlocked"><div class="hint">${esc(RN_LOCKED_SAID)}</div></div>`);
   });
 }
 
@@ -216,7 +219,7 @@ function rnFillNode(){
     const row = (state?.projects || []).find(p => p.name === rnFor);
     const gone = row?.node_removed && rnPrefWas.node && !pick.some(n => n.id === rnPrefWas.node)
       ? `<option value="${esc(rnPrefWas.node)}" class="removed" selected>${esc(row.node_name || rnPrefWas.node)} (removed)</option>` : "";
-    sel.innerHTML = `<option value="">none: no builds, tests or Claude sessions until one is picked</option>`
+    sel.innerHTML = `<option value="">none: no builds, tests or sessions until one is picked</option>`
       + gone
       + pick.map(n => `<option value="${esc(n.id)}"${n.id === rnPrefWas.node ? " selected" : ""}>${
           esc(n.name)} (${n.config?.own ? "this machine, " : ""}${esc(n.kind)}, ${esc(n.state)}${n.live === false ? ", quiet" : ""}${
@@ -414,6 +417,32 @@ function rnRowsList(saved, inputs, says){
   return [...was.filter(n => !drawn.has(n) || now.includes(n)), ...now.filter(n => !was.includes(n))].join(",");
 }
 
+// The coding agents beside Claude a session here may run (R95), each a
+// row to tick, from the agent table; ticked is allowed.
+function rnFillAgents(off = rnPrefWas.agents_off, dflt = rnPrefWas.agent_default){
+  const box = $("rnAgents");
+  if (!box) return;
+  const was = new Set(String(off || "").split(",").filter(Boolean));
+  box.innerHTML = agentsLive().filter(a => a.id !== "claude")
+    .map(a => lrow(a.id, a.name, a.product, !was.has(a.id))).join("");
+  // Which guards hold for which agent (R95 step 6), said rather than implied.
+  const g = $("rnAgentGuards");
+  if (g) g.innerHTML = agentsLive().map(a => `<div><b>${esc(a.name)}</b>: ${esc(AGENT_GUARDS[a.id] || "")}</div>`).join("");
+  // The one Start opens (R95 step 4): an agent left ticked, Claude first.
+  const sel = $("rnAgentDefault");
+  const offer = () => {
+    const off2 = new Set([...box.querySelectorAll("input:not(:checked)")].map(i => i.value));
+    const cur = sel.value || dflt || "claude";
+    sel.innerHTML = agentsLive().filter(a => !off2.has(a.id))
+      .map(a => `<option value="${esc(a.id)}"${a.id === cur ? " selected" : ""}>${esc(a.name)}</option>`).join("");
+    if (!sel.value) sel.value = "claude";
+  };
+  if (sel){ sel.value = ""; offer(); box.querySelectorAll("input").forEach(i => i.addEventListener("change", offer)); }
+  // Drawn again on a revert, after rnLockSettings ran: held the same way.
+  if ((state?.projects || []).find(x => x.name === rnFor)?.may_settings === false)
+    box.querySelectorAll("input").forEach(i => { i.disabled = true; i.dataset.rnlock = "1"; });
+}
+
 function rnFillReads(){
   const box = $("rnReads"), wrap = $("rnReadsField");
   if (!box) return;
@@ -495,14 +524,14 @@ function rnVmCapsSet(s){
 
 function rnDrawPrefs(){
   const p = (state?.projects || []).find(x => x.name === rnFor);
-  // Ghosted where no session can start: a locked project is the operator's
-  // to run. The model and effort are not here any more: a session starts on
-  // the ones picked in the Claude button's menu each time (the operator, 12
-  // Oct).
-  const shut = !!p?.locked;
+  // Ghosted where no session can start: a project locked against this
+  // account (R119). The model and effort are not here any more: a session
+  // starts on the ones picked in the agent's menu each time (the operator,
+  // 12 Oct).
+  const shut = !!p?.locked_me;
   $("rnReply").disabled = $("rnAsks").disabled = shut;
   $("rnPrefHint").textContent = shut
-    ? "Archived; this project is yours to run, so no session starts here."
+    ? lockedWhy(p) + "."
     : "Applied the next time Claude starts here. The model and effort are picked each time a session starts, in the Claude button's menu.";
 }
 
@@ -515,7 +544,7 @@ function rnDrawPrefs(){
 async function unlinkProject(name){
   const p = (state?.projects || []).find(x => x.name === name);
   const where = p?.forge_host || p?.forge_name || "its remote";
-  if (!confirm(`Unlink ${projLabel(name)} from ${where}?\n\n`
+  if (!await askYes(`Unlink ${projLabel(name)} from ${where}?\n\n`
       + `The remote and its stored token go; every commit and branch stays. `
       + `You can link it elsewhere afterwards.`)) return;
   const stop = m => { $("rnErr").textContent = m; $("rnErrWrap").hidden = false;
@@ -541,6 +570,7 @@ async function unlinkProject(name){
 // stayed behind under a name nothing points at any more.
 let rnFor = null;                        // the project the dialog is open on
 let rnMode = "all";                      // "all" from the gear, "git" from the chain
+let rnOpens = 0;                         // which opening of the dialog this is
 
 // The form shown in a notebook's Settings view instead of the dialog (R119
 // step 3): one form, moved to where it is wanted. `rnHost` is the view's
@@ -607,7 +637,7 @@ const RN_LIST = {
 };
 
 function rnSplit(box, name){
-  // Claude may is the Permissions view's (the operator, 22 Oct), and not
+  // Agents may is the Permissions view's (the operator, 22 Oct), and not
   // listed here; the dialog still carries it under its jump bar.
   splitSects(box, "rn:" + name, {says: RN_LIST, sel: ':scope > details.rngroup:not([data-sect="rn:claude"])', back: "Settings",
     marks: k => RN_SECTS.includes(k) && rnSectChanges(k).said.length > 0});
@@ -615,7 +645,7 @@ function rnSplit(box, name){
 // A project's settings: its notebook's Settings view.
 function openProjectSettings(name){ openNotebook(name, "settings"); }
 
-// The Claude may section, lent to a notebook's Permissions view
+// The Agents may section, lent to a notebook's Permissions view
 // (nb-permissions.js), goes back to its place in the form, marked by this
 // comment, before the form is used anywhere else.
 const RN_DIALS_MARK = "rn:claude lent to Permissions";
@@ -623,7 +653,7 @@ function rnDialsHome(){
   const box = $("rnmodal").querySelector(":scope > .box") || rnHost?.querySelector(":scope > .box");
   const at = box && [...box.childNodes].find(n => n.nodeType === Node.COMMENT_NODE && n.data === RN_DIALS_MARK);
   if (!at) return;
-  const sect = document.querySelector('details[data-sect="rn:claude"]');
+  const sect = [...document.querySelectorAll('details[data-sect="rn:claude"]')].find(d => !d.closest(".fghost"));
   if (sect) at.parentNode.insertBefore(sect, at);
   at.remove();
 }
@@ -633,6 +663,7 @@ function renameProject(name, mode = "all"){
   settingsOut();
   rnFor = name;
   rnMode = mode;
+  rnOpens++;
   const p = (state?.projects || []).find(x => x.name === name);
   // One dialog, two doors. The gear is the project's own settings; the chain
   // is the remote's half of them, and opening it there hides everything that
@@ -643,7 +674,7 @@ function renameProject(name, mode = "all"){
   const where = p?.forge_name || "its remote";
   $("rnTitle").textContent = git ? `${where} settings for ${projLabel(name)}` : projLabel(name);
   for (const id of ["rnNameField", "rnMineField",
-                    "rnGateField", "rnBuildField", "rnReadsField"])
+                    "rnGateField", "rnBuildField", "rnReadsField", "rnAgentsField"])
     $(id).hidden = git;
   // The node picker and the two credential blocks have hidden rules of their
   // own further down, and each of those consults the mode too.
@@ -1002,7 +1033,7 @@ function rnDrawSnapshots(){
     : "Snapshots kept is 0, so none are taken; the ones here go at the next daily look.")
     + (pinned ? ` ${pinned} pinned, kept until unpinned.` : "");
   const act = async (b, body, ask) => {
-    if (ask && !confirm(ask)) return;
+    if (ask && !await askYes(ask)) return;
     await pressing(b, async () => {
       const r = await postJSON("/api/snapshots", {project: name, ...body});
       const j = await r.json();
@@ -1283,9 +1314,9 @@ const RN_WAS = {
   tc_off: ["tools", "Toolchains"], packs_on: ["tools", "Tool packs"],
   build: ["build", "Build"], test: ["build", "Test"], outputs: ["build", "Outputs"],
   capture_days: ["build", "Captures kept"], snapshot_days: ["build", "Snapshots kept"], snapshots_on: ["build", "Daily snapshots"], dev_keep: ["build", "Dev builds kept"],
-  gate: ["claude", "Claude may"], test_change: ["claude", "During a test run, a change asked for"],
-  devbuild: ["claude", "Claude may"], makevms: ["claude", "Claude may"], vm_caps: ["claude", "Its VMs may hold"], report: ["claude", "Claude may"], sign: ["claude", "Claude may"],
-  keys: ["claude", "Claude may"], release: ["claude", "Claude may"], pc: ["claude", "Claude may"], version: ["claude", "Move the version"],
+  gate: ["claude", "Agents may"], test_change: ["claude", "During a test run, a change asked for"], agents_off: ["claude", "Coding agents"], agent_default: ["claude", "Start opens"],
+  devbuild: ["claude", "Agents may"], makevms: ["claude", "Agents may"], vm_caps: ["claude", "Its VMs may hold"], report: ["claude", "Agents may"], sign: ["claude", "Agents may"],
+  keys: ["claude", "Agents may"], release: ["claude", "Agents may"], pc: ["claude", "Agents may"], version: ["claude", "Move the version"],
   reply: ["yours", "Replies"], asks: ["yours", "Questions"],
   git_name: ["yours", "Commit name and email"], git_email: ["yours", "Commit name and email"],
 };
@@ -1317,6 +1348,8 @@ function rnEnc(){
             : rnRowsList(rnPrefWas.tc_off, $("rnTools").querySelectorAll("input[data-shipped]"), i => !i.checked),
           packs_on: rnToolsList === null ? rnPrefWas.packs_on
             : rnRowsList(rnPrefWas.packs_on, $("rnTools").querySelectorAll("input[data-pack]"), i => i.checked),
+          agents_off: [...$("rnAgents").querySelectorAll("input:not(:checked)")].map(i => i.value).join(","),
+          agent_default: $("rnAgentDefault")?.value || "claude",
           sees: $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean).join(", "),
           reaches: JSON.stringify(rnReachNow()),
           debug: dbg ? rnDebugKey(dbg.diag, dbg.log_from) : rnPrefWas.debug,
@@ -1365,7 +1398,7 @@ const rnDirty = () => RN_SECTS.filter(s => rnSectChanges(s).said.length);
 // thumb (sectBar's rule).
 function rnBars(){
   if (rnFor === null) return;
-  const enc = rnEnc(), running = liveSessions().has(myClaude(rnFor));
+  const enc = rnEnc(), running = !!myLiveSession(rnFor);
   for (const sect of RN_SECTS){
     const body = document.querySelector(`details.rngroup[data-sect="rn:${sect}"] > .body`);
     if (!body) continue;
@@ -1437,6 +1470,7 @@ function rnRevertSect(sect){
     const g = String(w.gate).split(",");
     Object.values(GATE_IDS).forEach((id, i) => { $(id).value = g[i] || "auto"; });
     $("rnTestChange").value = w.test_change; $("rnGateDocker").value = w.devbuild; $("rnGateVms").value = w.makevms; rnVmCapsSet(w.vm_caps);
+    rnFillAgents(w.agents_off, w.agent_default);
     $("rnGateReport").value = w.report; $("rnGateSign").value = w.sign;
     $("rnGateRelease").value = w.release; $("rnGateKeys").value = w.keys;
     $("rnGatePc").value = w.pc; $("rnGateVersion").value = w.version;
@@ -1502,7 +1536,7 @@ async function rnSubmit(sect, end = false){
   const v = rnDec(merged);
   const {start} = rnSectChanges(sect, enc);
   const prefsChanged = mine.some(k => k !== "version" && String(enc[k] ?? "") !== String(rnPrefWas[k] ?? ""));
-  const running = liveSessions().has(myClaude(name));
+  const running = !!myLiveSession(name);
   // The name and the remote are their own sections' alone.
   const to = sect === "project" ? $("rnName").value : projLabel(name);
   const token = sect === "repo" ? $("rnToken").value.trim() : "";
@@ -1541,7 +1575,7 @@ async function rnSubmit(sect, end = false){
       const r = await fetch("/api/prefs", {method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify({project: name, restart: restartNow, ...pick({git_name: v.git_name, git_email: v.git_email,
                               node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
-                              tc_off: v.tc_off, packs_on: v.packs_on,
+                              tc_off: v.tc_off, packs_on: v.packs_on, agents_off: v.agents_off, agent_default: v.agent_default,
                               build: v.build, test: v.test, gate: v.gate, ...(v.dbg || {}),
                               tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks,
                               devbuild: v.devbuild, makevms: v.makevms, vm_caps: JSON.parse(v.vm_caps || "{}"), report: v.report, sign: v.sign, keys: v.keys, release: v.release, pc: v.pc,
@@ -1613,7 +1647,7 @@ async function rnSubmit(sect, end = false){
 // touched at all. Putting one back is a mv. Friction proportionate to a
 // reversible act, and the dialog names the path so the reversal is obvious.
 async function deleteProject(name){
-  if (!confirm(`Delete ${projLabel(name)}?\n\n`
+  if (!await askYes(`Delete ${projLabel(name)}?\n\n`
       + `It moves to /workspace/.trash/${name}, with every file kept. Its `
       + `roadmap, bugs, versions, memories and containers stay where they are, `
       + `and Put back in the trash returns all of it.\n\n`
@@ -1626,6 +1660,6 @@ async function deleteProject(name){
     // a second delete of the same name is numbered rather than overwriting the
     // first, and the first is exactly the copy somebody would want back.
     notify(`${projLabel(name)} moved to ${j.to}`);
-  }catch(e){ notify("delete failed: " + e, true); }
+  }catch(e){ notify("delete failed: " + failWords(e), true); }
   refresh();
 }

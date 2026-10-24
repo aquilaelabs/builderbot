@@ -4,7 +4,7 @@ own choosing, which BuilderBot neither ships nor lists anywhere.
 A pack is a repository with a bbtool.json at its root. The manifest says how
 the toolchain installs (the catalog's own recipe machinery, its source being
 the pack's repository at the commit that was approved), the verbs a session
-calls through `bb tool PACK VERB`, and a guidance file Claude reads before it
+calls through `bb tool PACK VERB`, and a guidance file a session reads before it
 uses them. An administrator adds a pack by its URL: the controller fetches the
 repository at its current commit, shows the manifest, and keeps it pinned to
 that commit until somebody approves another. The record lives here, in

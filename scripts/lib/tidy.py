@@ -19,6 +19,13 @@ the terminal server or anything this command runs under; never Claude
 Code's own folder in /tmp (the scratchpad, background commands' output);
 never a socket, and never a file a running process still has open.
 
+And the project's phones' disk (R129, the operator, 23 Oct): the quick-boot
+snapshot of each phone not started for a week goes (the phone and its data
+stay; its next start boots cold), and a phone that is not the project's
+default and has not run for two weeks is named, with where to remove it: a
+phone's data is the project's, so removing one is a person's press. --keep
+emulator keeps those too.
+
 Kinds: emulator, gpu, gradle, browser, server, tmp.
 """
 import contextlib
@@ -287,6 +294,90 @@ def card_used():
         return None
 
 
+# A phone idle this long gives back its quick-boot snapshot; one that is not
+# the default, this long, is named for removal (R129).
+SNAPSHOT_IDLE_DAYS = 7
+SPARE_PHONE_DAYS = 14
+
+
+def phones_dir():
+    """This project's phones, where bb emu keeps them (B511)."""
+    project = os.environ.get("BB_PROJECT", "")
+    if not project or "/" in project:
+        return ""
+    d = os.environ.get("ANDROID_AVD_HOME") or os.path.join(os.path.expanduser("~"), ".android",
+                                                           "avd-projects", project)
+    return d if os.path.isdir(d) else ""
+
+
+def phone_running(avd):
+    """The emulator holds its multiinstance.lock (bb emu's emu_held)."""
+    import fcntl
+    lock = os.path.join(avd, "multiinstance.lock")
+    if not os.path.exists(lock):
+        return False
+    try:
+        with open(lock, "rb") as f:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(f, fcntl.LOCK_UN)
+        return False
+    except BlockingIOError:
+        return True
+    except OSError:
+        return False
+
+
+def phone_last_run(avd):
+    """When the phone last started: the emulator writes hardware-qemu.ini at
+    every boot; the folder's own time for one never started."""
+    for f in ("hardware-qemu.ini", "emulator-user.ini"):
+        with contextlib.suppress(OSError):
+            return os.path.getmtime(os.path.join(avd, f))
+    return os.path.getmtime(avd)
+
+
+def default_phone():
+    """The AVD bb emu start runs, as bb emu list says it."""
+    with contextlib.suppress(OSError, subprocess.SubprocessError):
+        out = subprocess.run(["bb", "emu", "list"], capture_output=True, text=True, timeout=60).stdout
+        for line in out.splitlines():
+            if line.startswith("default for"):
+                return line.rsplit(":", 1)[-1].strip()
+    return ""
+
+
+def phones_tidy(dry):
+    """(lines to say, MB freed) for this project's idle phones."""
+    d = phones_dir()
+    if not d:
+        return [], 0
+    now, said, freed = time.time(), [], 0
+    default = None
+    for avd in sorted(os.path.join(d, x) for x in os.listdir(d) if x.endswith(".avd")):
+        name = os.path.basename(avd)[:-4]
+        if not os.path.isdir(avd) or phone_running(avd):
+            continue
+        idle = (now - phone_last_run(avd)) / 86400
+        snaps = os.path.join(avd, "snapshots")
+        if idle >= SNAPSHOT_IDLE_DAYS and os.path.isdir(snaps) and os.listdir(snaps):
+            n = size_of(snaps)
+            if dry:
+                said.append(f"would remove {name}'s quick-boot snapshot ({mb(n)}, not started for {int(idle)} days)")
+            else:
+                for x in os.listdir(snaps):
+                    shutil.rmtree(os.path.join(snaps, x), ignore_errors=True)
+                freed += n
+                said.append(f"{name}: its quick-boot snapshot removed ({mb(n)}, not started for {int(idle)} days); "
+                            "its next start boots cold")
+        if idle >= SPARE_PHONE_DAYS:
+            if default is None:
+                default = default_phone()
+            if name != default:
+                said.append(f"{name} is not this project's default phone and has not run for {int(idle)} days "
+                            f"({mb(size_of(avd))}): Remove on its row under Phones on the Storage page frees it")
+    return said, freed
+
+
 def mb(n):
     return f"{n / 1048576:.0f} MB" if n < 1073741824 else f"{n / 1073741824:.1f} GB"
 
@@ -316,6 +407,9 @@ def main(argv):
             print(f"would end {k}: {comm} ({pid})")
         for f in files:
             print(f"would remove {f} ({mb(size_of(f))})")
+        if "emulator" not in keep:
+            for line in phones_tidy(True)[0]:
+                print(line)
         print(f"kept: {', '.join(sorted(keep)) or 'nothing'}")
         return 0
     if any(k == "emulator" for _, _, k in procs):
@@ -340,6 +434,10 @@ def main(argv):
                 os.unlink(f)
     ended = ", ".join(f"{comm} ({k})" for _, comm, k in procs) or "nothing running"
     print(f"ended: {ended}")
+    if "emulator" not in keep:
+        said, freed = phones_tidy(False)
+        for line in said:
+            print(f"phones: {line}")
     print(f"/tmp: removed {len(files)} entr{'y' if len(files) == 1 else 'ies'}, {mb(freed_tmp)}"
           + (" (kept)" if "tmp" in keep else ""))
     card1 = card_used()

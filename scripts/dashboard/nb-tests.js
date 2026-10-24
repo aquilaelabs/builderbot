@@ -97,7 +97,7 @@ function nbTestsView({$, nb, project}){
       // the answer rather than refetched.
       drawTests();
       return j;
-    }catch(e){ notify("could not reach the server: " + e, true); return null; }
+    }catch(e){ notify("could not reach the server: " + failWords(e), true); return null; }
   }
 
   // Durations read as seconds with one decimal up to a minute and as m:ss

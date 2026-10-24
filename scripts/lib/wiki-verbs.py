@@ -8,7 +8,7 @@ controller's API as the caller (wiki.py on the dashboard's side).
     bb wiki mv OLD NEW            rename one
     bb wiki history               the last changes, newest first
 
-A save or a removal is the project's dial, Claude may: Write the wiki:
+A save or a removal is the project's dial, Agents may: Write the wiki:
 auto lands it, ask holds it for the operator, deny refuses it. A rewrite is
 checked against the page as it was when the save began, so a person's edit
 in between is refused rather than overwritten; --base REV checks against
@@ -78,7 +78,7 @@ if verb == "list":
     rem = r.get("remote") or {}
     print(f"{proj}'s wiki: {len(r.get('pages') or [])} page(s)"
           + (f", on {rem['label']}" if rem.get("label") else ", no remote: the view exports it as a zip")
-          + f"; Claude may: Write the wiki is {r.get('gate') or 'auto'}")
+          + f"; Agents may: Write the wiki is {r.get('gate') or 'auto'}")
     for p in r.get("pages") or []:
         print(f"  {p['name']:<32} {p['size']:>7} B  {p.get('by') or '':<16} {when(p.get('at'))}")
 elif verb == "show" and len(argv) >= 2:
@@ -100,7 +100,7 @@ elif verb == "save" and len(argv) >= 3:
         base = "" if cur.get("error") else cur.get("rev", "")
     r = post({"action": "save", "name": name, "text": text, "base": base, "why": why})
     if r.get("held"):
-        print(f"held for the operator's approval on {proj}'s notebook (Claude may: Write the wiki is ask): "
+        print(f"held for the operator's approval on {proj}'s notebook (Agents may: Write the wiki is ask): "
               f"{r['held'].get('summary', '')}")
     elif r.get("unchanged"):
         print(f"{r['name']}: unchanged")

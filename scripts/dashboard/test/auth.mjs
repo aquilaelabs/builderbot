@@ -1004,7 +1004,7 @@ ${code}`], { encoding: 'utf8' }).trim();
   // from the record a node reported, since no login lives here (R47), and two
   // on one login said out loud, since Anthropic's terms allow one person per
   // Claude account.
-  ok(/no Claude login yet/.test(await detail()), 'an account says when it has no Claude login yet');
+  ok(/signed in to no agent yet/.test(await detail()), 'an account says when it is signed in to no agent yet (B296)');
   const uidOf = (await (await bare('/api/users', { headers: {
       Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json())
     .users.find(u => u.name === 'tabmade').uid;
@@ -1394,7 +1394,9 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
     // version panel is closed to a session's token outright.
     await act(ownerAuth, '/api/users', { action: 'projects', name: 'plainone', projects: ['alpha'] });
     for (const [path, body, why] of [
-        ['/api/lock', { name: 'alpha', locked: true }, /needs .+ Write/],
+        // Its owner's or an administrator's (R119), not a grant's.
+        ['/api/lock', { name: 'alpha', locked: true }, /owner or an administrator/],
+        ['/api/archive', { name: 'alpha', archived: true }, /owner or an administrator/],
         ['/api/pin', { name: 'status', pinned: true }, /needs Controller Write/],
         ['/api/project-auth', { name: 'alpha' }, /needs .+ Write|rename/],
         ['/api/version', { project: 'alpha', action: 'bump', part: 'patch' }, /needs .+ Write/],
@@ -1443,9 +1445,9 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
     // project's owner, Deny names the setting, and nothing it cannot sign
     // is put in front of anybody.
     {
-      mkdirSync(`${DIR}/state/signing/alpha`, { recursive: true });
-      writeFileSync(`${DIR}/state/signing/alpha/sideload.ks`, 'k');
-      writeFileSync(`${DIR}/state/signing/alpha/sideload.json`, JSON.stringify({ alias: 'upload', store_pass: 'pw' }));
+      mkdirSync(`${DIR}/state/signing/alpha/default`, { recursive: true });
+      writeFileSync(`${DIR}/state/signing/alpha/default/sideload.ks`, 'k');
+      writeFileSync(`${DIR}/state/signing/alpha/default/sideload.json`, JSON.stringify({ alias: 'upload', store_pass: 'pw' }));
       mkdirSync(`${DIR}/ws/alpha/dist`, { recursive: true });
       writeFileSync(`${DIR}/ws/alpha/dist/alpha-release.apk`, 'apk');
       const sign = (body) => bare('/api/signing', { method: 'POST', headers: sessAuth,
@@ -1494,6 +1496,29 @@ print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim(
          `...a session reads the keys without a secret, proposes a new one for the owner to allow, and at Deny is refused naming the setting (${keyAsk?.cmd?.join(' ')})`);
       for (const a of [keyAsk, rotAsk]) if (a) await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: a.id }) });
       await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'ask', keys: 'ask', node: '' }) });
+      // A release's signing (R134): a session reads whether its APK can be
+      // signed and how the newest went, and asks for the look again under
+      // Sign a build; a project that hands over no APK has nothing to ask.
+      {
+        const none = await sign({ action: 'release-sign', why: 'the key was added' });
+        mkdirSync(`${DIR}/ws/alpha/.github/workflows`, { recursive: true });
+        writeFileSync(`${DIR}/ws/alpha/.github/workflows/app.yml`, 'jobs: {b: {steps: [{with: {name: bb-release-apk-x}}]}}\n');
+        const read = await sign({ action: 'release' });
+        const asked = await sign({ action: 'release-sign', why: 'the key was added' });
+        const ownerAsks = await (await bare('/api/phone', { headers: ownerAuth })).json();
+        const ask = (ownerAsks.asks || []).find(a => a.id === asked.body.id);
+        await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'deny' }) });
+        const denied = await sign({ action: 'release-sign', why: 'again' });
+        if (ask) await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: ask.id }) });
+        await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'alpha', sign: 'ask' }) });
+        rmSync(`${DIR}/ws/alpha/.github`, { recursive: true, force: true });
+        ok(none.status === 400 && /no unsigned APK/.test(none.body.error || '')
+           && read.status === 200 && read.body.release?.wanted === true && typeof read.body.release.why === 'string'
+           && Array.isArray(read.body.attention) && !JSON.stringify(read.body).includes('"pw"')
+           && asked.status === 200 && ask?.kind === 'release-sign' && ask.cmd.join(' ') === 'sign release'
+           && denied.status === 403 && /Sign a build/.test(denied.body.error || ''),
+           `...a session reads its release signing with no secret, asks the owner to sign a release again, and at Deny is refused naming the setting (${none.status}/${read.status}/${asked.status}/${denied.status})`);
+      }
       await bare('/api/signing', { method: 'POST', headers: ownerAuth,
         body: JSON.stringify({ action: 'backup-password', project: 'alpha', current: 'a-backup-password', new: '' }) });
       rmSync(`${DIR}/state/signing/alpha`, { recursive: true, force: true });
@@ -1536,6 +1561,23 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
            && ask.tag === 'v1.2.3' && ask.sha === sha && !gitR('tag', '--list', 'v1.2.3'),
            `a session's bb version release is refused before anybody is asked when it could not happen, then waits on the project's owner naming the tag and its commit, and tags nothing until then (${ask?.tag} on ${ask?.sha}; ${noVersion.body.error || ''} | ${dirtyAsked.body.error || ''} | ${asked.body.error || ''})`);
         await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: asked.body.id }) });
+        // An Android APK the release could not have signed is said before
+        // the tag (R134 step 4), and --without-apk goes on to the ask.
+        {
+          mkdirSync(`${R}/.github/workflows`, { recursive: true });
+          writeFileSync(`${R}/.github/workflows/app.yml`, 'jobs: {b: {steps: [{with: {name: bb-release-apk-x}}]}}\n');
+          gitR('add', '.github'); gitR('commit', '-qm', 'an Android workflow');
+          const unsignable = await rel({});
+          const goOn = await rel({ unsigned: true });
+          const asks = await (await bare('/api/phone', { headers: ownerAuth })).json();
+          const a = (asks.asks || []).find(x => x.id === goOn.body.id);
+          if (a) await bare('/api/phone', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ action: 'deny', id: a.id }) });
+          const page = await (await bare('/api/version?project=relproj', { headers: ownerAuth })).json();
+          ok(unsignable.status === 409 && /could not be signed/.test(unsignable.body.error || '') && /--without-apk/.test(unsignable.body.error || '')
+             && goOn.status === 200 && a?.kind === 'release' && !gitR('tag', '--list', 'v1.2.3')
+             && typeof page.release_sign === 'string' && page.release_sign.length > 0,
+             `...a release whose Android APK could not be signed is refused before the tag saying why, --without-apk asks anyway, and Release's confirm is told (${unsignable.status}: ${(unsignable.body.error || '').slice(0, 90)})`);
+        }
         await bare('/api/prefs', { method: 'POST', headers: ownerAuth, body: JSON.stringify({ project: 'relproj', release: 'deny' }) });
         const denied = await rel({});
         const other = await rel({ project: 'alpha' });
@@ -1638,9 +1680,10 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
         ok(notOwner.status === 403 && short.status === 400 && set.body.backup_locked === true && plain.status === 403
            && wrong.status === 403 && change.status === 403
            // The right one: the backup wrapped under it (R111), or, where the
-           // controller has no keytool to wrap with, said so, never the bare key.
-           && (right.status === 200 || (right.status === 409 && /install the jdk toolchain/.test(rightSaid))),
-           `a backup password is the project owner's to set, and then every download asks for it, a plain link and a wrong one refused (${plain.status}/${wrong.status}/${right.status})`);
+           // project's node cannot wrap it now (B232: which node, and why), said
+           // so, never the bare key.
+           && (right.status === 200 || (right.status === 409 && /no node to sign on|is offline|install (it|them) on its Toolchains|takes no new work/.test(rightSaid))),
+           `a backup password is the project owner's to set, and then every download asks for it, a plain link and a wrong one refused (${plain.status}/${wrong.status}/${right.status} ${rightSaid})`);
         for (let i = 0; i < 5; i++) await dl('nope');
         const held = await dl('a-long-password');
         ok(held.status === 429, `...and five wrong in a row hold the downloads, even for the right one (${held.status})`);

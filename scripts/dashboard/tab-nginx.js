@@ -174,15 +174,18 @@ function nginxHostPick(r){
   </select>`;
 }
 
-// The list itself: each name with where it is routed, Delete on one routed
-// nowhere, and a box to add one.
+// The list itself, as records the way Routes is (the operator, 22 Oct):
+// each name with where it is routed, Delete on one routed nowhere, and a
+// box to add one under the table.
+const NG_HOST_COLS = [{label: "Hostname"}, {label: "Routed on", w: "minmax(0,.7fr)"}, {act: true, w: "3rem"}];
 function nginxHostLines(){
-  const rows = nginxHostnames.map(h => `<div class="nghost"><span class="grow"><code>${esc(h.name)}</code> <span class="dim">${
-      h.used.length ? "routed on " + esc([...new Set(h.used.map(u => u.node))].join(", ")) : "not routed yet"}</span></span>${
-      h.used.length ? "" : rmIcon(`data-nghostrm="${esc(h.name)}"`, `delete ${h.name}`)}</div>`).join("");
-  return `${rows || `<div class="hint">none yet</div>`}
-    <div class="actbar"><input data-nghostnew placeholder="www.example.com" aria-label="a hostname to add" autocomplete="off" spellcheck="false">
-      <button type="button" data-nghostadd>Add</button></div>`;
+  const rows = nginxHostnames.map(h => `<div class="row nghost">${tblLine(NG_HOST_COLS, [
+      `<code>${esc(h.name)}</code>`,
+      h.used.length ? esc([...new Set(h.used.map(u => u.node))].join(", ")) : `<span class="dim">not routed yet</span>`,
+      h.used.length ? "" : rmIcon(`data-nghostrm="${esc(h.name)}"`, `delete ${h.name}`)])}</div>`).join("");
+  return `${rows ? tblWrap(NG_HOST_COLS, rows, "nghosts") : `<div class="field"><div class="hint">none yet</div></div>`}
+    <div class="field"><div class="actbar"><input data-nghostnew placeholder="www.example.com" aria-label="a hostname to add" autocomplete="off" spellcheck="false">
+      <button type="button" data-nghostadd>Add</button></div></div>`;
 }
 
 // Routes as records (R218 step 44, the design's record-lists rule, the
@@ -325,8 +328,8 @@ function nginxBody(n){
   const hostN = (nginxHostnames || []).length;
   const hosts = ngSect("hostnames", hostN ? `${hostN} name${hostN === 1 ? "" : "s"}` : "none yet",
     `<div class="field"><div class="hint">The names this BuilderBot answers for, picked on any route.${helpIcon(
-      "The public names this BuilderBot answers for, on every node's nginx: added once here, picked on any route below. Each points at the node its routes are on (a DNS record, or a tunnel's). Added and deleted at the press.")}</div>
-      ${nginxHostLines()}</div>`);
+      "The public names this BuilderBot answers for, on every node's nginx: added once here, picked on any route below. Each points at the node its routes are on (a DNS record, or a tunnel's). Added and deleted at the press.")}</div></div>
+      ${nginxHostLines()}`);
   const routes = ngSect("routes", count ? `${count} route${count === 1 ? "" : "s"}` : "no route yet",
     `<div class="field"><div class="hint">Each hostname or path to a port a container publishes on ${esc(n.name)}.${helpIcon(
       "nginx runs on the host network and reaches a container at 127.0.0.1. A route serves 443 with the pair it picks, or with its domain's when it picks none; nothing is a default. A name nothing routes is answered by closing the connection.")}</div></div>
@@ -475,7 +478,7 @@ function wireNginxTab(root){
   // from the server's answer.
   sect.querySelectorAll("[data-ngcertrm]").forEach(b => b.onclick = async () => {
     const k = b.dataset.ngcertrm;
-    if (!confirm(`Take ${k}'s pair off ${n.name}?\n\nA route that picked it falls back to what its hostname resolves to, or answers on 80 only.`)) return;
+    if (!await askYes(`Take ${k}'s pair off ${n.name}?\n\nA route that picked it falls back to what its hostname resolves to, or answers on 80 only.`)) return;
     nginxReadDraft(sect, n);
     busy(b, "Removing");
     const j = await nginxAct({action: "save", node: nid, routes: n.routes || [], drop_cert: k});
@@ -527,7 +530,7 @@ function wireNginxTab(root){
     const del = form.querySelector("[data-ngdel]");
     if (del) del.onclick = async () => {
       const r = (n.routes || [])[i] || {};
-      if (!confirm(`Delete the route ${r.host === "*" ? "every name" : r.host}${r.path && r.path !== "/" ? r.path : ""} to port ${r.port}?`)) return;
+      if (!await askYes(`Delete the route ${r.host === "*" ? "every name" : r.host}${r.path && r.path !== "/" ? r.path : ""} to port ${r.port}?`)) return;
       busy(del, "Deleting");
       const j = await nginxAct({action: "save", node: nid, routes: (n.routes || []).filter((_, k) => k !== i)});
       if (!j.error){ nginxEdit = null; nginxForm = null; }
@@ -575,7 +578,7 @@ function wireNginxTab(root){
   };
   const upd = sect.querySelector("[data-ngupdate]");
   if (upd) upd.onclick = async e => {
-    if (!confirm(`Update nginx on ${n.name} to ${n.behind === n.image?.tag ? "the newer build of " : ""}nginx:${n.behind}?\n\nIt is rebuilt with the new image, so its sites are down while the node pulls it.`)) return;
+    if (!await askYes(`Update nginx on ${n.name} to ${n.behind === n.image?.tag ? "the newer build of " : ""}nginx:${n.behind}?\n\nIt is rebuilt with the new image, so its sites are down while the node pulls it.`)) return;
     nginxReadDraft(sect, n);
     busy(e.target, "Updating");
     await nginxAct({action: "update", node: nid});
@@ -583,7 +586,7 @@ function wireNginxTab(root){
   };
   const rm = sect.querySelector("[data-ngremove]");
   if (rm) rm.onclick = async e => {
-    if (!confirm(`Remove nginx from ${n.name}?\n\nThe container comes down and leaves the Containers page; the routes and certificate stay here for a redeploy.`)) return;
+    if (!await askYes(`Remove nginx from ${n.name}?\n\nThe container comes down and leaves the Containers page; the routes and certificate stay here for a redeploy.`)) return;
     busy(e.target, "Removing");
     await nginxAct({action: "remove", node: nid});
     nginxRedraw();

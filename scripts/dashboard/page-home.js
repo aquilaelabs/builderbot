@@ -60,7 +60,7 @@ async function loadHome(light = false){
 // its own tile.
 function homeUpdates(){
   return (state?.attention || []).reduce((n, a) =>
-    a.kind === "relocate" || a.kind === "room" || a.kind === "release-sign" ? n : n + (a.kind === "toolchain" ? (a.tools || []).length || 1
+    a.kind === "relocate" || a.kind === "room" || a.kind === "release-sign" ? n : n + (a.kind === "toolchain" || a.kind === "agents" ? (a.tools || []).length || 1
       : a.kind === "image" ? (a.containers || []).length || 1 : 1), 0);
 }
 
@@ -73,7 +73,8 @@ function homeTiles(){
   // opens say one number (B59): every session of this account's, Claude's
   // and the terminals.
   const ss = state?.sessions || [];
-  const sessions = ss.length, claudes = ss.filter(s => tmuxBase(s.name).startsWith("claude-")).length;
+  const agentSs = ss.filter(s => agentOfSession(tmuxBase(s.name)));
+  const sessions = ss.length, claudes = agentSs.length;
   const updates = homeUpdates(), red = (state?.ci_red || []).length;
   const jobs = h.jobs || {};
   const c = h.containers;
@@ -89,7 +90,7 @@ function homeTiles(){
     {key: "jobs", label: "jobs running", value: jobs.running ?? "–",
      sub: jobs.failed_today ? `${jobs.failed_today} failed today` : jobs.waiting ? `${jobs.waiting} waiting` : "none failed today",
      subTone: jobs.failed_today ? "bad" : ""},
-    {key: "sessions", label: "sessions open", value: sessions, sub: claudes ? `${claudes} of them Claude` : ""},
+    {key: "sessions", label: "sessions open", value: sessions, sub: claudes ? `${claudes} of them ${agentsWord(agentSs.map(s => s.name))}` : ""},
     {key: "updates", label: updates === 1 ? "update due" : "updates due", value: updates, tone: updates ? "warn" : ""},
     {key: "ci", label: "CI red", value: red, tone: red ? "bad" : "", sub: red === 1 ? projLabel(state.ci_red[0].project) : ""},
   ].filter(Boolean);
@@ -132,7 +133,7 @@ function homeJobsHtml(){
 
 function homeGlanceHtml(){
   // Not an archived one (the operator, 18 Oct), pinned or not.
-  const pinned = (state?.projects || []).filter(p => p.pinned && !p.locked);
+  const pinned = (state?.projects || []).filter(p => p.pinned && !p.archived);
   if (!pinned.length) return `<div class="empty">no project is pinned: a project's menu on the Projects page pins it here</div>`;
   // In groups, in the Projects page's order, each group's name over its
   // cards (R273): the page this glances at is sorted so.
@@ -172,7 +173,7 @@ function homeStartHtml(){
   const steps = [
     canNodes ? ["Your first node", !!s.node, `<button type="button" data-hstart="node">Nodes page</button>`] : null,
     ["Your name and email", s.git, `<button type="button" data-hstart="git">Profile</button>`],
-    canNodes ? ["Claude Code on your node", !!s.claude, `<button type="button" data-hstart="claude"${s.node ? "" : " disabled"}>Toolchains</button>`] : null,
+    canNodes ? ["Claude Code on your node", !!s.claude, `<button type="button" data-hstart="claude"${s.node ? "" : " disabled"}>Agents page</button>`] : null,
     ["A first project", s.project, `<button type="button" data-hstart="project">New project</button>`],
   ].filter(Boolean);
   const left = steps.filter(x => !x[1]).length;
@@ -240,7 +241,7 @@ function renderHomeInto(i){
     const k = b.dataset.hstart, s = setupSteps();
     if (k === "node") railGo("machines");
     else if (k === "git") openProfileTab();
-    else if (k === "claude" && s.node) openToolchainsOn(s.node.id);
+    else if (k === "claude" && s.node) openNodeClaude(s.node.id);
     else if (k === "project") openNewProject();
     else if (k === "hide"){ homeStartHidden = true; try{ localStorage.setItem("bb.gsHidden", "1"); }catch(e){ /* private */ } drawPanes(); }
   });

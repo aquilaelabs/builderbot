@@ -93,6 +93,9 @@ def show(b):
         if b.get(k):
             body = b[k].replace("\n", "\n" + " " * 12)
             print(f"  {k:>8}: {body}")
+        if k == "repro":
+            # Beside how, whether it does (R124).
+            print(f"  {'happens':>8}: {bugs.REPRODUCES_WORDS.get(b.get('reproduces') or 'untried', '?')}")
     when = time.strftime("%d %b %H:%M", time.localtime(b.get("at", 0)))
     print(f"  {'by':>8}: {b.get('by', '?')} · {when}"
           + (f" · {b['status']}: {b.get('status_note', '')}"
@@ -120,12 +123,12 @@ def builderbot_tree(root):
 
 
 def pull_flags(args):
-    """--sev/--area/--repro/--expected/--actual/--notes out of an argv,
+    """--sev/--area/--repro/--reproduces/--expected/--actual/--notes/--report out of an argv,
     leaving the words that make the title."""
     words, out, i = [], {}, 0
     names = {"--sev": "severity", "--severity": "severity", "--area": "area",
-             "--repro": "repro", "--expected": "expected",
-             "--actual": "actual", "--notes": "notes"}
+             "--repro": "repro", "--reproduces": "reproduces", "--expected": "expected",
+             "--actual": "actual", "--notes": "notes", "--report": "report"}
     while i < len(args):
         # Anything else that looks like a flag is asked about or refused, not
         # glued onto the title: `bb bug add "T" --help` filed "T --help"
@@ -134,12 +137,15 @@ def pull_flags(args):
             words.extend(args[i + 1:])
             break
         if args[i] in ("--help", "-h"):
-            print("usage: bb bug add TITLE [--sev low|medium|high] [--area AREA] [--repro HOW] "
-                  "[--expected ..] [--actual ..] [--notes ..] [--here]; -- ends the flags")
+            print("usage: bb bug add TITLE [--sev low|medium|high] [--area AREA] [--repro HOW "
+                  "--reproduces always|sometimes|once|untried] [--expected ..] [--actual ..] [--notes ..] "
+                  "[--report N] [--here]; -- ends the flags. --report N files diagnostics report N "
+                  "(bb diag reports): its words, area, repro and whether it reproduces, unless given here")
             sys.exit(0)
         if args[i].startswith("--") and args[i] not in names:
             print(f"[builderbot] ERROR: bb bug add does not take {args[i]} (it takes --sev, --area, --repro, "
-                  "--expected, --actual, --notes and --here; -- before a title word that starts with --)",
+                  "--reproduces, --expected, --actual, --notes, --report and --here; -- before a title word "
+                  "that starts with --)",
                   file=sys.stderr)
             sys.exit(1)
         if args[i] in names:
@@ -215,6 +221,34 @@ elif op == "show":
 elif op == "add":
     here = "--here" in rest
     title, flags = pull_flags([a for a in rest if a != "--here"])
+    # A diagnostics report taken into this tracker (R124 step 4): its words,
+    # area, repro and whether it reproduces come across unless given here,
+    # and the note says where it came from. bb read it through bb diag, the
+    # diagnostics' own gate, into BB_BUG_REPORTS.
+    if flags.get("report"):
+        import json
+        want = str(flags.pop("report")).lstrip("#")
+        try:
+            got = json.loads(os.environ.get("BB_BUG_REPORTS") or "{}").get("reports") or []
+        except ValueError:
+            got = []
+        rep = next((x for x in got if str(x.get("id")) == want), None)
+        if rep is None:
+            print(f"[builderbot] ERROR: no diagnostics report #{want} (bb diag reports lists them)", file=sys.stderr)
+            sys.exit(1)
+        text = " ".join(str(rep.get("text") or "").split())
+        title = title or text
+        for k in ("area", "repro", "reproduces"):
+            if rep.get(k) and not flags.get(k):
+                flags[k] = rep[k]
+        flags["notes"] = "\n\n".join(x for x in (
+            f"From diagnostics report #{want}: {rep.get('project') or 'no project'}"
+            + (f", {rep['by']}'s session" if rep.get("by") else "")
+            + (f" on {rep['node']}" if rep.get("node") else "")
+            + (f", build {rep['build']}" if rep.get("build") else "")
+            + ("" if title == text else f". It said: {text}"),
+            flags.get("notes") or "") if x)
+        here = True
     # The title and the area, not the repro: a project's own bug is often
     # reproduced with bb (bb capture reel ...), and two of MediaReducer's
     # were sent to bb report for it (7 Oct).
@@ -240,7 +274,7 @@ elif op == "add":
         print("[builderbot] not filed yet. Send it with bb report \"what happened\" [--area A] "
               f"[--repro \"...\"] if it is a problem with BuilderBot itself, or add --here if it is "
               f"{proj}'s own bug. It names BuilderBot or bb, and BuilderBot's problems go to its "
-              f"maintainers, not into {proj}'s tracker, while {proj}'s setting Claude may: Report "
+              f"maintainers, not into {proj}'s tracker, while {proj}'s setting Agents may: Report "
               "BuilderBot bugs is on (off makes bb bug add file here)",
               file=sys.stderr)
         sys.exit(1)
@@ -279,8 +313,8 @@ elif op == "note":
     print(f"noted on {B(n)}")
 elif op == "edit":
     if len(rest) < 3 or rest[1] not in ("title", "sev", "severity", "area",
-                                        "repro", "expected", "actual", "notes"):
-        print("usage: bb bug edit <n> title|sev|area|repro|expected|actual|notes"
+                                        "repro", "reproduces", "expected", "actual", "notes"):
+        print("usage: bb bug edit <n> title|sev|area|repro|reproduces|expected|actual|notes"
               " \"...\"", file=sys.stderr)
         sys.exit(1)
     k = "severity" if rest[1] in ("sev", "severity") else rest[1]

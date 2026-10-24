@@ -19,28 +19,32 @@ const TOUR_STEPS = {
     {say: "Welcome to BuilderBot. Home is what the whole install is doing at a glance: what is running, what failed, and what wants your attention."},
     {at: "#rail, .railbar", say: "Every page is here, grouped. A group with several tools opens on the first and carries the rest along its top."},
     {at: "#jump", say: "Search jumps to a page, a project, a container or a node by name. Enter opens the first match."},
-    {at: "#bBell", say: "The bell holds what needs a person: updates due, failures, and anything a Claude session is asking you to allow."},
+    {at: "#bBell", say: "The bell holds what needs a person: updates due, failures, and anything a session is asking you to allow."},
     {at: `${TOUR_PANE} .tiles, ${TOUR_PANE} .hometiles, ${TOUR_PANE} .stattiles`, say: "Each number opens the page that holds it."},
-    {at: "#pane1 .bar, .dockline", say: "The dock at the foot keeps the chat and your terminals and Claude sessions, whichever page you are on. Pull it up to work in one."},
+    {at: "#pane1 .bar, .dockline", say: "The dock at the foot keeps the chat and your terminals and agents' sessions, whichever page you are on. Pull it up to work in one."},
   ],
   projects: [
     {say: "Every project you work on. A project is a git repository with its own notebook: a roadmap, bugs, tests, its containers and VMs."},
     {at: TOUR_BAR, say: "Search and the view switch are here, and New project at the right."},
-    {at: `${TOUR_PANE} .pcard`, say: "A project's card: its branch, its sessions, and Start Claude. Its name opens the notebook."},
+    {at: `${TOUR_PANE} .pcard`, say: "A project's card: its branch, its sessions, and Start agent. Its name opens the notebook."},
   ],
   notebook: [
-    {say: "A project's notebook: everything about it in one place, shared by the people and the Claude sessions working on it."},
+    {say: "A project's notebook: everything about it in one place, shared by the people and the sessions working on it."},
     {at: `${TOUR_PANE} .nbtabs .nbgroups`, say: "Five groups: Overview (with your sessions here, what a session may do, and the settings), Plan (the roadmap and bugs), Code, Ship (artifacts, containers and VMs) and Docs. Each opens its views in the row under it."},
-    {at: `${TOUR_PANE} .phead, ${TOUR_PANE} .bar.proj`, say: "Start Claude opens a session on this project; Shell a terminal in it. The menu holds its settings, its link and more."},
+    {at: `${TOUR_PANE} .phead, ${TOUR_PANE} .bar.proj`, say: "Start agent opens a session on this project; Shell a terminal in it. The menu holds its settings, its link and more."},
   ],
   findings: [
     {say: "Analysis is what the linters and the code map found across your projects, worst first."},
     {at: TOUR_BAR, say: "Narrow it by project or by kind here."},
   ],
   toolchains: [
-    {say: "Toolchains are the SDKs and tools a node has for builds, tests and sessions: Android, Flutter, Node and the rest, Claude Code among them."},
+    {say: "Toolchains are the SDKs and tools a node has for builds, tests and sessions: Android, Flutter, Node and the rest."},
     {at: TOUR_BAR, say: "Pick the node here. Install and Remove act on what you tick; Check for updates reads what is newer."},
     {at: TOUR_FIRST, say: "Each toolchain says what is installed and whether a newer one is out. Some ask you to accept a license first, and that is always yours to accept."},
+  ],
+  agents: [
+    {say: "The coding agents a session on a node can run: Claude Code, and Codex CLI and Copilot CLI beside it, each installed for the node's session account."},
+    {at: TOUR_BAR, say: "Pick the node here. Each agent's section says its version and updates it, and holds your sign-in on that node: a sign-in is one node's, never carried to another."},
   ],
   emulator: [
     {say: "The Android emulator on a node: the system images it holds and the virtual devices made from them."},
@@ -66,7 +70,7 @@ const TOUR_STEPS = {
   ],
   vms: [
     {say: "VMs: a project's virtual machines on the nodes with VM host installed, made from the cloud images of a dozen Linux systems."},
-    {at: TOUR_BAR, say: "New VM is here. A Claude session can make one too, with bb vm new, where the project's Make VMs setting allows it."},
+    {at: TOUR_BAR, say: "New VM is here. A session can make one too, with bb vm new, where the project's Make VMs setting allows it."},
     {at: `${TOUR_PANE} .vmtab [data-vm-key]`, sample: () => vmGroupsHtml([{key: "example/db", project: "example", name: "db", state: "running",
       os_name: "Debian 13", node_name: "your-node", vcpus: 2, mem_mb: 2048, disk_gb: 20, ip: "10.232.0.12", user: "builder",
       snapshots: ["clean"], screen: true}]),
@@ -81,7 +85,7 @@ const TOUR_STEPS = {
     {at: TOUR_FIRST, say: "A section's changes are saved with its own Save, never another's."},
   ],
   nodes: [
-    {say: "Nodes are the machines your builds, tests, containers, VMs and Claude sessions run on. The controller itself runs none of them."},
+    {say: "Nodes are the machines your builds, tests, containers, VMs and sessions run on. The controller itself runs none of them."},
     {at: TOUR_BAR, say: "Pick a node here. Enroll node makes the script that adds a machine."},
     {at: TOUR_FIRST, say: "A node's sections: its health, the projects on it, its sessions, its features, and the advanced verbs at the end."},
   ],
@@ -89,7 +93,7 @@ const TOUR_STEPS = {
     {say: "Storage: what every node's disks hold, by project and by kind, and where the room is going."},
   ],
   sessions: [
-    {say: "Every Claude session and terminal open, on every node: who is working where, and whether each is busy, waiting or asking."},
+    {say: "Every agent's session and terminal open, on every node: who is working where, and whether each is busy, waiting or asking."},
   ],
   jobs: [
     {say: "Jobs: every build, test, install and system job sent to a node, with its log."},
@@ -217,7 +221,7 @@ function tourSampleCard(){
       <div class="sub dmorigin">nginx:1.31-alpine<span class="sep"></span>your-node</div>
       <div class="sub dmstate ok">answers at http://your-node:8080/</div></div>
       <div class="actbar dmacts"><button type="button">Shell</button><button type="button">Rebuild</button>
-        <span class="more"><button type="button" class="moreb" aria-label="More">⋯</button></span></div></div></div></div></section>`;
+        <span class="more"><button type="button" class="moreb" aria-label="More">${DOTS}</button></span></div></div></div></div></section>`;
 }
 
 // A page that redraws itself on its own poll, not through the panes' draw

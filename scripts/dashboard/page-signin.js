@@ -1,8 +1,8 @@
 // The Claude sign-in, which is one account's on one node: who this account
 // is signed in as there, the flow that signs that node in, the code a
 // person pastes back into it, and signing that node out. Drawn inside the
-// node's Claude Code section on the Nodes tab, and reached from a project's
-// Claude button when its node has no sign-in yet.
+// Claude section of the Agents page on that node (R95 step 15), and reached
+// from a project's Claude button when its node has no sign-in yet.
 //
 // One classic script beside index.html (docs/design-language.md, Files):
 // pure declarations, nothing runs at load. What runs at load stays in
@@ -16,13 +16,16 @@
 // null. A report, from that node (claudegrant.py): the login itself is the
 // machine's, and no other node's counts for it.
 const claudeOn = nid => state?.claude_auth?.nodes?.[nid] || null;
+// ...and to any coding agent (R95 step 3): Claude's from the record above,
+// another agent's from the same record kept per agent.
+const agentOn = (id, nid) => id === "claude" ? claudeOn(nid) : state?.agent_auth?.[id]?.nodes?.[nid] || null;
 
 // What the sign-in has to say that the node list does not carry, as one
 // string: the Nodes tab repaints when this moves as well as on its own
 // revision, so a link arriving or a code being taken shows at once.
 function signinRev(){
   const lg = state?.signin || {};
-  return JSON.stringify([state?.claude_auth?.nodes || {}, lg.node, lg.running, lg.url,
+  return JSON.stringify([state?.claude_auth?.nodes || {}, state?.agent_auth || {}, lg.node, lg.agent, lg.running, lg.url, lg.code,
                          lg.waiting, lg.sent, lg.done, lg.ok, lg.error,
                          state?.can?.admin, claudeSessions().length]);
 }
@@ -39,30 +42,44 @@ let signinSaid = {};
 
 // Why a sign-in cannot be made on this node now, or "": the server's own
 // test (signin.cannot), said before the press.
-function signinCannot(n){
+function signinCannot(n, id = "claude"){
   if (n.state !== "online") return `${n.name} is ${n.state || "not online"} and takes no new work: sign in or out there when it is back online`;
   if (n.live === false) return `${n.name} is not answering: sign in or out there when it is back`;
-  if (!n.reported?.session?.up) return `${n.name} runs no sessions, so there is nowhere for a Claude login to live`;
+  if (!n.reported?.session?.up) return `${n.name} runs no sessions, so there is nowhere for a ${agentById(id)?.name || "Claude"} login to live`;
   return "";
 }
 
 // This account's Claude sessions open on a node, as project names: signing
 // out there pulls the ground from under them.
-function signinBusy(n){
+function signinBusy(n, id = "claude"){
   const open = new Set((state?.sessions || []).filter(s => s.node_id === n.id).map(s => s.name));
-  return (state?.projects || []).filter(p => open.has(myClaude(p.name))).map(p => p.name);
+  return (state?.projects || []).filter(p => open.has(myAgentSession(id, p.name))).map(p => p.name);
 }
 
 // The sign-in's part of a node's Claude Code section. Every state is one
 // action bar: what is so on its `.state` line, the press after it, and the
 // reason a press is dead on a line of its own under it.
-function signinBlock(n){
-  const me = claudeOn(n.id), lg = state?.signin || {};
-  const mine = lg.node === n.id;
-  const cannot = signinCannot(n);
-  const said = signinSaid[n.id] ? `<div class="sub bad">${esc(signinSaid[n.id])}</div>` : "";
+function signinBlock(n, id = "claude"){
+  const me = agentOn(id, n.id), lg = state?.signin || {};
+  const a = agentById(id) || AGENTS[0];
+  const mine = lg.node === n.id && (lg.agent || "claude") === id;
+  const cannot = signinCannot(n, id);
+  const key = id === "claude" ? n.id : `${n.id}:${id}`;
+  const said = signinSaid[key] ? `<div class="sub bad">${esc(signinSaid[key])}</div>` : "";
   let inner;
-  if (mine && lg.running && !me){
+  if (mine && lg.running && !me && id !== "claude"){
+    // A device flow (Codex, Copilot): its link and its one-time code, which
+    // the person enters on the provider's page; nothing is pasted back.
+    inner = `
+      <div class="sub">${lg.url
+        ? `<a href="${esc(lg.url)}" target="_blank" rel="noopener">Open the sign-in page ↗</a>, sign in to ${esc(a.provider)}, and enter this code there.`
+        : `Starting the sign-in on ${esc(n.name)}<span class="dots"></span>`}</div>
+      ${lg.code ? `<div class="field"><code class="sicode">${esc(lg.code)}</code></div>` : ""}
+      <div class="actbar"><span class="state">${lg.code ? "waiting for you to enter the code" : "waiting for the link"}</span>
+        <button type="button" class="stop" data-si="cancel">Cancel</button>
+        <button type="button" data-si="in" title="start the sign-in again with a new code">Start over</button>
+      </div>`;
+  } else if (mine && lg.running && !me){
     inner = `
       <div class="sub">${lg.url
         ? `<a href="${esc(lg.url)}" target="_blank" rel="noopener">Open the sign-in page ↗</a>, approve, and paste the code it gives you.`
@@ -76,28 +93,28 @@ function signinBlock(n){
         <button type="button" class="primary" id="bAuthCode" data-si="code"${lg.waiting ? "" : " disabled"}>${lg.sent ? "Signing in" : "Send"}</button>
       </div>`;
   } else if (me){
-    const busy = signinBusy(n);
+    const busy = signinBusy(n, id);
     const dead = busy.length || cannot;
     inner = `
       <div class="actbar"><span class="state">You are signed in here as ${esc(me.email)}${me.plan ? ` · ${esc(me.plan)}` : ""}</span>
         <button type="button" data-si="out"${dead ? " disabled" : ""}>Sign out</button></div>
-      ${busy.length ? `<div class="sub bad">End your Claude session${busy.length === 1 ? "" : "s"} on ${esc(busy.join(", "))} before signing out here.</div>`
-        : cannot ? `<div class="sub bad">${esc(cannot)}.</div>` : ""}`;
+      ${busy.length ? `<div class="hint warn">End your ${esc(a.name)} session${busy.length === 1 ? "" : "s"} on ${esc(busy.join(", "))} before signing out here.</div>`
+        : cannot ? `<div class="hint warn">${esc(cannot)}.</div>` : ""}`;
   } else {
     const failed = mine && lg.done && !lg.ok;
     inner = `
-      <div class="actbar"><span class="state bad">You are not signed in to Claude on ${esc(n.name)}: your sessions will not start here</span>
+      <div class="actbar"><span class="state warn">You are not signed in to ${esc(a.name)} on ${esc(n.name)}: your ${esc(a.name)} sessions will not start here</span>
         <button type="button" class="primary" data-si="in"${cannot ? " disabled" : ""}>${failed ? "Try again" : "Sign in"}</button></div>
-      ${cannot ? `<div class="sub bad">${esc(cannot)}.</div>`
+      ${cannot ? `<div class="hint warn">${esc(cannot)}.</div>`
         : failed ? `<div class="sub bad">${esc(lg.error || "the sign-in did not finish")}</div>` : ""}`;
   }
-  return `<div class="ndsignin" data-signin="${esc(n.id)}">${inner}${said}
+  return `<div class="ndsignin" data-signin="${esc(n.id)}" data-siagent="${esc(id)}">${inner}${said}
     <div class="hint">A sign-in is this node's alone: each node you work on is signed in from its own row.</div></div>`;
 }
 
 function wireSignin(root){
   root.querySelectorAll("[data-signin]").forEach(box => {
-    const id = box.dataset.signin;
+    const id = box.dataset.signin, ag = box.dataset.siagent || "claude";
     const f = box.querySelector("#authCode");
     if (f){
       f.value = signinCode;
@@ -113,21 +130,20 @@ function wireSignin(root){
       if (signinHadFocus && !f.disabled) f.focus();
     }
     box.querySelectorAll("[data-si]").forEach(b => b.onclick = () => ({
-      in: () => signIn(id, b), out: () => signOut(id, b), code: () => sendCode(),
+      in: () => signIn(id, b, ag), out: () => signOut(id, b, ag), code: () => sendCode(),
       cancel: () => signinCancel(b)})[b.dataset.si]());
   });
 }
 
-// Open the Nodes tab on one node with its Claude Code section unfolded and
-// in view: where a Claude button sends its press when that node has no
-// sign-in of this account's yet.
-function openNodeClaude(nodeId){
-  nodesPick = nodeId;
-  sectOpen["nodes:claude"] = true;
-  nodesRev++;
-  openNodesTab();
+// Open the Agents page on one node with its Claude section unfolded and in
+// view: where a Claude button sends its press when that node has no sign-in
+// of this account's yet.
+function openNodeClaude(nodeId, agent = "claude"){
+  // The Agents page on that node (R95 step 15), the agent's section open.
+  sectOpen[`agents:${agent}`] = true;
+  openAgentsOn(nodeId);
   const show = (tries) => {
-    const s = document.querySelector(`.ndrow[data-node="${CSS.escape(nodeId)}"] [data-sect="nodes:claude"]`);
+    const s = document.querySelector(`.agentstab [data-agnode="${CSS.escape(nodeId)}"] [data-sect="agents:${CSS.escape(agent)}"]`);
     if (s) return s.scrollIntoView({block: "start", behavior: "smooth"});
     if (tries > 0) setTimeout(() => show(tries - 1), 150);
   };
@@ -139,15 +155,15 @@ function openNodeClaude(nodeId){
 // and its row does the rest, so this is one request from here. The answer
 // is read: a refusal is said on the row, since a press that changes nothing
 // repaints nothing.
-async function signIn(nodeId, btn){
+async function signIn(nodeId, btn, id = "claude"){
   busy(btn, "Starting");
   signinCode = "";
   let j = {};
   try{
-    const r = await postJSON("/api/signin", {node: nodeId});
+    const r = await postJSON("/api/signin", {node: nodeId, agent: id});
     j = await r.json();
   }catch(e){ j = {error: "could not reach the server: " + e}; }
-  signinSaid[nodeId] = j.error || "";
+  signinSaid[id === "claude" ? nodeId : `${nodeId}:${id}`] = j.error || "";
   if (j.error) notify(j.error, true);
   await refresh();
   nodesRev++; drawPanes();
@@ -156,7 +172,7 @@ async function signIn(nodeId, btn){
 async function signinCancel(btn){
   busy(btn, "Stopping");
   try{ await postJSON("/api/signin", {action: "cancel"}); }
-  catch(e){ notify("could not reach the server: " + e, true); }
+  catch(e){ notify("could not reach the server: " + failWords(e), true); }
   signinCode = "";
   await refresh();
   nodesRev++; drawPanes();
@@ -185,23 +201,24 @@ async function sendCode(){
     const j = await r.json();
     if (j.error) notify(j.error, true);
     else { signinCode = ""; notify("sent: the row says what the sign-in makes of it"); }
-  }catch(e){ notify("could not reach the server: " + e, true); }
+  }catch(e){ notify("could not reach the server: " + failWords(e), true); }
   await refresh();
   nodesRev++; drawPanes();
 }
 
 // Sign this account out on one node. The login is that machine's, so the
 // machine is asked to let go of it; another node's is untouched.
-async function signOut(nodeId, btn){
+async function signOut(nodeId, btn, id = "claude"){
   const n = (nodesList || []).find(x => x.id === nodeId);
-  if (!confirm(`Sign out of Claude on ${n?.name || "this node"}?\n\nYour sessions stop working there until you sign in again. Your sign-in on any other node stays.`)) return;
+  const a = agentById(id) || AGENTS[0];
+  if (!await askYes(`Sign out of ${a.name} on ${n?.name || "this node"}?\n\nYour ${a.name} sessions stop working there until you sign in again. Your sign-in on any other node stays.`)) return;
   busy(btn, "Signing out");
   let j = {};
   try{
-    const r = await postJSON("/api/signout", {node: nodeId});
+    const r = await postJSON("/api/signout", {node: nodeId, agent: id});
     j = await r.json();
   }catch(e){ j = {error: "could not reach the server: " + e}; }
-  signinSaid[nodeId] = j.error || "";
+  signinSaid[id === "claude" ? nodeId : `${nodeId}:${id}`] = j.error || "";
   if (j.error) notify(j.error, true);
   else notify(`signed out on ${j.on || "the node"}`);
   await refresh();

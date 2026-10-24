@@ -193,7 +193,7 @@ def reads_line(project):
             f"`bb tests` or `bb map` makes the verb answer for it, so its notebook and its code "
             f"are yours to read, and its containers answer from here on this project's nodes, so "
             f"`bb -p NAME devapp` says where its page is and `bb capture shot` photographs it; "
-            f"`bb -p NAME transcripts` lists this account's own conversations with Claude there "
+            f"`bb -p NAME transcripts` lists this account's own conversations there, every agent's, "
             f"and `show ID` prints one, and their files are under ~/.claude/projects read-only. "
             f"Nothing there is yours to change: a write to its tree fails, a write to its notebook is "
             f"refused, and its containers are not yours to start or stop; a session on that project is "
@@ -226,7 +226,7 @@ def design_line(project):
                 "`bb design save` (the themes with their colors as tokens, the type, corners, space and "
                 "motion you settled on, the pages you built, the rules you followed; `bb design schema` "
                 "prints the shape) so the next session finds it there. "
-                f"Under the project's dial Claude may: Add to the design, {fill}.")
+                f"Under the project's dial Agents may: Add to the design, {fill}.")
     lang, pages = rec["language"], rec["pages"]
     themes = ", ".join(t["name"] for t in lang["themes"])
     own = sum(len(t.get("rules") or []) for t in lang["themes"]) + sum(len(p.get("rules") or []) for p in pages)
@@ -257,7 +257,7 @@ def design_line(project):
 
 
 def _design_dial(project):
-    """The project's dial Claude may: Add to the design, as pending reads it."""
+    """The project's dial Agents may: Add to the design, as pending reads it."""
     try:
         import pending                                   # beside this module
         return pending.mode(project, "design") or "auto"
@@ -571,6 +571,20 @@ def mentioned(project, text, told=()):
         keep += sorted([f for f in found if f[1] == kind], key=lambda f: -f[0])[:MENTIONED_EACH]
     return ("On the record, named by what you were asked:\n"
             + "\n".join(f"- {line}" for _, _, _, line in keep)), [name for _, _, name, _ in keep]
+
+
+def for_agent(agent_id, text):
+    """The block as a session of this coding agent reads it (R95 step 5):
+    Claude's as it is; another agent's with one line ahead of it saying
+    what it is, and that this briefing, the house rules and bb hold for it
+    as for any agent's session here."""
+    import agents
+    a = agents.get(agent_id)
+    if not a or a.id == "claude" or not text:
+        return text
+    return (f"This session runs {a.product}, BuilderBot's {a.name} agent. Everything below holds for it "
+            "as for a Claude session: where this briefing says Claude, read the session you are; "
+            "the house rules, the project's Agents may settings and bb apply to you alike.\n\n" + text)
 
 
 def block(project, reply="", asks=""):

@@ -19,6 +19,62 @@ if not project:
     sys.exit("[builderbot] ERROR: run bb sign inside a project's tree")
 
 
+def ago(at):
+    s = max(0, int(time.time()) - int(at or 0))
+    return (f"{s}s" if s < 90 else f"{s // 60} min" if s < 5400 else
+            f"{s // 3600} h" if s < 172800 else f"{s // 86400} days") + " ago"
+
+
+def status_verb(rest):
+    """bb sign status [TAG] (R134): whether the project's release APKs can be
+    signed, and how the newest went, in the Signing view's and the bell's
+    words."""
+    tag = rest[0] if rest else ""
+    d = bbapi.call("/api/signing", {"action": "release", "project": project}, auth=auth)
+    if d.get("error"):
+        sys.exit(f"[builderbot] ERROR: {d['error']}")
+    r = d.get("release") or {}
+    if not r.get("wanted"):
+        print(f"  {project}'s workflows hand over no unsigned APK (an artifact named bb-release-apk-TAG), "
+              "so BuilderBot signs none of its releases")
+        return
+    for k in r.get("keys") or []:
+        print(f"  {k.get('package') or 'the app'}: releases sign with {k.get('key')}  {k.get('sha256') or ''}")
+    if r.get("node"):
+        print(f"  signed on {r['node']}")
+    print("  ready: a release's APK can be signed" if not r.get("why") else f"  NOT READY: {r['why']}")
+    if r.get("looking"):
+        print("  looking for unsigned APKs now")
+    rows = [("signed", x) for x in r.get("signed") or []] + [("failed", x) for x in r.get("failed") or []]
+    rows = [x for x in rows if not tag or x[1].get("tag") == tag]
+    for what, x in sorted(rows, key=lambda x: -int(x[1].get("at") or 0)):
+        if what == "signed":
+            print(f"  {x.get('tag')}: signed {ago(x.get('at'))}, {', '.join(x.get('files') or [])} "
+                  f"with {x.get('key')} ({x.get('cert') or '?'}){'  ' + x['url'] if x.get('url') else ''}")
+        else:
+            print(f"  {x.get('tag')}: FAILED {ago(x.get('at'))}: {x.get('why')}")
+    if tag and not rows:
+        print(f"  nothing yet for {tag}: its APK is looked for once the release is made, and hourly")
+    if any(w == "failed" for w, _ in rows):
+        print("  bb sign release --why \"...\" asks for the look again once what stopped it is fixed")
+
+
+def release_verb(why):
+    """bb sign release --why (R134 step 5): the Signing view's Look for
+    unsigned APKs now, under the Sign a build dial."""
+    r = bbapi.call("/api/signing", {"action": "release-sign", "project": project, "why": why}, auth=auth)
+    if r.get("error"):
+        sys.exit(f"[builderbot] ERROR: {r['error']}")
+    if r.get("id") and not r.get("ok"):
+        print(f"[builderbot] asked {r.get('to') or 'the project owner'} (#{r['id']}), waiting up to "
+              "15 minutes for Approve in their bell", file=sys.stderr)
+        o = waits.outcome(auth, r["id"], "the look was not allowed")
+        if o.get("code"):
+            sys.exit(f"[builderbot] ERROR: {o.get('out') or 'it was not started'}")
+    print("[builderbot] looking for unsigned release APKs: bb sign status says how it went "
+          "(a minute or two)", file=sys.stderr)
+
+
 def keys_verb(sub, route, why, rest):
     """bb sign keys | key new NAME | map PACKAGE KEY (R106 step 6)."""
     if sub == "--keys":
@@ -57,6 +113,12 @@ def keys_verb(sub, route, why, rest):
     print("[builderbot] done: bb sign keys says what the project has now", file=sys.stderr)
 
 
+if sys.argv[1] == "--status":
+    status_verb(sys.argv[4:])
+    sys.exit(0)
+if sys.argv[1] == "--release":
+    release_verb(sys.argv[3])
+    sys.exit(0)
 if sys.argv[1].startswith("--"):
     keys_verb(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:])
     sys.exit(0)

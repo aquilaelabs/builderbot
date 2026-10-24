@@ -1715,7 +1715,7 @@ execFileSync('git', ['-C', A, 'init', '-q', '.'], { env });
 execFileSync('git', ['-C', B, 'init', '-q', '.'], { env });
 execFileSync('git', ['-C', A, 'remote', 'add', 'origin',
                      'git@github.com:owner/alpha.git'], { env });
-// ---- Move the version, with the other Claude may dials (B448) ---------------
+// ---- Move the version, with the other Agents may dials (B448) ---------------
 // An owner who set every dial on the settings panel to auto still found the
 // version locked, since the policy lived on the Artifacts tab alone. The
 // panel carries it now and writes the same policy.

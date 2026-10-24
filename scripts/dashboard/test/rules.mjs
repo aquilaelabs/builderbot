@@ -287,7 +287,10 @@ ok(/nothing changed here that a rule/.test(bb('check')),
   // is stamped, so the next hand-back checks for real (B412).
   const away = execFileSync('python3', [join(HERE, '..', 'bb-check-relay'), 'alpha', 'u_test'],
     { env: { ...ENV, BB_TREE: `${DIR}/ws/alpha`, XDG_CACHE_HOME: `${DIR}/cache-away`, BUILDERBOT_ROLE: 'node',
-             BB_CONTROLLER: 'http://127.0.0.1:9', BB_TOKEN: 'bbs_nothing' },
+             BB_CONTROLLER: 'http://127.0.0.1:9', BB_TOKEN: 'bbs_nothing',
+             // Not ninety seconds of waiting out a restart (bbapi, R251): the
+             // answer is the same, nobody answered.
+             BB_CONTROLLER_WAIT: '0' },
       input: JSON.stringify({ stop_hook_active: false }) }).toString();
   ok(away === '' && !existsSync(`${DIR}/cache-away/builderbot/u/_none/project/alpha/checked`),
      `with the controller not answering, the Stop hook lets the stop go and stamps nothing (${away.slice(0, 80)})`);

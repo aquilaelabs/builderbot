@@ -340,7 +340,7 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
       { input: '{"prompt":"go"}', encoding: 'utf8', env, stdio: ['pipe', 'pipe', 'pipe'] });
     out = { code: 0, err: '' };
   } catch (e) { out = { code: e.status, err: String(e.stderr) }; }
-  ok(out.code === 2 && /turnbox lets 1 Claude session work at once/.test(out.err)
+  ok(out.code === 2 && /turnbox lets 1 agent session work at once/.test(out.err)
      && /waited 5 seconds/.test(out.err) && Date.now() - t0 >= 4000,
      `a prompt that waits out its time is refused, naming the node and the limit (${out.code}: ${out.err.trim().slice(0, 70)})`);
   const after = (await call('/api/v1/nodes')).nodes.find(n => n.id === minted.id);

@@ -32,7 +32,8 @@ import sys as _sys
 # Beside this file, whichever way it was loaded: bb's own Python loads the
 # modules by path, where a plain sibling import finds nothing.
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-from names import claude_session   # noqa: E402
+from names import agent_sessions, running_session   # noqa: E402
+import agents
 import copy
 import json
 import os
@@ -294,7 +295,7 @@ def _log(d, project, by, ev):
     """
     name = str((actor() if actor else "") or "")[:60]
     ev = {"at": int(time.time()),
-          "by": "claude" if by == "claude" else "you",
+          "by": "claude" if by == "claude" else "you", **agents.asker(by),
           # The account behind it, where one is known, including behind a
           # session, whose author is the person it was minted for.
           **({"who": name} if name else {}),
@@ -752,7 +753,7 @@ def add(project, text, by="you", steps=(), who="", number=None, target=""):
         nid = _int(number) or _next_id(rows, d, project)
         _took(d, project, nid)
         row = {"id": nid, "text": text,
-               "added": int(time.time()), "by": "claude" if by == "claude" else "you",
+               "added": int(time.time()), "by": "claude" if by == "claude" else "you", **agents.asker(by),
                "sent": 0,
                "steps": [{"text": x, "sent": 0} for x in steps],
                **({"target": target} if target else {})}
@@ -1614,7 +1615,7 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note="", pre
     # conversation and nobody else's. Sent without this, a second person's
     # step was typed into the owner's window, or refused as "no session is
     # running here" while their own sat there running (B194).
-    session = prefix + claude_session(project)
+    session = running_session(prefix, project, set(sessions))
     r = tell(session, line, sessions)
     if r.get("error") or not r.get("sent"):
         return r
@@ -1816,10 +1817,14 @@ def announce(project, kinds, sessions=()):
     line = changed_line(kinds if isinstance(kinds, dict) else {kinds: True})
     if not line or tell is None or tmux_name is None:
         return {"ok": True, "sent": False}
-    session = claude_session(project)
-    if session not in set(sessions):
+    # Every agent's running session on it is told (R95 step 16).
+    live = [n for n in agent_sessions(project) if n in set(sessions)]
+    if not live:
         return {"ok": True, "sent": False}
-    return tell(session, line, sessions)
+    r = {"ok": True, "sent": False}
+    for session in live:
+        r = tell(session, line, sessions)
+    return r
 
 
 # The words after the list, the same at every level of it.
@@ -1907,7 +1912,7 @@ def panel(name, live, prefix):
     # account's prefix, and the owner's prefix is empty (B194). Read with
     # the bare name, a second person's arrows said "no Claude session is
     # running here" with their own session open in the next tab.
-    session = prefix + claude_session(name)
+    session = running_session(prefix, name, set(live))
     return {"items": items(name),
             # How many are finished, for the toggle's label (R78): the
             # items themselves come when it is pressed.

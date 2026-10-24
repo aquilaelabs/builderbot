@@ -122,6 +122,11 @@ const VSCODE = {
   'POST /api/v1/files rename': () => files('rename', { path: 'pin-written.txt', to: 'pin-dir/pin-renamed.txt', overwrite: false }),
   'POST /api/v1/files delete': () => files('delete', { path: 'pin-dir', recursive: true }),
   'POST /api/v1/files search': () => files('search', { path: '', query: 'needle' }),
+  // What opening an agent's session asks first (R128): the boot it starts for.
+  'GET /api/status': async () => {
+    try { return { status: 200, json: await ed.status() }; }
+    catch (e) { return { status: e.status || 0, json: e.body || { error: e.message } }; }
+  },
   'POST /api/v1/files changes': async () => {
     const first = await files('changes', { since: 0, wait: 0 });
     writeFileSync(`${tree}/pin-change.txt`, 'changed\n');

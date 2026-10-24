@@ -3,7 +3,7 @@ session on any project, sent to the controller's reports rather than the
 project's tracker, where whoever looks after this install's BuilderBot reads
 it in the diagnostics. Nothing comes back: there is no answer to follow up.
 
-Arguments: the words of the report and its --area and --repro, or for
+Arguments: the words of the report and its --area, --repro and --reproduces, or for
 `conversation` the report's number. BB_R_SUB is the subcommand bb chose (add,
 conversation), BB_R_AUTH the auth header, BB_R_PROJECT the project.
 """
@@ -41,9 +41,15 @@ def fail(d):
 
 
 if sub == "add":
-    words, got = flags(("area", "repro"))
+    words, got = flags(("area", "repro", "reproduces"))
+    # Steps given say how often they showed it (R124): a repro reads as a
+    # sure thing whether or not it is one.
+    if got.get("repro") and not got.get("reproduces"):
+        sys.exit("[builderbot] ERROR: say whether those steps reproduce it: --reproduces always, "
+                 "sometimes, once (seen the one time) or untried")
     d = post({"action": "add", "project": proj, "text": " ".join(words),
-              "area": got.get("area", ""), "repro": got.get("repro", "")})
+              "area": got.get("area", ""), "repro": got.get("repro", ""),
+              "reproduces": got.get("reproduces", "")})
     fail(d)
     print(f"[builderbot] reported #{d['id']}: it is in BuilderBot's diagnostics now, not this "
           "project's tracker, and nothing more is needed from this session")

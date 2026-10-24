@@ -83,6 +83,10 @@ if op == "--topics":
         print(f"  {slug:<11}{gist}")
     sys.exit(0)
 p = preamble.payload(proj, reply=mine.get("reply") or "", asks=mine.get("asks") or "")
+# Which coding agent it is for (R95 step 5), where it matters: a session of
+# an agent other than Claude is told what it is and that the briefing holds
+# for it as for Claude, ahead of the rest. bb-tty names it (BB_AGENT).
+p["text"] = preamble.for_agent(os.environ.get("BB_AGENT", ""), p["text"])
 if op == "--json":
     print(json.dumps(p))
 else:

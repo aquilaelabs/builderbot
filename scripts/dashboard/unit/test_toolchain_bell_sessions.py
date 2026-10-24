@@ -31,14 +31,17 @@ class Sessions(unittest.TestCase):
             installed = staticmethod(lambda n: "2.0.1")
             latest = staticmethod(lambda: {"version": "2.0.2"})
 
-        was = toolchains.nodes, toolchains.claudecode, toolchains.last_check
-        toolchains.nodes, toolchains.claudecode = Nodes(), Claude()
+        was = toolchains.nodes, toolchains.claudecode, toolchains.last_check, toolchains.agentcode
+        toolchains.nodes, toolchains.claudecode, toolchains.agentcode = Nodes(), Claude(), None
         toolchains.last_check = lambda nid: ({}, None)
         try:
             bound = {"alpha": "n1", "beta": "n1", "ep.silon": "n1", "gamma": "n1", "far": "n2"}
-            return [r for r in toolchains.attention(bound) if r["kind"] == "toolchain"]
+            # The coding agents' own row (R95: the Agents page's), not the
+            # toolchains'.
+            self.assertFalse([r for r in toolchains.attention(bound) if r["kind"] == "toolchain"])
+            return [r for r in toolchains.agent_attention(bound) if r["kind"] == "agents"]
         finally:
-            toolchains.nodes, toolchains.claudecode, toolchains.last_check = was
+            toolchains.nodes, toolchains.claudecode, toolchains.last_check, toolchains.agentcode = was
 
     def test_no_session_running_counts_none(self):
         (row,) = self.bell([{"name": "shell-alpha"}])

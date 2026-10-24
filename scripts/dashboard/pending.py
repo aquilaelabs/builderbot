@@ -59,6 +59,7 @@ _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
+import agents  # noqa: E402
 import prefs  # noqa: E402
 
 write_json = None
@@ -145,7 +146,7 @@ def refusal(kind):
     label = {"roadmap": "Add to roadmap", "bugs": "File bugs", "rules": "Add rules",
              "settings": "Fill in build and test", "design": "Add to the design",
              "wiki": "Write the wiki"}.get(kind, kind)
-    return (f"this project's setting Claude may: {label} is deny, so this "
+    return (f"this project's setting Agents may: {label} is deny, so this "
             f"was not filed: say it in your reply instead, and the operator adds it "
             "if they agree")
 
@@ -170,7 +171,7 @@ def hold(project, kind, verb, args, summary, number=None, after=None, by="claude
                "args": args if isinstance(args, dict) else {},
                "summary": " ".join(str(summary or "").split())[:MAX_SUMMARY],
                "number": number, "after": after,
-               "by": "claude" if by == "claude" else "you",
+               "by": "claude" if by == "claude" else "you", **agents.asker(by),
                "at": int(time.time())}
         d["next"] += 1
         rs.append(rec)

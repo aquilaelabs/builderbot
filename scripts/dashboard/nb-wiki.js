@@ -5,7 +5,7 @@
 // are kept by the controller as a forge-shaped repository (wiki.py), so
 // Export is a zip of Markdown and Push sends them to the repository's own
 // wiki when the project has push rights there. A session writes with
-// bb wiki, under Claude may: Write the wiki. One classic script beside
+// bb wiki, under Agents may: Write the wiki. One classic script beside
 // index.html (docs/design-language.md, Files): a factory makeNotebook calls
 // per notebook.
 
@@ -223,10 +223,10 @@ function nbWikiView({$, nb, project}){
     drawWiki();
   }
 
-  function go(name){
+  async function go(name){
     const p = byName(name);
     if (!p){ notify(`no page called ${name} yet: New page makes it`); return; }
-    if (wikiDirty() && !confirm("Leave the page you are editing? What you typed is not saved.")) return;
+    if (wikiDirty() && !await askYes("Leave the page you are editing? What you typed is not saved.")) return;
     nb.wikiClear();
     // A history entry (R256 step 3): the address names the page, and Back
     // returns to the one before.
@@ -283,7 +283,7 @@ function nbWikiView({$, nb, project}){
   function article(){
     const meta = byName(nb.wkCur);
     if (!meta) return `<article class="wkarticle"><div class="hint">No pages yet. Start with Home, the page a wiki opens on; a session adds pages with bb wiki save${
-      nb.wkData?.gate === "deny" ? ", though this project's Claude may: Write the wiki is deny" : ""}.</div></article>`;
+      nb.wkData?.gate === "deny" ? ", though this project's Agents may: Write the wiki is deny" : ""}.</div></article>`;
     const pg = nb.wkPages[meta.name];
     // A reader (B101) gets no Edit, Rename or Remove on a page: New page,
     // dead above, says why.
@@ -370,7 +370,7 @@ function nbWikiView({$, nb, project}){
     box.querySelectorAll("[data-anchor]").forEach(a => a.onclick = ev => { ev.preventDefault(); wikiScroll(box, a.dataset.anchor); });
     const pick = box.querySelector("#wkPick");
     if (pick) pick.onchange = () => go(pick.value);
-    on("wkRead", () => { if (nb.wkEdit && !confirm("Stop editing? What you typed is not saved.")) return; nb.wkEdit = null; drawWiki(); });
+    on("wkRead", async () => { if (nb.wkEdit && !await askYes("Stop editing? What you typed is not saved.")) return; nb.wkEdit = null; drawWiki(); });
     on("wkEditTab", () => { nb.wkEdit = {name, text: nb.wkPages[name]?.text || ""}; drawWiki(); box.querySelector("#wkText")?.focus(); });
     const ta = box.querySelector("#wkText");
     if (ta) ta.oninput = () => { nb.wkEdit.text = ta.value; };
@@ -385,7 +385,7 @@ function nbWikiView({$, nb, project}){
       loadWiki();
     });
     on("wkRm", async () => {
-      if (!confirm(`Remove ${byName(name)?.title || name} from the wiki? Its history keeps it, and a push takes it off the forge's wiki too.`)) return;
+      if (!await askYes(`Remove ${byName(name)?.title || name} from the wiki? Its history keeps it, and a push takes it off the forge's wiki too.`)) return;
       if (await post({action: "remove", name, base: nb.wkPages[name]?.rev || ""})){
         nb.wkCur = ""; loadWiki();
       }
@@ -393,7 +393,7 @@ function nbWikiView({$, nb, project}){
     on("wkRename", async () => {
       const at = $("wkBody")?.querySelector(".wktabs");
       const to = at ? await askInline(at, {label: "The page's new name", value: byName(name)?.title || name, ok: "Rename"})
-        : prompt("Rename the page to:", byName(name)?.title || name);
+        : await askText("Rename the page", {value: byName(name)?.title || name, verb: "Rename", label: "New name"});
       if (!to || !to.trim()) return;
       const j = await post({action: "rename", name, to});
       if (!j) return;
@@ -434,7 +434,7 @@ function nbWikiView({$, nb, project}){
                                     : "took in the forge's wiki's changes"); nb.wkPages = {}; loadWiki(); }
   };
   $("wkPush").onclick = async ev => {
-    if (wikiDirty() && !confirm("A page is being edited and is not saved: push what is saved?")) return;
+    if (wikiDirty() && !await askYes("Push what is saved?\n\nA page is being edited and is not saved; its edits stay here.", {verb: "Push"})) return;
     busy(ev.target, "Pushing");
     const r = await postJSON("/api/wiki", {project, action: "push"});
     let j = await r.json().catch(() => ({}));
@@ -442,7 +442,7 @@ function nbWikiView({$, nb, project}){
     // GitHub makes you save before a wiki exists. Replacing it is offered,
     // said for what it is.
     if (j.error && /has not taken in/.test(j.error)
-        && confirm(`${j.error}.\n\nReplace the forge's wiki with this one? Pages there that are not here are removed from it (its own history keeps them). Cancel, then Pull, to merge instead.`)){
+        && await askYes(`${j.error}.\n\nReplace the forge's wiki with this one? Pages there that are not here are removed from it (its own history keeps them). Cancel, then Pull, to merge instead.`)){
       const r2 = await postJSON("/api/wiki", {project, action: "push", replace: true});
       j = await r2.json().catch(() => ({}));
     }

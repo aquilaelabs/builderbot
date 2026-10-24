@@ -133,6 +133,11 @@ class Store(context: Context) {
     var scheme: String
         get() = plain.getString("scheme", "Default") ?: "Default"
         set(v) { plain.edit().putString("scheme", v).apply() }
+    // ...and which half of it: Dark, Light or System (R50 step 16). Dark for a
+    // phone that never chose, which is what the app was before.
+    var mode: String
+        get() = plain.getString("mode", "Dark") ?: "Dark"
+        set(v) { plain.edit().putString("mode", v).apply() }
     // Whether a session coming free is worth a notification.
     var turns: Boolean
         get() = plain.getBoolean("turns", true)

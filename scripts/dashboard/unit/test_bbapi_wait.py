@@ -140,6 +140,10 @@ class Wait(unittest.TestCase):
         bbapi.request("/api/x")
         time.sleep(0.2)
         self.assertGreater(len(seen), 2, "a GET it hung up on is asked again")
+        # shutdown wakes the accept the thread is blocked in, which close
+        # alone does not: the listener lived on into the next module's tests
+        # and test_ciwatch's look then missed a finding (B287).
+        lst.shutdown(socket.SHUT_RDWR)
         lst.close()
 
 

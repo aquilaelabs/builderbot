@@ -180,5 +180,5 @@ async function sendKey(key){
     const r = await postJSON("/api/keys", {session: sessionOf(t.arg), key});
     const j = await r.json();
     if (j.error) notify("key: " + j.error, true);
-  }catch(e){ notify("key failed: " + e, true); }
+  }catch(e){ notify("key failed: " + failWords(e), true); }
 }
