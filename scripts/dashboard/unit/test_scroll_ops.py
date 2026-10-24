@@ -26,7 +26,7 @@ class ScrollOps(unittest.TestCase):
 
     def test_every_op_is_one_a_node_runs(self):
         # The agent runs an argv that starts send-keys or copy-mode and names
-        # -t; an -X one is not first cancelled out of copy mode.
+        # -t; an -X one is not first canceled out of copy mode.
         for key in ("lineup", "linedown"):
             for argv in macros.scroll_ops("s", key, 1):
                 self.assertIn(argv[0], ("send-keys", "copy-mode"))
