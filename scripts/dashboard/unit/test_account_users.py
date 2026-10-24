@@ -148,3 +148,39 @@ class Tty(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShareFolder(unittest.TestCase):
+    """An account's folder of conversations goes with its home (R125, the dev
+    pair's walk of 24 Oct): on a node's own disk the session account's 0700
+    folder was one the account's user could not write, so its conversations
+    stayed in its home and the controller listed none."""
+    def setUp(self):
+        import tempfile
+        import types
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.tmp, True)
+        self.chowned = []
+        self.a = object.__new__(agent.Agent)
+        self.pw = types.SimpleNamespace(pw_uid=4321, pw_gid=4321, pw_name="bbu-12345678")
+
+    def own(self, account):
+        was_share, was_log = agent.SHARE, agent.log
+        agent.SHARE, agent.log = self.tmp, (lambda *a: None)
+        try:
+            with mock.patch("os.lchown", lambda p, u, g: self.chowned.append((os.path.relpath(p, self.tmp), u))):
+                self.a._own_share(account, self.pw)
+        finally:
+            agent.SHARE, agent.log = was_share, was_log
+
+    def test_made_where_missing_and_given_to_the_account_s_user(self):
+        os.makedirs(os.path.join(self.tmp, ".claude"))
+        self.own("u_12345678")
+        self.assertTrue(os.path.isdir(os.path.join(self.tmp, ".claude", "u_12345678", "projects")))
+        self.assertIn((".claude/u_12345678", 4321), self.chowned)
+        self.assertIn((".claude/u_12345678/projects", 4321), self.chowned)
+
+    def test_no_share_on_this_node_is_left_alone(self):
+        self.own("u_12345678")
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, ".claude")))
+        self.assertEqual(self.chowned, [])
