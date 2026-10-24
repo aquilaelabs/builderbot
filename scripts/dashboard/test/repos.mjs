@@ -5,7 +5,7 @@
 // repository's node and dials are its project's; a session cannot merge.
 // What is refused, and that everything is as it was after the split. No
 // browser.
-import { ok, done, DIR, URL } from './lib.mjs';
+import { ok, done, DIR, URL, launch, newPage, ready } from './lib.mjs';
 import { readFileSync } from 'node:fs';
 
 const base = URL.replace(/\/$/, '');
@@ -42,6 +42,31 @@ const key = m.key;
 ok(JSON.stringify(reposFile()[key]?.members) === '["gamma","ep.silon"]', 'the record keeps its repositories');
 ok(JSON.stringify(prefsFile().beta?.reads) === JSON.stringify([key]), `beta reads the project now, not one repository (${JSON.stringify(prefsFile().beta?.reads)})`);
 
+// The Projects page draws the project as one card, its repositories under
+// its name, and no card of a repository of its own (step 6).
+const browser = await launch();
+{
+  const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
+  await page.goto(URL + '#/projects');
+  await ready(page);
+  await page.evaluate(() => refresh());
+  await page.waitForSelector('.pcard.prepos', { timeout: 15000 }).catch(() => {});
+  const drawn = await page.evaluate(() => ({
+    cards: [...document.querySelectorAll('.projtab .pcard')].map(c => c.querySelector('.pcname .name')?.textContent.trim()),
+    repos: [...document.querySelectorAll('.pcard.prepos .pcrepo > .link')].map(b => b.textContent.trim()),
+    start: document.querySelector('.pcard.prepos [data-c]')?.dataset.c,
+    takeout: document.querySelectorAll('.pcard.prepos [data-repout]').length }));
+  ok(drawn.cards.filter(n => n === 'Shop').length === 1 && !drawn.cards.includes('ep.silon') && !drawn.cards.includes('gamma')
+     && JSON.stringify(drawn.repos) === '["gamma","ep.silon"]' && (drawn.start ?? 'gamma') === 'gamma' && drawn.takeout === 2,
+     `the project is one card, its repositories under it, its Start (where its first may have one) on its first (${JSON.stringify(drawn)})`);
+  // ...and the second repository's own page starts the same one session.
+  const at = await page.evaluate(() => { const p = state.projects.find(x => x.name === 'ep.silon');
+    const d = document.createElement('div'); d.innerHTML = projectActions(p); return d.querySelector('[data-c]')?.dataset.c; });
+  ok(at === 'gamma', `Start on the second repository's page opens the project's session, on its first (${at})`);
+  await page.screenshot({ path: `${DIR}/repos-card.png` }).catch(() => {});
+  await page.close();
+}
+
 // One session for the project, on its first repository: one asked for on
 // the second is refused, and says where it starts (step 4).
 const t = await fetch(base + '/term/?arg=' + encodeURIComponent('claude:ep.silon'), { headers: ADMIN });
@@ -71,4 +96,4 @@ ok(again.status === 400 && /not in a project/.test(again.error || ''), `a reposi
 
 // Put back.
 await post('/api/prefs', { project: 'beta', reads: [] });
-await done(null);
+await done(browser);

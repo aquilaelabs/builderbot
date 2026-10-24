@@ -4762,6 +4762,13 @@ def _snapshot(who):
         "boot": layout.boot_id(),
         "image": _timed("status:image", lambda: image_stamp()),
         "projects": ps,
+        # The projects of several repositories (R136) whose every repository
+        # this account sees: the Projects page draws each as one card.
+        "repos": {k: {"name": registry.label(k), "pid": registry.pid(k), "members": ms,
+                      "may": bool(who) and not who.get("session")
+                      and (users.is_admin(who) or membership.may_manage(who, k))}
+                  for k, ms in repos.all_members().items()
+                  if ms and set(ms) <= {p["name"] for p in ps}},
         "sessions": sessions,
         # Every node with a runner on it: the Runner card is a view of these
         # and nothing else, since CI left this container (phase 7). Read from

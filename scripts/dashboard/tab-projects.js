@@ -152,8 +152,94 @@ function projectCard(p){
         p.phone.mine ? "you" : esc(p.phone.owner)}</div>` : ""}
     ${p.testing ? `<div class="pnote dim">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}
     ${projectNote(p)}
-    <div class="pcacts actbar">${projectActions(p, p.trash_why ? "" : `<button type="button" class="danger" data-del="${esc(p.name)}">Delete</button>`)}</div>
+    <div class="pcacts actbar">${projectActions(p, (p.may_archive && !p.archived && !state?.session
+      ? `<button type="button" data-repadd="${esc(p.name)}">Add a repository</button>` : "")
+      + (p.trash_why ? "" : `<button type="button" class="danger" data-del="${esc(p.name)}">Delete</button>`))}</div>
   </div>`;
+}
+
+// A project of several repositories (R136) is one card, the project's: its
+// name and id over its repositories, each opening its own notebook, and one
+// Start for the one session that works in all of them, on the first.
+function reposOf(name){
+  for (const [k, r] of Object.entries(state?.repos || {})) if (r.members.includes(name)) return k;
+  return "";
+}
+function reposCard(key){
+  const r = state.repos[key], rows = r.members.map(m => (state?.projects || []).find(p => p.name === m)).filter(Boolean);
+  const first = rows[0];
+  if (!first) return "";
+  const pc = colorAttrs(first.color);
+  return `<div class="pcard prepos${pc.cls}" data-row="${esc(first.name)}" data-repos="${esc(key)}"${pc.style}>
+    <div class="pcname"><button type="button" class="name link" data-open="${esc(first.name)}" title="open ${esc(r.name)}'s page">${esc(r.name)}</button>${lockMark(first)}</div>
+    <div class="pcfacts">${[`<span class="pid" title="this project's id, which never changes">${esc(r.pid)}</span>`,
+      `${rows.length} repositories`, esc(first.node_name || first.session_at || "")].filter(Boolean).join(" · ")}</div>
+    ${projectState(first)}
+    <div class="pcrepos">${rows.map(p => `<div class="pcrepo">
+      <button type="button" class="link" data-open="${esc(p.name)}" title="open ${esc(p.label || p.name)}'s notebook">${esc(p.label || p.name)}</button>
+      <span class="pcfacts">${p.git ? `git: <span class="pbr">${esc(p.git)}</span>` : ""}</span>
+      ${r.may ? `<button type="button" data-repout="${esc(p.name)}" title="take ${esc(p.label || p.name)} out of ${esc(r.name)}, back to a project of its own">Take out</button>` : ""}
+    </div>`).join("")}</div>
+    ${projectNote(first)}
+    <div class="pcacts actbar">${projectActions(first, r.may ? `<button type="button" data-repadd="${esc(key)}">Add a repository</button>` : "")}</div>
+  </div>`;
+}
+// The cards of a list of projects: a repository of a project of several is
+// drawn once, as its project's card, where its first repository falls.
+function projectCards(list){
+  const done = new Set();
+  return list.map(p => {
+    const k = reposOf(p.name);
+    if (!k) return projectCard(p);
+    if (done.has(k)) return "";
+    done.add(k);
+    return reposCard(k);
+  }).join("");
+}
+
+// Add a repository to a project (R136): which, from the projects not in one
+// already, and, where the project is one repository today, what the project
+// over both is called (its repository's name until it is given another).
+async function addRepository(btn){
+  const into = btn.dataset.repadd, made = state?.repos?.[into];
+  closeMore();
+  const head = btn.closest(".pcard")?.querySelector(".pcname") || btn;
+  const taken = new Set(Object.values(state?.repos || {}).flatMap(r => r.members));
+  const pick = (state?.projects || []).filter(p => p.name !== into && !taken.has(p.name) && !p.archived);
+  if (!pick.length){ notify("every other project is in a project of repositories already, or archived", true); return; }
+  const got = await askInline(head, {label: `Add a repository to ${made ? made.name : projLabel(into)}`, ok: "Next",
+                                     options: pick.map(p => p.label || p.name)});
+  if (!got) return;
+  const p = pick.find(x => x.name === got || (x.label || x.name).toLowerCase() === got.toLowerCase());
+  if (!p){ notify(`${got} is not a project that can be added here`, true); return; }
+  let name = "";
+  if (!made){
+    name = await askInline(head, {label: `The project over ${projLabel(into)} and ${p.label || p.name} is called`,
+                                  value: projLabel(into), ok: "Add"});
+    if (name === null) return;
+  }
+  try{
+    const j = await (await postJSON("/api/repos", {action: "merge", into, add: [p.name], name})).json();
+    if (j.error){ notify(j.error, true); return; }
+    const n = j.ended?.length || 0;
+    notify(`${p.label || p.name} is a repository of ${j.name}${
+      j.readers?.length ? `; ${j.readers.join(", ")} now read${j.readers.length === 1 ? "s" : ""} every repository of it` : ""}${
+      n ? `; ${n} session${n === 1 ? "" : "s"} on it ended` : ""}`);
+  }catch(e){ notify("adding the repository failed: " + failWords(e), true); }
+  await refresh();
+}
+
+// A repository taken out of its project, back to a project of its own.
+async function takeOutRepository(btn){
+  const m = btn.dataset.repout;
+  try{
+    const j = await (await postJSON("/api/repos", {action: "split", name: m})).json();
+    if (j.error){ notify(j.error, true); return; }
+    const n = j.ended?.length || 0;
+    notify(`${j.out.map(projLabel).join(" and ")} ${j.out.length === 1 ? "is a project" : "are projects"} of ${
+      j.out.length === 1 ? "its" : "their"} own again${n ? `; ${n} session${n === 1 ? "" : "s"} ended` : ""}`);
+  }catch(e){ notify("taking the repository out failed: " + failWords(e), true); }
+  await refresh();
 }
 
 function renderProjectsInto(i){
@@ -216,7 +302,7 @@ function renderProjectsInto(i){
       fadeThrough(".pane .doc.on .projtab #pjGrid > *", () => { pjChip = c.dataset.pjchip; renderProjectsInto(i); }));
   const inChip = p => !pjChip || (pjChip === "none" ? !p.group : p.group === pjChip);
   const live = shown.filter(p => !p.archived && inChip(p)), gone = pjChip ? [] : shown.filter(p => p.archived);
-  const grid_ = list => `<div class="pgrid">${list.map(projectCard).join("")}</div>`;
+  const grid_ = list => `<div class="pgrid">${projectCards(list)}</div>`;
   const html = byProjectGroup(live).map(({group: g, list}) => {
         if (!g) return grid_(list);
         // The pencil renames the group for this account alone: a group is a
@@ -232,6 +318,8 @@ function renderProjectsInto(i){
     wireProjectRows(grid);
     wireProjectMenu(grid);
     grid.querySelectorAll("[data-pjgrename]").forEach(b => b.onclick = () => renameProjectGroup(b));
+    grid.querySelectorAll("[data-repadd]").forEach(b => b.onclick = e => { e.stopPropagation(); addRepository(b); });
+    grid.querySelectorAll("[data-repout]").forEach(b => b.onclick = e => { e.stopPropagation(); takeOutRepository(b); });
     grid.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openNotebook(b.dataset.open));
     grid.querySelectorAll(".pcard[data-row]").forEach(c => c.onclick = e => {
       if (!cardPress(e)) return;

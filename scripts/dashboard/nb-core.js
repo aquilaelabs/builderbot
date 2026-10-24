@@ -1040,7 +1040,10 @@ function projectActions(p, extra = ""){
   // The agent the project's Start opens (R95 step 4): Claude's unless its
   // settings name another. Its own session running here makes it Open.
   const ag = projectAgent(p);
-  const name = p.name, sess = myLiveSession(name), mine = !!sess;
+  // A repository of a project of several (R136) has its project's one
+  // session, on the project's first repository: Start opens that.
+  const rk = Object.values(state?.repos || {}).find(r => r.members.includes(p.name));
+  const name = p.name, at = rk ? rk.members[0] : name, sess = myLiveSession(at), mine = !!sess;
   const dead = claudeDeadWhy(p);
   // What this account's roles do not give is left out, not drawn dead.
   const forbid = !p.locked_me && !!writeWhy(p);
@@ -1092,7 +1095,7 @@ function projectActions(p, extra = ""){
   const inst = agentInstall(p, ag);
   return `${isBroken(p) || forbid ? "" : inst ? `<button type="button" data-tcinst="${esc(inst)}" data-agent="${esc(ag.id)}" title="${
         esc(`${ag.product} is not installed on ${p.node_name || "its node"}: open its Agents page to install it`)}">Install ${esc(ag.name)}</button>`
-      : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(name)}"${dead ? " disabled" : ""} title="${esc(say)}">${
+      : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(at)}"${dead ? " disabled" : ""} title="${esc(say)}">${
         mine ? "Manage agent" : "Start agent"}</button>`}
     ${mayShell() && !notMine(p) ? `<button type="button" data-s="${esc(name)}"${!gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}
     <span class="more"><button type="button" data-pmore aria-label="more" aria-expanded="false">${DOTS}</button><div class="actmenu" hidden>${menu}</div></span>`;
