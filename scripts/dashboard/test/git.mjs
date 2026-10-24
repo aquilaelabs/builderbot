@@ -1482,6 +1482,19 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
   ok(/The Android CI check failed on main/.test(bell) && /Git view/.test(bell) && /On GitHub/.test(bell)
      && link === 'https://github.com/o/beta/actions/runs/11',
      `the bell carries a row while main is red, with the way to the Git view (${bell.slice(0, 80)})`);
+  // Its buttons each one line tall, their words whole (B332), and Dismiss
+  // puts it away (B331: the run's key had a space, and the page split it).
+  const tall = await page.$eval('#bellPanel', p => {
+    const row = [...p.querySelectorAll('.bnote')].find(n => /CI failing in beta/.test(n.textContent));
+    return [...row.querySelectorAll('.acts a')].map(a => { const r = a.getBoundingClientRect(), lh = parseFloat(getComputedStyle(a).lineHeight) || 16;
+      return { text: a.textContent.trim(), lines: Math.round((r.height - 8) / lh) }; });
+  });
+  ok(tall.length === 3 && tall.every(b => b.lines <= 1), `the row's buttons keep their words on one line (${JSON.stringify(tall)})`);
+  await page.evaluate(() => { const row = [...document.querySelectorAll('#bellPanel .bnote')].find(n => /CI failing in beta/.test(n.textContent));
+    row.querySelector('[data-bdismiss]').click(); });
+  const gone = await page.waitForFunction(() => !(state?.ci_red || []).some(c => c.project === 'beta'), null, { timeout: 10000 }).then(() => true, () => false);
+  ok(gone, 'Dismiss puts the CI row away');
+  await page.evaluate(() => postJSON('/api/bell', { action: 'restore' }));
   await page.evaluate(() => toggleBell(false));
   // R117 step 4: the runner row carries Fix, which writes that one line into
   // the working tree, uncommitted, and Changes shows it; nothing is pushed.
