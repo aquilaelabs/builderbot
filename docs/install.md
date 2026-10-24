@@ -25,7 +25,7 @@ chown -R 99:100 /mnt/user/appdata/BuilderBot
 
 | Dir | Holds |
 |---|---|
-| `home/` | each account's home on the controller (shell history, npm globals, which Claude login it is bound to); survives image updates |
+| `home/` | each account's home on the controller (shell history, npm globals, which agent logins each node reported for it); survives image updates |
 | `config/` | your custom startup hooks (`config/startup.d/*.sh`) + persistent logs (`config/logs/`) |
 
 Keep `home/` on a cache/SSD-backed share: it does heavy small-file IO.
@@ -33,7 +33,7 @@ Keep `home/` on a cache/SSD-backed share: it does heavy small-file IO.
 
 ### 2. Create the secrets folder (recommended)
 
-Root-owned, so its contents are **never readable by Claude sessions**:
+Root-owned, so its contents are **never readable by sessions**:
 
 ```bash
 mkdir -p /mnt/user/appdata/BuilderBot/secrets/ssh
@@ -55,12 +55,12 @@ here never enters a session's environment, and all logs are redacted of
 token patterns *and* the literal secret values. A node's runner token is
 not a file here: it is typed on the CI runner page (under Build) and kept
 root-only by the controller. Details and threat model: [docs/unraid.md, Shielding
-secrets](unraid.md#shielding-secrets-pat--ssh-keys-from-claude-sessions).
+secrets](unraid.md#shielding-secrets-pat--ssh-keys-from-sessions).
 
 Skippable: a project's settings can make an SSH deploy key for it or hold
 its git access token instead, one project at a time. Or, if you don't care
-about shielding, put keys in `home/.ssh/`; everything works, Claude can just
-see them.
+about shielding, put keys in `home/.ssh/`; everything works, a session can
+just see them.
 
 ### 3. Install the container
 
@@ -120,18 +120,21 @@ box skips them all, and About or your Profile brings them back.
 Every `bb doctor` line should be `[ok]` or an expected `[skip]`. On the
 controller it verifies: the workspace and home are writable, git is new
 enough, each account has a commit identity, GitHub is reachable, a node can
-take a Claude session, the **Docker daemon** on each node that has one
+take a session, the **Docker daemon** on each node that has one
 actually answers, a passed-through GPU's **graphics stack** is usable (not
 only CUDA), each stored **runner token** is still accepted by its host, and
-**SSH auth against GitHub** works (agent key or file key). Claude Code and
-the Anthropic API are checked on a node, where sessions run.
+**SSH auth against GitHub** works (agent key or file key). The coding agents
+(each one installed, and which account each is signed in as) are checked
+on a node, where sessions run.
 
-Each person signs in to Claude on each node they work on, from the Claude
-section of that node's Agents page (under Build): **Sign in**, which a project's
-**Start agent** offers the first time. The flow runs on that node, the
-machine Claude Code is installed on, and the code is pasted back in the
-section. Each node keeps the login it alone refreshes; the controller holds no
-credential, only which Anthropic account each node reported for you.
+Each person signs in to the agent they use (Claude, ChatGPT or Copilot) on
+each node they work on, from that agent's section of the node's Agents page
+(under Build): **Sign in**, which a project's **Start agent** offers the
+first time. The flow runs on that node, the machine the agent is installed
+on: Claude's code is pasted back in the section, and ChatGPT's and
+Copilot's device codes are entered at OpenAI or GitHub. Each node keeps the
+login it alone refreshes; the controller holds no credential, only which
+account each node reported for you.
 
 **CI runs on a node, not in this container.** Take the node the setup
 enrolled, or enroll another (**Enroll node** on the Nodes page gives the
@@ -155,8 +158,9 @@ the same reason; they make a job look routable when nothing will pick it up.
 
 ### 7. Daily use and updating
 
-A Claude session is opened from the dashboard, with **Start agent** on the
-project's card or page, and runs on that project's node. There is no `claude` in this container to exec into.
+A session is opened from the dashboard, with **Start agent** on the
+project's card or page, and runs on that project's node. There is no
+`claude`, `codex` or `copilot` in this container to exec into.
 
 ```bash
 docker exec -it BuilderBot bb shell                        # shell as builder

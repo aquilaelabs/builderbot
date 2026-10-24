@@ -27,7 +27,7 @@ those rows. Nothing else.
 
 | I want to… | Runner token (CI runner page) | SSH key | Per-project token |
 |---|:--:|:--:|:--:|
-| Run Claude against the mounted projects, no remote git | | | |
+| Run sessions against the mounted projects, no remote git | | | |
 | `git clone` / `pull` / `push` private repos from inside | | ● | *or* ● |
 | Run a self-hosted runner for **one repo** | ● | | |
 | Run a self-hosted runner for the **whole org** | ● | | |
@@ -63,7 +63,7 @@ It does nothing for `gh pr create` or `gh release create`; those are REST
 calls, and there is no container-wide token for them. Opening PRs from your
 desktop is the intended arrangement and the tightest one available.
 
-**A token is readable by Claude, and that's unavoidable.** Over HTTPS, "git can
+**A token is readable by a session, and that's unavoidable.** Over HTTPS, "git can
 authenticate with it" and "sessions can't read it" are contradictory: same
 user, same file. Only the ssh-agent breaks that tie. What a per-project token
 changes is the blast radius rather than the exposure: it is scoped to one
@@ -124,8 +124,9 @@ dropdown pick **builderbot**. You get a form with everything already wired:
 * TZ under the advanced view, which only sets the container's own clock: each
   person picks the zone the dashboard shows times in under the gear menu
 
-Claude Code is not configured here: it runs on the nodes, and each person
-signs in on each node (its Agents page, under Build) with their own Claude account.
+The coding agents are not configured here: they run on the nodes, and each
+person signs in on each node (its Agents page, under Build) with their own
+account for the agent they use (Claude, ChatGPT or Copilot).
 Each account's commit identity is set on its Profile page. Hit **Apply**. Unraid pulls the image and starts it.
 
 **Unraid never applies new template values to a container that already
@@ -140,14 +141,14 @@ back, and that takes milliseconds: Unraid's default ten seconds (Settings →
 Docker → Docker Stop Timeout) is plenty, and nothing in Extra Params changes
 it, since Unraid passes its own timeout on every stop.
 
-**Claude sessions are not affected by any of this.** They run on their
+**Sessions are not affected by any of this.** They run on their
 projects' nodes, in tmux there, and a controller that stops does not touch
 them: the dashboard simply cannot reach them until it is back.
 
 ### Stopping cleanly before an update
 
 Nothing you care about lives in the container: projects are bind mounts to the
-array, the accounts and settings are on the home and config volumes, and Claude
+array, the accounts and settings are on the home and config volumes, and the
 sessions, their logins and the emulator are on the nodes.
 Uncommitted work is not at risk from a restart.
 
@@ -276,7 +277,7 @@ only the URL: the name comes from the repository, and a `CLAUDE.md` it
 carries is kept as it is.
 
 Selecting text in a shell terminal copies it to your clipboard as you release
-the mouse. Claude terminals keep tmux's mouse mode instead, so they do not.
+the mouse. Agents' terminals keep tmux's mouse mode instead, so they do not.
 Right-click gives you the browser's menu only: tmux's would be drawn
 underneath it, and Alt+right-click still opens tmux's if you want it.
 
@@ -291,11 +292,11 @@ The dock starts with one workspace terminal; every terminal, that one
 included, can be minimized. **Start agent** opens one session per project:
 resumable if a previous conversation exists, and **Shell** opens another
 terminal each time you click it. Terminals are named for where they are
-(`sh: <directory>`, following a `cd`; `Claude: <project>`), with the full path
+(`sh: <directory>`, following a `cd`; `Claude: <project>` and the like for each agent), with the full path
 on hover. They live in the dock at the foot of every page: one line when
 shut, half the screen when pulled up, the page above it.
 
-A terminal's **−** on the dock's line minimizes it: the terminal or Claude
+A terminal's **−** on the dock's line minimizes it: the terminal or agent's
 session keeps running and is listed on the Sessions page, where clicking the
 name brings it back. Ending a session for good is its **×** on the dock's
 line, a middle-click there, or the ✕ on the Sessions page, and that is the
@@ -306,7 +307,7 @@ browser, so a phone shows what the desktop has open. **Terminals survive a resta
 the shutdown saves each one's directory and the last screenful of its
 scrollback under the Config path in `sessions/`, and startup puts them back.
 What was *running* in them does not come back; that went down with the
-container. A Claude session is not the container's to lose: it is in its
+container. An agent's session is not the container's to lose: it is in its
 node's tmux and is still there when the dashboard comes back.
 
 **One port carries everything.** The page, its API and the terminal
@@ -358,7 +359,7 @@ the `image:`/`build:` lines in the compose file as commented.
 
 ---
 
-## Shielding secrets (PAT + SSH keys) from Claude sessions
+## Shielding secrets (PAT + SSH keys) from sessions
 
 Anything set as a container *variable* (template field / compose `environment:`)
 is visible to every process inside, including every shell opened here and
@@ -387,7 +388,7 @@ root-only folder:
    `/secrets` volume in compose) to that folder.
 
 **Git access is a separate question from the runner token.** Over HTTPS,
-"git can use it" and "Claude can't read it" are mutually exclusive: a
+"git can use it" and "a session can't read it" are mutually exclusive: a
 credential the session's git authenticates with is one the session can read.
 Pick per your taste:
 
@@ -401,7 +402,7 @@ Pick per your taste:
 every key from `secrets/ssh/` and every deploy key a project's settings made
 or kept (`/config/deploy-keys`, through the root-only `deploy-key` helper,
 the builder account's second sudo rule); sessions get only the agent's socket. When
-Claude runs `git push`, the agent signs the authentication challenge on its
+a session runs `git push`, the agent signs the authentication challenge on its
 behalf: the key *works* everywhere, but the private key bytes are never
 readable by any session, so it cannot be copied out of the container. (Keys
 placed in `~/.ssh` instead keep working too: that's the simple, unshielded
@@ -425,11 +426,11 @@ and with a PAT, one that does not exist yet is created for you, private.
 
 **You never need a sudo password to manage any of this**, and a password
 field would actually punch a hole in the model (it would have to live
-somewhere Claude could read). Administration happens from the Unraid side,
+somewhere a session could read). Administration happens from the Unraid side,
 where you're already root: edit the secrets folder on the host and restart
 the container, or hop in as root with
 `docker exec -it -u 0 BuilderBot bash`: a door only someone with host
-access can use. Inside the container, the `builder` user (Claude) has no
+access can use. Inside the container, the `builder` user (what sessions run as) has no
 password to find and no sudo to escalate with.
 
 What happens then:
@@ -445,7 +446,7 @@ What happens then:
 * **All log output is redacted**: both the persistent file and
   `docker logs` pass through filters that strip known token shapes
   (`github_pat_…`, `ghp_…`, `sk-ant-…`, `npm_…`, JWTs) *and* the literal
-  values of every configured secret. So logs stay safe for Claude to read
+  values of every configured secret. So logs stay safe for a session to read
   even if some tool echoes a token.
 * Trade-off: `gh` is not auto-authenticated in sessions anymore (the PAT
   isn't there to do it). Git works through the shielded agent keys; run
@@ -485,7 +486,7 @@ than a gate.
 
 ## First-run checks
 
-The first boot, what `bb doctor` checks and how each person signs in to Claude: [install.md, step 6](install.md#6-first-boot).
+The first boot, what `bb doctor` checks and how each person signs in to their agent: [install.md, step 6](install.md#6-first-boot).
 
 ## Daily use
 
@@ -584,7 +585,7 @@ Mixing direct-disk and user-share paths for the same data corrupts files.
 who can open a PR could run code on that machine.
 
 **Stopping cleanly.** Stop from the Docker tab (or `docker stop`) sends
-SIGTERM and the open terminals are saved. Claude sessions, emulators and
+SIGTERM and the open terminals are saved. Agents' sessions, emulators and
 runners are unaffected: they are on nodes, and nodes do not stop with this
 container.
 

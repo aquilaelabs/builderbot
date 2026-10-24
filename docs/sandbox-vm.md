@@ -1,6 +1,6 @@
 # The Docker sandbox VM
 
-A small virtual machine whose only job is to run Docker, so that a Claude
+A small virtual machine whose only job is to run Docker, so that a
 session can build, run and destroy containers without any of it reaching the
 server's real ones.
 
@@ -149,7 +149,7 @@ this machine mounts is a decision made by somebody with root at a console
 rather than something available to whatever is building a container this
 afternoon.
 
-**And a second, for sessions** (roadmap #24, docs/nodes.md §19). A Claude
+**And a second, for sessions** (roadmap #24, docs/nodes.md §19). A
 session on a project bound to this node runs *here*, and it runs as
 `builder` (`--session-user NAME`, `none` to run no sessions) which is in
 `kvm` for the emulator and in **no docker group**: the account that edits
@@ -158,8 +158,8 @@ is root. It is made with `--session-uid`/`--session-gid` **99:100**, the
 controller's PUID:PGID, so a file it saves on the projects share is owned
 exactly as one saved from the controller is; a different uid would leave the
 share with files the rest of the array does not expect. `provision-linux.sh`
-installs tmux, ttyd, jq and git for it, Claude Code into its home by the
-native installer, and a `/etc/profile.d` entry so a login shell as that
+installs tmux, ttyd, jq and git for it (the coding agents are installed
+later, from the node's Agents page), and a `/etc/profile.d` entry so a login shell as that
 account has the role, the controller's address and `bb` (from the bundle the
 agent keeps under the toolchain store at `.bb/current`): the same
 environment a dashboard session gets, which is what makes proving the node
@@ -169,8 +169,8 @@ by hand the same path: `sudo -iu builder`, then
 at `/workspace` for any of it to have a tree to work in: one more row in
 the node's mounts on the Nodes page (Storage).
 
-**A Claude login is one account's, on one node.** Each person signs in on
-each node they work on, from the Claude section of that node's Agents page
+**An agent's login is one account's, on one node.** Each person signs in on
+each node they work on, from that agent's section of the node's Agents page
 (Sign in), and the login stays in that account's home on that machine: two
 accounts on one node are two homes and two logins, and a login on one node
 does nothing for another. Nothing is copied between machines and the
@@ -190,7 +190,7 @@ one command away from a session that wandered.
 a Docker-only sandbox nothing on the machine writes source code (the daemon
 only ever *resolves* bind sources there), so read-only costs nothing and
 means a container that binds its project tree cannot scribble on your
-source. A node with a session account is the other case: Claude works on
+source. A node with a session account is the other case: a session works on
 that share from here, so it has to be read-write: the dashboard refuses to
 send a session to a node whose `/workspace` is read-only and says so on the
 project's button, because a session that cannot save a file is worse than
@@ -445,7 +445,7 @@ address.
 
 What it is sized for: **16 GiB, 6 cores, a 200G disk.** The sandbox used to
 be a box that built the odd image; now it is where a project's Gradle build,
-the Android emulator with a system image behind it, a Claude session and
+the Android emulator with a system image behind it, a session and
 its Playwright browsers all run, sometimes in the same afternoon, and the
 toolchain store lands on its disk unless the stores are pointed at a share.
 8 GiB and 4 cores still work for a Docker-only sandbox; the qcow2 only
@@ -673,7 +673,7 @@ containers.
 
 **What this changes for a session.** The rule in every project's `CLAUDE.md`
 says the daemon is a sandbox VM and is a session's to build on, run on and
-wreck. So this hands Claude a Docker host it can actually use, which is the
+wreck. So this hands a session a Docker host it can actually use, which is the
 half that is easy to miss while thinking about what it takes away. The
 dev-instance *controls* stay the operator's, and the dashboard's own compose
 project names stay the dashboard's.
@@ -689,6 +689,6 @@ comes with it: a rebuild that changes nothing rebuilds nothing.
 Nothing of the controller's: no accounts, no notebook, no git credential
 (a node pushes through the controller), and no GPU until the commented
 `hostdev` block above is filled in (roadmap R20). What it does carry, Docker
-and, on a node that runs sessions, Claude Code, the emulator and the
+and, on a node that runs sessions, the coding agents, the emulator and the
 toolchains installed on it, is a node's and can be put back from the Nodes
 page, and keeping the record off it is what makes throwing it away cheap.

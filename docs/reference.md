@@ -10,7 +10,7 @@ Only what the container or the host has to know before BuilderBot runs is a
 variable; everything else is set in the dashboard: Controller settings (under
 Machines) for the controller, a project's settings for the project, the
 Nodes page for each machine. Tokens are never variables: git keys and publishing tokens go in the
-root-only secrets folder ([unraid.md](unraid.md#shielding-secrets-pat--ssh-keys-from-claude-sessions)),
+root-only secrets folder ([unraid.md](unraid.md#shielding-secrets-pat--ssh-keys-from-sessions)),
 a project's settings make its deploy key or hold its access token, and a
 runner's token is typed on the CI runner page.
 
