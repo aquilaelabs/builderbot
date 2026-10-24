@@ -39,7 +39,7 @@ import { dirname, join } from 'node:path';
 // what it prints. Do not hand-edit it into agreement without looking at why
 // it moved.
 const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'adoptTheme', 'applyMode', 'applyNow', 'askProjectGroup', 'renameProjectGroup', 'pickProjectColor', 'applyTheme',
-  'sectRemember', 'sectRecall', 'isToolKind', 'groupOf', 'railAllows', 'railGroups', 'railOn', 'railGo', 'routeOf', 'openRoute', 'shellSync', 'shellBoot', 'shown',
+  'sectRemember', 'sectRecall', 'isToolKind', 'groupOf', 'railAllows', 'railGroups', 'railOn', 'railGo', 'shellPush', 'routeOf', 'openRoute', 'shellSync', 'shellBoot', 'shown',
   'drawRail', 'railMoreShow', 'shellBar', 'wireShellBar', 'jumpItems', 'drawJump', 'jumpMove', 'jumpGo', 'wireJump', 'revsDelay',
   'argForSession', 'agentsLive', 'agExtras', 'agentPicker', 'agentAsker', 'rnFillAgents', 'launchAgent', 'agentEnd', 'dropAgentTab', 'myLiveSession', 'agentLogins', 'sendAgent', 'openSentTo', 'openAgentsTab', 'openAgentsOn', 'agPick', 'loadAgents', 'agentsLiveKey', 'agSection', 'renderAgentsInto', 'wireAgentsTab', 'agentById', 'agentOfSession', 'agentSessionWords', 'agentOfArg', 'agentsWord', 'agentArg', 'armModal', 'arriveBox', 'askPurge', 'askReset', 'nginxHostPick', 'nginxHostLines', 'claudeRestart', 'restartNow', 'unenrollWhat', 'resetBusy', 'resetFollow', 'resetGone', 'cSeg', 'cSlide',
   'askVerb', 'cSubmit', 'cUnderPicked', 'daemonHost', 'closeEditor',

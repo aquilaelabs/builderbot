@@ -35,7 +35,7 @@ function openAgentsOn(id){
   openAgentsTab(id);
   agRev++;
   const to = routeOf(tabOf(panes[0]));
-  if (to && to !== was) history.pushState(null, "", to);
+  if (to && to !== was) shellPush(to);
 }
 
 // The node the page opens on: the one it showed last, else the first agent
