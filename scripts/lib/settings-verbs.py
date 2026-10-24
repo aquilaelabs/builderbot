@@ -236,7 +236,7 @@ def set_node():
     # network to tell is the dashboard's next look at the setting.
     prefs.WORKSPACE = os.environ.get("WORKSPACE", "/workspace")
     prefs.pin_instances = lambda name: []
-    prefs.end_claude = lambda name: {}
+    prefs.end_agents = lambda name: {}
     prefs.net_nudge = lambda: None
     want = os.environ["BB_SET_VALUE"].strip()
     with contextlib.suppress(OSError, ValueError):

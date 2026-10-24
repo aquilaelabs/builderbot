@@ -10,6 +10,7 @@
 ### Fixed
 
 - A release's signing pressed again on the Signing view is followed to its end: the Releases section re-reads when the look finishes, rather than showing the old failure until the view is reopened
+- Saving a project's settings with End ends a ChatGPT or Copilot session there too, not only a Claude one, so the next start picks up what was saved
 
 ## 0.7.0: 2026-10-24
 

@@ -1680,17 +1680,23 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     // Whatever the pane is running. The respawn this replaced would have put
     // the LAUNCHER into a pane running something else, so it checked first;
     // ending a session named for the project needs no such guard, and the
-    // path it takes is the Sessions card's kill, which never had one.
+    // path it takes is the Sessions card's kill, which never had one. And
+    // whichever agent it is (R95 step 16): a ChatGPT session here, which
+    // kept what it started with while only Claude's was ended.
     {
       const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
-      const real = `${uid}~claude-gamma`;
+      const real = `${uid}~codex-gamma`;
       tmuxKill(real);
       tmuxNew(real, `${DIR}/ws/gamma`, ['bash', '--norc', '--noprofile']);
       await until(async () =>
         ((await api('/api/status')).sessions || []).find(
-          s => s.node === 'agentbox' && s.name === 'claude-gamma'), 45000, 500);
+          s => s.node === 'agentbox' && s.name === 'codex-gamma'), 45000, 500);
       const r = await api('/api/prefs', { project: 'gamma', restart: true });
-      ok(r.ended === true, `...whatever the pane happens to be running (${JSON.stringify(r)})`);
+      const gone = await until(async () =>
+        ((await api('/api/status')).sessions || []).every(
+          s => !(s.node === 'agentbox' && s.name === 'codex-gamma')) ? true : null, 30000, 500);
+      ok(r.ended === true && gone === true,
+         `...whatever the pane happens to be running, and whichever agent's session it is (${JSON.stringify(r)})`);
       tmuxKill(real);
     }
 

@@ -1005,11 +1005,11 @@ def replay(project, verb, args):
 # What dialog_save() needs from the server, set by configure_dialog: the
 # projects' directory (set_prefs reads a project's files), a dev instance
 # pinned to the node it is on before its project moves
-# (devapp.pin_to_current_node), a project's Claude session ended
-# (end_claude), and the sessions' networks told (R79).
+# (devapp.pin_to_current_node), a project's agent sessions ended
+# (end_agents), and the sessions' networks told (R79).
 WORKSPACE = None
 pin_instances = None
-end_claude = None
+end_agents = None
 net_nudge = None
 
 
@@ -1102,7 +1102,7 @@ def dialog_save(name, req, uid):
     # change alone, because the same write happens when nothing is
     # running and there is nothing to interrupt.
     if not r.get("error") and req.get("restart"):
-        r |= end_claude(name)
+        r |= end_agents(name)
     if moved and not r.get("error"):
         r = dict(r) | {"pinned": moved}
     # A project on another node owns its instances somewhere else now (R79).
