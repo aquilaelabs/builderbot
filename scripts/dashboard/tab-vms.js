@@ -326,7 +326,10 @@ function openNewVm(forProject = ""){
   const $m = s => m.querySelector(s);
   // More opens as every fold here does, slid rather than snapped.
   $m(".vmmore > summary").onclick = e => { e.preventDefault(); const d = e.currentTarget.parentElement; slideDetails(d, !d.open); };
-  const say = t => { $m("#vmWhy").textContent = t; $m("#vmWhyF").hidden = !t; };
+  // Brought into view when said: at the dialog's foot, under More, it sat
+  // behind the footer and a refused press looked like nothing (B304).
+  const say = t => { $m("#vmWhy").textContent = t; $m("#vmWhyF").hidden = !t;
+    if (t) $m("#vmWhyF").scrollIntoView({block: "nearest"}); };
   const from = () => {
     const v = $m("#vmOs").value;
     $m("#vmIsoAdd").hidden = v !== "iso-add";

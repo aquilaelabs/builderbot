@@ -62,6 +62,15 @@ ok(offered.includes('debian-13') && offered.includes('ubuntu-24.04') && !offered
 await page.fill('#vmName', 'db');
 await page.selectOption('#vmProject', 'alpha');
 await page.selectOption('#vmOs', 'debian-13');
+// Make it with no key is refused, and the reason is where it can be read,
+// above the dialog's footer, not behind it (B304).
+await page.click('#vmGo');
+await page.waitForFunction(() => !document.getElementById('vmWhyF').hidden, null, { timeout: 10000 });
+const seen = await page.evaluate(() => { const w = document.getElementById('vmWhy').getBoundingClientRect();
+  const f = document.querySelector('#vmnewmodal .foot, #vmnewmodal .dlgfoot, #vmnewmodal footer')?.getBoundingClientRect();
+  return { text: document.getElementById('vmWhy').textContent, bottom: Math.round(w.bottom), foot: f ? Math.round(f.top) : innerHeight }; });
+ok(/ssh public key/.test(seen.text) && seen.bottom <= seen.foot,
+   `a refused Make it says why where it can be read, above the dialog's foot (${JSON.stringify(seen)})`);
 await page.fill('#vmKey', KEY);
 await page.click('#vmGo');
 const job = await (async () => { for (let i = 0; i < 40; i++){
