@@ -97,6 +97,17 @@ const row = await page.$eval('.vmtab [data-vm-key="alpha/db"]', e => ({ text: e.
 ok(/running/.test(row.text) && /ok/.test(row.pill) && /ssh builder@10\.232\.0\.12/.test(row.text) && /Debian 13/.test(row.text)
    && /kvmbox/.test(row.text) && row.stop && row.con && row.snap,
    `once made it runs: its pill, how to reach it, its OS and node, Stop, Console and its snapshot with Revert (${row.text.slice(0, 120)})`);
+// A Stop its system did not take (an installer with no ACPI daemon) is said
+// on the row after a while, pointing at Force stop (B308).
+const ignored = await page.evaluate(async () => {
+  vmStopAsked['alpha/db'] = Date.now() - 60000; vmsRev++; drawPanes();
+  await new Promise(r => setTimeout(r, 300));
+  const t = document.querySelector('.vmtab [data-vm-key="alpha/db"]')?.textContent || '';
+  delete vmStopAsked['alpha/db']; vmsRev++; drawPanes();
+  return t;
+});
+ok(/asked to shut down .* still running/.test(ignored) && /Force stop/.test(ignored),
+   `a Stop the VM's system ignored is said on its row, with Force stop named (${(ignored.match(/asked to shut down[^.]*/) || [''])[0]})`);
 
 // The notebook's VMs view (R96): the project's own VMs, beside Docker in
 // its Ship group, drawn from the page's rows, with New VM in its head.

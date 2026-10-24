@@ -10,6 +10,10 @@ let vmsData = null;             // the last /api/vms answer, null before the fir
 let vmsErr = "";
 let vmsRev = 0;
 let vmsSearch = "";
+// When this page asked each VM (PROJECT/NAME) to shut down: a system that
+// ignores the request stays up with its job a success, and the row says so
+// rather than leaving Stop looking broken (B308).
+const vmStopAsked = {};
 
 function openVmsTab(){
   openTab({kind: "vms", arg: "__vms", label: "VMs"});
@@ -93,6 +97,12 @@ function vmRow(v){
   const onLine = onScreen.length || onConsole.length ? `<div class="sub dmstate${others ? " warn" : ""}">${[
       onScreen.length ? `${esc(andList(onScreen))} ${onScreen.length > 1 || onScreen[0] === "you" ? "are" : "is"} on its Screen, sharing one keyboard` : "",
       onConsole.length ? `${esc(andList(onConsole))} ${onConsole[0] === "you" ? "have" : "has"} its Console` : ""].filter(Boolean).join("; ")}</div>` : "";
+  // Asked to shut down here a while ago and still up: its system did not take
+  // the power button, which Force stop pulls the plug on.
+  const asked = vmStopAsked[`${v.project}/${v.name}`];
+  if (asked && !up) delete vmStopAsked[`${v.project}/${v.name}`];
+  const ignored = asked && up && Date.now() - asked > 45000
+    ? `<div class="sub dmstate warn">asked to shut down ${Math.max(1, Math.round((Date.now() - asked) / 60000))} min ago and still running: its system may not answer the power button, and Force stop under More ends it at once</div>` : "";
   const acts = !may ? "" : `
     ${!up && !busy && v.state !== "failed" ? `<button type="button" class="primary" data-vm="start">Start</button>` : ""}
     ${up && v.screen ? `<button type="button" data-vmscreen title="its screen, keyboard and mouse, in the dock">Screen</button>` : ""}
@@ -118,7 +128,7 @@ function vmRow(v){
           ${inside ? `<div class="sub dmorigin vmguest">${inside}</div>` : ""}
           ${asNode}
           ${vmHwLine(v)}
-          ${onLine}
+          ${onLine}${ignored}
           ${may && v.state !== "making" ? `<label class="ndcap vmauto"><input type="checkbox" data-vmauto${v.autostart ? " checked" : ""}> starts with its host</label>` : ""}
           ${v.error ? `<div class="sub dmstate bad">${esc(v.error)}</div>` : ""}
         </div>
@@ -243,6 +253,7 @@ function wireVms(el){
       busy(b, {start: "Starting", stop: "Stopping", restart: "Restarting", remove: "Removing", snapshot: "Saving",
                revert: "Reverting", "snapshot-rm": "Deleting", eject: "Ejecting", "disk-grow": "Growing", "disk-add": "Adding"}[action] || "Working");
       const j = await (await postJSON("/api/vms", body)).json();
+      if (!j.error && action === "stop" && !body.force) vmStopAsked[`${v.project}/${v.name}`] = Date.now();
       if (j.error) notify(j.error, true);
       else notify(`${v.name}: ${action === "snapshot-rm" ? "snapshot delete" : action} queued`);
       await loadVms();
