@@ -248,6 +248,13 @@ def view(projects=None):
             continue
         n = nodes.get(rec.get("node"))
         live = _live(n).get(rec.get("domain"))
+        # A report taken before this VM was made is of an earlier one of its
+        # name (the domain is the same): its address and guest facts are not
+        # this VM's, so it waits as one just made until the next (B319).
+        told = int(((n or {}).get("reported") or {}).get("at") or 0)
+        since = told and told < int(rec.get("made_at") or 0)
+        if since:
+            live = None
         row = dict(rec, key=key, node_name=(n or {}).get("name") or rec.get("node"), node_live=bool((n or {}).get("live")),
                    on=on(key))
         if live:
@@ -267,6 +274,10 @@ def view(projects=None):
             if rec.get("node_id") and not row["ip"]:
                 vn = nodes.get(rec["node_id"]) or {}
                 row["ip"] = (vn.get("agent") or {}).get("addr") or ""
+        elif since:
+            # Not reported since it was made: its own record's state stands,
+            # with no address yet (B319).
+            row.update(ip="", guest={})
         elif rec.get("state") == "made" and time.time() - rec.get("made_at", 0) < 180:
             # Made a moment ago and not in the node's report yet: its record's
             # "made", which the page reads as starting, not missing, which it
