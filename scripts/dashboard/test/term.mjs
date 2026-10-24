@@ -102,6 +102,15 @@ ok(await waitFor(/kb-42/) && !keysAsked.length, `the keys bar's Enter goes down 
     body: JSON.stringify({ project: 'alpha', term_scheme: '' }) }));
 }
 
+// A tab its node sends back to ttyd (4001: an agent with no terminal of its
+// own) is drawn again as ttyd's frame, not left an empty slot.
+await page.evaluate(id => { tabOf(id).ttyd = true; render(); }, id);
+const back = await page.waitForSelector('#pane1 .slot.on iframe', { timeout: 10000 }).then(() => true, () => false);
+ok(back && await page.evaluate(() => !document.querySelector('#pane1 .slot.on.ownterm')),
+   'a tab sent back to ttyd is redrawn as its frame');
+await page.evaluate(id => { delete tabOf(id).ttyd; render(); }, id);
+await page.waitForSelector('#pane1 .slot.on.ownterm .xterm', { timeout: 20000 });
+
 // The socket and the shell are one: closing the tab closes the socket.
 const before = await page.evaluate(() => [...TERMS.values()].filter(r => r.t.arg === 'sh:7:alpha').length);
 await page.evaluate(id => dropTab(id), id);

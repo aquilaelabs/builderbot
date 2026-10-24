@@ -162,3 +162,15 @@ class Term(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Census(unittest.TestCase):
+    def test_the_controller_keeps_whether_a_node_serves_its_own_terminal(self):
+        # The controller keeps a node's session half field by field; one it
+        # drops reads as a node that serves none, and every tab there went
+        # back to ttyd (found walking it on the dev pair).
+        sys.path.insert(0, os.path.join(HERE, ".."))
+        import nodes
+        got = nodes._census({"session": {"up": True, "port": 7681, "ro_port": 7682, "term": True}})
+        self.assertIs(got["session"]["term"], True)
+        self.assertIs(nodes._census({"session": {"up": True}})["session"]["term"], False)

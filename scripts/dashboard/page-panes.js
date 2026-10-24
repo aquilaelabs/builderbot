@@ -188,7 +188,7 @@ function drawPanes(){
       // reattachTerminals would reload, recreating a session since ended.
       if (pane.dataset.tab || !pane.querySelector(".bar")){
         pane.innerHTML = `<div class="bar dockbar"></div>`;
-        pane.dataset.tab = pane.dataset.kind = pane.dataset.arg = pane.dataset.popped = "";
+        pane.dataset.tab = pane.dataset.kind = pane.dataset.arg = pane.dataset.popped = pane.dataset.own = "";
       }
       paintBar(pane, null, 1);
       continue;
@@ -203,7 +203,10 @@ function drawPanes(){
               && pane.dataset.arg === (t?.arg || "")
               // ...and whether it is popped out (R8): the same tab with its
               // frame gone, or back, is a rebuild.
-              && pane.dataset.popped === (t?.popped ? "1" : "");
+              && pane.dataset.popped === (t?.popped ? "1" : "")
+              // ...and which terminal draws it (R133): a tab its node sent
+              // back to ttyd is a frame now, not the slot it had.
+              && pane.dataset.own === (termOwn(t) ? "1" : "");
     if (same && t){
       paintBar(pane, t, i);
       // Refill a document pane only when the report itself changed. Doing it
@@ -218,6 +221,7 @@ function drawPanes(){
 
     pane.dataset.tab = t?.id || ""; pane.dataset.kind = t?.kind || ""; pane.dataset.arg = t?.arg || "";
     pane.dataset.popped = t?.popped ? "1" : "";
+    pane.dataset.own = termOwn(t) ? "1" : "";
     pane.onclick = () => { if (isSplit() && active !== i && (i === 0 || dockUp)){ active = i; render(); } };
 
     const st = paneStack(pane);

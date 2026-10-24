@@ -1551,6 +1551,9 @@ def _census(c):
             # with why.
             "ctr_port": _mb(se.get("ctr_port")) or 0,
             "ctr_why": str(se.get("ctr_why") or "")[:120],
+            # Whether its agent serves BuilderBot's own terminal (R133):
+            # the page opens a tab there through /term, else through ttyd.
+            "term": bool(se.get("term")),
             "user": re.sub(r"[^A-Za-z0-9._-]", "", str(se.get("user") or ""))[:32],
             "workspace": bool(se.get("workspace")),
             # None is "not probed", read as unknown rather than read-only:
