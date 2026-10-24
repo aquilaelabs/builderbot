@@ -10,6 +10,10 @@
 
 - Rename SIGNING_SECRET to INSTALL_KEY in your secrets folder's env file: the old name is read for this release only. With an install key set, everybody is signed out once at the first start of 0.8.0 (7645fec)
 
+### Fixed
+
+- Pressing the filter chip or the settings section that is already selected no longer redraws the page with a fade (4a237e5)
+
 ### Security
 
 - With an install key, the key sign-in cookies are signed with is made from it and kept nowhere, so a copy of /config can forge no sign-in (7645fec)
