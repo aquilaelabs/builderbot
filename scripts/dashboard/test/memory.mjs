@@ -8,7 +8,9 @@
 import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR, openFold, animatedDuring, refreshUntil, closePage, patience, nbGo } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 
-const MEM = `${DIR}/home/.claude/projects/${(DIR + '/ws/alpha').replaceAll('/', '-')}/memory`;
+// Named as Claude Code names a tree's folder: every character that is not a
+// letter or a digit a dash (B349; the fixture's directory has a dot in it).
+const MEM = `${DIR}/home/.claude/projects/${(DIR + '/ws/alpha').replace(/[^A-Za-z0-9]/g, '-')}/memory`;
 const read = f => readFileSync(`${MEM}/${f}`, 'utf8');
 
 const browser = await launch();

@@ -822,7 +822,9 @@ echo '{}' > "$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)/abc123.json
 # and the files are on screen: the index names one file that is not there, and
 # one file that is there is not in the index. Re-seeded before every test file
 # because memory.mjs edits and deletes these for real.
-M="$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)/memory"
+# Named as Claude Code names a tree's folder: every character that is not a
+# letter or a digit a dash (B349).
+M="$S/home/.claude/projects/$(echo "$S/ws/alpha" | sed 's/[^A-Za-z0-9]/-/g')/memory"
 seed_memories() {
 rm -rf "$M"; mkdir -p "$M"
 # The index separator is Claude Code's em dash, written as its bytes (the
