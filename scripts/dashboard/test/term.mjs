@@ -6,7 +6,7 @@
 // session; a tab popped out opens the same terminal on a page of its own
 // (terminal.html); a closed tab's socket goes with it. Driven through the
 // page, as a person at the dock would.
-import { launch, newPage, ok, done, ready, finger, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, finger, URL, DIR, member, projectKey } from './lib.mjs';
 import { appendFileSync, mkdirSync } from 'node:fs';
 
 const browser = await launch();
@@ -233,6 +233,50 @@ ok(before === 1 && after.length === 0, `closing the tab closes its terminal (${b
   const cwhy = await page.evaluate(() => [...TERMS.values()].find(r => r.t.arg.startsWith('log:ctr:'))?.ended || '');
   ok(/no instance nosuch of alpha on record here/.test(cwhy), `a container's log names why it cannot be followed (${cwhy})`);
   await page.evaluate(() => dropTab(tabs.find(t => t.arg.startsWith('log:ctr:')).id));
+}
+
+// A grant taken away ends the terminal it opened (R133 step 9): an account
+// on alpha opens a shell there, is taken off alpha, and within the server's
+// re-check (every few seconds) its socket closes, saying why.
+{
+  const h = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const base = URL.replace(/\/$/, '');
+  await fetch(`${base}/api/users`, { method: 'POST', headers: h,
+    body: JSON.stringify({ action: 'add', name: 'w.term', password: 'w.term-pass-1', role: 'user' }) });
+  await member('w.term');
+  // ...with a role on alpha that opens a shell there.
+  await fetch(`${base}/api/roles`, { method: 'POST', headers: h, body: JSON.stringify({ action: 'set', name: 'termer', scope: 'projects',
+    perms: { projects: 'write', terminal: 'write' }, note: 'a suite\'s shell' }) });
+  await fetch(`${base}/api/roles`, { method: 'POST', headers: h,
+    body: JSON.stringify({ action: 'assign', name: 'w.term', project_roles: { [projectKey('alpha')]: ['termer'] } }) });
+  // A shell is refused an account with no author for its commits.
+  await fetch(`${base}/api/users`, { method: 'POST', headers: h,
+    body: JSON.stringify({ action: 'edit', name: 'w.term', profile: { full_name: 'W Term', email: 'w.term@example.invalid' } }) });
+  await fetch(`${base}/api/users`, { method: 'POST', headers: h,
+    body: JSON.stringify({ action: 'projects', name: 'w.term', projects: [projectKey('alpha')] }) });
+  // The header sent up front, as lib's pages send theirs: a websocket's
+  // handshake carries no credentials the browser was only asked for.
+  const ctx = await browser.newContext({ extraHTTPHeaders: { Authorization: 'Basic ' + Buffer.from('w.term:w.term-pass-1').toString('base64') } });
+  const other = await ctx.newPage();
+  await other.goto(URL);
+  const opened = await other.evaluate(() => new Promise(res => {
+    const ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '/termws?arg=' + encodeURIComponent('sh:8:alpha') + '&cols=80&rows=20');
+    ws.binaryType = 'arraybuffer';
+    window.bbWs = ws; window.bbClosed = null;
+    ws.onclose = e => { window.bbClosed = { code: e.code, reason: e.reason }; };
+    ws.onopen = () => setTimeout(() => res(window.bbClosed ? 'closed' : 'open'), 1500);
+    setTimeout(() => res(window.bbClosed ? 'closed' : 'pending'), 8000);
+  }));
+  // Its roles on alpha taken away, which is what being on it is (R155).
+  await fetch(`${base}/api/roles`, { method: 'POST', headers: h,
+    body: JSON.stringify({ action: 'assign', name: 'w.term', project_roles: { [projectKey('alpha')]: [] } }) });
+  await fetch(`${base}/api/users`, { method: 'POST', headers: h,
+    body: JSON.stringify({ action: 'projects', name: 'w.term', projects: [] }) });
+  const closed = await other.waitForFunction(() => window.bbClosed, null, { timeout: 20000 })
+    .then(x => x.jsonValue(), () => null);
+  await ctx.close();
+  ok(opened === 'open' && closed && closed.reason,
+     `a terminal whose grant is taken away while it is open is ended, saying why (${opened}; ${JSON.stringify(closed)})`);
 }
 
 await done(browser);
