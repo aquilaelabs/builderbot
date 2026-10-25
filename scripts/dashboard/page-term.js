@@ -400,10 +400,11 @@ function termDrop(key){
   try{ rec.term?.dispose(); }catch(e){ /* gone */ }
 }
 
-// The keys bar's keys as a keyboard sends them (R133 step 5).
+// The keys bar's keys as a keyboard sends them (R133 step 5): a table, as
+// everything the page can make happen is, never text from elsewhere.
 const TERM_KEYS = {escape: "\x1b", tab: "\t", left: "\x1b[D", down: "\x1b[B", up: "\x1b[A", right: "\x1b[C",
-  home: "\x1b[H", end: "\x1b[F", enter: "\r", pipe: "|", tilde: "~", slash: "/", backslash: "\\", dash: "-",
-  under: "_", dollar: "$", star: "*", lt: "<", gt: ">"};
+  home: "\x1b[H", end: "\x1b[F", enter: "\r", bspace: "\x7f", pipe: "|", tilde: "~", slash: "/", backslash: "\\",
+  dash: "-", under: "_", dollar: "$", star: "*", lt: "<", gt: ">", amp: "&", caret: "^", "brace-l": "{", "brace-r": "}"};
 
 // A key pressed on the bar, for this tab's terminal: true when it went,
 // false for one it does not take (no socket). PgUp and PgDn scroll a page,

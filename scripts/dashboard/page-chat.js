@@ -177,12 +177,6 @@ async function sendKey(key){
   const t = tabOf(panes[active]);
   if (!t || t.kind !== "term") return;
   // The terminal takes the key itself (R133 step 5): typed down its socket,
-  // or a page scrolled; the server only where it has no socket.
-  if (termOwn(t) && termKey(t, key)) return;
-  if (key === "pgup") termScrolled.add(t.id);
-  try{
-    const r = await postJSON("/api/keys", {session: sessionOf(t.arg), key});
-    const j = await r.json();
-    if (j.error) notify("key: " + j.error, true);
-  }catch(e){ notify("key failed: " + failWords(e), true); }
+  // or a page scrolled. One with no socket says why under its screen.
+  if (termOwn(t)) termKey(t, key);
 }

@@ -4970,7 +4970,6 @@ POST_ROUTES = (
     ("prefix", "/api/trash-purge", "_trash_purge"),
     ("prefix", "/api/trash", "_trash"),
     ("prefix", "/api/session", "_session"),
-    ("prefix", "/api/keys", "_keys"),
     ("prefix", "/api/send", "_send"),
     ("prefix", "/api/say", "_say"),
     ("prefix", "/api/chat", "_chat"),
@@ -10164,7 +10163,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _not_theirs(self, session):
         """True, with the 403 written, when this account may not act on that
-        session: end it, press a key in it or type a macro into it (B172).
+        session: end it or type a macro into it (B172).
 
         A session is its owner's. Its name says whose (u_<uid>~...), and the
         owner's own on this container keep bare names, so a bare name is the
@@ -10196,15 +10195,6 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return next((s for s in node_tmux_sessions() if s["name"] == session
                      and (not node or s["node_id"] == node)), None)
-
-    def _keys(self, req):
-        """Press one key from the tables in a session of the caller's:
-        macros.press, here or on its node."""
-        session, key = req.get("session", ""), req.get("key", "")
-        if self._not_theirs(session):
-            return None
-        return self._json(*macros.press(session, key,
-                                        self._session_on_node(session, str(req.get("node") or ""))))
 
     def _chat(self, req):
         """Read a conversation, send into one, or mark one seen: chat.converse.

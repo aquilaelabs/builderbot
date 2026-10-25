@@ -93,7 +93,6 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/trash-purge` | prefix | `_trash_purge` | Delete a trashed project for good. | refused: trash |
 | POST | `/api/trash` | prefix | `_trash` | Move a project out of the workspace: projects.trash, once project_busy says nothing holds it (the same guards as renaming). | refused: trash |
 | POST | `/api/session` | prefix | `_session` | Kill a session. |  |
-| POST | `/api/keys` | prefix | `_keys` | Press one key from the tables in a session of the caller's: macros.press, here or on its node. |  |
 | POST | `/api/send` | prefix | `_send` | Type a macro's command lines into a shell session of the caller's and press Enter: macros.send. |  |
 | POST | `/api/say` | prefix | `_say` | Type a message into a CLAUDE session and press Enter. |  |
 | POST | `/api/chat` | prefix | `_chat` | Read a conversation, send into one, or mark one seen: chat.converse. |  |

@@ -1358,23 +1358,22 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
     ok(JSON.stringify(asUser.project_job) === '{}' && typeof asOwner.project_job?.running === 'boolean',
        `...and its status carries no project job to draw, while an administrator's does (${JSON.stringify(asUser.project_job)})`);
     // B172: a session is its owner's. The name says whose (u_<uid>~...),
-    // and the owner's own here keep bare names; nobody ends, keys or types
-    // into anybody else's. Decided before the session is looked up, so a
+    // and the owner's own here keep bare names; nobody ends or types into
+    // anybody else's. Decided before the session is looked up, so a
     // name is enough to ask with.
     const ownerAuth = { 'Content-Type': 'application/json', Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
     const act = async (h, path, body) => {
       const r = await bare(path, { method: 'POST', headers: h, body: JSON.stringify(body) });
       return { status: r.status, error: ((await r.json().catch(() => ({}))).error || '') };
     };
-    for (const [path, body] of [['/api/keys', { session: 'claude-alpha', key: 'enter' }],
-                                ['/api/session', { action: 'kill', session: 'claude-alpha' }],
+    for (const [path, body] of [['/api/session', { action: 'kill', session: 'claude-alpha' }],
                                 ['/api/send', { session: 'shell-alpha-1', macro: 'lx-ls' }]]) {
       const r = await act(plainAuth, path, body);
       ok(r.status === 403 && /not yours/.test(r.error), `a plain account cannot use ${path} on the owner's session (${r.status})`);
     }
-    const other = await act(ownerAuth, '/api/keys', { session: 'u_0badf00d~claude-alpha', key: 'enter' });
-    ok(other.status === 403, `...nor can the owner press a key in another account's session (${other.status})`);
-    const own = await act(ownerAuth, '/api/keys', { session: 'claude-alpha', key: 'enter' });
+    const other = await act(ownerAuth, '/api/send', { session: 'u_0badf00d~claude-alpha', macro: 'lx-ls' });
+    ok(other.status === 403, `...nor can the owner type into another account's session (${other.status})`);
+    const own = await act(ownerAuth, '/api/send', { session: 'claude-alpha', macro: 'lx-ls' });
     ok(own.status !== 403, `...while the owner still reaches their own (${own.status}: ${own.error.slice(0, 40)})`);
     const { execFileSync: ef } = await import('node:child_process');
     const ownerUid = JSON.parse((await import('node:fs')).readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
@@ -1385,9 +1384,9 @@ u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
 u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
 print(u.mint_session("alpha", uid="${ownerUid}"))`], { encoding: 'utf8' }).trim();
     const sessAuth = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + stok };
-    const across = await act(sessAuth, '/api/keys', { session: 'claude-beta', key: 'enter' });
+    const across = await act(sessAuth, '/api/send', { session: 'claude-beta', macro: 'lx-ls' });
     ok(across.status === 403, `a session's token cannot reach its own account's session on another project (${across.status})`);
-    const home = await act(sessAuth, '/api/keys', { session: 'claude-alpha', key: 'enter' });
+    const home = await act(sessAuth, '/api/send', { session: 'claude-alpha', macro: 'lx-ls' });
     ok(home.status !== 403, `...and does reach its own project's (${home.status})`);
     // B173-B175: what acts on a project by name asks the right as well as
     // the name. A plain account given alpha cannot lock it, move the shared

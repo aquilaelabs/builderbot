@@ -665,13 +665,10 @@ class SessionsMixin:
 
     def tmux_ops(self, ops):
         """Keys into a session here, as the dashboard sends them into its
-        own tmux (server._keys, _say, _send). Only send-keys and copy-mode,
-        only at a session by exact name: the controller composed the
-        argv, and this node still decides what it will run. `page` and
-        `respawn` are the two decisions made here, because both depend on
-        something only this side can see: PgUp at a prompt enters copy mode
-        where inside a full-screen program it is the program's key, and a
-        respawn has to find the launcher."""
+        own tmux (server._say, _send). Only send-keys and copy-mode, only at
+        a session by exact name: the controller composed the argv, and this
+        node still decides what it will run. `respawn` is the one decision
+        made here, because only this side can find the launcher."""
         for op in ops[:16]:
             if not isinstance(op, dict):
                 continue
@@ -681,19 +678,6 @@ class SessionsMixin:
             # A bare name, not `=name`: these take a target-PANE, and the
             # exact-match prefix is target-session syntax, measured as
             # "can't find pane: =…". tmux tries the exact name first anyway.
-            page = op.get("page")
-            if page in ("up", "down"):
-                flags = self._tmux(["display-message", "-p", "-t", sess,
-                                    "#{alternate_on} #{pane_in_mode}"]) or ""
-                alt, mode = (flags.split() + ["0", "0"])[:2]
-                if page == "up":
-                    argv = ["send-keys", "-t", sess, "PPage"] if alt == "1" \
-                        else ["copy-mode", "-eu", "-t", sess]
-                else:
-                    argv = ["send-keys", "-t", sess, "-X", "page-down"] if mode == "1" \
-                        else ["send-keys", "-t", sess, "NPage"]
-                self._tmux(argv)
-                continue
             # Restart this session's own process onto its launcher, which is
             # what the dashboard asks for when a project's model, effort or
             # permission rung changes. `-k` replaces the pane's process and

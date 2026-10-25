@@ -135,9 +135,9 @@ ref and nowhere else; `bb ci-log` reads a run's output.
   committed with the change) and measured by `test/uniform.mjs`; the house
   rule `design` holds it.
 - **Anything the page can execute is a table lookup** (`MACROS`,
-  `TMUX_KEYS`, `TMUX_LITERALS`, `TOOLCHAINS`), never a command string, and
+  the terminal's `TERM_KEYS`, `TOOLCHAINS`), never a command string, and
   `bb-tty` validates its one URL argument against directories that exist.
-  The terminal, under `/term`, is there for anything else.
+  The terminal, at `/termws`, is there for anything else.
 - **A setting that has to be in the environment lands in five places:**
   `.env.example`, `docker-compose.yml`, `unraid/builderbot.xml`,
   `docs/reference.md`, and `docs/unraid.md` when it needs host-side setup.

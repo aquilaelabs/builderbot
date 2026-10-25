@@ -1520,19 +1520,13 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       const cw = (await api('/api/status')).claude_with || {};
       ok((cw.alpha || []).includes('test'),
          '...and the project row counts it: the account has a session on alpha');
-      // The read-only console's line, and the key row, reach a node's
-      // session through the same poll: the agent types them into the pane.
+      // The read-only console's line reaches a node's session through the
+      // poll: the agent types it into the pane.
       const said = await api('/api/say', { session: 'claude-alpha', node: onNode?.node_id,
                                            text: 'echo typed-from-the-console' });
       ok(said.ok && said.queued, `a console line for a session on the node is queued for its agent (${JSON.stringify(said)})`);
       const typed = await until(async () => /typed-from-the-console/.test(tmuxCapture(real)) ? true : null, 30000, 500);
       ok(typed === true, '...and the agent types it into the pane, Enter included');
-      const paged = await api('/api/keys', { session: 'claude-alpha', node: onNode?.node_id, key: 'pgup' });
-      ok(paged.ok && paged.queued, 'the key row\'s PgUp is queued the same way, decided on the node');
-      const scrolled = await until(async () => tmuxFmt(real, '#{pane_in_mode}') === '1' ? true : null, 30000, 500);
-      await api('/api/keys', { session: 'claude-alpha', node: onNode?.node_id, key: 'down' });
-      const left = scrolled && await until(async () => tmuxFmt(real, '#{pane_in_mode}') === '0' ? true : null, 30000, 500);
-      ok(left === true, '...and an arrow after it leaves copy mode on the node, for the program (B254)');
       const k = await api('/api/session', { action: 'kill', session: 'claude-alpha', node: onNode?.node_id });
       ok(k.ok && k.queued, `ending it from the card is queued for the agent (${JSON.stringify(k)})`);
       ok(!((await api('/api/status')).sessions || []).some(s => s.node === 'agentbox' && s.name === 'claude-alpha'),
