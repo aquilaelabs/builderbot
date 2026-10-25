@@ -313,7 +313,15 @@ for l in "$LOCK" "${TMPDIR:-/tmp}/dashboard-test.lock"; do
     [ -z "${BB_TEST_CONCURRENT:-}" ] && [ -f "$l" ] || continue
     other="$(cat "$l" 2>/dev/null || true)"
     while [ -n "$other" ] && [ -d "/proc/$other" ] && [ "$waited" -lt "${BB_TEST_WAIT_LOCK:-900}" ]; do
-        [ "$waited" -eq 0 ] && echo "[dashboard-test] waiting for the run that holds the lock (pid $other) to end" >&2
+        if [ "$waited" -eq 0 ]; then
+            # A kept fixture holds it until it is stopped, which no wait ends
+            # (B343): said, with how.
+            if [ -f "$KEEPF" ] && [ "$(sed -n 's/^KEEP_PID=//p' "$KEEPF" 2>/dev/null)" = "$other" ]; then
+                echo "[dashboard-test] waiting for the lock, which the fixture bb tests keep holds (pid $other): bb tests keep stop releases it" >&2
+            else
+                echo "[dashboard-test] waiting for the run that holds the lock (pid $other) to end" >&2
+            fi
+        fi
         sleep 5; waited=$((waited + 5))
         other="$(cat "$l" 2>/dev/null || true)"
     done
