@@ -3431,6 +3431,20 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pcard .pcback .pcrepos{max-height:calc(var(--tap) * 5 + 2px);overflow-y:auto}
 /* Which agent a person's session runs, after their state, quieter. */
 .pstate .pagent{color:var(--dim)}
+/* A terminal's colors, one swatch each under the preset (the operator, 25
+   Oct): a grid of a swatch and its name, a changed one named in the text's
+   own ink; and a terminal drawn small in them. */
+.tcolors{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px 12px}
+.tcolors .tcolor{display:flex;align-items:center;gap:8px;min-height:var(--tap);color:var(--dim);font:var(--f-ui)}
+.tcolors .tcolor.mine{color:var(--ink)}
+.tcolors input[type=color]{width:36px;height:28px;min-height:0;padding:2px;border:var(--hair) solid var(--line);border-radius:var(--r-control);background:var(--sunk);flex:none}
+.termprev{font-family:var(--mono);line-height:1.45;padding:10px 12px;border-radius:var(--r-control);border:var(--hair) solid var(--line);
+  white-space:pre;overflow-x:auto;max-width:100%}
+.termprev .tpblock{display:inline-block;width:1.6em;height:1em;vertical-align:-.15em;margin-right:2px}
+.termprev .tpcur{display:inline-block;width:.6em}
+.termprev .tpcur.bar{width:0;border-left:2px solid}
+.termprev .tpcur.under{border-bottom:2px solid}
+#rnTermPreview .termprev{margin-top:4px}
 .pcard .pnote{font:var(--f-ui)}
 /* A row of another repository's list (R136, reposAlso): which repository,
    its number, its words. */
@@ -6048,6 +6062,10 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           <option value="red">red</option>
         </select></label>
       </div>
+      <!-- ...and how it looks, before a terminal opens (the operator, 25 Oct):
+           a line of its own under the row. -->
+      <div class="field" id="rnTermPreviewField"><label class="lbl" for="rnTermPreview">How your terminals here look</label>
+        <div id="rnTermPreview" aria-live="polite"></div></div>
       <div class="hint" id="rnPrefHint"></div>
       <div class="prefrow ctlrow" role="group" aria-labelledby="rnMineLabel">
         <label class="pick">Commit name <input id="rnGitName" type="text"

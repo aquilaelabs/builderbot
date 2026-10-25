@@ -169,7 +169,13 @@ const PF_TERM = [
                         ["green", "green"], ["light", "light"], ["red", "red"]], "default"],
 ];
 function profileTerminal(){
-  const look = state?.term_look || {};
+  const look = state?.term_look || {}, scheme = look.scheme || "default";
+  const mine = (look.colors || {})[scheme] || {}, pal = termPalette(scheme, mine);
+  // Under the preset, each of its colors with its own swatch (the operator,
+  // 25 Oct): a change is this person's to that preset, Reset takes it away.
+  const swatch = ([k, name]) => `<label class="tcolor${k in mine ? " mine" : ""}">
+      <input type="color" data-pftcolor="${k}" value="${esc(pal[k] || "#000000")}" aria-label="${esc(name)}">
+      <span>${esc(name)}</span></label>`;
   return `<div class="logset">${PF_TERM.map(([k, label, opts, dflt]) => `
       <div class="logdays setrow col ctlrow">
         ${lbl("pfTerm_" + k, label)}
@@ -177,20 +183,52 @@ function profileTerminal(){
           `<option value="${v}"${String(look[k] ?? dflt) === v ? " selected" : ""}>${esc(w)}</option>`).join("")}</select>
       </div>`).join("")}
       <div class="logdays setrow ctlrow"><label class="ndcap"><input type="checkbox" data-pfterm="blink"${look.blink === false ? "" : " checked"}> The cursor blinks</label></div>
-    </div>`;
+    </div>
+    <div class="field">${lbl("pfTermColors", `The colors of ${PF_TERM[2][2].find(([v]) => v === scheme)?.[1] || scheme}`)}
+      <div class="tcolors" id="pfTermColors">${TERM_COLOR_NAMES.map(swatch).join("")}</div>
+      ${Object.keys(mine).length ? `<div class="actbar"><span class="state">${Object.keys(mine).length} of them yours</span>
+        <button type="button" data-pftreset>Reset to the preset</button></div>` : ""}</div>
+    <div class="field">${lbl("pfTermPreview", "How it looks")}<div id="pfTermPreview">${termPreview(pal, look)}</div></div>`;
+}
+// The look as the fields say it now, the colors changed of the scheme picked.
+function termLookPicked(root){
+  const term = {}, was = state?.term_look || {};
+  root.querySelectorAll("[data-pfterm]").forEach(x => {
+    const k = x.dataset.pfterm;
+    term[k] = k === "blink" ? x.checked : k === "size" ? Number(x.value) : x.value;
+  });
+  const colors = {...(was.colors || {})}, base = termPalette(term.scheme, {});
+  const mine = {};
+  root.querySelectorAll("[data-pftcolor]").forEach(i => { if (i.value.toLowerCase() !== String(base[i.dataset.pftcolor]).toLowerCase()) mine[i.dataset.pftcolor] = i.value; });
+  // The swatches are the scheme's that was showing: a new scheme brings its own.
+  if (term.scheme === (was.scheme || "default")){
+    if (Object.keys(mine).length) colors[term.scheme] = mine; else delete colors[term.scheme];
+  }
+  term.colors = colors;
+  return term;
 }
 function wireTerminalLook(root){
-  root.querySelectorAll("[data-pfterm]").forEach(el => el.onchange = async () => {
-    const term = {};
-    root.querySelectorAll("[data-pfterm]").forEach(x => {
-      const k = x.dataset.pfterm;
-      term[k] = k === "blink" ? x.checked : k === "size" ? Number(x.value) : x.value;
-    });
+  const save = async term => {
     try{
       const j = await (await postJSON("/api/users", {action: "prefs", prefs: {term}})).json();
       if (j.error) return notify(j.error, true);
     }catch(e){ return notify("could not reach the controller: " + failWords(e), true); }
     refresh();
+  };
+  const preview = () => {
+    const t = termLookPicked(root), box = root.querySelector("#pfTermPreview");
+    if (box) box.innerHTML = termPreview(termPalette(t.scheme, t.colors[t.scheme]), t);
+  };
+  root.querySelectorAll("[data-pfterm]").forEach(el => el.onchange = () => { preview(); save(termLookPicked(root)); });
+  // A swatch redraws the preview as it is dragged and saves when it is let go.
+  root.querySelectorAll("[data-pftcolor]").forEach(el => {
+    el.oninput = preview;
+    el.onchange = () => save(termLookPicked(root));
+  });
+  root.querySelectorAll("[data-pftreset]").forEach(b => b.onclick = () => {
+    const t = termLookPicked(root);
+    delete t.colors[t.scheme];
+    save(t);
   });
 }
 

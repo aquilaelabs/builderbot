@@ -1202,10 +1202,31 @@ def own_prefs(name, want):
             look["blink"] = t["blink"]
         if t.get("scheme") in project_prefs.TERM_SCHEMES:
             look["scheme"] = t["scheme"]
+        # ...and each scheme's colors as this person changed them (the
+        # operator, 25 Oct): by scheme, each a terminal color's name and a
+        # #rrggbb, so a project given that scheme wears them too, and Reset
+        # is taking one scheme's away.
+        if isinstance(t.get("colors"), dict):
+            cols = {}
+            for sch, got in t["colors"].items():
+                if sch in project_prefs.TERM_SCHEMES and isinstance(got, dict):
+                    one = {k: v.lower() for k, v in got.items()
+                           if k in TERM_COLORS and isinstance(v, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", v)}
+                    if one:
+                        cols[sch] = one
+            look["colors"] = cols
         keep["term"] = look
     if not keep:
         return {"error": "nothing here is a setting"}, 400
     return prefs_set(name, keep), 200
+
+
+# The colors a terminal's scheme is made of, as xterm.js names them: its
+# ground, text, cursor and selection, and the sixteen ANSI colors.
+TERM_COLORS = ("background", "foreground", "cursor", "selectionBackground",
+               "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
+               "brightBlack", "brightRed", "brightGreen", "brightYellow",
+               "brightBlue", "brightMagenta", "brightCyan", "brightWhite")
 
 
 def _members_refused(name, want, may_change):

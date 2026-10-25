@@ -59,7 +59,7 @@ const SURFACE = [ 'adoptLayout', 'adoptMode', 'adoptMotion', 'applyMotion', 'ado
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
   'sessionRows', 'liveRefresh', 'bootFetch', 'bootReadsDone',
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',
-  'nudgeTerminals', 'termOwn', 'xtermReady', 'termSlot', 'termUrl', 'termMount', 'termSend', 'termType', 'termFit', 'termConnect', 'termEnded', 'termDrop', 'termSweep', 'termRevive', 'termKey', 'termLog', 'openLogTab', 'termProject', 'termLook', 'termRestyle', 'termTouch', 'termCell', 'termScroll', 'termPos', 'termSelectAt', 'termSelectDraw', 'termSelText', 'termCopy', 'termSelectEnd', 'profileTerminal', 'wireTerminalLook', 'onRev', 'openClaude',
+  'nudgeTerminals', 'termOwn', 'xtermReady', 'termSlot', 'termUrl', 'termMount', 'termSend', 'termType', 'termFit', 'termConnect', 'termEnded', 'termDrop', 'termSweep', 'termRevive', 'termKey', 'termLog', 'openLogTab', 'termProject', 'termPalette', 'termPreview', 'termLookPicked', 'rnTermPreview', 'termLook', 'termRestyle', 'termTouch', 'termCell', 'termScroll', 'termPos', 'termSelectAt', 'termSelectDraw', 'termSelText', 'termCopy', 'termSelectEnd', 'profileTerminal', 'wireTerminalLook', 'onRev', 'openClaude',
   'openDevEnv', 'openDocker', 'openDockerOn', 'openEditContainer', 'openEditInstance', 'cSaveInstance', 'openLinkProject',
   'openNewContainer', 'cFormYaml', 'cFormWrote', 'openNewProject', 'openAddRepository', 'openNotebook', 'openToolchains', 'openPending', 'drawPendingModal', 'pendAct',
   'openProjectsTab', 'openSendToDocker', 'openTab', 'openTrash', 'pDraw',

@@ -81,6 +81,53 @@ const TERM_SCHEMES = {
   red: {background: "#2c1416", foreground: "#f5dcdc", cursor: "#ff6b6b"},
 };
 
+// What every scheme is laid over: xterm's own ground and the Tango ANSI
+// colors it ships, so a scheme names only what it changes and every color
+// has a value to show and to change (the operator, 25 Oct).
+const TERM_BASE = {background: "#2b2b2b", foreground: "#e6e6e6", cursor: "#e6e6e6", selectionBackground: "#5a5a5a",
+  black: "#2e3436", red: "#cc0000", green: "#4e9a06", yellow: "#c4a000", blue: "#3465a4", magenta: "#75507b",
+  cyan: "#06989a", white: "#d3d7cf", brightBlack: "#555753", brightRed: "#ef2929", brightGreen: "#8ae234",
+  brightYellow: "#fce94f", brightBlue: "#729fcf", brightMagenta: "#ad7fa8", brightCyan: "#34e2e2", brightWhite: "#eeeeec"};
+// Each color as a person reads it, in the order the Profile lays them out:
+// the four of the terminal itself, then the eight ANSI colors and their
+// bright halves (users.py TERM_COLORS).
+const TERM_COLOR_NAMES = [["background", "Ground"], ["foreground", "Text"], ["cursor", "Cursor"], ["selectionBackground", "Selection"],
+  ["black", "Black"], ["red", "Red"], ["green", "Green"], ["yellow", "Yellow"], ["blue", "Blue"], ["magenta", "Magenta"], ["cyan", "Cyan"], ["white", "White"],
+  ["brightBlack", "Bright black"], ["brightRed", "Bright red"], ["brightGreen", "Bright green"], ["brightYellow", "Bright yellow"],
+  ["brightBlue", "Bright blue"], ["brightMagenta", "Bright magenta"], ["brightCyan", "Bright cyan"], ["brightWhite", "Bright white"]];
+
+// A scheme's whole palette: the base, the preset over it, and this
+// person's own changes to that preset over both.
+function termPalette(scheme, mine){
+  const css = getComputedStyle(document.documentElement);
+  const preset = scheme === "dashboard"
+    ? {background: css.getPropertyValue("--bg").trim(), foreground: css.getPropertyValue("--ink").trim(),
+       cursor: css.getPropertyValue("--accent").trim()}
+    : TERM_SCHEMES[scheme] || TERM_SCHEMES.default;
+  return {...TERM_BASE, ...preset, ...(mine || {})};
+}
+
+// A terminal drawn small in a palette, for a person to see before one opens
+// (the operator, 25 Oct): a prompt, a listing in the ANSI colors, every
+// color as a block, a selection and the cursor in its shape.
+function termPreview(theme, look = {}){
+  const c = k => esc(theme[k] || "");
+  const sp = (k, t) => `<span style="color:${c(k)}">${esc(t)}</span>`;
+  const blocks = keys => keys.map(k => `<span class="tpblock" style="background:${c(k)}" title="${esc(k)}"></span>`).join("");
+  const cur = look.cursor || "block";
+  const cursor = cur === "bar" ? `<span class="tpcur bar" style="border-color:${c("cursor")}"></span>`
+    : cur === "underline" ? `<span class="tpcur under" style="border-color:${c("cursor")}">&nbsp;</span>`
+    : `<span class="tpcur" style="background:${c("cursor")}">&nbsp;</span>`;
+  return `<div class="termprev" role="img" aria-label="how a terminal looks in these colors"
+      style="background:${c("background")};color:${c("foreground")};font-size:${Number(look.size) || 13}px">
+    <div>${sp("green", "you@node")}:${sp("blue", "~/alpha")}$ ls</div>
+    <div>${sp("blue", "src")}  ${sp("green", "build.sh")}  ${sp("cyan", "docs")}  ${sp("red", "core")}  ${sp("yellow", "notes.md")}  ${sp("magenta", "logo.png")}</div>
+    <div>${blocks(["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"])}</div>
+    <div>${blocks(["brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue", "brightMagenta", "brightCyan", "brightWhite"])}</div>
+    <div><span style="background:${c("selectionBackground")}">a selection</span> and the cursor ${cursor}</div>
+  </div>`;
+}
+
 // The project a terminal's argument is about, for its person's colors there.
 function termProject(arg){
   const a = String(arg || "");
@@ -95,11 +142,7 @@ function termProject(arg){
 function termLook(t){
   const look = state?.term_look || {}, row = (state?.projects || []).find(p => p.name === termProject(t.arg));
   const scheme = row?.yours?.term_scheme || look.scheme || "default";
-  const css = getComputedStyle(document.documentElement);
-  const theme = scheme === "dashboard"
-    ? {background: css.getPropertyValue("--bg").trim(), foreground: css.getPropertyValue("--ink").trim(),
-       cursor: css.getPropertyValue("--accent").trim()}
-    : TERM_SCHEMES[scheme] || TERM_SCHEMES.default;
+  const theme = termPalette(scheme, (look.colors || {})[scheme]);
   return {fontSize: look.size || 13, cursorStyle: look.cursor || "block", cursorBlink: look.blink !== false, theme};
 }
 

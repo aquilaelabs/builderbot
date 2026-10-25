@@ -464,6 +464,15 @@ function rnFillReads(){
   $("rnReadsWhy").hidden = mine;
 }
 
+// How this person's terminals here look with the colors picked, their
+// Profile's look and their own changes to that scheme with it.
+function rnTermPreview(){
+  const box = $("rnTermPreview");
+  if (!box) return;
+  const look = state?.term_look || {}, scheme = $("rnTermScheme").value || look.scheme || "default";
+  box.innerHTML = termPreview(termPalette(scheme, (look.colors || {})[scheme]), look);
+}
+
 function rnFillPrefsRest(p){
   $("rnBuildCmd").value = p?.prefs?.build || "";
   $("rnTestCmd").value = p?.prefs?.test || "";
@@ -478,6 +487,8 @@ function rnFillPrefsRest(p){
   $("rnReply").value = p?.yours?.reply || "";
   $("rnAsks").value = p?.yours?.asks || "";
   $("rnTermScheme").value = p?.yours?.term_scheme || "";
+  rnTermPreview();
+  $("rnTermScheme").onchange = rnTermPreview;
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   $("rnCaptureDays").value = String(p?.prefs?.capture_days ?? 7);
   $("rnSnapDays").value = String(p?.prefs?.snapshot_days ?? 14);
