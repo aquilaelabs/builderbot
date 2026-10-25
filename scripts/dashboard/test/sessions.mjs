@@ -294,7 +294,8 @@ const ndx = page.dialogs.length;
 await page.waitForFunction(() => withMe('ep.silon').includes(state.me), { timeout: 30000 });
 await unfold(page, 'ep.silon');
 await page.waitForSelector('.pgrid .pcard[data-row="ep.silon"] [data-lock]', { state: 'visible', timeout: 10000 });
-const lockSaid = await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-lock]', b => b.textContent.trim());
+// A named icon on the card's back (R138): its name is its label.
+const lockSaid = await page.$eval('.pgrid .pcard[data-row="ep.silon"] [data-lock]', b => b.getAttribute('aria-label') || b.textContent.trim());
 const lockAnswer = page.waitForResponse(r => r.url().includes('/api/lock'), { timeout: 15000 })
   .then(r => r.text()).catch(e => `no answer: ${e.message.split('\n')[0]}`);
 await page.click('.pgrid .pcard[data-row="ep.silon"] [data-lock]');         // lock: asks, then the server ends the others' sessions

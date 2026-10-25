@@ -4,7 +4,7 @@
 // sign-in. A plain request to /termws is answered with what the socket
 // would be (a refusal and why, or that a websocket is asked for), which is
 // how most checks here ask; the socket itself is covered by term.mjs.
-import { launch, newPage, ok, done, sleep, URL, DIR, takeOn, openSection, member, splitPick } from './lib.mjs';
+import { launch, newPage, ok, done, sleep, URL, DIR, takeOn, openSection, member, splitPick, projectKey } from './lib.mjs';
 import http from 'node:http';
 import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -577,9 +577,11 @@ ${code}`], { encoding: 'utf8' });
     {
       const mine = () => (projects(owner)).then(ps => ps.find(p => p.name === 'alpha')?.mine);
       const list = (await (await bare('/api/users', { headers: owner })).json()).users.find(u => u.name === 'test').projects;
-      ok(!list.includes('*') && list.includes('alpha') && await mine() === true,
-         `the owner's "*" became the projects that exist, alpha among them (${list.join(', ')})`);
-      await post(owner, '/api/users', { action: 'projects', name: 'test', projects: list.filter(p => p !== 'alpha') });
+      // By project (R138): the list names alpha's project, by its key.
+      const ak = projectKey('alpha');
+      ok(!list.includes('*') && list.includes(ak) && await mine() === true,
+         `the owner's "*" became the projects that exist, alpha's among them (${list.join(', ')})`);
+      await post(owner, '/api/users', { action: 'projects', name: 'test', projects: list.filter(p => p !== ak) });
       const off = await post(owner, '/api/roadmap', { project: 'alpha', action: 'add', text: 'x' });
       ok(await mine() === false && off.status === 403,
          `...and off their own list, alpha is read-only to the owner too (${off.status})`);
@@ -1046,10 +1048,10 @@ ${code}`], { encoding: 'utf8' }).trim();
   ok(/not an email/.test(await page.$eval('#ueErr', e => e.textContent)),
      'Save refuses an email that is not one, and keeps what was typed');
   await page.fill('.userstab #ueEmail', 'tab@example.invalid');
-  await page.selectOption('.userstab #rolesAddProj', 'alpha');
+  await page.selectOption('.userstab #rolesAddProj', projectKey('alpha'));
   await page.selectOption('.userstab #rolesAddRole', 'reader');
   await page.click('.userstab #rolesAddOn');
-  await page.waitForSelector('.userstab [data-rproject="alpha"] [data-rprole="reader"]:checked');
+  await page.waitForSelector(`.userstab [data-rproject="${projectKey('alpha')}"] [data-rprole="reader"]:checked`);
   ok(await page.$eval('.userstab #ueEmail', e => e.value) === 'tab@example.invalid',
      '...and what is typed survives the roles fields being drawn again');
   await page.click('.userstab #ueSave');
@@ -1271,10 +1273,11 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
                                           && !!el.querySelector('#pfPasswd')),
      'the Profile page names the account and carries Save and Change password');
   // ...and says what the account may do, once (R255 step 5): its roles by
-  // name in the bar and every area it holds, with its level.
+  // name in its head and every area it holds, with its level.
   const wm = await page.$eval('.profiletab', el => ({ bar: el.closest('.doc')?.querySelector('.docbarrow')?.textContent || '',
     facts: Object.fromEntries([...el.querySelectorAll('.facts .fact')].map(f => [f.querySelector('dt').textContent, f.querySelector('dd').textContent])) }));
-  ok(/BuilderBot's owner/.test(wm.bar) && wm.facts['Accounts and roles'] === 'Write' && wm.facts.Projects === 'Write',
+  // Its roles a fact of the page's head now (the operator, 25 Oct).
+  ok(/BuilderBot's owner/.test(wm.facts.Roles || '') && wm.facts['Accounts and roles'] === 'Write' && wm.facts.Projects === 'Write',
      `...and what it may do: its roles by name, and each area with its level (${JSON.stringify(wm).slice(0, 160)})`);
   ok(await page.evaluate(() => !!document.querySelector('#rail [data-rail="people"]') && railAllows('settings') && railAllows('users')),
      'an administrator is offered People and the controller\'s settings on the rail');
@@ -1711,15 +1714,18 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
       // (R135), the one difference from an administrator.
       {
         const list = (await (await bare('/api/users', { headers: ownerAuth })).json()).users.find(u => u.name === 'test').projects;
-        const without = list.filter(p => p !== 'gamma');
+        // By project (R138): the list names gamma's project by its key.
+        const GK = projectKey('gamma');
+        const without = list.filter(p => p !== GK);
         await post(ownerAuth, '/api/users', { action: 'projects', name: 'test', projects: without });
         const back = await post(ownerAuth, '/api/users', { action: 'projects', name: 'test', projects: [...without, 'gamma'] });
-        ok(back.status === 200 && (back.body.projects || []).includes('gamma'),
+        ok(back.status === 200 && (back.body.projects || []).includes(GK),
            `...while the owner adds themselves to it without an invitation (${back.status})`);
       }
       const inv = await post(ownerAuth, '/api/members', { action: 'invite', project: 'gamma', name: 'adminone', role: 'member' });
       const st = await (await bare('/api/status', { headers: adminAuth })).json();
-      const mine = (st.invites || []).find(i => i.project === 'gamma');
+      const isG = p => p === 'gamma' || p === projectKey('gamma');
+      const mine = (st.invites || []).find(i => isG(i.project));
       const acc = mine ? await post(adminAuth, '/api/members', { action: 'accept', id: mine.id }) : { status: 0, body: {} };
       const after = await post(ownerAuth, '/api/members', { action: 'view', project: 'gamma' });
       ok(inv.status === 200 && mine && mine.by === 'test' && acc.body.joined === true
@@ -1730,7 +1736,7 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
       const moved = await post(ownerAuth, '/api/members', { action: 'set', project: 'gamma', owner: 'adminone' });
       const offer = await post(adminAuth, '/api/members', { action: 'set', project: 'gamma', owner: 'plainone' });
       const pst = await (await bare('/api/status', { headers: plainAuth })).json();
-      const off = (pst.invites || []).find(i => i.project === 'gamma' && i.kind === 'owner');
+      const off = (pst.invites || []).find(i => isG(i.project) && i.kind === 'owner');
       const took = off ? await post(plainAuth, '/api/members', { action: 'accept', id: off.id }) : { body: {} };
       const now = await post(ownerAuth, '/api/members', { action: 'view', project: 'gamma' });
       ok(moved.body.owner === 'adminone' && offer.body.owner === 'adminone' && offer.body.offered === 'plainone'
@@ -1740,7 +1746,7 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
       // payload says whose it is, and the People section offers it under
       // gamma and no other project.
       const rl = await (await bare('/api/roles', { headers: ownerAuth })).json();
-      const gOwner = Object.values(rl.roles || {}).find(r => r.project === 'gamma');
+      const gOwner = Object.values(rl.roles || {}).find(r => isG(r.project));
       ok(gOwner && /^owner of /.test(gOwner.label || '') && gOwner.scope === 'projects',
          `a project's owner role carries its project (${JSON.stringify(gOwner || {}).slice(0, 80)})`);
       await page.evaluate(() => { loadRoles(); openUsersTab(); });
@@ -1750,7 +1756,7 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
       // Where the role is offered, as the Add to project row in an
       // account's settings fills its role picker for each project (R255 step 9).
       const where = await page.evaluate(n => (rolesData.projects || []).filter(pn => rolesOnProject(pn).some(r => r.name === n)), gOwner?.name || '');
-      ok(where.length === 1 && where[0] === 'gamma',
+      ok(where.length === 1 && isG(where[0]),
          `...and the People section offers it under gamma alone (${JSON.stringify(where)})`);
       await post(ownerAuth, '/api/members', { action: 'set', project: 'gamma', owner: 'test' });
       const sessM = await act(sessAuth, '/api/members', { action: 'view', project: 'alpha' });

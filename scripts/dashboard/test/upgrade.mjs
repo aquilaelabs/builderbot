@@ -78,14 +78,18 @@ async function holds(c, m, said){
   const users = (await get('/api/users')).users || [];
   for (const n of m.accounts) if (!users.some(u => u.name === n)) missing.push(`account ${n}`);
   const roles = await get('/api/roles');
+  // A role is held on a project (R138): each repository the manifest names
+  // read as the project the status read says it is in.
+  const rows = (await get('/api/status')).projects || [];
+  const keyOf = p => rows.find(x => x.name === p)?.project || p;
   for (const r of m.roles) if (!(r in (roles.roles || {}))) missing.push(`role ${r}`);
   for (const [n, pr] of Object.entries(m.project_roles))
     for (const [p, rs] of Object.entries(pr)) for (const r of rs){
       const who = (roles.people || []).find(x => x.name === n);
-      if (!(who?.project_roles?.[p] || []).includes(r)) missing.push(`${n}'s ${r} on ${p}`);
+      if (!(who?.project_roles?.[keyOf(p)] || []).includes(r)) missing.push(`${n}'s ${r} on ${p}`);
     }
   for (const p of m.projects){
-    if (!(roles.projects || []).includes(p)) missing.push(`project ${p}`);
+    if (!(roles.projects || []).includes(keyOf(p))) missing.push(`project ${p}`);
     const ids = ((await get(`/api/roadmap?project=${p}`)).items || []).map(i => i.id);
     for (const id of m.roadmap[p]) if (!ids.includes(id)) missing.push(`${p} roadmap ${id}`);
     const bugs = ((await get(`/api/bugs?project=${p}`)).bugs || []).map(b => b.id);

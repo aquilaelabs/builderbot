@@ -1479,9 +1479,10 @@ def _projects_seen_by(who, rows):
     # who administers the box would only send them looking for it, and the
     # list they keep is a seatbelt against editing the wrong one rather than a
     # wall (users.may_work).
+    # By project (R138): an account's list names projects, and a repository
+    # is seen when its project is on it.
     if not users.sees_all(who):
-        allow = set((who or {}).get("projects") or [])
-        rows = [p for p in rows if p["name"] in allow]
+        rows = [p for p in rows if users.may_see(who, p["name"])]
     for p in rows:
         p["mine"] = users.may_work(who, p["name"])
     return rows
@@ -3679,8 +3680,10 @@ roles.home_of = repos.key_of
 users.configure(state=STATE, write_json=write_json, project_prefs=prefs.for_user,
                 # The nodes of an account's projects: what a node grant's
                 # scope "mine" means (R137 step 3).
-                nodes_of=lambda u: {n for p in (u.get("projects") or [])
-                                    for n in prefs._nodes_of(prefs.get(p) or {})})
+                # Its list names projects (R138): each read through its
+                # repositories, whose settings carry the project's node.
+                nodes_of=lambda u: {n for p in (u.get("projects") or []) for r in (repos.members(p) or [p])
+                                    for n in prefs._nodes_of(prefs.get(r) or {})})
 
 # ---- the dev instance ------------------------------------------------------
 # A project's compose app, built and run on the sandbox VM's daemon. The
@@ -6477,8 +6480,11 @@ class Handler(BaseHTTPRequestHandler):
         the status payload also carries (projsessions.maps), alone and
         cheap. Fetched when the revs token `live` moves."""
         who = self._who()
-        return self._json(projsessions.maps(tmux_sessions() + node_tmux_sessions(),
-                                            None if users.sees_all(who) else (who or {}).get("projects") or []))
+        # ...each project on its list as its repositories (R138), which the
+        # sessions are named for.
+        seen = None if users.sees_all(who) else [r for p in (who or {}).get("projects") or []
+                                                  for r in (repos.members(p) or [p])]
+        return self._json(projsessions.maps(tmux_sessions() + node_tmux_sessions(), seen))
 
     def _get_findings(self):
         """GET /api/findings: findings.view, scoped to the projects this

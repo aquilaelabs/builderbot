@@ -258,7 +258,7 @@ def members(project):
     project = users.key_of(project)
     out = []
     for u in users.all_users():
-        have = u.get("projects") or []
+        have = {p if p == "*" else users.key_of(p) for p in u.get("projects") or []}
         if "*" in have or project in have:
             out.append(u.get("name") or "")
     return sorted(out, key=lambda n: (n != users.owner_name(), n.lower()))

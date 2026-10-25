@@ -449,8 +449,9 @@ ok(elsewhere.git_name === 'T. Person',
 {
   await page.evaluate(() => { document.querySelectorAll('.modal:not(.inline)').forEach(m => { m.hidden = true; }); });
   // The sidebar's row carries no gear; the Projects page's card offers
-  // Settings in its menu by design (R218 step 3), not as a button on the row.
-  ok(!(await page.$('#projects [data-rn]')) && !(await page.$('.doc .projtab .pcacts > [data-rn]')),
+  // Settings in its menu by design (R218 step 3), not as a button on its
+  // face, and on its back among the named icons (R138, the operator).
+  ok(!(await page.$('#projects [data-rn]')) && !(await page.$('.doc .projtab .pcacts:not(.pcfoot) > [data-rn]')),
      'no project row carries a settings button any more');
   await page.evaluate(() => openProjectSettings('alpha'));
   await page.waitForSelector('.nb .nbview[data-view="settings"]:not([hidden]) .nbsettings #rnName', { timeout: 15000 });
@@ -744,8 +745,8 @@ ok(elsewhere.git_name === 'T. Person',
   await phone.evaluate(() => openProfileTab());
   await phone.waitForSelector('.profiletab [data-spick="may"]', { timeout: 15000 });
   await phone.click('.profiletab [data-spick="may"]');
-  await phone.waitForSelector('.profiletab dl.facts dd', { timeout: 10000 });
-  const xs = await phone.$$eval('.profiletab dl.facts .fact dd', ds => [...new Set(ds.filter(d => d.offsetHeight)
+  await phone.waitForSelector('.profiletab dl.facts:not(.pghfacts) dd', { timeout: 10000 });
+  const xs = await phone.$$eval('.profiletab dl.facts:not(.pghfacts) .fact dd', ds => [...new Set(ds.filter(d => d.offsetHeight)
     .map(d => Math.round(d.getBoundingClientRect().left)))]);
   const over = await phone.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   if (process.env.BB_SHOT_DIR) await phone.screenshot({ path: `${process.env.BB_SHOT_DIR}/profile-may-360.png` });

@@ -4,7 +4,7 @@
 // Everything here drives the stub docker the harness provides; the argv it
 // records IS the assertion, because the module's whole safety story is that
 // the buttons run table-lookup compose commands and nothing else.
-import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, saveDialog, URL, DIR, nbShown, nbTab, openFold, nbGo, faded } from './lib.mjs';
+import { launch, newPage, ok, done, ready, sleep, patience, holdPoll, freePoll, refreshUntil, saveDialog, URL, DIR, nbShown, nbTab, openFold, nbGo, faded, projectKey } from './lib.mjs';
 import { writeFileSync, readFileSync, rmSync, existsSync, mkdirSync, chmodSync, readdirSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -3271,8 +3271,8 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
   writeFileSync(`${DIR}/dockerstate/repodigests/${img.replace(/[/:]/g, '_')}`, JSON.stringify([`lscr.io/linuxserver/radarr@sha256:${'a'.repeat(64)}`]));
   writeFileSync(`${DIR}/image-digests.json`, JSON.stringify({ [img]: `sha256:${'b'.repeat(64)}` }));
   await page.waitForSelector('#bDockerCheck', { timeout: 15000 });
-  ok(await page.$eval('.dmimgbar .state', e => /not checked yet|checked/.test(e.textContent)),
-     'the Containers page says when its registry images were last checked, beside Check for updates');
+  ok(await page.$eval('.dmimgbar', e => /Images checked\s*(not yet|.* ago|just now)/.test(e.textContent)),
+     'the Containers page says when its registry images were last checked, a fact of its head');
   await page.click('#bDockerCheck');
   await page.waitForSelector('.dmtab .row[data-inst="radarr|main"] .dmimages', { timeout: 20000 });
   ok(await page.$eval('.dmtab .row[data-inst="radarr|main"]', r => /a newer lscr\.io\/linuxserver\/radarr:latest is out/.test(r.querySelector('.dmimages').textContent)
@@ -4776,7 +4776,8 @@ print(json.dumps(out))
   // said under its heading.
   {
     const mine = await page.evaluate(async () => (await (await fetch('/api/users')).json()).users.find(u => u.name === 'test').projects);
-    await api('/api/users', { action: 'projects', name: 'test', projects: mine.filter(p => p !== 'ep.silon') });
+    // By project (R138): the list names ep.silon's project by its key.
+    await api('/api/users', { action: 'projects', name: 'test', projects: mine.filter(p => p !== projectKey('ep.silon')) });
     const refused = await api('/api/dockerctl', { action: 'restart', container: 'someone-elses' });
     const read = await api('/api/devapp', { project: 'ep.silon', instance: 'loose', action: 'state' });
     await page.evaluate(async () => { await refresh(); location.hash = '#/containers'; dockerList = null; dockerRev++; loadDocker(); });
