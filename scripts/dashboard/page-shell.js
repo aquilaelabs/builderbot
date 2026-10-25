@@ -202,7 +202,10 @@ function routeOf(t){
   // holds Controller settings too.
   if (t.kind === "home") return "#/home";
   const node = NODE_PICKED[t.kind]?.() || "";
-  return ((g.tools || []).length > 1 ? `#/${g.key}/${t.kind}` : `#/${g.key}`) + (node ? "/" + encodeURIComponent(node) : "");
+  // A page named as its group is (Jobs, beside Schedules since R117) keeps
+  // the group's own address, #/jobs/failed as Home links it, never
+  // #/jobs/jobs; the reader takes a segment that is no page's for its node.
+  return ((g.tools || []).length > 1 && t.kind !== g.key ? `#/${g.key}/${t.kind}` : `#/${g.key}`) + (node ? "/" + encodeURIComponent(node) : "");
 }
 
 // Open what an address names; nothing happens for one that names nothing.
