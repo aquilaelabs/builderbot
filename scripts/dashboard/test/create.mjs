@@ -4,7 +4,7 @@
 // clone path is tested up to its URL allow-list: the list is the thing under
 // test, and a real clone would need GitHub on the other end.
 import { launch, newPage, ok, done, ready, URL, DIR, animatedDuring, tmuxNew, tmuxKill,
-         refreshUntil, unfold } from './lib.mjs';
+         refreshUntil, unfold, projectKey, holdPoll, freePoll } from './lib.mjs';
 import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync, chmodSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -187,10 +187,14 @@ ok(await page.$eval('#pNamePreview', el => el.hidden),
      '...and a name whose folder a deleted project had says it is shown as itself in the folder Name-2');
   // ...while a folder a live project is in says which, not that a deleted
   // project had it (B93).
+  // The poll held: one landing between the plant and the typing put the
+  // server's projects back, and the preview found no live one.
+  await holdPoll(page);
   await page.evaluate(() => { state.projects.push({ name: 'held-2', label: 'held' }); pTakenDirs.add('held-2'); });
   await page.fill('#pName', 'held-2');
   const heldSaid = await page.$eval('#pNamePreview', el => el.hidden ? '' : el.textContent);
   await page.evaluate(() => { state.projects = state.projects.filter(p => p.name !== 'held-2'); pTakenDirs.delete('held-2'); });
+  await freePoll(page);
   ok(/in the folder held-2-2: held is in the folder held-2/.test(heldSaid) && !/deleted/.test(heldSaid),
      `...and a live project's folder is named as that project's, not a deleted one's (${heldSaid})`);
   await page.fill('#pName', 'plain');
@@ -1373,8 +1377,10 @@ await page.waitForFunction(() => document.getElementById('tmodal').hidden);
   const madeBy = await call('/api/create', { name: 'maker-made', mode: 'init' }, MAKER);
   const listed = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.maker'].projects || [];
   const worked = await call('/api/prefs', { project: 'maker-made', color: 'teal' }, MAKER);
-  // Kept by its project (R138): the key of the project made around it.
-  const makerKey = madeBy.project;
+  // Kept by its project (R138): the key of the project made around it, given
+  // as the project list places the new repository.
+  await fetch(URL.replace(/\/$/, '') + '/api/status', { headers: MAKER }).catch(() => {});
+  const makerKey = projectKey('maker-made');
   ok(madeBy.status === 200 && !!makerKey && listed.includes(makerKey) && worked.status === 200,
      `an administrator's new project goes on their own list, and they may work on it at once (${
        JSON.stringify(listed)}, ${worked.status}${worked.error ? ': ' + worked.error : ''})`);
