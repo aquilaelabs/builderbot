@@ -104,7 +104,8 @@ function agSection(a, n, m){
     ["program", a.product],
     ["installed", m?.installed || (up ? "none" : "")],
     ["latest", m?.latest || ""],
-    ["signs in with", a.provider ? `${/^[AEIOU]/.test(a.provider) ? "an" : "a"} ${a.provider} account` : ""],
+    // "an" by the sound: a vowel, or xAI's x said as a letter.
+    ["signs in with", a.provider ? `${/^(?:[AEIOU]|x(?=[A-Z]))/.test(a.provider) ? "an" : "a"} ${a.provider} account` : ""],
   ], "agfacts");
   const verb = m?.installed ? (m.state === "update" ? "Update" : "") : "Install";
   const acts = !up || !m || !may || running ? ""
