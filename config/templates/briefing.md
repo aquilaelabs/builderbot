@@ -367,7 +367,10 @@ moves it where the policy lets you, and `bb version set X.Y.Z` to a later
 version in one step where that allows the part it changes. `bb changelog add
 "..." --cat NAME` records what a change means for the person using the
 product, under Added, Changed, Deprecated, Removed, Fixed or Security; with
-no category it says when each applies. Tagging and publishing the release is
+no category it says when each applies. Fixed is for a bug a released
+version had: a fix to something no release has carried yet gets no line
+(the bug is still filed and closed), since the changelog is read by
+somebody upgrading from a release. Tagging and publishing the release is
 `bb version release --why "..."` under Agents may: Tag and publish a
 release, which asks the project's owner by default and runs on the
 controller with the project's own credentials, never yours. A published

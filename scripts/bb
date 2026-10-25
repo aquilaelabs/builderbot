@@ -113,10 +113,13 @@ bb changelog add "..." --cat NAME   log what a change means for the person using
                    category is required, and the tool is where the rule lives:
                    Added (somebody can do something they could not), Changed
                    (already here, now different), Deprecated (going away),
-                   Removed (gone), Fixed (was wrong, now right), Security
-                   (act on it because of what it exposed). When two fit, the
-                   one a reader would look under; something nobody using the
-                   product would notice gets no entry. Run without a category
+                   Removed (gone), Fixed (was wrong in a released version,
+                   now right), Security (act on it because of what it
+                   exposed). When two fit, the one a reader would look under;
+                   something nobody using the product would notice gets no
+                   entry, and neither does a fix to something no release has
+                   carried yet: the changelog is read by somebody upgrading
+                   from a release, who never met that bug. Run without a category
                    and it prints this. A name that means one of the six is
                    spelled the one way (`fix` files under Fixed), the six keep
                    their usual order among themselves, and a project that
