@@ -212,8 +212,12 @@ await ready(page);
     argv: ['sh', '-c', 'echo tick; sleep 60'] });
   await page.waitForSelector(`.jobstab .jbrow[data-job="${q.job}"][data-state="running"] [data-jb="cancel"]`,
                              { timeout: 15000 });
-  const bar = await page.$eval('.jobstab .docbarrow', e => e.textContent.replace(/\s+/g, ' '));
-  ok(/1 not finished/.test(bar), `the bar counts what is not over (${bar.trim()})`);
+  // Counted by the tiles (the page heads: no words on the bar), running
+  // and waiting each their own.
+  await page.waitForFunction(() => [...document.querySelectorAll('.jobstab .tile')].some(t => /running/.test(t.textContent) && /[1-9]/.test(t.textContent)),
+                             null, { timeout: 10000 }).catch(() => {});
+  const bar = await page.$eval('.jobstab', e => [...e.querySelectorAll('.tile')].map(t => t.textContent.replace(/\s+/g, ' ').trim()).join(' | '));
+  ok(/\b[1-9]\d* running/.test(bar), `the tiles count what is not over (${bar})`);
   await page.click(`.jobstab .jbrow[data-job="${q.job}"] [data-jb="cancel"]`);
   await page.waitForSelector(`.jobstab .jbrow[data-job="${q.job}"][data-state="canceled"]`,
                              { timeout: 15000 });

@@ -122,7 +122,9 @@ const xWorks = () => page.evaluate(() => {
   ok(whens, `a notice said two hours ago reads "2 h ago" (${(whens || []).slice(0, 1).join('')})`);
   // All counts what is kept, once each: a failure is a kind as well (B30).
   {
-    const kept = await page.$eval('.noticestab', t => (/(\d+) kept/.exec(t.closest('.doc')?.textContent || t.textContent) || [])[1]);
+    // What is kept is the rows the list holds under All (the bar's count
+    // went with the page heads: the All chip is that number).
+    const kept = await page.evaluate(() => String((noticesData || []).length));
     const allChip = await page.$eval('.noticestab [data-ntchip=""]', b => (/\d+/.exec(b.textContent) || [])[0]);
     ok(kept && kept === allChip, `the All chip counts what is kept (${allChip} of ${kept} kept)`);
   }
