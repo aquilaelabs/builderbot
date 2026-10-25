@@ -205,10 +205,13 @@ await page.fill(`${sect} .ngform [data-ng="port"]`, '8083');
   const slow = async r => { if (r.request().method() === 'GET') await new Promise(f => setTimeout(f, 4000)); await r.continue().catch(() => {}); };
   await page.route('**/api/nginx', slow);
   await page.click(`${sect} .ngform [data-ngsave]`);
-  const quick = await page.waitForFunction(s => !document.querySelector(s + ' .ngform')
-      && /8083/.test(document.querySelector(s + ' .ngrec[data-i="1"]')?.textContent || ''), sect, { timeout: 3000 })
-    .then(() => true, () => false);
-  const said = await page.$eval(sect, s => s.querySelector('.toolstate .pill')?.textContent || '');
+  // The row and the pill read in the same moment: the stub's rebuild ends
+  // quickly, and a pill read a step later on a loaded box said deployed.
+  const at = await page.waitForFunction(s => !document.querySelector(s + ' .ngform')
+      && /8083/.test(document.querySelector(s + ' .ngrec[data-i="1"]')?.textContent || '')
+      && (document.querySelector(s + ' .toolstate .pill')?.textContent || '-'), sect, { timeout: 3000, polling: 'raf' })
+    .then(h => h.jsonValue(), () => null);
+  const quick = at !== null, said = at || '';
   ok(quick && /rebuilding/.test(said),
      `a route's Save shows the saved port and "deployed, rebuilding" at once, before the tab is read again (${quick}, ${said})`);
   // Unrouted only once the held reads have gone on, or unroute answers
