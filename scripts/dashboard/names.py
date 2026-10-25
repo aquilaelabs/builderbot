@@ -34,21 +34,28 @@ def claude_session(project):
     return agents.session_name("claude", project)
 
 
-def agent_session(agent_id, project):
-    """The tmux session an agent's conversation on a project runs in."""
-    return agents.session_name(agent_id, project)
+def agent_session(agent_id, project, slot=1):
+    """The tmux session an agent's conversation on a project runs in, in
+    its slot (R143)."""
+    return agents.session_name(agent_id, project, slot)
 
 
 def agent_sessions(project):
-    """Every live agent's session name on a project, Claude's first: what a
-    check that must see any agent's session there looks for (R95 step 16)."""
-    return tuple(agents.session_name(a.id, project) for a in agents.live())
+    """Every live agent's session name on a project in every slot, Claude's
+    first slot first: what a check that must see any agent's session there
+    looks for (R95 step 16; R143)."""
+    return tuple(agents.session_name(a.id, project, n)
+                 for n in range(1, agents.MAX_SLOTS + 1) for a in agents.live())
 
 
-def running_session(prefix, project, running):
+def running_session(prefix, project, running, want=""):
     """The session a message for this account on this project goes to:
+    the one the person picked (`want`, R143: one of several of their own
+    sessions there) when it is theirs, on this project and running; else
     the first live agent's that is running (`running`, a set of full
     names), Claude's when several are, or Claude's name when none is, so
     a caller that says "not running" names the usual one."""
     names = [prefix + n for n in agent_sessions(project)]
+    if want and want in running and want in names:
+        return want
     return next((n for n in names if n in running), names[0])

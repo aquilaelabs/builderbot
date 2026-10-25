@@ -679,9 +679,13 @@ BB_WORKTREES="${BB_WORKTREES:-${WORKSPACE:-/workspace}/.worktrees}"
 # other than Claude works in a worktree of its own on a branch of its own,
 # <agent>/<name>, the owner's included; Claude keeps claude/<name> and the
 # owner's project directory, so nothing that exists moves. Their work meets
-# through git, as two people's does.
+# through git, as two people's do.
+#
+# EACH SLOT ITS OWN TREE TOO (R143): a person's second session of one agent
+# on a project works in a worktree of its own on <agent>/<name>-N, the
+# owner's included, so the first slot is where it always was.
 session_dir() {
-    local proj="${1:-}" uid="${2:-}" agent="${3:-claude}" src="${WORKSPACE:-/workspace}/$1" wt branch
+    local proj="${1:-}" uid="${2:-}" agent="${3:-claude}" slot="${4:-1}" src="${WORKSPACE:-/workspace}/$1" wt branch
     [ -d "$src" ] || { printf '%s' "$src"; return 0; }
     case "$uid" in
         u_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
@@ -691,6 +695,7 @@ session_dir() {
         claude|'') agent=claude ;;
         *[!a-z]*) printf '%s' "$src"; return 0 ;;
     esac
+    case "$slot" in [1-9]) ;; *) slot=1 ;; esac
     # THE TREE RULE IS THE SAME ON BOTH MACHINES, unlike the home and the
     # session names: the project directory is on the share, so the owner
     # working in it from the node is the owner working in it, and, since a
@@ -700,7 +705,7 @@ session_dir() {
     # transcripts would not line up. A node has no users.json to say who the
     # owner is, so the controller says it in the terminal's URL (owner:1)
     # and bb-tty exports BB_TREE_OWNER.
-    if [ "$agent" = claude ] && { [ "$uid" = "${BB_OWNER_UID:-$(owner_uid)}" ] \
+    if [ "$agent" = claude ] && [ "$slot" = 1 ] && { [ "$uid" = "${BB_OWNER_UID:-$(owner_uid)}" ] \
        || { on_node && [ "${BB_TREE_OWNER:-}" = 1 ] && [ "${BB_ACCOUNT_UID:-}" = "$uid" ]; }; }; then
         printf '%s' "$src"; return 0
     fi
@@ -710,8 +715,10 @@ session_dir() {
     git -C "$src" rev-parse --git-dir >/dev/null 2>&1 || { printf '%s' "$src"; return 0; }
     wt="$BB_WORKTREES/$proj/$uid"
     [ "$agent" = claude ] || wt="$wt-$agent"
+    [ "$slot" = 1 ] || wt="$wt-$slot"
     if [ -d "$wt" ]; then printf '%s' "$wt"; return 0; fi
     branch="$agent/$(account_name "$uid" || printf '%s' "$uid")"
+    [ "$slot" = 1 ] || branch="$branch-$slot"
     mkdir -p "$(dirname "$wt")" 2>/dev/null || { printf '%s' "$src"; return 0; }
     # An existing branch is checked out rather than recreated: this is somebody
     # returning to work they left, and -b on a branch that exists fails.

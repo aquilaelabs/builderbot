@@ -1069,7 +1069,8 @@ class SessionsMixin:
                 last = float(act.strip())
             except ValueError:
                 continue
-            base = name.split("~", 1)[1] if "~" in name else name
+            # The account's prefix alone off: a second slot ends in ~2 (R143).
+            base = re.sub(r"^u_[0-9a-f]{8}~", "", name)
             if base.startswith(AGENT_PREFIXES) and time.time() - last > limit * IDLE_UNIT:
                 log(f"sessions: ending {name} (idle {limit} minute(s), the controller's rule)")
                 self._tmux(["kill-session", "-t", "=" + name])

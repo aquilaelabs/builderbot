@@ -699,7 +699,7 @@ export function projectKey(name){
 }
 // prefs.GROUP_FIELDS: what the project's record lays over a repository's.
 const GROUP_FIELDS = ['node', 'nodes', 'hosts', 'reads', 'sees', 'reaches', 'tc_off', 'packs_on', 'agents_off',
-  'agent_default', 'gitpol', 'color', 'devbuild', 'makevms', 'vm_caps', 'test_change', 'gpu', 'report', 'sign',
+  'agent_default', 'agent_slots', 'gitpol', 'color', 'devbuild', 'makevms', 'vm_caps', 'test_change', 'gpu', 'report', 'sign',
   'keys', 'release', 'pc', 'log_from', 'diag'];
 export function prefsOf(name){
   const all = stateFile('claude-prefs.json').projects || {}, key = projectKey(name);

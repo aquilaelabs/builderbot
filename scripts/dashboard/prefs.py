@@ -147,7 +147,7 @@ def configure(*, write_json, state):
 # outputs, its captures and snapshots, its tests' place, its gate on what a
 # session enters into its notebook) stays the repository's.
 GROUP_FIELDS = ("node", "nodes", "hosts", "reads", "sees", "reaches", "tc_off", "packs_on",
-                "agents_off", "agent_default", "gitpol", "color", "devbuild", "makevms", "vm_caps",
+                "agents_off", "agent_default", "agent_slots", "gitpol", "color", "devbuild", "makevms", "vm_caps",
                 "test_change", "gpu", "report", "sign", "keys", "release", "pc", "log_from", "diag")
 # repos.py's answers, handed over by the server: (project_of, members,
 # is_repos). Unset (bb loading this by path), _rp reads the same from the files.
@@ -432,6 +432,9 @@ def _clean(rec):
             # The agent its Start opens (R95 step 4): Claude's unless the
             # project says another, which must be one it allows.
             "agent_default": _agent_default(rec),
+            # How many sessions of one agent each person may run on it at
+            # once (R143), each a slot of its own: 3 unless it says.
+            "agent_slots": _agent_slots(rec),
             "packs_on": _toolchain_names(rec, "packs_on"),
             # The places on its node a session here is shown besides its own
             # project: a share it works with. A session's view is built from
@@ -639,6 +642,18 @@ def _agent_default(rec):
     a = agents.get(rec.get("agent_default"))
     off = _agents_off(rec)
     return a.id if a and a.live and a.id not in off else "claude"
+
+
+# A person's sessions of one agent on one project at once (R143), unless
+# the project says otherwise: at most agents.MAX_SLOTS.
+AGENT_SLOTS = 3
+
+
+def _agent_slots(rec):
+    """How many slots of one agent a person may have on the project: 1 to
+    agents.MAX_SLOTS, AGENT_SLOTS when it names none."""
+    v = rec.get("agent_slots")
+    return v if isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= agents.MAX_SLOTS else AGENT_SLOTS
 
 
 def _agents_off(rec):
@@ -859,7 +874,7 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
               snapshot_days=None, snapshots_on=None,
               release=None, log_from=None, diag=None, build_local=None, reaches=None, hosts=None,
               pc=None, tc_off=None, packs_on=None, makevms=None, vm_caps=None, agents_off=None,
-              agent_default=None):
+              agent_default=None, agent_slots=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -893,6 +908,14 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
             if a.id in cur["agents_off"]:
                 return {"error": f"{a.name} is switched off for {project}: allow it before making it the one Start opens"}
             cur["agent_default"] = a.id
+        if agent_slots is not None:
+            try:
+                n = int(agent_slots)
+            except (TypeError, ValueError):
+                n = 0
+            if not 1 <= n <= agents.MAX_SLOTS:
+                return {"error": f"agent_slots is 1 to {agents.MAX_SLOTS}, not {agent_slots}"}
+            cur["agent_slots"] = n
         # An agent switched off is no longer the one Start opens.
         if cur.get("agent_default") in cur["agents_off"]:
             cur["agent_default"] = "claude"
@@ -1048,6 +1071,7 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
         # past when its directory is renamed or deleted.
         if (cur["node"] or cur["hosts"] or cur["color"] or cur["reads"] or cur["sees"] or cur["reaches"]
                 or cur["tc_off"] or cur["packs_on"] or cur["agents_off"] or cur["agent_default"] != "claude"
+                or cur["agent_slots"] != AGENT_SLOTS
                 or cur["log_from"] or cur["diag"]
                 or not cur["build_local"]
                 or cur["build"] or cur["test"] or cur["outputs"]
@@ -1100,6 +1124,8 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
                 rec.pop("build_local", None)
             if cur["agent_default"] == "claude":
                 rec.pop("agent_default", None)
+            if cur["agent_slots"] == AGENT_SLOTS:
+                rec.pop("agent_slots", None)
             for k in ("tc_off", "packs_on", "agents_off"):
                 if not cur[k]:
                     rec.pop(k, None)
@@ -1257,6 +1283,7 @@ def dialog_save(name, req, uid):
                   reaches=req.get("reaches"), hosts=req.get("hosts"),
                   tc_off=req.get("tc_off"), packs_on=req.get("packs_on"),
                   agents_off=req.get("agents_off"), agent_default=req.get("agent_default"),
+                  agent_slots=req.get("agent_slots"),
                   log_from=req.get("log_from"), diag=req.get("diag") if isinstance(req.get("diag"), bool) else None,
                   build_local=req.get("build_local") if isinstance(req.get("build_local"), bool) else None,
                   workspace=WORKSPACE)

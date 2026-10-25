@@ -1781,12 +1781,12 @@ ASKING = {}
 ASKING_SETTLE = 4
 
 
-def asking_set(project, uid, text="", agent="claude"):
-    ASKING[(uid, tmux_name(agents.session_name(agent, project)))] = {"at": time.time(), "text": str(text or "")[:300]}
+def asking_set(project, uid, text="", agent="claude", slot=1):
+    ASKING[(uid, tmux_name(agents.session_name(agent, project, slot)))] = {"at": time.time(), "text": str(text or "")[:300]}
 
 
-def asking_clear(project, uid, agent="claude"):
-    ASKING.pop((uid, tmux_name(agents.session_name(agent, project))), None)
+def asking_clear(project, uid, agent="claude", slot=1):
+    ASKING.pop((uid, tmux_name(agents.session_name(agent, project, slot))), None)
 
 
 # What another agent's session is doing (R95 step 7), as its hooks said it:
@@ -1795,8 +1795,20 @@ def asking_clear(project, uid, agent="claude"):
 AGENT_STATE = {}
 
 
-def agent_state_set(project, uid, agent, state):
-    AGENT_STATE[(uid, tmux_name(agents.session_name(agent, project)))] = {"state": state, "at": time.time()}
+def agent_state_set(project, uid, agent, state, slot=1):
+    AGENT_STATE[(uid, tmux_name(agents.session_name(agent, project, slot)))] = {"state": state, "at": time.time()}
+
+
+# Which conversation each agent session is in (R143), as its hooks said with
+# the prompt that began a turn: so one live in one slot is not resumed into
+# another, and the chooser shows it as running rather than offering it.
+AGENT_CONV = {}
+_CONV_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,99}")
+
+
+def agent_conv_set(project, uid, agent, slot, conv):
+    if _CONV_ID.fullmatch(str(conv or "")):
+        AGENT_CONV[(uid, tmux_name(agents.session_name(agent, project, slot)))] = str(conv)
 
 
 def session_state(uid, name, title):
@@ -2278,17 +2290,63 @@ def tmux_sessions():
             if agents.is_session(tmux_base(name)):
                 uid = tmux_owner(name) or (users.uid_of(users.get(users.owner_name() or "")) if users.owner_name() else "")
                 state, task = session_state(uid, name, info.get("title", ""))
-                row["claude"] = {"state": state, "task": task}
+                row["claude"] = {"state": state, "task": task, "conv": AGENT_CONV.get((uid, tmux_base(name)), "")}
             rows.append(row)
     return rows
 
 
-def claude_working(project, uid, agent="claude"):
+def my_agent_sessions(project, uid):
+    """[(agent, slot, session row)] for every agent session of this account
+    on this project, here and on the nodes (R143)."""
+    owner = users.uid_of(users.get(users.owner_name() or "")) if users.owner_name() else ""
+    stem = tmux_name(project)
+    out = []
+    for s in tmux_sessions() + node_tmux_sessions():
+        real = s.get("node_name") or s["name"]
+        base = tmux_base(real)
+        a, st = agents.of_session(base)
+        if a and st == stem and (tmux_owner(real) or owner) == uid:
+            out.append((a.id, agents.slot_of(base), s))
+    return out
+
+
+_ARG_RESUME = re.compile(r":r:([A-Za-z0-9-]+)")
+
+
+def slot_held(project, uid, arg):
+    """A sentence when this account may not open the agent slot the argument
+    names (R143), "" when it may: a slot past the project's cap (unless it
+    runs already, a cap lowered since), or a conversation that is running
+    in another of its sessions, which two would write over each other."""
+    a = agents.of_arg(arg)[0]
+    if not a:
+        return ""
+    slot = agents.slot_of_arg(arg)
+    mine = my_agent_sessions(project, uid)
+    here = [s for ag, n, s in mine if ag == a.id and n == slot]
+    cap = prefs.get(project).get("agent_slots") or prefs.AGENT_SLOTS
+    if slot > cap and not here:
+        running = sorted(n for ag, n, _s in mine if ag == a.id)
+        return (f"{project} lets each person run {cap} {a.name} session{'' if cap == 1 else 's'} at once "
+                f"(its settings say how many), and {len(running)} of yours {'is' if len(running) == 1 else 'are'} "
+                f"running: end one, or open it, to work here")
+    m = _ARG_RESUME.search(arg)
+    if m:
+        for ag, n, s in mine:
+            if (ag, n) != (a.id, slot) and (s.get("claude") or {}).get("conv") == m.group(1):
+                said = agents.get(ag).name + (f" {n}" if n > 1 else "")
+                return (f"That conversation is running in your {said} session"
+                        f"{' on ' + s['node'] if s.get('node') else ''}: open that one, "
+                        "or end it first to resume it here")
+    return ""
+
+
+def claude_working(project, uid, agent="claude", slot=1):
     """Whether that account's session of one agent on this project is
     mid-prompt, here or on a node (session_state: Claude's pane title,
-    another agent's hooks). The owner's is the bare name, as everywhere
-    else on the page."""
-    want = agents.session_name(agent, project)
+    another agent's hooks), in its slot (R143). The owner's is the bare
+    name, as everywhere else on the page."""
+    want = agents.session_name(agent, project, slot)
     owner = users.uid_of(users.get(users.owner_name() or ""))
     return any(tmux_base(s["name"]) == want and (tmux_owner(s["name"]) or owner) == uid
                and (s.get("claude") or {}).get("state") == "working"
@@ -2375,8 +2433,9 @@ def node_tmux_sessions():
                 state, task = session_state(who, real, s.get("title", ""))
                 # What it was last asked over the title, which Claude names
                 # from the first turn and keeps (B59).
-                task = projsessions.latest_task(who, stem, row["created"], agent.id) or task
-                row["claude"] = {"state": state, "task": task}
+                task = projsessions.latest_task(who, stem, row["created"], agent.id,
+                                                agents.slot_of(tmux_base(real))) or task
+                row["claude"] = {"state": state, "task": task, "conv": AGENT_CONV.get((who, tmux_base(real)), "")}
             rows.append(row)
     return rows
 
@@ -2498,7 +2557,7 @@ def node_heart(n):
     return heart, float((rep.get("sample") or {}).get("at") or 0)
 
 
-def turn_scope(project, uid, agent="claude"):
+def turn_scope(project, uid, agent="claude", slot=1):
     """(node id, key, limit, heart, at) for a turn of `uid`'s session on
     `project` (turns.py), or None when there is no node to count on: the
     project runs on no agent node, so nothing here is the machine a session
@@ -2511,7 +2570,7 @@ def turn_scope(project, uid, agent="claude"):
     if not n or n["kind"] != "agent":
         return None
     heart, at = node_heart(n)
-    return nid, f"{uid}~{agents.session_name(agent, project)}", nodes.turn_limit(nid), heart, at
+    return nid, f"{uid}~{agents.session_name(agent, project, slot)}", nodes.turn_limit(nid), heart, at
 
 
 def node_turns(n):
@@ -2608,7 +2667,12 @@ def end_agents(project):
     started with), so the next Start agent starts one on the setting just
     saved. {ended, on_node?} if any was, else {ended: False, why}."""
     out = {"ended": False, "why": "no session is running here"}
+    # Every slot's name is asked of the lists once, not each of the lists
+    # once a name (R143: nine slots of each agent).
+    live = {s["name"] for s in tmux_sessions()} | {x["name"] for x in node_tmux_sessions()}
     for session in agent_sessions(project):
+        if session not in live:
+            continue
         r = _end_agent(session)
         if r.get("ended"):
             out = r
@@ -4205,7 +4269,7 @@ import hooks                                                     # noqa: E402
 hooks.configure(users=users, rules=rules, preamble=preamble, overlap=overlap, chat=chat, roadmap=roadmap, pending=pending,
                 turns=turns, nodes=nodes, seen_note=session_seen_note, turn_scope=turn_scope,
                 asking_set=asking_set, asking_clear=asking_clear, asked=projsessions.asked,
-                agent_state=agent_state_set)
+                agent_state=agent_state_set, agent_conv=agent_conv_set)
 
 
 # Written by entrypoint.sh once every startup hook has finished. Named here as
@@ -5840,6 +5904,9 @@ class Handler(BaseHTTPRequestHandler):
             return mapping.held(project)
         if not uid or not project:
             return ""                     # not an account: nothing to scope
+        why = slot_held(project, uid, arg)
+        if why:
+            return why
         t = session_target(project, claude=True, node=_arg_node(arg), uid=uid)
         if t["where"] != "node":
             return ""

@@ -149,15 +149,37 @@ const mayToolchains = nid => state?.can?.["toolchains-write"] !== false
 // and the name is then the only record of that, with no file to go stale.
 // Every "is it running" question below is about the asker's own.
 // Which agent's session it is, the agent table says (R95): Claude's here.
-const myAgentSession = (id, proj) => myTmux(tmuxName((agentById(id) || AGENTS[0]).id + "-" + proj));
-const myClaude = proj => myAgentSession("claude", proj);
+// ...in its slot (R143): the first is the name it always had, a second one
+// `claude-alpha~2`.
+const myAgentSession = (id, proj, slot = 1) => myTmux(tmuxName((agentById(id) || AGENTS[0]).id + "-" + proj) + (slot > 1 ? `~${slot}` : ""));
+const myClaude = (proj, slot = 1) => myAgentSession("claude", proj, slot);
+// Every agent session of THIS account on a project (R143): [{agent, slot,
+// name, row}], each agent's slots in order, on whichever node.
+function mySlots(proj){
+  const stem = tmuxName(proj);
+  return (state?.sessions || []).map(s => ({s, at: agentOfSession(tmuxBase(s.name))}))
+    .filter(({s, at}) => at && at.stem === stem && myTmux(tmuxBase(s.name)) === s.name)
+    .map(({s, at}) => ({agent: at.agent, slot: at.slot, name: s.name, row: s}))
+    .sort((x, y) => AGENTS.indexOf(x.agent) - AGENTS.indexOf(y.agent) || x.slot - y.slot);
+}
+// The slot a new session of an agent on a project takes: the lowest of
+// the project's cap not running, or 0 when every one is.
+function freeSlot(proj, id){
+  const p = (state?.projects || []).find(x => x.name === proj);
+  const cap = Math.min(AGENT_MAX_SLOTS, p?.prefs?.agent_slots || 3);
+  const used = new Set(mySlots(proj).filter(x => x.agent.id === id).map(x => x.slot));
+  for (let n = 1; n <= cap; n++) if (!used.has(n)) return n;
+  return 0;
+}
 // THIS account's running session on a project, whichever agent's (R95: the
 // header's dot, Manage agent, a Send to session and a restart notice ask it
 // of every agent alike), the project's default agent's first; or null.
+// ...any of its slots (R143), the first slot of each before the rest.
 function myLiveSession(proj){
   const live = liveSessions(), first = (state?.projects || []).find(x => x.name === proj)?.prefs?.agent_default;
-  return AGENTS.map(a => a.id).sort((x, y) => (y === first) - (x === first))
-    .map(id => myAgentSession(id, proj)).find(n => live.has(n)) || null;
+  const ids = AGENTS.map(a => a.id).sort((x, y) => (y === first) - (x === first));
+  return ids.map(id => myAgentSession(id, proj)).find(n => live.has(n))
+    || mySlots(proj).sort((x, y) => (y.agent.id === first) - (x.agent.id === first))[0]?.name || null;
 }
 // A name with somebody's prefix taken off, for the questions that are about
 // the session rather than about whose it is.
@@ -168,7 +190,7 @@ function sessionOf(arg){
     return myTmux(tmuxName(proj ? `shell-${proj}-${n}` : `shell-${n}`));
   }
   const ag = agentOfArg(arg);
-  if (ag) return myAgentSession(ag.agent.id, ag.project);
+  if (ag) return myAgentSession(ag.agent.id, ag.project, ag.slot);
   if (arg.startsWith("shell:"))  return myTmux(tmuxName("shell-"  + arg.slice(6)));
   // ctr:NAME:INSTANCE:CONTAINER, named by its container (bb-tty's ctr-).
   if (arg.startsWith("ctr:"))    return myTmux(tmuxName("ctr-" + arg.split(":")[3]));

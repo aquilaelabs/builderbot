@@ -127,23 +127,26 @@ def controller_answers(project):
 ASK_EVERY = 4
 
 
-def turn(project, wait):
+def turn(project, wait, conv=""):
     """0 when this session's prompt may start, 2 with the sentence on stderr
-    when it waited `wait` seconds and still may not."""
+    when it waited `wait` seconds and still may not. `conv` is the
+    conversation the prompt is in, which the controller keeps per session
+    (R143)."""
     if bbapi is None:
         return 0
     deadline = time.time() + max(0, wait)
     auth = "Bearer " + token(project)
     last = {}
     while True:
-        status, r = bbapi.request("/api/v1/hook", {"kind": "turn", "agent": AGENT}, auth=auth, timeout=10)
+        status, r = bbapi.request("/api/v1/hook", {"kind": "turn", "agent": AGENT, "slot": SLOT, "conv": conv},
+                                  auth=auth, timeout=10)
         if status != 200 or not isinstance(r, dict) or r.get("go", True):
             return 0                    # gone, refused, or a turn: the prompt goes
         last = r
         if time.time() + ASK_EVERY > deadline:
             break
         time.sleep(ASK_EVERY)
-    bbapi.request("/api/v1/hook", {"kind": "turn-done", "agent": AGENT}, auth=auth, timeout=10)
+    bbapi.request("/api/v1/hook", {"kind": "turn-done", "agent": AGENT, "slot": SLOT}, auth=auth, timeout=10)
     if last.get("why"):
         # Something on the node holds every turn (a store moving, R120):
         # said in its own words rather than as a limit.
@@ -162,6 +165,8 @@ def turn(project, wait):
 # Which coding agent's session this hook is for (R95 step 7): the launcher's
 # BB_AGENT, Claude's when there is none, as a session from before it had.
 AGENT = os.environ.get("BB_AGENT") or "claude"
+# ...and which of its slots on the project (R143), the first when unset.
+SLOT = os.environ.get("BB_SLOT") or "1"
 
 
 def main():
@@ -173,10 +178,18 @@ def main():
                 wait = int(args[args.index("--wait") + 1])
             except (IndexError, ValueError):
                 pass
-        return turn((args[1:2] or [""])[0], wait) if args[1:2] else 0
+        # The hook's own payload names the conversation (Claude Code's
+        # session_id; another agent's, as bb-agent-hook hands it over).
+        conv = ""
+        if not sys.stdin.isatty():
+            try:
+                conv = str((json.load(sys.stdin) or {}).get("session_id") or "")[:100]
+            except (ValueError, OSError, AttributeError):
+                conv = ""
+        return turn((args[1:2] or [""])[0], wait, conv) if args[1:2] else 0
     if args[:1] == ["--turn-done"]:
         if args[1:2] and bbapi is not None:
-            bbapi.request("/api/v1/hook", {"kind": "turn-done", "agent": AGENT},
+            bbapi.request("/api/v1/hook", {"kind": "turn-done", "agent": AGENT, "slot": SLOT},
                           auth="Bearer " + token(args[1]), timeout=10)
         return 0
     if args[:1] == ["--asking"]:
@@ -189,7 +202,7 @@ def main():
                 said = str((json.load(sys.stdin) or {}).get("message") or "")[:300]
             except (ValueError, OSError, AttributeError):
                 said = ""
-            bbapi.request("/api/v1/hook", {"kind": "asking", "text": said, "agent": AGENT},
+            bbapi.request("/api/v1/hook", {"kind": "asking", "text": said, "agent": AGENT, "slot": SLOT},
                           auth="Bearer " + token(args[1]), timeout=10)
         return 0
     if args[:1] == ["--prompt"]:

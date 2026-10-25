@@ -387,7 +387,9 @@ function nbBugsView({$, nb, project}){
           onSend: async () => {
             const go = box.querySelector("#roadmapGo");
             busy(go, "Sending");
-            const j = await postBug({action: "send", id, note: nb.sendNoteText});
+            const to = await pickSend(project);
+            if (to === null){ unbusy(go, "Send"); return; }
+            const j = await postBug({action: "send", id, note: nb.sendNoteText, session: to});
             unbusy(go, "Send");
             if (!j) return;
             if (!j.sent){

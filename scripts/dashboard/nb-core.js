@@ -953,30 +953,30 @@ function makeNotebook(project){
 // session surface wears.
 function projectState(p){
   const name = p.name, sess = myLiveSession(name), mine = !!sess;
-  // One entry per person per agent (B344: a person's Claude and Codex
-  // folded into one, one session's state masking the other's), from where
-  // each session is: its account, its agent and its state, a session on
-  // two nodes once.
+  // One entry per person per agent per slot (B344: a person's Claude and
+  // Codex folded into one, one session's state masking the other's; R143:
+  // and two of one agent's), from where each session is: its account, its
+  // agent, its slot and its state, a session on two nodes once.
   const rows = (state?.claude_where || {})[tmuxName(name)] || (state?.claude_where || {})[name] || [];
   const seen = new Map();
   for (const r of rows){
-    const k = `${r.who}|${r.agent}`, was = seen.get(k);
-    seen.set(k, {who: r.who, agent: r.agent, working: !!(r.working || was?.working), asking: !!(r.asking || was?.asking)});
+    const k = `${r.who}|${r.agent}|${r.slot || 1}`, was = seen.get(k);
+    seen.set(k, {who: r.who, agent: r.agent, slot: r.slot || 1, working: !!(r.working || was?.working), asking: !!(r.asking || was?.asking)});
   }
-  const one = (st, word, cls, agent) => `<span class="pstate${cls}">${st ? `<span class="st ${st}"></span>` : ""}${esc(word)}${
-    agent ? `<span class="pagent"> · ${esc(agentById(agent)?.name || agent)}</span>` : ""}</span>`;
+  const one = (st, word, cls, agent, slot = 1) => `<span class="pstate${cls}">${st ? `<span class="st ${st}"></span>` : ""}${esc(word)}${
+    agent ? `<span class="pagent"> · ${esc(agentSlotName(agentById(agent) || {name: agent}, slot))}</span>` : ""}</span>`;
   // Yours first, then everybody else's, each with its own dot (the
   // operator, 16 Oct). On its permission prompt it is asking, in amber, as
   // the dock and Sessions say it (B98); another account's reads asking too
   // (B104), not "asking you": only that person's terminal answers it.
   const all = [...seen.values()];
-  const me = all.filter(e => e.who === state?.me).map(e => e.asking ? one("asking", "asking you", "", e.agent)
-    : e.working ? one("working", "working", "", e.agent) : one("waiting", "waiting for you", "", e.agent)).join("")
+  const me = all.filter(e => e.who === state?.me).map(e => e.asking ? one("asking", "asking you", "", e.agent, e.slot)
+    : e.working ? one("working", "working", "", e.agent, e.slot) : one("waiting", "waiting for you", "", e.agent, e.slot)).join("")
     // A session of yours the poll has not placed on a node yet.
     || (mine ? (claudeOf(sess)?.state === "asking" ? one("asking", "asking you", "", agentOfSession(tmuxBase(sess))?.agent.id)
         : one("waiting", "waiting for you", "", agentOfSession(tmuxBase(sess))?.agent.id)) : "");
-  const them = all.filter(e => e.who !== state?.me).map(e => e.asking ? one("asking", `${e.who} asking`, " other", e.agent)
-    : one(e.working ? "working" : "waiting", `${e.who}${e.working ? " working" : "'s session"}`, " other", e.agent)).join("");
+  const them = all.filter(e => e.who !== state?.me).map(e => e.asking ? one("asking", `${e.who} asking`, " other", e.agent, e.slot)
+    : one(e.working ? "working" : "waiting", `${e.who}${e.working ? " working" : "'s session"}`, " other", e.agent, e.slot)).join("");
   return me || them ? `<span class="pstates">${me}${them}</span>` : one("", "no session", "", "");
 }
 // The one notice a project carries (why nobody can start here, the agent

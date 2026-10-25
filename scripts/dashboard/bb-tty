@@ -721,8 +721,11 @@ PY
     for a in "$@"; do case "$a" in --resume|--resume=*|resume) base_resumes=1 ;; esac; done
     dir="$(cache_project_dir "$proj")"
     # Named for its agent (claude-run.sh, codex-run.sh), which is what the
-    # session-is-really-this-agent check reads off the pane.
+    # session-is-really-this-agent check reads off the pane, and for its
+    # slot past the first (claude-2-run.sh, R143), so a second session's
+    # start never rewrites the file the first one respawns through.
     out="$dir/$ag-run.sh"
+    [ "${BB_SLOT:-1}" = 1 ] || out="$dir/$ag-${BB_SLOT}-run.sh"
     tmp="$out.new"
     # %q so the command survives being written down and read back as shell:
     # the system prompt is somebody's prose, with quotes and newlines in it.
@@ -755,6 +758,9 @@ PY
         # session asked, whichever agent it is (Claude Code also sets its
         # own CLAUDECODE), and what a held change names as its asker.
         printf 'export BB_AGENT=%q\n' "$ag"
+        # ...and which of its slots on the project (R143), which its hooks
+        # say with every report so each slot's state is its own.
+        printf 'export BB_SLOT=%q\n' "${BB_SLOT:-1}"
         # ...and whose, for the hooks another agent runs (bb-agent-hook),
         # as claude_scope names it in Claude's.
         printf 'export BB_AGENT_WHO=%q\n' "${account:-owner}"
@@ -880,7 +886,8 @@ PY
         # would be handed the flag twice.
         # Every agent's the same way (R95 step 19): Codex CLI's newest
         # conversation in this folder (resume --last keeps to the working
-        # directory), Copilot CLI's newest (--continue).
+        # directory), Copilot CLI's newest in this tree (below), Grok Build's
+        # newest in its folder (-c).
         if [ "$base_resumes" -eq 0 ]; then
             case "$ag" in
                 claude)
@@ -889,7 +896,14 @@ PY
                     printf '  if [ -n "$n" ]; then n="${n##*/}"; extra+=(--resume "${n%%.jsonl}"); fi\n'
                     printf 'fi\n' ;;
                 codex)   printf 'if [ "${1:-}" = --respawn ]; then extra+=(resume --last); fi\n' ;;
-                copilot) printf 'if [ "${1:-}" = --respawn ]; then extra+=(--continue); fi\n' ;;
+                # Copilot's --continue is its newest anywhere, which with
+                # two slots on a project is either's (R143): the newest its
+                # Stop hook kept for this tree instead, by its id.
+                copilot)
+                    printf 'if [ "${1:-}" = --respawn ]; then\n'
+                    printf '  n="$(ls -1t %q/copilot/*.jsonl 2>/dev/null | head -1)"\n' "$tdir"
+                    printf '  if [ -n "$n" ]; then n="${n##*/}"; extra+=(--resume "${n%%.jsonl}"); else extra+=(--continue); fi\n'
+                    printf 'fi\n' ;;
                 grok)    printf 'if [ "${1:-}" = --respawn ]; then extra+=(-c); fi\n' ;;
             esac
         fi
@@ -1323,7 +1337,11 @@ start() {
     # Plain name, not tmux's `=exact` prefix: set-option rejects that form
     # ("no such session: =shell"), and the session was just created here, so an
     # exact match is the one it resolves to anyway.
-    case "${s#*~}" in
+    # Only the account's prefix comes off: a second slot's name ends in ~2
+    # (R143), which ${s#*~} took for the prefix on the owner's own name.
+    local b="$s"
+    [[ "$s" =~ ^u_[0-9a-f]{8}~ ]] && b="${s#*~}"
+    case "$b" in
         claude-*|codex-*|copilot-*|grok-*) tmux set-option -t "$s" mouse on ;;
         *)        tmux set-option -t "$s" mouse off ;;
     esac
@@ -1381,10 +1399,24 @@ case "$target" in
         # claude:PROJECT                  a fresh conversation
         # claude:PROJECT:r:UUID           resume that transcript (Claude's)
         # ...:b:BOOT                      and which run of the container asked
-        resume="" want_boot="" want_model="" want_effort=""
+        resume="" want_boot="" want_model="" want_effort="" slot=1
         case "$rest" in
             *:b:*) want_boot="${rest##*:b:}"; rest="${rest%:b:*}" ;;
         esac
+        # ...:s:N                         its slot on the project (R143): a
+        # second session of this agent there, its own name (claude-P~2), tree
+        # and conversation; the first when the argument names none.
+        case "$rest" in
+            *:s:*) slot="${rest##*:s:}"; rest="${rest%:s:*}" ;;
+        esac
+        case "$slot" in
+            [1-9]) ;;
+            *) bad "Not a slot: ${slot}" ;;
+        esac
+        # The session's name in its slot, the first as it always was.
+        slot_tail=""
+        [ "$slot" = 1 ] || slot_tail="~${slot}"
+        export BB_SLOT="$slot"
         # ...:m:MODEL:e:EFFORT            another agent's model and effort,
         # picked at Start (R95 step 9), each passed on only when it is one
         # of that agent's own (agents.py MODELS, EFFORTS): a table lookup.
@@ -1436,7 +1468,7 @@ case "$target" in
         #
         # First of the checks, so a tab that is going to be refused anyway
         # does not first fetch a login it will not use.
-        if ! tmux has-session -t "=$(sess "${agent}-${proj//[.:]/_}")" 2>/dev/null \
+        if ! tmux has-session -t "=$(sess "${agent}-${proj//[.:]/_}${slot_tail}")" 2>/dev/null \
            && [ "$want_boot" != "$(boot_id)" ]; then
             bad "This tab is from before ${BB_NODE:-the container} restarted." \
                 "Its conversation is still on disk. Open ${agent_name} on ${proj} from" \
@@ -1450,14 +1482,14 @@ case "$target" in
         # that was there all along (the operator, 6 Oct: the Claude tab took
         # a long time to load though it was running). Not for a resume, which
         # names a transcript, nor on a locked project, which says so below.
-        fast="$(sess "${agent}-${proj//[.:]/_}")"
+        fast="$(sess "${agent}-${proj//[.:]/_}${slot_tail}")"
         if [ -z "$resume" ] && ! is_locked "$proj" "${account:-}" \
            && tmux list-panes -t "=$fast" -F '#{pane_start_command}' 2>/dev/null | grep -qi "$agent"; then
             # The trust flag is still put back (a few jq calls), and the
             # running session is still told it started on the old answer.
             # On the session's own tree, which for anybody but the owner is
             # their worktree (session_dir, already there for a running one).
-            dir="$(session_dir "$proj" "$account" "$agent")"
+            dir="$(session_dir "$proj" "$account" "$agent" "$slot")"
             if [ "$agent" = claude ]; then claude_first_run "$dir" || true
             else agent_first_run "$agent" "$dir" || true; fi
             trust_note "$agent" "$dir"
@@ -1569,13 +1601,13 @@ case "$target" in
             # In the folder of the tree it will run in, which is where Claude
             # Code looks for it (B348: the project directory's was checked,
             # and a worktree's session found nothing to resume).
-            rtd="$HOME/.claude/projects/$(tree_slug "$(session_dir "$proj" "$account" "$agent")")"
+            rtd="$HOME/.claude/projects/$(tree_slug "$(session_dir "$proj" "$account" "$agent" "$slot")")"
             if on_node; then
                 ( cd "$dir" 2>/dev/null && BB_PROJECT="$proj" bb transcripts fetch "$resume" \
                       --into "$rtd" >/dev/null 2>&1 ) || true
             fi
             # ...and from another of this account's trees when it was had
-            # there: the project directory's, say.
+            # there: another slot's (R143), or the project directory's.
             if [ ! -f "$rtd/${resume}.jsonl" ]; then
                 rf="$(find "$HOME/.claude/projects" -mindepth 2 -maxdepth 2 -name "${resume}.jsonl" 2>/dev/null | head -1)"
                 [ -z "$rf" ] || { ( umask 077; mkdir -p "$rtd" ) && cp -p "$rf" "$rtd/"; } 2>/dev/null || true
@@ -1662,12 +1694,12 @@ case "$target" in
         # directory; anybody else gets a worktree of their own on a branch of
         # their own, so two people on one project cannot overwrite each other,
         # commit each other's half-finished work, or share a dist/.
-        dir="$(session_dir "$proj" "$account" "$agent")"
+        dir="$(session_dir "$proj" "$account" "$agent" "$slot")"
         # ...and in each other repository of its project (R136), the same:
         # its own tree for the owner, a worktree on the same branch name for
         # anybody else, so one session's work is one branch everywhere.
         BB_WORK_DIRS=""
-        for w in ${BB_WORKS:-}; do BB_WORK_DIRS+="$(session_dir "$w" "$account" "$agent") "; done
+        for w in ${BB_WORKS:-}; do BB_WORK_DIRS+="$(session_dir "$w" "$account" "$agent" "$slot") "; done
         export BB_WORK_DIRS
         # ...each with its token kept where bb in that tree reads it.
         while read -r w t; do
@@ -1782,7 +1814,7 @@ case "$target" in
         # as subprocesses, so a session busy running a build reports `bash`
         # and would have been killed here, mid-conversation. The start command
         # is what the pane was created with and does not move.
-        mysess="$(sess "${agent}-${proj//[.:]/_}")"
+        mysess="$(sess "${agent}-${proj//[.:]/_}${slot_tail}")"
         if tmux has-session -t "=$mysess" 2>/dev/null \
            && ! tmux list-panes -t "=$mysess" -F '#{pane_start_command}' 2>/dev/null \
                 | grep -qi "$agent"; then
@@ -1827,7 +1859,7 @@ case "$target" in
                           "$HOME/.claude/projects/$(tree_slug "$dir")" \
                           "${cmd[@]}" "${prompt[@]}")"; then
             in_view "$proj" "$dir" "$launcher"
-            start "$(sess "${agent}-${proj}")" "$dir" "${RUN[@]}"
+            start "$(sess "${agent}-${proj}${slot_tail}")" "$dir" "${RUN[@]}"
         else
             # Nowhere to write it. The command without the block still fits on
             # tmux's command line, and a session that starts knowing less is
@@ -1839,7 +1871,7 @@ case "$target" in
             echo "Everything else about it is the same. Check that ${HOME:-\$HOME}/.cache" >&2
             echo "is writable." >&2
             in_view "$proj" "$dir" "${cmd[@]}"
-            start "$(sess "${agent}-${proj}")" "$dir" "${RUN[@]}"
+            start "$(sess "${agent}-${proj}${slot_tail}")" "$dir" "${RUN[@]}"
         fi
         ;;
     # ctr:NAME:INSTANCE:CONTAINER: a shell inside one container of a dev

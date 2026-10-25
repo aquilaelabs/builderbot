@@ -658,7 +658,7 @@ def edit(project, bug_id, by="you", act="edited", rev=None, **fields):
     return _edit(project, bug_id, change, by, rev)
 
 
-def send(project, bug_id, sessions=(), note="", prefix=""):
+def send(project, bug_id, sessions=(), note="", prefix="", want=""):
     """Point a running session at one bug, by number rather than by contents.
 
     The message deliberately does NOT carry the report. It says which bug and
@@ -692,7 +692,7 @@ def send(project, bug_id, sessions=(), note="", prefix=""):
     # so the session this reaches is already running on them.
     # The caller's own session, not the project's bare one: see roadmap.send
     # for why the bare name is the owner's conversation (B194).
-    session = running_session(prefix, project, set(sessions))
+    session = running_session(prefix, project, set(sessions), want)
     tag = ids.label("bugs", bug_id)
     line = (f"Please look at bug {tag} in this project's tracker. "
             f"Run `bb bug show {tag}` for the report: the area, how to "
@@ -846,7 +846,8 @@ def verb(name, act, req, *, sessions, prefix):
     elif act == "remove":
         r = remove(name, req.get("id"), why=field(req, "why"))
     elif act == "send":
-        r = send(name, req.get("id"), sessions(), prefix=prefix, note=field(req, "note"))
+        r = send(name, req.get("id"), sessions(), prefix=prefix, note=field(req, "note"),
+                 want=field(req, "session"))
         if r.get("error"):
             return r, 400
         # The send's own answer rides along with the fresh list: whether

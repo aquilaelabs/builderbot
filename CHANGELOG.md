@@ -7,6 +7,7 @@
 - Projects come first: a project is made with a name alone (spaces and punctuation kept) and repositories are added to it, each keeping its own notebook, git host link and releases; its card lists its repositories and who is working there, and Edit turns it over to rename, move a repository to another project, delete one to the trash, and set its color, group, pin, archive and lock. A project has one id and one coding-agent session that works in all its repositories, and a project that reads it reads every repository in it (9ccf960, 178952e)
 - Grok (xAI's Grok Build) can run a project's session beside Claude, ChatGPT and Copilot: installed from its node's Agents page, signed in there with a device code, and held to the same briefing and guards through its own hooks (dc85506)
 - Terminal colors can be changed one by one under the preset you pick, with Reset to go back, and a preview on your Profile and in a project's own settings shows how your terminals will look (48dbbe9)
+- You can run several sessions of one coding agent on a project at once, each in its own worktree and conversation (Claude 2 beside Claude). Start agent lists your running sessions with Open, Restart and End, starts a new one, or resumes any of your conversations there; one already running is not offered twice. A project's settings say how many each person may run (three unless changed), and a Send with several running asks which one (efdf884)
 
 ### Changed
 

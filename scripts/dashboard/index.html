@@ -4901,6 +4901,18 @@ html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
 .resumemenu .rmline.live .rmsays{color:var(--pass)}
 .resumemenu .rmline .rmacts{margin-left:auto}
 .resumemenu .rmacts button{white-space:nowrap}
+/* ...in three bands (R143): yours running, Start, Resume, each headed in the
+   tag voice as the bell's groups are; a conversation's first words on a
+   quiet line of their own under its agent and when, the list scrolling past
+   a few. */
+.resumemenu .rmgroup{display:flex;flex-direction:column;gap:8px;min-width:0}
+.resumemenu .rmtitle{font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;color:var(--dim)}
+.resumemenu .rmgroup .rmtitle+.rmline{border-top:0;padding-top:0}
+.resumemenu .rmconvs{display:flex;flex-direction:column;gap:8px;max-height:calc(var(--tap) * 5);overflow-y:auto}
+.resumemenu .rmconvs .rmline:first-child{border-top:0;padding-top:0}
+.resumemenu .rmconv .rmfirst{flex:1 0 100%;font:var(--f-note);color:var(--dim);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.resumemenu .rmconv .rmin{margin-left:auto;font:var(--f-note);color:var(--dim)}
 .resumemenu .rmfields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .resumemenu .rmfields select{width:100%;min-width:0}
 @media(max-width:420px){ .resumemenu .rmfields{grid-template-columns:1fr} }
@@ -6025,6 +6037,13 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="lbox" id="rnAgents" role="group" aria-labelledby="rnAgentsLabel"></div>
       <div class="prefrow ctlrow"><label class="pick wide">Start opens <select id="rnAgentDefault"
         aria-label="the coding agent the project's Start opens"></select></label></div>
+      <!-- How many sessions of one agent each person may run here at once
+           (R143): each its own tree and branch. -->
+      <div class="prefrow ctlrow"><label class="pick wide">Sessions of one agent, each person <select id="rnAgentSlots"
+        aria-label="how many sessions of one coding agent each person may run on this project at once">
+        <option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option>
+        <option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option>
+        <option value="9">9</option></select></label></div>
       <div class="hint">A session of an agent left unticked does not start on this project. Claude always may.</div>
       <div class="hint" id="rnAgentGuards"></div>
     </div>

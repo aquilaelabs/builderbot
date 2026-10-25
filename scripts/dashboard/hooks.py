@@ -47,6 +47,7 @@ turn_scope = None
 asking_set = None
 asking_clear = None
 asked = None          # projsessions.asked: what a session was last asked (B59)
+agent_conv = None     # (project, uid, agent, slot, id): the conversation a session is in (R143)
 
 
 def configure(**deps):
@@ -62,13 +63,17 @@ def verb(kind, req, me, uid, project):
     # Claude's when they do not.
     ag = agents.get(req.get("agent")) if isinstance(req, dict) else None
     agent = ag.id if ag and ag.live else "claude"
+    # ...and which of its slots on the project (R143), the first when the
+    # hook does not say, as a session from before slots does not.
+    slot = req.get("slot") if isinstance(req, dict) else 1
+    slot = int(slot) if str(slot).isdigit() and 1 <= int(slot) <= agents.MAX_SLOTS else 1
     if kind == "note":
         path = str(req.get("path") or "")[:400]
         if not path:
             return {"error": "a note names a file"}, 400
         # Keyed by account and agent (R95): a person's Codex session is told
         # of their own Claude session's edits, and named for its agent.
-        me_key = overlap.key(uid, agent)
+        me_key = overlap.key(uid, agent, slot)
         others = overlap.others_touching(project, me_key, path)
         overlap.note(project, me_key, path, str(req.get("symbol") or "")[:120])
         by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
@@ -88,7 +93,7 @@ def verb(kind, req, me, uid, project):
         seen_note(project, uid, field(req, "node"), who=me, begin=True)
         return {"ok": True}, 200
     if kind in ("seen", "turn-done") and asking_clear is not None:
-        asking_clear(project, uid, agent)
+        asking_clear(project, uid, agent, slot)
     if kind == "seen":
         # What this session has not been told about the notebook, and
         # marked told (roadmap #27). The answer rides back into the turn
@@ -106,7 +111,7 @@ def verb(kind, req, me, uid, project):
         prompt = str(req.get("prompt") or "")[:20000]
         # ...and what it was asked, for its row's task (B59).
         if asked:
-            asked(uid, project, prompt, agent=str(req.get("agent") or "claude"))
+            asked(uid, project, prompt, agent=agent, slot=slot)
         hit = [r for r in rules.matching(project, prompt=prompt) if r["name"] not in told]
         # ...and the open items and bugs the prompt names (R202), the same way.
         related, rnames = preamble.mentioned(project, prompt, told)
@@ -116,7 +121,7 @@ def verb(kind, req, me, uid, project):
         # Claude Code waits on its own permission prompt (B52): marked until
         # it works again, its turn ends or it is sent a prompt.
         if asking_set is not None:
-            asking_set(project, uid, str(req.get("text") or ""), agent)
+            asking_set(project, uid, str(req.get("text") or ""), agent, slot)
         return {"ok": True}, 200
     if kind == "guards":
         return {"ok": True, "guards": rules.guards(project)}, 200
@@ -130,8 +135,12 @@ def verb(kind, req, me, uid, project):
         # Another agent's session says working and waiting by its turns,
         # which is all it has to say it with (R95 step 7).
         if agent_state is not None and agent != "claude":
-            agent_state(project, uid, agent, "working" if kind == "turn" else "waiting")
-        scope = turn_scope(project, uid, agent)
+            agent_state(project, uid, agent, "working" if kind == "turn" else "waiting", slot)
+        # ...and which conversation it is in, with every prompt (R143): one
+        # resumed or begun since the last is the one it is in now.
+        if kind == "turn" and agent_conv is not None and req.get("conv"):
+            agent_conv(project, uid, agent, slot, str(req.get("conv"))[:100])
+        scope = turn_scope(project, uid, agent, slot)
         if not scope:
             return {"ok": True, "go": True}, 200
         nid, key, limit, heart, at = scope

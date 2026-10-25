@@ -1438,7 +1438,7 @@ def verb(project, action, req, me, *, prefix, principal):
         # The presser's own session, by the name the roadmap's send uses
         # (B235): the bare name alone was the owner's.
         return ask(WORKSPACE / project, project, field(req, "kind"), req.get("args") or {},
-                   SESSIONS(), session=running_session(prefix, project, set(SESSIONS())))
+                   SESSIONS(), session=running_session(prefix, project, set(SESSIONS()), field(req, "session")))
     if action == "ci-fix":
         # The CI watch's fix for one line (R117 step 4): written into the
         # working tree, uncommitted, never pushed; Changes shows it.

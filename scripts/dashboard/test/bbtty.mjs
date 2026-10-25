@@ -675,6 +675,32 @@ sleep 60
       const odd = shell(`u:${ownerUid}:codex:${proj}:m:opus;rm:b:${boot}`);
       ok(/Not a model ChatGPT offers here/.test(odd) && !alive(`codex-${proj}`),
          '...and a model not on its list opens nothing');
+      // A second session of one agent on one project is a slot of its own
+      // (R143): its own name, launcher, tree and branch, the first untouched;
+      // the owner's second Claude is a worktree too, the project directory
+      // staying the first's.
+      shell(`u:${ownerUid}:codex:${proj}:b:${boot}`);
+      shell(`u:${ownerUid}:codex:${proj}:s:2:b:${boot}`);
+      shell(`u:${ownerUid}:claude:${proj}:s:2:b:${boot}`);
+      await sleep(600);
+      const cwt2 = `${cwt}-2`, clt2 = join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-2`);
+      const cx2Run = join(HOMEDIR, '.cache', 'builderbot', 'u', ownerUid, 'project', proj, 'codex-2-run.sh');
+      const wts = git(['worktree', 'list', '--porcelain']);
+      ok(alive(`codex-${proj}`) && alive(`codex-${proj}~2`) && tmuxFmt(`codex-${proj}~2`, '#{pane_start_path}') === cwt2
+         && /refs\/heads\/codex\/[^\n]*-2\n/.test(wts + '\n'),
+         `a second Codex session on the project is its own slot: codex-${proj}~2 beside the first, in ${cwt2} on a codex/NAME-2 branch`);
+      ok(existsSync(cx2Run) && /export BB_SLOT=2/.test(readFileSync(cx2Run, 'utf8'))
+         && /export BB_SLOT=1/.test(readFileSync(join(HOMEDIR, '.cache', 'builderbot', 'u', ownerUid, 'project', proj, 'codex-run.sh'), 'utf8'))
+         && /codex-2-run\.sh$/.test(tmuxFmt(`codex-${proj}~2`, '#{pane_start_command}')),
+         '...through a launcher of its own that names its slot to its hooks, the first slot\'s left as it was');
+      ok(alive(`claude-${proj}~2`) && tmuxFmt(`claude-${proj}~2`, '#{pane_start_path}') === clt2
+         && tmuxFmt(`claude-${proj}`, '#{pane_start_path}') === join(DIR, 'ws', proj),
+         `...and the owner's second Claude works in a worktree (${clt2}), the project directory staying the first's`);
+      const noSlot = shell(`u:${ownerUid}:codex:${proj}:s:0:b:${boot}`);
+      ok(/Not a slot/.test(noSlot), '...and a slot out of range opens nothing, saying so');
+      tmuxKill(`codex-${proj}~2`); tmuxKill(`claude-${proj}~2`);
+      // ...put away again, so the trees counted below are the ones they were.
+      for (const t of [cwt2, clt2]) try { git(['worktree', 'remove', '--force', t]); } catch { /* not made */ }
       // Copilot: no status verb of its own, so the login its config
       // remembers is what says it is signed in.
       rmSync(join(HOMEDIR, '.copilot'), { recursive: true, force: true });

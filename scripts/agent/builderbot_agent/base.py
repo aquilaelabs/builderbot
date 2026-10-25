@@ -190,12 +190,13 @@ SHARE = os.environ.get("BUILDERBOT_SHARE", "/workspace")
 # process kinds a busy machine is read by are all made from it.
 AGENT_IDS = ("claude", "codex", "copilot", "grok")
 # The pane a respawn may run again: bb-tty's launcher of a coding agent
-# (claude-run.sh, codex-run.sh, copilot-run.sh, grok-run.sh), in the project's cache
+# (claude-run.sh, codex-run.sh, copilot-run.sh, grok-run.sh; a second slot's
+# claude-2-run.sh, R143), in the project's cache
 # folder and started inside the project's view when the node builds one.
 _PATHCH = r"[A-Za-z0-9._/@+-]"
 RESPAWNABLE = (rf"(?:sudo -n {re.escape(SESSION_BIN)} enter(?: --[a-z]+ {_PATHCH}+)* -- )?"
                rf"{_PATHCH}*/builderbot/(?:u/u_[0-9a-f]{{8}}/)?"
-               rf"project/[A-Za-z0-9._-]+/(?:{'|'.join(AGENT_IDS)})-run\.sh")
+               rf"project/[A-Za-z0-9._-]+/(?:{'|'.join(AGENT_IDS)})(?:-[2-9])?-run\.sh")
 NETPLAN_DIR = os.environ.get("BUILDERBOT_NETPLAN_DIR", "/etc/netplan")
 NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
 NETPLAN_FILE = "90-builderbot.yaml"

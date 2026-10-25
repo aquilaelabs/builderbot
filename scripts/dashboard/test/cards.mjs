@@ -2542,17 +2542,20 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
     if (!m || !m.querySelector('#rmNodeSel')) return null;
     return JSON.stringify({ nodes: [...m.querySelectorAll('#rmNodeSel option')].map(o => `${o.selected ? '*' : ''}${o.textContent.trim()}`),
       facts: m.querySelector('.rmfacts')?.textContent.trim() || '', state: m.querySelector('.rmstate')?.textContent.trim() || '',
-      lines: [...m.querySelectorAll('.rmline')].map(l => `${[...l.querySelector('.rmwho').children].map(e => e.textContent.trim()).join(' ')}: ${
+      // The Start band's lines (R143): a conversation to resume is a row of
+      // the Resume band under it, read apart.
+      lines: [...m.querySelectorAll('.rmline:not(.rmconv)')].map(l => `${[...l.querySelector('.rmwho').children].map(e => e.textContent.trim()).join(' ')}: ${
         [...l.querySelectorAll('button')].map(b => b.textContent.trim()).join('/')}`),
-      buttons: [...m.querySelectorAll('.rmline button')].map(b => ({ text: b.textContent.trim(), node: b.dataset.node || b.dataset.signinNode,
+      titles: [...m.querySelectorAll('.rmtitle')].map(t => t.textContent.trim()),
+      buttons: [...m.querySelectorAll('.rmline:not(.rmconv) button')].map(b => ({ text: b.textContent.trim(), node: b.dataset.node || b.dataset.signinNode,
         kind: b.dataset.r ? 'resume' : b.dataset.n ? 'new' : b.dataset.signinNode ? 'signin' : '?', dead: b.disabled })) });
   }, null, { timeout: 10000 }).then(h => h.jsonValue()).then(JSON.parse);
   const menu = await readMenu();
   ok(menu.nodes.join() === '*ubu,fresh,rh' && /^cpu 7%/.test(menu.facts) && /RTX A2000/.test(menu.facts),
      `pressing Start on a project with several nodes shows them in the node picker, its own node picked, with what that node has (${menu.nodes.join()}; ${menu.facts})`);
-  ok(menu.buttons.map(b => `${b.kind}:${b.node}`).join() === 'resume:n_ubu,new:n_ubu' && menu.buttons.every(b => !b.dead)
-     && menu.lines[0] === 'Claude: Resume 2 h ago/New',
-     `...and a line for Claude there: Resume and New where this account is signed in (${menu.lines.join(' | ')})`);
+  ok(menu.buttons.map(b => `${b.kind}:${b.node}`).join() === 'new:n_ubu' && menu.buttons.every(b => !b.dead)
+     && menu.lines[0] === 'Claude: New' && menu.titles.join() === 'Start,Resume',
+     `...and a Start band with a line for Claude there, New where this account is signed in, and a Resume band under it (${menu.lines.join(' | ')}; ${menu.titles.join()})`);
   await page.selectOption('#rmNodeSel', 'n_new');
   const other = await readMenu();
   ok(other.nodes[1] === '*fresh' && other.lines[0] === 'Claude not signed in here: Sign in' && other.buttons[0].node === 'n_new',
@@ -2622,11 +2625,32 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
     const m = document.getElementById('resumemenu');
     if (!m || !m.querySelector('[data-end]')) return null;
     return JSON.stringify({ nodes: [...m.querySelectorAll('#rmNodeSel option')].map(o => `${o.selected ? '*' : ''}${o.textContent.trim()}`),
-      line: [...(m.querySelector('.rmline .rmwho')?.children || [])].map(e => e.textContent.trim()).join(' '),
-      buttons: [...m.querySelectorAll('.rmline button')].map(b => `${b.textContent.trim()}:${b.dataset.node || b.dataset.restart || b.dataset.end || b.dataset.signinNode || ''}`) });
+      line: [...(m.querySelector('.rmline.live .rmwho')?.children || [])].map(e => e.textContent.trim()).join(' '),
+      fresh: [...m.querySelectorAll('.rmline:not(.live):not(.rmconv)')].map(l => `${l.querySelector('.rmwho b')?.textContent.trim()} ${l.querySelector('.rmsays')?.textContent.trim() || ''}:${
+        [...l.querySelectorAll('button')].map(b => `${b.textContent.trim()}${b.dataset.slot ? '@' + b.dataset.slot : ''}`).join('/')}`),
+      buttons: [...m.querySelectorAll('.rmline.live button')].map(b => `${b.textContent.trim()}:${b.dataset.node || b.dataset.restart || b.dataset.end || b.dataset.signinNode || ''}`) });
   }, null, { timeout: 10000 })).jsonValue());
-  ok(live.nodes.join() === '*ubu · yours running,fresh' && live.line === 'Claude running' && live.buttons.join() === 'Open:n_ubu,Restart:n_ubu,End:n_ubu',
-     `with a session running on one node the press opens the chooser on that node, marked in the picker: Open, Restart and End there, the other node still in it (${live.nodes.join()}; ${live.buttons.join(' | ')})`);
+  ok(live.nodes.join() === '*ubu · yours running,fresh' && live.line === 'Claude running · on ubu' && live.buttons.join() === 'Open:n_ubu,Restart:n_ubu,End:n_ubu',
+     `with a session running on one node the press opens the chooser on that node, marked in the picker: yours on top with Open, Restart and End, the other node still in it (${live.nodes.join()}; ${live.line}; ${live.buttons.join(' | ')})`);
+  ok(live.fresh[0] === 'Claude as Claude 2:New@2',
+     `...and Start's New beside it opens a second Claude session, in a slot of its own (R143: ${live.fresh.join(' | ')})`);
+  // ...up to the project's cap (R143): a slot past it is refused at the
+  // terminal, whatever asks for it, saying how many it lets each person run.
+  {
+    const cap = async n => (await fetch(URL.replace(/\/$/, '') + '/api/prefs', { method: 'POST',
+      headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: 'alpha', agent_slots: n }) })).json();
+    const set = await cap(1);
+    const over = await page.evaluate(async () => {
+      const r = await fetch('/termws?arg=' + encodeURIComponent('claude:alpha:s:2'), { headers: { Accept: 'application/json' } });
+      return { status: r.status, error: (await r.json().catch(() => ({}))).error || '' };
+    });
+    const bad = await cap(12);
+    await cap(3);
+    ok(set.agent_slots === 1 && over.status >= 400 && /lets each person run 1 Claude session at once/.test(over.error)
+       && /agent_slots is 1 to 9/.test(bad.error || ''),
+       `a slot past the project's cap is refused at its terminal, and the cap is 1 to 9 (${over.status} ${over.error.slice(0, 80)})`);
+  }
   const ended = await page.evaluate(async () => {
     const real = endSession; let asked = null;
     window.endSession = async (name, node) => { asked = { name, node }; return { ok: true }; };

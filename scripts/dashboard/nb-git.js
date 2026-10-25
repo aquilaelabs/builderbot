@@ -79,10 +79,13 @@ function nbGitView({$, nb, project}){
       : args?.branch ? `the branch ${args.branch} (${kind})`
       : args?.sha ? `the commit ${String(args.sha).slice(0, 7)} (${kind})`
       : `the ${kind}`;
-    if (!args?.confirmed && !await sendSure(project, what)) return;
+    // With several of your sessions running, which one is the question
+    // (R143); with one, whether to send at all.
+    const to = await pickSend(project);
+    if (to === null || (!to && !args?.confirmed && !await sendSure(project, what))) return;
     if (btn) busy(btn, "Sending");
     try{
-      const r = await postJSON("/api/git", {project, action: "ask", kind, args: args || {}});
+      const r = await postJSON("/api/git", {project, action: "ask", kind, args: args || {}, session: to});
       const j = await r.json();
       if (j.error) return notify(j.error, true);
       if (!j.sent) notify("Not sent: the session is busy. Press Enter in its tab when it is free.", true);

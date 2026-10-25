@@ -69,6 +69,26 @@ class Names(unittest.TestCase):
         self.assertEqual(agents.of_arg("open:alpha"), (None, ""))
         self.assertFalse(idle.is_claude("open-alpha"))
 
+    def test_a_second_slot_is_its_project_s_in_its_own_name(self):
+        self.assertEqual(agents.session_name("claude", "ep.silon", 2), "claude-ep_silon~2")
+        self.assertEqual(agents.session_name("codex", "alpha", 1), "codex-alpha")
+        self.assertEqual(agents.session_name("codex", "alpha", 12), "codex-alpha")
+        a, stem = agents.of_session("claude-alpha~2")
+        self.assertEqual((a.id, stem, agents.slot_of("claude-alpha~2")), ("claude", "alpha", 2))
+        self.assertEqual((agents.of_session("claude-al~1")[1], agents.slot_of("claude-alpha")), ("al~1", 1))
+        self.assertEqual(agents.of_session("claude-~2"), (None, ""))
+        self.assertEqual([agents.slot_of_arg(x) for x in ("claude:alpha:s:3:b:x", "codex:alpha:r:abc", "claude:alpha:s:12")], [3, 1, 1])
+        every = names.agent_sessions("alpha")
+        self.assertEqual((every[0], "claude-alpha~9" in every, "grok-alpha~2" in every, len(every)),
+                         ("claude-alpha", True, True, agents.MAX_SLOTS * len(agents.live())))
+
+    def test_two_slots_of_one_agent_are_two_sessions_to_the_notes(self):
+        import overlap
+        self.assertEqual((overlap.key("u_1", "claude"), overlap.key("u_1", "claude", 2), overlap.key("u_1", "codex", 3)),
+                         ("u_1", "u_1#2", "u_1/codex#3"))
+        self.assertEqual(overlap.said("u_1#2", {"u_1": "sam"}), "sam (Claude Code 2)")
+        self.assertEqual(overlap.said("u_1/codex", {"u_1": "sam"}), "sam (Codex CLI)")
+
     def test_codex_and_copilot_sessions_are_read_as_theirs(self):
         a, stem = agents.of_session("codex-alpha")
         self.assertEqual((a.id, stem), ("codex", "alpha"))
@@ -169,16 +189,20 @@ class State(unittest.TestCase):
         said, scoped, asked = [], [], []
         users_stub = type("U", (), {"load": staticmethod(lambda: {"users": {}})})
         hooks.configure(users=users_stub, agent_state=lambda *a: said.append(a),
-                        turn_scope=lambda p, u, a="claude": scoped.append(a) or None,
+                        turn_scope=lambda p, u, a="claude", n=1: scoped.append((a, n)) or None,
                         asking_set=lambda *a: asked.append(a), asking_clear=lambda *a: asked.append(("clear",) + a))
         self.assertEqual(hooks.verb("turn", {"agent": "codex"}, {}, "u_0123abcd", "alpha"), ({"ok": True, "go": True}, 200))
         hooks.verb("turn-done", {"agent": "codex"}, {}, "u_0123abcd", "alpha")
         hooks.verb("asking", {"agent": "copilot", "text": "may I?"}, {}, "u_0123abcd", "alpha")
         hooks.verb("turn", {}, {}, "u_0123abcd", "alpha")
-        self.assertEqual(said, [("alpha", "u_0123abcd", "codex", "working"), ("alpha", "u_0123abcd", "codex", "waiting")])
-        self.assertEqual(scoped, ["codex", "codex", "claude"])
-        self.assertIn(("clear", "alpha", "u_0123abcd", "codex"), asked)
-        self.assertIn(("alpha", "u_0123abcd", "may I?", "copilot"), asked)
+        # A second slot says which it is (R143); a slot out of range is the first.
+        hooks.verb("turn", {"agent": "codex", "slot": "2"}, {}, "u_0123abcd", "alpha")
+        hooks.verb("turn", {"agent": "codex", "slot": "12"}, {}, "u_0123abcd", "alpha")
+        self.assertEqual(said, [("alpha", "u_0123abcd", "codex", "working", 1), ("alpha", "u_0123abcd", "codex", "waiting", 1),
+                                ("alpha", "u_0123abcd", "codex", "working", 2), ("alpha", "u_0123abcd", "codex", "working", 1)])
+        self.assertEqual(scoped, [("codex", 1), ("codex", 1), ("claude", 1), ("codex", 2), ("codex", 1)])
+        self.assertIn(("clear", "alpha", "u_0123abcd", "codex", 1), asked)
+        self.assertIn(("alpha", "u_0123abcd", "may I?", "copilot", 1), asked)
 
 
 class ByPath(unittest.TestCase):

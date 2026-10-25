@@ -80,7 +80,7 @@ def foreign_mount(path, mounts="/proc/self/mounts"):
 # named for where it lives under the projects root, as the controller names it.
 # ...or one of its agents' other than Claude's (u_xxxxxxxx-codex, R95): the
 # account's all the same, so the uid is still the group a check reads.
-WT_UNIT = re.compile(r"\.worktrees/([A-Za-z0-9][A-Za-z0-9._-]*)/(u_[0-9a-f]{8})(?:-[a-z]+)?")
+WT_UNIT = re.compile(r"\.worktrees/([A-Za-z0-9][A-Za-z0-9._-]*)/(u_[0-9a-f]{8})(?:-[a-z]+)?(?:-[2-9])?")
 
 
 def skipped(rel):

@@ -32,13 +32,29 @@ on one project at once, and two people may run different agents on it.
 
 ## Starting a session
 
-A project's **Start agent** opens the chooser: each node the project works
-on, and a line for each agent installed on that node, the project's own
-first. Each line is the same for every agent: **Resume** its last
-conversation and **New** where none of yours is running there; **Open**,
-**Restart** and **End** where one is; or **Sign in** where you have no
-sign-in to it there, which opens the Agents page at that agent's section.
+A project's **Start agent** opens the chooser, in three bands under the
+node it shows (a picker where the project works on several):
+
+- **Yours here.** Every session of yours on the project, each agent's and
+  each slot's on whichever node, with its state (working, waiting for you,
+  asking you) and its **Open**, **Restart** and **End**.
+- **Start.** A line for each agent installed on that node, the project's own
+  first: **New** starts a conversation, or **Sign in** where you have no
+  sign-in to it there, which opens the Agents page at that agent's section.
+- **Resume.** Your conversations on the project, newest first, each with its
+  agent, when it was and its first words; one running in a session of yours
+  is marked so and not offered, since two sessions would write over it.
+
 While one of yours runs, the button reads **Manage agent**.
+
+- **Several sessions of one agent.** New while a session of that agent is
+  yours already starts a second one beside it, a **slot** of its own: its
+  own session (`claude-alpha~2`), its own worktree on `<agent>/<name>-2`
+  (the owner's too) and its own conversation, read as *Claude 2* in the
+  dock, the card and Sessions. A Send with several of yours running asks
+  which one. Each person may run three of one agent on a project at once
+  unless its settings say otherwise (Agents may, *Sessions of one agent*,
+  1 to 9); a slot past it is refused at the terminal.
 
 - **A tree of its own.** Each agent's session works in a tree of its own: an
   agent other than Claude in a worktree on a branch `<agent>/<name>`

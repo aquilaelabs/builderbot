@@ -101,6 +101,7 @@ function rnPrefsOf(p){
                tc_off: (p?.prefs?.tc_off || []).join(","), packs_on: (p?.prefs?.packs_on || []).join(","),
                agents_off: (p?.prefs?.agents_off || []).join(","),
                agent_default: p?.prefs?.agent_default || "claude",
+               agent_slots: String(p?.prefs?.agent_slots ?? 3),
                sees: (p?.prefs?.sees || []).join(", "),
                reaches: JSON.stringify(p?.prefs?.reaches || []),
                debug: rnDebugKey(p?.prefs?.diag, p?.prefs?.log_from),
@@ -132,6 +133,11 @@ function rnFillPrefs(p){
   const nm = $("rnNodesMore");
   if (nm) delete nm.dataset.drawn;
   rnPrefWas = rnPrefsOf(p);
+  // A select with no value of its own reads as its first option, and the
+  // form collects every field whichever section is saved: set here, with the
+  // rest that are always on the form, so saving another section never takes
+  // the cap down to 1 (R143).
+  $("rnAgentSlots").value = rnPrefWas.agent_slots;
   $("rnGitName").value = rnPrefWas.git_name;
   $("rnGitEmail").value = rnPrefWas.git_email;
   // Said where it is typed: the Profile is the default, this is the exception,
@@ -1332,7 +1338,7 @@ const RN_WAS = {
   tc_off: ["tools", "Toolchains"], packs_on: ["tools", "Tool packs"],
   build: ["build", "Build"], test: ["build", "Test"], outputs: ["build", "Outputs"],
   capture_days: ["build", "Captures kept"], snapshot_days: ["build", "Snapshots kept"], snapshots_on: ["build", "Daily snapshots"], dev_keep: ["build", "Dev builds kept"],
-  gate: ["claude", "Agents may"], test_change: ["claude", "During a test run, a change asked for"], agents_off: ["claude", "Coding agents"], agent_default: ["claude", "Start opens"],
+  gate: ["claude", "Agents may"], test_change: ["claude", "During a test run, a change asked for"], agents_off: ["claude", "Coding agents"], agent_default: ["claude", "Start opens"], agent_slots: ["claude", "Sessions of one agent"],
   devbuild: ["claude", "Agents may"], makevms: ["claude", "Agents may"], vm_caps: ["claude", "Its VMs may hold"], report: ["claude", "Agents may"], sign: ["claude", "Agents may"],
   keys: ["claude", "Agents may"], release: ["claude", "Agents may"], pc: ["claude", "Agents may"], version: ["claude", "Move the version"],
   reply: ["yours", "Replies"], asks: ["yours", "Questions"], term_scheme: ["yours", "Terminal colors"],
@@ -1368,6 +1374,7 @@ function rnEnc(){
             : rnRowsList(rnPrefWas.packs_on, $("rnTools").querySelectorAll("input[data-pack]"), i => i.checked),
           agents_off: [...$("rnAgents").querySelectorAll("input:not(:checked)")].map(i => i.value).join(","),
           agent_default: $("rnAgentDefault")?.value || "claude",
+          agent_slots: $("rnAgentSlots")?.value || "3",
           sees: $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean).join(", "),
           reaches: JSON.stringify(rnReachNow()),
           debug: dbg ? rnDebugKey(dbg.diag, dbg.log_from) : rnPrefWas.debug,
@@ -1490,6 +1497,7 @@ function rnRevertSect(sect){
     Object.values(GATE_IDS).forEach((id, i) => { $(id).value = g[i] || "auto"; });
     $("rnTestChange").value = w.test_change; $("rnGateDocker").value = w.devbuild; $("rnGateVms").value = w.makevms; rnVmCapsSet(w.vm_caps);
     rnFillAgents(w.agents_off, w.agent_default);
+    $("rnAgentSlots").value = w.agent_slots;
     $("rnGateReport").value = w.report; $("rnGateSign").value = w.sign;
     $("rnGateRelease").value = w.release; $("rnGateKeys").value = w.keys;
     $("rnGatePc").value = w.pc; $("rnGateVersion").value = w.version;
@@ -1594,7 +1602,7 @@ async function rnSubmit(sect, end = false){
       const r = await fetch("/api/prefs", {method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify({project: name, restart: restartNow, ...pick({git_name: v.git_name, git_email: v.git_email,
                               node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
-                              tc_off: v.tc_off, packs_on: v.packs_on, agents_off: v.agents_off, agent_default: v.agent_default,
+                              tc_off: v.tc_off, packs_on: v.packs_on, agents_off: v.agents_off, agent_default: v.agent_default, agent_slots: v.agent_slots,
                               build: v.build, test: v.test, gate: v.gate, ...(v.dbg || {}),
                               tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks, term_scheme: v.term_scheme,
                               devbuild: v.devbuild, makevms: v.makevms, vm_caps: JSON.parse(v.vm_caps || "{}"), report: v.report, sign: v.sign, keys: v.keys, release: v.release, pc: v.pc,

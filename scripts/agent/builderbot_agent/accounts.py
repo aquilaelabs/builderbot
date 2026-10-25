@@ -162,7 +162,7 @@ class AccountsMixin:
         """The accounts with a session still on the session account's tmux,
         whose homes wait: moving one under it would stop its next write."""
         out = self._tmux_as(self.session_account(), ["list-sessions", "-F", "#{session_name}"]) or ""
-        return {n.split("~", 1)[0] for n in out.split() if "~" in n}
+        return {m.group(1) for m in (re.match(r"^(u_[0-9a-f]{8})~", n) for n in out.split()) if m}
 
     def _own_share(self, account, pw):
         """The account's folder of conversations in the share (the link its

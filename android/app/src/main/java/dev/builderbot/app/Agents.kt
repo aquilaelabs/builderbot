@@ -54,9 +54,12 @@ object Agents {
     fun sessionName(agentId: String, project: String) = tmuxName("${(byId(agentId) ?: CLAUDE).id}-$project")
 
     /** (agent, stem) for a session name with its account prefix off, or
-     *  null for a shell or anything else (agents.of_session). */
+     *  null for a shell or anything else (agents.of_session). A second
+     *  slot's `~2` is not part of the stem (R143): it is the same project. */
     fun ofSession(base: String): Pair<Agent, String>? = LIVE.firstNotNullOfOrNull { a ->
-        if (base.startsWith(a.id + "-") && base.length > a.id.length + 1) a to base.substring(a.id.length + 1) else null
+        if (base.startsWith(a.id + "-") && base.length > a.id.length + 1)
+            base.substring(a.id.length + 1).replace(Regex("~[2-9]$"), "").takeIf { it.isNotEmpty() }?.let { a to it }
+        else null
     }
 
     /** The same for a full name, an account's prefix (`u_1234abcd~`) and

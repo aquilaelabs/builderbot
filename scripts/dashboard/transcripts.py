@@ -165,8 +165,11 @@ def _dirs(uid, project):
     which is the one another agent's log is kept under."""
     base = Path(root_for(uid))
     out = []
+    # ...and each slot's past the first (R143): u_x-2, u_x-codex-2.
+    trees = [f"{uid}-{a}" for a in OTHER_AGENTS]
+    trees += [f"{t}-{n}" for t in [uid, *trees] for n in range(2, agents.MAX_SLOTS + 1)]
     for p in (WORKSPACE / project, WORKTREES / project / uid,
-              *(WORKTREES / project / f"{uid}-{a}" for a in OTHER_AGENTS)):
+              *(WORKTREES / project / t for t in trees)):
         for name in (_slug(p), re.sub(r"[^A-Za-z0-9]", "-", str(p))):
             if base / name not in out:
                 out.append(base / name)
