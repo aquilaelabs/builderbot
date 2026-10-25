@@ -390,7 +390,7 @@ function renderNginxInto(i){
     // Its template (R218 step 16): the bar and the state row's words are
     // the page's own; the node and its routes are on their way.
     d.setBar(nginxBar(null));
-    d.list.innerHTML = skTpl(`${pageHead({cls: "toolstate", facts: [["Container", GHOST], ["Routes", GHOST]]})}${
+    d.list.innerHTML = skTpl(`${pageHead({title: GHOST, cls: "toolstate", facts: [["Container", GHOST], ["Routes", GHOST]]})}${
       ["hostnames", "routes", "certs", "image"].map(k => ngSect(k, "", `<div class="field">${skRows(2)}</div>`)).join("")}`);
     loadNginx();
     return;

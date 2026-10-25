@@ -90,7 +90,8 @@ function renderProfileInto(i){
     d.setBar("");
     splitOff(d.list);                   // drawn before: its grid is the template's to bring
     d.list.innerHTML = skTpl(skSplit([["Who you are", PROFILE_SAYS.you], ["What you may do", PROFILE_SAYS.may],
-      ["Password", PROFILE_SAYS.password]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join("")));
+      ["Password", PROFILE_SAYS.password]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join(""),
+      pageHead({title: GHOST, facts: [["Roles", GHOST], ["Owner of", GHOST]]})));
     return;
   }
   const p = {...(profile.profile || {}), account: profile.name}, g = profile.git || {};

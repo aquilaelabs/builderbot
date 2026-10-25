@@ -1841,7 +1841,7 @@ function renderRunnerInto(i){
     // page's own; the node and its runners are on their way.
     // In the node's panel, as it lands: its rows are bands there, not a card.
     d.setBar(skNodeBar([["Add runner", "primary"]]));
-    d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel">${pageHead({cls: "toolstate",
+    d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel">${pageHead({title: GHOST, cls: "toolstate",
       facts: [["Runners", "one per git host, its labels deciding which workflows land here"]]})}<div class="ndruns">${skRows(1)}</div></div>`);
     return;
   }

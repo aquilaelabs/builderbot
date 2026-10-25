@@ -250,10 +250,10 @@ function bootOwn(root, tool){
 // A page of settings on its way, in splitSects' shape: its sections' names
 // and what each holds in the list, the first one picked, its heading and
 // body beside the list (the template a page of settings waits as).
-function skSplit(items, title, body){
+function skSplit(items, title, body, head = ""){
   return `<div class="ssplit"><div class="rlist snav">${items.map(([t, says], j) =>
       `<button type="button" class="rrow${j ? "" : " on"}" disabled><span class="name">${esc(t)}</span><span class="rtags"><span class="dim">${esc(says)}</span></span></button>`).join("")}</div>
-    <details class="sect scur" open><summary><span class="t">${esc(title)}</span></summary><div class="body"><div class="field">${body}</div></div></details></div>`;
+    ${head}<details class="sect scur" open><summary><span class="t">${esc(title)}</span></summary><div class="body"><div class="field">${body}</div></div></details></div>`;
 }
 
 // The rail's groups at the first paint: every group, inert, the one the
@@ -271,10 +271,11 @@ const SKTPLS = {
   // As the view lands, from the view's own table (nb-git.js GIT_SECTS): its
   // sections' chips, then each steady section; CI and a README come with
   // what the repository holds, so the placeholder promises neither.
-  // ...its jump bar only from four sections, as sectJump draws it.
-  git: () => skTpl((GIT_SECTS.length >= 4 ? `<nav class="sectjump">${GIT_SECTS.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav>` : "")
+  // ...its jump bar from two sections, as sectJump draws it.
+  git: () => skTpl((GIT_SECTS.length >= 2 ? `<nav class="sectjump">${GIT_SECTS.map(([, t]) => `<a href="#">${esc(t)}</a>`).join("")}</nav>` : "")
     + GIT_SECTS.map(([k, t]) => docSection("git", k, t, "", k === "branches" ? skTable(gitBranchCols("main"), 3, "gbranches", "row gbranch") : skRows(2))).join("")),
-  design: () => skTpl(docSection("design", "pages", "Pages", "", skRows(2))
+  design: () => skTpl(`<nav class="sectjump"><a href="#">Pages</a><a href="#">Themes</a></nav>`
+    + docSection("design", "pages", "Pages", "", skRows(2))
     + docSection("design", "themes", "Themes", "", skRows(2))),
   // Its list, by the view's own titles (nb-artifacts.js ART_TITLES)...
   artifacts: () => skTpl([["build", 1], ["files", 2]]
@@ -961,7 +962,7 @@ function pageHead({title = "", pills = "", facts = [], actions = "", cls = ""} =
   const grid = factGrid(facts, "pghfacts");
   if (!title && !pills && !grid && !actions) return "";
   return `<div class="field pghead${cls ? " " + esc(cls) : ""}">${
-    title || pills ? `<div class="name">${title ? esc(title) : ""}${pills ? ` ${pills}` : ""}</div>` : ""}${grid}${
+    title || pills ? `<div class="name">${title === GHOST ? skv(10) : title ? esc(title) : ""}${pills ? ` ${pills}` : ""}</div>` : ""}${grid}${
     actions ? `<div class="actbar">${actions}</div>` : ""}</div>`;
 }
 

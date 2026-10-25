@@ -225,7 +225,7 @@ function storageBody(n, where){
   const byProject = (count, body) => docSection("storage", "projects", "By project", count,
     `<div class="field"><div class="hint">What each project's folders hold${n ? ` on ${esc(n.name)}` : ""}.${helpIcon("Its synced copy, build cache, artifacts, dev instance data, emulators and the accounts' build caches.")}</div></div>
       ${body}`);
-  if (!n) return `${pageHead({cls: "toolstate", facts: [["Measured", GHOST], ["Walk", GHOST], ...setOn]})}${skRows(2)}${byProject("", skRows(3))}`;
+  if (!n) return `${pageHead({title: GHOST, cls: "toolstate", facts: [["Measured", GHOST], ["Walk", GHOST], ...setOn]})}${skRows(2)}${byProject("", skRows(3))}`;
   const age = !n.measured ? "not measured yet"
     : n.age_s < 3600 ? `measured ${Math.round(n.age_s / 60)} min ago` : `measured ${Math.round(n.age_s / 3600)} h ago`;
   const pill = `<span class="pill${n.measured ? "" : " warn"}">${esc(age)}</span>`;

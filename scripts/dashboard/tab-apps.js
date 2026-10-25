@@ -78,7 +78,8 @@ function renderAppsInto(i){
   }
   if (!devApps){
     d.setBar("");
-    d.list.innerHTML = skTpl(appsSection(skRows(3), ""));
+    d.list.innerHTML = skTpl(pageHead({title: "This controller", facts: [["Version", GHOST], ["Apps offered", GHOST]]})
+      + appsSection(skRows(3), ""));
     return;
   }
   const offered = (devApps.apps || []).filter(a => a.offered);

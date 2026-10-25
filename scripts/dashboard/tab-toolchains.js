@@ -689,7 +689,7 @@ function renderToolchainsInto(i){
     // In the page's own order: its bar with its two buttons, its head, its
     // tiles, then the catalog's table.
     const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
-    surf.list.innerHTML = skTpl(`${pageHead({cls: "tcact", facts: [["Store", GHOST], ["Versions checked", GHOST]]})}
+    surf.list.innerHTML = skTpl(`${pageHead({title: GHOST, cls: "tcact", facts: [["Store", GHOST], ["Versions checked", GHOST]]})}
       <div class="field"><div class="tiles">${tile("installed", `of ${skv(2)} offered`)}${tile("updates due")}${tile("free", "on the store")}</div></div>
       ${tcSections("", skTable(TC_COLS, 6, "tcs"), "")}
       ${state?.can?.admin ? docSection("toolchains", "packs", "Tool packs", "", skTable(TP_COLS, 2, "tprecords")) : ""}`);
