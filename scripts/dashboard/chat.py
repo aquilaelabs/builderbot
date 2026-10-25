@@ -23,8 +23,8 @@ says so where the feed is drawn, because a person should not find that out by
 accident.
 
 No websockets: the page polls, faster while the panel is open. That matches the
-rest of this dashboard, where ttyd's socket is the one exception and everything
-else is a fifteen-second poll.
+rest of this dashboard, where the terminals' sockets are the one exception and
+everything else is a fifteen-second poll.
 """
 import sys
 import json

@@ -30,7 +30,7 @@ const PLAIN = { Authorization: 'Basic ' + Buffer.from('w.watch:w.watch-pass-1').
 const here = [`${uid}~claude-alpha`, `${uid}~shell-alpha-1`, `${uid}~claude-beta`];
 here.forEach(n => tmuxNew(n));
 const box = await call('/api/v1/nodes', { action: 'enroll', name: 'sessbox' });
-const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: true, writable: true,
+const SE = { up: true, term: true, user: 'bb', workspace: true, writable: true,
              boot: '3.3', up_s: 5000 };
 const agent = await call('/api/v1/agent/enroll',
   { user: 'bb', version: 'harness', census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', session: SE } },

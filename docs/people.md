@@ -208,8 +208,8 @@ project; memories do not, because they are about the person.
 the rest of the role mean something: everything else is enforced by the
 dashboard, in Python, and a terminal is the way around all of it. So a `user`
 gets no shell, and their agent's session opens as a **console** instead:
-the real interface, rendered by a `ttyd` started without `--writable`, with
-a box to type a message and a button to end the conversation. The proxy
+the real interface, rendered by a read-only terminal that takes no keys, with
+a box to type a message and a button to end the conversation. The controller
 refuses anything else they ask a terminal for, so a read-only window cannot be
 pointed at somebody else's session. They see the Containers and Toolchains pages
 for their own projects' nodes: the scoping is on the answer, not just the

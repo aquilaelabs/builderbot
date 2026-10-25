@@ -472,7 +472,6 @@ function rnFillPrefsRest(p){
   $("rnReply").value = p?.yours?.reply || "";
   $("rnAsks").value = p?.yours?.asks || "";
   $("rnTermScheme").value = p?.yours?.term_scheme || "";
-  $("rnTermSchemeRow").hidden = !state?.term_own;
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   $("rnCaptureDays").value = String(p?.prefs?.capture_days ?? 7);
   $("rnSnapDays").value = String(p?.prefs?.snapshot_days ?? 14);

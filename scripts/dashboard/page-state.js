@@ -133,8 +133,8 @@ const deadWhy = why => why ? `<div class="notice warn deadwhy">${esc(why)}</div>
 // on. Every control the feature draws is dead with this under it.
 const featureOff = feature => state?.off?.[feature] || "";
 // May this account have a shell at all (roadmap #27)? An account without one
-// gets its Claude session as a read-only console: the proxy relays it to a
-// ttyd started without --writable and refuses any argument that is not a
+// gets its Claude session as a read-only console: the server opens it
+// read-only (keys dropped) and refuses any argument that is not a
 // Claude session on a project they were given. This only decides what is
 // DRAWN; every one of these is refused again on the server.
 const mayShell = () => state?.can?.terminal !== false;

@@ -253,11 +253,11 @@ setup_logging() {
     logdir="$(bb_log_dir)"
     logfile="$logdir/builderbot.log"
     mkdir -p "$logdir" 2>/dev/null || return 0
-    # All four, so one file means one container lifetime for every stream
-    # rather than only for this one. The other three used to be appended to
+    # All three, so one file means one container lifetime for every stream
+    # rather than only for this one. The other two used to be appended to
     # forever, which made "what did docker do on that boot" unanswerable and
     # left dashboard.log growing without limit.
-    for f in builderbot.log dashboard.log docker.log ttyd.log; do
+    for f in builderbot.log dashboard.log docker.log; do
         rotate_log "$logdir/$f"
     done
     # All output (the persistent file AND the docker-logs passthrough)

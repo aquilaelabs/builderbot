@@ -1,14 +1,13 @@
-// bb-tty's Claude launch: the one path the browser files cannot reach, since
-// the harness runs no ttyd. This drives the script the way ttyd does (one URL
-// argument, one connection) against the same private tmux server, with stubs
-// standing in for `bb` and `claude`.
+// bb-tty's Claude launch, driven directly the way a terminal runs it (its
+// words as arguments, one connection) against the same private tmux server,
+// with stubs standing in for `bb` and `claude`.
 //
 // What it is here for: tmux hands `new-session` its command in a single 16KB
 // message and answers a longer one with `command too long`. The system prompt
 // bb-tty appends carries the project's whole roadmap and open bugs, so it grows
 // with the project, and once past that line, every Claude session on that
-// project became unstartable, ttyd reconnecting into the same error every five
-// seconds. The command goes through a launcher file now, and this is the test
+// project became unstartable, its terminal reconnecting into the same error
+// every five seconds. The command goes through a launcher file now, and this is the test
 // that says so.
 import { ok, done, sleep, URL, DIR, tmuxKill, tmuxNew, tmuxFmt, takeOn, member } from './lib.mjs';
 import { execFileSync } from 'child_process';
@@ -108,7 +107,7 @@ printf '%s\\0' "$@" > "${argvOut}"
 chmodSync(join(bin, 'bb'), 0o755);
 chmodSync(join(bin, 'claude'), 0o755);
 
-// One connection, the way ttyd makes one. bb-tty ends by exec'ing `tmux
+// One connection, the way a terminal makes one. bb-tty ends by exec'ing `tmux
 // attach-session`, which fails without a terminal; by then the session either
 // exists or does not, which is the whole question.
 // `as` is the account the /term proxy stamps on the argument. The model and
@@ -143,7 +142,7 @@ const launcher = () => existsSync(LAUNCHER) ? readFileSync(LAUNCHER, 'utf8') : '
 
 // A roadmap of 40KB. Under the old code this was `command too long` and no
 // session at all: the operator's report was a pane filling with that line as
-// ttyd reconnected into it every five seconds.
+// its terminal reconnected into it every five seconds.
 let out = connect(40000);
 await sleep(400);
 ok(!/command too long/.test(out),
@@ -291,7 +290,7 @@ ok(alive('claude-alpha') && /project\/alpha\/claude-run\.sh$/.test(paneCmd()),
    'a project with no roadmap starts the same way');
 
 // A locked project. Enforced HERE rather than by graying the button out,
-// because the ttyd URL is reachable directly and a rule only the page honors
+// because a terminal's URL can be asked for directly and a rule only the page honors
 // is a suggestion, the same reason `excluded` is checked in this script.
 const LOCKS = join(DIR, 'state', 'locked-projects.json');
 // An administrator's lock (R119), which holds everybody out, read from the
@@ -304,7 +303,7 @@ await sleep(400);
 ok(/locked/.test(out) && !alive('claude-alpha'),
    'a locked project refuses a Claude session, whatever the URL asks for');
 // A refusal holds the terminal open for ten seconds so the browser can show
-// the reason: ttyd closes the connection the moment this exits. Only when
+// the reason: the terminal closes the moment this exits. Only when
 // something is holding one: called from here, with stderr on a pipe, there is
 // nobody to show it to, and five tests in this suite were paying it.
 ok(refusedIn < 5000,
@@ -893,8 +892,8 @@ print(uid)`);
     tmuxKill(`${ownerUid}~shell-wtproj-10`);
 
     // B166: what the URL claims is not who the terminal is for. A session on
-    // a node reaches its ttyd over loopback, so these are the URLs it could
-    // type. The account, its name and ownership come from the controller's
+    // a node can start bb-tty itself with any words, so these are the URLs
+    // it could type. The account, its name and ownership come from the controller's
     // answer to the token, and a URL the controller will not vouch for opens
     // nothing.
     {
@@ -924,8 +923,8 @@ print(uid)`);
       const nowhere = shOut(`u:${ownerUid}:sh:13:`, [`tok:${ownerTok}`]);
       ok(/was refused/.test(nowhere) && !alive(`${ownerUid}~shell-13`),
          '...and a shell that is no project\'s, which the proxy never sends to a node, is refused there');
-      // The proxy sends an account with no shell to the read-only twin; the
-      // writable ttyd, reached directly, does not take it either.
+      // The server opens an account with no shell read-only; bb-tty started
+      // writable by hand does not take it either.
       const plainOut = (() => { try {
         return execFileSync('bash', [BBTTY, `u:${plainUid}:claude:wtproj:b:${boot}`, `tok:${tok('wtproj', plainUid)}`], {
           encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
@@ -942,7 +941,7 @@ print(uid)`);
     const proj = 'wtproj';
     tmuxKill(`${otherUid}~claude-${proj}`);
     // The two extra URL arguments the proxy will add (phase 10b): the name
-    // and a session token. Passed the way ttyd passes them, one argv each.
+    // and a session token. Passed the way a terminal passes them, one argv each.
     const out = (() => { try {
       return execFileSync('bash', [BBTTY, `u:${otherUid}:claude:${proj}:b:${boot}`,
         `tok:${tok(proj, otherUid)}`, 'name:the.owner'], {
@@ -1371,8 +1370,8 @@ esac
   ok(/cannot reach docker on this machine, or alpha-db-1 is gone/.test(gone) && !alive('ctr-alpha-db-1'),
      '...and one docker cannot inspect says so rather than opening an empty session');
   tmuxKill('ctr-alpha-app-1');
-  // The container terminal server's mode (BB_TTY_CTR, the agent's third
-  // ttyd, as the docker account): a node's and nowhere else's, and nothing
+  // The container terminal's mode (BB_TTY_CTR, the agent's ctr kind, as the
+  // docker account): a node's and nowhere else's, and nothing
   // opens there without the controller's grant for the token that came in.
   const ctrMode = (role, arg) => {
     try {

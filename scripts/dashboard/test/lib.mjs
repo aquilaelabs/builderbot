@@ -250,10 +250,10 @@ export async function newPage(browser, { tour = false, ...opts } = {}){
     };
   }
   page.errors = []; page.dialogs = [];
-  // The harness runs no ttyd, so every terminal iframe's /term request 502s
-  // by design: same-origin now, which puts it in the page console where the
-  // old dead-port fetch never appeared. Filtered here, not per test: it is a
-  // property of the harness, not of any one scenario.
+  // A terminal's socket a scenario refuses (a node that is not there, an
+  // account without the right) fails its handshake, which the browser says
+  // in the console. Filtered here, not per test: it is the refusal under
+  // test, said on the tab, not an error of the page's.
   // With the URL, because "Failed to load resource: 400" names neither what
   // asked nor what was asked for, and a console error nobody can locate is
   // one nobody fixes.

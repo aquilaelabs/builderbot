@@ -104,7 +104,7 @@ SYSTEM = frozenset(("bin", "boot", "dev", "etc", "home", "lib", "lib32", "lib64"
 # they load, and Claude Code. The rest of that home is its owner's.
 BASE_KEEPS = (".local/bin", ".local/lib", ".local/share/claude", ".npm-global")
 # What the pane itself knows better than the file bb-tty wrote: sudo keeps
-# these, and the terminal tmux gave the pane is not the one ttyd gave bb-tty.
+# these, and the terminal tmux gave the pane is not the one the pty gave bb-tty.
 FROM_PANE = ("TERM", "COLORTERM", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_MESSAGES")
 
 MS_RDONLY, MS_NOSUID, MS_NODEV, MS_NOEXEC = 1, 2, 4, 8
@@ -1439,8 +1439,8 @@ def check_net(c):
 
 # ---- a terminal, as its account (R125) -------------------------------------
 #
-# ttyd runs as root where accounts are their own users, and runs this. The
-# URL's claims prove nothing on a node (bb-tty's B166), so the token that rode
+# The agent's terminal server runs this through sudo where accounts are their
+# own users. The URL's claims prove nothing on a node (bb-tty's B166), so the token that rode
 # in is shown to the controller, which alone can check its signature, and the
 # account it answers with is the user this drops to. Nothing here comes from
 # the bundle on the toolchain store, which any process outside a view could
@@ -1498,7 +1498,7 @@ def _root_owned(path):
 
 
 # The environment a terminal starts with: sudo resets this process's, so the
-# agent leaves the ttyds' own here, root's alone (accounts.py TTY_ENV).
+# agent leaves the terminals' own here, root's alone (accounts.py TTY_ENV).
 TTY_ENV = "/run/bb-session/tty-env.json"
 
 
@@ -1593,9 +1593,9 @@ def main(argv):
             try:
                 tty(c, argv[1:], ro=verb == "tty-ro")
             except Exception as e:                               # noqa: BLE001 (said in the tab, R132)
-                # Said in the terminal, where ttyd shows it, and held until a
-                # key so it can be read: anything else, a traceback included,
-                # scrolled past or ended in ttyd's reconnect loop (R132).
+                # Said in the terminal, where the tab shows it, and held until
+                # a key so it can be read: anything else, a traceback
+                # included, scrolled past before the tab could show it (R132).
                 why = str(e) if isinstance(e, Refused) else f"bb-session failed: {type(e).__name__}: {e}"
                 sys.stdout.write(f"BuilderBot: this terminal was refused: {why}\r\n"
                                  "Close the tab, or press Enter to try again.\r\n")

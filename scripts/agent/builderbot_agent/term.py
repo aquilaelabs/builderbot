@@ -3,10 +3,9 @@ on the screen relay's port (screen.py), which every node's firewall already
 opens to the controller alone.
 
 The controller is the only caller. It signs what the terminal is (its kind
-and the words ttyd's --url-arg would have passed) and the minute, keyed with
-the hash of this node's own token, as it signs a VM's screen. What runs is
-exactly what the node's ttyd for that kind runs (the session agent records
-it as it starts them, term_kinds): bb-tty, or bb-session tty where accounts
+and its words, bb-tty's arguments) and the minute, keyed with the hash of
+this node's own token, as it signs a VM's screen. What runs is what the
+session half records for that kind (term_kinds): bb-tty, or bb-session tty where accounts
 are their own users (R125), so the token, the grant and the account's own
 user are decided where they always were. Nothing here reads what passes.
 
@@ -30,7 +29,7 @@ import time
 
 SKEW_S = 120
 READ_MAX = 65536
-# A terminal's words: what ttyd's --url-arg handed bb-tty, one per ?arg=.
+# A terminal's words: bb-tty's arguments, one per ?arg=.
 ARG_MAX = 32
 WORD_MAX = 4096
 
@@ -102,7 +101,7 @@ def spawn(how, words, cols, rows):
     reaches tmux as SIGWINCH."""
     master, slave = os.openpty()
     resize(master, cols, rows)
-    # The terminal it is talking to, as ttyd said it: xterm.js speaks
+    # The terminal it is talking to: xterm.js speaks
     # xterm-256color, and tmux refuses a terminal it has no entry for.
     env = {**dict(how.get("env") or {}), "TERM": "xterm-256color", "COLORTERM": "truecolor"}
     try:

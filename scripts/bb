@@ -562,10 +562,10 @@ bb ci-log          what CI printed on its last run here (`--list` for the runs
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
-bb logs --node NAME [--agent|--runner|--terminal|--nginx|--system|--kernel|--crash] [N]
-                   a machine's own log: the agent's journal, the CI runner's,
-                   the terminal server's, its nginx's where the nginx page put
-                   one, this boot's system journal, its kernel ring, and the
+bb logs --node NAME [--agent|--runner|--nginx|--system|--kernel|--crash] [N]
+                   a machine's own log: the agent's journal (its terminals'
+                   among it), the CI runner's, its nginx's where the nginx
+                   page put one, this boot's system journal, its kernel ring, and the
                    previous boot's last lines (--crash: what the box said
                    before it went). Root's on that box: the enrolled
                    account is in neither `adm` nor `systemd-journal`, so a
@@ -2261,13 +2261,13 @@ cmd_logs() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --node) want_node="${2:-}"; shift ;;
-            --agent|--runner|--terminal|--nginx|--system|--kernel|--crash) stream="${1#--}" ;;
+            --agent|--runner|--nginx|--system|--kernel|--crash) stream="${1#--}" ;;
             -f) follow=1 ;;
             -l|--list)
                 # Every stream, newest first, so the top of the list is this
                 # boot. It used to list only builderbot.log's generations,
-                # which made the other three (the dashboard, docker and ttyd,
-                # all of which rotate the same way now) look like they did not
+                # which made the other two (the dashboard and docker, both of
+                # which rotate the same way now) look like they did not
                 # exist.
                 if ! ls -1t "$(bb_log_dir)"/*.log "$(bb_log_dir)"/*.log.[0-9]* 2>/dev/null; then
                     logs_are_the_controllers
@@ -2284,14 +2284,14 @@ cmd_logs() {
                 esac
                 ;;
             *[!0-9]*) die "bb logs: no such option \`$1'. Streams are --agent," \
-                   "--runner, --terminal, --nginx, --system, --kernel and --crash; see \`bb logs --list'" ;;
+                   "--runner, --nginx, --system, --kernel and --crash; see \`bb logs --list'" ;;
             [0-9]*) lines="$1" ;;
             # A flag this does not know used to fall straight through, so
             # `bb logs --node X --nope` quietly read the AGENT's journal and
             # looked like the stream had been honored. A wrong answer that
             # looks like an answer is the worst of the three outcomes.
             *) die "bb logs: no such option \`$1'. Streams are --agent," \
-                   "--runner, --terminal, --nginx, --system, --kernel and --crash; see \`bb logs --list'" ;;
+                   "--runner, --nginx, --system, --kernel and --crash; see \`bb logs --list'" ;;
         esac
         shift
     done
@@ -2301,7 +2301,7 @@ cmd_logs() {
     # the asking node's row. Both refusals say what would change them.
     if [ -n "$want_node" ] || [ -n "$stream" ]; then
         [ -n "$want_node" ] || want_node="${BB_NODE:-}"
-        [ -n "$want_node" ] || die "which node? bb logs --node NAME [--agent|--runner|--terminal|--nginx|--system|--kernel|--crash]"
+        [ -n "$want_node" ] || die "which node? bb logs --node NAME [--agent|--runner|--nginx|--system|--kernel|--crash]"
         # A node's log is read once through a job, so there is nothing to
         # follow: said, rather than -f quietly printing once.
         [ "$follow" = 0 ] || die "bb logs --node reads the last lines once; -f follows only the controller's own log"
@@ -5071,8 +5071,8 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, trust, resize, settle, dr
   // ...and a real sign-in, for the cookie. A header added by routing does not
   // reach a WEBSOCKET handshake (Playwright does not intercept those) and
   // the terminal is a websocket on the dashboard's own origin now, so a
-  // shot of a page with a terminal in it came out holding ttyd's reconnect
-  // prompt. A cookie goes on the handshake like any other request.
+  // shot of a page with a terminal in it came out with the terminal
+  // refused. A cookie goes on the handshake like any other request.
   // Best-effort: a page that is not a BuilderBot dashboard has no /login,
   // and the header above is still what answers for it.
   if (username) {

@@ -87,7 +87,7 @@ print(json.dumps(out))`));
 const shipped = (await call('/api/v1/nodes')).agent || {};
 const minted = await call('/api/v1/nodes', { action: 'enroll', name: 'turnbox' });
 const CENSUS = { cpu: 4, mem_mb: 8192, arch: 'x86_64', system: 'linux',
-                 session: { up: true, port: 7690, ro_port: 7691, user: 'builder', workspace: true,
+                 session: { up: true, term: true, user: 'builder', workspace: true,
                             writable: true, claude: '2.1.0', boot: 'b1' } };
 const en = await call('/api/v1/agent/enroll', { census: CENSUS, version: shipped.version,
   digest: shipped.digest, user: 'bb' }, bearer(minted.token));

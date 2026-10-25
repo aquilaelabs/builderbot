@@ -39,14 +39,13 @@ ok(await page.evaluate(() => tabOf(panes[1])?.kind === 'term'), '...and its − 
   await page.waitForFunction(n => tabs.length === n, before.length, { timeout: 10000 });
 }
 await page.evaluate(() => dockToggle(true));
-await page.waitForSelector('#pane1 .slot.on iframe', { timeout: 10000 });
-// The frame carries the terminal's own color, because its document is
-// transparent until xterm paints and this page's dark color-scheme makes the
-// browser fill that gap with white. Without this the tab switch flashed.
-ok(await page.$eval('#pane1 .slot.on iframe', el => {
+await page.waitForSelector('#pane1 .slot.on.ownterm', { timeout: 10000 });
+// The slot carries the terminal's own color, so there is no white between
+// a tab switch and xterm's first paint.
+ok(await page.$eval('#pane1 .slot.on.ownterm', el => {
      const c = getComputedStyle(el).backgroundColor;
      return c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent';
-   }), 'a terminal frame is not transparent while it loads');
+   }), 'a terminal is not transparent while it loads');
 // A desktop has a keyboard, so it has no on-screen one: the bar hides the
 // one it keeps for phones.
 ok(!await page.$('#bKeys')
@@ -63,11 +62,10 @@ ok(await page.$eval('#pane1 .dtab[data-id]', el => el.dataset.mark === 'kept'),
 await page.evaluate(() => newShell(''));
 ok(await page.$eval('#pane1 .dtab[data-id]', el => el.dataset.mark !== 'kept'), '...while a real change repaints');
 
-// Focus landing in the dock's terminal gives the dock the keyboard, though
-// the click happens inside a cross-origin iframe; a press on the page gives
-// it back; shut, the dock keeps its terminal.
-await page.waitForSelector('#pane1 .slot.on iframe', { timeout: 10000 });
-await page.evaluate(() => { active = 0; document.querySelector('#pane1 .slot.on iframe').focus(); window.dispatchEvent(new Event('blur')); });
+// Focus landing in the dock's terminal gives the dock the keyboard; a press
+// on the page gives it back; shut, the dock keeps its terminal.
+await page.waitForSelector('#pane1 .slot.on.ownterm .xterm-helper-textarea', { timeout: 20000 });
+await page.evaluate(() => { active = 0; render(); document.querySelector('#pane1 .slot.on.ownterm .xterm-helper-textarea').focus(); });
 ok(await page.evaluate(() => active === 1), "focus into the dock's terminal gives the dock the keyboard");
 await page.click('#pane0 .bar');
 ok(await page.evaluate(() => active === 0), '...and a press on the page gives it back');

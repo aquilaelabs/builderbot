@@ -334,10 +334,10 @@ print(json.dumps(out))
     ok(rows.length === 2 && rows[0].id === sb.id && rows[1].id === added.id && rows[1].where === 'refused'
        && /buildbox/.test(rows[1].why),
        `a project on two nodes carries a row per node for the chooser, each judged (${JSON.stringify(rows.map(r => [r.name, r.where]))})`);
-    const t = await fetch(base + '/term/?arg=' + encodeURIComponent('claude:beta:n:' + added.id), { headers: H });
+    const t = await fetch(base + '/termws?arg=' + encodeURIComponent('claude:beta:n:' + added.id), { headers: H });
     const body = await t.text();
     ok(t.status === 503 && /buildbox/.test(body), `...and a terminal asked for on the second node is judged there (${t.status})`);
-    const t2 = await fetch(base + '/term/?arg=' + encodeURIComponent('claude:beta:n:n_notinset'), { headers: H });
+    const t2 = await fetch(base + '/termws?arg=' + encodeURIComponent('claude:beta:n:n_notinset'), { headers: H });
     ok(!/buildbox/.test(await t2.text()), '...while a node outside the set falls to the primary');
     // A build from the dashboard falls over to a node of the set that is
     // up (R82 step 6): buildbox's enrolment counted as a heartbeat, so its
@@ -2511,7 +2511,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   const syncBeat = sync => fetch(base + '/api/v1/agent/work', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
     body: JSON.stringify({ sample: { cpu_pct: 1, mem_mb: 4096, mem_used_mb: 512, sessions: [], sync }, running: [], wait: 0 }) });
-  const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: false, writable: false, boot: '12.5', up_s: 40 };
+  const SE = { up: true, term: true, user: 'bb', workspace: false, writable: false, boot: '12.5', up_s: 40 };
   await napi('/api/prefs', { project: 'alpha', node: minted.id });
   await sessionCensus(SE);
   await syncBeat({ alpha: { ready: false, rev: 0, copying: 12 } });
@@ -3609,7 +3609,7 @@ ok(page.errors.length === 0,
   const shipped = (await napi('/api/v1/nodes')).agent || {};
   const census = { cpu: 2, mem_mb: 4096, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64', sandbox: true,
                    stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 } },
-                   session: { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: true, writable: true,
+                   session: { up: true, term: true, user: 'bb', workspace: true, writable: true,
                               boot: '77.1', up_s: 900, claude: '1.0.0 (Claude Code)' } };
   // The enrollment token enrolls and nothing else: the exchange hands the
   // agent its own, which every hello and heartbeat carries.
@@ -4014,7 +4014,7 @@ spec = importlib.util.spec_from_file_location("nodes", "${REPO}/scripts/dashboar
 m = importlib.util.module_from_spec(spec); sys.modules["nodes"] = m; spec.loader.exec_module(m)
 m.configure(state="${DIR}/state")
 n = m.node("${own.id}")
-rep = n["reported"]; rep.update({"session": {"up": True, "boot": "b-nas", "port": 7681, "ro_port": 7682, "user": "builder"},
+rep = n["reported"]; rep.update({"session": {"up": True, "boot": "b-nas", "term": True, "user": "builder"},
                                  "sync": {"beta": {"ready": True}}, "isolation": json.loads(sys.argv[1])})
 ag = n["agent"]; ag["last_seen"] = int(time.time())
 m._exec("UPDATE nodes SET reported = ?, agent = ? WHERE id = ?", (json.dumps(rep), json.dumps(ag), "${own.id}"))`, JSON.stringify(iso)],

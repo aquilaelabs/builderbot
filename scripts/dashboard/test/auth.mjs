@@ -1,8 +1,9 @@
 // One login for everything: the /login landing page, the cookie it mints,
 // the challenge-free 401s that keep the browser's own dialog away, and the
-// /term proxy that puts the terminals behind the same sign-in. The proxy's
-// upstream is dead in the harness (nothing listens on the ttyd port), which
-// pins the 502 path; the live relay is covered by using the dashboard.
+// terminals (/termws, and terminal.html at /terminal) behind the same
+// sign-in. A plain request to /termws is answered with what the socket
+// would be (a refusal and why, or that a websocket is asked for), which is
+// how most checks here ask; the socket itself is covered by term.mjs.
 import { launch, newPage, ok, done, sleep, URL, DIR, takeOn, openSection, member, splitPick } from './lib.mjs';
 import http from 'node:http';
 import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
@@ -48,9 +49,9 @@ ok(!r.headers.get('www-authenticate'), '...with no basic-auth challenge anywhere
 r = await bare('/api/status');
 ok(r.status === 401 && !r.headers.get('www-authenticate'),
    'the API answers 401, challenge-free, so nothing pops a dialog');
-r = await bare('/term/');
+r = await bare('/terminal?arg=shell');
 ok(r.status === 302 && r.headers.get('location').startsWith('/login'),
-   'the terminal proxy is behind the same sign-in');
+   'the terminal is behind the same sign-in');
 r = await bare('/login');
 {
   const html = await r.text();
@@ -80,9 +81,9 @@ ok(r.status === 303 && cookie.startsWith('bb_session=') && cookie.length > 40,
 ok(/HttpOnly/i.test(r.headers.get('set-cookie')), '...that scripts cannot read');
 r = await bare('/api/status', { headers: { Cookie: cookie } });
 ok(r.status === 200, 'the cookie alone opens the API');
-r = await bare('/term/', { headers: { Cookie: cookie } });
-ok(r.status === 502 && (await r.json()).error.includes('not running'),
-   'the proxy answers for a dead ttyd instead of hanging');
+r = await bare('/termws?arg=shell', { headers: { Cookie: cookie } });
+ok(r.status === 400 && (await r.json()).error.includes('a websocket is asked for here'),
+   'the cookie alone opens a terminal, whose socket is what a plain request is told to ask for');
 r = await bare('/login', { method: 'POST',
   headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   body: 'username=test&password=test&next=//evil.example/' });
@@ -360,7 +361,7 @@ ${code}`], { encoding: 'utf8' });
   // on and no others. Driven against a node rather than tmux: the sessions
   // are a node's (R47), and its census is what says who has one open.
   {
-    const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
+    const term = (h, arg) => bare('/termws?arg=' + encodeURIComponent(arg), { headers: h });
     const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
                 'Content-Type': 'application/json' };
     const napi = async (path, body, hdrs) => (await bare(path, {
@@ -370,7 +371,7 @@ ${code}`], { encoding: 'utf8' });
       ...(body ? { body: JSON.stringify(body) } : {}) }); return { status: r.status, ...(await r.json().catch(() => ({}))) }; };
     const uidOf = n => JSON.parse(readFileSync(store, 'utf8')).users[n].uid;
     const box = await napi('/api/v1/nodes', { action: 'enroll', name: 'talkbox' });
-    const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb',
+    const SE = { up: true, term: true, user: 'bb',
                  workspace: true, writable: true, boot: '3.3', up_s: 5000, claude: '1.0.0 (Claude Code)' };
     // Enrolling with the one-time token mints the node's own, which is what
     // every call after it carries.
@@ -478,7 +479,7 @@ ${code}`], { encoding: 'utf8' });
     ok(mine.can && mine.can.terminal === true,
        '...and an administrator is told the opposite, so nothing is drawn dead');
 
-    const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
+    const term = (h, arg) => bare('/termws?arg=' + encodeURIComponent(arg), { headers: h });
     const shell = await term(other, 'sh:1:');
     ok(shell.status === 403 && /a shell needs .+ Write/.test((await shell.json()).error || ''),
        'a shell is refused at the proxy, not merely hidden on the page');
@@ -642,7 +643,7 @@ ${code}`], { encoding: 'utf8' });
       rmSync(`${theirs}/theirs.md`, { force: true });
       rmSync(`${owners}/owners.md`, { force: true });
     }
-    const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
+    const term = (h, arg) => bare('/termws?arg=' + encodeURIComponent(arg), { headers: h });
     ok((await term(adm, 'claude:alpha')).status === 403,
        '...nor start a Claude session in it, which is the most write-shaped thing here');
     ok((await bare('/api/roadmap?project=alpha', { headers: adm })).status === 200,
@@ -1312,7 +1313,7 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
     await page.evaluate(async () => (await fetch('/api/users', { method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'add', name: 'noauthor', password: 'tabmadepw1', role: 'admin' }) })).json());
-    const sh = await bare('/term/ws?arg=sh:1:beta', { headers: noauthor });
+    const sh = await bare('/termws?arg=sh:1:beta', { headers: noauthor });
     ok(sh.status === 409 && /no name and email/.test((await sh.json()).error || ''),
        'an account with no author is refused a shell at the door, and told where to set one');
     // fetch writes with git and wants an author; a policy read and an
@@ -1765,7 +1766,7 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
        `a session's token cannot use the version panel, where it could loosen its own policy (${vs.status})`);
     await bare('/api/profile', { method: 'POST', headers: { ...noauthor, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'save', profile: { full_name: 'No Author', email: 'na@example.invalid' } }) });
-    ok((await bare('/term/ws?arg=sh:1:beta', { headers: noauthor })).status !== 409,
+    ok((await bare('/termws?arg=sh:1:beta', { headers: noauthor })).status !== 409,
        '...and a name and email on the Profile open the door');
     await page.evaluate(async () => (await fetch('/api/users', { method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1829,13 +1830,9 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
   const set = (h, on) => bare('/api/settings', { method: 'POST', headers: h, body: JSON.stringify({ set: { maintenance_mode: on } }) });
   const SAID = /down for maintenance: only its owner can sign in/;
 
-  // Two terminals open before it starts, relayed to a stand-in for ttyd on
-  // the harness's port: the administrator's ends when maintenance starts,
-  // the owner's goes on.
+  // Two terminals open before it starts, shells on this controller: the
+  // administrator's ends when maintenance starts, the owner's goes on.
   const net = await import('node:net');
-  const ttyd = net.createServer(s => { s.on('error', () => {});
-    s.once('data', () => s.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n')); });
-  await new Promise(res => ttyd.listen(7999, '127.0.0.1', res));
   const u0 = new globalThis.URL(URL);
   const openTerm = (cookie, n) => new Promise(res => {
     const t = { closed: false, status: '' };
@@ -1844,8 +1841,8 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
     c.on('error', () => {});
     c.on('close', () => { t.closed = true; res(t); });
     c.on('data', d => { got += d; if (!t.status && got.includes('\r\n\r\n')) { t.status = got.split('\r\n')[0]; t.sock = c; res(t); } });
-    c.write(`GET /term/ws?arg=sh%3A${n}%3Aalpha HTTP/1.1\r\nHost: ${u0.host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n`
-      + `Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: tty\r\nCookie: ${cookie}\r\n\r\n`);
+    c.write(`GET /termws?arg=sh%3A${n}%3Aalpha&cols=80&rows=24 HTTP/1.1\r\nHost: ${u0.host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n`
+      + `Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\nCookie: ${cookie}\r\n\r\n`);
   });
   const cookieOf = async (u, pw) => ((await form(u, pw)).headers.get('set-cookie') || '').split(';')[0];
   // An author first: a terminal is refused to an account with none.
@@ -1881,7 +1878,6 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
   ok(/101/.test(admTerm.status) && admTerm.closed && /101/.test(ownTerm.status) && !ownTerm.closed,
      `a terminal another account had open ends when it starts, and the owner's goes on (${JSON.stringify({ adm: [admTerm.status, admTerm.closed], own: [ownTerm.status, ownTerm.closed] })})`);
   ownTerm.sock?.destroy();
-  await new Promise(res => ttyd.close(res));
 
   ok((await set(owner, false)).status === 200, 'the owner switches it off');
   ok((await bare('/api/status', { headers: { Cookie: theirCookie } })).status === 200,
@@ -1911,7 +1907,7 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
   });
   const evil = 'http://app.example.test';
   const got = {};
-  for (const path of ['/term/ws?arg=shell', '/screen/ws?vm=alpha/none', '/termws?arg=shell'])
+  for (const path of ['/termws?arg=shell', '/screen/ws?vm=alpha/none'])
     got[path] = [await ask(path, evil), await ask(path, `${u.protocol}//${u.host}`), await ask(path, '')];
   ok(Object.values(got).every(([x, same, none]) => x === 403 && same !== 403 && none !== 403),
      `a terminal's or a screen's socket from another origin is refused, and this origin's is not (${JSON.stringify(got)})`);

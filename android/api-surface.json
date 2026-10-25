@@ -94,7 +94,7 @@
     {"method": "GET", "path": "/api/brief?project=", "fields": ["pending", "text"]},
     {"method": "POST", "path": "/api/brief", "actions": ["stage", "aside"]},
     {"method": "POST", "path": "/login", "actions": ["(a form of username, password and next: the cookie a session's terminal page is opened with)"]},
-    {"method": "GET", "path": "/term/?arg=", "needs": "a ttyd, which test/editor.mjs starts and drives: the page a session's terminal is, in a WebView"}
+    {"method": "GET", "path": "/terminal?arg=", "needs": "a terminal, which test/editor.mjs opens and drives: the page a session's terminal is, in a WebView"}
   ],
   "types": {
     "/api/meta": {"api": "number", "version": "string", "apk": "string", "apk_sha256": "string", "apk_url": "string"},

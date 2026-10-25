@@ -20,8 +20,6 @@ tries() {
     # ssh-add exits 2 when it cannot reach an agent, 1 for an empty one.
     try sh -c 'SSH_AUTH_SOCK=/run/builderbot-controller/ssh-agent.sock ssh-add -l; [ $? -ne 2 ]'
     try curl -s -m 5 --unix-socket /run/docker.sock http://localhost/version
-    try curl -s -m 5 -o /dev/null http://127.0.0.1:7681/
-    try curl -s -m 5 -o /dev/null http://127.0.0.1:7682/
 }
 
 # covers: inside a view, every folder the wall names is there empty or not at all.

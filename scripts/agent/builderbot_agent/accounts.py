@@ -197,7 +197,7 @@ class AccountsMixin:
 
     def tty_env_write(self):
         """The environment a terminal starts with, for bb-session tty: what
-        the ttyds get (session_env), less what is the account's own."""
+        a terminal gets (session_env), less what is the account's own."""
         if not self.account_users_on():
             return
         env = {}

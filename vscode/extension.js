@@ -9,7 +9,7 @@
 // build or install beside it.
 const vscode = require('vscode');
 const { Client, Refused, signIn } = require('./lib/client');
-const { Ttyd } = require('./lib/ttyd');
+const { Term } = require('./lib/term');
 
 const SCHEME = 'builderbot';
 const SECRET = 'builderbot.cookie';
@@ -285,7 +285,7 @@ async function cmdOpenSession(context, project, agent) {
     agent = typeof agent === 'string' ? agent : await pickAgent(project, facts.running);
     if (!agent) return;
     const a = AGENTS.find(x => x.id === agent) || AGENTS[0];
-    const t = new Ttyd(c, sessionArg(a.id, project, facts.boot));
+    const t = new Term(c, sessionArg(a.id, project, facts.boot));
     const write = new vscode.EventEmitter();
     const closed = new vscode.EventEmitter();
     const pty = {
@@ -293,7 +293,9 @@ async function cmdOpenSession(context, project, agent) {
       onDidClose: closed.event,
       open: async dims => {
         t.on('output', s => write.fire(s));
-        t.on('close', () => closed.fire());
+        // Why it ended stays on screen, as in the dashboard's tab; one
+        // that ended with nothing to say closes.
+        t.on('close', why => { if (why) write.fire(`\r\n[BuilderBot] ${why}\r\n`); else closed.fire(); });
         t.on('error', e => write.fire(`\r\n[BuilderBot] ${e.message}\r\n`));
         try {
           await t.open(dims ? dims.columns : 80, dims ? dims.rows : 24);

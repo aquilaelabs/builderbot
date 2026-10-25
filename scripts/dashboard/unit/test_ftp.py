@@ -67,7 +67,7 @@ class Ftp(unittest.TestCase):
     def test_ports_are_checked(self):
         ftp.save("alpha", {"on": True, "port": 3000}, "boss")
         for port, said in [(80, "a port from 1024"), (65530, "a port from 1024"),
-                           (7675, "session terminal"), (3005, "alpha uses 3000 to 3009")]:
+                           (7680, "terminals and VMs' screens"), (3005, "alpha uses 3000 to 3009")]:
             j, code = ftp.save("beta", {"on": True, "port": port}, "boss")
             self.assertEqual(code, 400, port)
             self.assertIn(said, j["error"])

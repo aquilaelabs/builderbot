@@ -25,7 +25,7 @@ const me = uidOf('test');
 // ---- a node of this file's own ----------------------------------------------
 const box = await call('/api/v1/nodes', { action: 'enroll', name: 'signbox' });
 // Codex CLI installed beside Claude Code, as its census says it (R95 step 3).
-const SE = { up: true, port: 7681, ro_port: 7682, user: 'bb', workspace: true, writable: true, boot: '4.4', up_s: 5000, claude: '1.0.0 (Claude Code)',
+const SE = { up: true, term: true, user: 'bb', workspace: true, writable: true, boot: '4.4', up_s: 5000, claude: '1.0.0 (Claude Code)',
              codex: 'codex-cli 0.163.0' };
 const agent = await call('/api/v1/agent/enroll',
   { user: 'bb', version: 'harness', census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', session: SE } },
@@ -247,7 +247,7 @@ await call('/api/v1/nodes', { action: 'online', id: box.id });
   await call('/api/prefs', { project: 'beta', agents_off: 'codex' });
   await refreshUntil(page, () => ((state?.projects || []).find(p => p.name === 'beta')?.prefs?.agents_off || []).includes('codex'));
   const term = await page.evaluate(async () => {
-    const r = await fetch('/term/?arg=' + encodeURIComponent('codex:beta'), { headers: { Accept: 'application/json' } });
+    const r = await fetch('/termws?arg=' + encodeURIComponent('codex:beta'), { headers: { Accept: 'application/json' } });
     return { status: r.status, error: (await r.json().catch(() => ({}))).error || '' };
   });
   await page.evaluate(() => openProjectsTab());

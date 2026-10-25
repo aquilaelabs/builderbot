@@ -8,6 +8,7 @@
 import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR,
          tmuxNew, tmuxKill, tmuxFmt, tmuxCapture, openSection } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, appendFileSync, realpathSync, copyFileSync, cpSync, chmodSync, symlinkSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
@@ -291,39 +292,26 @@ if a[0] == "funnel":
     json.dump(d, open(st, "w")); sys.exit(0)
 sys.exit(2)
 `, { mode: 0o755 });
-// ttyd, stood in for (roadmap #24): the agent starts two of them for the
-// sessions this node runs, and what is under test is that it does: as
-// which account, on which ports, running bb-tty from which bundle, not
-// ttyd itself. This one records its argv and environment and stays up.
-writeFileSync(`${DIR}/bin/ttyd`, `#!/usr/bin/env python3
-# ...and answers on its port with the request line, so the controller's
-# terminal proxy can be shown dialing this node with the URL it stamped.
-import http.server, os, socketserver, sys, threading, time
-a = sys.argv[1:]
-open(f"${DIR}/ttyd-{os.getpid()}.argv", "w").write("\\n".join(a) + "\\n")
-open(f"${DIR}/ttyd-{os.getpid()}.env", "w").write("".join(f"{k}={v}\\n" for k, v in os.environ.items()))
-class H(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        body = f"ttyd-stub {self.requestline}".encode()
-        self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers()
-        self.wfile.write(body)
-    def log_message(self, *x): pass
-# Up for as long as the agent that started it is, like the real one under
-# SIGTERM, and not a minute longer, so a killed agent leaves nothing behind.
-def watch():
-    while os.getppid() != 1: time.sleep(1)
-    os._exit(0)
-threading.Thread(target=watch, daemon=True).start()
-socketserver.TCPServer.allow_reuse_address = True
-with socketserver.TCPServer(("127.0.0.1", int(a[a.index("--port") + 1])), H) as srv:
-    srv.serve_forever()
-`, { mode: 0o755 });
-const ttydRuns = () => readdirSync(DIR).filter(f => /^ttyd-\d+\.argv$/.test(f))
-  .map(f => ({ pid: Number(f.match(/\d+/)[0]),
-               argv: readFileSync(`${DIR}/${f}`, 'utf8').trim().split('\n'),
-               env: Object.fromEntries(readFileSync(`${DIR}/${f.replace('.argv', '.env')}`, 'utf8')
-                 .split('\n').filter(Boolean).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)])) }));
-const SESSION_PORT = 17681 + Math.floor(Math.random() * 1000);
+// The node's screen relay (R133): its terminals' one port, a free one of
+// its own here, since a real node's 7684 may be this machine's.
+const SCREEN_PORT = 17684 + Math.floor(Math.random() * 1000);
+// A terminal through the controller, as the page opens one (R133): its
+// screen, what is typed into it, and the reason it closes with.
+const { connect: wsConnect } = createRequire(import.meta.url)(`${REPO}/vscode/lib/ws.js`);
+const termRun = async (arg, type, hdr) => {
+  const sock = await wsConnect(URL.replace(/\/$/, '').replace(/^http/, 'ws') + '/termws?arg='
+    + encodeURIComponent(arg) + '&cols=120&rows=30', { headers: hdr });
+  let out = '', why = null;
+  sock.on('message', b => { out += b.toString('utf8'); });
+  sock.on('close', (code, w) => { why = w; });
+  await sleep(2500);
+  if (type && why === null){
+    sock.send(Buffer.concat([Buffer.from([0]), Buffer.from(type, 'utf8')]));
+    await sleep(2500);
+  }
+  sock.close();
+  return { out: out.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '').replace(/\x1b[()][0-9A-Za-z]/g, ''), why };
+};
 // The stub docker's own state, so the agent's compose reaches the same fake
 // daemon the controller's runner does; a real node needs nothing here.
 // The fixture node's /workspace: a directory of its own, where its agent
@@ -337,7 +325,7 @@ mkdirSync(SHARE, { recursive: true });
 mkdirSync(`${DIR}/agenthome`, { recursive: true });
 const agentEnv = { ...process.env, HOME: `${DIR}/agenthome`, BUILDERBOT_NODE_JSON: NODE_JSON,
   BUILDERBOT_SHARE: SHARE,
-  BUILDERBOT_TTYD_BIN: `${DIR}/bin/ttyd`, BUILDERBOT_SESSION_PORT: String(SESSION_PORT),
+  BUILDERBOT_SCREEN_PORT: String(SCREEN_PORT),
   BUILDERBOT_SESSION_BIND: '127.0.0.1',
   // A PATH of the harness's own. The agent reports what it finds on PATH as
   // the fixture node's toolchains, and run from a session on a node this
@@ -455,104 +443,26 @@ try {
 
   // ---- the session half (roadmap #24) ----------------------------------------
   // On its first hello the agent fetches the bb bundle the controller ships,
-  // unpacks it into the toolchain store, and starts two ttyds running bb-tty
-  // from it: what the controller's dashboard hook does, done on the node by
-  // the process that is already there. The census then says so, which is
-  // what the proxy (phase 10b) will relay a session on the strength of.
+  // unpacks it into the toolchain store, and sets up its terminals (R133):
+  // bb-tty from that bundle, opened by the screen relay on its one port
+  // for each terminal the controller sends. The census then says so, which
+  // is what the controller opens a session there on the strength of.
   {
     const sess = await until(async () => {
       const n = await nodeById(minted.id);
       return n?.reported?.session?.up ? n.reported.session : null;
     });
-    ok(sess !== null, 'the census reports the session half: ttyd is up');
-    ok(sess?.port === SESSION_PORT && sess?.ro_port === SESSION_PORT + 1
+    ok(sess !== null, 'the census reports the session half: its terminals are up');
+    ok(sess?.term === true && sess?.screen === SCREEN_PORT && sess?.ctr === true
        && sess?.user === execFileSync('id', ['-un'], { encoding: 'utf8' }).trim(),
-       `...on the ports it bound and as the account sessions run as (${sess?.port}, ${sess?.user})`);
+       `...on the relay's port, the container terminal beside them, as the account sessions run as (${
+         JSON.stringify({ term: sess?.term, screen: sess?.screen, ctr: sess?.ctr, user: sess?.user })})`);
     ok(typeof sess?.workspace === 'boolean' && /^sha256:/.test(sess?.bundle || ''),
        '...saying whether /workspace is there and which bb bundle bb-tty runs from');
-    // This node's two; the container node enrolled above started its own.
-    // Waited for: the census says up once the first is, and the twin's
-    // record can land a moment later on a loaded box (two whole gates of
-    // 13 Oct read one and passed alone).
-    // ...and only the live ones: the agent starts the pair again when its
-    // first start is judged down (a loaded box, 13 Oct: four records, the
-    // first pair ended), and a record outlives its ttyd.
-    const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
-    // The session pair, and beside it the container terminal (R218 step 4):
-    // a third, writable, under BB_TTY_CTR, as the docker account.
-    const all = () => ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id && alive(r.pid));
-    const mine = () => all().filter(r => r.env.BB_TTY_CTR !== '1');
-    const runs = (await until(async () => { const r = mine(); return r.length >= 2 ? r : null; })) || mine();
-    ok(runs.length === 2 && runs.some(r => r.argv.includes('--writable'))
-       && runs.some(r => !r.argv.includes('--writable')),
-       `two ttyds: the writable one and the read-only twin an account without a shell is shown (${
-         runs.length} records: ${runs.map(r => `${r.argv.includes('--writable') ? 'rw' : 'ro'}:${r.pid}`).join(' ')})`);
-    {
-      const ctr = (await until(async () => { const r = all().filter(x => x.env.BB_TTY_CTR === '1'); return r.length ? r : null; })) || [];
-      const at = ctr[0]?.argv || [];
-      const back = await until(async () => { const n = await nodeById(minted.id); return n?.reported?.session?.ctr_port ? n.reported.session : null; });
-      ok(ctr.length === 1 && at.includes('--writable') && at[at.indexOf('--port') + 1] === String(SESSION_PORT + 2)
-         && /\/scripts\/dashboard\/bb-tty$/.test(at.at(-1) || '') && back?.ctr_port === SESSION_PORT + 2,
-         `...and a third, the container terminal, writable on ${SESSION_PORT + 2} and named in the census (${
-           ctr.length} record(s), census ctr_port ${back?.ctr_port})`);
-    }
-    const bbtty = runs[0]?.argv.at(-1) || '';
-    ok(/\/\.bb\/[0-9a-f]{16}\/scripts\/dashboard\/bb-tty$/.test(bbtty) && existsSync(bbtty),
-       `...both running bb-tty out of the bundle unpacked in the toolchain store (${bbtty.replace(DIR, '…')})`);
-    ok(runs.every(r => r.argv.includes('--url-arg') && r.argv.includes('--interface')
-                       && r.argv[r.argv.indexOf('--interface') + 1] === '127.0.0.1'),
-       '...with --url-arg for the target, bound where the agent was told');
-    const e = runs[0]?.env || {};
-    ok(e.BUILDERBOT_ROLE === 'node' && e.BB_CONTROLLER === URL.replace(/\/$/, '')
-       && e.WORKSPACE === '/workspace' && !('BB_TOKEN' in e) && !e.BUILDERBOT_NODE_JSON,
-       'the sessions inherit the role and the controller\'s address, never the node\'s token');
-    // Through the SYMLINK, not the digest it points at (bug #66). A ttyd
-    // restart onto a new bundle only reaches new connections (a tmux
-    // session's shell keeps the PATH it was started with), so a session open
-    // since before an update went on running the bundle it began with, and a
-    // verb the controller had gained printed bb's usage instead of running.
-    const first = (e.PATH || '').split(':')[0];
-    ok(first.endsWith('/.bb/current/scripts')
-       && realpathSync(first) === realpathSync(bbtty.replace(/\/dashboard\/bb-tty$/, '')),
-       `...and bb on PATH through .bb/current, so a shell open since before an `
-       + `update still runs the bundle delivered last (${first.replace(DIR, '…')})`);
-    // A port held by a ttyd of an earlier agent process (bug #58). The
-    // agent's self-update re-executes it, which keeps its children and
-    // loses every handle to them: the old ttyds stayed on the ports, every
-    // later start exited on the bind and the census still said up, so a
-    // node served sessions from a bundle four deliveries old. Stood in for
-    // here: the writable ttyd is killed and a stray that looks like ours
-    // (ttyd … bb-tty on its command line) takes its port; the restart has
-    // to end the stray and be up for real, rather than report a start
-    // that died.
-    const writable = runs.find(r => r.argv.includes('--writable'));
-    process.kill(writable.pid, 'SIGKILL');
-    await sleep(500);
-    const stray = spawn(`${DIR}/bin/ttyd`, ['--port', String(SESSION_PORT), '--interface', '127.0.0.1',
-                                            `${DIR}/nowhere/.bb/0000000000000000/scripts/dashboard/bb-tty`],
-                        { stdio: 'ignore' });
-    let strayGone = false;
-    stray.on('exit', () => { strayGone = true; });
-    await sleep(500);
-    const again = await until(async () => {
-      const fresh = ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id
-                                        && r.argv.includes('--writable') && r.pid !== writable.pid);
-      const n = await nodeById(minted.id);
-      return strayGone && fresh.length && n?.reported?.session?.up
-        && !n.reported.session.why ? { fresh, sess: n.reported.session } : null;
-    }, 75000, 500);
-    ok(again !== null && strayGone,
-       `a ttyd that died is started again, and a stray bb-tty ttyd holding its port, an earlier agent's, is ended first (${
-         again ? 'up on ' + again.sess.port : 'not up: ' + JSON.stringify((await nodeById(minted.id))?.reported?.session)})`);
-    if (!strayGone) stray.kill('SIGKILL');
-    // Retried rather than asked once: the census says up when the process
-    // is alive and still there a moment later, which is what the agent can
-    // know; the stub's own listener binds just after that, so a single
-    // fetch races it and fails on a loaded box.
-    const answer = await until(async () =>
-      fetch(`http://127.0.0.1:${SESSION_PORT}/ws?arg=x`).then(r => r.text()).catch(() => null),
-      15000, 300) || 'never answered';
-    ok(/^ttyd-stub GET/.test(answer), `...and the port answers as the agent's own again (${answer.slice(0, 30)})`);
+    // The relay answers on its port, and only what the controller signed.
+    const unsigned = await until(async () =>
+      fetch(`http://127.0.0.1:${SCREEN_PORT}/term?a=x&t=0&s=x`).then(r => r.status).catch(() => null), 15000, 300);
+    ok(unsigned >= 400 && unsigned < 500, `...and the relay answers on that port, refusing a terminal nobody signed (${unsigned})`);
     const st = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
     const store = `${st.stores.toolchains}/${SCOPE}`;   // the node's scope in it (roadmap R19)
     ok(existsSync(`${store}/.bb/current/scripts/bb`)
@@ -2142,10 +2052,9 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
     // ---- the terminal goes to the node (roadmap #24, phase 10b) --------------
     // alpha is bound to agentbox now, whose census says its session half is
     // up, and whose agent makes alpha's synced copy in its own /workspace
-    // (R163): once it says the copy is ready, the controller's /term proxy
-    // dials agentbox's ttyd (the stub above, which answers with the request
-    // line) with the account, its name and a session token stamped into
-    // the URL.
+    // (R163): once it says the copy is ready, a terminal on alpha opens on
+    // agentbox, carried signed to its screen relay, with the account, its
+    // name and a session token among bb-tty's words.
     {
       const copied = await until(async () => {
         const p = (await api('/api/status')).projects.find(x => x.name === 'alpha');
@@ -2154,11 +2063,14 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       ok(copied && existsSync(`${SHARE}/alpha`),
          `the node's agent copies the project it is bound to into its own /workspace, and the button goes live once it has (${
            copied ? 'ready' : ((await api('/api/status')).projects.find(x => x.name === 'alpha')?.session_why || '').slice(0, 80)})`);
+      // What a terminal would be, asked plainly: a refusal and why, or
+      // that a websocket is asked for, which is a terminal that opens.
       const term = async (arg, hdr = auth) => {
-        const r = await fetch(URL.replace(/\/$/, '') + '/term/ws?arg=' + encodeURIComponent(arg),
+        const r = await fetch(URL.replace(/\/$/, '') + '/termws?arg=' + encodeURIComponent(arg),
                               { headers: hdr, redirect: 'manual' });
         return { status: r.status, body: await r.text() };
       };
+      const OPENS = /a websocket is asked for here/;
       const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
       const rows = (await api('/api/status')).projects;
       const alpha = rows.find(p => p.name === 'alpha');
@@ -2183,26 +2095,29 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          'a transcript written on the share, as a node\'s session writes it, is offered here to resume');
       await refreshUntil(page, () =>
         ((state?.projects || []).find(p => p.name === 'alpha') || {}).session_at === 'agentbox');
-      const url = await page.evaluate(() => ttydUrl('claude:alpha'));
-      ok(decodeURIComponent(url).endsWith(`claude:alpha:b:${nodeBoot}`),
-         `the page stamps the node's boot into a node-bound terminal's URL (${decodeURIComponent(url)})`);
-      const urlHere = await page.evaluate(() => ttydUrl('claude:beta'));
-      ok(decodeURIComponent(urlHere).endsWith(`claude:beta:b:${(await api('/api/status')).boot}`),
+      const arg = await page.evaluate(() => termArg('claude:alpha'));
+      ok(arg.endsWith(`claude:alpha:b:${nodeBoot}`),
+         `the page stamps the node's boot into a node-bound terminal's words (${arg})`);
+      const argHere = await page.evaluate(() => termArg('claude:beta'));
+      ok(argHere.endsWith(`claude:beta:b:${(await api('/api/status')).boot}`),
          '...and this container\'s into everybody else\'s');
       const c = await term('claude:alpha');
-      ok(c.status === 200 && /^ttyd-stub GET \/ws\?/.test(c.body),
-         `a Claude session on alpha is relayed to agentbox's ttyd (${c.status}: ${c.body.slice(0, 400)})`);
-      const args = (c.body.match(/arg=[^& ]+/g) || []).map(x => decodeURIComponent(x.slice(4)));
-      ok(args[0] === `u:${uid}:claude:alpha`,
-         `...with the account stamped into the argument as it is locally (${args[0]})`);
-      ok(/^tok:bbs_[A-Za-z0-9_-]+$/.test(args[1] || '') && args[2] === 'name:test' && args[3] === 'owner:1',
-         `...and the node's extras after it: a session token, the account's name, and that it is the owner, so the tree and the transcript slug are the same there (${args.slice(1).map(x => x.slice(0, 12)).join(', ')})`);
-      const sh = await term('shell:alpha');
-      ok(sh.status === 200 && /arg=u%3A/.test(sh.body) && /tok%3Abbs_/.test(sh.body),
-         'a project shell goes there too, with the account and a token, so bb in that shell reaches the notebook with it');
+      ok(c.status === 400 && OPENS.test(c.body),
+         `a Claude session on alpha opens there (${c.status}: ${c.body.slice(0, 200)})`);
+      // A project shell, opened on agentbox and typed into: bb-tty there has
+      // the account, its name, that it is the owner and a session token, so
+      // bb in that shell reaches the notebook with it, and the node's role
+      // and bb through .bb/current, so a shell open since before an update
+      // still runs the bundle delivered last (bug #66).
+      const sh = await termRun('shell:alpha',
+        'echo "W:$BB_ACCOUNT_UID:$BB_ACCOUNT_NAME:$BB_TREE_OWNER:${BB_TOKEN%%_*}:$BUILDERBOT_ROLE:$(command -v bb | sed s,.*/.bb/,,)"\r', auth);
+      const said = (sh.out.match(/W:u_[0-9a-f]+:[^\s]*/g) || []).pop() || '';
+      ok(said === `W:${uid}:test:1:bbs:node:current/scripts/bb`,
+         `a project shell on alpha opens on agentbox as the account, with its name, the owner mark, a session token, the node's role and its bb through .bb/current (${
+           said || sh.why || sh.out.slice(-160)})`);
       const root = await term('shell');
-      ok(root.status === 502 && /terminal server is not running/.test(root.body),
-         'the workspace shell stays on this container (which the harness runs no ttyd for)');
+      ok(root.status === 400 && OPENS.test(root.body),
+         'the workspace shell stays on this container');
       // A Claude session runs on a node and nowhere else (R47): this
       // container carries no Claude Code, so a project with no node is
       // refused, with the sentence saying what to do rather than opening a
@@ -2228,7 +2143,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
       // ...and there is no way to ask for it here. `here=1` was the dead
       // button's escape while this container could still run one; it cannot,
       // so the flag is gone and the same refusal answers whatever is asked.
-      const here = await fetch(URL.replace(/\/$/, '') + '/term/ws?arg=' + encodeURIComponent('claude:beta') + '&here=1',
+      const here = await fetch(URL.replace(/\/$/, '') + '/termws?arg=' + encodeURIComponent('claude:beta') + '&here=1',
                                { headers: auth, redirect: 'manual' });
       ok(here.status === 503 && /being copied to sandbox/.test(await here.text()),
          '...and asking for it on this container anyway changes nothing');
@@ -2240,7 +2155,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          '...and a shell on that project follows the node, so it is refused too');
       await api('/api/prefs', { project: 'beta', node: '' });
       const shellHere = await term('shell:beta');
-      ok(shellHere.status === 502 && /terminal server is not running/.test(shellHere.body),
+      ok(shellHere.status === 400 && OPENS.test(shellHere.body),
          'a shell on a project with NO node still opens here: only Claude moved');
       await api('/api/prefs', { project: 'beta', node: '' });
     }
@@ -2586,7 +2501,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
   // toolchain asked for is not installed, so this proves the channel and not
   // a download.
   {
-    const ttydsBefore = ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id).length;
+    const madeBefore = (agentLog().match(/the bundle or the store changed; new terminals see it/g) || []).length;
     const pj = await api('/api/toolchains', { action: 'remove', names: ['flutter'], node: minted.id });
     ok(pj.ok && /^j_/.test(pj.job), `a toolchain job is queued on the node (${pj.job || pj.error})`);
     const pfin = await until(async () => {
@@ -2602,14 +2517,14 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
        && /== bb toolchains remove flutter/.test(pfin.log) && /not installed|unknown toolchain/.test(pfin.log),
        `the bundle lands in the toolchain store and bb runs from it there (${pfin?.state}: ${(pfin?.log || '').slice(-500).replace(/\n/g, ' / ')})`);
     ok(existsSync(`${PK}/.bb/bundle.tar`), '...and stays for the next one');
-    // The store changed, so the ttyds are started again with an environment
-    // built from it, so a session opened now finds the new tool on PATH.
+    // The store changed, so the terminals' environment is made again from
+    // it, so a session opened now finds the new tool on PATH.
     const renewed = await until(async () => {
       const n = await nodeById(minted.id);
-      const now = ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id).length;
-      return now > ttydsBefore && n?.reported?.session?.up ? now : null;
+      const now = (agentLog().match(/the bundle or the store changed; new terminals see it/g) || []).length;
+      return now > madeBefore && n?.reported?.session?.up ? now : null;
     }, 30000, 500);
-    ok(renewed !== null, `...and the session ttyds are restarted onto the changed store (${ttydsBefore} -> ${renewed})`);
+    ok(renewed !== null, `...and the terminals' environment is made again from the changed store (${madeBefore} -> ${renewed})`);
     // An install that fails on the node says why on its row, as one on the
     // controller does (B211). The reason was only in the job's log before:
     // the row went back to unticked and said nothing, and the graphics
@@ -3211,7 +3126,7 @@ echo "Installing Claude Code (stub) for $USER into $HOME"
 echo "stub-installed" >> "${DIR}/claude-installer.log"
 `, { mode: 0o755 });
     // The record says the session half is up before Install is pressed: the
-    // ttyd restart above asked for a hello, whose census is taken beside the
+    // store change above asked for a hello, whose census is taken beside the
     // loop now rather than before the next job is taken (B644), so for a few
     // seconds the row is behind the machine.
     await until(async () => (await nodeById(minted.id))?.reported?.session?.up ? true : null, 30000);
@@ -3954,9 +3869,9 @@ print(json.dumps({'r1': r1, 'r2': r2, 'mac': mac, 'scope': m.tc_scope(), 'root':
 // ---- addresses that move ---------------------------------------------------
 // The node dials out, so a node whose own address moves keeps working and
 // the controller follows its hellos. Two things name an address anyway and
-// are healed here: the ttyds bound to the node's old address are restarted
-// onto the new one, and the session-ports rule that names the controller's
-// address is rewritten when that name resolves elsewhere.
+// are healed here: the relay bound to the node's old address binds the new
+// one, and the session-ports rule that names the controller's address is
+// rewritten when that name resolves elsewhere, kept to the relay's port.
 {
   const NB = `${DIR}/nbin`; mkdirSync(NB, { recursive: true });
   writeFileSync(`${NB}/nft`, `#!/bin/sh\necho "nft $*" >> "${DIR}/nft.log"\n`, { mode: 0o755 });
@@ -3980,24 +3895,25 @@ first = open(nftf).read()
 a.fw_checked = 0.0
 a.session_firewall_check()
 calls = open(${JSON.stringify(`${DIR}/nft.log`)}).read() if os.path.exists(${JSON.stringify(`${DIR}/nft.log`)}) else ''
-# the node's own address moving: ttyds bound to the old one are marked for a restart
+# the node's own address moving: the relay binds the new one, the terminals' environment made again
 os.makedirs(os.path.join(d, m.tc_scope(), '.bb', 'current'))
-class P:
-    def poll(self): return None
-a.ttyd = [P()]; a.session_bound = '10.0.0.5'; a.session_stale = ''
+class S:
+    def rebind(self): a.rebound = True
+a.screen = S(); a.session_up = True; a.session_bound = '10.0.0.5'; a.session_stale = ''
 m.network_now = lambda: {'addresses': ['10.0.0.77/24'], 'interface': 'eth0', 'gateway': '', 'dns': []}
-a.session_start = lambda into, retry=False: setattr(a, 'restarted', into)
+a.session_start = lambda into: setattr(a, 'restarted', into)
 a.session_bundle = ''; a.session_digest = ''; a.session_tried = 0
 a.session_check()
-print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'restarted', ''), 'bind': a.session_bind()}))
+print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'restarted', ''), 'rebound': getattr(a, 'rebound', False), 'bind': a.session_bind()}))
 `], { encoding: 'utf8' });
   const R = JSON.parse(out.trim().split('\n').pop());
-  ok(/ip saddr 127\.0\.0\.1 accept/.test(R.first) && !/10\.0\.0\.9/.test(R.first),
-     'when the controller\'s name resolves elsewhere, the session-ports rule is rewritten to the new address');
+  ok(/ip saddr 127\.0\.0\.1 accept/.test(R.first) && !/10\.0\.0\.9/.test(R.first)
+     && /tcp dport \{ 7684 \}/.test(R.first) && !/7681/.test(R.first),
+     'when the controller\'s name resolves elsewhere, the session-ports rule is rewritten to the new address, the relay\'s port alone');
   ok((R.calls.match(/nft -f/g) || []).length === 1,
      '...applied once, and a second check with nothing changed applies nothing');
-  ok(R.bind === '10.0.0.77' && /\.bb\/current$/.test(R.restarted),
-     `when the node's own address moves, the ttyds are restarted onto the new one (${R.bind})`);
+  ok(R.bind === '10.0.0.77' && /\.bb\/current$/.test(R.restarted) && R.rebound,
+     `when the node's own address moves, the relay binds the new one (${R.bind})`);
 }
 
 // ---- the agent's version is WINDOW.BUILD ----------------------------------
@@ -4028,8 +3944,8 @@ print(json.dumps({'first': first, 'calls': calls, 'restarted': getattr(a, 'resta
 
   // ---- the sessions are not the agent's unit to kill (B107) --------------
   // systemd's default KillMode takes every process in the unit's cgroup on a
-  // stop, and the agent's cgroup holds the ttyds, the tmux servers under
-  // them and the Claude sessions inside those, so Update agent ended every
+  // stop, and the agent's cgroup holds the terminals, the tmux servers
+  // under them and the Claude sessions inside those, so Update agent ended every
   // conversation on the machine. Read off the provisioner because that is
   // where the unit is written, and a shell file has no other check that
   // would notice the line going away.

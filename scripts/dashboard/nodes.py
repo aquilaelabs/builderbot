@@ -1216,8 +1216,8 @@ def agent_window(version):
     m = re.match(r"^(\d+\.\d+)\.", str(version or ""))
     return m.group(1) if m else ""
 # Held below the 30s most proxies allow. Settable only so the suite can stop
-# waiting on it: an agent does its housekeeping (restarting a ttyd that died,
-# reporting a session that appeared) once per turn of this loop, so a test
+# waiting on it: an agent does its housekeeping (reporting a session that
+# appeared) once per turn of this loop, so a test
 # that watches for any of it waits a poll window per thing it watches, and
 # three of them were the slowest intervals in the suite. Nothing else sets it.
 POLL_S = int(os.environ.get("BB_NODE_POLL") or 25)
@@ -1612,8 +1612,8 @@ def _census(c):
         "dns": re.sub(r"[^A-Za-z0-9.-]", "", str(ts.get("dns") or ""))[:200],
         # https port -> the local port it forwards to, as the node reports it
         "funnel": {str(k)[:6]: _mb(v) for k, v in list(fun.items())[:8]}}
-    # The session half (roadmap #24): whether this node runs sessions, on
-    # which ports, as which account, and whether /workspace, where its
+    # The session half (roadmap #24): whether this node runs sessions, the
+    # port its terminals come in on, as which account, and whether /workspace, where its
     # synced copy is, is there. Absent (not empty) until the node has
     # said, so the row can tell "no sessions here" from "did not say"; the
     # proxy relays a project's session to a node only on the
@@ -1621,15 +1621,17 @@ def _census(c):
     se = c.get("session")
     if isinstance(se, dict):
         out["session"] = {
-            "up": bool(se.get("up")), "port": _mb(se.get("port")) or 0,
-            "ro_port": _mb(se.get("ro_port")) or 0,
-            # The container terminal (R218 step 4): the agent's third ttyd,
-            # as the docker account; 0 from one that could not start it,
-            # with why.
-            "ctr_port": _mb(se.get("ctr_port")) or 0,
+            "up": bool(se.get("up")),
+            # The screen relay's port, which its terminals (R133) and its
+            # VMs' screens come in on: 7684 but in the suite.
+            "screen": _mb(se.get("screen")) or 0,
+            # The container terminal (R218 step 4), as the docker account;
+            # false from a node that could not set it up, with why.
+            "ctr": bool(se.get("ctr")),
             "ctr_why": str(se.get("ctr_why") or "")[:120],
-            # Whether its agent serves BuilderBot's own terminal (R133):
-            # the page opens a tab there through /term, else through ttyd.
+            # Whether its agent serves BuilderBot's own terminal (R133): one
+            # that does not (an agent before 0.8) opens no terminal until
+            # it is updated.
             "term": bool(se.get("term")),
             "user": re.sub(r"[^A-Za-z0-9._-]", "", str(se.get("user") or ""))[:32],
             "workspace": bool(se.get("workspace")),
@@ -1644,7 +1646,7 @@ def _census(c):
             **{a.reported: str(se.get(a.reported) or "")[:40] for a in agents.installable() if a.id != "claude"},
             "bundle": str(se.get("bundle") or "")[:80],
             # The agent's own sentence for a half that is down (no session
-            # account, no ttyd, a port taken), which the row's dead button
+            # account, no bb-tty in the bundle), which the row's dead button
             # repeats. Dropped once, and the button said only "runs none yet".
             "why": str(se.get("why") or "")[:120],
             # The node's own boot id, which a terminal's URL has to carry for
@@ -1898,8 +1900,6 @@ LOG_STREAMS = {
                "argv": ["tail", "-n", "{lines}", "{data}/runner.log"],
                "unit_argv": ["journalctl", "-u", "{unit}", "--no-pager",
                              "-n", "{lines}"]},
-    "terminal": {"what": "the terminal server's log", "store": "data",
-                 "argv": ["tail", "-n", "{lines}", "{data}/ttyd.log"]},
     # The node's nginx (R171), where the nginx tab put one: what each request
     # it routed met, which is what a session chasing a 502 on a route to its
     # container wants (R182). The container's name is the node's (nginx_for).

@@ -110,7 +110,7 @@ else chk fail "no Xcode command line tools: run  xcode-select --install  and com
 if command -v python3 >/dev/null 2>&1; then chk ok "python3: $(python3 --version 2>&1)"
 else chk fail "no python3: it comes with the command line tools above"; fi
 if command -v brew >/dev/null 2>&1; then chk ok "Homebrew at $(command -v brew)"
-else chk warn "no Homebrew: a recipe's system packages (tmux, ttyd for sessions) cannot be installed by the agent; https://brew.sh"; fi
+else chk warn "no Homebrew: a recipe's system packages (tmux for sessions) cannot be installed by the agent; https://brew.sh"; fi
 if command -v git >/dev/null 2>&1; then chk ok "git: $(git --version 2>&1)"
 else chk fail "no git"; fi
 xcode="$(find /Applications -maxdepth 1 -name 'Xcode*.app' 2>/dev/null | head -1)"

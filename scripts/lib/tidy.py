@@ -40,7 +40,7 @@ KINDS = ("emulator", "gpu", "gradle", "browser", "server", "tmp")
 TMP = os.environ.get("BB_TIDY_TMP", "/tmp")
 PROC = os.environ.get("BB_TIDY_PROC", "/proc")
 # Never ended, whatever they hold: what this session runs inside of.
-SPARE = ("claude", "tmux", "tmux: server", "ttyd", "bb-session", "bash", "sh", "zsh", "sudo", "node")
+SPARE = ("claude", "tmux", "tmux: server", "bb-session", "bash", "sh", "zsh", "sudo", "node")
 
 
 def proc_info(pid, root=PROC):

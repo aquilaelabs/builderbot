@@ -68,7 +68,6 @@ function openSettingsTab(){
 // Each section's line on the list beside it: what is in it.
 const SETTINGS_SAYS = {
   logs: "days kept, following, downloads, diagnostics", reports: "what sessions reported about BuilderBot",
-  terms: "the page's own terminal, or ttyd's",
   idle: "when an idle session is ended", paths: "the shares and disks this controller uses",
   tunnel: "a hostname that reaches it from outside", debug: "debug mode and dev features",
   apps: "the apps your people install, kept current",
@@ -252,12 +251,6 @@ const SETTING_GROUPS = [
   // Maintenance mode, the owner's alone (state.can.maintenance): every
   // other account is told why and kept out until it is off, and a band on
   // every page reminds the owner it is on.
-  // BuilderBot's own terminal (R133): on, with ttyd kept for this release as
-  // the way back for anybody whose terminal it does not draw.
-  {key: "terms", title: "Terminals", status: () => "applies to a terminal opened from now",
-   fields: [
-    {key: "own_terminal", label: "BuilderBot's own terminal", type: "bool",
-     hint: "Every terminal tab is drawn in the page itself, on this controller and on each node whose agent serves one. Off, they open in ttyd as before; ttyd goes in the next release."}]},
   {key: "maint", title: "Maintenance", can: "maintenance",
    heading: s => s?.settings?.maintenance_mode?.value ? "on" : "off",
    headingCls: s => s?.settings?.maintenance_mode?.value ? "warn" : "",

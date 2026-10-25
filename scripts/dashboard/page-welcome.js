@@ -71,7 +71,7 @@ function abShow(which){
 // put them there, which a change to either updates.
 const AB_CREDITS = [
   ["In the controller's image", [
-    ["ttyd and xterm.js", "every terminal in the dock", "MIT", "https://github.com/tsl0922/ttyd"],
+    ["xterm.js", "every terminal in the dock", "MIT", "https://github.com/xtermjs/xterm.js"],
     ["noVNC and pako", "a VM's Screen in the dock", "MPL-2.0, MIT", "https://github.com/novnc/noVNC"],
     ["Python", "the dashboard's server and the node agent", "PSF-2.0", "https://www.python.org/"],
     ["Node.js", "the page's tests and the projects' JavaScript", "MIT", "https://nodejs.org/"],

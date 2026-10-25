@@ -5056,8 +5056,8 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 .slot .veil{position:absolute;inset:0;background:#2b2b2b;pointer-events:none;
   transition:opacity .12s linear}
 .slot .veil.gone{opacity:0}
-/* BuilderBot's own terminal (R133): xterm in the slot, on the ground ttyd's
-   page settled on, and under it why it ended, with Reconnect. */
+/* BuilderBot's own terminal (R133): xterm in the slot, on a plain dark
+   ground, and under it why it ended, with Reconnect. */
 .pane .slot.ownterm{flex-direction:column;background:#2b2b2b}
 .pane .slot.ownterm .xhost{flex:1;min-height:0;overflow:hidden}
 /* Room between the text and the pane's edges, on xterm's own element: the
@@ -7183,8 +7183,8 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden){ hiddenAt = Date.now(); return; }
   // Only after long enough that the socket was really dropped: a quick glance
   // away keeps it, and reloading then would flash the terminal for nothing.
-  // Gated to touch devices: a desktop page is throttled, not frozen, so ttyd
-  // heals it without a reload, and a desktop reload on every alt-tab is noise.
+  // Gated to touch devices: a desktop page is throttled, not frozen, so its
+  // sockets live through it, and a desktop reload on every alt-tab is noise.
   if (isPhone() && hiddenAt && Date.now() - hiddenAt > 3000) reattachTerminals();
   nudgeTerminals();
 });
@@ -7228,15 +7228,21 @@ $("aboutModal").onclick = e => {
 };
 
 // Which pane of a split is active decides where the keys and the commands
-// go, and clicking into a terminal is the natural way to say "this one",
-// but a click inside a cross-origin iframe never reaches this page. What
-// does reach it is the window losing focus to that iframe, and the iframe
-// is then the active element: that is the click, one step removed.
-window.addEventListener("blur", () => {
-  const f = document.activeElement;
-  if (!isSplit() || f?.tagName !== "IFRAME") return;
-  const i = f.closest(".pane")?.id === "pane1" ? 1 : 0;
+// go, and clicking into a terminal is the natural way to say "this one":
+// focus landing in a pane says it, a terminal's own keyboard included. A
+// VM's screen is a frame, and a click inside it never reaches this page;
+// what does is the window losing focus to it, the frame then the active
+// element: that is the click, one step removed.
+const paneFocused = el => {
+  // Its content, not its bar: a button there has its own press to make.
+  const p = el?.closest?.(".stack")?.closest(".pane");
+  if (!isSplit() || !p) return;
+  const i = p.id === "pane1" ? 1 : 0;
   if (i !== active){ active = i; render(); }
+};
+document.addEventListener("focusin", e => paneFocused(e.target));
+window.addEventListener("blur", () => {
+  if (document.activeElement?.tagName === "IFRAME") paneFocused(document.activeElement);
 });
 
 // ---- keys ------------------------------------------------------------

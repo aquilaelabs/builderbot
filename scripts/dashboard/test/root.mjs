@@ -262,8 +262,13 @@ print(u.mint_session("${proj}", uid=uid))`], { encoding: 'utf8' }).trim();
     ok(/journalctl -u builderbot-agent --no-pager -n 5;/.test(a) && /tail -n 5 \/var\/log\/builderbot-agent\.log/.test(a),
        `...the agent's own log is its journal, or the file its service writes where there is none (${a.slice(0, 80)})`);
   }
-  ok(/ttyd\.log$/.test(await ranArgv(await readLog('terminal'))),
-     '...and the terminal server writes a file under the data store');
+  // The terminals are the agent's own (R133), in its journal: there is no
+  // stream of their own to ask for.
+  {
+    const t = await readLog('terminal');
+    ok(t.status >= 400 && !(await ranArgv(t)),
+       `...and the terminals have no stream of their own, which runs nothing (${t.status} ${JSON.stringify(t.body).slice(0, 80)})`);
+  }
   // The node's nginx is a stream too (R182), read with docker logs where the
   // nginx tab put one; on a node without it the refusal names the tab, and
   // never runs a thing.

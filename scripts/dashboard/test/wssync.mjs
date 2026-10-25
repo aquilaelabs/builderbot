@@ -52,7 +52,7 @@ for (const name of ['syncone', 'synctwo']){
   const home = `${DIR}/${name}`;
   mkdirSync(`${home}/workspace`, { recursive: true });
   const env = { ...process.env, BUILDERBOT_NODE_JSON: `${home}/node.json`, BUILDERBOT_SHARE: `${home}/workspace`,
-    BUILDERBOT_TTYD_BIN: `${DIR}/no-ttyd`, BUILDERBOT_SESSION_PORT: String(20000 + Math.floor(Math.random() * 20000)),
+    BUILDERBOT_SCREEN_PORT: String(20000 + Math.floor(Math.random() * 20000)),
     BUILDERBOT_SESSION_BIND: '127.0.0.1', BUILDERBOT_IDLE_UNIT: '1',
     PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' };
   execFileSync('python3', [RUN, 'enroll', '--controller', URL, '--token', minted.token,

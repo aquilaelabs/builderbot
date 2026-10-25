@@ -267,7 +267,7 @@ def ungrant(key, out, dropped):
 # they read, and the notebook, commits and files are written as ever.
 # `asks`: how often Claude puts a question to this person on this project,
 # "" (Claude's own), fewer or rarely. Theirs too: it is their attention.
-# A terminal's colors (R133 step 10): Default the ground ttyd's page had,
+# A terminal's colors (R133 step 10): Default the plain dark ground,
 # Dashboard the color scheme the page is in, and the tints a person gives a
 # project to know it at a glance (a production one red). The rest of the
 # look is the person's alone, on their Profile.

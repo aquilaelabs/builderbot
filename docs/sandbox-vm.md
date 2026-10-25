@@ -159,7 +159,7 @@ is root. It is made with `--session-uid`/`--session-gid` **99:100**, the
 controller's PUID:PGID, so a file it saves on the projects share is owned
 exactly as one saved from the controller is; a different uid would leave the
 share with files the rest of the array does not expect. `provision-linux.sh`
-installs tmux, ttyd, jq and git for it (the coding agents are installed
+installs tmux, jq and git for it (the coding agents are installed
 later, from the node's Agents page), and a `/etc/profile.d` entry so a login shell as that
 account has the role, the controller's address and `bb` (from the bundle the
 agent keeps under the toolchain store at `.bb/current`): the same
@@ -280,15 +280,15 @@ changes, and the file lists the filenames, and `provision-linux.sh` reads
 four families and three independents; a derivative lands with its parent
 through `ID_LIKE`, so nothing has to be named for Mint or CachyOS to work.
 
-| family | members | packages | Docker from | ttyd from | network backend | init |
-|---|---|---|---|---|---|---|
-| Debian | Ubuntu, Debian, Mint, Pop!_OS, Kali, Raspberry Pi OS | apt | Docker's repo (Ubuntu's for Mint and Pop via `UBUNTU_CODENAME`; Debian's for Kali and Pi OS) | the distribution | netplan, NetworkManager or ifupdown | systemd |
-| RHEL | Rocky, AlmaLinux, CentOS Stream, Fedora, RHEL | dnf | Docker's `centos`, `fedora` or `rhel` repo | ttyd's release binary | NetworkManager | systemd |
-| Arch | Arch, Manjaro, EndeavourOS, CachyOS | pacman | the distribution | the distribution | NetworkManager or systemd-networkd | systemd |
-| SUSE | openSUSE Leap, Tumbleweed | zypper | the distribution | Tumbleweed's; the release binary on Leap | NetworkManager or wicked | systemd |
-| Alpine | | apk | the distribution | the distribution | ifupdown-ng | OpenRC |
-| Void | | xbps | the distribution | the distribution | dhcpcd or NetworkManager | runit |
-| Gentoo | | emerge (hours) | the distribution | the release binary | whichever was chosen | OpenRC or systemd |
+| family | members | packages | Docker from | network backend | init |
+|---|---|---|---|---|---|
+| Debian | Ubuntu, Debian, Mint, Pop!_OS, Kali, Raspberry Pi OS | apt | Docker's repo (Ubuntu's for Mint and Pop via `UBUNTU_CODENAME`; Debian's for Kali and Pi OS) | netplan, NetworkManager or ifupdown | systemd |
+| RHEL | Rocky, AlmaLinux, CentOS Stream, Fedora, RHEL | dnf | Docker's `centos`, `fedora` or `rhel` repo | NetworkManager | systemd |
+| Arch | Arch, Manjaro, EndeavourOS, CachyOS | pacman | the distribution | NetworkManager or systemd-networkd | systemd |
+| SUSE | openSUSE Leap, Tumbleweed | zypper | the distribution | NetworkManager or wicked | systemd |
+| Alpine | | apk | the distribution | ifupdown-ng | OpenRC |
+| Void | | xbps | the distribution | dhcpcd or NetworkManager | runit |
+| Gentoo | | emerge (hours) | the distribution | whichever was chosen | OpenRC or systemd |
 
 **What has been run and what has only been written.** Ubuntu and Debian are
 what this grew up on. Everything else is written against that family's
@@ -308,13 +308,10 @@ tool:
   rather than through `dnf config-manager` (dnf4 and dnf5 spell that
   differently), and `podman-docker` removed so `docker` is Docker. Arch,
   SUSE, Alpine, Void and Gentoo package a current Docker themselves;
-- `ttyd` comes from the distribution where it packages it, and otherwise
-  from the static binary in ttyd's GitHub release: the one download in the
-  script that is not a package manager's, so an offline node copies it in;
-- **firewalld** holds the session ports where it is running (the RHEL
-  family, SUSE): the same rich rules, 7681, 7682 and 7683 (a container's
-  shell) from the controller's address and nobody else's; the agent adds
-  7683 on a node provisioned before it. Everywhere else the nftables file is applied
+- **firewalld** holds the session port where it is running (the RHEL
+  family, SUSE): the same rule as a rich rule, 7684 (the agent's screen
+  relay, which carries every terminal and VM screen) from the controller's
+  address and nobody else's; the agent keeps it to that one port. Everywhere else the nftables file is applied
   at boot the way that init runs a one-shot: a unit, an OpenRC `local.d`
   script, or a line in `rc.local`;
 - **SELinux stays enforcing** on the RHEL family. The one thing it blocks

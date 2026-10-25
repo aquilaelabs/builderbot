@@ -375,7 +375,7 @@ def home_rules(ans, port):
     return (
         f"On the router, so this node can open the controller and nothing else: from {node} through the "
         f"tunnel, allow TCP to {ctl} port {port} and replies to connections the LAN opened; drop "
-        f"everything else it starts. The controller opens the session ports (7681, 7682) to {node}, so "
+        f"everything else it starts. The controller opens the session port (7684) to {node}, so "
         f"traffic from the LAN to it stays allowed, and the router routes the tunnel's addresses to the "
         f"LAN without masquerading them.\n\n"
         f"# nftables (OpenWrt, or any Linux router), in the forward chain:\n"

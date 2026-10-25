@@ -115,7 +115,7 @@ const browser = await launch();
 
 // One session for the project, on its first repository: one asked for on
 // the second is refused, and says where it starts (step 4).
-const t = await fetch(base + '/term/?arg=' + encodeURIComponent('claude:ep.silon'), { headers: ADMIN });
+const t = await fetch(base + '/termws?arg=' + encodeURIComponent('claude:ep.silon'), { headers: ADMIN });
 const said = await t.text();
 ok(t.status === 403 && /repository of Shop, whose sessions start on gamma/.test(said),
    `a session on the project's second repository is refused, naming where it starts (${t.status} ${said.slice(0, 160)})`);

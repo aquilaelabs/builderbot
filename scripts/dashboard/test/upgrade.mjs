@@ -48,7 +48,7 @@ async function start(w){
   const out = openSync(`${w}/server.log`, 'a');
   const proc = spawn('python3', ['-u', `${DASH}/server.py`], { stdio: ['ignore', out, out], env: {
     ...process.env, WORKSPACE: `${w}/workspace`, DASHBOARD_STATE: `${w}/config`,
-    DASHBOARD_PORT: String(port), DASHBOARD_TTYD_PORT: String(await freePort()),
+    DASHBOARD_PORT: String(port),
     BUILDER_HOME: `${w}/home`, BB_VERSION: BUILD, BB_BIN: `${DIR}/bin/bb`,
     BB_DOCKER_BIN: `${DIR}/bin/docker`, BB_ADB_BIN: `${DIR}/bin/adb`, BB_WEBEXT_BIN: `${DIR}/bin/web-ext`,
     BB_DOCTOR_FIXTURE: `${DIR}/doctor.txt`, BB_DEV_DATA_DIR: `${w}/devdata`, BB_ARCHIVE_SPOOL: `${w}/spool`,

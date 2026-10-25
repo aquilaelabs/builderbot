@@ -35,9 +35,9 @@ PORT_MIN, PORT_MAX = 1024, 65535
 # The port and the nine after it, which bb-ftpd's passive data connections
 # use (bbftp.PASSIVE): two projects on one node are kept this far apart.
 SPAN = 10
-# The node's own: the session terminals (the agent's SESSION_PORT and its
-# read-only twin).
-RESERVED = {7681: "the node's session terminal", 7682: "the node's read-only session terminal"}
+# The node's own: its screen relay, which its terminals and its VMs'
+# screens come in on (the agent's SCREEN_PORT).
+RESERVED = {7684: "the node's terminals and VMs' screens"}
 
 _lock = threading.Lock()
 # What each node's agent last said about its servers: {node: {project:

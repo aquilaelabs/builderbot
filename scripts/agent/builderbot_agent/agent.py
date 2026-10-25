@@ -49,14 +49,15 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         self.census_stale = False         # ...and was asked for once more meanwhile
         self.controller_digest = ""
         self.warned_caps = False
-        # The session half (roadmap #24): the two ttyd processes, the bundle
-        # they run bb-tty from, and when the last start was tried.
-        self.ttyd = []
-        self.session_bundle = ""          # the digest the ttyds run from
+        # The session half (roadmap #24): whether its terminals are set up,
+        # the bundle they run bb-tty from, and when the last start was tried.
+        self.session_up = False
+        self.term_kinds = {}
+        self.session_bundle = ""          # the digest the terminals run from
         self.session_digest = ""          # the digest bundle() last fetched
         self.session_tried = 0
         self.session_stale = ""           # a newer bundle's directory, for the loop to restart onto
-        self.session_bound = ""           # the address the ttyds were bound to, to notice it moving
+        self.session_bound = ""           # the address the relay was bound to, to notice it moving
         # The census for the loop's next hello, taken beside the loop rather
         # than in it (B380): the thread, and what it came back with.
         self.census_thread = None
@@ -299,8 +300,8 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
                     self.session_stop()
             # Accounts as their own users (R125): the controller's switch,
             # kept in node.json. When it moves the layout file and the sudo
-            # rule are rewritten and the ttyds start again on the other way
-            # in; tmux sessions are untouched either way.
+            # rule are rewritten and the terminals open the other way from
+            # then on; tmux sessions are untouched either way.
             au = bool(r.get("account_users"))
             if au != bool(self.state.get("account_users")):
                 self.state["account_users"] = au
@@ -373,9 +374,9 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             log(f"hello: node {n.get('id')} ({n.get('name')}), state "
                 f"{n.get('state')}, poll {self.poll}s")
             # The sessions this node runs use the bb the controller ships;
-            # when that moves, fetch it and restart the ttyds onto it. The
-            # running sessions are tmux's and survive the restart; only the
-            # next connection runs the new bb-tty. Never fatal: the session
+            # when that moves, fetch it and open terminals from it. The
+            # running sessions are tmux's and are untouched; only the next
+            # terminal runs the new bb-tty. Never fatal: the session
             # half must not take the job half down with it: a toolchain
             # store this process cannot write is a node with no sessions,
             # not a node with no agent.
@@ -403,12 +404,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
 
     def cap_logs(self):
         """The node's own log files kept bounded on every hello (the
-        operator, 12 Oct): the terminal server's and the runners' in the
-        data store, this agent's own output where it goes to a file (a
+        operator, 12 Oct): the runners' in the data store, this agent's own output where it goes to a file (a
         guest's and a Mac's unit, OpenRC's), and each runner's _diag to its
         newest RUNNER_DIAG_KEEP."""
         data = (self.state.get("stores") or {}).get("data") or "/tmp"
-        files = [os.path.join(data, "ttyd.log"), os.path.join(data, "runner.log")]
+        files = [os.path.join(data, "runner.log")]
         with contextlib.suppress(OSError):
             out = os.readlink("/proc/self/fd/1")
             if out.startswith("/") and os.path.isfile(out):
@@ -471,11 +471,11 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         delay = wdelay = 1
         # The hourly walk of the disks, on its own thread (storage.py).
         storage.start(lambda: self.state)
-        # What is THIS process's to end, ended by it. The ttyds go: a stop of
-        # the unit is an update or a reboot, and the new agent starts its own.
+        # What is THIS process's to end, ended by it: a stop of the unit is
+        # an update or a reboot, and the new agent opens its own terminals.
         # The tmux servers they attached do not: they are their own daemons,
         # the sessions are inside them, and a conversation should survive an
-        # agent update the way it survives a ttyd restart.
+        # agent update.
         #
         # That was already the intent and systemd was undoing it: the default
         # KillMode=control-group takes every process in the cgroup after this
@@ -585,7 +585,7 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
             sample = timed("sample", self.sampler.sample, self.state, n)
             # The sessions this node runs ride the heartbeat (roadmap #24),
             # so the dashboard's Sessions card lists them beside its own.
-            if self.ttyd:
+            if self.session_up:
                 sample["sessions"] = timed("sessions", self.sessions_now)
             # ...and the ports its containers publish, for other nodes'
             # sessions of the same project (R82).
@@ -766,11 +766,8 @@ class Agent(WorkspaceMixin, SessionsMixin, WorkMixin, ConfigPlaneMixin, RunnersM
         return p.returncode
 
     def reexec(self):
-        # The ttyds first: execv keeps the children and loses every handle
-        # to them, so the new image would find its ports held by processes
-        # it cannot see and serve nothing new for as long as they lived.
-        # The sessions are tmux's and stay; the new agent starts ttyd from
-        # the bundle that is current, which is the point of updating.
+        # The sessions are tmux's and stay; the new agent opens terminals
+        # from the bundle that is current, which is the point of updating.
         self.session_stop()
         log("re-executing the new agent")
         if _COV_OUT:

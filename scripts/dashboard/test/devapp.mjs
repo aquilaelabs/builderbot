@@ -2195,15 +2195,14 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
   ok(offered.length === 2 && offered[0].text === 'Shell' && !offered[0].dead && /^Shell in gitea$/.test(offered[1].text),
      `a running instance offers Shell for its first container and Shell in the rest under More (${JSON.stringify(offered)})`);
   const term = async arg => page.evaluate(async a => {
-    const r = await fetch('/term/?arg=' + encodeURIComponent(a), { headers: { Accept: 'application/json' } });
+    const r = await fetch('/termws?arg=' + encodeURIComponent(a), { headers: { Accept: 'application/json' } });
     return { status: r.status, error: (await r.json().catch(() => ({}))).error || '' };
   }, arg);
   const good = await term(`ctr:ep.silon:main:${offered[0].ctr}`);
-  // ep.silon's instance is on the stub node: through the gate, the proxy
-  // relays to that node's container terminal (the agent's third ttyd, as
-  // the docker account), which the harness does not run.
-  ok(good.status === 502 && /^sandbox did not answer on stub:7683/.test(good.error),
-     `the proxy lets a running container of the instance through, to its node's terminal server (${good.status} ${good.error.slice(0, 60)})`);
+  // ep.silon's instance is on the stub node: through the gate, which is as
+  // far as a plain request goes (a terminal is a websocket).
+  ok(good.status === 400 && /a websocket is asked for here/.test(good.error),
+     `the server lets a running container of the instance through, to its node's terminal server (${good.status} ${good.error.slice(0, 60)})`);
   // A node whose terminals still run the scripts from before this
   // controller's update (B746): its bb-tty would not know the argument, so
   // the proxy says so, and asks it to check in, rather than relaying.
@@ -2219,22 +2218,22 @@ ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
     ok(old?.status === 403 && /has not taken this controller's update yet/.test(old.error),
        `a node still on the scripts from before an update is said plainly, not relayed (${old?.status} ${(old?.error || '').slice(0, 70)})`);
     for (const t0 = Date.now(); Date.now() - t0 < 20000; await sleep(500))
-      if ((await term(`ctr:ep.silon:main:${offered[0].ctr}`)).status === 502) break;
+      if ((await term(`ctr:ep.silon:main:${offered[0].ctr}`)).status === 400) break;
   }
   // ...and a node whose container terminal is not up yet says so.
   {
     const extra = `${DIR}/sandboxdata/census-extra.json`;
-    writeFileSync(extra, JSON.stringify({ session: { ctr_port: 0 } }));
+    writeFileSync(extra, JSON.stringify({ session: { ctr: false } }));
     let old = null;
     for (const t0 = Date.now(); Date.now() - t0 < 20000; await sleep(500)){
       old = await term(`ctr:ep.silon:main:${offered[0].ctr}`);
       if (old.status === 403) break;
     }
     rmSync(extra, { force: true });
-    ok(old?.status === 403 && /has not started its container terminal yet/.test(old.error),
+    ok(old?.status === 403 && /has not set up its container terminal yet/.test(old.error),
        `a node whose agent runs no container terminal yet says so (${(old?.error || '').slice(0, 80)})`);
     for (const t0 = Date.now(); Date.now() - t0 < 20000; await sleep(500))
-      if ((await term(`ctr:ep.silon:main:${offered[0].ctr}`)).status === 502) break;
+      if ((await term(`ctr:ep.silon:main:${offered[0].ctr}`)).status === 400) break;
   }
   const wrong = await term('ctr:ep.silon:main:someone-elses');
   ok(wrong.status === 403 && /someone-elses is not a running container of ep-silon/.test(wrong.error),

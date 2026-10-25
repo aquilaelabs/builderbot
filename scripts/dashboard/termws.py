@@ -1,10 +1,9 @@
 """BuilderBot's own terminal, the controller's half (R133): the page's
 websocket at /termws, answered here.
 
-server.py decides everything first, as it does for /term: whose terminal
-it is, whether this account may open it, where it runs, and the words
-ttyd's --url-arg would have handed bb-tty (the account, and for a node the
-session token, the name and the owner mark). This module only carries it:
+server.py decides everything first: whose terminal it is, whether this
+account may open it, where it runs, and bb-tty's words (the account, and
+for a node the session token, the name and the owner mark). This module only carries it:
 
   * a terminal on this controller runs bb-tty with those words in a pty of
     its own, through the node agent's own term.py (loaded by path, so the
@@ -116,8 +115,7 @@ def upgrade(handler):
 
 
 def close(conn, why, code=1000):
-    """End the browser's socket saying why, for its tab. 4001 says this
-    tab is to be opened through ttyd instead (a node not yet updated)."""
+    """End the browser's socket saying why, for its tab."""
     try:
         conn.sendall(frame(struct.pack(">H", code) + str(why).encode()[:120], 8))
     except OSError:

@@ -311,8 +311,8 @@ container. An agent's session is not the container's to lose: it is in its
 node's tmux and is still there when the dashboard comes back.
 
 **One port carries everything.** The page, its API and the terminal
-websocket are all on the dashboard port: the terminals are proxied under
-`/term`, behind the same sign-in, so there is no second port to open.
+websocket are all on the dashboard port: the terminals are websockets at
+`/termws`, behind the same sign-in, so there is no second port to open.
 
 **On the credential.** The terminal is a writable shell inside a container that holds your loaded
 ssh-agent and read-write mounts of every project, so anyone reaching it can
@@ -548,7 +548,7 @@ not host-root.
 | Startup + supervisor | `/mnt/user/appdata/BuilderBot/config/logs/builderbot.log` (also `docker logs BuilderBot` / WebUI **Log** button) | ✅ file yes; `docker logs` no |
 | ...or your own location | Map the optional **Logs directory** path (template, advanced view) / the `/logs` volume (compose) to any share, e.g. on the array, and the log moves there automatically | ✅ |
 | CI job output | GitHub → repo → *Actions* → the run | ✅ (kept by GitHub) |
-| A node's own logs (its agent, CI runner, terminal server, its nginx, the system journal, the kernel ring, the previous boot) | on the node: `bb logs --node NAME` from a session granted it, or the machine's journal | ✅ |
+| A node's own logs (its agent and its terminals, CI runner, its nginx, the system journal, the kernel ring, the previous boot) | on the node: `bb logs --node NAME` from a session granted it, or the machine's journal | ✅ |
 
 Inside the container, `bb logs` tails the persistent startup log (`bb logs -f`
 to follow, `bb logs 500` for more lines), and `bb doctor` is the first thing to

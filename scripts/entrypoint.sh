@@ -112,7 +112,7 @@ main() {
     # The shield, at last: the secrets were stashed for the root helper and
     # turned into redaction rules at the top, and the hooks that needed one
     # (npm publishing) have run. Nothing started from here may inherit them:
-    # this is the environment of the dashboard, ttyd and every process under
+    # this is the environment of the dashboard, its terminals and every process under
     # the builder account, and it carried every one of them until the review
     # of 26 Sep read this file.
     # The one secret the dashboard itself needs, as a file only it reads

@@ -39,7 +39,7 @@ class BuiltOnTheProvisioner(unittest.TestCase):
     def test_its_core_is_sourced_and_nothing_runs(self):
         r = sh('load_core; echo "fam=$FAMILY init=$INIT"; '
                'for f in pkg_refresh pkg pkg_names docker_install svc_install svc_stop svc_restart '
-               'preflight in_container ttyd_install docker_suite; do declare -F "$f" >/dev/null || echo "missing $f"; done')
+               'preflight in_container docker_suite; do declare -F "$f" >/dev/null || echo "missing $f"; done')
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertNotIn("missing", r.stdout)
         self.assertRegex(r.stdout, r"fam=[a-z]+ init=")
@@ -134,9 +134,9 @@ class LaidOutAsTheImage(unittest.TestCase):
         self.assertEqual(r.stdout.split(), ["0.9.0", "f" * 40])
 
     def test_the_images_pins_are_read_from_its_dockerfile(self):
-        r = sh("dockerfile_arg TTYD_VERSION; dockerfile_arg NOVNC_SHA256")
-        ttyd, sha = r.stdout.split()
-        self.assertRegex(ttyd, r"^\d+\.\d+\.\d+$")
+        r = sh("dockerfile_arg NOVNC_VERSION; dockerfile_arg NOVNC_SHA256")
+        ver, sha = r.stdout.split()
+        self.assertRegex(ver, r"^\d+\.\d+\.\d+$")
         self.assertRegex(sha, r"^[0-9a-f]{64}$")
 
 
@@ -203,7 +203,8 @@ class TheEnvironment(unittest.TestCase):
 class TheWall(unittest.TestCase):
     """What the installer writes for bb-session (R90 step 7): every folder of
     the controller's the env file names, each once and none inside another,
-    and the loopback ports for the controller's account and root alone."""
+    and no loopback port: the controller keeps none that answers without a
+    sign-in, so the table an earlier install wrote is not written again."""
 
     def test_written_from_the_env_file(self):
         with tempfile.TemporaryDirectory() as d:
@@ -215,7 +216,7 @@ class TheWall(unittest.TestCase):
                         "SDK_ROOT=/mnt/sdk/\nWORKSPACE=/srv/builderbot/projects\n"
                         f"BB_SECRETS_DIR={d}/etc/builderbot-controller/secrets\n"
                         "SSH_AUTH_SOCK=/run/builderbot-controller/ssh-agent.sock\n")
-            r = sh('id() { echo 990; }; JOBS_USER=bb; wall_write; cat "$WALL_FILE"; cat "$WALL_NFT"', root=d)
+            r = sh('JOBS_USER=bb; echo old > "$WALL_NFT"; wall_write; cat "$WALL_FILE"; [ -e "$WALL_NFT" ] || echo "no nft"', root=d)
             self.assertEqual(r.returncode, 0, r.stderr)
             cover = re.search(r"^COVER=(.*)$", r.stdout, re.M).group(1).split(":")
             self.assertEqual(sorted(cover), sorted([
@@ -223,10 +224,8 @@ class TheWall(unittest.TestCase):
                 "/run/builderbot-key",
                 "/run/builderbot-controller", "/mnt/sdk", "/srv/builderbot/projects"]))
             self.assertIn("ACCOUNT=builderbot\nJOBS_USER=bb\n", r.stdout)
-            self.assertIn("PORTS=7681,7682\n", r.stdout)
-            self.assertIn("tcp dport { 7681, 7682 } meta skuid 990 accept", r.stdout)
-            self.assertIn("tcp dport { 7681, 7682 } reject with tcp reset", r.stdout)
-            self.assertIn("table inet builderbot_wall {", r.stdout)
+            self.assertIn("PORTS=\n", r.stdout)
+            self.assertIn("no nft", r.stdout)
 
     def test_the_table_is_the_one_bb_session_asks_for(self):
         text = open(os.path.join(ROOT, "nodes", "bb-session"), encoding="utf-8").read()
@@ -250,7 +249,7 @@ class TheImagesOtherTools(unittest.TestCase):
         for tool in ("hadolint", "yq", "actionlint", "ruff", "uv", "mise", "playwright", "web-ext", "cloudflared"):
             self.assertIn(tool, dockerfile(), tool)
             self.assertIn(tool, body, tool)
-        self.assertIn('ttyd_install "$(dockerfile_arg TTYD_VERSION)"', text)
+        self.assertNotIn("ttyd", text)
         self.assertIn("NOVNC_SHA256", text)
 
 

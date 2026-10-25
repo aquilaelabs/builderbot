@@ -26,12 +26,6 @@ LABEL org.opencontainers.image.title="BuilderBot" \
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG NODE_MAJOR=22
-# ttyd serves the dashboard's terminal. Ubuntu packages it, but the static
-# release is a single self-contained binary and pins to a known version.
-ARG TTYD_VERSION=1.7.7
-# ...checked by digest, per architecture, from the release's SHA256SUMS (B335).
-ARG TTYD_SHA256_X86_64=8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55
-ARG TTYD_SHA256_AARCH64=b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165
 # noVNC draws a VM's screen in the dock (R99): pinned, and checked by digest.
 ARG NOVNC_VERSION=1.7.0
 ARG NOVNC_SHA256=b1003a11b6e6e8d8f7f5e5586daae7f8ca651d8aee0aa155ff9ac841c48f52c6
@@ -254,22 +248,6 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 # BuilderBot scripts + home skeleton
 # ---------------------------------------------------------------------------
-# ttyd: fetched rather than apt-installed so the version is pinned and the
-# binary is static, with nothing to keep in step with the base image.
-RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
-    case "$arch" in \
-        amd64) tarch=x86_64 ;; \
-        arm64) tarch=aarch64 ;; \
-        *) echo "no ttyd build for ${arch}; dashboard terminal unavailable"; exit 0 ;; \
-    esac; \
-    curl -fsSL -o /usr/local/bin/ttyd \
-        "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${tarch}"; \
-    if [ "$tarch" = x86_64 ]; then want="${TTYD_SHA256_X86_64}"; else want="${TTYD_SHA256_AARCH64}"; fi; \
-    echo "${want}  /usr/local/bin/ttyd" | sha256sum -c -; \
-    chmod +x /usr/local/bin/ttyd; \
-    ttyd --version
-
 # noVNC: the browser's half of a VM's screen (R99), the page and the RFB
 # client it imports, served by the dashboard under /novnc/. MPL-2.0, its
 # license kept beside it.

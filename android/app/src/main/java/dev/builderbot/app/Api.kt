@@ -234,7 +234,9 @@ class Api(val base: String, private val user: String, private val password: Stri
             cookie
         } finally { c.disconnect() }
     }
-    fun termUrl(arg: String) = base.trimEnd('/') + "/term/?arg=" + enc(arg)
+    /** BuilderBot's own terminal on a page of its own (R133): xterm.js on
+     *  the dashboard's /termws, the same terminal its dock opens. */
+    fun termUrl(arg: String) = base.trimEnd('/') + "/terminal?arg=" + enc(arg)
 
     /** An artifact's BYTES, into a file. The only call here that is not JSON:
      *  the newer APK is an artifact like any other, and installing it from the

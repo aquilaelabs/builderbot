@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 #
-# The command ttyd runs for every browser connection.
+# The command every terminal runs (R133): a pty of the dashboard's own on the
+# controller (termws.local), or of a node agent's screen relay (term.py).
 #
-# ttyd is started with --url-arg, so the browser controls this script's only
-# argument via ?arg=... That argument is attacker-controlled in the sense that
-# matters: it never reaches a shell (ttyd execs directly), and a project name
+# The browser chooses this script's arguments, one per ?arg= of /termws.
+# They are attacker-controlled in the sense that matters: they never reach
+# a shell (the pty execs this directly), and a project name
 # is checked against the directories that actually exist rather than trusted as
 # a path. Anyone reaching this is already authenticated and already entitled to
 # a shell, so the goal is not privilege containment; it is making a mistyped
@@ -22,8 +23,8 @@ set -euo pipefail
 . "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 
 # A terminal that ends before it starts says so in its tab and waits (R132):
-# set -e ends this script at whatever failed, without a word, and ttyd then
-# reconnects to the same failure in a loop with nothing on the screen. The
+# set -e ends this script at whatever failed, without a word, and the tab
+# then shows an empty terminal that ended with nothing on the screen. The
 # exec into tmux replaces this script, so a terminal that started never
 # reaches it.
 set -E
@@ -41,11 +42,11 @@ target="${1:-shell}"
 
 # ---- whose terminal this is (roadmap #26) ----------------------------------
 #
-# The dashboard's /term proxy stamps the argument with the account it
-# authenticated, as `u:<uid>:<target>`, and OVERWRITES anything the browser
-# put there, so this is the account asking, not the account claimed. That is
-# the same reasoning as the lock check below: a rule only the UI honors is a
-# suggestion, because the ttyd URL is reachable directly.
+# The dashboard stamps the argument with the account it authenticated, as
+# `u:<uid>:<target>`, and OVERWRITES anything the browser put there, so this
+# is the account asking, not the account claimed. That is the same reasoning
+# as the lock check below: a rule only the UI honors is a suggestion, because
+# a terminal's URL can be asked for directly.
 #
 # Empty is a real answer and the common one: a terminal opened before accounts
 # existed, or by something that is not a browser. It gets the box's own home
@@ -65,8 +66,8 @@ esac
 
 # ---- what else rode in on the URL (roadmap #24, the session on a node) ------
 #
-# ttyd's --url-arg passes EVERY ?arg= as one more argument, so beside the
-# target the proxy can hand this script the two things a node does not have
+# Every ?arg= is one more argument, so beside the target the dashboard can
+# hand this script the two things a node does not have
 # and cannot make: the account's name (its users.json is on the controller)
 # and a session token for the project (minted there, by the key only it
 # holds). On the controller neither arrives (the name is looked up and the
@@ -97,10 +98,10 @@ done
 # ---- on a node, the controller says whose this is (B166) --------------------
 #
 # Everything above is what the URL claimed. On the controller that is the
-# account /term proved, because ttyd there is loopback-only and the proxy is
-# the one way in. A node's ttyd is on the node, and a session there reaches it
-# over loopback like any other process on the machine, so on a node the URL
-# proves nothing: u:<uid>, name: and owner:1 would open another account's home
+# account /termws proved, since the dashboard is the one way to start this
+# there. On a node, any process on the machine can start this (or
+# bb-session tty) with whatever arguments it likes, so on a node they prove
+# nothing: u:<uid>, name: and owner:1 would open another account's home
 # and Claude login for whoever typed them. So the token that rode in is shown
 # to the controller, which alone can check its signature, and the account,
 # the name and ownership come from its answer. No answer, no terminal: a node
@@ -313,8 +314,8 @@ sess() {
 
 # Projects their owner has locked (R119): nobody else starts a session in
 # one. Shared with the dashboard, which writes the list; enforced here,
-# because a rule only the UI honors is a suggestion: the ttyd URL is
-# reachable directly.
+# because a rule only the UI honors is a suggestion: a terminal's URL can be
+# asked for directly.
 LOCKS_FILE="${DASHBOARD_STATE:-/config}/locked-projects.json"
 
 # is_locked PROJECT ACCOUNT: locked against that account. `bb settings`
@@ -516,7 +517,7 @@ in_view() {
 claude_scope() {
     local proj="$1" here="${2:-}" dir out tmp hooks bundle
     # One file per project, rewritten each time rather than a fresh temp file:
-    # ttyd runs this script on every browser connection, including a reattach,
+    # Every terminal runs this script, a reattach included,
     # so mktemp here would drop a file per page load. Under the cache dir
     # because it is this user's, not world-writable /tmp.
     # A per-uid directory rather than a shared /tmp path when HOME is unset,
@@ -1025,12 +1026,12 @@ trust_note() {
     echo "will keep asking about every command until it is restarted." >&2
 }
 
-# bad MESSAGE...: fail visibly. ttyd closes the connection the moment this
-# exits, so without the pause the browser shows an empty terminal and no reason.
+# bad MESSAGE...: fail visibly. The terminal closes the moment this exits, so
+# without the pause the browser shows an empty terminal and no reason.
 bad() {
     for line in "$@"; do echo "$line" >&2; done
-    # ...but only when something is holding a terminal open to read it. Under
-    # ttyd every fd is the pty. Called from a script with stderr on a pipe
+    # ...but only when something is holding a terminal open to read it. In
+    # a terminal every fd is the pty. Called from a script with stderr on a pipe
     # there is nobody to show it to, and the pause was ten seconds of nothing
     # each time; five tests in the dashboard suite spent it proving that a
     # refusal is a refusal.
@@ -1291,9 +1292,8 @@ start() {
 
     # tmux's own right-click menu is drawn in the terminal, underneath the
     # browser's context menu, which covers it: two menus for one click, and
-    # only one of them dismissable. The browser's cannot be suppressed from
-    # here (the terminal is served from its own port and is a cross-origin
-    # frame), so the one we control is the one that goes.
+    # only one of them dismissable. The browser's is the one with copy and
+    # paste, so tmux's is the one that goes.
     tmux unbind-key -n MouseDown3Pane 2>/dev/null || true
     tmux unbind-key -n MouseDown3Status 2>/dev/null || true
     tmux unbind-key -n MouseDown3StatusLeft 2>/dev/null || true
@@ -1789,8 +1789,8 @@ case "$target" in
         ;;
     # ctr:NAME:INSTANCE:CONTAINER: a shell inside one container of a dev
     # instance on this controller's own daemon (R218 step 4), the container
-    # the URL's, since this ttyd is loopback-only behind the proxy that
-    # checked it. bash when the image has one, sh otherwise; the session ends
+    # the URL's, since on the controller only the dashboard, which checked
+    # it, starts this. bash when the image has one, sh otherwise; the session ends
     # when it does. A node's is the block near the top.
     ctr:*)
         # On a node it is the agent's container terminal server's (above):

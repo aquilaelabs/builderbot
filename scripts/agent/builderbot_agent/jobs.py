@@ -240,12 +240,11 @@ class Job(threading.Thread):
             elif self.job.get("type") == "toolchain":
                 state, code = self.agent.toolchain(self, spec)
                 # A recipe landed or left: the session environment is built
-                # from the store's layout at ttyd's start, so a session
-                # opened after this would still not find the new tool on
-                # PATH (lint-tools on bb-sandbox, measured). The loop
-                # restarts the ttyds; tmux sessions survive it. A check
-                # writes nothing, so nothing has moved and restarting every
-                # ttyd on the node to report a version number would be rude.
+                # from the store's layout when the session half is set up,
+                # so a session opened after this would still not find the
+                # new tool on PATH (lint-tools on bb-sandbox, measured). The
+                # loop makes it again; tmux sessions are untouched. A check
+                # writes nothing, so nothing has moved.
                 if spec.get("action") != "check":
                     self.agent.session_renew()
                     # The census before the end: the controller says which

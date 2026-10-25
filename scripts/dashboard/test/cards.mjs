@@ -2304,6 +2304,8 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
     for (const el of document.querySelectorAll('input,select,textarea')){
       const t = (el.type || el.tagName).toLowerCase();
       if (t === 'checkbox' || t === 'radio' || t === 'hidden' || t === 'file') continue;
+      // xterm's own input, an invisible part of a terminal, not a field.
+      if (el.classList.contains('xterm-helper-textarea')) continue;
       if (!el.getBoundingClientRect().width) continue;
       const c = getComputedStyle(el);
       if (c.borderTopLeftRadius !== '6px' || c.borderTopWidth !== '1px'
@@ -2350,7 +2352,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   const old = Date.now() / 1000 - 90 * 86400;
   for (const [n, age] of [['builderbot.log', 0], ['builderbot.log.1', 0],
                           ['builderbot.log.9', 90], ['docker.log', 0],
-                          ['ttyd.log', 0], ['not-ours.log.4', 90]]){
+                          ['not-ours.log.4', 90]]){
     writeFileSync(`${LD}/${n}`, 'x'.repeat(64));
     if (age) utimesSync(`${LD}/${n}`, old, old);
   }
@@ -2425,8 +2427,6 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
      'the session download is every stream of this boot in one file');
   ok(/attachment; filename="builderbot-session\.log"/.test(dl.cd || ''),
      '...offered as a download rather than rendered into the tab');
-  ok(!/ttyd/.test(dl.body),
-     '...without ttyd.log, which is 22k lines of websocket churn around it');
   const arc = await page.evaluate(async () => {
     const r = await fetch('/logs/download?what=archive');
     return { status: r.status, ct: r.headers.get('content-type'),
@@ -2580,8 +2580,8 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
     const t = tabs.find(t => t.kind === 'term' && String(t.arg) === 'claude:alpha:n:n_ubu');
     const p = state.projects.find(x => x.name === 'alpha');
     p.session_nodes = [{ id: 'n_ubu', name: 'ubu', where: 'node', why: '', boot: 'b-ubu' }, { id: 'n_rh', name: 'rh', where: 'refused', boot: '' }];
-    return { label: t.label, url: ttydUrl(t.arg) }; });
-  ok(tab.label === 'Claude: alpha (ubu)' && /%3Ab%3Ab-ubu/.test(tab.url),
+    return { label: t.label, url: termArg(t.arg) }; });
+  ok(tab.label === 'Claude: alpha (ubu)' && /:b:b-ubu$/.test(tab.url),
      `...and a pick opens the terminal on that node, named on the tab and stamped with that node's boot (${tab.label}; ${tab.url})`);
   // With this account's session running on one node, the press opens the
   // same chooser rather than jumping to the tab: Open tab and End session

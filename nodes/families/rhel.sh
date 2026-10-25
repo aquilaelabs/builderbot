@@ -39,7 +39,6 @@ pkg_names() {
         guestsvc) echo "qemu-guest-agent" ;;
         python) echo "python3" ;;
         session) echo "tmux jq git" ;;
-        ttyd) echo "" ;;
         reel) echo "xorg-x11-server-Xvfb xdotool xorg-x11-utils" ;;
         wg) echo "wireguard-tools" ;;
         nft) echo "nftables" ;;

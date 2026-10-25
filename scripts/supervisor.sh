@@ -84,7 +84,6 @@ shutdown() {
 
     # --- instant work, before anything can time us out ---------------------
     save_sessions
-    pkill -TERM -x ttyd 2>/dev/null || true
     pkill -TERM -f 'dashboard/server\.py' 2>/dev/null || true
 
     # --- and give the dashboard its moment to finish that write ------------

@@ -876,7 +876,7 @@ if (runs('a')) {
     if (i <= schemes) return;                      // the tokens and the schemes define hex
     const t = l.replace(/\/\*.*?\*\//g, '');
     // Black and white inside a color-mix() are not colors of a scheme, and
-    // #2b2b2b is the terminal's own ground (see .pane iframe), never a page color.
+    // #2b2b2b is the terminal's own ground (see .slot.ownterm), never a page color.
     const hex = t.replace(/#000000|#ffffff|#2b2b2b/g, '');
     if (/#[0-9a-fA-F]{6}\b/.test(hex)) off.push(`${i + 1}: ${t.trim().slice(0, 60)}`);
     if (/border-radius:(8|6|4|10)px/.test(t)) off.push(`${i + 1}: ${t.trim().slice(0, 60)}`);

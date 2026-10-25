@@ -25,7 +25,7 @@ says whether the wall between its sessions and the controller holds. The
 page shows one node, picked in its bar beside **Create
 sandbox VM** and **Enroll node**: a header with its state, and where it dials in from, which is the address of its
 last hello, so a node whose address moves is followed within a minute, its
-terminals rebound onto the new address by its agent and the session-ports
+screen relay rebound onto the new address by its agent and the session-port
 rule on the node rewritten if the controller's own address is what moved,
 and its agent (with
 **Update agent** when this container ships a newer one, busy until the node
@@ -92,17 +92,17 @@ pick per node: no "this one builds, that one deploys". A project names one
 node in its settings and its containers, builds, tests, CI and
 emulation all go there, so three projects on three VMs stay apart and three
 projects on one VM share it. **Its sessions too** (roadmap #24,
-docs/nodes.md §19): a node provisioned with a session account keeps two
-ttyds up beside the agent, running bb-tty from the bb the controller ships,
-so a session on a project bound to it works *on* that machine, with its
+docs/nodes.md §19): a node provisioned with a session account runs its
+terminals in the agent's screen relay, each a pty running bb-tty from the bb
+the controller ships, so a session on a project bound to it works *on* that machine, with its
 toolchains, in the copy of the project its agent keeps at `/workspace` in
 step with this container's (a synced copy, the one way a node holds its
 projects: nothing mounts the projects share on a node). The node's census
-says whether that half is up (`session`: ports, account, which agents the
-account has) and how far each copy is; `bb roadmap`, `bb bug`, `bb version` and the other verbs
+says whether that half is up (`session`: the screen relay's port, account,
+which agents the account has) and how far each copy is; `bb roadmap`, `bb bug`, `bb version` and the other verbs
 whose state is this container's are relayed back here over the API with the
-session's own token. The terminal proxy sends a bound project's session to
-that node when its census says the half is up and the project's copy is there, and
+session's own token. The controller carries a bound project's session to
+that node's screen relay when its census says the half is up and the project's copy is there, and
 refuses with the reason (on the project's Start agent and in the terminal) when
 the node cannot take one, rather than starting it on the wrong machine. A
 project with **no** node has no session at all: this container carries no
@@ -372,7 +372,7 @@ Which upgrades are supported, and how to roll one back, is
 
 ## Logs
 
-**One file per container start, per stream.** All four rotate together on
+**One file per container start, per stream.** All three rotate together on
 boot, so a generation number means the same boot in every one of them, and
 `.1` is the previous run of the container.
 
@@ -381,7 +381,6 @@ boot, so a generation number means the same boot in every one of them, and
 | Startup, the runner supervisor, and every later warning | `config/logs/builderbot.log` |
 | The dashboard server, in full | `config/logs/dashboard.log` |
 | Every compose call the Docker manager made | `config/logs/docker.log` |
-| The terminal server | `config/logs/ttyd.log` |
 | Runner diagnostics | `_diag/` under the runner's directory on its node (`/var/lib/builderbot/runner/<slot>/_work/`) |
 | CI job output | GitHub → Actions → the run |
 | Emulator | `home/.android/emulator.log` |
@@ -415,10 +414,7 @@ reports**, in the BuilderBot bug reports section, deletes every report sessions 
 BuilderBot, after a confirmation that says how many; the numbers carry on, so a bug that names report #3 never meets a
 second one, and a session cannot clear them.
 
-Two deliberate omissions from *this session*. `ttyd.log` is the terminal
-server's connection churn (22,000 lines against 4KB of boot log on this box),
-so it is in the archive and not in the thing you open to read what happened.
-And the **CI logs stay where they are**, under `config/ci-logs/<repo>/`, one
+One deliberate omission from *this session*: the **CI logs stay where they are**, under `config/ci-logs/<repo>/`, one
 file per run: a CI run is not a container session, it belongs to a workflow
 run and spans whatever session was up. They are already grouped the way you
 would want and `bb ci-log` reads them by run id; they are in the archive and

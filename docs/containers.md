@@ -39,8 +39,8 @@ this browser's choice to keep.
 for its first running container, and **Shell in** each other one under
 More; it opens `docker exec` into that container as a terminal in the
 dock, bash where the image has it and sh where it does not, on the machine
-the container runs on. On a node that is the agent's third terminal server,
-on port 7683 and open to the controller only, run as the docker account:
+the container runs on. On a node that is a terminal of the agent's screen
+relay, on port 7684 and open to the controller only, run as the docker account:
 the session account stays out of docker, since docker is root on the
 machine. It is for a person who may start and stop that
 container (its project's account or an administrator) and has a shell, and

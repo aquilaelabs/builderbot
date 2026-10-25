@@ -148,7 +148,7 @@ function renderProfileInto(i){
           </div>
         </div>`)}
     ${sec("twofactor", "Two-factor sign-in", profileTwoFactor(profile.two_factor || {}, !!profile.two_factor_required))}
-    ${state?.term_own ? sec("terminal", "Your terminal", profileTerminal()) : ""}
+    ${sec("terminal", "Your terminal", profileTerminal())}
     ${docSection("profile", "devices", "Signed in as you", "", profileDevices(profile.devices || []))}`;
   wireSections(d.list);
   splitSects(d.list, "profile", {says: PROFILE_SAYS, back: "Profile"});
@@ -176,7 +176,7 @@ function profileTerminal(){
         <select id="pfTerm_${k}" data-pfterm="${k}">${opts.map(([v, w]) =>
           `<option value="${v}"${String(look[k] ?? dflt) === v ? " selected" : ""}>${esc(w)}</option>`).join("")}</select>
       </div>`).join("")}
-      <div class="logdays setrow"><label class="ndcap"><input type="checkbox" data-pfterm="blink"${look.blink === false ? "" : " checked"}> The cursor blinks</label></div>
+      <div class="logdays setrow ctlrow"><label class="ndcap"><input type="checkbox" data-pfterm="blink"${look.blink === false ? "" : " checked"}> The cursor blinks</label></div>
     </div>`;
 }
 function wireTerminalLook(root){

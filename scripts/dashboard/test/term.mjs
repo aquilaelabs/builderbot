@@ -1,11 +1,11 @@
-// BuilderBot's own terminal (R133): with the switch on, a shell tab is drawn
-// by xterm.js in the page and joined to /termws, which runs bb-tty in a pty
-// on this controller as ttyd did. What is typed reaches the shell and what
-// it prints reaches the screen; the screen fits its box and the pty follows;
-// a terminal that ends says why under it, and Reconnect opens it again on
-// the same tmux session; a closed tab's socket goes with it; the switch off,
-// the same tab is ttyd's frame again. Driven through the page, as a person
-// at the dock would.
+// BuilderBot's own terminal (R133): a shell tab is drawn by xterm.js in the
+// page and joined to /termws, which runs bb-tty in a pty on this
+// controller. What is typed reaches the shell and what it prints reaches
+// the screen; the screen fits its box and the pty follows; a terminal that
+// ends says why under it, and Reconnect opens it again on the same tmux
+// session; a tab popped out opens the same terminal on a page of its own
+// (terminal.html); a closed tab's socket goes with it. Driven through the
+// page, as a person at the dock would.
 import { launch, newPage, ok, done, ready, finger, URL, DIR } from './lib.mjs';
 import { appendFileSync, mkdirSync } from 'node:fs';
 
@@ -14,22 +14,13 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
 await ready(page);
 
-const setting = on => page.evaluate(async on => {
-  const r = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ set: { own_terminal: on } }) });
-  await refresh();
-  return r.status;
-}, on);
-ok(await setting(true) === 200 && await page.evaluate(() => state.term_own === true),
-   'the switch is on, and the page is told so in its status');
-
 // One shell, in the dock.
 const id = await page.evaluate(() => { openTab({kind: 'term', arg: 'sh:7:alpha', label: 'own'});
                                        return tabs.find(t => t.arg === 'sh:7:alpha').id; });
 await page.evaluate(id => { panes[1] = id; dockUp = true; render(); }, id);
 await page.waitForFunction(() => document.querySelector('#pane1 .slot.on.ownterm .xterm'), null, { timeout: 20000 });
 ok(await page.evaluate(() => !document.querySelector('#pane1 .slot.on iframe')),
-   'the shell tab is drawn by xterm in the page, with no ttyd frame');
+   'the shell tab is drawn by xterm in the page, with no frame');
 
 // What the screen shows, read off xterm's own buffer.
 const screen = () => page.evaluate(() => {
@@ -186,14 +177,23 @@ ok(await waitFor(/kb-42/) && !keysAsked.length, `the keys bar's Enter goes down 
   await phone.close();
 }
 
-// A tab its node sends back to ttyd (4001: an agent with no terminal of its
-// own) is drawn again as ttyd's frame, not left an empty slot.
-await page.evaluate(id => { tabOf(id).ttyd = true; render(); }, id);
-const back = await page.waitForSelector('#pane1 .slot.on iframe', { timeout: 10000 }).then(() => true, () => false);
-ok(back && await page.evaluate(() => !document.querySelector('#pane1 .slot.on.ownterm')),
-   'a tab sent back to ttyd is redrawn as its frame');
-await page.evaluate(id => { delete tabOf(id).ttyd; render(); }, id);
-await page.waitForSelector('#pane1 .slot.on.ownterm .xterm', { timeout: 20000 });
+// Popped out (R8): the same terminal on a page of its own, terminal.html on
+// /termws, the tmux session the tab had; Reattach brings it back.
+{
+  const [win] = await Promise.all([page.waitForEvent('popup'), page.evaluate(id => popOut(id), id)]);
+  await win.waitForSelector('.xterm', { timeout: 20000 });
+  await win.waitForTimeout(1500);
+  await win.keyboard.type('echo popped-$((7*6))');
+  await win.keyboard.press('Enter');
+  const seen = await win.waitForFunction(() => /popped-42/.test(document.querySelector('.xterm-rows')?.textContent || ''),
+                                         null, { timeout: 10000 }).then(() => true, () => false);
+  ok(/\/terminal\?arg=sh%3A7%3Aalpha/.test(win.url()) && seen
+     && await page.evaluate(() => !!document.querySelector('#pane1 .slot.on.popped')),
+     `a tab popped out opens BuilderBot's terminal on a page of its own, typed into like the tab (${win.url().replace(/^https?:\/\/[^/]+/, '')})`);
+  await page.evaluate(id => reattachTab(id), id);
+  await page.waitForSelector('#pane1 .slot.on.ownterm .xterm', { timeout: 20000 });
+  ok(win.isClosed() || await win.evaluate(() => true).catch(() => true), '...and Reattach brings it back into the dock');
+}
 
 // The socket and the shell are one: closing the tab closes the socket.
 const before = await page.evaluate(() => [...TERMS.values()].filter(r => r.t.arg === 'sh:7:alpha').length);
@@ -202,18 +202,7 @@ await page.waitForFunction(() => ![...TERMS.values()].some(r => r.t.arg === 'sh:
 const after = await page.evaluate(() => [...TERMS.values()].filter(r => r.t.arg === 'sh:7:alpha').map(r => r.key));
 ok(before === 1 && after.length === 0, `closing the tab closes its terminal (${before}: ${JSON.stringify(after)})`);
 
-// Off again: a shell tab is ttyd's frame, as before.
-await setting(false);
-const id2 = await page.evaluate(() => { openTab({kind: 'term', arg: 'sh:8:beta', label: 'ttyd'});
-                                        return tabs.find(t => t.arg === 'sh:8:beta').id; });
-await page.evaluate(id => { panes[1] = id; dockUp = true; render(); }, id2);
-await page.waitForSelector('#pane1 .slot.on iframe', { timeout: 20000 });
-ok(await page.evaluate(() => !document.querySelector('#pane1 .slot.on.ownterm')),
-   'with the switch off a shell tab is ttyd\'s frame again');
-await page.evaluate(id => dropTab(id), id2);
-
-// A log in the dock (R133 step 12), with the switch still off: the page's
-// own terminal, read-only, following the controller's log as it is written.
+// A log in the dock (R133 step 12): the page's own terminal, read-only, following the controller's log as it is written.
 {
   mkdirSync(`${DIR}/state/logs`, { recursive: true });
   appendFileSync(`${DIR}/state/logs/builderbot.log`, 'log-follow-first\n');

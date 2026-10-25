@@ -1,17 +1,15 @@
 // BuilderBot's own terminal (R133): a dock tab drawn by xterm.js in the page
-// itself, joined to /termws, in place of ttyd's page in a frame. One classic
-// script beside index.html (docs/nodes.md §13).
+// itself, joined to /termws. One classic script beside index.html
+// (docs/nodes.md §13); terminal.html is the same terminal on a page of its
+// own, for a tab popped out and for the Android app.
 //
-// The server decides everything a terminal is (whose, whether, where) as it
-// does for ttyd's; this is the screen and the keyboard. The wire is binary
-// frames: to the server a type byte (0 keys, 1 a resize as JSON cols/rows)
-// and its body, from it the terminal's bytes. A close says why the terminal
-// ended, shown in its tab with Reconnect; 4001 says the tab's node serves no
-// terminal of its own yet, and that tab opens through ttyd instead. A socket
-// that drops (a phone asleep, the network) is opened again when the page is
-// back in view: tmux redraws the screen as it attaches, so nothing is lost.
-// On unless Settings' Terminals switches it off (own_terminal), when every
-// tab is ttyd's as before: ttyd stays for this release as the way back.
+// The server decides everything a terminal is (whose, whether, where); this
+// is the screen and the keyboard. The wire is binary frames: to the server
+// a type byte (0 keys, 1 a resize as JSON cols/rows) and its body, from it
+// the terminal's bytes. A close says why the terminal ended, shown in its
+// tab with Reconnect. A socket that drops (a phone asleep, the network) is
+// opened again when the page is back in view: tmux redraws the screen as it
+// attaches, so nothing is lost.
 
 "use strict";
 
@@ -19,14 +17,11 @@
 const TERMS = new Map();
 let xtermLoading = null;
 
-// Whether this tab is drawn here rather than by ttyd: the switch on, a
-// terminal (not a VM's screen, which is noVNC's), not popped out, and not a
-// tab its node sent back to ttyd.
+// Whether this tab is a terminal drawn here: not a VM's screen (noVNC's, in
+// a frame) and not popped out into its own window.
 function termOwn(t){
-  // A log (R133 step 12) is the page's own terminal whatever the switch
-  // says: ttyd never had a reader for one.
   if (t?.kind === "term" && termLog(t)) return true;
-  return !!state?.term_own && t?.kind === "term" && !t.popped && !t.ttyd && !/^screen:/.test(t.arg || "");
+  return t?.kind === "term" && !t.popped && !/^screen:/.test(t.arg || "");
 }
 
 // A log tab's argument (log:job:ID, log:controller): read-only, followed.
@@ -62,18 +57,17 @@ function termSlot(t){
     <div class="xend" hidden><span class="xwhy"></span><button type="button" class="xagain">Reconnect</button></div>${consoleBar(t)}</div>`;
 }
 
-// The URL the socket opens: the tab's argument as ttyd's page was given it,
-// boot stamp and all, and the size it starts at.
+// The URL the socket opens: the tab's words, boot stamp and all, and the
+// size it starts at.
 function termUrl(t, cols, rows){
   const q = new URLSearchParams();
-  if (termLog(t)) q.append("arg", t.arg);
-  else for (const a of new URL(ttydUrl(t.arg), location.href).searchParams.getAll("arg")) q.append("arg", a);
+  q.append("arg", termArg(t.arg));
   q.set("cols", cols); q.set("rows", rows);
   return `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/termws?${q}`;
 }
 
 // A terminal's colors by name (R133 step 10), the choices prefs.py's
-// TERM_SCHEMES names: Default the ground ttyd's page had, Dashboard the page's
+// TERM_SCHEMES names: Default the plain dark ground, Dashboard the page's
 // own scheme, and the tints a person gives a project to know it by. Literal
 // here as a terminal's palette is: these are what the program's own
 // colors are drawn on, not the page's surfaces.
@@ -143,8 +137,8 @@ function termMount(el, t, key){
     // A log takes no keys: there is no program behind it to read them.
     if (termLog(t)) term.options.disableStdin = true;
     else {
-      term.onData(d => termSend(rec, 0, new TextEncoder().encode(d)));
-      term.onBinary(d => termSend(rec, 0, Uint8Array.from(d, c => c.charCodeAt(0))));
+      term.onData(d => termType(rec, new TextEncoder().encode(d)));
+      term.onBinary(d => termType(rec, Uint8Array.from(d, c => c.charCodeAt(0))));
     }
     term.onResize(({cols, rows}) => termSend(rec, 1, new TextEncoder().encode(JSON.stringify({cols, rows}))));
     // Its box changes size with the pane, the dock and the keyboard.
@@ -239,6 +233,7 @@ function termScroll(rec, n, at){
     if (!by) return;
     try{
       await postJSON("/api/keys", {session: sessionOf(rec.t.arg), key: by < 0 ? "lineup" : "linedown", lines: Math.abs(by)});
+      if (by < 0) rec.t.scrolled = true;
     }catch(e){ /* the next drag asks again */ }
   }, 80);
 }
@@ -345,6 +340,25 @@ function termSelectEnd(rec){
   rec.el.querySelector(".xsel")?.remove();
 }
 
+// What is typed, from the keyboard or the keys bar, for the program: a
+// pane this page scrolled back into tmux's copy mode leaves it first, where
+// an arrow moved tmux's cursor over the history and a letter did nothing,
+// and the program heard neither (B254). Marked on the tab, so a pane the
+// server scrolled before the socket opened counts too. What follows waits
+// its turn behind the leaving, so nothing typed lands in copy mode or out
+// of order.
+function termType(rec, bytes){
+  if (rec.held){ rec.held.push(bytes); return; }
+  if (!rec.t.scrolled){ termSend(rec, 0, bytes); return; }
+  rec.t.scrolled = false;
+  rec.held = [bytes];
+  postJSON("/api/keys", {session: sessionOf(rec.t.arg), key: "leave"}).catch(() => {}).then(() => {
+    const held = rec.held || [];
+    rec.held = null;
+    held.forEach(b => termSend(rec, 0, b));
+  });
+}
+
 function termSend(rec, kind, body){
   if (rec.ws?.readyState !== WebSocket.OPEN) return;
   const b = new Uint8Array(body.length + 1);
@@ -371,13 +385,6 @@ function termConnect(rec){
   ws.onmessage = e => { if (rec.ws === ws) rec.term.write(new Uint8Array(e.data)); };
   ws.onclose = e => {
     if (rec.ws !== ws) return;
-    // A node not yet updated: this tab is ttyd's, drawn again as a frame.
-    if (e.code === 4001){
-      rec.t.ttyd = true;
-      termDrop(rec.key);
-      drawPanes();
-      return;
-    }
     termEnded(rec, e.reason || (e.code === 1006 ? "the connection dropped" : "the terminal ended"));
   };
 }
@@ -405,14 +412,22 @@ const TERM_KEYS = {escape: "\x1b", tab: "\t", left: "\x1b[D", down: "\x1b[B", up
   home: "\x1b[H", end: "\x1b[F", enter: "\r", pipe: "|", tilde: "~", slash: "/", backslash: "\\", dash: "-",
   under: "_", dollar: "$", star: "*", lt: "<", gt: ">"};
 
-// A key pressed on the bar, typed into this tab's terminal: true when it
-// went, false for one it does not type (the server's, or no socket).
+// A key pressed on the bar, for this tab's terminal: true when it went,
+// false for one it does not take (no socket). PgUp and PgDn scroll a page,
+// as a finger's drag does; the rest are typed.
 function termKey(t, key){
   const rec = [...TERMS.values()].find(r => r.t.id === t.id && r.el.isConnected);
+  if (!rec || rec.ws?.readyState !== WebSocket.OPEN) return false;
+  if (key === "pgup" || key === "pgdn"){
+    const b = rec.el.querySelector(".xterm-screen")?.getBoundingClientRect();
+    termScroll(rec, (key === "pgup" ? -1 : 1) * Math.max(1, rec.term.rows - 1),
+               {clientX: b ? b.left + b.width / 2 : 0, clientY: b ? b.top + b.height / 2 : 0});
+    return true;
+  }
   const m = /^ctrl-([a-z])$/.exec(key);
   const s = m ? String.fromCharCode(m[1].charCodeAt(0) - 96) : TERM_KEYS[key];
-  if (!rec || s === undefined || rec.ws?.readyState !== WebSocket.OPEN) return false;
-  termSend(rec, 0, new TextEncoder().encode(s));
+  if (s === undefined) return false;
+  termType(rec, new TextEncoder().encode(s));
   rec.term?.focus();
   return true;
 }

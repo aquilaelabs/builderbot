@@ -1365,19 +1365,6 @@ bind_fixture_node() {
 fresh() {
     rm -f "$S/state/tabs.json" "$S/state/cards.json" "$S/state/roadmap.json" \
           "$S/state/bugs.json"
-    # BuilderBot's own terminal is on by default (R133 step 6); ttyd ships
-    # beside it for this release, and the suites written against ttyd's frame
-    # keep proving it, so each file starts with the switch off, as an install
-    # that switched it off would. term.mjs turns it on for its own checks.
-    python3 - "$S/state/settings.json" <<'PY'
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except (OSError, ValueError):
-    d = {}
-d["own_terminal"] = False
-json.dump(d, open(sys.argv[1], "w"))
-PY
     # ...nor the rules and the approval queue (roadmap #7, #27): a rule or a
     # held change left by pending.mjs lit the bell and filled the Briefing
     # tab for every file after it.
@@ -1483,7 +1470,7 @@ start_server() {
 # agent, which in the run's shared copy held every other worker's nodes as
 # running an agent "newer than its number" (B718, B751, B510).
 rm -rf "$S/agentsrc"; cp -r "$DASH/../agent" "$S/agentsrc"
-( env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
+( env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" BUILDER_HOME="$S/home" \
     BB_AGENT_DIR="$S/agentsrc" \
     BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
     TC_AUTOCHECK=0 BB_NODE_POLL=3 \

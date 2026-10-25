@@ -229,7 +229,7 @@ Both lists live under `/config` (`archived-projects.json` and
 `locked-projects.json`), so they survive restarts and image updates. The lock
 is enforced by the server on every write and by the terminal launcher on
 every session, which on a node asks the controller with the session's own
-token, because the ttyd URL and the API paths are reachable on their own and
+token, because a terminal's words and the API paths are reachable on their own and
 a rule only the page honored would be advice. It is not a sandbox: the file
 tools are denied on every project but a session's own, and a session in
 another project can still reach this directory through Bash.

@@ -116,12 +116,13 @@ scripts/
                                  all pure declarations, served by name from the page's own script tags (R77)
     server.py                    the routes, the transport and the gates; each handler one call into a module beside it
     index.html                   the markup, the stylesheet and the wiring that runs at load
+    terminal.html                one terminal on a page of its own: a tab popped out of the dock, and the Android app's session screen (R133)
     tab-*.js                     one per document tab (Docker, Nodes, Jobs, nginx, Storage, Toolchains, Agents, Emulator, Phone, Apps, Settings, Users, Profile, Findings, Projects)
     nb-*.js                      one per notebook view; nb-core.js is the notebook itself
     page-*.js                    one per part of the page that is neither: the state, the tabs, the panes and the dock, a project's rows, the polls, the bell, the doctor and the rest
     static/                      the favicon set and the SVG marks the page draws
     vendor/                      xterm.js 5.5.0 and its fit addon 0.10.0 as npm publishes them, with xterm's MIT license (R133), served by name under /vendor/
-    bb-tty                       what ttyd runs: which tmux session a terminal is, and whose
+    bb-tty                       what a terminal runs: which tmux session it is, and whose
     bb-agent-hook                Codex's and Copilot's own hooks holding Claude's guards: their payload in Claude's shape, the same hooks run (R95)
     bb-codex-trust               BuilderBot's own Codex hooks trusted for one launch, by the hashes that Codex reports for them (B284)
     bb-check-relay               the relay's own check, run by bb tests preflight
@@ -254,8 +255,8 @@ scripts/
     backends.py                  the machine's package manager and network configuration backends
     vms.py                       the VMs a node runs (R91): the vm job's fixed table of virsh and qemu-img commands, cloud-init, the census of them, and their network's firewall
     vmhw.py                      a VM's hardware beyond size (R100): the host's CPUs and devices, pinning, the balloon, the network, a virtiofs folder, passthrough, the vBIOS dump
-    screen.py                    a VM's screen for the dock (R99): a websocket relay on 7684 to the VM's VNC on the loopback, signed by the controller
-    term.py                      BuilderBot's own terminal (R133): a pty per tab on the screen relay's port, running what the node's ttyd runs, signed by the controller
+    screen.py                    the node's one port for the controller's sockets, 7684, signed by the controller: the terminals (term.py) and a VM's screen for the dock (R99), relayed to its VNC on the loopback
+    term.py                      BuilderBot's own terminal (R133): a pty per tab on the screen relay's port, running what its kind runs (rw, ro, ctr), signed by the controller
     toolchains.py                the toolchain store (R19): what is installed, who uses it, a session's environment
     gpu.py                       the NVIDIA card: its sample, its memory's holders, the driver and container toolkit
     sessnet.py                   each session kept to its own project's network (R79)
@@ -269,7 +270,7 @@ scripts/
     ftp.py                       the file-access servers a project's settings open
     wssync.py                    keeps a node's synced copy of its projects in step with the controller's (R162)
     claudesync.py                keeps a synced node's agents' conversations and memories in step with the controller's (B613)
-    sessions.py                  the session half (#24): ttyds, tokens, firewall and upkeep, as Agent's methods
+    sessions.py                  the session half (#24): what each terminal kind runs, tokens, firewall and upkeep, as Agent's methods
     workspace.py                 a job's source on disk, its artifacts, and the bundle of bb
     work.py                      compose, toolchains, signing, images and system packages, as Agent's methods
     keyops.py                    the controller's signing key work on this node: a keystore checked, a key made or wrapped, a rotation's proof, a release's APK signed (R106)
@@ -284,7 +285,7 @@ vscode/                          BuilderBot for VS Code (R159): plain JavaScript
   extension.js                   the builderbot: file system, the sign-in, open project, search and the session's terminal
   lib/client.js                  the controller as the extension speaks to it: sign-in through /login, the Files API, /term
   lib/ws.js                      a websocket client in Node's own modules, for the terminal
-  lib/ttyd.js                    ttyd's protocol over the /term relay: the dashboard's own terminal, from VS Code
+  lib/term.js                    BuilderBot's own terminal on /termws, from VS Code: the frames the dashboard's dock speaks
   README.md                      what VS Code shows on the extension's page: setting it up, installing and using it
 windows/                         the Windows companion app (R270): a person's machine keeping a project's folder in step through the device door
   README.md                      what it does, signing in, picking a project and a folder, building it

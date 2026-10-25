@@ -289,6 +289,20 @@ def press(session, key, on_node, lines=1):
             lines = int(lines)
         except (TypeError, ValueError):
             return {"error": "lines is a number"}, 400
+    # A pane the page scrolled back into copy mode, left before the page
+    # types into it (B254), and one not in a mode left as it is. A node's
+    # agent leaves copy mode before any key it is handed, so there an
+    # empty send-keys is the leaving.
+    if key == "leave":
+        if on_node:
+            real = on_node["node_name"]
+            return _answer(session_tmux(on_node["node_id"], [{"session": real, "argv": ["send-keys", "-t", real]}]))
+        if session not in {s["name"] for s in tmux_sessions()}:
+            return {"error": f"no such session: {session}"}, 400
+        mode = run(["tmux", "display-message", "-p", "-t", session, "#{pane_in_mode}"], timeout=10)
+        if mode["out"].strip() == "1":
+            run(["tmux", "send-keys", "-t", session, "-X", "cancel"], timeout=10)
+        return {"ok": True}, 200
     if on_node:
         if key in ("lineup", "linedown"):
             real = on_node["node_name"]

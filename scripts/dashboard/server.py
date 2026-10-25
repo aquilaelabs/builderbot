@@ -6,9 +6,8 @@ that it gets rebuilt often; a dashboard that drags in a web framework would be
 one more thing to keep current, and http.server is more than adequate for one
 operator on a LAN.
 
-The terminal is not served from here. ttyd owns that on its own port, because
-proxying a PTY websocket through a hand-written server is exactly the kind of
-code that looks fine until it deadlocks.
+The terminals are BuilderBot's own (R133): a websocket at /termws, a pty
+here (termws.local) or carried signed to a node's screen relay (termws.node).
 """
 import base64
 import contextlib
@@ -45,23 +44,14 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 WORKSPACE = Path(os.environ.get("WORKSPACE", "/workspace"))
 PORT = int(os.environ.get("DASHBOARD_PORT", "7680"))
-# Loopback only: the browser reaches terminals through this server's own
-# /term proxy, so there is no second port for the page to be told about.
-TTYD_PORT = int(os.environ.get("DASHBOARD_TTYD_PORT", "7681"))
-# The read-only twin (roadmap #27). ttyd is read-only unless started with
-# --writable, so an account that may not have a shell reaches this one and
-# cannot type into the socket at all. Its Claude input goes through the send
-# path, which is a table lookup and literal text like every other thing this
-# page can make happen.
-TTYD_RO_PORT = int(os.environ.get("DASHBOARD_TTYD_RO_PORT", str(TTYD_PORT + 1)))
-# A VM host's screen relay (R99), beside its terminals on the node.
+# A node's screen relay (R99, R133): its terminals and its VMs' screens, on
+# the one port its firewall opens to this controller. A node says its own in
+# its census; this is what one that has not said listens on.
 SCREEN_PORT = 7684
 
 # ---- one login for everything ---------------------------------------------
-# The browser used to be asked twice: once by this server, once by ttyd on
-# its own port, each with the built-in credentials dialog. The terminals are
-# proxied under /term on this origin now, so a single sign-in on a real login
-# page covers both, and ttyd's port no longer needs to be published at all.
+# One sign-in on a real login page covers the page and its terminals, which
+# are websockets on this origin (/termws), so no second port is published.
 #
 # The cookie is a signed expiry, not a server-side session: the secret lives
 # on the /config volume, so a container update does not log every phone out,
@@ -1842,12 +1832,12 @@ def vm_target(project, name):
     se = (n.get("reported") or {}).get("session")
     if n.get("state") != "online" or n.get("live") is False:
         why = f"{nm}, where {name} runs, is not answering now"
-    elif not isinstance(se, dict) or not se.get("ctr_port"):
+    elif not isinstance(se, dict) or not se.get("ctr"):
         why = (f"{nm} cannot open a console: {se['ctr_why']}" if isinstance(se, dict) and se.get("ctr_why")
-               else f"{nm} has not started its container terminal yet; try again in a minute")
+               else f"{nm} has not set up its container terminal yet; try again in a minute")
     else:
         return {"where": "node", "id": nid, "name": nm, "host": nodes.route_host(nid),
-                "port": int(se["ctr_port"]), "ro_port": int(se["ctr_port"]),
+                "screen": int(se.get("screen") or SCREEN_PORT),
                 "boot": str(se.get("boot") or ""), "domain": rec["domain"], "term": bool(se.get("term"))}
     return {"where": "refused", "name": nm, "why": why}
 
@@ -1900,7 +1890,7 @@ def session_target(project, claude=False, node="", uid=""):
     """Where a session on this project runs (roadmap #24, phase 10b):
 
         {"where": "local"}                                   (this container)
-        {"where": "node", "id", "name", "host", "port", "ro_port"}
+        {"where": "node", "id", "name", "host", "screen", "boot", "term"}
         {"where": "refused", "name", "why"}                  (bound to a node
                                                               that cannot take one)
 
@@ -2033,7 +2023,7 @@ def session_target(project, claude=False, node="", uid=""):
                "boot, which a session's terminal there is checked against")
     else:
         return {"where": "node", "id": nid, "name": name, "host": nodes.route_host(nid),
-                "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0),
+                "screen": int(se.get("screen") or SCREEN_PORT),
                 "boot": str(se.get("boot") or ""), "term": bool(se.get("term"))}
     return {"where": "refused", "name": name, "waiting": waiting,
             "why": why + ("." if passing else
@@ -2046,15 +2036,15 @@ def ctr_target(name, instance):
     instance is on, since docker exec reaches a daemon from its own host.
 
         {"where": "local"}                         (this container's daemon)
-        {"where": "node", "id", "name", "host", "port", "ro_port", "boot"}
+        {"where": "node", "id", "name", "host", "screen", "boot", "term"}
         {"where": "refused", "name", "why"}
 
     A hosting-only node runs no terminal server, so a container there has no
     Shell, said with the reason (the operator, 14 Oct). Otherwise the node
     has to be up with its session half running, as for a Claude session,
-    and the shell goes to its container terminal (ctr_port): the agent's
-    third ttyd, as the docker account, which the session account is kept
-    apart from (the operator, 14 Oct).
+    and the shell is its container terminal kind (ctr): as the docker
+    account, which the session account is kept apart from (the operator,
+    14 Oct).
     """
     nid = devapp.instance_node(name, instance) or ""
     n = nodes.node(nid) if nid and not NODES_OK else None
@@ -2066,26 +2056,25 @@ def ctr_target(name, instance):
         why = f"{nm} hosts containers only and runs no terminal, so a shell in this one opens on a node that runs sessions"
     elif n.get("state") != "online" or n.get("live") is False:
         why = f"{nm}, where this container runs, is not answering now"
-    elif not isinstance(se, dict) or not se.get("up") or not se.get("port"):
+    elif not isinstance(se, dict) or not se.get("up"):
         why = f"{nm} runs no terminal server yet" + (f": {se['why']}" if isinstance(se, dict) and se.get("why") else "")
     elif se.get("bundle") and nodes.bundle_digest() and se["bundle"] != nodes.bundle_digest():
         # Its terminals still run the scripts from before this controller's
         # update, which may not know what this one asks of them (B746):
         # asked to check in now, it takes the new ones in a minute or so.
         _ask_hello(nid)
-        why = (f"{nm} has not taken this controller's update yet; its terminals restart onto it at "
+        why = (f"{nm} has not taken this controller's update yet; its terminals move onto it at "
                "its next check-in, asked for now, so try again in a minute")
-    elif not se.get("ctr_port"):
-        # The container terminal is the agent's third ttyd, as the docker
-        # account; the session ones run as an account kept off docker, and
-        # it starts after them.
+    elif not se.get("ctr"):
+        # The container terminal runs as the docker account; the session
+        # ones as an account kept off docker, and it is set up after them.
         why = (f"{nm} cannot open a container's shell: {se['ctr_why']}" if se.get("ctr_why")
-               else f"{nm} has not started its container terminal yet; try again in a minute")
+               else f"{nm} has not set up its container terminal yet; try again in a minute")
     else:
-        # Both ports the container terminal's: it has no read-only twin,
-        # and an account without a shell was refused before this.
+        # An account without a shell was refused before this: a container
+        # terminal has no read-only kind.
         return {"where": "node", "id": nid, "name": nm, "host": nodes.route_host(nid),
-                "port": int(se["ctr_port"]), "ro_port": int(se["ctr_port"]),
+                "screen": int(se.get("screen") or SCREEN_PORT),
                 "boot": str(se.get("boot") or ""), "term": bool(se.get("term"))}
     return {"where": "refused", "name": nm, "why": why}
 
@@ -2125,60 +2114,8 @@ def account_names():
     return {u.get("uid"): n for n, u in users.load()["users"].items() if u.get("uid")}
 
 
-# What ttyd's page lacks on a phone (B53): it carries no viewport meta and
-# says nothing about text size, so a phone's browser may boost the font of a
-# page it takes for a desktop one, and the terminal drew at about twice its
-# size with each line's right half cut off. Said once at the top of <head>.
-#
-# The script is B91, what was really drawing the letters two and three times
-# too large: xterm's WebGL renderer sizes its canvas from a ResizeObserver's
-# device-pixel-content-box while it draws each glyph at devicePixelRatio, and
-# where the two disagree (Chromium's device emulation, which Playwright's
-# phone contexts and a desktop's device toolbar use, scales the ratio but not
-# that box) the canvas holds a third of the grid and shows its top-left
-# corner. Where the box does not match the content box times the ratio, it
-# is answered with that product, so the canvas and the glyphs agree; a phone
-# whose box already matches is handed its own exact one unchanged.
-_TTYD_DPR = (b'<script>(function(){var P=window.ResizeObserverEntry&&ResizeObserverEntry.prototype,'
-             b'd=P&&Object.getOwnPropertyDescriptor(P,"devicePixelContentBoxSize");'
-             b'if(!d||!d.get)return;'
-             b'Object.defineProperty(P,"devicePixelContentBoxSize",{configurable:true,enumerable:true,'
-             b'get:function(){var s=d.get.call(this),c=this.contentBoxSize,r=window.devicePixelRatio||1;'
-             b'if(!s||!s[0]||!c||!c[0])return s;'
-             b'var w=c[0].inlineSize*r,h=c[0].blockSize*r;'
-             b'if(Math.abs(s[0].inlineSize-w)<=2&&Math.abs(s[0].blockSize-h)<=2)return s;'
-             b'return[{inlineSize:Math.round(w),blockSize:Math.round(h)}];}});})();</script>')
-_TTYD_HEAD = (b'<meta name="viewport" content="width=device-width, initial-scale=1">'
-              b'<style>html{-webkit-text-size-adjust:100%;text-size-adjust:100%}</style>'
-              + _TTYD_DPR)
-
-
-def _ttyd_page(raw):
-    """ttyd's answer for its page, as (status line, headers, body) with the
-    phone's lines added to the body's <head>; None for anything else (an
-    error, a compressed or chunked body, a page with no <head>), which is
-    relayed as it came."""
-    head, sep, body = raw.partition(b"\r\n\r\n")
-    if not sep:
-        return None
-    status, *lines = head.decode("latin-1").split("\r\n")
-    hdrs = [tuple(x.strip() for x in ln.split(":", 1)) for ln in lines if ":" in ln]
-    keys = {k.lower(): v for k, v in hdrs}
-    if (" 200 " not in status + " " or "content-encoding" in keys
-            or "transfer-encoding" in keys
-            or not keys.get("content-type", "").startswith("text/html")):
-        return None
-    at = body.find(b"<head>")
-    if at < 0 or _TTYD_HEAD in body:
-        return None
-    at += len(b"<head>")
-    body = body[:at] + _TTYD_HEAD + body[at:]
-    keep = [(k, v) for k, v in hdrs if k.lower() not in ("content-length", "connection")]
-    return status, keep, body
-
-
 def _term_arg(rest):
-    """The `arg` a /term request carries, with any owner stamp a browser sent
+    """The `arg` a terminal request carries, with any owner stamp a browser sent
     taken off. "" when there is none."""
     _, sep, query = rest.partition("?")
     if not sep:
@@ -4734,9 +4671,6 @@ def _snapshot(who):
         "invites": _timed("status:invites", lambda: membership.mine(who)),
         # A project this account sees whose main branch's newest CI run
         # failed (ciwatch.red, R117): a bell row while it is true.
-        # Every terminal tab in BuilderBot's own terminal (R133), the dev
-        # switch, for every account's page.
-        "term_own": bool(settings.get("own_terminal")),
         "ci_red": _timed("status:ci_red", lambda: bellseen.filter_rows(
             users.uid_of(who), ciwatch.red([p["name"] for p in ps]))[0]),
         # A file changed on two synced copies at once (R162, wssync.py): the
@@ -5809,7 +5743,7 @@ class Handler(BaseHTTPRequestHandler):
 
         Enforced HERE and not only in the page, for the reason bb-tty's own
         header gives about the lock file: a rule only the UI honors is a
-        suggestion, because the ttyd URL is reachable directly.
+        suggestion, because a terminal's URL can be asked for directly.
         """
         arg = _term_arg(rest)
         me = me or self._who()
@@ -5852,35 +5786,10 @@ class Handler(BaseHTTPRequestHandler):
             return agentcode.start_hold(project, t["id"], ag.id) or ""
         return claudecode.start_hold(project, t["id"]) or ""
 
-    def _term_notice(self, sentence, code):
-        """A refused terminal, in the shape the asker can read. The tab is
-        an iframe navigating to /term, so a JSON answer landed in it as the
-        browser's JSON viewer (B141): a navigation gets a page saying the
-        sentence, and a fetch still gets the JSON the tests and the page's
-        own checks read."""
-        if "text/html" not in (self.headers.get("Accept") or ""):
-            return self._json({"error": sentence}, code)
-        body = ("<!doctype html><meta charset=utf-8><title>BuilderBot</title>"
-                "<style>body{margin:0;padding:20px 24px;background:#0d1117;"
-                "color:#c9d1d9;font:14px/1.5 system-ui,sans-serif}"
-                "p{max-width:64ch;margin:0}</style>"
-                f"<p>{html_escape(sentence)}</p>").encode()
-        self.send_response(code)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def _ttyd_port(self):
-        """Which ttyd this request is relayed to: the writable one, or the
-        read-only twin for an account that may not have a shell."""
-        return TTYD_RO_PORT if users.may(self._who(), "terminal") else TTYD_PORT
-
     def _scoped_arg(self, rest, node=False):
         """Stamp the terminal's argument with the account that asked for it.
 
-        ttyd runs bb-tty with whatever `?arg=` says, so this is where a
+        bb-tty runs with the words `?arg=` carries, so this is where a
         terminal learns whose it is: the account is taken from the credential
         this request already proved and any `u:` the BROWSER sent is thrown
         away first. Trusting the browser's would make the whole thing a
@@ -5907,8 +5816,8 @@ class Handler(BaseHTTPRequestHandler):
                 # Going to a NODE (roadmap #24), two more: the account's
                 # name, since the node has no users.json to look one up in,
                 # and a session token for the project, since only this
-                # container's key can mint one. ttyd hands each ?arg= to
-                # bb-tty as one more argument, and bb-tty takes them only
+                # container's key can mint one. Each ?arg= is one more of
+                # bb-tty's arguments, and bb-tty takes them only
                 # in the shapes it expects. The token is the same scoped
                 # one the launcher would have minted here (one project,
                 # user rights, an expiry), never the account's credential.
@@ -6013,8 +5922,8 @@ class Handler(BaseHTTPRequestHandler):
             up.close()
 
     def _term_decide(self, rest0):
-        """Whether this terminal may open and where it runs, for /term and
-        /termws alike (R133): (target, vm match, None), or (None, None,
+        """Whether this terminal may open and where it runs (R133):
+        (target, vm match, None), or (None, None,
         (why, status)). `rest0` is the path after the prefix, ?arg= and all."""
         refused = self._term_refused(rest0)
         if refused:
@@ -6026,10 +5935,9 @@ class Handler(BaseHTTPRequestHandler):
             # "somebody else has it" tells you nothing you can act on.
             return None, None, (held, 409)
         # Where this terminal lives (roadmap #24, phase 10b): a project bound
-        # to a node whose session half is up is relayed to THAT machine's
-        # ttyd (the same two ports, the same bb-tty, with the account and
-        # its token stamped into the URL), and everything else stays on the
-        # loopback. session_target says why a node cannot take one, and the
+        # to a node whose session half is up opens on THAT machine (the
+        # same bb-tty, with the account and its token stamped into its
+        # words), and everything else opens here. session_target says why a node cannot take one, and the
         # row's button carries the same sentence.
         # A SHELL is this container's own and always has been: a tree to look
         # at, the linters, git. Only a CLAUDE session needs a node, because
@@ -6064,13 +5972,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _term_own(self):
         """/termws?arg=...&cols=&rows= (R133): BuilderBot's own terminal, a
-        websocket the page opens directly. Decided as /term is
-        (_term_decide, _scoped_arg); a refusal is the socket closing with
-        why. On this controller bb-tty runs in a pty here; on a node the
-        socket is carried to its screen relay's /term, signed. Every few
-        seconds the decision is asked again, and a terminal no longer
-        allowed is ended (step 9). A node whose agent has no /term yet
-        closes with 4001, and the page opens that tab through ttyd."""
+        websocket the page, the Android app and the VS Code extension open
+        directly. Decided by _term_decide and _scoped_arg; a refusal is the
+        socket closing with why. On this controller bb-tty runs in a pty
+        here; on a node the socket is carried to its screen relay's /term,
+        signed. Every few seconds the decision is asked again, and a
+        terminal no longer allowed is ended (step 9)."""
         query = urllib.parse.urlsplit(self.path).query
         q = urllib.parse.parse_qs(query)
         args = "?" + "&".join(f"arg={urllib.parse.quote(a, safe='')}" for a in q.get("arg", []))
@@ -6087,7 +5994,8 @@ class Handler(BaseHTTPRequestHandler):
         if no:
             return termws.close(down, no[0])
         if target["where"] == "node" and not target.get("term"):
-            return termws.close(down, f"{target['name']}'s agent serves no terminal of its own yet", 4001)
+            return termws.close(down, f"{target['name']}'s agent is from before BuilderBot's own terminal: "
+                                      "update it on its Nodes row, and this opens")
         node = target["where"] == "node"
         words = [v for k, v in urllib.parse.parse_qsl(urllib.parse.urlsplit(
             self._scoped_arg(args, node=node)).query) if k == "arg"]
@@ -6113,7 +6021,7 @@ class Handler(BaseHTTPRequestHandler):
                 if kind != "ctr" and nodes.token_seal_on(target["id"]):
                     tk = tokenkeys.wrapped_for(target["id"], users.uid_of(self._who() or {}),
                                                ((nodes.node(target["id"]) or {}).get("reported") or {}).get("tokseal"))
-                return termws.node(down, host=target["host"], port=SCREEN_PORT, key=nodes.screen_key(target["id"]),
+                return termws.node(down, host=target["host"], port=target["screen"], key=nodes.screen_key(target["id"]),
                                    kind=kind, words=words, alive=alive, extra={"tk": tk} if tk else None, **dims)
             env = {k: v for k, v in os.environ.items() if k != "DASHBOARD_AUTH"}
             return termws.local(down, words, bbtty=str(HERE / "bb-tty"), env=env,
@@ -6188,7 +6096,7 @@ class Handler(BaseHTTPRequestHandler):
                 if kept_out(who_raw):
                     return "the controller is in maintenance mode"
                 return self._ctr_log_refused(arg, self._who())
-            return termws.node(self.connection, host=target["host"], port=SCREEN_PORT, key=nodes.screen_key(target["id"]),
+            return termws.node(self.connection, host=target["host"], port=target["screen"], key=nodes.screen_key(target["id"]),
                                kind="ctr", words=words, alive=alive, **dims)
         read, why = self._log_reader(arg)
         if not termws.upgrade(self):
@@ -6202,144 +6110,6 @@ class Handler(BaseHTTPRequestHandler):
                 return "the controller is in maintenance mode"
             return self._log_reader(arg)[1] or ""
         return termws.term_follow(self.connection, read, alive)
-
-    def _term_proxy(self):
-        """Everything under /term, relayed byte-for-byte to ttyd on the
-        loopback, websockets included.
-
-        This is what makes one login cover the terminals: the browser only
-        ever talks to this origin, so the session cookie (or basic auth)
-        checked before this call is the whole story, and ttyd's own port
-        stays unpublished. The /term prefix is stripped because ttyd's
-        client asks for everything relative to the page while ttyd itself,
-        here or on a node, is rooted at /.
-
-        For a websocket the handshake is forwarded and then the two sockets
-        are spliced until either side closes. The client sends nothing
-        between its request and the 101, so the handler's buffered reader
-        holds no stray bytes when the splice takes over the raw socket. A
-        plain request instead gets Connection: close upstream, which turns
-        "relay until EOF" into the complete response.
-        """
-        rest0 = self.path[len("/term"):]
-        # A socket from another page of the same site is not this
-        # dashboard's (B312): the Lax sign-in cookie still rides on it.
-        if "upgrade" in self.headers.get("Connection", "").lower() and (cross := self._ws_cross_origin()):
-            return self._term_notice(cross, 403)
-        target, vmm, no = self._term_decide(rest0)
-        if no:
-            return self._term_notice(*no)
-        rest = self._scoped_arg(rest0, node=target["where"] == "node")
-        if not rest or rest.startswith("?"):
-            # ttyd's client resolves "token" and "ws" against the page URL,
-            # so the page must live under a trailing slash.
-            self.send_response(302)
-            self.send_header("Location", "/term/" + rest)
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-            return
-        if target["where"] == "node":
-            writable = not users.may(self._who(), "terminal")
-            upstream = (target["host"], target["port"] if writable else target["ro_port"])
-        else:
-            upstream = ("127.0.0.1", self._ttyd_port())
-        try:
-            up = socket.create_connection(upstream, timeout=5)
-        except OSError:
-            if target["where"] == "node":
-                return self._term_notice(f"{target['name']} did not answer on "
-                                         f"{upstream[0]}:{upstream[1]}: its terminal server is "
-                                         "reported up, but this controller could not reach "
-                                         "it. A firewall between the two?", 502)
-            # Through the notice, like a refusal (B141): the tab is an iframe
-            # navigating here, and raw JSON landed in it as the browser's JSON
-            # viewer, "Pretty-print" box and all.
-            return self._term_notice("The terminal server is not running on this "
-                                     "controller, so this terminal cannot open. "
-                                     "Restarting the container starts it again.", 502)
-        # The connect timeout must not become a *relay* timeout: it stays on
-        # the socket, and a sendall that blocks longer than it (a big paste
-        # into a busy terminal, a slow reader) would raise and drop a live
-        # websocket. Reads are safe either way (select says readable first),
-        # writes are not. Blocking with no deadline is what a splice wants.
-        up.settimeout(None)
-        ws = "upgrade" in self.headers.get("Connection", "").lower()
-        # The terminal's page itself is asked for plain and read whole, so the
-        # phone's lines can go into it (B53); everything else is spliced.
-        page = (not ws and self.command == "GET"
-                and urllib.parse.urlsplit(rest).path == "/")
-        lines = [f"{self.command} {rest} HTTP/1.1"]
-        for k, v in self.headers.items():
-            if k.lower() in ("authorization", "cookie", "connection", "keep-alive"):
-                continue
-            if page and k.lower() == "accept-encoding":
-                continue
-            lines.append(f"{k}: {v}")
-        lines.append("Connection: " + (self.headers.get("Connection", "Upgrade")
-                                       if ws else "close"))
-        # No Authorization upstream: ttyd binds the loopback and is started
-        # with no --credential, because this proxy is the gate (15-dashboard.sh
-        # says the same from the other end). It was sending the operator's
-        # password on every terminal connection to a server that never looked
-        # at it, and with accounts, there is no longer one password to send.
-        self.close_connection = True
-        down = self.connection
-        sel = selectors.DefaultSelector()
-        console_on = None
-        try:
-            up.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
-            self.wfile.flush()
-            if page:
-                return self._term_page(up, down)
-            sel.register(up, selectors.EVENT_READ, down)
-            sel.register(down, selectors.EVENT_READ, up)
-            # A VM's Console, on its row while it lasts: one at a time, so the
-            # next person to open it is warned (the operator, 21 Oct).
-            if vmm and ws:
-                console_on = vms.present(f"{vmm.group(1)}/{vmm.group(2)}", "console",
-                                         (self._who() or {}).get("name") or self._principal(),
-                                         users.uid_of(self._who() or {}) or "")
-            # Maintenance mode switched on while this terminal is open ends it
-            # for anybody but the owner: the sign-in was checked when it
-            # connected, and a relay runs until a side hangs up.
-            who = self._who_raw()
-            while True:
-                for key, _ in sel.select(timeout=5):
-                    data = key.fileobj.recv(65536)
-                    if not data:
-                        return
-                    key.data.sendall(data)
-                if kept_out(who):
-                    return
-        except OSError:
-            pass                          # either side hung up mid-relay
-        finally:
-            if console_on is not None:
-                vms.gone(console_on)
-            sel.close()
-            up.close()
-
-    def _term_page(self, up, down):
-        """ttyd's page, read whole (it closes after one answer) and sent on
-        with the phone's lines in its head, compressed here when the browser
-        takes it since ttyd was asked for it plain."""
-        up.settimeout(30)
-        raw = b""
-        while True:
-            data = up.recv(65536)
-            if not data:
-                break
-            raw += data
-        fixed = _ttyd_page(raw)
-        if fixed is None:
-            return down.sendall(raw)
-        status, hdrs, body = fixed
-        body, zipped = self._gzip(body)
-        out = [status] + [f"{k}: {v}" for k, v in hdrs]
-        if zipped:
-            out.append("Content-Encoding: gzip")
-        out += [f"Content-Length: {len(body)}", "Connection: close"]
-        return down.sendall(("\r\n".join(out) + "\r\n\r\n").encode("latin-1") + body)
 
     def _static(self, rel, ctype):
         """A file that IS the app (index.html and the tab scripts), served so
@@ -6552,8 +6322,6 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return None
-        if path == "/term" or path.startswith("/term/"):
-            return self._term_proxy()
         # A VM's screen (R99): noVNC's page and client, and the relay to the
         # VM's node.
         if path.startswith("/novnc/"):
@@ -6565,6 +6333,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._screen_proxy()
         if path == "/termws":
             return self._term_own()
+        # One terminal on a page of its own: a tab popped out of the dock,
+        # and the Android app's session screen (R133).
+        if path == "/terminal":
+            return self._static("terminal.html", "text/html; charset=utf-8")
         if path.startswith("/apps/"):
             return self._app_file(path)
         # The page's companion scripts: a new surface is a new classic-script
@@ -7962,11 +7734,11 @@ class Handler(BaseHTTPRequestHandler):
         """Whose terminal a node's bb-tty is about to start, answered here
         (B166).
 
-        On this container ttyd is loopback-only and /term is the one way in,
-        so the account _scoped_arg stamps is the account that proved itself.
-        A node's ttyd is on the node, and a session there reaches it over
-        loopback like any other process on the machine: whatever the URL
-        says, bb-tty would have believed. So on a node bb-tty asks this, with
+        On this container /termws is the one way in, so the account
+        _scoped_arg stamps is the account that proved itself. On a node,
+        bb-session tty and bb-tty can be started by any process on the
+        machine with whatever words it likes, which bb-tty would have
+        believed. So on a node bb-tty asks this, with
         the token that rode in on the URL, and takes the account, its name
         and whether it is the owner from the answer and never from the URL.
 

@@ -2401,7 +2401,7 @@ function wireNodesTab(root){
               : `Shut down ${name}?\n\n${open}It does not come back on its own: switch it on from its console or its hypervisor.`)) return;
       }
       // An agent update RESTARTS the agent, and until B107 is fixed that
-      // takes every session on the node with it: the ttyds, their tmux
+      // takes every session on the node with it: their tmux
       // servers and the Claude processes inside them are all in the agent's
       // systemd cgroup, so systemd's default kill reaches the lot. Said
       // before the press, naming what is open there, because the operator

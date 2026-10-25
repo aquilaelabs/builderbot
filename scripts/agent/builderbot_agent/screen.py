@@ -1,18 +1,17 @@
-"""A VM's screen for the dock (R99): a small websocket server on the
-session address's SCREEN_PORT that relays one connection to one of this
-machine's VMs' VNC, which libvirt listens for on the loopback alone.
+"""The node's one port for the controller's sockets: BuilderBot's own
+terminals (R133, term.py) at /term, and a VM's screen for the dock (R99),
+relaying one connection to one of this machine's VMs' VNC, which libvirt
+listens for on the loopback alone.
 
-The controller is the only caller: the port is opened to it alone, beside
-the terminals' (sessions' firewall check), and each request carries the
+The controller is the only caller: the port is opened to it alone (the
+sessions' firewall check), and each request carries the
 controller's signature over the VM and the minute, keyed with the hash of
 this node's own token, which both ends hold and nothing else does. The
 browser's noVNC speaks RFB over it; nothing here reads what passes.
-The same port serves BuilderBot's own terminals (R133, term.py) at /term.
 """
 import base64
 import hashlib
 import hmac
-import os
 import re
 import select
 import socket
@@ -22,10 +21,9 @@ import time
 import urllib.parse
 
 from . import term
-from .base import _run, log, log_once
+from .base import SCREEN_PORT, _run, log, log_once
 from .vms import DOMAIN_RE, VIRSH
 
-SCREEN_PORT = 7684
 SKEW_S = 120
 PREV_KEY_S = 300
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
@@ -200,31 +198,47 @@ def serve_one(conn, key, kinds=None):
 
 
 class ScreenRelay:
-    """The listener, on the address the terminals listen on; a connection
-    each in its own thread: a VM's screen, or a terminal (R133)."""
+    """The listener, on the session address; a connection each in its own
+    thread: a terminal (R133), or a VM's screen. Up whether or not the agent
+    is root: a terminal as the agent's own account needs nothing more."""
     def __init__(self, agent):
         self.agent = agent
+        self.srv = None
 
     def start(self):
-        if os.geteuid() != 0:
-            return
         threading.Thread(target=self.run, name="screen", daemon=True).start()
+
+    def rebind(self):
+        """The node's address moved: the listener closed, so the loop binds
+        the new one."""
+        srv, self.srv = self.srv, None
+        if srv:
+            # shutdown wakes the accept blocked on it; close alone does not.
+            for f in (lambda: srv.shutdown(socket.SHUT_RDWR), srv.close):
+                try:
+                    f()
+                except OSError:
+                    pass
 
     def run(self):
         while True:
+            srv = None
             try:
                 srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 bound = self.agent.session_bind()
                 srv.bind((bound, SCREEN_PORT))
                 srv.listen(8)
-                log(f"screen: VMs' screens relayed on {bound}:{SCREEN_PORT}, to the controller alone")
+                self.srv = srv
+                log(f"screen: terminals and VMs' screens on {bound}:{SCREEN_PORT}, to the controller alone")
                 while True:
                     conn, _ = srv.accept()
                     key = self._keys()
                     threading.Thread(target=self._one, args=(conn, key, self._kinds), daemon=True,
                                      name="screen-one").start()
             except OSError as e:
+                if self.srv is None and srv is not None and srv.fileno() == -1:
+                    continue                    # closed by rebind: bind the new address now
                 log_once("screen-bind", f"screen: cannot listen on {SCREEN_PORT}: {e}")
                 time.sleep(60)
 
@@ -239,7 +253,7 @@ class ScreenRelay:
         return keys
 
     def _kinds(self):
-        """The terminals' programs as the session agent last started them,
+        """The terminals' programs as the session half last recorded them,
         and what opens an account's sealed sign-ins for one (R126)."""
         ks = dict(getattr(self.agent, "term_kinds", None) or {})
         if callable(getattr(self.agent, "token_open", None)):

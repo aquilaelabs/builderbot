@@ -2,7 +2,7 @@
   "name": "builderbot",
   "displayName": "BuilderBot",
   "description": "Open a BuilderBot project's files with no share mounted, see a coding agent session's changes as it saves them, and work in any agent's session terminal, as your own BuilderBot account.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "builderbot",
   "license": "Apache-2.0",
   "engines": { "vscode": "^1.84.0" },

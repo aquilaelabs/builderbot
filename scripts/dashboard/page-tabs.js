@@ -87,17 +87,12 @@ function nextShell(proj){
   return null;
 }
 
-// Same origin, not ttyd's own port: the server proxies /term to ttyd, so the
-// one sign-in that opened this page covers every terminal too: no second
-// credential prompt, and no second port for the router to publish.
-// A Claude terminal's URL carries the boot it was opened in. It is fixed into
-// the iframe's src at that moment and a reattach reuses the string, so a page
-// left open across a container restart asks for a session under the *old*
-// boot, which bb-tty refuses. That is the hole the boot-time tab prune could
-// not close: pruning the stored layout does nothing about a browser already
-// holding the tab, and a phone waking up reloads its terminal iframe, which
-// spawns whatever the URL names. A shell carries no marker, because a shell
-// is safe to recreate in the same directory and always was.
+// A Claude terminal's words carry the boot it was opened in, so a tab left
+// open across a container restart asks for a session under the *old* boot,
+// which bb-tty refuses rather than starting a new one behind the person's
+// back: a phone waking up reconnects its terminal, which spawns whatever the
+// words name. A shell carries no marker, because a shell is safe to
+// recreate in the same directory and always was.
 // The boot is the machine the session runs ON: for a project bound to a node
 // it is that node's (the row carries it), because bb-tty there compares
 // against its own run, and a tab stamped with this container's boot was
@@ -110,11 +105,15 @@ const bootFor = arg => {
   const onNode = picked ? (row?.session_nodes || []).find(x => x.id === picked)?.boot : "";
   return onNode || row?.session_boot || state?.boot || "";
 };
-const ttydUrl = (arg) => arg.startsWith("screen:")
-  // A VM's screen (R99): noVNC's own page, speaking to this controller's
-  // relay for that VM, scaled to the dock's size.
+// A tab's words as its terminal opens with them: the argument, and the boot
+// stamped on a Claude session's.
+const termArg = arg => agentOfArg(arg) && bootFor(arg) ? `${arg}:b:${bootFor(arg)}` : arg;
+// A tab on a page of its own: a VM's screen (R99), noVNC's own page speaking
+// to this controller's relay for that VM, scaled to the dock's size; any
+// other, BuilderBot's terminal page (terminal.html), for a tab popped out.
+const tabUrl = (arg, label) => arg.startsWith("screen:")
   ? `/novnc/vnc_lite.html?scale=true&path=${encodeURIComponent(`screen/ws?vm=${arg.split(":")[1]}/${arg.split(":")[2]}`)}`
-  : `/term/?arg=${encodeURIComponent(agentOfArg(arg) && bootFor(arg) ? `${arg}:b:${bootFor(arg)}` : arg)}`;
+  : `/terminal?arg=${encodeURIComponent(termArg(arg))}${label ? "&label=" + encodeURIComponent(label) : ""}`;
 
 const isPhone = () => window.matchMedia("(max-width:900px)").matches;
 
@@ -519,8 +518,7 @@ function openTab(spec){
   show(t);
 }
 
-// Each terminal tab is an iframe running a full xterm.js over its own
-// websocket. Past a point the page stops being usable and the container is
+// Each terminal tab is a full xterm.js over its own websocket. Past a point the page stops being usable and the container is
 // carrying sessions nobody is reading, so refuse rather than degrade.
 // Only terminals count (R78): a document tab is a draw from state and costs
 // nothing to keep, so a Nodes tab beside twelve shells was never the load
@@ -609,15 +607,15 @@ function dropTab(id){
 
 // tmux attaches many clients to one session by design; what it does not do
 // is size a session for two of them, so the tab here must not stay a live
-// terminal while the window has it: its frames are torn down and the pane
-// shows a placeholder with Reattach. The window is the terminal's own URL,
-// its own /term connection, so closing this page leaves it working, and the
+// terminal while the window has it: its socket is closed and the pane
+// shows a placeholder with Reattach. The window is the terminal's own page,
+// its own /termws connection, so closing this page leaves it working, and the
 // session outlives both. Desktop only: a phone has nowhere to put a window.
 function popOut(id, ev){
   ev?.stopPropagation();
   const t = tabOf(id);
   if (!t || t.kind !== "term" || isPhone()) return;
-  const w = window.open(ttydUrl(t.arg), "bb-pop-" + id, "popup=yes,width=1000,height=640");
+  const w = window.open(tabUrl(t.arg, tabLabel(t)), "bb-pop-" + id, "popup=yes,width=1000,height=640");
   if (!w){ notify("the browser blocked the window: allow pop-ups for this page and try again", true); return; }
   popWins.set(id, w);
   t.popped = true;

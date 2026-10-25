@@ -38,5 +38,33 @@ class ScrollOps(unittest.TestCase):
         self.assertEqual(macros.press("s", "lineup", None, lines)[1], 400)  # type: ignore[arg-type]
 
 
+class Leave(unittest.TestCase):
+    """The page leaves copy mode before it types into a pane it scrolled
+    back (B254): on a node an empty send-keys, which the agent leaves copy
+    mode for; here only a pane that is in a mode is canceled out of it."""
+    def setUp(self):
+        self.ran, self.mode = [], "1"
+        self.was = (macros.run, macros.tmux_sessions, macros.session_tmux, macros._answer)
+        macros.run = lambda argv, timeout=10: (self.ran.append(argv) or
+                                               {"out": self.mode if "display-message" in argv else ""})
+        macros.tmux_sessions = lambda: [{"name": "s"}]
+        macros.session_tmux = lambda nid, ops: ops
+        macros._answer = lambda x: (x, 200)
+
+    def tearDown(self):
+        macros.run, macros.tmux_sessions, macros.session_tmux, macros._answer = self.was
+
+    def test_on_a_node_an_empty_send_keys(self):
+        ops, _ = macros.press("s", "leave", {"node_id": "n_1", "node_name": "u_1~shell-a"})
+        self.assertEqual(ops, [{"session": "u_1~shell-a", "argv": ["send-keys", "-t", "u_1~shell-a"]}])
+
+    def test_here_canceled_only_in_a_mode(self):
+        macros.press("s", "leave", None)
+        self.assertIn(["tmux", "send-keys", "-t", "s", "-X", "cancel"], self.ran)
+        self.ran, self.mode = [], "0"
+        macros.press("s", "leave", None)
+        self.assertFalse(any("cancel" in a for a in self.ran))
+
+
 if __name__ == "__main__":
     unittest.main()

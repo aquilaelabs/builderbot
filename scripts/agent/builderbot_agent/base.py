@@ -32,15 +32,14 @@ DEFAULT_STORES = {"data": "/var/lib/builderbot/data",
                   # machine, and an optional /devdata mount to go with it.
                   "appdata": "/var/lib/builderbot/appdata"}
 
-# The session half (roadmap #24): the ttyd this node runs bb-tty under, the
-# ports it binds, and the address. Seams for the suite, which runs a ttyd
-# that only records what it was asked, and for a node whose ports are taken.
-# The bind address defaults to the address the default route leaves by (the
-# LAN one the controller reaches), not the loopback: the controller's proxy
-# dials in from another machine. Phase 10b's firewall keeps it to the
-# controller; until then nothing but the network's own rules does.
-TTYD_BIN = os.environ.get("BUILDERBOT_TTYD_BIN", "ttyd")
-SESSION_PORT = int(os.environ.get("BUILDERBOT_SESSION_PORT") or 7681)
+# The session half (roadmap #24): the screen relay's port, the one a
+# terminal (R133) and a VM's screen (R99) come in on, and the address it
+# binds. The bind address defaults to the address the default route leaves
+# by (the LAN one the controller reaches), not the loopback: the controller
+# dials in from another machine, and the firewall keeps the port to it. The
+# port is a seam for the suite alone, which runs several agents on one box;
+# the census says it, so the controller dials what the node listens on.
+SCREEN_PORT = int(os.environ.get("BUILDERBOT_SCREEN_PORT") or 7684)
 SESSION_BIND = os.environ.get("BUILDERBOT_SESSION_BIND", "")
 # What the census reports about it, kept by the Agent and read by census():
 # the census is a function of the machine, and the session's state is the
@@ -195,11 +194,6 @@ NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
 NETPLAN_FILE = "90-builderbot.yaml"
 # How long a network change has to dial back in before it is reverted.
 DIAL_BACK_S = 180
-# How long after a ttyd start this will try another. A port already taken
-# would otherwise spin the loop on a failing exec. Settable only so the suite
-# can stop waiting on it: the test that proves a dead ttyd is started again
-# waits exactly this long, and it was the slowest interval in the suite.
-SESSION_RETRY_S = int(os.environ.get("BUILDERBOT_SESSION_RETRY_S") or 30)
 # The Actions runner as a per-node service (docs/nodes.md §14, phase 7):
 # where it lives, and, for the tests, a tarball to unpack instead of the
 # GitHub release download.
@@ -275,14 +269,6 @@ ACT_RUNNER_RELEASES = "https://gitea.com/api/v1/repos/gitea/runner/releases/late
 # Tailscale, for Funnel (docs/nodes.md §7, phase 8): a seam so the tests can
 # stand in for it, like the rest of the tools the agent drives.
 TAILSCALE_BIN = os.environ.get("BUILDERBOT_TAILSCALE_BIN", "tailscale")
-
-
-def _zombie(pid):
-    try:
-        with open(f"/proc/{pid}/stat") as f:
-            return f.read().rsplit(")", 1)[-1].split()[0] == "Z"
-    except (OSError, IndexError):
-        return False
 
 
 def log(msg):

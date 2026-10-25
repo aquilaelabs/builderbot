@@ -132,7 +132,10 @@ ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + p
   const a = await box(before[0]), b = await box(before[1]);
   await finger(page, a.x + 10, a.y + a.h / 2, b.x + b.w - 4, b.y + b.h / 2, 0);
   ok(JSON.stringify(await order()) === JSON.stringify(before), 'a quick swipe along the dock line moves no tab');
-  await finger(page, a.x + 10, a.y + a.h / 2, b.x + b.w - 4, b.y + b.h / 2, 700);
+  // Past the next tab's middle, its minimize and close counted, which is
+  // where the line puts a held tab after it.
+  const whole = await page.$eval(`#pane1 .dtab[data-id="${before[1]}"]`, e => { const r = e.getBoundingClientRect(); return { x: r.left, w: r.width }; });
+  await finger(page, a.x + 10, a.y + a.h / 2, whole.x + whole.w * 0.75, b.y + b.h / 2, 700);
   const after = await order();
   ok(after[0] === before[1] && after[1] === before[0],
      `a tab held for a moment and dragged past the next takes its place (${before.slice(0, 2)} -> ${after.slice(0, 2)})`);

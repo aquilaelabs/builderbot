@@ -3,7 +3,7 @@
 # Split a long-running process's output: everything into its own file, and the
 # lines worth interrupting somebody for onto stdout as well.
 #
-# The dashboard and ttyd write to files of their own, which is right: a
+# The dashboard writes to a file of its own, which is right: a
 # dashboard poll is chatty and the boot log is a story with a beginning. But it
 # meant the session log ended when the hooks finished: anything that went wrong
 # an hour later was in a different file, and nothing in the first file said so.

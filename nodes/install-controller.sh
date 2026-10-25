@@ -170,7 +170,7 @@ tree_stamp() {
 }
 
 # dockerfile_arg NAME [TREE]: an ARG's default in the tree's Dockerfile, the
-# one place the image's pins are kept (ttyd, noVNC and its checksum).
+# one place the image's pins are kept (noVNC and its checksum).
 dockerfile_arg() {
     sed -n "s/^ARG $1=//p" "${2:-$TREE}/Dockerfile" | head -1
 }
@@ -342,9 +342,8 @@ pick_python() {
 # extras: what the image fetches from each vendor beside the packages, the
 # same way and as best it can: the linters `bb lint` runs, uv and mise,
 # Playwright and web-ext through npm, the home tunnel's cloudflared. Each
-# one that does not land is said, and nothing waits on it. ttyd is not an
-# extra: the terminals are the dashboard's, so it is the image's pinned
-# release where the family packages none, and the install stops without it.
+# one that does not land is said, and nothing waits on it. The terminals
+# need none of them: each is a pty of the dashboard's own.
 extras() {
     local arch miss=() bin
     arch="$(uname -m)"
@@ -569,12 +568,10 @@ checks() {
         /*) chk ok "projects: ${WORKSPACE_DIR}" ;;
         *) chk fail "--workspace ${WORKSPACE_DIR} is not a path from /"; fail=1 ;;
     esac
-    local p who
-    for p in "$PORT" 7681 7682; do
-        who="$(ss -ltnpH "sport = :$p" 2>/dev/null | head -1)"
-        if [ -z "$who" ] || printf '%s' "$who" | grep -q -e 'ttyd' -e 'python3'; then chk ok "port $p is free, or the controller's own"
-        else chk fail "port $p is taken: ${who}"; fail=1; fi
-    done
+    local who
+    who="$(ss -ltnpH "sport = :$PORT" 2>/dev/null | head -1)"
+    if [ -z "$who" ] || printf '%s' "$who" | grep -q python3; then chk ok "port $PORT is free, or the controller's own"
+    else chk fail "port $PORT is taken: ${who}"; fail=1; fi
     if id -u "$ACCOUNT" >/dev/null 2>&1 && ! grep -qx "$ACCOUNT" "$MADE" 2>/dev/null; then
         chk fail "${ACCOUNT} is an account here already, and not one this installer made: --account NAME"; fail=1
     fi
@@ -592,8 +589,6 @@ cmd_install() {
     packages
     py="$(pick_python)" || die "no python 3.${PY_MIN} or newer installed here, and the controller reads nothing older: install one (python3.${PY_MIN}) and run this again"
     printf '   python: %s\n' "$py"
-    say "ttyd: the terminals"
-    ttyd_install "$(dockerfile_arg TTYD_VERSION)" || die "ttyd is what the dashboard's terminals run in, and it did not install"
     extras
     make_account
     folders
@@ -827,12 +822,11 @@ own_node() {
 # What a session on this machine's node never reaches (docs/decisions.md, "A
 # controller installed bare metal, and its own node"): /etc/bb-session.wall
 # names the controller's folders, which bb-session covers in every view and
-# holds to their owners and modes before it starts a session, and the
-# controller's loopback ports, which an nftables table of the wall's own
-# refuses to every account but the controller's and root, a job's above
-# all (a session's own network has a loopback of its own already).
-WALL_PORTS="7681,7682"
-# The name bb-session asks nftables for (its WALL_TABLE).
+# holds to their owners and modes before it starts a session. The
+# controller keeps no port on the loopback that answers without a sign-in
+# (its terminals are the dashboard's own, R133), so the wall names none, and
+# the port table an earlier install wrote is taken away.
+# The name of that table (bb-session's WALL_TABLE).
 WALL_TABLE=builderbot_wall
 WALL_NFT="$P/etc/builderbot-controller/wall.nft"
 
@@ -856,41 +850,21 @@ wall_cover() {
 }
 
 wall_write() {
-    local uid
     say "the wall: what a session on this machine never reaches"
-    uid="$(id -u "$ACCOUNT")"
     {
         printf '# Written by BuilderBot'"'"'s install-controller.sh (R90): this machine is a BuilderBot\n'
         printf '# controller, and a session on its node is kept out of what follows. bb-session\n'
         printf '# covers every folder in COVER in a session'"'"'s view and starts none unless the\n'
-        printf '# session and job accounts reach none of it, and the ports refuse them.\n'
-        printf 'ACCOUNT=%s\nJOBS_USER=%s\nCOVER=%s\nPORTS=%s\n' "$ACCOUNT" "$JOBS_USER" "$(wall_cover)" "$WALL_PORTS"
+        printf '# session and job accounts reach none of it.\n'
+        printf 'ACCOUNT=%s\nJOBS_USER=%s\nCOVER=%s\nPORTS=\n' "$ACCOUNT" "$JOBS_USER" "$(wall_cover)"
     } > "$WALL_FILE.new"
     chmod 0644 "$WALL_FILE.new"
     mv -f "$WALL_FILE.new" "$WALL_FILE"
-    cat > "$WALL_NFT" <<EOF
-# Written by BuilderBot's install-controller.sh (R90): the controller's loopback ports
-# (its terminals' ttyd, which takes no credential: the dashboard is its gate) for the
-# controller's account and root, and refused to every other account on this machine.
-table inet ${WALL_TABLE}
-delete table inet ${WALL_TABLE}
-table inet ${WALL_TABLE} {
-    chain output {
-        type filter hook output priority -10; policy accept;
-        ip daddr 127.0.0.0/8 tcp dport { ${WALL_PORTS//,/, } } meta skuid 0 accept
-        ip daddr 127.0.0.0/8 tcp dport { ${WALL_PORTS//,/, } } meta skuid ${uid} accept
-        ip daddr 127.0.0.0/8 tcp dport { ${WALL_PORTS//,/, } } reject with tcp reset
-        ip6 daddr ::1 tcp dport { ${WALL_PORTS//,/, } } meta skuid 0 accept
-        ip6 daddr ::1 tcp dport { ${WALL_PORTS//,/, } } meta skuid ${uid} accept
-        ip6 daddr ::1 tcp dport { ${WALL_PORTS//,/, } } reject with tcp reset
-    }
-}
-EOF
-    chmod 0644 "$WALL_NFT"
-    [ -n "$P" ] && return 0
-    nft -f "$WALL_NFT" || die "nftables would not take the wall's table ($WALL_NFT), so the controller's ports are not refused to the node's accounts"
-    boot_oneshot builderbot-wall "BuilderBot: the controller's loopback ports, for the controller alone" \
-        "$(command -v nft) -f $WALL_NFT"
+    rm -f "$WALL_NFT"
+    if [ -z "$P" ]; then
+        command -v nft >/dev/null 2>&1 && nft delete table inet "${WALL_TABLE}" >/dev/null 2>&1 || true
+        boot_oneshot_remove builderbot-wall wall.nft
+    fi
     printf '   %s: %s\n' "$WALL_FILE" "$(wall_cover)"
 }
 
@@ -928,15 +902,21 @@ EOF
     esac
 }
 
-wall_remove() {
-    rm -f "$WALL_FILE"
-    command -v nft >/dev/null 2>&1 && nft delete table inet "${WALL_TABLE}" >/dev/null 2>&1 || true
+# boot_oneshot_remove NAME MATCH: a one-shot boot_oneshot made, taken away
+# (MATCH: what its line in rc.local names).
+boot_oneshot_remove() {
     case "$INIT" in
-        systemd) systemctl disable builderbot-wall >/dev/null 2>&1 || true
-                 rm -f /etc/systemd/system/builderbot-wall.service ;;
-        openrc)  rm -f /etc/local.d/builderbot-wall.start ;;
-        runit)   [ -f /etc/rc.local ] && sed -i '\|wall.nft|d' /etc/rc.local ;;
+        systemd) systemctl disable "$1" >/dev/null 2>&1 || true
+                 rm -f "/etc/systemd/system/$1.service" ;;
+        openrc)  rm -f "/etc/local.d/$1.start" ;;
+        runit)   [ -f /etc/rc.local ] && sed -i "\\|$2|d" /etc/rc.local ;;
     esac
+}
+
+wall_remove() {
+    rm -f "$WALL_FILE" "$WALL_NFT"
+    command -v nft >/dev/null 2>&1 && nft delete table inet "${WALL_TABLE}" >/dev/null 2>&1 || true
+    boot_oneshot_remove builderbot-wall wall.nft
 }
 
 main() {

@@ -18,7 +18,7 @@ runner's token is typed on the CI runner page.
 |---|---|---|
 | `PUID` / `PGID` | `99` / `100` | File ownership (Unraid `nobody:users`) |
 | `TZ` | `Etc/UTC` | The container's clock, for its log lines. Optional: the dashboard shows times in each browser's own zone, or the one picked under the gear in the header |
-| `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
+| `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (websockets at `/termws`) |
 | `FEATURES_OFF` | *(empty)* | Features switched off for the whole install, comma-separated: `tunnel`, `ftp`, `phone`, `devices`, `apps`, `image-updates`, `runner`, `enroll`, `shell` (a terminal on the controller itself; a node's stay), `vms` (virtual machines on nodes: the VMs page, `bb vm` and installing VM host), `internet` (an install meant to run offline: apps, image updates, the tunnel and runners with it, and the Doctor skips asking the outside). Each one's controls are drawn dead with the sentence below under them, its requests are refused, and Settings lists them |
 | `BANNER_TEXT` | *(empty)* | One line every visitor sees under the header, on every page and the sign-in page: a shared install's word to whoever is on it |
 | `BANNER_LINK` | *(empty)* | A link at the banner's end, http(s) or a path on this site; anything else is dropped |
@@ -593,10 +593,10 @@ bb ci-log          what CI printed on its last run here (`--list` for the runs
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
-bb logs --node NAME [--agent|--runner|--terminal|--nginx|--system|--kernel|--crash] [N]
-                   a machine's own log: the agent's journal, the CI runner's,
-                   the terminal server's, its nginx's where the nginx page put
-                   one, this boot's system journal, its kernel ring, and the
+bb logs --node NAME [--agent|--runner|--nginx|--system|--kernel|--crash] [N]
+                   a machine's own log: the agent's journal (its terminals'
+                   among it), the CI runner's, its nginx's where the nginx
+                   page put one, this boot's system journal, its kernel ring, and the
                    previous boot's last lines (--crash: what the box said
                    before it went). Root's on that box: the enrolled
                    account is in neither `adm` nor `systemd-journal`, so a

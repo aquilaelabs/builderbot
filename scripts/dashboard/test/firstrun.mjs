@@ -135,7 +135,7 @@ await firstRun(false);
     const port = await freePort();
     const out = openSync(`${w}/server.log`, 'a');
     const proc = spawn('python3', ['-u', `${DASH}/server.py`], { stdio: ['ignore', out, out], env: {
-      ...env, DASHBOARD_PORT: String(port), DASHBOARD_TTYD_PORT: String(await freePort()), BUILDER_HOME: `${w}/home`,
+      ...env, DASHBOARD_PORT: String(port), BUILDER_HOME: `${w}/home`,
       BB_DOCTOR_FIXTURE: `${DIR}/doctor.txt`, TC_AUTOCHECK: '0', BB_NODE_POLL: '3',
       BB_CLAUDE_LATEST_URL: 'file:///nonexistent', BB_CLAUDE_CHECK_DELAY: '3600', BB_NGINX_TAGS_URL: 'file:///nonexistent',
       BB_NGINX_CHECK_DELAY: '3600', BB_APPS_RELEASES_URL: 'file:///nonexistent', BB_APPS_BOOT_DELAY: '3600',
