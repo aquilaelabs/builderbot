@@ -24,9 +24,12 @@ function paintBar(pane, t, i){
     bar.style.removeProperty("--pc");
     // Painted only when it changed: a poll that moves nothing leaves the
     // line's buttons where they are, and a pointer over one keeps its hover.
-    // A line drawn again keeps where it was scrolled to (B322).
+    // A line drawn again keeps where it was scrolled to (B322), and one
+    // with a tab held in it is not drawn at all: a poll bringing a session
+    // dot replaced the tab under the finger and dropped it; the drag's end
+    // draws it.
     const kept = bar.querySelector(".dockline")?.scrollLeft || 0;
-    if (paint(bar, dockBar())){
+    if (!ddrag && paint(bar, dockBar())){
       const line = bar.querySelector(".dockline");
       if (line) line.scrollLeft = kept;
       wireDockBar(bar); dockReveal(bar);
