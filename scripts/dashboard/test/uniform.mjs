@@ -121,6 +121,11 @@ const DRIVERS = {
     open: () => page.evaluate(() => openJobsTab()),
     readyWhen: '.jobstab .jbrow, .jobstab .empty',
   },
+  // The Schedules page (R117): the built-in scan's row is always there.
+  schedules: {
+    open: () => page.evaluate(() => openSchedulesTab()),
+    readyWhen: '.schedulestab .schedrow',
+  },
   storage: {
     // A section per node, or the empty band on a box with none (R169).
     open: () => page.evaluate(() => openStorageTab()),

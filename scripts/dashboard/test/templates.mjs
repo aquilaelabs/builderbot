@@ -11,6 +11,7 @@ import { launch, newPage, ok, done, ready, sleep, URL } from './lib.mjs';
 const PAGES = [
   ['home', '#/home', 'homeData = null; homeFetching = true; renderHomeInto(0)'],
   ['jobs', '#/jobs', 'jobsList = null; renderJobsInto(0)'],
+  ['schedules', '#/jobs/schedules', 'schedData = null; renderSchedulesInto(0)'],
   ['nodes', '#/machines/nodes', 'nodesList = null; renderNodesInto(0)'],
   ['storage', '#/machines/storage', 'storageList = null; renderStorageInto(0)'],
   // Deploy is an undeployed node's alone, which is not known while it waits.

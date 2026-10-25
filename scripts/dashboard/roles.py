@@ -81,6 +81,9 @@ AREAS = (
     ("nodes", "Nodes", "global", "the Nodes page", "configure nodes, and what a project's sessions reach"),
     ("toolchains", "Toolchains", "global", "the Toolchains page", "install and remove"),
     ("jobs", "Jobs", "global", "the Jobs page", "run a command on a node"),
+    # Scheduled scripts (R117): an administrator's own cron, given to no
+    # other role unless somebody says so.
+    ("schedules", "Schedules", "global", "the Schedules page and its runs", "add, change and run schedules"),
     ("runner", "CI runner", "global", "the runner tab", "install and configure runners"),
     ("accounts", "Accounts and roles", "global", "the Users and Roles pages", "add accounts, give roles"),
     ("newprojects", "New projects", "global", "the nodes a project may be made on", "make a project, and own it"),
@@ -114,6 +117,7 @@ CAP_AREA = {
     "git-auth": ("gitauth", "write"), "docker-write": ("containers", "write"),
     "terminal": ("terminal", "write"),
     "node": ("nodes", "write"), "toolchains-write": ("toolchains", "write"), "jobs": ("jobs", "write"),
+    "schedules": ("schedules", "write"), "schedules-read": ("schedules", "read"),
     "runner": ("runner", "write"),
     "command-pin": ("controller", "write"), "create": ("newprojects", "write"),
     "admin": ("accounts", "write"), "debug": ("controller", "write"),

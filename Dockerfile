@@ -313,6 +313,9 @@ COPY docs/*.md /opt/builderbot/docs/
 # has to travel with the image it describes. Two levels above server.py,
 # where a checkout keeps it too.
 COPY CHANGELOG.md /opt/builderbot/CHANGELOG.md
+# The static analysis scan, which the Schedules page runs on a node as its
+# built-in schedule (R117): two levels above server.py, as in a checkout.
+COPY tools/scan.sh /opt/builderbot/tools/scan.sh
 # Carried in the image so the container can seed Unraid's icon cache itself
 # rather than depending on a URL Unraid can reach. See
 # scripts/startup.d/05-unraid-icon.root.sh.

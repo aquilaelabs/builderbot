@@ -510,6 +510,11 @@ bellseen.configure(state=STATE, write_json=write_json)
 # ...and what the page has said to each account, kept: notices.py (R218 step 6).
 import notices                                                   # noqa: E402
 notices.configure(state=STATE, write_json=write_json)
+# Scheduled scripts (R117): an administrator's cron, kept in the state and
+# never on the share; the built-in scan's script two levels above, as the
+# image and a checkout both keep it.
+import schedules                                                 # noqa: E402
+schedules.configure(state=STATE, write_json=write_json, scan=HERE.parent.parent / "tools" / "scan.sh")
 # ...and BuilderBot's own docs, read on the Help page: helpdocs.py (R258).
 import helpdocs                                                  # noqa: E402
 
@@ -1656,6 +1661,49 @@ CACHE_KEEP_DAYS = 14      # a project's build cache no job has used this long go
 PHONE_SNAPSHOT_DAYS = 7   # a phone not started this long gives back its quick-boot snapshot when its disk is full
 
 
+def schedule_queue(s, argv, by):
+    """One run of a schedule as a job on its node (R117): an exec job as the
+    node's jobs account, or a system job as root on a node provisioned as a
+    sandbox, as `bb root run` is (nodes.root_wait's gate), never waited
+    for. {job} or {error}."""
+    nid = s.get("node") or ""
+    n = nodes.node(nid) if nid else None
+    if not n:
+        return {"error": "its node is not enrolled any more: pick another"}
+    t = int(s.get("timeout") or schedules.TIMEOUT_DEFAULT)
+    principal = "schedule:" + str(s.get("id") or "")
+    if s.get("as") == "root":
+        if not (n.get("reported") or {}).get("sandbox"):
+            return {"error": f"{n['name']} was not provisioned as a BuilderBot sandbox, so root there is its owner's: "
+                             "run it as the jobs account, or on a sandbox node"}
+        if nodes.system_job_for(nid):
+            return {"error": f"a system job is already running on {n['name']}; one at a time"}
+        spec = {"apply": "root", "timeout": t,
+                "config": {"argv": argv, "why": f"the schedule {s.get('name', '')}", "by": by, "timeout": t}}
+        r = nodes.job_add(principal, {"node": nid}, "system", spec)
+    else:
+        r = nodes.job_add(principal, {"node": nid}, "exec",
+                          {"argv": argv, "timeout": t, "title": f"schedule: {s.get('name', '')}"[:120]})
+    if r.get("job"):
+        db.audit(by, "schedule-run", nid, {"schedule": s.get("id"), "job": r["job"], "as": s.get("as")})
+    return r
+
+
+def _job_state(jid):
+    return ((nodes.job(jid, with_log=False) or {}).get("state") or "") if jid else ""
+
+
+def _schedules_loop():
+    """The schedules' timer (R117): every half minute, what is due fires
+    (schedules.tick: one run at a time, a missed one run once and said)."""
+    while True:
+        time.sleep(30)
+        try:
+            schedules.tick(schedule_queue, _job_state)
+        except Exception as e:  # noqa: BLE001 (a bad schedule never stops the timer)
+            print(f"dashboard: schedules: {type(e).__name__}: {e}", flush=True)
+
+
 def _room_loop():
     """Every hour, a node whose Docker disk has fallen under twice the floor
     gets its build cache a week old and its images no container has used
@@ -1735,6 +1783,9 @@ def _attention(who):
                                       if p and users.may_work(who, p) else users.is_admin(who))
                # ...and a copy or move that did not happen (relocate.py).
                + relocate.attention(lambda nid: (nodes.node(nid) or {}).get("name") or nid))
+            # ...and a schedule whose last run failed or was skipped (R117),
+            # for whoever may read the Schedules page.
+            + ([] if users.may(who, "schedules-read") else schedules.attention(_job_state))
             + signs)
     # ...less what this account has put away (bellseen.py, R144): an update
     # to a version it dismissed, until a newer one is out.
@@ -5025,6 +5076,7 @@ GET_ROUTES = (
     ("prefix", "/api/users", "_get_users"),
     ("prefix", "/api/nginx", "_get_nginx"),
     ("prefix", "/api/storage", "_get_storage"),
+    ("exact", "/api/schedules", "_get_schedules"),
     ("prefix", "/api/v1/nodes", "_get_nodes"),
     ("prefix", "/api/v1/jobs", "_get_jobs"),
     ("prefix", "/api/home", "_get_home"),
@@ -5099,6 +5151,7 @@ POST_ROUTES = (
     ("exact", "/api/nginx", "_nginx"),
     ("exact", "/api/images", "_images"),
     ("exact", "/api/storage", "_storage"),
+    ("exact", "/api/schedules", "_schedules"),
     ("prefix", "/api/pin", "_pin"),
     ("exact", "/api/reset", "_reset"),
     ("prefix", "/api/create", "_create"),
@@ -9885,6 +9938,57 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return self._json(*macros.pin(req.get("name", ""), bool(req.get("pinned"))))
 
+    def _get_schedules(self):
+        """GET /api/schedules (R117): every schedule, its words, its next run
+        and its last run's state, and the nodes it may run on. Read on
+        Schedules; never a session's, whatever its token holds."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "schedules are a person's: a session has no say in them"}, 403)
+        why = users.may(who, "schedules-read")
+        if why:
+            return self._json({"error": why}, 403)
+        rows = schedules.listing()
+        for r in rows:
+            last = r.get("last") or {}
+            if last.get("job"):
+                last["state"] = _job_state(last["job"])
+        ns = [{"id": n["id"], "name": n["name"], "sandbox": bool((n.get("reported") or {}).get("sandbox")),
+               "state": n.get("state", "")}
+              for n in (nodes.node_list() if not NODES_OK else []) if n.get("kind") == "agent"]
+        return self._json({"schedules": rows, "nodes": ns, "may": not users.may(who, "schedules")})
+
+    def _schedules(self, req):
+        """POST /api/schedules (R117): save (add or change, turning one on or
+        off among them), remove, or run now. Write on Schedules; never a
+        session's."""
+        who = self._who() or {}
+        if who.get("session"):
+            return self._json({"error": "schedules are a person's: a session has no say in them"}, 403)
+        why = users.may(who, "schedules")
+        if why:
+            return self._json({"error": why}, 403)
+        act, by = field(req, "action"), self._principal()
+        if act == "save":
+            r = schedules.save(req, by)
+            if r.get("schedule"):
+                db.audit(by, "schedule-save", r["schedule"]["id"], {"on": r["schedule"].get("on"),
+                                                                 "cron": r["schedule"].get("cron")})
+        elif act == "remove":
+            r = schedules.remove(field(req, "id"))
+            if r.get("ok"):
+                db.audit(by, "schedule-remove", field(req, "id"), {})
+        elif act == "run":
+            s = schedules.get(field(req, "id"))
+            if not s:
+                return self._json({"error": "no such schedule"}, 404)
+            if not s.get("node"):
+                return self._json({"error": "pick the node it runs on first"}, 400)
+            r = schedules.fire(s, by, schedule_queue)
+        else:
+            return self._json({"error": "action is save, remove or run"}, 400)
+        return self._json(r, 400 if r.get("error") else 200)
+
     def _get_storage(self):
         """The Storage page (storage.view, R169): every node this account
         holds the Storage area on, what its disks hold, by project where
@@ -10605,6 +10709,7 @@ def main():
     artifacts.start()         # every project's dist/ to its newest builds, every few minutes
     if not NODES_OK:
         threading.Thread(target=_room_loop, name="room", daemon=True).start()
+        threading.Thread(target=_schedules_loop, name="schedules", daemon=True).start()
     ciwatch.start()           # a project's CI, once a day (R117)
     releasesign.start()       # a release's unsigned APK, signed on its node (R106)
     if "tunnel" not in featuresoff.off():

@@ -7025,6 +7025,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="tab-nodes.js"></script>
 <script src="tab-settings.js"></script>
 <script src="tab-jobs.js"></script>
+<script src="tab-schedules.js"></script>
 <script src="tab-nginx.js"></script>
 <script src="tab-vms.js"></script>
 <script src="page-tour.js"></script>
@@ -7850,6 +7851,8 @@ onRev("chat", () => { if (chatWith && tabOf(panes[1])?.kind === "chat") loadChat
 // open Jobs tab refetches, and nothing about jobs rides the status poll.
 onRev("jobs", () => {
   if (shown("jobs")) loadJobs();
+  // ...and the Schedules page, whose last runs are jobs (R117).
+  if (shown("schedules")) loadSchedules();
   // Home's queue and node counts, its containers kept (R218 step 5).
   if (shown("home")) loadHome(true);
   // ...and the jobs a toast is following (R218 step 6).

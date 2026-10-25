@@ -194,6 +194,9 @@ const TOOL_ICONS = {
   vms: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <rect x="1.5" y="2.5" width="13" height="9" rx="1.2"/><rect x="4.5" y="5" width="7" height="4" rx="0.6"/>
     <path d="M5.5 14h5"/><path d="M8 11.5V14"/></svg>`,
+  // A clock, for the Schedules page (R117).
+  schedules: `<svg viewBox="0 0 16 16" aria-hidden="true">
+    <circle cx="8" cy="8" r="5.8"/><path d="M8 4.6V8l2.4 1.6"/></svg>`,
   // A drive: two platters, for the Storage tab.
   storage: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <ellipse cx="8" cy="4.2" rx="5.5" ry="2"/><path d="M2.5 4.2v7.6c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2V4.2"/>
@@ -286,6 +289,11 @@ const TABKINDS = {
               icon: TOOL_ICONS.storage,
               render: (i) => renderStorageInto(i), live: () => `${storageRev}/${nodesRev}`,
               open: () => loadStorage() },
+  // jobsRev as well as its own: a schedule's run is a job.
+  schedules: { multi: false, label: () => "Schedules",
+              icon: TOOL_ICONS.schedules,
+              render: (i) => renderSchedulesInto(i), live: () => `${schedRev}/${jobsRev}`,
+              open: () => loadSchedules() },
   jobs:     { multi: false, label: () => "Jobs",
               icon: TOOL_ICONS.jobs,
               render: (i) => renderJobsInto(i), live: () => jobsRev,

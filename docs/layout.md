@@ -118,7 +118,7 @@ scripts/
     server.py                    the routes, the transport and the gates; each handler one call into a module beside it
     index.html                   the markup, the stylesheet and the wiring that runs at load
     terminal.html                one terminal on a page of its own: a tab popped out of the dock, and the Android app's session screen (R133)
-    tab-*.js                     one per document tab (Docker, Nodes, Jobs, nginx, Storage, Toolchains, Agents, Emulator, Phone, Apps, Settings, Users, Profile, Findings, Projects)
+    tab-*.js                     one per document tab (Docker, Nodes, Jobs, Schedules, nginx, Storage, Toolchains, Agents, Emulator, Phone, Apps, Settings, Users, Profile, Findings, Projects)
     nb-*.js                      one per notebook view; nb-core.js is the notebook itself
     page-*.js                    one per part of the page that is neither: the state, the tabs, the panes and the dock, a project's rows, the polls, the bell, the doctor and the rest
     static/                      the favicon set and the SVG marks the page draws
@@ -136,6 +136,7 @@ scripts/
     prefs.py                     which model and effort a project's sessions run on, per agent
     settings.py                  controller settings, the things that used to be environment variables; switches, a text and two secrets never shown back
     storage.py                   the Storage page's answer (R169): the nodes an account holds the area on, each project's folders where it may see the project, the rest as one line
+    schedules.py                 the Schedules page's scripts (R117): an administrator's cron in the state, its timetable in words, its timer and the built-in scan
     tunnel.py                    the home tunnel the controller runs itself (R176): cloudflared as its child from the settings, and the hostname's record and rules through Cloudflare's API
     statefile.py                 writing a state file, and holding it while you read-modify-write one
     stateversion.py              /config's state version: the start's refusal of a newer or too old one, the copy before a migration, the JSON stores' migrations run

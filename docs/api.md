@@ -41,6 +41,7 @@ The companion app's own contract is `android/api-surface.json`.
 | GET | `/api/users` | prefix | `_get_users` | GET /api/users. |  |
 | GET | `/api/nginx` | prefix | `_get_nginx` | The nginx page (nginxproxy.view): every node's nginx, for an account that may read the Nodes page; never a session's. |  |
 | GET | `/api/storage` | prefix | `_get_storage` | The Storage page (storage.view, R169): every node this account holds the Storage area on, what its disks hold, by project where the account sees the project and as one line otherwise. |  |
+| GET | `/api/schedules` | exact | `_get_schedules` | GET /api/schedules (R117): every schedule, its words, its next run and its last run's state, and the nodes it may run on. |  |
 | GET | `/api/v1/nodes` | prefix | `_get_nodes` | GET /api/v1/nodes: the Nodes page's read (nodes.tab_view), scoped to this account. |  |
 | GET | `/api/v1/jobs` | prefix | `_get_jobs` | GET /api/v1/jobs: nodes.jobs_view, narrowed to the projects this account may see unless it administers. |  |
 | GET | `/api/home` | prefix | `_get_home` | GET /api/home: home.read, the overview's numbers (R218 step 5). |  |
@@ -102,6 +103,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/nginx` | exact | `_nginx` | Deploy, save, certificate, remove, check and update on one node's nginx (nginxproxy.py): writing a compose file and building it on a node, so docker-write like a written container, and never a session's. | refused: docker-write |
 | POST | `/api/images` | exact | `_images` | Check for updates on the Containers page (imagecheck.py, R195): every container's registry images on one node, or all, asked now. | refused: docker-write |
 | POST | `/api/storage` | exact | `_storage` | Measure now on the Storage page: a node's disks walked at once (nodes.node_storage_measure). |  |
+| POST | `/api/schedules` | exact | `_schedules` | POST /api/schedules (R117): save (add or change, turning one on or off among them), remove, or run now. |  |
 | POST | `/api/pin` | prefix | `_pin` | Pin or unpin a command: macros.pin. | refused: command-pin |
 | POST | `/api/reset` | exact | `_reset` | POST /api/reset: start over at onboarding (settings.reset), and the dashboard re-executes itself so the next page is Create the owner. | refused: controller |
 | POST | `/api/create` | prefix | `_create` | New project: a fresh local repo, a clone or a link, and what the dialog chose besides (projects.create_from_dialog). | refused: create |

@@ -238,6 +238,17 @@ function attRow(a){
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bsign="${esc(a.project)}">Signing view</a></span></div></div>`;
   }
+  // A scheduled script (R117): a run that failed, could not be queued, or
+  // was skipped because the one before it was still going; its log where
+  // there is one, else the Schedules page.
+  if (a.kind === "schedule"){
+    return `<div class="bnote att${a.bad ? " bad" : ""}">
+      <div class="bt">${esc(a.name || "A schedule")}: ${a.bad ? "its run did not work" : "a run was skipped"}</div>
+      <div class="bsum">${esc(a.why)}</div>
+      <div class="bfoot"><span>${a.at ? esc(ago(a.at)) : "on the Schedules page"}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          ${a.job ? `<a href="#" data-bschedjob="${esc(a.job)}">Its log</a>` : `<a href="#" data-bsched>Schedules page</a>`}</span></div></div>`;
+  }
   // A container whose registry image moved (R195): one note per node, to
   // the Docker tab on that node, where Update is on each row.
   if (a.kind === "image"){
@@ -688,6 +699,12 @@ function wireNeeds(root, after = () => {}){
     openNotebook(a.dataset.bci, "git");
   });
   // ...and a release's signing to the project's Signing view (R106).
+  root.querySelectorAll("[data-bschedjob]").forEach(a => a.onclick = e => {
+    e.preventDefault(); after(); openJob(a.dataset.bschedjob);
+  });
+  root.querySelectorAll("[data-bsched]").forEach(a => a.onclick = e => {
+    e.preventDefault(); after(); openSchedulesTab();
+  });
   root.querySelectorAll("[data-bsign]").forEach(a => a.onclick = e => {
     e.preventDefault();
     after();

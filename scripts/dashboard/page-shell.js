@@ -44,7 +44,7 @@ const RAIL = [
   {key: "controller", label: "Controller", icon: "controller", tools: [["settings", "Settings"]]},
   {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"]]},
   {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
-  {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"]]},
+  {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"], ["schedules", "Schedules"]]},
   {key: "people", label: "People", icon: "people", tools: [["users", "Users"], ["roles", "Roles"]], admin: true},
   {key: "settings", label: "Settings", icon: "settings", tools: [["profile", "Profile"]]},
   {key: "help", label: "Help", icon: "help", tools: [["help", "Help"]]},
@@ -77,6 +77,8 @@ function railAllows(kind){
     // signed in to by whoever works there, so either area draws it.
     case "agents": return !!a.toolchains || !!a.nodes;
     case "jobs": return !!a.jobs;
+    // An administrator's own cron (R117), its own area.
+    case "schedules": return !!a.schedules;
     // The nginx tab is the Nodes tab's area (R171); Storage its own (R169).
     case "nodes": case "nginx": return !!a.nodes;
     case "storage": return !!a.storage;
@@ -115,7 +117,7 @@ const OPENERS = {
   projects: () => openProjectsTab(), findings: () => openFindingsTab(), docker: () => openDocker(),
   nodes: () => openNodesTab(), storage: () => openStorageTab(), nginx: () => openNginxTab(), vms: () => openVmsTab(),
   toolchains: () => openToolchains(), agents: () => openAgentsTab(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
-  runner: () => openRunnerTab(), jobs: () => openJobsTab(), users: () => openUsersTab(),
+  runner: () => openRunnerTab(), jobs: () => openJobsTab(), schedules: () => openSchedulesTab(), users: () => openUsersTab(),
   roles: () => openRolesTab(), settings: () => openSettingsTab(), profile: () => openProfileTab(),
   apps: () => openAppsTab(),
   sessions: () => openSessionsTab(), help: () => openHelp(),

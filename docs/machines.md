@@ -444,3 +444,30 @@ a grant of their own. The log is the only copy:
 a node buffers it and posts it here, and keeps nothing. `/api/v1/healthz` answers without a credential with
 the queue's counts, and `/metrics` answers with one in Prometheus text.
 
+## Schedules
+
+**Schedules**, beside Jobs in its group, is an administrator's own cron, as
+Unraid's User Scripts are: each schedule a script, a timetable in cron's five
+fields said in words (`0 4 * * 0`, Sundays at 4:00), the node it runs on, and
+whether it runs there as the node's jobs account or as root (a node
+provisioned as a sandbox alone, as `bb root run` is). Every run is a job, its
+log on the Jobs page and linked from the schedule's row with how it ended;
+**Run now** runs one once, whatever its timetable says. One run of a schedule
+goes at a time: one still going when the next falls due is said on the bell
+and that run skipped, and a run the controller was down for is run once when
+it is back, said as late, never once per run it missed. A failed run is on the
+bell too, with its log.
+
+The scripts are kept in the controller's state and never on the share, and
+are a person's alone: the page is its own area of a role (Schedules), which
+administrators hold and no other role is given unless somebody says so, and
+a session's token is refused at it whatever it asks; bb has no verb for
+schedules.
+
+The static analysis scan ([scanners.md](scanners.md)) is built in: off until
+it is turned on, which asks for the node it runs on and where that node sees
+the projects and the reports folder the controller reads at `/reports`; then
+Sundays at 4:00 until its timetable is changed. On the container edition that
+is a node with Docker that sees the share; on a bare-metal install, the
+controller's own node.
+
