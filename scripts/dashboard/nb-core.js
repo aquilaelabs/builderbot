@@ -782,7 +782,7 @@ function makeNotebook(project){
   async function loadNbVms(){
     try{
       vmsData = await (await fetch("/api/vms")).json();
-    }catch(e){ viewGlance($("nvHint"), [], esc("VMs: " + e)); return; }
+    }catch(e){ viewGlance($("nvHint"), [], esc("VMs: " + e), "", "bad"); return; }
     const rows = (vmsData.vms || []).filter(v => v.project === project);
     const up = rows.filter(v => v.state === "running").length;
     // The glance (R109): what runs of how many, as the VMs page counts.
@@ -812,7 +812,7 @@ function makeNotebook(project){
     const node = p?.prefs?.node || dockerNode || "";
     try{
       dkGot = await (await fetch("/api/docker" + (node ? "?node=" + encodeURIComponent(node) : ""))).json();
-    }catch(e){ viewGlance($("dkHint"), [], esc("docker: " + e)); return; }
+    }catch(e){ viewGlance($("dkHint"), [], esc("docker: " + e), "", "bad"); return; }
     dockerSeen[dkGot.node || node || ""] = dkGot;
     drawNbDocker();
   }

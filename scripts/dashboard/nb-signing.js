@@ -49,7 +49,7 @@ function nbSigningView({$, nb, project}){
     let j;
     try{
       j = await (await postJSON("/api/signing", {action: "list", project})).json();
-    }catch(e){ viewGlance($("sgHint"), [], esc("signing: " + e)); return; }
+    }catch(e){ viewGlance($("sgHint"), [], esc("signing: " + e), "", "bad"); return; }
     if (mine !== gen) return;
     if (j.error){
       // The server's own words, where the keys would be (R255 step 4).
@@ -222,11 +222,14 @@ function nbSigningView({$, nb, project}){
       return n ? `${n} of 2` : "none";
     };
     $("sgBox").innerHTML =
-      (why ? `<div class="field"><div class="hint">${esc(why)}</div></div>` : "")
-      // A key is checked and made on the project's node, never here: what
-      // keeps that node from it is said in its words (B232).
-      + (!tool && !why ? `<div class="field"><div class="hint" id="sgNode">${esc(nodeWhy)}</div></div>` : "")
-      + (!held && !why ? `<div class="field"><div class="hint nbempty">No keys yet: bb sign signs this project's builds on its node with the keys kept here, and a session never sees one.</div></div>` : "")
+      // What holds it back, in the notice voice; what it knows, as a head's
+      // facts (the operator, 25 Oct: no loose words at a view's top). A key is
+      // checked and made on the project's node, never here: what keeps that
+      // node from it is said in its words (B232).
+      (why ? `<div class="field"><div class="notice warn">${esc(why)}</div></div>` : "")
+      + (why ? "" : pageHead({cls: "sghead", facts: [
+          ["Node", tool ? "" : nodeWhy, {cls: "sgnode"}],
+          ["Keys", held ? "" : "none yet: bb sign signs this project's builds on its node with the keys kept here, and a session never sees one"]]}))
       + docSection("signing", "lock", "Backup password", locked ? "set" : "none", lock, {cls: locked ? "" : "warn"})
       // The keys are the project's, as many as it has: big chips pick one,
       // the small pills are for the view's own sections (R122).

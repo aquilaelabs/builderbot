@@ -2615,17 +2615,19 @@ function dmImagesSection(){
   return state?.can?.admin ? docSection("docker", "images", "Images and volumes", "",
     `<div class="dmimgbox">${skel("rows", 3, "reading…")}</div>`, {open: false, fold: true}) : "";
 }
-// ...and the status line under them: when the images were checked.
+// ...and the page's head under them: when the images were checked.
 function dmStatus(d){
   if (!mayDocker()) return "";
   // Image updates switched off on this install (R81): its sentence where
   // the line says when they were checked.
   if (featureOff("image-updates")) return `<div class="field">${deadWhy(featureOff("image-updates"))}</div>`;
   const host = dmHostOnly();
-  return headLine((!d ? `images checked ${skv(4)}` : d.images_at ? `images checked ${esc(ago(d.images_at))}` : "images not checked yet")
-    // ...and, once, why its containers have no Shell.
-    + (host && mayShell() ? ` · ${esc(host.name)} hosts containers only, so a shell in one opens from a node that runs sessions` : ""),
-    "", "dmimgbar");
+  // A head's facts (the operator, 25 Oct: no loose words at a page's top):
+  // when its images were checked, and where a node only hosts containers,
+  // where a shell in one opens.
+  return pageHead({cls: "dmimgbar", facts: [
+    ["Images checked", !d ? GHOST : d.images_at ? ago(d.images_at) : "not yet"],
+    ["Shells", host && mayShell() ? `from a node that runs sessions: ${host.name} hosts containers only` : ""]]});
 }
 
 function renderDockerInto(i){
@@ -2646,7 +2648,7 @@ function renderDockerInto(i){
     // builders given nothing (the operator, 18 Oct: a template written
     // beside the page fell behind it): the bar, the tiles, the status line,
     // then the rows.
-    el.innerHTML = `<div class="doctab dmtab">${skTpl(`${dmBar(null)}${dmTiles(null)}${dmStatus(null)}
+    el.innerHTML = `<div class="doctab dmtab">${skTpl(`${dmBar(null)}${dmStatus(null)}${dmTiles(null)}
       ${dmView === "list" ? skTable(DM_COLS, 4)
         // ...the rows in a project group's card, as they land (R262).
         : `<section class="dmcard"><div class="field dmgroup"><b>${skv(8)}</b></div>${skRows(3)}</section>`}
@@ -2770,7 +2772,7 @@ function renderDockerInto(i){
   const notOurs = allCs.filter(c => !c.ours).length;
   const tiles = blind || !(allIns.length || allCs.length) ? "" : dmTiles({running, all: allIns.length, behind,
     checked: !!dockerList?.images_at, projects: chips.filter(g => g.key !== "none").length, notOurs});
-  el.innerHTML = `<div class="doctab dmtab${slow || dockerList?.stale ? " dmstale" : ""}">${picker}${tiles}${status}${
+  el.innerHTML = `<div class="doctab dmtab${slow || dockerList?.stale ? " dmstale" : ""}">${picker}${status}${tiles}${
     chipBar(chips, dmChip, "data-dmchip")}${askRows}${note
       ? `<div class="field"><div class="notice warn dmnote">${esc(note)}</div></div>` : srcLine}${
     // Blind, the list is what is on record here rather than what is on the

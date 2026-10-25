@@ -424,12 +424,12 @@ function nodeRunnerSection(n, c, between = ""){
   // The node-scoped tool's shape, the Phone tab's too (R121 step 5): the
   // state row first, the things below it, the add band, and at the foot
   // what a workflow (or a session) does to reach this node.
-  // `between` is what the CI runner page puts under the state line: every
+  // `between` is what the CI runner page puts under the head: every
   // node's runner at a glance (runnerRows). This node's runners are a list
   // of their own, a card on that page (the operator, 18 Oct: it read as
   // loose rows under lines that ran to the edge).
-  return `${headLine(`<span class="pill ${pill}">${esc(status)}</span> One runner per git host; its labels decide which workflows land here.`,
-        "", "toolstate")}${between}
+  return `${pageHead({title: n.name || "", cls: "toolstate", pills: `<span class="pill ${pill}">${esc(status)}</span>`,
+        facts: [["Runners", "one per git host, its labels deciding which workflows land here"]]})}${between}
       ${addbar ? `<div class="field">${addbar}</div>` : ""}
       <div class="ndruns">${rows || `<div class="row"><div class="grow"><div class="sub dim ndrunnone">no runner on this node</div></div></div>`}</div>
       ${slots.length ? `<div class="field toolfoot ndrunpin"><div class="hint">This node's name pins a job here:
@@ -1841,8 +1841,8 @@ function renderRunnerInto(i){
     // page's own; the node and its runners are on their way.
     // In the node's panel, as it lands: its rows are bands there, not a card.
     d.setBar(skNodeBar([["Add runner", "primary"]]));
-    d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel">${headLine(`${skv(5)} One runner per git host; its labels decide which workflows land here.`,
-      "", "toolstate")}<div class="ndruns">${skRows(1)}</div></div>`);
+    d.list.innerHTML = skTpl(`<div class="ndrow runnerpanel">${pageHead({cls: "toolstate",
+      facts: [["Runners", "one per git host, its labels deciding which workflows land here"]]})}<div class="ndruns">${skRows(1)}</div></div>`);
     return;
   }
   const ns = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");

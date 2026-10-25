@@ -192,10 +192,10 @@ function renderEmulatorInto(i){
     // Its template (R218 step 16): the bar and the add list's label are the
     // page's own; the node's images are on their way.
     surf.setBar(skNodeBar([]));
-    // In the page's order: its head line, its tiles, the images it holds,
+    // In the page's order: its head, its tiles, the images it holds,
     // then the ones to add.
     const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
-    surf.list.innerHTML = skTpl(`<div class="tchead">System images in ${skv(18)}: what its emulator can boot.</div>
+    surf.list.innerHTML = skTpl(`${pageHead({cls: "tchead", facts: [["System images", GHOST]]})}
       <div class="field"><div class="tiles">${tile("images")}${tile("AVDs", "built on them")}${tile("free", "on the store")}</div></div>
       ${emuSections(`<div class="tcs">${skRows(2)}</div>`, "", `<div class="tcs">${skRows(2)}</div>`)}`);
     return;
@@ -220,12 +220,13 @@ function renderEmulatorInto(i){
   // The one node switcher (page-docs.js nodePick, R121).
   surf.setBar(nodeBar(nodePick("emuNodeSel", pnodes, emuNode)));
   surf.list.innerHTML = `
-    <div class="tchead">${d.wrong_platform
-      ? `System images are what an emulator boots, and they live on the node that runs it.`
-      : d.root
-      // Its free space is the tile's to say, once (R218 step 24).
-      ? `System images in <code>${esc(d.root)}</code> on ${esc(d.name)}: what its emulator can boot.`
-      : `${esc(d.name)} reports no toolchain store yet.`}</div>
+    ${
+    // Its node as a head (the operator, 25 Oct): where the images an
+    // emulator boots are kept; its free space is the tile's (R218 step 24).
+    pageHead({title: d.name || "", cls: "tchead",
+      pills: d.root && !d.wrong_platform ? "" : `<span class="pill warn">${d.wrong_platform ? "another platform" : "no store yet"}</span>`,
+      facts: [["System images", d.root && !d.wrong_platform ? d.root : ""],
+              ["Platform", d.wrong_platform ? `${d.platform}: the Android tools are packaged for ${d.wrong_platform}` : ""]]})}
     ${
     // Warnings in the notice voice, an action a button beside it rather than
     // a link in the prose (R218 step 24).

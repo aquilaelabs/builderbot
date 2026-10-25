@@ -951,17 +951,18 @@ function segPick(ids, on){
   }
 }
 
-// A page's status line (the operator, 17 Oct: one order for every page's
-// top): under the tiles, when its things were last checked or what state
-// they are in at the left, its upkeep actions (Check for updates, Measure
-// now, Install selected) at the right, on one line. `said` is markup; `cls`
-// names the page's own line for its wiring and its suites.
-// `under` is a note under the line (what the bar's Remove would take), and
-// `state` a class for the words (a job running).
-function headLine(said, actions = "", cls = "", {under = "", state = ""} = {}){
-  if (!said && !actions) return "";
-  return `<div class="field headline${cls ? " " + esc(cls) : ""}"><div class="actbar"><span class="state${state ? " " + esc(state) : ""}">${
-    said}</span>${actions}</div>${under}</div>`;
+
+// A page's head (the operator, 25 Oct: what a page knows is said the way a
+// node's head says it, never as loose words at its top): what the page is
+// about with its state as pills, its facts as labels and values, and the
+// buttons about it on an action bar. Each part only when the page has it.
+// `pills` is markup (pill spans); `facts` factGrid's pairs.
+function pageHead({title = "", pills = "", facts = [], actions = "", cls = ""} = {}){
+  const grid = factGrid(facts, "pghfacts");
+  if (!title && !pills && !grid && !actions) return "";
+  return `<div class="field pghead${cls ? " " + esc(cls) : ""}">${
+    title || pills ? `<div class="name">${title ? esc(title) : ""}${pills ? ` ${pills}` : ""}</div>` : ""}${grid}${
+    actions ? `<div class="actbar">${actions}</div>` : ""}</div>`;
 }
 
 // A row of tiles under a tab's bar: each a number the tab is about, with
@@ -1005,11 +1006,19 @@ function glanceWaiting(el){
   const n = was ? was.tiles : +el.dataset.tiles || 0;
   const said = was ? was.said : "said" in el.dataset;
   return paint(el, statTiles(Array.from({length: n}, () => ({value: GHOST, label: "\u00a0"})))
-               + headLine(said ? skel("word") : "", "", "nbsaid"));
+               + (said ? viewSaid(skel("word")) : ""));
 }
-function viewGlance(el, tiles = [], said = "", actions = ""){
+// What a view has to say beside its tiles, in the notice voice (the operator,
+// 25 Oct: no loose words at a page's top): an error in red, a state plain,
+// its buttons on the notice's own bar.
+function viewSaid(said, actions = "", tone = ""){
+  if (!said && !actions) return "";
+  return `<div class="field nbsaid"><div class="notice${tone ? " " + esc(tone) : ""}">${said}${
+    actions ? `<div class="actbar">${actions}</div>` : ""}</div></div>`;
+}
+function viewGlance(el, tiles = [], said = "", actions = "", tone = ""){
   if (!el) return false;
-  const wrote = paint(el, (Array.isArray(tiles) ? statTiles(tiles) : tiles || "") + headLine(said, actions, "nbsaid"));
+  const wrote = paint(el, (Array.isArray(tiles) ? statTiles(tiles) : tiles || "") + viewSaid(said, actions, tone));
   // Marked once: a poll that brings nothing new writes nothing (uniform).
   if (!el.dataset.drawn) el.dataset.drawn = "1";
   glanceSeen[el.id] = {tiles: el.querySelectorAll(".tile").length, said: !!el.querySelector(".nbsaid")};

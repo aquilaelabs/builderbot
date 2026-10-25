@@ -106,10 +106,10 @@ function nbGitView({$, nb, project}){
     try{
       const r = await fetch("/api/git?project=" + encodeURIComponent(project) + "&what=all");
       git = await r.json();
-    }catch(e){ viewGlance(hint, [], esc("git: " + e)); return; }
+    }catch(e){ viewGlance(hint, [], esc("git: " + e), "", "bad"); return; }
     if (git.error){
       const none = git.error === "not a git repository";
-      viewGlance(hint, [], none ? "no repository yet" : esc("git: " + git.error));
+      viewGlance(hint, [], none ? "no repository yet" : esc("git: " + git.error), "", none ? "" : "bad");
       // The way on, where the dead end was: Init makes the repository here
       // (a project adopted from a directory, or unpacked from an archive
       // without one), and a session then commits and pushes as anywhere.

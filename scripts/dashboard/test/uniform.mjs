@@ -64,7 +64,7 @@ const DRIVERS = {
   },
   projects: {
     open: () => page.evaluate(() => openProjectsTab()),
-    readyWhen: '.projtab .pcard',
+    readyWhen: '.projtab .pcard:visible',
   },
   notebook: {
     open: () => page.evaluate(() => openNotebook('alpha', 'roadmap')),
@@ -766,7 +766,7 @@ for (const kind of kinds){
   ok(m.flush, `[${kind}] fills its pane flush, like every document`);
   ok(m.maxw === '1080px',
      `[${kind}] caps at the document width (got ${m.maxw})`);
-  ok(m.bands > 0 && m.lefts.length === 1,
+  ok(m.bands > 0 && (m.lefts.length === 1 || !m.lefts.length && m.colLefts.length === 1),
      `[${kind}] every band starts at one x (${m.bands} bands at ${
        JSON.stringify(m.lefts)}${m.lefts.length > 1 ? ': ' + m.lefts.map(x => `${x} is ${m.who[x]}`).join('; ') : ''})`);
   if (m.edges) ok(m.edges.length === 0,
@@ -802,8 +802,27 @@ for (const kind of kinds){
       if (first && vis(b) && !first.contains(b) && (first.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING))
         late.push(named(b));
     });
-    return { between, late };
+    // Above the first section, only what a page's top is made of: its
+    // tiles, its chips and jump bar, and its head (the operator, 25 Oct: no
+    // loose words at a page's top; a page says what it knows the way a
+    // node's head does, its name, its state and its facts).
+    // Words at its top: a hint or a status line before its first section,
+    // or words in its bar beside the controls (a count, an uptime, a name);
+    // a notice keeps its own voice and box, and a head is where facts go.
+    const loose = [];
+    const list = first?.parentElement || host.querySelector('.doclist');
+    for (const e of list ? list.children : []){
+      if (e === first) break;
+      if (!vis(e) || e.closest('.pghead')) continue;
+      const w = e.matches('.hint, .headline, .tchead') ? e : e.querySelector(':scope > .hint, :scope > .headline, :scope > .tchead');
+      if (w && vis(w)) loose.push(`${named(w)}: ${w.textContent.replace(/\s+/g, ' ').trim().slice(0, 60)}`);
+    }
+    host.querySelectorAll('.docbarrow .barfacts, .docbarrow > .dim, .docbarrow > span.sub').forEach(w => {
+      if (vis(w) && w.textContent.trim()) loose.push(`bar: ${w.textContent.replace(/\s+/g, ' ').trim().slice(0, 60)}`);
+    });
+    return { between, late, loose };
   });
+  ok(shape.loose.length === 0, `[${kind}] its top says what it knows in a head, not in loose words${shape.loose.length ? `; loose: ${shape.loose.join(' | ')}` : ''}`);
   ok(shape.between.length === 0, `[${kind}] nothing stands between its sections${shape.between.length ? `; between: ${shape.between.join(', ')}` : ''}`);
   ok(shape.late.length === 0, `[${kind}] its pills are at its top, before its first section${shape.late.length ? `; after it: ${shape.late.join(', ')}` : ''}`);
   const L = await language();

@@ -238,7 +238,7 @@ function renderJobsInto(i){
   if (jobsList === null){
     // Its template (R218 step 16): the bar's filter and the table's head are
     // the page's own; the count and the rows are on their way.
-    d.setBar(`<span class="dim">${skv(4)}</span>`);
+    d.setBar("");
     d.list.innerHTML = skTpl(jobsSection(skTable(JOB_COLS, 6, "jbtbl"), ""));
     wireJobsTab(d.el);
     loadJobs();
@@ -248,9 +248,9 @@ function renderJobsInto(i){
     d.list.innerHTML = `<div class="hint bad">${esc(jobsErr)}</div>`;
     return;
   }
-  const live = jobsList.filter(j => !["succeeded", "failed", "canceled"].includes(j.state)).length;
-  d.setBar(`<span class="dim">${jobsList.length} job${jobsList.length === 1 ? "" : "s"}${
-      live ? `, ${live} not finished` : ""}</span>`);
+  // Its count is its tiles' (the operator, 25 Oct: no loose words at a
+  // page's top).
+  d.setBar("");
   const shown = jobsShown(jobsList);
   const rows = shown.map(j => {
     const open = jobsOpen.has(j.id);

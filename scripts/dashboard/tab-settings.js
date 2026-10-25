@@ -80,8 +80,14 @@ function renderSettingsInto(i){
   // The build and the uptime live here now (R218 step 2, the top-bar rule):
   // facts in the facts voice, where the header carried them before.
   // ...and no sentence about the page beside them (the operator, 18 Oct).
-  d.setBar(`<span class="barfacts">up ${
-    esc(shortUptime(state?.uptime || 0))} · ${esc(state?.image?.version || (state?.image?.rev || "").slice(0, 7) || "unstamped")}</span>`);
+  // The controller's build and how long it has been up, as a node's head
+  // says what a machine is (the operator, 25 Oct: no loose words at the top).
+  d.setBar("");
+  const img = state?.image || {};
+  const head = pageHead({title: "This controller", facts: [
+    ["Version", img.version || "unstamped"],
+    ["Commit", (img.rev || "").slice(0, 7)],
+    ["Up", shortUptime(state?.uptime || 0)]]});
   // Sections, like every other tab's (the operator, 11 Oct): one fold per
   // group, its status on the heading, a jump bar over them, and each with
   // its own Apply and Revert. The groups' own markup is kept inside (the
@@ -96,7 +102,7 @@ function renderSettingsInto(i){
   // The logs are an administrator's: a poll that has landed without them
   // means this account has no Logs section, not one still on its way (B38).
   const logs = logSection();
-  d.list.innerHTML = `<div class="sectjump" data-sects></div>
+  d.list.innerHTML = `${head}<div class="sectjump" data-sects></div>
     ${logs || !state ? sect("logs", "Logs", "", `<div class="row stack2" data-group="Logs"><div class="grow">${withRevert(logs, "logs")
         || `<div class="sub">log settings arrive with the first poll…</div>`}</div></div>`) : ""}
     ${reportsSection() ? sect("reports", "BuilderBot bug reports", reportsCount === null ? "" : reportsCount ? `${reportsCount} report${reportsCount === 1 ? "" : "s"}` : "none", reportsSection()) : ""}

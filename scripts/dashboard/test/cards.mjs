@@ -1672,10 +1672,10 @@ await page.click('#rnCancel');
   const where = await page.evaluate(v => ({ ship: [...document.querySelectorAll('.pane .nb .nbsub [data-in="ship"]')].map(b => b.dataset.v).join(),
     sect: !!document.querySelector('details.rngroup[data-sect="rn:signing"]'), hash: location.hash,
     head: (document.querySelector(`${v} #sgHint`)?.textContent || '').replace(/\s+/g, ' ').trim(),
-    empty: document.querySelector(`${v} .hint.nbempty`)?.textContent || '' }), V);
+    empty: document.querySelector(`${v} .sghead`)?.textContent.replace(/\s+/g, ' ') || '' }), V);
   ok(where.ship === 'artifacts,docker,vms,signing' && !where.sect && /\/projects\/alpha\/signing$/.test(where.hash)
-     && where.head === '' && /No keys yet/.test(where.empty),
-     `the keys are the notebook's Signing view, last in Ship, at its own address, no tiles over its one hint line, and the settings have no signing section (${JSON.stringify(where)})`);
+     && where.head === '' && /Keys\s*none yet/.test(where.empty),
+     `the keys are the notebook's Signing view, last in Ship, at its own address, no tiles over its head, and the settings have no signing section (${JSON.stringify(where)})`);
   const signRows = await page.$$eval(`${V} .rnsign[data-key]`, rs => rs.map(r => r.firstElementChild.textContent.trim()));
   // ...under the backup password's line, the project's owner's to set (the
   // fixture's owner owns alpha).
@@ -1761,7 +1761,7 @@ await page.click('#rnCancel');
   // What keeps the project's node from a key's work is said in its words,
   // naming the node and what it lacks, never the controller's keytool (B232).
   const signList = (await api('/api/signing', { project: 'alpha', action: 'list' })).body;
-  const nodeLine = await page.$eval(`${V} #sgNode`, e => e.textContent.trim()).catch(() => '');
+  const nodeLine = await page.$eval(`${V} .sgnode`, e => e.textContent.trim()).catch(() => '');
   ok(!/keytool/i.test(await page.$eval(V, e => e.textContent)) && typeof signList.node_why === 'string'
      && (signList.node_why ? nodeLine === signList.node_why : nodeLine === ''),
      `the Signing view says what keeps the project's node from checking or making a key, in the node's words (${signList.node_why || 'ready'})`);

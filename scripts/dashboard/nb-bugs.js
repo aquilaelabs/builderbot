@@ -248,7 +248,7 @@ function nbBugsView({$, nb, project}){
       drawBugAdd();
       return;
     }
-    if (nb.bugs.error){ viewGlance(hint, [], esc("bugs: " + nb.bugs.error)); return; }
+    if (nb.bugs.error){ viewGlance(hint, [], esc("bugs: " + nb.bugs.error), "", "bad"); return; }
     if (!force && list.querySelector(".dropbox, .bugform")) return;
     if (nb.bugs.releases !== undefined) nb.bugReleases = nb.bugs.releases;
     const rows = sortedBugs();

@@ -587,7 +587,7 @@ ok(reg && reg.cmd === 'npm test cards', `the registry's payload carries the run 
 await nbTab(page, 'bugs');
 await nbTab(page, 'tests');
 await page.waitForFunction(() => /tests running/.test(document.querySelector('.nb #tstHint')?.textContent || ''), null, { timeout: 15000 });
-const headGoing = await page.$eval('.nb #tstHint', e => ({ said: e.querySelector('.nbsaid .state')?.textContent.replace(/\s+/g, ' ').trim() || '',
+const headGoing = await page.$eval('.nb #tstHint', e => ({ said: e.querySelector('.nbsaid .notice')?.textContent.replace(/\s+/g, ' ').trim() || '',
                                                            tiles: e.querySelectorAll('.tile').length }));
 ok(/^tests running, started just now(?: by \w+)?: npm test cards$/.test(headGoing.said) && headGoing.tiles > 0,
    `the Tests view's status line names the run going, under its tiles: when it started, by whom, the command (${JSON.stringify(headGoing).slice(0, 120)})`);

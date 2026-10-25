@@ -272,13 +272,12 @@ function nginxUndeployed(n){
   const count = (n.routes || []).length, certs = Object.keys(n.certs || {}).length;
   const clash = (n.clash || []).length
     ? `<div class="field"><div class="hint bad">${esc(n.clash.join(", "))} ${n.clash.length === 1 ? "holds" : "hold"} a port nginx needs on this node: it listens on 80 and 443 there, so one of them has to give way.</div></div>` : "";
-  // The page's status line (the operator, 17 Oct: one order for every
-  // page's top): not deployed and what Deploy brings; Deploy is in the bar
-  // with every header button.
+  // The page's head (the operator, 17 and 25 Oct): not deployed and what
+  // Deploy brings; Deploy is in the bar with every header button.
   return `<div data-ngnode="${esc(n.node)}">
-    ${headLine(`<span class="pill">not deployed</span> ${count || certs
-          ? `Deploy puts nginx on ${esc(n.name)} with the ${count} route${count === 1 ? "" : "s"} and ${certs} certificate${certs === 1 ? "" : "s"} kept for it`
-          : `Deploy puts nginx on ${esc(n.name)}; its routes and certificates are set here once it is there`}`, "", "toolstate")}
+    ${pageHead({title: n.name || "", cls: "toolstate", pills: `<span class="pill">not deployed</span>`, facts: [
+      ["Deploy brings", count || certs ? `${count} route${count === 1 ? "" : "s"} and ${certs} certificate${certs === 1 ? "" : "s"} kept for it`
+                                       : "nginx alone: its routes and certificates are set here once it is there"]]})}
     ${clash}
   </div>`;
 }
@@ -299,7 +298,9 @@ function nginxBody(n){
   const pill = n.state?.job?.running ? `<span class="pill">deployed, rebuilding</span>`
     : n.state?.running === false ? `<span class="pill warn">deployed, down</span>`
     : `<span class="pill ok">deployed</span>`;
-  const sub = `nginx-${esc(n.container.replace(/^nginx-/, ""))} on the ${pageLink("docker", "Containers page")}, ${count} route${count === 1 ? "" : "s"}${n.host_only ? "; a hosting-only node" : ""}`;
+  const facts = [["Container", `nginx-${esc(n.container.replace(/^nginx-/, ""))} on the ${pageLink("docker", "Containers page")}`, {html: true}],
+                 ["Routes", `${count} route${count === 1 ? "" : "s"}`],
+                 ["Node", n.host_only ? "hosting-only" : ""]];
   // The image it is pinned to, the newest line, and Update when behind
   // (R192): its own action bar, since Check now and Update are two verbs.
   const im = n.image || {}, lt = nginxLatest || {};
@@ -361,10 +362,9 @@ function nginxBody(n){
         <button type="button" class="primary" data-ngcertsave disabled>Add</button>
         <button type="button" data-ngcertcancel>Cancel</button></div></div>
     </div>`);
-  // The page's status line, deployed as undeployed (the page tops' one
-  // order): its state and what it runs, under the tiles.
+  // The page's head, deployed as undeployed: its state and what it runs.
   return `<div data-ngnode="${esc(n.node)}">
-    ${headLine(`${pill} <span class="sub">${sub}</span>`, "", "toolstate")}
+    ${pageHead({title: n.name || "", cls: "toolstate", pills: pill, facts})}
     ${clash}
     ${hosts}
     ${routes}
@@ -390,7 +390,7 @@ function renderNginxInto(i){
     // Its template (R218 step 16): the bar and the state row's words are
     // the page's own; the node and its routes are on their way.
     d.setBar(nginxBar(null));
-    d.list.innerHTML = skTpl(`${headLine(`${skv(5)} ${skv(24)}`, "", "toolstate")}${
+    d.list.innerHTML = skTpl(`${pageHead({cls: "toolstate", facts: [["Container", GHOST], ["Routes", GHOST]]})}${
       ["hostnames", "routes", "certs", "image"].map(k => ngSect(k, "", `<div class="field">${skRows(2)}</div>`)).join("")}`);
     loadNginx();
     return;

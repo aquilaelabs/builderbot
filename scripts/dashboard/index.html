@@ -829,6 +829,12 @@ html[data-motion="reduce"] .tourring{transition:none}
 .ssplit{display:grid;grid-template-columns:minmax(13rem,17rem) minmax(0,1fr);align-items:start}
 .ssplit>*{grid-column:2;min-width:0}
 .ssplit>.snav{grid-column:1;grid-row:1 / span 99;align-self:stretch}
+/* A page's head (the operator, 25 Oct) at the top of the content column,
+   where every band of the page starts, the section under it. */
+.ssplit>.pghead{grid-column:2}
+/* ...its words at the cards' edge beside the list, as a head stands over
+   a page's cards, which there take the side room the head's padding is. */
+@media(min-width:901px){.ssplit>.pghead{padding-left:0;padding-right:0}}
 /* The jump bar is the list's job here: hidden, over the dialog's own
    .field.sectjump rule, which outranks a plain one. */
 .snav,.shback,.ssplit>.sectjump,.ssplit>.field.sectjump,.ssplit>h3{display:none}
@@ -843,7 +849,10 @@ html[data-motion="reduce"] .tourring{transition:none}
   .ssplit{grid-template-columns:minmax(0,1fr)}
   .ssplit>*,.ssplit>.snav{grid-column:1;grid-row:auto}
   .ssplit>.snav{border-right:0}
-  .ssplit:not(.sopen)>:not(.snav){display:none}
+  .ssplit:not(.sopen)>:not(.snav):not(.pghead){display:none}
+  /* ...over the list on a phone, and gone with it once a section opens. */
+  .ssplit.sopen>.pghead{display:none}
+  .ssplit>.pghead{grid-row:auto;grid-column:1}
   .ssplit.sopen>.snav{display:none}
   /* The open section's head is the way back: a chevron before its name,
      the whole head the press (splitSects). */
@@ -3665,6 +3674,10 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    taller than a screen, and the Follow switch on its action bar. */
 .dmlogbox .dmlogsvc + .dmlogsvc{margin-top:8px}
 .dmlogbox pre.dmlog{max-height:40vh;overflow:auto;margin:4px 0 0}
+/* A page's head (pageHead): its name and state as a node's head has them,
+   its facts under it, its buttons at the right (the operator, 25 Oct). */
+.pghead > .name{font-weight:600;font-size:1.05rem;color:var(--ink);display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.pghead > .actbar{margin-top:6px}
 .facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px var(--row-x);margin:4px 0 0}
 @media(max-width:900px){ .facts{grid-template-columns:minmax(0,1fr)} }
 .facts .fact{display:grid;grid-template-columns:minmax(5.5rem,auto) minmax(0,1fr);gap:0 8px;align-items:baseline;min-width:0}

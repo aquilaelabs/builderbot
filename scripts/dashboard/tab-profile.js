@@ -87,7 +87,7 @@ function renderProfileInto(i){
     // A page of settings as it lands (skSplit): the sections listed, Who
     // you are picked beside them with its fields.
     const fld = label => skField(label, 18);
-    d.setBar(`<span class="barfacts">${skv(16)}</span>`);
+    d.setBar("");
     splitOff(d.list);                   // drawn before: its grid is the template's to bring
     d.list.innerHTML = skTpl(skSplit([["Who you are", PROFILE_SAYS.you], ["What you may do", PROFILE_SAYS.may],
       ["Password", PROFILE_SAYS.password]], "Who you are", PROFILE_FIELDS.map(([, label]) => fld(label)).join("")));
@@ -97,16 +97,23 @@ function renderProfileInto(i){
   const val = k => profileDraft[k] ?? p[k] ?? "";
   const dirty = PROFILE_FIELDS.some(([k]) => (profileDraft[k] ?? p[k] ?? "") !== (p[k] ?? ""));
   const wm = profile.what_may || {roles: [], may: []};
-  // Who this is, in the facts voice (R218 step 31): the name, the roles and
-  // each agent's account, one mono line.
-  d.setBar(`<span class="barfacts">${esc(profile.name)} · ${esc(wm.roles.length ? wm.roles.join(", ") : "no role")}${
-    agentLogins(profile) ? ` · ${agentLogins(profile)}` : ""}</span>`);
+  // Who this is, as a node's head says what it is (the operator, 25 Oct:
+  // a run-on mono line could not be read): the name, the roles as facts,
+  // the projects owned on a line of their own, each agent's account its own.
+  d.setBar("");
+  const owns = wm.roles.filter(r => /^Owner of /.test(r)).map(r => r.slice(9));
+  const held = wm.roles.filter(r => !/^Owner of /.test(r));
+  const by = {...(profile.claude ? {claude: profile.claude} : {}), ...(profile.agents || {})};
+  const head = pageHead({title: profile.name, facts: [
+    ["Roles", held.length ? held.join(", ") : "no role"],
+    ["Owner of", owns.join(", ")],
+    ...AGENTS.filter(a => by[a.id]).map(a => [a.name, by[a.id]])]});
   // A page of settings (page-docs.js splitSects, the operator, 16 Oct):
   // each block a section, the sections a list beside the one picked; who
   // you are first, since that is what is changed here most.
   const sec = (id, title, inner) => docSection("profile", id, title, "",
     `<div class="row stack2"><div class="grow">${inner}</div></div>`);
-  d.list.innerHTML = `
+  d.list.innerHTML = `${head}
     ${sec("you", "Who you are", `
         <div class="logset">
           ${PROFILE_FIELDS.map(([k, label, hint, type]) => `

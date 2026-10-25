@@ -110,7 +110,7 @@ ok(/no project called System|BuilderBot's own/.test(sysPick.error || ''),
 // The section is drawn after the answer lands, so its Remove is waited
 // for rather than read the moment the list moved.
 await page.waitForSelector(`${sect} [data-ngremove]`, { timeout: 15000 });
-ok(await page.$eval(sect, s => /deployed/.test(s.querySelector('.toolstate .pill').textContent) && /1 route/.test(s.querySelector('.toolstate .sub').textContent)
+ok(await page.$eval(sect, s => /deployed/.test(s.querySelector('.toolstate .pill').textContent) && /1 route/.test(s.querySelector('.toolstate').textContent)
      && s.querySelector('[data-ngremove]') && !document.querySelector('.nginxtab [data-ngdeploy]')),
    '...and the state row now says so, with Remove in place of Deploy');
 // A Save rebuilds it, and a read between its down and its up said "deployed,

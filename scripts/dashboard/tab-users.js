@@ -151,7 +151,9 @@ function renderUsersInto(i){
   // Refused outright (a plain account by link), there is nothing to count
   // or add, and the refusal is the page (B38).
   const refused = usersErr && !(usersList || []).length;
-  d.setBar(`<span class="dim">${usersList === null ? skv(4) : refused ? "" : `${usersList.length} ${usersList.length === 1 ? "person" : "people"}`}</span><span class="sp"></span>
+  // No count beside the button (the operator, 25 Oct: no loose words at a
+  // page's top): the list says how many.
+  d.setBar(`<span class="sp"></span>
     ${refused || usersReadOnly() ? "" : `<span class="actbar"><button type="button" class="primary" id="uAddOpen">Add user</button></span>`}`);
   if (usersList === null){
     // Its template (R218 step 16): the list beside the settings, whose

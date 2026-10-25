@@ -33,8 +33,8 @@ function nbArtifactsView({$, nb, project, root, sheet}){
     try{
       const r = await fetch("/api/artifacts?project=" + encodeURIComponent(project));
       art = await r.json();
-    }catch(e){ viewGlance(hint, [], esc("artifacts: " + e)); return; }
-    if (art.error){ viewGlance(hint, [], esc("artifacts: " + art.error)); return; }
+    }catch(e){ viewGlance(hint, [], esc("artifacts: " + e), "", "bad"); return; }
+    if (art.error){ viewGlance(hint, [], esc("artifacts: " + art.error), "", "bad"); return; }
     const rows = art.artifacts || [], job = art.push || {}, dev = art.phone;
     const groups = art.branches || [];
     // The code base itself, as a zip through the browser: a navigation, so

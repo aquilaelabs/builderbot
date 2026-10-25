@@ -413,7 +413,8 @@ function renderRolesInto(i){
   const nRoles = Object.keys(rolesData?.roles || {}).length;
   // Refused outright (a plain account by link): the refusal is the page (B38).
   const refused = rolesErr && !nRoles;
-  d.setBar(`<span class="dim">${rolesData === null ? skv(4) : refused ? "" : `${nRoles} role${nRoles === 1 ? "" : "s"}`}</span><span class="sp"></span>${
+  // No count beside the button (the operator, 25 Oct): the list says it.
+  d.setBar(`<span class="sp"></span>${
     // Waiting, who may add a role is the status read's to say, and the
     // button is there and dead, as it will land.
     (rolesData ? rolesData.admin : state?.can?.admin) ? `<span class="actbar"><button type="button" class="primary"${

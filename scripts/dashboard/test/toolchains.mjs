@@ -90,8 +90,8 @@ ok((await page.$$eval('.doc .tiles .tile .tl', ls => ls.map(l => l.textContent.t
    'the Toolchains page opens on tiles: what is installed of what is offered');
 // ...on the page's status line under the tiles (the operator, 17 Oct: one
 // order for every page's top).
-ok((await page.$eval('.doc .headline.tcact .state', el => el.textContent)).includes(`${DIR}/sdk`),
-   'it says which root things are installed into, on the status line under the tiles');
+ok((await page.$eval('.doc .tcact', el => el.textContent)).includes(`${DIR}/sdk`),
+   'it says which root things are installed into, as a fact of the page\'s head');
 // The catalog is a file in the repository, not a list in the server: adding a
 // toolchain should be an edit somebody can make without reading python.
 const catalog = JSON.parse(                     // URL here is the dashboard's
@@ -497,7 +497,7 @@ const checking = await page.evaluate(() => {
   toolchains.job.action = 'check'; toolchains.job.running = true;
   tcRev++; drawPanes();
   const t = document.querySelector('.doc [data-tc="check"]').textContent;
-  const line = document.querySelector('.doc .tcact .state')?.textContent || '';
+  const line = document.querySelector('.doc .tcact .tcworking')?.textContent || document.querySelector('.doc .tcact')?.textContent || '';
   [toolchains.job.action, toolchains.job.running] = was;
   tcRev++; drawPanes(); clearTimeout(tcPoll);
   return { t, line };
@@ -885,12 +885,13 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
                    job: { running: false },
                    cleanable: [{ dir: 'n_0ldd0ne1', what: "gone's, a node since retired" }] };
     tcNode = 'n_shared'; toolchains = fake; tcRev++; drawPanes();
-    const clean = document.querySelector('.tcclean')?.textContent.replace(/\s+/g, ' ') || '';
+    const cl = document.querySelector('.tcclean');
+    const clean = `${cl?.previousElementSibling?.textContent || ''}: ${cl?.textContent || ''}`.replace(/\s+/g, ' ');
     const rm = !!document.querySelector('.tctab .docbarrow .actbar [data-tcclean].danger:last-child');
     tcNode = was.tcNode; toolchains = was.toolchains; tcRev++; drawPanes();
     return { clean, rm };
   });
-  ok(/Remove takes off the store what no node uses: n_0ldd0ne1 \(gone's, a node since retired/.test(seen.clean) && seen.rm,
+  ok(/Remove takes: n_0ldd0ne1 \(gone's, a node since retired/.test(seen.clean) && seen.rm,
      `a retired node's directory on the store is offered with Remove (R196) (${seen.clean.slice(0, 60)})`);
   // The updates-due tile counts This machine's rows as Home and the bell do
   // (B24). No coding agent is a row here: they are the Agents page's, which

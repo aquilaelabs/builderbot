@@ -686,11 +686,11 @@ function renderToolchainsInto(i){
     // Its template (R218 step 16): the bar, the tile's words and the table's
     // head are the page's own; the store and its rows are on their way.
     surf.setBar(skNodeBar([["Check for updates", "", "Check"], ["Install selected", "primary", "Install"]]));
-    // In the page's own order: its bar with its two buttons, its tiles, its
-    // status line, then the catalog's table.
+    // In the page's own order: its bar with its two buttons, its head, its
+    // tiles, then the catalog's table.
     const tile = (l, sub) => `<div class="tile"><span class="tv">${skv(1.4)}</span><span class="tl">${l}</span>${sub ? `<span class="ts">${sub}</span>` : ""}</div>`;
-    surf.list.innerHTML = skTpl(`<div class="field"><div class="tiles">${tile("installed", `of ${skv(2)} offered`)}${tile("updates due")}${tile("free", "on the store")}</div></div>
-      ${headLine(skv(22), "", "tcact")}
+    surf.list.innerHTML = skTpl(`${pageHead({cls: "tcact", facts: [["Store", GHOST], ["Versions checked", GHOST]]})}
+      <div class="field"><div class="tiles">${tile("installed", `of ${skv(2)} offered`)}${tile("updates due")}${tile("free", "on the store")}</div></div>
       ${tcSections("", skTable(TC_COLS, 6, "tcs"), "")}
       ${state?.can?.admin ? docSection("toolchains", "packs", "Tool packs", "", skTable(TP_COLS, 2, "tprecords")) : ""}`);
     return;
@@ -753,27 +753,28 @@ function renderToolchainsInto(i){
   // What the store is and where, said on the page's status line under the
   // tiles (the operator, 17 Oct: one order for every page's top).
   const working = busy && job.action !== "check";
-  const storeSaid = onNode
-      ? (d.root
-          // Nothing here about a shared store. Several nodes pointing at one
-          // share is an ordinary arrangement: three Linux sandboxes on one
-          // NFS export is the obvious way to run this, and it works without
-          // anybody being told. The one moment it matters is when a second
-          // install is refused because one is already running across the
-          // share, and that refusal says so at the press; a standing banner
-          // on every draw was explaining a thing that needs no explaining.
-          // Its free space is the tile's to say, once (R218 step 24).
-          ? `Installed into <code>${esc(d.root)}</code> on ${esc(d.name)}. An install is a job there.`
-          : `${esc(d.name || "the node")} reports no toolchain store yet.`)
-      : d.root
-      ? (d.shared
-          ? `Installed into <code>${esc(d.root)}</code>: a mapped share, so an image update never re-downloads them.`
-          : `Installed into <code>${esc(d.root)}</code>: the home volume. Map a toolchain store to keep them out of it.`)
-      : "No toolchain store found.";
   surf.list.innerHTML = `
     ${pstale ? `<div class="field"><div class="notice warn tcstale">${esc(staleWhy(
       pnodes.find(n => n.id === tcNode)))}. Nothing installs here until it is.</div></div>` : ""}
     ${pro ? `<div class="field"><div class="notice warn tcro">${esc(d.name || "This node")}'s toolchain store is read-only to it, so nothing installs here: what is in it is what it has. Make it writable on the machine to install.</div></div>` : ""}
+    ${
+    // The page's status line under its tiles (the operator, 16 and 17 Oct):
+    // the store and when its versions were checked, or what is running; and
+    // what the bar's Remove would take, when it is there. A check is said
+    // on its own button, so the line keeps to the store while one runs.
+    // ...as a head (the operator, 25 Oct: what a page knows is said the way
+    // a node's head says it): the machine, the store's state or the job
+    // running as a pill, and the store, its check and what Remove takes as
+    // facts.
+    pageHead({title: onNode ? d.name || "" : "This controller", cls: "tcact",
+      pills: working ? `<span class="pill live state tcworking">${tcWorking(job, d.items)}</span>`
+        : d.root ? `<span class="pill ok">store found</span>` : `<span class="pill warn">no store yet</span>`,
+      facts: [["Store", d.root || ""],
+               ["Kind", !onNode && d.root ? (d.shared ? "a mapped share: an image update never downloads them again"
+                                                      : "the home volume: map a store to keep them out of it") : ""],
+               ["Versions checked", d.checked ? ago(d.checked) : "not yet"],
+               ["Remove takes", clean.length ? clean.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ") : "",
+                {html: true, cls: "tcclean"}]]})}
     ${
     // The store at a glance (R216): what is installed, what has an update
     // due, what a project needs that the store lacks, and the room left.
@@ -794,14 +795,6 @@ function renderToolchainsInto(i){
          sub: "on the store", omit: typeof d.free_mb !== "number"},
       ]);
     })()}
-    ${
-    // The page's status line under its tiles (the operator, 16 and 17 Oct):
-    // the store and when its versions were checked, or what is running; and
-    // what the bar's Remove would take, when it is there. A check is said
-    // on its own button, so the line keeps to the store while one runs.
-    headLine(working ? tcWorking(job, d.items) : `${storeSaid}${d.checked ? ` Versions checked ${ago(d.checked)}.` : ""}`, "", "tcact",
-             {state: working ? "tcworking" : "", under: clean.length ? `<div class="sub tcclean">Remove takes off the store what no node uses: ${
-               clean.map(c => `<code>${esc(c.dir)}</code> (${esc(c.what)})`).join(", ")}</div>` : ""})}
     ${(() => {
       // Held recipes whose system libraries this machine lacks (roadmap
       // R51): the libraries are the machine's own, outside the store, and

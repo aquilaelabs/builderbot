@@ -1772,7 +1772,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
      'the Tools tab picks among nodes and never offers this container (roadmap #26)');
   const tcBefore = await page.evaluate(() => tcNode);
   await page.selectOption('.tctab #tcNodeSel', minted.id);
-  await page.waitForFunction(() => /on shed/.test(document.querySelector('.tctab .tcact .state')?.textContent || ''),
+  await page.waitForFunction(() => /^\s*shed\b/.test(document.querySelector('.tctab .tcact .name')?.textContent || ''),
                              null, { timeout: 15000 });
   // A pick is a history entry (B31): Back returns to the node before, on
   // this page, and Forward to the one picked.
@@ -1787,7 +1787,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
        `picking a node pushes its address, and Back returns to the node before on Toolchains (${atPick} then ${await page.evaluate(() => location.hash)})`);
     await page.goForward();
     await page.waitForFunction(id => tcNode === id
-      && /on shed/.test(document.querySelector('.tctab .tcact .state')?.textContent || ''), minted.id, { timeout: 15000 });
+      && /^\s*shed\b/.test(document.querySelector('.tctab .tcact .name')?.textContent || ''), minted.id, { timeout: 15000 });
   }
   const tools = await page.$$eval('.tctab .tc', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
   ok(tools.some(t => /6655482e/.test(t)) && tools.some(t => /29\.0\.14206865/.test(t))
@@ -1797,7 +1797,7 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
   // status line's again.
   const room = await page.$eval('.tctab .tiles', e => e.textContent.replace(/\s+/g, ' '));
   ok(tools.some(t => /6655482e/.test(t)) && /(40|39)(\.\d)? ?GB free/.test(room)
-     && !/GB free|MB free/.test(await page.$eval('.tctab .tcact .state', e => e.textContent)),
+     && !/GB free|MB free/.test(await page.$eval('.tctab .tcact', e => e.textContent)),
      `picking the node lists what its census says it has, and its store's headroom in its tile alone (${room.slice(0, 120)} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
   ok(!/installed at\s*(<|$)/m.test(await page.$eval('.tctab', e => e.textContent)),
      'an installed toolchain on a node reads "installed", not "installed at" with nothing after it');
