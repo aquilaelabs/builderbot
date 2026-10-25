@@ -3672,6 +3672,7 @@ preamble.node_gpu = _project_node_gpu
 prefs.configure(write_json=write_json, state=STATE)
 prefs.configure_repos(project_of=repos.project_of, members=repos.members, is_repos=registry.is_repos)
 users.home_of = repos.key_of
+roles.label_of = registry.label
 projects.key_of = repos.key_of
 roles.home_of = repos.key_of
 # Said again, now that prefs exists: users.git_identity resolves a per-project
@@ -6825,10 +6826,13 @@ class Handler(BaseHTTPRequestHandler):
         # kept for Put back, and listed it was counted as a project's owner
         # and could share a label with the live one shown under that name
         # (B95). A role of the same cut name a live project holds wins.
+        # ...and named by the project it is for (R138), which is what the
+        # page's projects are: a live repository's project's key.
+        live_owned = set()
         for d in registry.live_dirs():
-            owners_of[roles.owner_role_name(d)] = d
-        rs = {n: r for n, r in rs.items()
-              if n not in owners_of or (registry.get(owners_of[n]) or {}).get("state") == "live"}
+            owners_of[roles.owner_role_name(d)] = repos.key_of(d)
+            live_owned.add(roles.owner_role_name(d))
+        rs = {n: r for n, r in rs.items() if n not in owners_of or n in live_owned}
         # ...and which project it is for, so the People section offers it
         # under that project alone (B726).
         rs = {n: (dict(r, label=f"owner of {registry.label(owners_of[n])}", project=owners_of[n]) if n in owners_of else r)

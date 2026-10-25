@@ -141,9 +141,22 @@ BUILTIN = {
 OWNER_PERMS = {a: "write" for a in PROJECT_AREAS}
 
 
+# registry.label, handed over by the server (R138): a project's name as a
+# person reads it, which its owner role is named for. Unset, the name given.
+label_of = None
+
+
 def owner_role_name(project):
     """The role a project's owner holds on it: PROJECT_owner, in the letters a
-    role's name may use."""
+    role's name may use. Named for the project as a person reads it
+    (alpha_owner, as before projects), never its key: an owner role is the
+    same rights on whichever project it is given, so two projects of one
+    name sharing it give nobody anything more."""
+    if label_of:
+        try:
+            project = label_of(project) or project
+        except Exception:                                              # noqa: BLE001
+            pass
     base = re.sub(r"[^A-Za-z0-9 ._-]", "-", str(project))[:33] or "project"
     if not base[0].isalpha():
         base = "p" + base[:32]
