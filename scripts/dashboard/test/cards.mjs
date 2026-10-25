@@ -575,11 +575,15 @@ print(json.dumps(out))
   await plant({ locked: false, session_at: '', session_why: '' });
   // Who is here is the card's state: this account's session as the dot
   // and a word, in the session dot's own colors (the operator, 29 Sep).
-  await page.evaluate(() => { state.claude_with = { alpha: ['test', 'alice'] }; state.claude_busy = { alpha: ['alice'] };
+  // Who is here, one row per person per agent where each session is
+  // (claude_where, B344).
+  await page.evaluate(() => { state.claude_with = { alpha: ['test', 'alice'] };
+                              state.claude_where = { alpha: [{ who: 'test', agent: 'claude', node: 'n1', working: false },
+                                                             { who: 'alice', agent: 'claude', node: 'n1', working: true }] };
                               drawProjects(state.projects); });
   ok(/waiting for you/.test(await stateWord()) && await page.$eval(`${C} .pstate .st`, e => e.classList.contains('waiting')),
      `this account's session here is the card's state, its dot the session dot's waiting (${await stateWord()})`);
-  await page.evaluate(() => { state.claude_busy = { alpha: ['test'] }; drawProjects(state.projects); });
+  await page.evaluate(() => { state.claude_where.alpha[0].working = true; drawProjects(state.projects); });
   ok(/working/.test(await stateWord()) && await page.evaluate(() => {
     const dot = document.querySelector('.pgrid .pcard[data-row="alpha"] .pstate .st.working');
     const tab = document.createElement('span'); tab.className = 'st working'; document.body.appendChild(tab);
@@ -591,12 +595,11 @@ print(json.dumps(out))
   // and Sessions say (B98), not waiting for you.
   {
     const asked = await page.evaluate(() => {
-      const nm = myClaude('alpha'), kept = state.sessions;
-      state.sessions = [...(kept || []).filter(s => s.name !== nm), { name: nm, claude: { state: 'asking', task: '' } }];
+      state.claude_where.alpha[0] = { ...state.claude_where.alpha[0], working: false, asking: true };
       drawProjects(state.projects);
       const st = document.querySelector('.pgrid .pcard[data-row="alpha"] .pstate');
       const out = { word: st?.textContent || '', asking: !!st?.querySelector('.st.asking') };
-      state.sessions = kept; drawProjects(state.projects);
+      state.claude_where.alpha[0].asking = false; drawProjects(state.projects);
       return out;
     });
     ok(/asking you/.test(asked.word) && asked.asking,
@@ -606,17 +609,28 @@ print(json.dumps(out))
     // session rows.
     const theirs = await page.evaluate(() => {
       state.claude_asking = { alpha: ['alice'] }; state.claude_busy = {};
+      state.claude_where.alpha[1] = { ...state.claude_where.alpha[1], working: false, asking: true };
       drawProjects(state.projects);
       const st = document.querySelector('.pgrid .pcard[data-row="alpha"] .pstate.other');
       const out = { word: st?.textContent || '', asking: !!st?.querySelector('.st.asking'),
                     row: /class="st asking"[^>]*>[^<]*<\/span>alice/.test(sessionRows('alpha')) };
-      state.claude_asking = {}; drawProjects(state.projects);
+      state.claude_asking = {}; state.claude_where.alpha[1].asking = false; drawProjects(state.projects);
       return out;
     });
-    ok(theirs.word === 'alice asking' && theirs.asking && theirs.row,
+    ok(/^alice asking/.test(theirs.word) && theirs.asking && theirs.row,
        `another account's session on its permission prompt reads asking, not waiting (${JSON.stringify(theirs)})`);
+    // One person running two agents is two entries, each its own state and
+    // agent (B344), where they folded into one.
+    const two = await page.evaluate(() => {
+      state.claude_where = { alpha: [{ who: 'test', agent: 'claude', node: 'n1', working: false },
+                                     { who: 'test', agent: 'codex', node: 'n1', working: true }] };
+      drawProjects(state.projects);
+      return [...document.querySelectorAll('.pgrid .pcard[data-row="alpha"] .pcfront .pstate')].map(e => e.textContent.trim());
+    });
+    ok(JSON.stringify(two) === JSON.stringify(['waiting for you · Claude', 'working · ChatGPT']),
+       `one person's two agents are two entries, each with its own state and agent (${JSON.stringify(two)})`);
   }
-  await page.evaluate(() => { state.claude_with = {}; state.claude_busy = {}; drawProjects(state.projects); });
+  await page.evaluate(() => { state.claude_with = {}; state.claude_busy = {}; state.claude_where = {}; drawProjects(state.projects); });
   await page.evaluate(() => liveRefresh());
   ok(/waiting for you|working/.test(await stateWord()),
      'liveRefresh reads who is here from /api/live and draws the cards again');

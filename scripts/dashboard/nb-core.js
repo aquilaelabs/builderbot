@@ -953,26 +953,31 @@ function makeNotebook(project){
 // session surface wears.
 function projectState(p){
   const name = p.name, sess = myLiveSession(name), mine = !!sess;
-  const busy = new Set((state?.claude_busy || {})[name] || []);
-  // ...and which agent each runs (R138), from where each session is.
+  // One entry per person per agent (B344: a person's Claude and Codex
+  // folded into one, one session's state masking the other's), from where
+  // each session is: its account, its agent and its state, a session on
+  // two nodes once.
   const rows = (state?.claude_where || {})[tmuxName(name)] || (state?.claude_where || {})[name] || [];
-  const agentOf = who => { const id = rows.find(r => r.who === who)?.agent; return id ? agentById(id)?.name || id : ""; };
-  const one = (st, word, cls = "", who = "") => `<span class="pstate${cls}">${st ? `<span class="st ${st}"></span>` : ""}${esc(word)}${
-    who && agentOf(who) ? `<span class="pagent"> · ${esc(agentOf(who))}</span>` : ""}</span>`;
-  // Yours first, then everybody else's with a session here, each with its
-  // own dot (the operator, 16 Oct: a card that does not say who else is
-  // working in the project hides the one thing worth knowing first).
-  // On Claude Code's permission prompt it is asking, in amber, as the dock
-  // and Sessions say it (B98), not waiting.
-  const asking = mine && claudeOf(sess)?.state === "asking";
-  const me = mine ? (asking ? one("asking", "asking you", "", state?.me) : busy.has(state?.me) ? one("working", "working", "", state?.me)
-    : one("waiting", "waiting for you", "", state?.me)) : "";
-  // Another account's session on the prompt reads asking too (B104), but
-  // not "asking you": only that person's terminal answers it.
-  const asks = new Set((state?.claude_asking || {})[tmuxName(name)] || (state?.claude_asking || {})[name] || []);
-  const them = othersOn(name).map(n => asks.has(n) ? one("asking", `${n} asking`, " other", n)
-    : one(busy.has(n) ? "working" : "waiting", `${n}${busy.has(n) ? " working" : "'s session"}`, " other", n)).join("");
-  return me || them ? `<span class="pstates">${me}${them}</span>` : one("", "no session");
+  const seen = new Map();
+  for (const r of rows){
+    const k = `${r.who}|${r.agent}`, was = seen.get(k);
+    seen.set(k, {who: r.who, agent: r.agent, working: !!(r.working || was?.working), asking: !!(r.asking || was?.asking)});
+  }
+  const one = (st, word, cls, agent) => `<span class="pstate${cls}">${st ? `<span class="st ${st}"></span>` : ""}${esc(word)}${
+    agent ? `<span class="pagent"> · ${esc(agentById(agent)?.name || agent)}</span>` : ""}</span>`;
+  // Yours first, then everybody else's, each with its own dot (the
+  // operator, 16 Oct). On its permission prompt it is asking, in amber, as
+  // the dock and Sessions say it (B98); another account's reads asking too
+  // (B104), not "asking you": only that person's terminal answers it.
+  const all = [...seen.values()];
+  const me = all.filter(e => e.who === state?.me).map(e => e.asking ? one("asking", "asking you", "", e.agent)
+    : e.working ? one("working", "working", "", e.agent) : one("waiting", "waiting for you", "", e.agent)).join("")
+    // A session of yours the poll has not placed on a node yet.
+    || (mine ? (claudeOf(sess)?.state === "asking" ? one("asking", "asking you", "", agentOfSession(tmuxBase(sess))?.agent.id)
+        : one("waiting", "waiting for you", "", agentOfSession(tmuxBase(sess))?.agent.id)) : "");
+  const them = all.filter(e => e.who !== state?.me).map(e => e.asking ? one("asking", `${e.who} asking`, " other", e.agent)
+    : one(e.working ? "working" : "waiting", `${e.who}${e.working ? " working" : "'s session"}`, " other", e.agent)).join("");
+  return me || them ? `<span class="pstates">${me}${them}</span>` : one("", "no session", "", "");
 }
 // The one notice a project carries (why nobody can start here, the agent
 // out of window), in the notice voice, or nothing.
