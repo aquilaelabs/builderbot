@@ -779,6 +779,33 @@ for (const kind of kinds){
        m.offskin.length ? `; not: ${m.offskin.join(', ')}` : ''} (${
        m.controls} checked)`);
   }
+  // Nothing between a page's sections, and its pills (its chips and its
+  // jump bar) before the first of them (the operator, 25 Oct: a line between
+  // Toolchains and Tool packs, and Storage's jump bar mid-page).
+  const shape = await page.evaluate(() => {
+    const host = document.querySelector('.doc.on');
+    if (!host) return { between: [], late: [] };
+    const vis = e => e.offsetHeight > 0 || e.offsetWidth > 0;
+    const named = e => String(e.className || e.tagName).split(/\s+/)[0] || e.tagName;
+    const between = [], late = [], seen = new Set();
+    host.querySelectorAll('details.sect').forEach(d => {
+      const p = d.parentElement;
+      if (!p || seen.has(p)) return;
+      seen.add(p);
+      const kids = [...p.children].filter(e => e.matches('details.sect') || vis(e));
+      const at = kids.map((e, i) => e.matches('details.sect') ? i : -1).filter(i => i >= 0);
+      for (let i = (at[0] ?? 0) + 1; i < (at.at(-1) ?? 0); i++)
+        if (!kids[i].matches('details.sect')) between.push(named(kids[i]));
+    });
+    const first = [...host.querySelectorAll('details.sect')].find(vis);
+    host.querySelectorAll('.sectjump, [data-chips]').forEach(b => {
+      if (first && vis(b) && !first.contains(b) && (first.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING))
+        late.push(named(b));
+    });
+    return { between, late };
+  });
+  ok(shape.between.length === 0, `[${kind}] nothing stands between its sections${shape.between.length ? `; between: ${shape.between.join(', ')}` : ''}`);
+  ok(shape.late.length === 0, `[${kind}] its pills are at its top, before its first section${shape.late.length ? `; after it: ${shape.late.join(', ')}` : ''}`);
   const L = await language();
   ok(!L.err, `[${kind}] measurable for the button language (${L.err || 'ok'})`);
   if (!L.err){

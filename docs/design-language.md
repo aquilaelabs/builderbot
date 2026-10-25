@@ -687,6 +687,8 @@ to scroll. A surface of more
 than one section carries a jump bar (sectJump; the operator, 23 Oct): their names in a line at the top, each
 scrolling to its own. Sections alone: what a page's chips pick (the Containers page's projects) is not on it. A status is a word or a number, never a sentence.
 
+**Nothing stands between sections, and pills stand at the top (the operator, 25 Oct).** A line about a section is inside it, first in its body, never a loose band between two sections (the coding agents' line stood between Toolchains and Tool packs). A page's pills, its chips and its jump bar, sit at its top, before its first section of any kind, never mid-page under sections its chips pick (Storage's jump bar stood under its disks). `test/uniform.mjs` fails a page with either.
+
 `hidden` means hidden. `[hidden]{display:none !important}` is global,
 because any class that sets `display` otherwise beats the attribute: a fold
 that never closed and a Select all with nothing to select were both that. To

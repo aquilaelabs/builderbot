@@ -664,7 +664,13 @@ function sectJump(g){
   if (bar.getAttribute("aria-label") !== "sections") bar.setAttribute("aria-label", "sections");
   const html = mine.map((o, i) => `<a href="#" data-jump="${i}">${esc(titleOf(o))}</a>`).join("");
   if (bar.innerHTML !== html) bar.innerHTML = html;
-  if (!have) mine[0].before(bar);
+  // At the top, before the surface's first section of any kind (the
+  // operator, 25 Oct: pills at the top of a page and nowhere else); before
+  // its first jump target it stood mid-page under the sections its chips
+  // pick (Storage's disks).
+  const top = sectsOf(g)[0] || mine[0];
+  if (!have) top.before(bar);
+  else if (bar.nextElementSibling !== top) top.before(bar);
   bar.querySelectorAll("[data-jump]").forEach(a => a.onclick = e => {
     e.preventDefault();
     const d = mine[+a.dataset.jump];

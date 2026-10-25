@@ -821,14 +821,14 @@ function renderToolchainsInto(i){
     })()}
     ${tcSections(onNode && (d.machine || []).length ? `<div class="tcs tcmachine">${
       d.machine.map(m => (m.name === TC_TOOLKIT ? tcToolkitRow : tcDriverRow)(m, busy || pstale || d.live === false, job)).join("")}</div>` : "",
-      tblWrap(TC_COLS, (d.items || []).filter(i => !i.wrong_platform)
+      // The coding agents are the Agents page's (R95 step 15): said first
+      // inside the Toolchains section, never between sections (the
+      // operator, 25 Oct: nothing outside a section).
+      (onNode ? `<div class="field tcagents"><div class="hint">The coding agents (${
+        esc(AGENTS.filter(a => a.live).map(a => a.product).join(", "))}) are installed and updated on the ${pageLink("agents", "Agents page", `#/build/agents/${encodeURIComponent(d.node || tcNode)}`)}.</div></div>` : "")
+      + tblWrap(TC_COLS, (d.items || []).filter(i => !i.wrong_platform)
       .map(i => tcRow(i, busy || pstale, job, !!d.administers && !d.locked)).join(""), "tcs"),
       `${(d.items || []).filter(i => i.installed).length} installed`)}
-    ${
-    // The coding agents arrive with the machine's rows and are the Agents
-    // page's (R95 step 15): one line at the foot says where.
-    onNode ? `<div class="field tcagents"><div class="hint">The coding agents (${
-      esc(AGENTS.filter(a => a.live).map(a => a.product).join(", "))}) are installed and updated on the ${pageLink("agents", "Agents page", `#/build/agents/${encodeURIComponent(d.node || tcNode)}`)}.</div></div>` : ""}
     ${state?.can?.admin ? tpSection(d.items) : ""}
 `;
 

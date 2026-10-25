@@ -89,7 +89,7 @@ The companion app's own contract is `android/api-surface.json`.
 | POST | `/api/vms` | exact | `_vms` | POST /api/vms (R91): new, start, stop, restart, remove, snapshot, revert, snapshot-rm. | refused: vms-write, refused: node |
 | POST | `/api/dockerctl` | prefix | `_docker_ctl` | Start, stop, restart or read the log of ONE container on a node. | refused: docker-write |
 | POST | `/api/rename` | prefix | `_rename` | Rename a project: projects.rename. | refused: rename |
-| POST | `/api/trash-restore` | prefix | `_trash_restore` | A repository out of the bin, back into the project it was in, or into the one named (`project`) where that one is gone or another is wanted (R138): it is never put back into none. | refused: trash |
+| POST | `/api/trash-restore` | prefix | `_trash_restore` | A repository out of the bin, back into the project it was in, or into the one named (`project`) where that one is gone or another is wanted (R138); one from before projects into a project of its own. | refused: trash |
 | POST | `/api/trash-purge` | prefix | `_trash_purge` | Delete a trashed project for good. | refused: trash |
 | POST | `/api/trash` | prefix | `_trash` | Move a project out of the workspace: projects.trash, once project_busy says nothing holds it (the same guards as renaming). | refused: trash |
 | POST | `/api/session` | prefix | `_session` | Kill a session. |  |
