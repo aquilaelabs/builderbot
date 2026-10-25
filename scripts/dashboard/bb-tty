@@ -235,7 +235,7 @@ if [ "${BB_TTY_CTR:-}" = 1 ]; then
         case "$dom" in *[!a-z0-9-]*) ctr_no "Invalid VM: ${dom}" ;; esac
         command -v virsh >/dev/null 2>&1 || ctr_no "There is no virsh here: VM host is not installed on this node."
         s="$(tmux_prefix "$account")vm-${dom}"
-        tmux new-session -A -d -s "$s" -c / virsh -c qemu:///system console --force "$dom"
+        tmux new-session -d -s "$s" -c / virsh -c qemu:///system console --force "$dom" 2>/dev/null || true
         tmux_settings
         tmux set-option -t "$s" mouse off
         tmux_keys
@@ -261,8 +261,8 @@ if [ "${BB_TTY_CTR:-}" = 1 ]; then
         || ctr_no "docker inspect ${cname} failed on this node: it is gone, or the docker account cannot reach the daemon."
     s="$(tmux_prefix "$account")ctr-${cname}"; s="${s//[.:]/_}"
     # shellcheck disable=SC2016 # expanded in the container, not here
-    tmux new-session -A -d -s "$s" -c / \
-        docker exec -it "$cname" sh -c 'if command -v bash >/dev/null 2>&1; then exec bash; fi; exec sh'
+    tmux new-session -d -s "$s" -c / \
+        docker exec -it "$cname" sh -c 'if command -v bash >/dev/null 2>&1; then exec bash; fi; exec sh' 2>/dev/null || true
     tmux_settings
     tmux set-option -t "$s" mouse off
     tmux_keys
@@ -1270,9 +1270,13 @@ start() {
     for v in GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; do
         tmux set-environment -gu "$v" 2>/dev/null || true
     done
-    # -A -d creates it if it is missing and attaches to it if it is not, without
-    # attaching yet: race-free where has-session followed by new-session is not.
-    tmux new-session -A -d -s "$s" -c "$dir" "${envs[@]}" "$@"
+    # Made if it is missing, and left as it is if it is there: a session of
+    # that name already running is new-session's "duplicate session", which
+    # is what is ignored. Race-free where has-session followed by
+    # new-session is not. Not -A: on a session that is there it is
+    # attach-session, which attached this terminal right here, before the
+    # settings below were made, and with -d threw every other client off it.
+    tmux new-session -d -s "$s" -c "$dir" "${envs[@]}" "$@" 2>/dev/null || true
 
     # Mouse mode decides who owns a drag. Off, the browser makes an ordinary
     # selection and the terminal copies it as the button comes up. On, tmux
