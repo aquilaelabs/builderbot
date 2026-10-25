@@ -712,13 +712,25 @@ session_dir() {
     # Not a git repo: there is no worktree to make, and refusing would be worse
     # than sharing: a directory nobody can branch is one nobody can conflict
     # in through git either.
-    git -C "$src" rev-parse --git-dir >/dev/null 2>&1 || { printf '%s' "$src"; return 0; }
+    # (safe.directory: an account that is its own user, R125, reads a tree
+    # that is another's, which git otherwise refuses as dubious.)
+    git -c safe.directory='*' -C "$src" rev-parse --git-dir >/dev/null 2>&1 || { printf '%s' "$src"; return 0; }
     wt="$BB_WORKTREES/$proj/$uid"
     [ "$agent" = claude ] || wt="$wt-$agent"
     [ "$slot" = 1 ] || wt="$wt-$slot"
     if [ -d "$wt" ]; then printf '%s' "$wt"; return 0; fi
     branch="$agent/$(account_name "$uid" || printf '%s' "$uid")"
     [ "$slot" = 1 ] || branch="$branch-$slot"
+    # An account that is its own user (R125) cannot make a folder beside the
+    # tree or run git in it as the tree's owner: bb-session makes it, as that
+    # owner, at this place and on this branch (R125 step 7).
+    case "$(id -un 2>/dev/null)" in
+        bbu-*)
+            local made
+            made="$(sudo -n "${BB_SESSION_BIN:-/usr/local/sbin/bb-session}" worktree "$proj" "$agent" "$slot" "$branch" 2>/dev/null)" || made=""
+            if [ "$made" = "$wt" ] && [ -d "$wt" ]; then printf '%s' "$wt"; return 0; fi
+            printf '%s' "$src"; return 0 ;;
+    esac
     mkdir -p "$(dirname "$wt")" 2>/dev/null || { printf '%s' "$src"; return 0; }
     # An existing branch is checked out rather than recreated: this is somebody
     # returning to work they left, and -b on a branch that exists fails.

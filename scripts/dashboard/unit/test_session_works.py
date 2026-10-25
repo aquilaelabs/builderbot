@@ -53,7 +53,7 @@ class Works(unittest.TestCase):
     def test_every_repository_is_bound_to_write(self):
         steps = self.plan()
         for rel in ("app", "server", "docs", ".worktrees/server"):
-            self.assertIn(("bind", f"{session.STAGE}/ws/{rel}", f"{self.ws}/{rel}"), steps, rel)
+            self.assertIn(("bindmap", f"{session.STAGE}/ws/{rel}", f"{self.ws}/{rel}"), steps, rel)
         self.assertIn(("bindro", f"{session.STAGE}/ws/other", f"{self.ws}/other"), steps)
         self.assertFalse(any(s[0] == "bindro" and s[-1] == f"{self.ws}/server" for s in steps),
                          "a repository worked in is not also bound read-only")
@@ -70,7 +70,7 @@ class Works(unittest.TestCase):
 
     def test_a_read_that_is_also_worked_in_is_worked_in(self):
         steps = self.plan(reads=["other", "server"])
-        self.assertIn(("bind", f"{session.STAGE}/ws/server", f"{self.ws}/server"), steps)
+        self.assertIn(("bindmap", f"{session.STAGE}/ws/server", f"{self.ws}/server"), steps)
         self.assertFalse(any(s[0] == "bindro" and s[-1] == f"{self.ws}/server" for s in steps))
 
 

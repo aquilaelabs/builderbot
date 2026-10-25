@@ -97,7 +97,9 @@ ok(!existsSync(x11) && !madeX11 ? true
    'the X server\'s socket directory is staged and bound back into the session\'s own /tmp');
 const has = (...s) => steps.some(x => JSON.stringify(x) === JSON.stringify(s));
 const at0 = (...s) => steps.findIndex(x => JSON.stringify(x) === JSON.stringify(s));
-const bound = t => steps.some(x => x[0] === 'bind' && x[2] === t);
+// A tree of the session's is a bindmap (R125 step 7: its owner read as the
+// account's own user where it is one); a bind otherwise.
+const bound = t => steps.some(x => (x[0] === 'bind' || x[0] === 'bindmap') && x[2] === t);
 const hidden = t => steps.some(x => (x[0] === 'hide' || x[0] === 'hidefile') && x[1] === t);
 ok(got.code === 0 && steps.length > 10, `bb-session plans a view for a session without making one, as anybody (${got.code}: ${got.out.slice(0, 80)})`);
 
@@ -121,7 +123,7 @@ ok(coverAt > 0 && back(join(tr, slug(join(ws, 'alpha')))) && back(join(tr, slug(
   const r = plan({ reads: 'beta' });
   const rs = r.code === 0 ? JSON.parse(r.out) : [];
   ok(r.code === 0 && rs.some(x => x[0] === 'bindro' && x[1] === `${STAGE}/ws/beta` && x[2] === join(ws, 'beta'))
-     && !rs.some(x => x[0] === 'bind' && x[2] === join(ws, 'beta')) && !rs.some(x => x[2] === join(ws, '.worktrees', 'beta')),
+     && !rs.some(x => (x[0] === 'bind' || x[0] === 'bindmap') && x[2] === join(ws, 'beta')) && !rs.some(x => x[2] === join(ws, '.worktrees', 'beta')),
      `--reads binds that project's tree into the view read-only, and none of its worktrees (${r.code})`);
   // The account's own conversations on a read project are there to read,
   // read-only, while every other project's stay empty (29 Sep).

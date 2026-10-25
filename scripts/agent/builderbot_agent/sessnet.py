@@ -43,7 +43,9 @@ def session_sudoers(user, accounts=False):
             f"# which starts a session inside a view of this node that holds only its project.\n"
             f"Defaults!{SESSION_BIN} !use_pty, !lecture\n"
             f"{user} ALL=(root) NOPASSWD: {SESSION_BIN}\n"
-            + (f"%bbu ALL=(root) NOPASSWD: {SESSION_BIN} enter *, {SESSION_BIN} check, {SESSION_BIN} check-net\n"
+            # ...and its worktree, made for it as the tree's owner (R125 step 7).
+            + (f"%bbu ALL=(root) NOPASSWD: {SESSION_BIN} enter *, {SESSION_BIN} check, {SESSION_BIN} check-net, "
+               f"{SESSION_BIN} worktree *\n"
                if accounts else ""))
 
 

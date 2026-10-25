@@ -183,10 +183,13 @@ ok(genv('GIT_CONFIG_KEY_0') === 'GIT_CONFIG_KEY_0=credential.helper'
 // ...and git's own user.name and user.email say the same author (B5), so
 // `git config user.name` agrees with the commits whatever a home's
 // .gitconfig still holds.
-ok(genv('GIT_CONFIG_COUNT') === 'GIT_CONFIG_COUNT=3'
-   && genv('GIT_CONFIG_KEY_1') === 'GIT_CONFIG_KEY_1=user.name' && genv('GIT_CONFIG_VALUE_1') === 'GIT_CONFIG_VALUE_1=Pat Tester'
-   && genv('GIT_CONFIG_KEY_2') === 'GIT_CONFIG_KEY_2=user.email' && genv('GIT_CONFIG_VALUE_2') === 'GIT_CONFIG_VALUE_2=pat@example.invalid',
-   `...and git's user.name and user.email are the same author (${genv('GIT_CONFIG_VALUE_1') || 'unset'})`);
+// ...after every tree taken as the session's own (R125 step 7: a tree
+// another user owns is otherwise refused as dubious).
+ok(genv('GIT_CONFIG_COUNT') === 'GIT_CONFIG_COUNT=4'
+   && genv('GIT_CONFIG_KEY_1') === 'GIT_CONFIG_KEY_1=safe.directory' && genv('GIT_CONFIG_VALUE_1') === 'GIT_CONFIG_VALUE_1=*'
+   && genv('GIT_CONFIG_KEY_2') === 'GIT_CONFIG_KEY_2=user.name' && genv('GIT_CONFIG_VALUE_2') === 'GIT_CONFIG_VALUE_2=Pat Tester'
+   && genv('GIT_CONFIG_KEY_3') === 'GIT_CONFIG_KEY_3=user.email' && genv('GIT_CONFIG_VALUE_3') === 'GIT_CONFIG_VALUE_3=pat@example.invalid',
+   `...and git's user.name and user.email are the same author, every tree its own (${genv('GIT_CONFIG_VALUE_2') || 'unset'})`);
 // ...and the toolchains its project's settings switch off (R77), which bb
 // reads as not there and the view leaves out.
 ok(genv('BB_TOOLCHAINS_OFF') === 'BB_TOOLCHAINS_OFF=hexkit flutter',

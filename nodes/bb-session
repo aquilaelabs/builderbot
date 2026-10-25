@@ -113,6 +113,13 @@ MS_BIND, MS_REC, MS_PRIVATE = 4096, 16384, 1 << 18
 MNT_DETACH = 2
 CLONE_NEWNS, CLONE_NEWIPC, CLONE_NEWPID = 0x00020000, 0x08000000, 0x20000000
 CLONE_NEWNET = 0x40000000
+CLONE_NEWUSER = 0x10000000
+# An idmapped bind (R125 step 7, B356): open_tree, move_mount and
+# mount_setattr, one number on x86_64 and aarch64 alike (the shared table).
+SYS_OPEN_TREE, SYS_MOVE_MOUNT, SYS_MOUNT_SETATTR = 428, 429, 442
+OPEN_TREE_CLONE, OPEN_TREE_CLOEXEC = 1, 0o2000000
+AT_FDCWD, AT_EMPTY_PATH, MOVE_MOUNT_F_EMPTY_PATH = -100, 0x1000, 0x4
+MOUNT_ATTR_IDMAP = 0x00100000
 PR_SET_NO_NEW_PRIVS = 38
 
 # The session network (R79). The folder is the agent's: its resolver file for
@@ -644,9 +651,13 @@ def plan(c, a, uid, wall=None):
     # /workspace: this project, its worktrees, the account's transcripts,
     # and among those the other projects' transcripts empty.
     steps.append(("tmpfs", ws, "mode=0755"))
-    for rel in [x for p in [project] + works for x in (p, f".worktrees/{p}")] + [f".claude/{account}"]:
+    # The trees mapped to the account's own user where it is one and they
+    # are another's (R125 step 7): bindmap, which main() makes a namespace
+    # for; its transcripts are its own already.
+    trees = [x for p in [project] + works for x in (p, f".worktrees/{p}")]
+    for rel in trees + [f".claude/{account}"]:
         if _real_dir(f"{ws}/{rel}"):
-            steps.append(("bind", f"{STAGE}/ws/{rel}", f"{ws}/{rel}"))
+            steps.append(("bindmap" if rel in trees else "bind", f"{STAGE}/ws/{rel}", f"{ws}/{rel}"))
     # The projects this one reads: their trees, read-only. Nothing of
     # theirs beyond the tree: no worktrees, no caches, no stores.
     for r in reads:
@@ -923,6 +934,85 @@ def _mount(src, target, fstype, flags, data=None):
           data.encode() if data else None)
 
 
+class _MountAttr(ctypes.Structure):
+    _fields_ = [("attr_set", ctypes.c_uint64), ("attr_clr", ctypes.c_uint64),
+                ("propagation", ctypes.c_uint64), ("userns_fd", ctypes.c_uint64)]
+
+
+def _sys(nr, *argv):
+    global _libc
+    if _libc is None:
+        _libc = ctypes.CDLL(None, use_errno=True)
+    got = _libc.syscall(ctypes.c_long(nr), *argv)
+    if got < 0:
+        err = ctypes.get_errno()
+        raise OSError(err, f"syscall {nr}: {os.strerror(err)}")
+    return got
+
+
+def idmap_userns(owner, account):
+    """A user namespace that maps the trees' owner (uid, gid) onto the
+    account's user (uid, gid), as an fd, for an idmapped bind (R125 step 7):
+    made before the session's own namespaces, while /proc is the node's, by a
+    child that enters it and waits while this side writes its one-line maps.
+    None where the kernel will not."""
+    (ou, og), (au, ag) = owner, account
+    ready_r, ready_w = os.pipe()
+    hold_r, hold_w = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        try:
+            os.close(ready_r)
+            os.close(hold_w)
+            _call("unshare", ctypes.c_int(CLONE_NEWUSER))
+            os.write(ready_w, b"1")
+            os.read(hold_r, 1)
+        finally:
+            os._exit(0)
+    os.close(ready_w)
+    os.close(hold_r)
+    try:
+        if os.read(ready_r, 1) != b"1":
+            return None
+        for name, line in (("setgroups", "deny"), ("uid_map", f"{ou} {au} 1\n"), ("gid_map", f"{og} {ag} 1\n")):
+            with open(f"/proc/{pid}/{name}", "w") as f:
+                f.write(line)
+        return os.open(f"/proc/{pid}/ns/user", os.O_RDONLY)
+    except OSError:
+        return None
+    finally:
+        os.close(hold_w)
+        os.close(ready_r)
+        with contextlib.suppress(ChildProcessError):
+            os.waitpid(pid, 0)
+
+
+def _bind_idmapped(src, target, userns):
+    """src bound onto target with its owner read as the account's user and
+    written as the owner (MOUNT_ATTR_IDMAP). False where the filesystem
+    will not have it (a share), and the caller binds it plainly."""
+    fd = -1
+    try:
+        fd = _sys(SYS_OPEN_TREE, ctypes.c_int(AT_FDCWD), src.encode(),
+                  ctypes.c_uint(OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC))
+        attr = _MountAttr(MOUNT_ATTR_IDMAP, 0, 0, userns)
+        _sys(SYS_MOUNT_SETATTR, ctypes.c_int(fd), b"", ctypes.c_uint(AT_EMPTY_PATH),
+             ctypes.byref(attr), ctypes.c_size_t(ctypes.sizeof(attr)))
+        _sys(SYS_MOVE_MOUNT, ctypes.c_int(fd), b"", ctypes.c_int(AT_FDCWD), target.encode(),
+             ctypes.c_uint(MOVE_MOUNT_F_EMPTY_PATH))
+        return True
+    except OSError:
+        return False
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
+# The mapping's namespace for this session's view, made by main() before
+# the view's own namespaces when a bindmap step asks for it.
+_USERNS = None
+
+
 def _mkdirs(path, uid, gid):
     """Directories on a tmpfs this process mounted a moment ago, given to the
     session account so its own folders sit in folders it can use."""
@@ -936,7 +1026,7 @@ def _mkdirs(path, uid, gid):
 
 def apply(steps, uid, gid):
     for step in steps:
-        kind, target = step[0], step[-1] if step[0] in ("bind", "bindmine", "bindro", "bindrw", "bindfile") else step[1]
+        kind, target = step[0], step[-1] if step[0] in ("bind", "bindmap", "bindmine", "bindro", "bindrw", "bindfile") else step[1]
         if kind == "private":
             _mount(None, "/", None, MS_REC | MS_PRIVATE)
         elif kind == "proc":
@@ -952,6 +1042,18 @@ def apply(steps, uid, gid):
             if not os.path.isdir(target):
                 _mkdirs(target, uid, gid)
             _mount(src, target, None, MS_BIND | MS_REC)
+        elif kind == "bindmap":
+            # A tree of the session's project, its worktrees and its works,
+            # with their owner read as the account's own user and written as
+            # the owner (R125 step 7, B356): a session that runs as its own
+            # user can write its tree and its git reads it as its own. A plain
+            # bind where the filesystem will not map one (a share squashes
+            # every writer to one owner already).
+            src = step[1]
+            if not os.path.isdir(target):
+                _mkdirs(target, uid, gid)
+            if _USERNS is None or not _bind_idmapped(src, target, _USERNS):
+                _mount(src, target, None, MS_BIND | MS_REC)
         elif kind == "bindro":
             # A read-only bind of a directory onto itself: bind first, then
             # remount read-only, which is the only way the flag takes on a bind.
@@ -1275,6 +1377,65 @@ def caller(c, account=""):
     return pw.pw_name, pw.pw_uid, pw.pw_gid
 
 
+PROJECT_DIR = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
+AGENT_IDS = ("claude", "codex", "copilot", "grok")
+BRANCH = re.compile(r"(?:claude|codex|copilot|grok)/[A-Za-z0-9][A-Za-z0-9._@-]{0,79}")
+
+
+def worktree(c, argv):
+    """A worktree of a project for the account that asks (R125 step 7):
+    where accounts are their own users, the project's tree is another's, so
+    its own user can neither run git in it nor make a folder beside it.
+    Made here, as root, with git run as the tree's owner, at the place and
+    on the branch lib/common.sh's session_dir names, and printed. The
+    account is the caller's own, never one it names."""
+    if os.geteuid() != 0 or c.get("ACCOUNT_USERS") != "on":
+        raise Refused("bb-session: worktrees are made here only where accounts are their own users")
+    try:
+        me = pwd.getpwuid(int(os.environ.get("SUDO_UID", "")))
+    except (KeyError, ValueError):
+        raise Refused("bb-session: worktree is asked for through sudo") from None
+    account = "u_" + me.pw_name[len(ACCOUNT_USER):] if me.pw_name.startswith(ACCOUNT_USER) else ""
+    if not ACCOUNT.fullmatch(account):
+        raise Refused("bb-session: only an account's own user asks for its worktree")
+    if len(argv) != 4:
+        raise Refused("bb-session worktree PROJECT AGENT SLOT BRANCH")
+    project, agent, slot, branch = argv
+    if not PROJECT_DIR.fullmatch(project) or agent not in AGENT_IDS or slot not in "123456789" or len(slot) != 1 \
+            or not BRANCH.fullmatch(branch) or not branch.startswith(agent + "/"):
+        raise Refused("bb-session worktree: not a project, an agent, a slot and a branch")
+    ws = c["WORKSPACE"].rstrip("/")
+    src = f"{ws}/{project}"
+    if not os.path.isdir(f"{src}/.git") and not os.path.isfile(f"{src}/.git"):
+        raise Refused(f"bb-session worktree: {project} is not a repository here")
+    wt = f"{ws}/.worktrees/{project}/{account}" + ("" if agent == "claude" else f"-{agent}") + ("" if slot == "1" else f"-{slot}")
+    if not os.path.isdir(wt):
+        st = os.stat(src)
+        for d in (f"{ws}/.worktrees", f"{ws}/.worktrees/{project}"):
+            if not os.path.isdir(d):
+                os.mkdir(d, 0o755)
+                os.lchown(d, st.st_uid, st.st_gid)
+        pid = os.fork()
+        if pid == 0:
+            try:
+                os.setgroups([])
+                os.setgid(st.st_gid)
+                os.setuid(st.st_uid)
+                env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/nonexistent", "GIT_CONFIG_NOSYSTEM": "1",
+                       "GIT_CONFIG_GLOBAL": "/dev/null"}
+                has = subprocess.run(["git", "-C", src, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+                                     env=env, check=False).returncode == 0
+                add = ["git", "-C", src, "worktree", "add"] + ([wt, branch] if has else ["-b", branch, wt])
+                os._exit(subprocess.run(add, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                        check=False).returncode)
+            except Exception:                                  # noqa: BLE001 (the child says only how it ended)
+                os._exit(70)
+        _, status = os.waitpid(pid, 0)
+        if os.waitstatus_to_exitcode(status) != 0 or not os.path.isdir(wt):
+            raise Refused(f"bb-session worktree: git could not make {wt}")
+    print(wt)
+
+
 def enter(c, a, command):
     name, uid, gid = caller(c, a.get("account", ""))
     if not command:
@@ -1289,6 +1450,13 @@ def enter(c, a, command):
     # would not be walled off from the controller does not start.
     wall = wall_hold(c)
     steps = plan(c, a, uid, wall)
+    # The trees' owner mapped to the account's own user (R125 step 7): the
+    # namespace that says so made now, while /proc is still the node's.
+    global _USERNS
+    with contextlib.suppress(OSError):
+        st = os.stat(f"{c['WORKSPACE'].rstrip('/')}/{project}")
+        if any(x[0] == "bindmap" for x in steps) and (st.st_uid, st.st_gid) != (uid, gid):
+            _USERNS = idmap_userns((st.st_uid, st.st_gid), (uid, gid))
     net = net_conf(c)
     # Asked before anything is made: a node that keeps sessions to their own
     # network and has not got it ready starts none, rather than one on the
@@ -1589,6 +1757,9 @@ def main(argv):
             check_net(c)
             print("ok: a session here can have a network of its own")
             return 0
+        if verb == "worktree":
+            worktree(c, argv[1:])
+            return 0
         if verb in ("tty", "tty-ro"):
             try:
                 tty(c, argv[1:], ro=verb == "tty-ro")
@@ -1611,7 +1782,7 @@ def main(argv):
         if verb == "enter":
             enter(c, a, command)
             return 0
-        raise Refused("bb-session takes check, check-net, plan, enter, tty or tty-ro")
+        raise Refused("bb-session takes check, check-net, plan, enter, tty, tty-ro or worktree")
     except Refused as e:
         sys.stderr.write(f"{e}\n")
         # A session's view that will not start is said in its pane and held
