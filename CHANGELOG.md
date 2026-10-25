@@ -6,11 +6,13 @@
 
 - Projects come first: a project is made with a name alone (spaces and punctuation kept) and repositories are added to it, each keeping its own notebook, git host link and releases; its card lists its repositories and who is working there, and Edit turns it over to rename, move a repository to another project, delete one to the trash, and set its color, group, pin, archive and lock. A project has one id and one coding-agent session that works in all its repositories, and a project that reads it reads every repository in it (9ccf960, 178952e)
 - Grok (xAI's Grok Build) can run a project's session beside Claude, ChatGPT and Copilot: installed from its node's Agents page, signed in there with a device code, and held to the same briefing and guards through its own hooks (dc85506)
+- Terminal colors can be changed one by one under the preset you pick, with Reset to go back, and a preview on your Profile and in a project's own settings shows how your terminals will look (48dbbe9)
 
 ### Changed
 
 - SIGNING_SECRET is INSTALL_KEY: the one key that seals at rest what BuilderBot keeps, the signing keys among it (7645fec)
 - Terminals are BuilderBot's own, drawn in the page itself, and ttyd is gone from the controller and the nodes: a finger scrolls a terminal on a phone and a press held on a word selects it to copy, a job's, a container's and the controller's logs follow in a tab of the dock, a terminal that ends says why, and a tab popped out opens the same terminal in a window of its own. A node's terminals come in on the one port its VMs' screens use, so its firewall opens 7684 alone (052c096)
+- Every page states what it knows in a head at its top (its name, its state and its facts in a grid) in place of loose lines of text (48dbbe9)
 
 ### Upgrading
 
