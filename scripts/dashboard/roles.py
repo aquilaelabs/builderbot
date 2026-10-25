@@ -16,6 +16,7 @@ given. Built-in roles are not edited: copy one into a role of your own.
 The operator, 5 Oct: the permission settings were too inconsistent, and a
 person should be given a group of permissions.
 """
+import contextlib
 import json
 import re
 import threading
@@ -153,10 +154,8 @@ def owner_role_name(project):
     same rights on whichever project it is given, so two projects of one
     name sharing it give nobody anything more."""
     if label_of:
-        try:
+        with contextlib.suppress(Exception):
             project = label_of(project) or project
-        except Exception:                                              # noqa: BLE001
-            pass
     base = re.sub(r"[^A-Za-z0-9 ._-]", "-", str(project))[:33] or "project"
     if not base[0].isalpha():
         base = "p" + base[:32]
