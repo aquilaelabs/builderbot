@@ -677,8 +677,12 @@ def reads_changed(project, reads):
     """Whether `reads`, as the dialog sends it, names other projects than the
     ones stored: the dialog sends every field on every save."""
     got = reads if isinstance(reads, list) else str(reads).split(",")
-    want = sorted(r for r in _reads_of({"reads": got}) if r != project)
-    return want != sorted((get(project) or {}).get("reads") or [])
+    # By project (R138), as the setter keeps them: a repository named is its
+    # project, and the project itself is never one it reads.
+    home = (lambda r: r if _rp()[2](r) else (_rp()[0](r) or r)) if _rp() else (lambda r: r)
+    own = home(project)
+    want = sorted({home(r) for r in _reads_of({"reads": got})} - {project, own})
+    return want != sorted({home(r) for r in (get(project) or {}).get("reads") or []})
 
 
 def sees_changed(project, sees):
