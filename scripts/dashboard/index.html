@@ -4238,7 +4238,12 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   :is(.doctab,.nb) .field.docbarrow.dmpick>label.pick{flex:0 1 auto;min-width:5em;max-width:11em;margin-inline-end:0}
   /* (the id's rule too, a desk's 12rem base and 8rem floor) */
   :is(.doctab,.nb) .field.docbarrow.dmpick>input{flex:1 1 0;min-width:4em}
+  /* The picture in the middle of its button both ways: a block svg in the
+     inline .shrt sat at the left of the line box, wherever Cards and List
+     stand (Containers, VMs; B342). */
   :is(.doctab,.nb) .field.docbarrow.dmpick>.pseg>button{min-width:var(--tap);padding:4px 8px}
+  .dmviewseg>button{display:inline-flex;align-items:center;justify-content:center}
+  .dmviewseg>button>.shrt{display:inline-flex}
   :is(.doctab,.nb) .field.docbarrow.dmpick>.pseg svg{display:block}
   /* A runner's three actions, in their short words, on the row's one line. */
   .ndrun .actbar{flex-wrap:nowrap}
