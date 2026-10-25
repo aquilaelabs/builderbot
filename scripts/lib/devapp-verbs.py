@@ -47,7 +47,16 @@ def status():
         print("no compose file at this project's root (docker-compose.yml or compose.yml), so there is "
               "no dev instance: with one there, bb devapp new builds it from this tree")
         raise SystemExit(0)
-    print(f"  {'instance':<12} {st.get('name') or '-'}")
+    # Its own name, and the one the Containers page lists it under where it
+    # was renamed there: either names it to every bb devapp verb (B338).
+    # A project's default instance (main) is called by its project's name,
+    # which is the one it is listed under.
+    inst, named = st.get("instance") or "", st.get("name") or ""
+    if inst == "main":
+        inst = named
+    print(f"  {'instance':<12} {inst or named or '-'}")
+    if named and inst and named != inst:
+        print(f"  {'listed as':<12} {named} on the Containers page")
     print(f"  {'running':<12} {'yes' if st.get('running') else 'no'}")
     print(f"  {'daemon':<12} " + ("answering" if st.get("available")
                                   else (st.get("why") or "not reachable")))
@@ -69,7 +78,8 @@ def status():
     if job.get("running"):
         print(f"  {'job':<12} {job.get('step') or 'working'}")
     elif job.get("error"):
-        print(f"  {'job':<12} last one failed: {str(job['error'])[:120]}")
+        # Whole: a cut one hid which port was taken (B338).
+        print(f"  {'job':<12} last one failed: {str(job['error'])[:600]}")
 
 
 def _answers_at(name):
@@ -86,10 +96,16 @@ def _answers_at(name):
         return
     row = next((i for i in (d.get("instances") or []) if i.get("name") == name), None) \
         if isinstance(d, dict) else None
-    url = ((row or {}).get("route") or {}).get("url") or ""
+    route = (row or {}).get("route") or {}
+    url = route.get("url") or ""
     if not url:
         if row is not None and not row.get("ports"):
             print(f"  {'answers at':<12} nowhere: its compose file publishes no port")
+        elif route.get("why"):
+            # Why not, where the route can say (B339): a port kept on its
+            # node, which only that node's nginx answers for, above all.
+            on = f" on {row['node_name']}" if row.get("node_name") else ""
+            print(f"  {'answers at':<12} nowhere from here{on}: {route['why']}")
         return
     host = urllib.parse.urlsplit(url).hostname or ""
     others = [p.split("->")[0].rsplit(":", 1)[-1] for p in (row.get("ports") or [])]
@@ -436,12 +452,12 @@ def ls():
         kind = ("written here" if i.get("source") == "file" else
                 "its own" if i.get("project") == proj else f"built from {i.get('project')}")
         state = "?" if blind else "running" if i.get("running") else "stopped" if i.get("exists") else "down"
-        rows.append((i.get("name") or "", kind, state, " ".join(i.get("ports") or [])))
+        rows.append((i.get("name") or "", kind, state, " ".join(i.get("ports") or []), i.get("node_name") or ""))
     for c in d.get("containers") or []:
         if c.get("owner") != proj:
             continue
         rows.append((c.get("name") or c.get("id") or "", "not ours", c.get("state") or "?",
-                     " ".join(c.get("ports") or [])))
+                     " ".join(c.get("ports") or []), c.get("node_name") or ""))
     if not rows:
         # What the session can do next, not what the operator could (B537):
         # with a compose file at the root, its own bb devapp new is the way
@@ -449,16 +465,20 @@ def ls():
         st = bbapi.call("/api/devapp", {"project": proj, "action": "state"}, auth=os.environ["BB_DEV_AUTH"])
         st = st.get("state") if isinstance(st.get("state"), dict) else st
         if st.get("compose"):
-            print(f"nothing belongs to {proj} on its node yet: bb devapp new builds its dev instance "
+            print(f"nothing belongs to {proj} on any node yet: bb devapp new builds its dev instance "
                   "from the compose file at this project's root and starts it")
         else:
-            print(f"nothing belongs to {proj} on its node: a compose file at its root "
+            print(f"nothing belongs to {proj} on any node: a compose file at its root "
                   "(docker-compose.yml or compose.yml) and bb devapp new make its dev instance, "
                   "and a container made elsewhere is put under it on the Containers page by an administrator")
         raise SystemExit(0)
+    # Which node each is on, where the project's containers are on more
+    # than one (B338).
     w = max(len(r[0]) for r in rows)
-    for name, kind, state, ports in sorted(rows):
-        print(f"  {name:<{w}}  {kind:<14} {state:<8} {ports}".rstrip())
+    wn = max(len(r[4]) for r in rows)
+    for name, kind, state, ports, node in sorted(rows):
+        on = f"{node:<{wn}}  " if wn else ""
+        print(f"  {name:<{w}}  {on}{kind:<14} {state:<8} {ports}".rstrip())
     if blind:
         print("[builderbot] the daemon did not answer, so what is running is not known", file=sys.stderr)
     print("[builderbot] bb devapp log NAME reads one; bb devapp start|stop|restart NAME, and "

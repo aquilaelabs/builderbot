@@ -3854,7 +3854,6 @@ containers.dial = lambda p: prefs.get(p)["devbuild"]
 containers.users = users
 containers.ask_rebuild = phone.ask_rebuild
 containers.net_nudge = net_nudge
-containers.project_hosts = lambda p: prefs.get(p).get("hosts") or []
 containers.ports_local = nodes.ports_local_on
 containers.ctr_spark = nodes.ctr_spark
 # One nginx per node, from the nginx tab (R171): its records here, the
@@ -6873,12 +6872,15 @@ class Handler(BaseHTTPRequestHandler):
             # project it reads (bb -p NAME devapp, B551/B552): reading them
             # is what reads means. Acting on them stays its own project's.
             name = proj if sess and proj and proj != sess and self._reads(proj) else sess or proj
-            nid, why = devapp.project_daemon(name), None
+            # Every node its containers may be on, its own first (B338).
+            where = devapp.container_nodes(name)
+            nid, why = (where[0] if where else ""), None
             if not nid:
                 return self._json({"error": f"{name} has no node, so it has no containers anywhere. "
                                             + no_node_advice(name),
                                    "blind": True, "instances": [], "containers": []})
         else:
+            where = None
             nid, why = self._node_asked(asked)
         if why:
             return self._json({"error": why, "blind": True,
@@ -6908,6 +6910,19 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(containers.images_view(nid))
         with timing.timed("docker:manager_view"):
             got = containers.manager_view(nid, seen)
+            # A project's view across every node its containers are on, each
+            # row saying which: an instance put on a hosting node is listed
+            # where the session that made it can find it (B338).
+            if where and len(where) > 1:
+                for row in (got.get("instances") or []) + (got.get("containers") or []):
+                    row.setdefault("node_name", devapp.node_name(nid))
+                for other in where[1:]:
+                    more = containers.manager_view(other, seen)
+                    for k in ("instances", "containers"):
+                        for row in more.get(k) or []:
+                            row.setdefault("node_name", devapp.node_name(other))
+                        got[k] = (got.get(k) or []) + (more.get(k) or [])
+                    got["blind"] = bool(got.get("blind")) or bool(more.get("blind"))
         return self._json(got)
 
     def _get_containers(self):

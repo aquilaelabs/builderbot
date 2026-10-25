@@ -326,7 +326,7 @@ bb devapp override FILE|none
                    (compose's -f after -f), or none; the next rebuild takes it, and a
                    service it adds is asked about as any new one is. On ask it is a
                    person's, in the container's settings
-bb devapp ls       every container that belongs to this project on its node
+bb devapp ls       every container that belongs to this project, on every node it has one
 bb devapp log NAME one of those containers' log
 bb devapp start|stop|restart NAME [--why "..."]
                    one of those, under the same setting; --container NAME on the

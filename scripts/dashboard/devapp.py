@@ -210,6 +210,31 @@ def project_daemon(project):
     return (project_node(project) if project_node else "") or ""
 
 
+def container_nodes(project):
+    """Every node this project's containers may be on, its own first: the
+    nodes it works on (R82), the ones it hosts its containers on (R166), and
+    the node each of its instances was put on, which bb devapp new --node
+    makes one of neither. The one answer a session's container list, its
+    container verbs and an instance's address all read: asking the
+    project's own node alone left an instance on a hosting node unlisted
+    and unreachable to the session that made it (B338)."""
+    out = []
+
+    def add(n):
+        if n and n not in out:
+            out.append(n)
+    for n in nodes_of(project) or []:
+        add(n)
+    add(project_daemon(project))
+    for n in (hosts_of(project) if hosts_of else None) or []:
+        add(n)
+    for proj, insts in _load().items():
+        for inst, rec in insts.items():
+            if owner_of(proj, inst, rec) == project:
+                add(_instance_node(proj, inst))
+    return out
+
+
 def instance_node(project, instance):
     """Which node an instance is on, for a caller outside this module.
 
@@ -3484,14 +3509,18 @@ def container_net_own(node_id):
 
 
 def row_named(name):
-    """(project, instance) of the instance or written container the Docker
-    tab lists as `name`, or None. How a session names one that is not its
-    project's own (bb devapp --container)."""
-    for proj, insts in _load().items():
+    """(project, instance) of the instance or written container named
+    `name`, by the name the Containers page lists it under or by the
+    instance's own (bb devapp new NAME), or None. An instance renamed on
+    the page answers to both, which bb devapp --container and --instance
+    each knew only one of (B338)."""
+    store = _load()
+    for proj, insts in store.items():
         for inst in insts:
             if _pname(proj, inst) == name:
                 return proj, inst
-    return None
+    hits = [(proj, inst) for proj, insts in store.items() for inst in insts if inst == name]
+    return hits[0] if len(hits) == 1 else None
 
 
 def _owners():
