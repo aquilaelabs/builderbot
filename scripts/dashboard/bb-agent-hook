@@ -36,6 +36,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -148,6 +149,29 @@ def keep(agent, raw):
         os.replace(tmp, os.path.join(dest_dir, f"{sid}.jsonl"))
     except OSError:
         pass
+
+
+def settle(agent, raw):
+    """The copy again a few seconds after the turn's end, and once more
+    later, from a child the agent does not wait on: Copilot CLI writes the
+    turn's reply after its hook at the end of the turn returns, and Grok
+    Build can write a turn's first words after the rest, so a copy taken
+    only at the hook missed them until the next turn ended."""
+    try:
+        if os.fork():
+            return
+    except OSError:
+        return
+    try:
+        os.setsid()
+        fd = os.open(os.devnull, os.O_RDWR)
+        for n in (0, 1, 2):
+            os.dup2(fd, n)
+        for wait in (4, 20):
+            time.sleep(wait)
+            keep(agent, raw)
+    finally:
+        os._exit(0)
 
 
 def wall(path, cwd=""):
@@ -293,6 +317,7 @@ def main(argv):
     call = as_claude(agent, raw)
     if event == "stop":
         keep(agent, raw)
+        settle(agent, raw)
     said = []
     why = wall((call.get("tool_input") or {}).get("file_path", ""), call.get("cwd") or "") \
         if event == "pre" and call.get("tool_name") == "Edit" else ""

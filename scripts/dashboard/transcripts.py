@@ -504,6 +504,18 @@ def _acp_text(c):
     return ""
 
 
+def _by_event(lines):
+    """Grok Build's updates in the order it raised them, by the number its
+    event ids end in: a turn's first chunk can be written after the rest.
+    A line with no id keeps the place of the one before it."""
+    keyed, last = [], 0
+    for i, line in enumerate(lines):
+        m = re.search(r'"eventId":\s*"[^"]*-(\d+)"', line)
+        last = int(m.group(1)) if m else last
+        keyed.append((last, i, line))
+    return [line for _, _, line in sorted(keyed)]
+
+
 def _args(a):
     if isinstance(a, str):
         try:
@@ -551,7 +563,7 @@ def _agent_turns(f, agent, tz, tail, first=False):
                 fh.seek(size - tail)
                 fh.readline()
                 partial = True
-            for line in fh:
+            for line in (_by_event(fh) if agent == "grok" else fh):
                 # The first words: read until the person's turn has ended,
                 # which for Grok is a message streamed in chunks.
                 if total > MAX_OUT or (first and any(t["who"] == "you" for t in out) and out[-1]["who"] != "you"):

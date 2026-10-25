@@ -279,6 +279,14 @@ class OtherTranscripts(unittest.TestCase):
         self.assertEqual((got["turns"][1]["tools"][0]["call"], got["turns"][1]["tools"][0]["result"]),
                          ("run_terminal_command: $ make", "ok"))
 
+    def test_a_grok_turn_s_first_chunk_written_late_reads_in_its_place(self):
+        ev = lambda n, u: {"params": {"update": u}, "_meta": {"eventId": f"gk-2-{n}"}}  # noqa: E731
+        self.put(f"{self.ws}/.worktrees/alpha/u_0000aaaa-grok", "grok", "gk-2", [
+            ev(2, self.GROK[1]), ev(3, self.GROK[4]["update"]), ev(1, self.GROK[0])])
+        got, st = self.t.turns("u_0000aaaa", "alpha", "gk-2")
+        self.assertEqual([(t["who"], t["text"]) for t in got["turns"]],
+                         [("you", "Fix the build"), ("claude", "Built.")])
+
     def test_grok_s_stop_hook_finds_its_log_by_the_session_id(self):
         import importlib.machinery
         import importlib.util
