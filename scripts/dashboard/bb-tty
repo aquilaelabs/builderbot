@@ -200,9 +200,23 @@ if on_node && [ -n "${grant:-}" ]; then
     fi
 fi
 
+# tmux_settings: BuilderBot's tmux settings (lib/tmux.conf: the status line,
+# PgUp's scrollback, the history kept) given to the tmux server this runs
+# under. The controller's own reads the copy its start writes; a node's, an
+# account's own and the docker account's have no such copy (B283).
+tmux_settings() {
+    tmux source-file "$(dirname "$(readlink -f "$0")")/../lib/tmux.conf" 2>/dev/null || true
+}
+# tmux_keys: the keys the page's terminal relies on (lib/tmux-keys.conf),
+# given to every server a terminal runs under, the controller's included,
+# whatever its ~/.tmux.conf says.
+tmux_keys() {
+    tmux source-file "$(dirname "$(readlink -f "$0")")/../lib/tmux-keys.conf" 2>/dev/null || true
+}
+
 # ---- a container's shell on a node (R218 step 4) -----------------------------
 #
-# The agent's third terminal server runs this as the docker account, which is
+# The agent's container terminal (its ctr kind) runs this as the docker account, which is
 # kept apart from the session account (that one is in no docker group on
 # purpose: docker is root on the machine, provision-linux.sh). Here it opens a
 # shell inside one running container and nothing else, the one the
@@ -222,11 +236,9 @@ if [ "${BB_TTY_CTR:-}" = 1 ]; then
         command -v virsh >/dev/null 2>&1 || ctr_no "There is no virsh here: VM host is not installed on this node."
         s="$(tmux_prefix "$account")vm-${dom}"
         tmux new-session -A -d -s "$s" -c / virsh -c qemu:///system console --force "$dom"
+        tmux_settings
         tmux set-option -t "$s" mouse off
-        tmux set-option -t "$s" status-style bg=color236,fg=color252
-        tmux set-option -t "$s" status-left-length 40
-        tmux set-option -t "$s" status-left '#[bold] #{s/^u_[0-9a-f]*~//:session_name} '
-        tmux set-option -t "$s" status-right ' builderbot '
+        tmux_keys
         exec tmux attach-session -t "$s"
     fi
     # A container's log in a dock tab (R133 step 12): docker logs followed,
@@ -251,13 +263,9 @@ if [ "${BB_TTY_CTR:-}" = 1 ]; then
     # shellcheck disable=SC2016 # expanded in the container, not here
     tmux new-session -A -d -s "$s" -c / \
         docker exec -it "$cname" sh -c 'if command -v bash >/dev/null 2>&1; then exec bash; fi; exec sh'
+    tmux_settings
     tmux set-option -t "$s" mouse off
-    # The status line every terminal in the dock wears (15-dashboard.sh's),
-    # on the session: the docker account has no BuilderBot tmux.conf.
-    tmux set-option -t "$s" status-style bg=color236,fg=color252
-    tmux set-option -t "$s" status-left-length 40
-    tmux set-option -t "$s" status-left '#[bold] #{s/^u_[0-9a-f]*~//:session_name} '
-    tmux set-option -t "$s" status-right ' builderbot '
+    tmux_keys
     exec tmux attach-session -t "$s"
 fi
 
@@ -1228,12 +1236,10 @@ start() {
     tmux set-option -g remain-on-exit-format \
         "BuilderBot: this ended before it started (exit #{pane_dead_status}). Close the tab, or open it again to start afresh." \
         2>/dev/null || true
-    # BuilderBot's tmux settings (the status line, PgUp's scrollback, the
-    # history kept), which the controller's server reads from the copy its
-    # start writes: a node's server, an account's own included, has no such
-    # copy, so it is given them here (B283).
+    # BuilderBot's tmux settings, which the controller's server reads from
+    # the copy its start writes (tmux_settings).
     if on_node; then
-        tmux source-file "$(dirname "$(readlink -f "$0")")/../lib/tmux.conf" 2>/dev/null || true
+        tmux_settings
     fi
     # ...and one left so from before is started afresh, not attached to.
     if tmux list-panes -t "=$s" -F '#{pane_dead}' 2>/dev/null | grep -qx 1; then
@@ -1282,23 +1288,7 @@ start() {
         *)        tmux set-option -t "$s" mouse off ;;
     esac
 
-    # A key copy mode has no use for leaves it, so a letter typed into a pane
-    # scrolled back ends the scroll rather than vanishing (the operator, 23
-    # Oct: Codex's approval list ignored every key while the pane sat in
-    # copy mode a scroll had put it in). Its own keys (arrows, q, /) keep
-    # their meaning; the first other key is spent leaving.
-    tmux bind-key -T copy-mode Any send-keys -X cancel 2>/dev/null || true
-    tmux bind-key -T copy-mode-vi Any send-keys -X cancel 2>/dev/null || true
-
-    # tmux's own right-click menu is drawn in the terminal, underneath the
-    # browser's context menu, which covers it: two menus for one click, and
-    # only one of them dismissable. The browser's is the one with copy and
-    # paste, so tmux's is the one that goes.
-    tmux unbind-key -n MouseDown3Pane 2>/dev/null || true
-    tmux unbind-key -n MouseDown3Status 2>/dev/null || true
-    tmux unbind-key -n MouseDown3StatusLeft 2>/dev/null || true
-    tmux unbind-key -n MouseDown3StatusRight 2>/dev/null || true
-
+    tmux_keys
     exec tmux attach-session -t "$s"
 }
 
@@ -1430,6 +1420,7 @@ case "$target" in
             if [ "$agent" = claude ]; then claude_first_run "$dir" || true
             else agent_first_run "$agent" "$dir" || true; fi
             trust_note "$agent" "$dir"
+            tmux_keys
             exec tmux attach-session -t "=$fast"
         fi
         # Signed out, a session starts and dies on claude's own error, which

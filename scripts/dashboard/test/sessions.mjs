@@ -41,6 +41,9 @@ ok((await btn('shell-9').textContent()).trim() === 'Minimize',
 ok(await page.evaluate(() => sessionOf(tabOf(panes[1]).arg) === 'shell-9' && dockUp), '...and goes to it, the dock up');
 // PgUp from the keys row is how a finger scrolls: at a prompt it enters copy
 // mode a page up; PgDn pages back and copy mode ends itself at the bottom.
+// Pressed once the terminal shows the session, as a person would: before
+// its client attaches, keys reach bb-tty still starting, not tmux.
+for (const t0 = Date.now(); Date.now() - t0 < 15000 && tmuxFmt('shell-9', '#{session_attached}') === '0';) await sleep(200);
 await page.evaluate(() => sendKey('pgup'));
 await page.waitForFunction(() => true); await sleep(300);
 ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '1', 'PgUp at a prompt enters copy mode (scrolls back)');

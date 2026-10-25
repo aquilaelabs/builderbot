@@ -216,7 +216,7 @@ function termCell(rec){
 // Lines scrolled (more than nought: toward the newest). Where the pane takes
 // the mouse (a coding agent's, tmux's mouse on) a drag is the wheel it would
 // be at a desk; otherwise (a shell) tmux's history moves by the line, as
-// PgUp moves it by the page, asked of the server in batches.
+// PgUp moves it by the page.
 function termScroll(rec, n, at){
   if (rec.term.modes.mouseTrackingMode !== "none"){
     const scr = rec.el.querySelector(".xterm-screen");
@@ -225,17 +225,12 @@ function termScroll(rec, n, at){
         clientY: at.clientY, bubbles: true, cancelable: true}));
     return;
   }
-  rec.scrollBy = (rec.scrollBy || 0) + n;
-  if (rec.scrollSend) return;
-  rec.scrollSend = setTimeout(async () => {
-    const by = rec.scrollBy;
-    rec.scrollBy = 0; rec.scrollSend = null;
-    if (!by) return;
-    try{
-      await postJSON("/api/keys", {session: sessionOf(rec.t.arg), key: by < 0 ? "lineup" : "linedown", lines: Math.abs(by)});
-      if (by < 0) rec.t.scrolled = true;
-    }catch(e){ /* the next drag asks again */ }
-  }, 80);
+  // A key a line (TERM_LINE_UP and TERM_LINE_DOWN, tmux's own keys from
+  // lib/tmux-keys.conf), down the socket: copy mode entered going up and
+  // ended by itself at the bottom.
+  if (!n) return;
+  termSend(rec, 0, new TextEncoder().encode((n < 0 ? TERM_LINE_UP : TERM_LINE_DOWN).repeat(Math.min(Math.abs(n), 200))));
+  if (n < 0) termScrolled.add(rec.t.id);
 }
 
 // The cell under a point, as a place in the buffer counted in cells.
@@ -343,20 +338,18 @@ function termSelectEnd(rec){
 // What is typed, from the keyboard or the keys bar, for the program: a
 // pane this page scrolled back into tmux's copy mode leaves it first, where
 // an arrow moved tmux's cursor over the history and a letter did nothing,
-// and the program heard neither (B254). Marked on the tab, so a pane the
-// server scrolled before the socket opened counts too. What follows waits
-// its turn behind the leaving, so nothing typed lands in copy mode or out
-// of order.
+// and the program heard neither (B254). The leaving is tmux's own key for
+// it (TERM_LEAVE, lib/tmux.conf), sent down the same socket ahead of what
+// is typed, so it lands first. Marked on the tab, so a pane the server
+// scrolled before the socket opened counts too: by its id, since the
+// layout's tab and the terminal's may be two objects for one tab.
+const termScrolled = new Set();
+const TERM_LEAVE = "\x1b[9001~", TERM_LINE_UP = "\x1b[9002~", TERM_LINE_DOWN = "\x1b[9003~";
 function termType(rec, bytes){
-  if (rec.held){ rec.held.push(bytes); return; }
-  if (!rec.t.scrolled){ termSend(rec, 0, bytes); return; }
-  rec.t.scrolled = false;
-  rec.held = [bytes];
-  postJSON("/api/keys", {session: sessionOf(rec.t.arg), key: "leave"}).catch(() => {}).then(() => {
-    const held = rec.held || [];
-    rec.held = null;
-    held.forEach(b => termSend(rec, 0, b));
-  });
+  if (termScrolled.delete(rec.t.id)){
+    termSend(rec, 0, new TextEncoder().encode(TERM_LEAVE));
+  }
+  termSend(rec, 0, bytes);
 }
 
 function termSend(rec, kind, body){

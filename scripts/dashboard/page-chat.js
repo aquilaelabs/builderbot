@@ -179,7 +179,7 @@ async function sendKey(key){
   // The terminal takes the key itself (R133 step 5): typed down its socket,
   // or a page scrolled; the server only where it has no socket.
   if (termOwn(t) && termKey(t, key)) return;
-  if (key === "pgup") t.scrolled = true;
+  if (key === "pgup") termScrolled.add(t.id);
   try{
     const r = await postJSON("/api/keys", {session: sessionOf(t.arg), key});
     const j = await r.json();

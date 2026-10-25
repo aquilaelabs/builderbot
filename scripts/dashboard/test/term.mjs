@@ -137,6 +137,8 @@ ok(await waitFor(/kb-42/) && !keysAsked.length, `the keys bar's Enter goes down 
     typed = await until(rows => rows.some(l => /^pick-me-word/.test(l)), 8000);
   }
   ok(typed, 'the phone\'s shell runs what is typed into it');
+  // The scroll goes down the terminal's own socket, tmux's keys for it
+  // (lib/tmux-keys.conf), and the server is asked nothing.
   const asked = [];
   phone.on('request', r => { if (r.url().includes('/api/keys')) asked.push(r.postData() || ''); });
   const box = await phone.$eval('#pane1 .slot.on .xterm-screen', e => { const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, top: b.top + 20, h: b.height }; });
@@ -147,8 +149,8 @@ ok(await waitFor(/kb-42/) && !keysAsked.length, `the keys bar's Enter goes down 
   let back = await until(scrolled, 5000), drags = 1;
   if (!back){ await finger(phone, box.x, box.top, box.x, box.top + box.h * 0.6); drags = 2; back = await until(scrolled); }
   if (!back) console.log('the screen then:', JSON.stringify((await shown()).slice(-8)));
-  ok(back && asked.some(b => /"lineup"/.test(b)),
-     `a finger dragged down scrolls a shell back into its history (${drags} drag${drags === 1 ? '' : 's'}, ${asked.length} asked: ${asked[0] || ''})`);
+  ok(back && asked.length === 0,
+     `a finger dragged down scrolls a shell back into its history, down its own socket (${drags} drag${drags === 1 ? '' : 's'}, ${asked.length} asked of the server)`);
   // Up again, past the bottom: copy mode ends by itself.
   await finger(phone, box.x, box.top + box.h * 0.9, box.x, box.top);
   await finger(phone, box.x, box.top + box.h * 0.9, box.x, box.top);
