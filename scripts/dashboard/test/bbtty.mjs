@@ -386,8 +386,11 @@ ok(!/dangerously/.test(a) && /--effort\0max\0/.test(a),
 // the same launcher, re-reading the file and resuming what was running.
 writeFileSync(join(DIR, 'state', 'claude-prefs.json'), JSON.stringify(
   { users: { [SEAT]: { alpha: { model: 'opus', effort: 'low' } } } }));
+// Named as Claude Code names a tree's folder, every character that is not a
+// letter or a digit a dash: the temp directory's dot made the slashes-only
+// name the respawn read a folder Claude never writes (B348).
 const tdir = join(DIR, 'home', '.claude', 'projects',
-                  join(DIR, 'ws', 'alpha').replaceAll('/', '-'));
+                  join(DIR, 'ws', 'alpha').replace(/[^A-Za-z0-9]/g, '-'));
 mkdirSync(tdir, { recursive: true });
 writeFileSync(join(tdir, 'old-one.jsonl'), '');
 await sleep(1100);                       // ls -t sorts by mtime, at 1s here
@@ -787,7 +790,7 @@ sleep 60
     // outside the tree: a session asked the person to approve reading a
     // memory it was updating (6 Oct).
     const mem = scope.permissions.additionalDirectories || [];
-    ok(mem.length === 1 && mem[0].endsWith(`/.claude/projects/${wt.replaceAll('/', '-')}/memory`),
+    ok(mem.length === 1 && mem[0].endsWith(`/.claude/projects/${wt.replace(/[^A-Za-z0-9]/g, '-')}/memory`),
        `...and the memory of its own tree is a directory it may use without asking (${mem.join(', ')})`);
     // The scope file also carries the work hook, which is how the finer half
     // of `bb work` gets anything to report.

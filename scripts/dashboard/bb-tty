@@ -409,6 +409,14 @@ walls_around() {
         | { grep -vxF "$here" || true; }
 }
 
+# tree_slug DIR - the folder Claude Code keeps a tree's conversations in, under
+# ~/.claude/projects: the path with every character that is not a letter or a
+# digit a dash, as Claude Code names it (claudesync.slug). Its slashes alone
+# missed a worktree's .worktrees and u_ (B348).
+tree_slug() {
+    printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'
+}
+
 # cache_project_dir PROJECT - this account's BuilderBot cache folder for one
 # project, made if it is missing: its launcher, its scope, its token and its
 # session's environment. A folder per project, so that a session's view can
@@ -636,7 +644,7 @@ claude_scope() {
                --arg state "${DASHBOARD_STATE:-/config}" \
                --argjson hooks "$(python3 "$hooks/bb-agent-hook" --claude-settings "$proj" "${account:-owner}" "$hooks")" \
                --arg proj "$proj" --arg who "${account:-owner}" \
-               --arg mem "$HOME/.claude/projects/${here//\//-}/memory" '
+               --arg mem "$HOME/.claude/projects/$(tree_slug "$here")/memory" '
            {permissions: {
               # The memory of the project, which Claude Code keeps outside
               # its tree: a session asked the person to approve reading the
@@ -1558,11 +1566,21 @@ case "$target" in
             # account's conversations (B613): one started elsewhere, or
             # carried on elsewhere since, comes down first. Asked only of a
             # node; on the share the file is the controller's own.
+            # In the folder of the tree it will run in, which is where Claude
+            # Code looks for it (B348: the project directory's was checked,
+            # and a worktree's session found nothing to resume).
+            rtd="$HOME/.claude/projects/$(tree_slug "$(session_dir "$proj" "$account" "$agent")")"
             if on_node; then
                 ( cd "$dir" 2>/dev/null && BB_PROJECT="$proj" bb transcripts fetch "$resume" \
-                      --into "$HOME/.claude/projects/${dir//\//-}" >/dev/null 2>&1 ) || true
+                      --into "$rtd" >/dev/null 2>&1 ) || true
             fi
-            if [ ! -f "$HOME/.claude/projects/${dir//\//-}/${resume}.jsonl" ]; then
+            # ...and from another of this account's trees when it was had
+            # there: the project directory's, say.
+            if [ ! -f "$rtd/${resume}.jsonl" ]; then
+                rf="$(find "$HOME/.claude/projects" -mindepth 2 -maxdepth 2 -name "${resume}.jsonl" 2>/dev/null | head -1)"
+                [ -z "$rf" ] || { ( umask 077; mkdir -p "$rtd" ) && cp -p "$rf" "$rtd/"; } 2>/dev/null || true
+            fi
+            if [ ! -f "$rtd/${resume}.jsonl" ]; then
                 bad "No transcript ${resume} for ${proj}." \
                     "It may have been cleaned up; start a new conversation instead."
             fi
@@ -1806,7 +1824,7 @@ case "$target" in
         # goes to tmux directly, which is what used to happen and is still
         # right for a short one.
         if launcher="$(LAUNCH_AGENT="$agent" claude_launcher "$proj" \
-                          "$HOME/.claude/projects/${dir//\//-}" \
+                          "$HOME/.claude/projects/$(tree_slug "$dir")" \
                           "${cmd[@]}" "${prompt[@]}")"; then
             in_view "$proj" "$dir" "$launcher"
             start "$(sess "${agent}-${proj}")" "$dir" "${RUN[@]}"
