@@ -1704,6 +1704,23 @@ def _schedules_loop():
             print(f"dashboard: schedules: {type(e).__name__}: {e}", flush=True)
 
 
+def _ci_log_text(got):
+    """A CI run as a log tab shows it (R133 step 12): the run, then each job
+    with how it ended and the end of its log, the lines above that a failure
+    named, as bb ci-log prints them."""
+    r = got.get("run") or {}
+    out = [f"{r.get('name', '')} #{r.get('id', '')} on {r.get('branch', '')}: {r.get('conclusion', '')}  {r.get('url', '')}", ""]
+    for j in got.get("jobs") or []:
+        out.append(f"== {j.get('name', '')}: {j.get('conclusion', '')}"
+                   + (f", at {j['failed_step']}" if j.get("failed_step") else ""))
+        if j.get("earlier"):
+            out += ["-- earlier, the lines that named a failure:", j["earlier"], "-- the end of its log:"]
+        if j.get("log"):
+            out.append(j["log"])
+        out.append("")
+    return "\n".join(out)
+
+
 def _room_loop():
     """Every hour, a node whose Docker disk has fallen under twice the floor
     gets its build cache a week old and its images no container has used
@@ -6251,6 +6268,26 @@ class Handler(BaseHTTPRequestHandler):
                 except OSError:
                     data = b""
                 return data.decode("utf-8", "replace"), ""
+            return read, None
+        if kind == "ci":
+            # A CI run's jobs and their logs (R133 step 12), as /api/ci-runs
+            # reads one for an account that sees the project: fetched from
+            # the git host once, since a finished run's log does not move,
+            # and the project's visibility asked again as the tab is kept.
+            name, _, run = rest.rpartition(":")
+            if not name or not run.isdigit():
+                return None, "a CI run's log is named by its project and its run"
+            if name not in set(project_names(self._who())):
+                return None, f"not a project: {name}"
+            held = {}
+
+            def read():
+                if "text" not in held:
+                    try:
+                        held["text"] = _ci_log_text(cilogs.log(name, int(run)))
+                    except cilogs.Refused as e:
+                        held["text"] = f"[builderbot] {e}\n"
+                return held["text"], "the run's log as GitHub keeps it"
             return read, None
         return None, f"no log of the kind {kind or 'named'} is read here"
 

@@ -1473,6 +1473,13 @@ print(json.dumps(g.act(repo, "merge", {"name": "trunk", "into": "main"})))`], { 
      && sect.rows.some(r => /^Runner: .*ubuntu-latest.*android\.yml:10/.test(r))
      && sect.rows.some(r => /^Action: .*setup-android.*v4 is out/.test(r)),
      `...each finding a row in words, with where it is (${JSON.stringify(sect.rows)})`);
+  // Its log in the dock (R133 step 12): the newest run's, a read-only tab
+  // the server writes the run into once and ends, saying so.
+  await page.click(`${NB} details.sect[data-sect="git:ci"] [data-cilog="11"]`);
+  const ciTab = await page.waitForFunction(() => tabs.find(t => t.kind === 'term' && t.arg === 'log:ci:beta:11'), null, { timeout: 10000 })
+    .then(h => h.jsonValue(), () => null);
+  ok(ciTab && /^CI: beta #11$/.test(ciTab.label), `Its log opens the run's log in the dock, a tab of its own (${ciTab?.label})`);
+  await page.evaluate(() => { const t = tabs.find(x => x.arg === 'log:ci:beta:11'); if (t) dropTab(t.id); });
   await page.evaluate(() => refresh());
   await page.waitForFunction(() => (state?.ci_red || []).some(c => c.project === 'beta'), null, { timeout: 15000 });
   await page.evaluate(() => toggleBell(true));
