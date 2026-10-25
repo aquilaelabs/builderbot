@@ -28,8 +28,11 @@ if tree:
         sys.exit("[builderbot] ERROR: not sent: the controller's copy of this project is behind this one, "
                  "and git there would act on the older tree. Try again once the node is in step "
                  "(the Nodes page's Sessions section says each project's state)")
+# The tree a tree verb is about: BB_REPO where it names one, as preflight and
+# the test runner read it, else where the caller stands (B233, B274).
+here = os.environ.get("BB_REPO", "") if tree and os.path.isdir(os.environ.get("BB_REPO", "")) else os.getcwd()
 r = bbapi.call("/api/v1/bb", {"argv": argv, "project": project,
-                              "cwd": os.getcwd(),
+                              "cwd": here,
                               # A session of any coding agent (R95): Claude
                               # Code sets CLAUDECODE, bb-tty's launcher sets
                               # BB_AGENT for every agent, and which one rides

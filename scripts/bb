@@ -5939,7 +5939,9 @@ cmd_version() {
     # Asked from one of the project's worktrees, the answer is that tree's:
     # its HEAD, its VERSION file, its ordinal (version.py root()). The relay
     # runs this in the caller's cwd, so a node's session gets the same.
-    local top; top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    # ...or the one BB_REPO names, as preflight and the test runner read it
+    # (B233, B274: a worktree's gate run from the main checkout wrote there).
+    local top; top="$(git -C "${BB_REPO:-.}" rev-parse --show-toplevel 2>/dev/null || true)"
     case "$top" in "$BB_WORKTREES/$proj"/*) export BB_VERSION_TREE="$top" ;; esac
     # A release is the controller's to make (R138): the verb asks it, with
     # this session's credential.
@@ -5964,7 +5966,9 @@ cmd_changelog() {
     # Asked from one of the project's worktrees, the answer is that tree's:
     # its HEAD, its VERSION file, its ordinal (version.py root()). The relay
     # runs this in the caller's cwd, so a node's session gets the same.
-    local top; top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    # ...or the one BB_REPO names, as preflight and the test runner read it
+    # (B233, B274: a worktree's gate run from the main checkout wrote there).
+    local top; top="$(git -C "${BB_REPO:-.}" rev-parse --show-toplevel 2>/dev/null || true)"
     case "$top" in "$BB_WORKTREES/$proj"/*) export BB_VERSION_TREE="$top" ;; esac
     # ...and any other worktree of the project's repository, wherever it is
     # (a Claude Code worktree under the project's .claude/worktrees wrote the
