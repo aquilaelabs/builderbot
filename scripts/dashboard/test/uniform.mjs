@@ -925,7 +925,9 @@ for (const kind of kinds){
     const name = e => e ? (e.id ? '#' + e.id : e.tagName.toLowerCase() + (typeof e.className === 'string' && e.className ? '.' + e.className.trim().split(/\s+/)[0] : '')) : '?';
     const mo = new MutationObserver(ms => ms.forEach(m => {
       const t = m.target.nodeType === 1 ? m.target : m.target.parentElement;
-      if (t?.closest('#uptime, #docWhen')) return;
+      // A clock's text, and a terminal's own drawing (what it prints, its
+      // cursor), are not the page drawing again for a read.
+      if (t?.closest('#uptime, #docWhen, .xterm')) return;
       seen.push(`${name(t)} ${m.type === 'attributes' ? '@' + m.attributeName : m.type}`);
     }));
     // ...unless it did bring something: a token the page follows that moved
