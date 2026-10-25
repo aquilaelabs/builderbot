@@ -64,6 +64,17 @@ class Listed(unittest.TestCase):
         self.put(".copilot/config.json", {"lastLoggedInUser": {"host": "https://github.com", "login": "octo"}})
         self.assertEqual(self.listed()["agents"]["copilot"], {"email": "octo", "plan": ""})
 
+    def test_grok_names_the_email_its_token_carries_and_never_the_token(self):
+        claims = base64.urlsafe_b64encode(json.dumps({"email": "me@example.invalid"}).encode()).decode().rstrip("=")
+        self.put(".grok/auth.json", {"session": {"access_token": f"eyJhbGciOiJub25lIn0.{claims}.sig"}})
+        got = self.listed()["agents"]["grok"]
+        self.assertEqual(got, {"email": "me@example.invalid", "plan": ""})
+        self.assertNotIn("eyJ", json.dumps(got))
+
+    def test_grok_signed_in_with_no_email_in_reach_says_its_account(self):
+        self.put(".grok/auth.json", {"token": "opaque"})
+        self.assertEqual(self.listed()["agents"]["grok"], {"email": "an xAI account", "plan": ""})
+
     def test_copilot_s_managed_header_is_read_past_and_kept(self):
         # 1.0.103 opens its config with comment lines (B280).
         head = "// User settings belong in settings.json.\n// This file is managed automatically.\n"

@@ -22,9 +22,9 @@ node = agentpkg.load("builderbot_agent")
 
 
 class Table(unittest.TestCase):
-    def test_four_agents_with_claude_first_and_the_open_one_not_live_yet(self):
-        self.assertEqual([a.id for a in agents.TABLE], ["claude", "codex", "copilot", "open"])
-        self.assertEqual([a.id for a in agents.live()], ["claude", "codex", "copilot"])
+    def test_five_agents_with_claude_first_and_the_open_one_not_live_yet(self):
+        self.assertEqual([a.id for a in agents.TABLE], ["claude", "codex", "copilot", "grok", "open"])
+        self.assertEqual([a.id for a in agents.live()], ["claude", "codex", "copilot", "grok"])
         self.assertIs(agents.default(), agents.get("claude"))
 
     def test_every_row_is_well_formed(self):
@@ -220,6 +220,17 @@ class OtherTranscripts(unittest.TestCase):
         {"type": "assistant.message", "data": {"content": "Built."}},
     ]
 
+    # Grok Build's updates.jsonl: ACP session updates, a message streamed in
+    # chunks, a tool call and its update by toolCallId.
+    GROK = [
+        {"sessionUpdate": "user_message_chunk", "content": {"type": "text", "text": "Fix "}},
+        {"sessionUpdate": "user_message_chunk", "content": {"type": "text", "text": "the build"}},
+        {"sessionUpdate": "tool_call", "toolCallId": "g1", "title": "run_terminal_command", "rawInput": {"command": "make"}},
+        {"sessionUpdate": "tool_call_update", "toolCallId": "g1", "status": "completed",
+         "content": [{"type": "content", "content": {"type": "text", "text": "ok"}}]},
+        {"update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "Built."}}},
+    ]
+
     def setUp(self):
         import tempfile
         import transcripts
@@ -256,6 +267,38 @@ class OtherTranscripts(unittest.TestCase):
         self.assertIn("ChatGPT", text)
         self.assertIn("$ bb roadmap", text)
         self.assertTrue(name.startswith("codex-alpha-"))
+
+    def test_a_grok_conversation_joins_its_chunks_and_pairs_its_tools(self):
+        self.put(f"{self.ws}/.worktrees/alpha/u_0000aaaa-grok", "grok", "gk-1", self.GROK)
+        rows = {r["id"]: (r["agent"], r["first"]) for r in self.t.mine("u_0000aaaa", ["alpha"])}
+        self.assertEqual(rows, {"gk-1": ("grok", "Fix the build")})
+        got, st = self.t.turns("u_0000aaaa", "alpha", "gk-1")
+        self.assertEqual((st, got["agent_name"]), (200, "Grok"))
+        self.assertEqual([(t["who"], t["text"]) for t in got["turns"]],
+                         [("you", "Fix the build"), ("claude", ""), ("claude", "Built.")])
+        self.assertEqual((got["turns"][1]["tools"][0]["call"], got["turns"][1]["tools"][0]["result"]),
+                         ("run_terminal_command: $ make", "ok"))
+
+    def test_grok_s_stop_hook_finds_its_log_by_the_session_id(self):
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("bbah", os.path.join(HERE, "..", "bb-agent-hook"))
+        spec = importlib.util.spec_from_loader("bbah", loader)
+        h = importlib.util.module_from_spec(spec)
+        loader.exec_module(h)
+        home = os.path.join(self.root, "home")
+        sess = os.path.join(home, ".grok", "sessions", "enc-w", "0199bbbb-0000-7000-8000-000000000001")
+        os.makedirs(sess)
+        with open(os.path.join(sess, "updates.jsonl"), "w") as f:
+            f.write("\n".join(json.dumps(r) for r in self.GROK) + "\n")
+        os.makedirs(os.path.join(home, ".claude"))
+        os.makedirs(self.home, exist_ok=True)
+        os.symlink(self.home, os.path.join(home, ".claude", "projects"))
+        tree = f"{self.ws}/.worktrees/alpha/u_0000aaaa-grok"
+        with unittest.mock.patch.dict(os.environ, {"BB_TREE": tree, "HOME": home}):
+            h.keep("grok", {"sessionId": "0199bbbb-0000-7000-8000-000000000001"})
+        rows = [(r["id"], r["agent"]) for r in self.t.mine("u_0000aaaa", ["alpha"])]
+        self.assertEqual(rows, [("0199bbbb-0000-7000-8000-000000000001", "grok")])
 
     def test_the_stop_hook_keeps_the_log_where_the_list_reads_it(self):
         import importlib.machinery
@@ -312,7 +355,9 @@ class Copies(unittest.TestCase):
         with open(path) as f:
             kt = f.read()
         body = kt[kt.index("val LIVE = listOf("):kt.index("\n    )\n", kt.index("val LIVE = listOf("))]
-        rows = re.findall(r'Agent\("(\w+)", "([^"]+)", "([^"]+)",\s*listOf\((.*?)\), EFFORTS\)', body, re.S)
+        # An agent with no list of its own (Grok's, for now) is emptyList() twice.
+        rows = re.findall(r'Agent\("(\w+)", "([^"]+)", "([^"]+)",\s*(?:listOf\((.*?)\)|emptyList\(\)),\s*(?:EFFORTS|emptyList\(\))\)',
+                          body, re.S)
         self.assertEqual([r[:3] for r in rows], [(a.id, a.name, a.product) for a in agents.live()])
         for aid, _, _, models in rows:
             if aid in agents.MODELS:

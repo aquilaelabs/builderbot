@@ -55,6 +55,12 @@ FLOWS = {
     "copilot": {"url": re.compile(r"https://github\.com/login/device[^\s\x1b]*"),
                 "code": re.compile(r"enter code\s+([A-Z0-9]{4}-[A-Z0-9]{4})"),
                 "prompt": None},
+    # Grok Build's device code (`grok login --device-auth`): a link on an
+    # x.ai host and a code beside it, matched broadly since its words are
+    # documented as "a URL and a code" (25 Oct).
+    "grok": {"url": re.compile(r"https://(?:[a-z0-9-]+\.)*(?:x\.ai|grok\.com)/[^\s\x1b]*"),
+             "code": re.compile(r"(?<![A-Z0-9-])([A-Z0-9]{4,}-[A-Z0-9]{4,})(?![A-Z0-9-])"),
+             "prompt": None},
 }
 
 

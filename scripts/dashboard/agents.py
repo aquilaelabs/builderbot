@@ -42,7 +42,7 @@ class Agent:
     transcripts: str        # its conversations, under the account's home
     live: bool = False      # wired end to end: parsed, offered, started
     tool: str = ""          # its row on a node's Toolchains page, "" when it has none yet
-    latest_url: str = ""    # where the newest release is asked (an npm registry `latest`)
+    latest_url: str = ""    # where the newest release is asked (an npm registry `latest`, or a plain version)
 
     @property
     def arg(self):
@@ -91,6 +91,16 @@ TABLE = (
           briefing="instructions-file", guards="hooks", state="hooks",
           transcripts=".copilot/session-state", tool="copilot-cli", live=True,
           latest_url="https://registry.npmjs.org/@github/copilot/latest"),
+    # Grok Build (R95 step 21): xAI's coding agent, checked against its user
+    # guide on 25 Oct (xai-org/grok-build, Apache-2.0). Its hooks are
+    # Claude's events (PreToolUse, UserPromptSubmit, Stop), its sign-in a
+    # device code into ~/.grok/auth.json, its sessions under ~/.grok/sessions.
+    Agent(id="grok", name="Grok", product="Grok Build", command="grok",
+          provider="xAI", reported="grok", update_job="grok-update",
+          login_job="grok-login", logout_job="grok-logout",
+          briefing="system-prompt-file", guards="hooks", state="hooks",
+          transcripts=".grok/sessions", tool="grok-build", live=True,
+          latest_url="https://x.ai/cli/stable"),
     Agent(id="open", name="Any model", product="OpenCode", command="opencode",
           provider="", reported="opencode", update_job="opencode-update",
           login_job="", logout_job="",

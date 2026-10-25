@@ -703,9 +703,49 @@ sleep 60
       ok((cpConf.trustedFolders || []).includes(join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-copilot`))
          && cpConf.lastLoggedInUser?.login === 'octo',
          '...its tree trusted in its config, and what was there kept, its // lines too');
-      tmuxKill(`codex-${proj}`); tmuxKill(`copilot-${proj}`);
+      // Grok Build (R95 step 21): its session token or an API key says it
+      // is signed in; its briefing is appended to its prompt, Claude's hooks
+      // and its own updater are off, and its guards are its own hooks.
+      {
+        const gkArgv = join(bin, 'grok-argv');
+        writeFileSync(join(bin, 'grok'), `#!/usr/bin/env bash
+printf '%s\\0' "$@" > "${gkArgv}"
+printf '%s %s' "\${GROK_CLAUDE_HOOKS_ENABLED:-}" "\${GROK_DISABLE_AUTOUPDATER:-}" > "${gkArgv}.env"
+sleep 60
+`, { mode: 0o755 });
+        tmuxKill(`grok-${proj}`);
+        rmSync(join(HOMEDIR, '.grok'), { recursive: true, force: true });
+        const gkRefused = shell(`u:${ownerUid}:grok:${proj}:b:${boot}`);
+        ok(/not signed in to Grok/.test(gkRefused) && !alive(`grok-${proj}`),
+           'a Grok session with no session token or key is refused the same way');
+        mkdirSync(join(HOMEDIR, '.grok'), { recursive: true });
+        writeFileSync(join(HOMEDIR, '.grok', 'auth.json'), JSON.stringify({ token: 'not-real' }));
+        shell(`u:${ownerUid}:grok:${proj}:b:${boot}`);
+        await sleep(400);
+        const gk = existsSync(gkArgv) ? readFileSync(gkArgv, 'utf8').split('\0') : [];
+        const genv = existsSync(`${gkArgv}.env`) ? readFileSync(`${gkArgv}.env`, 'utf8') : '';
+        const ri = gk.indexOf('--rules');
+        ok(alive(`grok-${proj}`) && ri >= 0 && /THE HOUSE RULES/.test(gk[ri + 1] || '') && genv === '0 1',
+           `signed in, a Grok session starts with the briefing appended to its prompt, Claude's hooks and its own updater off (${genv})`);
+        const rgk = respawn('grok');
+        ok(rgk.includes('-c'), `...and a respawn goes on with Grok's newest session (${rgk.slice(-2).join(' ')})`);
+        const gkh = existsSync(join(HOMEDIR, '.grok', 'hooks', 'builderbot.json'))
+          ? JSON.parse(readFileSync(join(HOMEDIR, '.grok', 'hooks', 'builderbot.json'), 'utf8')) : {};
+        ok(/bb-agent-hook grok pre$/.test(gkh.hooks?.PreToolUse?.[0]?.hooks?.[0]?.command || '')
+           && /bb-agent-hook grok stop$/.test(gkh.hooks?.Stop?.[0]?.hooks?.[0]?.command || '') && !gkh.hooks?.Notification,
+           `...its guards Grok's own hooks in a file of BuilderBot's, no asking mark among them (${Object.keys(gkh.hooks || {}).join(', ')})`);
+        tmuxKill(`grok-${proj}`);
+        // Kept, as its Stop hook keeps it, but never run on this node.
+        const gsid = '0199cccc-0000-7000-8000-000000000009';
+        const gkd = join(HOMEDIR, '.claude', 'projects', join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-grok`).replace(/[^A-Za-z0-9]/g, '-'), 'grok');
+        mkdirSync(gkd, { recursive: true });
+        writeFileSync(join(gkd, `${gsid}.jsonl`), '{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"hi"}}\n');
+        const away = shell(`u:${ownerUid}:grok:${proj}:r:${gsid}:b:${boot}`);
+        ok(/not on this node/.test(away) && !alive(`grok-${proj}`), '...and a Grok conversation this node never ran opens nothing, saying so');
+      }
+      tmuxKill(`codex-${proj}`); tmuxKill(`copilot-${proj}`); tmuxKill(`grok-${proj}`);
       // Their trees go, so what follows counts the two people's alone.
-      for (const ag of ['codex', 'copilot']){
+      for (const ag of ['codex', 'copilot', 'grok']){
         try { git(['worktree', 'remove', '--force', join(DIR, 'ws', '.worktrees', proj, `${ownerUid}-${ag}`)]); } catch { /* not made */ }
       }
     }
@@ -1072,10 +1112,17 @@ print(uid)`);
         // the listing, which has not met a directory made a moment ago,
         // and prefs.get reads the file fresh on every grant.
         const prefsFile = join(DIR, 'state', 'claude-prefs.json');
+        // What it reads and sees is its project's (R138): kept on the key
+        // of the project it is in, where the settings write it.
+        const projKey = () => {
+          try { return Object.entries(JSON.parse(readFileSync(join(DIR, 'state', 'project-repos.json'), 'utf8')).projects || {})
+                  .find(([, r]) => (r.members || []).includes(vproj))?.[0] || vproj; }
+          catch { return vproj; }
+        };
         const setReads = reads => {
           const d = existsSync(prefsFile) ? JSON.parse(readFileSync(prefsFile, 'utf8')) : { projects: {}, users: {} };
           d.projects = d.projects || {};
-          d.projects[vproj] = { ...(d.projects[vproj] || {}), reads };
+          d.projects[projKey()] = { ...(d.projects[projKey()] || {}), reads };
           writeFileSync(prefsFile, JSON.stringify(d));
         };
         setReads(['alpha']);
@@ -1098,7 +1145,7 @@ print(uid)`);
         const setSees = sees => {
           const d = existsSync(prefsFile) ? JSON.parse(readFileSync(prefsFile, 'utf8')) : { projects: {}, users: {} };
           d.projects = d.projects || {};
-          d.projects[vproj] = { ...(d.projects[vproj] || {}), sees };
+          d.projects[projKey()] = { ...(d.projects[projKey()] || {}), sees };
           writeFileSync(prefsFile, JSON.stringify(d));
         };
         setSees(['/mnt/media', '/srv/samples']);
@@ -1255,6 +1302,7 @@ print(uid)`);
            `a prompt asks for a turn and waits under its own timeout, and Stop hands it back (${prompt?.timeout}, ${!!stop})`);
       }
       tmuxKill(`${ownerUid}~claude-${proj}`);
+      let said = '';
       try {
         execFileSync('bash', [join(digest, 'scripts', 'dashboard', 'bb-tty'), `u:${ownerUid}:claude:${proj}:b:${boot}`,
                               `tok:${ownerTok}`, 'name:the.owner', 'owner:1'], {
@@ -1262,13 +1310,15 @@ print(uid)`);
           env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR,
                  BUILDER_HOME: HOMEDIR, DASHBOARD_STATE: join(DIR, 'state'), ...node },
         });
-      } catch { /* the attach fails without a terminal */ }
+      } catch (e) { said = `${e.stdout || ''}${e.stderr || ''}`; /* the attach fails without a terminal */ }
       await sleep(400);
       const cur = join(realpathSync(bundles), 'current', 'scripts', 'dashboard');
       const hooks = scopeOf();
       ok(hooks.includes(`${cur}/bb-gate ${proj} `) && hooks.includes(`${cur}/bb-work-note ${proj} `)
          && hooks.includes(`${cur}/bb-check-relay ${proj} `) && !hooks.includes('0123456789abcdef'),
-         `run from a node's bundle, every hook names .bb/current, so a delivery reaches a session already open (${hooks.slice(0, 100)})`);
+         `run from a node's bundle, every hook names .bb/current, so a delivery reaches a session already open (${hooks.slice(0, 100)}; it said: ${said.trim().slice(-300)}; list ${
+           JSON.stringify(Object.values(JSON.parse(readFileSync(join(DIR, 'state', 'users.json'), 'utf8')).users || {}).find(u => u.uid === ownerUid)?.projects)}; repos ${
+           (() => { try { return readFileSync(join(DIR, 'state', 'project-repos.json'), 'utf8').slice(0, 300); } catch { return 'none'; } })()}; proj ${proj})`);
       tmuxKill(`${ownerUid}~claude-${proj}`);
       rmSync(join(DIR, 'store'), { recursive: true, force: true });
     }

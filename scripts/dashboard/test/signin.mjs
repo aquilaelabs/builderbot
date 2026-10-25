@@ -86,9 +86,9 @@ ok(await page.$eval('#agNodeSel', s => s.selectedOptions[0].textContent).then(t 
 // saying where it stands on this node (R95 step 15).
 const secs = await page.$$eval(`.agentstab [data-agnode="${box.id}"] details.sect`, ds => ds.map(d =>
   [d.dataset.sect, d.querySelector('summary .sst')?.textContent.trim() || '']));
-ok(secs.map(s => s[0]).join() === 'agents:claude,agents:codex,agents:copilot'
+ok(secs.map(s => s[0]).join() === 'agents:claude,agents:codex,agents:copilot,agents:grok'
    && /^1\.0\.0/.test(secs[0][1]) && /not signed in/.test(secs[0][1]) && /^0\.163\.0, not signed in/.test(secs[1][1])
-   && secs[2][1] === 'not installed',
+   && secs[2][1] === 'not installed' && secs[3][1] === 'not installed',
    `the Agents page has a section per coding agent, Claude first, each with where it stands here (${JSON.stringify(secs)})`);
 await page.evaluate(() => startClaude('beta', null, ''));
 ok(/sign in to Claude on signbox first/.test(await page.$eval('#toast', e => e.textContent)) && await terms() === before,

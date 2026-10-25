@@ -295,9 +295,9 @@ def held_mark(sf, session, held, now):
 NOTE_TOOLS = {"Write", "Edit", "MultiEdit", "Read", "NotebookEdit"}
 # ...each agent's own list of what it is doing (Claude's TodoWrite, Codex's
 # update_plan), and each agent's own folder in the home (R95 step 18): an
-# edit from Codex or Copilot reaches here as Edit, through bb-agent-hook.
+# edit from Codex, Copilot or Grok reaches here as Edit, through bb-agent-hook.
 PLAN_TOOLS = {"TodoWrite", "update_plan"}
-NOTE_DIRS = (".claude", ".codex", ".copilot")
+NOTE_DIRS = (".claude", ".codex", ".copilot", ".grok")
 
 
 def own_notes():

@@ -64,7 +64,7 @@ def _clean_mcp(m):
     if not isinstance(m, dict):
         return {}
     return {str(a)[:20]: sorted(str(x)[:80] for x in v)[:32]
-            for a, v in m.items() if isinstance(v, list) and v and str(a) in ("claude", "codex", "copilot", "open")}
+            for a, v in m.items() if isinstance(v, list) and v and str(a) in ("claude", "codex", "copilot", "grok", "open")}
 
 
 def report(node_id, rows):

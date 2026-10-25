@@ -472,10 +472,13 @@ def turns(uid, project, sid, tz=None, tail=0):
 # Codex CLI writes a rollout, a line per record ({timestamp, type, payload}:
 # a response_item a message, a function call or its output); Copilot CLI an
 # events log ({type, data, timestamp}: user.message, assistant.message,
-# tool.execution_start and _complete). Both read here into the same turns
-# Claude Code's are, the reader's and the download's. Read against the shapes
-# Codex CLI 0.163.0 and Copilot CLI 1.0.102 write; a record of any other
-# shape is passed over, never a failure.
+# tool.execution_start and _complete); Grok Build its updates.jsonl, a line
+# per ACP session update (user_message_chunk and agent_message_chunk, a
+# message streamed in pieces; tool_call and tool_call_update, by toolCallId).
+# Each read here into the same turns Claude Code's are, the reader's and the
+# download's. Read against the shapes Codex CLI 0.163.0 and Copilot CLI
+# 1.0.102 write and Grok Build's user guide names (25 Oct); a record of any
+# other shape is passed over, never a failure.
 
 # What Codex puts in front of a conversation as the person's words, which
 # the person did not type.
@@ -487,6 +490,18 @@ def _texts_of(content):
         return content
     return "\n".join(str(c.get("text") or "") for c in content if isinstance(c, dict) and c.get("text")) \
         if isinstance(content, list) else ""
+
+
+def _acp_text(c):
+    """The words in an ACP content block, or a list of them, a tool's
+    content items ({type: content, content: {type: text, text}}) among them."""
+    if isinstance(c, str):
+        return c
+    if isinstance(c, dict):
+        return str(c.get("text") or "") or _acp_text(c.get("content"))
+    if isinstance(c, list):
+        return "\n".join(t for t in (_acp_text(x) for x in c) if t)
+    return ""
 
 
 def _args(a):
@@ -537,7 +552,9 @@ def _agent_turns(f, agent, tz, tail, first=False):
                 fh.readline()
                 partial = True
             for line in fh:
-                if total > MAX_OUT or (first and any(t["who"] == "you" for t in out)):
+                # The first words: read until the person's turn has ended,
+                # which for Grok is a message streamed in chunks.
+                if total > MAX_OUT or (first and any(t["who"] == "you" for t in out) and out[-1]["who"] != "you"):
                     partial = partial or total > MAX_OUT
                     break
                 try:
@@ -547,7 +564,32 @@ def _agent_turns(f, agent, tz, tail, first=False):
                 if not isinstance(d, dict):
                     continue
                 stamp = _when(d, tz)
-                if agent == "codex":
+                if agent == "grok":
+                    u = d.get("update") if isinstance(d.get("update"), dict) \
+                        else (d.get("params") or {}).get("update") if isinstance(d.get("params"), dict) else d
+                    if not isinstance(u, dict):
+                        continue
+                    t = str(u.get("sessionUpdate") or "")
+                    if t in ("user_message_chunk", "agent_message_chunk"):
+                        text = _acp_text(u.get("content"))
+                        if not text:
+                            continue
+                        who = "you" if t == "user_message_chunk" else "claude"
+                        # One message streamed in pieces is one turn.
+                        if out and out[-1]["who"] == who and not out[-1]["tools"]:
+                            out[-1]["text"] += text
+                        else:
+                            say(who, text, stamp)
+                        total += len(text)
+                    elif t == "tool_call":
+                        tool(f"{u.get('title') or u.get('kind') or 'tool'}: {_args(u.get('rawInput'))}",
+                             str(u.get("toolCallId") or ""), stamp)
+                    elif t == "tool_call_update" and u.get("status") in ("completed", "failed"):
+                        r = u.get("rawOutput")
+                        result(str(u.get("toolCallId") or ""),
+                               _acp_text(u.get("content")) if r is None else r if isinstance(r, str)
+                               else json.dumps(r, ensure_ascii=False)[:TURN_RESULT_MAX])
+                elif agent == "codex":
                     p = d.get("payload") if isinstance(d.get("payload"), dict) else {}
                     if d.get("type") != "response_item":
                         continue
@@ -594,7 +636,7 @@ def _agent_turns(f, agent, tz, tail, first=False):
 
 def _agent_render(f, agent, project, sid, tz, tail):
     """render()'s (text, filename) for another agent's conversation."""
-    name = {"codex": "ChatGPT", "copilot": "Copilot"}.get(agent, agent)
+    name = {"codex": "ChatGPT", "copilot": "Copilot", "grok": "Grok"}.get(agent, agent)
     try:
         mtime = f.stat().st_mtime
     except OSError as e:

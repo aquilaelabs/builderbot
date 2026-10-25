@@ -760,6 +760,7 @@ cmd_status() {
         version claude  claude --version
         version codex   codex --version
         version copilot copilot --version
+        version grok    grok --version
     fi
     version node   node --version
     version npm    npm --version
@@ -874,12 +875,13 @@ cmd_login() {
     # agent's pinned copy, then the session account's own). Each prints its
     # link and its one-time code and waits for the person to enter the code
     # on the provider's page; nothing is typed back here. Checked against
-    # Codex CLI 0.163.0 and Copilot CLI 1.0.102 (22 Oct).
+    # Codex CLI 0.163.0 and Copilot CLI 1.0.102 (22 Oct), Grok Build's
+    # device code from its user guide (25 Oct).
     if { [ "${1:-}" = --flow ] || [ "${1:-}" = --out ]; } && [ "${2:-}" = --agent ]; then
         local uid="${BB_ACCOUNT_UID:-}" base="${BUILDER_HOME:-$HOME}" ag="${3:-}"
         local pinned="${BB_AGENTS_PINNED:-/usr/local/lib/builderbot/agents}"
         case "$ag" in
-            codex|copilot) ;;
+            codex|copilot|grok) ;;
             *) die "no coding agent called '${ag}' signs in here" ;;
         esac
         [ -n "$uid" ] || die "a sign-in names the account it is for"
@@ -895,6 +897,8 @@ cmd_login() {
             # (its /logout): the account it signed in as is forgotten from
             # its config, and the token with it where it was kept there.
             --out:copilot)  python3 "$BB_LIB/login-list.py" --forget-copilot "$HOME" || die "the sign-out did not complete" ;;
+            --flow:grok)    GROK_DISABLE_AUTOUPDATER=1 grok login --device-auth || die "the sign-in did not complete" ;;
+            --out:grok)     GROK_DISABLE_AUTOUPDATER=1 grok logout || die "grok logout did not complete" ;;
         esac
         log "signed ${1#--} ${ag} on ${BB_NODE:-this machine}"
         # ...and said to the controller at once, as Claude's flow says its own.
@@ -5614,7 +5618,7 @@ cmd_doctor() {
     if on_node; then
         check "claude on PATH" command -v claude
         local ag
-        for ag in codex copilot; do
+        for ag in codex copilot grok; do
             if command -v "$ag" >/dev/null 2>&1; then printf '  [ok]   %s on PATH\n' "$ag"
             else printf '  [skip] %s is not installed here: the Agents page installs it\n' "$ag"; fi
         done
@@ -5884,9 +5888,9 @@ cmd_doctor() {
     # warning: which agents a person signs in to is theirs.
     if on_node; then
         local ag nm who
-        for ag in codex copilot; do
+        for ag in codex copilot grok; do
             command -v "$ag" >/dev/null 2>&1 || continue
-            case "$ag" in codex) nm=ChatGPT ;; *) nm=Copilot ;; esac
+            case "$ag" in codex) nm=ChatGPT ;; grok) nm=Grok ;; *) nm=Copilot ;; esac
             if who="$(python3 "$BB_LIB/doctor-probes.py" signed "$ag" 2>/dev/null)"; then
                 printf '  [ok]   signed in to %s on this machine%s\n' "$nm" "$who"
             else

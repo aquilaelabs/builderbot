@@ -919,7 +919,7 @@ ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
     return { v, emuSaid, hint, agents, agLink, agRows };
   });
   ok(due.v === '2', `the updates-due tile counts This machine's driver beside the store's rows (${due.v})`);
-  ok(/^The coding agents \(Claude Code, Codex CLI, Copilot CLI\) are installed and updated on the Agents page\.$/.test(due.agents) && due.agLink && !due.agRows,
+  ok(/^The coding agents \(Claude Code, Codex CLI, Copilot CLI, Grok Build\) are installed and updated on the Agents page\.$/.test(due.agents) && due.agLink && !due.agRows,
      `a node's Toolchains page keeps no coding agent, and one line with the way to the Agents page (${due.agents})`);
   ok(due.emuSaid === 'installed', `a tool the census calls "present" reads installed (B31) (${due.emuSaid})`);
   ok(/press Install<span class="lng"> selected<\/span>/.test(due.hint),

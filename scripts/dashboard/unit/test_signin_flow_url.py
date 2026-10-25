@@ -15,6 +15,8 @@ CODEX = ("Welcome to Codex\n"
          "   \x1b[94mABCD-EFGH2\x1b[0m\n")
 COPILOT = "To authenticate, visit \x1b[1mhttps://github.com/login/device\x1b[0m and enter code 1A2B-3C4D.\n"
 
+GROK = "Open \x1b[1mhttps://auth.x.ai/device\x1b[0m and enter the code WXYZ-9876 to sign in.\n"
+
 
 class Link(unittest.TestCase):
     def test_codex_link_ends_at_its_color_code(self):
@@ -25,6 +27,10 @@ class Link(unittest.TestCase):
     def test_copilot_link_and_code(self):
         self.assertEqual(signin.FLOWS["copilot"]["url"].search(COPILOT).group(0), "https://github.com/login/device")
         self.assertEqual(signin.FLOWS["copilot"]["code"].search(COPILOT).group(1), "1A2B-3C4D")
+
+    def test_grok_link_and_code(self):
+        self.assertEqual(signin.FLOWS["grok"]["url"].search(GROK).group(0), "https://auth.x.ai/device")
+        self.assertEqual(signin.FLOWS["grok"]["code"].search(GROK).group(1), "WXYZ-9876")
 
     def test_a_link_without_color_is_taken_whole(self):
         m = signin.FLOWS["codex"]["url"].search("open https://auth.openai.com/codex/device?x=1 now")

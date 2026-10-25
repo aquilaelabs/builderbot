@@ -131,8 +131,8 @@ AGENTS_DIR = os.environ.get("BUILDERBOT_AGENTS_DIR", "/usr/local/lib/builderbot/
 # table (agents.py login_job, logout_job), to the agent `bb login --flow` and
 # `bb login --out` are run for. Claude's are the claude-login and
 # claude-logout of old, which name no agent.
-AGENT_LOGINS = {"codex-login": "codex", "copilot-login": "copilot"}
-AGENT_LOGOUTS = {"codex-logout": "codex", "copilot-logout": "copilot"}
+AGENT_LOGINS = {"codex-login": "codex", "copilot-login": "copilot", "grok-login": "grok"}
+AGENT_LOGOUTS = {"codex-logout": "codex", "copilot-logout": "copilot", "grok-logout": "grok"}
 AGENT_INSTALLS = {
     "codex-update": {"id": "codex", "command": "codex", "product": "Codex CLI", "reported": "codex",
                      "script": "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
@@ -142,6 +142,13 @@ AGENT_INSTALLS = {
                        "script": "curl -fsSL https://gh.io/copilot-install | bash",
                        "pin": ("VERSION", "v{v}"), "env": {"PREFIX": "{home}/.local"},
                        "bin": ".local/bin/copilot"},
+    # Grok Build's installer takes the version as its argument, not from its
+    # environment: handed over through BB_PIN, empty for the newest. It does
+    # not check its download against anything published (25 Oct).
+    "grok-update": {"id": "grok", "command": "grok", "product": "Grok Build", "reported": "grok",
+                    "script": 'curl -fsSL https://x.ai/cli/install.sh | bash -s -- ${BB_PIN:-}',
+                    "pin": ("BB_PIN", "{v}"), "env": {"GROK_BIN_DIR": "{home}/.local/bin"},
+                    "bin": ".local/bin/grok"},
 }
 # Claude Code's row in the same shape, for the claude-update job: kept out of
 # AGENT_INSTALLS, which the census and the session PATH read for the agents
@@ -181,9 +188,9 @@ SHARE = os.environ.get("BUILDERBOT_SHARE", "/workspace")
 # carries no dashboard module; unit/test_agents.py holds the two to each
 # other. The session prefixes, the launchers a respawn may run and the
 # process kinds a busy machine is read by are all made from it.
-AGENT_IDS = ("claude", "codex", "copilot")
+AGENT_IDS = ("claude", "codex", "copilot", "grok")
 # The pane a respawn may run again: bb-tty's launcher of a coding agent
-# (claude-run.sh, codex-run.sh, copilot-run.sh), in the project's cache
+# (claude-run.sh, codex-run.sh, copilot-run.sh, grok-run.sh), in the project's cache
 # folder and started inside the project's view when the node builds one.
 _PATHCH = r"[A-Za-z0-9._/@+-]"
 RESPAWNABLE = (rf"(?:sudo -n {re.escape(SESSION_BIN)} enter(?: --[a-z]+ {_PATHCH}+)* -- )?"

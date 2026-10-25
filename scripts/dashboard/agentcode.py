@@ -57,7 +57,7 @@ def _agent(agent_id):
 
 def latest_url(a):
     """The registry's answer for this agent, or a test's file:// stand-in
-    (BB_CODEX_LATEST_URL, BB_COPILOT_LATEST_URL)."""
+    (BB_CODEX_LATEST_URL, BB_COPILOT_LATEST_URL, BB_GROK_LATEST_URL)."""
     return os.environ.get(f"BB_{a.id.upper()}_LATEST_URL") or a.latest_url
 
 

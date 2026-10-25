@@ -843,6 +843,18 @@ PY
             printf 'bf=%q\n' "$BB_AGENT_BRIEFING"
             printf 'if [ -s "$bf" ]; then extra+=(-c "developer_instructions=$(jq -Rs . < "$bf")"); fi\n'
         fi
+        # Grok Build's, appended to its own prompt (--rules), read from its
+        # file at exec as Codex's is. Claude's hooks, which it would also
+        # read from ~/.claude/settings.json, kept out (a session runs its own
+        # copy of the guards, once), and its updater off: the node's copy is
+        # the one its Agents page pinned.
+        if [ "$ag" = grok ]; then
+            printf 'export GROK_CLAUDE_HOOKS_ENABLED=0 GROK_DISABLE_AUTOUPDATER=1\n'
+            if [ -n "${BB_AGENT_BRIEFING:-}" ]; then
+                printf 'bf=%q\n' "$BB_AGENT_BRIEFING"
+                printf 'if [ -s "$bf" ]; then extra+=(--rules "$(cat "$bf")"); fi\n'
+            fi
+        fi
         # Copilot CLI's, the folder it reads an AGENTS.md from.
         if [ "$ag" = copilot ] && [ -n "${COPILOT_CUSTOM_INSTRUCTIONS_DIRS:-}" ]; then
             printf 'export COPILOT_CUSTOM_INSTRUCTIONS_DIRS=%q\n' "$COPILOT_CUSTOM_INSTRUCTIONS_DIRS"
@@ -870,6 +882,7 @@ PY
                     printf 'fi\n' ;;
                 codex)   printf 'if [ "${1:-}" = --respawn ]; then extra+=(resume --last); fi\n' ;;
                 copilot) printf 'if [ "${1:-}" = --respawn ]; then extra+=(--continue); fi\n' ;;
+                grok)    printf 'if [ "${1:-}" = --respawn ]; then extra+=(-c); fi\n' ;;
             esac
         fi
         printf 'exec'
@@ -984,6 +997,15 @@ agent_hooks() {
             jq -n --arg c "$cmd" --argjson evs "$evs" '
               def ours(ev; t): [{type: "command", bash: "\($c) \(ev)", timeoutSec: t}];
               {version: 1, hooks: (reduce $evs[] as [$n, $ev, $t] ({}; .[$n] = ours($ev; $t)))}' \
+                > "$f.new" 2>/dev/null && mv -f "$f.new" "$f" ;;
+        # Grok Build's global hooks folder, always trusted (a project's own
+        # need the folder trusted first): a file of BuilderBot's alone.
+        grok)
+            f="${GROK_HOME:-$HOME/.grok}/hooks/builderbot.json"
+            ( umask 077; mkdir -p "${f%/*}" ) 2>/dev/null || return 1
+            jq -n --arg c "$cmd" --argjson evs "$evs" '
+              def ours(ev; t): [{hooks: [{type: "command", command: "\($c) \(ev)", timeout: t}]}];
+              {hooks: (reduce $evs[] as [$n, $ev, $t] ({}; .[$n] = ours($ev; $t)))}' \
                 > "$f.new" 2>/dev/null && mv -f "$f.new" "$f" ;;
     esac
 }
@@ -1294,7 +1316,7 @@ start() {
     # ("no such session: =shell"), and the session was just created here, so an
     # exact match is the one it resolves to anyway.
     case "${s#*~}" in
-        claude-*|codex-*|copilot-*) tmux set-option -t "$s" mouse on ;;
+        claude-*|codex-*|copilot-*|grok-*) tmux set-option -t "$s" mouse on ;;
         *)        tmux set-option -t "$s" mouse off ;;
     esac
 
@@ -1333,7 +1355,7 @@ case "$target" in
         start "$(sess "shell-${proj}-${num}")" "$dir" "${RUN[@]}"
         ;;
 
-    claude:*|codex:*|copilot:*)
+    claude:*|codex:*|copilot:*|grok:*)
         # The coding agent this session runs (R95): the argument's prefix,
         # by the agent table's ids (scripts/dashboard/agents.py), each with
         # what a person reads it as. Claude's is the path this branch has
@@ -1346,6 +1368,7 @@ case "$target" in
             claude)  agent_name=Claude;  agent_product="Claude Code" ;;
             codex)   agent_name=ChatGPT; agent_product="Codex CLI" ;;
             copilot) agent_name=Copilot; agent_product="Copilot CLI" ;;
+            grok)    agent_name=Grok;    agent_product="Grok Build" ;;
         esac
         # claude:PROJECT                  a fresh conversation
         # claude:PROJECT:r:UUID           resume that transcript (Claude's)
@@ -1457,6 +1480,10 @@ case "$target" in
                     [ -n "${COPILOT_GITHUB_TOKEN:-}${GH_TOKEN:-}${GITHUB_TOKEN:-}" ] \
                         || grep -v '^[[:space:]]*//' "${COPILOT_HOME:-$HOME/.copilot}/config.json" 2>/dev/null \
                             | jq -e '.lastLoggedInUser.login // empty' >/dev/null 2>&1 ;;
+                # Grok Build has no status verb either: its session token in
+                # ~/.grok/auth.json, or an API key in the environment.
+                grok)
+                    [ -n "${XAI_API_KEY:-}" ] || [ -s "${GROK_HOME:-$HOME/.grok}/auth.json" ] ;;
             esac
         }
         # EACH MACHINE KEEPS ITS OWN LOGIN, and opening a tab is when this
@@ -1511,6 +1538,8 @@ case "$target" in
             # Its own updater off: the copy on the node is the one its
             # Agents page installed (agentcode.py).
             copilot) cmd=(copilot --no-auto-update) ;;
+            # Its updater off in the launcher's environment, as Copilot's.
+            grok)    cmd=(grok) ;;
         esac
         if [ -n "$resume" ] && [ "$agent" != claude ]; then
             # Another agent's conversation resumes below, once its tree is
@@ -1594,7 +1623,7 @@ case "$target" in
                 # (COPILOT_CUSTOM_INSTRUCTIONS_DIRS), as AGENTS.md there.
                 case "$agent" in
                     claude) prompt=(--append-system-prompt-file "$pref") ;;
-                    codex)  export BB_AGENT_BRIEFING="$pref" ;;
+                    codex|grok) export BB_AGENT_BRIEFING="$pref" ;;
                     copilot)
                         idir="$(cache_project_dir "$proj")/copilot-instructions"
                         if ( umask 077; mkdir -p "$idir" ) && cp -f "$pref" "$idir/AGENTS.md" 2>/dev/null; then
@@ -1659,6 +1688,13 @@ case "$target" in
                         ( umask 077; mkdir -p "$sd" && cp -f "$kd/$resume.jsonl" "$sd/events.jsonl" ) \
                             || bad "Could not put ${resume} back where Copilot keeps its sessions."
                     fi
+                    cmd+=(--resume "$resume") ;;
+                # Grok keeps a session under a folder named by its own
+                # encoding of the tree: resumed where this node has it.
+                grok)
+                    find "${GROK_HOME:-$HOME/.grok}/sessions" -path "*/${resume}/updates.jsonl" 2>/dev/null | grep -q . \
+                        || bad "Grok's conversation ${resume} is not on this node." \
+                               "Grok resumes a session where it ran; start a new one here instead."
                     cmd+=(--resume "$resume") ;;
             esac
         fi

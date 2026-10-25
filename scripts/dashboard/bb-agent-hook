@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Claude's hooks, held for Codex CLI and Copilot CLI (R95 step 6).
+"""Claude's hooks, held for Codex CLI, Copilot CLI and Grok Build (R95 steps 6, 21).
 
     bb-agent-hook AGENT EVENT [PROJECT SESSION]
     bb-agent-hook --claude-settings PROJECT ACCOUNT DIR
@@ -8,13 +8,15 @@
 Codex CLI and Copilot CLI each carry hooks of their own now (Codex's
 PreToolUse, UserPromptSubmit, Stop, PermissionRequest and PostCompact;
 Copilot's preToolUse, userPromptSubmitted, agentStop and permissionRequest,
-checked against 0.163.0 and 1.0.102 on 22 Oct). bb-tty writes them into the
+checked against 0.163.0 and 1.0.102 on 22 Oct; Grok Build's PreToolUse,
+UserPromptSubmit, Stop and PostCompact, Claude's own names, read in its user
+guide on 25 Oct). bb-tty writes them into the
 session's own home for the agent (agent_scope), each calling this with the
 agent and the event. This reads the agent's payload, says it again in the
 shape Claude Code's hooks are written for (tool_name Bash and its command,
 Edit and its file_path, the prompt, stop_hook_active), runs the same hooks a
 Claude session runs for that event, in the same order, and answers in the
-agent's own way: Codex as Claude (exit 2 and the sentence on stderr
+agent's own way: Codex and Grok as Claude (exit 2 and the sentence on stderr
 refuses), Copilot with its permissionDecision on stdout before a tool.
 
   pre     before a tool: bb-gate, then bb-rule-hook guard on a command,
@@ -27,6 +29,7 @@ refuses), Copilot with its permissionDecision on stdout before a tool.
 Every failure of its own lets the call through, as each hook does: a guard
 is never worth an agent that cannot work.
 """
+import contextlib
 import json
 import os
 import re
@@ -38,8 +41,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 # The tools each agent runs a command or edits a file with, by the names
 # its hooks hand over.
-SHELL = {"shell", "exec_command", "local_shell", "bash", "run_shell_command", "Bash"}
-EDIT = {"apply_patch", "edit", "create", "write", "str_replace_editor", "write_file", "Edit", "Write"}
+SHELL = {"shell", "exec_command", "local_shell", "bash", "run_shell_command", "run_terminal_command", "Bash"}
+EDIT = {"apply_patch", "edit", "create", "write", "str_replace_editor", "write_file", "search_replace", "Edit", "Write"}
 # ...and searches a file's contents with (Codex has none: it runs rg in its
 # shell, which the rule guard reads).
 GREP = {"grep", "Grep", "search_file_content"}
@@ -49,6 +52,13 @@ PATCH_FILE = re.compile(r"^\*\*\* (?:Update|Add|Delete) File: (.+)$", re.M)
 def as_claude(agent, raw):
     """The payload in Claude Code's shape: the fields BuilderBot's hooks read."""
     d = raw if isinstance(raw, dict) else {}
+    if agent == "grok":
+        # Grok Build's camelCase, its tool's input an object.
+        args = d.get("toolInput")
+        d = {"session_id": d.get("sessionId") or "", "cwd": d.get("cwd") or "",
+             "tool_name": d.get("toolName") or "", "tool_input": args if isinstance(args, dict) else {},
+             "prompt": d.get("prompt") or d.get("userPrompt") or "",
+             "stop_hook_active": bool(d.get("stopHookActive"))}
     if agent == "copilot":
         args = d.get("toolArgs")
         if isinstance(args, str):
@@ -106,6 +116,19 @@ def keep(agent, raw):
         sid = str(d.get("sessionId") or "")
         src = str(d.get("transcriptPath") or "") or os.path.join(
             os.environ.get("COPILOT_HOME") or os.path.join(home, ".copilot"), "session-state", sid, "events.jsonl")
+    elif agent == "grok":
+        # ~/.grok/sessions/<its encoding of the folder>/<id>/updates.jsonl,
+        # found by the id rather than by repeating its encoding.
+        sid = str(d.get("sessionId") or "")
+        base = os.path.join(os.environ.get("GROK_HOME") or os.path.join(home, ".grok"), "sessions")
+        src = ""
+        if SID.fullmatch(sid):
+            with contextlib.suppress(OSError):
+                for sub in os.listdir(base):
+                    cand = os.path.join(base, sub, sid, "updates.jsonl")
+                    if os.path.isfile(cand):
+                        src = cand
+                        break
     else:
         src = str(d.get("transcript_path") or "")
         m = UUID_TAIL.search(src)
@@ -169,11 +192,13 @@ def run(argv, payload, timeout):
 # from it (plan), so a guard added here holds every agent's sessions and one
 # cannot be added to only some of them. Each event also says where each
 # agent raises it: Claude Code's event name and the matcher that picks it
-# out, and Codex's and Copilot's event names with the time their call here
-# is given (Copilot CLI 1.0.102 has no hook after a summary, so no recall).
+# out, and Codex's, Copilot's and Grok's event names with the time their call
+# here is given (Copilot CLI 1.0.102 has no hook after a summary, so no
+# recall; Grok Build none for its permission prompt alone, so no asking).
 P, W = "{proj}", "{who}"
 HOOKS = {
-    "pre": {"claude": ("PreToolUse", None), "codex": ("PreToolUse", 120), "copilot": ("preToolUse", 120), "steps": [
+    "pre": {"claude": ("PreToolUse", None), "codex": ("PreToolUse", 120), "copilot": ("preToolUse", 120),
+            "grok": ("PreToolUse", 120), "steps": [
         ("bb-gate", [P, W], 60, None, None),
         ("bb-work-note", [P, W], 30, ("Edit", "Write", "NotebookEdit"), None),
         ("bb-rule-hook", ["guard", P, W], 30, ("Bash",), None),
@@ -183,14 +208,15 @@ HOOKS = {
     "asking": {"claude": ("Notification", "permission_prompt"), "codex": ("PermissionRequest", 15),
                "copilot": ("permissionRequest", 15), "steps": [
         ("bb-gate", ["--asking", P, W], 15, None, None)]},
-    "recall": {"claude": ("SessionStart", "compact"), "codex": ("PostCompact", 30), "steps": [
+    "recall": {"claude": ("SessionStart", "compact"), "codex": ("PostCompact", 30), "grok": ("PostCompact", 30), "steps": [
         ("bb-rule-hook", ["recall", P, W], 30, None, None)]},
     "prompt": {"claude": ("UserPromptSubmit", None), "codex": ("UserPromptSubmit", 900),
-               "copilot": ("userPromptSubmitted", 900), "steps": [
+               "copilot": ("userPromptSubmitted", 900), "grok": ("UserPromptSubmit", 900), "steps": [
         ("bb-prompt-relay", [P, W], 30, None, None),
         ("bb-rule-hook", ["prompt", P, W], 10, None, None),
         ("bb-gate", ["--turn", P, W, "--wait", "840"], 900, None, "Waiting for a turn on this node")]},
-    "stop": {"claude": ("Stop", None), "codex": ("Stop", 3600), "copilot": ("agentStop", 3600), "steps": [
+    "stop": {"claude": ("Stop", None), "codex": ("Stop", 3600), "copilot": ("agentStop", 3600),
+             "grok": ("Stop", 3600), "steps": [
         ("bb-check-relay", [P, W], 3600, None, None),
         ("bb-gate", ["--turn-done", P, W], 30, None, None)]},
 }

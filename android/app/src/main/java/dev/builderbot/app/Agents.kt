@@ -26,7 +26,7 @@ object Agents {
     private val EFFORTS = listOf("low", "medium", "high", "xhigh", "max")
 
     /** Live and wired end to end, Claude first. agents.py's MODELS and
-     *  EFFORTS for the other two, read off the same table the page copies. */
+     *  EFFORTS for the others, read off the same table the page copies. */
     val LIVE = listOf(
         Agent("claude", "Claude", "Claude Code",
               listOf("opus", "sonnet", "haiku", "fable"), EFFORTS),
@@ -37,6 +37,9 @@ object Agents {
               listOf("auto", "claude-sonnet-5.5", "claude-opus-5.5", "claude-haiku-5.5", "gpt-6.1-sol",
                      "gpt-6-sol", "gpt-5.6-sol", "gpt-5-mini", "gemini-4-argon", "gemini-3.8-flash",
                      "grok-4.7"), EFFORTS),
+        // Grok Build (R95 step 21): its own default model until a list is
+        // read off it, as agents.py has none for it yet.
+        Agent("grok", "Grok", "Grok Build", emptyList(), emptyList()),
     )
 
     fun byId(id: String?): Agent? = LIVE.firstOrNull { it.id == id }

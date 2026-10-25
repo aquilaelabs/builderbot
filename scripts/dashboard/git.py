@@ -805,7 +805,7 @@ def not_yours(repo, action, args, uid, kind="", admin=False):
             return {"error": f"{b} is {who}'s session's branch: only {who} {what}"}
         if not ask:
             continue                 # an administrator switches and deletes as git allows
-        # The agent whose branch it is (claude/, codex/, copilot/): a
+        # The agent whose branch it is (claude/, codex/, copilot/, grok/): a
         # Codex session works on its own branch in its own tree (R95 step 16).
         ag = agents.get(b.split("/", 1)[0]) or agents.default()
         if WORKING and WORKING(Path(repo).name, o, ag.id):
