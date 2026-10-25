@@ -432,9 +432,16 @@ def stamp(u):
 # from "nobody is signed in" and must not be.
 ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server",
        "uid": "\u0000server"}
-# repos.members, handed over by the server (R136): the repositories of a
-# project of several, [] for any other name. Unset, every name is one.
-repos_members = None
+# repos.key_of, handed over by the server (R138): the project a name stands
+# for, a repository's being its project's. An account's project list and its
+# project roles are kept by project, so every name is asked through it.
+# Unset, every name is its own.
+home_of = None
+
+
+def key_of(name):
+    """The project `name` stands for (repos.key_of), or `name`."""
+    return home_of(name) if home_of else name
 
 # What a `user` may not do to a project they DO have. Named, not derived: a
 # verb that should be restricted and is not listed is a decision somebody has
@@ -487,29 +494,31 @@ def may_work(u, name):
     # others in its list are the ones that project reads (prefs.reads),
     # there to be seen and never changed.
     if u.get("session"):
-        return name == u["session"]
+        return name == u["session"] or key_of(name) == key_of(u["session"])
     # "*" lists every project (sees_all) and takes none on (R135): the
     # owner works on what they added to their own list, like everybody,
     # as a safeguard against working on the wrong one by accident.
-    have = u.get("projects") or []
-    # A project of several repositories (R136) is worked on by whoever is
-    # on every repository in it.
-    inside = repos_members(name) if repos_members else []
-    if inside:
-        return all(m in have for m in inside)
-    return name in have
+    # A repository is worked on by whoever is on its project (R138).
+    return key_of(name) in _keys(u)
+
+
+def _keys(u):
+    """The projects an account's list names, each as its project's key: an
+    entry written as a repository's name before that repository was put in
+    a project (an import, a clone) counts for the project it is in now."""
+    return {key_of(p) for p in ((u or {}).get("projects") or [])}
 
 
 def visible(u, names):
     """`names`, minus what this account may not see."""
     if sees_all(u):
         return list(names)
-    allow = set((u or {}).get("projects") or [])
-    return [n for n in names if n in allow]
+    allow = _keys(u)
+    return [n for n in names if key_of(n) in allow]
 
 
 def may_see(u, name):
-    return sees_all(u) or name in ((u or {}).get("projects") or [])
+    return sees_all(u) or key_of(name) in _keys(u)
 
 
 def is_admin(u):
@@ -820,7 +829,7 @@ def with_reads(u, reads):
     if not u or not u.get("session"):
         return u
     reads = [r for r in (reads or []) if r and r != u["session"]]
-    return {**u, "projects": [u["session"], *reads], "reads": reads}
+    return {**u, "projects": list(dict.fromkeys([u["session"], key_of(u["session"]), *reads])), "reads": reads}
 
 
 def session_principal(tok):
@@ -850,7 +859,7 @@ def session_principal(tok):
     if not hmac.compare_digest(sig, want):
         return None
     return {"name": f"session:{project}", "role": "user",
-            "projects": [project], "session": project, "uid": uid}
+            "projects": list(dict.fromkeys([project, key_of(project)])), "session": project, "uid": uid}
 
 
 # --- editing ---------------------------------------------------------------
@@ -964,7 +973,8 @@ def set_projects(name, projects):
         u = d["users"].get(name)
         if not u:
             return {"error": f"no account called {name}"}
-        u["projects"] = [str(p)[:120] for p in (projects or [])][:200]
+        # By project (R138): a repository named stands for its project.
+        u["projects"] = list(dict.fromkeys(p if p == "*" else key_of(str(p)[:120]) for p in (projects or [])))[:200]
         _save(d)
     return {"ok": True, "name": name, "projects": u["projects"]}
 
@@ -992,6 +1002,7 @@ def migrate_star(names):
 def give_owner_role(project, new_uid, old_uid=""):
     """PROJECT_owner moves with the project (R152): off the account that
     owned it, onto the one that does, on that project alone."""
+    project = key_of(project)
     name = roles.ensure_owner_role(project)
     with _lock:
         d = load()
@@ -1041,6 +1052,7 @@ def give_project_role(project, uid, role):
         for u in d["users"].values():
             if u.get("uid") != uid:
                 continue
+            project = key_of(project)
             pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
             pr[project] = sorted(set((pr.get(project) or []) + [str(role)]))
             u["project_roles"] = pr
@@ -1100,9 +1112,10 @@ def take_on(name, project):
         if not u:
             return {"error": f"no account called {name}"}
         have = list(u.get("projects") or [])
+        project = key_of(str(project)[:120])
         if project in have:
             return {"ok": True, "name": name, "projects": have}
-        u["projects"] = (have + [str(project)[:120]])[:200]
+        u["projects"] = (have + [project])[:200]
         _save(d)
     return {"ok": True, "name": name, "projects": u["projects"]}
 

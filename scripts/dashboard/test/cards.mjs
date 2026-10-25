@@ -13,21 +13,19 @@ const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 
-// A card's link, lock, pin and the rest sit behind its menu on the Projects
-// page (R218 step 3): opened first, the way a thumb does.
+// A card's link, lock, pin and the rest are on its back on the Projects
+// page (R138): Edit turns it over first, the way a thumb does.
 const pjMenu = async name => {
   // An archived card is in the Archived fold at the page's foot: opened
-  // first, and the card brought on screen, as a person scrolls to it. A
-  // floating menu whose button is off screen closes itself (floatFollow),
-  // so a menu opened below the fold by script shut at once (B108).
+  // first, and the card brought on screen, as a person scrolls to it.
   await page.evaluate(n => { const c = document.querySelector(`.doc .projtab .pcard[data-row="${CSS.escape(n)}"]`);
     const fold = c?.closest('details.sect');
     if (fold && !fold.open) fold.open = true;
     c?.scrollIntoView({ block: 'center' }); }, name);
   await page.waitForTimeout(150);
   await page.evaluate(n => { const c = document.querySelector(`.doc .projtab .pcard[data-row="${CSS.escape(n)}"]`);
-    if (c?.querySelector('.actmenu')?.hidden) c.querySelector('[data-pmore]')?.click(); }, name);
-  await page.waitForTimeout(150);
+    if (c && !c.classList.contains('flipped')) c.querySelector('.pcfront [data-pedit]')?.click(); }, name);
+  await page.waitForTimeout(500);
 };await page.goto(URL);
 await ready(page);
 // The Nostromo glass (the operator, 24 Sep): a pane's bar, the dock's line
@@ -477,45 +475,38 @@ print(json.dumps(out))
                      { timeout: 20000 });
 }
 // ---- a project's card on the Projects page, at a phone and at a desk ------
-// The sidebar's row, and its fold, went with R218 step 3: a project is a
-// card on the Projects page with Claude and Shell on it and the rest behind
-// one menu, at every width.
+// A project is a card on the Projects page (R138): its front the agent, Add
+// repository and Edit, no menu; Edit turns it over to the rest, at every
+// width.
 {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(400);
   await page.evaluate(() => openProjectsTab());
   await page.waitForSelector('.doc.on .projtab .pcard[data-row="alpha"]', { timeout: 10000 });
   const card = '.doc.on .projtab .pcard[data-row="alpha"]';
-  const shown = () => page.$$eval(`${card} .pcacts > button`, bs => bs.filter(b => b.offsetParent !== null).length);
-  ok(await shown() === 2 && await page.$eval(`${card} .actmenu`, m => m.hidden),
-     `a phone's card shows Claude and Shell, the rest behind its menu (${await shown()})`);
-  await page.click(`${card} [data-pmore]`); await page.waitForTimeout(250);
-  ok(await page.$eval(`${card} .actmenu`, m => !m.hidden && m.querySelectorAll('button').length >= 5),
-     '...and pressing it opens the menu with the rest');
-  // At its button on a phone too, its entrance going the way it opened:
-  // rising above the button, dropping below it (the operator, 18 Oct).
-  const menuAnim = await page.$eval(`${card} .actmenu`, m => ({ name: getComputedStyle(m).animationName, up: m.classList.contains('up') }));
-  ok(menuAnim.name === (menuAnim.up ? 'menuRise' : 'menuIn'),
-     `...on the stylesheet's tween, moving the way it opened (${JSON.stringify(menuAnim)})`);
-  ok(await page.$eval(`${card} [data-pmore]`, b => b.getAttribute('aria-expanded') === 'true'),
-     '...saying so, for anything that is not looking at the pixels');
-  await page.keyboard.press('Escape');
+  const front = () => page.$$eval(`${card} .pcfront .pcacts > button`, bs => bs.filter(b => b.offsetParent !== null).map(b => b.textContent.trim()));
+  const f = await front();
+  ok(f.at(-1) === 'Edit' && f.includes('Add repository') && !await page.$(`${card} [data-pmore]`),
+     `a phone's card shows its agent, Add repository and Edit, and no menu (${JSON.stringify(f)})`);
+  await page.click(`${card} .pcfront [data-pedit]`);
+  await page.waitForSelector(`${card}.flipped .pcback:not([inert])`, { timeout: 3000 });
+  ok(await page.$eval(`${card} .pcback [data-pedit]`, b => b.getAttribute('aria-expanded') === 'true'),
+     '...Edit turns it over, saying so, for anything that is not looking at the pixels');
+  // The turn is on the stylesheet's tween, and off under reduced motion.
+  const turn = await page.$eval(`${card} .pcback`, e => getComputedStyle(e).transitionProperty);
+  ok(/transform/.test(turn), `...on a tween of its transform (${turn})`);
   await page.setViewportSize({ width: 1280, height: 1000 });
   await page.waitForTimeout(400);
-  const tabShown = await shown();
-  ok(tabShown === 2 && await page.$eval(`${card} [data-pmore]`, b => b.offsetParent !== null)
-     && await page.$eval(`${card} .actmenu`, m => m.hidden && m.querySelectorAll('button').length >= 5),
-     `...and at a desk the card shows the same two, the rest behind its menu (${tabShown} shown)`);
-  // The pin is in the card's menu, reading Unpin while it is pinned; a press
-  // turns it to Pin, and Home's glance (step 5) is what it decides.
-  ok(await page.$eval(`${card} [data-p]`, b => b.textContent.trim() === 'Unpin'),
-     "the card's menu carries the pin, reading Unpin");
-  await unfold(page, 'alpha');
-  await page.click(`${card} [data-p]`);
-  await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] [data-p]')?.textContent.trim() === 'Pin', null, { timeout: 15000 });
+  // The pin is on the back, reading Unpin while it is pinned; a press turns
+  // it to Pin, and Home's glance (step 5) is what it decides.
+  ok(await page.$eval(`${card} .pcback [data-p]`, b => b.textContent.trim() === 'Unpin'),
+     "the card's back carries the pin, reading Unpin");
+  await page.click(`${card} .pcback [data-p]`);
+  await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] .pcback [data-p]')?.textContent.trim() === 'Pin', null, { timeout: 15000 });
   ok(true, '...and pressing it unpins the project');
   await page.evaluate(() => setProjectPinned('alpha', true));
-  await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] [data-p]')?.textContent.trim() === 'Unpin', null, { timeout: 15000 });
+  await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] .pcback [data-p]')?.textContent.trim() === 'Unpin', null, { timeout: 15000 });
+  await page.click(`${card} .pcback [data-pedit]`);
 }
 
 // ---- the card's notice: why nobody can be here, and who is ------------
@@ -1195,17 +1186,17 @@ await page.evaluate(() => refresh());
 // owner working; an administrator's shuts the owner out as well.
 await page.evaluate(() => { refresh(); openProjectsTab(); });
 await page.waitForSelector('.pgrid .pcard[data-row="alpha"] [data-lock]', { timeout: 10000, state: 'attached' });
-ok(await page.$$eval('.pgrid .pcard[data-row="alpha"] .actmenu button', bs => {
+ok(await page.$$eval('.pgrid .pcard[data-row="alpha"] .pcback .pcacts button', bs => {
      const t = bs.map(b => b.textContent.trim()); return t.includes('Lock') && t.includes('Archive'); }),
-   "its owner's card carries Lock and Archive in its menu, as two presses");
+   "its owner's card carries Lock and Archive on its back, as two presses");
 await page.evaluate(() => setLocked('alpha', true));
 await page.waitForFunction(() => !!document.querySelector('.pgrid .pcard[data-row="alpha"] .lockmark'), { timeout: 15000 });
 const ownLock = await page.$eval('.pgrid .pcard[data-row="alpha"]', r => ({
   folded: !!r.closest('details.sect'), mark: r.querySelector('.lockmark')?.textContent.trim(),
   claudeDead: !!r.querySelector('[data-c="alpha"]')?.disabled && /locked/.test(saidOf(r.querySelector('[data-c="alpha"]'))),
-  menu: [...r.querySelectorAll('.actmenu button')].map(b => b.textContent.trim()) }));
+  menu: [...r.querySelectorAll('.pcback .pcacts button')].map(b => b.textContent.trim()) }));
 ok(!ownLock.folded && ownLock.mark === 'locked' && !ownLock.claudeDead && ownLock.menu.includes('Unlock'),
-   `its owner's lock keeps the card in the grid, marked locked, with the owner's own Start not shut by it and Unlock in the menu (${JSON.stringify(ownLock)})`);
+   `its owner's lock keeps the card in the grid, marked locked, with the owner's own Start not shut by it and Unlock on its back (${JSON.stringify(ownLock)})`);
 await page.evaluate(() => setLocked('alpha', false));
 // An administrator's lock (this account owns alpha, so it is written as one).
 writeFileSync(`${DIR}/state/locked-projects.json`, JSON.stringify({ alpha: { by: 'u_0000aaaa', admin: true }, delta: { by: 'u_0000aaaa', admin: true } }));
@@ -1217,7 +1208,7 @@ const locked = await page.$eval('.pgrid .pcard[data-row="alpha"]', r => ({
   claude: r.querySelector('[data-c="alpha"]')?.disabled,
   shell:  !!r.querySelector('[data-s="alpha"]'),
   note:   r.textContent.replace(/\s+/g, ' '),
-  menu:   [...r.querySelectorAll('.actmenu button')].map(b => b.textContent.trim()),
+  menu:   [...r.querySelectorAll('.pcback .pcacts button')].map(b => b.textContent.trim()),
 }));
 ok(locked.claude === true, "an administrator's lock takes its Start away, its owner's included");
 ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in');
@@ -1248,31 +1239,28 @@ await page.waitForFunction(() => !!document.querySelector('.doc .projtab details
     const fold = c?.closest('details.sect');
     return { fold: fold?.dataset.sect || '', foldShut: fold ? !fold.open : null,
              said: fold?.querySelector(':scope > summary .sst')?.textContent || '',
-             menu: [...(c?.querySelectorAll('.actmenu button') || [])].map(b => b.textContent.trim()),
+             menu: [...(c?.querySelectorAll('.pcback .pcacts button') || [])].map(b => b.textContent.trim()),
              mark: !!c?.querySelector('.lockmark'),
              home: (state?.projects || []).filter(p => p.pinned && !p.archived).some(p => p.name === 'alpha') };
   });
   ok(arch.fold === 'projects:archived' && arch.foldShut === true && /^\d+ projects?$/.test(arch.said)
      && arch.menu.includes('Unarchive') && !arch.menu.some(t => /^(Pin|Unpin|Group)/.test(t)) && !arch.home && !arch.mark,
-     `an archived project's card is folded away under Archived, its menu offering Unarchive and no Pin or Group, not among the pinned, and not locked (${JSON.stringify(arch)})`);
-// Its menu floats over the page, not inside the fold that holds the card (the
-// operator, 18 Oct: it was cut off at the fold's foot): pressed as a person
-// would, every item of it is on the screen and above the dock's line.
+     `an archived project's card is folded away under Archived, its back offering Unarchive and no Pin or Group, not among the pinned, and not locked (${JSON.stringify(arch)})`);
+// Turned over inside the fold, its back is whole on the screen: every
+// control of it above the dock's line and nothing over it.
 {
-  await page.evaluate(() => { closeMore(); const d = document.querySelector('.doc .projtab details.sect[data-sect="projects:archived"]'); if (d) d.open = true; });
-  const more = '.doc .projtab .pcard[data-row="alpha"] [data-pmore]';
-  await page.locator(more).scrollIntoViewIfNeeded();
-  await page.click(more); await page.waitForTimeout(400);
+  await pjMenu('alpha');
   const seen = await page.evaluate(() => {
-    const m = document.querySelector('.actmenu:not([hidden])'), last = m && [...m.querySelectorAll('button')].pop();
+    const c = document.querySelector('.doc .projtab .pcard[data-row="alpha"]'), last = c && [...c.querySelectorAll('.pcback .pcacts button')].pop();
     if (!last) return { open: false };
+    last.scrollIntoView({ block: 'nearest' });
     const r = last.getBoundingClientRect(), foot = Math.min(innerHeight, document.querySelector('.pane.dock')?.getBoundingClientRect().top || innerHeight);
-    return { open: true, floats: m.classList.contains('floatm'), bottom: Math.round(r.bottom), foot: Math.round(foot),
-             top: document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === last || last.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) };
+    const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { open: c.classList.contains('flipped'), bottom: Math.round(r.bottom), foot: Math.round(foot), top: at === last || last.contains(at) };
   });
-  ok(seen.open && seen.floats && seen.bottom <= seen.foot && seen.top,
-     `...and its menu opens whole over the page, its last item above the dock's line and nothing over it (${JSON.stringify(seen)})`);
-  await page.evaluate(() => closeMore());
+  ok(seen.open && seen.bottom <= seen.foot && seen.top,
+     `...and Edit turns it over in the fold, its last control on screen and nothing over it (${JSON.stringify(seen)})`);
+  await page.evaluate(() => flipCard(reposOf('alpha')));
 }
 await page.evaluate(() => setArchived('alpha', false));
 // Unlocking is what is under test, so it is the LOCK that has to stop being

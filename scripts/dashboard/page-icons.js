@@ -51,6 +51,14 @@ const LOCK_OPEN = `<svg viewBox="0 0 16 16" aria-hidden="true">${LOCK_BODY}
 // a pinned project's name on its card (the operator, 19 Oct: a pin where it
 // is pinned, rather than the word on every card that is not).
 const PIN = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 2h5M6.5 2v4L4.5 9h7l-2-3V2M8 9v5"/></svg>`;
+// A box with its lid and a handle, by a project's name on its card: Archive,
+// pressed in where it is archived (R138).
+const ARCHIVE = `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.2" y="3" width="11.6" height="3" rx=".8"/>
+  <path d="M3.2 6v6.4a1 1 0 0 0 1 1h7.6a1 1 0 0 0 1-1V6"/><path d="M6.5 8.8h3"/></svg>`;
+// An arrow out of a box into another, for moving a repository to another
+// project (R138).
+const MOVE = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3H3.5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h3"/>
+  <path d="M7 8h6.5M10.8 5.3 13.5 8l-2.7 2.7"/></svg>`;
 // A branch: two commits on a line and a third off it, the line bending to
 // meet it, before the branch the tree is on in the Git view's picker.
 const BRANCH_ICON = `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="3.5" r="1.5"/><circle cx="5" cy="12.5" r="1.5"/><circle cx="11" cy="5" r="1.5"/><path d="M5 5v6M11 6.5c0 3-6 2.5-6 4.5"/></svg>`;

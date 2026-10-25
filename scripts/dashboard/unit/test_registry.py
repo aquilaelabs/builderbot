@@ -53,13 +53,13 @@ class Registry(unittest.TestCase):
         self.assertIn("alpha", taken)
         self.assertNotIn("fresh", taken)
 
-    def test_shown_names_are_unique_among_live_projects(self):
+    def test_shown_names_are_unique_among_live_repositories(self):
         registry.sync()
         (self.ws / "alpha-2").mkdir()
         self.assertEqual(registry.claim("alpha-2", "alpha")["name"], "alpha-2")
         (self.ws / "alpha-3").mkdir()
         self.assertEqual(registry.claim("alpha-3", "Alpha")["name"], "Alpha-3")
-        self.assertIn("already a project's name", registry.set_name("alpha-3", "ALPHA 2")["error"])
+        self.assertIn("already a repository's name", registry.set_name("alpha-3", "ALPHA 2")["error"])
         self.assertEqual(registry.set_name("alpha-3", "Third")["name"], "Third")
         self.assertEqual(registry.label("alpha-3"), "Third")
         self.assertEqual(registry.resolve("Third"), "alpha-3")

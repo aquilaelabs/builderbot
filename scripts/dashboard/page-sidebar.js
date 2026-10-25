@@ -63,8 +63,9 @@ function wireProjectRows(root){
   root.querySelectorAll("[data-pcolor]").forEach(b => b.onclick = () => pickProjectColor(b));
   root.querySelectorAll("[data-rn]").forEach(b => b.onclick = () =>
     openProjectSettings(b.dataset.rn));
+  // From any of a project's repositories, with the others to pick from.
   root.querySelectorAll("[data-bug]").forEach(b => b.onclick = () =>
-    openReport(b.dataset.bug));
+    openReport(b.dataset.bug, state?.repos?.[reposOf(b.dataset.bug)]?.members || []));
   root.querySelectorAll("[data-ph]").forEach(b => b.onclick = e => phoneRowPress(b, e));
   root.querySelectorAll("[data-del]").forEach(b => b.onclick = () =>
     deleteProject(b.dataset.del));
@@ -237,40 +238,43 @@ async function pJobAct(action){
 // people out, so its question says whom, and names the sessions it ends.
 
 async function setArchived(name, on){
+  const key = reposOf(name) || name;
   try{
     const j = await (await postJSON("/api/archive", {name, archived: on})).json();
     if (j.error){ notify(j.error, true); return; }
-    applyNow(p => { if (p.name === name) p.archived = !!j.archived; });
-    notify(on ? `${projLabel(name)} archived: in Archived at the foot of the Projects page, and working as before`
-              : `${projLabel(name)} unarchived`);
+    applyNow((p, k) => { if (k === key) p.archived = !!j.archived; });
+    notify(on ? `${projectName(key)} archived: in Archived at the foot of the Projects page, and working as before`
+              : `${projectName(key)} unarchived`);
   }catch(e){ notify("archive failed: " + failWords(e), true); }
   refresh();
 }
 
 async function setLocked(name, on){
-  const p = (state?.projects || []).find(x => x.name === name) || {};
+  const key = reposOf(name) || name, p = state?.repos?.[key] || {};
   // An administrator who is not its owner locks its owner out too.
   const held = on ? !p.owner_mine : !!p.locked_admin;
-  const who = withMe(name);
+  // The project's sessions run on its first repository (R136).
+  const who = withMe(p.members?.[0] || name);
+  name = projectName(key);
   const running = !who.length ? "No session is running here."
     : who.length === 1 ? `${who[0] === state?.me ? "Your" : who[0] + "'s"} session here ends now.`
     : `${who.length} sessions here end now: ${who.map(w => w === state?.me ? "yours" : w).join(", ")}.`;
   if (on && !await askYes(held
-      ? `Lock ${projLabel(name)} as an administrator?\n\n${running}\n\nNobody starts a session in it or `
+      ? `Lock ${name} as an administrator?\n\n${running}\n\nNobody starts a session in it or `
         + `changes it, ${p.owner_name || "its owner"} included, until an administrator unlocks it. `
         + `It stays on the Projects page with its lock mark.`
-      : `Lock ${projLabel(name)}?\n\nEvery session here but yours ends now. Nobody but you starts a session `
+      : `Lock ${name}?\n\nEvery session here but yours ends now. Nobody but you starts a session `
         + `in it or changes it until you unlock it. It stays on the Projects page with its lock mark.`)) return;
   try{
-    const j = await (await postJSON("/api/lock", {name, locked: on})).json();
+    const j = await (await postJSON("/api/lock", {name: key, locked: on})).json();
     if (j.error){ notify(j.error, true); return; }
     for (const s of j.ended || []){
       const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === s);
       if (t) dropTab(t.id);
     }
-    notify(on ? `${projLabel(name)} locked${j.ended?.length ? `: ${j.ended.length === 1 ? "a session" : `${j.ended.length} sessions`} ended` : ""}`
-              : `${projLabel(name)} unlocked`);
-    applyNow(x => { if (x.name === name){ x.locked = !!j.locked; x.locked_admin = !!j.admin; } });
+    notify(on ? `${name} locked${j.ended?.length ? `: ${j.ended.length === 1 ? "a session" : `${j.ended.length} sessions`} ended` : ""}`
+              : `${name} unlocked`);
+    applyNow((x, k) => { if (k === key){ x.locked = !!j.locked; x.locked_admin = !!j.admin; } });
   }catch(e){ notify("lock failed: " + failWords(e), true); }
   refresh();
 }
@@ -281,20 +285,20 @@ async function setLocked(name, on){
 // Oct): asked in a box under the card's name, the groups already made
 // offered, an empty answer taking it out of its group.
 async function askProjectGroup(btn){
-  const name = btn.dataset.pgroup, p = (state?.projects || []).find(x => x.name === name);
+  const name = btn.dataset.pgroup, key = reposOf(name) || name, p = state?.repos?.[key];
   btn.closest(".actmenu")?.setAttribute("hidden", "");
   const card = btn.closest(".pcard, .phead") || btn.closest("[data-row]");
-  const at = card?.querySelector(".pcname, .pname") || card;
+  const at = card?.querySelector(".pcface:not([inert]) .pcname, .pname") || card;
   if (!at) return;
-  const groups = [...new Set((state?.projects || []).map(x => x.group).filter(Boolean))].sort();
-  const got = await askInline(at, {label: `Group ${projLabel(name)} with`, value: p?.group || "", ok: "Save",
+  const groups = [...new Set(Object.values(state?.repos || {}).map(x => x.group).filter(Boolean))].sort();
+  const got = await askInline(at, {label: `Group ${projectName(key)} with`, value: p?.group || "", ok: "Save",
                                    options: groups, allowEmpty: true});
   if (got === null || got === (p?.group || "")) return;
   try{
-    const j = await (await postJSON("/api/project-group", {name, group: got})).json();
+    const j = await (await postJSON("/api/project-group", {name: key, group: got})).json();
     if (j.error){ notify(j.error, true); return; }
-    applyNow(x => { x.group = (j.groups || {})[x.name] || ""; });
-    notify(got ? `${projLabel(name)} is in ${got}` : `${projLabel(name)} is in no group`);
+    applyNow((x, k) => { x.group = (j.groups || {})[k] || ""; });
+    notify(got ? `${projectName(key)} is in ${got}` : `${projectName(key)} is in no group`);
   }catch(e){ notify("group: " + failWords(e), true); }
   refresh();
 }
@@ -307,17 +311,18 @@ async function askProjectGroup(btn){
 // as a scheme is (it is looked at, not decided). Escape or a press
 // elsewhere rolls them back up.
 function pickProjectColor(btn){
-  const name = btn.dataset.pcolor, cur = projectColor(name);
+  const name = btn.dataset.pcolor, key = reposOf(name) || name, cur = projectColor(name);
   btn.closest(".actmenu")?.setAttribute("hidden", "");
   const card = btn.closest(".pcard, .phead") || btn.closest("[data-row]");
-  const line = card?.querySelector(".pcname, .pname");
+  // The face on show, on a card that turns over (R138).
+  const line = card?.querySelector(".pcface:not([inert]) .pcname, .pname");
   const open = line?.nextElementSibling?.classList.contains("pcpop");
   document.querySelectorAll(".pcpop").forEach(x => x.__done?.());
   if (open || !line) return;
   const pop = document.createElement("div");
   pop.className = "pcpop pcpick";
   pop.setAttribute("role", "radiogroup");
-  pop.setAttribute("aria-label", `your color for ${projLabel(name)}`);
+  pop.setAttribute("aria-label", `your color for ${projectName(key)}`);
   pop.innerHTML = PROJECT_COLORS.map(([n, tone]) => `<button type="button" role="radio" data-color="${n}" aria-checked="${n === cur}"
       aria-label="${esc(n || "none")}" title="${esc(n || "none")}"${n ? ` style="--pc:${tone}"` : ""}></button>`).join("");
   line.insertAdjacentElement("afterend", pop);
@@ -336,9 +341,9 @@ function pickProjectColor(btn){
     done();
     if (color === cur) return;
     try{
-      const j = await (await postJSON("/api/project-color", {name, color})).json();
+      const j = await (await postJSON("/api/project-color", {name: key, color})).json();
       if (j.error){ notify(j.error, true); return; }
-      applyNow(x => { x.color = (j.colors || {})[x.name] || ""; });
+      applyNow((x, k) => { x.color = (j.colors || {})[k] || ""; });
     }catch(err){ notify("color: " + err, true); }
   };
 }
@@ -356,14 +361,14 @@ function pickProjectColor(btn){
 // asking the projects endpoint about a command.
 async function setProjectPinned(name, on){
   try{
-    const r = await postJSON("/api/project-pin", {name, pinned:on});
+    const r = await postJSON("/api/project-pin", {name: reposOf(name) || name, pinned:on});
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
     // The answer IS the new state: the server sends back the whole pinned
     // set, so the page adopts it and redraws now. Waiting for the next
     // /api/status put a poll's latency between the click and the button
     // moving, on a control whose whole job is instant.
-    applyNow(p => { p.pinned = (j.pinned || []).includes(p.name); });
+    applyNow((p, k) => { p.pinned = (j.pinned || []).includes(k); });
   }catch(e){ notify("pin failed: " + failWords(e), true); }
   refresh();                       // ...and reconcile, in the background
 }
@@ -374,9 +379,12 @@ async function setProjectPinned(name, on){
 // changed, so the page should not go and ask again before believing it. The
 // poll still runs and still wins in the end; this only removes the wait
 // between a click and the thing it clicked moving.
+// Each repository's row and each project's card, by the project's key: the
+// marks are the project's (R138).
 function applyNow(fn){
   adoptSeq++;                      // a poll already out is older than this
-  (state?.projects || []).forEach(fn);
+  (state?.projects || []).forEach(p => fn(p, p.project || p.name));
+  Object.entries(state?.repos || {}).forEach(([k, r]) => fn(r, k));
   drawProjects(state?.projects || []);
   drawPanes();                     // the Projects page shows the same rows
 }

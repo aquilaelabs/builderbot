@@ -52,14 +52,15 @@ const colorAttrs = name => {
   return tone ? {cls: " pc", style: ` style="--pc:${tone}"`} : {cls: "", style: ""};
 };
 // This account's color for a project (the operator, 18 Oct: a person's own,
-// set from its card), or "".
-const projectColor = name =>
-  (state?.projects || []).find(x => x.name === name)?.color || "";
+// set from its card), or "", by its project's key or any of its repositories.
+const projectColor = name => state?.repos?.[name]?.color
+  ?? (state?.projects || []).find(x => x.name === name)?.color ?? "";
 // The name a project is shown under (R154): its directory is `name` and the
 // key everywhere, and what a person reads is the registry's `label`. A name
-// not in the poll (a project since deleted) is shown as it is.
+// not in the poll (a project since deleted) is shown as it is. A project's
+// own key (R138) reads as the project's name.
 const projLabel = name =>
-  (state?.projects || []).find(x => x.name === name)?.label || String(name ?? "");
+  (state?.projects || []).find(x => x.name === name)?.label || state?.repos?.[name]?.name || String(name ?? "");
 // The project a tab is about, for its color: a notebook's, the project whose
 // Claude session a terminal tab holds, or for a shell the project its label
 // names, the directory it is in (sessionLabels), so a tab that reads

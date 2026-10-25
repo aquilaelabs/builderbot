@@ -133,27 +133,24 @@ function homeJobsHtml(){
 
 function homeGlanceHtml(){
   // Not an archived one (the operator, 18 Oct), pinned or not.
-  const pinned = (state?.projects || []).filter(p => p.pinned && !p.archived);
-  if (!pinned.length) return `<div class="empty">no project is pinned: a project's menu on the Projects page pins it here</div>`;
+  const pinned = projectList().filter(c => c.pinned && !c.archived);
+  if (!pinned.length) return `<div class="empty">no project is pinned: the pin by a project's name on the Projects page puts it here</div>`;
   // In groups, in the Projects page's order, each group's name over its
-  // cards (R273): the page this glances at is sorted so.
-  // A project of several repositories (R136) once, under its own name,
-  // its facts its id and how many, opening its first repository's page.
-  const card = p => {
-    const k = reposOf(p.name), r = k ? state.repos[k] : null;
-    const first = r ? (state.projects.find(x => x.name === r.members[0]) || p) : p;
-    const pc = colorAttrs(first.color);
+  // cards (R273): the page this glances at is sorted so. Each opens its
+  // first repository's page (R138).
+  const card = c => {
+    const pc = colorAttrs(c.color), first = c.first;
     return `<div class="hproj${pc.cls}"${pc.style}>
-      <button type="button" class="name link" data-hproj="${esc(first.name)}">${esc(r ? r.name : p.label || p.name)}</button>
-      <div class="pcfacts">${r ? `<span class="pid">${esc(r.pid)}</span> · ${r.members.length} repositories` : projFacts(p)}</div>
-      ${projectState(first)}
-      ${projectNote(first)}
+      ${first ? `<button type="button" class="name link" data-hproj="${esc(first.name)}">${esc(c.name)}</button>`
+              : `<span class="name">${esc(c.name)}</span>`}
+      <div class="pcfacts">${[`<span class="pid">${esc(c.pid)}</span>`,
+        c.rows.length > 1 ? `${c.rows.length} repositories` : first ? projFacts({...first, pid: 0}) : "no repository yet"]
+        .filter(Boolean).join(" · ")}</div>
+      ${first ? projectState(first) + projectNote(first) : ""}
     </div>`;
   };
-  const once = list => { const seen = new Set();
-    return list.filter(p => { const k = reposOf(p.name) || p.name; if (seen.has(k)) return false; seen.add(k); return true; }); };
   return byProjectGroup([...pinned].sort(byProjectName)).map(({group, list}) =>
-    `${group ? `<div class="hgroup">${esc(group)} <span class="dim">${list.length}</span></div>` : ""}<div class="hglance">${once(list).map(card).join("")}</div>`).join("");
+    `${group ? `<div class="hgroup">${esc(group)} <span class="dim">${list.length}</span></div>` : ""}<div class="hglance">${list.map(card).join("")}</div>`).join("");
 }
 
 // Getting started (R267): what is left of first run's four once Finish is

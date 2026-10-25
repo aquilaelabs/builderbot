@@ -32,7 +32,7 @@ async function drawTrash(){
   }
   el.innerHTML = items.map(t => `<div class="row trow" data-t="${esc(t.name)}">
       <div class="grow"><div class="name">${esc(t.was || t.name)}</div>
-        <div class="sub">deleted ${esc(ago(t.at))}${t.was && t.was !== t.name
+        <div class="sub">deleted ${esc(ago(t.at))}${t.project ? ` from ${esc(t.project)}` : ""}${t.was && t.was !== t.name
           ? ` · directory ${esc(t.name)}` : ""}${t.taken
           ? ` · <span class="warn">its directory is in use again</span>` : ""}</div></div>
       <span class="acts">
@@ -45,7 +45,16 @@ async function drawTrash(){
       </span></div>`).join("");
   el.querySelectorAll("[data-trestore]").forEach(b => b.onclick = async () => {
     b.disabled = true;
-    const r = await postTrash("/api/trash-restore", {name: b.dataset.trestore});
+    let r = await postTrash("/api/trash-restore", {name: b.dataset.trestore});
+    // Its project is gone (R138): which one it goes back into is asked.
+    if (r?.pick){
+      const to = projectList().filter(c => c.may && !c.archived);
+      const got = to.length ? await askInline(b.closest(".trow"), {label: `Put ${b.dataset.trestore} back into`, ok: "Put back",
+                                                                   options: to.map(c => c.name)}) : null;
+      const c = got && to.find(x => x.name.toLowerCase() === got.toLowerCase());
+      if (!c){ if (!to.length) notify(r.error, true); b.disabled = false; return; }
+      r = await postTrash("/api/trash-restore", {name: b.dataset.trestore, project: c.key});
+    }
     if (r?.error) notify(r.error, true);
     else notify(`${r.label || r.name} is back`);
     await drawTrash(); refresh();
@@ -99,14 +108,16 @@ function openProjectsTab(){
 }
 
 // What the search box narrows the grid to: a view, this browser's, never
-// saved. Matched against the name, the label, the branch and the node.
+// saved. Matched against a project's name and each of its repositories'
+// names, branches and nodes.
 let pjQuery = "";
 // The group chip in force, "" for All and "none" for the projects in no
 // group: a view for the page's life, as the Containers page's chips are.
 let pjChip = "";
 function projectMatches(p, q){
   if (!q) return true;
-  const hay = [p.name, p.label, p.git, p.node_name, p.session_at].filter(Boolean).join(" ").toLowerCase();
+  const hay = [p, ...(p.rows || [])].flatMap(x => [x.name, x.label, x.git, x.node_name, x.session_at])
+    .filter(Boolean).join(" ").toLowerCase();
   return q.toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.includes(w));
 }
 
@@ -135,117 +146,243 @@ function projFacts(p){
 // A project's id as it is written (P3), as a roadmap item is R12 and a bug
 // B7: the registry's number, never reused, so it names one project for good.
 const projId = p => p?.pid ? `P${p.pid}` : "";
-function projectCard(p){
-  const pc = colorAttrs(p.color), cls = {error:"bad", warning:"warn", locked:"locked"};
-  return `<div class="pcard${pc.cls}" data-row="${esc(p.name)}"${pc.style}>
-    <div class="pcname"><button type="button" class="name link" data-open="${esc(p.name)}" title="open ${esc(projLabel(p.name))}'s page">${esc(p.label || p.name)}</button>${lockMark(p)}${
-      p.pinned && !p.archived ? ` <span class="pinmark" title="pinned: on Home's glance" aria-label="pinned">${PIN}</span>` : ""}</div>
-    <div class="pcfacts">${projFacts(p)}</div>
-    ${projectState(p)}
-    ${p.issues.map(i => `<div class="pnote ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
-    ${state?.mapping?.[p.name] ? (m => m.running
-        ? `<div class="pnote dim">mapping the code<span class="dots"></span>${m.for > 4 ? ` · ${m.for}s` : ""}</div>`
+// A project (R138, the operator, 25 Oct) is made first, with a name alone,
+// and its repositories are added to it; every repository is in one. The
+// page reads the projects off the status read's `repos` and each one's
+// repositories off its rows, so a project with nothing in it yet has a card.
+function projectList(){
+  const rows = state?.projects || [];
+  return Object.entries(state?.repos || {}).map(([key, r]) => {
+    const reps = r.members.map(m => rows.find(p => p.name === m)).filter(Boolean);
+    return {...r, key, label: r.name, rows: reps, first: reps[0] || null};
+  });
+}
+// The project a repository is in, or the key itself when it is one: what a
+// mark, a lock and the project's own actions are kept by.
+function reposOf(name){
+  if (state?.repos?.[name]) return name;
+  return (state?.projects || []).find(p => p.name === name)?.project || "";
+}
+// What a project is shown as, from its key or any of its repositories.
+const projectName = n => state?.repos?.[reposOf(n)]?.name || projLabel(n);
+
+// The cards the Projects page shows, by key: which are turned over to their
+// controls (Edit). The page's for its life, never saved.
+const pjEditing = new Set();
+
+// One project's card (R138): the front is what is in it and who is working
+// there, the back the controls that change it. Edit turns it over in place,
+// the two faces sharing one grid cell so the card keeps its size; Done
+// turns it back. A press on the card itself does nothing: its names open
+// the repositories' notebooks.
+function projectCard(c){
+  const pc = colorAttrs(c.color), on = pjEditing.has(c.key);
+  return `<div class="pcard pflip${pc.cls}${on ? " flipped" : ""}" data-pkey="${esc(c.key)}"${c.first ? ` data-row="${esc(c.first.name)}"` : ""}${pc.style}>
+    <div class="pcface pcfront"${on ? " inert" : ""}>${cardFront(c)}</div>
+    <div class="pcface pcback"${on ? "" : " inert"}>${cardBack(c)}</div>
+  </div>`;
+}
+// A project's mark by its name: pressed in where it is set, a press setting
+// or clearing it. Archive and pin are a person's sight of it, so they sit
+// where the name is read.
+function cardMarks(c){
+  const pin = c.archived ? "" : `<button type="button" class="eye bare pcmark${c.pinned ? " on" : ""}" data-pmark="${esc(c.key)}" data-on="${c.pinned ? "0" : "1"}"
+      aria-pressed="${c.pinned}" aria-label="${c.pinned ? "Unpin" : "Pin"} ${esc(c.name)}" title="${c.pinned ? "pinned: on Home's glance; press to unpin" : "pin it to Home's glance"}">${PIN}</button>`;
+  const arch = c.may_archive ? `<button type="button" class="eye bare pcmark${c.archived ? " on" : ""}" data-kmark="${esc(c.key)}" data-on="${c.archived ? "0" : "1"}"
+      aria-pressed="${c.archived}" aria-label="${c.archived ? "Unarchive" : "Archive"} ${esc(c.name)}" title="${c.archived
+        ? "archived: folded at the foot of this page; press to bring it back" : "archive it: out of sight at the foot of this page, and working as before"}">${ARCHIVE}</button>` : "";
+  return pin + arch;
+}
+// The lock as the card says it: by whom, or read-only where it is not this
+// account's to change.
+function cardLock(c){
+  const said = c.locked ? (c.locked_admin ? "locked by an administrator" : "locked")
+    : c.first && writeWhy(c.first) ? "read-only" : "";
+  return said ? ` <span class="lockmark" title="${esc(c.locked && c.first ? lockedWhy(c.first) : said)}">${LOCK}${said}</span>` : "";
+}
+function cardFront(c){
+  const first = c.first, cls = {error: "bad", warning: "warn", locked: "locked"};
+  const node = first ? first.node_name || first.session_at || "" : "";
+  const many = c.rows.length > 1;
+  return `<div class="pcname"><span class="name">${esc(c.name)}</span>${cardLock(c)}<span class="sp"></span>${cardMarks(c)}</div>
+    <div class="pcfacts">${[`<span class="pid" title="this project's id, which never changes">${esc(c.pid)}</span>`,
+      esc(node)].filter(Boolean).join(" · ")}</div>
+    ${first ? projectState(first) : ""}
+    <div class="pcrepos">${c.rows.length ? c.rows.map(p => `<div class="pcrepo">
+      <button type="button" class="link" data-open="${esc(p.name)}" title="open ${esc(p.label || p.name)}'s notebook">${esc(p.label || p.name)}</button>
+      <span class="pcfacts">${p.git ? `<span class="pbr">${esc(p.git)}</span>${p.push ? ` · <span class="ok">push</span>` : ""}` : "no git"}</span>
+    </div>${p.issues.map(i => `<div class="pnote ${cls[i.level] || ""}">${many ? esc(p.label || p.name) + ": " : ""}${esc(i.text)}</div>`).join("")}`).join("")
+      : `<div class="empty">no repository yet${c.may ? ": Add repository makes or clones one" : ""}</div>`}</div>
+    ${first ? cardNotes(c) : ""}
+    <div class="pcacts actbar">${first ? agentButton(first)
+      : `<button type="button" disabled title="Add a repository first">Start agent</button>`}${
+      c.may && !c.archived && !state?.session && state?.can?.create !== false ? `<button type="button" data-repadd="${esc(c.key)}">Add repository</button>` : ""}
+      <button type="button" data-pedit="${esc(c.key)}" aria-expanded="false">Edit</button></div>`;
+}
+// What the card says besides its repositories, from its first one, where a
+// session runs: mapping, a phone lent, tests running, the one notice.
+function cardNotes(c){
+  const p = c.first, m = state?.mapping?.[p.name];
+  return `${m ? (m.running ? `<div class="pnote dim">mapping the code<span class="dots"></span>${m.for > 4 ? ` · ${m.for}s` : ""}</div>`
         : m.error ? `<div class="pnote warn">the code map did not build: ${esc(m.error)}</div>`
-        : `<div class="pnote dim">mapped ${m.files} file${m.files === 1 ? "" : "s"} in ${m.took}s</div>`)(state.mapping[p.name]) : ""}
+        : `<div class="pnote dim">mapped ${m.files} file${m.files === 1 ? "" : "s"} in ${m.took}s</div>`) : ""}
     ${p.phone?.lease?.project === p.name ? `<div class="pnote dim">${esc(p.phone.model || "a phone")} lent here by ${
         esc(p.phone.lease.by_name || p.phone.owner)}${p.phone.lease.left != null ? `, ${Math.max(1, Math.round(p.phone.lease.left / 60))} min left` : ""}: each command asks ${
         p.phone.mine ? "you" : esc(p.phone.owner)}</div>` : ""}
     ${p.testing ? `<div class="pnote dim">tests running, started ${esc(ago(p.testing.since))}</div>` : ""}
-    ${projectNote(p)}
-    <div class="pcacts actbar">${projectActions(p, (p.may_archive && !p.archived && !state?.session
-      ? `<button type="button" data-repadd="${esc(p.name)}">Add a repository</button>` : "")
-      + (p.trash_why ? "" : `<button type="button" class="danger" data-del="${esc(p.name)}">Delete</button>`))}</div>
-  </div>`;
+    ${projectNote(p)}`;
 }
-
-// A project of several repositories (R136) is one card, the project's: its
-// name and id over its repositories, each opening its own notebook, and one
-// Start for the one session that works in all of them, on the first.
-function reposOf(name){
-  for (const [k, r] of Object.entries(state?.repos || {})) if (r.members.includes(name)) return k;
-  return "";
-}
-function reposCard(key){
-  const r = state.repos[key], rows = r.members.map(m => (state?.projects || []).find(p => p.name === m)).filter(Boolean);
-  const first = rows[0];
-  if (!first) return "";
-  const pc = colorAttrs(first.color);
-  return `<div class="pcard prepos${pc.cls}" data-row="${esc(first.name)}" data-repos="${esc(key)}"${pc.style}>
-    <div class="pcname"><button type="button" class="name link" data-open="${esc(first.name)}" title="open ${esc(r.name)}'s page">${esc(r.name)}</button>${lockMark(first)}</div>
-    <div class="pcfacts">${[`<span class="pid" title="this project's id, which never changes">${esc(r.pid)}</span>`,
-      `${rows.length} repositories`, esc(first.node_name || first.session_at || "")].filter(Boolean).join(" · ")}</div>
-    ${projectState(first)}
-    <div class="pcrepos">${rows.map(p => `<div class="pcrepo">
-      <button type="button" class="link" data-open="${esc(p.name)}" title="open ${esc(p.label || p.name)}'s notebook">${esc(p.label || p.name)}</button>
-      <span class="pcfacts">${p.git ? `git: <span class="pbr">${esc(p.git)}</span>` : ""}</span>
-      ${r.may ? `<button type="button" data-repout="${esc(p.name)}" title="take ${esc(p.label || p.name)} out of ${esc(r.name)}, back to a project of its own">Take out</button>` : ""}
-    </div>`).join("")}</div>
-    ${projectNote(first)}
-    <div class="pcacts actbar">${projectActions(first, r.may ? `<button type="button" data-repadd="${esc(key)}">Add a repository</button>` : "")}</div>
-  </div>`;
-}
-// The cards of a list of projects: a repository of a project of several is
-// drawn once, as its project's card, where its first repository falls.
-function projectCards(list){
-  const done = new Set();
-  return list.map(p => {
-    const k = reposOf(p.name);
-    if (!k) return projectCard(p);
-    if (done.has(k)) return "";
-    done.add(k);
-    return reposCard(k);
+// The back: the project's name with its pencil, each repository with the
+// icons that change it (a shell in it, its git host, rename, move to another
+// project, delete), and the project's own controls along the foot. No menu:
+// everything is a press away (the operator, 25 Oct).
+function cardBack(c){
+  const first = c.first, may = c.may && !state?.session;
+  const ic = (attr, val, label, icon, extra = "") => `<button type="button" class="eye bare" ${attr}="${esc(val)}" aria-label="${esc(label)}" title="${esc(label)}"${extra}>${icon}</button>`;
+  const rows = c.rows.map(p => {
+    const n = p.label || p.name, mine = !notMine(p) && !writeWhy(p);
+    return `<div class="pcrepo"><span class="name">${esc(n)}</span><span class="sp"></span>
+      ${mayShell() && !notMine(p) ? ic("data-s", p.name, `A shell in ${n}`, TERM, gitReadyFor(p) ? "" : " disabled") : ""}
+      ${p.git_ok && !isBroken(p) && state?.can?.["git-auth"] !== false ? ic("data-l", p.name, p.linked ? `${p.forge_name || "Remote"} settings for ${n}` : `Link ${n} to a git host`, LINK) : ""}
+      ${mine ? ic("data-rrn", p.name, `Rename ${n}`, PENCIL) : ""}
+      ${may ? ic("data-rmove", p.name, `Move ${n} to another project`, MOVE) : ""}
+      ${mine && !p.trash_why ? ic("data-del", p.name, `Delete ${n}: to the trash`, BIN, ' data-danger="1"') : ""}</div>`;
   }).join("");
+  const foot = [
+    `<button type="button" data-pcolor="${esc(c.key)}">${c.color ? "Color: " + esc(c.color) : "Color"}</button>`,
+    c.archived ? "" : `<button type="button" data-pgroup="${esc(c.key)}">${c.group ? "Group: " + esc(c.group) : "Group"}</button>`,
+    c.archived ? "" : `<button type="button" data-p="${esc(c.key)}" data-on="${c.pinned ? "0" : "1"}">${c.pinned ? "Unpin" : "Pin"}</button>`,
+    c.may_archive ? `<button type="button" data-k="${esc(c.key)}" data-on="${c.archived ? "0" : "1"}">${c.archived ? "Unarchive" : "Archive"}</button>` : "",
+    c.may_lock ? `<button type="button" data-lock="${esc(c.key)}" data-on="${c.locked ? "0" : "1"}">${lockLabel(c)}</button>` : "",
+    first && first.mine !== false ? `<button type="button" data-bug="${esc(first.name)}">Report bug</button>` : "",
+    first ? `<button type="button" data-rn="${esc(first.name)}">Settings</button>` : "",
+    may && !c.rows.length ? `<button type="button" class="danger" data-pdel="${esc(c.key)}">Delete project</button>` : "",
+  ].filter(Boolean).join("");
+  // The project's page's address, and a phone lent to it, by the name.
+  const phone = first?.phone?.mine ? ic("data-ph", first.name, first.phone.lease?.project === first.name ? "Take your phone back" : "Lend your phone",
+                                        TOOL_ICONS.phone, phoneWhy(first) ? " disabled" : "") : "";
+  return `<div class="pcname"><span class="name">${esc(c.name)}</span>${may ? ic("data-prn", c.key, `Rename ${c.name}`, PENCIL) : ""}
+      ${first ? ic("data-plink", first.name, `Copy the link to ${c.name}'s page`, LINK) : ""}${phone}
+      <span class="sp"></span><button type="button" class="primary" data-pedit="${esc(c.key)}" aria-expanded="true">Done</button></div>
+    <div class="pcrepos">${rows || `<div class="empty">no repository yet</div>`}</div>
+    <div class="pcacts actbar wrap">${foot}</div>`;
+}
+// A project's page's address, copied: what a link to it shares.
+async function copyProjectLink(name){
+  const url = `${location.origin}${location.pathname}#/projects/${encodeURIComponent(name)}`;
+  try{ await navigator.clipboard.writeText(url); notify(`copied ${url}`); }
+  catch(e){ notify(`the link is ${url}`); }
+}
+// The cards of a list of projects.
+const projectCards = list => list.map(projectCard).join("");
+
+// Turn a card over, or back, in place: the class moves and the faces trade
+// which one a press and a screen reader reach; the next paint draws it so.
+function flipCard(key){
+  const on = !pjEditing.has(key);
+  on ? pjEditing.add(key) : pjEditing.delete(key);
+  const card = document.querySelector(`.pcard[data-pkey="${CSS.escape(key)}"]`);
+  if (!card) return;
+  card.classList.toggle("flipped", on);
+  card.querySelector(".pcfront").inert = on;
+  card.querySelector(".pcback").inert = !on;
+  card.querySelectorAll("[data-pedit]").forEach(b => b.setAttribute("aria-expanded", String(on)));
 }
 
-// Add a repository to a project (R136): which, from the projects not in one
-// already, and, where the project is one repository today, what the project
-// over both is called (its repository's name until it is given another).
-async function addRepository(btn){
-  const into = btn.dataset.repadd, made = state?.repos?.[into];
-  closeMore();
-  const head = btn.closest(".pcard")?.querySelector(".pcname") || btn;
-  const taken = new Set(Object.values(state?.repos || {}).flatMap(r => r.members));
-  const pick = (state?.projects || []).filter(p => p.name !== into && !taken.has(p.name) && !p.archived);
-  if (!pick.length){ notify("every other project is in a project of repositories already, or archived", true); return; }
-  const got = await askInline(head, {label: `Add a repository to ${made ? made.name : projLabel(into)}`, ok: "Next",
-                                     options: pick.map(p => p.label || p.name)});
+// New project (R138): its name, and nothing else; its repositories are
+// added on its card.
+async function newProjectByName(){
+  const said = await ask({title: "New project", field: {label: "Name"}, choices: [{label: "Create", value: true}],
+                         text: "Spaces and punctuation are fine in its name. Its repositories are added on its card."});
+  const got = said?.text?.trim();
   if (!got) return;
-  const p = pick.find(x => x.name === got || (x.label || x.name).toLowerCase() === got.toLowerCase());
-  if (!p){ notify(`${got} is not a project that can be added here`, true); return; }
-  let name = "";
-  if (!made){
-    name = await askInline(head, {label: `The project over ${projLabel(into)} and ${p.label || p.name} is called`,
-                                  value: projLabel(into), ok: "Add"});
-    if (name === null) return;
-  }
   try{
-    const j = await (await postJSON("/api/repos", {action: "merge", into, add: [p.name], name})).json();
+    const j = await (await postJSON("/api/repos", {action: "create", name: got})).json();
     if (j.error){ notify(j.error, true); return; }
-    const n = j.ended?.length || 0;
-    notify(`${p.label || p.name} is a repository of ${j.name}${
-      j.readers?.length ? `; ${j.readers.join(", ")} now read${j.readers.length === 1 ? "s" : ""} every repository of it` : ""}${
-      n ? `; ${n} session${n === 1 ? "" : "s"} on it ended` : ""}`);
-  }catch(e){ notify("adding the repository failed: " + failWords(e), true); }
+    pjEditing.delete(j.key);
+    notify(`${j.name} made: Add repository on its card makes or clones its first one`);
+  }catch(e){ notify("making the project failed: " + failWords(e), true); }
   await refresh();
 }
 
-// A repository taken out of its project, back to a project of its own.
-async function takeOutRepository(btn){
-  const m = btn.dataset.repout;
+// The project's name, asked in a box under it.
+async function renameProjectCard(btn){
+  const key = btn.dataset.prn, was = projectName(key);
+  const got = await askInline(btn.closest(".pcname"), {label: `Rename ${was} to`, value: was, ok: "Rename"});
+  if (got === null || got === was) return;
   try{
-    const j = await (await postJSON("/api/repos", {action: "split", name: m})).json();
+    const j = await (await postJSON("/api/repos", {action: "rename", key, to: got})).json();
     if (j.error){ notify(j.error, true); return; }
-    const n = j.ended?.length || 0;
-    notify(`${j.out.map(projLabel).join(" and ")} ${j.out.length === 1 ? "is a project" : "are projects"} of ${
-      j.out.length === 1 ? "its" : "their"} own again${n ? `; ${n} session${n === 1 ? "" : "s"} ended` : ""}`);
-  }catch(e){ notify("taking the repository out failed: " + failWords(e), true); }
+    notify(`${was} is now ${j.name || got}`);
+  }catch(e){ notify("renaming failed: " + failWords(e), true); }
   await refresh();
+}
+
+// A repository's shown name, asked in a box under its row (the folder stays).
+async function renameRepository(btn){
+  const name = btn.dataset.rrn, was = projLabel(name);
+  const got = await askInline(btn.closest(".pcrepo"), {label: `Rename ${was} to`, value: was, ok: "Rename"});
+  if (got === null || got === was) return;
+  try{
+    const j = await (await postJSON("/api/rename", {name, to: got})).json();
+    if (j.error){ notify(j.error, true); return; }
+    notify(`${was} is now ${j.label || got}`);
+  }catch(e){ notify("renaming failed: " + failWords(e), true); }
+  await refresh();
+}
+
+// A repository into another project, picked from the ones this account may
+// change; refused while a session runs on either.
+async function moveRepository(btn){
+  const name = btn.dataset.rmove, from = reposOf(name);
+  const to = projectList().filter(c => c.key !== from && c.may && !c.archived);
+  if (!to.length){ notify("there is no other project of yours to move it to: New project makes one", true); return; }
+  const got = await askInline(btn.closest(".pcrepo"), {label: `Move ${projLabel(name)} to`, ok: "Move",
+                                                       options: to.map(c => c.name)});
+  if (!got) return;
+  const c = to.find(x => x.name.toLowerCase() === got.toLowerCase());
+  if (!c){ notify(`${got} is not a project it can move to`, true); return; }
+  try{
+    const j = await (await postJSON("/api/repos", {action: "move", name, to: c.key})).json();
+    if (j.error){ notify(j.error, true); return; }
+    notify(`${projLabel(name)} is in ${j.project}${
+      j.readers?.length ? `; ${j.readers.join(", ")} now read${j.readers.length === 1 ? "s" : ""} it too` : ""}`);
+  }catch(e){ notify("moving it failed: " + failWords(e), true); }
+  await refresh();
+}
+
+// A project with nothing left in it, gone (R138: one with a repository in it
+// is refused, and says so).
+async function deleteProjectCard(key){
+  const n = projectName(key);
+  if (!await askYes(`Delete the project ${n}?\n\nIt has no repository in it, so nothing on disk goes.`)) return;
+  try{
+    const j = await (await postJSON("/api/repos", {action: "delete", key})).json();
+    if (j.error){ notify(j.error, true); return; }
+    pjEditing.delete(key);
+    notify(`${n} is gone`);
+  }catch(e){ notify("deleting the project failed: " + failWords(e), true); }
+  await refresh();
+}
+
+// The card's own presses, beside wireProjectRows' shared ones.
+function wireProjectCards(grid){
+  grid.querySelectorAll("[data-pedit]").forEach(b => b.onclick = () => flipCard(b.dataset.pedit));
+  grid.querySelectorAll("[data-repadd]").forEach(b => b.onclick = () => openAddRepository(b.dataset.repadd));
+  grid.querySelectorAll("[data-prn]").forEach(b => b.onclick = () => renameProjectCard(b));
+  grid.querySelectorAll("[data-rrn]").forEach(b => b.onclick = () => renameRepository(b));
+  grid.querySelectorAll("[data-rmove]").forEach(b => b.onclick = () => moveRepository(b));
+  grid.querySelectorAll("[data-pdel]").forEach(b => b.onclick = () => deleteProjectCard(b.dataset.pdel));
+  grid.querySelectorAll("[data-plink]").forEach(b => b.onclick = () => copyProjectLink(b.dataset.plink));
+  grid.querySelectorAll("[data-pmark]").forEach(b => b.onclick = () => setProjectPinned(b.dataset.pmark, b.dataset.on === "1"));
+  grid.querySelectorAll("[data-kmark]").forEach(b => b.onclick = () => setArchived(b.dataset.kmark, b.dataset.on === "1"));
+  grid.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openNotebook(b.dataset.open));
 }
 
 function renderProjectsInto(i){
   const el = $("doc" + i);
   if (!el) return;
-  const ps = state?.projects || [];
+  const ps = projectList();
   // The surface once (docSurface: the bar band, the band list, the quiet
   // footer): its bar is the search, New project and the trash, and the grid
   // under it is what paints on every pass, so typing in the box is not
@@ -255,9 +392,9 @@ function renderProjectsInto(i){
     d.setBar(`<input id="pjSearch" type="search" placeholder="name, branch or node" aria-label="narrow the projects" autocomplete="off" spellcheck="false">
         <span class="sp"></span>
         <span class="actbar"><button type="button" id="bTrashTab" aria-label="the trash" title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button>
-        <button type="button" class="primary" id="bNewProjTab" title="a fresh local repo, or a clone">New project</button></span>`);
+        <button type="button" class="primary" id="bNewProjTab" title="a project, by its name: its repositories are added on its card">New project</button></span>`);
     d.list.innerHTML = `<div class="field pjjob" id="pjJob" hidden></div><div id="pjChips"></div><div class="field pgridband"><div id="pjGrid"></div></div>`;
-    el.querySelector("#bNewProjTab").onclick = openNewProject;
+    el.querySelector("#bNewProjTab").onclick = newProjectByName;
     el.querySelector("#bTrashTab").onclick = openTrash;
     const box = el.querySelector("#pjSearch");
     box.value = pjQuery;
@@ -277,7 +414,7 @@ function renderProjectsInto(i){
   // The empty case says what to do: an empty workspace is exactly where
   // somebody is about to make their first project.
   if (!ps.length){
-    paint(grid, `<div class="empty">${state.admin ? "nothing under /workspace yet: New project starts one"
+    paint(grid, `<div class="empty">${state.admin ? "no project yet: New project makes one"
                                        : "no projects are yours yet: an administrator grants them on the Users page"}</div>`);
     return;
   }
@@ -316,15 +453,8 @@ function renderProjectsInto(i){
   if (paint(grid, html || `<div class="empty">nothing matches ${esc(pjQuery)}</div>`)){
     wireSections(grid);
     wireProjectRows(grid);
-    wireProjectMenu(grid);
+    wireProjectCards(grid);
     grid.querySelectorAll("[data-pjgrename]").forEach(b => b.onclick = () => renameProjectGroup(b));
-    grid.querySelectorAll("[data-repadd]").forEach(b => b.onclick = e => { e.stopPropagation(); addRepository(b); });
-    grid.querySelectorAll("[data-repout]").forEach(b => b.onclick = e => { e.stopPropagation(); takeOutRepository(b); });
-    grid.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openNotebook(b.dataset.open));
-    grid.querySelectorAll(".pcard[data-row]").forEach(c => c.onclick = e => {
-      if (!cardPress(e)) return;
-      openNotebook(c.dataset.row);
-    });
   }
   syncResumeMenu();
 }
@@ -342,7 +472,7 @@ async function renameProjectGroup(btn){
   try{
     const j = await (await postJSON("/api/project-group", gone ? {delete: was} : {rename: was, to: got})).json();
     if (j.error){ notify(j.error, true); return; }
-    applyNow(x => { x.group = (j.groups || {})[x.name] || ""; });
+    applyNow((x, k) => { x.group = (j.groups || {})[k] || ""; });
     notify(gone ? `${was} is gone: its projects are in no group` : `${was} is now ${got}`);
   }catch(e){ notify("group: " + failWords(e), true); }
   refresh();
@@ -376,9 +506,9 @@ const devClaudeMode = name => {
 // type in it. `focus` stays in PMODES because it is also the name of the
 // field that mode leads with, which pDraw uses.
 const PMODES = {
-  init:  { title: () => "New project", btn: "Create", focus: "pName",
+  init:  { title: () => pInto ? `Add a repository to ${projectName(pInto)}` : "New project", btn: "Create", focus: "pName",
            fields: ["pSrcField", "pNameField", "pVersionField", "pNodeField", "pGateField", "pArchiveField", "pAboutField"] },
-  clone: { title: () => "New project", btn: "Create", focus: "pUrl",
+  clone: { title: () => pInto ? `Add a repository to ${projectName(pInto)}` : "New project", btn: "Create", focus: "pUrl",
            fields: ["pSrcField", "pNameField", "pNodeField", "pGateField", "pUrlField", "pForgeField",
                     "pPushField", "pTokenField", "pKeyField"] },
   link:  { title: () => `Link ${projLabel(pLink)} to a git host`, btn: "Link", focus: "pUrl",
@@ -391,6 +521,8 @@ let pMode = "init";
 let pLinkAuth = "key";                   // how a link authenticates: key or token
 
 let pLink = null;                        // the project being linked, if any
+
+let pInto = "";                          // the project a repository is added to (R138)
 
 let pKeys = [];                          // the agent's public keys, per open
 
@@ -429,6 +561,8 @@ function pDraw(){
                    "pUrlField", "pLinkAuthField", "pPushField",
                    "pTokenField", "pKeyField", "pAboutField", "pGateField"])
     $(f).hidden = !m.fields.includes(f);
+  // Into a project, its node and dials are the project's already.
+  if (pInto){ $("pNodeField").hidden = true; $("pGateField").hidden = true; }
   // A brief says what to build from nothing; an archive is the start, so the
   // field goes once one is picked (the server refuses the pair as well).
   if (pMode === "init" && $("pArchive").files[0]) $("pAboutField").hidden = true;
@@ -654,7 +788,7 @@ function pFillNode(){
     loadNodes().then(() => { if (gen === pGen && !$("pmodal").hidden) pFillNode(); });
   }
   const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired" && n.state !== "disabled");
-  const shown = PMODES[pMode]?.fields.includes("pNodeField") && pick.length > 0;
+  const shown = !pInto && PMODES[pMode]?.fields.includes("pNodeField") && pick.length > 0;
   wrap.hidden = !shown;
   if (!shown){ sel.innerHTML = ""; return; }
   const was = sel.value;
@@ -669,7 +803,12 @@ function pFillNode(){
     : pick.some(n => n.id === nodesDefault) ? nodesDefault : "";
 }
 
-function openNewProject(){ pLink = null; pOpen("init"); }
+// From first run and Getting started: the server makes a project of the
+// same name around it. On a project's card it is Add repository, into that
+// project (R138), which keeps the project's node and dials and asks neither.
+function openNewProject(){ pLink = null; pInto = ""; pOpen("init"); }
+
+function openAddRepository(key){ pLink = null; pInto = key; pOpen("init"); }
 
 function openLinkProject(name){ pLink = name; pOpen("link"); }
 
@@ -751,7 +890,7 @@ async function createProject() {
   // Captured at the click: the dialog can be closed, reopened and switched
   // to another mode while this request runs, and everything below must keep
   // talking about the flow the operator actually submitted.
-  const mode = pMode, linkName = pLink, gen = pGen;
+  const mode = pMode, linkName = pLink, into = pInto, gen = pGen;
   const name = $("pName").value.trim();
   let url = $("pUrl").value.trim();
   const key = $("pKey").value;          // "" until this open's fetch offered any
@@ -807,7 +946,7 @@ async function createProject() {
                                 token: linkToken})})
       : await fetch("/api/create", {method:"POST",
           headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({name, mode, url, about: $("pAboutField").hidden ? "" : $("pAbout").value, archive,
+          body: JSON.stringify({name, mode, url, project: into, about: $("pAboutField").hidden ? "" : $("pAbout").value, archive,
                                 node: $("pNodeField").hidden ? "" : $("pNode").value,
                                 // A starting version, for a fresh tree only: a
                                 // clone keeps the history it came with.

@@ -325,6 +325,7 @@ sess() {
 # because a rule only the UI honors is a suggestion: a terminal's URL can be
 # asked for directly.
 LOCKS_FILE="${DASHBOARD_STATE:-/config}/locked-projects.json"
+REPOS_FILE="${DASHBOARD_STATE:-/config}/project-repos.json"
 
 # is_locked PROJECT ACCOUNT: locked against that account. `bb settings`
 # answers it, here from the file and on a node from the controller, since it
@@ -338,7 +339,12 @@ is_locked() {
         return
     fi
     if [ -f "$LOCKS_FILE" ]; then
-        jq -e --arg n "$1" 'type == "object" and has($n)' "$LOCKS_FILE" >/dev/null 2>&1
+        # A lock is its project's (R138): asked by the repository's name, the
+        # project it is in is looked up and either name holds.
+        local key=""
+        [ -f "$REPOS_FILE" ] && key="$(jq -r --arg n "$1" '(.projects // {}) | to_entries
+            | map(select((.value.members // []) | index($n))) | .[0].key // empty' "$REPOS_FILE" 2>/dev/null)"
+        jq -e --arg n "$1" --arg k "${key:-$1}" 'type == "object" and (has($n) or has($k))' "$LOCKS_FILE" >/dev/null 2>&1
         return
     fi
     return 1

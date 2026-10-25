@@ -376,11 +376,25 @@ def roles_of(u):
     return rs
 
 
+# repos.key_of, handed over by the server (R138): a project's roles are kept
+# by project, and a repository is asked about through its project's.
+home_of = None
+
+
 def project_roles_of(u, project):
-    """The roles an account was given on `project` alone (R152)."""
+    """The roles an account was given on `project` alone (R152), a
+    repository's being its project's (R138)."""
     pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
-    got = pr.get(str(project)) if project is not None else None
-    return [str(r) for r in got] if isinstance(got, list) else []
+    if project is None:
+        return []
+    if not home_of:
+        got = pr.get(str(project))
+        return [str(r) for r in got] if isinstance(got, list) else []
+    # Each entry by its project's key, so one given as a repository's name
+    # before the repository was put in a project counts for that project.
+    key = home_of(str(project))
+    return list(dict.fromkeys(str(r) for k, rs in pr.items() if isinstance(rs, list) and home_of(str(k)) == key
+                              for r in rs))
 
 
 def level_of(u, area, project=None, on_project=None, node=None, everywhere=False, instance=None):

@@ -13,11 +13,12 @@ import { dirname, join } from 'node:path';
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 
-// New project is on the Projects page (R218 step 3): opened, then pressed.
+// The create dialog, as first run and Getting started open it: a project
+// made around the repository it makes (R138). The Projects page's own New
+// project asks for a name alone, and a card's Add repository opens this
+// dialog into that project; both are checked under "projects first".
 const newProject = async () => {
-  await page.evaluate(() => openProjectsTab());
-  await page.waitForSelector('#bNewProjTab', { timeout: 15000 });
-  await page.click('#bNewProjTab');
+  await page.evaluate(() => { openProjectsTab(); openNewProject(); });
 };await page.goto(URL);
 await ready(page);
 
@@ -64,7 +65,49 @@ const postJson = (body, api = '/api/create') => page.evaluate(async ([b, u]) => 
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('#bNewProjTab', { timeout: 15000 });
 ok(await page.$eval('#bNewProjTab', b => b.textContent.includes('New project')),
-   'New project sits at the foot of the Projects card');
+   'New project sits in the Projects page\'s bar');
+
+// ---- projects first (R138) -------------------------------------------
+// New project asks for a name alone, spaces and punctuation kept, and makes
+// a project with nothing in it; its card's Add repository opens the dialog
+// into it, without the node and the dials, which are the project's.
+{
+  await page.click('#bNewProjTab');
+  await page.waitForSelector('.askdlg:not([hidden]) [data-afield]', { timeout: 5000 });
+  const dlg = await page.$eval('.askdlg:not([hidden])', m => ({ head: m.querySelector('h3').textContent.trim(),
+    label: m.querySelector('label')?.textContent.trim() }));
+  ok(dlg.head === 'New project' && dlg.label === 'Name', `New project asks for a name alone (${JSON.stringify(dlg)})`);
+  await page.fill('.askdlg:not([hidden]) [data-afield]', 'Web shop, v2');
+  await page.click('.askdlg:not([hidden]) [data-ai="0"]');
+  await page.waitForFunction(() => Object.values(state?.repos || {}).some(r => r.name === 'Web shop, v2'), null, { timeout: 15000 });
+  const key = await page.evaluate(() => Object.entries(state.repos).find(([, r]) => r.name === 'Web shop, v2')[0]);
+  const card = `.pgrid .pcard[data-pkey="${key}"]`;
+  await page.waitForSelector(card, { timeout: 15000 });
+  ok(await page.$eval(card, c => /no repository yet/.test(c.querySelector('.pcfront').textContent) && !c.querySelector('.pcfront [data-c]')),
+     '...a card with no repository in it says so, and has no agent to start');
+  await page.click(`${card} .pcfront [data-repadd]`);
+  await page.waitForSelector('#pmodal:not([hidden])', { timeout: 5000 });
+  const into = await page.evaluate(() => ({ title: $('pTitle').textContent, node: $('pNodeField').hidden, gate: $('pGateField').hidden }));
+  ok(into.title === 'Add a repository to Web shop, v2' && into.node && into.gate,
+     `Add repository opens the dialog into the project, its node and dials left to the project (${JSON.stringify(into)})`);
+  await page.fill('#pName', 'webshop');
+  await page.click('#pCreate');
+  await page.waitForFunction(k => JSON.stringify(state?.repos?.[k]?.members) === '["webshop"]', key, { timeout: 15000 });
+  ok(await page.$eval(card, c => [...c.querySelectorAll('.pcfront .pcrepo > .link')].map(b => b.textContent.trim()).join() === 'webshop'),
+     '...and the repository made is on the project\'s card');
+  // A project with something in it offers no Delete project; empty, it does.
+  await page.evaluate(k => postJSON('/api/trash', { name: 'webshop' }).then(() => refresh()), key);
+  await page.waitForFunction(k => !state?.repos?.[k]?.members.length, key, { timeout: 15000 });
+  await page.click(`${card} .pcfront [data-pedit]`);
+  await page.waitForSelector(`${card}.flipped .pcback [data-pdel]`, { timeout: 5000 });
+  await page.click(`${card} .pcback [data-pdel]`);
+  await page.waitForSelector('.askdlg:not([hidden]) [data-ai="0"]', { timeout: 5000 });
+  await page.click('.askdlg:not([hidden]) [data-ai="0"]');
+  await page.waitForFunction(k => !state?.repos?.[k], key, { timeout: 15000 });
+  ok(true, 'an empty project is deleted from its card\'s back');
+  await page.evaluate(() => postJSON('/api/trash-purge', { name: 'webshop', confirm: 'webshop' }));
+}
+
 await newProject();
 ok(await page.$eval('#pmodal', el => !el.hidden), 'the dialog opens');
 // The four gates are on the dialog (R78): what a session may enter into

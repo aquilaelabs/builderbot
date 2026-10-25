@@ -78,8 +78,8 @@ Under the tiles, Attention is the bell's own rows (a node behind, a red CI
 run, a file changed in two places), dismissed there as on the bell, and
 Last jobs is the ten newest, each opening its row on the Jobs page with
 the log open. Under those, the pinned projects at a glance, each with its
-branch, its session state and the one notice it carries; Pin and Unpin
-are in a project's menu on the Projects page. Home reads its numbers when
+repositories, its session state and the one notice it carries; the pin by a
+project's name on the Projects page puts it here or takes it off. Home reads its numbers when
 it opens, and the queue's again when a job moves; the containers are asked
 only on opening, and nothing is read on a timer. A browser with nothing open lands on it.
 

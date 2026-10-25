@@ -1143,6 +1143,39 @@ def lock_may(name, uid, admin, rec):
     return admin if rec.get("admin") else mine
 
 
+def _project_cards(who, ps):
+    """{key: card} for every project this account sees (R138): its name and
+    id, its repositories in their order (those it sees), and its marks as
+    the account has them (pinned, group, color: a person's own; locked and
+    archived: the project's), with what the account may do about each."""
+    me_uid = "" if (who or {}).get("session") else users.uid_of(who)
+    me_admin = bool(me_uid) and users.is_admin(who)
+    locked = projects.load_locks()
+    archived = set(projects.load_archived())
+    pins = projects.load_project_pins(users.uid_of(who), users.starts_unpinned(who))
+    groups = projects.load_project_groups(users.uid_of(who))
+    colors = projects.load_marks("color", users.uid_of(who), start=_legacy_colors(prefs.all_projects(WORKSPACE)))
+    seen = {p["name"] for p in ps}
+    out = {}
+    for k, ms in repos.all_members().items():
+        if not users.may_see(who, k):
+            continue
+        owner = membership.owner_of(k)
+        out[k] = {"name": registry.label(k), "pid": registry.pid(k),
+                  "members": [m for m in ms if m in seen],
+                  "may": bool(me_uid) and (me_admin or membership.may_manage(who, k)),
+                  "locked": k in locked, "locked_admin": bool(locked.get(k, {}).get("admin")),
+                  "locked_me": k in locked and bool(projects.locked_out(k, me_uid)),
+                  "may_lock": lock_may(k, me_uid, me_admin, locked.get(k)),
+                  "archived": k in archived,
+                  "may_archive": me_admin or (bool(me_uid) and owner == me_uid),
+                  "owner_name": membership.owner_name(k) or "",
+                  "owner_mine": bool(me_uid) and owner == me_uid,
+                  "pinned": True if pins is None else k in pins,
+                  "group": groups.get(k, ""), "color": colors.get(k, "")}
+    return out
+
+
 def _project_columns(who, facts):
     """The row the page reads for each project _projects_on_disk found: its
     facts, and everything else a row carries. The project's own settings
@@ -1162,6 +1195,11 @@ def _project_columns(who, facts):
     # Each directory's id and the name it is shown under (R154): synced with
     # the disk here, two listdirs and no write when nothing moved.
     reg = registry.sync()["projects"]
+    # ...and every repository in a project (R138): one recorded since, by an
+    # import or a clone, gets one of its own, its owner and settings with it.
+    for key, first in repos.place():
+        membership.adopt(key, first)
+        prefs.adopt(key, first)
     pins = projects.load_project_pins(users.uid_of(who), users.starts_unpinned(who))
     groups = projects.load_project_groups(users.uid_of(who))
     # One small file for the whole list, read here rather than per row: this
@@ -1256,7 +1294,9 @@ def _project_columns(who, facts):
             sa["session_nodes"] = _session_nodes(d.name)
         with timing.timed("projects:memory"):
             mem_census = memory.census(d.name, home=home_for(users.uid_of(who)))
-        out.append({"name": d.name, "git": branch, "git_ok": git_ok,
+        # Its project's (R138): the marks and the people are kept by project.
+        pk = repos.key_of(d.name)
+        out.append({"name": d.name, "project": pk, "git": branch, "git_ok": git_ok,
                     # The name people see and the project's id (R154); `name`
                     # stays the directory, which every store keys by.
                     "label": str((reg.get(d.name) or {}).get("name") or d.name),
@@ -1272,22 +1312,22 @@ def _project_columns(who, facts):
                                    else forge["name"] if forge["id"] != forges.OTHER["id"]
                                    else fhost or forge["name"]),
                     "forge_host": fhost,
-                    "locked": d.name in locked,
+                    "locked": pk in locked,
                     # ...an administrator's lock, which holds its owner too.
-                    "locked_admin": bool(locked.get(d.name, {}).get("admin")),
+                    "locked_admin": bool(locked.get(pk, {}).get("admin")),
                     # ...and whether it holds this account out, as the server
                     # refuses: what the page shuts on.
-                    "locked_me": d.name in locked and bool(projects.locked_out(d.name, me_uid or users.uid_of(who))),
-                    "archived": d.name in archived,
+                    "locked_me": pk in locked and bool(projects.locked_out(d.name, me_uid or users.uid_of(who))),
+                    "archived": pk in archived,
                     "owner_name": membership.owner_name(d.name) or "",
                     "owner_mine": bool(me_uid) and membership.owner_of(d.name) == me_uid,
-                    "may_lock": lock_may(d.name, me_uid, me_admin, locked.get(d.name)),
+                    "may_lock": lock_may(d.name, me_uid, me_admin, locked.get(pk)),
                     "may_archive": me_admin or (bool(me_uid) and membership.owner_of(d.name) == me_uid),
-                    "pinned": True if pins is None else d.name in pins,
+                    "pinned": True if pins is None else pk in pins,
                     # The group this account files it under, or "".
-                    "group": groups.get(d.name, ""),
+                    "group": groups.get(pk, ""),
                     # ...and the color it gives it, or "".
-                    "color": colors.get(d.name, ""),
+                    "color": colors.get(pk, ""),
                     # Whether it carries its own access token, so the rename
                     # dialog can offer to change one without offering to
                     # invent one for a local repo that never had any.
@@ -3615,7 +3655,9 @@ preamble.node_gpu = _project_node_gpu
 
 prefs.configure(write_json=write_json, state=STATE)
 prefs.configure_repos(project_of=repos.project_of, members=repos.members, is_repos=registry.is_repos)
-users.repos_members = repos.members
+users.home_of = repos.key_of
+projects.key_of = repos.key_of
+roles.home_of = repos.key_of
 # Said again, now that prefs exists: users.git_identity resolves a per-project
 # override of the commit author, and that override lives in prefs, which is
 # configured after users because the login path must not depend on it.
@@ -4707,13 +4749,9 @@ def _snapshot(who):
         "boot": layout.boot_id(),
         "image": _timed("status:image", lambda: image_stamp()),
         "projects": ps,
-        # The projects of several repositories (R136) whose every repository
-        # this account sees: the Projects page draws each as one card.
-        "repos": {k: {"name": registry.label(k), "pid": registry.pid(k), "members": ms,
-                      "may": bool(who) and not who.get("session")
-                      and (users.is_admin(who) or membership.may_manage(who, k))}
-                  for k, ms in repos.all_members().items()
-                  if ms and set(ms) <= {p["name"] for p in ps}},
+        # Every project this account sees (R138), one with no repository in
+        # it too: the Projects page draws each as one card, from this.
+        "repos": _timed("status:repos", lambda: _project_cards(who, ps)),
         "sessions": sessions,
         # Every node with a runner on it: the Runner card is a view of these
         # and nothing else, since CI left this container (phase 7). Read from
@@ -5149,6 +5187,15 @@ class Handler(BaseHTTPRequestHandler):
             return False
         self._json({"error": f"not a project: {name}" if name else "not a project"}, 400)
         return True
+
+    def _not_card(self, name):
+        """_not_project, for what is a whole project's (R138: its pin,
+        group, color, lock, archive, name and its deletion): a project's key
+        this account sees passes too, one with no repository in it as much
+        as any."""
+        if name and registry.is_repos(name) and users.may_see(self._who(), name):
+            return False
+        return self._not_project(name)
 
     def _result(self, r, bad=400):
         """A module's {ok} or {error} answer as the reply: `bad` when it
@@ -6727,12 +6774,17 @@ class Handler(BaseHTTPRequestHandler):
         if not can["admin"] and not can["projects"] and not readonly:
             return self._json({"error": "the Roles page is an administrator's, a project owner's "
                                         "for their own projects, or for reading, Accounts and roles Read's"}, 403)
-        scope = None if can["admin"] or readonly else set(can["projects"])
+        # By project (R138): an entry kept under a repository's name counts
+        # for the project it is in, as everywhere roles are read.
+        scope = None if can["admin"] or readonly else {repos.key_of(p) for p in can["projects"]}
         people = []
         for u in users.all_users():
             full = users.get(u["name"]) or {}
-            pr = full.get("project_roles") if isinstance(full.get("project_roles"), dict) else {}
-            on = list(full.get("projects") or [])
+            pr = {}
+            for p, r in (full.get("project_roles") if isinstance(full.get("project_roles"), dict) else {}).items():
+                k = repos.key_of(p)
+                pr[k] = list(dict.fromkeys([*pr.get(k, []), *(r if isinstance(r, list) else [])]))
+            on = list(dict.fromkeys(p if p == "*" else repos.key_of(p) for p in full.get("projects") or []))
             if scope is not None:
                 pr = {p: r for p, r in pr.items() if p in scope}
                 on = [p for p in on if p in scope]
@@ -6740,7 +6792,8 @@ class Handler(BaseHTTPRequestHandler):
                            "roles": [r for r in roles.roles_of(full) if r not in ("user",)]
                            if can["admin"] or readonly else [],
                            "project_roles": pr, "projects": on})
-        all_projects = project_names(me) if scope is None else sorted(scope)
+        all_projects = sorted((k for k in registry.repos_keys() if users.may_see(me, k)) if scope is None else scope,
+                              key=lambda k: registry.label(k).lower())
         rs = roles.all_roles()
         if scope is not None:
             rs = {n: r for n, r in rs.items() if r.get("scope") == "projects"}
@@ -9064,6 +9117,21 @@ class Handler(BaseHTTPRequestHandler):
         if self._refused("create"):
             return None
         me = self._who()
+        # Into a project (R138: Add a repository on its card): one this
+        # account sees and works on, which is not locked against it; the
+        # repository then lives on the project's node.
+        into = field(req, "project")
+        if into:
+            if not registry.is_repos(into) or not users.may_see(me, into):
+                return self._json({"error": f"not a project: {into}"}, 400)
+            if not users.may_work(me, into):
+                return self._json({"error": f"{registry.label(into)} is not on your list of projects: "
+                                            "add it to your own list on the Users page first"}, 403)
+            if (bad := projects.locked_out(into, users.uid_of(me))):
+                return self._json(bad, 403)
+            return self._json(*projects.create_from_dialog(
+                req, env=users.git_env(me, projects.sanitize_name(field(req, "name"))),
+                account=me["name"] if me and users.uid_of(me) else "", may_node=lambda name: False))
         # On the nodes the account's New projects role names, when it names
         # any (R152, the operator, 7 Oct): a project made elsewhere, or on no
         # node, is refused by name. Its node is then the account's to set at
@@ -9890,8 +9958,9 @@ class Handler(BaseHTTPRequestHandler):
         already, and that is the whole of the guarantee here too.
         """
         name, on = req.get("name", ""), bool(req.get("locked"))
-        if self._not_project(name):
+        if self._not_card(name):
             return None
+        name = repos.key_of(name)
         me = self._who()
         owner = membership.owner_of(name)
         uid = "" if not me or me.get("session") else users.uid_of(me)
@@ -9910,7 +9979,10 @@ class Handler(BaseHTTPRequestHandler):
             # an administrator's lock all of them, under its owner's all but
             # the owner's.
             bb_owner = users.uid_of(users.get(users.owner_name() or "")) if users.owner_name() else ""
-            want = set(agent_sessions(name))
+            # Every repository's in the project (R138).
+            want = set()
+            for m in repos.expand([name]) or [name]:
+                want |= set(agent_sessions(m))
             ended = []
             for s in [x for x in tmux_sessions() if tmux_base(x["name"]) in want] \
                     + [x for x in node_tmux_sessions() if tmux_base(x["name"]) in want]:
@@ -9936,75 +10008,87 @@ class Handler(BaseHTTPRequestHandler):
                 ended.append(s["name"])
         return ended
 
+    def _running_on(self, keys):
+        """The coding agents' sessions running now on these projects'
+        repositories, here and on every node, by name."""
+        want = set()
+        for k in keys:
+            for m in repos.expand([k]):
+                want |= set(agent_sessions(m))
+        return [x["name"] for x in tmux_sessions() + node_tmux_sessions() if tmux_base(x["name"]) in want]
+
     def _repos(self, req):
-        """A project's repositories (R136): merge (repositories added to a
-        project, or two made one) and split (one taken out to a project of
-        its own). A person's, never a session's: the owner of every project
-        it touches, or an administrator. The sessions on what changes end,
-        since each ran with the grants it had before, and the answer names
-        them, and for a merge the projects that now read more."""
+        """Projects and their repositories (R138): create (a project with a
+        name and nothing in it), rename, move (a repository into another
+        project) and delete (a project with no repository left). A
+        person's, never a session's."""
         me = self._who()
         if not me or me.get("session"):
-            return self._json({"error": "a person merges and splits projects, never a session"}, 403)
+            return self._json({"error": "a person makes and changes projects, never a session"}, 403)
         act = field(req, "action")
         admin = users.is_admin(me)
         mine = lambda n: admin or membership.may_manage(me, n)          # noqa: E731
-        if act == "merge":
-            into = field(req, "into")
-            add = [str(x) for x in (req.get("add") or []) if str(x)] if isinstance(req.get("add"), list) else []
-            # A project of repositories is seen by whoever sees every one.
-            if registry.is_repos(into):
-                if not set(repos.members(into)) <= set(project_names(me)):
-                    return self._json({"error": f"not a project: {into}"}, 400)
-            elif self._not_project(into):
+        if act == "create":
+            if self._refused("create"):
                 return None
-            if any(self._not_project(x) for x in add):
-                return None
-            key = into if registry.is_repos(into) else ""
-            dirs = (repos.members(key) if key else [into]) + [x for x in add if x not in repos.members(key)]
-            if not all(mine(x) for x in [into] + add):
-                return self._json({"error": "the owner of every project merged, or an administrator, merges them"}, 403)
-            why = repos.refusal(dirs, locked=set(projects.load_locks()), archived=set(projects.load_archived()),
-                                people={d: set(membership.members(d)) for d in dirs},
-                                # By name, as a person knows them (B333).
-                                node={d: devapp.node_name(n) if (n := (prefs.get(d) or {}).get("node") or "") else ""
-                                      for d in dirs})
-            if why:
-                return self._json({"error": why}, 409)
-            got = repos.merge(into, add, field(req, "name"))
+            got = repos.create(field(req, "name"))
             if got.get("error"):
                 return self._json(got, 400)
-            if got["made"]:
-                prefs.adopt(got["key"], into)
-                membership.adopt(got["key"], into)
-            readers = prefs.regrant(got["key"], got["members"])
-            ended = self._end_agents_on(got["added"])
-            return self._json({"ok": True, "key": got["key"], "name": registry.label(got["key"]),
-                               "id": registry.pid(got["key"]), "members": got["members"],
-                               "readers": [registry.label(r) for r in readers], "ended": ended})
-        if act == "split":
-            name = field(req, "name")
-            key = repos.project_of(name)
-            if not key:
-                return self._json({"error": f"{registry.label(name) or 'that'} is not in a project of repositories"}, 400)
+            if users.uid_of(me):
+                users.take_on(me["name"], got["key"])
+                membership.on_create(got["key"], me["name"])
+            return self._json(got)
+        if act == "rename":
+            key = field(req, "key")
+            if not registry.is_repos(key) or not users.may_see(me, key):
+                return self._json({"error": f"not a project: {key}"}, 400)
+            if not mine(key):
+                return self._json({"error": "the project's owner or an administrator renames it"}, 403)
+            return self._result(registry.set_name(key, field(req, "to")))
+        if act == "delete":
+            key = field(req, "key")
+            if not registry.is_repos(key) or not users.may_see(me, key):
+                return self._json({"error": f"not a project: {key}"}, 400)
+            if not mine(key):
+                return self._json({"error": "the project's owner or an administrator deletes it"}, 403)
+            got = repos.delete(key)
+            if got.get("ok"):
+                membership.forget_project(key)
+                prefs.forget(key)
+            return self._result(got, 409)
+        if act == "move":
+            name, to = field(req, "name"), field(req, "to")
             if self._not_project(name):
                 return None
-            if not mine(key):
-                return self._json({"error": "the project's owner or an administrator splits it"}, 403)
-            before = repos.members(key)
-            got = repos.split(name)
+            if not registry.is_repos(to) or not users.may_see(me, to):
+                return self._json({"error": f"not a project: {to}"}, 400)
+            was = repos.project_of(name)
+            if not all(users.may_work(me, k) for k in (to, was or name)) or not (mine(to) and mine(was or name)):
+                return self._json({"error": "the owner of both projects, or an administrator, moves a repository "
+                                            "between them"}, 403)
+            for k in (to, was or name):
+                if (bad := projects.locked_out(k, users.uid_of(me))):
+                    return self._json(bad, 403)
+            # Not from under a session (the operator, 25 Oct): one working
+            # across the project would lose a tree, one in the other gain one.
+            busy = self._running_on([k for k in (was, to) if k])
+            if busy:
+                return self._json({"error": f"{', '.join(busy)} running on {registry.label(was) if was else ''}"
+                                            f"{' or ' if was else ''}{registry.label(to)}: end "
+                                            f"{'it' if len(busy) == 1 else 'them'} first, then move it"}, 409)
+            got = repos.move(name, to)
             if got.get("error"):
                 return self._json(got, 400)
-            prefs.ungrant(key, got["out"], got["dropped"])
-            ended = self._end_agents_on([key] + before)
-            return self._json({"ok": True, "key": key, "out": got["out"], "dropped": got["dropped"], "ended": ended})
-        return self._json({"error": "action is merge or split"}, 400)
+            readers = prefs.regrant(to, [name])
+            return self._json(dict(got, name=name, project=registry.label(to),
+                                   readers=[registry.label(r) for r in readers]))
+        return self._json({"error": "action is create, rename, move or delete"}, 400)
 
     def _archive(self, req):
         """Archive or unarchive a project (R119): out of sight, and nothing
         else; the project's owner or an administrator, never a session."""
         name, on = req.get("name", ""), bool(req.get("archived"))
-        if self._not_project(name):
+        if self._not_card(name):
             return None
         me = self._who()
         if not me or me.get("session") or not (users.is_admin(me) or users.uid_of(me) == membership.owner_of(name)):
@@ -10019,15 +10103,36 @@ class Handler(BaseHTTPRequestHandler):
             return
         if (busy := project_busy(name, "trash")):
             return self._json({"error": busy}, 409)
-        return self._json(*projects.trash(req))
+        body, code = projects.trash(req)
+        # Out of its project, which its record keeps (R138): the trash says
+        # where it was, and a restore puts it back there.
+        if code == 200 and not body.get("error"):
+            body = dict(body, project=registry.label(repos.detach(name)))
+        return self._json(body, code)
 
     def _trash_list(self):
         return self._json(projects.trash_list())
 
     def _trash_restore(self, req):
+        """A repository out of the bin, back into the project it was in, or
+        into the one named (`project`) where that one is gone or another is
+        wanted (R138): it is never put back into none."""
         if self._refused("trash"):
             return
+        into = field(req, "project")
+        if into and (not registry.is_repos(into) or not users.may_see(self._who(), into)):
+            return self._json({"error": f"not a project: {into}"}, 400)
+        was = registry.last_project(projects.restore_dir(field(req, "name")))
+        into = into or (was if registry.is_repos(was) else "")
+        if not into:
+            gone = registry.label(was) if was else ""
+            return self._json({"error": (f"it was in {gone}, which is deleted" if gone else "it was in no project")
+                                        + ": pick the project to put it back into", "pick": True}, 409)
         body, code = projects.trash_restore(req)
+        if code == 200 and not body.get("error"):
+            repos.add(into, body["name"])
+            prefs.regrant(into, [body["name"]])
+            body = dict(body, project=registry.label(into))
         return self._json(body, code)
 
     def _trash_purge(self, req):
@@ -10117,8 +10222,8 @@ class Handler(BaseHTTPRequestHandler):
         if "delete" in req:
             return self._json(*projects.delete_group(users.uid_of(me), field(req, "delete")))
         name = field(req, "name")
-        if name not in set(project_names(me)):
-            return self._json({"error": f"unknown project: {name}"}, 400)
+        if self._not_card(name):
+            return None
         return self._json(*projects.set_group(users.uid_of(me), name, field(req, "group")))
 
     def _project_color(self, req):
@@ -10128,8 +10233,8 @@ class Handler(BaseHTTPRequestHandler):
         if me.get("session"):
             return self._json({"error": "a session has no Projects page: a project's color is a person's own"}, 403)
         name, color = field(req, "name"), field(req, "color")
-        if name not in set(project_names(me)):
-            return self._json({"error": f"unknown project: {name}"}, 400)
+        if self._not_card(name):
+            return None
         if color and color not in prefs.COLORS:
             return self._json({"error": f"color is one of {', '.join(prefs.COLORS)}, or none: not {color}"}, 400)
         return self._json(*projects.set_mark("color", users.uid_of(me), name, color,
@@ -10374,7 +10479,7 @@ def main():
     # The JSON stores' numbered migrations past /config's stamp (R79), here,
     # once every module is configured: one needs project_list to answer,
     # which at import it could not (B496). The gate at the top took the copy.
-    stateversion.migrate(STATE, {"state": STATE, "project_names": lambda: project_names(users.ALL)})
+    stateversion.migrate(STATE, {"state": STATE, "workspace": WORKSPACE, "project_names": lambda: project_names(users.ALL)})
     # ...and, on every start, the owner roles of projects that are gone for
     # good or never were (a clone that failed before B95, a folder purged by
     # hand), once the migrations have given the ones they give.

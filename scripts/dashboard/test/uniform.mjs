@@ -1629,27 +1629,24 @@ if (runs('b')) {
      `a modal leaves with a tween rather than vanishing (${left.join(', ') || 'nothing animated'})`);
 }
 await page.setViewportSize({ width: 393, height: 851 });
-// A card's menu on the Projects page comes in on a tween (R218 step 3);
-// the sidebar row that unfolded its controls went with the card.
+// A card turns over to its controls on a tween (R138): Edit, and the back
+// is on the screen whole, at a phone's width as at a desk's.
 {
   // The page on show's: the first card anywhere could be a page out of
   // sight's, never visible, and the wait ran out on it in a whole run.
   await page.evaluate(() => openProjectsTab());
-  await page.waitForSelector('.doc.on .pgrid .pcard [data-pmore]', { timeout: 10000 });
-  // The menu's entrance is the stylesheet's, which animatedDuring does not
-  // see: read the animation on the menu itself. It opens at its button on
-  // a phone as at a desk, rising when it opens above it and dropping below
-  // (menuRise, menuIn), and lands on the screen however soon after the
-  // page's own fade the press came.
-  await page.click('.doc.on .pgrid .pcard [data-pmore]');
-  await page.waitForSelector('.doc.on .pgrid .pcard .actmenu:not([hidden])', { timeout: 5000 });
-  await sleep(500);
-  const menu = await page.$eval('.doc.on .pgrid .pcard .actmenu:not([hidden])', m => { const r = m.getBoundingClientRect();
-    return { anim: getComputedStyle(m).animationName, up: m.classList.contains('up'),
-             on: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth }; });
-  ok(menu.anim === (menu.up ? 'menuRise' : 'menuIn') && menu.on,
-     `a card's menu comes in with a tween on a phone, moving the way it opened, on the screen (${JSON.stringify(menu)})`);
-  await page.keyboard.press('Escape');
+  await page.waitForSelector('.doc.on .pgrid .pcard .pcfront [data-pedit]', { timeout: 10000 });
+  const card = await page.$eval('.doc.on .pgrid .pcard', c => c.dataset.pkey);
+  const at = `.doc.on .pgrid .pcard[data-pkey="${card}"]`;
+  await page.click(`${at} .pcfront [data-pedit]`);
+  const mid = await page.$eval(`${at} .pcback`, e => getComputedStyle(e).transform);
+  await sleep(600);
+  const back = await page.$eval(at, c => { const r = c.querySelector('.pcback').getBoundingClientRect();
+    return { flipped: c.classList.contains('flipped'), settled: getComputedStyle(c.querySelector('.pcback')).transform,
+             on: r.left >= 0 && r.right <= innerWidth }; });
+  ok(back.flipped && back.on && mid !== back.settled && /^(none|matrix\(1, 0, 0, 1, 0, 0\))$/.test(back.settled),
+     `a card turns over on a tween on a phone, its back whole on the screen (${JSON.stringify({ mid, ...back })})`);
+  await page.click(`${at} .pcback [data-pedit]`);
 }
 await sleep(400);
 // The same width rule at phone width, on every tab: the cap is min(--ctl-w,

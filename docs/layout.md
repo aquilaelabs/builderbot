@@ -186,7 +186,7 @@ scripts/
     releasesign.py               a release's unsigned APK from CI, signed on the project's node with its sideload key and attached (R106)
     membership.py                a project's owner, whether it is invite only, and the invitations to it
     registry.py                  projects by id (R154): each directory's permanent number and the name it is shown under, in projects.json; a directory is never handed out twice
-    repos.py                     a project of several repositories (R136): which repositories are in which project, in project-repos.json, and Merge and Split
+    repos.py                     projects and their repositories (R138): which project each repository is in, in project-repos.json; create, add, move, detach for the trash, delete an empty one, and place one in no project
     busy.py                      whether a node is quiet enough to time anything on, and why not (R108)
     devapp.py                    a project's dev instance: built here, run here, driven from Artifacts
     devactions.py                the layer that runs and reports an instance: up, down, rebuild, test, remove, state and act, the compose plan and job runners, on the base devapp.py keeps

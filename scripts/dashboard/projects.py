@@ -949,13 +949,18 @@ def trash_list():
         # somebody is looking for, and what a restore would put back.
         # Since R154 the directory is the project's own, never reused, and
         # goes back where it was; the name shown is the registry's.
+        # The project it was in (R138), and whether that one is still there
+        # to go back into, or a restore has to be told where.
+        was_in = registry.last_project(restore_dir(d.name))
         out.append({"name": d.name, "was": registry.label(d.name), "at": at,
-                    "taken": (WORKSPACE / _restore_dir(d.name)).exists()})
+                    "taken": (WORKSPACE / restore_dir(d.name)).exists(),
+                    "project": registry.label(was_in) if was_in else "",
+                    "project_key": was_in if registry.is_repos(was_in) else ""})
     out.sort(key=lambda e: -e["at"])
     return {"items": out}
 
 
-def _restore_dir(name):
+def restore_dir(name):
     """Where a directory in the bin goes back to: the directory it was.
     One deleted before ids (R154) and numbered then (X-2) was X, and goes
     back to X while X is free, its notebook being X's."""
@@ -973,7 +978,7 @@ def trash_restore(req):
     src = _bin_path(name)
     if src is None:
         return {"error": "not something in the bin"}, 400
-    back = _restore_dir(name)
+    back = restore_dir(name)
     dest = WORKSPACE / back
     if dest.exists():
         return {"error": f"{back} exists again; move it first"}, 409
@@ -1899,6 +1904,35 @@ def create_from_dialog(req, *, env, account, may_node):
     if code != 200 or not body.get("name"):
         return body, code
     name = body["name"]
+    # Every repository is in a project (R138): the one named (Add a
+    # repository on its card), which keeps its owner, node and dials, or
+    # else one made for it under its name, which it takes them from.
+    into = str(req.get("project") or "")
+    import repos
+    if into:
+        got = repos.add(into, name)
+        if got.get("error"):
+            body["note"] = f"{body.get('note') or 'ready'}; not put in {registry.label(into)}: {got['error']}"
+            into = ""
+    if not into:
+        made = repos.create(registry.label(name))
+        if made.get("error"):
+            made = repos.create(f"{registry.label(name)} ({registry.pid(name)})")
+        if made.get("ok"):
+            repos.add(made["key"], name)
+            body["project"] = made["key"]
+    else:
+        body["project"] = into
+        # The project's own: its owner, its node and the dials kept by
+        # project stay as they are; this repository's gates are its own.
+        if account:
+            take_on(account, name)
+        gate = req.get("gate")
+        if isinstance(gate, dict) and gate:
+            r = set_prefs(name, gate=gate)
+            if r.get("error"):
+                body["note"] = f"{body.get('note') or 'ready'}; gates not set: {r['error']}"
+        return body, code
     # Taken on by whoever made it (the operator, 24 Sep), before the
     # writes below: they ask whether this account may work on the
     # project, and an administrator's new one was not on their list, so
@@ -2005,7 +2039,7 @@ def load_project_pins(uid, fresh=False):
     if fresh and str(uid or "") not in d:
         return []
     v = d.get(str(uid or ""), d.get("*"))
-    return None if v is None else sorted(v)
+    return None if v is None else sorted({_key(x) for x in v})
 
 
 def save_project_pins(uid, names):
@@ -2023,11 +2057,8 @@ def pin(uid, name, on, fresh=False):
     one: until then there is no entry, which means "all of them", and
     saving a single removal would have read as "only this one is pinned".
     (payload, status)."""
-    try:
-        here = {d.name for d in WORKSPACE.iterdir()
-                if d.is_dir() and not d.name.startswith(".")}
-    except OSError:
-        here = set()
+    here = _projects_here()
+    name = _key(name)
     if name not in here:
         return {"error": f"unknown project: {name}"}, 400
     with lock:
@@ -2052,6 +2083,35 @@ def pin(uid, name, on, fresh=False):
 
 GROUP_MAX = 40
 MARK_FILES = {"group": "project-groups.json", "color": "project-colors.json"}
+# repos.key_of, handed over by the server (R138): pins, groups, colors,
+# locks and archives are a project's, kept by its key, and a repository
+# named is asked about through its project. Unset, every name is its own.
+key_of = None
+
+
+def _key(name):
+    return key_of(str(name or "")) if key_of else str(name or "")
+
+
+def _keyed(d):
+    """A {name: value} store by project key: an entry written under a
+    repository's name before that repository was put in a project (an
+    import, a clone) counts for the project, the project's own entry first."""
+    out = {}
+    for k in sorted(d, key=lambda k: _key(k) != k):
+        out.setdefault(_key(k), d[k])
+    return out
+
+
+def _projects_here():
+    """Every project a mark may be put on: each project's key (R138), and
+    each repository folder where there are none yet."""
+    keys = set(registry.repos_keys())
+    try:
+        here = {_key(d.name) for d in WORKSPACE.iterdir() if d.is_dir() and not d.name.startswith(".")}
+    except OSError:
+        here = set()
+    return keys | here
 
 
 def _marks(kind):
@@ -2063,7 +2123,7 @@ def _marks(kind):
 
 
 def _clean_marks(v):
-    return {k: x for k, x in (v or {}).items() if isinstance(k, str) and isinstance(x, str) and x}
+    return _keyed({k: x for k, x in (v or {}).items() if isinstance(k, str) and isinstance(x, str) and x})
 
 
 def load_marks(kind, uid, start=None):
@@ -2080,7 +2140,8 @@ def set_mark(kind, uid, name, value, start=None):
     """Set one project's mark of a kind for one account, or take it off with
     an empty value; the first one written keeps `start` beside it, so the
     rest are not lost. (payload, status)."""
-    if not name or name not in {d.name for d in WORKSPACE.iterdir() if d.is_dir() and not d.name.startswith(".")}:
+    name = _key(name)
+    if not name or name not in _projects_here():
         return {"error": f"unknown project: {name}"}, 400
     with lock:
         d = _marks(kind)
@@ -2190,12 +2251,12 @@ def load_locks():
         return {}
     if not isinstance(v, dict):
         return {}
-    return {k: {"by": str(r.get("by") or ""), "admin": bool(r.get("admin"))}
-            for k, r in v.items() if isinstance(k, str) and isinstance(r, dict)}
+    return _keyed({k: {"by": str(r.get("by") or ""), "admin": bool(r.get("admin"))}
+                   for k, r in v.items() if isinstance(k, str) and isinstance(r, dict)})
 
 
 def load_archived():
-    return _names(_archived_file())
+    return sorted({_key(x) for x in _names(_archived_file())})
 
 
 # What a locked project refuses, in one place: every write and every session
@@ -2211,6 +2272,7 @@ HELD_REFUSAL = ("{name} is locked by an administrator: nobody starts a session "
 def locked_out(name, uid):
     """The refusal for a write into a locked project by `uid`, or None: an
     owner's lock never holds the owner, an administrator's holds everybody."""
+    name = _key(name)
     rec = load_locks().get(name or "")
     if not rec:
         return None
@@ -2223,10 +2285,7 @@ def locked_out(name, uid):
 
 
 def _here(name):
-    try:
-        return name in {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
-    except OSError:
-        return False
+    return _key(name) in _projects_here()
 
 
 def app_flags(name, uid):
@@ -2235,7 +2294,7 @@ def app_flags(name, uid):
     Files API, which carry neither otherwise. `locked_why` is the refusal
     when the lock holds this account out, "" when it does not."""
     held = locked_out(name, uid)
-    return {"archived": name in set(load_archived()), "locked": name in load_locks(),
+    return {"archived": _key(name) in set(load_archived()), "locked": _key(name) in load_locks(),
             "locked_why": (held or {}).get("error", "")}
 
 
@@ -2245,6 +2304,7 @@ def lock_verb(name, on, by="", admin=False):
     end, which sees every node's. (payload, status)."""
     if not _here(name):
         return {"error": f"unknown project: {name}"}, 400
+    name = _key(name)
     with lock:
         locks = load_locks()
         if on:
@@ -2263,6 +2323,7 @@ def archive_verb(name, on):
     out of sight, and nothing else. (payload, status)."""
     if not _here(name):
         return {"error": f"unknown project: {name}"}, 400
+    name = _key(name)
     with lock:
         names = set(load_archived())
         names.add(name) if on else names.discard(name)

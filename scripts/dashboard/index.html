@@ -3342,7 +3342,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    row of buttons the card holds: its actions and a box it asks in (Group),
    so a form opened on it is the card's too (B863); and a project page's
    header's, as its card's. */
-:is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button,.pcard.pc .pcrepo>button[data-repout]{background:color-mix(in srgb, var(--pc) 22%, var(--btn));
+:is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button{background:color-mix(in srgb, var(--pc) 22%, var(--btn));
   border-color:color-mix(in srgb, var(--pc) 50%, var(--line));color:var(--ink)}
 :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button.primary{background:color-mix(in srgb, var(--pc) 50%, var(--btn));border-color:var(--pc)}
 /* A word asked in a colored card or a project's header (askInline: Group,
@@ -3353,19 +3353,40 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   border-color:color-mix(in srgb, var(--pc) 45%, var(--line))}
 :is(.pcard.pc,.pane .bar.proj.pc) .askrow input:focus{outline:2px solid color-mix(in srgb, var(--pc) 60%, var(--panel));outline-offset:-1px}
 @media(hover:hover){
-  :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button:hover,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button:hover,.pcard.pc .pcrepo>button[data-repout]:hover{background:color-mix(in srgb, var(--pc) 34%, var(--btn))}
+  :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button:hover,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button:hover{background:color-mix(in srgb, var(--pc) 34%, var(--btn))}
   :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button.primary:hover{background:color-mix(in srgb, var(--pc) 62%, var(--btn))}
 }
-/* The whole card opens the project's page (the operator, 18 Oct), so the
-   whole card answers the pointer, as a tile that is a link does. */
-.pcard[data-row],.hproj{cursor:pointer}
+/* Home's glance card opens its project's page (the operator, 18 Oct), so
+   it answers the pointer as a tile that is a link does; a Projects card is
+   not one (R138: its repositories' names open their notebooks). */
+.hproj{cursor:pointer}
 @media(hover:hover){
-  .pcard[data-row]:hover,.hproj:hover{border-color:var(--accent-mid)}
-  .pcard.pc[data-row]:hover,.hproj.pc:hover{border-color:var(--pc)}
+  .hproj:hover{border-color:var(--accent-mid)}
+  .hproj.pc:hover{border-color:var(--pc)}
 }
+/* A card turns over to its controls (R138, Edit) and back (Done): its two
+   faces share one grid cell, so the card is the size of the larger and
+   keeps it either way; the face away is turned from the eye and out of
+   reach (inert). Off under reduced motion, where the faces swap. */
+.pcard.pflip{display:grid;perspective:1400px}
+.pcard.pflip>.pcface{grid-area:1/1;display:flex;flex-direction:column;gap:6px;min-width:0;
+  backface-visibility:hidden;-webkit-backface-visibility:hidden;transition:transform .42s cubic-bezier(.33,1,.68,1)}
+.pcard.pflip>.pcback{transform:rotateY(180deg)}
+.pcard.pflip.flipped>.pcfront{transform:rotateY(-180deg)}
+.pcard.pflip.flipped>.pcback{transform:none}
+@media(prefers-reduced-motion:reduce){
+  .pcard.pflip>.pcface{transition:none}
+  .pcard.pflip>.pcface[inert]{visibility:hidden}
+}
+.pcard:has(.pcpop,.askrow){z-index:41}
 .pcard .pcname{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
-.pcard .pcname .name{font-weight:600;font-size:1.05rem;line-height:1.3;color:var(--ink);background:none;border:0;padding:0;min-height:0;text-align:left;cursor:pointer}
-.pcard .pcname .name:hover{text-decoration:underline}
+.pcard .pcname .name{font-weight:600;font-size:1.05rem;line-height:1.3;color:var(--ink);min-width:0;overflow-wrap:anywhere}
+.pcard .pcname>.sp{flex:1}
+/* Pin and Archive by the name (R138), pressed in where they are set: the
+   accent where it is, the quiet ink where it is not. */
+.pcard .pcname .pcmark{color:var(--dim)}
+.pcard .pcname .pcmark.on{color:var(--accent)}
+.pcard .pcname button.eye.bare{min-height:var(--tap);min-width:var(--tap);display:inline-flex;align-items:center;justify-content:center}
 .pcard .pcname .lockmark svg{width:14px;height:14px}
 /* The pin beside a pinned project's name, in the lock's size and the text's
    quieter color. */
@@ -3384,6 +3405,19 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pcard .pcrepo>.link{background:none;border:0;padding:0;min-height:0;color:var(--ink);font:var(--f-ui);font-weight:600;cursor:pointer}
 .pcard .pcrepo>.link:hover{text-decoration:underline}
 .pcard .pcrepo>.pcfacts{flex:1}
+/* A repository on a card's back: its name, then the icons that change it,
+   each a thumb wide and its picture in the middle. */
+.pcard .pcrepo>.name{font:var(--f-ui);font-weight:600;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcard .pcrepo>.sp{flex:1}
+.pcard .pcrepo>button.eye.bare{flex:none;min-height:var(--tap);min-width:var(--tap);display:inline-flex;align-items:center;justify-content:center;color:var(--dim)}
+.pcard .pcrepo>button.eye.bare[data-danger]{color:var(--bad)}
+@media(hover:hover){ .pcard .pcrepo>button.eye.bare:hover{color:var(--ink)} .pcard .pcrepo>button.eye.bare[data-danger]:hover{color:var(--bad)} }
+.pcard .pcacts.wrap{flex-wrap:wrap}
+/* A long list of repositories scrolls inside the back, which keeps the
+   front's size (R138). */
+.pcard .pcback .pcrepos{max-height:calc(var(--tap) * 5 + 2px);overflow-y:auto}
+/* Which agent a person's session runs, after their state, quieter. */
+.pstate .pagent{color:var(--dim)}
 .pcard .pnote{font:var(--f-ui)}
 /* A row of another repository's list (R136, reposAlso): which repository,
    its number, its words. */
@@ -6526,6 +6560,10 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <div id="reportModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="reportTitle">
   <div class="box">
     <h3 id="reportTitle">Report a bug</h3>
+    <div class="field" id="reportRepoField" hidden>
+      <label for="reportRepo">Repository</label>
+      <select id="reportRepo"></select>
+    </div>
     <div class="field">
       <label for="reportCat">Category</label>
       <select id="reportCat"></select>

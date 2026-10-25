@@ -417,8 +417,11 @@ ok(typeof asPhone.you === 'string' && (!lan || /^\d+\.\d+\.\d+\.\d+$/.test(asPho
   await page.evaluate(() => { refresh(); openProjectsTab(); });
   await page.waitForFunction(() => /lent here by/.test(document.querySelector('.pgrid .pcard[data-row="alpha"]')?.textContent || ''),
                              null, { timeout: 15000 });
-  ok(await page.$eval('.pgrid .pcard[data-row="alpha"] [data-ph]', b => !b.disabled && /Take your phone back/.test(b.textContent)),
-     "the project's card shows the lease, and its menu offers the owner Take your phone back");
+  // Lending is a repository's: its page's menu offers it back (R138).
+  ok(await page.evaluate(() => { const d = document.createElement('div');
+       d.innerHTML = projectActions(state.projects.find(p => p.name === 'alpha'));
+       const b = d.querySelector('[data-ph]'); return !!b && !b.disabled && /Take your phone back/.test(b.textContent); }),
+     "the project's card shows the lease, and its repository's menu offers the owner Take your phone back");
   await page.evaluate(() => openPhoneTab());       // back to the tab the rest reads
   const first = await use('shot');
   ok(first.status === 200 && first.body.asked > 0, `a lent phone's command is an ask, not a run (${JSON.stringify(first.body)})`);

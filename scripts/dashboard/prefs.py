@@ -187,9 +187,9 @@ def reads_trees(project):
 
 
 def adopt(key, first):
-    """A new project of repositories takes the settings its first repository
-    had for what the project now holds, so merging changes nothing a session
-    there runs with."""
+    """A project made around a repository (repos.place) takes the settings
+    that repository had for what a project holds, so nothing a session there
+    runs with changes."""
     with _lock:
         d = _load()
         was = d["projects"].get(first) if isinstance(d["projects"].get(first), dict) else {}
@@ -222,30 +222,6 @@ def regrant(key, members):
         if changed:
             write_json(FILE, d)
     return changed
-
-
-def ungrant(key, out, dropped):
-    """Repositories split out of their project (repos.split's `out`): a
-    project that read the project reads each of them by name as well, so a
-    split takes away nothing anybody was granted; where the project is gone
-    (`dropped`, one repository was left), by name alone. How many projects'
-    reads changed."""
-    n = 0
-    with _lock:
-        d = _load()
-        for name, rec in d["projects"].items():
-            if not isinstance(rec, dict) or key not in _reads_of(rec):
-                continue
-            new = []
-            for r in _reads_of(rec):
-                for t in (([] if dropped else [key]) + list(out) if r == key else [r]):
-                    if t != name and t not in new:
-                        new.append(t)
-            rec["reads"] = new[:16]
-            n += 1
-        if n:
-            write_json(FILE, d)
-    return n
 
 
 # ---- what is the PERSON's rather than the project's ------------------------

@@ -1,18 +1,21 @@
-"""A project of several repositories (R136, the operator, 24 Oct).
+"""Projects and their repositories (R136, R138).
 
-A project today is one repository: its folder under /workspace, its notebook,
-its git host link. A project may hold several: each repository stays what it
-was (its folder, its record and name in registry.py, its notebook, its
-remote, token and deploy key, forge, CI and releases, its version and
-changelog, its signing keys and its dev instance), and the project over them
-has a name and an id of its own (registry.py's `repos` state) and what one
-session in all of them needs: its node, its agents, its people, the Agents
-may dials, and what it grants other projects (prefs.GROUP_FIELDS). A
-project that reads it reads every repository in it, the ones added later
-too, with nothing changed (prefs.reads_trees). Nothing on disk moves.
+A project is made first, with a name alone, and repositories are added to
+it: every repository is in exactly one project, and a project may hold none.
+Each repository stays what it was (its folder, its record and name in
+registry.py, its notebook, its remote, token and deploy key, forge, CI and
+releases, its version and changelog, its signing keys and its dev
+instance), and the project over them has a name and an id of its own
+(registry.py's `repos` state) and what one session in all of them needs: its
+node, its agents, its people, the Agents may dials, and what it grants other
+projects (prefs.GROUP_FIELDS). A project that reads it reads every
+repository in it, the ones added later too (prefs.reads_trees). A repository
+goes to the trash out of its project, which its record remembers
+(registry.note_project); a project is deleted only with none left in it.
+Nothing on disk moves.
 
 project-repos.json: {"projects": {key: {"members": [dir, ...], "at": t}}},
-the first member the one the project was made from. Kept apart from
+the first member the one a session starts in. Kept apart from
 project-groups.json, which is each person's own grouping of the Projects
 page's cards and has nothing to do with this.
 """
@@ -66,8 +69,7 @@ def _save(d):
 
 
 def members(key):
-    """The repositories of a project of them, in their order: the live ones
-    (a member in the trash is out of it until it is back)."""
+    """A project's repositories, in their order: the live ones."""
     rec = _load()["projects"].get(str(key or ""))
     if not rec or not registry.is_repos(key):
         return []
@@ -75,12 +77,23 @@ def members(key):
 
 
 def project_of(dirname):
-    """The project of repositories this repository is in, or "": one at most."""
+    """The project this repository is in, or "": one at most."""
     dirname = str(dirname or "")
     for k, rec in _load()["projects"].items():
         if dirname in rec["members"] and registry.is_repos(k):
             return k
     return ""
+
+
+def key_of(name):
+    """The project a name stands for (R138): a project's own key as itself,
+    a repository's its project's, anything else as itself. What every store
+    of a project's (its people, roles, owner, marks) is keyed by, so a
+    repository is reached through its project."""
+    name = str(name or "")
+    if registry.is_repos(name):
+        return name
+    return project_of(name) or name
 
 
 def expand(names):
@@ -97,103 +110,120 @@ def expand(names):
 
 
 def all_members():
-    """{key: [members]} for every project of repositories."""
+    """{key: [members]} for every project, an empty one with []."""
     return {k: members(k) for k in _load()["projects"] if registry.is_repos(k)}
 
 
-def merge(into, dirs, name=""):
-    """Repositories added to a project: `into` a project of repositories, or
-    a repository on its own, which becomes the first of a new one named
-    `name` (its own name when none is given). Refused, saying which, for a
-    name that is no repository, one already in a project of repositories,
-    or a project of them named as a repository. {ok, key, members, made} or
-    {error}. Who may, and whether each repository can join (its lock, its
-    archive, its node), is the server's to ask first."""
-    into = str(into or "")
-    dirs = [str(d) for d in dirs or [] if str(d)]
-    if not dirs:
-        return {"error": "name a repository to add"}
+def create(name):
+    """A new project with no repository in it yet (R138). {ok, key, name,
+    id} or {error}."""
     with _lock:
+        rec = registry.claim_repos(name)
+        if rec.get("error"):
+            return rec
         d = _load()
-        made = False
-        if registry.is_repos(into):
-            key = into
-        elif registry.is_project(into):
-            if project_of(into):
-                return {"error": f"{registry.label(into)} is already in {registry.label(project_of(into))}"}
-            dirs = [into] + [x for x in dirs if x != into]
-            key = ""
-        else:
-            return {"error": f"{into} is not a project"}
-        for x in dirs:
-            if registry.is_repos(x):
-                return {"error": f"{registry.label(x)} is a project of repositories, not a repository: split its repositories out first"}
-            if not registry.is_project(x):
-                return {"error": f"{x} is not a repository here"}
-            other = project_of(x)
-            if other and other != key:
-                return {"error": f"{registry.label(x)} is already in {registry.label(other)}"}
-        if not key:
-            rec = registry.claim_repos(name or registry.label(into), but=dirs)
-            if rec.get("error"):
-                return rec
-            key, made = rec["key"], True
-            d["projects"][key] = {"members": [], "at": int(time.time())}
-        have = d["projects"].setdefault(key, {"members": [], "at": int(time.time())})["members"]
-        added = [x for x in dirs if x not in have]
-        have += added
+        d["projects"][rec["key"]] = {"members": [], "at": int(time.time())}
         _save(d)
-        return {"ok": True, "key": key, "members": list(have), "added": added, "made": made}
+        return {"ok": True, "key": rec["key"], "name": rec["name"], "id": f"P{rec['id']}"}
 
 
-def split(dirname):
-    """A repository taken out of its project of repositories, back to a
-    project of its own. A project left with one repository is no longer one
-    of several: that one is out too and the project's record is dropped.
-    {ok, key, out: [the repositories now on their own], dropped} or {error}."""
+def place():
+    """Every live repository in a project (R138): one in none (an imported
+    archive, a clone, a folder recorded since migration 0010 ran) gets a
+    project of its own, named as it is shown, with its id beside the name
+    where that is another project's already. Cheap when there is nothing
+    to place, so the status read asks it every time. [(key, dirname)] for
+    each it made, for the server to carry the repository's owner and
+    settings over (membership.adopt, prefs.adopt)."""
+    with _lock:
+        inside = {m for ms in all_members().values() for m in ms}
+        made = []
+        for dirname in registry.live_dirs():
+            if dirname in inside:
+                continue
+            shown = registry.label(dirname)
+            if registry.live_named(shown, kind="repos"):
+                shown = f"{shown} ({registry.pid(dirname)})"
+            got = create(shown)
+            if got.get("error"):
+                continue
+            add(got["key"], dirname)
+            made.append((got["key"], dirname))
+        return made
+
+
+def add(key, dirname):
+    """A repository put into a project: one in no project yet (a new one, or
+    one back from the trash). {ok, key, members} or {error}."""
+    key, dirname = str(key or ""), str(dirname or "")
+    with _lock:
+        if not registry.is_repos(key):
+            return {"error": f"{key} is not a project"}
+        if not registry.is_project(dirname):
+            return {"error": f"{dirname} is not a repository here"}
+        other = project_of(dirname)
+        if other and other != key:
+            return {"error": f"{registry.label(dirname)} is already in {registry.label(other)}"}
+        d = _load()
+        have = d["projects"].setdefault(key, {"members": [], "at": int(time.time())})["members"]
+        if dirname not in have:
+            have.append(dirname)
+        _save(d)
+        return {"ok": True, "key": key, "members": [m for m in have if registry.is_project(m)]}
+
+
+def move(dirname, to):
+    """A repository moved into another project. {ok, was, key, members} or
+    {error}; who may, and whether it can (a session on either running), is
+    the server's to ask first."""
+    dirname, to = str(dirname or ""), str(to or "")
+    with _lock:
+        was = project_of(dirname)
+        if was == to:
+            return {"error": f"{registry.label(dirname)} is already in {registry.label(to)}"}
+        if not registry.is_repos(to):
+            return {"error": f"{to} is not a project"}
+        if was:
+            d = _load()
+            d["projects"][was]["members"] = [m for m in d["projects"][was]["members"] if m != dirname]
+            _save(d)
+        got = add(to, dirname)
+        if got.get("error") and was:
+            add(was, dirname)
+            return got
+        return dict(got, was=was)
+
+
+def detach(dirname):
+    """A repository out of its project, as it goes to the trash: the project
+    it was in is kept on its record (registry.note_project), and is
+    returned, or ""."""
     dirname = str(dirname or "")
     with _lock:
-        key = project_of(dirname)
-        if not key:
-            return {"error": f"{registry.label(dirname)} is not in a project of repositories"}
+        was = project_of(dirname)
+        if not was:
+            return ""
         d = _load()
-        rec = d["projects"][key]
-        rec["members"] = [m for m in rec["members"] if m != dirname]
-        out, dropped = [dirname], False
-        if len([m for m in rec["members"] if registry.is_project(m)]) < 2:
-            out += rec["members"]
-            d["projects"].pop(key)
-            dropped = True
+        d["projects"][was]["members"] = [m for m in d["projects"][was]["members"] if m != dirname]
         _save(d)
-        if dropped:
-            registry.drop_repos(key)
-        return {"ok": True, "key": key, "out": out, "dropped": dropped}
+        registry.note_project(dirname, was)
+        return was
 
 
-def refusal(dirs, *, locked, archived, people, node):
-    """Why these repositories cannot be one project, or "": the server's
-    question before a merge, from what it read (the locked and archived
-    names, each repository's people as a set of names, each one's own node,
-    "" for none). One session works in every repository of a project, so
-    each must be open to it, everybody on one must be on all, and they must
-    be on one node."""
-    lab = registry.label
-    for d in dirs:
-        if d in locked:
-            return f"{lab(d)} is locked: unlock it first"
-        if d in archived:
-            return f"{lab(d)} is archived: bring it back first"
-    first = dirs[0]
-    for d in dirs[1:]:
-        odd = sorted(people.get(d, set()) ^ people.get(first, set()))
-        if odd:
-            on, off = (first, d) if odd[0] in people.get(first, set()) else (d, first)
-            return (f"{odd[0]} is on {lab(on)} but not on {lab(off)}: a project's session works in every "
-                    f"repository in it, so everybody on it is on all of them. Put them on {lab(off)}, or "
-                    f"take them off {lab(on)}, first")
-    where = [(d, node.get(d) or "") for d in dirs if node.get(d)]
-    if len({n for _, n in where}) > 1:
-        (a, na), (b, nb) = where[0], next(x for x in where if x[1] != where[0][1])
-        return (f"{lab(a)} works on {na} and {lab(b)} on {nb}: a project's repositories share its node, "
-                f"so give them one first")
-    return ""
+def delete(key):
+    """A project deleted, only with no repository left in it (R138, the
+    operator, 25 Oct): nothing ever ends up in the trash without a project
+    to go back to. {ok} or {error}."""
+    key = str(key or "")
+    with _lock:
+        if not registry.is_repos(key):
+            return {"error": f"{key} is not a project"}
+        left = members(key)
+        if left:
+            return {"error": f"{registry.label(key)} still holds {', '.join(registry.label(m) for m in left)}: "
+                             "move or delete its repositories first"}
+        d = _load()
+        d["projects"].pop(key, None)
+        _save(d)
+        registry.drop_repos(key)
+        return {"ok": True, "key": key}

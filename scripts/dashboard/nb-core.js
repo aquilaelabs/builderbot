@@ -954,20 +954,24 @@ function makeNotebook(project){
 function projectState(p){
   const name = p.name, sess = myLiveSession(name), mine = !!sess;
   const busy = new Set((state?.claude_busy || {})[name] || []);
-  const one = (st, word, cls = "") => `<span class="pstate${cls}">${st ? `<span class="st ${st}"></span>` : ""}${esc(word)}</span>`;
+  // ...and which agent each runs (R138), from where each session is.
+  const rows = (state?.claude_where || {})[tmuxName(name)] || (state?.claude_where || {})[name] || [];
+  const agentOf = who => { const id = rows.find(r => r.who === who)?.agent; return id ? agentById(id)?.name || id : ""; };
+  const one = (st, word, cls = "", who = "") => `<span class="pstate${cls}">${st ? `<span class="st ${st}"></span>` : ""}${esc(word)}${
+    who && agentOf(who) ? ` <span class="pagent">${esc(agentOf(who))}</span>` : ""}</span>`;
   // Yours first, then everybody else's with a session here, each with its
   // own dot (the operator, 16 Oct: a card that does not say who else is
   // working in the project hides the one thing worth knowing first).
   // On Claude Code's permission prompt it is asking, in amber, as the dock
   // and Sessions say it (B98), not waiting.
   const asking = mine && claudeOf(sess)?.state === "asking";
-  const me = mine ? (asking ? one("asking", "asking you") : busy.has(state?.me) ? one("working", "working")
-    : one("waiting", "waiting for you")) : "";
+  const me = mine ? (asking ? one("asking", "asking you", "", state?.me) : busy.has(state?.me) ? one("working", "working", "", state?.me)
+    : one("waiting", "waiting for you", "", state?.me)) : "";
   // Another account's session on the prompt reads asking too (B104), but
   // not "asking you": only that person's terminal answers it.
   const asks = new Set((state?.claude_asking || {})[tmuxName(name)] || (state?.claude_asking || {})[name] || []);
-  const them = othersOn(name).map(n => asks.has(n) ? one("asking", `${n} asking`, " other")
-    : one(busy.has(n) ? "working" : "waiting", `${n}${busy.has(n) ? " working" : "'s session"}`, " other")).join("");
+  const them = othersOn(name).map(n => asks.has(n) ? one("asking", `${n} asking`, " other", n)
+    : one(busy.has(n) ? "working" : "waiting", `${n}${busy.has(n) ? " working" : "'s session"}`, " other", n)).join("");
   return me || them ? `<span class="pstates">${me}${them}</span>` : one("", "no session");
 }
 // The one notice a project carries (why nobody can start here, the agent
@@ -1033,45 +1037,19 @@ const lockLabel = p => {
   const asAdmin = p.locked ? p.locked_admin : !p.owner_mine;
   return (asAdmin ? "Admin: " : "") + (p.locked ? "Unlock" : "Lock");
 };
-// The two actions a project page and its card show, and the rest behind
-// one menu (R238: nine look-alike icons on a row were one too many). Its
-// data-* names are wireProjectRows', which serves them.
-function projectActions(p, extra = ""){
+// The agent's button, on a project's card and a repository's header: Start
+// agent, Manage agent while this account's session runs, or Install where
+// the project's agent is missing on its node. A project's one session runs
+// on its first repository (R136), so every repository's opens that.
+function agentButton(p){
   // The agent the project's Start opens (R95 step 4): Claude's unless its
   // settings name another. Its own session running here makes it Open.
   const ag = projectAgent(p);
-  // A repository of a project of several (R136) has its project's one
-  // session, on the project's first repository: Start opens that.
-  const rk = Object.values(state?.repos || {}).find(r => r.members.includes(p.name));
-  const name = p.name, at = rk ? rk.members[0] : name, sess = myLiveSession(at), mine = !!sess;
+  const rk = state?.repos?.[p.project];
+  const name = p.name, at = rk?.members?.[0] || name, sess = myLiveSession(at), mine = !!sess;
   const dead = claudeDeadWhy(p);
   // What this account's roles do not give is left out, not drawn dead.
-  const forbid = !p.locked_me && !!writeWhy(p);
-  const menu = [
-    p.git_ok && !isBroken(p) && state?.can?.["git-auth"] !== false
-      ? `<button type="button" data-l="${esc(name)}">${
-          p.linked ? `${esc(p.forge_name || "Remote")} settings` : "Link to a git host"}</button>` : "",
-    p.phone?.mine ? `<button type="button" data-ph="${esc(name)}"${phoneWhy(p) ? " disabled" : ""}>${
-        p.phone?.lease?.project === name ? "Take your phone back" : "Lend your phone"}</button>` : "",
-    p.mine === false ? "" : `<button type="button" data-bug="${esc(name)}">Report a BuilderBot bug</button>`,
-    // Archive is out of sight only (R119, the operator, 23 Oct): its card
-    // folds away at the foot of the Projects page and leaves Home, and the
-    // project works on. Its owner's or an administrator's.
-    p.may_archive ? `<button type="button" data-k="${esc(name)}" data-on="${p.archived ? "0" : "1"}">${p.archived ? "Unarchive" : "Archive"}</button>` : "",
-    // ...and Lock, which is: its owner's holds everybody else out, an
-    // administrator's its owner too, and says so on the press.
-    p.may_lock ? `<button type="button" data-lock="${esc(name)}" data-on="${p.locked ? "0" : "1"}">${lockLabel(p)}</button>` : "",
-    p.archived ? "" : `<button type="button" data-p="${esc(name)}" data-on="${p.pinned ? "0" : "1"}">${p.pinned ? "Unpin" : "Pin"}</button>`,
-    // A label of this account's to keep projects together on the Projects
-    // page (the operator, 18 Oct): nothing else follows from it.
-    p.archived ? "" : `<button type="button" data-pgroup="${esc(name)}">${p.group ? "Group: " + esc(p.group) : "Group"}</button>`,
-    // This account's color for it (the operator, 18 Oct: picked here, where a
-    // dot beside the name read as a checkbox), its swatches unrolling under
-    // the name as Group's box does.
-    `<button type="button" data-pcolor="${esc(name)}">${p.color ? "Color: " + esc(p.color) : "Color"}</button>`,
-    `<button type="button" data-rn="${esc(name)}">Settings</button>`,
-    extra,
-  ].filter(Boolean).join("");
+  if (isBroken(p) || (!p.locked_me && !!writeWhy(p))) return "";
   // What a press does, or why it is dead, in the button's own words: a
   // screen reader hears it, and a press on a dead one is told.
   const live = liveSessions();
@@ -1093,10 +1071,35 @@ function projectActions(p, extra = ""){
   // operator, 16 Oct: green on every card read as running everywhere; 22
   // Oct: one word for every agent; 23 Oct: Manage agent, not Open Claude).
   const inst = agentInstall(p, ag);
-  return `${isBroken(p) || forbid ? "" : inst ? `<button type="button" data-tcinst="${esc(inst)}" data-agent="${esc(ag.id)}" title="${
+  return inst ? `<button type="button" data-tcinst="${esc(inst)}" data-agent="${esc(ag.id)}" title="${
         esc(`${ag.product} is not installed on ${p.node_name || "its node"}: open its Agents page to install it`)}">Install ${esc(ag.name)}</button>`
-      : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(at)}"${dead ? " disabled" : ""} title="${esc(say)}">${
-        mine ? "Manage agent" : "Start agent"}</button>`}
+    : `<button type="button"${mine ? ' class="primary"' : ""} data-c="${esc(at)}"${dead ? " disabled" : ""} title="${esc(say)}">${
+        mine ? "Manage agent" : "Start agent"}</button>`;
+}
+// A repository's header: the agent, a shell, and the rest behind one menu
+// (R238: nine look-alike icons on a row were one too many). Its data-*
+// names are wireProjectRows', which serves them; the marks act on its
+// project.
+function projectActions(p){
+  const name = p.name, key = p.project || name, c = state?.repos?.[key] || p;
+  const menu = [
+    p.git_ok && !isBroken(p) && state?.can?.["git-auth"] !== false
+      ? `<button type="button" data-l="${esc(name)}">${
+          p.linked ? `${esc(p.forge_name || "Remote")} settings` : "Link to a git host"}</button>` : "",
+    p.phone?.mine ? `<button type="button" data-ph="${esc(name)}"${phoneWhy(p) ? " disabled" : ""}>${
+        p.phone?.lease?.project === name ? "Take your phone back" : "Lend your phone"}</button>` : "",
+    p.mine === false ? "" : `<button type="button" data-bug="${esc(name)}">Report a BuilderBot bug</button>`,
+    // Archive is out of sight only (R119, the operator, 23 Oct): its card
+    // folds away at the foot of the Projects page and leaves Home, and the
+    // project works on. Its owner's or an administrator's.
+    c.may_archive ? `<button type="button" data-k="${esc(key)}" data-on="${c.archived ? "0" : "1"}">${c.archived ? "Unarchive" : "Archive"}</button>` : "",
+    // ...and Lock, which is: its owner's holds everybody else out, an
+    // administrator's its owner too, and says so on the press.
+    c.may_lock ? `<button type="button" data-lock="${esc(key)}" data-on="${c.locked ? "0" : "1"}">${lockLabel(c)}</button>` : "",
+    c.archived ? "" : `<button type="button" data-p="${esc(key)}" data-on="${c.pinned ? "0" : "1"}">${c.pinned ? "Unpin" : "Pin"}</button>`,
+    `<button type="button" data-rn="${esc(name)}">Settings</button>`,
+  ].filter(Boolean).join("");
+  return `${agentButton(p)}
     ${mayShell() && !notMine(p) ? `<button type="button" data-s="${esc(name)}"${!gitReadyFor(p) ? " disabled" : ""}>Shell</button>` : ""}
     <span class="more"><button type="button" data-pmore aria-label="more" aria-expanded="false">${DOTS}</button><div class="actmenu" hidden>${menu}</div></span>`;
 }
@@ -1106,8 +1109,8 @@ function projectHeader(t){
   // A repository of a project of several (R136): the project's name, and
   // its repositories as one switch, this one picked, each opening its own
   // notebook.
-  const rk = Object.values(state?.repos || {}).find(r => r.members.includes(name));
-  const repoSwitch = rk ? `<span class="pseg prepos" role="group" aria-label="${esc(rk.name)}'s repositories">${rk.members.map(m =>
+  const rk = state?.repos?.[p.project];
+  const repoSwitch = rk?.members.length > 1 ? `<span class="pseg prepos" role="group" aria-label="${esc(rk.name)}'s repositories">${rk.members.map(m =>
     `<button type="button" data-reposw="${esc(m)}"${m === name ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"'}>${esc(projLabel(m))}</button>`).join("")}</span>` : "";
   return `<div class="phead">
     <span class="pname">${esc(rk ? rk.name : p.label || name)}${lockMark(p)}</span>${repoSwitch}
@@ -1140,8 +1143,8 @@ function wireProjectHeader(bar){
 // here, as each repository's list is its own to change.
 async function reposAlso(el, project, kind){
   if (!el) return;
-  const r = Object.values(state?.repos || {}).find(x => x.members.includes(project));
-  if (!r){ el.hidden = true; el.innerHTML = ""; return; }
+  const r = state?.repos?.[(state?.projects || []).find(p => p.name === project)?.project];
+  if (!r || r.members.length < 2){ el.hidden = true; el.innerHTML = ""; return; }
   const rows = [];
   for (const m of r.members.filter(m => m !== project)){
     try{

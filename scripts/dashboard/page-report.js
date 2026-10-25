@@ -17,12 +17,19 @@ const REPORT_CATS = [
 ];
 let reportProject = "";
 
-function openReport(project){
+// From a project's card, which of its repositories (R138: the first unless
+// another is picked), each sending its own node and conversation.
+function openReport(project, repos = []){
   reportProject = project;
   const m = $("reportModal");
   armModal(m);
   // From a project's row, or the header's about no project in particular.
-  $("reportTitle").textContent = project ? `Report a bug, from ${projLabel(project)}` : "Report a bug";
+  $("reportTitle").textContent = project ? `Report a bug, from ${projectName(project)}` : "Report a bug";
+  const pick = $("reportRepo");
+  pick.innerHTML = repos.map(r => `<option value="${esc(r)}">${esc(projLabel(r))}</option>`).join("");
+  pick.value = project;
+  $("reportRepoField").hidden = repos.length < 2;
+  pick.onchange = () => { reportProject = pick.value; reportConvFor(pick.value); };
   $("reportHint").textContent = project
     ? "It goes to the diagnostics with this project, its node and the build it was seen on, where whoever maintains BuilderBot reads it."
     : "It goes to the diagnostics with the build it was seen on, where whoever maintains BuilderBot reads it. A problem in one project is better sent from that project's row.";
@@ -32,7 +39,17 @@ function openReport(project){
   $("reportText").value = "";
   $("reportRepro").value = "";
   $("reportErrWrap").hidden = true;
-  // The conversation it could carry: this account's newest on the project.
+  reportConvFor(project);
+  m.hidden = false;
+  m.onclick = e => { if (e.target === m) m.hidden = true; };
+  $("reportCancel").onclick = () => { m.hidden = true; };
+  $("reportSend").onclick = sendReport;
+  setTimeout(() => $("reportText").focus(), 50);
+}
+
+// The conversation a report could carry: this account's newest on the
+// repository it is sent from.
+function reportConvFor(project){
   $("reportConv").checked = false;
   $("reportConvField").hidden = true;
   if (project) fetch("/api/transcripts?project=" + encodeURIComponent(project))
@@ -46,11 +63,6 @@ function openReport(project){
         + "Its last part goes with the report, with secrets taken out, to whoever reads the diagnostics.";
       $("reportConvField").hidden = false;
     }).catch(() => {});
-  m.hidden = false;
-  m.onclick = e => { if (e.target === m) m.hidden = true; };
-  $("reportCancel").onclick = () => { m.hidden = true; };
-  $("reportSend").onclick = sendReport;
-  setTimeout(() => $("reportText").focus(), 50);
 }
 
 async function sendReport(){
