@@ -18,11 +18,14 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 const pjMenu = async name => {
   // An archived card is in the Archived fold at the page's foot: opened
   // first, and the card brought on screen, as a person scrolls to it.
+  // Its heading pressed, as a person opens it, so it slides open to the
+  // card's height rather than being set open under a height it had shut.
   await page.evaluate(n => { const c = document.querySelector(`.doc .projtab .pcard[data-row="${CSS.escape(n)}"]`);
     const fold = c?.closest('details.sect');
-    if (fold && !fold.open) fold.open = true;
-    c?.scrollIntoView({ block: 'center' }); }, name);
-  await page.waitForTimeout(150);
+    if (fold && !fold.open) fold.querySelector(':scope > summary')?.click(); }, name);
+  await page.waitForTimeout(600);
+  await page.evaluate(n => document.querySelector(`.doc .projtab .pcard[data-row="${CSS.escape(n)}"]`)?.scrollIntoView({ block: 'center' }), name);
+  await page.waitForTimeout(400);
   await page.evaluate(n => { const c = document.querySelector(`.doc .projtab .pcard[data-row="${CSS.escape(n)}"]`);
     if (c && !c.classList.contains('flipped')) c.querySelector('.pcfront [data-pedit]')?.click(); }, name);
   await page.waitForTimeout(500);
@@ -497,16 +500,21 @@ print(json.dumps(out))
   ok(/transform/.test(turn), `...on a tween of its transform (${turn})`);
   await page.setViewportSize({ width: 1280, height: 1000 });
   await page.waitForTimeout(400);
-  // The pin is on the back, reading Unpin while it is pinned; a press turns
-  // it to Pin, and Home's glance (step 5) is what it decides.
-  ok(await page.$eval(`${card} .pcback [data-p]`, b => b.textContent.trim() === 'Unpin'),
-     "the card's back carries the pin, reading Unpin");
-  await page.click(`${card} .pcback [data-p]`);
-  await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] .pcback [data-p]')?.textContent.trim() === 'Pin', null, { timeout: 15000 });
+  // The back's foot is one line of icons, each named (the operator, 25 Oct).
+  const foot = await page.$$eval(`${card} .pcback .pcacts > button`, bs => ({
+    names: bs.map(b => b.getAttribute('aria-label')), tops: new Set(bs.map(b => Math.round(b.getBoundingClientRect().top))).size }));
+  ok(foot.tops === 1 && ['Color', 'Group', 'Report bug', 'Settings'].every(n => foot.names.includes(n)),
+     `the back's controls are one line of named icons (${JSON.stringify(foot)})`);
+  await page.click(`${card} .pcback [data-pedit]`);
+  // The pin by the name, pressed in while it is pinned; a press lets it out,
+  // and Home's glance (step 5) is what it decides.
+  ok(await page.$eval(`${card} .pcfront [data-pmark]`, b => b.getAttribute('aria-pressed') === 'true'),
+     "the pin by the card's name is pressed in while it is pinned");
+  await page.click(`${card} .pcfront [data-pmark]`);
+  await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'false', null, { timeout: 15000 });
   ok(true, '...and pressing it unpins the project');
   await page.evaluate(() => setProjectPinned('alpha', true));
-  await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] .pcback [data-p]')?.textContent.trim() === 'Unpin', null, { timeout: 15000 });
-  await page.click(`${card} .pcback [data-pedit]`);
+  await page.waitForFunction(() => document.querySelector('.doc.on .projtab .pcard[data-row="alpha"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'true', null, { timeout: 15000 });
 }
 
 // ---- the card's notice: why nobody can be here, and who is ------------
@@ -1186,15 +1194,15 @@ await page.evaluate(() => refresh());
 // owner working; an administrator's shuts the owner out as well.
 await page.evaluate(() => { refresh(); openProjectsTab(); });
 await page.waitForSelector('.pgrid .pcard[data-row="alpha"] [data-lock]', { timeout: 10000, state: 'attached' });
-ok(await page.$$eval('.pgrid .pcard[data-row="alpha"] .pcback .pcacts button', bs => {
-     const t = bs.map(b => b.textContent.trim()); return t.includes('Lock') && t.includes('Archive'); }),
-   "its owner's card carries Lock and Archive on its back, as two presses");
+ok(await page.$eval('.pgrid .pcard[data-row="alpha"]', c => !!c.querySelector('.pcback [data-lock]')
+     && c.querySelector('.pcback [data-lock]').getAttribute('aria-label') === 'Lock' && !!c.querySelector('.pcfront [data-kmark]')),
+   "its owner's card carries Lock on its back and Archive by its name, as two presses");
 await page.evaluate(() => setLocked('alpha', true));
 await page.waitForFunction(() => !!document.querySelector('.pgrid .pcard[data-row="alpha"] .lockmark'), { timeout: 15000 });
 const ownLock = await page.$eval('.pgrid .pcard[data-row="alpha"]', r => ({
   folded: !!r.closest('details.sect'), mark: r.querySelector('.lockmark')?.textContent.trim(),
   claudeDead: !!r.querySelector('[data-c="alpha"]')?.disabled && /locked/.test(saidOf(r.querySelector('[data-c="alpha"]'))),
-  menu: [...r.querySelectorAll('.pcback .pcacts button')].map(b => b.textContent.trim()) }));
+  menu: [...r.querySelectorAll('.pcback .pcacts button')].map(b => b.getAttribute('aria-label')) }));
 ok(!ownLock.folded && ownLock.mark === 'locked' && !ownLock.claudeDead && ownLock.menu.includes('Unlock'),
    `its owner's lock keeps the card in the grid, marked locked, with the owner's own Start not shut by it and Unlock on its back (${JSON.stringify(ownLock)})`);
 await page.evaluate(() => setLocked('alpha', false));
@@ -1208,7 +1216,7 @@ const locked = await page.$eval('.pgrid .pcard[data-row="alpha"]', r => ({
   claude: r.querySelector('[data-c="alpha"]')?.disabled,
   shell:  !!r.querySelector('[data-s="alpha"]'),
   note:   r.textContent.replace(/\s+/g, ' '),
-  menu:   [...r.querySelectorAll('.pcback .pcacts button')].map(b => b.textContent.trim()),
+  menu:   [...r.querySelectorAll('.pcback .pcacts button')].map(b => b.getAttribute('aria-label')),
 }));
 ok(locked.claude === true, "an administrator's lock takes its Start away, its owner's included");
 ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in');
@@ -1239,24 +1247,36 @@ await page.waitForFunction(() => !!document.querySelector('.doc .projtab details
     const fold = c?.closest('details.sect');
     return { fold: fold?.dataset.sect || '', foldShut: fold ? !fold.open : null,
              said: fold?.querySelector(':scope > summary .sst')?.textContent || '',
-             menu: [...(c?.querySelectorAll('.pcback .pcacts button') || [])].map(b => b.textContent.trim()),
+             menu: [...(c?.querySelectorAll('.pcback .pcacts button') || [])].map(b => b.getAttribute('aria-label')),
+             unarchive: c?.querySelector('.pcfront [data-kmark]')?.getAttribute('aria-label') || '',
              mark: !!c?.querySelector('.lockmark'),
              home: (state?.projects || []).filter(p => p.pinned && !p.archived).some(p => p.name === 'alpha') };
   });
   ok(arch.fold === 'projects:archived' && arch.foldShut === true && /^\d+ projects?$/.test(arch.said)
-     && arch.menu.includes('Unarchive') && !arch.menu.some(t => /^(Pin|Unpin|Group)/.test(t)) && !arch.home && !arch.mark,
-     `an archived project's card is folded away under Archived, its back offering Unarchive and no Pin or Group, not among the pinned, and not locked (${JSON.stringify(arch)})`);
+     && /^Unarchive/.test(arch.unarchive) && !arch.menu.some(t => /^Group/.test(t)) && !arch.home && !arch.mark,
+     `an archived project's card is folded away under Archived, Unarchive by its name and no Group on its back, not among the pinned, and not locked (${JSON.stringify(arch)})`);
 // Turned over inside the fold, its back is whole on the screen: every
-// control of it above the dock's line and nothing over it.
+// control of it above the dock's line and nothing over it, the dock shut
+// as a person pulls it down to work on the page.
 {
+  await page.evaluate(() => dockToggle(false));
   await pjMenu('alpha');
+  // The page scrolls smoothly: brought into view, then measured once it is there.
+  await page.evaluate(() => [...(document.querySelector('.doc .projtab .pcard[data-row="alpha"]')?.querySelectorAll('.pcback .pcacts button') || [])]
+    .pop()?.scrollIntoView({ block: 'center' }));
+  await page.waitForTimeout(700);
   const seen = await page.evaluate(() => {
     const c = document.querySelector('.doc .projtab .pcard[data-row="alpha"]'), last = c && [...c.querySelectorAll('.pcback .pcacts button')].pop();
     if (!last) return { open: false };
-    last.scrollIntoView({ block: 'nearest' });
     const r = last.getBoundingClientRect(), foot = Math.min(innerHeight, document.querySelector('.pane.dock')?.getBoundingClientRect().top || innerHeight);
+    // A toast passing over it is the page's, and gone in seconds: looked through.
+    const toast = document.getElementById('toast');
+    if (toast) toast.style.visibility = 'hidden';
     const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    return { open: c.classList.contains('flipped'), bottom: Math.round(r.bottom), foot: Math.round(foot), top: at === last || last.contains(at) };
+    if (toast) toast.style.visibility = '';
+    const sc = c.closest('.doc'), fold = c.closest('details.sect');
+    return { open: c.classList.contains('flipped'), bottom: Math.round(r.bottom), foot: Math.round(foot), top: at === last || last.contains(at),
+             over: at?.className || at?.tagName, doc: sc && [sc.scrollTop, sc.scrollHeight, sc.clientHeight], fold: fold && Math.round(fold.getBoundingClientRect().bottom) };
   });
   ok(seen.open && seen.bottom <= seen.foot && seen.top,
      `...and Edit turns it over in the fold, its last control on screen and nothing over it (${JSON.stringify(seen)})`);
@@ -1292,7 +1312,7 @@ ok(inTab.length >= 2 && inTab.includes('alpha'),
    'the Projects page lists every project');
 ok(await page.$eval('.doc .projtab .pcard', r =>
      !!r.querySelector('[data-open]') && !!r.querySelector('[data-s]')
-     && !!r.querySelector('[data-k]') && !!r.querySelector('[data-lock]') && !!r.querySelector('[data-p]')),
+     && !!r.querySelector('[data-kmark]') && !!r.querySelector('[data-lock]') && !!r.querySelector('[data-pmark]')),
    '...with the same controls on a card: its page, shell, Archive, Lock and the pin');
 
 // Groups (the operator, 18 Oct): a label of this account's that keeps
@@ -1370,7 +1390,7 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
 // Unpinning takes a project off the sidebar and leaves it on the tab, whole.
 await page.evaluate(() => setProjectPinned('alpha', false));
 await page.waitForFunction(
-  () => document.querySelector('.doc .projtab [data-p="alpha"]')?.textContent.trim() === 'Pin', { timeout: 15000 });
+  () => document.querySelector('.doc .projtab .pcard[data-row="alpha"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'false', { timeout: 15000 });
 ok(await page.$$eval('.doc .projtab .pcard .name',
      ns => ns.some(n => n.textContent.trim() === 'alpha')),
    'an unpinned project leaves the sidebar and stays on the page');
@@ -1380,7 +1400,7 @@ ok(await page.$eval('.doc .projtab .pcard[data-row="alpha"]',
 // The pinned first on the page, each part by name (the operator, 18 Oct).
 {
   const order = await page.evaluate(() => [...document.querySelectorAll('.doc .projtab #pjGrid > .pgrid .pcard')]
-    .map(c => { const p = state.projects.find(x => x.name === c.dataset.row); return { n: p.label || p.name, pin: !!p.pinned }; }));
+    .map(c => { const p = state.repos[c.dataset.pkey]; return { n: p.name, pin: !!p.pinned }; }));
   const firstLoose = order.findIndex(o => !o.pin);
   const sorted = part => part.every((o, i) => !i || part[i - 1].n.localeCompare(o.n) <= 0);
   ok(firstLoose > 0 && order.slice(firstLoose).every(o => !o.pin)
@@ -1395,7 +1415,7 @@ ok(await page.$eval('.doc .projtab', e => !e.classList.contains('card'))
    'the Projects page fills its pane the way the notebook does');
 await page.evaluate(() => setProjectPinned('alpha', true));
 await page.waitForFunction(
-  () => document.querySelector('.doc .projtab [data-p="alpha"]')?.textContent.trim() === 'Unpin', { timeout: 15000 });
+  () => document.querySelector('.doc .projtab .pcard[data-row="alpha"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'true', { timeout: 15000 });
 ok(true, 'pinning it back reads Unpin again');
 
 // ---- polls do not stack (bug #44) --------------------------------------
@@ -1404,6 +1424,10 @@ ok(true, 'pinning it back reads Unpin again');
 // each one makes the next slower, which is the shape the stuck-on-"loading…"
 // report had. Held open with a route so the overlap is deterministic.
 {
+  // No read out to begin with: the pin pressed just before this asks for
+  // one it does not wait for, and five asks joining that one, as they
+  // rightly do, leave none to remember.
+  await page.waitForFunction(() => !refreshBusy, null, { timeout: 15000 });
   let release, held = 0;
   await page.route('**/api/status*', async route => {
     held++;
@@ -1472,25 +1496,25 @@ ok(page.errors.length === 0, `zero console errors${page.errors.length ? ': ' + p
 await page.evaluate(() => openProjectsTab());
 await page.waitForSelector('.doc .projtab .pcard', { timeout: 15000 });
 // The card's menu says Unpin while it is pinned, Pin once it is not.
-const tackLit = () => page.$eval('.doc .projtab [data-p="beta"]', b => b.textContent.trim() === 'Unpin');
+const tackLit = () => page.$eval('.doc .projtab .pcard[data-row="beta"] .pcfront [data-pmark]', b => b.getAttribute('aria-pressed') === 'true');
 ok(await tackLit(), 'the Projects page shows beta pinned');
 await page.evaluate(() => setProjectPinned('beta', false));
 await page.waitForFunction(() =>
-  document.querySelector('.doc .projtab [data-p="beta"]')?.textContent.trim() === 'Pin',
+  document.querySelector('.doc .projtab .pcard[data-row="beta"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'false',
   { timeout: 5000 });
 ok(true, '...and unpinning it there turns the page\'s menu item to Pin too');
 ok(await page.evaluate(() => !(state.projects.find(p => p.name === 'beta') || {}).pinned),
    '...with the project unpinned in the same breath');
 await page.evaluate(() => setProjectPinned('beta', true));
 await page.waitForFunction(() =>
-  document.querySelector('.doc .projtab [data-p="beta"]')?.textContent.trim() === 'Unpin',
+  document.querySelector('.doc .projtab .pcard[data-row="beta"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'true',
   { timeout: 5000 });
 ok(true, '...and pinning it back lights it again, first click');
 // A project whose name has a dot in it: the row's own selector has to survive
 // one, or the change lands without its animation and nothing says why.
 await page.evaluate(() => setProjectPinned('ep.silon', false));
 await page.waitForFunction(() =>
-  document.querySelector('.doc .projtab [data-p="ep.silon"]')?.textContent.trim() === 'Pin', { timeout: 8000 });
+  document.querySelector('.doc .projtab .pcard[data-row="ep.silon"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'false', { timeout: 8000 });
 ok(true, 'a dotted project name unpins too, animation and all');
 // ...and back, which is the direction that used to be a plain redraw: pinning
 // is watched from the Projects tab, which on a desktop sits in the column
@@ -1505,7 +1529,7 @@ ok(true, 'a dotted project name unpins too, animation and all');
 // than snapped in.
 await page.evaluate(() => setProjectPinned('ep.silon', true));
 await page.waitForFunction(() =>
-  document.querySelector('.doc .projtab [data-p="ep.silon"]')?.textContent.trim() === 'Unpin', { timeout: 8000 });
+  document.querySelector('.doc .projtab .pcard[data-row="ep.silon"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'true', { timeout: 8000 });
 
 // The docker manager is the Containers page. What it LISTS is asserted in
 // devapp.mjs, where a project actually has a compose file and an instance.
@@ -2178,7 +2202,7 @@ ok(await page.$('.doc .projtab [data-del]'),
 // from the card it is shown in, pinning back from the tab. It went the
 // delete's way once, on the crowded side of a phone's row; the phone folds
 // it behind the row's more button now.
-ok(await page.$('.doc .projtab [data-p]'),
+ok(await page.$('.doc .projtab [data-pmark]'),
    'the pin is on the card\'s rows as on the Projects page\'s');
 
 // Locking, which is now the only gate there is. The eye that excluded a
@@ -2226,7 +2250,7 @@ execFileSync('mv', [`${DIR}/ws/.trash/beta`, `${DIR}/ws/beta`]);
 execFileSync('mkdir', ['-p', `${DIR}/ws/.trash/beta`]);
 const again = await api('/api/trash', { name: 'beta' });
 ok(again.status === 200 && again.body.to === '.trash/beta-2',
-   'a second delete of the same name is numbered, not an overwrite');
+   `a second delete of the same name is numbered, not an overwrite (${again.status} ${JSON.stringify(again.body).slice(0, 160)})`);
 execFileSync('mv', [`${DIR}/ws/.trash/beta-2`, `${DIR}/ws/beta`]);
 execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
 

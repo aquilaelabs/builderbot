@@ -3369,7 +3369,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    keeps it either way; the face away is turned from the eye and out of
    reach (inert). Off under reduced motion, where the faces swap. */
 .pcard.pflip{display:grid;perspective:1400px}
-.pcard.pflip>.pcface{grid-area:1/1;display:flex;flex-direction:column;gap:6px;min-width:0;
+.pcard.pflip>.pcface{grid-area:1/1;display:flex;flex-direction:column;gap:4px;min-width:0;
   backface-visibility:hidden;-webkit-backface-visibility:hidden;transition:transform .42s cubic-bezier(.33,1,.68,1)}
 .pcard.pflip>.pcback{transform:rotateY(180deg)}
 .pcard.pflip.flipped>.pcfront{transform:rotateY(-180deg)}
@@ -3396,12 +3396,15 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pcard .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);font:var(--f-ui)}
 /* Yours first, then each other person's with a session here, one dot each. */
 .pstates{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 14px;min-width:0}
-/* A project of several repositories (R136): its repositories, one line
-   each, under its facts, divided by a hairline as rows in a card are. */
-.pcard .pcrepos{display:flex;flex-direction:column}
-.pcard .pcrepo{display:flex;align-items:center;gap:var(--field-gap);min-height:var(--tap);min-width:0;
-  border-top:var(--hair) solid var(--line)}
-.pcard .pcrepo:last-child{border-bottom:var(--hair) solid var(--line)}
+/* A project's repositories (R138), one line each under its facts and who
+   is there, with no rule between them (the operator, 25 Oct: the space
+   groups them); a finger's height only where a finger presses. */
+.pcard .pcrepos{display:flex;flex-direction:column;gap:2px;margin:4px 0 2px}
+.pcard .pcrepo{display:flex;align-items:center;gap:var(--field-gap);min-height:28px;min-width:0}
+@media(pointer:coarse){ .pcard .pcrepo{min-height:var(--tap)} }
+/* The id, the node and who is working there share one line, wrapping. */
+.pcard .pcmeta{display:flex;flex-wrap:wrap;align-items:center;gap:2px 14px;min-width:0}
+.pcard .pcmeta>.pcfacts{flex:none;max-width:100%}
 .pcard .pcrepo>.link{background:none;border:0;padding:0;min-height:0;color:var(--ink);font:var(--f-ui);font-weight:600;cursor:pointer}
 .pcard .pcrepo>.link:hover{text-decoration:underline}
 .pcard .pcrepo>.pcfacts{flex:1}
@@ -3409,10 +3412,20 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    each a thumb wide and its picture in the middle. */
 .pcard .pcrepo>.name{font:var(--f-ui);font-weight:600;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pcard .pcrepo>.sp{flex:1}
-.pcard .pcrepo>button.eye.bare{flex:none;min-height:var(--tap);min-width:var(--tap);display:inline-flex;align-items:center;justify-content:center;color:var(--dim)}
+.pcard .pcrepo>button.eye.bare{flex:none;min-height:32px;min-width:32px;display:inline-flex;align-items:center;justify-content:center;color:var(--dim)}
+/* ...a finger's height on touch, and 32px wide still, so a repository's
+   name keeps its room beside five of them at a phone's 344px. */
+@media(pointer:coarse){ .pcard .pcrepo>button.eye.bare{min-height:var(--tap)} }
 .pcard .pcrepo>button.eye.bare[data-danger]{color:var(--bad)}
 @media(hover:hover){ .pcard .pcrepo>button.eye.bare:hover{color:var(--ink)} .pcard .pcrepo>button.eye.bare[data-danger]:hover{color:var(--bad)} }
-.pcard .pcacts.wrap{flex-wrap:wrap}
+/* A card's buttons share its width on one line, front and back (the
+   operator, 25 Oct): the front's words, the back's icons. */
+.pcard.pflip .pcacts>button{flex:1 1 auto;white-space:nowrap;padding-inline:8px}
+.pcard.pflip .pcfoot>button.ic{display:inline-flex;align-items:center;justify-content:center;min-height:var(--ctl)}
+.pcard.pflip .pcfoot>button[data-danger]{color:var(--bad)}
+/* The color's swatch filled with the project's own color. */
+.pcard.pflip .pcfoot>button[data-sw] svg{fill:var(--sw);stroke:var(--sw)}
+.pcard.pflip .pcfoot>button[aria-pressed="true"]{color:var(--accent)}
 /* A long list of repositories scrolls inside the back, which keeps the
    front's size (R138). */
 .pcard .pcback .pcrepos{max-height:calc(var(--tap) * 5 + 2px);overflow-y:auto}

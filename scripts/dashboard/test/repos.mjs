@@ -44,13 +44,23 @@ const key = m.key;
 const twin = await post('/api/repos', { action: 'create', name: 'shop & co' });
 ok(twin.status === 400 && /already a project's name/.test(twin.error || ''), `a second project of that name is refused (${twin.error})`);
 
-// gamma and then ep.silon moved into it.
+// gamma and then ep.silon moved into it. A repository's git host link is its
+// own (its remote, token, deploy key and forge): a move leaves it as it was.
+const gitOf = async n => { const p = ((await status()).projects || []).find(x => x.name === n) || {};
+  return JSON.stringify(['git', 'linked', 'forge', 'forge_host', 'has_token', 'push', 'push_how'].map(k => p[k] ?? null)); };
+const gitBefore = await gitOf('gamma');
 const g = await post('/api/repos', { action: 'move', name: 'gamma', to: key });
+ok(await gitOf('gamma') === gitBefore, `a moved repository keeps its git host link as it was (${gitBefore})`);
 ok(g.status === 200 && g.was === gammaWas && g.project === 'Shop & Co', `gamma moves into Shop & Co (${JSON.stringify(g)})`);
+const epGit = await gitOf('ep.silon');
 const e = await post('/api/repos', { action: 'move', name: 'ep.silon', to: key });
+ok(await gitOf('ep.silon') === epGit, `...ep.silon's too, a repository with a branch (${epGit})`);
 ok(e.status === 200 && JSON.stringify(reposFile()[key]?.members) === '["gamma","ep.silon"]',
    `...and ep.silon, after it (${JSON.stringify(reposFile()[key])})`);
-ok((prefsFile().beta?.reads || []).includes(key), `beta reads the project now (${JSON.stringify(prefsFile().beta?.reads)})`);
+// A read goes by the project (the operator, 24 Oct): beta read the project
+// ep.silon was in, and still reads that one, not the repository it moved.
+const betaReads = () => prefsFile()[home('beta')]?.reads;     // a project's setting, on its key
+ok(JSON.stringify(betaReads()) === JSON.stringify([epWas]), `beta still reads the project it was granted (${JSON.stringify(betaReads())})`);
 const again = await post('/api/repos', { action: 'move', name: 'gamma', to: key });
 ok(again.status === 400 && /already in Shop & Co/.test(again.error || ''), `a repository is not moved where it is (${again.error})`);
 // delta is locked in the fixture: it does not move, saying why.
@@ -84,8 +94,10 @@ const browser = await launch();
      && (front.start ?? 'gamma') === 'gamma' && front.acts.includes('Add repository') && front.acts.includes('Edit')
      && front.menu === 0 && front.backInert,
      `the card's front: its name, its repositories, Start on its first, Add repository and Edit, no menu (${JSON.stringify(front)})`);
-  const cards = await page.$$eval('.projtab .pcard .pcfront .pcname .name', ns => ns.map(n => n.textContent.trim()));
-  ok(!cards.includes('gamma') && !cards.includes('ep.silon'), `a repository in it has no card of its own (${JSON.stringify(cards)})`);
+  // The projects they left stay, empty, until somebody deletes them.
+  const left = await page.$eval(`.pcard[data-pkey="${gammaWas}"]`, c => ({ repos: c.querySelectorAll('.pcfront .pcrepo').length,
+    empty: /no repository yet/.test(c.querySelector('.pcfront').textContent) }));
+  ok(left.repos === 0 && left.empty, `the project gamma left is empty, and says so (${JSON.stringify(left)})`);
   // A press on the card itself opens nothing.
   const tabs = await page.evaluate(() => tabs.length);
   await page.click(`${card} .pcfront .pcfacts`);
@@ -99,13 +111,16 @@ const browser = await launch();
     h: c.getBoundingClientRect().height, frontInert: c.querySelector('.pcfront').inert,
     rows: [...c.querySelectorAll('.pcback .pcrepo')].map(r => [r.querySelector('.name')?.textContent.trim(),
       ...[...r.querySelectorAll('button')].map(b => Object.keys(b.dataset).find(k => k !== 'danger'))]),
-    foot: [...c.querySelectorAll('.pcback .pcacts > button')].map(b => b.textContent.trim()),
+    foot: [...c.querySelectorAll('.pcback .pcacts > button')].map(b => b.getAttribute('aria-label')),
+    lines: new Set([...c.querySelectorAll('.pcback .pcacts > button')].map(b => Math.round(b.getBoundingClientRect().top))).size,
+    frontLines: new Set([...c.querySelectorAll('.pcfront .pcacts > button')].map(b => Math.round(b.getBoundingClientRect().top))).size,
     rename: !!c.querySelector('.pcback .pcname [data-prn]') }));
   ok(Math.abs(back.h - h0) < 1 && back.frontInert, `Edit turns the card over at its size (${h0} then ${back.h})`);
   ok(back.rows.length === 3 && back.rows.every(r => ['rrn', 'rmove', 'del'].every(k => r.includes(k))) && back.rename,
      `each repository on the back has rename, move and delete, and the project's name its pencil (${JSON.stringify(back.rows)})`);
-  ok(['Color', 'Group', 'Pin', 'Report bug', 'Settings'].every(w => back.foot.includes(w)) && !back.foot.includes('Delete project'),
-     `the back's foot holds the project's controls, and Delete project only for an empty one (${JSON.stringify(back.foot)})`);
+  ok(['Color', 'Group', 'Report bug', 'Settings'].every(w => back.foot.includes(w)) && back.lines === 1 && back.frontLines === 1
+     && !back.foot.includes('Delete project'),
+     `each face's buttons are one line, the back's the project's controls as icons, Delete project only for an empty one (${JSON.stringify(back)})`);
   // Report bug asks which repository, the first picked.
   await page.click(`${card} .pcback [data-bug]`);
   await page.waitForSelector('#reportModal:not([hidden])', { timeout: 3000 });
@@ -130,12 +145,12 @@ const browser = await launch();
   ok(!also.hidden && also.head === 'Also in Shop & Co' && also.rows.some(r => /^ep\.silon ?R\d+ ?also-row from ep\.silon$/.test(r)),
      `a repository's roadmap carries its project's other repositories' items (${JSON.stringify(also)})`);
   // Pinned, Home shows it once, by its name; the pin by the name says so.
-  await page.click(`${card} .pcfront [data-pmark]`);
+  await page.evaluate(k => setProjectPinned(k, true), key);
   await page.waitForSelector(`${card} .pcfront .pcmark.on[data-pmark]`, { timeout: 5000 });
   const glance = await page.evaluate(() => { const d = document.createElement('div'); d.innerHTML = homeGlanceHtml();
     return [...d.querySelectorAll('.hproj .name')].map(b => b.textContent.trim()); });
-  ok(glance.filter(n => n === 'Shop & Co').length === 1 && !glance.includes('gamma'), `Home shows the project once, by its name (${JSON.stringify(glance)})`);
-  await page.click(`${card} .pcfront [data-pmark]`);
+  ok(glance.filter(n => n === 'Shop & Co').length === 1, `Home shows the project once, by its name (${JSON.stringify(glance)})`);
+  await page.evaluate(k => setProjectPinned(k, false), key);
   await page.screenshot({ path: `${DIR}/repos-card.png` }).catch(() => {});
   await page.close();
 }
@@ -163,8 +178,9 @@ const tr = await post('/api/trash', { name: 'shopweb' });
 ok(tr.status === 200 && tr.project === 'Shop', `a repository to the trash says which project it was in (${JSON.stringify(tr)})`);
 const bin = await (await fetch(base + '/api/trash', { headers: ADMIN })).json();
 ok((bin.items || []).some(i => i.name === 'shopweb' && i.project === 'Shop'), 'the trash lists it with its project');
-await post('/api/repos', { action: 'move', name: 'gamma', to: gammaWas });
-await post('/api/repos', { action: 'move', name: 'ep.silon', to: epWas });
+const b1 = await post('/api/repos', { action: 'move', name: 'gamma', to: gammaWas });
+const b2 = await post('/api/repos', { action: 'move', name: 'ep.silon', to: epWas });
+ok(b1.status === 200 && b2.status === 200, `both move back where they were (${b1.status} ${b1.error || ''} ${b2.status} ${b2.error || ''})`);
 const gone = await post('/api/repos', { action: 'delete', key });
 ok(gone.status === 200 && !(await status()).repos[key], `an empty project is deleted (${JSON.stringify(gone)})`);
 const ask = await post('/api/trash-restore', { name: 'shopweb' });

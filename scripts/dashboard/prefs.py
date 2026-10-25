@@ -203,7 +203,7 @@ def regrant(key, members):
     """Every project that reads one of these repositories reads their project
     instead, and so every repository in it, the ones added later too (the
     operator, 24 Oct: what one project grants another goes by the project).
-    The projects whose reads changed, for Merge to say who reads more now."""
+    The projects whose reads changed, for a move to say who reads more now."""
     changed = []
     with _lock:
         d = _load()
@@ -586,7 +586,16 @@ def all_projects(workspace=None):
     `workspace` is accepted and unused: the status poll passes it.
     """
     d = _load()["projects"]
-    return {k: _over(k, _clean(v), d) for k, v in d.items() if isinstance(k, str)}
+    out = {k: _over(k, _clean(v), d) for k, v in d.items() if isinstance(k, str)}
+    # ...and every repository of a project with no record of its own yet (one
+    # made into it, R138), which reads the project's settings all the same.
+    if _repos:
+        for k in list(d):
+            if _repos[2](k):
+                for m in _repos[1](k):
+                    if m not in out:
+                        out[m] = _over(m, _clean({}), d)
+    return out
 
 
 def _agent_default(rec):
@@ -854,7 +863,15 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
                 cur[key] = _toolchain_names({key: [str(x).strip() for x in got]}, key)
         if reads is not None:
             got = reads if isinstance(reads, list) else str(reads).split(",")
-            cur["reads"] = [r for r in _reads_of({"reads": got}) if r != project]
+            # By project (R138): a repository named is read as the project
+            # it is in now, so a later move changes nobody's reads.
+            if _repos:
+                home = lambda r: r if _repos[2](r) else (_repos[0](r) or r)  # noqa: E731
+                own = home(project)
+                got = list(dict.fromkeys(home(r) for r in _reads_of({"reads": got})))
+                cur["reads"] = [r for r in got if r not in (project, own)]
+            else:
+                cur["reads"] = [r for r in _reads_of({"reads": got}) if r != project]
         if sees is not None:
             got = sees if isinstance(sees, list) else str(sees).split(",")
             got = [str(p).strip().rstrip("/") for p in got if str(p).strip()]

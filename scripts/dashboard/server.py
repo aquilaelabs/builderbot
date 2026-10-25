@@ -1017,6 +1017,21 @@ def _listed(d, cloning):
         return True
 
 
+def _place(listed):
+    """Every listed repository in a project (R138): one recorded since, by
+    an import, a clone or a first run, gets one of its own, its owner,
+    settings, reads, people and marks moving onto it as migration 0010 moves
+    them; one put back from the trash by hand goes back into its own. Asked
+    by the status read and by project_names, so an access check never meets
+    a repository in no project."""
+    for key, first in repos.place(listed):
+        membership.adopt(key, first)
+        prefs.adopt(key, first)
+        prefs.regrant(key, [first])
+        users.rekey(first, key)
+        projects.rekey(first, key)
+
+
 def project_names(who):
     """The names of the projects `who` may see, in the list's order: what
     project_list answers to "is this a project?" (the access check most
@@ -1031,6 +1046,7 @@ def project_names(who):
         cloning = projects.busy_name()
         registry.sync()
         rows = [{"name": d.name} for d in here if _listed(d, cloning)]
+        _place({r["name"] for r in rows})
         return [p["name"] for p in _projects_seen_by(who, rows)]
 
 
@@ -1195,11 +1211,8 @@ def _project_columns(who, facts):
     # Each directory's id and the name it is shown under (R154): synced with
     # the disk here, two listdirs and no write when nothing moved.
     reg = registry.sync()["projects"]
-    # ...and every repository in a project (R138): one recorded since, by an
-    # import or a clone, gets one of its own, its owner and settings with it.
-    for key, first in repos.place():
-        membership.adopt(key, first)
-        prefs.adopt(key, first)
+    # ...and every repository in a project (R138).
+    _place({f["name"] for f in facts if f.get("name")})
     pins = projects.load_project_pins(users.uid_of(who), users.starts_unpinned(who))
     groups = projects.load_project_groups(users.uid_of(who))
     # One small file for the whole list, read here rather than per row: this
@@ -4137,7 +4150,7 @@ projects.brief_writer = brief.write
 # A create that never took, and a project deleted for good, leave no owner,
 # owner role or account entry behind (B93, B95); the first its settings too.
 projects.purged = lambda name: membership.forget_project(name, live=registry.live_dirs())
-projects.unmade = lambda name: (prefs.forget(name), projects.purged(name))
+projects.unmade = lambda name: (prefs.forget(name), projects.purged(name), repos.forget(name))
 
 # ---- a node's git, relayed --------------------------------------------------
 # Push, fetch, pull and ls-remote from a session on a node, done in a
@@ -10116,7 +10129,8 @@ class Handler(BaseHTTPRequestHandler):
     def _trash_restore(self, req):
         """A repository out of the bin, back into the project it was in, or
         into the one named (`project`) where that one is gone or another is
-        wanted (R138): it is never put back into none."""
+        wanted (R138); one from before projects into a project of its own.
+        It is never put back into none."""
         if self._refused("trash"):
             return
         into = field(req, "project")
@@ -10124,15 +10138,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"not a project: {into}"}, 400)
         was = registry.last_project(projects.restore_dir(field(req, "name")))
         into = into or (was if registry.is_repos(was) else "")
-        if not into:
-            gone = registry.label(was) if was else ""
-            return self._json({"error": (f"it was in {gone}, which is deleted" if gone else "it was in no project")
-                                        + ": pick the project to put it back into", "pick": True}, 409)
+        # Its project deleted since: which one is asked. One deleted before
+        # projects came first was in none, and comes back in a project of
+        # its own as every repository did then (_place, migration 0010).
+        if not into and was:
+            return self._json({"error": f"it was in {registry.label(was)}, which is deleted: pick the project "
+                                        "to put it back into", "pick": True}, 409)
         body, code = projects.trash_restore(req)
         if code == 200 and not body.get("error"):
-            repos.add(into, body["name"])
-            prefs.regrant(into, [body["name"]])
-            body = dict(body, project=registry.label(into))
+            if into:
+                repos.add(into, body["name"])
+                prefs.regrant(into, [body["name"]])
+            else:
+                _place({body["name"]})
+                into = repos.project_of(body["name"])
+            body = dict(body, project=registry.label(into) if into else "")
         return self._json(body, code)
 
     def _trash_purge(self, req):

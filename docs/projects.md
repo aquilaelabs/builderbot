@@ -154,15 +154,16 @@ doing, each repository with its branch (the name opens its page), and
 itself opens nothing. A project with no repository yet says so, and its
 Start agent waits for one.
 
-**Edit** turns the card over in place, at its size, to its **back**: the
-project's name with a pencil to rename it, a link icon that copies the
-address of its page and, with your phone connected on its node, a phone icon
-to lend it; each repository with icons for a **shell** in it, its **git
-host** (linking it, or the host's settings once linked), **rename**, **move**
-to another project and **delete**; and along the foot **Color**, **Group**,
-**Pin**, **Archive**, **Lock** (its owner's or an administrator's), **Report
+**Edit** turns the card over in place, to its **back**, the same size as the
+front: the project's name with a pencil to rename it; each repository with
+icons for a **shell** in it, its **git host** (linking it, or the host's
+settings once linked), lending it **your phone** when your phone is
+connected on its node, **rename**, **move** to another project and
+**delete**; and along the foot one line of icons, each named when hovered:
+**Color**, **Group**, **Lock** (its owner's or an administrator's), **Report
 bug** (which repository it is about, the first unless you pick another) and
-**Settings**. **Done** turns it back. There is no menu on a card.
+**Settings**. **Done** turns it back. Each face's buttons are one line, and
+there is no menu on a card.
 
 A repository's own page keeps **Start agent**, **Shell** and a menu in its
 header (link, phone, report, archive, lock, pin, settings). **Color** is your

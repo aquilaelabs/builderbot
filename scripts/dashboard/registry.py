@@ -125,10 +125,12 @@ def sync():
                 _add(d, name, re.sub(r"-\d+$", "", name), "trashed")["legacy"] = True
         # A name stored before GitHub's rules held here ("Turing Lens", or a
         # clash numbered "Name (2)") is brought to them once, as it would have
-        # been given: numbered if another live project already has it.
+        # been given: numbered if another live project already has it. A
+        # repository's name alone: a project's keeps its spaces and
+        # punctuation (R138).
         for name, r in ps.items():
             was = str(r.get("name") or "")
-            if was and clean_name(was) != was:
+            if was and r.get("state") != "repos" and not r.get("project") and clean_name(was) != was:
                 r["name"] = clean_name(was) or name
                 if r.get("state") == "live":
                     r["name"] = unique_name(r["name"], but=name)
@@ -257,6 +259,7 @@ def drop_repos(key):
         r = d["projects"].get(key)
         if r is not None and r.get("state") == "repos":
             r["state"] = "purged"
+            r["project"] = True             # a project's, its name kept as typed
             r["moved"] = int(time.time())
             _save(d)
 

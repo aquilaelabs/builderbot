@@ -1914,7 +1914,12 @@ def create_from_dialog(req, *, env, account, may_node):
         if got.get("error"):
             body["note"] = f"{body.get('note') or 'ready'}; not put in {registry.label(into)}: {got['error']}"
             into = ""
-    if not into:
+    if not into and body.get("started"):
+        # A clone still running: its project is made when it lands and is
+        # first listed (the server's _place), so one that fails leaves no
+        # empty project behind; its owner and list come over then.
+        pass
+    elif not into:
         made = repos.create(registry.label(name))
         if made.get("error"):
             made = repos.create(f"{registry.label(name)} ({registry.pid(name)})")
@@ -2241,6 +2246,33 @@ def _names(f):
         return sorted({x for x in v if isinstance(x, str)}) if isinstance(v, list) else []
     except (OSError, ValueError):
         return []
+
+
+def rekey(old, new):
+    """Each person's pin, group and color and the archive and lock kept
+    under `old` (a repository, before it was put in a project) kept under
+    its project `new` instead (R138), as migration 0010 moves them."""
+    with lock:
+        pins = _load_pins()
+        if any(old in (v or []) for v in pins.values()):
+            write_json(_pins_file(), {u: sorted({new if x == old else x for x in (v or [])}) for u, v in pins.items()})
+        for kind in MARK_FILES:
+            d = _marks(kind)
+            if any(isinstance(v, dict) and old in v for v in d.values()):
+                for v in d.values():
+                    if isinstance(v, dict) and old in v:
+                        v.setdefault(new, v.pop(old))
+                write_json(STATE / MARK_FILES[kind], d)
+        arch = _names(_archived_file())
+        if old in arch:
+            write_json(_archived_file(), sorted({new if x == old else x for x in arch}))
+        try:
+            locks = json.loads(_locks_file().read_text())
+        except (OSError, ValueError):
+            locks = {}
+        if isinstance(locks, dict) and old in locks:
+            locks.setdefault(new, locks.pop(old))
+            write_json(_locks_file(), locks)
 
 
 def load_locks():

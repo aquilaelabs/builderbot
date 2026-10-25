@@ -18,6 +18,9 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 // project asks for a name alone, and a card's Add repository opens this
 // dialog into that project; both are checked under "projects first".
 const newProject = async () => {
+  // The pointer leaves the last Create, where its toast came up and is held
+  // while hovered, as a person's hand moves on to the next thing.
+  await page.mouse.move(5, 5);
   await page.evaluate(() => { openProjectsTab(); openNewProject(); });
 };await page.goto(URL);
 await ready(page);
@@ -72,14 +75,14 @@ ok(await page.$eval('#bNewProjTab', b => b.textContent.includes('New project')),
 // a project with nothing in it; its card's Add repository opens the dialog
 // into it, without the node and the dials, which are the project's.
 {
+  // The harness answers the page's questions (lib.mjs): this one with the
+  // name typed, its title kept to check.
+  let asked = null;
+  page.answers.push(q => { asked = q; return { index: 0, text: 'Web shop, v2' }; });
   await page.click('#bNewProjTab');
-  await page.waitForSelector('.askdlg:not([hidden]) [data-afield]', { timeout: 5000 });
-  const dlg = await page.$eval('.askdlg:not([hidden])', m => ({ head: m.querySelector('h3').textContent.trim(),
-    label: m.querySelector('label')?.textContent.trim() }));
-  ok(dlg.head === 'New project' && dlg.label === 'Name', `New project asks for a name alone (${JSON.stringify(dlg)})`);
-  await page.fill('.askdlg:not([hidden]) [data-afield]', 'Web shop, v2');
-  await page.click('.askdlg:not([hidden]) [data-ai="0"]');
   await page.waitForFunction(() => Object.values(state?.repos || {}).some(r => r.name === 'Web shop, v2'), null, { timeout: 15000 });
+  ok(asked?.title === 'New project' && JSON.stringify(asked?.choices) === '["Create"]',
+     `New project asks for a name alone (${JSON.stringify(asked)})`);
   const key = await page.evaluate(() => Object.entries(state.repos).find(([, r]) => r.name === 'Web shop, v2')[0]);
   const card = `.pgrid .pcard[data-pkey="${key}"]`;
   await page.waitForSelector(card, { timeout: 15000 });
@@ -100,9 +103,7 @@ ok(await page.$eval('#bNewProjTab', b => b.textContent.includes('New project')),
   await page.waitForFunction(k => !state?.repos?.[k]?.members.length, key, { timeout: 15000 });
   await page.click(`${card} .pcfront [data-pedit]`);
   await page.waitForSelector(`${card}.flipped .pcback [data-pdel]`, { timeout: 5000 });
-  await page.click(`${card} .pcback [data-pdel]`);
-  await page.waitForSelector('.askdlg:not([hidden]) [data-ai="0"]', { timeout: 5000 });
-  await page.click('.askdlg:not([hidden]) [data-ai="0"]');
+  await page.click(`${card} .pcback [data-pdel]`);            // its question answered Delete by the harness
   await page.waitForFunction(k => !state?.repos?.[k], key, { timeout: 15000 });
   ok(true, 'an empty project is deleted from its card\'s back');
   await page.evaluate(() => postJSON('/api/trash-purge', { name: 'webshop', confirm: 'webshop' }));
@@ -265,7 +266,7 @@ ok(existsSync(`${DIR}/ws/zeta/.git`), 'zeta is a git repository');
 await page.evaluate(() => { setProjectPinned('beta', false); openProjectsTab(); });
 // The page shows every project, pinned or not; the card's menu says which.
 await page.waitForFunction(
-  () => document.querySelector('.pgrid .pcard[data-row="beta"] [data-p]')?.textContent.trim() === 'Pin', { timeout: 15000 });
+  () => document.querySelector('.pgrid .pcard[data-row="beta"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'false', { timeout: 15000 });
 await newProject();           // zeta's create closed the dialog
 await page.waitForSelector('#pmodal:not([hidden])');
 await page.fill('#pName', 'pinme');
@@ -276,7 +277,7 @@ ok(!Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, '
    'a project created while a pins file exists is on the Projects page and pinned for nobody');
 await page.evaluate(() => setProjectPinned('pinme', true));
 await page.waitForFunction(
-  () => document.querySelector('.pgrid .pcard[data-row="pinme"] [data-p]')?.textContent.trim() === 'Unpin', { timeout: 15000 });
+  () => document.querySelector('.pgrid .pcard[data-row="pinme"] .pcfront [data-pmark]')?.getAttribute('aria-pressed') === 'true', { timeout: 15000 });
 
 // ---- starting a local repo from an archive -------------------------------
 // A code base somebody already has, dropped into a fresh repo: unpacked
@@ -451,15 +452,17 @@ ok(rn.status === 200 && rn.body.name === 'pinme' && rn.body.label === 'Pinned-Ag
    `renaming answers with the directory and the name it is shown under now, spelled as GitHub would (${JSON.stringify(rn.body).slice(0, 120)})`);
 ok(existsSync(`${DIR}/ws/pinme/.git`) && !existsSync(`${DIR}/ws/Pinned Again`),
    '...the directory did not move');
-ok(Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'))).flat().includes('pinme'),
-   '...so what is keyed by it is still its own');
+// Its pin is its project's (R138), kept by the project's key.
+const pinmeKey = await page.evaluate(() => state.projects.find(p => p.name === 'pinme')?.project);
+ok(Object.values(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'))).flat().includes(pinmeKey),
+   `...so what is keyed by it is still its own (${pinmeKey})`);
 await page.waitForFunction(() => [...document.querySelectorAll('.pgrid .pcard .name')]
   .some(n => n.textContent.startsWith('Pinned-Again')), { timeout: 15000 });
 ok(true, '...and the row is shown under the new name');
 // The refusals: another project's name (any case), a project that is not
 // there, the name it already has, and one with nothing in it.
 const onto = await postJson({ name: 'pinme', to: 'ALPHA' }, '/api/rename');
-ok(onto.status === 400 && /already a project's name/.test(onto.body.error || ''),
+ok(onto.status === 400 && /already a repository's name/.test(onto.body.error || ''),
    `renaming onto a name another project is shown under is refused (${onto.body.error})`);
 ok(await post({ name: 'nosuchproject', to: 'whatever' }, '/api/rename') === 400,
    'renaming something that is not a project is refused');
@@ -516,7 +519,10 @@ ok(made.status === 200 && made.body.name === 'My-New-App',
   // the page's copy is a status poll away, and on a loaded box, with every
   // project's git to walk, the polls ran past the wait.
   const docked = await postJson({ name: 'Docked App', mode: 'init', devbuild: 'ask' });
-  const dockedPrefs = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects?.['Docked-App'] || {};
+  // A dial is the project's (R138): read on the key of the project it was made in.
+  const dockedKey = Object.entries(JSON.parse(readFileSync(`${DIR}/state/project-repos.json`, 'utf8')).projects || {})
+    .find(([, r]) => (r.members || []).includes('Docked-App'))?.[0];
+  const dockedPrefs = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects?.[dockedKey] || {};
   ok(docked.status === 200 && dockedPrefs.devbuild === 'ask',
      `a project is created with Run its container set, and carries it (${docked.status}, ${dockedPrefs.devbuild}${docked.body.note ? '; ' + docked.body.note : ''})`);
   // ...and the signing and reporting dials, when one differs from the
@@ -1321,6 +1327,10 @@ await page.waitForFunction(() => !document.querySelector('#tList .trow[data-t="o
                            { timeout: 10000 });
 ok(existsSync(`${DIR}/ws/oldproj/keep.txt`) && !existsSync(`${DIR}/ws/.trash/oldproj`),
    '...and Put back is a move, so the files arrive with the name');
+// From before projects came first it was in none (R138): back in a project
+// of its own, as every repository was made one then, with nothing asked.
+await refreshUntil(page, () => Object.values(state?.repos || {}).some(r => r.members.includes('oldproj')), { timeout: 15000 });
+ok(true, '...into a project of its own, as one deleted before projects came first');
 
 // Destroying one asks for the name to be typed. A click is not enough for the
 // one control here with nothing behind it.
@@ -1363,7 +1373,9 @@ await page.waitForFunction(() => document.getElementById('tmodal').hidden);
   const madeBy = await call('/api/create', { name: 'maker-made', mode: 'init' }, MAKER);
   const listed = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.maker'].projects || [];
   const worked = await call('/api/prefs', { project: 'maker-made', color: 'teal' }, MAKER);
-  ok(madeBy.status === 200 && listed.includes('maker-made') && worked.status === 200,
+  // Kept by its project (R138): the key of the project made around it.
+  const makerKey = madeBy.project;
+  ok(madeBy.status === 200 && !!makerKey && listed.includes(makerKey) && worked.status === 200,
      `an administrator's new project goes on their own list, and they may work on it at once (${
        JSON.stringify(listed)}, ${worked.status}${worked.error ? ': ' + worked.error : ''})`);
 }

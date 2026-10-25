@@ -59,6 +59,11 @@ const ARCHIVE = `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.2" y="3"
 // project (R138).
 const MOVE = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3H3.5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h3"/>
   <path d="M7 8h6.5M10.8 5.3 13.5 8l-2.7 2.7"/></svg>`;
+// A tag with its hole, for a project's group on its card's back (R138).
+const TAG = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.6V3.3a.8.8 0 0 1 .8-.8h5.3l5 5a1 1 0 0 1 0 1.4l-4.3 4.3a1 1 0 0 1-1.4 0z"/>
+  <circle cx="5.6" cy="5.6" r="1"/></svg>`;
+// A swatch, filled in the project's color where it has one (R138).
+const SWATCH = `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.2"/></svg>`;
 // A branch: two commits on a line and a third off it, the line bending to
 // meet it, before the branch the tree is on in the Git view's picker.
 const BRANCH_ICON = `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="3.5" r="1.5"/><circle cx="5" cy="12.5" r="1.5"/><circle cx="11" cy="5" r="1.5"/><path d="M5 5v6M11 6.5c0 3-6 2.5-6 4.5"/></svg>`;

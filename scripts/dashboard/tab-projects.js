@@ -205,14 +205,13 @@ function cardFront(c){
   const node = first ? first.node_name || first.session_at || "" : "";
   const many = c.rows.length > 1;
   return `<div class="pcname"><span class="name">${esc(c.name)}</span>${cardLock(c)}<span class="sp"></span>${cardMarks(c)}</div>
-    <div class="pcfacts">${[`<span class="pid" title="this project's id, which never changes">${esc(c.pid)}</span>`,
-      esc(node)].filter(Boolean).join(" · ")}</div>
-    ${first ? projectState(first) : ""}
+    <div class="pcmeta"><span class="pcfacts">${[`<span class="pid" title="this project's id, which never changes">${esc(c.pid)}</span>`,
+      esc(node)].filter(Boolean).join(" · ")}</span>${first ? projectState(first) : ""}</div>
     <div class="pcrepos">${c.rows.length ? c.rows.map(p => `<div class="pcrepo">
       <button type="button" class="link" data-open="${esc(p.name)}" title="open ${esc(p.label || p.name)}'s notebook">${esc(p.label || p.name)}</button>
       <span class="pcfacts">${p.git ? `<span class="pbr">${esc(p.git)}</span>${p.push ? ` · <span class="ok">push</span>` : ""}` : "no git"}</span>
     </div>${p.issues.map(i => `<div class="pnote ${cls[i.level] || ""}">${many ? esc(p.label || p.name) + ": " : ""}${esc(i.text)}</div>`).join("")}`).join("")
-      : `<div class="empty">no repository yet${c.may ? ": Add repository makes or clones one" : ""}</div>`}</div>
+      : `<div class="pnote dim">no repository yet${c.may ? ": Add repository makes or clones one" : ""}</div>`}</div>
     ${first ? cardNotes(c) : ""}
     <div class="pcacts actbar">${first ? agentButton(first)
       : `<button type="button" disabled title="Add a repository first">Start agent</button>`}${
@@ -244,34 +243,29 @@ function cardBack(c){
     return `<div class="pcrepo"><span class="name">${esc(n)}</span><span class="sp"></span>
       ${mayShell() && !notMine(p) ? ic("data-s", p.name, `A shell in ${n}`, TERM, gitReadyFor(p) ? "" : " disabled") : ""}
       ${p.git_ok && !isBroken(p) && state?.can?.["git-auth"] !== false ? ic("data-l", p.name, p.linked ? `${p.forge_name || "Remote"} settings for ${n}` : `Link ${n} to a git host`, LINK) : ""}
+      ${p.phone?.mine ? ic("data-ph", p.name, p.phone.lease?.project === p.name ? `Take your phone back from ${n}` : `Lend your phone to ${n}`,
+                           TOOL_ICONS.phone, phoneWhy(p) ? " disabled" : "") : ""}
       ${mine ? ic("data-rrn", p.name, `Rename ${n}`, PENCIL) : ""}
       ${may ? ic("data-rmove", p.name, `Move ${n} to another project`, MOVE) : ""}
       ${mine && !p.trash_why ? ic("data-del", p.name, `Delete ${n}: to the trash`, BIN, ' data-danger="1"') : ""}</div>`;
   }).join("");
+  // The foot is one line of icons at every width (the operator, 25 Oct: one
+  // line on either side), each named for a screen reader and a pointer's
+  // hover; Pin and Archive are by the name on the front, a press away.
+  const fb = (attr, val, label, icon, extra = "") => `<button type="button" class="ic" ${attr}="${esc(val)}" aria-label="${esc(label)}" title="${esc(label)}"${extra}>${icon}</button>`;
+  const tone = colorTone(c.color);
   const foot = [
-    `<button type="button" data-pcolor="${esc(c.key)}">${c.color ? "Color: " + esc(c.color) : "Color"}</button>`,
-    c.archived ? "" : `<button type="button" data-pgroup="${esc(c.key)}">${c.group ? "Group: " + esc(c.group) : "Group"}</button>`,
-    c.archived ? "" : `<button type="button" data-p="${esc(c.key)}" data-on="${c.pinned ? "0" : "1"}">${c.pinned ? "Unpin" : "Pin"}</button>`,
-    c.may_archive ? `<button type="button" data-k="${esc(c.key)}" data-on="${c.archived ? "0" : "1"}">${c.archived ? "Unarchive" : "Archive"}</button>` : "",
-    c.may_lock ? `<button type="button" data-lock="${esc(c.key)}" data-on="${c.locked ? "0" : "1"}">${lockLabel(c)}</button>` : "",
-    first && first.mine !== false ? `<button type="button" data-bug="${esc(first.name)}">Report bug</button>` : "",
-    first ? `<button type="button" data-rn="${esc(first.name)}">Settings</button>` : "",
-    may && !c.rows.length ? `<button type="button" class="danger" data-pdel="${esc(c.key)}">Delete project</button>` : "",
+    fb("data-pcolor", c.key, c.color ? `Color: ${c.color}` : "Color", SWATCH, tone ? ` data-sw style="--sw:${tone}"` : ""),
+    c.archived ? "" : fb("data-pgroup", c.key, c.group ? `Group: ${c.group}` : "Group", TAG),
+    c.may_lock ? fb("data-lock", c.key, lockLabel(c), c.locked ? LOCK : LOCK_OPEN, ` data-on="${c.locked ? "0" : "1"}" aria-pressed="${!!c.locked}"`) : "",
+    first && first.mine !== false ? fb("data-bug", first.name, "Report bug", BUG) : "",
+    first ? fb("data-rn", first.name, "Settings", GEAR) : "",
+    may && !c.rows.length ? fb("data-pdel", c.key, "Delete project", BIN, ' data-danger="1"') : "",
   ].filter(Boolean).join("");
-  // The project's page's address, and a phone lent to it, by the name.
-  const phone = first?.phone?.mine ? ic("data-ph", first.name, first.phone.lease?.project === first.name ? "Take your phone back" : "Lend your phone",
-                                        TOOL_ICONS.phone, phoneWhy(first) ? " disabled" : "") : "";
   return `<div class="pcname"><span class="name">${esc(c.name)}</span>${may ? ic("data-prn", c.key, `Rename ${c.name}`, PENCIL) : ""}
-      ${first ? ic("data-plink", first.name, `Copy the link to ${c.name}'s page`, LINK) : ""}${phone}
-      <span class="sp"></span><button type="button" class="primary" data-pedit="${esc(c.key)}" aria-expanded="true">Done</button></div>
-    <div class="pcrepos">${rows || `<div class="empty">no repository yet</div>`}</div>
-    <div class="pcacts actbar wrap">${foot}</div>`;
-}
-// A project's page's address, copied: what a link to it shares.
-async function copyProjectLink(name){
-  const url = `${location.origin}${location.pathname}#/projects/${encodeURIComponent(name)}`;
-  try{ await navigator.clipboard.writeText(url); notify(`copied ${url}`); }
-  catch(e){ notify(`the link is ${url}`); }
+      <span class="sp"></span><span class="actbar"><button type="button" class="primary" data-pedit="${esc(c.key)}" aria-expanded="true">Done</button></span></div>
+    <div class="pcrepos">${rows || `<div class="pnote dim">no repository yet</div>`}</div>
+    <div class="pcacts actbar pcfoot">${foot}</div>`;
 }
 // The cards of a list of projects.
 const projectCards = list => list.map(projectCard).join("");
@@ -287,6 +281,11 @@ function flipCard(key){
   card.querySelector(".pcfront").inert = on;
   card.querySelector(".pcback").inert = !on;
   card.querySelectorAll("[data-pedit]").forEach(b => b.setAttribute("aria-expanded", String(on)));
+  // Drawn again once it has turned, so the grid's markup says so: the next
+  // poll otherwise finds it changed and redraws the card, taking a box open
+  // on its back (Group, a rename, a move) with it.
+  clearTimeout(flipCard.t);
+  flipCard.t = setTimeout(() => drawProjects(state?.projects || []), 450);
 }
 
 // New project (R138): its name, and nothing else; its repositories are
@@ -373,7 +372,6 @@ function wireProjectCards(grid){
   grid.querySelectorAll("[data-rrn]").forEach(b => b.onclick = () => renameRepository(b));
   grid.querySelectorAll("[data-rmove]").forEach(b => b.onclick = () => moveRepository(b));
   grid.querySelectorAll("[data-pdel]").forEach(b => b.onclick = () => deleteProjectCard(b.dataset.pdel));
-  grid.querySelectorAll("[data-plink]").forEach(b => b.onclick = () => copyProjectLink(b.dataset.plink));
   grid.querySelectorAll("[data-pmark]").forEach(b => b.onclick = () => setProjectPinned(b.dataset.pmark, b.dataset.on === "1"));
   grid.querySelectorAll("[data-kmark]").forEach(b => b.onclick = () => setArchived(b.dataset.kmark, b.dataset.on === "1"));
   grid.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openNotebook(b.dataset.open));

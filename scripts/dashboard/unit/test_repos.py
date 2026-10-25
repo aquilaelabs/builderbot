@@ -49,6 +49,8 @@ class Repos(unittest.TestCase):
         self.assertEqual((got["name"], repos.members(got["key"])), ("Shop front, v2!", []),
                          "spaces and punctuation kept, and nothing in it yet")
         self.assertTrue(registry.is_repos(got["key"]) and not (self.ws / got["key"]).exists())
+        registry.sync()
+        self.assertEqual(registry.label(got["key"]), "Shop front, v2!", "a sync keeps a project's name as typed")
         self.assertIn("already a project's name", repos.create("shop front, V2!")["error"])
         self.assertIn("letter or digit", repos.create("  ?! ")["error"])
 
@@ -80,6 +82,13 @@ class Repos(unittest.TestCase):
         self.assertEqual((repos.members(keys["app"]), repos.project_of("server")), (["app"], shop))
         self.assertEqual(repos.place(), [], "a second time, nothing to place")
 
+    def test_one_put_back_by_hand_goes_back_into_its_project(self):
+        shop = self.project("Shop", "app", "server")
+        repos.detach("app")
+        made = repos.place()
+        self.assertNotIn("app", [d for _, d in made], "no project made for it")
+        self.assertEqual(repos.project_of("app"), shop, "back where it was deleted from")
+
     def test_a_project_is_deleted_only_with_nothing_in_it(self):
         shop = self.project("Shop", "app")
         self.assertIn("move or delete its repositories first", repos.delete(shop)["error"])
@@ -100,6 +109,12 @@ class Repos(unittest.TestCase):
                          "the project's node and dials, set from any of its repositories")
         self.assertEqual((s["build"], prefs.get("app")["build"]), ("make server", "make app"),
                          "a repository's own build stays its own")
+
+    def test_a_repository_with_no_record_of_its_own_lists_its_projects_settings(self):
+        key = self.project("Shop", "app")
+        prefs.set_prefs("app", devbuild="auto")
+        repos.add(key, "docs")
+        self.assertEqual(prefs.all_projects()["docs"]["devbuild"], "auto", "the status row reads the project's dial")
 
     def test_reads_go_by_the_project_and_take_in_a_repository_added_later(self):
         prefs.set_prefs("reader", reads=["app"])

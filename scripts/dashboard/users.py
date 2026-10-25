@@ -1416,6 +1416,28 @@ def assign(me, name, global_roles=None, project_roles=None):
     return {"ok": True, "name": name, **out}, 200
 
 
+def rekey(old, new):
+    """Every account's list and roles that name `old` (a repository, before
+    it was put in a project) name its project `new` instead (R138): what
+    migration 0010 does, for a repository placed since (repos.place)."""
+    with _lock:
+        d = load()
+        changed = False
+        for u in d["users"].values():
+            have = list(u.get("projects") or [])
+            if old in have:
+                u["projects"] = list(dict.fromkeys(new if p == old else p for p in have))
+                changed = True
+            pr = u.get("project_roles") if isinstance(u.get("project_roles"), dict) else {}
+            if old in pr:
+                was = pr.pop(old)
+                pr[new] = sorted(set(pr.get(new) or []) | set(was if isinstance(was, list) else []))
+                u["project_roles"] = pr
+                changed = True
+        if changed:
+            _save(d)
+
+
 def forget_project(project):
     """A project that is gone for good off every account: its list and the
     roles held on it (membership.forget_project, B95)."""

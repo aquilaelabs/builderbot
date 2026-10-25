@@ -4,7 +4,7 @@
 
 ### Added
 
-- A project can hold several repositories: Add a repository on a project's menu joins another to it, each keeping its own notebook, git host link and releases; the project gets one card, one id and one coding-agent session that works in all of them, and a project that reads it reads every repository in it; Take out makes one a project of its own again (9ccf960)
+- Projects come first: a project is made with a name alone (spaces and punctuation kept) and repositories are added to it, each keeping its own notebook, git host link and releases; its card lists its repositories and who is working there, and Edit turns it over to rename, move a repository to another project, delete one to the trash, and set its color, group, pin, archive and lock. A project has one id and one coding-agent session that works in all its repositories, and a project that reads it reads every repository in it (9ccf960, 178952e)
 
 ### Changed
 
@@ -15,6 +15,7 @@
 
 - Rename SIGNING_SECRET to INSTALL_KEY in your secrets folder's env file: the old name is read for this release only. With an install key set, everybody is signed out once at the first start of 0.8.0 (7645fec)
 - Update the Android app and the VS Code extension (0.2.0) with the controller: they open a session's terminal on BuilderBot's own terminal now, and an older copy of either cannot open one (052c096)
+- Each project you had becomes a project holding its one repository, under the same name, with its settings, people, owner, pins, groups, colors, archive and lock; nothing on disk moves. New project now asks for a name alone, and Add repository on its card makes or clones the repository (178952e)
 
 ### Fixed
 

@@ -93,7 +93,14 @@ def key_of(name):
     name = str(name or "")
     if registry.is_repos(name):
         return name
-    return project_of(name) or name
+    got = project_of(name)
+    if got:
+        return got
+    # Deleted, or put back from the trash by hand and not placed yet
+    # (place()): the project it was in and goes back into, so a check
+    # before then is answered for that project.
+    was = registry.last_project(name)
+    return was if was and registry.is_repos(was) else name
 
 
 def expand(names):
@@ -127,19 +134,28 @@ def create(name):
         return {"ok": True, "key": rec["key"], "name": rec["name"], "id": f"P{rec['id']}"}
 
 
-def place():
+def place(listed=None):
     """Every live repository in a project (R138): one in none (an imported
     archive, a clone, a folder recorded since migration 0010 ran) gets a
-    project of its own, named as it is shown, with its id beside the name
+    project of its own, or, put back from the trash by hand, the one it
+    was deleted from, named as it is shown, with its id beside the name
     where that is another project's already. Cheap when there is nothing
-    to place, so the status read asks it every time. [(key, dirname)] for
+    to place, so the status read asks it every time. `listed` keeps it to
+    the folders the Projects page lists (not one carrying .bbignore).
+    [(key, dirname)] for
     each it made, for the server to carry the repository's owner and
     settings over (membership.adopt, prefs.adopt)."""
     with _lock:
         inside = {m for ms in all_members().values() for m in ms}
         made = []
         for dirname in registry.live_dirs():
-            if dirname in inside:
+            if dirname in inside or (listed is not None and dirname not in listed):
+                continue
+            # Put back from the trash by hand (a mv): into the project it
+            # was deleted from, where that one is still there, as Put back
+            # does; its people and marks never left it.
+            was = registry.last_project(dirname)
+            if was and registry.is_repos(was) and add(was, dirname).get("ok"):
                 continue
             shown = registry.label(dirname)
             if registry.live_named(shown, kind="repos"):
@@ -208,6 +224,19 @@ def detach(dirname):
         _save(d)
         registry.note_project(dirname, was)
         return was
+
+
+def forget(dirname):
+    """A repository whose create never took (a clone that failed): off its
+    project's list, the project left as it was."""
+    dirname = str(dirname or "")
+    with _lock:
+        d = _load()
+        hit = [k for k, rec in d["projects"].items() if dirname in rec["members"]]
+        for k in hit:
+            d["projects"][k]["members"] = [m for m in d["projects"][k]["members"] if m != dirname]
+        if hit:
+            _save(d)
 
 
 def delete(key):

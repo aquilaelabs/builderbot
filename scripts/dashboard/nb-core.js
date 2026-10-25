@@ -958,7 +958,7 @@ function projectState(p){
   const rows = (state?.claude_where || {})[tmuxName(name)] || (state?.claude_where || {})[name] || [];
   const agentOf = who => { const id = rows.find(r => r.who === who)?.agent; return id ? agentById(id)?.name || id : ""; };
   const one = (st, word, cls = "", who = "") => `<span class="pstate${cls}">${st ? `<span class="st ${st}"></span>` : ""}${esc(word)}${
-    who && agentOf(who) ? ` <span class="pagent">${esc(agentOf(who))}</span>` : ""}</span>`;
+    who && agentOf(who) ? `<span class="pagent"> · ${esc(agentOf(who))}</span>` : ""}</span>`;
   // Yours first, then everybody else's with a session here, each with its
   // own dot (the operator, 16 Oct: a card that does not say who else is
   // working in the project hides the one thing worth knowing first).
