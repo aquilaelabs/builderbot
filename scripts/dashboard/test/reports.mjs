@@ -5,7 +5,7 @@
 // their gate, a log a person clears. Nothing goes back to the session that
 // made it: that loop worked only where BuilderBot's own tracker sat beside
 // the sessions reporting to it (the operator, 8 Oct).
-import { launch, newPage, ready, ok, done, saveDialog, URL, DIR, unfold, splitPick } from './lib.mjs';
+import { launch, newPage, ready, ok, done, saveDialog, URL, DIR, unfold, splitPick, prefsOf } from './lib.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
@@ -114,7 +114,7 @@ const noNudge = bb(['bug', 'add', 'bb devapp status is wrong about the env'],
                    { ...admin, DASHBOARD_AUTH: '', BB_BUG_PROJECT: 'alpha' });
 ok(noNudge.status === 0 && !/not filed yet/.test(noNudge.stderr),
    '...and a bug naming BuilderBot filed there is not pointed at it');
-ok(JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha.report === 'deny',
+ok(prefsOf('alpha').report === 'deny',
    '...stored on the project as the one word that differs from the default');
 await setReport('auto');
 

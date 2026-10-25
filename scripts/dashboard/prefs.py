@@ -150,7 +150,7 @@ GROUP_FIELDS = ("node", "nodes", "hosts", "reads", "sees", "reaches", "tc_off", 
                 "agents_off", "agent_default", "gitpol", "color", "devbuild", "makevms", "vm_caps",
                 "test_change", "gpu", "report", "sign", "keys", "release", "pc", "log_from", "diag")
 # repos.py's answers, handed over by the server: (project_of, members,
-# is_repos). Unset (bb loading this by path) a repository reads as its own.
+# is_repos). Unset (bb loading this by path), _rp reads the same from the files.
 _repos = None
 
 
@@ -158,9 +158,44 @@ def configure_repos(*, project_of, members, is_repos):
     globals()["_repos"] = (project_of, members, is_repos)
 
 
+def _rp():
+    """repos.py's answers: the server's, or, in a process with no server (a
+    bb verb loading this by path), the same three read from the state files
+    themselves, so a repository is read with its project's settings there
+    too (R138)."""
+    return _repos or _file_repos()
+
+
+def _file_repos():
+    if FILE is None:
+        return None
+    st = Path(FILE).parent
+
+    def read(name):
+        try:
+            d = json.loads((st / name).read_text())
+        except (OSError, ValueError):
+            return {}
+        return d.get("projects") if isinstance(d, dict) and isinstance(d.get("projects"), dict) else {}
+    groups, recs = read("project-repos.json"), read("projects.json")
+    if not groups:
+        return None
+
+    def is_repos(k):
+        return (recs.get(k) or {}).get("state") == "repos"
+
+    def members(k):
+        g = groups.get(k) if is_repos(k) else None
+        return [m for m in ((g or {}).get("members") or []) if (recs.get(m) or {}).get("state") == "live"]
+
+    def project_of(n):
+        return next((k for k, g in groups.items() if is_repos(k) and n in ((g or {}).get("members") or [])), "")
+    return (project_of, members, is_repos)
+
+
 def _over(project, rec, raw):
     """`rec`, a repository's settings, with its project's laid over them."""
-    key = _repos[0](project) if _repos else ""
+    key = _rp()[0](project) if _rp() else ""
     if key:
         g = _clean(raw.get(key))
         rec.update({f: g[f] for f in GROUP_FIELDS})
@@ -174,9 +209,9 @@ def reads_trees(project):
     added later is read with nothing changed), and the other repositories of
     its own project; never itself."""
     names = list(get(project).get("reads") or [])
-    if not _repos:
+    if not _rp():
         return names
-    project_of, members, is_repos = _repos
+    project_of, members, is_repos = _rp()
     mine = members(project) if is_repos(project) else members(project_of(project))
     out = []
     for n in names + mine:
@@ -589,10 +624,10 @@ def all_projects(workspace=None):
     out = {k: _over(k, _clean(v), d) for k, v in d.items() if isinstance(k, str)}
     # ...and every repository of a project with no record of its own yet (one
     # made into it, R138), which reads the project's settings all the same.
-    if _repos:
+    if _rp():
         for k in list(d):
-            if _repos[2](k):
-                for m in _repos[1](k):
+            if _rp()[2](k):
+                for m in _rp()[1](k):
                     if m not in out:
                         out[m] = _over(m, _clean({}), d)
     return out
@@ -800,7 +835,7 @@ def set_prefs(project, **kw):
     For a repository in a project of several, what the project holds
     (GROUP_FIELDS) is written to the project and the rest to the
     repository (R136)."""
-    key = _repos[0](project) if _repos and project else ""
+    key = _rp()[0](project) if _rp() and project else ""
     if not key:
         return _set_prefs(project, **kw)
     mine = {k: v for k, v in kw.items() if k not in GROUP_FIELDS}
@@ -865,8 +900,8 @@ def _set_prefs(project, node=None, nodes=None, build=None, test=None,
             got = reads if isinstance(reads, list) else str(reads).split(",")
             # By project (R138): a repository named is read as the project
             # it is in now, so a later move changes nobody's reads.
-            if _repos:
-                home = lambda r: r if _repos[2](r) else (_repos[0](r) or r)  # noqa: E731
+            if _rp():
+                home = lambda r: r if _rp()[2](r) else (_rp()[0](r) or r)  # noqa: E731
                 own = home(project)
                 got = list(dict.fromkeys(home(r) for r in _reads_of({"reads": got})))
                 cur["reads"] = [r for r in got if r not in (project, own)]

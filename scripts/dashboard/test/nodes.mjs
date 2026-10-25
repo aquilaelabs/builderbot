@@ -4,7 +4,7 @@
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
 // exactly the page it was.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, openArchived, closeFold, patience, saveDialog, sectSave, openSection, splitPick, holdPoll, freePoll, refreshUntil } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, openArchived, closeFold, patience, saveDialog, sectSave, openSection, splitPick, holdPoll, freePoll, refreshUntil, prefsOf } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync } from 'node:fs';
 
@@ -2233,11 +2233,11 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.fill('#rnCaptureDays', '3');
   await page.fill('#rnDevKeep', '5');
   await saveDialog(page);
-  const saved = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha;
+  const saved = prefsOf('alpha');
   ok(saved.node === minted.id && saved.build === './gradlew assembleDebug'
      && saved.outputs.length === 2 && saved.outputs[1] === 'extra/*.xpi' && saved.capture_days === 3
      && saved.dev_keep === 5,
-     'Save writes the project\'s node, the command, the outputs, the days captures are kept and the dev builds kept of each onto the project record');
+     `Save writes the project's node, the command, the outputs, the days captures are kept and the dev builds kept of each onto the project record (${JSON.stringify(saved).slice(0, 300)})`);
   // Whether that node is quiet enough to time on (R108): the agent's
   // heartbeat says its load and what runs there by kind, and the answer
   // joins it with the jobs and sessions there, naming no other project.

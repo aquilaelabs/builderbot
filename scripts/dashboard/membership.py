@@ -68,15 +68,31 @@ def _read(name, empty):
         return empty
 
 
+def _keyed(ps, merge=None):
+    """{project: value} by project key (R138): an entry written under a
+    repository's name before it was put in a project (an import, a clone, a
+    folder recorded since migration 0010 ran) counts for its project, the
+    project's own entry first; `merge` joins two that land on one key."""
+    out = {}
+    for k in sorted(ps, key=lambda k: users.key_of(k) != k):
+        key = users.key_of(k)
+        if key in out and merge:
+            out[key] = merge(out[key], ps[k])
+        else:
+            out.setdefault(key, ps[k])
+    return out
+
+
 def _owners():
     d = _read("project-owners.json", {})
-    d.setdefault("projects", {})
+    d["projects"] = _keyed(d.get("projects") if isinstance(d.get("projects"), dict) else {})
     return d
 
 
 def _invites():
     d = _read("invites.json", {})
-    d.setdefault("projects", {})
+    d["projects"] = _keyed(d.get("projects") if isinstance(d.get("projects"), dict) else {},
+                           merge=lambda a, b: (a if isinstance(a, list) else []) + (b if isinstance(b, list) else []))
     d.setdefault("next", 1)
     return d
 

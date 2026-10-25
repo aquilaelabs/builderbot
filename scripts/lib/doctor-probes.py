@@ -43,11 +43,21 @@ def gles():
 
 
 def prefs():
+    """The repository's node: its project's (R138), as the server's overlay
+    reads it, the repository's own record where it is in no project."""
+    st = os.environ["DASHBOARD_STATE"]
     try:
-        d = json.load(open(os.path.join(os.environ["DASHBOARD_STATE"], "claude-prefs.json")))
-        print((d.get("projects") or {}).get(args[0], {}).get("node") or "")
+        d = json.load(open(os.path.join(st, "claude-prefs.json")))
     except (OSError, ValueError):
         print("")
+        return
+    try:
+        groups = (json.load(open(os.path.join(st, "project-repos.json"))).get("projects") or {})
+    except (OSError, ValueError, AttributeError):
+        groups = {}
+    key = next((k for k, g in groups.items() if isinstance(g, dict) and args[0] in (g.get("members") or [])), "")
+    ps = d.get("projects") or {}
+    print(((ps.get(key) or {}).get("node") if key else "") or (ps.get(args[0]) or {}).get("node") or "")
 
 
 def identity():
@@ -131,14 +141,14 @@ def login():
 
 
 def signed():
-    """Codex's or Copilot's account here, read as `bb login --list` reads
+    """Codex's, Copilot's or Grok's account here, read as `bb login --list` reads
     it (login-list.py), so doctor and the Agents page cannot disagree."""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "login_list", os.path.join(os.path.dirname(os.path.abspath(__file__)), "login-list.py"))
     ll = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(ll)
-    got = {"codex": ll.codex_of, "copilot": ll.copilot_of}[args[0]](os.path.expanduser("~"))
+    got = {"codex": ll.codex_of, "copilot": ll.copilot_of, "grok": ll.grok_of}[args[0]](os.path.expanduser("~"))
     if not got or not got.get("email"):
         sys.exit(1)
     sys.stdout.write(f" ({got['email']})")

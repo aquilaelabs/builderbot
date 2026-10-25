@@ -687,6 +687,26 @@ export const nbGone = (page) =>
   page.waitForFunction(() => !document.querySelector('.pane .nb'),
                        { timeout: 20000 });
 
+// A repository's settings as the server reads them (R138): its own record
+// with its project's laid over it, where the node, the dials and what it
+// reads, sees and reaches are kept. Read straight from the state file, so a
+// suite sees what was written, not what the page last polled.
+const stateFile = f => { try { return JSON.parse(readFileSync(`${DIR}/state/${f}`, 'utf8')); } catch { return {}; } };
+// The key of the project a repository is in, or the name itself.
+export function projectKey(name){
+  return Object.entries(stateFile('project-repos.json').projects || {})
+    .find(([, r]) => (r.members || []).includes(name))?.[0] || name;
+}
+// prefs.GROUP_FIELDS: what the project's record lays over a repository's.
+const GROUP_FIELDS = ['node', 'nodes', 'hosts', 'reads', 'sees', 'reaches', 'tc_off', 'packs_on', 'agents_off',
+  'agent_default', 'gitpol', 'color', 'devbuild', 'makevms', 'vm_caps', 'test_change', 'gpu', 'report', 'sign',
+  'keys', 'release', 'pc', 'log_from', 'diag'];
+export function prefsOf(name){
+  const all = stateFile('claude-prefs.json').projects || {}, key = projectKey(name);
+  const proj = key !== name ? all[key] || {} : {};
+  return { ...(all[name] || {}), ...Object.fromEntries(GROUP_FIELDS.filter(f => f in proj).map(f => [f, proj[f]])) };
+}
+
 // A project's controls are on its card's back (R138): a check that presses
 // one of them turns the card over with Edit first, the way a person would.
 export async function unfold(page, project){

@@ -153,3 +153,26 @@ class Briefing(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StandAlone(unittest.TestCase):
+    """prefs.py loaded by a bb verb, with no server to hand it repos.py's
+    answers (R138): a repository still reads its project's settings, from
+    the state files themselves."""
+
+    def test_a_repository_reads_its_projects_settings_with_no_server(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        with open(os.path.join(d, "projects.json"), "w") as f:
+            json.dump({"next": 3, "projects": {"alpha": {"id": 1, "name": "alpha", "state": "live"},
+                                               "alpha-2": {"id": 2, "name": "alpha", "state": "repos"}}}, f)
+        with open(os.path.join(d, "project-repos.json"), "w") as f:
+            json.dump({"projects": {"alpha-2": {"members": ["alpha"]}}}, f)
+        with open(os.path.join(d, "claude-prefs.json"), "w") as f:
+            json.dump({"projects": {"alpha-2": {"sees": ["/mnt/media"], "report": "deny"}, "alpha": {"build": "make"}}}, f)
+        saved = prefs.__dict__.get("_repos")
+        self.addCleanup(lambda: prefs.__dict__.update(_repos=saved))
+        prefs.__dict__.update(_repos=None)
+        prefs.configure(state=d, write_json=write_json)
+        g = prefs.get("alpha")
+        self.assertEqual((g["sees"], g["report"], g["build"]), (["/mnt/media"], "deny", "make"))

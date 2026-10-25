@@ -447,11 +447,16 @@ function rnFillAgents(off = rnPrefWas.agents_off, dflt = rnPrefWas.agent_default
 function rnFillReads(){
   const box = $("rnReads"), wrap = $("rnReadsField");
   if (!box) return;
-  const was = new Set(rnPrefWas.reads.split(",").filter(Boolean));
-  const others = (state?.projects || []).filter(p => p.name !== rnFor)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // What it reads is projects (R138): every other one, by its name, the
+  // value its key, which is what a read names; a read written as one of its
+  // repositories ticks it too.
+  const was = new Set(rnPrefWas.reads.split(",").filter(Boolean).map(r => reposOf(r) || r));
+  const own = reposOf(rnFor);
+  const others = projectList().filter(c => c.key !== own).sort((a, b) => a.name.localeCompare(b.name));
   wrap.hidden = rnMode === "git" || !others.length;
-  box.innerHTML = others.map(p => lrow(p.name, projLabel(p.name), p.branch ? `git: ${p.branch}` : "", was.has(p.name))).join("");
+  box.innerHTML = others.map(c => lrow(c.key, c.name,
+    c.rows.length === 1 && c.rows[0].branch ? `git: ${c.rows[0].branch}` : c.rows.length ? `${c.rows.length} repositories` : "no repository yet",
+    was.has(c.key))).join("");
   // BuilderBot's owner's alone (the operator, 6 Oct): shown to everybody,
   // changed by the owner, and why not said on the row (not a tooltip).
   const mine = state?.can?.reads !== false;

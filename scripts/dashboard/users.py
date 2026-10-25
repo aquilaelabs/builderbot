@@ -1214,8 +1214,8 @@ def _members_refused(name, want, may_change):
     an invite-only project's people are its owner's to change)."""
     if not may_change:
         return ""
-    have = set((get(name) or {}).get("projects") or [])
-    for p in sorted(have ^ set(want)):
+    have = {p if p == "*" else key_of(p) for p in (get(name) or {}).get("projects") or []}
+    for p in sorted(have ^ {p if p == "*" else key_of(str(p)) for p in want}):
         if p == "*":
             continue
         why = may_change(p)
@@ -1254,8 +1254,10 @@ def verb(act, req, seen, may_change=None):
     elif act == "projects":
         # Only projects this admin can see; otherwise the tab becomes a
         # way to learn what exists by handing it out.
-        mine = seen()
-        want = [p for p in (req.get("projects") or []) if p in mine]
+        # By project (R138): a project's key, or a repository's name, that
+        # stands for one this admin sees.
+        mine = {key_of(p) for p in seen()}
+        want = [p for p in (req.get("projects") or []) if key_of(str(p)) in mine]
         why = _members_refused(name, want, may_change)
         r = {"error": why} if why else set_projects(name, want)
     elif act == "rename":
@@ -1273,8 +1275,8 @@ def verb(act, req, seen, may_change=None):
         if not r.get("error") and isinstance(req.get("roles"), list):
             r = set_roles(name, req["roles"])
         if not r.get("error") and isinstance(req.get("projects"), list):
-            mine = seen()
-            want = [p for p in req["projects"] if p in mine]
+            mine = {key_of(p) for p in seen()}
+            want = [p for p in req["projects"] if key_of(str(p)) in mine]
             why = _members_refused(name, want, may_change)
             r = {"error": why} if why else set_projects(name, want)
         if not r.get("error") and pw:
