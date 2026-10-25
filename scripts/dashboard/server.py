@@ -3579,8 +3579,10 @@ def live_block():
 preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs, live=live_block)
 # ...and a project of several repositories' (R136): its name, id and
 # repositories, for the part that briefs a session on all of them.
+# Only one of several: since R138 every repository is in a project, and one
+# alone was told it was "a project of 1 repositories".
 preamble.repos_fn = lambda p: ((registry.label(k), registry.pid(k), [(m, registry.label(m)) for m in repos.members(k)])
-                               if (k := repos.project_of(p)) else None)
+                               if (k := repos.project_of(p)) and len(repos.members(k)) > 1 else None)
 
 # ---- a new project's brief -----------------------------------------------------
 # What its maker wants built, kept out of CLAUDE.md and handed to the first
