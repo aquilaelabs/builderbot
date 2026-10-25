@@ -5,6 +5,7 @@
 ### Added
 
 - Projects come first: a project is made with a name alone (spaces and punctuation kept) and repositories are added to it, each keeping its own notebook, git host link and releases; its card lists its repositories and who is working there, and Edit turns it over to rename, move a repository to another project, delete one to the trash, and set its color, group, pin, archive and lock. A project has one id and one coding-agent session that works in all its repositories, and a project that reads it reads every repository in it (9ccf960, 178952e)
+- Grok (xAI's Grok Build) can run a project's session beside Claude, ChatGPT and Copilot: installed from its node's Agents page, signed in there with a device code, and held to the same briefing and guards through its own hooks (dc85506)
 
 ### Changed
 
