@@ -45,6 +45,17 @@ function syncResumeMenu(){
 let resumePick = null;
 // Which node the chooser's first step shows, of a project on several.
 let rmNode = {project: "", node: ""};
+// The chooser's size while it is open on a project (the operator, 26 Oct):
+// the largest it has been, so going to New, or Back, never shrinks it.
+let rmSize = {project: "", w: 0, h: 0};
+function rmHold(m, project){
+  if (rmSize.project !== project) rmSize = {project, w: 0, h: 0};
+  m.style.minWidth = m.style.minHeight = "";
+  const r = m.getBoundingClientRect();
+  rmSize.w = Math.max(rmSize.w, r.width); rmSize.h = Math.max(rmSize.h, r.height);
+  m.style.minWidth = `${Math.min(rmSize.w, innerWidth - 16)}px`;
+  m.style.minHeight = `${rmSize.h}px`;
+}
 // The agent picked in the chooser's Start pulldown, kept across its redraws.
 let rmAgent = {project: "", agent: ""};
 // Your conversations on the project the chooser is open on, for its Resume
@@ -209,6 +220,7 @@ function openClaude(name, ev){
   // it (the operator, 12 Oct), so even one node and nothing to resume asks.
   void ns;
   resumeFor = resumeFor === name ? null : name;
+  rmSize = {project: "", w: 0, h: 0};          // opened afresh: its own size
   resumePick = null;
   resumeHost = ev?.currentTarget?.closest?.(".pane, .card") || null;
   if (resumeFor) loadRmConvs(name);
@@ -517,6 +529,7 @@ function resumePicker(p, m, card, anchor, ns, several){
       .catch(() => {});
   }
   floatAt(m, anchor);
+  rmHold(m, p.name);
 }
 
 // The same step for another agent's new conversation (R95 step 9): which
@@ -565,6 +578,7 @@ function agentPicker(p, m, card, anchor, n, several){
     launchAgent(r.agent, p.name, r.node, r.model, r.effort, r.sessionId || "", r.slot || 1);
   };
   floatAt(m, anchor);
+  rmHold(m, p.name);
 }
 
 function placeResumeMenu(){
@@ -753,4 +767,5 @@ function placeResumeMenu(){
   // sheet on a phone (floatAt), so it is never placed where it cannot be
   // seen: a chooser out of sight read as a press that did nothing (bug #65).
   floatAt(m, anchor);
+  rmHold(m, p.name);
 }

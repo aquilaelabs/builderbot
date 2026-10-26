@@ -1808,14 +1808,18 @@ textarea,select{
 .uimenu input:where(:not([type="checkbox"],[type="radio"])),.uimenu textarea,.uimenu select,
 .doctab input:where(:not([type="checkbox"],[type="radio"])),
 .doctab select,.doctab textarea,
-.nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
+.nb input,.nb textarea,.nb select,
+.resumemenu select{width:100%;box-sizing:border-box;
   padding:8px 9px;font:var(--f-field)}
 /* ...and one height for all of them, the buttons beside them included
    (the header keeps its own smaller buttons: they sit beside no field). */
 .modal input:where(:not([type="checkbox"],[type="radio"])),.modal select,
 .doc .row input,.doc .row select,.uimenu input:where(:not([type="checkbox"],[type="radio"])),.uimenu select,
 .doctab input:where(:not([type="checkbox"],[type="radio"])),.doctab select,
-.nb input:where(:not([type="checkbox"],[type="radio"])),.nb select{min-height:var(--ctl)}
+.nb input:where(:not([type="checkbox"],[type="radio"])),.nb select,
+/* ...and the session chooser's, which opens on a project's card, inside none
+   of those (the operator, 26 Oct: its pulldowns were the browser's size). */
+.resumemenu select{min-height:var(--ctl)}
 .modal button,.nb button,.doctab button,.uimenu button,.doc .row button{min-height:var(--ctl)}
 /* Not the color swatches: a circle, sized by its own rule. */
 .modal .pcpick button,.pcpick button{min-height:0}
@@ -4939,7 +4943,7 @@ html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
 .resumemenu .rmline .rmwho{display:flex;align-items:baseline;gap:8px;min-width:0}
 .resumemenu .rmline .rmwho b{font:var(--f-ui);font-weight:600;color:var(--ink)}
 /* Start's agent pulldown (the operator, 26 Oct) in its line, where a name would be. */
-.resumemenu .rmline .rmwho select{flex:0 1 auto;min-width:0;align-self:center}
+.resumemenu .rmline .rmwho select{flex:0 1 auto;width:auto;min-width:0;align-self:center}
 .resumemenu .rmline .rmsays{font:var(--f-note);color:var(--dim)}
 .resumemenu .rmline.live .rmsays{color:var(--pass)}
 .resumemenu .rmline .rmacts{margin-left:auto}
