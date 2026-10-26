@@ -275,7 +275,7 @@ await api('/api/members', { action: 'set', project: 'alpha', owner: 'test' });
   }
   const phone = await page.evaluate(() => RAIL_PHONE.join());
   ok(homeAt === '#/home' && rail.startsWith('home,projects,build,containers,controller,machines') && phone === 'home,projects,build,containers'
-     && Object.values(at).every(v => v === '#/controller controller'),
+     && Object.values(at).every(v => v === '#/controller/settings controller'),
      `Controller is its own group after Containers, a phone's four unchanged, and both old addresses land on it (${JSON.stringify({ homeAt, rail, phone, at })})`);
   if (before) await page.evaluate(h => openRoute(h), before);
 }

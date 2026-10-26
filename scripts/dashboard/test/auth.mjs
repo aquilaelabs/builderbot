@@ -1880,7 +1880,7 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
     .then(() => true, () => false).then(v => ok(v, "the owner's page shows the maintenance band"));
   // ...and sends it showing, so it is there at the first paint rather than
   // once the first status read lands (the operator, 26 Oct).
-  const served = await (await bare('/', { headers: owner })).text();
+  const served = (await bigGet('/', owner)).body.toString();
   ok(/<div class="banner maint" id="maintband" role="status">/.test(served),
      "the page is served with the maintenance band already showing while it is on");
 
@@ -1894,7 +1894,7 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
      "...and the other account's cookie is good again: nobody was signed out");
   await page.waitForFunction(() => document.getElementById('maintband')?.hidden, null, { timeout: 15000 })
     .then(() => true, () => false).then(v => ok(v, '...and the band goes'));
-  ok(/id="maintband" role="status" hidden>/.test(await (await bare('/', { headers: owner })).text()),
+  ok(/id="maintband" role="status" hidden>/.test((await bigGet('/', owner)).body.toString()),
      '...and the page is served with it hidden again');
 }
 
