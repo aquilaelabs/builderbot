@@ -829,12 +829,21 @@ html[data-motion="reduce"] .tourring{transition:none}
 .ssplit{display:grid;grid-template-columns:minmax(13rem,17rem) minmax(0,1fr);align-items:start}
 .ssplit>*{grid-column:2;min-width:0}
 .ssplit>.snav{grid-column:1;grid-row:1 / span 99;align-self:stretch}
-/* A page's head (the operator, 25 Oct) at the top of the content column,
-   where every band of the page starts, the section under it. */
+/* A page's head (the operator, 25 Oct) in the content column, where every
+   band of the page starts; at a desk it spans the list too (below). */
 .ssplit>.pghead{grid-column:2}
-/* ...its words at the cards' edge beside the list, as a head stands over
-   a page's cards, which there take the side room the head's padding is. */
-@media(min-width:901px){.ssplit>.pghead{padding-left:0;padding-right:0}}
+/* ...and at a desk a card of its own, as a node's head is on the Nodes
+   page (the operator, 26 Oct: its facts loose over the cards read as part
+   of none): on the page's margin, or on the content column's edge beside a
+   settings page's list, with the cards' gap under it. */
+@media(min-width:901px){
+  :is(.doctab,.nbview,.dmtab) .pghead{margin:var(--card-gap) var(--row-x) 0;padding:var(--row-y) var(--row-x);
+    background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface)}
+  /* A page of settings': over the list and the section both, the whole
+     page's head (the operator, 26 Oct), the list starting under it. */
+  :is(.doctab,.nbview,.dmtab) .ssplit>.pghead{margin:0 0 var(--card-gap);grid-column:1 / -1;grid-row:1}
+  .ssplit:has(>.pghead)>.snav{grid-row:2 / span 98}
+}
 /* The jump bar is the list's job here: hidden, over the dialog's own
    .field.sectjump rule, which outranks a plain one. */
 .snav,.shback,.ssplit>.sectjump,.ssplit>.field.sectjump,.ssplit>h3{display:none}

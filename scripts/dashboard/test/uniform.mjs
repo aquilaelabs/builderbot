@@ -233,7 +233,9 @@ async function measure(kind){
     // A list beside its detail (a project's Settings view, the Roles page's
     // shape) is two columns: the detail's bands start at one x of their own,
     // beside the list, and are measured apart from the page's.
-    const inCol = e => !!e.closest('.ssplit') && !e.closest('.snav');
+    // At a desk a settings page's head spans the list and the column both
+    // (the operator, 26 Oct), so it stands at the page's x, not the column's.
+    const inCol = e => !!e.closest('.ssplit') && !e.closest('.snav') && !(innerWidth > 900 && e.closest('.ssplit > .pghead'));
     const colLefts = [...new Set(bands.filter(inCol).map(leftOf))];
     const lefts = [...new Set(bands.filter(e => !inCol(e)).map(leftOf))];
     // Which band sits at each x, for the failure: three numbers say a view is
