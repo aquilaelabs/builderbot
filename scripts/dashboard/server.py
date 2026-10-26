@@ -2663,10 +2663,12 @@ def newest_transcript(project_dir, uid=""):
     files = []
     for d in dirs:
         try:
-            files += [f for f in d.glob("*.jsonl") if f.is_file()]
+            files += [(f.stat().st_mtime, f) for f in d.glob("*.jsonl") if f.is_file()]
         except OSError:
             continue
-    return max(files, key=lambda f: f.stat().st_mtime) if files else None
+    # The newest with a turn in it: one with nothing said was offered as
+    # Resume and refused by bb-tty (B276).
+    return next((f for _, f in sorted(files, key=lambda x: x[0], reverse=True) if transcripts.has_turn(f)), None)
 
 
 def last_claude(project_dir, uid=""):

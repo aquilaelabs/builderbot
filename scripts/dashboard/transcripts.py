@@ -224,6 +224,13 @@ def _first_prompt(path):
     return ""
 
 
+def has_turn(path):
+    """Whether a conversation holds anything the person typed: one that
+    does not (a 1 KB file of a session's start and nothing said) is not
+    one Claude Code resumes, so it is never offered as Resume (B276)."""
+    return bool(_first_prompt(path))
+
+
 def _texts(content):
     """The text blocks of a message, whatever shape the content came in."""
     if isinstance(content, str):
