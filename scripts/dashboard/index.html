@@ -892,10 +892,10 @@ html[data-motion="reduce"] .tourring{transition:none}
 /* A project an account is on, one row (the operator, 26 Oct): its name, its
    roles there beside it, and taking it off at the row's end, never a lone
    button wrapped onto a line of its own. */
-.rproj{display:grid;grid-template-columns:minmax(8rem,14rem) minmax(0,1fr) auto;align-items:center;gap:6px 12px;
+.rproj{display:grid;grid-template-columns:minmax(8rem,14rem) minmax(0,1fr) auto;align-items:start;gap:6px 12px;
   padding:6px 0;border-bottom:var(--hair) solid var(--line)}
-.rproj .rprojname{min-width:0;overflow-wrap:anywhere}
-.rproj .upick{margin:0}
+.rproj .rprojname{min-width:0;overflow-wrap:anywhere;min-height:var(--ctl);display:flex;align-items:center}
+.rproj .upick{margin:0;display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center}
 @media (max-width:600px){ .rproj{grid-template-columns:minmax(0,1fr) auto} .rproj .upick{grid-column:1 / -1;grid-row:2} }
 .raddon{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:center;margin-top:8px}
 .raddon select{width:100%;min-width:0}
