@@ -60,6 +60,8 @@ const ARCHIVE = `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.2" y="3"
 const MOVE = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 3H3.5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h3"/>
   <path d="M7 8h6.5M10.8 5.3 13.5 8l-2.7 2.7"/></svg>`;
 // A tag with its hole, for a project's group on its card's back (R138).
+// The pulldown's chevron, where a field is also a list to pick from.
+const CHEVRON_DOWN = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const TAG = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.6V3.3a.8.8 0 0 1 .8-.8h5.3l5 5a1 1 0 0 1 0 1.4l-4.3 4.3a1 1 0 0 1-1.4 0z"/>
   <circle cx="5.6" cy="5.6" r="1"/></svg>`;
 // A swatch, filled in the project's color where it has one (R138).

@@ -328,12 +328,18 @@ function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpt
     if (was?.classList.contains("askline") && was.__label === label){ resolve(null); return; }
     const box = document.createElement("div");
     box.className = "field askline";
+    // With options, the field is one to type in and a pulldown of every
+    // option at once (the operator, 26 Oct: a datalist hinted only once
+    // something was typed): its chevron opens the whole list, typing narrows
+    // it, and a press on one fills the field.
     const list = options.length ? `askopts${++seq}` : "";
-    box.innerHTML = `<label class="lbl">${esc(label)}</label><div class="askrow actbar ctlrow"><input type="text" autocomplete="off" spellcheck="false" aria-label="${esc(label)}"${
-        list ? ` list="${list}"` : ""}>
+    const field = `<input type="text" autocomplete="off" spellcheck="false" aria-label="${esc(label)}"${
+        list ? ` role="combobox" aria-expanded="false" aria-controls="${list}" aria-autocomplete="list"` : ""}>`;
+    box.innerHTML = `<label class="lbl">${esc(label)}</label><div class="askrow actbar ctlrow">${list
+        ? `<span class="combo">${field}<button type="button" class="combobtn" tabindex="-1" aria-label="every ${esc(label.toLowerCase())}">${CHEVRON_DOWN}</button>
+            <span class="combolist" id="${list}" role="listbox" hidden></span></span>` : field}
       <button type="button" data-askno>Cancel</button><button type="button" class="primary" data-askok>${esc(ok)}</button>${
-        also ? `<button type="button" class="danger" data-askalso>${esc(also.label)}</button>` : ""}</div>${
-      list ? `<datalist id="${list}">${options.map(o => `<option value="${esc(o)}"></option>`).join("")}</datalist>` : ""}`;
+        also ? `<button type="button" class="danger" data-askalso>${esc(also.label)}</button>` : ""}</div>`;
     faceFade(after, () => after.insertAdjacentElement("afterend", box));
     const inp = box.querySelector("input");
     inp.value = value;
@@ -346,11 +352,52 @@ function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpt
     box.querySelector("[data-askno]").onclick = () => done(null);
     const al = box.querySelector("[data-askalso]");
     if (al) al.onclick = () => done({also: also.key});
+    const combo = list ? comboWire(box, inp, options) : null;
     inp.onkeydown = e => {
+      if (combo?.key(e)) return;
       if (e.key === "Enter"){ e.preventDefault(); answer(); }
       else if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); done(null); }
     };
   });
+}
+
+// A field that is also a pulldown of `options` (askInline's): the list under
+// it, every option when it is opened by its chevron or an arrow key, the ones
+// containing what is typed as it is typed; Up and Down move the pick, Enter
+// takes it, Escape shuts the list before anything else. Returns {key(e)},
+// true when the list took the key.
+function comboWire(box, inp, options){
+  const ul = box.querySelector(".combolist"), btn = box.querySelector(".combobtn");
+  let shown = [], at = -1;
+  const draw = all => {
+    const q = inp.value.trim().toLowerCase();
+    shown = all || !q ? options.slice() : options.filter(o => o.toLowerCase().includes(q));
+    at = Math.min(at, shown.length - 1);
+    ul.innerHTML = shown.length ? shown.map((o, i) => `<button type="button" role="option" data-combo="${i}" aria-selected="${i === at}"${
+        i === at ? ' class="on"' : ""} tabindex="-1">${esc(o)}</button>`).join("")
+      : `<span class="combonone">none yet: what is typed is a new one</span>`;
+    ul.querySelectorAll("[data-combo]").forEach(b => b.onpointerdown = e => { e.preventDefault(); pick(shown[+b.dataset.combo]); });
+  };
+  const open = all => { draw(all); ul.hidden = false; inp.setAttribute("aria-expanded", "true"); };
+  const shut = () => { ul.hidden = true; at = -1; inp.setAttribute("aria-expanded", "false"); };
+  const pick = o => { inp.value = o; shut(); inp.focus(); };
+  btn.onpointerdown = e => { e.preventDefault(); if (ul.hidden){ at = -1; open(true); inp.focus(); } else shut(); };
+  inp.addEventListener("input", () => { at = -1; open(false); });
+  inp.addEventListener("blur", () => setTimeout(shut, 0));
+  return {key(e){
+    if (e.key === "ArrowDown" || e.key === "ArrowUp"){
+      e.preventDefault();
+      if (ul.hidden){ at = -1; open(!inp.value.trim()); }
+      const n = shown.length;
+      if (n) at = e.key === "ArrowDown" ? (at + 1) % n : (at - 1 + n) % n;
+      draw(!inp.value.trim());
+      ul.querySelector(".on")?.scrollIntoView({block: "nearest"});
+      return true;
+    }
+    if (e.key === "Enter" && !ul.hidden && at >= 0){ e.preventDefault(); pick(shown[at]); return true; }
+    if (e.key === "Escape" && !ul.hidden){ e.preventDefault(); e.stopPropagation(); shut(); return true; }
+    return false;
+  }};
 }
 
 // A pointer to another page is a link to it (R256 step 2): the address that

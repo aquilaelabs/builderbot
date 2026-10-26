@@ -285,7 +285,13 @@ function projectsShown(){
 // that opens somewhere else does not.
 const PJ_ELSEWHERE = "[data-pedit],[data-open],[data-c],[data-s],[data-rn],[data-bug],[data-l],[data-ph],[data-tcinst],[data-repadd]";
 let pjFade = null;               // {key, was: the card's markup at the press}
+// ...and the card a person last pressed on is the one the page follows when
+// it moves (the operator, 26 Oct), for a few seconds after the press: what
+// moves it is that press's answer, never somebody else's change on a poll.
+let pjFollow = null;            // {key, until}
 function pjFadeArm(e){
+  const card = e.target.closest?.(".pcard[data-pkey]");
+  if (card) pjFollow = {key: card.dataset.pkey, until: Date.now() + 8000};
   const b = e.target.closest?.(".pcard button");
   if (!b || b.matches(PJ_ELSEWHERE) || b.closest(".askline, .pcpop")) return;
   const key = b.closest(".pcard").dataset.pkey, c = projectList().find(x => x.key === key);
@@ -297,7 +303,7 @@ function pjFadeArm(e){
 function flipCard(key){
   const on = !pjEditing.has(key);
   // One card on its back at a time (the operator, 26 Oct): another turned
-  // over goes back to its front, a box open on it cancelled, as Back does.
+  // over goes back to its front, a box open on it canceled, as Back does.
   if (on) [...pjEditing].filter(k => k !== key).forEach(k => {
     document.querySelectorAll(`.pcard[data-pkey="${CSS.escape(k)}"] :is(.askline, .pcpop)`).forEach(x => x.__done?.(null));
     flipCard(k);
@@ -352,12 +358,9 @@ function showNewCard(key){
 // scrolls with the one that changed so it stays in sight, a phone's single
 // column above all (the operator, 26 Oct).
 function slideCards(key, change){
-  const cards = () => document.querySelectorAll(".pane .doc.on .projtab .pcard[data-pkey]");
-  const play = flip(cards, el => el.dataset.pkey, 360);
-  change();
+  change();                     // the grid's draw slides every card that moved
   document.querySelector(`.pane .doc.on .projtab .pcard[data-pkey="${CSS.escape(key)}"]`)
     ?.scrollIntoView({block: "nearest", behavior: noMotion() ? "auto" : "smooth"});
-  play();
 }
 
 // The project's name, asked in a box under it: taken at once from the
@@ -557,14 +560,34 @@ function renderProjectsInto(i){
       }).join("")
     + (gone.length ? docSection("projects", "archived", "Archived", `${gone.length} project${gone.length === 1 ? "" : "s"}`,
                                 grid_(gone), {open: false, cls: "dim", fold: true}) : "");
-  // The card a press armed, faded through once its markup has moved.
+  // Any rearrangement slides (the operator, 26 Oct): a rename, a pin, an
+  // archive, a group, a project made or gone, another person's change on
+  // the poll. Each card's place is read before the grid is drawn again, and
+  // each that lands elsewhere slides there from it while the rest close up.
+  const was = [...grid.querySelectorAll(".pcard[data-pkey]")].map(c => c.dataset.pkey);
+  const now = [...String(html).matchAll(/<div class="pcard [^"]*" data-pkey="([^"]*)"/g)].map(m => m[1]);
+  const moved = was.length > 0 && was.join("\n") !== now.join("\n");
+  const play = moved ? flip(() => grid.querySelectorAll(".pcard[data-pkey]"), el => el.dataset.pkey, 360) : null;
+  // The card a press armed, faded through once its markup has moved, and
+  // only where it stays: a card that moves slides rather than fading.
   const fc = pjFade && ps.find(c => c.key === pjFade.key);
-  const fade = fc && projectCard(fc) !== pjFade.was;
-  if (fade) pjFade = null;
+  const fade = fc && projectCard(fc) !== pjFade.was && was.indexOf(fc.key) === now.indexOf(esc(fc.key));
+  if (fc && projectCard(fc) !== pjFade.was) pjFade = null;
   let drawn = false;
   const draw = () => { drawn = paint(grid, html || `<div class="empty">nothing matches ${esc(pjQuery)}</div>`); };
   if (fade) fadeThrough(() => grid.querySelectorAll(`.pcard[data-pkey="${CSS.escape(fc.key)}"] > .pcface:not([inert])`), draw);
   else draw();
+  if (drawn && play) play();
+  // The card pressed on, moved, is followed on screen to where it lands:
+  // measured once its slide is over, since while it slides it is drawn at
+  // the place it left and a scroll then went nowhere.
+  if (drawn && moved && pjFollow && Date.now() < pjFollow.until && was.indexOf(pjFollow.key) !== now.indexOf(pjFollow.key)){
+    const card = grid.querySelector(`.pcard[data-pkey="${CSS.escape(pjFollow.key)}"]`);
+    const go = () => card?.isConnected && card.scrollIntoView({block: "nearest", behavior: noMotion() ? "auto" : "smooth"});
+    const slide = card?.getAnimations().find(a => /translate/.test(JSON.stringify(a.effect?.getKeyframes?.() || [])));
+    if (slide) slide.finished.then(go, go); else go();
+    pjFollow = null;
+  }
   if (drawn){
     wireSections(grid);
     wireProjectRows(grid);

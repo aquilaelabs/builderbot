@@ -227,8 +227,9 @@ function flip(els, key, ms = 140){
   const before = new Map([...els()].map(el => [key(el), el.getBoundingClientRect()]));
   return () => [...els()].forEach(el => {
     const a = before.get(key(el));
-    if (!a) return;
+    if (!a || !a.width) return;                // not on screen before: nothing to slide from
     const b = el.getBoundingClientRect();
+    if (!b.width) return;
     const dx = a.left - b.left, dy = a.top - b.top;
     if (dx || dy)
       el.animate([{transform: `translate(${dx}px,${dy}px)`}, {transform: "none"}],

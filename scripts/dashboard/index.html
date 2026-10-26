@@ -2212,6 +2212,25 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
 .askline .askrow{flex-wrap:nowrap}
 .askline .askrow input{flex:1 1 auto;min-width:0;width:auto}
 .askline .askrow>button{flex:none}
+/* A field that is also a pulldown (askInline with options; the operator,
+   26 Oct): the chevron inside its right edge as a select's, the list a
+   floating card under it with every option, the one picked by arrow keys
+   tinted in the accent. */
+.combo{position:relative;display:flex;flex:1 1 auto;min-width:0}
+.combo>input{flex:1 1 auto;min-width:0;width:auto;padding-right:34px}
+.combo>.combobtn{position:absolute;right:2px;top:2px;bottom:2px;width:30px;min-height:0;padding:0;border:0;background:transparent;
+  color:var(--dim);display:flex;align-items:center;justify-content:center}
+.combo>.combobtn svg{width:14px;height:14px}
+.combo>.combobtn:hover{color:var(--ink)}
+.combolist{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:60;max-height:220px;overflow:auto;padding:4px;
+  display:flex;flex-direction:column;background:var(--panel);border:var(--hair) solid var(--line);border-radius:var(--r-surface);
+  box-shadow:0 10px 28px rgba(0,0,0,.38)}
+.combolist[hidden]{display:none}
+.combolist>button{text-align:left;background:transparent;border:0;border-radius:var(--r-small);padding:6px 10px;min-height:34px;color:var(--ink);
+  font:var(--f-ui);flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.combolist>button:hover,.combolist>button.on{background:color-mix(in srgb, var(--accent) 18%, transparent)}
+.combonone{padding:6px 10px;color:var(--dim);font:var(--f-note)}
+@media (pointer:coarse){.combolist>button{min-height:44px}}
 /* A finger, not a pointer: the small controls that measured under 32px in the
    polish tour (18 Sep, 344 to 840px wide) grow to a thumb's size on a touch
    screen, and a desktop keeps its tighter strip. The bell stays bare (see its

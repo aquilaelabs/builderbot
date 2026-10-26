@@ -1360,7 +1360,13 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   await pjMenu('gamma');
   await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
   await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
-  const offered = await page.$$eval('.doc .projtab .askline datalist option', os => os.map(o => o.value));
+  // The field is also a pulldown of every group made (the operator, 26 Oct):
+  // its chevron opens them all, Escape shuts the list before the box.
+  await page.click('.doc .projtab .askline .combobtn');
+  const offered = await page.$$eval('.doc .projtab .askline .combolist [data-combo]', bs => bs.map(b => b.textContent));
+  await page.keyboard.press('Escape');
+  ok(await page.$('.doc .projtab .askline') && await page.$eval('.doc .projtab .askline .combolist', l => l.hidden),
+     "the Group field's chevron opens every group made, and Escape shuts the list before the box");
   // The field and its Cancel and Save on one line inside the card, at a
   // desk and on a phone: Save had dropped under Cancel.
   for (const w of [1280, 960]){
@@ -1395,10 +1401,13 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   await page.click('.doc .projtab .pcard[data-row="gamma"] .pcback [data-pedit]');
   await page.waitForTimeout(600);
   await page.click('.doc .projtab .pcard[data-row="gamma"] .pcfront [data-pmark]');
-  await page.waitForFunction(() => window.__fades.length, null, { timeout: 10000 }).catch(() => {});
+  await page.waitForFunction(() => (state.repos?.[reposOf('gamma') || 'gamma'] || {}).pinned, null, { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(800);
   const markFades = await page.evaluate(() => { const f = window.__fades.splice(0); window.__unfade(); return f; });
-  ok(boxFades.length === 2 && boxFades.every(f => f === 'gamma:pcface.pcback') && markFades[0] === 'gamma:pcface.pcfront',
-     `a box on a card's back fades its face in and out, and a pin pressed fades the front through as it lands (${JSON.stringify({ boxFades, markFades })})`);
+  // A pin moves the card to the top, so it slides there rather than fading
+  // (the operator, 26 Oct: a card that moves slides).
+  ok(boxFades.length === 2 && boxFades.every(f => f === 'gamma:pcface.pcback') && markFades.length === 0,
+     `a box on a card's back fades its face in and out, and a pin, which moves the card, slides it rather than fading (${JSON.stringify({ boxFades, markFades })})`);
   await page.evaluate(() => setProjectPinned(reposOf('gamma') || 'gamma', false));
   await pjMenu('gamma');
   // The pencil beside the group's name renames it in a box under the
@@ -2128,7 +2137,7 @@ for (const w of [1280, 393]){
 }
 await page.setViewportSize({ width: 1280, height: 800 });
 // One card on its back at a time (the operator, 26 Oct): Edit on another
-// turns this one back, a box open on it cancelled.
+// turns this one back, a box open on it canceled.
 {
   const A = '.doc .projtab .pcard[data-row="alpha"]', G = '.doc .projtab .pcard[data-row="gamma"]';
   if (!await page.$eval(A, c => c.classList.contains('flipped'))) await page.click(`${A} .pcfront [data-pedit]`);
@@ -2142,12 +2151,37 @@ await page.setViewportSize({ width: 1280, height: 800 });
     gamma: document.querySelector(g).classList.contains('flipped'), box: !!document.querySelector(`${a} .askline`),
     open: [...pjEditing] }), [A, G]);
   ok(!one.alpha && one.gamma && !one.box && one.open.length === 1,
-     `Edit on another card turns the one in Edit back, its open box cancelled, so one card is on its back at a time (${JSON.stringify(one)})`);
+     `Edit on another card turns the one in Edit back, its open box canceled, so one card is on its back at a time (${JSON.stringify(one)})`);
   await page.click(`${G} .pcback [data-pedit]`);
   await page.waitForTimeout(500);
   await page.evaluate(a => document.querySelector(a)?.scrollIntoView({ block: 'center' }), A);
   await page.click(`${A} .pcfront [data-pedit]`);
   await page.waitForTimeout(500);
+}
+// A card that moves slides there, the rest closing up, and the page follows
+// the one pressed on (the operator, 26 Oct): the last card pinned moves up
+// among the pinned, slid there and in sight.
+{
+  await page.setViewportSize({ width: 1280, height: 600 });
+  const last = await page.evaluate(() => { const g = document.querySelector('.doc .projtab #pjGrid > .pgrid');
+    const cs = [...g.querySelectorAll('.pcard[data-pkey]')].filter(c => c.querySelector('.pcfront [data-pmark]:not(.on)'));
+    const c = cs[cs.length - 1]; c.scrollIntoView({ block: 'end' }); return c.dataset.pkey; });
+  await page.waitForTimeout(400);
+  const sel = `.doc .projtab .pcard[data-pkey="${last}"]`;
+  await page.click(`${sel} .pcfront [data-pmark]`);
+  const r = await page.waitForFunction(s => {
+    const c = document.querySelector(s); if (!c) return null;
+    const cs = [...document.querySelectorAll('.doc .projtab #pjGrid > .pgrid .pcard[data-pkey]')], at = cs.indexOf(c);
+    const first = at >= 0 && c.querySelector('[data-pmark].on') && cs.slice(0, at).every(x => x.querySelector('[data-pmark].on'));
+    const slid = [...document.querySelectorAll('.doc .projtab .pcard')].some(x => x.getAnimations().some(a => /translate/.test(JSON.stringify(a.effect?.getKeyframes?.() || []))));
+    return first ? { first, slid } : null;
+  }, sel, { timeout: 10000 }).then(h => h.jsonValue()).catch(() => null);
+  await page.waitForTimeout(1200);
+  const seen = await page.$eval(sel, c => { const r = c.getBoundingClientRect(), d = c.closest('.doc').getBoundingClientRect(); return r.top >= d.top - 2 && r.bottom <= d.bottom + 2; });
+  ok(r?.first && r?.slid && seen, `a card pinned from the foot slides up among the pinned, the others with it, and the page follows it there (${JSON.stringify({ ...r, seen })})`);
+  await page.click(`${sel} .pcfront [data-pmark]`);
+  await page.waitForTimeout(800);
+  await page.setViewportSize({ width: 1280, height: 800 });
 }
 // Leaving the page turns a card back: Projects comes back on the fronts.
 ok(await page.$eval('.doc .projtab [data-row="alpha"]', c => c.classList.contains('flipped')), 'the card is on its back before the page is left');
