@@ -889,11 +889,20 @@ html[data-motion="reduce"] .tourring{transition:none}
   border-top:var(--hair) solid var(--line)}
 .rdetail>.setgrid{margin:var(--row-y) 0}
 .rprojects{display:flex;flex-direction:column}
-.rproj{display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:6px 0;border-bottom:var(--hair) solid var(--line)}
-.rproj .rprojname{min-width:8rem}
-.rproj .upick{flex:1 1 auto;margin:0}
-.raddon{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
-.raddon select{flex:1 1 10em;width:auto;min-width:0}
+/* A project an account is on, one row (the operator, 26 Oct): its name, its
+   roles there beside it, and taking it off at the row's end, never a lone
+   button wrapped onto a line of its own. */
+.rproj{display:grid;grid-template-columns:minmax(8rem,14rem) minmax(0,1fr) auto;align-items:center;gap:6px 12px;
+  padding:6px 0;border-bottom:var(--hair) solid var(--line)}
+.rproj .rprojname{min-width:0;overflow-wrap:anywhere}
+.rproj .upick{margin:0}
+@media (max-width:600px){ .rproj{grid-template-columns:minmax(0,1fr) auto} .rproj .upick{grid-column:1 / -1;grid-row:2} }
+.raddon{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:center;margin-top:8px}
+.raddon select{width:100%;min-width:0}
+@media (max-width:600px){ .raddon{grid-template-columns:minmax(0,1fr) auto} .raddon>select:first-child{grid-column:1 / -1} }
+/* Its groups apart (the operator, 26 Oct): Everywhere roles, Projects and
+   what the account can do each start a little below the one before. */
+#ueAccess>.setrow.col+.setrow.col{margin-top:14px}
 .rlvl{font:var(--f-note);font-weight:600;color:var(--dim)}
 .rlvl.write{color:var(--accent)}
 .rcan .td:not(.lead),.rcan .th:not(:first-child){text-align:center}

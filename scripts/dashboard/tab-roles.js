@@ -104,7 +104,7 @@ function rolesAccessFields(name){
       <b class="rprojname">${esc(projLabel(pn))}</b>
       <span class="upick">${rolesOnProject(pn).map(r => `<label class="pick"><input type="checkbox" data-rprole="${esc(r.name)}"${
         have.includes(r.name) ? " checked" : ""}${dead}> ${esc(r.label || r.name)}</label>`).join("")}</span>
-      ${ro ? "" : `<button type="button" class="ic" data-rprojoff="${esc(pn)}" aria-label="take ${esc(p.name)} off ${esc(projLabel(pn))}" title="take off this project">×</button>`}
+      ${ro ? "" : rmIcon(`data-rprojoff="${esc(pn)}"`, `Take ${p.name} off ${projLabel(pn)}`, {title: "take off this project: every role there goes"})}
     </div>`;
   }).join("");
   // The projects it is not on that offer a role (another project's owner
