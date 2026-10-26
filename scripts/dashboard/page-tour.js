@@ -26,7 +26,17 @@ const TOUR_STEPS = {
   projects: [
     {say: "Every project you work on. A project holds one or more git repositories, each with its own notebook: a roadmap, bugs, tests, its containers and VMs."},
     {at: TOUR_BAR, say: "Search narrows the cards by name, branch or node. New project is at the right, and the trash beside it keeps the projects you deleted."},
-    {at: `${TOUR_PANE} .pcard`, say: "A project's card: its repositories with their branches, whether a session is working there, and Start agent. A repository's name opens its notebook; Edit turns the card over to its color, group, settings and Delete project."},
+    // A page with no project yet shows an example card, as Containers and
+    // VMs do; the three steps after it turn the card over, the example or
+    // the first card on the page, and back again after (the operator, 26 Oct).
+    {at: `${TOUR_PANE} .pcard:not(.flipped) .pcfront`, sample: () => tourSampleProject(false), sampleKey: "project", part: true,
+     say: "A project's card: its repositories with their branches, who has a session there, and Start agent. A repository's name opens its notebook; the pin keeps it on Home and the box beside it archives it. Edit turns the card over."},
+    {at: `${TOUR_PANE} .pcard.flipped .pcback .pcrepo`, sample: () => tourSampleProject(true), sampleKey: "project", part: true, flip: true,
+     say: "The back of the card. Each repository has a shell in it, its git host, a rename, a move to another project, and delete, which puts it in the trash."},
+    {at: `${TOUR_PANE} .pcard.flipped .pcback .pcfoot`, sample: () => tourSampleProject(true), sampleKey: "project", part: true, flip: true,
+     say: "Along the foot: your own color for the project, its group, the lock, Report bug and its settings. A project with nothing in it has Delete project here too."},
+    {at: `${TOUR_PANE} .pcard.flipped .pcback .pcname`, sample: () => tourSampleProject(true), sampleKey: "project", part: true, flip: true,
+     say: "The pencil renames the project. Each control saves its own change as you make it, so Back only turns the card over again."},
   ],
   notebook: [
     {say: "A project's notebook: everything about it in one place, shared by the people and the sessions working on it."},
@@ -211,7 +221,16 @@ function tourStart(kind){
 // and taken away after: drawn by the page's own renderer where it has one,
 // inert, and marked as an example.
 function tourSample(s){
-  $("tourSample")?.remove();
+  // The same example from step to step (the project card's) stays, and
+  // turns over for a step about its back rather than being drawn again.
+  const was = $("tourSample");
+  if (was && s?.sampleKey && was.dataset.key === s.sampleKey){
+    const c = was.querySelector(".pcard"), turn = !!s.flip !== c?.classList.contains("flipped");
+    c?.classList.toggle("flipped", !!s.flip);
+    was.dataset.turning = turn ? "1" : "";
+    return was;
+  }
+  was?.remove();
   if (!s?.sample || (s.at && tourTarget(s.at))) return null;
   // The page on show's, not the first the pane keeps: after Home, the
   // example went into Home's hidden page and the ring wrapped an empty box
@@ -220,11 +239,48 @@ function tourSample(s){
   if (!doc) return null;
   const box = document.createElement("div");
   box.id = "tourSample"; box.className = "toursample"; box.inert = true;
+  if (s.sampleKey) box.dataset.key = s.sampleKey;
   box.innerHTML = `<div class="field"><span class="pill note">example</span> <span class="sub">what one looks like once there is one</span></div>${s.sample()}`;
   const bar = doc.querySelector(":scope > .docbarrow, :scope > .vbar");
   if (bar) bar.after(box); else doc.prepend(box);
   return box;
 }
+// An example project's card in the Projects page's own markup, on its front
+// or turned over to its back.
+function tourSampleProject(back){
+  const ic = (icon, label, extra = "") => `<button type="button" class="eye bare" aria-label="${label}"${extra}>${icon}</button>`;
+  const fb = (icon, label) => `<button type="button" class="ic" aria-label="${label}">${icon}</button>`;
+  return `<div class="field pgridband"><div class="pgrid"><div class="pcard pflip${back ? " flipped" : ""}">
+    <div class="pcface pcfront"><div class="pcname"><span class="name">example</span><span class="sp"></span>
+        <button type="button" class="eye bare pcmark">${PIN}</button><button type="button" class="eye bare pcmark">${ARCHIVE}</button></div>
+      <div class="pcmeta"><span class="pcfacts"><span class="pid">P1</span> · your-node</span></div>
+      <div class="pcrepos"><div class="pcrepo"><button type="button" class="link">example-web</button><span class="pcfacts"><span class="pbr">main</span></span></div></div>
+      <div class="pcacts actbar"><button type="button">Start agent</button><button type="button">Add repository</button><button type="button">Edit</button></div></div>
+    <div class="pcface pcback"><div class="pcname"><span class="name">example</span>${ic(PENCIL, "Rename")}
+        <span class="sp"></span><span class="actbar"><button type="button">Back</button></span></div>
+      <div class="pcrepos"><div class="pcrepo"><span class="name">example-web</span><span class="sp"></span>
+        ${ic(TERM, "A shell")}${ic(LINK, "Its git host")}${ic(PENCIL, "Rename")}${ic(MOVE, "Move")}${ic(BIN, "Delete", ' data-danger="1"')}</div></div>
+      <div class="pcacts actbar pcfoot">${fb(SWATCH, "Color")}${fb(TAG, "Group")}${fb(LOCK_OPEN, "Lock")}${fb(BUG, "Report bug")}${fb(GEAR, "Settings")}</div></div>
+  </div></div></div>`;
+}
+
+// The card a step turned over on the page (a step with `flip`), turned back
+// once the tour leaves those steps.
+let tourFlipped = "";
+function tourFlip(want){
+  if (!want){
+    const k = tourFlipped;
+    tourFlipped = "";
+    if (k && pjEditing.has(k)) flipCard(k);
+    return false;
+  }
+  const card = document.querySelector(`${TOUR_PANE} .doc.on .pgrid .pcard[data-pkey]`);
+  if (!card || card.classList.contains("flipped")) return false;
+  tourFlipped = card.dataset.pkey;
+  flipCard(tourFlipped);
+  return true;
+}
+
 function tourSampleCard(){
   return `<section class="dmcard"><div class="field dmgroup" style="--gc:var(--accent)"><b>example</b></div>
     <div class="row stack2"><div class="grow"><div class="dmhead"><div class="dmid">
@@ -257,7 +313,14 @@ function tourKeepSample(on){
 function tourDraw(){
   const ring = $("tourRing"), card = $("tourCard");
   const s = tourSteps[tourI], last = tourI === tourSteps.length - 1;
-  const el = tourSample(s) || tourTarget(s.at);
+  // A real card turned over for a step about its back, drawn once it has
+  // turned; and turned back for any other step.
+  if (!s.flip) tourFlip(false);
+  else if (tourFlip(true)){ ring.hidden = true; return setTimeout(() => { if (tourKind) tourDraw(); }, 480); }
+  // ...and a step's example ringed at the part the step is about.
+  const box = tourSample(s);
+  if (box?.dataset.turning){ box.dataset.turning = ""; ring.hidden = true; return setTimeout(() => { if (tourKind) tourDraw(); }, 480); }
+  const el = (box && s.part && box.querySelector(s.at.replace(TOUR_PANE, "").trim())) || box || tourTarget(s.at);
   tourKeepSample(!!s.sample);
   card.innerHTML = `<div class="tourstep">${tourI + 1} of ${tourSteps.length}</div>
     <div class="toursay">${esc(s.say)}</div>
@@ -313,6 +376,7 @@ function tourGo(d){
 function tourEnd(all){
   const kind = tourKind;
   tourKind = "";
+  tourFlip(false);
   tourKeepSample(false);
   $("tourCard").hidden = $("tourRing").hidden = true;
   $("tourSample")?.remove();
@@ -330,6 +394,7 @@ function tourEnd(all){
 function tourLeft(){
   tourAsked.delete(tourKind);
   tourKind = "";
+  tourFlip(false);
   tourKeepSample(false);
   $("tourCard").hidden = $("tourRing").hidden = true;
   $("tourSample")?.remove();

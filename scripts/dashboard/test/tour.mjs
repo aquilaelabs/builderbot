@@ -237,6 +237,39 @@ const phoneSample = await phone.evaluate(async () => {
 ok(phoneSample.shown && phoneSample.row, `...and on a phone an empty VMs page's last step shows an example VM (${JSON.stringify(phoneSample)})`);
 await prefs({ tour_seen: [], tour_off: true });
 
+// Projects' tour turns a card over for the steps about its back (the
+// operator, 26 Oct): the first card on the page, turned back after; and on a
+// page with none, the example card, which turns over in place.
+const flips = await page.evaluate(async () => {
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const ringOn = sel => { const r = $('tourRing').getBoundingClientRect(), t = document.querySelector(sel)?.getBoundingClientRect();
+    return !!t && !$('tourRing').hidden && r.left <= t.left + 1 && r.right >= t.right - 1 && r.top <= t.top + 1 && r.bottom >= t.bottom - 1; };
+  openProjectsTab(); await sleep(1200);
+  tourAsked.clear(); tourStart('projects'); await sleep(300);
+  tourGo(1); tourGo(1); tourGo(1); await sleep(900);
+  const card = document.querySelector('#pane0 .pgrid .pcard[data-pkey]');
+  const real = { steps: tourSteps.length, turned: card.classList.contains('flipped'), ringed: ringOn('#pane0 .pcard.flipped .pcback .pcrepo'),
+                 sample: !!$('tourSample') };
+  tourEnd(false); await sleep(600);
+  real.back = !card.isConnected || !document.querySelector(`#pane0 .pcard[data-pkey="${card.dataset.pkey}"]`).classList.contains('flipped');
+  pjQuery = 'no-project-is-called-this'; drawProjects(state.projects); await sleep(300);
+  tourAsked.clear(); tourStart('projects'); await sleep(300);
+  tourGo(1); tourGo(1); await sleep(300);
+  const ex = { front: !!document.querySelector('#tourSample .pcard:not(.flipped)'), ringed: ringOn('#tourSample .pcard .pcfront') };
+  tourGo(1); await sleep(900);
+  ex.turned = !!document.querySelector('#tourSample .pcard.flipped'); ex.ringedBack = ringOn('#tourSample .pcard .pcback .pcrepo');
+  tourGo(1); await sleep(300);
+  ex.foot = ringOn('#tourSample .pcard .pcback .pcfoot');
+  tourEnd(false); await sleep(300);
+  ex.gone = !$('tourSample');
+  pjQuery = ''; drawProjects(state.projects);
+  return { real, ex };
+});
+ok(flips.real.steps === 6 && flips.real.turned && flips.real.ringed && !flips.real.sample && flips.real.back,
+   `the Projects tour turns the first card over for its back's steps, ringing each part, and turns it back after (${JSON.stringify(flips.real)})`);
+ok(flips.ex.front && flips.ex.ringed && flips.ex.turned && flips.ex.ringedBack && flips.ex.foot && flips.ex.gone,
+   `...and with no project, an example card, its front then its back as it turns over (${JSON.stringify(flips.ex)})`);
+
 // Every page on the rail has a tour, and each step's part is on the page as
 // it is now (R142): a step whose part went with a redesign is left out by
 // tourStart, so a tour shrank without anybody seeing it. A step the
