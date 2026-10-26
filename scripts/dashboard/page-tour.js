@@ -80,8 +80,7 @@ const TOUR_STEPS = {
   ],
   vms: [
     {say: "VMs: a project's virtual machines on the nodes with VM host installed, made from the cloud images of a dozen Linux systems."},
-    {at: TOUR_BAR, say: "Pick the node, search, and switch between cards and a list. New VM is at the right; a session can make one too, with bb vm new, where the project's Make VMs setting allows it."},
-    {at: `${TOUR_PANE} .vmtab .tiles`, say: "How many run of how many, the projects they are under, and their snapshots; the chips under them narrow the list to one project's."},
+    {at: TOUR_BAR, say: "Pick the node, search, and switch between cards and a list; the tiles and chips under it count the VMs and narrow them to one project's. New VM is at the right; a session can make one too, with bb vm new, where the project's Make VMs setting allows it."},
     {at: `${TOUR_PANE} .vmtab [data-vm-key]`, sample: () => vmGroupsHtml([{key: "example/db", project: "example", name: "db", state: "running",
       os_name: "Debian 13", node_name: "your-node", vcpus: 2, mem_mb: 2048, disk_gb: 20, ip: "10.232.0.12", user: "builder",
       snapshots: ["clean"], screen: true}]),
