@@ -7086,7 +7086,23 @@ class Handler(BaseHTTPRequestHandler):
         for k in registry.repos_keys():
             owners_of[roles.owner_role_name(k)] = k
             live_owned.add(roles.owner_role_name(k))
-        rs = {n: r for n, r in rs.items() if n not in owners_of or n in live_owned}
+        # ...and one named before either of those (a repository's old name,
+        # a project's earlier key) by the project its note says it owns: tied
+        # to that project while it is live, and left off the lists once it is
+        # gone, where unmatched it was offered under every project.
+        dirs, keys, gone = set(registry.live_dirs()), set(registry.repos_keys()), set()
+        for n, r in rs.items():
+            note = str(r.get("note") or "")
+            if n in owners_of or not n.endswith("_owner") or not note.startswith("the owner of "):
+                continue
+            x = note[len("the owner of "):]
+            k = repos.key_of(x) if x in dirs else x if x in keys else ""
+            if k:
+                owners_of[n] = k
+                live_owned.add(n)
+            else:
+                gone.add(n)
+        rs = {n: r for n, r in rs.items() if n not in gone and (n not in owners_of or n in live_owned)}
         # ...and which project it is for, so the People section offers it
         # under that project alone (B726).
         rs = {n: (dict(r, label=f"Owner of {registry.label(owners_of[n])}", project=owners_of[n]) if n in owners_of else r)

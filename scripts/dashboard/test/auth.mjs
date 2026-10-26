@@ -1750,6 +1750,13 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
       const gOwner = Object.values(rl.roles || {}).find(r => isG(r.project));
       ok(gOwner && /^Owner of /.test(gOwner.label || '') && gOwner.scope === 'projects',
          `a project's owner role carries its project (${JSON.stringify(gOwner || {}).slice(0, 80)})`);
+      // One named before a rename is tied to its project by its note, and
+      // one whose project is gone is not offered at all (B369).
+      for (const [name, of] of [['gamma-was_owner', 'gamma'], ['vanished-xyz_owner', 'vanished-xyz']])
+        await post(adminAuth, '/api/roles', { action: 'set', name, scope: 'projects', perms: { projects: 'write' }, note: `the owner of ${of}` });
+      const rl2 = (await (await bare('/api/roles', { headers: adminAuth })).json()).roles || {};
+      ok(isG(rl2['gamma-was_owner']?.project) && !rl2['vanished-xyz_owner'],
+         `an owner role named before a rename is gamma's by its note, and one of a project gone is not listed (${JSON.stringify({ was: rl2['gamma-was_owner']?.project, gone: !!rl2['vanished-xyz_owner'] })})`);
       await page.evaluate(() => { loadRoles(); openUsersTab(); });
       await page.waitForSelector('.userstab [data-upick="plainone"]', { timeout: 15000 });
       await page.click('.userstab [data-upick="plainone"]');
