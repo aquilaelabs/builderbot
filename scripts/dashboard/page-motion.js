@@ -361,6 +361,14 @@ function fadeThrough(pick, swap){
   fadeIn(now);
 }
 
+// A change inside a project's card fades through on the face on show (the
+// operator, 26 Oct: a box opening on the card appeared with a cut): `el` is
+// anything in the card, `swap` the change. Elsewhere it is the change alone.
+function faceFade(el, swap){
+  const face = el?.closest?.(".pcface");
+  return face ? fadeThrough(() => face.isConnected ? [face] : [], swap) : swap();
+}
+
 // The marker on the item on show slides to the one pressed (the operator,
 // 17 Oct): the line under a sub-nav's tab and a notebook strip's, the bar
 // beside the rail's group. One element per strip, put back when a draw

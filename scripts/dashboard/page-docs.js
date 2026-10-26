@@ -334,11 +334,11 @@ function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpt
       <button type="button" data-askno>Cancel</button><button type="button" class="primary" data-askok>${esc(ok)}</button>${
         also ? `<button type="button" class="danger" data-askalso>${esc(also.label)}</button>` : ""}</div>${
       list ? `<datalist id="${list}">${options.map(o => `<option value="${esc(o)}"></option>`).join("")}</datalist>` : ""}`;
-    after.insertAdjacentElement("afterend", box);
+    faceFade(after, () => after.insertAdjacentElement("afterend", box));
     const inp = box.querySelector("input");
     inp.value = value;
     inp.focus(); inp.select();
-    const done = v => { box.remove(); resolve(v); };
+    const done = v => { faceFade(box, () => box.remove()); resolve(v); };
     box.__done = done;
     box.__label = label;
     const answer = () => done(inp.value.trim() || (allowEmpty ? "" : null));

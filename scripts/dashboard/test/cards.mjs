@@ -1381,6 +1381,26 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
   await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
   await page.click('.doc .projtab .askline [data-askno]');
+  // A box opening or closing on a card fades its face through, and so does
+  // a press's change landing on it (the operator, 26 Oct: they cut in).
+  await page.evaluate(() => { window.__fades = []; const was = fadeThrough;
+    fadeThrough = (pick, swap) => { const parts = [...(typeof pick === 'function' ? pick() : document.querySelectorAll(pick))];
+      window.__fades.push(parts.map(e => (e.closest('.pcard')?.dataset.row || '?') + ':' + [...e.classList].join('.')).join(',')); return was(pick, swap); };
+    window.__unfade = () => { fadeThrough = was; }; });
+  await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
+  await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
+  await page.click('.doc .projtab .askline [data-askno]');
+  await page.waitForTimeout(300);
+  const boxFades = await page.evaluate(() => window.__fades.splice(0));
+  await page.click('.doc .projtab .pcard[data-row="gamma"] .pcback [data-pedit]');
+  await page.waitForTimeout(600);
+  await page.click('.doc .projtab .pcard[data-row="gamma"] .pcfront [data-pmark]');
+  await page.waitForFunction(() => window.__fades.length, null, { timeout: 10000 }).catch(() => {});
+  const markFades = await page.evaluate(() => { const f = window.__fades.splice(0); window.__unfade(); return f; });
+  ok(boxFades.length === 2 && boxFades.every(f => f === 'gamma:pcface.pcback') && markFades[0] === 'gamma:pcface.pcfront',
+     `a box on a card's back fades its face in and out, and a pin pressed fades the front through as it lands (${JSON.stringify({ boxFades, markFades })})`);
+  await page.evaluate(() => setProjectPinned(reposOf('gamma') || 'gamma', false));
+  await pjMenu('gamma');
   // The pencil beside the group's name renames it in a box under the
   // heading, for every project in it (R273).
   await page.click('.doc .projtab .pjgroup[data-group="Clients"] [data-pjgrename]');

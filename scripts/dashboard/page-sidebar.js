@@ -325,13 +325,13 @@ function pickProjectColor(btn){
   pop.setAttribute("aria-label", `your color for ${projectName(key)}`);
   pop.innerHTML = PROJECT_COLORS.map(([n, tone]) => `<button type="button" role="radio" data-color="${n}" aria-checked="${n === cur}"
       aria-label="${esc(n || "none")}" title="${esc(n || "none")}"${n ? ` style="--pc:${tone}"` : ""}></button>`).join("");
-  line.insertAdjacentElement("afterend", pop);
+  faceFade(line, () => line.insertAdjacentElement("afterend", pop));
   btn.setAttribute("aria-expanded", "true");
   // A press on a Color button is left to its click, which shuts these
   // swatches when it is theirs and opens another card's when not.
   const away = e => { if (!pop.contains(e.target) && !e.target.closest?.("[data-pcolor]")) done(); };
   const esc_ = e => { if (e.key === "Escape") done(); };
-  const done = () => { pop.remove(); btn.setAttribute("aria-expanded", "false");
+  const done = () => { faceFade(pop, () => pop.remove()); btn.setAttribute("aria-expanded", "false");
                        document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", esc_, true); };
   pop.__done = done;
   setTimeout(() => { document.addEventListener("pointerdown", away, true); document.addEventListener("keydown", esc_, true); });

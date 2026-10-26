@@ -86,6 +86,15 @@ ok(await page.$eval('#bNewProjTab', b => b.textContent.includes('New project')),
   const key = await page.evaluate(() => Object.entries(state.repos).find(([, r]) => r.name === 'Web shop, v2')[0]);
   const card = `.pgrid .pcard[data-pkey="${key}"]`;
   await page.waitForSelector(card, { timeout: 15000 });
+  // The page goes to it, and it wears a ring in the accent that fades
+  // (the operator, 26 Oct).
+  await page.waitForSelector(`${card}.pjnew`, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(800);
+  const fresh = await page.$eval(card, c => { const r = c.getBoundingClientRect(), d = c.closest('.doc').getBoundingClientRect();
+    return { ring: c.classList.contains('pjnew'), seen: r.top >= d.top - 1 && r.bottom <= d.bottom + 1 }; });
+  ok(fresh.ring && fresh.seen, `a new project's card is scrolled into sight and wears the new ring (${JSON.stringify(fresh)})`);
+  await page.waitForFunction(c => !document.querySelector(c).classList.contains('pjnew'), card, { timeout: 5000 }).catch(() => {});
+  ok(!await page.$eval(card, c => c.classList.contains('pjnew')), '...which goes after a moment');
   ok(await page.$eval(card, c => /no repository yet/.test(c.querySelector('.pcfront').textContent) && !c.querySelector('.pcfront [data-c]')),
      '...a card with no repository in it says so, and has no agent to start');
   await page.click(`${card} .pcfront [data-repadd]`);

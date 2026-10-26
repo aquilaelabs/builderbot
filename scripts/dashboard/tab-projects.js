@@ -279,11 +279,25 @@ function projectsShown(){
   drawProjects(state?.projects || []);
 }
 
+// A press on a card that changes what it holds (a mark, its color, its
+// group, a name) arms its fade: the next draw that changes that card fades
+// its face through (faceFade) rather than cutting to the new one. A press
+// that opens somewhere else does not.
+const PJ_ELSEWHERE = "[data-pedit],[data-open],[data-c],[data-s],[data-rn],[data-bug],[data-l],[data-ph],[data-tcinst],[data-repadd]";
+let pjFade = null;               // {key, was: the card's markup at the press}
+function pjFadeArm(e){
+  const b = e.target.closest?.(".pcard button");
+  if (!b || b.matches(PJ_ELSEWHERE) || b.closest(".askline, .pcpop")) return;
+  const key = b.closest(".pcard").dataset.pkey, c = projectList().find(x => x.key === key);
+  if (c) pjFade = {key, was: projectCard(c)};
+}
+
 // Turn a card over, or back, in place: the class moves and the faces trade
 // which one a press and a screen reader reach; the next paint draws it so.
 function flipCard(key){
   const on = !pjEditing.has(key);
   on ? pjEditing.add(key) : pjEditing.delete(key);
+  if (pjFade?.key === key) pjFade = null;    // the turn is its own motion
   const card = document.querySelector(`.pcard[data-pkey="${CSS.escape(key)}"]`);
   if (!card) return;
   card.classList.toggle("flipped", on);
@@ -309,8 +323,22 @@ async function newProjectByName(){
     if (j.error){ notify(j.error, true); return; }
     pjEditing.delete(j.key);
     notify(`${j.name} made: Add repository on its card makes or clones its first one`);
-  }catch(e){ notify("making the project failed: " + failWords(e), true); }
-  await refresh();
+    await refresh();
+    showNewCard(j.key);
+  }catch(e){ notify("making the project failed: " + failWords(e), true); await refresh(); }
+}
+
+// A project just made: the page scrolls to its card wherever the order put
+// it, and the card wears a ring in the accent that fades (the operator, 26
+// Oct), so the eye lands on it.
+function showNewCard(key){
+  const card = document.querySelector(`.pane .doc.on .projtab .pcard[data-pkey="${CSS.escape(key)}"]`);
+  if (!card) return;
+  card.scrollIntoView({block: "center", behavior: noMotion() ? "auto" : "smooth"});
+  card.classList.remove("pjnew");
+  void card.offsetWidth;
+  card.classList.add("pjnew");
+  setTimeout(() => card.classList.remove("pjnew"), 2600);
 }
 
 // The cards after a change that moves them (a project renamed sorts
@@ -416,6 +444,7 @@ function renderProjectsInto(i){
         <span class="actbar"><button type="button" id="bTrashTab" aria-label="the trash" title="projects you deleted: still on disk under .trash, and still recoverable">${BIN}</button>
         <button type="button" class="primary" id="bNewProjTab" title="a project, by its name: its repositories are added on its card">New project</button></span>`);
     d.list.innerHTML = `<div class="field pjjob" id="pjJob" hidden></div><div id="pjChips"></div><div class="field pgridband"><div id="pjGrid"></div></div>`;
+    el.querySelector("#pjGrid").addEventListener("click", pjFadeArm, true);
     el.querySelector("#bNewProjTab").onclick = newProjectByName;
     el.querySelector("#bTrashTab").onclick = openTrash;
     const box = el.querySelector("#pjSearch");
@@ -472,7 +501,15 @@ function renderProjectsInto(i){
       }).join("")
     + (gone.length ? docSection("projects", "archived", "Archived", `${gone.length} project${gone.length === 1 ? "" : "s"}`,
                                 grid_(gone), {open: false, cls: "dim", fold: true}) : "");
-  if (paint(grid, html || `<div class="empty">nothing matches ${esc(pjQuery)}</div>`)){
+  // The card a press armed, faded through once its markup has moved.
+  const fc = pjFade && ps.find(c => c.key === pjFade.key);
+  const fade = fc && projectCard(fc) !== pjFade.was;
+  if (fade) pjFade = null;
+  let drawn = false;
+  const draw = () => { drawn = paint(grid, html || `<div class="empty">nothing matches ${esc(pjQuery)}</div>`); };
+  if (fade) fadeThrough(() => grid.querySelectorAll(`.pcard[data-pkey="${CSS.escape(fc.key)}"] > .pcface:not([inert])`), draw);
+  else draw();
+  if (drawn){
     wireSections(grid);
     wireProjectRows(grid);
     wireProjectCards(grid);
