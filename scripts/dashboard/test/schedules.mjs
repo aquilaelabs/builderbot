@@ -36,25 +36,62 @@ ok(await page.evaluate(() => location.hash) === '#/jobs/schedules'
 
 // Turning the scan on without its node and paths opens its form instead.
 await page.click('.schedulestab [data-schedon="scan"]');
-await page.waitForSelector('.schedulestab [data-schedform="scan"] [data-schedenv="SCANNER_REPORTS_PATH"]', { timeout: 10000 });
-ok(true, 'turning the scan on with nothing set opens its form for its node and paths');
-await page.click('.schedulestab [data-schedcancel]');
+await page.waitForSelector('#schedmodal:not([hidden]) [data-schedform="scan"] [data-schedenv="SCANNER_REPORTS_PATH"]', { timeout: 10000 });
+ok(true, 'turning the scan on with nothing set opens its dialog for its node and paths');
+await page.click('#schedmodal [data-schedcancel]');
+await page.waitForFunction(() => document.getElementById('schedmodal').hidden, null, { timeout: 5000 });
 
 // A schedule added on the page: its timetable in words once saved.
 await page.click('#bSchedNew');
-await page.waitForSelector('.schedulestab [data-schedform="new"]', { timeout: 10000 });
+await page.waitForSelector('#schedmodal:not([hidden]) [data-schedform="new"]', { timeout: 10000 });
+// A dialog over the page (the operator, 26 Oct), not a form in its list.
+const dlg = await page.evaluate(() => {
+  const m = $('schedmodal');
+  return { dialog: m.getAttribute('role') === 'dialog' && m.getAttribute('aria-modal') === 'true',
+           title: $('schT')?.textContent, inPage: !!document.querySelector('.schedulestab [data-schedform]'),
+           foot: [...m.querySelectorAll('.foot button')].map(b => b.textContent.trim()).join(',') };
+});
+ok(dlg.dialog && dlg.title === 'New schedule' && !dlg.inPage && dlg.foot === 'Cancel,Add',
+   `New schedule opens a dialog, its foot Cancel and Add (${JSON.stringify(dlg)})`);
+// As few fields as User Scripts (the operator, 26 Oct): a name, When as a
+// pick, where it runs (the controller first, and picked), and the script;
+// no timeout, and Runs as only for a sandbox node, where root is BuilderBot's.
+const form = await page.evaluate(() => {
+  const ids = [...$('schedmodal').querySelectorAll('input, select, textarea')].filter(e => e.offsetParent).map(e => e.id);
+  const node = $('schNode');
+  return { ids, when: $('schWhen').value, on: node.options[node.selectedIndex]?.textContent, first: node.options[0]?.textContent };
+});
+ok(form.ids.join() === 'schName,schWhen,schNode,schScript' && form.when === '0 4 * * *' && form.on === 'the controller' && form.first === 'the controller',
+   `a new schedule asks its name, when, where and its script, daily on the controller to start (${JSON.stringify(form)})`);
+const as = await page.evaluate(() => {
+  const was = schedData.nodes;
+  schedData.nodes = [...was, { id: 'nbox', name: 'box', sandbox: false }, { id: 'nsand', name: 'sand', sandbox: true }];
+  const pick = id => { const sel = $('schNode'); if (![...sel.options].some(o => o.value === id)) sel.innerHTML += `<option value="${id}">${id}</option>`;
+    sel.value = id; sel.dispatchEvent(new Event('change')); };
+  const read = () => !!$('schAs');
+  pick('nbox'); const plain = read(); pick('nsand'); const sand = read();
+  pick(was.find(n => n.controller).id); const ctl = read();
+  schedData.nodes = was; return { plain, sand, ctl };
+});
+ok(!as.plain && as.sand && !as.ctl, `Runs as is asked only on a sandbox node (${JSON.stringify(as)})`);
+await page.selectOption('#schWhen', '');
+ok(await page.$eval('#schCronF', f => !f.hidden), "When's Custom shows cron's five fields to type");
 await page.fill('#schName', 'Say hello');
 await page.fill('#schCron', '0 4 * * 1-5');
 await page.fill('#schScript', 'echo scheduled-hello-$((40+2))');
-await page.evaluate(() => {
-  // The fixture's controller runs its own jobs on its local node, which the
-  // picker does not list (it lists agent nodes): set as the form would.
-  schedDraft.node = 'local';
-});
-await page.click('.schedulestab [data-schedsave=""]');
+await page.click('#schedmodal [data-schedsave=""]');
 const row = await until(() => page.evaluate(() => (schedData?.schedules || []).find(s => s.name === 'Say hello')));
 ok(row && row.on && row.words === 'weekdays at 4:00' && row.next_at > Date.now() / 1000,
    `a schedule added on the page is on, its timetable said in words, its next run ahead (${row?.words})`);
+ok(await page.evaluate(() => document.getElementById('schedmodal').hidden), '...and Add closes the dialog');
+await page.waitForSelector(`.schedulestab [data-schededit="${row.id}"]`, { timeout: 10000 });
+await page.click(`.schedulestab [data-schededit="${row.id}"]`);
+await page.waitForSelector('#schedmodal:not([hidden]) #schName', { timeout: 10000 });
+ok(await page.$eval('#schName', i => i.value) === 'Say hello' && await page.$eval('#schT', h => h.textContent) === 'Say hello',
+   "a row's Edit opens the same dialog on it, named for it");
+await page.keyboard.press('Escape');
+await page.waitForFunction(() => document.getElementById('schedmodal').hidden, null, { timeout: 5000 }).catch(() => {});
+ok(await page.evaluate(() => document.getElementById('schedmodal').hidden), '...and Escape closes it');
 
 // Run now: one run, a job whose log says what the script printed.
 await page.click(`.schedulestab [data-schedrun="${row.id}"]`);
@@ -98,6 +135,13 @@ ok(!!gone && (await api('/api/schedules', { action: 'remove', id: 'scan' })).sta
   const write = await api('/api/schedules', { action: 'save', name: 'x', cron: '* * * * *', script: 'id', node: 'local' }, SH);
   ok(read.status === 403 && write.status === 403 && /a session has no say/.test(write.body.error || ''),
      `a session's token is refused, reading and writing (${read.status}/${write.status})`);
+  // ...nor does it see a schedule's runs among the jobs, or one by its id:
+  // the scripts and their logs are an administrator's (the operator, 26 Oct).
+  const one = await api(`/api/v1/jobs?id=${ran.last.job}`, undefined, SH);
+  const list = await api('/api/v1/jobs?n=500', undefined, SH);
+  const mineToo = (await api('/api/v1/jobs?n=500')).body.jobs || [];
+  ok(one.status === 404 && !(list.body.jobs || []).some(j => j.id === ran.last.job) && mineToo.some(j => j.id === ran.last.job),
+     `a schedule's run is not a session's to read, by its id or in the list, and is the administrator's (${one.status})`);
   await api('/api/users', { action: 'add', name: 'w.sched', password: 'w.sched-pass-1', role: 'user' });
   await member('w.sched');
   const UH = { Authorization: 'Basic ' + Buffer.from('w.sched:w.sched-pass-1').toString('base64'), 'Content-Type': 'application/json' };

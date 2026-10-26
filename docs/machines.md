@@ -447,10 +447,13 @@ the queue's counts, and `/metrics` answers with one in Prometheus text.
 ## Schedules
 
 **Schedules**, beside Jobs in its group, is an administrator's own cron, as
-Unraid's User Scripts are: each schedule a script, a timetable in cron's five
-fields said in words (`0 4 * * 0`, Sundays at 4:00), the node it runs on, and
-whether it runs there as the node's jobs account or as root (a node
-provisioned as a sandbox alone, as `bb root run` is). Every run is a job, its
+Unraid's User Scripts are: each schedule a name, when it runs (hourly, daily,
+weekly, monthly, or cron's five fields under Custom, said in words: `0 4 * * 0`
+is Sundays at 4:00), where it runs, and a script. It runs on the controller,
+as the controller's account with everything that account can read, or on a
+node as the node's jobs account; on a node provisioned as a sandbox it may
+run as root instead, as `bb root run` does. A run is stopped after a day.
+New schedule and a row's Edit open the same dialog. Every run is a job, its
 log on the Jobs page and linked from the schedule's row with how it ended;
 **Run now** runs one once, whatever its timetable says. One run of a schedule
 goes at a time: one still going when the next falls due is said on the bell
@@ -462,7 +465,7 @@ The scripts are kept in the controller's state and never on the share, and
 are a person's alone: the page is its own area of a role (Schedules), which
 administrators hold and no other role is given unless somebody says so, and
 a session's token is refused at it whatever it asks; bb has no verb for
-schedules.
+schedules, and a schedule's runs are not among the jobs a session reads.
 
 The static analysis scan ([scanners.md](scanners.md)) is built in: off until
 it is turned on, which asks for the node it runs on and where that node sees

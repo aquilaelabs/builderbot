@@ -10042,9 +10042,12 @@ class Handler(BaseHTTPRequestHandler):
             last = r.get("last") or {}
             if last.get("job"):
                 last["state"] = _job_state(last["job"])
-        ns = [{"id": n["id"], "name": n["name"], "sandbox": bool((n.get("reported") or {}).get("sandbox")),
-               "state": n.get("state", "")}
-              for n in (nodes.node_list() if not NODES_OK else []) if n.get("kind") == "agent"]
+        # The controller first, as itself (its own runner, as the controller's
+        # account), then every enrolled node.
+        ns = [{"id": n["id"], "name": "the controller" if n.get("kind") == "local" else n["name"],
+               "sandbox": bool((n.get("reported") or {}).get("sandbox")), "state": n.get("state", ""),
+               "controller": n.get("kind") == "local"}
+              for n in (nodes.node_list() if not NODES_OK else []) if n.get("kind") in ("agent", "local")]
         return self._json({"schedules": rows, "nodes": ns, "may": not users.may(who, "schedules")})
 
     def _schedules(self, req):

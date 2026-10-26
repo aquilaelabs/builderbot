@@ -33,8 +33,11 @@ _lock = threading.Lock()
 
 MAX = 64                     # schedules kept
 SCRIPT_MAX = 64 * 1024
-TIMEOUT_DEFAULT = 3600
+# A run is stopped after a day unless its schedule says less (the scan's
+# four hours): the form asks nothing about it (the operator, 26 Oct), and a
+# hung script holds its node's job slot no longer than that.
 TIMEOUT_MAX = 24 * 3600
+TIMEOUT_DEFAULT = TIMEOUT_MAX
 # A tick later than this past a run's minute is a controller that was down
 # for it: run once, and say how late.
 LATE_S = 180
