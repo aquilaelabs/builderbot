@@ -68,12 +68,22 @@ await page.waitForSelector('#resumemenu [data-signin-node]', { timeout: 20000 })
 const menu = await page.$eval('#resumemenu', m => ({ head: m.querySelector('.rmhead b')?.textContent.trim() || '',
   lines: [...m.querySelectorAll('.rmline')].map(l => `${[...l.querySelector('.rmwho').children].map(e => e.textContent.trim()).join(' ')}: ${
     [...l.querySelectorAll('button')].map(b => b.textContent.trim()).join('/')}`) }));
-// One line per agent installed there (the operator, 22 Oct): Claude's sign-in
-// in place of Resume and New, and ChatGPT's own, Codex CLI being there too.
-ok(menu.head === 'signbox' && menu.lines.includes('Claude not signed in here: Sign in'),
-   `pressing it opens the chooser with that node's sign-in as Claude's one press, in place of Resume and New (${menu.head}; ${menu.lines.join(' | ')})`);
-ok(menu.lines.includes('ChatGPT not signed in here: Sign in'),
-   `...and a line for ChatGPT beside it, Codex CLI being installed there, offering its own sign-in (${menu.lines.join(' | ')})`);
+// Start is one line, the agents installed there a pulldown (the operator,
+// 26 Oct): Claude first with its sign-in in place of New, and ChatGPT among
+// them, Codex CLI being there too, with its own sign-in once picked.
+const startOf = () => page.$eval('#resumemenu', m => { const l = m.querySelector('.rmline:has(#rmAgentSel)');
+  return { agents: [...(m.querySelector('#rmAgentSel')?.options || [])].map(o => o.textContent.trim()),
+           said: l?.querySelector('.rmsays')?.textContent.trim() || '', press: [...(l?.querySelectorAll('button') || [])].map(b => b.textContent.trim()).join('/'),
+           sign: l?.querySelector('[data-signin-node], [data-asignin]')?.dataset.asignin || (l?.querySelector('[data-signin-node]') ? 'claude' : '') }; });
+const start = await startOf();
+ok(menu.head === 'signbox' && start.agents[0] === 'Claude' && start.said === 'not signed in here' && start.press === 'Sign in' && start.sign === 'claude',
+   `pressing it opens the chooser with that node's sign-in as Claude's one press, in place of New (${menu.head}; ${JSON.stringify(start)})`);
+await page.selectOption('#resumemenu #rmAgentSel', { label: 'ChatGPT' });
+await page.waitForFunction(() => document.querySelector('#resumemenu #rmAgentSel')?.selectedOptions[0]?.textContent.trim() === 'ChatGPT', null, { timeout: 5000 });
+const gpt = await startOf();
+ok(start.agents.includes('ChatGPT') && gpt.said === 'not signed in here' && gpt.press === 'Sign in' && gpt.sign === 'codex',
+   `...and ChatGPT among the agents, Codex CLI being installed there, offering its own sign-in once picked (${JSON.stringify(gpt)})`);
+await page.selectOption('#resumemenu #rmAgentSel', { label: 'Claude' });
 await page.click('#resumemenu [data-signin-node]');
 await page.waitForFunction(id => {
   const s = document.querySelector(`.agentstab [data-agnode="${id}"] [data-sect="agents:claude"]`);

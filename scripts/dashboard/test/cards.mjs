@@ -2629,6 +2629,25 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
      `...and a Start band with a line for Claude there, New where this account is signed in, and a Resume band under it (${menu.lines.join(' | ')}; ${menu.titles.join()})`);
   await page.selectOption('#rmNodeSel', 'n_new');
   const other = await readMenu();
+  // Start is one line, the agents installed on the node picked a pulldown
+  // and the picked one's press beside it (the operator, 26 Oct); an agent
+  // not installed there is not in it.
+  const pull = await page.evaluate(async () => {
+    const p = state.projects.find(x => x.name === 'alpha'), n = p.session_nodes.find(x => x.id === 'n_ubu');
+    const was = n.agents; n.agents = agentsLive().filter(a => a.id !== 'claude').slice(0, 1).map(a => a.id);
+    placeResumeMenu(); await new Promise(r => setTimeout(r, 200));
+    const sel = document.querySelector('#resumemenu #rmAgentSel');
+    const out = { opts: [...(sel?.options || [])].map(o => o.value), lines: document.querySelectorAll('#resumemenu .rmgroup:has(#rmAgentSel) .rmline').length };
+    if (sel){ sel.value = out.opts[1]; sel.dispatchEvent(new Event('change')); await new Promise(r => setTimeout(r, 200)); }
+    const b = document.querySelector('#resumemenu .rmgroup:has(#rmAgentSel) .rmline button');
+    out.picked = document.querySelector('#resumemenu #rmAgentSel')?.value; out.press = b ? (b.dataset.anew || b.dataset.asignin || '') : '';
+    out.all = agentsLive().map(a => a.id);
+    n.agents = was; rmAgent = { project: '', agent: '' }; placeResumeMenu();
+    return out;
+  });
+  ok(pull.opts.length === 2 && pull.opts[0] === 'claude' && pull.lines === 1 && pull.picked === pull.opts[1] && pull.press === pull.opts[1]
+     && pull.all.length > 2,
+     `Start is one line with the agents installed there as a pulldown, a pick turning its press to that agent's, and none that is not installed (${JSON.stringify(pull)})`);
   ok(other.nodes[1] === '*fresh' && other.lines[0] === 'Claude not signed in here: Sign in' && other.buttons[0].node === 'n_new',
      `...another node picked shows its own line: its sign-in where this account has none (${other.lines.join(' | ')})`);
   await page.selectOption('#rmNodeSel', 'n_rh');

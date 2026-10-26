@@ -45,6 +45,8 @@ function syncResumeMenu(){
 let resumePick = null;
 // Which node the chooser's first step shows, of a project on several.
 let rmNode = {project: "", node: ""};
+// The agent picked in the chooser's Start pulldown, kept across its redraws.
+let rmAgent = {project: "", agent: ""};
 // Your conversations on the project the chooser is open on, for its Resume
 // band (R143): the Sessions view's list, read as it opens. rows null while
 // it is on its way.
@@ -595,7 +597,7 @@ function placeResumeMenu(){
   if (rmNode.project !== p.name || !ns.some(n => n.id === rmNode.node))
     rmNode = {project: p.name, node: (ns.find(runsOn) || ns.find(n => n.id === p.session_node) || ns[0] || {}).id || ""};
   const n = ns.find(x => x.id === rmNode.node) || ns[0];
-  const line = (who, state, presses, cls = "") => `<div class="rmline${cls}"><span class="rmwho"><b>${esc(who)}</b>${
+  const line = (who, state, presses, cls = "", whoHtml = "") => `<div class="rmline${cls}"><span class="rmwho">${whoHtml || `<b>${esc(who)}</b>`}${
       state ? `<span class="rmsays">${esc(state)}</span>` : ""}</span><div class="actbar rmacts">${presses}</div></div>`;
   const STATE_WORDS = {working: "working", waiting: "waiting for you", asking: "asking you"};
   // Yours running: Claude's presses as they always were, another agent's
@@ -614,17 +616,18 @@ function placeResumeMenu(){
   };
   // Start: a new conversation of each agent on the node picked, in the
   // lowest slot free, or why there is none.
-  const startLine = a => {
+  const startLine = (a, pick = "") => {
     const node = at(n), claude = a.id === "claude";
+    const line_ = (who, state, presses) => line(who, state, presses, "", pick);
     if (claude ? !claudeSigned(n) : n.id && !agentOn(a.id, n.id))
-      return line(a.name, "not signed in here", claude
+      return line_(a.name, "not signed in here", claude
         ? `<button data-signin-node="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its Claude sign-in">Sign in</button>`
         : `<button data-asignin="${esc(a.id)}" data-nid="${esc(n.id)}" title="opens ${esc(n.name)} on the Agents page, at its ${esc(a.name)} sign-in">Sign in</button>`);
     const slot = freeSlot(p.name, a.id);
     const cap = Math.min(AGENT_MAX_SLOTS, p.prefs?.agent_slots || 3);
-    if (!slot) return line(a.name, `${cap} running, the most here: end one to start another`, "");
+    if (!slot) return line_(a.name, `${cap} running, the most here: end one to start another`, "");
     const as = slot > 1 ? `, as ${agentSlotName(a, slot)}` : "";
-    return line(a.name, slot > 1 ? `as ${agentSlotName(a, slot)}` : "", claude
+    return line_(a.name, slot > 1 ? `as ${agentSlotName(a, slot)}` : "", claude
       ? `<button data-n="1" data-node="${esc(node)}" data-slot="${slot}" title="a new conversation${esc(as)}">New</button>`
       : `<button data-anew="${esc(a.id)}" data-node="${esc(node)}" data-slot="${slot}" title="a new conversation${esc(as)}">New</button>`);
   };
@@ -633,6 +636,16 @@ function placeResumeMenu(){
     return agentsLive().filter(a => (a.id === "claude" || (n.agents || []).includes(a.id))
         && !(p.prefs?.agents_off || []).includes(a.id))
       .sort((x, y) => (y.id === first) - (x.id === first));
+  };
+  // One line for Start (the operator, 26 Oct): the agents installed on the
+  // node picked as a pulldown, the project's default first, and the one
+  // picked's state and its press beside it; a plain name when there is one.
+  const startBand = () => {
+    const list = here();
+    if (!list.length) return `<div class="rmstate">No coding agent this project uses is installed on ${esc(n.name || "its node")}.</div>`;
+    if (rmAgent.project !== p.name || !list.some(a => a.id === rmAgent.agent)) rmAgent = {project: p.name, agent: list[0].id};
+    const a = list.find(x => x.id === rmAgent.agent);
+    return startLine(a, list.length > 1 ? `<select id="rmAgentSel" aria-label="the coding agent to start">${optionList(list.map(x => [x.id, x.name]), a.id)}</select>` : "");
   };
   // Resume: your conversations here, newest first (the Sessions view's
   // list), each its agent, when and its first words.
@@ -669,7 +682,7 @@ function placeResumeMenu(){
         : n.name ? `<div class="rmhead"><b>${esc(n.name)}</b>${facts ? `<span class="rmfacts">${esc(facts)}</span>` : ""}</div>` : ""}${
         mine.length ? `<div class="rmgroup"><div class="rmtitle">Yours here</div>${mine.map(runningLine).join("")}</div>` : ""}${
         n.where !== "node" ? `<div class="rmstate bad">${esc(n.why)}</div>`
-          : `<div class="rmgroup"><div class="rmtitle">Start</div>${here().map(startLine).join("")}</div>
+          : `<div class="rmgroup"><div class="rmtitle">Start</div>${startBand()}</div>
              <div class="rmgroup"><div class="rmtitle">Resume</div>${convs()}</div>`}</div>`;
   // The same menu as the one up already is left where it is (the operator,
   // 12 Oct): drawn again on every poll, its buttons were replaced under the
@@ -684,6 +697,8 @@ function placeResumeMenu(){
   card.appendChild(m);
   const nsel = m.querySelector("#rmNodeSel");
   if (nsel) nsel.onchange = () => { rmNode = {project: p.name, node: nsel.value}; placeResumeMenu(); };
+  const asel = m.querySelector("#rmAgentSel");
+  if (asel) asel.onchange = () => { rmAgent = {project: p.name, agent: asel.value}; placeResumeMenu(); };
   m.querySelectorAll("[data-signin-node]").forEach(b => b.onclick = () => {
     resumeFor = null;
     drawProjects(state.projects);
