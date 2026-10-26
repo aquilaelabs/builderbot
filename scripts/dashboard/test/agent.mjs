@@ -3402,11 +3402,14 @@ chmod +x "$CODEX_INSTALL_DIR/codex"
       const save = `.nodestab .ndrow[data-node="${minted.id}"] [data-nd="sess-save"]`;
       await openSection(page, 'nodes:sessions', `.nodestab .ndrow[data-node="${minted.id}"]`);
       await page.waitForSelector(sw, { timeout: 15000 });
-      ok(!(await page.$eval(sw, e => e.checked)), 'the Sessions section offers the switch, off to begin with');
+      // On to begin with: every node keeps each session to its own network
+      // unless switched off (the operator, 26 Oct; the switch goes in 0.9.0).
+      ok(await page.$eval(sw, e => e.checked), 'the Sessions section offers the switch, on to begin with');
       await page.click(sw);
       await sleep(1500);
-      ok(!(await nodeById(minted.id)).config?.session_net && await page.$eval(sw, e => e.checked),
-         'ticking it writes nothing by itself, and the tick survives a repaint');
+      ok(!('session_net' in ((await nodeById(minted.id)).config || {})) && !(await page.$eval(sw, e => e.checked)),
+         'unticking it writes nothing by itself, and the untick survives a repaint');
+      await page.click(sw);
       await page.click(save);
       const kept = await until(() => {
         const st = JSON.parse(readFileSync(NODE_JSON, 'utf8'));

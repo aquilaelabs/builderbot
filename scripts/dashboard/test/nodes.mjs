@@ -3146,17 +3146,10 @@ await page.click('#ndBody #vmCancel');
     return { status: r.status, ...(await r.json()) };
   }, [node, extra]);
 
-  // The switch first. Off (the default), nothing is offered to anybody,
-  // whatever any node has been granted.
-  let r = await read(n.name);
-  ok(r.status === 403 && /debug mode is off/.test(r.error || ''),
-     `with debug mode off a machine's logs are refused, saying what turns it on (${
-       (r.error || '').slice(0, 48)})`);
-  await page.evaluate(async () => {
-    await fetch('/api/settings', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ set: { debug_mode: true } }) });
-  });
+  // Debug mode is on here: the harness starts the controller with
+  // DEBUG_MODE=1, which is what turns it on (the operator, 26 Oct); off is a
+  // controller started without it, which reset_debug's unit test holds.
+  let r;
 
   // On, and still refused: the switch grants nothing. The grant is the
   // PROJECT's since 6 Oct (its settings' Debug), not the node's, so another
@@ -3188,9 +3181,6 @@ await page.click('#ndBody #vmCancel');
      `a log this table does not name is refused, not run (${(r.error || '').slice(0, 40)})`);
   await grant([]);
   await page.evaluate(async () => {
-    await fetch('/api/settings', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ set: { debug_mode: false } }) });
     await fetch('/api/prefs', { method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project: 'alpha', node: '' }) });
