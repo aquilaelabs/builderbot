@@ -595,9 +595,9 @@ class SessionsMixin:
             return None
         return rows[:64] if isinstance(rows, list) else None
 
-    def kill_sessions(self, names):
+    def kill_sessions(self, names, why="asked from the dashboard"):
         for name in names:
-            log(f"sessions: ending {name} (asked from the dashboard)")
+            log(f"sessions: ending {name} ({why})")
             self._tmux(["kill-session", "-t", "=" + name])
 
     def tell(self, job, spec):

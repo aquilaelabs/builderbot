@@ -2362,12 +2362,15 @@ function wireNodesTab(root){
               + "If the box itself may be taken over, also power it off from its provider's console: that stop does not need the agent.")) return;
       }
       if (act === "reboot" || act === "poweroff"){
-        const name = (nodesList || []).find(n => n.id === id)?.name || "this node";
-        const here = (state?.sessions || []).filter(x => x.node_id === id);
+        const nd = (nodesList || []).find(n => n.id === id), name = nd?.name || "this node";
+        // Everybody's, as the node reports them, not only this account's
+        // (the operator, 26 Oct): each is ended cleanly before the machine
+        // goes, so none is left open on the record.
+        const here = nd?.reported?.sessions || (state?.sessions || []).filter(x => x.node_id === id);
         const mine = here.filter(x => agentOfSession(tmuxBase(x.name)));
         const open = here.length
-          ? `It ends the ${here.length} session${here.length === 1 ? "" : "s"} open there`
-            + `${mine.length ? ` (${mine.length} of them a ${agentsWord(mine.map(x => x.name))} conversation)` : ""}; transcripts are kept. `
+          ? `It ends the ${here.length} session${here.length === 1 ? "" : "s"} open there, everybody's`
+            + `${mine.length ? ` (${mine.length} of them a ${agentsWord(mine.map(x => x.name))} conversation)` : ""}, each closed before the machine goes; transcripts are kept. `
           : "";
         if (!await askYes(act === "reboot"
               ? `Reboot ${name}?\n\n${open}Whatever is running there stops; the agent dials in again when the machine is back up.`
