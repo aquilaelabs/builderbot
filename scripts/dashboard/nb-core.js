@@ -642,12 +642,33 @@ function makeNotebook(project){
   }
   // A view's own button opens it; a group's opens the view it was last on,
   // else its first (R259).
+  // The line under the strip moves first and the view is drawn a frame
+  // after (the operator, 26 Oct: the slide lagged): drawn in the same task,
+  // a notebook's long view held the slide's first frame until it was done.
   root.querySelectorAll(".nbtabs button").forEach(b =>
     b.onclick = async () => {
       const v = b.dataset.v || nb.groupLast[b.dataset.g]
         || root.querySelector(`.nbtabs .nbsub button[data-in="${CSS.escape(b.dataset.g || "")}"]`)?.dataset.v;
-      if (v && await leaveNbView(v)) navPush(() => setNbView(v));
+      if (!v || !await leaveNbView(v)) return;
+      nbLineTo(v);
+      await new Promise(r => requestAnimationFrame(() => setTimeout(r)));
+      navPush(() => setNbView(v));
     });
+  // The strips' lines to the view `v`, ahead of its draw: its group lit in
+  // the top row, and in the row under it the view, when it is the group on
+  // show already. setNbView lights them again the same, which moves nothing.
+  function nbLineTo(v){
+    const me = root.querySelector(`.nbtabs button[data-v="${CSS.escape(v)}"]`);
+    const g = me?.dataset.in || me?.dataset.g || "";
+    if (!g) return;
+    root.querySelectorAll(".nbtabs .nbgroups button").forEach(x => {
+      if (x.classList.contains("on") !== (x.dataset.g === g)) x.classList.toggle("on", x.dataset.g === g); });
+    slideMark(root.querySelector(".nbtabs .nbgroups"), "nbg:" + project);
+    const sub = root.querySelector(".nbtabs .nbsub");
+    if (!sub || [...sub.querySelectorAll("button:not([hidden])")].some(x => x.dataset.in !== g)) return;
+    sub.querySelectorAll("button").forEach(x => { if (x.classList.contains("on") !== (x.dataset.v === v)) x.classList.toggle("on", x.dataset.v === v); });
+    slideMark(sub, "nbv:" + project + ":" + g);
+  }
   $("bugSort").onchange = drawBugs;
   $("bugFind").addEventListener("input", () => { nb.bugFind = $("bugFind").value; drawBugs(true); });
   // What this notebook watches. Registered once per instance, and only ever
