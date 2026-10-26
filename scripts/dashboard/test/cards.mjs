@@ -2127,6 +2127,28 @@ for (const w of [1280, 393]){
      `a long name wraps beside Back, which stays at the card's top right at ${w} (${JSON.stringify(line)})`);
 }
 await page.setViewportSize({ width: 1280, height: 800 });
+// One card on its back at a time (the operator, 26 Oct): Edit on another
+// turns this one back, a box open on it cancelled.
+{
+  const A = '.doc .projtab .pcard[data-row="alpha"]', G = '.doc .projtab .pcard[data-row="gamma"]';
+  if (!await page.$eval(A, c => c.classList.contains('flipped'))) await page.click(`${A} .pcfront [data-pedit]`);
+  await page.waitForTimeout(500);
+  await page.click(`${A} .pcback [data-pgroup]`);
+  await page.waitForSelector(`${A} .askline input`, { timeout: 5000 });
+  await page.evaluate(g => document.querySelector(g)?.scrollIntoView({ block: 'center' }), G);
+  await page.click(`${G} .pcfront [data-pedit]`);
+  await page.waitForTimeout(600);
+  const one = await page.evaluate(([a, g]) => ({ alpha: document.querySelector(a).classList.contains('flipped'),
+    gamma: document.querySelector(g).classList.contains('flipped'), box: !!document.querySelector(`${a} .askline`),
+    open: [...pjEditing] }), [A, G]);
+  ok(!one.alpha && one.gamma && !one.box && one.open.length === 1,
+     `Edit on another card turns the one in Edit back, its open box cancelled, so one card is on its back at a time (${JSON.stringify(one)})`);
+  await page.click(`${G} .pcback [data-pedit]`);
+  await page.waitForTimeout(500);
+  await page.evaluate(a => document.querySelector(a)?.scrollIntoView({ block: 'center' }), A);
+  await page.click(`${A} .pcfront [data-pedit]`);
+  await page.waitForTimeout(500);
+}
 // Leaving the page turns a card back: Projects comes back on the fronts.
 ok(await page.$eval('.doc .projtab [data-row="alpha"]', c => c.classList.contains('flipped')), 'the card is on its back before the page is left');
 await page.evaluate(() => { location.hash = '#/jobs'; });

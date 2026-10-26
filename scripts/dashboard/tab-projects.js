@@ -296,6 +296,12 @@ function pjFadeArm(e){
 // which one a press and a screen reader reach; the next paint draws it so.
 function flipCard(key){
   const on = !pjEditing.has(key);
+  // One card on its back at a time (the operator, 26 Oct): another turned
+  // over goes back to its front, a box open on it cancelled, as Back does.
+  if (on) [...pjEditing].filter(k => k !== key).forEach(k => {
+    document.querySelectorAll(`.pcard[data-pkey="${CSS.escape(k)}"] :is(.askline, .pcpop)`).forEach(x => x.__done?.(null));
+    flipCard(k);
+  });
   on ? pjEditing.add(key) : pjEditing.delete(key);
   if (pjFade?.key === key) pjFade = null;    // the turn is its own motion
   const card = document.querySelector(`.pcard[data-pkey="${CSS.escape(key)}"]`);
@@ -393,12 +399,6 @@ async function moveRepository(btn){
   if (!got) return;
   const c = to.find(x => x.name.toLowerCase() === got.toLowerCase());
   if (!c){ notify(`${got} is not a project it can move to`, true); return; }
-  try{
-    const j = await (await postJSON("/api/repos", {action: "move", name, to: c.key, add_nodes: add})).json();
-    if (j.error){ notify(j.error, true); return; }
-    notify(`${projLabel(name)} is in ${j.project}${
-      j.readers?.length ? `; ${j.readers.join(", ")} now read${j.readers.length === 1 ? "s" : ""} it too` : ""}`);
-  }catch(e){ notify("moving it failed: " + failWords(e), true); }
   let plan;
   try{
     plan = await (await postJSON("/api/repos", {action: "move-check", name, to: c.key})).json();
@@ -406,17 +406,17 @@ async function moveRepository(btn){
   if (plan.error){ notify(plan.error, true); return; }
   const add = await moveConfirm(plan);
   if (add === null) return;
+  try{
+    const j = await (await postJSON("/api/repos", {action: "move", name, to: c.key, add_nodes: add})).json();
+    if (j.error){ notify(j.error, true); return; }
+    const nn = id => plan.nodes.find(n => n.id === id)?.name || id;
+    notify(`${projLabel(name)} is in ${j.project}${
+      j.added?.length ? `, which now has ${j.added.map(nn).join(" and ")} too` : ""}${
+      j.readers?.length ? `; ${j.readers.join(", ")} now read${j.readers.length === 1 ? "s" : ""} it too` : ""}`);
+  }catch(e){ notify("moving it failed: " + failWords(e), true); }
   await refresh();
 }
 
-    const nn = id => plan.nodes.find(n => n.id === id)?.name || id;
-// A project with nothing left in it, gone (R138: one with a repository in it
-      j.added?.length ? `, which now has ${j.added.map(nn).join(" and ")} too` : ""}${
-// is refused, and says so).
-async function deleteProjectCard(key){
-  const n = projectName(key);
-  if (!await askYes(`Delete the project ${n}?\n\nIt has no repository in it, so nothing on disk goes.`)) return;
-  try{
 // Are you sure, with what the move changes (the operator, 26 Oct): the
 // repository takes its new project's node, people and settings, so the
 // nodes the project it leaves had and the new one has not are offered to
@@ -458,6 +458,12 @@ function moveConfirm(plan){
   });
 }
 
+// A project with nothing left in it, gone (R138: one with a repository in it
+// is refused, and says so).
+async function deleteProjectCard(key){
+  const n = projectName(key);
+  if (!await askYes(`Delete the project ${n}?\n\nIt has no repository in it, so nothing on disk goes.`)) return;
+  try{
     const j = await (await postJSON("/api/repos", {action: "delete", key})).json();
     if (j.error){ notify(j.error, true); return; }
     pjEditing.delete(key);
