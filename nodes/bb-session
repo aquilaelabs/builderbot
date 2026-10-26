@@ -347,14 +347,29 @@ def wall_faults(c, w, guard=None):
         got = _ids(name) if name else None
         if got:
             who[role] = (name, *got)
+    # ...and each account's own user here (R125), which runs that account's
+    # sessions: held to the same groups as the session account.
+    for pw in pwd.getpwall():
+        if pw.pw_name.startswith(ACCOUNT_USER):
+            got = _ids(pw.pw_name)
+            if got:
+                who[f"the account user {pw.pw_name}"] = (pw.pw_name, *got)
     ctl = _ids(w["ACCOUNT"])
     banned = {}
     if ctl:
         banned[pwd.getpwnam(w["ACCOUNT"]).pw_gid] = f"{w['ACCOUNT']}'s group"
+    # ...nor in a group that is root on the machine by another door (R90 step
+    # 14): libvirt's runs VMs as root, disk's reads every disk raw, lxd's and
+    # incus-admin's start privileged containers.
     try:
         import grp
-        banned[grp.getgrnam("docker").gr_gid] = "the docker group"
-    except (ImportError, KeyError):
+        for g, said in (("docker", "the docker group"), ("libvirt", "the libvirt group"), ("disk", "the disk group"),
+                        ("lxd", "the lxd group"), ("incus-admin", "the incus-admin group")):
+            try:
+                banned[grp.getgrnam(g).gr_gid] = said
+            except KeyError:
+                pass
+    except ImportError:
         pass
     for role, (name, _uid, gids) in who.items():
         for gid in sorted(set(gids) & set(banned)):

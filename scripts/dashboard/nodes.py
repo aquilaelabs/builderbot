@@ -2976,6 +2976,12 @@ def node_feature(principal, node_id, fid, op):
     if fid not in FEATURES or op not in ("install", "remove"):
         return {"error": f"no such feature verb: {op} {fid}"}
     name = FEATURE_NAMES[fid]
+    if op == "install" and fid == "vmhost" and own_machine(n):
+        # The controller's own machine (R90 step 14): VM host puts the job
+        # account in libvirt's group, which is root here, and root holds the
+        # controller's state, as docker-host would (node_update).
+        return {"error": f"{n['name']} is the controller's own machine, so it is no VM host: libvirt's group is root here, "
+                         "and the wall keeps the controller's state from the node's accounts"}
     rep = n.get("reported") or {}
     if n.get("kind") != "agent" or not rep.get("administers"):
         return {"error": f"{n['name']} was not provisioned as a managed node with its agent as root, so {name} cannot be "

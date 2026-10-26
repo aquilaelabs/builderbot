@@ -2864,6 +2864,12 @@ feature_vmhost() {
     case "$1" in
         state) [ -f "$FEATURES_DIR/vmhost" ] && echo installed || echo absent ;;
         install)
+            # Never beside the controller (R90 step 14): it puts the job
+            # account in libvirt's group, which is root here, and root holds
+            # the controller's state.
+            if [ "$BESIDE_CONTROLLER" = 1 ] || [ -s /etc/bb-session.wall ]; then
+                die "this machine is the controller's own, so it is no VM host: libvirt's group is root here, and the wall keeps the controller's state from the node's accounts"
+            fi
             # No /dev/kvm is a machine that cannot run a VM at speed: a VM
             # whose host does not pass virtualization through, or a box with
             # it off in the firmware. Said, not emulated (tens of times slower).

@@ -84,6 +84,35 @@ class Faults(unittest.TestCase):
     def test_a_wall_that_holds_says_nothing(self):
         self.assertEqual(session.wall_faults(self.c(), self.wall(["/root", "/nonexistent/x"]), guard=True), [])
 
+    def test_a_group_that_is_root_by_another_door(self):
+        # libvirt's, disk's, lxd's and incus-admin's are root on the machine
+        # as docker's is (R90 step 14): the session account in one is a fault.
+        import collections
+        import grp
+        G = collections.namedtuple("G", "gr_gid")
+        real = grp.getgrnam
+        def fake(name):
+            if name == "libvirt":
+                return G(os.getgid())
+            return real(name)
+        with mock.patch.object(grp, "getgrnam", side_effect=fake):
+            got = session.wall_faults(self.c(), self.wall(["/root"]), guard=True)
+        self.assertIn(f"the session account ({ME}) is in the libvirt group", got)
+
+    def test_an_account_user_is_held_to_the_same_groups(self):
+        # Each account's own user (R125, bbu-) runs that account's sessions,
+        # so a banned group of its is a fault as the session account's is.
+        import collections
+        import grp
+        G = collections.namedtuple("G", "gr_gid")
+        real_gr, real_ids = grp.getgrnam, session._ids
+        P = collections.namedtuple("P", "pw_name")
+        with mock.patch.object(grp, "getgrnam", side_effect=lambda n: G(os.getgid()) if n == "disk" else real_gr(n)), \
+             mock.patch.object(session.pwd, "getpwall", return_value=[P("bbu-0a1b2c3d")]), \
+             mock.patch.object(session, "_ids", side_effect=lambda n: real_ids(ME) if n.startswith("bbu-") else real_ids(n)):
+            got = session.wall_faults(self.c(SESSION_USER=""), self.wall(["/root"]), guard=True)
+        self.assertIn("the account user bbu-0a1b2c3d (bbu-0a1b2c3d) is in the disk group", got)
+
     def test_no_wall_says_nothing(self):
         self.assertEqual(session.wall_faults(self.c(), "", guard=False), [])
 

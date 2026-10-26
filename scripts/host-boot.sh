@@ -19,6 +19,11 @@
 set -euo pipefail
 
 [ "$(id -u)" -eq 0 ] || { echo "host-boot.sh runs as root, from the builderbot-controller service" >&2; exit 1; }
+# What the controller writes is its account's alone, wherever it writes it
+# (R90 step 15): its own folders are 0700 already, and a store moved from
+# Settings to a folder of the machine's is made the same way rather than
+# readable by the node's accounts beside it.
+umask 077
 # The environment the image's ENV gives the container, the release's stamp
 # and the env file, before anything reads a path.
 # shellcheck source=lib/host-env.sh
