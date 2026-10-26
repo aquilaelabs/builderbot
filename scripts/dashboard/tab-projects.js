@@ -208,7 +208,7 @@ function cardFront(c){
     <div class="pcmeta"><span class="pcfacts">${[`<span class="pid" title="this project's id, which never changes">${esc(c.pid)}</span>`,
       esc(node)].filter(Boolean).join(" · ")}</span>${first ? projectState(first) : ""}</div>
     <div class="pcrepos">${c.rows.length ? c.rows.map(p => `<div class="pcrepo">
-      <button type="button" class="link" data-open="${esc(p.name)}" title="open ${esc(p.label || p.name)}'s notebook">${esc(p.label || p.name)}</button>
+      <button type="button" class="namelink" data-open="${esc(p.name)}" title="open ${esc(p.label || p.name)}'s notebook">${esc(p.label || p.name)}</button>
       <span class="pcfacts">${p.git ? `<span class="pbr">${esc(p.git)}</span>${p.push ? ` · <span class="ok">push</span>` : ""}` : "no git"}</span>
     </div>${p.issues.map(i => `<div class="pnote ${cls[i.level] || ""}">${many ? esc(p.label || p.name) + ": " : ""}${esc(i.text)}</div>`).join("")}`).join("")
       : `<div class="pnote dim">no repository yet${c.may ? ": Add repository makes or clones one" : ""}</div>`}</div>

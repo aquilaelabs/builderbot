@@ -86,7 +86,7 @@ const browser = await launch();
   await page.waitForSelector(card, { timeout: 15000 });
   const front = await page.$eval(card, c => ({
     name: c.querySelector('.pcfront .pcname .name')?.textContent.trim(),
-    repos: [...c.querySelectorAll('.pcfront .pcrepo > .link')].map(b => b.textContent.trim()),
+    repos: [...c.querySelectorAll('.pcfront .pcrepo > .namelink')].map(b => b.textContent.trim()),
     start: c.querySelector('.pcfront [data-c]')?.dataset.c,
     acts: [...c.querySelectorAll('.pcfront .pcacts > button')].map(b => b.textContent.trim()),
     menu: c.querySelectorAll('[data-pmore]').length, backInert: c.querySelector('.pcback').inert }));

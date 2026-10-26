@@ -216,10 +216,18 @@ function nginxRouteForm(n, r, i){
       <button type="button" class="primary" data-ngsave>Save</button></div>
   </div>`;
 }
+// A route's hostname opens the site it serves in a new tab, over https when
+// the route has TLS and http when it is 80 only; every name (*) has no one site.
+function nginxSite(r){
+  if (r.host === "*") return "every name (*)";
+  if (!r.host) return "";
+  const url = `${r.tls === false ? "http" : "https"}://${r.host}${r.path && r.path !== "/" ? r.path : "/"}`;
+  return `<a class="namelink" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="open ${esc(url)} in a new tab">${esc(r.host)}</a>`;
+}
 function nginxRoutesTable(n){
   const ed = nginxEdit && nginxEdit.node === n.node ? nginxEdit.i : null;
   const rec = (r, i) => `<div class="row ngrec${ed === i ? " open" : ""}" data-i="${i}">${tblLine(NG_ROUTE_COLS, [
-      r.host === "*" ? "every name (*)" : esc(r.host || ""), esc(r.path || "/"), esc(String(r.port)), nginxTls(n, r),
+      nginxSite(r), esc(r.path || "/"), esc(String(r.port)), nginxTls(n, r),
       ed === i ? "" : `<button type="button" data-ngedit="${i}">Edit</button>`])}${
       ed === i ? nginxRouteForm(n, nginxForm || r, i) : ""}</div>`;
   const fresh = ed === -1 ? `<div class="row ngrec open" data-i="-1">${nginxRouteForm(n, nginxForm || {host: "", path: "/", port: "", tls: true}, -1)}</div>` : "";

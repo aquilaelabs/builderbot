@@ -837,7 +837,7 @@ function rnDrawPeople(){
     <label class="ndcap"><input type="checkbox" id="rnInviteOnly"${only ? " checked" : ""}${v.may_manage ? "" : " disabled"}>
       Invite only</label>
     <div class="sub whoson">On it: ${v.members.length ? v.members.map(n => v.may_manage
-      ? `<button type="button" class="link" data-rnaccess="${esc(n)}" title="what ${esc(n)} holds here and everywhere">${esc(n)}</button>`
+      ? `<button type="button" class="namelink" data-rnaccess="${esc(n)}" title="what ${esc(n)} holds here and everywhere">${esc(n)}</button>`
       : esc(n)).join(", ") : "nobody yet"}</div>
     ${v.invites.map(i => `<div class="rninvite">${esc(i.name)} <span class="dim">invited${i.role ? ` as ${esc(i.role)}` : ""} by ${esc(i.by || "somebody")} ${esc(ago(i.at))}</span>
       <button type="button" class="link" data-withdraw="${i.id}">Withdraw</button></div>`).join("")}

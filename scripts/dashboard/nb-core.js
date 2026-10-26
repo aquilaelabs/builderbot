@@ -1187,7 +1187,7 @@ async function reposAlso(el, project, kind){
   }
   const tag = kind === "bugs" ? "B" : "R", noun = kind === "bugs" ? "open bug" : "open item";
   const body = rows.length ? rows.map(x => `<div class="alsorow">
-      <button type="button" class="link" data-also="${esc(x.m)}">${esc(projLabel(x.m))}</button>
+      <button type="button" class="namelink" data-also="${esc(x.m)}">${esc(projLabel(x.m))}</button>
       <span class="pid">${tag}${x.id}</span><span class="alsotext">${esc(x.text)}</span></div>`).join("")
     : `<div class="empty">nothing open in its other repositories</div>`;
   const html = docSection(kind, "also", `Also in ${r.name}`, `${rows.length} ${noun}${rows.length === 1 ? "" : "s"}`, body, {open: true});

@@ -105,7 +105,7 @@ ok(await page.$eval('#bNewProjTab', b => b.textContent.includes('New project')),
   await page.fill('#pName', 'webshop');
   await page.click('#pCreate');
   await page.waitForFunction(k => JSON.stringify(state?.repos?.[k]?.members) === '["webshop"]', key, { timeout: 15000 });
-  ok(await page.$eval(card, c => [...c.querySelectorAll('.pcfront .pcrepo > .link')].map(b => b.textContent.trim()).join() === 'webshop'),
+  ok(await page.$eval(card, c => [...c.querySelectorAll('.pcfront .pcrepo > .namelink')].map(b => b.textContent.trim()).join() === 'webshop'),
      '...and the repository made is on the project\'s card');
   // A project with something in it offers no Delete project; empty, it does.
   await page.evaluate(k => postJSON('/api/trash', { name: 'webshop' }).then(() => refresh()), key);

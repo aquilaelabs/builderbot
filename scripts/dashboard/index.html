@@ -1220,8 +1220,7 @@ body.firstrun #panes{display:none}
 .hproj .name{font:var(--f-row);font-weight:600}
 /* ...its name a link to the project, not a box (a project card's is a
    heading), and its facts in the project card's voices. */
-.hproj .name.link{align-self:flex-start;background:none;border:0;padding:0;min-height:0;color:var(--ink);text-align:left;white-space:normal}
-@media(hover:hover){ .hproj .name.link:hover{background:none;color:var(--note)} }
+.hproj .name.namelink{align-self:flex-start}
 .hproj .pcfacts{font:var(--f-data);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hproj .pstate{display:inline-flex;align-items:center;gap:6px;color:var(--dim);font:var(--f-ui)}
 .hproj .pnote{font:var(--f-ui)} .hproj .pnote.bad{color:var(--bad)} .hproj .pnote.warn{color:var(--warn)} .hproj .pnote.dim{color:var(--dim)}
@@ -1273,6 +1272,12 @@ body.firstrun #panes{display:none}
    handing the whole page a sideways scroll. */
 .row .name{font-weight:600;overflow-wrap:anywhere}
 .row .name.go{cursor:pointer}
+/* A name that opens what it names (a repository, a project, a person) is
+   linked text, as a session's name is on Sessions: the row's own ink, no box,
+   underlined under the pointer. Every list draws its names with .namelink. */
+.namelink{background:none;border:0;padding:0;min-height:0;color:var(--ink);font:inherit;
+  text-align:left;white-space:normal;cursor:pointer;display:inline}
+@media(hover:hover){ .namelink:hover{background:none;text-decoration:underline} }
 .row .sub{color:var(--dim);font:var(--f-data);overflow-wrap:anywhere}
 /* A NOTICE: what is wrong or what to know, under a row, in a voice of its
    own (the operator, 13 Oct: facts, warnings and settings all wore the same
@@ -3440,8 +3445,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* The id, the node and who is working there share one line, wrapping. */
 .pcard .pcmeta{display:flex;flex-wrap:wrap;align-items:center;gap:2px 14px;min-width:0}
 .pcard .pcmeta>.pcfacts{flex:none;max-width:100%}
-.pcard .pcrepo>.link{background:none;border:0;padding:0;min-height:0;color:var(--ink);font:var(--f-ui);font-weight:600;cursor:pointer}
-.pcard .pcrepo>.link:hover{text-decoration:underline}
+.pcard .pcrepo>.namelink{font:var(--f-ui);font-weight:600}
 .pcard .pcrepo>.pcfacts{flex:1}
 /* A repository on a card's back: its name, then the icons that change it,
    each a thumb wide and its picture in the middle. */
@@ -3485,7 +3489,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    its number, its words. */
 .alsorow{display:flex;align-items:baseline;gap:var(--field-gap);min-height:var(--tap);padding:var(--label-gap) 0;
   border-top:var(--hair) solid var(--line);min-width:0}
-.alsorow>.link{background:none;border:0;padding:0;min-height:0;color:var(--ink);font-weight:600;cursor:pointer;flex:none}
+.alsorow>.namelink{font-weight:600;flex:none}
 .alsorow>.pid{font:var(--f-data);color:var(--dim);flex:none}
 .alsorow>.alsotext{min-width:0;overflow-wrap:anywhere}
 .pcard .pnote.bad{color:var(--bad)} .pcard .pnote.warn{color:var(--warn)} .pcard .pnote.dim{color:var(--dim)}

@@ -184,6 +184,9 @@ ok((await api('/api/nginx')).nodes.find(n => n.node === sandbox.node).routes.som
 await page.waitForFunction(s => !document.querySelector(s + ' .ngform') && document.querySelectorAll(s + ' .ngrec').length === 2, sect, { timeout: 15000 });
 ok(await page.$eval(`${sect} .ngrec[data-i="1"]`, r => /api\.example\.com/.test(r.textContent) && /8081/.test(r.textContent)),
    '...and folds back to a row reading the route');
+ok(await page.$eval(`${sect} .ngrec[data-i="1"] a.namelink`, a => /^https?:\/\/api\.example\.com\//.test(a.href)
+     && a.target === '_blank' && /noopener/.test(a.rel) && a.textContent === 'api.example.com'),
+   "the route's hostname is a link opening its site in a new tab");
 // Edit opens that row in place, Cancel folds it back unchanged, Save
 // writes the one route and Delete takes it out.
 await page.click(`${sect} [data-ngedit="1"]`);

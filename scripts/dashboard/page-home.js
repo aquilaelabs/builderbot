@@ -141,7 +141,7 @@ function homeGlanceHtml(){
   const card = c => {
     const pc = colorAttrs(c.color), first = c.first;
     return `<div class="hproj${pc.cls}"${pc.style}>
-      ${first ? `<button type="button" class="name link" data-hproj="${esc(first.name)}">${esc(c.name)}</button>`
+      ${first ? `<button type="button" class="name namelink" data-hproj="${esc(first.name)}">${esc(c.name)}</button>`
               : `<span class="name">${esc(c.name)}</span>`}
       <div class="pcfacts">${[`<span class="pid">${esc(c.pid)}</span>`,
         c.rows.length > 1 ? `${c.rows.length} repositories` : first ? projFacts({...first, pid: 0}) : "no repository yet"]

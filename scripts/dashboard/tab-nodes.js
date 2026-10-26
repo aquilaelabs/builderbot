@@ -712,7 +712,7 @@ function nodeProjectsSection(n){
   const rows = list.map(p => {
     const primary = p.prefs?.node === n.id, sync = nodeSyncSaid(n, p.name);
     return `<div class="row ndproj">
-      <div class="grow"><div class="name"><button type="button" class="link" data-ndopen="${esc(p.name)}" title="open its notebook">${esc(projLabel(p.name))}</button>${
+      <div class="grow"><div class="name"><button type="button" class="namelink" data-ndopen="${esc(p.name)}" title="open its notebook">${esc(projLabel(p.name))}</button>${
           primary ? ` <span class="dim">· primary</span>` : ""}</div>
         ${sync ? `<div class="sub">${sync}</div>` : ""}
         ${p.mine ? "" : `<div class="sub dim">Not one of your repositories: add yourself to its project to change its nodes.</div>`}</div>
