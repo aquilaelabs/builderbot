@@ -46,13 +46,13 @@ function settingsKeep(el){
   settingsWake(el);
 }
 // A section's Apply and Revert awake only while one of its fields differs
-// from what is saved, or a stored secret is ticked to go. Not the Logs
-// section's Apply: pressed with the days as they are, it crops now.
+// from what is saved, or a stored secret is ticked to go: the Logs section's
+// too (the operator, 26 Oct: every save bar asleep with nothing to save).
 function settingsWake(el){
   el.querySelectorAll("details.sect").forEach(sec => {
     const dirty = [...sec.querySelectorAll(SETTINGS_FIELDS)].some(i => i.id in settingsDraft)
       || !!sec.querySelector("[data-clear]:checked");
-    sec.querySelectorAll(".setApply, #idleApply, #pathsApply, [data-srevert]").forEach(b => {
+    sec.querySelectorAll(".setApply, #logApply, #idleApply, #pathsApply, [data-srevert]").forEach(b => {
       if (!b.dataset.busy && b.disabled !== !dirty) b.disabled = !dirty;
     });
   });

@@ -57,6 +57,7 @@ await page.check('[data-rread="projects"]');
 await page.check('[data-rread="releases"]');
 await page.check('[data-rwrite="releases"]');
 await page.fill('#rolesNote', 'moves versions');
+ok(await page.$$eval('#rolesSave, #rolesRevert', bs => bs.every(b => !b.disabled)), 'a role with unsaved changes has Save and Revert awake');
 await page.click('#rolesRevert');
 ok(!(await page.$$eval('.rolestab .rrow', rs => rs.map(r => r.textContent))).some(t => /deployer/.test(t)),
    'Revert drops a role that was never saved');

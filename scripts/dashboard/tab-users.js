@@ -85,9 +85,10 @@ function usersEditFrom(u){
 function usersPicked(){ return (usersList || []).find(x => x.name === usersPick) || null; }
 function usersDirty(){
   const u = usersPicked();
-  if (!u || !usersEdit) return false;
-  const was = usersEditFrom(u);
-  return USER_KEYS.some(k => was[k] !== usersEdit[k]) || (typeof rolesPeopleDirty === "function" && rolesPeopleDirty());
+  if (!u) return false;
+  // A role changed with no field typed is unsaved too: its Save wakes for it.
+  const was = usersEdit ? usersEditFrom(u) : null;
+  return (!!usersEdit && USER_KEYS.some(k => was[k] !== usersEdit[k])) || (typeof rolesPeopleDirty === "function" && rolesPeopleDirty());
 }
 function usersRedraw(){ usersRev++; drawPanes(); }
 // Accounts and roles Read without its Write: the page is there to read, its
@@ -136,7 +137,7 @@ function usersDetail(u){
     </div>
     <div class="setrow col ueaccess ctlrow">${lbl("", "Roles and projects", "what this account may do; what each role holds is on the Roles page")}<div id="ueAccess">${access}</div></div>
     <div class="sub bad" id="ueErr" hidden></div>
-    ${ro ? "" : saveBar({save: 'id="ueSave"', revert: 'id="ueRevert"', state: usersDirty() ? "unsaved" : ""})}
+    ${ro ? "" : saveBar({save: 'id="ueSave"', revert: 'id="ueRevert"', state: usersDirty() ? "unsaved" : "", dead: !usersDirty()})}
     ${u.devices ? `<div class="uedevices"><span class="lbl">Devices${helpIcon("the apps signed in as this account on its machines; Disconnect cuts one off for them, as a lost laptop needs")}</span>${
       profileDevices(u.devices, u.name)}</div>` : ""}
     ${ro ? "" : `<div class="rfoot">${isOwner ? `<span class="sub dim">The owner cannot be deleted: rename it instead.</span>`
@@ -202,6 +203,9 @@ function wireUsers(el){
     usersEdit[f.dataset.ufield] = f.value;
     const st = el.querySelector(".rdetail .actbar .state");
     if (st) st.textContent = usersDirty() ? "unsaved" : "";
+    // Save and Revert awake only while something here is unsaved (the
+    // operator, 26 Oct), as every save bar is.
+    for (const b of el.querySelectorAll("#ueSave, #ueRevert")) if (!b.dataset.busy) b.disabled = !usersDirty();
   });
   const box = el.querySelector("#ueAccess");
   if (box && rolesData !== null) wireRolesAccess(box, usersRedraw);

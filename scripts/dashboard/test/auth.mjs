@@ -1041,8 +1041,12 @@ ${code}`], { encoding: 'utf8' }).trim();
   await page.waitForSelector('.userstab #ueAccess #rolesAddProj', { timeout: 15000 });
   ok(!await page.$('.userstab #ueRole') && /on no project yet/.test(await page.$eval('.userstab #ueAccess', e => e.textContent)),
      'its settings set no built-in role, and say the account is on no project yet');
+  ok(await page.$$eval('.userstab #ueSave, .userstab #ueRevert', bs => bs.length === 2 && bs.every(b => b.disabled)),
+     'Save and Revert sleep while nothing on the account is unsaved');
   await page.fill('.userstab #ueFull', 'Tab Made');
+  ok(await page.$$eval('.userstab #ueSave, .userstab #ueRevert', bs => bs.every(b => b.disabled)), '...and stay asleep for a name typed as it was');
   await page.fill('.userstab #ueEmail', 'not-an-email');
+  ok(await page.$$eval('.userstab #ueSave, .userstab #ueRevert', bs => bs.every(b => !b.disabled)), '...and wake as something new is typed');
   await page.click('.userstab #ueSave');
   await page.waitForFunction(() => !document.getElementById('ueErr').hidden, null, { timeout: 10000 });
   ok(/not an email/.test(await page.$eval('#ueErr', e => e.textContent)),

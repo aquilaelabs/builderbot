@@ -57,8 +57,8 @@ function renderDebugInto(i){
         ${nodesList === null ? skRows(2)
           : rows.length ? rows.map(row).join("") : `<div class="empty">No project with a repository yet.</div>`}
         <div class="field"><div class="actbar"><span class="sp"></span>
-          <button type="button" class="caution" id="dbgRevert"${staged ? "" : " disabled"}>Revert</button>
-          <button type="button" class="primary" id="dbgSave"${staged ? "" : " disabled"}>Save</button></div></div>`);
+          <button type="button" class="primary" id="dbgSave"${staged ? "" : " disabled"}>Save</button>
+          <button type="button" class="caution" id="dbgRevert"${staged ? "" : " disabled"}>Revert</button></div></div>`);
   // In one wrapper, as the Agents page's: the jump bar wireSections puts
   // over the two sections goes inside it, so the list's own children are
   // what was painted and a read that brings nothing writes nothing.
