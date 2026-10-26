@@ -2207,10 +2207,6 @@ const DIALOGS = {
   // Reset BuilderBot (the operator, 12 Oct): the nodes to un-enroll first,
   // what un-enrolling does, and the word. Opened, measured, never pressed.
   reset: () => askReset(),
-  // One container's log. The stub daemon answers, so the dialog draws its
-  // real shape rather than an error band.
-  dockerlog: async () => { openDocker(); await new Promise(r => setTimeout(r, 1200));
-                           dmLogs('someone-elses'); },
   // A conversation read from a notebook's Sessions view (R83): the
   // account's newest on alpha if it has one, else the same box with nothing
   // said in it, never a 404 the console would count.

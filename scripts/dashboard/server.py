@@ -6341,7 +6341,43 @@ class Handler(BaseHTTPRequestHandler):
                         held["text"] = f"[builderbot] {e}\n"
                 return held["text"], "the run's log as GitHub keeps it"
             return read, None
+        if kind == "dm":
+            return self._dm_log_reader(rest)
         return None, f"no log of the kind {kind or 'named'} is read here"
+
+    def _dm_log_reader(self, rest):
+        """`log:dm:NODE:CONTAINER`: any one container's log in a dock tab,
+        as the Containers page reads it (_docker_ctl's logs: docker-write,
+        and the container's project on the account's list), running or not,
+        on a node or on this controller; its last 400 lines read again every
+        five seconds. Where a running container's node serves a terminal its
+        log streams instead (log:ctr:, bb-tty)."""
+        nid, _, name = rest.partition(":")
+        me = self._who() or {}
+        if me.get("session"):
+            return None, "a container's log tab is a person's"
+        if why := users.may(me, "docker-write"):
+            return None, why
+        if not devapp._CTR_NAME.match(name):
+            return None, "no such container"
+        nid, why = self._node_asked(nid)
+        if why:
+            return None, why
+        with devapp.on_node(nid or None):
+            owner = containers.owner_named(name)
+        if why := self._not_on_list(me, owner):
+            return None, why
+        held = {"at": 0.0, "text": ""}
+
+        def read():
+            if time.time() - held["at"] >= 5:
+                held["at"] = time.time()
+                body, status = containers.admin_verb("logs", name, nid, "")
+                if status != 200 or body.get("error"):
+                    raise ValueError(body.get("error") or "the log could not be read")
+                held["text"] = str(body.get("text") or "")
+            return held["text"], ""
+        return read, None
 
     def _log_own(self, arg, args, dims):
         """/termws?arg=log:... (R133 step 12): a log in a dock tab, followed
@@ -6357,10 +6393,14 @@ class Handler(BaseHTTPRequestHandler):
                 return termws.close(self.connection, no)
             m = _ARG_LOGCTR.match(arg)
             target = ctr_target(m.group(1), m.group(2))
-            if target["where"] != "node":
-                return termws.close(self.connection, "a container on this controller has its log on its row's Log")
-            if not target.get("term"):
-                return termws.close(self.connection, f"{target['name']}'s agent serves no terminal of its own yet")
+            # A container on this controller, or on a node whose agent
+            # serves no terminal, is read here instead, as log:dm: is.
+            if target["where"] != "node" or not target.get("term"):
+                read, why = self._dm_log_reader(f"{target.get('id', '') if target['where'] == 'node' else ''}:{m.group(3)}")
+                if why:
+                    return termws.close(self.connection, why)
+                who_raw = self._who_raw()
+                return termws.term_follow(self.connection, read, lambda: "the controller is in maintenance mode" if kept_out(who_raw) else "")
             words = [v for k, v in urllib.parse.parse_qsl(urllib.parse.urlsplit(
                 self._scoped_arg(args, node=True)).query) if k == "arg"]
             who_raw = self._who_raw()

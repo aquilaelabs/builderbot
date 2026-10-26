@@ -234,6 +234,22 @@ ok(before === 1 && after.length === 0, `closing the tab closes its terminal (${b
   const cwhy = await page.evaluate(() => [...TERMS.values()].find(r => r.t.arg.startsWith('log:ctr:'))?.ended || '');
   ok(/no instance nosuch of alpha on record here/.test(cwhy), `a container's log names why it cannot be followed (${cwhy})`);
   await page.evaluate(() => dropTab(tabs.find(t => t.arg.startsWith('log:ctr:')).id));
+  // Any container's log, running or not and nobody's too, is read by the
+  // controller as the Containers page reads it (log:dm:NODE:CONTAINER).
+  await page.evaluate(() => openLogTab('log:dm::someone-elses', 'Log: someone-elses'));
+  const dm = await (await page.waitForFunction(() => {
+    const r = [...TERMS.values()].find(x => x.t.arg === 'log:dm::someone-elses'); if (!r) return null;
+    const b = r.term?.buffer.active; let text = '';
+    for (let i = 0; b && i < b.length; i++) text += b.getLine(i)?.translateToString(true) || '';
+    return text.trim() || r.ended ? { text: text.trim().slice(0, 60), ended: r.ended || '' } : null;
+  }, null, { timeout: 15000 })).jsonValue();
+  ok(dm.text && !dm.ended, `a container nobody here started has its log read into a dock tab (${JSON.stringify(dm)})`);
+  await page.evaluate(() => dropTab(tabs.find(t => t.arg === 'log:dm::someone-elses').id));
+  await page.evaluate(() => openLogTab('log:dm::bad name', 'Log: bad'));
+  await page.waitForFunction(() => [...TERMS.values()].some(r => r.t.arg === 'log:dm::bad name' && r.ended), null, { timeout: 15000 }).catch(() => {});
+  ok(/no such container/.test(await page.evaluate(() => [...TERMS.values()].find(r => r.t.arg === 'log:dm::bad name')?.ended || '')),
+     '...and a name that is no container is refused, saying so');
+  await page.evaluate(() => dropTab(tabs.find(t => t.arg === 'log:dm::bad name').id));
 }
 
 // A grant taken away ends the terminal it opened (R133 step 9): an account

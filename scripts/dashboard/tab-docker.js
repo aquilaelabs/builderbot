@@ -1623,45 +1623,6 @@ function dmState(d, job, mine, busy, blind){
   return "never built";
 }
 
-// One instance row: the same markup wherever the row is drawn, the Docker
-// tab and a project's notebook (its Docker view). `job` is the compose job
-// the answer carried and `blind` whether the daemon answered at all.
-async function dmLogs(name, node = dockerNode){
-  const modal = $("dlmodal"), body = $("dlBody");
-  if (!modal || !body) return;
-  $("dlTitle").textContent = `Log: ${name}`;
-  // Its foot from the first frame: a log read on a busy node takes seconds,
-  // and a dialog with no Close meanwhile is one you cannot leave (B498).
-  body.innerHTML = `<div class="field">${skel("lines", 8, "reading…")}</div>
-    <div class="foot"><span class="sp"></span><button type="button" id="dlClose">Close</button></div>`;
-  body.querySelector("#dlClose").onclick = () => { modal.hidden = true; };
-  modal.hidden = false;
-  try{
-    // The node the list came from: a project's notebook lists its own
-    // node's containers, which is not the tab's pick.
-    const r = await postJSON("/api/dockerctl", {action: "logs", container: name, node});
-    const j = await r.json();
-    body.innerHTML = `<div class="field">${j.error
-      ? `<div class="hint bad">${esc(j.error)}</div>`
-      : j.text && j.text.trim()
-        ? `<pre class="dmlog dllog">${esc(j.text)}</pre>`
-        : `<div class="hint">It has printed nothing.</div>`}</div>
-      <div class="foot"><span class="sp"></span>
-        <button type="button" id="dlAgain">Read again</button>
-        <button type="button" id="dlClose">Close</button></div>`;
-    // At the end, which is where a log's reason is: the top of a tail is the
-    // middle of whatever happened before it.
-    const pre = body.querySelector("pre");
-    if (pre) pre.scrollTop = pre.scrollHeight;
-    body.querySelector("#dlClose").onclick = () => { modal.hidden = true; };
-    body.querySelector("#dlAgain").onclick = () => dmLogs(name);
-  }catch(e){
-    body.innerHTML = `<div class="field"><div class="hint bad">${esc(String(e))}</div></div>
-      <div class="foot"><span class="sp"></span><button type="button" id="dlClose">Close</button></div>`;
-    body.querySelector("#dlClose").onclick = () => { modal.hidden = true; };
-  }
-}
-
 // A port only this node's nginx reaches (127.0.0.1 on a node whose ports
 // stay on it) and no nginx route points at: the container answers nowhere
 // until one does, which is the step a first move to a VPS missed (the
@@ -1807,6 +1768,11 @@ function dmRowsHtml(ins, job, blind){
         // goes behind ⋯ (R210), Remove last in there as it was last on the bar.
         actMore([
           dmEditBtn(key),
+          // Its log in a tab of the dock (the operator, 26 Oct: every log
+          // opens there), one per container of a stack.
+          ...(d.exists && !blind && mayDocker() ? (d.services || []).filter(c => c.name).map(c => `<button type="button" data-dmlog="${esc(c.name)}"
+            data-running="${c.state === "running" ? 1 : 0}" title="what ${esc(c.service || c.name)} prints, in a tab of the dock, read again as it goes on">${
+              many ? `Log of ${esc(c.service || c.name)}` : "Log"}</button>`) : []),
           ...(shellAt && !shellWhy ? shellAt.slice(1).map(c => `<button type="button" data-dmshell="${esc(c.name)}"
             title="a shell inside ${esc(c.service || c.name)}, in the dock">Shell in ${esc(c.service || c.name)}</button>`) : []),
           managed || !mayDocker() ? "" : `<button type="button" data-dm="edit" data-src="${d.source === "file" ? "file" : "project"}"
@@ -1854,13 +1820,7 @@ function dmRowsHtml(ins, job, blind){
       ${docSection("docker", `wire:${d.project}|${d.instance}`,
                    "Ports and mounts", dmPortsSaid(d),
                    `<div class="wire">${skel("rows", 2, "reading…")}</div>`, {open: false})}
-      ${
-      // What it printed (R216): a fold under the row, read when opened and
-      // again on Follow. Nothing to read for a row with no container yet.
-      d.exists && !blind && (d.services || []).length
-        ? docSection("docker", `logs:${d.project}|${d.instance}`, "Log",
-                     many ? `${d.services.length} containers` : "",
-                     `<div class="dmlogbox">${skel("lines", 5, "reading…")}</div>`, {open: false}) : ""}`;
+`;
     return dmRowWrap(d, st, inner, blind);
   }).join("");
 }
@@ -2046,65 +2006,6 @@ async function dockerPrune(kind, node, nodeName, b){
   return !r.error;
 }
 
-// The row's Log fold: the last lines of each of its containers, read when
-// the fold opens, by Read again, and every few seconds while Follow is
-// ticked and the fold stays open.
-let dmFollow = {};
-async function loadRowLog(det, again = false){
-  const fold = det.dataset.sect;
-  const row = det.closest("[data-inst]");
-  if (!row || !fold || dmLoading.has(fold)) return;
-  const inst = (dockerList?.instances || []).find(x => `${x.project}|${x.instance}` === row.dataset.inst);
-  const names = (inst?.services || []).map(c => c.name).filter(Boolean);
-  const node = dockerList?.node || dockerNode || "";
-  const key = row.dataset.inst;
-  if (!names.length){
-    const b = det.querySelector(".dmlogbox");
-    if (b) b.innerHTML = `<div class="hint">nothing to read: no container yet</div>`;
-    return;
-  }
-  dmLoading.add(fold);
-  let parts;
-  try{
-    parts = await Promise.all(names.map(async name => {
-      try{
-        const j = await (await postJSON("/api/dockerctl", {action: "logs", container: name, node})).json();
-        return {name, text: j.error ? "" : (j.text || ""), error: j.error || ""};
-      }catch(e){ return {name, text: "", error: String(e)}; }
-    }));
-  }finally{ dmLoading.delete(fold); }
-  det = dmFoldNow(fold);
-  const box = det?.querySelector(".dmlogbox");
-  if (!det || !box) return;
-  // A running container's log followed in a tab of the dock as it is
-  // written (R133 step 12), where this fold reads it again every 4s.
-  const running = new Set((inst?.services || []).filter(c => c.state === "running").map(c => c.name));
-  const dock = n => running.has(n) ? `<div class="actbar"><button type="button" data-dmdock="${esc(n)}"
-      title="${esc(n)}'s log in a tab of the dock, following it as it is written">Follow in the dock</button></div>` : "";
-  box.innerHTML = parts.map(p => `<div class="dmlogsvc">${names.length > 1 ? `<div class="sub">${esc(p.name)}</div>` : ""}${dock(p.name)}${
-      p.error ? `<div class="hint bad">${esc(p.error)}</div>`
-      : p.text.trim() ? `<pre class="dmlog dllog">${esc(p.text)}</pre>`
-      : `<div class="hint">It has printed nothing.</div>`}</div>`).join("")
-    + `<div class="actbar"><span class="state">the last 400 lines${again ? `, read ${new Date().toLocaleTimeString()}` : ""}</span>
-        <label class="ndcap"><input type="checkbox" data-dmfollow="${esc(key)}"${dmFollow[key] ? " checked" : ""}> Follow</label>
-        <button type="button" data-dmlogagain>Read again</button></div>`;
-  // At the end, which is where a log's reason is.
-  box.querySelectorAll("pre").forEach(pre => { pre.scrollTop = pre.scrollHeight; });
-  box.querySelector("[data-dmlogagain]").onclick = () => loadRowLog(det, true);
-  box.querySelectorAll("[data-dmdock]").forEach(b => b.onclick = () =>
-    openLogTab(`log:ctr:${inst.project}:${inst.instance}:${b.dataset.dmdock}`, `Log: ${b.dataset.dmdock}`));
-  const fl = box.querySelector("[data-dmfollow]");
-  fl.onchange = () => { dmFollow[key] = fl.checked; if (fl.checked) dmFollowTick(det, key); };
-  if (dmFollow[key]) dmFollowTick(det, key);
-}
-function dmFollowTick(det, key){
-  clearTimeout(dmFollow["t:" + key]);
-  dmFollow["t:" + key] = setTimeout(() => {
-    if (!det.isConnected || !det.open || !dmFollow[key]) return;
-    loadRowLog(det, true);
-  }, 4000);
-}
-
 // ...and the handlers those rows need, wired onto whichever element holds
 // them. `list` is the answer the rows were drawn from, for the saved values
 // a pick is compared against.
@@ -2122,14 +2023,12 @@ function dmWireRows(el, list = dockerList){
       e.preventDefault();
       const willOpen = !d.open;
       slideDetails(d, willOpen);
-      if (willOpen && d.querySelector(":scope > .dmlogbox, .dmlogbox")) loadRowLog(d);
-      else if (willOpen && d.querySelector(".dmimgbox")) loadDockerImages(d);
+      if (willOpen && d.querySelector(".dmimgbox")) loadDockerImages(d);
       else if (willOpen && !d.dataset.done) loadWire(d);
     };
     // A fold left open across a redraw is drawn back as "reading…": its
     // read is started again, unless one is already on its way to it.
-    if (d.open && d.querySelector(".dmlogbox") && /reading…/.test(d.querySelector(".dmlogbox").textContent)) loadRowLog(d);
-    else if (d.open && d.querySelector(".dmimgbox") && /reading…/.test(d.querySelector(".dmimgbox").textContent)) loadDockerImages(d);
+    if (d.open && d.querySelector(".dmimgbox") && /reading…/.test(d.querySelector(".dmimgbox").textContent)) loadDockerImages(d);
     // ...and Ports and mounts (B827): what was read last at once, read again
     // behind it, since the stats and every job step redraw the list.
     else if (d.open && d.querySelector(".wire") && !d.dataset.done){
@@ -2253,7 +2152,15 @@ function dmWireRows(el, list = dockerList){
     }catch(e){ notify(`${what} ${ctr}: ` + e, true); }
     dockerList = null; loadDocker();
   });
-  el.querySelectorAll("[data-logs]").forEach(b => b.onclick = () => dmLogs(b.dataset.logs, list?.node || dockerNode));
+  // A container's log opens in a tab of the dock: streamed from its node
+  // while it runs in an instance (log:ctr:), else read by the controller
+  // every few seconds (log:dm:), stopped, on the controller or nobody's.
+  el.querySelectorAll("[data-dmlog]").forEach(b => b.onclick = () => {
+    const row = b.closest("[data-inst]"), name = b.dataset.dmlog;
+    const [project, instance] = (row?.dataset.inst || "").split("|");
+    openLogTab(row && b.dataset.running === "1" ? `log:ctr:${project}:${instance}:${name}`
+                 : `log:dm:${list?.node || dockerNode || ""}:${name}`, `Log: ${name}`);
+  });
   // Start on boot: the tick is a draft, Apply writes it (R122).
   el.querySelectorAll("[data-dmboot]").forEach(cb => cb.onchange = () => {
     const name = cb.dataset.dmboot, was = cb.dataset.was === "1";
@@ -2508,9 +2415,9 @@ function dmOtherRowsHtml(cs){
         <button type="button" data-ctl="restart" data-ctr="${esc(c.name || c.id)}"${
           c.state === "running" ? "" : " disabled"}
           title="Restart it: docker restart ${esc(c.name || c.id)}">Restart</button>`}
-        ${!mayDocker() ? "" : `<button type="button" data-logs="${esc(c.name || c.id)}"
-          title="the last ${esc(String(400))} lines it printed">Log</button>`}
-        ${actMore([dmEditBtn("ctr:" + (c.name || c.id))])}
+        ${actMore([dmEditBtn("ctr:" + (c.name || c.id)),
+          mayDocker() ? `<button type="button" data-dmlog="${esc(c.name || c.id)}" data-running="0"
+            title="what it prints, in a tab of the dock, read again as it goes on">Log</button>` : ""])}
         </div>
         </div>
         ${dmSetPills([["Project", c.owner ? esc(c.owner === "System" ? "System" : projLabel(c.owner)) : "none"],

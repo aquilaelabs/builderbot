@@ -3021,20 +3021,22 @@ ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
     JSON.stringify(ringsSeen.map(r => r.map(x => x.slice(0, 2)))).slice(0, 300)})`);
   ok(sparks.every(x => x.pts >= 2 && x.dot && /last half hour/.test(x.label)),
      `...its CPU carries the last half hour as a sparkline, the latest a dot, and its memory how full it is (${JSON.stringify(sparks)})`);
-  // Its log, in a fold under the row, read when the fold opens, with Follow.
-  const logSect = '.dmtab .row[data-inst="ep.silon|staging-two"] details[data-sect="docker:logs:ep.silon|staging-two"]';
-  await page.click(`${logSect} > summary`);
-  // Read in the same breath as waited for: the list redraws on every
-  // revision and a fold read between the two is "reading…" again.
-  const logged = await (await page.waitForFunction(sel => {
-    const b = document.querySelector(sel + ' .dmlogbox');
-    if (!b || /reading…/.test(b.textContent) || !b.querySelector('[data-dmfollow]')) return null;
-    return { pre: !!b.querySelector('pre.dmlog'), none: /printed nothing/.test(b.textContent),
-             follow: !!b.querySelector('[data-dmfollow]'), again: !!b.querySelector('[data-dmlogagain]') };
-  }, logSect, { timeout: 15000 })).jsonValue();
-  ok((logged.pre || logged.none) && logged.follow && logged.again,
-     `a row's Log fold reads the container's tail when opened, with Follow and Read again (${JSON.stringify(logged)})`);
-  await page.click(`${logSect} > summary`);
+  // Its log is under the row's ⋯ (the operator, 26 Oct), opening in a tab
+  // of the dock as every log does: no fold under the row any more.
+  const rowSel = '.dmtab .row[data-inst="ep.silon|staging-two"]';
+  ok(!await page.$(`${rowSel} details[data-sect^="docker:logs:"]`), 'a row has no Log fold under it');
+  await page.evaluate(sel => document.querySelector(`${sel} [data-dmlog]`).click(), rowSel);
+  const logTab = await (await page.waitForFunction(() => {
+    const t = tabs.find(x => /^log:(ctr|dm):/.test(x.arg || '')); if (!t) return null;
+    const r = [...TERMS.values()].find(x => x.t?.id === t.id); const b = r?.term?.buffer.active; let text = '';
+    for (let i = 0; b && i < b.length; i++) text += b.getLine(i)?.translateToString(true) || '';
+    return text.trim() || r?.ended ? { arg: t.arg, inDock: panes[1] === t.id, ended: r?.ended || '', text: text.trim().slice(0, 60) } : null;
+  }, null, { timeout: 20000 })).jsonValue();
+  // A running container's streams from its node's relay, which the
+  // fixture's stub node does not run: the tab is the stream's, in the dock.
+  ok(logTab.inDock && /^log:ctr:ep\.silon:staging-two:/.test(logTab.arg) && (logTab.text || /did not answer/.test(logTab.ended)),
+     `Log in its ⋯ opens a running container's log in a tab of the dock, streamed from its node (${JSON.stringify(logTab)})`);
+  await page.evaluate(() => dropTab(tabs.find(x => /^log:(ctr|dm):/.test(x.arg || '')).id));
   // The daemon's images and volumes, in a section at the foot: tiles of
   // what it holds, each image in use or not, each volume, and the two
   // prunes that touch nothing a container uses (the fixture answers all
