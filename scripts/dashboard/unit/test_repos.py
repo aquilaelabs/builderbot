@@ -158,6 +158,10 @@ class Briefing(unittest.TestCase):
         for want in ("rules of server", "roadmap of server", "bugs of server"):
             self.assertIn(want, text)
         self.assertNotIn("roadmap of app", text, "its own are the briefing's own parts")
+        # Each repository's memories stay its own, named by its tree as Claude
+        # Code names the folder, so a repository split out keeps them.
+        self.assertIn("server: /workspace/server, its memories in ~/.claude/projects/-workspace-server/memory/", text)
+        self.assertIn("a memory about one repository is saved in that repository's memory folder", text)
         self.assertEqual(preamble.repos_part("other"), "")
 
 

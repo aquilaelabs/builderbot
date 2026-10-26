@@ -515,9 +515,16 @@ def repos_part(project):
              f"each is its own repository with its own notebook, git host, CI and releases. Each tree below is "
              f"yours to write (a worktree of it on this session's branch, where you have one); bb answers for "
              f"the repository whose tree you run it in, and `bb -p NAME` for another.",
+             "",
+             "Each repository keeps its own memories, so one moved to another project keeps what was learned "
+             "about it: a memory about one repository is saved in that repository's memory folder, named on its "
+             "line below, and one about the project as a whole in this one's. Read a folder's MEMORY.md before "
+             "working in its repository.",
              ""]
     for d, label in members:
-        lines.append(f"- {label}: {ws}/{d}{' (this briefing is its own, above)' if d == project else ''}")
+        mem = re.sub(r"[^A-Za-z0-9]", "-", f"{ws}/{d}")
+        lines.append(f"- {label}: {ws}/{d}, its memories in ~/.claude/projects/{mem}/memory/"
+                     f"{' (this briefing is its own, above)' if d == project else ''}")
     others = [(d, label) for d, label in members if d != project]
     share = max(2048, SHARES["rules"] // max(1, len(others)))
     for d, label in others:
