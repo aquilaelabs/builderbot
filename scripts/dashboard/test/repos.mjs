@@ -210,6 +210,41 @@ const b2 = await post('/api/repos', { action: 'move', name: 'ep.silon', to: epWa
 ok(b1.status === 200 && b2.status === 200, `both move back where they were (${b1.status} ${b1.error || ''} ${b2.status} ${b2.error || ''})`);
 const gone = await post('/api/repos', { action: 'delete', key });
 ok(gone.status === 200 && !(await status()).repos[key], `an empty project is deleted (${JSON.stringify(gone)})`);
+// Before a move, what it changes (the operator, 26 Oct): the nodes the
+// project it leaves has and the one it goes to has not, the dev instances on
+// them, offered to bring along, ticked; a move with them ticked adds them.
+{
+  const nid = (((await (await fetch(base + '/api/v1/nodes', { headers: ADMIN })).json()).nodes || []).find(n => n.kind === 'agent') || {}).id;
+  const gammaNodes = prefsFile()[gammaWas]?.nodes || [];
+  await post('/api/prefs', { project: 'gamma', nodes: [nid] });
+  const p2 = await post('/api/repos', { action: 'create', name: 'Node check' });
+  const plan = await post('/api/repos', { action: 'move-check', name: 'gamma', to: p2.key });
+  ok(plan.status === 200 && plan.nodes.some(n => n.id === nid && n.as === 'nodes') && plan.to === 'Node check' && Array.isArray(plan.lose),
+     `move-check names the nodes the project it leaves has and the other has not (${JSON.stringify(plan.nodes)})`);
+  const mv = await post('/api/repos', { action: 'move', name: 'gamma', to: p2.key, add_nodes: [nid, 'n_nosuch'] });
+  ok(mv.status === 200 && JSON.stringify(mv.added) === JSON.stringify([nid]) && (prefsFile()[p2.key]?.nodes || []).includes(nid),
+     `...a move with it ticked adds it to the project it goes to, and nothing the check did not offer (${JSON.stringify(mv.added)}, ${JSON.stringify(prefsFile()[p2.key]?.nodes)})`);
+  // The dialog: a ticked box per node, the instances there, who loses it.
+  const pg = await newPage(browser, { viewport: { width: 1280, height: 900 } });
+  await pg.goto(URL); await ready(pg);
+  const dlg = await pg.evaluate(async pl => {
+    const got = moveConfirm(pl);
+    await new Promise(r => setTimeout(r, 300));
+    const m = $('mvmodal');
+    const out = { title: $('mvTitle').textContent, boxes: [...m.querySelectorAll('[data-mvnode]')].map(i => [i.dataset.mvnode, i.checked]),
+                  text: m.querySelector('.box').textContent.replace(/\s+/g, ' ') };
+    $('mvGo').click();
+    out.picked = await got;
+    return out;
+  }, { label: 'gamma', from: 'Old', to: 'New', nodes: [{ id: 'n_a', name: 'draconis', as: 'hosts', instances: ['gamma-public'] }], lose: ['w.peer'], busy: [], node_why: '' });
+  ok(dlg.title === 'Move gamma to New?' && JSON.stringify(dlg.boxes) === '[["n_a",true]]' && /Add draconis to New's nodes it hosts containers on/.test(dlg.text)
+     && /gamma-public runs there/.test(dlg.text) && /w\.peer reaches it through Old alone/.test(dlg.text) && JSON.stringify(dlg.picked) === '["n_a"]',
+     `the move asks first: each node to bring ticked with what runs there, who loses it, and Move hands back the ticked ones (${dlg.text.slice(0, 160)})`);
+  await pg.close();
+  await post('/api/repos', { action: 'move', name: 'gamma', to: gammaWas });
+  await post('/api/prefs', { project: 'gamma', nodes: gammaNodes });
+  await post('/api/repos', { action: 'delete', key: p2.key });
+}
 const ask = await post('/api/trash-restore', { name: 'shopweb' });
 ok(ask.status === 409 && ask.pick && /Shop, which is deleted/.test(ask.error || ''), `Put back asks where when its project is gone (${ask.error})`);
 const back = await post('/api/trash-restore', { name: 'shopweb', project: gammaWas });

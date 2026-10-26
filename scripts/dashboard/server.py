@@ -10358,7 +10358,7 @@ class Handler(BaseHTTPRequestHandler):
                 membership.forget_project(key)
                 prefs.forget(key)
             return self._result(got, 409)
-        if act == "move":
+        if act in ("move", "move-check"):
             name, to = field(req, "name"), field(req, "to")
             if self._not_project(name):
                 return None
@@ -10372,6 +10372,10 @@ class Handler(BaseHTTPRequestHandler):
                 if (bad := projects.locked_out(k, users.uid_of(me))):
                     return self._json(bad, 403)
             # Not from under a session (the operator, 25 Oct): one working
+            # The check before the move (the operator, 26 Oct): what it changes,
+            # asked before it is done, with the nodes to bring along.
+            if act == "move-check":
+                return self._json(self._move_plan(me, name, to, was))
             # across the project would lose a tree, one in the other gain one.
             busy = self._running_on([k for k in (was, to) if k])
             if busy:
@@ -10379,14 +10383,54 @@ class Handler(BaseHTTPRequestHandler):
                                             f"{' or ' if was else ''}{registry.label(to)}: end "
                                             f"{'it' if len(busy) == 1 else 'them'} first, then move it"}, 409)
             got = repos.move(name, to)
+            # The nodes the person ticked to bring along, as the check offered
+            # them: no other node, and only a node this account may set.
+            plan = self._move_plan(me, name, to, was)
+            offered = {n["id"]: n["as"] for n in plan["nodes"]}
+            add = [str(x) for x in (req.get("add_nodes") or []) if str(x) in offered]
+            if add and users.may(me, "node"):
+                return self._json({"error": users.may(me, "node")}, 403)
             if got.get("error"):
                 return self._json(got, 400)
             readers = prefs.regrant(to, [name])
-            return self._json(dict(got, name=name, project=registry.label(to),
+            if add:
+                dst = prefs.get(to)
+                hosts = list(dst.get("hosts") or []) + [n for n in add if offered[n] == "hosts"]
+                nodes_ = list(dst.get("nodes") or []) + [n for n in add if offered[n] != "hosts"]
+                prefs.set_prefs(to, nodes=nodes_, hosts=hosts)
+            return self._json(dict(got, name=name, project=registry.label(to), added=add,
                                    readers=[registry.label(r) for r in readers]))
         return self._json({"error": "action is create, rename, move or delete"}, 400)
 
     def _archive(self, req):
+    def _move_plan(self, me, name, to, was):
+        """What moving the repository `name` from its project `was` into `to`
+        changes (the operator, 26 Oct): the nodes `was` has that `to` has not,
+        each with what it is to the project (works on it, or hosts its
+        containers) and the repository's dev instances running there, and the
+        accounts that reach the repository through `was` alone. A session
+        running on either, which refuses the move, is said too."""
+        src, dst = prefs.get(name), prefs.get(to)
+        have = {dst.get("node") or ""} | set(dst.get("nodes") or []) | set(dst.get("hosts") or [])
+        runs = devapp.instance_nodes(name)
+        out = []
+        for nid, kind in ([(src.get("node") or "", "nodes")] + [(n, "nodes") for n in src.get("nodes") or []]
+                          + [(n, "hosts") for n in src.get("hosts") or []]):
+            if nid and nid not in have and nid not in {x["id"] for x in out}:
+                n = nodes.node(nid) or {}
+                out.append({"id": nid, "name": n.get("name") or nid, "as": kind,
+                            "instances": sorted(i for i, at in runs.items() if at == nid)})
+        lose = []
+        if was:
+            for uname, rec in (users.load().get("users") or {}).items():
+                u = {**rec, "name": uname}
+                if not users.is_admin(u) and users.may_work(u, was) and not users.may_work(u, to):
+                    lose.append(uname)
+        busy = self._running_on([k for k in (was, to) if k])
+        return {"name": name, "label": registry.label(name), "from": registry.label(was) if was else "",
+                "to": registry.label(to), "nodes": out, "lose": sorted(x for x in lose if x),
+                "busy": busy, "node_why": users.may(me, "node") if out else ""}
+
         """Archive or unarchive a project (R119): out of sight, and nothing
         else; the project's owner or an administrator, never a session."""
         name, on = req.get("name", ""), bool(req.get("archived"))

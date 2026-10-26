@@ -394,20 +394,70 @@ async function moveRepository(btn){
   const c = to.find(x => x.name.toLowerCase() === got.toLowerCase());
   if (!c){ notify(`${got} is not a project it can move to`, true); return; }
   try{
-    const j = await (await postJSON("/api/repos", {action: "move", name, to: c.key})).json();
+    const j = await (await postJSON("/api/repos", {action: "move", name, to: c.key, add_nodes: add})).json();
     if (j.error){ notify(j.error, true); return; }
     notify(`${projLabel(name)} is in ${j.project}${
       j.readers?.length ? `; ${j.readers.join(", ")} now read${j.readers.length === 1 ? "s" : ""} it too` : ""}`);
   }catch(e){ notify("moving it failed: " + failWords(e), true); }
+  let plan;
+  try{
+    plan = await (await postJSON("/api/repos", {action: "move-check", name, to: c.key})).json();
+  }catch(e){ notify("checking the move failed: " + failWords(e), true); return; }
+  if (plan.error){ notify(plan.error, true); return; }
+  const add = await moveConfirm(plan);
+  if (add === null) return;
   await refresh();
 }
 
+    const nn = id => plan.nodes.find(n => n.id === id)?.name || id;
 // A project with nothing left in it, gone (R138: one with a repository in it
+      j.added?.length ? `, which now has ${j.added.map(nn).join(" and ")} too` : ""}${
 // is refused, and says so).
 async function deleteProjectCard(key){
   const n = projectName(key);
   if (!await askYes(`Delete the project ${n}?\n\nIt has no repository in it, so nothing on disk goes.`)) return;
   try{
+// Are you sure, with what the move changes (the operator, 26 Oct): the
+// repository takes its new project's node, people and settings, so the
+// nodes the project it leaves had and the new one has not are offered to
+// bring along, ticked, each saying the dev instances running there; who
+// reaches it through the old project alone is named; a session running on
+// either is said, and Move waits for it. Resolves with the nodes to add, or
+// null for Cancel.
+function moveConfirm(plan){
+  return new Promise(resolve => {
+    let m = document.getElementById("mvmodal");
+    if (!m){
+      m = document.createElement("div");
+      m.id = "mvmodal"; m.className = "modal"; m.hidden = true;
+      m.setAttribute("role", "dialog"); m.setAttribute("aria-modal", "true"); m.setAttribute("aria-labelledby", "mvTitle");
+      document.body.appendChild(m);
+      armModal(m);
+    }
+    const what = n => n.as === "hosts" ? "nodes it hosts containers on" : "nodes it works on";
+    const dead = plan.node_why || "";
+    const busy = (plan.busy || []).length > 0;
+    m.innerHTML = `<div class="box"><h3 id="mvTitle">Move ${esc(plan.label)} to ${esc(plan.to)}?</h3>
+      <div class="field"><p class="asksaid">It leaves ${esc(plan.from || "no project")}: from now on ${esc(plan.to)}'s node, people and settings apply to it. Its notebook goes with it.</p></div>
+      ${plan.nodes.length ? `<div class="field"><div class="lbl">${esc(plan.from)} uses ${plan.nodes.length === 1 ? "a node" : "nodes"} ${esc(plan.to)} does not</div>
+        ${plan.nodes.map(n => `<label class="ndcap"><input type="checkbox" data-mvnode="${esc(n.id)}"${dead ? " disabled" : " checked"}> Add ${esc(n.name)} to ${esc(plan.to)}'s ${what(n)}${
+          n.instances.length ? `<span class="dim"> (${esc(n.instances.join(", "))} ${n.instances.length === 1 ? "runs" : "run"} there)</span>` : ""}</label>`).join("")}
+        ${dead ? `<div class="sub dim">${esc(dead)}</div>` : `<div class="sub dim">Left unticked, a dev instance there stays where it is, and nothing builds or runs on that node for ${esc(plan.label)} until ${esc(plan.to)} has it.</div>`}</div>` : ""}
+      ${plan.lose.length ? `<div class="field"><div class="sub warn">${esc(plan.lose.join(", "))} ${plan.lose.length === 1 ? "reaches" : "reach"} it through ${esc(plan.from)} alone and ${plan.lose.length === 1 ? "loses" : "lose"} it: a role on ${esc(plan.to)} keeps it.</div></div>` : ""}
+      ${busy ? `<div class="field"><div class="sub warn">${esc(plan.busy.join(", "))} running on ${esc(plan.from)} or ${esc(plan.to)}: end ${plan.busy.length === 1 ? "it" : "them"} first, then move it.</div></div>` : ""}
+      ${dlgFoot(`<button type="button" id="mvCancel">Cancel</button>`, `<button type="button" class="primary" id="mvGo"${busy ? " disabled" : ""}>Move</button>`)}</div>`;
+    let over = false;
+    const done = v => { if (over) return; over = true; m.hidden = true; resolve(v); };
+    m.querySelector("#mvCancel").onclick = () => done(null);
+    m.querySelector("#mvGo").onclick = () => done([...m.querySelectorAll("[data-mvnode]:checked")].map(i => i.dataset.mvnode));
+    m.onclick = e => { if (e.target === m) done(null); };
+    m.hidden = false;
+    // Escape and the backdrop close it as Cancel does.
+    const watch = new MutationObserver(() => { if (m.hidden){ watch.disconnect(); done(null); } });
+    watch.observe(m, {attributes: true, attributeFilter: ["hidden", "class"]});
+  });
+}
+
     const j = await (await postJSON("/api/repos", {action: "delete", key})).json();
     if (j.error){ notify(j.error, true); return; }
     pjEditing.delete(key);

@@ -3569,6 +3569,11 @@ def instances(project):
     return have or [MAIN]
 
 
+def instance_nodes(project):
+    """{instance: the node it runs on} for this project's recorded ones."""
+    return {i: str((r or {}).get("node") or "") for i, r in (_load().get(project) or {}).items()}
+
+
 def only_instance(project):
     """The instance a request means when it names none: the project's only
     recorded one, else `main`."""
