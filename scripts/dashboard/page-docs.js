@@ -202,13 +202,24 @@ function bootPage(hash){
       <div class="field"><section class="hsect"><h3>Projects at a glance</h3>${skRows(2)}</section></div>`);
   else if (key === "projects" && tool === "projects")
     body = doc(`<input type="search" disabled placeholder="name, branch or node"><span class="sp"></span>
-      <span class="actbar"><button type="button" disabled>${BIN}</button><button type="button" class="primary" disabled>New project</button></span>`,
-      `<div class="field pgridband"><div class="pgrid">${Array.from({length: 6}, (_, j) =>
-        `<div class="sk-card skpcard"><i class="sk-b" style="width:${SKW[j % 8] / 2 + 20}%"></i><i class="sk-b sub" style="width:70%"></i><i class="sk-b sub" style="width:${SKW[(j + 3) % 8] / 2}%"></i></div>`).join("")}</div></div>`);
+      <span class="actbar"><button type="button" class="ic" disabled>${BIN}</button><button type="button" class="primary" disabled>New project</button></span>`,
+      `<div class="field pgridband"><div class="pgrid">${Array.from({length: 6}, (_, j) => skProjectCard(j)).join("")}</div></div>`);
   // The rest: their rows in a floating card, as the pages draw them at a
   // desk (their exact first paints are R218's templates step).
   else body = doc("", `<div class="field"><div class="sk-card skrows">${skRows(6)}</div></div>`);
   return {rail: key, bar, body: `<div class="skstack">${body}</div>`, tool};
+}
+
+// A project's card on its way, in the card's own parts (R138, R141): its
+// name, its id and node, a repository or two by name and branch, and its
+// actions at the foot as the card draws them, dead until it lands.
+function skProjectCard(j = 0){
+  const repo = k => `<div class="pcrepo">${skv(4 + (SKW[(j + k) % 8] % 5))}${skv(5)}</div>`;
+  const mark = icon => `<button type="button" class="eye bare pcmark" disabled>${icon}</button>`;
+  return `<div class="pcard skpcard"><div class="pcname">${skv(5 + (SKW[j % 8] % 6), "name")}<span class="sp"></span>${mark(PIN)}${mark(ARCHIVE)}</div>
+    <div class="pcmeta"><span class="pcfacts">${skv(7)}</span></div>
+    <div class="pcrepos">${repo(0)}${j % 3 === 1 ? repo(3) : ""}</div>
+    <div class="pcacts actbar"><button type="button" disabled>Start agent</button><button type="button" disabled>Add repository</button><button type="button" disabled>Edit</button></div></div>`;
 }
 
 // A notebook view at the first paint is its own markup from the notebook's

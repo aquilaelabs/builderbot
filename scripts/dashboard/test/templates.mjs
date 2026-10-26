@@ -255,6 +255,27 @@ for (const [W, H] of [[1280, 1000], [393, 852]]){
     await page.goto(URL);
     await ready(page);
   }
+  // The Projects page waits only at a reload, for the first status read:
+  // its template is R138's cards (R141), in the grid's columns, each with
+  // the card's parts and its actions at the foot.
+  {
+    const cards = () => [...document.querySelectorAll('.pgrid .pcard')].filter(e => e.checkVisibility())
+      .slice(0, 2).map(e => { const r = e.getBoundingClientRect();
+        return { l: Math.round(r.left), r: Math.round(r.right), parts: ['.pcname', '.pcmeta', '.pcrepos', '.pcacts'].filter(q => e.querySelector(q)).length,
+                 acts: e.querySelector('.pcacts')?.querySelectorAll(':scope > button').length || 0 }; });
+    const release = await hold(page, /\/api\//);
+    await page.goto('about:blank');
+    await page.goto(`${URL}#/projects`);
+    await sleep(600);
+    const tpl = await page.evaluate(cards);
+    await release();
+    await page.goto(URL + '#/projects');
+    await ready(page);
+    await page.waitForSelector('.pgrid .pcard', { timeout: 15000 }).catch(() => {});
+    const got = await page.evaluate(cards);
+    ok(tpl.length && got.length && JSON.stringify(tpl) === JSON.stringify(got),
+       `a reload on the Projects page waits as its cards ${where} (template ${JSON.stringify(tpl)}, page ${JSON.stringify(got)})`);
+  }
   await page.close();
 }
 await done(browser);

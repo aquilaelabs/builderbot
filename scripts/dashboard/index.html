@@ -3324,7 +3324,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pane .bar.proj .pnote.dim{color:var(--dim)}
 @media(max-width:600px){ .pane .bar.proj .pfacts{flex:1 1 100%;max-width:none} }
 /* The Projects page (R218 step 3): a searchable grid of cards with status. */
-.projtab .docbarrow #bTrashTab{min-width:var(--tap);padding:4px 8px}
+.projtab .docbarrow #bTrashTab,.skboot .docbarrow button.ic{min-width:var(--tap);padding:4px 8px}
 /* The Claude chooser drawn in a project page's pane (R218 step 3): as wide
    as its words, never the pane. */
 .pane>.resumemenu{max-width:min(440px,calc(100% - 8px));width:max-content}
@@ -3429,7 +3429,7 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 @media(hover:hover){ .pcard .pcrepo>button.eye.bare:hover{color:var(--ink)} .pcard .pcrepo>button.eye.bare[data-danger]:hover{color:var(--bad)} }
 /* A card's buttons share its width on one line, front and back (the
    operator, 25 Oct): the front's words, the back's icons. */
-.pcard.pflip .pcacts>button{flex:1 1 auto;white-space:nowrap;padding-inline:8px}
+.pcard:is(.pflip,.skpcard) .pcacts>button{flex:1 1 auto;white-space:nowrap;padding-inline:8px}
 .pcard.pflip .pcfoot>button.ic{display:inline-flex;align-items:center;justify-content:center;min-height:var(--ctl)}
 .pcard.pflip .pcfoot>button[data-danger]{color:var(--bad)}
 /* The color's swatch filled with the project's own color. */
@@ -4749,7 +4749,7 @@ pre{margin:0;padding:9px 11px;font:var(--f-code);white-space:pre-wrap;
 /* The first paint (bootPage): the pane's bar and a document's frame, laid
    out as the pane lays them, the doc filling what is left under the bar. */
 .skboot{display:flex;flex-direction:column;height:100%;min-height:0;padding:0;margin:0}
-.skboot .skpcard{min-height:196px}
+.skpcard .skv{height:.9em} .skpcard .skv.name{height:1.1em}
 /* A toolchain row closed is its name and what it is for on one line; the
    rest (terms, system packages, needs, its path) on the open row (R218
    step 22). Details beside the name opens it. */
