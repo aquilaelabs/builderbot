@@ -2955,8 +2955,12 @@ def _versioned_page(raw, tag):
     out = _SCRIPT_TAG.sub(named, raw)
     # The install's banner (R88), at its place under the header; part of the
     # page's tag, so a banner changed at a restart is not served from a copy.
-    # ...and maintenance mode's, shown to the owner by the page while it is on.
-    band = featuresoff.banner_html() + MAINT_BAND
+    # ...and maintenance mode's, shown to the owner by the page while it is on,
+    # and sent showing while it is on, so it is there at the first paint and
+    # not only once the first status read lands (the operator, 26 Oct): with
+    # it on, the owner is the one account the page is for.
+    band = featuresoff.banner_html() + (MAINT_BAND.replace(' hidden>', '>', 1)
+                                        if settings.get("maintenance_mode") else MAINT_BAND)
     out = out.replace(b"<!--BANNER-->", band.encode())
     parts.append(hashlib.sha256(band.encode()).hexdigest()[:8])
     # Every script runs as written, in order: Cloudflare's Rocket Loader
