@@ -2648,7 +2648,7 @@ function renderDockerInto(i){
     // builders given nothing (the operator, 18 Oct: a template written
     // beside the page fell behind it): the bar, the tiles, the status line,
     // then the rows.
-    el.innerHTML = `<div class="doctab dmtab">${skTpl(`${dmBar(null)}${dmStatus(null)}${dmTiles(null)}
+    el.innerHTML = `<div class="doctab dmtab">${skTpl(`${dmBar(null)}${dmTiles(null)}${dmStatus(null)}
       ${dmView === "list" ? skTable(DM_COLS, 4)
         // ...the rows in a project group's card, as they land (R262).
         : `<section class="dmcard"><div class="field dmgroup"><b>${skv(8)}</b></div>${skRows(3)}</section>`}
@@ -2772,8 +2772,10 @@ function renderDockerInto(i){
   const notOurs = allCs.filter(c => !c.ours).length;
   const tiles = blind || !(allIns.length || allCs.length) ? "" : dmTiles({running, all: allIns.length, behind,
     checked: !!dockerList?.images_at, projects: chips.filter(g => g.key !== "none").length, notOurs});
-  el.innerHTML = `<div class="doctab dmtab${slow || dockerList?.stale ? " dmstale" : ""}">${picker}${status}${tiles}${
-    chipBar(chips, dmChip, "data-dmchip")}${askRows}${note
+  el.innerHTML = `<div class="doctab dmtab${slow || dockerList?.stale ? " dmstale" : ""}">${picker}${tiles}${
+    // The page's own boxes under the tiles and the chips, never between
+    // them (the operator, 26 Oct): what every page has comes first.
+    chipBar(chips, dmChip, "data-dmchip")}${status}${askRows}${note
       ? `<div class="field"><div class="notice warn dmnote">${esc(note)}</div></div>` : srcLine}${
     // Blind, the list is what is on record here rather than what is on the
     // daemon, and "nothing on this daemon yet" would be a claim about a

@@ -3273,6 +3273,10 @@ await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20
   await page.waitForSelector('#bDockerCheck', { timeout: 15000 });
   ok(await page.$eval('.dmimgbar', e => /Images checked\s*(not yet|.* ago|just now)/.test(e.textContent)),
      'the Containers page says when its registry images were last checked, a fact of its head');
+  ok(await page.$eval('.dmtab', t => { const kids = [...t.children], at = s => kids.findIndex(k => k.matches(s) || k.querySelector(`:scope > ${s}`));
+       const box = at('.dmimgbar'), tiles = at('.tiles'), chips = at('.chips');
+       return box > tiles && (chips < 0 || box > chips); }),
+     '...under its tiles and its chips, which every page has first (the operator, 26 Oct)');
   await page.click('#bDockerCheck');
   await page.waitForSelector('.dmtab .row[data-inst="radarr|main"] .dmimages', { timeout: 20000 });
   ok(await page.$eval('.dmtab .row[data-inst="radarr|main"]', r => /a newer lscr\.io\/linuxserver\/radarr:latest is out/.test(r.querySelector('.dmimages').textContent)

@@ -222,19 +222,20 @@ function nbSigningView({$, nb, project}){
       return n ? `${n} of 2` : "none";
     };
     $("sgBox").innerHTML =
+      // The keys are the project's, as many as it has: big chips pick one,
+      // the small pills are for the view's own sections (R122). The chips
+      // come first and the view's own boxes under them (the operator, 26 Oct).
+      chipBar(names.map(key => ({key, label: key === "default" ? "Default key" : key, count: null})),
+              names.includes(keyPick) ? keyPick : "", "data-sgkey")
       // What holds it back, in the notice voice; what it knows, as a head's
       // facts (the operator, 25 Oct: no loose words at a view's top). A key is
       // checked and made on the project's node, never here: what keeps that
       // node from it is said in its words (B232).
-      (why ? `<div class="field"><div class="notice warn">${esc(why)}</div></div>` : "")
+      + (why ? `<div class="field"><div class="notice warn">${esc(why)}</div></div>` : "")
       + (why ? "" : pageHead({cls: "sghead", facts: [
           ["Node", tool ? "" : nodeWhy, {cls: "sgnode"}],
           ["Keys", held ? "" : "none yet: bb sign signs this project's builds on its node with the keys kept here, and a session never sees one"]]}))
       + docSection("signing", "lock", "Backup password", locked ? "set" : "none", lock, {cls: locked ? "" : "warn"})
-      // The keys are the project's, as many as it has: big chips pick one,
-      // the small pills are for the view's own sections (R122).
-      + chipBar(names.map(key => ({key, label: key === "default" ? "Default key" : key, count: null})),
-                names.includes(keyPick) ? keyPick : "", "data-sgkey")
       + names.filter(key => !keyPick || !names.includes(keyPick) || key === keyPick)
           .map(key => docSection("signing", `key:${key}`, key === "default" ? "Default key" : `Key: ${key}`,
           keyStatus(key), `<div class="field">${SIGN_ROUTES.map(([route, word, about]) => slot(key, route, word, about)).join("")}</div>`
