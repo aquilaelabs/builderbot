@@ -283,7 +283,8 @@ const UNSHOWN = {
 for (const p of [page, phone]){
   const where = p === phone ? 'on a phone' : 'at a desk';
   const kinds = await p.evaluate(() => [...RAIL.flatMap(g => g.tools.map(([k]) => [k, g.key])), ['notebook', '']]);
-  const untoured = await p.evaluate(ks => ks.map(([k]) => k).filter(k => !TOUR_STEPS[k]), kinds);
+  // The Debug page excepted: not an advertised feature (the operator, 26 Oct).
+  const untoured = await p.evaluate(ks => ks.map(([k]) => k).filter(k => !TOUR_STEPS[k] && k !== 'debug'), kinds);
   ok(!untoured.length, `every page on the rail has a tour ${where}${untoured.length ? `: none for ${untoured.join(', ')}` : ''}`);
   const lost = [];
   for (const [k, g] of kinds){

@@ -320,10 +320,6 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   maintenance, by the sign-in page, the API (503) and the app, and stays
   signed in for when it ends. Nodes are not accounts and keep running, and a
   band under the header reminds the owner it is on.
-- **Debugging**, only on a controller started with `DEBUG_MODE=1`, which is
-  what turns debug mode on: the section says so and holds the settings a
-  developer of BuilderBot reaches for and nobody else should meet, saved
-  with its own Apply.
 - **Reset BuilderBot**, last.
 
 The page says plainly what still comes from the environment and why (the
@@ -416,8 +412,8 @@ list, redacted and on the audit trail), so a report can be taken out before
 the diagnostics go to somebody. **Clear reports** deletes every one after a
 confirmation that says how many; the numbers carry on, so a bug that names
 report #3 never meets a second one. Whoever reads Controller settings reads
-the reports there; a session reads them only in debug mode, with its
-project granted the diagnostics, and never deletes one.
+the reports there; a session reads them only where its project is granted
+the diagnostics, and never deletes one.
 
 One deliberate omission from *this session*: the **CI logs stay where they are**, under `config/ci-logs/<repo>/`, one
 file per run: a CI run is not a container session, it belongs to a workflow

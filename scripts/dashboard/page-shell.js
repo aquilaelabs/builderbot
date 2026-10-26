@@ -41,7 +41,7 @@ const RAIL = [
   // BuilderBot behaves, with room for the pages a bare-metal install and
   // the USB edition add beside Settings (R90, R56). After Containers, so a
   // phone's bar keeps its four.
-  {key: "controller", label: "Controller", icon: "controller", tools: [["settings", "Settings"]]},
+  {key: "controller", label: "Controller", icon: "controller", tools: [["settings", "Settings"], ["debug", "Debug"]]},
   {key: "machines", label: "Machines", icon: "nodes", tools: [["nodes", "Nodes"], ["storage", "Storage"]]},
   {key: "sessions", label: "Sessions", icon: "sessions", tools: [["sessions", "Sessions"]]},
   {key: "jobs", label: "Jobs", icon: "jobs", tools: [["jobs", "Jobs"], ["schedules", "Schedules"]]},
@@ -67,6 +67,9 @@ function groupOf(kind){
 // 3). Before the first poll everything is drawn, as the page always was.
 function railAllows(kind){
   const a = state?.areas;
+  // The Debug page (R147) only where DEBUG_MODE=1 started the controller,
+  // and for an account with the debug grant, whatever its areas say.
+  if (kind === "debug") return !!state?.settings?.debug_available && state?.can?.debug !== false;
   if (!a) return true;
   switch (kind){
     case "settings": return !!a.controller;
@@ -117,7 +120,7 @@ const OPENERS = {
   projects: () => openProjectsTab(), findings: () => openFindingsTab(), docker: () => openDocker(),
   nodes: () => openNodesTab(), storage: () => openStorageTab(), nginx: () => openNginxTab(), vms: () => openVmsTab(),
   toolchains: () => openToolchains(), agents: () => openAgentsTab(), emulator: () => openEmulator(), phone: () => openPhoneTab(),
-  runner: () => openRunnerTab(), jobs: () => openJobsTab(), schedules: () => openSchedulesTab(), users: () => openUsersTab(),
+  runner: () => openRunnerTab(), jobs: () => openJobsTab(), debug: () => openDebugTab(), schedules: () => openSchedulesTab(), users: () => openUsersTab(),
   roles: () => openRolesTab(), settings: () => openSettingsTab(), profile: () => openProfileTab(),
   apps: () => openAppsTab(),
   sessions: () => openSessionsTab(), help: () => openHelp(),

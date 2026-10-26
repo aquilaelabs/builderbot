@@ -69,7 +69,7 @@ function openSettingsTab(){
 const SETTINGS_SAYS = {
   logs: "days kept, following, downloads", reports: "what was reported about BuilderBot, and the diagnostics",
   idle: "when an idle session is ended", paths: "the shares and disks this controller uses",
-  tunnel: "a hostname that reaches it from outside", debug: "debug mode and dev features",
+  tunnel: "a hostname that reaches it from outside",
   apps: "the apps your people install, kept current",
   reset: "start over at the setup page",
 };
@@ -280,17 +280,6 @@ const SETTING_GROUPS = [
    fields: [
     {key: "maintenance_mode", label: "Maintenance mode", type: "bool",
      hint: "Only you can sign in and use BuilderBot, from the page, a phone or a session. Everybody else is told it is down for maintenance and stays signed in for after. Nodes keep running."}]},
-  // Debug mode is on wherever this section is drawn: the controller was
-  // started with DEBUG_MODE=1 (the operator, 26 Oct), so the section says so
-  // and holds the debug settings themselves, saved with its own Save.
-  {key: "debug", title: "Debugging", heading: () => "on", debug: true,
-   intro: () => `<div class="sub">Debug mode is on: this controller was started with DEBUG_MODE=1. A project's settings may grant its sessions the controller's diagnostics and nodes' logs; nothing is granted by it alone.</div>`,
-   fields: [
-    // One tree behaves as two products (roadmap R54, step 6): production
-    // leaves this off and sees only what has been proven (alpha); a dev
-    // instance turns it on and sees everything, the unproven tagged dev.
-    {key: "offer_unvetted", label: "Offer dev features", type: "bool",
-     hint: "Also offer untested git hosts, hypervisors and node systems, tagged dev in the pickers."}]},
 ];
 
 // What the Apps section holds, over its switches, and Look now.
@@ -459,10 +448,6 @@ function settingsSections(){
   const s = state?.settings;
   if (!s) return [{key: "wait", title: "Settings", status: "", html: `<div class="row stack2"><div class="grow"><div class="sub">the settings arrive with the first poll…</div></div></div>`}];
   const src = k => s.settings[k]?.source === "default" ? `<span class="pill">default</span>` : "";
-  // The Debugging group is the debug grant's (roles.NAMED_ONLY): without it
-  // the page does not show it at all (the operator, 6 Oct).
-  // The Debugging group only on a controller started with DEBUG_MODE=1
-  // (settings.debug_available): without it there is nothing to turn on.
   // What this install switched off from its environment (R81), listed first
   // when there is any: set where the container starts, so nothing here
   // turns it back on.
@@ -470,8 +455,7 @@ function settingsSections(){
   const offSect = offs.length ? [{key: "off", title: "Switched off", status: String(offs.length), cls: "",
     html: `<div class="row stack2"><div class="grow"><div class="sub">Set where this container starts (FEATURES_OFF), so nothing here turns them back on.</div>${
       offs.map(w => `<div class="setrow">${esc(w)}</div>`).join("")}</div></div>`}] : [];
-  return offSect.concat(SETTING_GROUPS.filter(g => (!g.debug || (state?.can?.debug !== false && state?.settings?.debug_available))
-    && (!g.can || state?.can?.[g.can])).map(g => {
+  return offSect.concat(SETTING_GROUPS.filter(g => !g.can || state?.can?.[g.can]).map(g => {
     const field = f => {
             const v = s.settings[f.key]?.value;
             const id = "set_" + f.key;

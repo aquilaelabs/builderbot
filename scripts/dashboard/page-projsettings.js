@@ -37,7 +37,7 @@ const EFFORTS = [["", "Claude's default"], ["low", "low"], ["medium", "medium"],
 // a menu.
 let rnPrefWas = {git_name: "", git_email: "",
                  node: "", nodes: "", hosts: "", reads: "", tc_off: "", packs_on: "", sees: "", reaches: "", build: "", test: "", outputs: "",
-                 capture_days: "7", snapshot_days: "14", snapshots_on: "1", dev_keep: "3", gate: "", debug: ""};
+                 capture_days: "7", snapshot_days: "14", snapshots_on: "1", dev_keep: "3", gate: ""};
 // The colors a project can be, by the names prefs.py stores (COLORS there)
 // and the tone each is drawn in. Named at the store and mapped here so the
 // tone can be retuned for a scheme without touching what anybody saved.
@@ -104,7 +104,6 @@ function rnPrefsOf(p){
                agent_slots: String(p?.prefs?.agent_slots ?? 3),
                sees: (p?.prefs?.sees || []).join(", "),
                reaches: JSON.stringify(p?.prefs?.reaches || []),
-               debug: rnDebugKey(p?.prefs?.diag, p?.prefs?.log_from),
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", "),
                capture_days: String(p?.prefs?.capture_days ?? 7),
@@ -154,7 +153,6 @@ function rnFillPrefs(p){
   rnFillPrefsRest(p);
   rnFillReads();
   rnFillAgents();
-  rnFillDebug();
   rnLoadTools(p);
   rnLockSettings(p);
 }
@@ -205,7 +203,7 @@ function rnFillNode(){
       && (n.state !== "disabled" || n.id === rnPrefWas.node) && !removed.has(n.id) && !n.config?.host_only);
     if (nodesList === null){
       const opened = rnFor;
-      loadNodes().then(() => { if (opened !== null && rnFor === opened){ rnFillNode(); rnFillDebug(); rnBars(); } });
+      loadNodes().then(() => { if (opened !== null && rnFor === opened){ rnFillNode(); rnBars(); } });
     }
     // Hidden with the rest of the project's own settings when this dialog was
     // opened by the chain, which asks about the remote and nothing else.
@@ -361,27 +359,6 @@ function rnFillNodesMore(){
 // The projects a session here may read: every other project this account
 // sees, a listbox row each, ticked from the settings. Read-only there by
 // construction (users.with_reads), so the hint under it can say so plainly.
-// What a session here may read for debugging (the operator, 6 Oct): the
-// controller's diagnostics, then each node's machine logs, a listbox row
-// each. The debug grant's, and not drawn at all for an account without it.
-const rnDebugKey = (diag, from) => (diag ? "diag;" : "") + [...(from || [])].sort().join(",");
-function rnFillDebug(){
-  const box = $("rnDebug"), wrap = $("rnDebugField");
-  if (!box) return;
-  const p = (state?.projects || []).find(x => x.name === rnFor);
-  const was = new Set(p?.prefs?.log_from || []);
-  const rows = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
-  // ...and only where debug mode is on, which needs a controller started
-  // with DEBUG_MODE=1 (settings.debug_available).
-  wrap.hidden = rnMode === "git" || state?.can?.debug === false || !state?.settings?.settings?.debug_mode?.value;
-  box.innerHTML = lrow("@diag", "The controller's diagnostics", "bb diag", !!p?.prefs?.diag)
-    + rows.map(n => lrow(n.id, n.name, "machine logs", was.has(n.id))).join("");
-}
-function rnDebugNow(){
-  const on = [...$("rnDebug").querySelectorAll("input:checked")].map(i => i.value);
-  return {diag: on.includes("@diag"), log_from: on.filter(v => v !== "@diag")};
-}
-
 // ---- the Toolchains group (R77) -------------------------------------------
 // The toolchains installed on the project's node, as its Toolchains page
 // lists them, and every tool pack: a row each, ticked when its sessions may
@@ -654,7 +631,7 @@ const RN_LIST = {
   claude: "what its sessions do on their own, ask about, or may not",
   yours: "your replies, questions and commit name here",
   repo: "how it pushes and pulls", runs: "where it builds, tests and runs",
-  build: "commands, outputs, and what is kept", sees: "other projects, shares, addresses, logs",
+  build: "commands, outputs, and what is kept", sees: "other projects, shares, addresses",
   tools: "the toolchains and tool packs its sessions use",
   files: "its files over FTP and in an editor", snapshots: "the days kept, and putting one back",
   sessions: "every account's sessions here, to end",
@@ -1338,7 +1315,7 @@ const RN_SECTS = ["project", "people", "repo", "runs", "files", "sees", "tools",
 // Which section each of rnPrefWas's fields is in, and what it is called.
 const RN_WAS = {
   node: ["runs", "Node"], nodes: ["runs", "Node"], hosts: ["runs", "Hosts its containers on"], gpu: ["runs", "The node's GPU"], tests_in: ["runs", "Where tests run"],
-  reads: ["sees", "Reads"], sees: ["sees", "Also sees"], reaches: ["sees", "Also reaches"], debug: ["sees", "Debugging"],
+  reads: ["sees", "Reads"], sees: ["sees", "Also sees"], reaches: ["sees", "Also reaches"],
   tc_off: ["tools", "Toolchains"], packs_on: ["tools", "Tool packs"],
   build: ["build", "Build"], test: ["build", "Test"], outputs: ["build", "Outputs"],
   capture_days: ["build", "Captures kept"], snapshot_days: ["build", "Snapshots kept"], snapshots_on: ["build", "Daily snapshots"], dev_keep: ["build", "Dev builds kept"],
@@ -1362,7 +1339,6 @@ function rnEnc(){
   // bar on every open under load (the gate, 10 Oct).
   const drawn = nodesList !== null;
   const node = drawn ? $("rnNode").value : rnPrefWas.node;
-  const dbg = $("rnDebugField").hidden ? null : rnDebugNow();
   return {git_name: $("rnGitName").value.trim(), git_email: $("rnGitEmail").value.trim(),
           node, nodes: !drawn ? rnPrefWas.nodes
             : (node ? [node, ...[...$("rnNodesMore").querySelectorAll("input:checked")].map(i => i.value).filter(id => !rnHostIds().has(id))] : []).join(","),
@@ -1381,7 +1357,6 @@ function rnEnc(){
           agent_slots: $("rnAgentSlots")?.value || "3",
           sees: $("rnSees").value.split(",").map(x => x.trim()).filter(Boolean).join(", "),
           reaches: JSON.stringify(rnReachNow()),
-          debug: dbg ? rnDebugKey(dbg.diag, dbg.log_from) : rnPrefWas.debug,
           build: $("rnBuildCmd").value.trim(), test: $("rnTestCmd").value.trim(),
           outputs: $("rnOutputs").value.trim(),
           capture_days: $("rnCaptureDays").value.trim(), snapshot_days: $("rnSnapDays").value.trim(),
@@ -1487,10 +1462,6 @@ function rnRevertSect(sect){
     $("rnReachRows").innerHTML = "";
     rnReachDraft = JSON.parse(w.reaches || "[]");
     rnDrawReach();
-    rnFillDebug();
-    const on = new Set(String(w.debug).replace(/^diag;/, "").split(",").filter(Boolean));
-    $("rnDebug").querySelectorAll("input").forEach(i => {
-      i.checked = i.value === "@diag" ? String(w.debug).startsWith("diag;") : on.has(i.value); });
   } else if (sect === "build"){
     $("rnBuildCmd").value = w.build; $("rnTestCmd").value = w.test; $("rnOutputs").value = w.outputs;
     $("rnCaptureDays").value = w.capture_days; $("rnSnapDays").value = w.snapshot_days;
@@ -1524,7 +1495,6 @@ function rnBarSay(sect, msg, bad = true){
 
 // rnPrefWas's shape back into what the server is sent.
 function rnDec(w){
-  const dk = String(w.debug || "");
   const g = String(w.gate || "").split(",");
   return {...w,
     nodes: String(w.nodes || "").split(",").filter(Boolean),
@@ -1532,8 +1502,6 @@ function rnDec(w){
     reads: String(w.reads || "").split(",").filter(Boolean),
     sees: String(w.sees || "").split(",").map(x => x.trim()).filter(Boolean),
     reaches: JSON.parse(w.reaches || "[]"),
-    dbg: $("rnDebugField").hidden ? null
-      : {diag: dk.startsWith("diag;"), log_from: dk.replace(/^diag;/, "").split(",").filter(Boolean)},
     gate: Object.fromEntries(Object.keys(GATE_IDS).map((k, i) => [k, g[i] || "auto"]))};
 }
 
@@ -1601,13 +1569,13 @@ async function rnSubmit(sect, end = false){
       // This section's own fields alone (the operator, 17 Oct): every field
       // went with every save, the others as this window last read them, so a
       // save here put back what somebody had changed in another section.
-      const only = new Set(mine.flatMap(k => k === "debug" ? ["diag", "log_from"] : [k]));
+      const only = new Set(mine);
       const pick = o => Object.fromEntries(Object.entries(o).filter(([k]) => only.has(k)));
       const r = await fetch("/api/prefs", {method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify({project: name, restart: restartNow, ...pick({git_name: v.git_name, git_email: v.git_email,
                               node: v.node, nodes: v.nodes, hosts: v.hosts, reads: v.reads, sees: v.sees, reaches: v.reaches,
                               tc_off: v.tc_off, packs_on: v.packs_on, agents_off: v.agents_off, agent_default: v.agent_default, agent_slots: v.agent_slots,
-                              build: v.build, test: v.test, gate: v.gate, ...(v.dbg || {}),
+                              build: v.build, test: v.test, gate: v.gate,
                               tests_in: v.tests_in, test_change: v.test_change, gpu: v.gpu, reply: v.reply, asks: v.asks, term_scheme: v.term_scheme,
                               devbuild: v.devbuild, makevms: v.makevms, vm_caps: JSON.parse(v.vm_caps || "{}"), report: v.report, sign: v.sign, keys: v.keys, release: v.release, pc: v.pc,
                               outputs: v.outputs.split(",").map(x => x.trim()).filter(Boolean),

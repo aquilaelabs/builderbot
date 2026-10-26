@@ -6299,15 +6299,6 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="rnreachadd"><button type="button" id="rnReachAdd">Add an address</button></div>
       <div class="hint" id="rnReachHint"></div>
     </div>
-    <!-- What a session here may read for debugging (prefs.log_from,
-         prefs.diag): nodes' machine logs and the controller's diagnostics.
-         Per project since 6 Oct, set by an account with the debug grant,
-         and not drawn for one without it. -->
-    <div class="field" id="rnDebugField" hidden>
-      <label id="rnDebugLabel">Debug<span class="help" data-help="what a session here may read while debug mode is on: the controller's diagnostics and these nodes' machine logs" tabindex="0">?</span></label>
-      <div class="lbox" id="rnDebug" role="group" aria-labelledby="rnDebugLabel"></div>
-      <div class="hint">Read only while Debug mode is on, and only by a session whose account has the debug grant.</div>
-    </div>
     </div></details>
     <!-- Which toolchains a session here may use (R77): every one installed
          on the project's node, shipped ones on and tool packs off until
@@ -7041,6 +7032,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
 <script src="tab-settings.js"></script>
 <script src="tab-jobs.js"></script>
 <script src="tab-schedules.js"></script>
+<script src="tab-debug.js"></script>
 <script src="tab-nginx.js"></script>
 <script src="tab-vms.js"></script>
 <script src="page-tour.js"></script>

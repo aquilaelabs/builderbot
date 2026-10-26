@@ -195,6 +195,7 @@ const TOOL_ICONS = {
     <rect x="1.5" y="2.5" width="13" height="9" rx="1.2"/><rect x="4.5" y="5" width="7" height="4" rx="0.6"/>
     <path d="M5.5 14h5"/><path d="M8 11.5V14"/></svg>`,
   // A clock, for the Schedules page (R117).
+  debug: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 5.5a2.5 2.5 0 0 1 5 0v4a2.5 2.5 0 0 1-5 0z"/><path d="M8 7v5M3 6.5h2.5M10.5 6.5H13M3 10h2.5M10.5 10H13M6 3.5 5 2M10 3.5 11 2"/></svg>`,
   schedules: `<svg viewBox="0 0 16 16" aria-hidden="true">
     <circle cx="8" cy="8" r="5.8"/><path d="M8 4.6V8l2.4 1.6"/></svg>`,
   // A drive: two platters, for the Storage tab.
@@ -289,6 +290,11 @@ const TABKINDS = {
               icon: TOOL_ICONS.storage,
               render: (i) => renderStorageInto(i), live: () => `${storageRev}/${nodesRev}`,
               open: () => loadStorage() },
+  // From the status read and the node list: drawn on every poll, painted
+  // only when it changed.
+  debug:    { multi: false, label: () => "Debug",
+              icon: TOOL_ICONS.debug,
+              render: (i) => renderDebugInto(i), live: "always" },
   // jobsRev as well as its own: a schedule's run is a job.
   schedules: { multi: false, label: () => "Schedules",
               icon: TOOL_ICONS.schedules,

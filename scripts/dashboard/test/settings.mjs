@@ -29,18 +29,15 @@ const post = (path, body) => page.evaluate(async ([p, b]) => {
 await page.evaluate(() => openSettingsTab());
 // Controller settings is a page of settings (the operator, 16 Oct): a
 // section is picked from its list before its fields are used.
-await page.waitForSelector('.settingstab .snav [data-spick="debug"]', { timeout: 15000 }); await splitPick(page, 'debug');
-await page.waitForSelector('.settingstab [data-group="Debugging"] [data-set="offer_unvetted"]', { timeout: 15000 });
+await page.waitForSelector('.settingstab .snav [data-spick="idle"]', { timeout: 15000 }); await splitPick(page, 'idle');
 // The section on show, pressed again at a desk, is no change: no fade (B317).
-await page.click('.settingstab .snav [data-spick="debug"]');
+await page.click('.settingstab .snav [data-spick="idle"]');
 ok(await page.evaluate(() => !document.querySelector('.fghost')), 'the section on show, pressed again, fades nothing');
 // One tree, two products (roadmap R54, step 6): the switch that offers the
-// unvetted git hosts, hypervisors and OS families is a developer's, so it
-// lives in the Debugging section, off by default, and the header carries the
-// word while it is on.
-ok(await page.$eval('.settingstab [data-group="Debugging"] [data-set="offer_unvetted"]', e => e.type === 'checkbox' && !e.checked),
-   'the "offer dev features" switch is in the Debugging section, and starts off');
-ok(await page.$eval('#devtag', e => e.hidden), '...and the header says nothing while it is off');
+// unvetted git hosts, hypervisors and OS families is a developer's (on the
+// Debug page, below), off by default, and the header carries the word while
+// it is on.
+ok(!(await read()).offer_unvetted && await page.$eval('#devtag', e => e.hidden), 'dev features start off, and the header says nothing while they are');
 await post('/api/settings', { set: { offer_unvetted: true } });
 await page.waitForFunction(() => !document.querySelector('#devtag')?.hidden, null, { timeout: 30000 });
 ok(await page.$eval('#devtag', e => e.textContent.trim() === 'dev'),
@@ -100,8 +97,8 @@ print(json.dumps({"left": sorted(p.name for p in d.iterdir()), "moved": sorted(p
      `the reset moves everything into a dated directory beside it, leaves earlier resets and the root-only token store alone, and says what it kept (${JSON.stringify(r)})`);
 }
 const groups = await page.$$eval('.settingstab [data-group]', gs => gs.map(g => g.dataset.group));
-ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Reach from outside|Room on the nodes|Maintenance|Debugging|Reset',
-   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the home tunnel the controller runs itself (R176), the room a node keeps (R110), the terminal tabs open in (R133), maintenance mode (the owner's), debugging, and the reset (${groups.join(', ')})`);
+ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Reach from outside|Room on the nodes|Maintenance|Reset',
+   `the tab's groups are the ones that survived the question "does this need to exist": the logs, the idle rule, where what grows is kept (the operator, 10 Oct), the apps offered (R272), the home tunnel the controller runs itself (R176), the room a node keeps (R110), the terminal tabs open in (R133), maintenance mode (the owner's), and the reset (${groups.join(', ')})`);
 {
   // The room a node keeps (R110 steps 1 and 5): whole numbers held to their
   // range by the server, the browser's own min and max beside them.
@@ -205,28 +202,45 @@ ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Reach from outside|Room
   ok(true, '...and taking the token off stops the tunnel');
   await post('/api/settings', { set: { tunnel_host: '' } });
 }
-// Debug mode is DEBUG_MODE's (the operator, 26 Oct): the section says it is
-// on, with no switch for it, and holds the debug settings themselves, saved
-// with its own Apply rather than in a dialog of their own.
-await splitPick(page, 'debug');
-const dbg = await page.$eval('.settingstab [data-group="Debugging"]', g => ({
-  said: g.querySelector('.sub')?.textContent || '', mode: !!g.querySelector('[data-set="debug_mode"]'),
-  button: !!g.querySelector('[data-debugshow]'), dialog: !!document.getElementById('setdbgmodal'),
-  state: g.querySelector('.actbar .state')?.textContent || '' }));
-ok(/Debug mode is on: this controller was started with DEBUG_MODE=1/.test(dbg.said) && !dbg.mode && !dbg.button && !dbg.dialog
-   && /applies at once/.test(dbg.state),
-   `the Debugging section says debug mode is on from DEBUG_MODE, with no switch, button or dialog for it, and its change applies at once (${JSON.stringify(dbg)})`);
 // Gone on 7 Oct (the operator): a node's Claude Code is updated when Update
 // is pressed, and never before a session starts.
 ok(await page.$('.settingstab [data-set="claude_autoupdate"]') === null,
-   '...and no switch updates Claude Code before a session starts');
+   'no switch updates Claude Code before a session starts');
+
+// ---- the Debug page (R147) -------------------------------------------------
+// Beside Controller settings on a controller started with DEBUG_MODE=1 (the
+// harness's), for an account with the debug grant: debug mode said as on,
+// Offer dev features, and every project's grants, which a project's settings
+// held before. Not advertised (the operator, 26 Oct): it has no tour.
+await post('/api/settings', { set: { offer_unvetted: false } });
+await page.evaluate(() => openDebugTab());
+await page.waitForSelector('.debugtab #dbgDev', { timeout: 15000 });
+await page.waitForSelector('.debugtab [data-dbgproj] input[value="@diag"]', { timeout: 15000 });
+const dbg = await page.evaluate(() => ({ head: document.querySelector('.debugtab .pghead')?.textContent.replace(/\s+/g, ' ') || '',
+  group: groupOf('debug')?.key, hash: location.hash, tour: !!TOUR_STEPS.debug, dev: $('dbgDev').checked,
+  settings: SETTING_GROUPS.some(g => g.key === 'debug'), projSettings: !!document.getElementById('rnDebugField') }));
+ok(/Debug mode on/.test(dbg.head) && /DEBUG_MODE=1/.test(dbg.head) && dbg.group === 'controller' && dbg.hash === '#/controller/debug'
+   && !dbg.tour && !dbg.dev && !dbg.settings && !dbg.projSettings,
+   `the Debug page is the Controller group's beside Settings, saying debug mode is on from DEBUG_MODE, with no tour, Settings and a project's settings carrying none of it (${JSON.stringify(dbg)})`);
 
 // ---- saving ----------------------------------------------------------------
-await page.check('.settingstab [data-group="Debugging"] [data-set="offer_unvetted"]');
-await page.click('.settingstab [data-group="Debugging"] .setApply');
+await page.check('.debugtab #dbgDev');
+await page.click('.debugtab #dbgDevSave');
 await page.waitForFunction(() => state?.settings?.settings?.offer_unvetted?.value === true, null, { timeout: 30000 });
 ok(read().offer_unvetted === true,
-   'Apply writes it under /config and the poll carries it');
+   'Save writes Offer dev features under /config and the poll carries it');
+// A project's grant, ticked on its row and saved with the section's Save, is
+// the project's own setting, as its settings saved it.
+const alphaRow = '.debugtab [data-dbgproj] input[value="@diag"]';
+const key = await page.$eval(alphaRow, i => i.closest('[data-dbgproj]').dataset.dbgproj);
+const was = await page.$eval(alphaRow, i => i.checked);
+await page.click(alphaRow);
+await page.click('.debugtab #dbgSave');
+await page.waitForFunction(([k, w]) => !!projectList().find(c => c.key === k)?.first?.prefs?.diag === !w, [key, was], { timeout: 30000 });
+ok(true, `...and a project's grant ticked on its row is saved with the section's Save (${key}: diagnostics ${!was})`);
+await page.click(alphaRow);
+await page.click('.debugtab #dbgSave');
+await page.waitForFunction(([k, w]) => !!projectList().find(c => c.key === k)?.first?.prefs?.diag === w, [key, was], { timeout: 30000 });
 const bad = await post('/api/settings', { set: { offer_unvetted: 'maybe' } });
 ok(bad.status === 400, 'a value that is not the setting\'s shape is refused');
 ok((await post('/api/settings', { set: { claude_channel: 'stable' } })).status === 400

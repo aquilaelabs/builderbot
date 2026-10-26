@@ -121,6 +121,14 @@ const DRIVERS = {
     open: () => page.evaluate(() => openJobsTab()),
     readyWhen: '.jobstab .jbrow, .jobstab .empty',
   },
+  // The Debug page (R147), the harness starting the controller with
+  // DEBUG_MODE=1: ready once its grants section says how many are granted,
+  // which it says once the node list its rows offer has landed (its heading
+  // shows on a phone, where every fold starts shut).
+  debug: {
+    open: () => page.evaluate(() => openDebugTab()),
+    readyWhen: '.debugtab details[data-sect="debug:grants"] > summary .sst',
+  },
   // The Schedules page (R117): the built-in scan's row is always there.
   schedules: {
     open: () => page.evaluate(() => openSchedulesTab()),
@@ -2196,10 +2204,6 @@ const DIALOGS = {
   senddocker: () => openSendToDocker('ep.silon'), devenv: () => openDevEnv('ep.silon', 'main'),
   relocate: () => openRelocate('ep.silon', 'main'),
   projsettings: () => renameProject('alpha'),
-  // The Debugging group's dialog. It draws from SETTING_GROUPS rather than
-  // from what is on screen, so it opens whether or not the Settings tab is
-  // the one showing, and debug mode decides the BUTTON rather than this.
-  setdebug: () => openDebugSettings(),
   // Reset BuilderBot (the operator, 12 Oct): the nodes to un-enroll first,
   // what un-enrolling does, and the word. Opened, measured, never pressed.
   reset: () => askReset(),
