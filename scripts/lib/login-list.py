@@ -114,7 +114,9 @@ def grok_of(home):
         with open(p) as f:
             d = json.load(f)
     except FileNotFoundError:
-        return None
+        # Sealed, its copy not open now (R126): still a sign-in.
+        got = sealed_of(home, "grok")
+        return got if got and got["email"] else None
     except (OSError, ValueError) as e:
         return {"error": f"{type(e).__name__}: {e}"[:200]}
     if not d:

@@ -1556,7 +1556,7 @@ case "$target" in
         if ! logged_in; then
             # Sealed here (R126) and not open: the home's file links into the
             # tmpfs, which holds nothing until a person opens a terminal.
-            case "$agent" in claude) tf="$HOME/.claude/.credentials.json" ;; codex) tf="$HOME/.codex/auth.json" ;; *) tf="" ;; esac
+            case "$agent" in claude) tf="$HOME/.claude/.credentials.json" ;; codex|grok) tf="$HOME/.$agent/auth.json" ;; *) tf="" ;; esac
             if on_node && [ -n "$tf" ] && [ -L "$tf" ] && [ ! -e "$tf" ]; then
                 bad "This account's ${agent_name} sign-in is kept sealed on ${BB_NODE:-this node}, and it opens" \
                     "only when you open one of your terminals there from the dashboard. Open this" \

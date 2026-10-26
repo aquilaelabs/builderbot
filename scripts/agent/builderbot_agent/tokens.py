@@ -1,7 +1,7 @@
 """The coding agents' sign-ins sealed on a node (R126).
 
 With the node's switch on (token_seal, after R125's accounts as their own
-users), an account's Claude Code and Codex CLI sign-ins are kept here
+users), an account's Claude Code, Codex CLI and Grok Build sign-ins are kept here
 sealed, never in the clear on a disk: a copied disk, a backup, the share or
 a snapshot carries nothing usable, and a root who arrives while the account
 has no session running gets nothing for it. tokenseal.py says how.
@@ -37,7 +37,9 @@ SEAL_DIR = "/var/lib/builderbot/tokens"
 OPEN_DIR = "/run/bb-tokens"
 GRACE_S = 300
 EVERY_S = 10
-FILES = (("claude", os.path.join(".claude", ".credentials.json")), ("codex", os.path.join(".codex", "auth.json")))
+# ...and Grok Build's session (R95 step 21), a file of its own as Codex's is.
+FILES = (("claude", os.path.join(".claude", ".credentials.json")), ("codex", os.path.join(".codex", "auth.json")),
+         ("grok", os.path.join(".grok", "auth.json")))
 
 
 def _claims(jwt):
@@ -46,6 +48,23 @@ def _claims(jwt):
         return json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4))) or {}
     except (IndexError, ValueError, TypeError):
         return {}
+
+
+def _jwt_email(d, depth=0):
+    """The email a JSON Web Token anywhere in a record names, from its
+    claims, unverified (a name to show, never a credential), or ""."""
+    if depth > 4:
+        return ""
+    for v in (d.values() if isinstance(d, dict) else d if isinstance(d, list) else []):
+        if isinstance(v, (dict, list)):
+            got = _jwt_email(v, depth + 1)
+            if got:
+                return got
+        elif isinstance(v, str) and v.count(".") == 2 and len(v) < 8192:
+            got = str(_claims(v).get("email") or "")
+            if got:
+                return got
+    return ""
 
 
 def about(agent, data, home):
@@ -61,6 +80,10 @@ def about(agent, data, home):
         elif agent == "claude":
             with open(os.path.join(home, ".claude.json"), encoding="utf-8") as f:
                 out["email"] = str(((json.load(f).get("oauthAccount") or {}).get("emailAddress")) or "")[:120]
+        elif agent == "grok":
+            # The email its token's claims name, else that it is an xAI
+            # account (login-list.py grok_of says it the same way).
+            out["email"] = (_jwt_email(json.loads(data)) or "an xAI account")[:120]
     return out
 
 
