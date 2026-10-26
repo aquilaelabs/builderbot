@@ -666,8 +666,12 @@ function rnSplit(box, name){
   splitSects(box, "rn:" + name, {says: RN_LIST, sel: ':scope > details.rngroup:not([data-sect="rn:claude"])', back: "Settings",
     marks: k => RN_SECTS.includes(k) && rnSectChanges(k).said.length > 0});
 }
-// A project's settings: its notebook's Settings view.
-function openProjectSettings(name){ openNotebook(name, "settings"); }
+// A project's settings: its notebook's Settings view, at one of its sections
+// when `sect` names it (a node's Projects section opens Where it runs).
+function openProjectSettings(name, sect = ""){
+  if (sect) SPLIT["rn:" + name] = {pick: sect, open: true};
+  openNotebook(name, "settings");
+}
 
 // The Agents may section, lent to a notebook's Permissions view
 // (nb-permissions.js), goes back to its place in the form, marked by this

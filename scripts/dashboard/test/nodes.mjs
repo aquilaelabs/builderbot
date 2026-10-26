@@ -903,8 +903,8 @@ m._exec("UPDATE nodes SET agent = ? WHERE id = ?", (json.dumps(ag), "${added.id}
   await page.waitForSelector(`${ROW} .ndconfbody`, { timeout: 15000 });
   ok(await page.$eval(`${ROW} .ndconfbody`, e => ![...e.querySelectorAll(':scope > details.sect > summary .t')]
        .some(t => t.textContent.trim() === 'CI runners'))
-     && await page.$(`${ROW} [data-ndrunner]`) !== null,
-     '...and the Nodes page has no runner section, only a line that opens the CI runner page on this node');
+     && await page.$(`${ROW} [data-ndrunner]`) === null,
+     '...and the Nodes page has no runner section, nor a button to the CI runner page (the operator, 26 Oct)');
   ok(await page.$eval(`${ROW} .ndconfbody`, e =>
        [...e.querySelectorAll(':scope > details.sect > summary .sst')].every(s => s.textContent.trim())),
      '...every section says its state on its summary, so a phone reads the headings and picks one');
@@ -1291,8 +1291,9 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     ok(fresh.config.workspace === 'sync', `a node enrolled holds its projects as a synced copy (${fresh.config.workspace})`);
     await page.evaluate(() => loadNodes());
     await page.waitForSelector(`${ROW} [data-nd="sync-stop"]`, { timeout: 10000 });
-    ok(/a copy kept in step/.test(await page.$eval(ROW, r => r.textContent)),
-       '...and the row says its projects are a synced copy');
+    ok(!/a copy kept in step/.test(await page.$eval(ROW, r => r.textContent))
+       && !!await page.$(`${ROW} [data-sect="nodes:projects"] [data-nd="sync-stop"]`),
+       '...and Stop syncing is under its Repositories, with no line of its own saying what that list says (the operator, 26 Oct)');
     const again = await napi('/api/v1/nodes', { action: 'to-sync', id: minted.id });
     ok(/already/.test(again.error || ''), `Move to a synced copy is refused in words while it holds one (${again.error})`);
     // ...and off it again (R164): Stop syncing holds sessions while what is
@@ -1365,24 +1366,26 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
     const held = await napi('/api/v1/nodes', { action: 'host-only', id: minted.id });
     ok(/gamma lists this node/.test(held.error || ''),
        `a node a project lists cannot be made hosting only until it is moved off (${held.error})`);
-    // ...which the node's own Projects section does (the operator, 10 Oct):
-    // the projects that have it, each with Remove, asked first.
+    // The node's Repositories section lists the ones that have it, each name
+    // opening its notebook and Settings opening its project's settings at
+    // where it runs, which is where a node is taken off (the operator, 26
+    // Oct: not removed from the node's page).
     await page.evaluate(async () => { await refresh(); await loadNodes(); });
     const projBtn = `${ROW} .ndproj [data-ndproj="gamma"]`;
     await page.waitForSelector(projBtn, { timeout: 10000 });
-    ok(/primary/.test(await page.textContent(`${ROW} .ndproj`)) &&
-       /on no node/.test(await page.textContent(`${ROW} .ndproj`)),
-       'the node\'s Projects section lists gamma as its primary, and says it would then be on no node');
-    page.dialogs.length = 0;
+    const repoRow = await page.$eval(`${ROW} .ndproj`, r => ({ text: r.textContent, link: !!r.querySelector('[data-ndopen="gamma"]'),
+      btn: r.querySelector('[data-ndproj]')?.textContent.trim(), head: r.closest('details.sect')?.querySelector('summary .t')?.textContent }));
+    ok(/primary/.test(repoRow.text) && repoRow.link && repoRow.btn === 'Settings' && repoRow.head === 'Repositories',
+       `the node's Repositories section lists gamma as its primary, its name a link, with Settings and no Remove (${JSON.stringify(repoRow)})`);
     await page.click(projBtn);
-    await page.waitForFunction(() => !(state.projects.find(p => p.name === 'gamma')?.prefs?.nodes || []).length,
-                               null, { timeout: 10000 });
-    ok(page.dialogs.length === 1 && /Remove gamma from[\s\S]*on no node/.test(page.dialogs[0]),
-       `Remove asks first, naming what it leaves (${page.dialogs[0]?.slice(0, 60)})`);
-    // The section is drawn after the poll that brings the change, so its
-    // going is waited for rather than read the moment the state moves.
+    await page.waitForFunction(() => document.querySelector('#pane0 .nbview[data-view="settings"] .snav .rrow.on')?.dataset.spick === 'runs', null, { timeout: 15000 }).catch(() => {});
+    ok(await page.evaluate(() => document.querySelector('#pane0 .nbview[data-view="settings"] .snav .rrow.on')?.dataset.spick) === 'runs',
+       '...and Settings opens gamma\'s settings at where it builds, tests and runs');
+    await napi('/api/prefs', { project: 'gamma', node: '', nodes: [] });
+    await page.evaluate(() => openNodesTab());
+    await page.evaluate(async () => { await refresh(); await loadNodes(); });
     await page.waitForSelector(projBtn, { state: 'detached', timeout: 10000 }).catch(() => {});
-    ok(!(await page.$(projBtn)), '...and gamma is gone from the node\'s Projects section');
+    ok(!(await page.$(projBtn)), '...and gamma taken off the node in its settings is gone from the node\'s Repositories');
     await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
     await page.waitForSelector(`${ROW} [data-nd="host-only"]`, { timeout: 10000 });
     page.dialogs.length = 0;
@@ -3723,8 +3726,8 @@ ok(page.errors.length === 0,
   await pickNode(page, en.id);
   const ROWC = `.nodestab .ndrow[data-node="${en.id}"]`;
   await page.waitForFunction(sel => /Claude installed/.test(document.querySelector(sel + ' [data-sect="nodes:sessions"] .ndagents')?.textContent || ''), ROWC, { timeout: 15000 });
-  ok(!await page.$(`${ROWC} [data-nd="claude-update"]`) && !!await page.$(`${ROWC} [data-ndag="${en.id}"]`),
-     'the Nodes page says which coding agents are installed there in one line and points at the Agents page, with no update of its own (R95)');
+  ok(!await page.$(`${ROWC} [data-nd="claude-update"]`) && !await page.$(`${ROWC} [data-ndag]`),
+     'the Nodes page says which coding agents are installed there in one line, with no update of its own (R95) and no button to the Agents page (the operator, 26 Oct)');
   await page.evaluate(id => openAgentsOn(id), en.id);
   const AGC = `.agentstab [data-agnode="${en.id}"] [data-sect="agents:claude"]`;
   await page.waitForSelector(`${AGC} [data-agact="install"]`, { timeout: 15000 });
