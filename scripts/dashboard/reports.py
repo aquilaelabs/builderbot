@@ -190,6 +190,25 @@ def clear():
     return {"ok": True, "cleared": n}
 
 
+def delete(ids):
+    """The reports named deleted, with the conversations they carry: one
+    taken out before the diagnostics are downloaded (the operator, 26 Oct).
+    The sequence is kept, as clear keeps it."""
+    want = set()
+    for x in ids if isinstance(ids, list) else [ids]:
+        try:
+            want.add(int(x))
+        except (TypeError, ValueError):
+            continue
+    with _lock:
+        d = _load()
+        gone = [r for r in d["reports"] if r.get("id") in want]
+        for r in gone:
+            (_files() / f"{r.get('id')}.txt").unlink(missing_ok=True)
+        write_json(FILE, {"seq": int(d.get("seq") or 0), "reports": [r for r in d["reports"] if r.get("id") not in want]})
+    return {"ok": True, "deleted": [r.get("id") for r in gone]}
+
+
 # ---- the dashboard's verbs, one call each ------------------------------------
 
 def _answer(r):
@@ -208,7 +227,8 @@ def own_verb(act, proj, req, *, by):
 def diag_verb(act, req, *, by, principal):
     """Every project's reports, behind the diagnostics' own gate, since that
     is where they are read (bb diag reports): list, read one or the
-    conversation it carries, count, or clear them all. (payload, status)."""
+    conversation it carries, count, delete the ones named, or clear them
+    all. (payload, status)."""
     if act == "list":
         return {"reports": listing()}, 200
     if act == "get":
@@ -221,6 +241,12 @@ def diag_verb(act, req, *, by, principal):
         return ({"text": text}, 200) if text else ({"error": "that report carries no conversation"}, 400)
     if act == "count":
         return counts(), 200
+    if act == "delete":
+        r = delete(req.get("ids") if "ids" in req else req.get("id"))
+        if not r["deleted"]:
+            return {"error": "no such report"}, 400
+        audit(principal, "reports-delete", "reports", {"ids": r["deleted"]})
+        return r, 200
     if act == "clear":
         r = clear()
         audit(principal, "reports-clear", "reports", {"cleared": r["cleared"]})

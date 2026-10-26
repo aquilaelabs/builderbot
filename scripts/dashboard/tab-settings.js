@@ -67,7 +67,7 @@ function openSettingsTab(){
 
 // Each section's line on the list beside it: what is in it.
 const SETTINGS_SAYS = {
-  logs: "days kept, following, downloads, diagnostics", reports: "what sessions reported about BuilderBot",
+  logs: "days kept, following, downloads", reports: "what was reported about BuilderBot, and the diagnostics",
   idle: "when an idle session is ended", paths: "the shares and disks this controller uses",
   tunnel: "a hostname that reaches it from outside", debug: "debug mode and dev features",
   apps: "the apps your people install, kept current",
@@ -104,7 +104,7 @@ function renderSettingsInto(i){
   d.list.innerHTML = `${head}<div class="sectjump" data-sects></div>
     ${logs || !state ? sect("logs", "Logs", "", `<div class="row stack2" data-group="Logs"><div class="grow">${withRevert(logs, "logs")
         || `<div class="sub">log settings arrive with the first poll…</div>`}</div></div>`) : ""}
-    ${reportsSection() ? sect("reports", "BuilderBot bug reports", reportsCount === null ? "" : reportsCount ? `${reportsCount} report${reportsCount === 1 ? "" : "s"}` : "none", reportsSection()) : ""}
+    ${sect("reports", "BuilderBot bug reports", reportsCount() === null ? "" : reportsCount() ? `${reportsCount()} report${reportsCount() === 1 ? "" : "s"}` : "none", reportsSection())}
     ${sect("idle", "Idle sessions", idle === undefined ? "" : idle ? `${idle} min` : "never",
            `<div class="row stack2" data-group="Idle sessions"><div class="grow">${withRevert(idleSection(), "idle")}</div></div>`)}
     ${pathsSection() ? sect("paths", "Storage on this controller", `${paths.length} path${paths.length === 1 ? "" : "s"}`, withRevert(pathsSection(), "paths")) : ""}
@@ -132,7 +132,7 @@ function renderSettingsInto(i){
   wirePathsSection(d.el);
   wireSettingsSections(d.el);
   settingsKeep(d.el);
-  if (reportsCount === null && reportsSection()) countReports();
+  if (reportsList === null) loadReports();
   const ac = d.el.querySelector("#setAppsCheck");
   if (ac) ac.onclick = async () => {
     busy(ac, "Looking");
@@ -146,14 +146,11 @@ function renderSettingsInto(i){
   };
   const rs = d.el.querySelector("#setReset");
   if (rs) rs.onclick = () => askReset();
+  d.el.querySelectorAll("[data-repdel]").forEach(b => b.onclick = () => deleteReport(b));
   const rc = d.el.querySelector("#setReportsClear");
   if (rc) rc.onclick = () => clearReports(rc);
 }
 
-// What sessions on other projects reported about BuilderBot with bb report,
-// which the Diagnostics download under Logs carries. Counted on the press
-// rather than on the line: they arrive from sessions at any time, so a count
-// fetched when the tab opened would be stale by the time it was read.
 // A section's Revert beside its Apply: the first Apply button in the markup
 // gets one after it, wearing the section's key.
 function withRevert(html, key){
@@ -163,37 +160,58 @@ function withRevert(html, key){
   return html.replace(m[0], `${m[0]}<button type="button" class="caution" data-srevert="${esc(key)}" title="put this section's fields back to what is saved">Revert</button>`);
 }
 
-// Opens on what it holds (R218 step 32): its count the section's status,
-// one hint, Clear reports its action. Counted when the page draws it and
-// after a Clear, not on the poll.
-let reportsCount = null;
-async function countReports(){
+// What sessions and people reported about BuilderBot (bb report, the
+// header's Report a bug), every one listed with its delete, and the
+// diagnostics download under them, which carries what is left (the
+// operator, 26 Oct): a report taken out before the download is not in it.
+// Whoever reads Controller settings reads them; only a session reading them
+// is debug's. Read when the page draws it and after a delete, not on the poll.
+let reportsList = null;
+async function loadReports(){
   try{
-    const c = await (await postJSON("/api/reports", {action: "count"})).json();
-    if (c.error) return;
-    reportsCount = c.all || 0;
+    const j = await (await postJSON("/api/reports", {action: "list"})).json();
+    if (j.error) return;
+    reportsList = j.reports || [];
   }catch{ return; }
   settingsRev++;
   drawPanes();
 }
+const reportsCount = () => reportsList === null ? null : reportsList.length;
 function reportsSection(){
-  // The debug grant's, and not drawn without it (the operator, 6 Oct).
-  if (state?.can?.debug === false) return "";
-  return `<div class="field">
-      <div class="hint">What sessions reported about BuilderBot with <code>bb report</code>; the Diagnostics download under Logs carries them.</div>
-      <div class="actbar"><span class="sp"></span><button type="button" class="danger" id="setReportsClear">Clear reports</button></div>
-    </div>`;
+  const rows = reportsList || [];
+  const mayDelete = state?.can?.controller !== false;
+  const list = reportsList === null ? `<div class="row stack2"><div class="grow"><div class="sub dim">reading the reports…</div></div></div>`
+    : !rows.length ? `<div class="empty">No reports. A session's <code>bb report</code> and Report a bug in the header land here.</div>`
+    : rows.map(r => `<div class="row repline" data-report="${r.id}"><div class="grow">
+        <div class="name">#${r.id} ${esc(r.project || "no project")}<span class="dim"> · ${esc(ago(r.at))} · ${esc(r.by || "")}${r.area ? ` · ${esc(r.area)}` : ""}</span></div>
+        <div class="sub reptext">${esc(r.text || "")}</div></div>
+        ${mayDelete ? rmIcon(`data-repdel="${r.id}"`, `Delete report ${r.id}`, {title: "take it out: it is not in the diagnostics downloaded after"}) : ""}
+      </div>`).join("");
+  return `<div class="field"><div class="hint">What sessions and people reported about BuilderBot. Delete any you do not want in the diagnostics before downloading them.</div></div>
+    <div class="replist">${list}</div>
+    <div class="field"><div class="actbar"><span class="sp"></span>
+      <a class="btnish" href="/logs/download?what=diag" download title="the controller's diagnostics as one file, with the reports listed here">Download diagnostics</a>
+      ${mayDelete && rows.length ? `<button type="button" class="danger" id="setReportsClear">Clear reports</button>` : ""}</div></div>`;
+}
+
+async function deleteReport(btn){
+  const id = Number(btn.dataset.repdel);
+  busy(btn, "");
+  try{
+    const j = await (await postJSON("/api/reports", {action: "delete", id})).json();
+    if (j.error){ notify(j.error, true); unbusy(btn, ""); return; }
+    notify(`report #${id} deleted`);
+  }catch{ notify("could not delete the report", true); unbusy(btn, ""); return; }
+  await loadReports();
 }
 
 async function clearReports(btn){
-  let c;
-  try{
-    c = await (await postJSON("/api/reports", {action: "count"})).json();
-  }catch{ return notify("could not count the reports", true); }
-  if (c.error) return notify(c.error, true);
-  if (!c.all) return notify("there are no reports to clear");
-  const s = c.all === 1 ? "" : "s";
-  if (!await askYes(`Delete all ${c.all} report${s} sessions made about BuilderBot?`)) return;
+  // Read again first: a report may have come in, or gone, since the draw.
+  await loadReports();
+  const n = reportsList?.length || 0;
+  if (!n) return notify("there are no reports to clear");
+  const s = n === 1 ? "" : "s";
+  if (!await askYes(`Delete all ${n} report${s} about BuilderBot?`)) return;
   busy(btn, "Clearing");
   try{
     const j = await (await postJSON("/api/reports", {action: "clear"})).json();
@@ -201,7 +219,7 @@ async function clearReports(btn){
     else notify(`cleared ${j.cleared} report${j.cleared === 1 ? "" : "s"}`);
   }catch{ notify("could not clear the reports", true); }
   unbusy(btn, "Clear reports");
-  countReports();
+  loadReports();
 }
 
 // The settings that used to be environment variables (roadmap R29): what is

@@ -153,6 +153,20 @@ const lastId = Math.max(...(await call('/api/reports', { action: 'list' })).repo
 await page.evaluate(() => openSettingsTab());
 await page.waitForSelector('.settingstab .snav [data-spick="reports"]', { timeout: 15000 }); await splitPick(page, 'reports');
 await page.waitForSelector('#setReportsClear', { timeout: 15000 });
+// Every report listed, each with its delete, so one is taken out before the
+// diagnostics are downloaded (the operator, 26 Oct).
+await page.waitForSelector(`.settingstab [data-report="${lastId}"] [data-repdel="${lastId}"]`, { timeout: 15000 });
+const onPage = await page.$$eval('.settingstab [data-report]', rs => rs.map(r => +r.dataset.report));
+ok(onPage.length === before.all && onPage.includes(lastId), `the section lists every report, each with its delete (${onPage.length} of ${before.all})`);
+await page.click(`.settingstab [data-repdel="${lastId}"]`);
+await page.waitForSelector(`.settingstab [data-report="${lastId}"]`, { state: 'detached', timeout: 15000 });
+const after = (await call('/api/reports', { action: 'list' })).reports.map(r => r.id);
+ok(!after.includes(lastId) && after.length === before.all - 1, `...and its delete takes that one out and no other (#${lastId})`);
+const dl = await page.evaluate(() => document.querySelector('.settingstab details[data-sect="settings:reports"] a[href="/logs/download?what=diag"]')?.textContent.trim());
+ok(dl === 'Download diagnostics', `...with Download diagnostics under the list (${dl})`);
+const delBySession = await call('/api/reports', { action: 'delete', id: after[0] }, ALPHA);
+ok(delBySession.status === 403, `a session may not delete one (${delBySession.error})`);
+before.all = after.length;
 page.dialogs.length = 0;
 await page.click('#setReportsClear');
 // The button counts first, then asks: the confirm is waited for in its own
@@ -173,6 +187,8 @@ ok(await page.$eval('.settingstab details[data-sect="settings:reports"] > summar
 const next = await call('/api/reports', { action: 'add', text: 'the first one after a clear' }, ALPHA);
 ok(next.id > lastId, `...clears every one, and the next report does not take a number already used (#${next.id} after #${lastId})`);
 page.dialogs.length = 0;
+await page.evaluate(() => loadReports());
+await page.waitForSelector('#setReportsClear', { timeout: 15000 });
 await call('/api/reports', { action: 'clear' });
 await page.click('#setReportsClear');
 await page.waitForFunction(() => /no reports to clear/.test(document.getElementById('toast').textContent), null, { timeout: 10000 });

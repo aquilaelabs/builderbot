@@ -5013,7 +5013,10 @@ def _snapshot(who):
                  "lock", "rename", "trash", "version", "create", "command-pin",
                  # ...and the debug options, which a page without the grant
                  # does not show at all (the operator, 6 Oct).
-                 "debug")}
+                 "debug",
+                 # ...and Controller settings' own writes (deleting a bug
+                 # report among them), for a reader who may not.
+                 "controller")}
                # ...and what other projects a session may read: the owner's
                # alone (the operator, 6 Oct), whatever the grants say.
                | {"reads": (who or {}).get("role") == "owner",
@@ -6853,13 +6856,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _get_logs_download(self):
         """GET /logs/download: the container's own log, every project's
-        traffic in it, or the diagnostics whole (logs.download). An
-        administrator's, and the diagnostics the debug grant's."""
+        traffic in it, or the diagnostics whole (logs.download): Controller
+        settings' to read, the diagnostics with them, since they hold the bug
+        reports a person reads there (the operator, 26 Oct)."""
         if self._refused("controller-read"):
             return None
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
-        if (q.get("what") or [""])[0] == "diag" and self._refused("debug"):
-            return None
         got, status = logs.download((q.get("what") or [""])[0], self._principal())
         if status != 200:
             return self._json(got, status)
@@ -9958,9 +9960,11 @@ class Handler(BaseHTTPRequestHandler):
     def _reports(self, req):
         """Problems with BuilderBot itself, reported by any project's session
         (reports.py, bb report). Anybody signed in adds one for a project they
-        may see, and a session only for its own. Reading them, and clearing
-        them all (Controller settings), is the diagnostics' own gate, since
-        that is where they are read (bb diag reports)."""
+        may see, and a session only for its own. A person reads, deletes and
+        clears them on Controller settings, so its gate is that page's (the
+        operator, 26 Oct: not a debug feature); a session reads them behind
+        the diagnostics' own gate, since that is where it reads them (bb diag
+        reports)."""
         me = self._who() or {}
         sess = me.get("session") or ""
         act = field(req, "action")
@@ -10003,10 +10007,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(*reports.own_verb(act, proj, req, by=name if sess else f"{name} (from the dashboard)"))
         # Clearing is a person's, from Controller settings, whatever a
         # session may otherwise read here.
-        if act == "clear" and sess:
-            return self._json({"error": "clearing the reports is a person's, from "
+        if act in ("clear", "delete") and sess:
+            return self._json({"error": "deleting reports is a person's, from "
                                         "Controller settings"}, 403)
-        if self._diag_refused():
+        # A person's are Controller settings' (reading them its read, deleting
+        # its write); only a session reading them is debug's (the operator,
+        # 26 Oct): debug mode, the debug grant and its project's grant.
+        if not sess:
+            if self._refused("controller" if act in ("clear", "delete") else "controller-read"):
+                return None
+        elif self._diag_refused():
             return None
         return self._json(*reports.diag_verb(act, req, by=name, principal=self._principal()))
 

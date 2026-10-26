@@ -9,26 +9,27 @@
 - Terminal colors can be changed one by one under the preset you pick, with Reset to go back, and a preview on your Profile and in a project's own settings shows how your terminals will look (48dbbe9)
 - You can run several sessions of one coding agent on a project at once, each in its own worktree and conversation (Claude 2 beside Claude). Start agent lists your running sessions with Open, Restart and End, starts a new one, or resumes any of your conversations there; one already running is not offered twice. A project's settings say how many each person may run (three unless changed), and a Send with several running asks which one (efdf884)
 - A Schedules page beside Jobs runs an administrator's own scripts on a timetable, as Unraid's User Scripts do: each on a node of yours, as its jobs account or as root on a sandbox node, every run a job with its log, a failed or skipped run on the bell. The static analysis scan is built in, off until you turn it on with its node and paths (380cc7a)
+- Controller settings' BuilderBot bug reports section lists every report with its own delete, so one can be taken out before the diagnostics are downloaded. (c2ece51)
 
 ### Changed
 
 - SIGNING_SECRET is INSTALL_KEY: the one key that seals at rest what BuilderBot keeps, the signing keys among it (7645fec)
 - Terminals are BuilderBot's own, drawn in the page itself, and ttyd is gone from the controller and the nodes: a finger scrolls a terminal on a phone and a press held on a word selects it to copy, a job's, a container's and the controller's logs follow in a tab of the dock, a terminal that ends says why, and a tab popped out opens the same terminal in a window of its own. A node's terminals come in on the one port its VMs' screens use, so its firewall opens 7684 alone (052c096)
 - Every page states what it knows in a head at its top (its name, its state and its facts in a grid) in place of loose lines of text (48dbbe9)
-
 - Each session and each project's containers are kept to their own network on every node: a node that had either switched off has it on again after the upgrade, since which projects reach each other is set by their Reads. A hosting-only node's containers are kept apart the same way. (c2ece51)
 - Download diagnostics moved from the Logs section to the BuilderBot bug reports section, beside the reports it carries, and anyone who can open Controller settings can read the reports and download the diagnostics there. (c2ece51)
+
 ### Upgrading
 
 - Rename SIGNING_SECRET to INSTALL_KEY in your secrets folder's env file: the old name is read for this release only. With an install key set, everybody is signed out once at the first start of 0.8.0 (7645fec)
 - Update the Android app and the VS Code extension (0.2.0) with the controller: they open a session's terminal on BuilderBot's own terminal now, and an older copy of either cannot open one (052c096)
 - Each project you had becomes a project holding its one repository, under the same name, with its settings, people, owner, pins, groups, colors, archive and lock; nothing on disk moves. New project now asks for a name alone, and Add repository on its card makes or clones the repository (178952e)
 
-### Fixed
 ### Deprecated
 
 - The two node switches that turned those networks off (in a node's Sessions section) go in 0.9.0. Nothing to do unless a project's containers relied on reaching another project's: add that project to its Reads. (c2ece51)
 
+### Fixed
 
 - Pressing the filter chip or the settings section that is already selected no longer redraws the page with a fade (4a237e5)
 - On a desk the dock's line of tabs, with more tabs than fit, has an arrow at each end with more past it and can be dragged with the mouse (8abd211)

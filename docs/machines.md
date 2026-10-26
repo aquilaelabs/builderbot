@@ -290,7 +290,8 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
 
 - **Logs**: how long logs are kept, and the downloads (see [Logs](#logs)).
 - **BuilderBot bug reports**: what sessions and people reported about
-  BuilderBot itself, and **Clear reports**.
+  BuilderBot itself, each with its delete, **Download diagnostics** and
+  **Clear reports**.
 - **Idle sessions**: the idle rule, which ends any agent's session after N minutes
   with nothing typed or written, here and on every node, where the node
   itself enforces it so the rule holds while this container is down.
@@ -406,13 +407,17 @@ through every value the keyboard passes, so typing `30` over `300` would have
 pruned at `3` in passing. Pressing it without changing anything is a
 crop-now, which is the other thing you sometimes want. The same section
 downloads this session's logs as one file, or everything kept as a `.tar.gz`,
-or the controller's **diagnostics** as one JSON file (what `bb diag` prints,
-the reports sessions made about BuilderBot among it, redacted and on the audit
-trail), and **Clear** deletes the kept generations, the archived CI runs and
-every finished job's log without touching the ones being written. **Clear
-reports**, in the BuilderBot bug reports section, deletes every report sessions made about
-BuilderBot, after a confirmation that says how many; the numbers carry on, so a bug that names report #3 never meets a
-second one, and a session cannot clear them.
+and **Clear** deletes the kept generations, the archived CI runs and every
+finished job's log without touching the ones being written. The BuilderBot bug
+reports section lists every report made about BuilderBot, each with its own
+delete, and under them **Download diagnostics**, the controller's
+diagnostics as one file (what `bb diag` prints, with the reports left in the
+list, redacted and on the audit trail), so a report can be taken out before
+the diagnostics go to somebody. **Clear reports** deletes every one after a
+confirmation that says how many; the numbers carry on, so a bug that names
+report #3 never meets a second one. Whoever reads Controller settings reads
+the reports there; a session reads them only in debug mode, with its
+project granted the diagnostics, and never deletes one.
 
 One deliberate omission from *this session*: the **CI logs stay where they are**, under `config/ci-logs/<repo>/`, one
 file per run: a CI run is not a container session, it belongs to a workflow

@@ -2541,8 +2541,10 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
     let s = ''; for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode(...b.subarray(i, i + 8192));
     return { status: r.status, ct: r.headers.get('content-type'),
              cd: r.headers.get('content-disposition'), zip: btoa(s),
-             // The section's own markup: the Settings tab is put away above.
-             link: /<a class="btnish" href="\/logs\/download\?what=diag" download/.test(logSection()) };
+             // The bug reports section's markup (the operator, 26 Oct: the
+             // download is where the reports it carries are), not the logs'.
+             link: /<a class="btnish" href="\/logs\/download\?what=diag" download/.test(reportsSection())
+               && !/what=diag/.test(logSection()) };
   });
   const inZip = JSON.parse(execFileSync('python3', ['-c', `
 import base64, io, json, sys, zipfile
@@ -2627,8 +2629,6 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
   ok(menu.buttons.map(b => `${b.kind}:${b.node}`).join() === 'new:n_ubu' && menu.buttons.every(b => !b.dead)
      && menu.lines[0] === 'Claude: New' && menu.titles.join() === 'Start,Resume',
      `...and a Start band with a line for Claude there, New where this account is signed in, and a Resume band under it (${menu.lines.join(' | ')}; ${menu.titles.join()})`);
-  await page.selectOption('#rmNodeSel', 'n_new');
-  const other = await readMenu();
   // Start is one line, the agents installed on the node picked a pulldown
   // and the picked one's press beside it (the operator, 26 Oct); an agent
   // not installed there is not in it.
@@ -2648,6 +2648,8 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
   ok(pull.opts.length === 2 && pull.opts[0] === 'claude' && pull.lines === 1 && pull.picked === pull.opts[1] && pull.press === pull.opts[1]
      && pull.all.length > 2,
      `Start is one line with the agents installed there as a pulldown, a pick turning its press to that agent's, and none that is not installed (${JSON.stringify(pull)})`);
+  await page.selectOption('#rmNodeSel', 'n_new');
+  const other = await readMenu();
   ok(other.nodes[1] === '*fresh' && other.lines[0] === 'Claude not signed in here: Sign in' && other.buttons[0].node === 'n_new',
      `...another node picked shows its own line: its sign-in where this account has none (${other.lines.join(' | ')})`);
   await page.selectOption('#rmNodeSel', 'n_rh');
