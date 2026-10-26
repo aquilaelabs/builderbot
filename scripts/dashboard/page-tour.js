@@ -4,8 +4,8 @@
 // card beside the part of the page it is about, with Back, Next and Done;
 // Skip tour ends it, and its box skips the tour on every page. Which pages
 // an account has toured is the account's, kept on the server with its theme
-// (users.own_prefs), so a phone does not start over; Show the tours again on
-// Profile and in About clears it.
+// (users.own_prefs), so a phone does not start over; Show the tours again in
+// About clears it.
 
 // Each page's steps: `at` the part of the page it is about (the first of
 // the selectors on screen, under the page's own pane), none for a step about
@@ -130,6 +130,9 @@ function tourSeen(){ return new Set(state?.tour?.seen || []); }
 function tourSoon(kind){
   // A step's example, put back after a draw of the page wiped it.
   if (tourKind && tourSteps[tourI]?.sample && !$("tourSample") && tourKind === kind) return tourDraw();
+  // Another page come on show: the tour of the one left is put away, not
+  // counted as seen, so that page tours on the next visit and this one now.
+  if (tourKind && kind && tourKind !== kind) tourLeft();
   // BB_NO_TOUR: a page the test harness or the README's pictures opened.
   if (!kind || !TOUR_STEPS[kind] || !state?.me || state?.tour?.off || tourKind || window.BB_NO_TOUR) return;
   if (tourSeen().has(kind) || tourAsked.has(kind)) return;
@@ -143,7 +146,8 @@ function tourSoon(kind){
   // owner's first look was Home's tour over its four steps.
   if (setupNeeded()) return;
   tourAsked.add(kind);
-  setTimeout(() => tourStart(kind), 700);
+  // ...and only if the page is still the one in front by then.
+  setTimeout(() => { if (tabOf(panes[0])?.kind === kind) tourStart(kind); else tourAsked.delete(kind); }, 700);
 }
 
 // The part a step is about: its selectors tried in the order written (the
@@ -320,6 +324,15 @@ function tourEnd(all){
   adoptSeq++;
   fetch("/api/users", {method: "POST", headers: {"Content-Type": "application/json"},
                        body: JSON.stringify({action: "prefs", prefs: {tour_seen: seen, tour_off: state.tour.off}})}).catch(() => {});
+}
+
+// A tour put away because its page was left: nothing is saved.
+function tourLeft(){
+  tourAsked.delete(tourKind);
+  tourKind = "";
+  tourKeepSample(false);
+  $("tourCard").hidden = $("tourRing").hidden = true;
+  $("tourSample")?.remove();
 }
 
 // Show the tours again: every page's, from the next one opened.

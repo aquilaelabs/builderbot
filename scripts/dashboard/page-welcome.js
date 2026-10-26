@@ -213,6 +213,9 @@ function openAbout(which){
 }
 function closeAbout(){
   $("aboutModal").hidden = true;
+  // The page behind it toured now, when Show the tours again was pressed
+  // here: no tour stands over a dialog, so none was started under it.
+  tourSoon(tabOf(panes[0])?.kind);
   // Read once: closing the panel is the acknowledgement, for both pages.
   const w = state?.welcome, rev = state?.image?.rev || "";
   if (!state?.me || !w) return;

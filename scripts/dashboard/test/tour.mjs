@@ -3,7 +3,7 @@
 // stands over it with the step's part ringed; Next and Back walk it, Done
 // ends it and the page is not toured again, on this browser or another;
 // Skip tour with its box ticked skips every page's; Show the tours again in
-// About and on Profile brings them back. A phone's is a sheet.
+// About brings them back. A phone's is a sheet.
 import { URL, launch, newPage, ok, done, ready } from './lib.mjs';
 
 const browser = await launch();
@@ -69,6 +69,14 @@ await page.click('#aboutClose');
 await page.evaluate(() => { tourAsked.clear(); drawPanes(); });
 await page.waitForSelector('#tourCard:not([hidden])', { timeout: 15000 });
 ok(/Nodes are the machines/.test(await page.$eval('#tourCard .toursay', e => e.textContent)), '...and the page in front tours again');
+// Another page opened from the rail with that tour up: it is put away,
+// not counted as seen, and the page opened tours (it stood over the next
+// page, and that page's own never came).
+await page.click('[data-rail="jobs"]');
+await page.waitForFunction(() => tourKind === 'jobs' && !$('tourCard').hidden, null, { timeout: 15000 }).catch(() => {});
+const moved = await page.evaluate(() => ({ kind: tourKind, card: !$('tourCard').hidden, nodes: tourSeen().has('nodes') }));
+ok(moved.kind === 'jobs' && moved.card && !moved.nodes,
+   `a tour up when another page is opened gives way to that page's, the one left not counted as seen (${JSON.stringify(moved)})`);
 await page.click('#tourSkip');
 
 // Never over the setup page, which is the whole page until Finish.
