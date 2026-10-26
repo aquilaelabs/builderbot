@@ -4959,7 +4959,11 @@ html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
 .panes.docked .pane{min-width:0}
 .panes.docked .pane.dock{border-top:var(--hair) solid var(--line)}
 .panes.docked .pane.dock .stack{display:none}
-.panes.dockup{grid-template-rows:minmax(0,1fr) var(--dock-h,50%)}
+/* --dock-h is pixels, set by dockDress when the dock goes up (half the area
+   then) or by a drag, so the terminal's Commands bar under the panes takes its
+   height from the page and not from the dock; never so tall the page above
+   it goes under 80px. */
+.panes.dockup{grid-template-rows:minmax(0,1fr) min(var(--dock-h,50%),calc(100% - 80px))}
 .panes.dockup .pane.dock{min-height:120px;animation:dockUp .3s cubic-bezier(.33,1,.68,1)}
 /* Up, it slides out of its line rather than appearing (the operator,
    16 Oct): the pane starts where the line sat, all but the line below the

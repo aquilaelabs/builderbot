@@ -40,6 +40,19 @@ ok(await page.evaluate(() => tabOf(panes[1])?.kind === 'term'), '...and its − 
 }
 await page.evaluate(() => dockToggle(true));
 await page.waitForSelector('#pane1 .slot.on.ownterm', { timeout: 10000 });
+// The dock keeps its height between a shell, whose Commands bar sits under
+// the panes, and Chat, which has none (the operator, 26 Oct).
+{
+  const look = () => page.evaluate(() => ({ h: Math.round($('pane1').getBoundingClientRect().height), kind: tabOf(panes[1])?.kind }));
+  const press = re => page.evaluate(src => [...document.querySelectorAll('#pane1 .dtab > button')].find(b => new RegExp(src).test(b.textContent.trim()))?.click(), re);
+  const shell = await look();
+  await press('^Chat'); await page.waitForTimeout(500);
+  const chat = await look();
+  await press('^sh'); await page.waitForTimeout(500);
+  const back = await look();
+  ok(shell.kind === 'term' && chat.kind === 'chat' && back.kind === 'term' && shell.h === chat.h && back.h === shell.h,
+     `the dock is one height on a shell and on Chat (${JSON.stringify({ shell, chat, back })})`);
+}
 // The slot carries the terminal's own color, so there is no white between
 // a tab switch and xterm's first paint.
 ok(await page.$eval('#pane1 .slot.on.ownterm', el => {

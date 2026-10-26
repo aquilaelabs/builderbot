@@ -314,6 +314,11 @@ function dockEdges(line){
 // dock, laid over it at the height it had, slides down until only its line
 // shows, then drops back into its row.
 let dockWasUp = null, dockDownTimer = 0;
+// The height a dock nobody has dragged takes: half the area as it was when it
+// went up, held in pixels, and measured again only for a new window height.
+// A percentage moved with the area, which the terminal's Commands bar and key
+// row under the panes shrink: the dock changed size between a shell and Chat.
+let dockAuto = {h: 0, vh: 0};
 function dockDress(){
   const el = $("panes");
   if (!el) return;
@@ -338,4 +343,11 @@ function dockDress(){
   el.classList.toggle("dockup", up);
   dockWasUp = up;
   if (dockH) el.style.setProperty("--dock-h", dockH + "px");
+  else if (up){
+    if (!dockAuto.h || dockAuto.vh !== innerHeight){
+      const under = [$("mobar"), $("keys")].reduce((n, x) => n + (x ? x.getBoundingClientRect().height : 0), 0);
+      dockAuto = {h: Math.round((el.getBoundingClientRect().height + under) / 2), vh: innerHeight};
+    }
+    if (el.style.getPropertyValue("--dock-h") !== dockAuto.h + "px") el.style.setProperty("--dock-h", dockAuto.h + "px");
+  }
 }
