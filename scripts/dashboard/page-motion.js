@@ -218,7 +218,11 @@ function scrollHints(root){
   if (root?.matches?.(SCROLL_HINTED)) scrollHint(root);
 }
 
-function flip(els, key){
+// Things that move to a new place slide there from the old one: their
+// places read before a change (`els`, each known by `key`), and the returned
+// function, called once it is drawn, plays each from its old place to its
+// new over `ms`.
+function flip(els, key, ms = 140){
   if (noMotion()) return () => {};
   const before = new Map([...els()].map(el => [key(el), el.getBoundingClientRect()]));
   return () => [...els()].forEach(el => {
@@ -228,7 +232,7 @@ function flip(els, key){
     const dx = a.left - b.left, dy = a.top - b.top;
     if (dx || dy)
       el.animate([{transform: `translate(${dx}px,${dy}px)`}, {transform: "none"}],
-                 {duration: 140, easing: "ease"});
+                 {duration: ms, easing: ms > 200 ? "cubic-bezier(.2,.8,.2,1)" : "ease"});
   });
 }
 

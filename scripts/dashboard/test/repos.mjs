@@ -128,6 +128,33 @@ const browser = await launch();
     all: [...$('reportRepo').options].map(o => o.value) }));
   ok(rep.shown && rep.picked === 'gamma' && rep.all.length === 3, `Report bug picks a repository, the first by default (${JSON.stringify(rep)})`);
   await page.evaluate(() => { $('reportModal').hidden = true; });
+  // Renamed, the card takes its new name and its new place at once, from
+  // the answer and not the next read (held back here), sliding there with
+  // the page scrolled to keep it in sight on a phone (the operator, 26 Oct).
+  await page.setViewportSize({ width: 393, height: 700 });
+  await page.waitForTimeout(400);
+  let held = 0;
+  await page.route('**/api/status*', async r => { held++; await new Promise(z => setTimeout(z, 6000)); r.continue().catch(() => {}); });
+  const renameTo = async to => {
+    await page.click(`${card} .pcback [data-prn]`);
+    await page.waitForSelector(`${card} .askline input`, { timeout: 3000 });
+    await page.fill(`${card} .askline input`, to);
+    await page.press(`${card} .askline input`, 'Enter');
+  };
+  await renameTo('zz Shop & Co');
+  await page.waitForFunction(c => document.querySelector(`${c} .pcfront .pcname .name`)?.textContent === 'zz Shop & Co', card, { timeout: 3000 }).catch(() => {});
+  const moved = await page.$eval(card, c => ({ name: c.querySelector('.pcfront .pcname .name')?.textContent, flipped: c.classList.contains('flipped'),
+    last: [...c.parentElement.children].pop() === c,
+    sliding: [...document.querySelectorAll('.pgrid .pcard')].some(x => x.getAnimations().some(a => a.effect?.getKeyframes?.()[0]?.transform?.startsWith('translate'))) }));
+  await page.waitForTimeout(900);
+  const seen = await page.$eval(card, c => { const r = c.getBoundingClientRect(), d = c.closest('.doc').getBoundingClientRect();
+    return r.top < d.bottom && r.bottom > d.top; });
+  ok(moved.name === 'zz Shop & Co' && moved.flipped && moved.last && moved.sliding && seen,
+     `a renamed project takes its name and its place at once, still turned over, the cards sliding there and the page scrolled with it (${JSON.stringify({ ...moved, seen, held })})`);
+  await renameTo('Shop & Co');
+  await page.waitForFunction(c => document.querySelector(`${c} .pcfront .pcname .name`)?.textContent === 'Shop & Co', card, { timeout: 3000 });
+  await page.unroute('**/api/status*');
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.click(`${card} .pcback [data-pedit]`);
   await page.waitForFunction(c => !document.querySelector(c).classList.contains('flipped'), card, { timeout: 3000 });
   // A repository's own page names the project, its repositories a switch

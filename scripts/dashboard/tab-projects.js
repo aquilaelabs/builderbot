@@ -313,7 +313,21 @@ async function newProjectByName(){
   await refresh();
 }
 
-// The project's name, asked in a box under it.
+// The cards after a change that moves them (a project renamed sorts
+// elsewhere): each slides from where it was to where it lands, and the page
+// scrolls with the one that changed so it stays in sight, a phone's single
+// column above all (the operator, 26 Oct).
+function slideCards(key, change){
+  const cards = () => document.querySelectorAll(".pane .doc.on .projtab .pcard[data-pkey]");
+  const play = flip(cards, el => el.dataset.pkey, 360);
+  change();
+  document.querySelector(`.pane .doc.on .projtab .pcard[data-pkey="${CSS.escape(key)}"]`)
+    ?.scrollIntoView({block: "nearest", behavior: noMotion() ? "auto" : "smooth"});
+  play();
+}
+
+// The project's name, asked in a box under it: taken at once from the
+// answer, where the card sorts by it, without waiting for the next read.
 async function renameProjectCard(btn){
   const key = btn.dataset.prn, was = projectName(key);
   const got = await askInline(btn.closest(".pcname"), {label: `Rename ${was} to`, value: was, ok: "Rename"});
@@ -321,6 +335,7 @@ async function renameProjectCard(btn){
   try{
     const j = await (await postJSON("/api/repos", {action: "rename", key, to: got})).json();
     if (j.error){ notify(j.error, true); return; }
+    slideCards(key, () => applyNow((x, k) => { if (k === key && "members" in x) x.name = j.name || got; }));
     notify(`${was} is now ${j.name || got}`);
   }catch(e){ notify("renaming failed: " + failWords(e), true); }
   await refresh();
