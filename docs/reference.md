@@ -519,6 +519,14 @@ bb transcripts show ID [--tz ZONE] [--all]   one of them as text: what was said,
 bb transcripts fetch ID [--into DIR]   the file itself into this machine's folder
                    for it: how a node holding its projects as a synced copy
                    resumes a conversation it does not have (bb-tty runs it)
+bb memory          your memories on this repository, kept for every coding agent:
+                   the index, newest first (bb -p REPO for another repository
+                   of the project, which keeps them when it moves)
+bb memory show NAME   one of them whole
+bb memory add NAME --type user|feedback|project|reference --about "one line" "what to remember"
+                   save one, with its line in the index: a fact about one
+                   repository on that repository
+bb memory forget NAME   take one out
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test: what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs

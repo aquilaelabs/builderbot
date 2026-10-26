@@ -301,7 +301,7 @@ are in step already: the companion keeps its folder synced both ways, so a
 change you commit reaches the editor there in seconds.
 
 ## The notebook
-<!-- BUILDERBOT:TOPIC notebook: the record's verbs in full, bb design, the wiki, bb transcripts, bb rules, bb report -->
+<!-- BUILDERBOT:TOPIC notebook: the record's verbs in full, bb design, the wiki, bb transcripts, bb memory, bb rules, bb report -->
 
 `bb roadmap`, `bb bug`, `bb rules`, `bb tests`, `bb changelog`, `bb design`,
 `bb wiki`, and `bb <verb> -h` for the rest of any of them. `bb design` is
@@ -310,9 +310,14 @@ Design view: `bb design show NAME` for one page, theme or rule
 (`nostromo/hull` for a theme's or a page's own), and `bb design file` prints
 the docs/design-language.md it writes. `bb transcripts` lists this account's
 own earlier conversations here, from every coding agent it uses (Claude,
-ChatGPT, Copilot), each marked with its agent and never another account's,
-and `bb transcripts show ID` prints one whole, every command and its answer
-included.
+ChatGPT, Copilot, Grok), each marked with its agent and never another
+account's, and `bb transcripts show ID` prints one whole, every command and
+its answer included. `bb memory` is this account's memories on a repository,
+the same for every coding agent and where Claude Code keeps its own: `bb
+memory show NAME` reads one, `bb memory add NAME --type T --about "..." "..."`
+saves one with its index line, `bb memory forget NAME` takes one out, and
+`bb -p REPO memory` answers for another repository of the project, so a
+fact stays with the repository it is about when that repository moves.
 
 The project's wiki is the notebook's Wiki view, for the people who use or
 work on the project: `bb wiki` lists its pages, `bb wiki show NAME` prints

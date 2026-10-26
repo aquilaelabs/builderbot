@@ -88,6 +88,7 @@ scripts/
   lib/design-verbs.py            `bb design`: a project's design language and pages, as the notebook's Design view keeps them
   lib/wiki-verbs.py              `bb wiki`: a project's wiki pages, listed, shown, saved and removed under Agents may: Write the wiki
   lib/transcripts-verbs.py       `bb transcripts`: the account's own conversations with each agent on a project, listed and printed
+  lib/memory-verbs.py            `bb memory`: the account's memories on a repository, kept for every coding agent, listed, read, added and forgotten
   lib/nb-history.py              `bb history`: the notebook's logs merged
   lib/rules-verbs.py             `bb rules`, except check
   lib/rules-check.py             `bb rules check`: a rule's check command, run in this tree

@@ -187,6 +187,19 @@ const shown = cli('-p', 'beta', 'transcripts', 'show', 'beta-chat-1', '--tz', 'A
 ok(/^Conversation on beta, session beta-chat-1/.test(shown) && /You \(2026-09-28 19:15\):\nMake the beta page blue/.test(shown),
    'bb transcripts show ID prints one, stamped in the zone asked for');
 ok(/^your conversations on alpha, every agent's/.test(cli('transcripts', 'list')), 'and with no -p it is the session\'s own project');
+// A memory saved by a session is the account's on that repository, the one
+// the Memory view reads and every agent's briefing carries (R152).
+const added = cli('memory', 'add', 'alpha-deploys', '--type', 'project', '--about', 'alpha deploys from its main branch', 'Deploys come from main; a tag starts one.');
+const mem = await page.evaluate(async () => ((await (await fetch('/api/memory?project=alpha')).json()).memories || [])
+  .map(m => ({ name: m.name, hook: m.hook, type: m.type })));
+ok(/^saved alpha-deploys\.md on alpha/.test(added) && mem.some(m => m.name === 'alpha-deploys' && m.hook === 'alpha deploys from its main branch' && m.type === 'project'),
+   `bb memory add saves one on the repository with its index line, and the Memory view has it (${added.trim()} ${JSON.stringify(mem)})`);
+ok(/alpha-deploys  \[project\]  alpha deploys from its main branch/.test(cli('memory')) && /Deploys come from main/.test(cli('memory', 'show', 'alpha-deploys')),
+   'bb memory lists the index and bb memory show prints one whole');
+ok(/^your memories on beta|^no memories of yours on beta/.test(cli('-p', 'beta', 'memory')), 'bb -p NAME memory answers for another repository');
+ok(/^forgot alpha-deploys\.md on alpha/.test(cli('memory', 'forget', 'alpha-deploys'))
+   && !(await page.evaluate(async () => ((await (await fetch('/api/memory?project=alpha')).json()).memories || []).some(m => m.name === 'alpha-deploys'))),
+   'bb memory forget takes it out, the Memory view with it');
 await page.evaluate(async () => { await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'alpha', reads: [] }) }); });
 await page.close();
 await done(browser);

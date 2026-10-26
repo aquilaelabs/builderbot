@@ -6,6 +6,7 @@ each kind, and the settings and grants that go by the project (prefs.py's
 overlay, reads_trees, regrant)."""
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -158,11 +159,38 @@ class Briefing(unittest.TestCase):
         for want in ("rules of server", "roadmap of server", "bugs of server"):
             self.assertIn(want, text)
         self.assertNotIn("roadmap of app", text, "its own are the briefing's own parts")
-        # Each repository's memories stay its own, named by its tree as Claude
-        # Code names the folder, so a repository split out keeps them.
-        self.assertIn("server: /workspace/server, its memories in ~/.claude/projects/-workspace-server/memory/", text)
-        self.assertIn("a memory about one repository is saved in that repository's memory folder", text)
         self.assertEqual(preamble.repos_part("other"), "")
+
+    def test_each_repositorys_memories_ride_every_agents_briefing(self):
+        """R152: the account's memory index of each repository, for any
+        agent; a Claude session's own repository's left to Claude Code."""
+        import preamble  # noqa: PLC0415
+        ws = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, ws, True)
+        was = os.environ.get("WORKSPACE")
+        os.environ["WORKSPACE"] = ws
+        self.addCleanup(lambda: os.environ.__setitem__("WORKSPACE", was) if was is not None else os.environ.pop("WORKSPACE", None))
+        for d in ("app", "server"):
+            m = Path(ws, ".claude", "u_1", "projects", re.sub(r"[^A-Za-z0-9]", "-", f"{ws}/{d}"), "memory")
+            m.mkdir(parents=True)
+            (m / "MEMORY.md").write_text(f"- [Fact of {d}]({d}-fact.md) \u2014 about {d}\n")
+        preamble.repos_fn = lambda p: ("Shop", "P9", [("app", "app"), ("server", "server")]) if p in ("app", "server") else None
+        self.addCleanup(lambda: setattr(preamble, "repos_fn", None))
+        claude = preamble.memory_part("app", "u_1", "claude")[0]
+        self.assertIn("### server", claude)
+        self.assertIn("Fact of server", claude)
+        self.assertNotIn("Fact of app", claude, "Claude Code loads its own repository's index")
+        self.assertIn("bb -p REPO memory add", claude)
+        other = preamble.memory_part("app", "u_1", "codex")[0]
+        self.assertIn("Fact of app", other)
+        self.assertIn("Fact of server", other)
+        self.assertIn("one about the project as a whole goes on app", other)
+        self.assertEqual(preamble.memory_part("app", "", "codex"), ("", ""), "no account, nothing to read")
+        preamble.repos_fn = lambda p: None
+        self.assertEqual(preamble.memory_part("app", "u_1", "claude")[0], "", "a lone repository's Claude session is told nothing new")
+        alone = preamble.memory_part("app", "u_1", "grok")[0]
+        self.assertIn("Fact of app", alone)
+        self.assertNotIn("###", alone)
 
 
 if __name__ == "__main__":

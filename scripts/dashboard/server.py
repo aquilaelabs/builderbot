@@ -7449,7 +7449,9 @@ class Handler(BaseHTTPRequestHandler):
             if t is None:
                 return self._json({"error": "no such topic"}, 404)
             return self._json({"project": name, "topic": q["topic"][0], "text": t})
-        return self._json(preamble.payload(name, reply=mine.get("reply") or "", asks=mine.get("asks") or ""))
+        # The reader's own memories ride it as a Claude session of theirs gets them.
+        return self._json(preamble.payload(name, reply=mine.get("reply") or "", asks=mine.get("asks") or "",
+                                           uid=users.uid_of(self._who())))
 
     def _get_brief(self):
         """GET /api/brief: brief.view, the brief waiting in a project's tree

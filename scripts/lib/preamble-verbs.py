@@ -82,7 +82,8 @@ if op == "--topics":
     for slug, gist, _ in preamble.topics(proj):
         print(f"  {slug:<11}{gist}")
     sys.exit(0)
-p = preamble.payload(proj, reply=mine.get("reply") or "", asks=mine.get("asks") or "")
+p = preamble.payload(proj, reply=mine.get("reply") or "", asks=mine.get("asks") or "",
+                     uid=os.environ.get("BB_UID", ""), agent=os.environ.get("BB_AGENT", ""))
 # Which coding agent it is for (R95 step 5), where it matters: a session of
 # an agent other than Claude is told what it is and that the briefing holds
 # for it as for Claude, ahead of the rest. bb-tty names it (BB_AGENT).
