@@ -2695,7 +2695,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 /* No pages yet: no nav, so the empty state is the whole width, not the
    nav's 200px column (B457's walk). */
 .wkreader:not(:has(.wknav)){grid-template-columns:minmax(0,1fr)}
-.wknav{position:sticky;top:0;font:var(--f-row);border-right:var(--hair) solid var(--line);padding-right:14px}
+/* Room under its last entry (the operator, 26 Oct): a list longer than the
+   pane ends, at the page's foot, above the 22px fade at the pane's edge
+   rather than inside it. */
+.wknav{position:sticky;top:0;font:var(--f-row);border-right:var(--hair) solid var(--line);padding-right:14px;padding-bottom:40px}
 .wknav ul{list-style:none;margin:0;padding:0}
 .wknav li{margin:0 0 6px}
 .wknav p,.wknav h2,.wknav h3{margin:0 0 6px;font-size:inherit}
