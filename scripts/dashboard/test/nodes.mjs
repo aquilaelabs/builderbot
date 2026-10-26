@@ -261,8 +261,9 @@ print(json.dumps(out))
     if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
   await page.evaluate(() => openNodesTab());
   await page.waitForSelector('.nodestab .ndrow', { timeout: 15000 });
-  ok((await nodeOptions(page)).length === 1,
-     'the Nodes page lists the enrolled machines, and not this container');
+  const listed = await nodeOptions(page);
+  ok(listed.length === 1,
+     `the Nodes page lists the enrolled machines, and not this container (${listed.join(', ')})`);
   // ...and with nothing enrolled it says so where the rows would be, rather
   // than an empty picker over an empty page. Driven by handing the page a
   // registry holding only the controller's own record, which is what a fresh
