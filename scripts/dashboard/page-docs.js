@@ -314,14 +314,18 @@ function optionList(items, cur){
 // A word the page needs, asked in a box in the row (R256 step 4) where
 // window.prompt was: its label, the field, Cancel and OK, under the control
 // that asked; Enter is OK and Escape is Cancel. Resolves with what was typed,
-// trimmed, or null. One at a time: a second ask takes the first one's place.
+// trimmed, or null. One at a time: a second ask takes the first one's place,
+// and the same ask again where it is open closes it as a Cancel would, so
+// the control that opened the box shuts it.
 // `options` are offered as the box is typed in; `allowEmpty` lets OK answer
 // "" (a group taken away), where otherwise an empty box is a Cancel. `also`,
 // {key, label}, is a destructive verb last on the box's bar, answering
 // {also: key} (a group's Delete group).
 function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpty = false, also = null} = {}){
   return new Promise(resolve => {
+    const was = after.nextElementSibling;
     document.querySelectorAll(".askline").forEach(x => x.__done?.(null));
+    if (was?.classList.contains("askline") && was.__label === label){ resolve(null); return; }
     const box = document.createElement("div");
     box.className = "field askline";
     const list = options.length ? `askopts${++seq}` : "";
@@ -336,6 +340,7 @@ function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpt
     inp.focus(); inp.select();
     const done = v => { box.remove(); resolve(v); };
     box.__done = done;
+    box.__label = label;
     const answer = () => done(inp.value.trim() || (allowEmpty ? "" : null));
     box.querySelector("[data-askok]").onclick = answer;
     box.querySelector("[data-askno]").onclick = () => done(null);

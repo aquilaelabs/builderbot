@@ -3351,9 +3351,9 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    row of buttons the card holds: its actions and a box it asks in (Group),
    so a form opened on it is the card's too (B863); and a project page's
    header's, as its card's. */
-:is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button{background:color-mix(in srgb, var(--pc) 22%, var(--btn));
+:is(.pcard.pc :is(.pcacts,.askrow,.pcname>.actbar),.pane .bar.proj.pc :is(.phead,.askrow))>button,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button{background:color-mix(in srgb, var(--pc) 22%, var(--btn));
   border-color:color-mix(in srgb, var(--pc) 50%, var(--line));color:var(--ink)}
-:is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button.primary{background:color-mix(in srgb, var(--pc) 50%, var(--btn));border-color:var(--pc)}
+:is(.pcard.pc :is(.pcacts,.askrow,.pcname>.actbar),.pane .bar.proj.pc :is(.phead,.askrow))>button.primary{background:color-mix(in srgb, var(--pc) 50%, var(--btn));border-color:var(--pc)}
 /* A word asked in a colored card or a project's header (askInline: Group,
    Rename) wears the same color as its buttons, its field tinted and its focus
    ring the project's, where the page's plain skin read as a hole in the card
@@ -3362,8 +3362,8 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   border-color:color-mix(in srgb, var(--pc) 45%, var(--line))}
 :is(.pcard.pc,.pane .bar.proj.pc) .askrow input:focus{outline:2px solid color-mix(in srgb, var(--pc) 60%, var(--panel));outline-offset:-1px}
 @media(hover:hover){
-  :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button:hover,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button:hover{background:color-mix(in srgb, var(--pc) 34%, var(--btn))}
-  :is(.pcard.pc :is(.pcacts,.askrow),.pane .bar.proj.pc :is(.phead,.askrow))>button.primary:hover{background:color-mix(in srgb, var(--pc) 62%, var(--btn))}
+  :is(.pcard.pc :is(.pcacts,.askrow,.pcname>.actbar),.pane .bar.proj.pc :is(.phead,.askrow))>button:hover,:is(.pcard.pc .pcacts,.pane .bar.proj.pc .phead)>.more>button:hover{background:color-mix(in srgb, var(--pc) 34%, var(--btn))}
+  :is(.pcard.pc :is(.pcacts,.askrow,.pcname>.actbar),.pane .bar.proj.pc :is(.phead,.askrow))>button.primary:hover{background:color-mix(in srgb, var(--pc) 62%, var(--btn))}
 }
 /* Home's glance card opens its project's page (the operator, 18 Oct), so
    it answers the pointer as a tile that is a link does; a Projects card is

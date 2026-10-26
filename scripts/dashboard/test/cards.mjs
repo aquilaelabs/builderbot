@@ -1373,6 +1373,13 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
     ok(line.tops === 1 && line.inside, `a card's Group ask is one line at ${w}: its field, Cancel and Save, inside the card (${JSON.stringify(line)})`);
   }
   await page.setViewportSize({ width: 1280, height: 800 });
+  // Group again closes its box as Cancel does, the group as it was.
+  await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
+  await page.waitForFunction(() => !document.querySelector('.doc .projtab .askline'), null, { timeout: 5000 }).catch(() => {});
+  ok(!await page.$('.doc .projtab .askline') && await page.evaluate(() => state.repos?.[reposOf('gamma') || 'gamma']?.group || '') === '',
+     'a second press of a card\'s Group closes its box without saving');
+  await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
+  await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
   await page.click('.doc .projtab .askline [data-askno]');
   // The pencil beside the group's name renames it in a box under the
   // heading, for every project in it (R273).
@@ -2060,11 +2067,37 @@ await page.waitForSelector('.doc .projtab [data-row="alpha"] .pcpop', { timeout:
 ok(await page.$$eval('.doc .projtab [data-row="alpha"] .pcpop [data-color]', bs =>
      bs.length === 9 && bs[0].dataset.color === '' && bs[0].getAttribute('aria-checked') === 'true'),
    'the card menu\'s Color offers the colors, none picked for a project this account never colored');
+// Color again rolls the swatches up, nothing picked.
+await page.click('.doc .projtab [data-row="alpha"] [data-pcolor]');
+await page.waitForFunction(() => !document.querySelector('.doc .projtab [data-row="alpha"] .pcpop'), null, { timeout: 5000 }).catch(() => {});
+ok(!await page.$('.doc .projtab [data-row="alpha"] .pcpop') && !await page.evaluate(() => state.projects.find(x => x.name === 'alpha')?.color),
+   'a second press of a card\'s Color rolls the swatches up without picking one');
+await page.click('.doc .projtab [data-row="alpha"] [data-pcolor]');
+await page.waitForSelector('.doc .projtab [data-row="alpha"] .pcpop', { timeout: 5000 });
 await page.click('.doc .projtab [data-row="alpha"] .pcpop [data-color="teal"]');
 await page.waitForFunction(() => document.querySelector('.doc .projtab [data-row="alpha"]')?.classList.contains('pc'), null, { timeout: 10000 });
 const kept = await page.evaluate(() => { const p = state.projects.find(x => x.name === 'alpha'); return { mine: p.color, project: p.prefs?.color || '' }; });
 ok(kept.mine === 'teal' && kept.project === '' && !await page.$('.doc .projtab [data-row="alpha"] .pcpop'),
    `a pick wears it on the card at once and rolls the swatches up, kept as this account's and not the project's (${JSON.stringify(kept)})`);
+// Back turns the card over without saving anything, so it is no primary,
+// and wears the card's color as the front's buttons do.
+const back = await page.$eval('.doc .projtab [data-row="alpha"] .pcback [data-pedit]', b => {
+  const edit = b.closest('.pcard').querySelector('.pcfront [data-pedit]');
+  return { text: b.textContent.trim(), primary: b.classList.contains('primary'),
+           bg: getComputedStyle(b).backgroundColor, front: getComputedStyle(edit).backgroundColor,
+           plain: getComputedStyle(document.querySelector('.doc .projtab [data-row]:not(.pc) .pcfront [data-pedit]')).backgroundColor };
+});
+ok(back.text === 'Back' && !back.primary && back.bg === back.front && back.bg !== back.plain,
+   `a colored card's Back is a plain button in the card's color, as its Edit is (${JSON.stringify(back)})`);
+// Leaving the page turns a card back: Projects comes back on the fronts.
+ok(await page.$eval('.doc .projtab [data-row="alpha"]', c => c.classList.contains('flipped')), 'the card is on its back before the page is left');
+await page.evaluate(() => { location.hash = '#/jobs'; });
+await page.waitForFunction(() => tabOf(panes[active])?.kind !== 'projects', null, { timeout: 10000 });
+await page.evaluate(() => openProjectsTab());
+await page.waitForSelector('.doc .projtab [data-row="alpha"]', { timeout: 15000 });
+ok(!await page.$eval('.doc .projtab [data-row="alpha"]', c => c.classList.contains('flipped')),
+   'a card turned over is on its front again once the page is left and come back to');
+await pjMenu('alpha');
 await page.evaluate(() => openNotebook('alpha'));
 await nbShown(page);
 ok(await page.evaluate(() => {

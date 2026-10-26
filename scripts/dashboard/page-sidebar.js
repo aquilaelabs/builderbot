@@ -308,8 +308,8 @@ async function askProjectGroup(btn){
 // The color this account gives a project (the operator, 18 Oct: a person's
 // own, not the project's), picked from the dot beside its name on its card:
 // the swatches unroll under the name, and a press on one wears it at once,
-// as a scheme is (it is looked at, not decided). Escape or a press
-// elsewhere rolls them back up.
+// as a scheme is (it is looked at, not decided). Escape, a press
+// elsewhere or the Color button again rolls them back up.
 function pickProjectColor(btn){
   const name = btn.dataset.pcolor, key = reposOf(name) || name, cur = projectColor(name);
   btn.closest(".actmenu")?.setAttribute("hidden", "");
@@ -327,7 +327,9 @@ function pickProjectColor(btn){
       aria-label="${esc(n || "none")}" title="${esc(n || "none")}"${n ? ` style="--pc:${tone}"` : ""}></button>`).join("");
   line.insertAdjacentElement("afterend", pop);
   btn.setAttribute("aria-expanded", "true");
-  const away = e => { if (!pop.contains(e.target)) done(); };
+  // A press on a Color button is left to its click, which shuts these
+  // swatches when it is theirs and opens another card's when not.
+  const away = e => { if (!pop.contains(e.target) && !e.target.closest?.("[data-pcolor]")) done(); };
   const esc_ = e => { if (e.key === "Escape") done(); };
   const done = () => { pop.remove(); btn.setAttribute("aria-expanded", "false");
                        document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", esc_, true); };

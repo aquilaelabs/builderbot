@@ -167,13 +167,13 @@ function reposOf(name){
 const projectName = n => state?.repos?.[reposOf(n)]?.name || projLabel(n);
 
 // The cards the Projects page shows, by key: which are turned over to their
-// controls (Edit). The page's for its life, never saved.
+// controls (Edit). The page's while it is on show, never saved.
 const pjEditing = new Set();
 
 // One project's card (R138): the front is what is in it and who is working
 // there, the back the controls that change it. Edit turns it over in place,
-// the two faces sharing one grid cell so the card keeps its size; Done
-// turns it back. A press on the card itself does nothing: its names open
+// the two faces sharing one grid cell so the card keeps its size; Back
+// turns it back, saving nothing: each control on the back saves its own. A press on the card itself does nothing: its names open
 // the repositories' notebooks.
 function projectCard(c){
   const pc = colorAttrs(c.color), on = pjEditing.has(c.key);
@@ -263,12 +263,21 @@ function cardBack(c){
     may && !c.rows.length ? fb("data-pdel", c.key, "Delete project", BIN, ' data-danger="1"') : "",
   ].filter(Boolean).join("");
   return `<div class="pcname"><span class="name">${esc(c.name)}</span>${may ? ic("data-prn", c.key, `Rename ${c.name}`, PENCIL) : ""}
-      <span class="sp"></span><span class="actbar"><button type="button" class="primary" data-pedit="${esc(c.key)}" aria-expanded="true">Done</button></span></div>
+      <span class="sp"></span><span class="actbar"><button type="button" data-pedit="${esc(c.key)}" aria-expanded="true">Back</button></span></div>
     <div class="pcrepos">${rows || `<div class="pnote dim">no repository yet</div>`}</div>
     <div class="pcacts actbar pcfoot">${foot}</div>`;
 }
 // The cards of a list of projects.
 const projectCards = list => list.map(projectCard).join("");
+
+// The page come on show again (its kind's open): a card turned over before
+// it was left is back on its front. The page is kept while another is on
+// show, so its cards are drawn again here rather than built afresh.
+function projectsShown(){
+  if (!pjEditing.size) return;
+  pjEditing.clear();
+  drawProjects(state?.projects || []);
+}
 
 // Turn a card over, or back, in place: the class moves and the faces trade
 // which one a press and a screen reader reach; the next paint draws it so.
