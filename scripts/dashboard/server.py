@@ -7040,10 +7040,16 @@ class Handler(BaseHTTPRequestHandler):
         for d in registry.live_dirs():
             owners_of[roles.owner_role_name(d)] = repos.key_of(d)
             live_owned.add(roles.owner_role_name(d))
+        # ...and a project's own (R138): its owner role is named for the
+        # project as it is shown, which a repository's name need not match,
+        # and unmatched it was offered under every project.
+        for k in registry.repos_keys():
+            owners_of[roles.owner_role_name(k)] = k
+            live_owned.add(roles.owner_role_name(k))
         rs = {n: r for n, r in rs.items() if n not in owners_of or n in live_owned}
         # ...and which project it is for, so the People section offers it
         # under that project alone (B726).
-        rs = {n: (dict(r, label=f"owner of {registry.label(owners_of[n])}", project=owners_of[n]) if n in owners_of else r)
+        rs = {n: (dict(r, label=f"Owner of {registry.label(owners_of[n])}", project=owners_of[n]) if n in owners_of else r)
               for n, r in rs.items()}
         return self._json({"roles": rs, "areas": [list(a) for a in roles.AREAS], "people": people,
                            "projects": all_projects, "admin": can["admin"], "readonly": readonly,

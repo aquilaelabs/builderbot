@@ -1747,7 +1747,7 @@ print(u.mint_session("relproj", uid="${ownerUid}"))`], { encoding: 'utf8' }).tri
       // gamma and no other project.
       const rl = await (await bare('/api/roles', { headers: ownerAuth })).json();
       const gOwner = Object.values(rl.roles || {}).find(r => isG(r.project));
-      ok(gOwner && /^owner of /.test(gOwner.label || '') && gOwner.scope === 'projects',
+      ok(gOwner && /^Owner of /.test(gOwner.label || '') && gOwner.scope === 'projects',
          `a project's owner role carries its project (${JSON.stringify(gOwner || {}).slice(0, 80)})`);
       await page.evaluate(() => { loadRoles(); openUsersTab(); });
       await page.waitForSelector('.userstab [data-upick="plainone"]', { timeout: 15000 });
