@@ -140,7 +140,7 @@ ok(/already on the Containers page/.test((await api('/api/nginx', { action: 'dep
       && !s.querySelector('details[data-sect="nginx:routes"] [data-ngsave]') && !s.querySelector('.ngform'),
     foot: !!s.querySelector(':scope > .field .ngfoot [data-ngremove]') && !s.querySelector('details.sect [data-ngremove]'),
     form: s.querySelector('.ngcertform').hidden }));
-  ok(shape.sects.map(x => x.split(':')[0]).join() === 'Hostnames,Routes,Certificates,Image' && /1 route/.test(shape.sects[1])
+  ok(shape.sects.map(x => x.split(':')[0]).join() === 'Image,Hostnames,Routes,Certificates' && /1 route/.test(shape.sects[2])
      && shape.save && shape.foot && shape.form,
      `the deployed page is four sections with their states, the route a record with its Edit and no Save, Remove apart, and the certificate form rolled up (${shape.sects.join(' | ')})`);
   await page.click(`${sect} [data-ngcertopen]`);

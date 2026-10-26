@@ -89,7 +89,7 @@ const TOUR_STEPS = {
   nginx: [
     {say: "nginx: BuilderBot's own reverse proxy on a node, putting your containers behind hostnames and certificates."},
     {at: TOUR_BAR, say: "Pick the node here. Deploy puts nginx on a node that has none yet."},
-    {at: TOUR_FIRST, say: "Hostnames, routes, certificates and the image each have a section. A route sends a hostname to a port a container publishes."},
+    {at: TOUR_FIRST, say: "The image comes first, with an update when one is out; then hostnames, routes and certificates, each a section. A route sends a hostname to a port a container publishes."},
   ],
   settings: [
     {say: "The controller's settings: how this BuilderBot itself behaves, the room it keeps on the nodes among them. Each section says what it changes."},

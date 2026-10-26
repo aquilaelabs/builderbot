@@ -19,7 +19,7 @@ const PAGES = [
   // the page draws one line and Deploy where the template, waiting for the
   // node a person mostly has, draws them.
   ['nginx', '#/containers/nginx', 'nginxList = null; renderNginxInto(0)',
-   ['barSig', 'card', 'jump', 'title:Hostnames', 'title:Routes', 'title:Certificates', 'title:Image']],
+   ['barSig', 'card', 'jump', 'title:Image', 'title:Hostnames', 'title:Routes', 'title:Certificates']],
   // This machine is a node's with a GPU or Claude Code row to show, which
   // is not known while it waits; on a phone, where it is drawn it is the one
   // open section, so the list's table is folded under it.

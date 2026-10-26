@@ -285,7 +285,8 @@ function nginxUndeployed(n){
 // The page's four sections, named once for the page and its placeholder
 // alike (R218, the operator 18 Oct: the nginx placeholder was a few gray
 // lines while every other page's waited as itself).
-const NG_TITLES = {hostnames: "Hostnames", routes: "Routes", certs: "Certificates", image: "Image"};
+// Image first (the operator, 26 Oct): an update due is the first thing said.
+const NG_TITLES = {image: "Image", hostnames: "Hostnames", routes: "Routes", certs: "Certificates"};
 function ngSect(key, status, body, opts){ return docSection("nginx", key, NG_TITLES[key], status, body, opts); }
 
 function nginxBody(n){
@@ -366,10 +367,10 @@ function nginxBody(n){
   return `<div data-ngnode="${esc(n.node)}">
     ${pageHead({title: n.name || "", cls: "toolstate", pills: pill, facts})}
     ${clash}
+    ${image}
     ${hosts}
     ${routes}
     ${certs}
-    ${image}
     <div class="field"><div class="actbar ngfoot"><span class="sp"></span>
       <button type="button" class="danger" data-ngremove>Remove nginx</button></div></div>
   </div>`;
@@ -391,7 +392,7 @@ function renderNginxInto(i){
     // the page's own; the node and its routes are on their way.
     d.setBar(nginxBar(null));
     d.list.innerHTML = skTpl(`${pageHead({title: GHOST, cls: "toolstate", facts: [["Container", GHOST], ["Routes", GHOST]]})}${
-      ["hostnames", "routes", "certs", "image"].map(k => ngSect(k, "", `<div class="field">${skRows(2)}</div>`)).join("")}`);
+      ["image", "hostnames", "routes", "certs"].map(k => ngSect(k, "", `<div class="field">${skRows(2)}</div>`)).join("")}`);
     loadNginx();
     return;
   }
