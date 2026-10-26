@@ -4679,7 +4679,9 @@ button.eye svg,button.ic svg,#bTrashTab svg{width:16px;height:16px;display:block
   overflow-wrap:anywhere;margin-top:2px}
 /* ...and where it is fixed, when the server knows (B71): a link on its own
    line, a thumb's height on a phone. */
-.doctor .probs .pagelink{display:inline-flex;align-items:center;min-height:32px;color:var(--accent);font:var(--f-ui)}
+/* Under the line it fixes, in its words' font (the operator, 26 Oct: run on
+   after the line, in another face, it read as part of it). */
+.doctor .probs .pagelink{display:flex;width:fit-content;align-items:center;min-height:32px;color:var(--accent);font:inherit}
 @media (pointer:coarse){.doctor .probs .pagelink{min-height:44px}}
 /* A long check wraps rather than ending in an ellipsis: with no tooltips
    (11 Oct) a cut chip says nothing of the rest. A chip of two lines takes the

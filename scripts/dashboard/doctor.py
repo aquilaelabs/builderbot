@@ -91,7 +91,9 @@ DOC_LINKS = (("set INSTALL_KEY (docs/reference.md)", "#/help/reference/the-insta
 def _doc_line(check):
     for said, href, act in DOC_LINKS:
         if said in check["text"] and "href" not in check:
-            return dict(check, href=href, act=act)
+            # The doc named in the words is the link now, so the words keep
+            # what to do and leave the path to it out.
+            return dict(check, href=href, act=act, text=check["text"].replace(" (docs/reference.md)", ""))
     return check
 
 

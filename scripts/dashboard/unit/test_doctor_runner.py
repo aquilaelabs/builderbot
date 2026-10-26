@@ -45,6 +45,7 @@ class DocLinks(unittest.TestCase):
                 "credentials are kept open in /config; set INSTALL_KEY (docs/reference.md)"}
         got = doctor._doc_line(warn)
         self.assertEqual((got["href"], got["act"]), ("#/help/reference/the-install-key", "How to set it"))
+        self.assertTrue(got["text"].endswith("set INSTALL_KEY"), "the path the link stands for is left out of the words")
         ok = {"level": "ok", "detail": "", "text": "an install key is loaded"}
         self.assertNotIn("href", doctor._doc_line(ok), "a line naming no doc keeps its words alone")
 
