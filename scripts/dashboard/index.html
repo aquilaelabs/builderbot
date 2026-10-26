@@ -3396,6 +3396,11 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pcard .pcname{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
 .pcard .pcname .name{font-weight:600;font-size:1.05rem;line-height:1.3;color:var(--ink);min-width:0;overflow-wrap:anywhere}
 .pcard .pcname>.sp{flex:1}
+/* The back's name line holds Back at its top right whatever the name: a
+   long one wraps within its room, its pencil after it (the operator, 26 Oct). */
+.pcard .pcback .pcname{flex-wrap:nowrap;align-items:flex-start}
+.pcard .pcback .pcname .name{flex:0 1 auto;padding-top:calc((var(--tap) - 1.3em) / 2)}
+.pcard .pcback .pcname>:not(.name):not(.sp){flex:none}
 /* Pin and Archive by the name (R138), pressed in where they are set: the
    accent where it is, the quiet ink where it is not. */
 .pcard .pcname .pcmark{color:var(--dim)}

@@ -2109,6 +2109,24 @@ const back = await page.$eval('.doc .projtab [data-row="alpha"] .pcback [data-pe
 });
 ok(back.text === 'Back' && !back.primary && back.bg === back.front && back.bg !== back.plain,
    `a colored card's Back is a plain button in the card's color, as its Edit is (${JSON.stringify(back)})`);
+// A long name wraps on the back with Back held at the card's top right
+// (the operator, 26 Oct: it pushed Back onto a line of its own).
+for (const w of [1280, 393]){
+  await page.setViewportSize({ width: w, height: 900 });
+  const line = await page.evaluate(() => {
+    const p = state.projects.find(x => x.name === 'alpha'), key = reposOf('alpha') || 'alpha', was = state.repos[key].name;
+    state.repos[key].name = 'Destiny-2-Armor-Stat-Planner-with-a-longer-name-still'; drawProjects(state.projects);
+    const c = document.querySelector('.doc .projtab .pcard[data-row="alpha"]'), back = c.querySelector('.pcback .pcname [data-pedit]');
+    const name = c.querySelector('.pcback .pcname .name'), cr = c.getBoundingClientRect(), br = back.getBoundingClientRect(), nr = name.getBoundingClientRect();
+    const out = { top: Math.round(br.top - cr.top), right: Math.round(cr.right - br.right), wraps: nr.height > 30, beside: nr.right <= br.left,
+                  rowTop: Math.abs(nr.top - br.top) < 12 };
+    state.repos[key].name = was; drawProjects(state.projects); void p;
+    return out;
+  });
+  ok(line.top < 40 && line.right < 40 && line.wraps && line.beside && line.rowTop,
+     `a long name wraps beside Back, which stays at the card's top right at ${w} (${JSON.stringify(line)})`);
+}
+await page.setViewportSize({ width: 1280, height: 800 });
 // Leaving the page turns a card back: Projects comes back on the fronts.
 ok(await page.$eval('.doc .projtab [data-row="alpha"]', c => c.classList.contains('flipped')), 'the card is on its back before the page is left');
 await page.evaluate(() => { location.hash = '#/jobs'; });
