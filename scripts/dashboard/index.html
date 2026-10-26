@@ -4968,6 +4968,11 @@ html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
 .panes.dockdown .pane.dock .stack{display:block}
 @keyframes dockDown{from{top:var(--dock-top,50%)} to{top:calc(100% - 44px)}}
 .panes.docked{background:var(--bg)}
+/* ...and the ground the dock uncovers as it slides up is the page's on show
+   (the operator, 26 Oct: a darker box under the rising dock): a flush page
+   or a notebook stands on the panel, Nostromo's pages on their glass. */
+.panes.docked:has(#pane0 .stack > .doc.on:is(.nbhost,.flush)){background:var(--panel)}
+html[data-theme="nostromo"] .panes.docked:has(#pane0 .stack > .doc.on){background:var(--glass)}
 body.booting .panes.dockup .pane.dock{animation:none}
 .panes.dockup .pane.dock .stack{display:block}
 .pane.dock.active{outline:0}
