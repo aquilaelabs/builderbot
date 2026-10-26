@@ -644,8 +644,12 @@ function placeResumeMenu(){
     if (!rows.length) return `<div class="rmstate">None yet: a conversation started here is kept to go on with.</div>`;
     return `<div class="rmconvs">${rows.map(r => {
       const a = agentById(r.agent || "claude"), live = mine.find(x => x.row.claude?.conv === r.id);
+      // Every slot of its agent taken: said on the row, not offered and then
+      // refused on the press.
+      const full = !live && !freeSlot(p.name, a.id);
       return `<div class="rmline rmconv"><span class="rmwho"><b>${esc(a.name)}</b><span class="rmsays">${esc(ago(r.at))}</span></span>${
         live ? `<span class="rmsays rmin">running in ${esc(agentSlotName(live.agent, live.slot))}</span>`
+        : full ? `<span class="rmsays rmin">every ${esc(a.name)} session you may run here is running</span>`
              : `<div class="actbar rmacts"><button data-cv="${esc(r.id)}" data-cvagent="${esc(a.id)}" data-cvat="${esc(String(r.at))}" data-node="${esc(at(n))}" title="go on with this conversation">Resume</button></div>`}${
         r.first ? `<div class="rmfirst">${esc(r.first)}</div>` : ""}</div>`; }).join("")}</div>`;
   };
