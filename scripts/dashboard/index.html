@@ -4913,9 +4913,9 @@ html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
 .resumemenu .rmconv .rmfirst{flex:1 0 100%;font:var(--f-note);color:var(--dim);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .resumemenu .rmconv .rmin{margin-left:auto;font:var(--f-note);color:var(--dim)}
-.resumemenu .rmfields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.resumemenu .rmfields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 .resumemenu .rmfields select{width:100%;min-width:0}
-@media(max-width:420px){ .resumemenu .rmfields{grid-template-columns:1fr} }
+@media(max-width:420px){ .resumemenu .rmfields{grid-template-columns:minmax(0,1fr)} }
 
 /* Panes -------------------------------------------------------------- */
 /* Closed on every side (the operator, 16 Oct): its top was left open for
