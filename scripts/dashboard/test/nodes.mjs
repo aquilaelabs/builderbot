@@ -1686,6 +1686,15 @@ print(f"{before} {kept} {rows} {other} {other_after} {m.JOB_LOG_KEEP}")`);
       if (rm) await napi('/api/v1/jobs', { action: 'cancel', id: rm.id });
     }
     await hello(CENSUS);
+    // Agent log beside it (R133 step 12): the agent's own journal opened in
+    // the dock, a read-only tab of its own.
+    await page.waitForSelector(`${ROW} [data-ndlog]`, { timeout: 10000 });
+    await page.click(`${ROW} [data-ndlog]`);
+    const logTab = await page.waitForFunction(id => tabs.find(t => t.kind === 'term' && t.arg === `log:node:${id}:agent`),
+      minted.id, { timeout: 10000 }).then(h => h.jsonValue(), () => null);
+    ok(logTab && /^Log: shed's agent$/.test(logTab.label), `Agent log opens the node's agent journal in the dock (${logTab?.label})`);
+    await page.evaluate(id => { const t = tabs.find(x => x.arg === `log:node:${id}:agent`); if (t) dropTab(t.id); dockToggle(false); openNodesTab(); }, minted.id);
+    await page.waitForSelector(`${ROW} [data-nd="reenroll"]`, { timeout: 10000 });
     // Enroll script on the row (R177): a new script for this node, bound
     // to the machine it reported, with no secret in it; run on another
     // machine the controller refuses it, on the same it enrolls again

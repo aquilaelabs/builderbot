@@ -6269,6 +6269,28 @@ class Handler(BaseHTTPRequestHandler):
                     data = b""
                 return data.decode("utf-8", "replace"), ""
             return read, None
+        if kind == "node":
+            # A machine's own log (R133 step 12), as a person with the debug
+            # grant reads it from the node's row: the stream's last lines,
+            # read again every ten seconds (each read is a job on the node,
+            # so not every second), the screen drawn afresh when they move.
+            nid, _, stream = rest.partition(":")
+            who = self._who() or {}
+            if who.get("session") or users.may(who, "debug"):
+                return None, "a machine's logs are an account's with the debug grant"
+            if not nodes.node(nid) or stream not in nodes.LOG_STREAMS:
+                return None, "no such node or log"
+            held = {"at": 0.0, "text": ""}
+
+            def read():
+                if time.time() - held["at"] >= 10:
+                    held["at"] = time.time()
+                    r = nodes.log_read_named(self._principal(), "", nid, stream, 400, bool(settings.get("debug_mode")))
+                    if r.get("error"):
+                        raise ValueError(r["error"])
+                    held["text"] = str(r.get("out") or "")
+                return held["text"], ""
+            return read, None
         if kind == "ci":
             # A CI run's jobs and their logs (R133 step 12), as /api/ci-runs
             # reads one for an account that sees the project: fetched from

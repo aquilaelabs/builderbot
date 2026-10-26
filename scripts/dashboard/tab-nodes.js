@@ -1718,6 +1718,8 @@ function renderNodesInto(i){
               : `Update the agent to ${esc(nodesAgent.version)} once its running jobs finish`}">${
             updating ? "Updating…" : "Update agent"}</button>` : ""}
           ${ndAgentButtons(false)}
+          ${state?.can?.debug === false ? "" : `<button type="button" data-ndlog="${esc(n.id)}" data-ndlogname="${esc(n.name)}"
+            title="the agent's own journal, in the dock, read again every ten seconds">Agent log</button>`}
         </div>
         <div class="sub ndtest" hidden></div>` : "";
     const health = docSection("nodes", "health", ndTitle("health"),
@@ -2354,6 +2356,9 @@ function wireNodesTab(root){
     // The driver is the Toolchains tab's row (R102): this opens it on the node.
     box.querySelectorAll("[data-ndtc]").forEach(b => b.onclick = () => openToolchainsOn(b.dataset.ndtc));
     box.querySelectorAll("[data-ndag]").forEach(b => b.onclick = () => openAgentsOn(b.dataset.ndag));
+    // The agent's journal in the dock (R133 step 12).
+    box.querySelectorAll("[data-ndlog]").forEach(b => b.onclick = () =>
+      openLogTab(`log:node:${b.dataset.ndlog}:agent`, `Log: ${b.dataset.ndlogname}'s agent`));
     box.querySelectorAll("[data-nd]").forEach(b => b.onclick = () => pressing(b, async () => {
       const act = b.dataset.nd;
       if (act === "disable" || act === "enable"){
