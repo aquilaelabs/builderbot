@@ -10,6 +10,13 @@ let vmsData = null;             // the last /api/vms answer, null before the fir
 let vmsErr = "";
 let vmsRev = 0;
 let vmsSearch = "";
+let vmsNode = "";               // the node picked in the bar, "" for every one
+let vmsChip = "";               // the project chip pressed, "" for All (a view, never saved)
+// Cards or a list, as Containers has them: the same card either way, whole
+// as a row or behind one line that opens into it. This browser's choice.
+let vmView = (() => { try{ return localStorage.getItem("bb.vmview") === "list" ? "list" : "cards"; }catch(e){ return "cards"; } })();
+const VM_COLS = [{label: "VM"}, {label: "State", w: "8.5rem"}, {label: "Node", w: "minmax(0,.7fr)"},
+                 {label: "System", w: "minmax(0,.8fr)"}, {label: "Address", w: "minmax(0,.9fr)"}];
 // When this page asked each VM (PROJECT/NAME) to shut down: a system that
 // ignores the request stays up with its job a success, and the row says so
 // rather than leaving Stop looking broken (B308).
@@ -118,7 +125,7 @@ function vmRow(v){
       v.state === "stopped" ? `<button type="button" data-vmhw title="CPU threads, memory ceiling, network, a shared folder, devices">Hardware…</button>` : "",
       `<button type="button" class="danger" data-vm="remove"${v.state === "removing" ? " disabled" : ""}
         title="destroy it, with its disk and its snapshots">Remove</button>`])}`;
-  return `<div class="row stack2" data-vm-key="${esc(v.key)}">
+  const inner = `
     <div class="grow">
       <div class="dmhead">
         <div class="dmid">
@@ -137,24 +144,58 @@ function vmRow(v){
       ${snaps.length ? `<div class="vmsnaps"><span class="vmsnaplbl">Snapshots</span>${snaps.map(s => `<div class="vmsnap"><code>${esc(s)}</code>${may && !busy ? `
         <button type="button" data-vm="revert" data-snap="${esc(s)}" title="back to ${esc(s)}: what changed since is lost">Revert</button>
         <button type="button" data-vm="snapshot-rm" data-snap="${esc(s)}" title="delete this snapshot">Delete</button>` : ""}</div>`).join("")}</div>` : ""}
-    </div>
-  </div>`;
+    </div>`;
+  if (vmView !== "list") return `<div class="row stack2" data-vm-key="${esc(v.key)}">${inner}</div>`;
+  return `<details class="row stack2 dmline" data-vm-key="${esc(v.key)}"${sectAttr(`vms:line:${v.key}`)}>
+    ${tblLine(VM_COLS, [`<span class="name">${esc(v.name)}</span>`, vmPill(v), esc(v.node_name || ""),
+                        esc(v.os_name || v.os || ""), up && v.ip ? esc(v.ip) : ""], "summary", "dmsum")}
+    <div class="dmbody">${inner}</div></details>`;
 }
 
 function vmGroupsHtml(rows){
   const byName = (a, b) => a.localeCompare(b, undefined, {sensitivity: "base"});
   const owners = [...new Set(rows.map(v => v.project))].sort((a, b) => byName(projLabel(a), projLabel(b)));
+  const group = o => {
+    const html = rows.filter(v => v.project === o).sort((a, b) => byName(a.name, b.name)).map(vmRow).join("");
+    return vmView === "list" ? tblWrap(VM_COLS, html, "dmtbl") : html;
+  };
   return owners.map(o => `<section class="dmcard"><div class="field dmgroup" style="--gc:${colorTone(projectColor(o)) || "var(--accent)"}"><b>${
-      esc(projLabel(o))}</b></div>${rows.filter(v => v.project === o).sort((a, b) => byName(a.name, b.name)).map(vmRow).join("")}</section>`).join("");
+      esc(projLabel(o))}</b></div>${group(o)}</section>`).join("");
 }
 
+// The bar, as Containers' is (the operator, 26 Oct): the node switcher, every
+// VM host and Every node first, the search, Cards and List, and New VM.
 function vmBar(ghost){
   const dead = ghost ? " disabled" : "";
   const any = !ghost && Object.values(vmsData?.can || {}).includes("write");
-  return `<div class="field docbarrow dmpick"><input${ghost ? "" : ` id="vmSearch"`} type="search"
-      placeholder="${isPhone() ? "search" : "name, OS, node or project"}" autocomplete="off" aria-label="narrow the VMs: name, OS, node or project" value="${esc(vmsSearch)}"${dead}><span class="sp"></span>${
+  const hosts = ghost ? null : vmsData?.hosts || [];
+  return `<div class="field docbarrow dmpick">${
+      hosts && hosts.length < 2 ? "" : nodePick("vmPickNode", hosts && [{id: "", name: "Every node"}, ...hosts], vmsNode)}<input${ghost ? "" : ` id="vmSearch"`} type="search"
+      placeholder="${isPhone() ? "search" : "name, OS or project"}" autocomplete="off" aria-label="narrow the VMs: name, OS or project" value="${esc(vmsSearch)}"${dead}><span class="sp"></span>
+      ${viewSeg("vmview", vmView, "each VM as a card", "one line per VM, opening into its card", dead)}${
       (any || ghost) && !featureOff("vms") ? `<span class="actbar"><button type="button"${ghost ? "" : ` id="bVmNew"`} class="primary"${
         dead || !(vmsData?.hosts || []).length ? " disabled" : ""}>${barSaid("New VM", "New")}</button></span>` : ""}</div>`;
+}
+
+// The tiles, as Containers has them: how many run of how many, the projects
+// they are under, and any that failed or are not on their node, in their tone.
+function vmTiles(vms, projects){
+  const running = vms.filter(v => v.state === "running").length;
+  const broke = vms.filter(v => ["failed", "crashed", "missing"].includes(v.state)).length;
+  return statTiles([
+    {label: "running", value: running, sub: `of ${vms.length}${matchMedia("(max-width:440px)").matches ? "" : ` VM${vms.length === 1 ? "" : "s"}`}`,
+     tone: vms.length && !running ? "warn" : ""},
+    {label: "projects", value: projects},
+    {label: "snapshots", value: vms.reduce((n, v) => n + (v.snapshots || []).length, 0)},
+    {label: broke === 1 ? "needs a look" : "need a look", value: broke, tone: "bad", omit: !broke,
+     title: "failed, crashed, or not on its node"},
+  ]);
+}
+// A chip per project with a VM here (the chips rule), by name.
+function vmChipGroups(vms){
+  const owners = [...new Set(vms.map(v => v.project))];
+  return owners.map(o => ({key: o, label: projLabel(o), count: vms.filter(v => v.project === o).length}))
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, {sensitivity: "base"}));
 }
 
 function renderVmsInto(i){
@@ -162,13 +203,20 @@ function renderVmsInto(i){
   if (!el) return;
   el.classList.add("flush");
   if (!vmsData){
-    el.innerHTML = `<div class="doctab vmtab">${skTpl(`${vmBar(true)}
+    el.innerHTML = `<div class="doctab vmtab">${skTpl(`${vmBar(true)}${statTiles([{label: "running", value: GHOST, sub: GHOST},
+        {label: "projects", value: GHOST}, {label: "snapshots", value: GHOST}])}
       <section class="dmcard"><div class="field dmgroup"><b>${skv(8)}</b></div>${skRows(2)}</section>`)}</div>`;
     loadVms();
     return;
   }
   const q = vmsSearch.trim().toLowerCase();
-  const rows = (vmsData.vms || []).filter(v => !q || [v.name, v.os, v.os_name, v.node_name, projLabel(v.project), v.ip]
+  if (vmsNode && !(vmsData.hosts || []).some(h => h.id === vmsNode)) vmsNode = "";
+  // The node picked narrows everything under the bar, the tiles and the
+  // chips counting what it hosts; a chip and the search narrow the rows.
+  const onNode = (vmsData.vms || []).filter(v => !vmsNode || v.node === vmsNode);
+  const chips = vmChipGroups(onNode);
+  if (vmsChip && !chips.some(c => c.key === vmsChip)) vmsChip = "";
+  const rows = onNode.filter(v => !vmsChip || v.project === vmsChip).filter(v => !q || [v.name, v.os, v.os_name, v.node_name, projLabel(v.project), v.ip]
     .some(s => String(s || "").toLowerCase().includes(q)));
   const hosts = vmsData.hosts || [];
   // Switched off on this install (FEATURES_OFF=vms): said where the list
@@ -181,14 +229,28 @@ function renderVmsInto(i){
         ? "Press <b>New VM</b>, or ask Claude in a session for one: <code>bb vm new NAME --os debian</code>."
         : "A project's sessions make them with <code>bb vm new</code> where its settings allow it."}</div>`
     : !rows.length ? `<div class="empty">No VM matches “${esc(vmsSearch)}”.</div>` : "";
-  el.innerHTML = `<div class="doctab vmtab">${vmBar(false)}${empty || vmGroupsHtml(rows)}</div>`;
+  const head = off || vmsErr || !onNode.length ? "" : vmTiles(onNode, chips.length) + chipBar(chips, vmsChip, "data-vmchip");
+  // A reload that lands while the search is being typed in keeps the box's
+  // focus and its caret, as Containers' does: the box is drawn anew.
+  const typing = document.activeElement?.id === "vmSearch" && el.contains(document.activeElement) ? document.activeElement.selectionStart : null;
+  el.innerHTML = `<div class="doctab vmtab">${vmBar(false)}${head}${empty || vmGroupsHtml(rows)}</div>`;
   wireVms(el);
+  const sb = typing === null ? null : el.querySelector("#vmSearch");
+  if (sb){ sb.focus(); try{ sb.setSelectionRange(typing, typing); }catch(e){ /* a type that cannot */ } }
 }
 
 function wireVms(el){
   const s = el.querySelector("#vmSearch");
   if (s) s.oninput = () => { vmsSearch = s.value; const at = s.selectionStart; drawPanes();
     const n = document.querySelector("#vmSearch"); if (n){ n.focus(); n.setSelectionRange(at, at); } };
+  el.querySelectorAll("[data-vmchip]").forEach(c => c.onclick = () => { vmsChip = c.dataset.vmchip; drawPanes(); });
+  const np = el.querySelector("#vmPickNode");
+  if (np) np.onchange = () => { vmsNode = np.value; drawPanes(); };
+  el.querySelectorAll("[data-vmview]").forEach(b => b.onclick = () => {
+    vmView = b.dataset.vmview === "list" ? "list" : "cards";
+    try{ localStorage.setItem("bb.vmview", vmView); }catch(e){ /* private mode */ }
+    drawPanes();
+  });
   const nb = el.querySelector("#bVmNew");
   if (nb) nb.onclick = () => openNewVm();
   el.querySelectorAll("[data-vm-key]").forEach(row => {

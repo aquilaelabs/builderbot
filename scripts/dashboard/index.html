@@ -3731,11 +3731,13 @@ button:has(> svg:only-child),a.btn:has(> svg:only-child){display:inline-flex;ali
    around it, so the switch is the height of every control beside it. */
 :is(.dmtab,.dkview,.vmtab) .dmviewseg{border:0;outline:var(--hair) solid var(--line);outline-offset:calc(-1 * var(--hair))}
 :is(.dmtab,.dkview,.vmtab) .dmviewseg button{min-height:var(--ctl)}
+/* Cards and List are their pictures at every width (viewSeg), each in the
+   middle of a square button (B342: a block svg in an inline box sat left). */
+.dmviewseg>button{display:inline-flex;align-items:center;justify-content:center;min-width:var(--ctl);padding:4px 10px}
+.dmviewseg svg{display:block}
 .facts dd a{color:var(--note)}
 /* The row's Log fold: each container's tail under its name, the whole no
    taller than a screen, and the Follow switch on its action bar. */
-.dmlogbox .dmlogsvc + .dmlogsvc{margin-top:8px}
-.dmlogbox pre.dmlog{max-height:40vh;overflow:auto;margin:4px 0 0}
 /* A page's head (pageHead): its name and state as a node's head has them,
    its facts under it, its buttons at the right (the operator, 25 Oct). */
 .pghead > .name{font-weight:600;font-size:1.05rem;color:var(--ink);display:flex;flex-wrap:wrap;align-items:center;gap:6px}
@@ -4374,13 +4376,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   :is(.doctab,.nb) .field.docbarrow.dmpick>label.pick{flex:0 1 auto;min-width:5em;max-width:11em;margin-inline-end:0}
   /* (the id's rule too, a desk's 12rem base and 8rem floor) */
   :is(.doctab,.nb) .field.docbarrow.dmpick>input{flex:1 1 0;min-width:4em}
-  /* The picture in the middle of its button both ways: a block svg in the
-     inline .shrt sat at the left of the line box, wherever Cards and List
-     stand (Containers, VMs; B342). */
   :is(.doctab,.nb) .field.docbarrow.dmpick>.pseg>button{min-width:var(--tap);padding:4px 8px}
-  .dmviewseg>button{display:inline-flex;align-items:center;justify-content:center}
-  .dmviewseg>button>.shrt{display:inline-flex}
-  :is(.doctab,.nb) .field.docbarrow.dmpick>.pseg svg{display:block}
   /* A runner's three actions, in their short words, on the row's one line. */
   .ndrun .actbar{flex-wrap:nowrap}
   .ndrun .actbar>button{flex:0 1 auto;min-width:0;white-space:nowrap}
