@@ -266,7 +266,7 @@ function usersAddOpen(){
     <div class="field">${lbl("uNewPw", "Password", "at least 8 characters. They can change it on their Profile")}
       <input id="uNewPw" type="password" autocomplete="new-password"></div>
     <div class="field">${lbl("uNewPw2", "The password again")}<input id="uNewPw2" type="password" autocomplete="new-password"></div>
-    <div class="field">${lbl("uNewFull", "Name", "optional: how they are addressed; their git identity is theirs to set on their Profile")}
+    <div class="field">${lbl("uNewFull", "Name", "optional: how they are addressed. Their git name and email are set on their Profile, or here once the account exists")}
       <input id="uNewFull" autocomplete="off"></div>
     <div class="field">${lbl("uNewEmail", "Email", "optional")}<input id="uNewEmail" type="email" autocomplete="off"></div>
     <div class="field"><div class="hint">A new account holds no role: give it one beside its account once it is added.</div></div>

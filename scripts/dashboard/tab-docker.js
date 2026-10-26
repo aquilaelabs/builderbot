@@ -956,8 +956,8 @@ function dmMoveLine(d){
   const names = myProjectNames(d.project);
   const id = "dmm-" + key;
   return `<div class="setcell dmmove">${lbl(id, "Built from",
-      "The project whose compose file and tree it is built from. Another one, applied, moves it "
-      + "under that project, keeping its name, env and data; it then builds from that project's tree.")}
+      "The repository whose compose file and tree it is built from. Another one, applied, moves it "
+      + "there, keeping its name, env and data; it then builds from that repository's tree.")}
     <select id="${esc(id)}" data-dmmove="${esc(key)}" aria-label="the project it is built from">${
       optionList(names.map(n => [n, gone && n === d.project ? `${n} (deleted)` : projLabel(n)]), pick)}</select></div>`;
 }

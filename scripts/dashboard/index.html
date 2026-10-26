@@ -5971,7 +5971,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          owner and Invite only are staged until Save; Invite and Withdraw are
          actions and act on the press. -->
     <div class="field" id="rnPeopleField" hidden>
-      <label id="rnPeopleLabel">People<span class="help" data-help="its owner, who is on it, and who is invited. Any administrator can add people, themselves included; invite only means people join by accepting an invitation, and its owner decides that. Who holds which role here is what the Roles tab sets: a role on this project is what puts somebody on it." tabindex="0">?</span></label>
+      <label id="rnPeopleLabel">People<span class="help" data-help="its owner, who is on it, and who is invited. Any administrator can add people, themselves included; invite only means people join by accepting an invitation, and its owner decides that. A role on this project puts somebody on it; the Roles page sets who holds which." tabindex="0">?</span></label>
       <div id="rnPeople" role="group" aria-labelledby="rnPeopleLabel"></div>
     </div>
     </div></details>
@@ -6010,7 +6010,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       </div>
       <label id="rnGateRunLabel" class="rnsub">Building and running</label>
       <div class="prefrow ctlrow" role="group" aria-labelledby="rnGateRunLabel">
-        <label class="pick">Fill in build and test <select id="rnGateSettings"
+        <label class="pick">Fill in build and test<span class="help" data-help="whether a session may write the build, test and outputs commands under Build and test" tabindex="0">?</span> <select id="rnGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
         <!-- The project's container: rebuild it, change its env, create it
              when there is none, remove it (devbuild; the Docker row says
@@ -6025,7 +6025,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
              lends this project (its editor, its game, its build, a picture,
              a log). Deny by default: it is somebody's own machine; Ask puts
              each use in front of the person at that PC. -->
-        <label class="pick">Use a lent PC <select id="rnGatePc"
+        <label class="pick">Use a lent PC<span class="help" data-help="bb pc: a session asks a person's Windows companion to run something it lends this project (its editor, a build, a picture, a log). Ask puts each use in front of the person at that PC" tabindex="0">?</span> <select id="rnGatePc"
           aria-label="asking a person's Windows PC to run its lent verbs, from a session"></select></label>
       </div>
       <!-- What its VMs may hold in all, whoever makes them (R91 step 7):
@@ -6061,7 +6061,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
              owner who set every dial on this panel to auto still found the
              version locked (report #48, 3 Oct). Its own words, not
              Auto/Ask/Deny: a policy says how far, not whether to ask. -->
-        <label class="pick">Move the version <select id="rnGateVersion"
+        <label class="pick">Move the version<span class="help" data-help="how far a session may move the project's version with bb version" tabindex="0">?</span> <select id="rnGateVersion"
           aria-label="moving the project's version, from a session"></select></label>
       </div>
       <label id="rnGateBbLabel" class="rnsub">BuilderBot itself</label>
@@ -6069,7 +6069,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <!-- bb report, which sends BuilderBot's own problems to its
              maintainers rather than this project's tracker. Off for the
              project that IS BuilderBot, whose tracker they belong in. -->
-        <label class="pick">Report BuilderBot bugs <select id="rnGateReport"
+        <label class="pick">Report BuilderBot bugs<span class="help" data-help="bb report: a session sends a problem with BuilderBot itself to the bug reports in Controller settings, not to this project's bugs" tabindex="0">?</span> <select id="rnGateReport"
           aria-label="reporting problems with BuilderBot itself, from a session"></select></label>
       </div>
     </div>
@@ -6082,7 +6082,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         aria-label="the coding agent the project's Start opens"></select></label></div>
       <!-- How many sessions of one agent each person may run here at once
            (R143): each its own tree and branch. -->
-      <div class="prefrow ctlrow"><label class="pick wide">Sessions of one agent, each person <select id="rnAgentSlots"
+      <div class="prefrow ctlrow"><label class="pick wide">Sessions of one agent, each person<span class="help" data-help="how many sessions of one coding agent each person may run here at once, each in its own tree and branch" tabindex="0">?</span> <select id="rnAgentSlots"
         aria-label="how many sessions of one coding agent each person may run on this project at once">
         <option value="1">1</option><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option>
         <option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option>
@@ -6241,7 +6241,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
            the rest prefs.nodes. Drawn by rnFillNodesMore. -->
       <label id="rnNodesLabel" hidden>Also works on</label>
       <div class="lbox" id="rnNodesMore" role="group" aria-labelledby="rnNodesLabel" hidden></div>
-      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them. One marked Hosting only takes containers alone, built on the project's node and sent there; its sessions may make, rebuild and remove them there under Agents may: Run its container. A hosting node not ticked is yours to copy to and rebuild on from the Docker tab.</div>
+      <div class="hint" id="rnNodesMoreHint" hidden>A session can start on any of these, and its containers may live on any of them. One marked Hosting only takes containers alone, built on the project's node and sent there; its sessions may make, rebuild and remove them there under Agents may: Run its container. A hosting node not ticked is yours to copy to and rebuild on from the Containers page.</div>
       <!-- What the project may use there (R102): the card, and where its
            tests run when it has a dev instance. -->
       <div class="prefrow ctlrow">
@@ -6287,7 +6287,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
         <input id="rnSnapDays" type="number" min="0" max="3650" step="1" inputmode="numeric" aria-label="days a snapshot is kept"> <span class="dim">days</span></div>
       <!-- ...and whether one is taken each day (R105): on unless switched
            off; off takes none, and what is kept ages out by the days. -->
-      <div class="logdays setrow ctlrow"><label class="ndcap"><input type="checkbox" id="rnSnapOn"> Take a snapshot every day<span class="help" data-help="off, none is taken and the days kept here go as they pass the days kept; a pinned day stays either way" tabindex="0">?</span></label></div>
+      <div class="logdays setrow ctlrow"><label class="ndcap"><input type="checkbox" id="rnSnapOn"> Take a snapshot every day<span class="help" data-help="off, no new snapshot is taken; those kept still go once older than the days kept. A pinned day always stays" tabindex="0">?</span></label></div>
       <div class="logdays setrow ctlrow"><label class="ndcap" for="rnDevKeep">Dev builds kept<span class="help" data-help="of each product in dist/, every file of its newest this many builds stays and older builds are removed, a signed build keeping its signed copy alone; a release and anything pinned always stay; 0 keeps everything" tabindex="0">?</span></label>
         <input id="rnDevKeep" type="number" min="0" max="99" step="1" inputmode="numeric" aria-label="dev builds kept of each product"> <span class="dim">builds</span></div>
     </div>
@@ -6316,7 +6316,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          7 Oct): a machine, or one port on it, without making the project
          read another. An administrator's; applied without a restart. -->
     <div class="field" id="rnReachField" hidden>
-      <label id="rnReachLabel">Also reaches<span class="help" data-help="on a node that keeps each session to its own project's network, other machines a session here may still reach: an address for the whole machine, or address:port for one service, on the project's nodes you tick. Sessions already running get it at once" tabindex="0">?</span></label>
+      <label id="rnReachLabel">Also reaches<span class="help" data-help="other machines a session here may still reach outside its project's network: an address for the whole machine, or address:port for one service, on the nodes you tick. Running sessions get it at once" tabindex="0">?</span></label>
       <div id="rnReachRows" role="group" aria-labelledby="rnReachLabel"></div>
       <div class="rnreachadd"><button type="button" id="rnReachAdd">Add an address</button></div>
       <div class="hint" id="rnReachHint"></div>
@@ -6339,7 +6339,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          ftp grant (the owner, until a role names it); anybody else sees
          whether it is on and where. Staged until Save, like the rest. -->
     <div class="field" id="rnFtpField" hidden>
-      <label id="rnFtpLabel">Over FTP<span class="help" data-help="an FTPS server on the project's node, rooted at its tree; each account signs in with its own BuilderBot name and password" tabindex="0">?</span></label>
+      <label id="rnFtpLabel">Over FTP<span class="help" data-help="its tree over FTPS from the project's node, and in VS Code or the Windows companion through this controller; each account signs in with its own BuilderBot name and password and gets the access picked below" tabindex="0">?</span></label>
       <div id="rnFtp" role="group" aria-labelledby="rnFtpLabel"></div>
     </div>
     </div></details>
@@ -6528,7 +6528,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       <div class="hint" id="rlNodeHint"></div>
     </div>
     <div class="field" id="rlDataField">
-      <label>Its data<span class="help" data-help="its named volumes and its data directory travel either way; this is what happens to them on arrival" tabindex="0">?</span></label>
+      <label>Its data<span class="help" data-help="its named volumes and data directory: unpacked into its volumes there, carried as an archive, or left here" tabindex="0">?</span></label>
       <label class="ndcap"><input type="radio" name="rlData" value="unpack" checked> Unpack it into its volumes there</label>
       <label class="ndcap"><input type="radio" name="rlData" value="archive"> Carry it as an archive, not unpacked</label>
       <label class="ndcap"><input type="radio" name="rlData" value="none"> Leave it here: the container alone goes</label>
@@ -6771,7 +6771,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           aria-label="the design language and pages saved from a session"></select></label>
         <label class="pick">Write the wiki <select id="pGateWiki"
           aria-label="wiki pages written or removed by a session"></select></label>
-        <label class="pick">Fill in build and test <select id="pGateSettings"
+        <label class="pick">Fill in build and test<span class="help" data-help="whether a session may write the build, test and outputs commands under Build and test" tabindex="0">?</span> <select id="pGateSettings"
           aria-label="the build, test and outputs fields from a session"></select></label>
         <label class="pick">Run its container <select id="pGateDocker"
           aria-label="rebuilding, changing the env of or creating this project's container, from a session"></select></label>
@@ -6783,7 +6783,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
           aria-label="tagging a commit and publishing the release, from a session"></select></label>
         <label class="pick">Manage signing keys <select id="pGateKeys"
           aria-label="making a signing key or mapping an app to one, from a session"></select></label>
-        <label class="pick">Report BuilderBot bugs <select id="pGateReport"
+        <label class="pick">Report BuilderBot bugs<span class="help" data-help="bb report: a session sends a problem with BuilderBot itself to the bug reports in Controller settings, not to this project's bugs" tabindex="0">?</span> <select id="pGateReport"
           aria-label="reporting problems with BuilderBot itself, from a session"></select></label>
       </div>
     </div>
@@ -6791,7 +6791,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
          into the new directory before git init. Uploaded on Create rather
          than on choosing, so a change of mind costs nothing. -->
     <div class="field" id="pArchiveField">
-      <label for="pArchive">Start from an archive<span class="help" data-help="optional: zip or tar, unpacked into the new project; a single top-level folder is dropped" tabindex="0">?</span></label>
+      <label for="pArchive">Start from an archive<span class="help" data-help="optional: zip or tar, unpacked into the new repository; a single top-level folder is dropped" tabindex="0">?</span></label>
       <!-- The browser's own chooser is hidden: its button wears the browser's
            skin, not the page's. A button of ours opens it, and the name of
            what was picked stands beside the button. -->
@@ -6854,7 +6854,7 @@ body.booting .pane>.skel{margin:0;width:100%;align-self:stretch}
       </div>
     </div>
     <div class="field" id="pTokenField" hidden>
-      <label for="pToken">Access token<span class="help" data-help="optional: a token for this project only, kept on the controller; a session can push with it but not read it" tabindex="0">?</span></label>
+      <label for="pToken">Access token<span class="help" data-help="optional: a token for this repository alone, kept on the controller; a session can push with it but not read it" tabindex="0">?</span></label>
       <input id="pToken" type="password" autocomplete="off" spellcheck="false"
              placeholder="ghp_… or github_pat_…">
       <div class="hint" id="pTokenHint"></div>

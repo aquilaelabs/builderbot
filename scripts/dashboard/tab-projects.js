@@ -705,7 +705,7 @@ function pDraw(){
     "Off is read-only. It cannot be turned on later, and only one project may push to a repository.";
   $("pTokenHint").textContent = pMode === "link"
     ? `Used for ${projLabel(pLink)} only.` + (fg.creates ? ` Checked with ${fg.name} first.` : "")
-    : "Leave empty for a public repository. Kept for this project alone.";
+    : "Leave empty for a public repository. Kept for this repository alone.";
   $("pToken").placeholder = fg.hint;
   $("pKeyHint").textContent =
     "The key used to push. Add the public key below to the repository's deploy keys."

@@ -3217,7 +3217,7 @@ def _diag_watch(project, uid):
         return None
 
 
-# The Settings tab's Debugging group, the debug grant's (roles.NAMED_ONLY).
+# The Debug page's switches, the debug grant's (roles.NAMED_ONLY).
 DEBUG_SETTINGS = ("debug_mode", "offer_unvetted")
 
 

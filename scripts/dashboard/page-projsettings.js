@@ -713,7 +713,7 @@ function renameProject(name, mode = "all"){
         + "until the switch below says to use it."
     : p?.has_token
       ? "Replaces this project's token. Kept for it alone; a shell here can read it."
-      : "Kept for this project alone; a shell here can read it.";
+      : "Kept for this repository alone; a shell here can read it.";
   // Nothing to set is an answer, not an empty box: a linked project with no
   // token and no push rights has a remote it can only read.
   $("rnGitNone").hidden = !(git && $("rnTokenField").hidden);

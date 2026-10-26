@@ -1042,7 +1042,7 @@ function nodeAdvancedSection(n, stale, inflight){
       <div class="sub">${say}</div></div><div class="acts actbar">${btn}</div></div>`;
   const body = `
     <div class="ndname actbar ctlrow">
-      <div class="setrow col grow ctlrow">${lbl("", "Name", "its name in the pickers, on the project rows and as a runner label")}
+      <div class="setrow col grow ctlrow">${lbl("", "Name", "its name in the pickers, on the project cards and as a runner label")}
       <input data-k="name" value="${esc(c.draft.nameText)}" spellcheck="false" autocomplete="off"
         maxlength="60" aria-label="node name"></div>
       <button type="button" data-nd="rename"${!String(c.draft.nameText || "").trim() || String(c.draft.nameText).trim() === n.name ? " disabled" : ""}
@@ -1941,7 +1941,7 @@ function ndDialogs(){
             <input id="ndEnUser" maxlength="32" autocomplete="off" spellcheck="false"
               value="bb"></div>
           <div class="setrow col ctlrow">${lbl("ndEnSystem", "System",
-            "what the machine runs. The script is built for it and refuses another machine by name; a system marked dev has not been walked on a node yet, and is offered with Offer dev features on")}
+            "what the machine runs. The script is built for it and refuses another machine by name. A system tagged dev is untested, and is offered only with Offer dev features on")}
             <select id="ndEnSystem">${optionList((nodesSystems.length ? nodesSystems : [{id: "ubuntu", name: "Ubuntu 24.04 or later", vetted: true}])
               .map(s => [s.id, s.vetted ? s.name : devOpt(s.name)]))}</select></div>
         </div>

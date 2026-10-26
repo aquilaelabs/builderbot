@@ -254,7 +254,7 @@ const SETTING_GROUPS = [
    headingCls: s => s?.tunnel?.connected ? "ok" : "",
    fields: [
     {key: "tunnel_host", label: "Hostname", type: "text", placeholder: "bb.example.com",
-     hint: "The name a node off your network dials the controller at, published by a tunnel from home. Enroll node fills it in."},
+     hint: "The name a node off your network dials the controller at, published by a tunnel from home. Enroll node offers it as the controller's address."},
     {key: "tunnel_token", label: "Tunnel token", type: "secret",
      hint: "From Zero Trust: Networks, Tunnels, Create a tunnel (Cloudflared), the long eyJ… string in its install command. The controller runs the tunnel itself with it."},
     {key: "cf_api_token", label: "Cloudflare API token (optional)", type: "secret",

@@ -359,7 +359,7 @@ function rolesRoleBody(){
       : ""}
     ${r.fresh ? "" : `<label class="ndcap rtwofactor"><input type="checkbox" id="rolesTf"${
       d.roles[r.name]?.two_factor ? " checked" : ""}${d.admin ? "" : " disabled"}> Require two-factor sign-in of everybody holding it${
-      helpIcon("each holder without an authenticator app or a passkey is sent to set one up at their next sign-in, and reaches nothing else until they have (R127)")}</label>`}
+      helpIcon("each holder without an authenticator app or a passkey is sent to set one up at their next sign-in, and reaches nothing else until they have")}</label>`}
     ${ro ? "" : `${saveBar({save: 'id="rolesSave"', revert: 'id="rolesRevert"', state: rolesRoleDirty() ? "unsaved" : ""})}
       ${r.fresh ? "" : `<div class="rfoot"><button type="button" class="danger" id="rolesRemove">Remove ${esc(d.roles[r.name]?.label || r.name)}</button></div>`}`}`);
 }

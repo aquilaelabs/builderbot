@@ -49,7 +49,7 @@ function renderDebugInto(i){
                          facts: [["Turned on by", "DEBUG_MODE=1 where this controller starts"]]})
     + docSection("debug", "dev", "Dev features", dev ? "offered" : "off",
         `<div class="field"><label class="ndcap"><input type="checkbox" id="dbgDev"${dev ? " checked" : ""}> Offer dev features${
-          helpIcon("Also offer untested git hosts, hypervisors and node systems, tagged dev in the pickers.")}</label></div>
+          helpIcon("Also offer what has not been tested end to end yet, tagged dev: git hosts, node systems, hypervisors, WireGuard and Tailscale when enrolling, an account per user on a node, the VS Code extension and the Windows companion.")}</label></div>
         <div class="field"><div class="actbar"><span class="sp"></span>
           <button type="button" class="primary" id="dbgDevSave"${debugDev === null ? " disabled" : ""}>Save</button></div></div>`)
     + docSection("debug", "grants", "What sessions may read", nodesList === null ? "" : `${granted} granted`,
