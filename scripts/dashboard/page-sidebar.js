@@ -325,13 +325,18 @@ function pickProjectColor(btn){
   pop.setAttribute("aria-label", `your color for ${projectName(key)}`);
   pop.innerHTML = PROJECT_COLORS.map(([n, tone]) => `<button type="button" role="radio" data-color="${n}" aria-checked="${n === cur}"
       aria-label="${esc(n || "none")}" title="${esc(n || "none")}"${n ? ` style="--pc:${tone}"` : ""}></button>`).join("");
+  // On a card's back the swatches take the repositories' place, its height
+  // held while they are open (askInline's way).
+  const back = line.closest(".pcback");
+  if (back) back.style.minHeight = back.getBoundingClientRect().height + "px";
   faceFade(line, () => line.insertAdjacentElement("afterend", pop));
   btn.setAttribute("aria-expanded", "true");
   // A press on a Color button is left to its click, which shuts these
   // swatches when it is theirs and opens another card's when not.
   const away = e => { if (!pop.contains(e.target) && !e.target.closest?.("[data-pcolor]")) done(); };
   const esc_ = e => { if (e.key === "Escape") done(); };
-  const done = () => { faceFade(pop, () => pop.remove()); btn.setAttribute("aria-expanded", "false");
+  const done = () => { faceFade(pop, () => { pop.remove(); if (back && !back.querySelector(".askline, .pcpop")) back.style.minHeight = ""; });
+                       btn.setAttribute("aria-expanded", "false");
                        document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", esc_, true); };
   pop.__done = done;
   setTimeout(() => { document.addEventListener("pointerdown", away, true); document.addEventListener("keydown", esc_, true); });

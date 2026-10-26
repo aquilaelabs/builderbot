@@ -2210,7 +2210,10 @@ details.grp[open]>summary .roadmap .fold::before{content:"\25BE"}
    one line. The field starts at a control's width, so a wrapping bar sent
    Save under Cancel in a card before the field gave up any of it. */
 .askline .askrow{flex-wrap:nowrap}
-.askline .askrow input{flex:1 1 auto;min-width:0;width:auto}
+.askline .askrow input,.askline .askrow>.combo{flex:1 1 auto;min-width:0;width:auto}
+/* (the combo's field too: .actbar input's 12em cap came later and won, a
+   short field beside two buttons on a card at every width) */
+.askline .askrow>.combo>input{flex:1 1 auto;width:100%}
 .askline .askrow>button{flex:none}
 /* A field that is also a pulldown (askInline with options; the operator,
    26 Oct): the chevron inside its right edge as a select's, the list a
@@ -3441,6 +3444,11 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
   .pcard.pflip>.pcface[inert]{visibility:hidden}
 }
 .pcard:has(.pcpop,.askrow){z-index:41}
+/* The one box a press on a card's back opens (a rename, a move, Group, the
+   swatches) takes the repositories' place while it is open (the operator,
+   26 Oct), so the two are never on the card at once; askInline holds the
+   back's height until the box goes. */
+.pcard .pcback:has(>.askline,>.pcpop)>.pcrepos{display:none}
 /* A project just made: a ring in the accent that fades (showNewCard). */
 .pcard.pjnew{animation:pjNew 2.4s cubic-bezier(.33,1,.68,1)}
 @keyframes pjNew{0%,30%{box-shadow:inset 3px 0 var(--pc, transparent),0 0 0 2px var(--accent),0 0 18px 2px color-mix(in srgb, var(--accent) 45%, transparent)}

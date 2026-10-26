@@ -496,8 +496,14 @@ print(json.dumps(out))
   ok(await page.$eval(`${card} .pcback [data-pedit]`, b => b.getAttribute('aria-expanded') === 'true'),
      '...Edit turns it over, saying so, for anything that is not looking at the pixels');
   // The turn is on the stylesheet's tween, and off under reduced motion.
-  const turn = await page.$eval(`${card} .pcback`, e => getComputedStyle(e).transitionProperty);
-  ok(/transform/.test(turn), `...on a tween of its transform (${turn})`);
+  // Read until it answers: a poll's redraw replacing the card in the same
+  // moment read an empty style now and then.
+  const turn = await page.waitForFunction(sel => {
+    const e = document.querySelector(sel), t = e && getComputedStyle(e).transitionProperty;
+    return /transform/.test(t || '') && t;
+  }, `${card} .pcback`, { timeout: 3000 }).then(h => h.jsonValue(), async () => page.$$eval(`${card} .pcback`, es => JSON.stringify(es.map(e =>
+    ({ t: getComputedStyle(e).transitionProperty, conn: e.isConnected, par: e.parentElement?.className, ghost: !!e.closest('.fghost') })))));
+  ok(/transform/.test(turn) && !/^\[/.test(turn), `...on a tween of its transform (${turn})`);
   await page.setViewportSize({ width: 1280, height: 1000 });
   await page.waitForTimeout(400);
   // The back's foot is one line of icons, each named (the operator, 25 Oct).
@@ -1358,8 +1364,17 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   ok(chips[0]?.startsWith('All') && chips.some(c => c.startsWith('No group')) && chips.includes('Clients 1'),
      `the groups are chips over the grid, each counted, and one narrows it to its group (${chips.join(' | ')})`);
   await pjMenu('gamma');
+  // The card keeps its size as the box opens on it, the box in the
+  // repositories' place (the operator, 26 Oct).
+  const cardH = () => page.$eval('.doc .projtab .pcard[data-row="gamma"]', c => Math.round(c.getBoundingClientRect().height));
+  const shut = await cardH();
   await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
   await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
+  await page.waitForTimeout(400);
+  const opened = await cardH();
+  const listGone = await page.$eval('.doc .projtab .pcard[data-row="gamma"] .pcback .pcrepos', l => !l.checkVisibility());
+  ok(Math.abs(opened - shut) <= 1 && listGone,
+     `a card is the same size with its Group box open, the box in its repositories' place (${shut} then ${opened}, list hidden ${listGone})`);
   // The field is also a pulldown of every group made (the operator, 26 Oct):
   // its chevron opens them all, Escape shuts the list before the box.
   await page.click('.doc .projtab .askline .combobtn');
@@ -1369,14 +1384,18 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
      "the Group field's chevron opens every group made, and Escape shuts the list before the box");
   // The field and its Cancel and Save on one line inside the card, at a
   // desk and on a phone: Save had dropped under Cancel.
-  for (const w of [1280, 960]){
+  for (const w of [1280, 960, 393]){
     await page.setViewportSize({ width: w, height: 800 });
     const line = await page.$eval('.doc .projtab .askline .askrow', r => {
       const card = r.closest('.pcard').getBoundingClientRect();
       const boxes = [...r.children].filter(e => e.offsetParent).map(e => e.getBoundingClientRect());
-      return { tops: new Set(boxes.map(b => Math.round(b.top))).size, inside: boxes.every(b => b.right <= card.right + 1) };
+      const row = r.getBoundingClientRect(), field = r.firstElementChild.getBoundingClientRect();
+      const btns = boxes.slice(1).reduce((n, x) => n + x.width, 0);
+      return { tops: new Set(boxes.map(b => Math.round(b.top))).size, inside: boxes.every(b => b.right <= card.right + 1),
+               fills: field.width >= row.width - btns - 8 * (boxes.length - 1) - 2 };
     });
-    ok(line.tops === 1 && line.inside, `a card's Group ask is one line at ${w}: its field, Cancel and Save, inside the card (${JSON.stringify(line)})`);
+    ok(line.tops === 1 && line.inside && line.fills,
+       `a card's Group ask is one line at ${w}: its field, taking all the room its Cancel and Save leave, inside the card (${JSON.stringify(line)})`);
   }
   await page.setViewportSize({ width: 1280, height: 800 });
   // Group again closes its box as Cancel does, the group as it was.

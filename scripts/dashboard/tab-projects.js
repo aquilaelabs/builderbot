@@ -381,7 +381,9 @@ async function renameProjectCard(btn){
 // A repository's shown name, asked in a box under its row (the folder stays).
 async function renameRepository(btn){
   const name = btn.dataset.rrn, was = projLabel(name);
-  const got = await askInline(btn.closest(".pcrepo"), {label: `Rename ${was} to`, value: was, ok: "Rename"});
+  // Under the card's name, in the repositories' place, as every box on a
+  // card's back opens (the operator, 26 Oct): the label names the repository.
+  const got = await askInline(btn.closest(".pcback")?.querySelector(".pcname") || btn.closest(".pcrepo"), {label: `Rename ${was} to`, value: was, ok: "Rename"});
   if (got === null || got === was) return;
   try{
     const j = await (await postJSON("/api/rename", {name, to: got})).json();
@@ -397,7 +399,7 @@ async function moveRepository(btn){
   const name = btn.dataset.rmove, from = reposOf(name);
   const to = projectList().filter(c => c.key !== from && c.may && !c.archived);
   if (!to.length){ notify("there is no other project of yours to move it to: New project makes one", true); return; }
-  const got = await askInline(btn.closest(".pcrepo"), {label: `Move ${projLabel(name)} to`, ok: "Move",
+  const got = await askInline(btn.closest(".pcback")?.querySelector(".pcname") || btn.closest(".pcrepo"), {label: `Move ${projLabel(name)} to`, ok: "Move",
                                                        options: to.map(c => c.name)});
   if (!got) return;
   const c = to.find(x => x.name.toLowerCase() === got.toLowerCase());

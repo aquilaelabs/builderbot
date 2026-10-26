@@ -340,11 +340,15 @@ function askInline(after, {label, value = "", ok = "OK", options = [], allowEmpt
             <span class="combolist" id="${list}" role="listbox" hidden></span></span>` : field}
       <button type="button" data-askno>Cancel</button><button type="button" class="primary" data-askok>${esc(ok)}</button>${
         also ? `<button type="button" class="danger" data-askalso>${esc(also.label)}</button>` : ""}</div>`;
+    // On a card's back the box takes the repositories' place, and the back
+    // keeps its height while it is open: the card never changes size.
+    const back = after.closest(".pcback");
+    if (back) back.style.minHeight = back.getBoundingClientRect().height + "px";
     faceFade(after, () => after.insertAdjacentElement("afterend", box));
     const inp = box.querySelector("input");
     inp.value = value;
     inp.focus(); inp.select();
-    const done = v => { faceFade(box, () => box.remove()); resolve(v); };
+    const done = v => { faceFade(box, () => { box.remove(); if (back && !back.querySelector(".askline, .pcpop")) back.style.minHeight = ""; }); resolve(v); };
     box.__done = done;
     box.__label = label;
     const answer = () => done(inp.value.trim() || (allowEmpty ? "" : null));
@@ -382,6 +386,9 @@ function comboWire(box, inp, options){
   const shut = () => { ul.hidden = true; at = -1; inp.setAttribute("aria-expanded", "false"); };
   const pick = o => { inp.value = o; shut(); inp.focus(); };
   btn.onpointerdown = e => { e.preventDefault(); if (ul.hidden){ at = -1; open(true); inp.focus(); } else shut(); };
+  // ...and a key's press on it (Enter or Space), which brings a click with
+  // no pointer before it: the pointer's own click is already answered.
+  btn.onclick = e => { e.preventDefault(); if (e.detail) return; if (ul.hidden){ at = -1; open(true); inp.focus(); } else shut(); };
   inp.addEventListener("input", () => { at = -1; open(false); });
   inp.addEventListener("blur", () => setTimeout(shut, 0));
   return {key(e){
