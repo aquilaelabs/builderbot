@@ -950,12 +950,15 @@ html[data-motion="reduce"] .tourring{transition:none}
   font:11px/1 system-ui,sans-serif;vertical-align:middle;cursor:help;
   transition:color .15s ease,border-color .15s ease}
 .help:hover,.help:focus-visible{color:var(--ink);border-color:var(--ink)}
-/* A ? opens its words as a line on the page, under the label it sits in,
-   and a second press folds them away: a box floating over the field was
-   cut off by whatever scrolled around it, and covered what it explained. */
+/* A ? opens its words in a tooltip (the operator, 26 Oct): fixed to the
+   window, so no pane clips it, beside the ? and inside the screen's edges
+   (helpShow places it), in the floating cards' panel and hairline. */
 .help.on{color:var(--ink);border-color:var(--ink)}
-.helptext{display:block;margin:4px 0 6px;color:var(--dim);font:var(--f-hint, 12px/1.45 system-ui,sans-serif);
-  white-space:normal;overflow-wrap:anywhere}
+.helppop{position:fixed;z-index:400;max-width:min(320px, calc(100vw - 16px));padding:8px 10px;background:var(--panel);
+  border:var(--hair) solid var(--line);border-radius:var(--r-surface);box-shadow:0 10px 28px rgba(0,0,0,.38);
+  color:var(--ink);font:var(--f-hint, 12px/1.45 system-ui,sans-serif);white-space:normal;overflow-wrap:anywhere;
+  pointer-events:none;animation:menuIn .16s cubic-bezier(.33,1,.68,1)}
+.helppop[hidden]{display:none}
 /* What the page cannot say because it cannot reach the container: under
    the header, the light's reason in words (it was the light's tooltip). */
 .pollwhy{padding:4px 12px;color:var(--bad);font:12px/1.45 system-ui,sans-serif;
@@ -4862,7 +4865,7 @@ html[data-motion="reduce"] *,html[data-motion="reduce"] *::before,html[data-moti
   transition-duration:0s !important;transition-delay:0s !important}
 html[data-motion="reduce"] #bBell.waiting{background:var(--warn)}
 html[data-motion="reduce"] .pane .stack > .doc.leaving{visibility:hidden}
-@media(prefers-reduced-motion:reduce){ .bellpanel,.uimenu,.actmenu,.railmore,.pane .doc.on,.panes.dockup .pane.dock,.panes.dockdown .pane.dock{animation:none} .pane .stack > .doc.leaving{visibility:hidden;animation:none} .help{transition:none} }
+@media(prefers-reduced-motion:reduce){ .helppop,.bellpanel,.uimenu,.actmenu,.railmore,.pane .doc.on,.panes.dockup .pane.dock,.panes.dockdown .pane.dock{animation:none} .pane .stack > .doc.leaving{visibility:hidden;animation:none} .help{transition:none} }
 
 /* The page column ------------------------------------------------------ */
 /* min-width:0 matters: a grid item's min-content width is its widest nowrap
@@ -7174,11 +7177,12 @@ quietFields(document.documentElement);
 // Its declarations are page-tabs.js; what runs at load is below.
 // ---- tabs ------------------------------------------------------------
 // Its declarations are page-tabs.js; what runs at load is below.
-// A tap on a ? opens its words as a line under its label, and a second tap
-// folds them away. Bound once on the document, so icons drawn later count too.
+// A press on a ? opens its words in a tooltip, and a second press shuts it;
+// anything else, Escape or a scroll shuts it. Bound once on the document, so icons
+// drawn later count too.
 addEventListener("click", e => {
   const h = e.target.closest && e.target.closest(".help");
-  if (!h) return;
+  if (!h){ if (helpAt && !e.target.closest?.("#helpPop")) helpHide(); return; }
   e.preventDefault();
   helpToggle(h);
 });
@@ -7186,8 +7190,9 @@ addEventListener("keydown", e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.classList?.contains("help")){
     e.preventDefault();
     helpToggle(e.target);
-  }
+  } else if (e.key === "Escape" && helpAt) helpHide();
 });
+addEventListener("scroll", () => { if (helpAt) helpHide(); }, true);
 untitleWatch();
 
 // ---- the shell (R218 step 2) ---------------------------------------------

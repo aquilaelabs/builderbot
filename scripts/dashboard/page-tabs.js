@@ -379,25 +379,44 @@ function untitleWatch(){
   }).observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ["title"]});
 }
 
-// A ? and the line of words it opens under its label: the line goes after
-// the label (or the ?'s own parent where there is no label), and comes off
-// again on the second press.
-function helpToggle(h){
+// A ? and its words in a tooltip beside it (the operator, 26 Oct, where on
+// 11 Oct they were a line on the page: a tooltip then was clipped by the
+// pane it sat in and a phone never showed one). Fixed to the window, so no
+// pane clips it, under the ? or above it near the screen's foot, inside the
+// screen's edges; a press on the ? (a tap on a phone) opens and shuts it,
+// never a hover (the operator, 26 Oct: a press works on a phone too), and a
+// press elsewhere, Escape or a scroll shuts it. One at a time.
+let helpAt = null;
+function helpShow(h){
   const words = h.dataset.help || h.getAttribute("aria-label") || "";
-  const at = h.closest("label, .lbl") || h.parentElement;
-  const next = at.nextElementSibling;
-  if (h.classList.contains("on") && next?.classList.contains("helptext")){
-    next.remove();
-    h.classList.remove("on");
-    h.setAttribute("aria-expanded", "false");
-    return;
+  if (!words) return;
+  let tip = document.getElementById("helpPop");
+  if (!tip){
+    tip = document.createElement("div");
+    tip.id = "helpPop"; tip.className = "helppop"; tip.setAttribute("role", "tooltip");
+    document.body.appendChild(tip);
   }
-  const line = document.createElement("span");
-  line.className = "helptext";
-  line.textContent = words;
-  at.after(line);
+  if (helpAt && helpAt !== h) helpHide();
+  helpAt = h;
+  tip.textContent = words;
+  tip.hidden = false;
   h.classList.add("on");
   h.setAttribute("aria-expanded", "true");
+  h.setAttribute("aria-describedby", "helpPop");
+  const r = h.getBoundingClientRect(), t = tip.getBoundingClientRect(), gap = 6, edge = 8;
+  const below = r.bottom + gap + t.height <= innerHeight - edge || r.top - gap - t.height < edge;
+  tip.style.top = `${Math.round(below ? r.bottom + gap : r.top - gap - t.height)}px`;
+  tip.style.left = `${Math.round(Math.max(edge, Math.min(r.left + r.width / 2 - t.width / 2, innerWidth - edge - t.width)))}px`;
+}
+function helpHide(){
+  const tip = document.getElementById("helpPop");
+  if (tip) tip.hidden = true;
+  if (helpAt){ helpAt.classList.remove("on"); helpAt.setAttribute("aria-expanded", "false"); helpAt.removeAttribute("aria-describedby"); }
+  helpAt = null;
+}
+function helpToggle(h){
+  if (helpAt === h) return helpHide();
+  helpShow(h);
 }
 
 // ---- a menu somebody has open ---------------------------------------------

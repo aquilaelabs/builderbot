@@ -1281,29 +1281,30 @@ print(u.${proj})`], { encoding: 'utf8' }).trim();
      `...and what it may do: its roles by name, and each area with its level (${JSON.stringify(wm).slice(0, 160)})`);
   ok(await page.evaluate(() => !!document.querySelector('#rail [data-rail="people"]') && railAllows('settings') && railAllows('users')),
      'an administrator is offered People and the controller\'s settings on the rail');
-  // The ? beside a label opens its words as a line on the page under the
-  // label, at every width, and a second press folds them away (the operator,
-  // 11 Oct: no tooltips, which a pane clipped and a phone never had).
+  // The ? beside a label opens its words in a tooltip beside it (the
+  // operator, 26 Oct), fixed to the window so no pane clips it, and a second
+  // press shuts it.
   await page.click('.profiletab .help');
-  const said = await page.$eval('.profiletab .help.on', el => {
-    const at = el.closest('label, .lbl') || el.parentElement;
-    const line = at.nextElementSibling;
-    return { line: line?.classList.contains('helptext') ? line.textContent : '', ex: el.getAttribute('aria-expanded') };
+  const said = await page.evaluate(() => {
+    const h = document.querySelector('.profiletab .help.on'), tip = document.getElementById('helpPop');
+    const r = h?.getBoundingClientRect(), t = tip?.getBoundingClientRect();
+    return { text: tip && !tip.hidden ? tip.textContent : '', ex: h?.getAttribute('aria-expanded'), by: h?.getAttribute('aria-describedby'),
+             fixed: tip ? getComputedStyle(tip).position : '', near: !!(r && t) && Math.abs(t.top - r.bottom) < 12 };
   });
-  ok(/at least 8 characters|sign in with/.test(said.line) && said.ex === 'true',
-     `a tap on the ? opens its words as a line under its label (${said.line.slice(0, 40)})`);
+  ok(/at least 8 characters|sign in with/.test(said.text) && said.ex === 'true' && said.by === 'helpPop' && said.fixed === 'fixed' && said.near,
+     `a press on the ? opens its words in a tooltip under it (${JSON.stringify(said).slice(0, 120)})`);
   await page.click('.profiletab .help.on');
-  ok(!(await page.$('.profiletab .help.on')) && !(await page.$('.profiletab .helptext')),
-     '...and a second tap folds them away');
-  // ...and on a phone the line is inside the screen like any other.
+  ok(!(await page.$('.profiletab .help.on')) && await page.$eval('#helpPop', t => t.hidden),
+     '...and a second press shuts it');
+  // ...and on a phone it is inside the screen.
   await page.setViewportSize({ width: 393, height: 851 });
     // Profile on a phone opens on its list (a page of settings): a section first.
     await splitPick(page, 'you');
     await page.waitForSelector('.profiletab .help', { state: 'visible', timeout: 10000 });
   await page.click('.profiletab .help');
-  const fit = await page.$eval('.profiletab .helptext', el => { const r = el.getBoundingClientRect(); return { x: r.left, right: r.right, vw: innerWidth }; });
-  ok(fit.x >= 0 && fit.right <= fit.vw,
-     `on a phone the ?'s line is inside the screen (${Math.round(fit.x)}..${Math.round(fit.right)} of ${fit.vw})`);
+  const fit = await page.$eval('#helpPop', el => { const r = el.getBoundingClientRect(); return { x: r.left, right: r.right, vw: innerWidth, shown: !el.hidden }; });
+  ok(fit.shown && fit.x >= 0 && fit.right <= fit.vw,
+     `on a phone the ?'s tooltip is inside the screen (${Math.round(fit.x)}..${Math.round(fit.right)} of ${fit.vw})`);
   await page.click('.profiletab .help.on');
   await page.setViewportSize({ width: 1280, height: 800 });
   // No author, no terminal and no git: an account with no name and email
