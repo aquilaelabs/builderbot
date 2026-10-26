@@ -133,6 +133,7 @@ const TOUR_STEPS = {
 
 let tourKind = "", tourI = 0, tourSteps = [];
 const tourAsked = new Set();
+let tourWait = null, tourTries = 0;   // a tour held by a page still loading, asked again shortly
 
 function tourSeen(){ return new Set(state?.tour?.seen || []); }
 
@@ -151,7 +152,7 @@ function tourSoon(kind){
   if (document.querySelector(".modal:not([hidden])")) return;
   // ...nor over a placeholder: the page's own draw, once its data has
   // landed, asks again (the operator, 21 Oct: the tour pointed at shimmer).
-  if (tourLoading()) return;
+  if (tourLoading()) return tourRetry(kind);
   // ...nor over the setup page, which is the whole page until Finish: a new
   // owner's first look was Home's tour over its four steps.
   if (setupNeeded()) return;
@@ -184,13 +185,23 @@ function tourLoading(){
   return document.body.classList.contains("booting")
     || [...document.querySelectorAll(".doc.on .skel, .doc.on .loading, .doc.on .sk-b")].some(e => e.checkVisibility());
 }
+// A page that draws once and then sits (paint writes only on change) never
+// asks again after its data lands, so a tour held by its placeholder asks
+// again itself for a while: Show the tours again waited for a reload.
+function tourRetry(kind){
+  clearTimeout(tourWait);
+  if (++tourTries > 20) return;
+  tourWait = setTimeout(() => tourSoon(tabOf(panes[0])?.kind), 500);
+}
 function tourStart(kind){
   // Still the page in front, and nothing over it: a tour asked for a page
   // left meanwhile waits for that page's next visit.
   if (tourKind || document.querySelector(".modal:not([hidden])") || setupNeeded() || tourLoading() || tabOf(panes[0])?.kind !== kind){
     tourAsked.delete(kind);
+    if (tourLoading() && tabOf(panes[0])?.kind === kind) tourRetry(kind);
     return;
   }
+  tourTries = 0;
   // A step about a row the page has none of yet keeps its place with an
   // example of one (the operator, 21 Oct): an empty Containers or VMs page.
   tourSteps = TOUR_STEPS[kind].filter(s => !s.at || s.sample || tourTarget(s.at));
@@ -254,7 +265,7 @@ function tourSampleProject(back){
     <div class="pcface pcfront"><div class="pcname"><span class="name">example</span><span class="sp"></span>
         <button type="button" class="eye bare pcmark">${PIN}</button><button type="button" class="eye bare pcmark">${ARCHIVE}</button></div>
       <div class="pcmeta"><span class="pcfacts"><span class="pid">P1</span> · your-node</span></div>
-      <div class="pcrepos"><div class="pcrepo"><button type="button" class="link">example-web</button><span class="pcfacts"><span class="pbr">main</span></span></div></div>
+      <div class="pcrepos"><div class="pcrepo"><button type="button" class="namelink">example-web</button><span class="pcfacts"><span class="pbr">main</span></span></div></div>
       <div class="pcacts actbar"><button type="button">Start agent</button><button type="button">Add repository</button><button type="button">Edit</button></div></div>
     <div class="pcface pcback"><div class="pcname"><span class="name">example</span>${ic(PENCIL, "Rename")}
         <span class="sp"></span><span class="actbar"><button type="button">Back</button></span></div>
@@ -410,8 +421,12 @@ async function tourReset(){
   const r = await fetch("/api/users", {method: "POST", headers: {"Content-Type": "application/json"},
                                        body: JSON.stringify({action: "prefs", prefs: {tour_seen: [], tour_off: false}})});
   const j = await r.json().catch(() => ({}));
+  // ...and a poll sent while this was on its way read the list from before it.
+  adoptSeq++;
   if (j.error) notify(j.error, true);
   else {
+    state.tour = {seen: [], off: false};
+    tourTries = 0;
     notify("The tours show again, on each page the next time you open it");
     // ...starting with the page in front, without waiting for a draw.
     tourSoon(tabOf(panes[0])?.kind);

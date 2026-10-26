@@ -65,8 +65,9 @@ await page.click('#aboutTours');
 await page.waitForFunction(async () => true);
 const back = await (await fetch(base + '/api/status', { headers: H })).json();
 ok(!back.tour?.off && !(back.tour?.seen || []).length, `About's Show the tours again clears what was seen and the box (${JSON.stringify(back.tour)})`);
+// Close is all a person does: no reload and no redraw by hand (the
+// operator, 26 Oct: the tour waited for a refresh).
 await page.click('#aboutClose');
-await page.evaluate(() => { tourAsked.clear(); drawPanes(); });
 await page.waitForSelector('#tourCard:not([hidden])', { timeout: 15000 });
 ok(/Nodes are the machines/.test(await page.$eval('#tourCard .toursay', e => e.textContent)), '...and the page in front tours again');
 // Another page opened from the rail with that tour up: it is put away,
