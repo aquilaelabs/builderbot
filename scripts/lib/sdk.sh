@@ -867,6 +867,16 @@ sdk_update() {
     case "$what" in
         flutter)
             d="$(sdk_find flutter)" || die "flutter is not installed"
+            # Half of a clone an install cut short (no .git, or no
+            # bin/flutter) has nothing to fetch into: git stopped at the
+            # share's edge with "not a git repository". Installed again
+            # instead, as an install clears the same half.
+            if [ ! -e "$d/.git" ] || [ ! -x "$d/bin/flutter" ]; then
+                warn "flutter at ${d} is not a whole checkout: an earlier install did not finish; installing it again"
+                rm -rf "${d:?}"
+                sdk_install flutter
+                return
+            fi
             log "updating flutter to the head of stable"
             # The clone is shallow, so fetch the branch tip and move onto it;
             # `flutter upgrade` refuses to work in a shallow checkout.
