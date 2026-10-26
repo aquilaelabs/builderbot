@@ -2084,7 +2084,7 @@ print(m.mint_session('alpha', ttl=${ttl}))`], { encoding: 'utf8' }).trim();
          && readlinkSync(`${DIR}/home/.claude/projects`) === shared && existsSync(`${DIR}/ws/.claude/.bbignore`),
          `the owner's ~/.claude/projects is a link onto the share, which carries a .bbignore (${readlinkSync(`${DIR}/home/.claude/projects`).replace(DIR, '…')})`);
       mkdirSync(`${shared}/${slug}`, { recursive: true });
-      writeFileSync(`${shared}/${slug}/0123abcd-0000-4000-8000-000000000000.jsonl`, '{}\n');
+      writeFileSync(`${shared}/${slug}/0123abcd-0000-4000-8000-000000000000.jsonl`, JSON.stringify({ type: 'user', message: { content: 'carry on' } }) + '\n');
       ok((await api('/api/status')).projects.find(p => p.name === 'alpha')?.last_claude?.id === '0123abcd-0000-4000-8000-000000000000',
          'a transcript written on the share, as a node\'s session writes it, is offered here to resume');
       await refreshUntil(page, () =>
