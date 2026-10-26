@@ -862,7 +862,7 @@ html[data-motion="reduce"] .tourring{transition:none}
   .ssplit:not(.sopen)>:not(.snav):not(.pghead){display:none}
   /* ...over the list on a phone, and gone with it once a section opens. */
   .ssplit.sopen>.pghead{display:none}
-  .ssplit>.pghead{grid-row:auto;grid-column:1}
+  .ssplit>.pghead{grid-row:auto;grid-column:1;order:-1}   /* first, as at a desk: the list comes before it in the markup */
   .ssplit.sopen>.snav{display:none}
   /* The open section's head is the way back: a chevron before its name,
      the whole head the press (splitSects). */

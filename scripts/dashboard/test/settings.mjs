@@ -741,4 +741,23 @@ ok(elsewhere.git_name === 'T. Person',
   await phone.close();
 }
 
+// ---- a split page's head on a phone (B370) ----------------------------------
+// The page's head is on top, as at a desk, not under the list of sections.
+{
+  const phone = await newPage(browser, { viewport: { width: 393, height: 852 }, isMobile: true, hasTouch: true });
+  await phone.goto(URL);
+  await ready(phone);
+  const seen = [];
+  for (const [open, name] of [['openSettingsTab', 'Controller settings'], ['openProfileTab', 'Profile']]){
+    await phone.evaluate(f => window[f](), open);
+    await phone.waitForSelector('.pane .doc.on .ssplit > .pghead', { timeout: 15000 });
+    seen.push(await phone.$eval('.pane .doc.on .ssplit', s => {
+      const h = s.querySelector(':scope > .pghead').getBoundingClientRect(), n = s.querySelector(':scope > .snav').getBoundingClientRect();
+      return h.height > 0 && h.bottom <= n.top + 1 ? '' : `${Math.round(h.top)} vs ${Math.round(n.top)}`;
+    }).then(x => x && `${name} ${x}`));
+  }
+  ok(seen.every(x => !x), `on a phone a settings page's head is above its sections (${seen.filter(Boolean).join(', ') || 'both'})`);
+  await phone.close();
+}
+
 await done(browser);
