@@ -6113,7 +6113,7 @@ def _job_mine(j, mine):
     return bool(job_owner) and job_owner(j) in mine
 
 
-def jobs_view(jid, q, mine, system=None):
+def jobs_view(jid, q, mine, system=None, hidden=None):
     """The Jobs page's whole read surface, and a test's: one job with its log
     so far, or the recent ones narrowed by the query's node, project, type,
     active and n. `mine` is None for an administrator, or the projects this
@@ -6122,12 +6122,16 @@ def jobs_view(jid, q, mine, system=None):
     a store move) is an administrator's, with the same answer as a typo so
     the listing says nothing about what else is queued on the box. With
     `system` (a redactor), the node's own jobs are seen as well, through it:
-    the caller may read the controller's diagnostics, which list them. n counts
+    the caller may read the controller's diagnostics, which list them. A job
+    `hidden(job)` says is not this reader's (a schedule's run, to a session)
+    is not there at all, the same answer as a typo. n counts
     what this account sees, not the node's last n before the filter, which
     showed one job of twelve and read as history pruned (B321).
     (payload, status)."""
     def seen(j):
-        return _job_mine(j, mine) or (system is not None and not j.get("project"))
+        if hidden is not None and hidden(j):
+            return False
+        return mine is None or _job_mine(j, mine) or (system is not None and not j.get("project"))
 
     def scrub(v):
         # Every string inside, the shape kept: bb jobs and the Jobs tab read
@@ -6146,7 +6150,7 @@ def jobs_view(jid, q, mine, system=None):
         return {k: scrub(v) if k in ("log", "error", "label", "spec") else v for k, v in j.items()}
     if jid:
         j = job(jid)
-        if j and mine is not None and not seen(j):
+        if j and not seen(j):
             j = None
         return (shown(j), 200) if j else ({"error": "no such job"}, 404)
     try:
@@ -6163,7 +6167,7 @@ def jobs_view(jid, q, mine, system=None):
         project=q.get("project", [""])[0] or None,
         type=q.get("type", [""])[0] or None,
         active=q.get("active", [""])[0] == "1")
-    if mine is not None:
+    if mine is not None or hidden is not None:
         rows = [shown(j) for j in rows if seen(j)][:n]
     # The names of the nodes these rows run on, and for an account that
     # is not an administrator no other: the whole registry rode here

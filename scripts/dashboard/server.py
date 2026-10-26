@@ -6267,7 +6267,7 @@ class Handler(BaseHTTPRequestHandler):
 
             def read():
                 mine, system = self._jobs_scope()
-                body, status = nodes.jobs_view(jid, {}, mine, system)
+                body, status = nodes.jobs_view(jid, {}, mine, system, self._jobs_hidden())
                 if status != 200 or not body.get("id"):
                     raise ValueError(body.get("error") or "no such job")
                 log = body.get("log") or ""
@@ -7088,7 +7088,7 @@ class Handler(BaseHTTPRequestHandler):
             if mine is not None and not (me or {}).get("session") and self._area_read_why("jobs"):
                 mine = {p for p in mine if roles.level_of(me, "projects", p, users.may_work)}
             with timing.timed("home:jobs"):
-                got, _ = nodes.jobs_view("", {"n": ["500"]}, mine)
+                got, _ = nodes.jobs_view("", {"n": ["500"]}, mine, hidden=self._jobs_hidden())
             rows, names = got.get("jobs") or [], got.get("nodes") or {}
         machines = not NODES_OK and not self._area_read_why("nodes")
         light = urllib.parse.parse_qs(self.path.partition("?")[2]).get("light", [""])[0] == "1"
@@ -7104,7 +7104,7 @@ class Handler(BaseHTTPRequestHandler):
                                         + NODES_OK}, 500)
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         mine, system = self._jobs_scope()
-        return self._json(*nodes.jobs_view(q.get("id", [""])[0], q, mine, system))
+        return self._json(*nodes.jobs_view(q.get("id", [""])[0], q, mine, system, self._jobs_hidden()))
 
     def _jobs_scope(self):
         """(the projects whose jobs this account reads, None for all; the
@@ -7124,6 +7124,14 @@ class Handler(BaseHTTPRequestHandler):
         # Through diag's redaction, as the diagnostics themselves are.
         system = diag.redact if mine is not None and not self._diag_why() else None
         return mine, system
+
+    def _jobs_hidden(self):
+        """What of the jobs this reader does not see at all: a schedule's runs
+        to a session (the operator, 26 Oct: sessions neither see nor touch
+        the schedules), whose scripts and logs are an administrator's."""
+        if not (self._who() or {}).get("session"):
+            return None
+        return lambda j: str(j.get("requested_by") or "").startswith("schedule:")
 
     def _get_docker(self):
         """GET /api/docker: the manager's whole page, containers.manager_view,
