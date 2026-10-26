@@ -332,14 +332,15 @@ def _argv(s):
     return ["bash", "-c", pre + script]
 
 
-def fire(s, by, queue, late=""):
+def fire(s, by, queue, late="", at=None):
     """One run of a schedule now, through `queue(s, argv, by)`, which answers
-    {job} or {error}: the job queued, recorded as the schedule's last run."""
+    {job} or {error}: the job queued, recorded as the schedule's last run,
+    at `at` (the timer's minute) or now."""
     if s.get("builtin") == "scan" and not _scan_script():
         r = {"error": "the scan's script (tools/scan.sh) is not in this image"}
     else:
         r = queue(s, _argv(s), by)
-    _record(s["id"], last={"at": int(time.time()), "job": r.get("job", ""), "error": r.get("error", ""),
+    _record(s["id"], last={"at": int(time.time() if at is None else at), "job": r.get("job", ""), "error": r.get("error", ""),
                            "late": late, "by": by})
     return r
 
@@ -369,7 +370,7 @@ def tick(queue, job_state, now=None):
         late = ""
         if now - due > LATE_S:
             late = time.strftime("%a %d %b %H:%M", time.localtime(due))
-        fire({**s, **raw}, "schedule", queue, late=late)
+        fire({**s, **raw}, "schedule", queue, late=late, at=now)
         _record(s["id"], due=nxt)
         fired.append(s["id"])
     return fired
