@@ -595,7 +595,7 @@ ${code}`], { encoding: 'utf8' });
       const ownerUid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
       const slug = `${DIR}/ws/alpha`.replace(/\//g, '-');
       mkdirSync(`${DIR}/ws/.claude/${ownerUid}/projects/${slug}`, { recursive: true });
-      writeFileSync(`${DIR}/ws/.claude/${ownerUid}/projects/${slug}/b489b489-0000-4000-8000-000000000000.jsonl`, '{}\n');
+      writeFileSync(`${DIR}/ws/.claude/${ownerUid}/projects/${slug}/b489b489-0000-4000-8000-000000000000.jsonl`, JSON.stringify({ type: 'user', message: { content: 'carry on' } }) + '\n');
       const theirs = (await projects(owner)).find(p => p.name === 'alpha')?.last_claude?.id;
       const notTheirs = (await projects(adm)).find(p => p.name === 'alpha')?.last_claude;
       ok(theirs === 'b489b489-0000-4000-8000-000000000000' && !notTheirs,
