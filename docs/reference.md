@@ -61,6 +61,29 @@ the controller's account alone; a session on the machine's own node is kept
 out of it, with the rest of the controller (the wall,
 [decisions.md](decisions.md#a-controller-installed-bare-metal-and-its-own-node)).
 
+### The install key
+
+`INSTALL_KEY` seals at rest what BuilderBot keeps that would let somebody
+in: the settings' tokens, each project's signing keys, the git credentials a
+project holds, and the coding agents' sign-ins a node keeps; the sign-in
+cookies' key is made from it too. Without one, `bb doctor` warns and those
+are kept open in `/config`, so a copy of `/config` or a backup of it gives
+them away.
+
+Set it once, before anything is kept: 16 characters or more (`openssl rand
+-hex 32` makes one), as `INSTALL_KEY=` in a `*.env` file in the root-only
+secrets folder (compose's `/secrets`, the template's **Secrets directory**,
+a bare-metal install's `BB_SECRETS_DIR`), never in `.env` or the template's
+plain fields. It is never written into `/config`, so keep a copy with your
+other secrets: lost or changed, what was sealed under it does not open, and
+each signing key comes back by **Import a backup**. What was kept open before
+is sealed at the next start.
+
+To change it without everybody signing in again, set the old one as
+`INSTALL_KEY_PREVIOUS=` beside the new one until each person has opened a
+terminal on each node once, which seals their sign-in again under the new
+key. `SIGNING_SECRET=`, its name before 0.8.0, is read for one release.
+
 ## The `bb` helper
 
 Bare `bb` prints this list; `bb status` is the tool-version wall.

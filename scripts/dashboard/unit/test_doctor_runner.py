@@ -38,5 +38,16 @@ class RunnerLine(unittest.TestCase):
         self.assertTrue(bad["text"].startswith("runner token for 192.168.1.16-3000-lab-hello on n_495a2118"))
 
 
+
+class DocLinks(unittest.TestCase):
+    def test_the_install_key_warning_links_its_section_of_the_docs(self):
+        warn = {"level": "warn", "detail": "", "text": "no install key: the settings' tokens, the signing keys and the git "
+                "credentials are kept open in /config; set INSTALL_KEY (docs/reference.md)"}
+        got = doctor._doc_line(warn)
+        self.assertEqual((got["href"], got["act"]), ("#/help/reference/the-install-key", "How to set it"))
+        ok = {"level": "ok", "detail": "", "text": "an install key is loaded"}
+        self.assertNotIn("href", doctor._doc_line(ok), "a line naming no doc keeps its words alone")
+
+
 if __name__ == "__main__":
     unittest.main()

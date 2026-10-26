@@ -82,6 +82,19 @@ def refresh():
     return True
 
 
+# A line that names the doc its fix is in, as bb doctor writes it for a
+# terminal ("set INSTALL_KEY (docs/reference.md)"): on the page, a link to
+# that doc's section in Help (the operator, 26 Oct).
+DOC_LINKS = (("set INSTALL_KEY (docs/reference.md)", "#/help/reference/the-install-key", "How to set it"),)
+
+
+def _doc_line(check):
+    for said, href, act in DOC_LINKS:
+        if said in check["text"] and "href" not in check:
+            return dict(check, href=href, act=act)
+    return check
+
+
 def _run_once():
     r = run(["bb", "doctor"], timeout=180)
     checks = []
@@ -91,7 +104,7 @@ def _run_once():
             checks.append({"level": m.group(1), "text": m.group(2), "detail": ""})
         elif checks and line.strip() and not line.startswith("=="):
             checks[-1]["detail"] = (checks[-1]["detail"] + "\n" + line.strip()).strip()
-    checks = [_runner_line(c) for c in checks]
+    checks = [_doc_line(_runner_line(c)) for c in checks]
     with _lock:
         _verdict.update(when=int(time.time()), checks=checks, failed=r["code"] != 0)
 

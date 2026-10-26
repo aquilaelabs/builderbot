@@ -236,6 +236,9 @@ function openRoute(hash){
     railWant = "help";
     const doc = a ? decodeURIComponent(a) : helpIndex?.home || "";
     if (doc && doc !== helpCur){ helpCur = doc; helpQ = ""; helpHits = null; helpRev++; }
+    // ...at a section of it when the address names one (#/help/reference/
+    // the-install-key): the doctor's links land on the fix itself.
+    if (b){ helpAnchor = decodeURIComponent(b); helpRev++; }
     openHelp();
     if (helpIndex && helpCur) helpRead(helpCur);
     return true;
