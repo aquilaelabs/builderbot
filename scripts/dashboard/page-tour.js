@@ -24,9 +24,9 @@ const TOUR_STEPS = {
     {at: "#pane1 .bar, .dockline", say: "The dock at the foot keeps the chat and your terminals and agents' sessions, whichever page you are on. Pull it up to work in one."},
   ],
   projects: [
-    {say: "Every project you work on. A project is a git repository with its own notebook: a roadmap, bugs, tests, its containers and VMs."},
-    {at: TOUR_BAR, say: "Search and the view switch are here, and New project at the right."},
-    {at: `${TOUR_PANE} .pcard`, say: "A project's card: its branch, its sessions, and Start agent. Its name opens the notebook."},
+    {say: "Every project you work on. A project holds one or more git repositories, each with its own notebook: a roadmap, bugs, tests, its containers and VMs."},
+    {at: TOUR_BAR, say: "Search narrows the cards by name, branch or node. New project is at the right, and the trash beside it keeps the projects you deleted."},
+    {at: `${TOUR_PANE} .pcard`, say: "A project's card: its repositories with their branches, whether a session is working there, and Start agent. A repository's name opens its notebook; Edit turns the card over to its color, group, settings and Delete project."},
   ],
   notebook: [
     {say: "A project's notebook: everything about it in one place, shared by the people and the sessions working on it."},
@@ -43,7 +43,7 @@ const TOUR_STEPS = {
     {at: TOUR_FIRST, say: "Each toolchain says what is installed and whether a newer one is out. Some ask you to accept a license first, and that is always yours to accept."},
   ],
   agents: [
-    {say: "The coding agents a session on a node can run: Claude Code, and Codex CLI and Copilot CLI beside it, each installed for the node's session account."},
+    {say: "The coding agents a session on a node can run: Claude Code, Codex CLI, Copilot CLI and Grok Build, each installed once on the node for every account there."},
     {at: TOUR_BAR, say: "Pick the node here. Each agent's section says its version and updates it, and holds your sign-in on that node: a sign-in is one node's, never carried to another."},
   ],
   emulator: [
@@ -78,11 +78,12 @@ const TOUR_STEPS = {
   ],
   nginx: [
     {say: "nginx: BuilderBot's own reverse proxy on a node, putting your containers behind hostnames and certificates."},
+    {at: TOUR_BAR, say: "Pick the node here. Deploy puts nginx on a node that has none yet."},
     {at: TOUR_FIRST, say: "Hostnames, routes, certificates and the image each have a section. A route sends a hostname to a port a container publishes."},
   ],
   settings: [
     {say: "The controller's settings: how this BuilderBot itself behaves, the room it keeps on the nodes among them. Each section says what it changes."},
-    {at: TOUR_FIRST, say: "A section's changes are saved with its own Save, never another's."},
+    {at: `${TOUR_PANE} .snav, ${TOUR_FIRST}`, say: "Pick a section here. Its changes are saved with its own Save, never another's."},
   ],
   nodes: [
     {say: "Nodes are the machines your builds, tests, containers, VMs and sessions run on. The controller itself runs none of them."},
@@ -97,7 +98,13 @@ const TOUR_STEPS = {
   ],
   jobs: [
     {say: "Jobs: every build, test, install and system job sent to a node, with its log."},
-    {at: TOUR_BAR, say: "Narrow it to what is running, failed or waiting here."},
+    {at: `${TOUR_PANE} .chips[data-chips="data-jbshow"]`, say: "Narrow the list to what is running, failed or waiting here."},
+    {at: TOUR_SUB, say: "Schedules, beside Jobs, runs a command on a node at the times you set, each run a job here."},
+  ],
+  schedules: [
+    {say: "Schedules: commands run on a node at the times you set, as cron runs them. Each run is a job, with its log on the Jobs page."},
+    {at: TOUR_BAR, say: "New schedule is here. The static analysis scan is built in, off until you turn it on."},
+    {at: `${TOUR_PANE} .schedrow`, say: "Each schedule says when it runs, where and as whom, and how its last run went. Run now runs it once."},
   ],
   users: [
     {say: "Users: the accounts that sign in here, and the roles each holds."},

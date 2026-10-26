@@ -228,4 +228,31 @@ const phoneSample = await phone.evaluate(async () => {
 });
 ok(phoneSample.shown && phoneSample.row, `...and on a phone an empty VMs page's last step shows an example VM (${JSON.stringify(phoneSample)})`);
 await prefs({ tour_seen: [], tour_off: true });
+
+// Every page on the rail has a tour, and each step's part is on the page as
+// it is now (R142): a step whose part went with a redesign is left out by
+// tourStart, so a tour shrank without anybody seeing it. A step the
+// fixture's world cannot show is named here with why.
+const UNSHOWN = {
+  // the fixture's node has no nginx deployed: one line and Deploy
+  nginx: [2],
+  // the chips come with jobs in two states or more, which the fixture has not
+  jobs: [1],
+};
+for (const p of [page, phone]){
+  const where = p === phone ? 'on a phone' : 'at a desk';
+  const kinds = await p.evaluate(() => [...RAIL.flatMap(g => g.tools.map(([k]) => [k, g.key])), ['notebook', '']]);
+  const untoured = await p.evaluate(ks => ks.map(([k]) => k).filter(k => !TOUR_STEPS[k]), kinds);
+  ok(!untoured.length, `every page on the rail has a tour ${where}${untoured.length ? `: none for ${untoured.join(', ')}` : ''}`);
+  const lost = [];
+  for (const [k, g] of kinds){
+    if (k === 'notebook') await p.evaluate(() => openNotebook('alpha', 'overview'));
+    else await p.evaluate(([g, k]) => { location.hash = g === k ? `#/${g}` : `#/${g}/${k}`; }, [g, k]);
+    await p.waitForFunction(k => tabOf(panes[0])?.kind === k && !tourLoading(), k, { timeout: 15000 }).catch(() => {});
+    await p.waitForTimeout(600);
+    const miss = await p.evaluate(k => (TOUR_STEPS[k] || []).map((s, j) => s.at && !s.sample && !tourTarget(s.at) ? j : -1).filter(j => j >= 0), k);
+    for (const j of miss) if (!(UNSHOWN[k] || []).includes(j)) lost.push(`${k} step ${j + 1}`);
+  }
+  ok(!lost.length, `each tour step points at a part that is on its page ${where}${lost.length ? `: not found for ${lost.join(', ')}` : ''}`);
+}
 await done(browser);
