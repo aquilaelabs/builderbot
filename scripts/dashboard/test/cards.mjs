@@ -2763,6 +2763,20 @@ await api('/api/pin', { name: 'lx-free', pinned: false });
   });
   ok(who.join(' | ') === '-w.peer (ubu) | -test (you) (fresh) | *test (you) (ubu)',
      `a person with a session on two nodes is two lines, each naming its node and whether it is working there (${who.join(' | ')})`);
+  // Your session behind what changed since it started says so on the
+  // card, once for every node it is on; another person's is theirs.
+  const behind = await page.evaluate(() => {
+    state.claude_where = { alpha: [{ who: 'test', node: 'ubu', behind: ['beta added to its project since it started'] },
+                                   { who: 'test', node: 'fresh', behind: ['beta added to its project since it started'] },
+                                   { who: 'w.peer', node: 'ubu', behind: ['go installed on ubu since it started'] }] };
+    const p = state.projects.find(x => x.name === 'alpha');
+    const mine = projectNote(p);
+    state.claude_where = { alpha: [{ who: 'w.peer', node: 'ubu', behind: ['go installed on ubu since it started'] }] };
+    return { mine, theirs: projectNote(p) };
+  });
+  ok(behind.mine === '<div class="pnote warn">Restart your session to use what changed: beta added to its project since it started.</div>'
+     && !/Restart/.test(behind.theirs),
+     `a card says your session is behind what changed, once, and not another person's (${JSON.stringify(behind)})`);
   await page.evaluate(() => { tabs = tabs.filter(t => !(t.kind === 'term' && String(t.arg).includes(':n:')));
     state.claude_where = {};
     state.sessions = (state.sessions || []).filter(s => s.name !== myClaude('alpha')); drawPanes(); });

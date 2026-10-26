@@ -54,6 +54,16 @@ class Repos(unittest.TestCase):
         self.assertIn("already a project's name", repos.create("shop front, V2!")["error"])
         self.assertIn("letter or digit", repos.create("  ?! ")["error"])
 
+    def test_a_repository_made_after_a_session_started_is_named(self):
+        self.project("Shop", "app", "server", "docs")
+        d = json.loads((Path(self.tmp) / "projects.json").read_text())
+        for n, at in (("app", 100), ("server", 50), ("docs", 300)):
+            d["projects"][n]["at"] = at
+        (Path(self.tmp) / "projects.json").write_text(json.dumps(d))
+        self.assertEqual(repos.made_since("app", 200), ["docs"],
+                         "docs was made after a session on app started; server before; app is its own")
+        self.assertEqual(repos.made_since("reader", 0), [], "a repository in no project has none beside it")
+
     def test_a_project_and_its_repository_may_share_a_name(self):
         key = self.project("app", "app")
         self.assertNotEqual(key, "app")

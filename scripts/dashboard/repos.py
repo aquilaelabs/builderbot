@@ -121,6 +121,15 @@ def all_members():
     return {k: members(k) for k in _load()["projects"] if registry.is_repos(k)}
 
 
+def made_since(dirname, started):
+    """The other repositories of `dirname`'s project made after `started`,
+    by their shown names: what a session that started on it then does not
+    have in its view."""
+    key = project_of(dirname)
+    return [registry.label(m) for m in (members(key) if key else [])
+            if m != dirname and int(registry.get(m).get("at") or 0) > started]
+
+
 def create(name):
     """A new project with no repository in it yet (R138). {ok, key, name,
     id} or {error}."""

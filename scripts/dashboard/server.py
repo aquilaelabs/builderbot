@@ -2543,7 +2543,20 @@ def session_behind(s):
                    f"{s.get('node') or 'its node'} since it started")
     if _IMAGE_SINCE.setdefault("at", _image_since()) > started:
         why.append("BuilderBot updated since it started: its briefing is the older build's")
+    # A repository made in its project since (Add repository): a session
+    # works in the ones its project held when it started (bb-tty's works).
+    added = _repos_since(s, started)
+    if added:
+        why.append(f"{', '.join(added[:3])}{' and more' if len(added) > 3 else ''} added to its project since it started")
     return why
+
+
+def _repos_since(s, started):
+    """The repositories of a session's project made after it started, by
+    their shown names (repos.made_since), its own found by its tmux name."""
+    _agent, stem = agents.of_session(tmux_base(s.get("name") or ""))
+    here = next((m for ms in repos.all_members().values() for m in ms if tmux_name(m) == stem), "") if stem else ""
+    return repos.made_since(here, started) if here else []
 
 
 def project_busy(name, verb):
@@ -3276,12 +3289,17 @@ TUNNEL_SETTINGS = ("tunnel_host", "tunnel_token", "cf_api_token")
 # with. Changed mid-session they are on the record and not in the session,
 # which spent a dozen commands finding that out (report #81, 7 Oct).
 START_ONLY = (("reads", "Reads"), ("sees", "Also sees"), ("model", "Model"), ("effort", "Effort"),
-              ("tc_off", "Toolchains"), ("packs_on", "Tool packs"))
+              ("tc_off", "Toolchains"), ("packs_on", "Tool packs"), ("works", "repositories"))
 
 
 def _start_only(project):
     p = prefs.get(project) or {}
-    return {k: p.get(k) for k, _ in START_ONLY}
+    out = {k: p.get(k) for k, _ in START_ONLY}
+    # The project's repositories, which a session works in from its start
+    # (bb-tty's works): one added or put back since is not in its view.
+    key = repos.project_of(project)
+    out["works"] = sorted(repos.members(key)) if key else []
+    return out
 
 
 def session_seen_note(project, uid, node, who=None, begin=False):
@@ -3302,7 +3320,9 @@ def session_seen_note(project, uid, node, who=None, begin=False):
             was_diag = int(rec.get("diag") or 0)
             start_now = _start_only(project)
             started = start_now if begin or not isinstance(rec.get("start"), dict) else rec["start"]
-            stale = [label for k, label in START_ONLY if started.get(k) != start_now.get(k)]
+            # A key the start did not record (a session from before it was
+            # one) is not news.
+            stale = [label for k, label in START_ONLY if k in started and started.get(k) != start_now.get(k)]
             # Said once for each change, not on every prompt after it.
             new_stale = stale and rec.get("stale_said") != start_now
             d[key] = {"build": build or was_build, "revs": revs_now or was_revs,

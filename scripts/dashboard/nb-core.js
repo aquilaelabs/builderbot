@@ -991,6 +991,12 @@ function projectNote(p){
   // drawn (the operator, 21 Oct: a role somebody lacks is not advertised to
   // them, and a reason a button is off is not an error, so no line is red).
   if (!p.locked_me && writeWhy(p)) return "";
+  // Your session running here and behind what changed since it started (a
+  // toolchain on its node, BuilderBot updated, a repository added): said
+  // ahead of the rest, which are about starting one.
+  const behind = !here ? [] : [...new Set(((state?.claude_where || {})[tmuxName(p.name)] || (state?.claude_where || {})[p.name] || [])
+    .filter(r => r.who === state?.me).flatMap(r => r.behind || []))];
+  if (behind.length) return `<div class="pnote warn">Restart your session to use what changed: ${esc(behind.join("; "))}.</div>`;
   // The project's agent missing on its node, for an account that may install
   // it: the button says it (Install Claude, Install ChatGPT), so no line does.
   if (agentInstall(p, projectAgent(p))) return "";
