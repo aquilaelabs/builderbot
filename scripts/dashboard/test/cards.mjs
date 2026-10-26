@@ -2148,11 +2148,17 @@ for (const w of [1280, 393]){
     const name = c.querySelector('.pcback .pcname .name'), cr = c.getBoundingClientRect(), br = back.getBoundingClientRect(), nr = name.getBoundingClientRect();
     const out = { top: Math.round(br.top - cr.top), right: Math.round(cr.right - br.right), wraps: nr.height > 30, beside: nr.right <= br.left,
                   rowTop: Math.abs(nr.top - br.top) < 12 };
+    // ...and on the front pin and archive stay on the name's first line.
+    // Laid out positions, which a card turned over (its front mirrored by
+    // the flip) does not change.
+    const nm = c.querySelector('.pcfront .pcname .name');
+    out.marks = [...c.querySelectorAll('.pcfront .pcname .pcmark')].every(m =>
+      Math.abs(m.offsetTop - nm.offsetTop) < 12 && m.offsetLeft >= nm.offsetLeft + nm.offsetWidth - 1);
     state.repos[key].name = was; drawProjects(state.projects); void p;
     return out;
   });
-  ok(line.top < 40 && line.right < 40 && line.wraps && line.beside && line.rowTop,
-     `a long name wraps beside Back, which stays at the card's top right at ${w} (${JSON.stringify(line)})`);
+  ok(line.top < 40 && line.right < 40 && line.wraps && line.beside && line.rowTop && line.marks,
+     `a long name wraps beside Back, which stays at the card's top right, and beside pin and archive on the front, at ${w} (${JSON.stringify(line)})`);
 }
 await page.setViewportSize({ width: 1280, height: 800 });
 // One card on its back at a time (the operator, 26 Oct): Edit on another
@@ -2560,15 +2566,17 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   ok(true, "the gear's door opens the account's Profile page");
   await page.evaluate(() => railGo('controller'));
   await page.waitForSelector('.settingstab #logApply');
+  ok(await page.$eval('.settingstab #logApply', b => b.disabled), 'Apply sleeps while the days are as saved');
   await page.fill('.settingstab #logDays', '3');
+  ok(!await page.$eval('.settingstab #logApply', b => b.disabled), '...and wakes once they are changed');
   await page.click('.settingstab #logApply');
-  await page.waitForFunction(() => !document.querySelector('#logApply')?.disabled,
+  await page.waitForFunction(() => document.querySelector('#logApply')?.textContent.trim() === 'Apply' && !('logDays' in (settingsDraft || {})),
                              { timeout: 10000 });
   ok(!existsSync(`${LD}/docker.log.2`),
      'Apply crops what the new number already excludes, then and there');
   await page.fill('.settingstab #logDays', '30');
   await page.click('.settingstab #logApply');
-  await page.waitForFunction(() => !document.querySelector('#logApply')?.disabled,
+  await page.waitForFunction(() => document.querySelector('#logApply')?.textContent.trim() === 'Apply' && !('logDays' in (settingsDraft || {})),
                              { timeout: 10000 });
   // The status answer follows the setting within a poll, not the instant
   // Apply re-enables: asked until it says so.

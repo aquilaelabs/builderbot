@@ -3454,14 +3454,16 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 @keyframes pjNew{0%,30%{box-shadow:inset 3px 0 var(--pc, transparent),0 0 0 2px var(--accent),0 0 18px 2px color-mix(in srgb, var(--accent) 45%, transparent)}
   100%{box-shadow:inset 3px 0 var(--pc, transparent),0 0 0 2px transparent,0 0 18px 2px transparent}}
 @media (prefers-reduced-motion: reduce){.pcard.pjnew{animation:none;outline:2px solid var(--accent);outline-offset:-1px}}
-.pcard .pcname{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+/* One line on either face: a long name wraps within its room, its marks and
+   buttons after it on its first line (the operator, 26 Oct: pin and archive
+   were pushed under a long name). */
+.pcard .pcname{display:flex;align-items:flex-start;gap:6px;min-width:0;flex-wrap:nowrap}
 .pcard .pcname .name{font-weight:600;font-size:1.05rem;line-height:1.3;color:var(--ink);min-width:0;overflow-wrap:anywhere}
 .pcard .pcname>.sp{flex:1}
-/* The back's name line holds Back at its top right whatever the name: a
-   long one wraps within its room, its pencil after it (the operator, 26 Oct). */
-.pcard .pcback .pcname{flex-wrap:nowrap;align-items:flex-start}
-.pcard .pcback .pcname .name{flex:0 1 auto;padding-top:calc((var(--tap) - 1.3em) / 2)}
-.pcard .pcback .pcname>:not(.name):not(.sp){flex:none}
+/* ...so the back holds Back at its top right and the front its pin and
+   archive, the name's first line centered on them. */
+.pcard .pcname .name{flex:0 1 auto;padding-top:calc((var(--tap) - 1.3em) / 2)}
+.pcard .pcname>:not(.name):not(.sp){flex:none}
 /* Pin and Archive by the name (R138), pressed in where they are set: the
    accent where it is, the quiet ink where it is not. */
 .pcard .pcname .pcmark{color:var(--dim)}
