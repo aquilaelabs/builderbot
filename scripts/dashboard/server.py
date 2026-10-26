@@ -2593,7 +2593,8 @@ def project_busy(name, verb):
 
 
 MAINT_BAND = ('<div class="banner maint" id="maintband" role="status" hidden>Maintenance mode is on: '
-              'only you can use BuilderBot. It is switched off under Controller settings.</div>')
+              'only you can use BuilderBot. It is switched off under '
+              '<a href="#/controller/settings" data-maintgo>Controller settings, Maintenance</a>.</div>')
 MAINTENANCE_SAID = "BuilderBot is down for maintenance: only its owner can sign in until it is over."
 
 
@@ -10371,18 +10372,17 @@ class Handler(BaseHTTPRequestHandler):
             for k in (to, was or name):
                 if (bad := projects.locked_out(k, users.uid_of(me))):
                     return self._json(bad, 403)
-            # Not from under a session (the operator, 25 Oct): one working
             # The check before the move (the operator, 26 Oct): what it changes,
             # asked before it is done, with the nodes to bring along.
             if act == "move-check":
                 return self._json(self._move_plan(me, name, to, was))
+            # Not from under a session (the operator, 25 Oct): one working
             # across the project would lose a tree, one in the other gain one.
             busy = self._running_on([k for k in (was, to) if k])
             if busy:
                 return self._json({"error": f"{', '.join(busy)} running on {registry.label(was) if was else ''}"
                                             f"{' or ' if was else ''}{registry.label(to)}: end "
                                             f"{'it' if len(busy) == 1 else 'them'} first, then move it"}, 409)
-            got = repos.move(name, to)
             # The nodes the person ticked to bring along, as the check offered
             # them: no other node, and only a node this account may set.
             plan = self._move_plan(me, name, to, was)
@@ -10390,6 +10390,7 @@ class Handler(BaseHTTPRequestHandler):
             add = [str(x) for x in (req.get("add_nodes") or []) if str(x) in offered]
             if add and users.may(me, "node"):
                 return self._json({"error": users.may(me, "node")}, 403)
+            got = repos.move(name, to)
             if got.get("error"):
                 return self._json(got, 400)
             readers = prefs.regrant(to, [name])
@@ -10402,7 +10403,6 @@ class Handler(BaseHTTPRequestHandler):
                                    readers=[registry.label(r) for r in readers]))
         return self._json({"error": "action is create, rename, move or delete"}, 400)
 
-    def _archive(self, req):
     def _move_plan(self, me, name, to, was):
         """What moving the repository `name` from its project `was` into `to`
         changes (the operator, 26 Oct): the nodes `was` has that `to` has not,
@@ -10431,6 +10431,7 @@ class Handler(BaseHTTPRequestHandler):
                 "to": registry.label(to), "nodes": out, "lose": sorted(x for x in lose if x),
                 "busy": busy, "node_why": users.may(me, "node") if out else ""}
 
+    def _archive(self, req):
         """Archive or unarchive a project (R119): out of sight, and nothing
         else; the project's owner or an administrator, never a session."""
         name, on = req.get("name", ""), bool(req.get("archived"))

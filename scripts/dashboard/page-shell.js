@@ -369,6 +369,10 @@ function drawMaintBand(){
   const off = !(state?.can?.maintenance && state?.settings?.settings?.maintenance_mode?.value);
   // Written only when it changes: a poll that brings nothing new writes nothing.
   if (b && b.hidden !== off) b.hidden = off;
+  // Its link opens Controller settings at Maintenance, where it is switched
+  // off (the operator, 26 Oct).
+  const go = b?.querySelector("[data-maintgo]");
+  if (go && !go.onclick) go.onclick = e => { e.preventDefault(); SPLIT.settings = {pick: "maint", open: true}; openSettingsTab(); };
 }
 
 // ---- search: jump to a page, a project, a container or a node ---------------

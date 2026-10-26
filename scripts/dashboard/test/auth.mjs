@@ -1878,6 +1878,13 @@ print(json.dumps(out))`], { encoding: 'utf8' }));
      'the owner is answered, and the owner\'s own session too');
   await page.waitForFunction(() => document.getElementById('maintband') && !document.getElementById('maintband').hidden, null, { timeout: 15000 })
     .then(() => true, () => false).then(v => ok(v, "the owner's page shows the maintenance band"));
+  // ...whose link opens Controller settings at Maintenance, where it is
+  // switched off (the operator, 26 Oct).
+  await page.click('#maintband [data-maintgo]');
+  const went = await page.waitForFunction(() => tabOf(panes[0])?.kind === 'settings'
+      && document.querySelector('.settingstab .snav .rrow.on')?.dataset.spick === 'maint', null, { timeout: 10000 })
+    .then(() => true, () => false);
+  ok(went, "...and its link opens Controller settings at Maintenance");
   // ...and sends it showing, so it is there at the first paint rather than
   // once the first status read lands (the operator, 26 Oct).
   const served = (await bigGet('/', owner)).body.toString();
