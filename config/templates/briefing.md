@@ -161,7 +161,9 @@ down what a recording says, with times.
 instance alike, is the workers this node lets a run use: have the runner
 read it (`pytest -n "$BB_TEST_WORKERS"`, `node --test
 --test-concurrency="$BB_TEST_WORKERS"`, Gradle's `--max-workers`) rather
-than hard-coding a number.
+than hard-coding a number, and name every suite or file a change needs in
+one run rather than one run each in a loop, which leaves the workers but
+one idle.
 
 A `pkill -f PATTERN` or `pgrep -f PATTERN` run from a tool call matches
 the shell running that call, because the pattern is on its command line:

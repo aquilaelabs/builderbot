@@ -597,8 +597,8 @@ bb diag [--json] [SECTION...]
                    trail, with anything shaped like a credential redacted. The
                    **debug** grant's: the owner's, or a role's that names it.
                    A session reads it only while **debug mode** is on, its
-                   project is granted **the controller's diagnostics** under
-                   Debug in its settings, and its account has the grant.
+                   project is granted **the controller's diagnostics** on
+                   the Debug page, and its account has the grant.
                    Its `reports` section is what sessions on any project
                    reported about BuilderBot, kept until a person clears them
 bb report "..." [--area A] [--repro "..." --reproduces always|sometimes|once|untried]
