@@ -26,9 +26,8 @@ await page.goto(URL);
 await ready(page);
 
 // ---- the dialog: two listboxes -----------------------------------------------------
-// The Debug grants are drawn only with debug mode on, which needs the
-// controller started with DEBUG_MODE=1 (run.sh does) and the switch on.
-await api('/api/settings', { set: { debug_mode: true } });
+// The Debug grants are drawn only with debug mode on, which is the
+// controller started with DEBUG_MODE=1 (run.sh does).
 await refreshUntil(page, () => !!state?.settings?.settings?.debug_mode?.value, { timeout: 20000 });
 await page.evaluate(() => renameProject('alpha', 'all'));
 await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
@@ -54,7 +53,6 @@ await page.evaluate(k => { window.__betaKey = k; }, betaKey);
 await refreshUntil(page, () => (state?.projects || []).find(p => p.name === 'alpha')?.prefs?.reads?.join() === window.__betaKey, { timeout: 20000 });
 ok((prefsOf('alpha').reads || []).join() === projectKey('beta'),
    'Save keeps the ticked projects as the reads, in the settings store');
-await api('/api/settings', { set: { debug_mode: false } });
 await page.evaluate(() => renameProject('alpha', 'all'));
 await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
 ok(await page.$eval(`#rnReads input[value="${betaKey}"]`, i => i.checked), '...and the dialog opens with it ticked');

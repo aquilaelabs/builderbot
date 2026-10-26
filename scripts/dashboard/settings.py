@@ -241,6 +241,11 @@ def effective():
     for key, spec in KEYS.items():
         if off and key in DEBUG_KEYS:
             out[key] = {"value": False, "source": "locked"}
+        # Debug mode is the environment's (the operator, 26 Oct): on exactly
+        # when the controller was started with DEBUG_MODE=1, with nothing to
+        # switch on in the page as well.
+        elif key == "debug_mode":
+            out[key] = {"value": True, "source": "env"}
         elif key in d and _parse(key, d[key]) is not None:
             out[key] = {"value": _parse(key, d[key]), "source": "settings"}
         else:
@@ -270,6 +275,8 @@ def set_many(changes):
             return {"error": f"not a setting: {key}"}
         if key in DEBUG_KEYS and not debug_available() and _parse(key, raw) is True:
             return {"error": "the debug and dev options are not available on this controller"}
+        if key == "debug_mode":
+            return {"error": "debug mode is on while the controller is started with DEBUG_MODE=1, and off otherwise"}
         v = _parse(key, raw)
         if v is None:
             kind = KEYS[key]["kind"]

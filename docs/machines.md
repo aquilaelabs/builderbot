@@ -319,10 +319,10 @@ and the build it is serving. Its sections, each with its own Apply and Revert:
   maintenance, by the sign-in page, the API (503) and the app, and stays
   signed in for when it ends. Nodes are not accounts and keep running, and a
   band under the header reminds the owner it is on.
-- **Debugging**: one switch, *Debug mode*, and a *Debug settings* button
-  beside it that is live only while the switch is saved on: behind the button
-  are the settings a developer of BuilderBot reaches for and nobody else
-  should meet.
+- **Debugging**, only on a controller started with `DEBUG_MODE=1`, which is
+  what turns debug mode on: the section says so and holds the settings a
+  developer of BuilderBot reaches for and nobody else should meet, saved
+  with its own Apply.
 - **Reset BuilderBot**, last.
 
 The page says plainly what still comes from the environment and why (the

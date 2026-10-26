@@ -95,7 +95,6 @@ function renderSettingsInto(i){
   const idle = state?.idle?.minutes;
   const paths = state?.paths?.paths || [];
   const t = state?.settings?.tunnel;
-  const dbg = state?.settings?.settings?.debug_mode?.value;
   const sect = (key, title, status, html, opts = {}) =>
     docSection("settings", key, title, status, html.replace(/<h4>[^<]*<\/h4>\s*/, ""), opts);
   const groups = settingsSections();
@@ -263,20 +262,15 @@ const SETTING_GROUPS = [
    fields: [
     {key: "maintenance_mode", label: "Maintenance mode", type: "bool",
      hint: "Only you can sign in and use BuilderBot, from the page, a phone or a session. Everybody else is told it is down for maintenance and stays signed in for after. Nodes keep running."}]},
-  {key: "debug", title: "Debugging", heading: s => s?.settings?.debug_mode?.value ? "on" : "off", fields: [
-    {key: "debug_mode", label: "Debug mode", type: "bool",
-     hint: "Shows the Debug settings button here, and lets a project's settings grant its "
-         + "sessions nodes' logs and the controller's diagnostics. Turning it on grants nothing by itself."}],
-   // What a developer of BuilderBot reaches for and nobody else should
-   // meet: behind a Debug settings button that opens a dialog while debug
-   // mode is on, the same way the node row's Debug settings does.
-   debug: [
+  // Debug mode is on wherever this section is drawn: the controller was
+  // started with DEBUG_MODE=1 (the operator, 26 Oct), so the section says so
+  // and holds the debug settings themselves, saved with its own Save.
+  {key: "debug", title: "Debugging", heading: () => "on", debug: true,
+   intro: () => `<div class="sub">Debug mode is on: this controller was started with DEBUG_MODE=1. A project's settings may grant its sessions the controller's diagnostics and nodes' logs; nothing is granted by it alone.</div>`,
+   fields: [
     // One tree behaves as two products (roadmap R54, step 6): production
     // leaves this off and sees only what has been proven (alpha); a dev
     // instance turns it on and sees everything, the unproven tagged dev.
-    // In the debug dialog rather than a group of its own: it is a switch a
-    // developer of BuilderBot reaches for, and a group headed by one switch
-    // read as a feature of the product rather than of its testing.
     {key: "offer_unvetted", label: "Offer dev features", type: "bool",
      hint: "Also offer untested git hosts, hypervisors and node systems, tagged dev in the pickers."}]},
 ];
@@ -443,48 +437,6 @@ function resetGone(body, moved){
   setTimeout(() => { location.href = "/login"; }, 2500);
 }
 
-// The Debugging group's other half, in a dialog rather than a fold in the
-// group. Two reasons, and the first is the one that was wrong rather than
-// merely inconsistent: the fold's fields sat inside the group, so the
-// group's Apply saved them, and a person who ticked one and pressed the
-// Apply they could see had saved a debug setting without meeting a word
-// about it. The second is that the node row's Debug settings is a dialog,
-// and these are one idea in two places.
-function openDebugSettings(){
-  const modal = $("setdbgmodal"), body = $("setdbgBody");
-  const g = SETTING_GROUPS.find(x => x.debug);
-  if (!modal || !body || !g) return;
-  const s = state?.settings;
-  const shut = () => { modal.hidden = true; };
-  body.innerHTML = `<div class="field">
-      <div class="hint">For developing BuilderBot itself. Nothing here is on until saved.</div>
-      <div class="logset">${g.debug.map(f => `
-        <div class="logdays setrow ctlrow"><label class="ndcap">
-          <input type="checkbox" data-dbgset="${esc(f.key)}"${
-            s?.settings?.[f.key]?.value ? " checked" : ""}> ${esc(f.label)}${
-            helpIcon(f.hint)}</label></div>`).join("")}
-      </div>
-    </div>
-    ${dlgFoot(`<button type="button" id="setdbgCancel">Cancel</button>`, `<button type="button" class="primary" id="setdbgSave">Save</button>`)}`;
-  modal.hidden = false;
-  body.querySelector("#setdbgCancel").onclick = shut;
-  const go = body.querySelector("#setdbgSave");
-  go.onclick = async () => {
-    const set = {};
-    body.querySelectorAll("[data-dbgset]").forEach(i => { set[i.dataset.dbgset] = i.checked; });
-    busy(go, "Saving");
-    try{
-      const r = await fetch("/api/settings", {method: "POST",
-        headers: {"Content-Type": "application/json"}, body: JSON.stringify({set})});
-      const j = await r.json();
-      if (j.error){ notify(j.error, true); unbusy(go, "Save"); return; }
-      shut();
-      notify("saved");
-      refresh();
-    }catch(e){ notify("settings: " + failWords(e), true); unbusy(go, "Save"); }
-  };
-}
-
 function settingsSections(){
   const s = state?.settings;
   if (!s) return [{key: "wait", title: "Settings", status: "", html: `<div class="row stack2"><div class="grow"><div class="sub">the settings arrive with the first poll…</div></div></div>`}];
@@ -536,16 +488,6 @@ function settingsSections(){
                 <input id="${id}" type="checkbox" data-set="${f.key}"${sdVal(id, !!v) ? " checked" : ""}> ${esc(f.label)}${f.dev ? devMark() : ""}${helpIcon(f.hint)}</label>${src(f.key)}
               </div>`;
     };
-    // The button is a real control only while debug mode is SAVED on: what
-    // is behind it is debug's, and a draft tick that has not been applied
-    // yet is not debug mode.
-    const debugOn = !!s.settings.debug_mode?.value;
-    const fold = !g.debug ? "" : `
-          <div class="addbar ctlrow" data-add="debug"><button type="button" data-debugshow
-            ${debugOn ? "" : " disabled"}
-            title="${debugOn ? "the settings kept behind debug mode"
-                             : "turn Debug mode on and Apply first: these are its settings"}"
-            >Debug settings</button></div>`;
     // A group whose feature this install switched off (R81): its sentence
     // in place of its fields, which nothing could apply.
     if (g.off && featureOff(g.off)) return {key: g.key, title: g.title, status: "off", cls: "",
@@ -555,7 +497,7 @@ function settingsSections(){
       <div class="grow">
         <div class="logset">
           ${g.intro ? g.intro(s) : ""}
-          ${g.fields.filter(f => !f.dev || s.settings.offer_unvetted?.value).map(field).join("")}${fold}
+          ${g.fields.filter(f => !f.dev || s.settings.offer_unvetted?.value).map(field).join("")}
           <div class="actbar">
             <span class="state">${g.status ? g.status(s) : "applies at once"}</span>
             <button type="button" class="setApply" title="save">Apply</button>
@@ -568,8 +510,6 @@ function settingsSections(){
 
 function wireSettingsSections(el){
   el.querySelectorAll('[data-group]').forEach(box => {
-    const show = box.querySelector("[data-debugshow]");
-    if (show) show.onclick = () => openDebugSettings();
     const btn = box.querySelector(".setApply");
     if (!btn) return;
     const apply = async () => {

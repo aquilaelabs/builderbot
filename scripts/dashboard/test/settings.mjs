@@ -30,20 +30,16 @@ await page.evaluate(() => openSettingsTab());
 // Controller settings is a page of settings (the operator, 16 Oct): a
 // section is picked from its list before its fields are used.
 await page.waitForSelector('.settingstab .snav [data-spick="debug"]', { timeout: 15000 }); await splitPick(page, 'debug');
-await page.waitForSelector('.settingstab [data-set="debug_mode"]', { timeout: 15000 });
+await page.waitForSelector('.settingstab [data-group="Debugging"] [data-set="offer_unvetted"]', { timeout: 15000 });
 // The section on show, pressed again at a desk, is no change: no fade (B317).
 await page.click('.settingstab .snav [data-spick="debug"]');
 ok(await page.evaluate(() => !document.querySelector('.fghost')), 'the section on show, pressed again, fades nothing');
 // One tree, two products (roadmap R54, step 6): the switch that offers the
 // unvetted git hosts, hypervisors and OS families is a developer's, so it
-// lives in the Debugging dialog and not on the tab, off by default, and the
-// header carries the word while it is on.
-ok(await page.$('.settingstab [data-set="offer_unvetted"]') === null,
-   'the "offer dev features" switch is not on the tab');
-await page.evaluate(() => openDebugSettings());
-ok(await page.$eval('#setdbgBody [data-dbgset="offer_unvetted"]', e => e.type === 'checkbox' && !e.checked),
-   '...it is in the Debugging dialog, and starts off');
-await page.click('#setdbgCancel');
+// lives in the Debugging section, off by default, and the header carries the
+// word while it is on.
+ok(await page.$eval('.settingstab [data-group="Debugging"] [data-set="offer_unvetted"]', e => e.type === 'checkbox' && !e.checked),
+   'the "offer dev features" switch is in the Debugging section, and starts off');
 ok(await page.$eval('#devtag', e => e.hidden), '...and the header says nothing while it is off');
 await post('/api/settings', { set: { offer_unvetted: true } });
 await page.waitForFunction(() => !document.querySelector('#devtag')?.hidden, null, { timeout: 30000 });
@@ -209,58 +205,35 @@ ok(groups.join('|') === 'Logs|Idle sessions|Storage|Apps|Reach from outside|Room
   ok(true, '...and taking the token off stops the tunnel');
   await post('/api/settings', { set: { tunnel_host: '' } });
 }
-// Debug mode grants nothing by itself: it puts the grant on a node's row.
-// Off by default, because what it opens is root's on the machine.
-ok(await page.$eval('.settingstab [data-set="debug_mode"]', e => !e.checked),
-   'debug mode is off until somebody turns it on');
-// The settings a developer of BuilderBot reaches for sit behind a Debug
-// settings button in the same group, which is a real control only once debug
-// mode is saved on: a draft tick is not debug mode. It opens a DIALOG, the
-// way the node row's Debug settings does: as a fold inside the group its
-// fields were saved by the group's Apply, so ticking one and pressing the
-// Apply in front of you saved a debug setting without a word about it.
-ok(await page.$eval('.settingstab [data-debugshow]', b => b.disabled && /Debug mode on/.test(saidOf(b))),
-   'Debug settings is ghosted while debug mode is off, saying to turn it on first');
-ok(await page.$('.settingstab [data-set="offer_unvetted"]') === null
-   && await page.$eval('#setdbgmodal', m => m.hidden),
-   '...and the dev features switch is not in the group at all, nor its dialog open');
-await post('/api/settings', { set: { debug_mode: true } });
-await page.waitForFunction(() => !document.querySelector('.settingstab [data-debugshow]')?.disabled,
-                           null, { timeout: 30000 });
-ok(await page.$eval('#setdbgmodal', m => m.hidden),
-   'debug mode on: the button is live, and nothing opens until it is pressed');
+// Debug mode is DEBUG_MODE's (the operator, 26 Oct): the section says it is
+// on, with no switch for it, and holds the debug settings themselves, saved
+// with its own Apply rather than in a dialog of their own.
 await splitPick(page, 'debug');
-await page.click('.settingstab [data-debugshow]');
-await page.waitForFunction(() => document.querySelector('#setdbgmodal')?.checkVisibility(),
-                           null, { timeout: 8000 });
-ok(await page.$eval('#setdbgBody [data-dbgset="offer_unvetted"]', e => e.type === 'checkbox'
-     && !e.checked && e.closest('label') !== null),
-   'pressing it opens the dialog, with the dev features switch a checkbox in its label, off by default');
+const dbg = await page.$eval('.settingstab [data-group="Debugging"]', g => ({
+  said: g.querySelector('.sub')?.textContent || '', mode: !!g.querySelector('[data-set="debug_mode"]'),
+  button: !!g.querySelector('[data-debugshow]'), dialog: !!document.getElementById('setdbgmodal'),
+  state: g.querySelector('.actbar .state')?.textContent || '' }));
+ok(/Debug mode is on: this controller was started with DEBUG_MODE=1/.test(dbg.said) && !dbg.mode && !dbg.button && !dbg.dialog
+   && /applies at once/.test(dbg.state),
+   `the Debugging section says debug mode is on from DEBUG_MODE, with no switch, button or dialog for it, and its change applies at once (${JSON.stringify(dbg)})`);
 // Gone on 7 Oct (the operator): a node's Claude Code is updated when Update
 // is pressed, and never before a session starts.
-ok(await page.$('#setdbgBody [data-dbgset="claude_autoupdate"]') === null,
+ok(await page.$('.settingstab [data-set="claude_autoupdate"]') === null,
    '...and no switch updates Claude Code before a session starts');
-ok(await page.$eval('#setdbgmodal .box .foot', f => !!f.querySelector('.primary')
-     && f.querySelectorAll('button').length === 2),
-   '...and the dialog saves or cancels on its own foot, rather than riding the group\'s Apply');
-ok(await page.$eval('.settingstab [data-group="Debugging"] .actbar .state', e => /applies at once/.test(e.textContent)),
-   'the section says a change applies at once, since nothing here waits for a boot');
 
 // ---- saving ----------------------------------------------------------------
-await page.check('#setdbgBody [data-dbgset="offer_unvetted"]');
-await page.click('#setdbgSave');
+await page.check('.settingstab [data-group="Debugging"] [data-set="offer_unvetted"]');
+await page.click('.settingstab [data-group="Debugging"] .setApply');
 await page.waitForFunction(() => state?.settings?.settings?.offer_unvetted?.value === true, null, { timeout: 30000 });
 ok(read().offer_unvetted === true,
-   'Save writes it under /config and the poll carries it');
-await page.waitForFunction(() => document.querySelector('#setdbgmodal')?.hidden, null, { timeout: 8000 });
-ok(true, '...and the dialog shuts on the save, the way every dialog here does');
+   'Apply writes it under /config and the poll carries it');
 const bad = await post('/api/settings', { set: { offer_unvetted: 'maybe' } });
 ok(bad.status === 400, 'a value that is not the setting\'s shape is refused');
 ok((await post('/api/settings', { set: { claude_channel: 'stable' } })).status === 400
    && (await post('/api/settings', { set: { claude_autoupdate: true } })).status === 400,
    '...and a key that stopped being a setting is refused too');
 // Back off: the rest of this file reads the settings as they started.
-await post('/api/settings', { set: { offer_unvetted: false, debug_mode: false } });
+await post('/api/settings', { set: { offer_unvetted: false } });
 
 // ---- what the boot script reads ------------------------------------------------
 const setting = (key, dflt) => execFileSync('bash', ['-c',

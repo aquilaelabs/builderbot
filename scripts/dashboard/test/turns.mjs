@@ -213,7 +213,6 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   const ungranted = await asOwner({ node: 'nodeA' });
   ok(!/diagnostics/.test(ungranted.line || ''),
      `with the rule but no grant, the notice names nothing (${(ungranted.line || 'no line').slice(0, 60)})`);
-  await call('/api/settings', { set: { debug_mode: true } });
   await call('/api/prefs', { project: 'alpha', diag: true });
   await asOwner({ node: 'nodeA' });
   const r2 = await rep('the second report');
@@ -227,7 +226,6 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   ok(!/diagnostics/.test(plain.line || ''),
      `...and a plain account's session on the same project is told nothing (${(plain.line || 'no line').slice(0, 60)})`);
   await call('/api/prefs', { project: 'alpha', diag: false });
-  await call('/api/settings', { set: { debug_mode: false } });
 }
 {
   const free = await Promise.all([0, 1, 2, 3].map(i => hook(i, 'turn')));
