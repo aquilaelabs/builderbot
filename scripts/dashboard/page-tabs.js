@@ -283,7 +283,7 @@ const TABKINDS = {
   // The VMs page (R91): its records, and the census a node's hello carries.
   vms:      { multi: false, label: () => "VMs",
               icon: TOOL_ICONS.vms,
-              render: (i) => renderVmsInto(i), live: () => `${vmsRev}`,
+              render: (i) => renderVmsInto(i), live: () => `${vmsRev}|${vmView}|${vmsNode}|${vmsChip}|${vmsSearch}`,
               open: () => loadVms() },
   // nodesRev as well as its own: a hello carries a fresh walk.
   storage:  { multi: false, label: () => "Storage",
