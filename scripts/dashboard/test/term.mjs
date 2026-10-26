@@ -7,7 +7,8 @@
 // (terminal.html); a closed tab's socket goes with it. Driven through the
 // page, as a person at the dock would.
 import { launch, newPage, ok, done, ready, finger, URL, DIR, member, projectKey } from './lib.mjs';
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -259,6 +260,22 @@ ok(before === 1 && after.length === 0, `closing the tab closes its terminal (${b
   const ctx = await browser.newContext({ extraHTTPHeaders: { Authorization: 'Basic ' + Buffer.from('w.term:w.term-pass-1').toString('base64') } });
   const other = await ctx.newPage();
   await other.goto(URL);
+  // A terminal is its account's alone (R133 step 8): naming the owner's
+  // account on the argument opens one of its own, never the owner's session,
+  // whose screen holds what the owner typed above.
+  const ownerUid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
+  const forged = await other.evaluate(arg => new Promise(res => {
+    const ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '/termws?arg=' + encodeURIComponent(arg) + '&cols=80&rows=20');
+    ws.binaryType = 'arraybuffer';
+    let seen = '';
+    ws.onmessage = e => { seen += new TextDecoder().decode(e.data instanceof ArrayBuffer ? e.data : new Uint8Array()); };
+    setTimeout(() => { ws.close(); res(seen); }, 4000);
+  }), `u:${ownerUid}:sh:7:alpha`);
+  const termUid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users['w.term'].uid;
+  let sessions = '';
+  try { sessions = execFileSync('tmux', ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }); } catch { sessions = ''; }
+  ok(!/own-42-terminal/.test(forged) && sessions.split('\n').includes(`${termUid}~shell-alpha-7`),
+     `naming another account on a terminal's argument opens one of your own, never theirs (${forged.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '').replace(/\s+/g, ' ').trim().slice(-60)})`);
   const opened = await other.evaluate(() => new Promise(res => {
     const ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '/termws?arg=' + encodeURIComponent('sh:8:alpha') + '&cols=80&rows=20');
     ws.binaryType = 'arraybuffer';
