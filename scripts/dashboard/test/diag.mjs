@@ -113,7 +113,7 @@ print(uid)`);
      && (await call('/api/diag', { sections: ['settings'] })).body.settings?.debug_mode === true,
      `debug mode follows DEBUG_MODE, on here, and saving it is refused saying so (${saved.body.error})`);
   let r = await call('/api/diag', {}, asOwner);
-  ok(r.status === 403 && /alpha has not been granted the controller's diagnostics: Debug in its settings/.test(r.body.error || ''),
+  ok(r.status === 403 && /alpha has not been granted the controller's diagnostics: the Debug page grants them/.test(r.body.error || ''),
      `...and on, still refused until the PROJECT is granted it (${r.body.error})`);
   const g = (await call('/api/prefs', { project: 'alpha', diag: true })).body;
   ok(!g.error && prefsPy('print(p.get("alpha").get("diag"))') === 'True', `the grant is the project's (${g.error || 'set'})`);

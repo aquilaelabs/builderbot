@@ -6694,7 +6694,7 @@ class Handler(BaseHTTPRequestHandler):
         # request the controller answered, every project's paths among them.
         if not who or not (users.is_admin(who) or (who.get("session") and not self._diag_why())):
             return self._json({"error": "the trace is for an administrator, or a session whose project "
-                                        "has the diagnostics grant (its settings, Debug)"}, 403)
+                                        "has the diagnostics grant (the Debug page)"}, 403)
         q = urllib.parse.parse_qs(self.path.partition("?")[2])
         try:
             since = float((q.get("since") or ["0"])[0])
@@ -9973,7 +9973,7 @@ class Handler(BaseHTTPRequestHandler):
                         "in their settings on the Users page")
             if not prefs.get(who["session"])["diag"]:
                 return (f"{who['session']} has not been granted the controller's "
-                        "diagnostics: Debug in its settings")
+                        "diagnostics: the Debug page grants them")
             return ""
         return users.may(who, "debug")
 
