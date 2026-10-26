@@ -2101,13 +2101,11 @@ def root_refused(n):
 
 def container_net_on(node_id):
     """Whether each project's containers on this node are kept to their own
-    network (R178): the config says, and a hosting-only node has it unless
-    switched off, since that is the node two web-facing projects share."""
-    n = node(node_id) or {}
-    conf = n.get("config") or {}
-    if "container_net" in conf:
-        return bool(conf.get("container_net"))
-    return bool(host_only(n))
+    network (R178): on unless the config switches it off, which is deprecated
+    in 0.8.0 and gone in 0.9.0 (the operator, 26 Oct: which projects reach
+    each other is their Reads, not a node's choice)."""
+    conf = (node(node_id) or {}).get("config") or {}
+    return bool(conf.get("container_net", True))
 
 
 def node_container_net(principal, node_id, on):
@@ -2162,8 +2160,12 @@ def node_ports_local(principal, node_id, on):
 
 
 def session_net_on(node_id):
-    """Whether that is set on a node."""
-    return bool(((node(node_id) or {}).get("config") or {}).get("session_net"))
+    """Whether each session on a node is kept to its own project's network
+    (R79): on unless the config switches it off, deprecated in 0.8.0 and gone
+    in 0.9.0 (the operator, 26 Oct); a hosting-only node runs no sessions."""
+    n = node(node_id) or {}
+    conf = n.get("config") or {}
+    return bool(conf.get("session_net", not host_only(n)))
 
 
 def session_net_nudge():
@@ -2173,7 +2175,7 @@ def session_net_nudge():
     for n in node_list():
         # ...and one keeping its containers apart (R178), whose map moves
         # with the same changes.
-        if n.get("kind") == "agent" and (((n.get("config") or {}).get("session_net")) or container_net_on(n["id"])):
+        if n.get("kind") == "agent" and (session_net_on(n["id"]) or container_net_on(n["id"])):
             ask_hello(n["id"])
 
 

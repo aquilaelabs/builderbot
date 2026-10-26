@@ -866,7 +866,7 @@ function nodeHostRootRow(n){
 // draft until its Save, like the switches beside it.
 function nodeContainerNetRow(n){
   const c = nodeDraft(n);
-  const on = "container_net" in (n.config || {}) ? !!n.config.container_net : !!n.config?.host_only;
+  const on = "container_net" in (n.config || {}) ? !!n.config.container_net : true;
   if (c.draft.ctrNet === undefined || c.draft.ctrFrom !== on){
     c.draft.ctrNet = on; c.draft.ctrFrom = on;
   }
@@ -881,6 +881,7 @@ function nodeContainerNetRow(n){
     <label class="ndcap"><input type="checkbox" data-k="ctrnet" ${c.draft.ctrNet ? "checked" : ""}>
       keep each project's containers to their own network (a container reaches another project's only where its project reads it)</label>
     ${line}
+    <div class="sub dim">This switch goes in 0.9.0, and the network is kept apart on every node from then.</div>
   </div>`;
 }
 
@@ -907,7 +908,7 @@ function nodePortsLocalRow(n){
 }
 
 function nodeSessNetRow(n){
-  const on = !!n.config?.session_net;
+  const on = "session_net" in (n.config || {}) ? !!n.config.session_net : !n.config?.host_only;
   // A draft until the section's Save is pressed (the rule apply-not-onchange,
   // the operator, 24 Sep): the tick is kept across the repaints a heartbeat
   // brings, and the press is where it is made.
@@ -960,7 +961,8 @@ function nodeSessNetRow(n){
   const own = !!n.config?.own;
   return `<div class="field"><label class="ndcap"><input type="checkbox" data-k="sessnet" ${c.draft.sessnetOn ? "checked" : ""}${own ? " disabled" : ""}>
       keep each session to its own project's network</label>
-    ${own ? `<div class="sub dim">Always on here: this is the controller's own machine, and its own network is what keeps a session off the controller's ports.</div>` : ""}
+    ${own ? `<div class="sub dim">Always on here: this is the controller's own machine, and its own network is what keeps a session off the controller's ports.</div>`
+      : `<div class="sub dim">This switch goes in 0.9.0, and each session is kept to its own network on every node from then.</div>`}
     ${line}</div>
     <div class="field"><label class="ndcap"><input type="checkbox" data-k="rootasks" ${c.draft.rootAsks ? "checked" : ""}>
       let a session ask for a root command (bb root run), which a person then allows or denies</label>
