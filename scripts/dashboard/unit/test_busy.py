@@ -64,6 +64,24 @@ class Kinds(unittest.TestCase):
                 f.write(args.replace(" ", "\0").encode())
         self.assertEqual(agent._proc_kinds(root), {"emulator": 1, "gradle": 1, "java": 1, "claude": 1, "codex": 1, "copilot": 1})
 
+    def test_an_agent_is_counted_as_it_runs_not_only_by_its_name(self):
+        """B288: Copilot's process is named MainThread, ChatGPT's work runs in
+        its codex-code-mode-host helper (named codex-code-mode, cut to 15),
+        and neither was counted; a word naming an agent later in another
+        command's arguments is not one."""
+        root = tempfile.mkdtemp()
+        for pid, comm, args in ((20, "MainThread", "copilot --no-auto-update"),
+                                (21, "codex-code-mode", "/usr/local/lib/builderbot/agents/codex/release/bin/codex-code-mode-host"),
+                                (22, "grok", "grok --resume"),
+                                (23, "grep", "grep -i codex")):
+            d = os.path.join(root, str(pid))
+            os.makedirs(d)
+            with open(os.path.join(d, "comm"), "w") as f:
+                f.write(comm + "\n")
+            with open(os.path.join(d, "cmdline"), "wb") as f:
+                f.write(args.replace(" ", "\0").encode())
+        self.assertEqual(agent._proc_kinds(root), {"copilot": 1, "codex": 1, "grok": 1})
+
 
 if __name__ == "__main__":
     unittest.main()

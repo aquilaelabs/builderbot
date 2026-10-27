@@ -82,6 +82,13 @@ def _gpu_sample():
 # is too busy to time anything on (R108). A session sees only its own
 # processes, so this is the one place the rest is visible; counted, never
 # named, so no other project's work is told to a session that is not on it.
+def _is_agent(ag, comm, args):
+    """Whether a process is coding agent `ag`'s: its name, or the base of its
+    command's first word, is the agent's own or one of its helpers'."""
+    first = (args.split(" ", 1)[0] if args else "").rsplit("/", 1)[-1]
+    return any(n == ag or n.startswith(ag + "-") for n in (comm, first))
+
+
 PROC_KINDS = (
     ("emulator", lambda c, a: c.startswith("qemu-system")),
     ("gradle", lambda c, a: c == "java" and ("GradleDaemon" in a or "gradle" in a.lower())),
@@ -92,7 +99,10 @@ PROC_KINDS = (
     ("docker build", lambda c, a: c in ("buildkitd", "buildctl") or (c == "docker" and " build" in a)),
     # Each coding agent by its own command, which the controller leaves out
     # of what a busy machine is running: a session is not load (busy.py).
-    *((ag, lambda c, a, ag=ag: c == ag) for ag in AGENT_IDS),
+    # By the name or the command's first word, and a helper of its own
+    # (codex-code-mode-host): Copilot's process is named MainThread, and
+    # ChatGPT's work runs in its helper, so the name alone counted neither.
+    *((ag, lambda c, a, ag=ag: _is_agent(ag, c, a)) for ag in AGENT_IDS),
     ("python", lambda c, a: c.startswith("python")),
     ("display", lambda c, a: c in ("Xorg", "X", "Xvfb", "gnome-shell")),
 )
