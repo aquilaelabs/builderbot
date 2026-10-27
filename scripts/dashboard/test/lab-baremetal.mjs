@@ -68,19 +68,19 @@ const exec = async argv => {
     const s = await api(`/api/v1/jobs?id=${r.job}`);
     return ['succeeded', 'failed', 'canceled'].includes(s.state) ? s : null;
   }, 300000, 3000);
-  // The last chunks can land after the state does: read until two reads
-  // a second apart agree (B324).
-  const read = async () => { const l = (await api(`/api/v1/jobs?id=${r.job}&log=1`)).log || '';
-    return Array.isArray(l) ? l.join('\n') : String(l); };
-  let log = await read();
-  for (let i = 0; i < 10; i++){
-    await sleep(1000);
-    const again = await read();
-    if (again === log) break;
-    log = again;
-  }
+  // Read once: the agent posts the whole log before the end (jobs.py's
+  // report flushes until nothing is pending, on the job's one thread) and
+  // the controller writes each post before it answers, so a job read as
+  // finished has all of it. The log's first line is the agent's own header
+  // ("exec"), not the command's.
+  const l = (await api(`/api/v1/jobs?id=${r.job}&log=1`)).log || '';
+  const log = (Array.isArray(l) ? l.join('\n') : String(l)).replace(/^exec\n/, '');
   return { state: j?.state || 'timeout', log };
 };
+// A log said in a verdict on its one line (B324): what reads a run's verdict
+// (tests-verdict.py, the rule hook) takes the FAIL line alone, and a log
+// carried with its newlines came back as its first line, "exec".
+const oneLine = s => String(s || '').trim().replace(/\s*\n\s*/g, ' | ');
 // A command as root in the VM, through ssh from the VM host: its output.
 const inVm = async (ip, script) => {
   const b64 = Buffer.from(script).toString('base64');
@@ -140,11 +140,11 @@ for (const os of SYSTEMS){
     const tail = await inVm(ip, 'echo "rc $(cat /root/install.rc 2>/dev/null)"; '
       + 'grep -nE "ERROR|Error|error:|E:|Err:|denied|not found|No such|refus" /root/install.log 2>/dev/null | tail -12; '
       + 'echo "--- the end"; tail -12 /root/install.log');
-    ok(rc === '0', `[${os}] install-controller.sh --install finishes (exit ${rc ?? 'none in 45 minutes'}): ${rc === '0' ? tail.slice(-300) : tail.slice(-3000)}`);
+    ok(rc === '0', `[${os}] install-controller.sh --install finishes (exit ${rc ?? 'none in 45 minutes'}): ${oneLine(rc === '0' ? tail.slice(-300) : tail.slice(-3000))}`);
     if (rc !== '0') continue;
 
     const up = await inVm(ip, SH + '\nstatus\n');
-    ok(/^(200|302)$/m.test(up) && /^active$/m.test(up), `[${os}] the controller answers on its port, under its service (${up.replace(/\n/g, ' | ').slice(0, 300)})`);
+    ok(/^(200|302)$/m.test(up) && /^active$/m.test(up), `[${os}] the controller answers on its port, under its service (${oneLine(up).slice(0, 300)})`);
     ok(/online/.test(up), `[${os}] its own machine is a node of it, online`);
 
     // The wall: bb-session's own word, once the node has set its sessions'
@@ -153,7 +153,7 @@ for (const os of SYSTEMS){
       const out = await inVm(ip, '/usr/local/sbin/bb-session check 2>&1; echo "rc=$?"');
       return /rc=0/.test(out) ? out : null;
     }, 10 * 60000, 30000);
-    ok(check, `[${os}] bb-session check passes there: the wall holds (${(check || await inVm(ip, '/usr/local/sbin/bb-session check 2>&1')).slice(0, 300)})`);
+    ok(check, `[${os}] bb-session check passes there: the wall holds (${oneLine(check || await inVm(ip, '/usr/local/sbin/bb-session check 2>&1')).slice(0, 300)})`);
     const walls = await inVm(ip, 'cat /etc/bb-session.wall; nft list table inet builderbot_wall >/dev/null && echo guard-up');
     ok(/^COVER=.*\/var\/lib\/builderbot-controller/m.test(walls) && /guard-up/.test(walls),
        `[${os}] the wall names the controller's folders and its ports' table is up`);
@@ -172,13 +172,13 @@ for (const os of SYSTEMS){
     const reachedIn = view.split('\n').filter(l => l.startsWith('REACHED'));
     const refusedIn = view.split('\n').filter(l => l.startsWith('refused')).length;
     ok(refusedIn >= 12 && !reachedIn.length && !/enter-rc=/.test(view),
-       `[${os}] inside a session's view: ${refusedIn} refused, reached ${JSON.stringify(reachedIn)} (${view.slice(-300)})`);
+       `[${os}] inside a session's view: ${refusedIn} refused, reached ${JSON.stringify(reachedIn)} (${oneLine(view.slice(-300))})`);
 
     // Broken on purpose: the job account in the docker group, and no
     // session starts until it is out again.
     const broken = await inVm(ip, 'usermod -aG docker bb; /usr/local/sbin/bb-session check 2>&1; echo "rc=$?"; gpasswd -d bb docker >/dev/null; /usr/local/sbin/bb-session check >/dev/null 2>&1; echo "mended=$?"');
     ok(/rc=2/.test(broken) && /job account \(bb\) is in the docker group/.test(broken) && /mended=0/.test(broken),
-       `[${os}] the wall broken, bb-session refuses and says why; mended, it starts sessions again (${broken.replace(/\n/g, ' | ').slice(0, 300)})`);
+       `[${os}] the wall broken, bb-session refuses and says why; mended, it starts sessions again (${oneLine(broken).slice(0, 300)})`);
   } finally {
     // BB_LAB_KEEP=1 leaves it for a look after a failure; the next walk
     // removes it first.
