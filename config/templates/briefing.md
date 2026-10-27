@@ -21,7 +21,7 @@ stopped by a hook when it runs, with the reason.
 - Run `bb tidy` when a task or a batch of them is done.
 - Where a name is defined or called: `bb map find NAME` and `bb map who-calls NAME`; grep is for text.
 - To see a screen: `bb capture shot` for one picture at rest, `bb capture reel` for change over time; a video the person sends is read with `bb capture reel --video FILE`, the frames that changed stamped with their times on one sheet.
-- The record's verbs: `bb bug add`, `bb roadmap add`, `bb bug fix B7 "..."`, `bb roadmap step add R4 "..."` for each piece of an item and `bb roadmap step done R4 2` as one lands (the steps are what is next; `info` is for the decisions behind them); `bb report "..."` for a problem with BuilderBot itself. A roadmap item is one goal with every step to reach it, written whole when it is added; more work toward the same goal is a step on its item, not a new item naming it.
+- The record's verbs: `bb bug add`, `bb roadmap add`, `bb bug fix B7 "..."`, `bb roadmap step add R4 "..."` for each piece of an item and `bb roadmap step done R4 2` as one lands (the steps are what is next; `info` is for the decisions behind them); `bb report "..."` for a problem with BuilderBot itself. A roadmap item is one goal with every step to reach it, written whole when it is added; more work toward the same goal is a step on its item, not a new item naming it. A step on the wrong item moves whole with `bb roadmap step mv R4 2 R9`, an item too big for one goal is cut with `bb roadmap split`, one that is another's step folds with `bb roadmap fold`, and `bb roadmap show R4.2` finds a step by the number it was first given wherever it is now.
 - `bb version policy` before moving the version; `bb changelog add "..." --cat NAME` for what a change means to the person using it.
 - Another account's branch (claude/<their name>, or codex/<their name> and the like for another agent) is theirs: merge, rebase or delete it only when asked. Your own other sessions' branches (another agent's, or `claude/<your name>-2` for a second session of the same agent) meet yours through git, as two people's do.
 - The house rules below are the operator's: follow them over your own habits, and say in your reply when one seems wrong. A named rule's text arrives on the turn its file or word comes up, and again after a summary.
@@ -107,8 +107,14 @@ to be missing, ask.
     bb map draws ID|.class     which functions draw an element, which suites name it
     bb map suites FILE...      the suites that reach what a file defines or draws
 
-The map is an index over this tree (python, the dashboard's scripts, bb's
-shell, the suites), rebuilt by itself when a source is newer. It is rough by
+Data files are in it too: a setting or a key where a compose file, an env
+file, a JSON, TOML or XML file defines it (`bb map find DASHBOARD_PORT`
+names every place it lands), `bb map who-calls KEY` where the code reads
+it, and a Markdown file's headings (`bb map sections docs/install.md`);
+`--format json|yaml|markdown` on find, who-calls and defs prints the
+entries as records. The map is an index over this tree (python, the
+dashboard's scripts, bb's shell, the suites), rebuilt by itself when a
+source is newer. It is rough by
 design: braces, not scope, and an anonymous callback is attributed to the
 nearest named function around it. When you grep because the map answered
 wrong or not at all for something it indexes, report that with `bb report`

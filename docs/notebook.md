@@ -259,6 +259,32 @@ because a list is read to find out what is left.
 written a week ago. Every one of those lands in the history under `claude`,
 so nothing gets quietly rewritten.
 
+**Every record whole, in the form a tool wants.** `--format json`, `yaml`
+or `markdown` (`--json` for short) on `bb roadmap`, `bb roadmap show N`,
+`bb bug`, `bb bug all`, `bb bug show N`, `bb rules`, `bb rules show NAME`,
+`bb wiki list|show`, `bb design list|json` and `bb map find|who-calls|defs`
+prints the records as a document (`format`, `kind`, `project`, `records`,
+and on the roadmap `as_of`, the list's revision), from one serializer, so a
+script or a session never parses the text form. The same formats come
+back in: `bb roadmap add --from FILE` and `bb bug add --from FILE` add each
+record in the file (an item with its steps, details and target in one
+change), and `bb roadmap apply FILE` writes an edited show back, field by
+field and each step by its id, adding steps that have none and removing
+nothing; it is refused when the list moved since the document was printed.
+
+**Steps move between items without losing anything.** `bb roadmap step mv
+N M TO [POSITION]` takes step M of N to item TO whole: its words, details,
+done or sent mark, and its own target; N says where it went. `bb roadmap
+split N --into "TITLE" 3 4 --into "TITLE" 7` moves those steps to new items
+in one change, each pointing back at N's details, and `bb roadmap fold N
+INTO M` makes N a step of M with N's steps following (`INTO M.K` adds N's
+words to step K's details instead); `restore` undoes a fold. A step keeps the
+number it was first given, so `bb roadmap show R56.9` finds R56's old step 9
+wherever it is now, and `bb roadmap refs` lists every R number or step the
+list's own words name that finds nothing. On the view a step's open row has
+Move to, an item's has Split and Fold into, and in Reorder a step drags onto
+another item.
+
 **The list reads top down, and the top is what matters most**: new items go
 on the end, and the arrows in Reorder are how something gets promoted. Each
 item wears its number: `R4` is the item's own name, not its position, so it is

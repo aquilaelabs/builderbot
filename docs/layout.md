@@ -82,6 +82,7 @@ scripts/
   lib/release-edit.py            `bb version release --edit`: the notes and files read where it is typed, the edit asked over the API
   lib/controller-stamp.py        the controller's build, for `bb status` and `bb catchup`
   lib/dash.py                    the dashboard's modules loaded by path for the notebook verbs, and the account name and "who wrote it" they share
+  lib/markup.py                  YAML's subset, JSON, TOML, XML and Markdown's headings read in the standard library, for the records and the code map (R167)
   lib/roadmap-verbs.py           `bb roadmap`
   lib/bug-verbs.py               `bb bug`
   lib/brief-verbs.py             `bb brief`: a new project's brief, and bb-tty's take of it for a first session
@@ -174,6 +175,7 @@ scripts/
     codebase.py                  the code base counted, by language, for the Briefing tab
     logs.py                      what is kept, for how long, and the downloads behind the gear menu
     roadmap.py                   the roadmap; `bb roadmap` drives the same file
+    records.py                   the notebook's records whole as JSON, YAML or Markdown, and read back in (R167)
     bugs.py                      the bug tracker; `bb bug` drives the same file
     notebook.py                  one batch over both of those, so half of one cannot exist
     pending.py                   what a session wants to add to the notebook, held for the operator

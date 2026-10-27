@@ -469,6 +469,15 @@ bb roadmap target N X.Y.Z             the release one is meant for (`none` clear
                                       `target N.M X.Y.Z` (or N M) is step M's own, `none`
                                       sends it back to its item's, and --target lists an item
                                       for any step meant for that release
+bb roadmap step mv N M TO [POS]       step M of N moved whole to item TO (at POS); N says where
+                                      it went, and `show N.M` finds it by its old number
+bb roadmap split N --into "TITLE" M...   N's steps M... moved to a new item, --into repeated
+                                      for each; `fold N INTO M[.K]` makes N a step of M
+                                      (its words on step K's details), N leaving the list
+bb roadmap refs       the R numbers and steps the list's own words name that find nothing
+bb roadmap --format json|yaml|markdown   the records whole, on list and show (--json for short),
+                      as bb bug, rules, wiki, design and map print theirs; `add --from FILE`
+                      adds the records in a file, `apply FILE` writes an edited show back
 bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
 bb roadmap pending    what a session added that is waiting for your approval
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
