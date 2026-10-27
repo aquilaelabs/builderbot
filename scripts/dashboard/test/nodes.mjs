@@ -4,7 +4,7 @@
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
 // exactly the page it was.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, openArchived, closeFold, patience, saveDialog, sectSave, openSection, splitPick, holdPoll, freePoll, refreshUntil, prefsOf } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, openArchived, closeFold, patience, saveDialog, sectSave, openSection, splitPick, refreshUntil, prefsOf } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync } from 'node:fs';
 
@@ -2638,43 +2638,6 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
     await papi({ action: 'update', id: sb.id, fields: { name: 'sandbox' } });
     await page.waitForFunction(id => nodesList?.find(n => n.id === id)?.name === 'sandbox', sb.id, { timeout: 15000 });
   }
-
-  // ---- Check: the pair nothing else verifies (roadmap #13) ------------------
-  // A marker made under the share here, looked for through the node's
-  // daemon by the same guarded one-shot container that makes the dev-data
-  // directory. The stub answers yes; run.testfail makes it say no the way
-  // `test -d` does. The marker never outlives the check.
-  const { readFileSync: rf, writeFileSync: wf, unlinkSync: ul, readdirSync: rd } = await import('node:fs');
-  const chk = `.nodestab .ndrow[data-node="${sb.id}"] .ndcheck`;
-  // The verdict was written onto the row and kept nowhere else, so the next
-  // repaint drew the row without it (B850, kept in the page since), and a
-  // poll's repaint as the button is pressed can take the press (B486). So the
-  // poll is held over each check, and the verdict is read in the frame the
-  // wait sees it rather than by a second read after it.
-  const checkPaths = async want => {
-    await holdPoll(page);
-    try{
-      await page.click(`.nodestab .ndrow[data-node="${sb.id}"] [data-nd="check-paths"]`);
-      return await page.waitForFunction(([s, w]) => { const e = document.querySelector(s);
-        return !!e && new RegExp(w).test(e.textContent) && { text: e.textContent, warn: e.classList.contains('warn') }; },
-        [chk, want], { timeout: 20000 }).then(h => h.jsonValue());
-    } finally { await freePoll(page); }
-  };
-  const same = await checkPaths('same directory');
-  ok(/^the same directory/.test(same.text) && !same.warn,
-     `Check makes a marker under the projects share here and finds it through the daemon: the same directory (${same.text})`);
-  const dlog = rf(`${DIR}/dockerstate/docker.log`, 'utf8');
-  ok(/run --rm -u \d+:\d+ -v \/[^ ]+:\/d alpine test -d \/d\/\S*bb-path-check-[0-9a-f]+/.test(dlog),
-     '...as a one-shot test -d through the guarded probe, mounting the share root');
-  ok(!rd(`${DIR}/ws`).some(f => f.startsWith('bb-path-check-')),
-     '...and the marker is gone afterwards');
-  wf(`${DIR}/dockerstate/run.testfail`, '');
-  const notSame = await checkPaths('NOT the same');
-  ok(notSame.warn && /would bind an empty tree/.test(notSame.text),
-     `a marker the daemon cannot see is said plainly, with what it would cost (${notSame.text})`);
-  ul(`${DIR}/dockerstate/run.testfail`);
-  ok(!rd(`${DIR}/ws`).some(f => f.startsWith('bb-path-check-')),
-     '...and the marker is gone after a no as well');
 }
 
 // ...and put the sandbox's path mapping back: it lives on the node record

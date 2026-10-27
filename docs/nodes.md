@@ -1343,19 +1343,6 @@ variables: the address is what the node dialed in from, and the path mapping
 lives on the node record (`config.paths`, edited on an agent node's page under Advanced, read
 by `devapp.host_map` through the node being addressed).
 
-**Check, beside it (roadmap #13).** Under the identity mapping: the shipped
-default and the rule; nothing verified that the two machines actually mean
-the same directory by `/workspace`: this container's mount table says nothing
-about the other machine's, and docker answers a missing bind source by
-creating an empty directory, so the failure was silent twice over (it cost
-three rounds on 27 Aug, when the share was repointed on one side only). Check
-makes a marker directory under the share here and asks the node's daemon
-whether it can see it, through the same guarded one-shot container the
-dev-data directory is made with (`devapp.check_paths`, a `test -d` on the
-share root). Three answers and never a guess: the same directory, NOT the
-same directory with what that would cost, or "could not ask" with the
-daemon's own words. Off the poll; it is for when something changed.
-
 There is one node kind, the agent: `node_add` is a refusal naming
 enrollment, and the controller never runs a job on another machine over a
 key. The `ssh_addr` column stays, written empty and read by nothing:

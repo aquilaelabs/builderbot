@@ -2436,7 +2436,7 @@ def to_host(path, mapping=None):
 DEVDATA_IMAGE = "alpine"
 
 # Every operation this module will ask the daemon to perform on that share.
-_DEVDATA_OPS = {"mkdir": ["mkdir", "-p"], "mv": ["mv"], "test": ["test", "-d"]}
+_DEVDATA_OPS = {"mkdir": ["mkdir", "-p"], "mv": ["mv"]}
 
 # What may follow /d/. Components separated by single slashes (a compose
 # names /devdata/<instance>/config, which is two deep) with every component
@@ -2601,76 +2601,6 @@ def _agent_docker():
     return bool(n and n.get("kind") == "agent"
                 and ((n.get("reported") or {}).get("docker")))
 
-
-def check_paths(node_id=None):
-    """Do this container and the node's daemon mean the same directory by
-    the projects share? (roadmap #13)
-
-    Under an identity mapping host_map() accepts the pair unchecked and
-    problems() has nothing to say, which is correct, because this container's
-    mount table says nothing about the other machine's, so NOTHING verified
-    that the two sides still agree, and the failure is silent twice over: docker
-    answers a missing bind source by creating an empty directory, and the
-    row says nothing. It bit on 27 Aug: /workspace was repointed here while
-    the VM still mounted the parent directory, every project path was wrong
-    by one component, and it took three silent rounds to settle. Make dirs
-    raised the stakes since: a mismatch now builds a stray tree over there.
-
-    So: a marker directory is made under the share HERE, and the daemon is
-    asked whether it can see it at the path the mapping says the node calls
-    the share. Through the same one-shot container the dev-data directory is
-    made with (_devdata_argv, `test`), so the guard's rules cover it: the
-    mount is a share root and the name is under it. The marker is removed
-    whatever happens. Off the poll, because this is for when something changed.
-
-    Three answers, never a guess: True (found), False (a clean "not there"),
-    None with a sentence (the daemon could not be asked, or refused).
-    """
-    with on_node(node_id):
-        mapping = host_map()[0]
-        here = str(WORKSPACE).rstrip("/")
-        # The identity is the shipped default and the rule (path parity), so
-        # a mapping that says nothing about the share means "the same path".
-        there = (mapping.get(here) or here).rstrip("/")
-        out = {"same": None, "here": here, "there": there, "why": ""}
-        if not sandbox_daemon():
-            out["why"] = ("this node's daemon is not addressed as a sandbox, so "
-                          "nothing can be run on it to look")
-            return out
-        name = f"bb-path-check-{os.urandom(4).hex()}"
-        marker = Path(here) / name
-        try:
-            marker.mkdir()
-        except OSError as e:
-            out["why"] = f"could not make a marker under {here} here: {e}"
-            return out
-        try:
-            # The probe mounts a share ROOT and names the rest, which is the
-            # shape the guard rebuilds: /mnt/user/projects becomes the mount
-            # /mnt and the name user/projects/<marker>.
-            parts = there.strip("/").split("/")
-            root = "/" + parts[0]
-            rel = "/".join(parts[1:] + [name])
-            r = _run(_devdata_argv("test", rel, root=root), timeout=120)
-        finally:
-            try:
-                marker.rmdir()
-            except OSError:
-                pass
-        if r["code"] == 0:
-            out.update(same=True, why=(f"the same directory: a marker made under {here} "
-                                       f"here was found at {there} on the node"))
-        elif r["code"] == 1 and not r["out"].strip():
-            # `test -d` says no with nothing on its output; a daemon that
-            # could not be reached says so.
-            out.update(same=False, why=(f"NOT the same directory: a marker made under "
-                                        f"{here} here was not at {there} on the node. "
-                                        "A compose over there would bind an empty tree, "
-                                        "and Make dirs would build one"))
-        else:
-            out["why"] = ("could not ask the daemon: "
-                          + (r["out"].strip()[:200] or f"exit {r['code']}"))
-        return out
 
 def _build_env(project, instance=MAIN):
     """BB_BUILD_REV, BB_BUILD_AT, BB_BUILD_VERSION and BB_BUILD_TAG (the

@@ -31,7 +31,6 @@ let nodesPick = "";              // which node the tab is showing, "" until the 
 // the DOM because the tab repaints on every heartbeat: a field that lived
 // only in the row would lose its text every 25 seconds.
 const nodesConf = {};
-let nodesCheck = {};             // node id -> {text, warn}: Check paths' last verdict (B850)
 let nodesFocus = null;           // {id, key, i}: the field to refocus after a repaint
 // When Update agent was pressed per node, so the button stays busy until the
 // agent comes back with the new digest (see renderNodesInto).
@@ -1054,10 +1053,7 @@ function nodeAdvancedSection(n, stale, inflight){
         placeholder="/workspace:/workspace, /devdata:/mnt/user/appdata/bb-dev"
         aria-label="path mapping"></div>
       <button type="button" data-nd="paths" title="save the mapping onto the node's record">Save paths</button>
-      <button type="button" data-nd="check-paths"
-        title="check both machines see the same projects directory">Check</button>
     </div>
-    <div class="sub ndcheck${nodesCheck[n.id]?.warn ? " warn" : ""}"${nodesCheck[n.id] ? "" : " hidden"}>${esc(nodesCheck[n.id]?.text || "")}</div>
     <div class="ndacts">
     ${n.kind !== "agent" || !n.config?.host_only ? "" : act("Lock down",
         n.config?.lockdown ? "Locking down: it may take nothing but the job that stops its containers and shuts its door, and its credential is revoked when that ends, or within five minutes if it never answers."
@@ -2447,7 +2443,7 @@ function wireNodesTab(root){
       busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
                online: "Undraining", "cache-clear": "Clearing",
                retire: "Removing", discard: "Discarding", uninstall: "Uninstalling", lockdown: "Locking down", reboot: "Rebooting", poweroff: "Shutting down", "gpu-apply": "Applying",
-               paths: "Saving", "check-paths": "Checking", "to-sync": "Moving",
+               paths: "Saving", "to-sync": "Moving",
                "sync-stop": "Stopping", "sync-resume": "Resuming", "sync-clean": "Cleaning",
                rename: "Renaming", turns: "Saving",
                feature: b.dataset.op === "remove" ? "Uninstalling" : "Installing"}[act] || "Working");
@@ -2549,20 +2545,8 @@ function wireNodesTab(root){
       }
       if (act === "paths"){
         const inp = box.querySelector('[data-k="paths"]');
-        delete nodesCheck[id];             // a new mapping wants a new check
         await nodeAct({action: "paths", id, paths: inp ? inp.value : ""});
         const c = nodesConf[id]; if (c && c.draft) c.draft.pathsText = undefined;
-        return;
-      }
-      if (act === "check-paths"){
-        // Roadmap #13. The verdict is kept, not only written on the line:
-        // the next heartbeat's repaint drew the row without it (B850).
-        nodesCheck[id] = {text: "checking…", warn: false};
-        nodesRev++; drawPanes();
-        const j = await nodeAct({action: "check-paths", id});
-        nodesCheck[id] = {text: j.error || j.why || (j.same ? "the same directory" : "not the same directory"),
-                          warn: !j.same};
-        nodesRev++; drawPanes();
         return;
       }
       if (act === "test"){

@@ -1428,18 +1428,6 @@ def fake(argv, timeout=60, **kw):
     calls.append({'argv': argv, 'refused': bad})
     if bad:
         return {'code': 126, 'out': bad}
-    # A 'test -d' has to be able to say NO, or every check that asks whether
-    # something is already there gets yes and the move it guards never runs.
-    # The sandbox holds bbdev-alpha and nothing else.
-    if 'test' in argv:
-        # What the sandbox holds: the old project's directories and nothing
-        # else, so a move onto an existing name can still be refused and a
-        # move of a per-instance directory has a source to find.
-        # The literal names the calls above move, plus what a project called
-        # alpha actually resolves to (_pname gives the project's slug for the
-        # default instance, and the instance's own name for any other).
-        there = {'/d/bbdev-alpha', '/d/alpha', '/d/staging'}
-        return {'code': 0 if argv[-1] in there else 1, 'out': ''}
     return {'code': 0, 'out': ''}
 m._run = fake
 

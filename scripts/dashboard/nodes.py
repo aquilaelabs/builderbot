@@ -5903,13 +5903,6 @@ def verb(principal, req):
         # (docs/nodes.md §11): the mapping that was DOCKER_HOST_PATHS.
         return node_paths_set(principal, nid, field(req, "paths"))
 
-    def check_paths():
-        # Whether the two machines mean the same directory by the
-        # projects share (roadmap #13): a marker made here, looked for
-        # through the node's daemon. Off the poll, on purpose.
-        return ({"error": "no such node"} if not node(nid)
-                else devapp.check_paths(nid))
-
     def path_state():
         # What is at each path on the node before a store or a mount is
         # pointed there (R120): the page asks before it saves, so the
@@ -5995,7 +5988,7 @@ def verb(principal, req):
              "storage": lambda: node_storage_measure(principal, nid),
              "sync-resume": sync_resume, "sync-clean": sync_clean, "runner": runner,
              "runner-token": runner_token, "runner-forget": runner_forget,
-             "paths": paths, "check-paths": check_paths, "path-state": path_state, "funnel": funnel,
+             "paths": paths, "path-state": path_state, "funnel": funnel,
              "update-agent": update_agent, "cache-clear": cache_clear,
              "exec": exec_, "test": test}
     if act not in verbs:

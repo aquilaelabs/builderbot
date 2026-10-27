@@ -1098,10 +1098,6 @@ if [ -n "${DOCKER_HOST:-}" ] && [ -f "$ST/deadhosts" ] \
    && grep -qF "$DOCKER_HOST" "$ST/deadhosts"; then
   echo "cannot connect to the daemon at $DOCKER_HOST"; exit 1
 fi
-# The one-shot `run` the dev-data probe makes (mkdir, mv, test -d on one
-# share). Answers yes by default; run.testfail is the suite saying the marker
-# is NOT over there: a clean exit 1 with nothing said, as `test -d` does.
-if [ "$1" = run ] && [ -f "$ST/run.testfail" ]; then exit 1; fi
 # What a node pulled of an image (imagecheck.py, R195): its RepoDigests from
 # a file the suite leaves, named for the image; none is an image never pulled.
 if [ "$1" = inspect ] && [ "$2" = --type ] && [ "$3" = image ]; then
