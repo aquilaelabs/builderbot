@@ -511,6 +511,19 @@ print(json.dumps(out))
     names: bs.map(b => b.getAttribute('aria-label')), tops: new Set(bs.map(b => Math.round(b.getBoundingClientRect().top))).size }));
   ok(foot.tops === 1 && ['Color', 'Group', 'Report bug', 'Settings'].every(n => foot.names.includes(n)),
      `the back's controls are one line of named icons (${JSON.stringify(foot)})`);
+  // A box opening on the back fades in by itself, with no copy of the face
+  // fading out over it: the card's ground showed between the two, a flicker
+  // in Firefox (the operator, 27 Oct).
+  const opened = await page.evaluate(sel => {
+    document.querySelector(sel + ' .pcback [data-pcolor]').click();
+    const pop = document.querySelector(sel + ' .pcback .pcpop');
+    return { ghosts: document.querySelectorAll(sel + ' .fghost').length,
+             fades: pop ? pop.getAnimations().filter(a => a.id === 'fadein').length : -1,
+             face: document.querySelector(sel + ' .pcback').getAnimations().filter(a => a.id === 'fadein').length };
+  }, card);
+  await page.keyboard.press('Escape');
+  ok(opened.ghosts === 0 && opened.fades === 1 && opened.face === 0,
+     `...and a box opening there fades in alone, the face never copied over it (${JSON.stringify(opened)})`);
   await page.click(`${card} .pcback [data-pedit]`);
   // The pin by the name, pressed in while it is pinned; a press lets it out,
   // and Home's glance (step 5) is what it decides.
@@ -1406,12 +1419,15 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
   await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
   await page.click('.doc .projtab .askline [data-askno]');
-  // A box opening or closing on a card fades its face through, and so does
-  // a press's change landing on it (the operator, 26 Oct: they cut in).
-  await page.evaluate(() => { window.__fades = []; const was = fadeThrough;
-    fadeThrough = (pick, swap) => { const parts = [...(typeof pick === 'function' ? pick() : document.querySelectorAll(pick))];
-      window.__fades.push(parts.map(e => (e.closest('.pcard')?.dataset.row || '?') + ':' + [...e.classList].join('.')).join(',')); return was(pick, swap); };
-    window.__unfade = () => { fadeThrough = was; }; });
+  // A box opening or closing on a card fades in what it brings (the
+  // operator, 26 Oct: they cut in): the box as it opens, the repositories
+  // as it shuts, never the whole face, whose fade let the card's ground
+  // flash through in Firefox (the operator, 27 Oct). A move is a slide.
+  await page.evaluate(() => { window.__fades = []; const was = fadeThrough, wasIn = fadeIn;
+    const said = es => [...(es instanceof Element ? [es] : es || [])].map(e => (e.closest('.pcard')?.dataset.row || '?') + ':' + [...e.classList].join('.')).join(',');
+    fadeThrough = (pick, swap) => { window.__fades.push('through ' + said(typeof pick === 'function' ? pick() : document.querySelectorAll(pick))); return was(pick, swap); };
+    fadeIn = els => { const w = said(els); if (w) window.__fades.push(w); return wasIn(els); };
+    window.__unfade = () => { fadeThrough = was; fadeIn = wasIn; }; });
   await page.click('.doc .projtab .pcard[data-row="gamma"] [data-pgroup]');
   await page.waitForSelector('.doc .projtab .askline input', { timeout: 5000 });
   await page.click('.doc .projtab .askline [data-askno]');
@@ -1425,8 +1441,9 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   const markFades = await page.evaluate(() => { const f = window.__fades.splice(0); window.__unfade(); return f; });
   // A pin moves the card to the top, so it slides there rather than fading
   // (the operator, 26 Oct: a card that moves slides).
-  ok(boxFades.length === 2 && boxFades.every(f => f === 'gamma:pcface.pcback') && markFades.length === 0,
-     `a box on a card's back fades its face in and out, and a pin, which moves the card, slides it rather than fading (${JSON.stringify({ boxFades, markFades })})`);
+  ok(boxFades.length === 2 && /^gamma:.*\baskline\b/.test(boxFades[0]) && /^gamma:pcrepos/.test(boxFades[1])
+     && !boxFades.some(f => /through|pcface/.test(f)) && !markFades.some(f => /through|pcface/.test(f)),
+     `a box on a card's back fades in alone and the repositories fade back as it shuts, the face never faded, and a pin, which moves the card, slides it rather than fading (${JSON.stringify({ boxFades, markFades })})`);
   await page.evaluate(() => setProjectPinned(reposOf('gamma') || 'gamma', false));
   await pjMenu('gamma');
   // The pencil beside the group's name renames it in a box under the

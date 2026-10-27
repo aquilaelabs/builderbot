@@ -362,12 +362,20 @@ function fadeThrough(pick, swap){
   fadeIn(now);
 }
 
-// A change inside a project's card fades through on the face on show (the
-// operator, 26 Oct: a box opening on the card appeared with a cut): `el` is
-// anything in the card, `swap` the change. Elsewhere it is the change alone.
+// A change inside a project's card fades in what it brings to the face on
+// show (the operator, 26 Oct: a box opening on the card appeared with a cut):
+// the box opened, or the repositories coming back as it shuts. Only those,
+// never the face through a copy of it: the copy went out before the face
+// came in, and the card's own ground showed between them, a flicker. `el`
+// is anything in the card, `swap` the change. Elsewhere it is the change
+// alone.
 function faceFade(el, swap){
   const face = el?.closest?.(".pcface");
-  return face ? fadeThrough(() => face.isConnected ? [face] : [], swap) : swap();
+  if (!face) return swap();
+  const shown = () => [...face.children].filter(e => e.offsetParent && !e.classList.contains("fghost"));
+  const was = new Set(shown());
+  swap();
+  if (face.isConnected) fadeIn(shown().filter(e => !was.has(e)));
 }
 
 // The marker on the item on show slides to the one pressed (the operator,
