@@ -384,7 +384,7 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   await page.waitForSelector(inp, { state: 'attached', timeout: 10000 });
   await openSection(page, 'nodes:sessions', row);
   const line = async () => page.$eval(`${row} [data-nd="sess-save"]`, b => b.parentElement.querySelector('.state').textContent.trim());
-  ok(/^0 working now$/.test(await line()), `the Sessions section says what is working now (${await line()})`);
+  ok(/^0 sessions working now$/.test(await line()), `the Sessions section says what is working now (${await line()})`);
   await page.fill(inp, '3');
   // A heartbeat repaints the tab; the number being typed survives it.
   await beat([{ name: `${uids[0]}~claude-alpha`, title: '◐ Work' }]);
@@ -393,7 +393,7 @@ const hook = (i, kind) => call('/api/v1/hook', { kind }, bearer(toks[i]));
   await page.click(`${row} [data-nd="sess-save"]`);
   await page.waitForFunction(r => /of 3/.test(document.querySelector(`${r} [data-nd="sess-save"]`)
     ?.parentElement.querySelector('.state')?.textContent || ''), row, { timeout: 10000 });
-  ok(/^1 working now of 3$/.test(await line()), `Save sets it, and the line counts against it (${await line()})`);
+  ok(/^1 session working now of 3$/.test(await line()), `Save sets it, and the line counts against it (${await line()})`);
   const rec = (await call('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
   ok(rec.config?.turns === 3, 'the limit is on the node\'s record');
   ok(page.errors.length === 0, `no console errors${page.errors.length ? ': ' + page.errors.slice(0, 2).join(' | ') : ''}`);

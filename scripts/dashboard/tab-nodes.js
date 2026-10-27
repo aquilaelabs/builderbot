@@ -787,7 +787,8 @@ function nodeSessSettings(n){
   const rows = host ? nodeHostRootRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n)
     : nodeSessNetRow(n) + nodeContainerNetRow(n) + nodePortsLocalRow(n) + nodeTurnsRow(n);
   const t = n.turns || {};
-  const now = host ? "" : `${t.working || 0} working now${t.limit ? ` of ${t.limit}` : ""}${t.waiting ? `, ${t.waiting} waiting for a turn` : ""}`;
+  // Sessions, said so: under the test workers' field it read as them (B394).
+  const now = host ? "" : `${t.working || 0} session${(t.working || 0) === 1 ? "" : "s"} working now${t.limit ? ` of ${t.limit}` : ""}${t.waiting ? `, ${t.waiting} waiting for a turn` : ""}`;
   const dirty = nodeSessDirty(n);
   return `<div class="ndsettings">${rows}
     <div class="actbar sectbar"><span class="state${t.waiting ? " warn" : ""}">${esc(now)}</span><span class="sp"></span>
