@@ -66,8 +66,9 @@ works there ([notebook.md](notebook.md)).
   bugs, add rules, write the wiki, run its container, sign a build, publish
   a release. Each is allowed, asked of a person, or refused.
 - **A session sees only its own project** on disk, with your git identity on
-  its commits. Credentials stay out of its reach: it pushes and signs
-  through BuilderBot without ever holding the keys.
+  its commits. Credentials stay out of its reach: it reaches a git host only
+  through `bb git` and signs through BuilderBot, without ever holding the
+  keys.
 - **Asking**: a session waiting on a permission prompt shows amber in the
   dock, on its project and in the bell.
 - A session may **read other projects** you allow, without changing them.
@@ -165,6 +166,14 @@ The machines that do the work ([machines.md](machines.md), [nodes.md](nodes.md))
   devices signed in as you.
 - **File access**: a project's files over FTPS, signing in with your own
   account.
+- **Your key store**: your agents' sign-ins and the git tokens you give a
+  project, sealed under a key of your account's. Profile lists what it
+  holds, and you can purge it at any time without a password.
+- **The install key**, made at install, seals what the controller keeps;
+  an administrator changes it from the Keys page, with no environment
+  variable to set.
+- **Maintenance mode** closes everyone else's sessions, after saying who has
+  one open and whether it is working.
 
 ## Running it
 

@@ -86,6 +86,14 @@ your projects mounted straight in, and to grow from one machine to several.
 - **People and permissions.** Accounts with roles, per-project access, and a
   dial for everything a session may do on its own (file bugs, add rules, run
   its container, sign a release): allowed, asked of a person, or refused.
+  Maintenance mode closes everyone else's sessions, after saying who has
+  one open and whether it is working.
+- **Secrets kept sealed.** A key made at install seals what the controller
+  keeps, and is changed from the Keys page rather than an environment
+  variable. Each person has a store of their own for their agents' sign-ins
+  and the git tokens they give a project, which they can purge at any time
+  without a password. A session reaches a git host only through `bb git`,
+  which hands over the credential, so the session never holds it.
 - **A tour of each page** the first time you open it, which you can skip
   once for every page and bring back from About or your Profile. About's
   Credits name the open-source work BuilderBot is built on.
