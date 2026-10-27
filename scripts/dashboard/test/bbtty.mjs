@@ -818,8 +818,11 @@ sleep 60
     // ...and the memory of its own tree allowed, which Claude Code keeps
     // outside the tree: a session asked the person to approve reading a
     // memory it was updating (6 Oct).
+    // The rest are the project's other repositories (BB_WORK_DIRS), which
+    // this fixture has: they were never seen while the scope failed to be
+    // written for a project of several (B380).
     const mem = scope.permissions.additionalDirectories || [];
-    ok(mem.length === 1 && mem[0].endsWith(`/.claude/projects/${wt.replace(/[^A-Za-z0-9]/g, '-')}/memory`),
+    ok(mem.filter(d => /\/\.claude\/projects\//.test(d)).length === 1 && mem[0].endsWith(`/.claude/projects/${wt.replace(/[^A-Za-z0-9]/g, '-')}/memory`),
        `...and the memory of its own tree is a directory it may use without asking (${mem.join(', ')})`);
     // The scope file also carries the work hook, which is how the finer half
     // of `bb work` gets anything to report.
