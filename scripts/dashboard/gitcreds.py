@@ -226,6 +226,16 @@ def helpers(project, uid=""):
     return out
 
 
+def git_c(project, uid=""):
+    """git's -c arguments that hand a command BuilderBot's credential for this
+    project, wherever it is kept (the account's own store, the project's),
+    whatever the tree's own config names: every git that reaches a remote
+    for BuilderBot goes through these or through helpers() written into a
+    config of its own (the operator, 27 Oct). [] where there is none."""
+    hs = helpers(project, uid)
+    return ["-c", "credential.helper=", *[x for h in hs for x in ("-c", f"credential.helper={h}")]] if hs else []
+
+
 def _kept(line):
     if seal and sealing and sealing():
         return SEALED + base64.b64encode(seal(line.encode())).decode()

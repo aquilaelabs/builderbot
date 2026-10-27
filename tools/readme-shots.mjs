@@ -59,6 +59,9 @@ const open = async ({ tour = false, ...opts }, view) => {
   // saved scheme over it (adoptTheme, B491).
   await ctx.addInitScript(who => { try { localStorage.setItem('bb.theme', 'default'); localStorage.setItem('bb.theme.who', who); } catch (e) {} }, USER);
   const page = await ctx.newPage();
+  // Every project the instance has, as the status read names them: what
+  // the Containers page drops when it is not shown (System's rows stay).
+  const known = new Set();
   // Nothing of the account's is changed by taking its picture.
   await page.route(/\/api\/(layout|cards|users|presence)(\?|$)/, r => r.request().method() === 'POST' ? r.abort() : r.continue());
   await page.route(/\/api\/status(\?|$)/, async r => {
@@ -66,7 +69,15 @@ const open = async ({ tour = false, ...opts }, view) => {
     // to read or fulfill: that is the page going, not a failure.
     try {
       const res = await r.fetch(), j = await res.json();
-      if (SHOW) j.projects = (j.projects || []).filter(p => SHOW.includes(p.name));
+      if (SHOW){
+        for (const p of j.projects || []) known.add(p.name);
+        for (const [k, r] of Object.entries(j.repos || {})) { known.add(k); known.add(r.name); }
+        j.projects = (j.projects || []).filter(p => SHOW.includes(p.name));
+        // The cards are the projects (repos), each with its repositories.
+        if (j.repos) j.repos = Object.fromEntries(Object.entries(j.repos)
+          .map(([k, r]) => [k, {...r, members: (r.members || []).filter(m => SHOW.includes(m))}])
+          .filter(([k, r]) => r.members.length || SHOW.includes(k) || SHOW.includes(r.name)));
+      }
       // The tour's picture is of a first visit, whatever the account has seen.
       if (tour) j.tour = { seen: [], off: false };
       // A lived-in instance's bell is long: two rows say what it is for.
@@ -93,6 +104,18 @@ const open = async ({ tour = false, ...opts }, view) => {
       if (!page.isClosed() && !/disposed|closed/i.test(String(e?.message || e))) throw e;
     }
   });
+  // The Containers page: the projects shown, and what belongs to none of
+  // the instance's projects (nginx, the scanners).
+  await page.route(/\/api\/docker(\?|$)/, async r => {
+    try {
+      const res = await r.fetch(), j = await res.json();
+      for (const k of ['instances', 'containers'])
+        if (SHOW && Array.isArray(j[k])) j[k] = j[k].filter(c => !known.has(c.project) || SHOW.includes(c.project));
+      await r.fulfill({ response: res, json: j });
+    } catch (e) {
+      if (!page.isClosed() && !/disposed|closed/i.test(String(e?.message || e))) throw e;
+    }
+  });
   await page.goto(BASE + '/login');
   await page.fill('#u', USER); await page.fill('#p', PASS);
   await Promise.all([page.waitForNavigation(), page.click('button[type=submit]')]);
@@ -112,10 +135,9 @@ const shell = async (page, tidy) => {
   const t = await page.$('.tab:has-text("sh: ")');
   if (t && await t.isVisible()) await t.click();
   await page.waitForTimeout(3500);
-  // The terminal's own input, inside its frame: a click on the frame's box
-  // does not reach xterm's textarea, so the keys went nowhere.
-  const term = page.frames().find(f => /\/term\//.test(f.url()));
-  const input = term && term.locator('.xterm-helper-textarea').first();
+  // The terminal's own input: drawn in the page itself (BuilderBot's own
+  // terminal), where a click on its box does not reach xterm's textarea.
+  const input = page.locator('.xterm-helper-textarea').first();
   if (input && tidy && await input.count()){
     await input.focus();
     await page.keyboard.type('clear', { delay: 20 }); await page.keyboard.press('Enter');
@@ -139,7 +161,9 @@ const shoot = async (page, file, { keep = false } = {}) => {
   console.log(file, 'theme:', await page.evaluate(() => document.documentElement.dataset.theme || '(default)'), 'addresses left: 0');
 };
 const desk = { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 };
-{ const { ctx, page } = await open({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+{ const { ctx, page } = await open({ viewport: { width: 1440, height: 1160 }, deviceScaleFactor: 1 });
+  // Its containers tile asks the nodes: the picture waits for their answer.
+  await page.waitForFunction(() => !document.body.textContent.includes('asking the nodes'), null, { timeout: 20000 }).catch(() => {});
   await page.waitForTimeout(3000); await shoot(page, 'dashboard.png'); await ctx.close(); }
 { const { ctx, page } = await open(desk);
   const name = process.env.README_SHOT_PROJECT || await page.evaluate(() => (state.projects || [])[0]?.name);

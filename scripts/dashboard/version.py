@@ -890,6 +890,11 @@ def release_plan(project, comp=""):
         return {"error": no_history(project)}
     name = f"{comp}-v{tgt}" if comp else f"v{tgt}"
     if _git(project, "rev-parse", "--verify", "--quiet", f"refs/tags/{name}") is not None:
+        # Tagged here and pushed by hand after the release's push failed:
+        # what is left is its page on the forge (B399).
+        on = _git(project, "rev-list", "-n", "1", "--abbrev-commit", name) or ""
+        if on and (sha.startswith(on) or on.startswith(sha)):
+            return {"tag": name, "sha": sha, "target": tgt, "finish": True}
         return {"error": f"{name} already exists: bump to the next number first"}
     if (_git(project, "status", "--porcelain") or "").strip():
         return {"error": "there are uncommitted changes in the project directory: commit or "
@@ -913,6 +918,27 @@ def no_upgrade_snapshot(project, comp, tgt):
         return ""
     return (f"{tgt} has no /config snapshot in {UPGRADE_SNAPSHOTS}/{tgt}/: run tools/upgrade-snapshot.py, "
             f"commit what it writes, then release")
+
+
+def _creds_c(project):
+    """BuilderBot's credential for this project as git's -c arguments
+    (gitcreds.git_c), never the tree's own config's."""
+    try:
+        import gitcreds                                     # noqa: PLC0415
+    except ImportError:
+        return []
+    return gitcreds.git_c(project) if gitcreds.STATE is not None else []
+
+
+def _remote_has_tag(project, name, env=None):
+    """Whether origin carries the tag `name`."""
+    try:
+        r = subprocess.run(["git", "-C", str(root(project)), *_creds_c(project), "ls-remote", "--tags", "origin",
+                            f"refs/tags/{name}"],
+                           capture_output=True, text=True, timeout=60, check=False, env={**os.environ, **(env or {})})
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return r.returncode == 0 and f"refs/tags/{name}" in r.stdout
 
 
 def release(project, comp="", env=None, may_push=True, push=True):
@@ -955,6 +981,15 @@ def release(project, comp="", env=None, may_push=True, push=True):
         # one of them is a problem.
         on = _git(project, "rev-list", "-n", "1", "--abbrev-commit", name) or "?"
         here = "this commit" if on and sha.startswith(on) or on.startswith(sha) else on
+        # ...on this commit and on the remote too, pushed by hand after the
+        # release's own push failed: the release is finished, its page on
+        # the forge made by the caller (B399), and nothing is tagged again.
+        if here == "this commit" and push and _remote_has_tag(project, name, env):
+            return {"ok": True, "tag": name, "sha": sha, "target": tgt, "pushed": True, "finished": True}
+        # ...or made here and never pushed: its push is what is left.
+        if here == "this commit" and push and may_push:
+            return _push_tag(project, name, {"ok": True, "tag": name, "sha": sha, "target": tgt,
+                                             "pushed": False, "finished": True}, env)
         return {"error": f"{name} already exists, on {here}. A published tag is not "
                          f"moved from here: bump to the next number, or move it "
                          f"yourself in a terminal if it was never pushed."}
@@ -1009,10 +1044,31 @@ def release(project, comp="", env=None, may_push=True, push=True):
         out["note"] = (f"{name} is on this commit here. This project has no push "
                        f"rights, so nothing was pushed.")
         return out
-    r = _git(project, "push", "origin", f"refs/tags/{name}", timeout=120, env=env)
-    if r is None:
-        out["note"] = (f"{name} is on this commit here, but the push failed; run "
-                       f"`git push origin {name}` when the remote is reachable.")
+    return _push_tag(project, name, out, env)
+
+
+def _push_tag(project, name, out, env=None):
+    """The tag pushed to origin with BuilderBot's own credential helpers, as
+    bb git push hands them, never the tree's own config, whose helper may
+    name a store git cannot read (a sealed token, one in a person's key
+    store). `out` gains pushed, or a note saying why not."""
+    cfg = _creds_c(project)
+    # git's own words when it fails (B398): "the push failed" alone left the
+    # person guessing between the network, the credential and the remote.
+    try:
+        r = subprocess.run(["git", "-C", str(root(project)), *cfg, "push", "origin", f"refs/tags/{name}"],
+                           capture_output=True, text=True, timeout=120, check=False,
+                           env={**os.environ, **(env or {})})
+        said = "" if r.returncode == 0 else (r.stderr or r.stdout or "").strip()
+        failed = r.returncode != 0
+    except (OSError, subprocess.SubprocessError) as e:
+        said, failed = str(e), True
+    if failed:
+        # Never a credential: a URL with one in it is cut to its host.
+        said = re.sub(r"(https?://)[^@/\s]*@", r"\1", said)[-400:]
+        out["note"] = (f"{name} is on this commit here, but the push failed"
+                       + (f": {said}" if said else "")
+                       + f"; push it with `git push origin {name}` once that is put right.")
         return out
     out["pushed"] = True
     return out

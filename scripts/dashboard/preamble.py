@@ -196,6 +196,46 @@ def identity_line(project):
             + (f" Its id is {pid}, which never changes." if pid else ""))
 
 
+# The project's Agents may dials as they stand (the operator, 27 Oct: a
+# session told only the defaults said a release would wait on the owner's
+# answer where the dial was auto), in the words bb settings and the
+# Permissions view use; the same record and defaults as settings-verbs.py.
+DIALS = (("Add to roadmap", "gate.roadmap", "auto"), ("File bugs", "gate.bugs", "auto"),
+         ("Add rules", "gate.rules", "auto"), ("Fill in build and test", "gate.settings", "auto"),
+         ("Add to the design", "gate.design", "auto"), ("Write the wiki", "gate.wiki", "auto"),
+         ("Run its container", "devbuild", "deny"), ("Make VMs", "makevms", "deny"),
+         ("Report BuilderBot bugs", "report", "auto"), ("Sign a build", "sign", "ask"),
+         ("Manage signing keys", "keys", "ask"), ("Tag and publish a release", "release", "ask"),
+         ("Use a lent PC", "pc", "deny"))
+# (project) -> what a session may move the version by (version.policy), set
+# where the version module is at hand.
+version_policy = None
+
+
+def dials_line(project):
+    """What this project's sessions may do without asking, each dial as it
+    stands: auto runs at once, ask waits for its person's answer on the bell,
+    deny is refused."""
+    if prefs_mod is None:
+        return ""
+    try:
+        rec = prefs_mod.get(project) or {}
+    except Exception:                                            # noqa: BLE001
+        return ""
+    gate = rec.get("gate") if isinstance(rec.get("gate"), dict) else {}
+    said = []
+    for label, key, dflt in DIALS:
+        v = gate.get(key[5:]) if key.startswith("gate.") else rec.get(key)
+        said.append(f"{label} {v or dflt}")
+    if version_policy:
+        try:
+            said.append(f"Move the version {version_policy(project)}")
+        except Exception:                                        # noqa: BLE001
+            said.append("Move the version unknown (bb version policy says)")
+    return ("This project's Agents may, as set now (auto runs at once, ask waits for its person's answer "
+            "on the bell, deny is refused; say which applies rather than the default): " + "; ".join(said) + ".")
+
+
 def reads_line(project):
     reads = []
     if prefs_mod is not None:
@@ -376,7 +416,7 @@ def briefing(project, gates=True):
             if not line.strip() and out and not out[-1].strip():
                 continue
             if line.strip() in (_READS, _DESIGN):
-                said = "\n\n".join(x for x in (identity_line(project), reads_line(project),
+                said = "\n\n".join(x for x in (identity_line(project), dials_line(project), reads_line(project),
                                                 sees_line(project), packs_line(project)) if x) \
                     if line.strip() == _READS else design_line(project)
                 if said:

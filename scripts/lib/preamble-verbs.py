@@ -46,6 +46,15 @@ preamble.repos_fn = lambda p: ((registry.label(k), registry.pid(k), [(m, registr
 preamble.project_fn = lambda p: (registry.label(k), registry.pid(k)) if (k := repos.project_of(p)) else None
 
 
+def _version_policy(p):
+    import version
+    version.configure(workspace=os.environ.get("WORKSPACE", "/workspace"), state=state, write_json=lambda *a: None)
+    return version.policy(p)
+
+
+preamble.version_policy = _version_policy
+
+
 def _packs():
     """The tool packs added here (R77), from the controller's own file."""
     try:

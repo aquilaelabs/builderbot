@@ -105,6 +105,17 @@ class Repos(unittest.TestCase):
         self.assertEqual((repos.members(keys["app"]), repos.project_of("server")), (["app"], shop))
         self.assertEqual(repos.place(), [], "a second time, nothing to place")
 
+    def test_a_repository_added_to_a_project_is_in_it_before_a_status_read_can_place_it(self):
+        # B402: claimed alone, a status read during git init gave it a
+        # project of its own, and the one it was added to refused it.
+        import projects
+        shop = self.project("Shop", "app")
+        (self.ws / "cart").mkdir()
+        projects._claim("cart", "cart", shop)
+        self.assertEqual(repos.place({"cart"}), [], "no project made for it")
+        self.assertEqual(repos.project_of("cart"), shop)
+        self.assertTrue(repos.add(shop, "cart").get("ok"), "the dialog's own add after it is a no-op")
+
     def test_one_put_back_by_hand_goes_back_into_its_project(self):
         shop = self.project("Shop", "app", "server")
         repos.detach("app")

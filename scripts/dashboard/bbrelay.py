@@ -271,6 +271,11 @@ def run(me, req, project):
                     return {"error": f"this project's git policy does not let a session "
                                      f"push to {main}; push your branch and say so, "
                                      "and the operator merges from the Git view"}, 403
+            elif dest not in local and (dest.startswith("refs/tags/")
+                                        or dest in gitrelay.tree_tags(project, cwd)):
+                return {"error": f"{dest.removeprefix('refs/tags/')} is a tag, and a tag is a "
+                                 "release's name here: bb version release pushes it, and "
+                                 "releasing again finishes one whose push failed"}, 403
             elif dest not in local:
                 return {"error": f"this project's git policy lets a session push its own "
                                  f"branches, and there is no {dest} in this tree: that "

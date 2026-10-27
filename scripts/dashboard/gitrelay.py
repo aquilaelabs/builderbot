@@ -450,6 +450,14 @@ def tree_refs(project, cwd):
     return here, next((b for b in ("main", "master") if b in local), "main"), local
 
 
+def tree_tags(project, cwd):
+    """The tags the tree a relayed verb would run in holds: a push naming one
+    is a tag's, and is refused as one rather than as a branch the tree lacks
+    (B397)."""
+    common, _ = _tree(project, cwd)
+    return {r[len("refs/tags/"):] for r in refs(common) if r.startswith("refs/tags/")}
+
+
 def push_plan(args, head):
     """What a push would WRITE on the remote, read off its arguments.
 

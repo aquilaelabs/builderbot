@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.8.1: 2026-10-27
+
+### Changed
+
+- A session reaches a remote only through bb git: git's own push, fetch, pull, ls-remote and remote update are refused in a session, so the project's credential, git policy and scan for secrets cannot be gone round with a token of its own (5a34a53)
+
+### Fixed
+
+- A release whose tag could not be pushed says why, in git's own words, rather than only that the push failed (f36411f)
+- A release whose tag was pushed by hand after its own push failed can be finished: releasing again makes its page on GitHub rather than refusing the tag that exists (256ad29)
+- A project's push or fetch outside a session (a release's tag, a check of a repository's address) is handed BuilderBot's own credential wherever it is kept, and a checkout left pointing at git's own credential store from an earlier release is moved off it at start: those went with no credential once tokens were sealed (37fd44e)
+- A repository made with Add repository on a project's card stays in that project: it could land in a new project of its own when the page refreshed while it was being made (0eaf6d2)
+- bb git push of a tag says it is a release's, pushed by bb version release, rather than that the tree has no such name (0eaf6d2)
+
 ## 0.8.0: 2026-10-27
 
 ### Added
