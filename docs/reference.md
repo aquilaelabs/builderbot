@@ -99,15 +99,19 @@ opens with the old key the next time its person opens a terminal on that
 node, and is sealed again under the new one; the old key is kept until then.
 
 That key also seals the account's own **key store**, on **Profile, Your key
-store**: a forge token the person links there (GitHub's or another forge's,
-checked with the forge for its login where it has an API) is kept under
-their key, never shown again and never downloaded. Their own git work uses
-it ahead of a project's token: a `bb git` push or pull from their session,
-and their presses in the Git view (one the view hands to a background job
-uses the project's). A project's settings list what the person's store
-keeps for its remote's host, with **Use for this project**, which links the
-project's git access to that token rather than one of its own; CI watching,
-releases and anybody without a token of their own then use it. **Purge**
+store**: a token the person gives a repository (an access token in its
+settings, or one given when cloning it or linking it to a host) is kept
+under their key, not the install's, and the project is linked to it; the
+store holds any number for one host, each listed with the projects that use
+it, never shown again and never downloaded. Their own git work uses it
+ahead of a project's: a `bb git` push or pull from their session, and their
+presses in the Git view (one the view hands to a background job uses the
+project's). A project's settings list the person's tokens for its remote's
+host, with **Use for this project**; CI watching, releases and anybody
+without a token of their own then use the one the project is linked to. A
+token a project kept before goes into the project owner's store at the
+first start that can seal it, BuilderBot's owner taking those of a project
+with none. **Purge**
 empties the store after a plain confirmation: the key, every forge linked,
 and the link of every project that used it, each of which then says on the
 bell that its git access went with that account. Deleting the account does

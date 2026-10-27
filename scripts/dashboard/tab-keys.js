@@ -182,12 +182,14 @@ function wireKeys(root){
 // ---- an account's own key store, on its Profile ---------------------------
 // What is kept under the account's own key (R154): the key, made for it and
 // kept by the controller, which its coding agents' sign-ins on the nodes are
-// sealed with; each forge token it linked, which its own git work uses
-// before a project's and which a project may be linked to; and the projects
-// linked to it. Never shown and never downloaded (the operator, 27 Oct):
-// Change makes another key, Remove takes one forge out, and Purge empties
-// the store after a plain confirmation, no password or code asked, since a
-// person who forgot theirs, or fears it stolen, must still be able to.
+// sealed with; and each token it gave a repository (a project's settings, a
+// clone, a link to a host), kept here and not in the install's store, with
+// the projects that use it (the operator, 27 Oct). Nothing is added here:
+// a token arrives with the repository it was given for. Never shown and
+// never downloaded: Change makes another key, Remove takes out a token no
+// project uses, and Purge empties the store after a plain confirmation, no
+// password or code asked, since a person who forgot theirs, or fears it
+// stolen, must still be able to.
 let keyMine = null;
 let keyMineRev = 0;
 let keyMineAsked = false;
@@ -199,7 +201,7 @@ async function loadKeyMine(){
   drawPanes();
 }
 
-const KS_FORGE_COLS = [{label: "Forge"}, {label: "Signed in as", w: "minmax(0,.8fr)"}, {label: "Linked", w: "7rem"}, {act: true, w: "6.5rem"}];
+const KS_FORGE_COLS = [{label: "Token"}, {label: "Signed in as", w: "minmax(0,.7fr)"}, {label: "Used by"}, {act: true, w: "6.5rem"}];
 
 function keyMineSection(){
   if (keyMine === null){ if (!keyMineAsked) loadKeyMine(); return ""; }
@@ -207,22 +209,16 @@ function keyMineSection(){
   if (m.error || !m.sealing) return "";
   const forgesHtml = (m.forges || []).length
     ? tblWrap(KS_FORGE_COLS, m.forges.map(f => `<div class="row">${tblLine(KS_FORGE_COLS, [
-        esc(f.scheme === "http" ? "http://" + f.host : f.host), esc(f.login || "not said"), esc(KEYS_WHEN(f.at)),
-        `<button type="button" data-ksunlink="${esc(f.host)}">Remove</button>`])}</div>`).join(""), "ksforges")
-    : `<div class="hint">Nothing linked yet. A token linked here is used for your own git work ahead of a project's, and a project can be linked to it from its settings.</div>`;
-  const projects = (m.projects || []).length
-    ? `<div class="sub">Linked to it: ${(m.projects || []).map(p => esc(projLabel(p))).join(", ")}</div>` : "";
+        esc(f.scheme === "http" ? "http://" + f.host : f.host), esc(f.login || "not said"),
+        esc((f.projects || []).join(", ") || "nothing now"),
+        (f.projects || []).length ? "" : `<button type="button" data-ksunlink="${esc(f.id)}">Remove</button>`])}</div>`).join(""), "ksforges")
+    : `<div class="hint">No token yet. One you give a project's repository, in its settings or when you clone or link it, is kept here under your key.</div>`;
   const body = `${m.has ? factGrid([["Key", m.fingerprint, {cls: "keyfp"}], ["Made", KEYS_WHEN(m.made)],
       ["Changed", m.changed && m.changed !== m.made ? KEYS_WHEN(m.changed) : ""]]) : ""}${m.previous
       ? `<div class="notice">The key before this one is kept while ${m.previous_on_nodes} of your sign-in${
         m.previous_on_nodes === 1 ? "" : "s"} on the nodes ${m.previous_on_nodes === 1 ? "is" : "are"} still sealed under it.</div>` : ""}
-    ${forgesHtml}${projects}
-    <div class="setrow col ctlrow ksadd">
-      ${lbl("ksToken", "Link a forge", "its host (http://host for a forge on plain http) and a personal access token; checked with the forge, then kept under your key")}
-      <div class="ksaddrow"><input id="ksHost" value="github.com" spellcheck="false" autocomplete="off" aria-label="forge host">
-        <input id="ksToken" type="password" autocomplete="off" spellcheck="false" placeholder="token" aria-label="token"></div>
-    </div>
-    <div class="actbar"><button type="button" id="bKsLink">Link</button>${m.has ? `<button type="button" id="bKeyMine">Change key</button>` : ""}
+    ${forgesHtml}
+    <div class="actbar">${m.has ? `<button type="button" id="bKeyMine">Change key</button>` : ""}
       <button type="button" class="danger" id="bKsPurge">Purge</button></div>`;
   return docSection("profile", "mykey", "Your key store", m.has ? m.fingerprint : "", body);
 }
@@ -255,23 +251,15 @@ function wireKeyMine(root){
     if (!j.error) notify("your key changed");
     loadKeyMine();
   });
-  on("bKsLink", async b => {
-    const host = root.querySelector("#ksHost")?.value.trim() || "", token = root.querySelector("#ksToken")?.value.trim() || "";
-    if (!token) return notify("paste a token to link", true);
-    busy(b, "Linking");
-    const j = await postKeys({action: "link-forge", host, token});
-    if (!j.error) notify(`${j.host} linked${j.login ? " as " + j.login : ""}`);
-    loadKeyMine();
-  });
   on("bKsPurge", async b => {
     busy(b, "Purging");
     await keyStorePurge();
     loadKeyMine();
   });
   root.querySelectorAll("[data-ksunlink]").forEach(b => b.onclick = async () => {
-    if (!await askYes(`Remove your ${b.dataset.ksunlink} token from your key store?`, {verb: "Remove", danger: true})) return;
+    if (!await askYes("Remove this token from your key store?", {verb: "Remove", danger: true})) return;
     busy(b, "Removing");
-    await postKeys({action: "unlink-forge", host: b.dataset.ksunlink});
+    await postKeys({action: "unlink-forge", id: b.dataset.ksunlink});
     loadKeyMine();
   });
 }

@@ -6,7 +6,7 @@
 // what uses it. Profile's Your key changes the account's own key. A
 // session is refused. On a controller of its own, from a fresh state with a
 // git token kept plain before its first start, beside the harness's.
-import { launch, newPage, ok, done, DIR, patience, sleep } from './lib.mjs';
+import { launch, newPage, ok, done, DIR, patience, sleep, MEMBER } from './lib.mjs';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, rmSync, openSync, writeFileSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -29,6 +29,13 @@ const FIRST = 'f'.repeat(64);
 writeFileSync(KEYF, FIRST, { mode: 0o600 });
 const TOKEN = 'https://x-access-token:plaintoken123@github.com';
 writeFileSync(`${w}/config/gitcreds/web`, TOKEN + '\n', { mode: 0o600 });
+// Two repositories: web, whose token was kept before tokens were a person's,
+// and app, on a forge served over plain http, which is given one here.
+for (const [n, url] of [['web', 'https://github.com/o/web.git'], ['app', 'http://lan.example.test:3000/o/app.git']]){
+  mkdirSync(`${w}/workspace/${n}`, { recursive: true });
+  execFileSync('git', ['init', '-q', `${w}/workspace/${n}`]);
+  execFileSync('git', ['-C', `${w}/workspace/${n}`, 'remote', 'add', 'origin', url]);
+}
 const env = { ...process.env, DASHBOARD_STATE: `${w}/config`, WORKSPACE: `${w}/workspace`,
               BB_INSTALL_KEY_DIR: `${w}/secrets/install-key`, BB_INSTALL_KEY_IN: 'secrets',
               BB_SIGNING_SECRET_FILE: KEYF, BB_INSTALL_KEY_PREVIOUS_FILE: `${w}/secrets/install-key/key-previous` };
@@ -122,31 +129,52 @@ print(gitcreds.read_line("web"))`], { env, encoding: 'utf8' }).trim();
   ok(prof.fp === mine0.fingerprint && prof.change, `Profile's Your key shows it with Change (${JSON.stringify(prof)})`);
   ok((await keys({ action: 'change-mine', key: 'zz' })).error, '...and a pasted key that is not 64 hex characters is refused');
 
-  // ---- Profile: the account's key store (a forge with no API to ask, so
-  // the suite asks nothing of the network) -------------------------------------
+  // ---- Profile: the account's key store -----------------------------------------
+  // A token kept as web's own before tokens were a person's went into its
+  // owner's store at the start (0011), web linked to it; one given in app's
+  // settings goes into the giver's (the operator, 27 Oct). Nothing is linked
+  // on Profile itself.
+  let mine1 = await keys({ action: 'mine' });
+  const webTok = (mine1.forges || []).find(f => f.host === 'github.com');
+  ok(webTok && JSON.stringify(webTok.projects) === '["web"]',
+     `the token web kept from before is in its owner's store, web using it (${JSON.stringify(mine1.forges)})`);
+  // The owner takes the projects on, as a fresh install's owner does on the
+  // Users page: a role on each (lib's member(), on this controller).
+  const rl = await (await fetch(base + '/api/roles', { headers: H })).json();
+  await fetch(base + '/api/roles', { method: 'POST', headers: H,
+    body: JSON.stringify({ action: 'set', name: 'keyrole', scope: 'projects', perms: { ...MEMBER, gitauth: 'write', settings: 'write' }, note: 'the suite' }) });
+  await fetch(base + '/api/roles', { method: 'POST', headers: H, body: JSON.stringify({ action: 'assign', name: OWNER.username,
+    project_roles: Object.fromEntries((rl.projects || []).map(p => [p, ['keyrole']])) }) });
+  const gave = await (await fetch(base + '/api/rename', { method: 'POST', headers: H,
+    body: JSON.stringify({ name: 'app', token: 'apptoken0123456789' }) })).json();
+  mine1 = await keys({ action: 'mine' });
+  const appTok = (mine1.forges || []).find(f => f.host === 'lan.example.test:3000');
+  ok(!gave.error && appTok?.scheme === 'http' && JSON.stringify(appTok.projects) === '["app"]',
+     `a token given in a project's settings is the giver's, with its scheme (${gave.error || JSON.stringify(appTok)})`);
+  ok(!JSON.stringify(mine1).includes('apptoken0123456789') && !JSON.stringify(mine1).includes('plaintoken123'),
+     '...and nothing the page reads carries a token');
+  ok(!readFileSync(`${w}/config/account-secrets.json`, 'utf8').includes('apptoken0123456789'), '...kept sealed on disk');
+  const kept2 = (await keys({ action: 'status' })).kept || [];
+  ok(kept2.some(r => r.kind === 'git' && r.name === 'app' && /key store/.test(r.uses)), `the Keys page says app's token is in a person's store`);
   // Profile shows one section at a time beside its list: Your key store picked.
+  await page.evaluate(() => loadKeyMine());
   await page.evaluate(() => [...document.querySelectorAll('.doc.on .snav [role="tab"], .doc.on .snav button')]
     .find(b => /Your key store/.test(b.textContent))?.click());
-  await page.waitForSelector('#ksHost', { state: 'visible', timeout: 10000 });
-  await page.fill('#ksHost', 'git.example.test');
-  await page.fill('#ksToken', 'storetoken0123456789');
-  await page.click('#bKsLink');
-  await page.waitForFunction(() => document.querySelector('.doc.on .ksforges'), null, { timeout: 15000 });
-  const store = await page.evaluate(() => ({ rows: [...document.querySelectorAll('.doc.on .ksforges .tline')].map(l => l.querySelector('.lead')?.textContent.trim()),
-    show: [...document.querySelectorAll('.doc.on [data-sect="profile:mykey"] button')].map(b => b.textContent.trim()) }));
-  ok(store.rows.includes('git.example.test'), `Link puts the forge in Your key store (${store.rows.join(', ')})`);
-  ok(!store.show.some(w => /show|download|backup/i.test(w)), `...which has no Show, Download or backup (${store.show.join(', ')})`);
-  const mine1 = await keys({ action: 'mine' });
-  ok(!JSON.stringify(mine1).includes('storetoken0123456789'), '...and nothing the page reads carries the token');
-  ok(!readFileSync(`${w}/config/account-secrets.json`, 'utf8').includes('storetoken0123456789'), '...kept sealed on disk');
-  const kept2 = (await keys({ action: 'status' })).kept || [];
-  ok(kept2.some(r => r.kind === 'forge' && r.name.endsWith('git.example.test')), 'the Keys page lists it, by name only');
-  await page.click('[data-ksunlink="git.example.test"]');
-  await page.waitForFunction(() => !document.querySelector('.doc.on .ksforges'), null, { timeout: 15000 });
-  ok(!(await keys({ action: 'mine' })).forges.length, 'Remove takes it out');
-  await keys({ action: 'link-forge', host: 'git.example.test', token: 'storetoken0123456789' });
-  await page.evaluate(() => loadKeyMine());
-  await page.waitForFunction(() => document.querySelector('.doc.on .ksforges'), null, { timeout: 15000 });
+  await page.waitForFunction(() => document.querySelectorAll('.doc.on .ksforges .tline').length === 2, null, { timeout: 15000 });
+  const store = await page.evaluate(() => ({ rows: [...document.querySelectorAll('.doc.on .ksforges .tline')].map(l => l.textContent.replace(/\s+/g, ' ').trim()),
+    buttons: [...document.querySelectorAll('.doc.on [data-sect="profile:mykey"] button')].map(b => b.textContent.trim()),
+    form: !!document.querySelector('#ksHost, #ksToken') }));
+  ok(store.rows.some(r => /github\.com.*web/.test(r)) && store.rows.some(r => /http:\/\/lan\.example\.test:3000.*app/.test(r)),
+     `Your key store lists each token with what uses it (${store.rows.join(' | ')})`);
+  ok(!store.form && !store.buttons.some(w => /show|download|backup|link/i.test(w)),
+     `...with no form to add one and no Show, Download or backup (${store.buttons.join(', ')})`);
+  ok((await keys({ action: 'unlink-forge', id: appTok.id })).error, '...and a token a project uses is not removed from under it');
+  // The project dialog offers a token of the giver's for its own host only.
+  const auth = await (await fetch(base + '/api/project-auth', { method: 'POST', headers: H, body: JSON.stringify({ name: 'web' }) })).json();
+  ok(auth.linked?.id === webTok.id && auth.linked?.host === 'github.com' && auth.linked?.mine, `web's settings say whose store its token is in (${JSON.stringify(auth.linked)})`);
+  const wrong = await (await fetch(base + '/api/rename', { method: 'POST', headers: H,
+    body: JSON.stringify({ name: 'web', link_account: appTok.id }) })).json();
+  ok(/not a github\.com token/.test(wrong.error || ''), `...and refuses a token for another host (${wrong.error})`);
   await page.click('#bKsPurge');
   let purged = {};
   for (let i = 0; i < patience(40); i++){
@@ -156,10 +184,9 @@ print(gitcreds.read_line("web"))`], { env, encoding: 'utf8' }).trim();
   }
   ok(!purged.forges.length && !purged.has, `Purge empties it after a plain confirmation, no password or code asked (${JSON.stringify(purged)})`);
   ok(page.dialogs.some(t => /Purge your key store/.test(t)), '...the confirmation it asked');
-  await keys({ action: 'link-forge', host: 'git.example.test', token: 'storetoken0123456789' });
-  const plain = await keys({ action: 'link-forge', host: 'http://lan.example.test:3000', token: 'storetoken0123456789' });
-  const fg = ((await keys({ action: 'mine' })).forges || []).find(f => f.host === 'lan.example.test:3000');
-  ok(plain.ok && fg?.scheme === 'http', `a forge on plain http is linked with its scheme, which git matches (${JSON.stringify(fg)})`);
+  const gone = (await (await fetch(base + '/api/project-auth', { method: 'POST', headers: H, body: JSON.stringify({ name: 'app' }) })).json());
+  ok(!gone.token, `...and the projects that used it have no token now (${JSON.stringify({ token: gone.token, linked: gone.linked })})`);
+  await fetch(base + '/api/rename', { method: 'POST', headers: H, body: JSON.stringify({ name: 'app', token: 'apptoken0123456789' }) });
   const adm = await keys({ action: 'purge-for', account: OWNER.username });
   ok(adm.ok && !(await keys({ action: 'mine' })).forges.length, 'an administrator purges an account\'s key store from its name');
 
@@ -167,7 +194,7 @@ print(gitcreds.read_line("web"))`], { env, encoding: 'utf8' }).trim();
   const phone = await newPage(browser, { httpCredentials: OWNER, extraHTTPHeaders: { Authorization: AUTH },
                                          viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await phone.goto(base + '/#/controller/keys');
-  await phone.waitForSelector('.doc.on .keystab .keystbl', { state: 'attached', timeout: 20000 });
+  await phone.waitForSelector('.doc.on .keystab details[data-sect="keys:kept"]', { state: 'attached', timeout: 20000 });
   const wide = await phone.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   ok(wide <= 0, `the page fits a phone's width (${wide}px over)`);
   await done(browser);

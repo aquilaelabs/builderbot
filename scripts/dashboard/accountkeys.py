@@ -12,11 +12,14 @@ time its person opens a terminal there, and seals it again under the new.
   STATE/account-keys.json  {uid: {"key": sealed, "prev": sealed, "made": t,
                             "changed": t}}, each key 32 bytes sealed under
                             the install key; nothing here opens without it
-  STATE/account-secrets.json  {uid: {"forges": {host: {"sealed", "login",
-                            "scheme", "at"}}}}: the account's key store, each
-                            forge token it linked sealed under its own key
-                            (the operator, 27 Oct) and sealed again when that
-                            key changes; its git work uses it (gitcreds)
+  STATE/account-secrets.json  {uid: {"forges": {id: {"host", "sealed",
+                            "login", "scheme", "at"}}}}: the account's key
+                            store, each forge token it gave a repository
+                            sealed under its own key (the operator, 27 Oct),
+                            any number for one host (a fine-grained token is
+                            often one repository's), sealed again when that
+                            key changes; a project links to one by its id and
+                            its git work uses it (gitcreds)
 """
 import base64
 import contextlib
@@ -209,51 +212,72 @@ def forget(uid):
                 statefile.write_json(_secrets_file(), sd, mode=0o600)
 
 
-# ---- the account's key store: the forges it linked -----------------------
+# ---- the account's key store: the forge tokens it gave -------------------
+# An entry's id names it for good; one written before ids (keyed by its
+# host) keeps its host as its id.
+
+def _entries(uid, sd=None):
+    fs = ((sd if sd is not None else _load_secrets()).get(uid) or {}).get("forges") or {}
+    return {fid: dict(f, host=f.get("host") or fid) for fid, f in fs.items() if isinstance(f, dict)}
+
 
 def forges_of(uid):
-    """What the account linked, by host, with no token: [{host, login,
-    scheme, at}]."""
-    fs = (_load_secrets().get(uid) or {}).get("forges") or {}
-    return [{"host": h, "login": f.get("login", ""), "scheme": f.get("scheme", "https"), "at": f.get("at", 0)}
-            for h, f in sorted(fs.items()) if isinstance(f, dict)]
+    """What the account keeps, newest first, with no token: [{id, host,
+    login, scheme, at}]."""
+    rows = [{"id": fid, "host": f["host"], "login": f.get("login", ""), "scheme": f.get("scheme", "https"),
+             "at": f.get("at", 0)} for fid, f in _entries(uid).items()]
+    return sorted(rows, key=lambda r: -int(r["at"] or 0))
 
 
-def link_forge(uid, host, line, login):
-    """A forge token the account linked, as git's credential line
-    (scheme://user:token@host), sealed under the account's own key."""
-    k = key_of(uid)
-    if not k:
-        return {"error": "this install has no key, so nothing can be kept in an account's key store"}, 409
-    scheme = line.split("://", 1)[0]
-    with _lock:
-        sd = _load_secrets()
-        r = sd.setdefault(uid, {})
-        r.setdefault("forges", {})[host.lower()] = {
-            "sealed": base64.b64encode(signing.seal(line.encode(), k)).decode(),
-            "login": login, "scheme": scheme, "at": int(time.time())}
-        statefile.write_json(_secrets_file(), sd, mode=0o600)
-    return {"ok": True, "host": host.lower(), "login": login}, 200
-
-
-def unlink_forge(uid, host):
-    with _lock:
-        sd = _load_secrets()
-        fs = (sd.get(uid) or {}).get("forges") or {}
-        if fs.pop(str(host).lower(), None) is None:
-            return False
-        statefile.write_json(_secrets_file(), sd, mode=0o600)
-    return True
-
-
-def forge_line(uid, host):
-    """The account's credential line for this host, opened, or ""."""
-    f = ((_load_secrets().get(uid) or {}).get("forges") or {}).get(str(host or "").lower())
-    k = key_of(uid, make=False) if f else None
-    if not k:
-        return ""
+def _open_entry(k, f):
     try:
         return signing.open_with(k, base64.b64decode(f["sealed"])).decode()
     except (signing.Locked, ValueError, KeyError):
         return ""
 
+
+def link_forge(uid, host, line, login):
+    """A forge token the account gave, as git's credential line
+    (scheme://user:token@host), sealed under the account's own key; the same
+    token given twice is one entry. ({ok, id, host, login}, status)."""
+    k = key_of(uid)
+    if not k:
+        return {"error": "this install has no key, so nothing can be kept in an account's key store"}, 409
+    host = str(host).lower()
+    with _lock:
+        sd = _load_secrets()
+        for fid, f in _entries(uid, sd).items():
+            if f["host"] == host and _open_entry(k, f) == line:
+                return {"ok": True, "id": fid, "host": host, "login": f.get("login", "")}, 200
+        fid = secrets.token_hex(6)
+        sd.setdefault(uid, {}).setdefault("forges", {})[fid] = {
+            "host": host, "sealed": base64.b64encode(signing.seal(line.encode(), k)).decode(),
+            "login": login, "scheme": line.split("://", 1)[0], "at": int(time.time())}
+        statefile.write_json(_secrets_file(), sd, mode=0o600)
+    return {"ok": True, "id": fid, "host": host, "login": login}, 200
+
+
+def unlink_forge(uid, fid):
+    with _lock:
+        sd = _load_secrets()
+        fs = (sd.get(uid) or {}).get("forges") or {}
+        if fs.pop(str(fid), None) is None:
+            return False
+        statefile.write_json(_secrets_file(), sd, mode=0o600)
+    return True
+
+
+def forge_line(uid, fid="", host=""):
+    """The account's credential line, opened: the entry `fid`, or its newest
+    for `host`; "" for none."""
+    es = _entries(uid)
+    f = es.get(str(fid)) if fid else next((e for e in sorted(es.values(), key=lambda e: -int(e.get("at") or 0))
+                                           if e["host"] == str(host or "").lower()), None)
+    k = key_of(uid, make=False) if f else None
+    return _open_entry(k, f) if k else ""
+
+
+def forge_of(uid, fid):
+    """One entry, with no token, or None."""
+    f = _entries(uid).get(str(fid))
+    return {"id": str(fid), "host": f["host"], "login": f.get("login", "")} if f else None

@@ -4101,6 +4101,13 @@ installkey.configure(passes=(signing.seal_all, gitcreds.seal_all, settings.seal_
                      nodes_previous=lambda: tokenkeys.sealed_under(_node_seals(), signing.PREVIOUS)
                      if signing.PREVIOUS else 0)
 installkey.note_made()
+# A project's token from before tokens were a person's: into its owner's key
+# store, the project linked to it (0011, the operator, 27 Oct).
+try:
+    if (_moved := gitcreds.adopt(membership.owner_of)):
+        print(f"dashboard: {_moved} project token(s) moved into their owners' key stores", flush=True)
+except OSError as e:
+    print(f"dashboard: project tokens left as they were: {e}", flush=True)
 
 # An account's conversations with Claude as a download: transcripts.py.
 import transcripts                                               # noqa: E402
@@ -9156,16 +9163,16 @@ class Handler(BaseHTTPRequestHandler):
             # The account's key store as Profile lists it (R154): its key and
             # each forge it linked, with the projects linked to it; never a
             # value, and nothing here hands one out.
-            return self._json({**accountkeys.status(uid), "forges": accountkeys.forges_of(uid),
-                               "projects": gitcreds.linked_projects(uid) if uid else []})
-        if act == "link-forge":
-            return self._json(*self._keys_link_forge(uid, field(req, "host"), str(req.get("token") or "")))
+            # Each token with the projects linked to it, by their shown names.
+            forges = [dict(f, projects=[registry.label(p) for p in gitcreds.linked_projects(uid, f["id"])])
+                      for f in accountkeys.forges_of(uid)] if uid else []
+            return self._json({**accountkeys.status(uid), "forges": forges})
         if act == "unlink-forge":
-            host = field(req, "host").lower()
-            if any(gitcreds.linked_to(p)[1] == host for p in gitcreds.linked_projects(uid)):
-                return self._json({"error": f"a project is linked to your {host} token: give it a token of its own "
-                                            "or link another account's first, or purge your key store"}, 409)
-            return self._json({"ok": accountkeys.unlink_forge(uid, host)})
+            fid = field(req, "id")
+            if gitcreds.linked_projects(uid, fid):
+                return self._json({"error": "a project uses this token: give it another in its settings first, "
+                                            "or purge your key store"}, 409)
+            return self._json({"ok": accountkeys.unlink_forge(uid, fid)})
         if act == "purge":
             return self._json(self._keys_purge(uid, who.get("name") or uid))
         if act == "change-mine":
@@ -9199,32 +9206,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(body, code)
         return self._json({"error": f"unknown action {act!r}"}, 400)
 
-    def _keys_link_forge(self, uid, host, token):
-        """A forge token linked into the account's own key store, checked
-        with the forge first where it has an API to ask (R154)."""
-        host = (host or "").strip().lower().rstrip("/")
-        token = token.strip()
-        # A forge on somebody's own LAN may be plain http, and git matches
-        # the scheme as well as the host, so it is named with it.
-        scheme = "http" if host.startswith("http://") else "https"
-        host = host.split("://", 1)[-1]
-        if not uid:
-            return {"error": "only a person keeps a key store"}, 403
-        if not re.fullmatch(r"[a-z0-9.-]+(:\d+)?", host):
-            return {"error": "name the forge's host, as in github.com"}, 400
-        forge = forges.forge_of(host)
-        bad = forges.token_ok(forge, token)
-        if bad:
-            return {"error": bad}, 400
-        login = ""
-        if forges.can_create(forge):
-            login = forges.whoami(forge, host, token, scheme)
-            if not login:
-                return {"error": f"{forge['name']} does not accept that token"}, 400
-        q = lambda x: urllib.parse.quote(x, safe="")  # noqa: E731
-        line = f"{scheme}://{q(login or forge['user'])}:{q(token)}@{host}"
-        return accountkeys.link_forge(uid, host, line, login)
-
     def _keys_purge(self, uid, name):
         """An account's key store emptied (R154): its key and what it linked
         gone, and the projects linked to it unlinked; its sign-ins on the
@@ -9246,8 +9227,10 @@ class Handler(BaseHTTPRequestHandler):
             if lk_uid:
                 # Linked to a person's own token (R154): kept in their store,
                 # not this one.
+                fg = accountkeys.forge_of(lk_uid, lk_host) or {}
                 rows.append({"kind": "git", "name": f.name, "sealed": True, "go": ["project", f.name],
-                             "uses": f"linked to {names.get(lk_uid) or 'an account'}'s {lk_host} token"})
+                             "uses": f"kept in {names.get(lk_uid) or 'an account'}'s key store"
+                                     + (f", their {fg['host']} token" if fg.get("host") else "")})
                 continue
             rows.append({"kind": "git", "name": f.name, "sealed": raw.startswith(gitcreds.SEALED),
                          "uses": "git push and pull for the project's repositories", "go": ["project", f.name]})
@@ -9270,7 +9253,9 @@ class Handler(BaseHTTPRequestHandler):
             rows.append({"kind": "account", "name": names.get(uid) or uid, "sealed": True,
                          "uses": "the key this account's own key store is sealed with", "go": ["user", names.get(uid) or uid]})
             for fg in accountkeys.forges_of(uid):
-                rows.append({"kind": "forge", "name": f"{names.get(uid) or uid}: {fg['host']}", "sealed": True,
+                rows.append({"kind": "forge", "name": f"{names.get(uid) or uid}: {fg['host']}"
+                             + (f" ({', '.join(registry.label(p) for p in gitcreds.linked_projects(uid, fg['id']))})"
+                                if gitcreds.linked_projects(uid, fg["id"]) else ""), "sealed": True,
                              "uses": f"their own git work{', as ' + fg['login'] if fg['login'] else ''}, "
                                      "kept under their key", "go": ["user", names.get(uid) or uid]})
         for n in nodes.node_list(all=True):
@@ -9694,7 +9679,7 @@ class Handler(BaseHTTPRequestHandler):
             if (bad := projects.locked_out(into, users.uid_of(me))):
                 return self._json(bad, 403)
             return self._json(*projects.create_from_dialog(
-                req, env=users.git_env(me, projects.sanitize_name(field(req, "name"))),
+                {**req, "_uid": users.uid_of(me)}, env=users.git_env(me, projects.sanitize_name(field(req, "name"))),
                 account=me["name"] if me and users.uid_of(me) else "", may_node=lambda name: False))
         # On the nodes the account's New projects role names, when it names
         # any (R152, the operator, 7 Oct): a project made elsewhere, or on no
@@ -9706,8 +9691,10 @@ class Handler(BaseHTTPRequestHandler):
             names = [n["name"] for n in ([] if NODES_OK else nodes.node_list()) if n["id"] in limited] or limited
             return self._json({"error": f"a project you make goes on {', '.join(names)}: pick "
                                         + ("that node" if len(names) == 1 else "one of those nodes")}, 403)
+        # The token a person gives is kept in their own key store (the
+        # operator, 27 Oct): who gave it is the server's to say (`_uid`).
         return self._json(*projects.create_from_dialog(
-            req, env=users.git_env(me, projects.sanitize_name(field(req, "name"))),
+            {**req, "_uid": users.uid_of(me)}, env=users.git_env(me, projects.sanitize_name(field(req, "name"))),
             account=me["name"] if me and users.uid_of(me) else "",
             may_node=lambda name: (limited is not None and nid in limited)
             or not users.may(self._who(), "node", name)))
@@ -9958,7 +9945,7 @@ class Handler(BaseHTTPRequestHandler):
         """
         if self._refused("create"):
             return None
-        body, code = projects.link(req)
+        body, code = projects.link({**req, "_uid": users.uid_of(self._who())})
         # A project linked is a project whose CI is worth a first look now,
         # not at the next round (R117).
         if code == 200:
@@ -10927,6 +10914,9 @@ class Handler(BaseHTTPRequestHandler):
             body["store"] = accountkeys.forges_of(users.uid_of(self._who()))
             lk = body.get("linked") or {}
             if lk.get("uid"):
+                # `host` holds the entry's id since entries have ids: its host said.
+                fg = accountkeys.forge_of(lk["uid"], lk.get("host")) or {}
+                lk["id"], lk["host"] = lk.get("host"), fg.get("host") or lk.get("host")
                 acct = next((u for u in users.all_users() if u.get("uid") == lk["uid"]), {})
                 lk["name"] = acct.get("name") or "an account that is gone"
                 lk["mine"] = lk["uid"] == users.uid_of(self._who())

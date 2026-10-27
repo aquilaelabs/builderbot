@@ -65,7 +65,7 @@ import registry
 TOKEN_RE = re.compile(r"[A-Za-z0-9_.-]{8,255}")
 
 
-def write_token(project, token, host, scheme="https", user=""):
+def write_token(project, token, host, scheme="https", user="", uid=""):
     """Store one project's token for one host, and return the helper that
     reads it.
 
@@ -87,7 +87,13 @@ def write_token(project, token, host, scheme="https", user=""):
     # Kept by gitcreds, sealed under the install key where there is one
     # (R135), and handed to git by its helper rather than git's own store.
     q = lambda x: urllib.parse.quote(x, safe="")  # noqa: E731
-    gitcreds.write_line(project, f"{scheme}://{q(user or 'oauth2')}:{q(token)}@{host}")
+    line = f"{scheme}://{q(user or 'oauth2')}:{q(token)}@{host}"
+    # The person who gave it keeps it, in their own key store, and the
+    # project is linked to it (the operator, 27 Oct); with nobody, or no
+    # install key to seal their store with, it is the project's own.
+    if uid:
+        return gitcreds.keep_for(project, uid, line, user or "")
+    gitcreds.write_line(project, line)
     return gitcreds.helper(project)
 
 
@@ -311,7 +317,7 @@ def rename(req):
         # ever points the remote at one.
         scheme = "http" if addr["scheme"] == "http" else "https"
         write_token(old, token, host, scheme,
-                    forges.cred_user(forge, host, token, scheme))
+                    forges.cred_user(forge, host, token, scheme), uid=str(req.get("_uid") or ""))
         _scope_to_token(src, token_helper(old))
         moved.append("its access token")
     elif link_mine:
@@ -320,11 +326,13 @@ def rename(req):
             return {"error": f"{was} has no remote to link your token to"}, 400
         host = (forges.host_of(origin_url(src)) or addr["host"]).lower()
         uid = str(req.get("_uid") or "")
-        if not uid or not gitcreds._accounts().forge_line(uid, host):
-            return {"error": f"your key store keeps no token for {host}: link one on your Profile first"}, 400
-        gitcreds.link_account(old, uid, host)
+        fid = str(req.get("link_account") or "")
+        fg = gitcreds._accounts().forge_of(uid, fid) if uid and fid else None
+        if not fg or fg["host"] != host:
+            return {"error": f"that is not a {host} token in your key store"}, 400
+        gitcreds.link_account(old, uid, fid)
         _scope_to_token(src, token_helper(old))
-        moved.append(f"its git access, linked to your {host} token")
+        moved.append(f"its git access, your {host} token")
     elif clear:
         forget_token(old)
         unscope(src)
@@ -1348,7 +1356,7 @@ def create(req, env=None):
     _dest = dest
     cred_scheme = "http" if mode == "clone" and addr["scheme"] == "http" else "https"
     helper = (write_token(name, token, addr["host"], cred_scheme,
-                          forges.cred_user(forge, addr["host"], token, cred_scheme))
+                          forges.cred_user(forge, addr["host"], token, cred_scheme), uid=str(req.get("_uid") or ""))
               if mode == "clone" and token else "")
     if not _start("clone", name,
                   lambda: _clone(dest, key_url or url, helper, want_push)):
@@ -1742,7 +1750,7 @@ def link(req):
                 return {"error": f"{forge['name']} does not accept that "
                                  f"token"}, 400
         helper = write_token(name, token, host, addr["scheme"],
-                             user or forge["user"])
+                             user or forge["user"], uid=str(req.get("_uid") or ""))
         remote = f"{addr['scheme']}://{host}/{path}.git"
     elif keyname:
         match = next((k for k in agent_keys() if k["name"] == keyname), None)

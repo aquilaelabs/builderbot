@@ -9,17 +9,21 @@ which reads only plain lines, is not used. Readers in the dashboard ask
 read_line. Sealing is the server's: seal, unseal and sealing are set by it
 from signing's, as for the signing keys and two-factor secrets.
 
-A project's git access may instead be linked to a person's account (R154):
-its file then says `account:UID:HOST`, nothing secret, and the token is the
-one that account keeps for that host in its own key store (accountkeys.py),
-sealed under the account's key. A person's own git work (their session's
-bb git, their presses in the Git view) asks their own store first, for the
-host git asks about, and the project's after it (helpers).
+A token a person gives a repository is kept in their own key store
+(accountkeys.py, sealed under their key; the operator, 27 Oct), and the
+project's file then says `account:UID:ID`, nothing secret, naming that
+entry. A person's own git work (their session's bb git, their presses in
+the Git view) asks their own store first, the entry their project is
+linked to or else their newest for the host git asks about, and the
+project's after it (helpers). Tokens kept before that go to the project
+owner's store at the first start that can seal them (adopt).
 """
 import base64
 import contextlib
 import os
+import re
 import shlex
+import urllib.parse
 from pathlib import Path
 
 STATE = None
@@ -69,8 +73,8 @@ def _accounts():
 
 
 def linked_to(project):
-    """(uid, host) of the account a project's git access is linked to, or
-    ("", "")."""
+    """(uid, entry id) of the account entry a project's git access is linked
+    to, or ("", ""); an entry from before ids is named by its host."""
     try:
         text = path(project).read_text().strip()
     except OSError:
@@ -84,30 +88,71 @@ def linked_to(project):
 def read_line(project):
     """The project's credential line, plain, or "" for none: a linked
     account's from its key store."""
-    uid, host = linked_to(project)
+    uid, fid = linked_to(project)
     if uid:
-        return _accounts().forge_line(uid, host)
+        return _accounts().forge_line(uid, fid)
     try:
         return open_text(path(project).read_text())
     except OSError:
         return ""
 
 
-def link_account(project, uid, host):
-    """The project's git access linked to an account's token for this host."""
+def link_account(project, uid, fid):
+    """The project's git access linked to an entry of an account's store."""
     _settled(project)
     d = STATE / "gitcreds"
     d.mkdir(parents=True, exist_ok=True)
     os.chmod(d, 0o700)
     fd = os.open(path(project), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as fh:
-        fh.write(f"{LINKED}{uid}:{str(host).lower()}\n")
+        fh.write(f"{LINKED}{uid}:{fid}\n")
 
 
-def linked_projects(uid):
-    """The projects whose git access is linked to this account."""
+def linked_projects(uid, fid=None):
+    """The projects linked to this account, or to one entry of it."""
     d = STATE / "gitcreds"
-    return [f.name for f in (sorted(d.iterdir()) if d.is_dir() else []) if linked_to(f.name)[0] == uid]
+    return [f.name for f in (sorted(d.iterdir()) if d.is_dir() else [])
+            if linked_to(f.name)[0] == uid and (fid is None or linked_to(f.name)[1] == fid)]
+
+
+def keep_for(project, uid, line, login):
+    """A token a person gave the project, into their own store and the
+    project linked to it. The helper line, or "" when the install has no
+    key to seal their store with (then kept as the project's own)."""
+    got, _code = _accounts().link_forge(uid, line.rsplit("@", 1)[-1], line, login) if uid else ({"error": "no one"}, 400)
+    if got.get("error"):
+        write_line(project, line)
+    else:
+        link_account(project, uid, got["id"])
+    return helper(project)
+
+
+def adopt(owner_of):
+    """Each token kept as a project's own (from before tokens were a
+    person's) moved into its project owner's store, the project linked to
+    it: BuilderBot's owner where a project has none (owner_of says). Done
+    once a key can seal it; returns how many moved."""
+    if not (seal and sealing and sealing()):
+        return 0
+    d = STATE / "gitcreds"
+    n = 0
+    for f in (sorted(d.iterdir()) if d.is_dir() else []):
+        try:
+            text = f.read_text().strip()
+        except OSError:
+            continue
+        if not text or text.startswith(LINKED):
+            continue
+        line = open_text(text)
+        uid = owner_of(f.name) if line else ""
+        m = re.match(r"https?://([^:@/]*):[^@/]*@", line)
+        if not uid or not m:
+            continue
+        got, _code = _accounts().link_forge(uid, line.rsplit("@", 1)[-1], line, urllib.parse.unquote(m.group(1)))
+        if got.get("ok"):
+            link_account(f.name, uid, got["id"])
+            n += 1
+    return n
 
 
 def _gone_file():
@@ -173,7 +218,8 @@ def helpers(project, uid=""):
     the project's (R154: theirs for their own work)."""
     out = []
     if uid and _accounts().forges_of(uid):
-        out.append(f"!{shlex.quote(str(HELPER))} --account {shlex.quote(str(STATE))} {shlex.quote(uid)}")
+        out.append(f"!{shlex.quote(str(HELPER))} --account {shlex.quote(str(STATE))} {shlex.quote(uid)} "
+                   f"{shlex.quote(project)}")
     h = helper(project)
     if h:
         out.append(h)

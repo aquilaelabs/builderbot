@@ -12,7 +12,7 @@
 - Controller settings' BuilderBot bug reports section lists every report with its own delete, so one can be taken out before the diagnostics are downloaded. (c2ece51)
 - A container that has to talk to a machine on your LAN, such as a device or another server, can be let through the network wall around each project's containers: an administrator turns on Reaches the LAN in its settings on the Containers page (881deec)
 - An install makes its own install key at its first start, so nothing has to be set to keep its tokens, signing keys and sign-ins sealed: Controller, Keys shows where it is kept, shows it to save, changes it with everything kept under it sealed again at once, and lists what is kept under it. Each account has a key of its own for its agents' sign-ins on the nodes, changed from Profile, Your key (fd6c02f)
-- Each person has a key store of their own on Profile: a GitHub or other forge token linked there is kept under their own key, used for their own git work ahead of a project's, and a project can be linked to it from its settings; Purge empties it, and deleting the account does too, unlinking the projects that used it (0f4af38)
+- Each person keeps a key store of their own: a token they give a repository (in its settings, or cloning or linking it) is kept under their own key and used for their own git work ahead of a project's, and another of their projects can use it from its settings; Profile lists what it holds, never showing it; Purge empties it, and deleting the account does too, unlinking the projects that used it (0f4af38)
 
 ### Changed
 
@@ -32,6 +32,7 @@
 - The secrets folder is mounted read-write now, so the first start can make the install key in it: on Unraid set the Secrets directory's access to Read/Write, and in compose drop :ro from the /secrets volume. An install with INSTALL_KEY set keeps it, and the Keys page says to change it there (fd6c02f)
 - An install with INSTALL_KEY set and its secrets folder read-write copies that key into the folder at its first start, so INSTALL_KEY can then be taken out of the secrets folder: the install carries on with the same key, changed from Controller, Keys (8cc38de)
 - The shell and REPL history files in each account's home on a node (.bash_history, .python_history and the like) are removed the first time a terminal opens after the update: copy out anything you want to keep first (ba0eeb8)
+- A project's git token kept before is moved into the project owner's key store at the first start, BuilderBot's owner taking those of a project with none; a build from before refuses to start on that state (c5b9205)
 
 ### Deprecated
 
