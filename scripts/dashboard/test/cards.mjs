@@ -491,6 +491,10 @@ print(json.dumps(out))
   const f = await front();
   ok(f.at(-1) === 'Edit' && f.includes('Add repository') && !await page.$(`${card} [data-pmore]`),
      `a phone's card shows its agent, Add repository and Edit, and no menu (${JSON.stringify(f)})`);
+  // Its repositories sit close: a line is its name and branch, no control's
+  // height on the name's link (the operator, 27 Oct).
+  const lines = await page.$$eval(`${card} .pcfront .pcrepo`, rs => rs.map(r => Math.round(r.getBoundingClientRect().height)));
+  ok(lines.length && lines.every(h => h <= 30), `...and its repositories' lines are set close (${lines.join(', ')}px)`);
   await page.click(`${card} .pcfront [data-pedit]`);
   await page.waitForSelector(`${card}.flipped .pcback:not([inert])`, { timeout: 3000 });
   ok(await page.$eval(`${card} .pcback [data-pedit]`, b => b.getAttribute('aria-expanded') === 'true'),

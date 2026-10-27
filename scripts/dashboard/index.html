@@ -3503,12 +3503,13 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
 .pcard .pcrepo{display:flex;align-items:center;gap:var(--field-gap);min-height:28px;min-width:0}
 /* A thumb's height only where the row carries presses (the back's Move and
    Remove): the front's lines are a name and a branch, set close (the
-   operator, 27 Oct). */
+   operator, 27 Oct), the name's link too, which a document's button rule
+   otherwise makes a control's height. */
 @media(pointer:coarse){ .pcard .pcback .pcrepo{min-height:var(--tap)} }
 /* The id, the node and who is working there share one line, wrapping. */
 .pcard .pcmeta{display:flex;flex-wrap:wrap;align-items:center;gap:2px 14px;min-width:0}
 .pcard .pcmeta>.pcfacts{flex:none;max-width:100%}
-.pcard .pcrepo>.namelink{font:var(--f-ui);font-weight:600}
+.pcard .pcrepo>.namelink{font:var(--f-ui);font-weight:600;min-height:0}
 .pcard .pcrepo>.pcfacts{flex:1}
 /* A repository on a card's back: its name, then the icons that change it,
    each a thumb wide and its picture in the middle. */
