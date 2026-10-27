@@ -53,9 +53,13 @@ class Finish(unittest.TestCase):
         git(d, "remote", "add", "origin", str(remote))
         git(d, "tag", "-a", "v1.2.3", "-m", "x")
         version.configure(workspace=str(ws), state=str(ws / "state"), write_json=lambda *a, **k: None)
-        self.assertIn("already exists", version.release_plan("app").get("error", ""), "not on the remote yet")
-        git(d, "push", "-q", "origin", "refs/tags/v1.2.3")
+        # Made here, never pushed: releasing again pushes it.
         self.assertTrue(version.release_plan("app").get("finish"))
+        r = version.release("app")
+        self.assertTrue(r.get("ok") and r.get("pushed") and r.get("finished"), r)
+        ls = subprocess.run(["git", "-C", str(d), "ls-remote", "--tags", "origin"], capture_output=True, text=True)
+        self.assertIn("refs/tags/v1.2.3", ls.stdout)
+        # ...and on the remote already (pushed by hand): what is left is its page.
         r = version.release("app")
         self.assertTrue(r.get("ok") and r.get("pushed") and r.get("finished"), r)
 

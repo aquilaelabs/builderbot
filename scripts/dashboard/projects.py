@@ -147,6 +147,27 @@ def _scope_to_token(dest, helper):
          "--add", "credential.helper", helper], timeout=15)
 
 
+def rescope_store_helpers():
+    """Each checkout whose credential.helper still names git's own store on
+    its project's token file, from before tokens were sealed (R135) and kept
+    in a person's store (R154), pointed at BuilderBot's helper instead: git's
+    store reads neither, so a push with the tree's own config (a release's
+    tag) went with no credential. At start; returns the projects moved."""
+    moved = []
+    try:
+        dirs = [d for d in WORKSPACE.iterdir() if d.is_dir() and (d / ".git").exists()]
+    except OSError:
+        return moved
+    for d in dirs:
+        if not gitcreds.path(d.name).is_file():
+            continue
+        vals = run(["git", "-C", str(d), "config", "--local", "--get-all", "credential.helper"], timeout=15)["out"]
+        if f"store --file={gitcreds.path(d.name)}" in vals:
+            _scope_to_token(d, gitcreds.helper(d.name))
+            moved.append(d.name)
+    return moved
+
+
 def keyname_ok(req):
     """Whether a deploy key was picked, read here because the push check runs
     before the key is resolved, and resolving it first would put a network
@@ -662,7 +683,7 @@ def _same_repository(dest, url):
     already has: an owner renamed on the host keeps every commit, while a
     typo or another repository has none of them. A fork shares them too,
     which is why this is the operator's control and says what it checked."""
-    r = run(["git", "-C", str(dest), "ls-remote", "--heads", "--", url],
+    r = run(["git", "-C", str(dest), *gitcreds.git_c(Path(dest).name), "ls-remote", "--heads", "--", url],
             timeout=60, env=_git_env(), split_err=True)
     if r["code"] != 0:
         said = (r["err"] or r["out"]).strip().splitlines()

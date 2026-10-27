@@ -58,6 +58,13 @@ class Store(unittest.TestCase):
         self.assertNotEqual((self.d / "account-secrets.json").read_text(), before)
         self.assertEqual(accountkeys.forge_line(UID, self.fid), LINE)
 
+    def test_git_c_hands_any_command_the_credential(self):
+        gitcreds.write_line("web", "https://x:projtoken123@github.com")
+        c = gitcreds.git_c("web", UID)
+        self.assertEqual(c[:2], ["-c", "credential.helper="], "the tree's own helpers are reset first")
+        self.assertEqual(len([x for x in c if x.startswith("credential.helper=!")]), 2)
+        self.assertEqual(gitcreds.git_c("nothing-here"), [])
+
     def test_their_own_work_asks_their_store_first(self):
         gitcreds.write_line("web", "https://x:projtoken123@github.com")
         hs = gitcreds.helpers("web", UID)

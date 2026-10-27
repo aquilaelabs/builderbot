@@ -4114,6 +4114,13 @@ try:
         print(f"dashboard: {_moved} project token(s) moved into their owners' key stores", flush=True)
 except OSError as e:
     print(f"dashboard: project tokens left as they were: {e}", flush=True)
+# ...and a checkout still pointed at git's own store, which reads neither a
+# sealed token nor one in a person's store, pointed at BuilderBot's helper.
+try:
+    if (_rescoped := projects.rescope_store_helpers()):
+        print(f"dashboard: {', '.join(_rescoped)} now ask BuilderBot's credential helper", flush=True)
+except OSError as e:
+    print(f"dashboard: checkouts' credential helpers left as they were: {e}", flush=True)
 
 # An account's conversations with Claude as a download: transcripts.py.
 import transcripts                                               # noqa: E402
