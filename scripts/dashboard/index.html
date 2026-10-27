@@ -3501,7 +3501,10 @@ a.btn svg{width:12px;height:12px;flex:0 0 auto}
    groups them); a finger's height only where a finger presses. */
 .pcard .pcrepos{display:flex;flex-direction:column;gap:2px;margin:4px 0 2px}
 .pcard .pcrepo{display:flex;align-items:center;gap:var(--field-gap);min-height:28px;min-width:0}
-@media(pointer:coarse){ .pcard .pcrepo{min-height:var(--tap)} }
+/* A thumb's height only where the row carries presses (the back's Move and
+   Remove): the front's lines are a name and a branch, set close (the
+   operator, 27 Oct). */
+@media(pointer:coarse){ .pcard .pcback .pcrepo{min-height:var(--tap)} }
 /* The id, the node and who is working there share one line, wrapping. */
 .pcard .pcmeta{display:flex;flex-wrap:wrap;align-items:center;gap:2px 14px;min-width:0}
 .pcard .pcmeta>.pcfacts{flex:none;max-width:100%}
