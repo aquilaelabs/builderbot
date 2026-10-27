@@ -1396,6 +1396,27 @@ ok(await page.$eval('.doc .projtab .pcard', r =>
   // its chevron opens them all, Escape shuts the list before the box.
   await page.click('.doc .projtab .askline .combobtn');
   const offered = await page.$$eval('.doc .projtab .askline .combolist [data-combo]', bs => bs.map(b => b.textContent));
+  // B404: a press held on an option to scroll the list takes nothing; the
+  // click, a press and release on it, does.
+  {
+    const opt = await page.$('.doc .projtab .askline .combolist [data-combo]');
+    const bx = opt && await opt.boundingBox();
+    const val = () => page.$eval('.doc .projtab .askline input', i => i.value);
+    const before = await val();
+    let held = null, took = null;
+    if (bx){
+      await page.mouse.move(bx.x + 10, bx.y + bx.height / 2); await page.mouse.down();
+      await page.mouse.move(bx.x + 10, bx.y + bx.height / 2 + 30, { steps: 4 });
+      held = { value: await val(), open: await page.$eval('.doc .projtab .askline .combolist', l => !l.hidden) };
+      await page.mouse.move(bx.x + bx.width + 200, bx.y - 200); await page.mouse.up();
+      if (!await page.$eval('.doc .projtab .askline .combolist', l => !l.hidden)) await page.click('.doc .projtab .askline .combobtn');
+      await page.click('.doc .projtab .askline .combolist [data-combo]');
+      took = await val();
+    }
+    ok(bx && held.value === before && held.open && took === offered[0],
+       `an option held down to scroll the list is not taken, and a click on it is (${JSON.stringify({ before, held, took, first: offered[0] })})`);
+    await page.click('.doc .projtab .askline .combobtn');
+  }
   await page.keyboard.press('Escape');
   ok(await page.$('.doc .projtab .askline') && await page.$eval('.doc .projtab .askline .combolist', l => l.hidden),
      "the Group field's chevron opens every group made, and Escape shuts the list before the box");

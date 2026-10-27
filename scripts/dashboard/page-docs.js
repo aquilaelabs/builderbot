@@ -380,7 +380,13 @@ function comboWire(box, inp, options){
     ul.innerHTML = shown.length ? shown.map((o, i) => `<button type="button" role="option" data-combo="${i}" aria-selected="${i === at}"${
         i === at ? ' class="on"' : ""} tabindex="-1">${esc(o)}</button>`).join("")
       : `<span class="combonone">none yet: what is typed is a new one</span>`;
-    ul.querySelectorAll("[data-combo]").forEach(b => b.onpointerdown = e => { e.preventDefault(); pick(shown[+b.dataset.combo]); });
+    // Taken on the click, a press and its release on the one option, so a
+    // press that holds to scroll the list takes nothing (B404); the press
+    // itself only keeps the field's focus, whose blur would shut the list.
+    ul.querySelectorAll("[data-combo]").forEach(b => {
+      b.onpointerdown = e => e.preventDefault();
+      b.onclick = e => { e.preventDefault(); pick(shown[+b.dataset.combo]); };
+    });
   };
   const open = all => { draw(all); ul.hidden = false; inp.setAttribute("aria-expanded", "true"); };
   const shut = () => { ul.hidden = true; at = -1; inp.setAttribute("aria-expanded", "false"); };

@@ -248,6 +248,16 @@ function attRow(a){
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bprojset="${esc(a.project)}">Its settings</a></span></div></div>`;
   }
+  // An empty project 0.8.0's B402 left beside the one its repository went
+  // into: Delete it from here, asked first as the card's Delete asks.
+  if (a.kind === "project-leftover"){
+    return `<div class="bnote att">
+      <div class="bt">${esc(projLabel(a.project))} can be deleted</div>
+      <div class="bsum">${esc(a.why)}</div>
+      <div class="bfoot"><span>on the Projects page</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bleftover="${esc(a.project)}">Delete it</a></span></div></div>`;
+  }
   // A scheduled script (R117): a run that failed, could not be queued, or
   // was skipped because the one before it was still going; its log where
   // there is one, else the Schedules page.
@@ -717,6 +727,9 @@ function wireNeeds(root, after = () => {}){
   });
   root.querySelectorAll("[data-bprojset]").forEach(a => a.onclick = e => {
     e.preventDefault(); after(); openProjectSettings(a.dataset.bprojset);
+  });
+  root.querySelectorAll("[data-bleftover]").forEach(a => a.onclick = e => {
+    e.preventDefault(); after(); deleteProjectCard(a.dataset.bleftover);
   });
   root.querySelectorAll("[data-bsign]").forEach(a => a.onclick = e => {
     e.preventDefault();

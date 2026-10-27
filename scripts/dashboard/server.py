@@ -1777,6 +1777,14 @@ def _attention(who):
     # ...and a project whose git access went with an account's key store
     # (R154), for whoever sees it.
     signs += gitcreds.gone_rows([p for p in gitcreds.gone_projects() if users.may_see(who, p)])
+    # ...and an empty project 0.8.0's B402 left beside its repository's,
+    # for whoever may delete it.
+    signs += [{"kind": "project-leftover", "id": key, "key": f"leftover:{key}", "project": key,
+               "repo": d, "in": repos.project_of(d),
+               "why": f"it is empty: {registry.label(d)} went into {registry.label(repos.project_of(d))} "
+                      "when it was made, and this one was left beside it by a bug in 0.8.0"}
+              for key, d in repos.leftovers()
+              if users.may_see(who, key) and (users.is_admin(who) or membership.may_manage(who, key))]
     if NODES_OK:
         return bellseen.filter_rows(users.uid_of(who), signs)
     where = {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}
