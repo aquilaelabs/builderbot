@@ -27,7 +27,7 @@ const fileB64 = f => new Promise((ok, bad) => {
 const AT_REST = {
   sealed: "sealed on the controller under the install's key",
   mixed: "being sealed under the install's key",
-  open: `<span class="warn">kept unsealed on the controller: INSTALL_KEY in the secrets folder seals them</span>`,
+  open: `<span class="warn">kept unsealed on the controller: the install has no key yet, and the next start makes one and seals them</span>`,
   locked: `<span class="bad">sealed under an install key this controller does not have: set it as it was, or import each key's backup</span>`,
 };
 

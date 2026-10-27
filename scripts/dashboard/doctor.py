@@ -83,9 +83,10 @@ def refresh():
 
 
 # A line that names the doc its fix is in, as bb doctor writes it for a
-# terminal ("set INSTALL_KEY (docs/reference.md)"): on the page, a link to
-# that doc's section in Help (the operator, 26 Oct).
-DOC_LINKS = (("set INSTALL_KEY (docs/reference.md)", "#/help/reference/the-install-key", "How to set it"),)
+# terminal ("... (docs/reference.md)"): on the page, a link to that doc's
+# section in Help (the operator, 26 Oct).
+DOC_LINKS = (("the install key is kept beside the state", "#/help/reference/the-install-key", "How"),
+             ("no install key:", "#/help/reference/the-install-key", "How it works"))
 
 
 def _doc_line(check):

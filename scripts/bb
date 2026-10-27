@@ -5630,10 +5630,10 @@ cmd_doctor() {
         if [ -s "${BB_SIGNING_SECRET_FILE:-/run/builderbot-key}" ]; then
             printf '  [ok]   an install key is loaded: the settings'"'"' tokens, the signing keys and the git credentials are sealed under it\n'
             if [ "${BB_INSTALL_KEY_IN:-}" = state ]; then
-                printf '  [warn] the install key is kept beside the state, so a copy of /config carries it: mount a secrets folder the controller may write to\n'
+                printf '  [warn] the install key is kept beside the state, so a copy of /config carries it: map the secrets folder read-write and restart, and it moves there (docs/reference.md)\n'
             fi
         else
-            printf '  [warn] no install key: the settings'"'"' tokens, the signing keys and the git credentials are kept open in /config; one is made at the next start (Controller, Keys)\n'
+            printf '  [warn] no install key: the settings'"'"' tokens, the signing keys and the git credentials are kept open in /config; one is made at the next start (docs/reference.md)\n'
         fi
     fi
     # Claude Code is a node's, so a controller has nothing to check for: a
