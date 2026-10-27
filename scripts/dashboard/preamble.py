@@ -158,6 +158,9 @@ def sees_line(project):
 label_of = None
 # The project's id as it is written (registry.pid): P3.
 id_of = None
+# (repository) -> (the project's shown name, its id), or None for a
+# repository in no project (R138): the project a session is briefed as.
+project_fn = None
 
 
 def _shown(project):
@@ -170,9 +173,21 @@ def _shown(project):
 def identity_line(project):
     """The project's id, and its shown name where that is not the directory:
     the person says the name, every path takes the directory, and the id
-    names it for good, renamed or not."""
+    names it for good, renamed or not. A repository in a project is briefed
+    as that project (R138), with every repository in it named as its own."""
+    got = project_fn(project) if project_fn else None
+    several = repos_fn(project) if (got and repos_fn) else None
+    if several:
+        name, pid, members = several
+        where = ", ".join(f"{lab} at /workspace/{d}" for d, lab in members)
+        return (f"This project is shown as {name}; its id is {pid}, which never changes. Call it {name} when "
+                f"you speak of it. Its repositories are {where}: each is this project's own to work in, "
+                f"commit to and push, the session starts in /workspace/{project}, and `bb -p` takes a "
+                f"repository's directory to answer for that one.")
     lab = label_of(project) if label_of else project
     pid = id_of(project) if id_of else ""
+    if got:
+        lab, pid = got[0] or lab, got[1] or pid
     said = f"This project's id is {pid}, which never changes; `bb -p {pid}` names it." if pid else ""
     if not lab or lab == project:
         return said
@@ -189,6 +204,12 @@ def reads_line(project):
                          else (prefs_mod.get(project) or {}).get("reads") or [])
         except Exception:                                            # noqa: BLE001
             reads = []
+    # Its own project's other repositories are read as well (reads_trees),
+    # and they are its own to change: the identity line names them, and
+    # here they would be called read-only (the operator, 27 Oct).
+    several = repos_fn(project) if repos_fn else None
+    own = {d for d, _lab in (several[2] if several else [])}
+    reads = [r for r in reads if r not in own]
     if not reads:
         return ""
     names = ", ".join(_shown(r) for r in reads)

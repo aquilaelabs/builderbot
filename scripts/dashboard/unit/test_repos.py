@@ -56,14 +56,26 @@ class Repos(unittest.TestCase):
         self.assertIn("letter or digit", repos.create("  ?! ")["error"])
 
     def test_a_repository_made_after_a_session_started_is_named(self):
-        self.project("Shop", "app", "server", "docs")
+        key = self.project("Shop", "app", "server", "docs")
         d = json.loads((Path(self.tmp) / "projects.json").read_text())
         for n, at in (("app", 100), ("server", 50), ("docs", 300)):
             d["projects"][n]["at"] = at
         (Path(self.tmp) / "projects.json").write_text(json.dumps(d))
+        r = json.loads((Path(self.tmp) / "project-repos.json").read_text())
+        r["projects"][key]["added"] = {"app": 100, "server": 50, "docs": 300}
+        (Path(self.tmp) / "project-repos.json").write_text(json.dumps(r))
+        repos._cache.update(mtime=None, data=None)
         self.assertEqual(repos.made_since("app", 200), ["docs"],
                          "docs was made after a session on app started; server before; app is its own")
-        self.assertEqual(repos.made_since("reader", 0), [], "a repository in no project has none beside it")
+        # One moved in from another project after the session started counts,
+        # made long before or not (the operator, 27 Oct).
+        other = self.project("Elsewhere", "reader")
+        d["projects"]["reader"]["at"] = 10
+        (Path(self.tmp) / "projects.json").write_text(json.dumps(d))
+        self.assertTrue(repos.move("reader", key).get("ok"))
+        self.assertEqual(repos.made_since("app", 200), ["docs", "reader"])
+        self.assertTrue(other)
+        self.assertEqual(repos.made_since("loner", 0), [], "a repository in no project has none beside it")
 
     def test_a_project_and_its_repository_may_share_a_name(self):
         key = self.project("app", "app")
@@ -160,6 +172,59 @@ class Briefing(unittest.TestCase):
             self.assertIn(want, text)
         self.assertNotIn("roadmap of app", text, "its own are the briefing's own parts")
         self.assertEqual(preamble.repos_part("other"), "")
+
+    def test_a_session_is_briefed_as_its_project_with_every_repository_its_own(self):
+        """The operator, 27 Oct: a session in the second repository's project
+        was told it was the first repository's project by that one's name
+        and id, and that the other repository was read-only."""
+        import preamble  # noqa: PLC0415
+        fake = type("P", (), {})()
+        fake.reads_trees = lambda p: ["server", "elsewhere"]
+        fake.get = lambda p: {}
+        was = (preamble.prefs_mod, preamble.label_of, preamble.id_of)
+        self.addCleanup(lambda: (setattr(preamble, "prefs_mod", was[0]), setattr(preamble, "label_of", was[1]),
+                                 setattr(preamble, "id_of", was[2]), setattr(preamble, "repos_fn", None),
+                                 setattr(preamble, "project_fn", None)))
+        preamble.prefs_mod = fake
+        preamble.label_of = lambda p: p
+        preamble.id_of = lambda p: "P1"
+        preamble.repos_fn = lambda p: ("Shop", "P9", [("app", "app"), ("server", "server")]) if p in ("app", "server") else None
+        preamble.project_fn = lambda p: ("Shop", "P9") if p in ("app", "server") else None
+        who = preamble.identity_line("app")
+        self.assertIn("shown as Shop; its id is P9", who)
+        self.assertIn("app at /workspace/app, server at /workspace/server", who)
+        self.assertIn("own to work in, commit to and push", who)
+        reads = preamble.reads_line("app")
+        self.assertIn("elsewhere", reads)
+        self.assertNotIn("server", reads, "its own project's repository is not called read-only")
+        preamble.repos_fn = lambda p: None
+        preamble.project_fn = lambda p: ("Shop", "P9")
+        self.assertIn("shown as Shop", preamble.identity_line("app"), "a project of one is briefed as the project")
+
+    def test_bb_preamble_briefs_the_project(self):
+        """bb preamble (preamble-verbs.py), which every session's briefing
+        comes from, wired as the server is: the project, both repositories
+        its own, and neither called read-only."""
+        import subprocess  # noqa: PLC0415
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        ws = Path(tmp) / "ws"
+        for n in ("app", "server"):
+            (ws / n).mkdir(parents=True)
+        registry.configure(state=tmp, workspace=ws, write_json=write_json)
+        registry.sync()
+        repos.configure(state=tmp, write_json=write_json, registry=registry)
+        key = repos.create("Shop")["key"]
+        for d in ("app", "server"):
+            repos.add(key, d)
+        here = os.path.dirname(os.path.abspath(__file__))
+        env = dict(os.environ, DASHBOARD_STATE=tmp, WORKSPACE=str(ws))
+        r = subprocess.run([sys.executable, os.path.join(here, "..", "..", "lib", "preamble-verbs.py"),
+                            os.path.join(here, ".."), "app", ""], capture_output=True, text=True, env=env, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+        self.assertIn("This project is shown as Shop", r.stdout)
+        self.assertIn("server at /workspace/server", r.stdout)
+        self.assertNotIn("reads server", r.stdout)
 
     def test_each_repositorys_memories_ride_every_agents_briefing(self):
         """R152: the account's memory index of each repository, for any

@@ -3746,6 +3746,7 @@ preamble.configure(rules_mod=rules, roadmap_mod=roadmap, bugs_mod=bugs, live=liv
 # alone was told it was "a project of 1 repositories".
 preamble.repos_fn = lambda p: ((registry.label(k), registry.pid(k), [(m, registry.label(m)) for m in repos.members(k)])
                                if (k := repos.project_of(p)) and len(repos.members(k)) > 1 else None)
+preamble.project_fn = lambda p: (registry.label(k), registry.pid(k)) if (k := repos.project_of(p)) else None
 
 # ---- a new project's brief -----------------------------------------------------
 # What its maker wants built, kept out of CLAUDE.md and handed to the first
