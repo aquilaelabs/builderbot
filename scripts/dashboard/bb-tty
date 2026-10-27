@@ -636,8 +636,11 @@ claude_scope() {
     # ...and its project's other repositories (R136) are no wall at all:
     # their trees and this session's worktrees of them are its to write,
     # each one's VERSION held as its own is.
-    worksq="$(for r in ${BB_WORKS:-}; do printf '%s\n' "$WORKSPACE/$r"; done
-              for r in ${BB_WORK_DIRS:-}; do printf '%s\n' "$r"; done | jq -R . | jq -s .)"
+    # Both lists into the one pipe: the first loop's paths went out bare in
+    # front of the second's JSON, which jq refused, and a session of a project
+    # of several repositories started with no scope at all (B380).
+    worksq="$({ for r in ${BB_WORKS:-}; do printf '%s\n' "$WORKSPACE/$r"; done
+               for r in ${BB_WORK_DIRS:-}; do printf '%s\n' "$r"; done; } | jq -R . | jq -s .)"
     if walls_around "$proj" "$here" | jq -R . \
          | jq -s --arg ws "$WORKSPACE" --arg here "$here" --argjson reads "${readsq:-[]}" \
                --argjson works "${worksq:-[]}" --argjson workdirs "$(for r in ${BB_WORK_DIRS:-}; do printf '%s\n' "$r"; done | jq -R . | jq -s .)" \
@@ -658,7 +661,8 @@ claude_scope() {
            },
             # Written from the one list in bb-agent-hook, which the hooks of
             # the other agents run from too: a guard added there holds all.
-            hooks: $hooks}' > "$tmp" && [ -s "$tmp" ]; then
+            hooks: $hooks}' > "$tmp" 2> "$dir/claude-scope.why" && [ -s "$tmp" ]; then
+        rm -f "$dir/claude-scope.why"
         mv -f "$tmp" "$out"
         printf '%s' "$out"
         return 0
