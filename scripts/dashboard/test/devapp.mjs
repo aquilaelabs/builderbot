@@ -4483,6 +4483,12 @@ ok(await page.$('#devSend'),
     body: JSON.stringify({ project: 'ep.silon', action: 'state' }) })).json()));
   ok((only.state || only).name === 'ep-silon' || (only.state || only).instance === 'main',
      `a request naming no instance is answered for the project's only one (${JSON.stringify(only.state || only).slice(0, 60)})`);
+  // ...and one named by the compose name bb devapp ls shows it under is
+  // that one too, where --instance took only `main` (B396).
+  const byName = await page.evaluate(async () => (await (await fetch('/api/devapp', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'ep.silon', instance: 'ep-silon', action: 'state' }) })).json()));
+  ok(!byName.error, `an instance named as bb devapp ls shows it is found (${JSON.stringify(byName).slice(0, 80)})`);
   const bad = await asSession({ project: 'ep.silon', action: 'test', args: ['$(rm -rf /)'] });
   ok(bad.status === 400 && /argument the test command cannot take/.test(bad.error || ''),
      'an argument that is not a plain word is refused before anything runs');

@@ -1571,6 +1571,11 @@ def act(project, instance, action, req, *, test_cmd="", gate=True):
                 return r | {"error": w["error"]}, 400
         return r, (400 if r.get("error") else 200)
     if instance not in devapp.instances(project):
+        # ...by the name bb devapp ls shows it under, its compose project's
+        # (the main instance of a repository is its folder's name), as well
+        # as its own (B396).
+        instance = next((i for i in devapp.instances(project) if devapp._pname(project, i) == instance), instance)
+    if instance not in devapp.instances(project):
         # Named, so a verb that assumed the default meets the one that
         # exists (bb devapp rebuild with one instance called builderbot-dev).
         have = devapp.instances(project)
