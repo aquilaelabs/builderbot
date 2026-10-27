@@ -96,13 +96,17 @@ def _drop_previous():
 def status():
     """What the page shows of the install key: nothing that opens anything."""
     w = where()
-    out: dict = {"where": w, "folder": str(_dir() or "") if w in ("secrets", "state") else ""}
+    out: dict = {"where": w, "folder": str(_dir() or "") if w in ("secrets", "state") or (w == "env" and _dir()) else ""}
     if not w:
         return out
     with _lock:
         _drop_previous()
     a = _about()
     fp = fingerprint(signing.MASTER)
+    if w == "env":
+        # Copied into the key folder at start (lib/boot.sh install_key_adopt):
+        # "yes" means INSTALL_KEY can be taken out and nothing changes.
+        out["adopted"] = os.environ.get("BB_INSTALL_KEY_ADOPTED") or "no"
     out.update(fingerprint=fp, changeable=w != "env", made=a.get("made", 0), changed=a.get("changed", 0),
                saved=a.get("saved") == fp, previous=signing.PREVIOUS is not None,
                previous_on_nodes=int(on_nodes_previous() if on_nodes_previous and signing.PREVIOUS else 0))

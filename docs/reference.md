@@ -113,8 +113,11 @@ or fears it stolen, can still do it.
 
 `INSTALL_KEY=` in a `*.env` file in the secrets folder (16 characters or
 more; never in `.env` or the template's plain fields) sets the key instead,
-and the install then makes none: the Keys page shows it and says to change
-it there, with the old one as `INSTALL_KEY_PREVIOUS=` beside it until each
+and the install then makes none. With the secrets folder read-write, the
+first start copies that key into its key folder (never beside the state),
+and the Keys page says so: take `INSTALL_KEY` out and restart, and the
+install carries on with the same key, changed on the page from then on.
+Until it is copied, the Keys page says to change it there, with the old one as `INSTALL_KEY_PREVIOUS=` beside it until each
 sign-in has moved. `SIGNING_SECRET=`, its name before 0.8.0, is read for one
 release.
 

@@ -98,6 +98,9 @@ class InstallKey(unittest.TestCase):
 
     def test_the_environments_key_is_shown_and_never_changed(self):
         os.environ["BB_INSTALL_KEY_IN"] = "env"
+        os.environ["BB_INSTALL_KEY_ADOPTED"] = "yes"
+        self.assertEqual(installkey.status()["adopted"], "yes")
+        os.environ.pop("BB_INSTALL_KEY_ADOPTED")
         self.assertFalse(installkey.status()["changeable"])
         self.assertEqual(installkey.change()[1], 409)
         self.assertEqual(installkey.reveal()[1], 409)

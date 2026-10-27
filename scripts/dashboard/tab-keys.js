@@ -74,7 +74,14 @@ function keysInstallBody(k){
   const acts = k.changeable
     ? `<div class="actbar">${keysShown ? "" : `<button type="button" id="bKeyShow">Show</button>`}
         <button type="button" id="bKeyChange">Change</button></div>`
-    : `<div class="hint">Set in the environment: change INSTALL_KEY in the secrets folder and restart.</div>`;
+    : k.adopted === "yes"
+      ? `<div class="notice">INSTALL_KEY is copied into the secrets folder's key folder. Take it out of your secrets folder's
+          .env file and restart: the install carries on with this same key, and it is changed here from then on.</div>`
+    : k.adopted === "other"
+      ? `<div class="notice warn">The key folder holds another key than INSTALL_KEY, which is the one in use. Keep INSTALL_KEY set,
+          or move the key folder's key aside so the next start copies this one in.</div>`
+    : `<div class="hint">Set in the environment. Mount the secrets folder read-write and restart, and it is copied into a key
+        folder there, after which INSTALL_KEY can be taken out and the key changed here.</div>`;
   return keysNotices(k) + shown + acts;
 }
 

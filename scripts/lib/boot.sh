@@ -78,6 +78,39 @@ install_key_file() {
         ( umask 077; printf '%s' "$prev" > "$f-previous" )
         chown "$BB_ACCOUNT" "$f-previous" 2>/dev/null || true
     fi
+    install_key_adopt "$key" "$prev"
+}
+
+# A key set in the environment copied into the key folder (R154), so it can
+# be taken out of the secrets folder and the install carries on with the
+# very same key, changed from the page after that. Only into the secrets
+# folder: a copy beside the state would sit with what it seals. Says what
+# it did through BB_INSTALL_KEY_ADOPTED: "yes" (the folder holds this key),
+# "other" (it holds another; the environment's is used), "no" (no secrets
+# folder root may write).
+install_key_adopt() {
+    local key="$1" prev="$2" dir="$BB_SECRETS_DIR/install-key"
+    export BB_INSTALL_KEY_ADOPTED=no
+    if ! [ -d "$BB_SECRETS_DIR" ] || ! [ -w "$BB_SECRETS_DIR" ]; then
+        return 0
+    fi
+    mkdir -p "$dir" || return 0
+    if [ ! -s "$dir/key" ]; then
+        ( umask 077; printf '%s' "$key" > "$dir/key" ) || return 0
+        if [ -n "$prev" ] && [ ! -s "$dir/key-previous" ]; then
+            ( umask 077; printf '%s' "$prev" > "$dir/key-previous" )
+        fi
+        log "install key: INSTALL_KEY copied into ${dir}; take it out of the secrets folder and restart to change it from Controller, Keys"
+    fi
+    chown -R "$BB_ACCOUNT" "$dir" 2>/dev/null || true
+    chmod 700 "$dir"; chmod 600 "$dir"/key* 2>/dev/null || true
+    export BB_INSTALL_KEY_DIR="$dir"
+    if [ "$(cat "$dir/key")" = "$key" ]; then
+        export BB_INSTALL_KEY_ADOPTED=yes
+    else
+        export BB_INSTALL_KEY_ADOPTED=other
+        warn "install key: ${dir} holds another key than INSTALL_KEY, which is the one used; Controller, Keys says which to keep"
+    fi
 }
 
 # With no INSTALL_KEY set, the install makes its own (R154) and the page

@@ -28,6 +28,7 @@
 - Update the Android app and the VS Code extension (0.2.0) with the controller: they open a session's terminal on BuilderBot's own terminal now, and an older copy of either cannot open one (052c096)
 - Each project you had becomes a project holding its one repository, under the same name, with its settings, people, owner, pins, groups, colors, archive and lock; nothing on disk moves. New project now asks for a name alone, and Add repository on its card makes or clones the repository (178952e)
 - The secrets folder is mounted read-write now, so the first start can make the install key in it: on Unraid set the Secrets directory's access to Read/Write, and in compose drop :ro from the /secrets volume. An install with INSTALL_KEY set keeps it, and the Keys page says to change it there (fd6c02f)
+- An install with INSTALL_KEY set and its secrets folder read-write copies that key into the folder at its first start, so INSTALL_KEY can then be taken out of the secrets folder: the install carries on with the same key, changed from Controller, Keys (8cc38de)
 
 ### Deprecated
 

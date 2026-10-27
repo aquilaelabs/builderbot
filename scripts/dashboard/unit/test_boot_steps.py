@@ -241,11 +241,40 @@ class MadeKey(unittest.TestCase):
         self.assertEqual(open(kf).read(), key)
         self.assertFalse(os.path.exists(os.path.join(st, ".install-key")))
 
+    def adopt(self, sec, env):
+        d = tempfile.mkdtemp()
+        body = (f'eval "$(declare -f install_key_file | sed "s#/run/builderbot-key#{d}/key#")"\n'
+                'BB_ACCOUNT=$(id -un); install_key_file; echo "$BB_INSTALL_KEY_IN $BB_INSTALL_KEY_ADOPTED"')
+        r = sh(body, {"BB_SECRETS_DIR": sec, "DASHBOARD_STATE": d, **env})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.splitlines()[-1].split()
+
+    def test_a_set_key_is_copied_into_the_secrets_folder(self):
+        sec = tempfile.mkdtemp()
+        self.assertEqual(self.adopt(sec, {"INSTALL_KEY": "k" * 32, "INSTALL_KEY_PREVIOUS": "p" * 32}), ["env", "yes"])
+        self.assertEqual(open(os.path.join(sec, "install-key", "key")).read(), "k" * 32)
+        self.assertEqual(open(os.path.join(sec, "install-key", "key-previous")).read(), "p" * 32)
+        # Taken out of the environment, the next start carries on with it.
+        r = sh('BB_ACCOUNT=$(id -un); install_key_made; echo "$BB_INSTALL_KEY_IN"',
+               {"BB_SECRETS_DIR": sec, "DASHBOARD_STATE": tempfile.mkdtemp()})
+        self.assertEqual(r.stdout.splitlines()[-1], "secrets")
+        self.assertEqual(open(os.path.join(sec, "install-key", "key")).read(), "k" * 32)
+
+    def test_another_key_in_the_folder_is_said_and_left(self):
+        sec = tempfile.mkdtemp()
+        os.makedirs(os.path.join(sec, "install-key"))
+        open(os.path.join(sec, "install-key", "key"), "w").write("o" * 32)
+        self.assertEqual(self.adopt(sec, {"INSTALL_KEY": "k" * 32}), ["env", "other"])
+        self.assertEqual(open(os.path.join(sec, "install-key", "key")).read(), "o" * 32)
+
+    def test_never_copied_beside_the_state(self):
+        self.assertEqual(self.adopt(os.path.join(tempfile.mkdtemp(), "none"), {"INSTALL_KEY": "k" * 32}), ["env", "no"])
+
     def test_a_set_key_makes_none(self):
         d = tempfile.mkdtemp()
         body = (f'eval "$(declare -f install_key_file | sed "s#/run/builderbot-key#{d}/key#")"\n'
                 'BB_ACCOUNT=$(id -un); install_key_file; echo "$BB_INSTALL_KEY_IN"; ls ' + d)
-        r = sh(body, {"INSTALL_KEY": "k" * 32, "BB_SECRETS_DIR": d, "DASHBOARD_STATE": d})
+        r = sh(body, {"INSTALL_KEY": "k" * 32, "BB_SECRETS_DIR": os.path.join(d, "no-secrets"), "DASHBOARD_STATE": d})
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.split()[-2:], ["env", "key"])
 
