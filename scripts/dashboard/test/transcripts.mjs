@@ -155,8 +155,17 @@ ok(/not by a session/.test(bySession.error || ''), `a session cannot make a conv
 await page.evaluate(() => openNotebook('alpha', 'sessions'));
 await page.waitForSelector(`${SESS} [data-cvresume="conv-two-2025"]`, { timeout: 15000 });
 const rowOf = id => `${SESS} .artrow:has([data-cvresume="${id}"])`;
-await page.click(`${rowOf('conv-two-2025')} .more > button`);
-await page.click(`${rowOf('conv-two-2025')} [data-cvshare]`);
+// A row's ⋯ opened until its item shows (B384): a redraw landing between
+// the press and the menu replaced the row, and the menu opened on the one
+// taken away.
+const pressInMenu = async (id, item) => {
+  for (let i = 0; i < 4; i++){
+    await page.click(`${rowOf(id)} .more > button`);
+    if (await page.waitForSelector(`${rowOf(id)} ${item}`, { state: 'visible', timeout: 3000 }).then(() => true, () => false)) break;
+  }
+  await page.click(`${rowOf(id)} ${item}`);
+};
+await pressInMenu('conv-two-2025', '[data-cvshare]');
 // The row's text, not a pill: its agent already wears one.
 await page.waitForFunction(sel => /visible to every session/.test(document.querySelector(sel)?.textContent || ''),
                            rowOf('conv-two-2025'), { timeout: 10000 }).catch(() => {});
@@ -164,8 +173,7 @@ const shared = await page.evaluate(async () => ((await (await fetch('/api/transc
   .find(r => r.id === 'conv-two-2025')?.shared);
 ok(shared === true && /visible to every session/.test(await page.$eval(rowOf('conv-two-2025'), e => e.textContent)),
    `Make visible marks it visible to every session on the project (${shared})`);
-await page.click(`${rowOf('conv-two-2025')} .more > button`);
-await page.click(`${rowOf('conv-two-2025')} [data-cvdel]`);
+await pressInMenu('conv-two-2025', '[data-cvdel]');
 await page.waitForFunction(id => !document.querySelector(`[data-cvresume="${id}"]`), 'conv-two-2025', { timeout: 10000 }).catch(() => {});
 const gone = await page.evaluate(async () => ((await (await fetch('/api/transcripts?project=alpha')).json()).rows || []).map(r => r.id));
 ok(!gone.includes('conv-two-2025') && gone.includes('conv-one-2026'), `Delete removes that conversation and no other (${gone.join(', ')})`);
