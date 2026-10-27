@@ -1504,10 +1504,17 @@ ok(true, 'pinning it back reads Unpin again');
     await route.continue().catch(() => {});
   });
   const before = held;
+  // No read out that the route did not see. One the poll had out before the
+  // route was set is joined by the five asks, rightly, and the one it then
+  // asks for is the remembered one: held, released, and nothing after it
+  // but the fifteen-second poll, so the wait below for one more ran out at
+  // 15s on a loaded box (B430, B219). Waited out here, so the read the five
+  // join is always one the route holds: the poll's own, if it went first.
+  for (const t1 = Date.now(); held === before && await page.evaluate(() => refreshBusy) && Date.now() - t1 < 20000;)
+    await new Promise(r => setTimeout(r, 50));
   // Five asks while the first is still out. They must coalesce into one more.
-  // The first is waited for rather than given a fixed 400ms: a read the poll
-  // had out before the route was set is joined, rightly, and the held one
-  // goes only when it lands, which on a loaded box is later than that (B430).
+  // The first is waited for rather than given a fixed 400ms: it goes only
+  // when the route lets it, which on a loaded box is later than that (B430).
   await page.evaluate(() => { refresh(); refresh(); refresh(); refresh(); refresh(); });
   for (const t1 = Date.now(); held < before + 1 && Date.now() - t1 < 20000;)
     await new Promise(r => setTimeout(r, 50));

@@ -260,10 +260,14 @@ print(json.dumps(out))
   await page.evaluate(() => { const c = document.getElementById('cardTools');
     if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
   await page.evaluate(() => openNodesTab());
-  await page.waitForSelector('.nodestab .ndrow', { timeout: 15000 });
+  // A node's own row, not the template's: the template drawn while the list
+  // is on its way has a row of the same class and a placeholder where the
+  // picker goes, and read then (a loaded run, the list slow to land) the
+  // picker had no options at all (B219).
+  await page.waitForSelector('.nodestab .ndrow[data-node]', { timeout: 15000 });
   const listed = await nodeOptions(page);
-  ok(listed.length === 1,
-     `the Nodes page lists the enrolled machines, and not this container (${listed.join(', ')})`);
+  ok(listed.length === 1 && !listed.includes('local'),
+     `the Nodes page lists the enrolled machines, and not this container (${listed.join(', ') || 'none'})`);
   // ...and with nothing enrolled it says so where the rows would be, rather
   // than an empty picker over an empty page. Driven by handing the page a
   // registry holding only the controller's own record, which is what a fresh
@@ -2228,6 +2232,13 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
 
   // ---- the project's nodes, in its settings dialog (phase 6) --------------
   await page.evaluate(() => openProjectsTab());
+  // The form reads what is saved from the page's last poll, and the block
+  // above set alpha's node and cleared it again through the API a moment
+  // ago: read on a poll from between the two, the form took the node as
+  // saved already, and its Save refused a section as changed since the
+  // settings were opened, which left the record without what this block
+  // typed (and the busy check below with no node to ask about, B219).
+  await page.evaluate(() => refresh());
   // As on the first opening after a page load: the node list has not been
   // fetched yet. The picker used to stay hidden until the dialog was closed
   // and opened again; it has to appear on this opening, when the list lands.
@@ -2245,12 +2256,13 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   await page.fill('#rnOutputs', 'app/build/outputs/apk/**/*.apk, extra/*.xpi');
   await page.fill('#rnCaptureDays', '3');
   await page.fill('#rnDevKeep', '5');
-  await saveDialog(page);
+  const saidNo = await saveDialog(page);
   const saved = prefsOf('alpha');
   ok(saved.node === minted.id && saved.build === './gradlew assembleDebug'
      && saved.outputs.length === 2 && saved.outputs[1] === 'extra/*.xpi' && saved.capture_days === 3
      && saved.dev_keep === 5,
-     `Save writes the project's node, the command, the outputs, the days captures are kept and the dev builds kept of each onto the project record (${JSON.stringify(saved).slice(0, 300)})`);
+     `Save writes the project's node, the command, the outputs, the days captures are kept and the dev builds kept of each onto the project record (${
+       saidNo || 'saved'}: ${JSON.stringify({ node: saved.node, build: saved.build, outputs: saved.outputs, capture_days: saved.capture_days, dev_keep: saved.dev_keep })})`);
   // Whether that node is quiet enough to time on (R108): the agent's
   // heartbeat says its load and what runs there by kind, and the answer
   // joins it with the jobs and sessions there, naming no other project.
@@ -2261,7 +2273,7 @@ m._exec("INSERT INTO jobs (id, type, project, requested_by, placement, source,"
   const busyNow = await page.evaluate(async () => (await fetch('/api/node-busy?project=alpha')).json());
   ok(busyNow.verdict === 'busy' && busyNow.cores === 4 && busyNow.kinds.emulator === 1 && !('made_up' in busyNow.kinds)
      && busyNow.why.some(w => /1 emulator, 2 gradle/.test(w)) && busyNow.why.some(w => /load 2\.6 on 4 cores/.test(w)),
-     `the project's node says it is busy and why: its load, and an emulator and Gradle running there (${JSON.stringify(busyNow.why)})`);
+     `the project's node says it is busy and why: its load, and an emulator and Gradle running there (${JSON.stringify(busyNow.why || busyNow)})`);
 
   // ---- saved is not applied ----------------------------------------------
   // Apply used to be live whenever anything had been saved, so a node that

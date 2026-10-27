@@ -1534,10 +1534,16 @@ if (runs('b')) {
     const held = await switchHeld(id);
     // The page going out is still drawn in this frame, fading over it (a
     // crossfade, the operator, 16 Oct): set aside for the reading, so the
-    // frame read is the ground the arriving page stands on.
-    await page.evaluate(() => document.querySelectorAll('.pane .stack > .doc.leaving').forEach(e => { e.style.visibility = 'hidden'; }));
-    const first = await frame();
-    await page.evaluate(() => document.querySelectorAll('.pane .stack > .doc.leaving').forEach(e => { e.style.visibility = ''; }));
+    // frame read is the ground the arriving page stands on. Put back by the
+    // elements set aside, never by .leaving again: on a loaded box the
+    // screenshot outlasts the page's 150ms timer, .leaving was off by then,
+    // and the page set aside kept its hidden for good, so the crossfade
+    // check read it hidden and the projects page later came to the front
+    // with none of its cards visible (B219).
+    await page.evaluate(() => { window.__aside = [...document.querySelectorAll('.pane .stack > .doc.leaving')];
+      window.__aside.forEach(e => { e.style.visibility = 'hidden'; }); });
+    const first = await frame().finally(() => page.evaluate(() => {
+      (window.__aside || []).forEach(e => { e.style.visibility = ''; }); window.__aside = []; }));
     await release();
     await atRest();
     await sleep(150);
