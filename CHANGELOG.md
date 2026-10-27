@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A pick list under a field (moving a repository to another project, a project's group) takes an option on a click, so pressing on the list to hold and scroll it no longer takes the option under the pointer (0defbdd)
+
 ## 0.8.1: 2026-10-27
 
 ### Changed
