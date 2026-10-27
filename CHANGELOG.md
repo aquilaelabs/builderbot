@@ -11,6 +11,8 @@
 - A release whose tag could not be pushed says why, in git's own words, rather than only that the push failed (bb35f8c)
 - A release whose tag was pushed by hand after its own push failed can be finished: releasing again makes its page on GitHub rather than refusing the tag that exists (f36411f)
 - A project's push or fetch outside a session (a release's tag, a check of a repository's address) is handed BuilderBot's own credential wherever it is kept, and a checkout left pointing at git's own credential store from an earlier release is moved off it at start: those went with no credential once tokens were sealed (e82910e)
+- A repository made with Add repository on a project's card stays in that project: it could land in a new project of its own when the page refreshed while it was being made (ad8f556)
+- bb git push of a tag says it is a release's, pushed by bb version release, rather than that the tree has no such name (ad8f556)
 
 ## 0.8.0: 2026-10-27
 
