@@ -12,6 +12,7 @@
 - Controller settings' BuilderBot bug reports section lists every report with its own delete, so one can be taken out before the diagnostics are downloaded. (c2ece51)
 - A container that has to talk to a machine on your LAN, such as a device or another server, can be let through the network wall around each project's containers: an administrator turns on Reaches the LAN in its settings on the Containers page (881deec)
 - An install makes its own install key at its first start, so nothing has to be set to keep its tokens, signing keys and sign-ins sealed: Controller, Keys shows where it is kept, shows it to save, changes it with everything kept under it sealed again at once, and lists what is kept under it. Each account has a key of its own for its agents' sign-ins on the nodes, changed from Profile, Your key (fd6c02f)
+- Each person has a key store of their own on Profile: a GitHub or other forge token linked there is kept under their own key, used for their own git work ahead of a project's, and a project can be linked to it from its settings; Purge empties it, and deleting the account does too, unlinking the projects that used it (0f4af38)
 
 ### Changed
 

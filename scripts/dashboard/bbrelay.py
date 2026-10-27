@@ -311,7 +311,7 @@ def run(me, req, project):
         # The project's git policy may turn the hold off (the Git view's
         # "Hold a push that looks sensitive"): the push then goes unread.
         hold = prefs.get(project)["gitpol"].get("scan") != "off"
-        r = gitrelay.run(project, str(cwd), argv[1], argv[2:], scan=hold)
+        r = gitrelay.run(project, str(cwd), argv[1], argv[2:], scan=hold, uid=str(me.get("uid") or ""))
         if "error" in r:
             return r, 400
         if r.get("held"):

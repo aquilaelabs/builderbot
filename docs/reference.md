@@ -94,6 +94,23 @@ install key leaves those as they are. A person changes their own on
 opens with the old key the next time its person opens a terminal on that
 node, and is sealed again under the new one; the old key is kept until then.
 
+That key also seals the account's own **key store**, on **Profile, Your key
+store**: a forge token the person links there (GitHub's or another forge's,
+checked with the forge for its login where it has an API) is kept under
+their key, never shown again and never downloaded. Their own git work uses
+it ahead of a project's token: a `bb git` push or pull from their session,
+and their presses in the Git view (one the view hands to a background job
+uses the project's). A project's settings list what the person's store
+keeps for its remote's host, with **Use for this project**, which links the
+project's git access to that token rather than one of its own; CI watching,
+releases and anybody without a token of their own then use it. **Purge**
+empties the store after a plain confirmation: the key, every forge linked,
+and the link of every project that used it, each of which then says on the
+bell that its git access went with that account. Deleting the account does
+the same, and an administrator can purge an account's store from the Users
+page. Purging asks for no password or code, so a person who forgot theirs,
+or fears it stolen, can still do it.
+
 `INSTALL_KEY=` in a `*.env` file in the secrets folder (16 characters or
 more; never in `.env` or the template's plain fields) sets the key instead,
 and the install then makes none: the Keys page shows it and says to change

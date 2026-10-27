@@ -122,6 +122,44 @@ print(gitcreds.read_line("web"))`], { env, encoding: 'utf8' }).trim();
   ok(prof.fp === mine0.fingerprint && prof.change, `Profile's Your key shows it with Change (${JSON.stringify(prof)})`);
   ok((await keys({ action: 'change-mine', key: 'zz' })).error, '...and a pasted key that is not 64 hex characters is refused');
 
+  // ---- Profile: the account's key store (a forge with no API to ask, so
+  // the suite asks nothing of the network) -------------------------------------
+  // Profile shows one section at a time beside its list: Your key store picked.
+  await page.evaluate(() => [...document.querySelectorAll('.doc.on .snav [role="tab"], .doc.on .snav button')]
+    .find(b => /Your key store/.test(b.textContent))?.click());
+  await page.waitForSelector('#ksHost', { state: 'visible', timeout: 10000 });
+  await page.fill('#ksHost', 'git.example.test');
+  await page.fill('#ksToken', 'storetoken0123456789');
+  await page.click('#bKsLink');
+  await page.waitForFunction(() => document.querySelector('.doc.on .ksforges'), null, { timeout: 15000 });
+  const store = await page.evaluate(() => ({ rows: [...document.querySelectorAll('.doc.on .ksforges .tline')].map(l => l.querySelector('.lead')?.textContent.trim()),
+    show: [...document.querySelectorAll('.doc.on [data-sect="profile:mykey"] button')].map(b => b.textContent.trim()) }));
+  ok(store.rows.includes('git.example.test'), `Link puts the forge in Your key store (${store.rows.join(', ')})`);
+  ok(!store.show.some(w => /show|download|backup/i.test(w)), `...which has no Show, Download or backup (${store.show.join(', ')})`);
+  const mine1 = await keys({ action: 'mine' });
+  ok(!JSON.stringify(mine1).includes('storetoken0123456789'), '...and nothing the page reads carries the token');
+  ok(!readFileSync(`${w}/config/account-secrets.json`, 'utf8').includes('storetoken0123456789'), '...kept sealed on disk');
+  const kept2 = (await keys({ action: 'status' })).kept || [];
+  ok(kept2.some(r => r.kind === 'forge' && r.name.endsWith('git.example.test')), 'the Keys page lists it, by name only');
+  await page.click('[data-ksunlink="git.example.test"]');
+  await page.waitForFunction(() => !document.querySelector('.doc.on .ksforges'), null, { timeout: 15000 });
+  ok(!(await keys({ action: 'mine' })).forges.length, 'Remove takes it out');
+  await keys({ action: 'link-forge', host: 'git.example.test', token: 'storetoken0123456789' });
+  await page.evaluate(() => loadKeyMine());
+  await page.waitForFunction(() => document.querySelector('.doc.on .ksforges'), null, { timeout: 15000 });
+  await page.click('#bKsPurge');
+  let purged = {};
+  for (let i = 0; i < patience(40); i++){
+    purged = await keys({ action: 'mine' });
+    if (!(purged.forges || []).length) break;
+    await sleep(250);
+  }
+  ok(!purged.forges.length && !purged.has, `Purge empties it after a plain confirmation, no password or code asked (${JSON.stringify(purged)})`);
+  ok(page.dialogs.some(t => /Purge your key store/.test(t)), '...the confirmation it asked');
+  await keys({ action: 'link-forge', host: 'git.example.test', token: 'storetoken0123456789' });
+  const adm = await keys({ action: 'purge-for', account: OWNER.username });
+  ok(adm.ok && !(await keys({ action: 'mine' })).forges.length, 'an administrator purges an account\'s key store from its name');
+
   // ---- on a phone ------------------------------------------------------------------
   const phone = await newPage(browser, { httpCredentials: OWNER, extraHTTPHeaders: { Authorization: AUTH },
                                          viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });

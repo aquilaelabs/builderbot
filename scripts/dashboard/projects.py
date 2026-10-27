@@ -104,6 +104,12 @@ def token_helper(project):
     return gitcreds.helper(project)
 
 
+def token_helpers(project, uid=""):
+    """The helpers for git work on the project, the acting account's own
+    first (R154), then the project's."""
+    return gitcreds.helpers(project, uid)
+
+
 def forget_token(project):
     gitcreds.forget(project)
 
@@ -263,6 +269,9 @@ def rename(req):
     # request that did would be asking to write a credential and delete it in
     # the same breath. The write is the intention worth honoring.
     clear = bool(req.get("clear_token")) and not token
+    # The project's git access linked to the asking account's own token for
+    # its remote's host (R154); `_uid` is the server's, never the page's.
+    link_mine = bool(req.get("link_account")) and not token and not clear
     # The same repository's new address, after its owner was renamed on the
     # host (set_address); "" leaves the remote where it points.
     address = _field(req, "address").strip()
@@ -280,7 +289,7 @@ def rename(req):
                          "digits, dots, dashes and underscores, no spaces"}, 400
     was = registry.label(old)
     renaming = bool(shown) and shown != was
-    if not renaming and not token and not auth and not clear and not address:
+    if not renaming and not token and not auth and not clear and not address and not link_mine:
         return {"error": f"{was} is already its name"}, 400
     moved, failed = [], []
     if renaming:
@@ -305,6 +314,17 @@ def rename(req):
                     forges.cred_user(forge, host, token, scheme))
         _scope_to_token(src, token_helper(old))
         moved.append("its access token")
+    elif link_mine:
+        addr = forges.parse(origin_url(src))
+        if not addr:
+            return {"error": f"{was} has no remote to link your token to"}, 400
+        host = (forges.host_of(origin_url(src)) or addr["host"]).lower()
+        uid = str(req.get("_uid") or "")
+        if not uid or not gitcreds._accounts().forge_line(uid, host):
+            return {"error": f"your key store keeps no token for {host}: link one on your Profile first"}, 400
+        gitcreds.link_account(old, uid, host)
+        _scope_to_token(src, token_helper(old))
+        moved.append(f"its git access, linked to your {host} token")
     elif clear:
         forget_token(old)
         unscope(src)
@@ -532,7 +552,10 @@ def auth_options(project, dest):
             "ssh": now == "ssh" or bool(_remembered_ssh(project)),
             # The deploy key made or pasted for it in these settings, if any:
             # its public half and where the host takes it.
-            "deploy": deploy_key_of(project, dest)}
+            "deploy": deploy_key_of(project, dest),
+            # ...or a person's own token, the project linked to their key
+            # store (R154): whose, and for which host.
+            "linked": dict(zip(("uid", "host"), gitcreds.linked_to(project), strict=True))}
 
 
 # ---- a project's own deploy key (the operator, 12 Oct) -----------------------

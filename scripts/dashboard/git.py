@@ -20,6 +20,7 @@ place to read a vendored library's arrival.
 Path-pure like changelog.py: functions take the project's directory,
 configure() only knows where the workspace and the worktrees are.
 """
+import contextvars
 import os
 import sys
 import re
@@ -857,6 +858,10 @@ def payload(project, what, sha="", path="", n=None, branch=""):
 # ssh alias, in its config already), which is why they run here and not on
 # a node. Refusals are sentences; nothing here guesses.
 
+# Whose press this git work is (R154): the server sets it for a person's
+# request, so their own token is asked before the project's.
+ACTING = contextvars.ContextVar("git_acting", default="")
+
 BRANCH_RE = re.compile(r"^(?!-)[A-Za-z0-9._/-]{1,120}$")
 # A remote's name: the first segment of a row like origin/claude/x, and
 # never a path of its own.
@@ -883,9 +888,9 @@ def _creds(repo):
     """
     try:
         import projects                                     # noqa: PLC0415
-        return projects.token_helper(Path(repo).name)
+        return projects.token_helpers(Path(repo).name, ACTING.get())
     except (ImportError, TypeError, OSError):
-        return ""                       # no projects module, its STATE unset (TypeError), or the file unreadable
+        return []                       # no projects module, its STATE unset (TypeError), or the file unreadable
 
 
 def _run(repo, *args, env=None, timeout=30, index=True):
@@ -932,7 +937,7 @@ def _run_locked(repo, *args, env=None, timeout=30, index=True):
         # The empty helper first resets git's list, so the shared gh helper
         # the image installs globally is not asked ahead of the project's
         # own token and does not receive it back (the review of 26 Sep).
-        argv[1:1] = ["-c", "credential.helper=", "-c", f"credential.helper={cred}"]
+        argv[1:1] = ["-c", "credential.helper=", *[x for c in cred for x in ("-c", f"credential.helper={c}")]]
     e = {**os.environ, **(env or {}), "GIT_TERMINAL_PROMPT": "0"}
     if own:
         # The tree's object store, so a commit's objects land where the

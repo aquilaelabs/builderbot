@@ -141,7 +141,8 @@ function usersDetail(u){
     ${u.devices ? `<div class="uedevices"><span class="lbl">Devices${helpIcon("the apps signed in as this account on its machines; Disconnect cuts one off for them, as a lost laptop needs")}</span>${
       profileDevices(u.devices, u.name)}</div>` : ""}
     ${ro ? "" : `<div class="rfoot">${isOwner ? `<span class="sub dim">The owner cannot be deleted: rename it instead.</span>`
-      : `<button type="button" class="danger" id="ueRemove">Remove ${esc(u.name)}</button>`}</div>`}`;
+      : `<button type="button" class="danger" id="ueRemove">Remove ${esc(u.name)}</button>`}${
+      state?.can?.admin ? `<button type="button" class="danger" id="uePurge" title="their own key, the forges they linked, and the projects linked to it">Purge key store</button>` : ""}</div>`}`;
 }
 
 function renderUsersInto(i){
@@ -213,6 +214,10 @@ function wireUsers(el){
   if (rv) rv.onclick = () => { usersEdit = null; rolesPeopleDraft = null; usersRedraw(); };
   const sv = el.querySelector("#ueSave");
   if (sv) sv.onclick = () => usersSave(el, sv);
+  // An account's key store purged for them (R154), for one that cannot sign
+  // in to purge its own.
+  const pg = el.querySelector("#uePurge");
+  if (pg) pg.onclick = async () => { busy(pg, "Purging"); await keyStorePurge(usersPick); loadUsers(); };
   const rm = el.querySelector("#ueRemove");
   if (rm) rm.onclick = async () => {
     if (await askYes(`Remove ${usersPick}? They lose access immediately.`)) usersAct({action: "remove", name: usersPick});

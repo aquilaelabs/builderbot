@@ -1148,10 +1148,14 @@ def remove(name):
     # Its invitations go, and what it owned falls back to BuilderBot's owner.
     import membership
     membership.forget_account(u.get("uid") or "")
-    # ...and its own key for its sign-ins on the nodes (R154).
+    # ...and its key store (R154): its own key, what it linked, and the
+    # projects linked to it, each then saying so.
     import accountkeys
+    import gitcreds
     if accountkeys.STATE is not None:
         accountkeys.forget(u.get("uid") or "")
+    if gitcreds.STATE is not None and u.get("uid"):
+        gitcreds.unlink_account(u["uid"], name)
     return {"ok": True, "name": name}
 
 

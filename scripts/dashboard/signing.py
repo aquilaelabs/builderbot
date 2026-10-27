@@ -129,9 +129,10 @@ def _stream(key, nonce, n):
     return bytes(out[:n])
 
 
-def seal(data):
-    """`data` sealed under the install key: MAGIC, nonce, ciphertext, tag."""
-    enc, mac = _subkeys()
+def seal(data, key=None):
+    """`data` sealed under the install key, or under `key` (an account's own,
+    R154): MAGIC, nonce, ciphertext, tag."""
+    enc, mac = _subkeys(key)
     nonce = secrets.token_bytes(16)
     ct = bytes(a ^ b for a, b in zip(data, _stream(enc, nonce, len(data)), strict=True))
     return MAGIC + nonce + ct + hmac.new(mac, MAGIC + nonce + ct, hashlib.sha256).digest()
@@ -158,6 +159,14 @@ def unseal(blob):
             if data is not None:
                 return data
     raise Locked("sealed under another install key: set INSTALL_KEY as it was, or import the key's backup")
+
+
+def open_with(key, blob):
+    """The data a seal holds under `key` (an account's own), or Locked."""
+    data = _open_with(key, blob) if key else None
+    if data is None:
+        raise Locked("sealed under another key")
+    return data
 
 
 def current(blob):

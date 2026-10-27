@@ -1105,6 +1105,7 @@ function rnLoadAuth(name){
       $("rnTestField").hidden = !j.url;
       rnDrawAuth();
       rnDrawKey();
+      rnDrawStore(name);
       rnBars();
     })
     .catch(() => {});                          // the rename itself still works
@@ -1113,6 +1114,36 @@ function rnLoadAuth(name){
 // The project's own deploy key (the operator, 12 Oct): made or pasted here,
 // shown by its public half with where the host takes it, forgotten here.
 // Shown wherever the token is: a project that may push.
+// The person's own key store, for this remote's host (R154): a project can be
+// linked to a token they linked on their Profile instead of keeping one of
+// its own, and then says whose it is. Acts at the press.
+function rnDrawStore(name){
+  const box = $("rnStore");
+  if (!box) return;
+  const o = rnAuthOpts || {};
+  let host = "";
+  try{ host = new URL(String(o.url || "").replace(/^git@([^:]+):/, "https://$1/")).host.toLowerCase(); }catch(e){ host = ""; }
+  const mine = (o.store || []).filter(f => f.host === host);
+  const lk = o.linked || {};
+  const said = lk.uid ? `<div class="hint">Linked to ${lk.mine ? "your" : esc(lk.name) + "'s"} ${esc(lk.host)} token, kept in ${
+    lk.mine ? "your" : "their"} key store.</div>` : "";
+  const rows = mine.filter(f => !(lk.mine && lk.host === f.host)).map(f => `<div class="setrow ctlrow"><span class="grow">Your ${
+    esc(f.host)} token${f.login ? `, as ${esc(f.login)}` : ""}</span>
+    <button type="button" data-rnstore="${esc(f.host)}">Use for this project</button></div>`).join("");
+  const none = !mine.length && host && !lk.uid ? `<div class="hint">Your key store keeps no ${esc(host)} token: link one on your Profile to use it here.</div>` : "";
+  box.innerHTML = said + rows + none;
+  box.hidden = !(said || rows || none);
+  box.querySelectorAll("[data-rnstore]").forEach(b => b.onclick = async () => {
+    busy(b, "Linking");
+    try{
+      const j = await (await postJSON("/api/rename", {name, link_account: true})).json();
+      if (j.error) notify(j.error, true);
+      else notify(`${projLabel(name)} now uses your ${b.dataset.rnstore} token`);
+    }catch(e){ notify("link: " + failWords(e), true); }
+    rnLoadAuth(name);
+  });
+}
+
 function rnDrawKey(){
   const f = $("rnKeyField");
   if (!rnAuthOpts || $("rnTokenField").hidden){ f.hidden = true; return; }

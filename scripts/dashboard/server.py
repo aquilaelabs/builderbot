@@ -1774,6 +1774,9 @@ def _attention(who):
     # to (releasesign.attention, R106), for whoever sees the project: said
     # before the release, not after it went out without one.
     signs = releasesign.attention([p for p in releasesign.projects_fn() if users.may_see(who, p)])
+    # ...and a project whose git access went with an account's key store
+    # (R154), for whoever sees it.
+    signs += gitcreds.gone_rows([p for p in gitcreds.gone_projects() if users.may_see(who, p)])
     if NODES_OK:
         return bellseen.filter_rows(users.uid_of(who), signs)
     where = {p: (pr.get("node") or "") for p, pr in prefs.all_projects().items()}
@@ -4348,7 +4351,7 @@ import gitrelay                                                  # noqa: E402
 
 gitrelay.configure(state=STATE, workspace=WORKSPACE,
                    push_record=lambda p: projects.load_push().get(p),
-                   token_helper=projects.token_helper, parse_url=forges.parse,
+                   token_helper=projects.token_helpers, parse_url=forges.parse,
                    host_of=forges.host_of, git_env=projects._git_env)
 # The modules that keep something that grows read where from paths.py.
 workspace.paths = gitview.paths = logs.paths = gitrelay.paths = paths
@@ -4370,8 +4373,9 @@ def _push_approved(rec, by):
     for the project, then the push, unscanned, in the relay's own
     repository, as the session's bb would have run it."""
     pushscan.okay(rec.get("project") or "", rec.get("findings") or [], by)
+    to = str(rec.get("to") or "")
     return gitrelay.run(rec.get("project") or "", rec.get("cwd") or str(WORKSPACE / (rec.get("project") or "")),
-                        "push", rec.get("args") or [], scan=False)
+                        "push", rec.get("args") or [], scan=False, uid=to if to.startswith("u_") else "")
 
 
 phone.pusher = _push_approved
@@ -9083,7 +9087,21 @@ class Handler(BaseHTTPRequestHandler):
         act = field(req, "action")
         uid = users.uid_of(who) or ""
         if act == "mine":
-            return self._json(accountkeys.status(uid))
+            # The account's key store as Profile lists it (R154): its key and
+            # each forge it linked, with the projects linked to it; never a
+            # value, and nothing here hands one out.
+            return self._json({**accountkeys.status(uid), "forges": accountkeys.forges_of(uid),
+                               "projects": gitcreds.linked_projects(uid) if uid else []})
+        if act == "link-forge":
+            return self._json(*self._keys_link_forge(uid, field(req, "host"), str(req.get("token") or "")))
+        if act == "unlink-forge":
+            host = field(req, "host").lower()
+            if any(gitcreds.linked_to(p)[1] == host for p in gitcreds.linked_projects(uid)):
+                return self._json({"error": f"a project is linked to your {host} token: give it a token of its own "
+                                            "or link another account's first, or purge your key store"}, 409)
+            return self._json({"ok": accountkeys.unlink_forge(uid, host)})
+        if act == "purge":
+            return self._json(self._keys_purge(uid, who.get("name") or uid))
         if act == "change-mine":
             body, code = accountkeys.change(uid, str(req.get("key") or ""))
             if code == 200:
@@ -9100,6 +9118,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(body, code)
         if act == "saved":
             return self._json(*installkey.saved(field(req, "fingerprint")))
+        if act == "purge-for":
+            # An administrator's, for an account that cannot sign in to purge
+            # its own (the operator, 27 Oct).
+            acct = users.get(field(req, "account")) or {}
+            if not acct.get("uid"):
+                return self._json({"error": "no such account"}, 404)
+            print(f"dashboard: {who.get('name')} purged {acct.get('name')}'s key store", flush=True)
+            return self._json(self._keys_purge(acct["uid"], acct.get("name") or acct["uid"]))
         if act == "change":
             body, code = installkey.change(str(req.get("key") or ""))
             if code == 200:
@@ -9107,12 +9133,52 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(body, code)
         return self._json({"error": f"unknown action {act!r}"}, 400)
 
+    def _keys_link_forge(self, uid, host, token):
+        """A forge token linked into the account's own key store, checked
+        with the forge first where it has an API to ask (R154)."""
+        host = (host or "").strip().lower()
+        token = token.strip()
+        if not uid:
+            return {"error": "only a person keeps a key store"}, 403
+        if not re.fullmatch(r"[a-z0-9.-]+(:\d+)?", host):
+            return {"error": "name the forge's host, as in github.com"}, 400
+        forge = forges.forge_of(host)
+        bad = forges.token_ok(forge, token)
+        if bad:
+            return {"error": bad}, 400
+        login = ""
+        if forges.can_create(forge):
+            login = forges.whoami(forge, host, token, "https")
+            if not login:
+                return {"error": f"{forge['name']} does not accept that token"}, 400
+        q = lambda x: urllib.parse.quote(x, safe="")  # noqa: E731
+        line = f"https://{q(login or forge['user'])}:{q(token)}@{host}"
+        return accountkeys.link_forge(uid, host, line, login)
+
+    def _keys_purge(self, uid, name):
+        """An account's key store emptied (R154): its key and what it linked
+        gone, and the projects linked to it unlinked; its sign-ins on the
+        nodes open no more, and a new key is made the next time one is
+        sealed."""
+        unlinked = gitcreds.unlink_account(uid, name) if uid else []
+        accountkeys.forget(uid)
+        print(f"dashboard: {name}'s key store purged; {len(unlinked)} project(s) unlinked", flush=True)
+        return {"ok": True, "unlinked": unlinked}
+
     def _keys_kept(self):
         """What the install keeps under its key, by kind, each row naming
         what uses it and where it is changed; no value, sealed or not."""
         rows = []
+        names = {u.get("uid"): u.get("name") for u in users.all_users() if u.get("uid")}
         for f in sorted((STATE / "gitcreds").iterdir()) if (STATE / "gitcreds").is_dir() else []:
             raw = f.read_text(errors="replace").strip() if f.is_file() else ""
+            lk_uid, lk_host = gitcreds.linked_to(f.name)
+            if lk_uid:
+                # Linked to a person's own token (R154): kept in their store,
+                # not this one.
+                rows.append({"kind": "git", "name": f.name, "sealed": True, "go": ["project", f.name],
+                             "uses": f"linked to {names.get(lk_uid) or 'an account'}'s {lk_host} token"})
+                continue
             rows.append({"kind": "git", "name": f.name, "sealed": raw.startswith(gitcreds.SEALED),
                          "uses": "git push and pull for the project's repositories", "go": ["project", f.name]})
         d = settings.load()
@@ -9125,7 +9191,6 @@ class Handler(BaseHTTPRequestHandler):
             for k in signing.key_names(proj):
                 rows.append({"kind": "signing", "name": f"{proj}: {k}", "sealed": signing.at_rest(proj) == "sealed",
                              "uses": "signing the project's Android builds", "go": ["project", proj]})
-        names = {u.get("uid"): u.get("name") for u in users.all_users() if u.get("uid")}
         for uid, r in sorted(mfa.load().items()):
             t = (r or {}).get("totp") or {}
             if t.get("on"):
@@ -9133,7 +9198,11 @@ class Handler(BaseHTTPRequestHandler):
                              "uses": "the authenticator codes this account signs in with", "go": ["user", names.get(uid) or uid]})
         for uid in sorted(accountkeys._load()):
             rows.append({"kind": "account", "name": names.get(uid) or uid, "sealed": True,
-                         "uses": "the key this account's sign-ins on the nodes are sealed with", "go": ["profile"]})
+                         "uses": "the key this account's own key store is sealed with", "go": ["user", names.get(uid) or uid]})
+            for fg in accountkeys.forges_of(uid):
+                rows.append({"kind": "forge", "name": f"{names.get(uid) or uid}: {fg['host']}", "sealed": True,
+                             "uses": f"their own git work{', as ' + fg['login'] if fg['login'] else ''}, "
+                                     "kept under their key", "go": ["user", names.get(uid) or uid]})
         for n in nodes.node_list(all=True):
             for uid, seals in sorted((((n.get("reported") or {}).get("tokseal") or {}).get("sealed") or {}).items()):
                 rows.append({"kind": "sign-in", "name": f"{names.get(uid) or uid} on {n['name']}", "sealed": True,
@@ -9764,8 +9833,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": mine_["confirm"].split("\n\n")[-1], "confirm": mine_["confirm"]}, 409)
         if (busy := gitview.in_use(name, action, req.get("args") or {}, users.uid_of(me))):
             return self._json({"error": busy}, 409)
-        return self._result(gitview.verb(name, action, req, me, prefix=users.tmux_prefix(me),
-                                         principal=self._principal()))
+        # A person's press is their own work: their own token first (R154).
+        acting = gitview.ACTING.set(users.uid_of(me))
+        try:
+            return self._result(gitview.verb(name, action, req, me, prefix=users.tmux_prefix(me),
+                                             principal=self._principal()))
+        finally:
+            gitview.ACTING.reset(acting)
 
     def _vms_iso_upload(self):
         """An ISO uploaded on the VMs page: VMs Write on the project the dialog
@@ -10754,10 +10828,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self._refused("rename", name):
             return
-        # Nothing on disk moves (R154): the name shown is the registry's, so
+        # Nothing on disk moves: the name shown is the registry's, so
         # a session, a terminal or a container holding the project is not
-        # in the way of it.
-        return self._json(*projects.rename(req))
+        # in the way of it. The account a link names is the asker (R154).
+        return self._json(*projects.rename({**req, "_uid": users.uid_of(self._who())}))
 
     def _project_auth(self, req):
         """What credential this project's remote uses, and what else it
@@ -10776,7 +10850,17 @@ class Handler(BaseHTTPRequestHandler):
         # further.
         if str(req.get("action") or "").startswith("key-"):
             return self._json(*projects.deploy_key(name, str(req["action"]), str(req.get("key") or "")))
-        return self._json(*projects.auth_answer(name))
+        body, code = projects.auth_answer(name)
+        if code == 200:
+            # What the asker's own key store keeps, to link the project to
+            # (R154), and whose account the project is linked to now.
+            body["store"] = accountkeys.forges_of(users.uid_of(self._who()))
+            lk = body.get("linked") or {}
+            if lk.get("uid"):
+                acct = next((u for u in users.all_users() if u.get("uid") == lk["uid"]), {})
+                lk["name"] = acct.get("name") or "an account that is gone"
+                lk["mine"] = lk["uid"] == users.uid_of(self._who())
+        return self._json(body, code)
 
     def _project_ftp(self, req):
         """A project's file access over FTP (ftp.py, R151): what it is, for

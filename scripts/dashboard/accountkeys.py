@@ -12,6 +12,11 @@ time its person opens a terminal there, and seals it again under the new.
   STATE/account-keys.json  {uid: {"key": sealed, "prev": sealed, "made": t,
                             "changed": t}}, each key 32 bytes sealed under
                             the install key; nothing here opens without it
+  STATE/account-secrets.json  {uid: {"forges": {host: {"sealed", "login",
+                            "scheme", "at"}}}}: the account's key store, each
+                            forge token it linked sealed under its own key
+                            (the operator, 27 Oct) and sealed again when that
+                            key changes; its git work uses it (gitcreds)
 """
 import base64
 import contextlib
@@ -38,6 +43,18 @@ def configure(*, state, nodes_under=None):
 
 def _file():
     return STATE / "account-keys.json"
+
+
+def _secrets_file():
+    return STATE / "account-secrets.json"
+
+
+def _load_secrets():
+    try:
+        d = json.loads(_secrets_file().read_text())
+    except (OSError, ValueError):
+        d = {}
+    return d if isinstance(d, dict) else {}
 
 
 def _load():
@@ -148,6 +165,14 @@ def change(uid, new=""):
         r.update(key=_keep(k), prev=_keep(old), changed=int(time.time()))
         d[uid] = r
         _save(d)
+        # The key store sealed again under the new key at once: only the
+        # nodes' seals wait for a terminal to move them.
+        sd = _load_secrets()
+        for f in ((sd.get(uid) or {}).get("forges") or {}).values():
+            with contextlib.suppress(signing.Locked, ValueError):
+                f["sealed"] = base64.b64encode(signing.seal(signing.open_with(old, base64.b64decode(f["sealed"])), k)).decode()
+        if uid in sd:
+            statefile.write_json(_secrets_file(), sd, mode=0o600)
     _drop_previous(uid)
     return {"ok": True, "fingerprint": fingerprint(k)}, 200
 
@@ -172,10 +197,63 @@ def seal_all(again=False):
 
 
 def forget(uid):
-    """An account removed: its keys go with it."""
+    """An account removed: its keys and its key store go with it."""
     with _lock:
         d = _load()
         if d.pop(uid, None) is not None:
             with contextlib.suppress(OSError):
                 _save(d)
+        sd = _load_secrets()
+        if sd.pop(uid, None) is not None:
+            with contextlib.suppress(OSError):
+                statefile.write_json(_secrets_file(), sd, mode=0o600)
+
+
+# ---- the account's key store: the forges it linked -----------------------
+
+def forges_of(uid):
+    """What the account linked, by host, with no token: [{host, login,
+    scheme, at}]."""
+    fs = (_load_secrets().get(uid) or {}).get("forges") or {}
+    return [{"host": h, "login": f.get("login", ""), "scheme": f.get("scheme", "https"), "at": f.get("at", 0)}
+            for h, f in sorted(fs.items()) if isinstance(f, dict)]
+
+
+def link_forge(uid, host, line, login):
+    """A forge token the account linked, as git's credential line
+    (scheme://user:token@host), sealed under the account's own key."""
+    k = key_of(uid)
+    if not k:
+        return {"error": "this install has no key, so nothing can be kept in an account's key store"}, 409
+    scheme = line.split("://", 1)[0]
+    with _lock:
+        sd = _load_secrets()
+        r = sd.setdefault(uid, {})
+        r.setdefault("forges", {})[host.lower()] = {
+            "sealed": base64.b64encode(signing.seal(line.encode(), k)).decode(),
+            "login": login, "scheme": scheme, "at": int(time.time())}
+        statefile.write_json(_secrets_file(), sd, mode=0o600)
+    return {"ok": True, "host": host.lower(), "login": login}, 200
+
+
+def unlink_forge(uid, host):
+    with _lock:
+        sd = _load_secrets()
+        fs = (sd.get(uid) or {}).get("forges") or {}
+        if fs.pop(str(host).lower(), None) is None:
+            return False
+        statefile.write_json(_secrets_file(), sd, mode=0o600)
+    return True
+
+
+def forge_line(uid, host):
+    """The account's credential line for this host, opened, or ""."""
+    f = ((_load_secrets().get(uid) or {}).get("forges") or {}).get(str(host or "").lower())
+    k = key_of(uid, make=False) if f else None
+    if not k:
+        return ""
+    try:
+        return signing.open_with(k, base64.b64decode(f["sealed"])).decode()
+    except (signing.Locked, ValueError, KeyError):
+        return ""
 

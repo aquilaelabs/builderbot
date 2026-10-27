@@ -59,7 +59,7 @@ const PROFILE_SAYS = {
   you: "your name, email and commit author", may: "what your roles let you do",
   password: "change it, signing out everywhere",
   twofactor: "an authenticator app, passkeys and recovery codes",
-  mykey: "what your sign-ins on the nodes are sealed with",
+  mykey: "your key, the forges you linked, and Purge",
   terminal: "the size, cursor and colors of your terminals",
   devices: "your apps, to disconnect",
 };

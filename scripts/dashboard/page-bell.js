@@ -238,6 +238,16 @@ function attRow(a){
         <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
           <a href="#" data-bsign="${esc(a.project)}">Signing view</a></span></div></div>`;
   }
+  // A project whose git access was linked to an account's token, gone with
+  // that account's key store (R154): its settings, to give it another.
+  if (a.kind === "git-unlinked"){
+    return `<div class="bnote att bad">
+      <div class="bt">${esc(projLabel(a.project))} has no git access</div>
+      <div class="bsum">${esc(a.why)}</div>
+      <div class="bfoot"><span>${a.at ? esc(ago(a.at)) : ""}</span>
+        <span class="acts">${a.key ? `<a href="#" data-bdismiss="${esc(a.key)}">Dismiss</a>` : ""}
+          <a href="#" data-bprojset="${esc(a.project)}">Its settings</a></span></div></div>`;
+  }
   // A scheduled script (R117): a run that failed, could not be queued, or
   // was skipped because the one before it was still going; its log where
   // there is one, else the Schedules page.
@@ -704,6 +714,9 @@ function wireNeeds(root, after = () => {}){
   });
   root.querySelectorAll("[data-bsched]").forEach(a => a.onclick = e => {
     e.preventDefault(); after(); openSchedulesTab();
+  });
+  root.querySelectorAll("[data-bprojset]").forEach(a => a.onclick = e => {
+    e.preventDefault(); after(); openProjectSettings(a.dataset.bprojset);
   });
   root.querySelectorAll("[data-bsign]").forEach(a => a.onclick = e => {
     e.preventDefault();

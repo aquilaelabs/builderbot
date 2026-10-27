@@ -60,7 +60,7 @@ async function loadHome(light = false){
 // its own tile.
 function homeUpdates(){
   return (state?.attention || []).reduce((n, a) =>
-    a.kind === "relocate" || a.kind === "room" || a.kind === "release-sign" ? n : n + (a.kind === "toolchain" || a.kind === "agents" ? (a.tools || []).length || 1
+    a.kind === "relocate" || a.kind === "room" || a.kind === "release-sign" || a.kind === "git-unlinked" ? n : n + (a.kind === "toolchain" || a.kind === "agents" ? (a.tools || []).length || 1
       : a.kind === "image" ? (a.containers || []).length || 1 : 1), 0);
 }
 
